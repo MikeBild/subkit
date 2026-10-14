@@ -177,6 +177,8 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
     const outcome = await connectServerById(db, principal.tenant_id, id, {
       environment: MCP_CREDENTIAL_ENVIRONMENT,
       requestSource,
+      actor_id: principal.id,
+      actor_type: principal.kind,
     });
     if (!outcome.ok) {
       if (outcome.reason === "disabled") {
@@ -220,6 +222,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
       tenant_id: principal.tenant_id,
       connector_id: id,
       actor_id: principal.id,
+      actor_type: principal.kind,
       origin: requestSource === "ui" ? "cockpit" : "cli",
       request_source: requestSource,
     });
@@ -293,6 +296,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
       tenant_id,
       connector_id,
       actor_id: null,
+      actor_type: null,
       origin: "chat",
       request_source: readRequestSource(c) ?? "api",
     });
@@ -336,6 +340,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const tenant_id = stateRow.tenant_id;
     const connector_id = stateRow.connector_id;
+    const started_by_actor_type = stateRow.started_by_actor_type ?? "unknown";
     const started_by_actor_id = stateRow.started_by_actor_id ?? null;
     const requestSource: RequestSource = readRequestSource(c) ?? "api";
     const server = await getMcpConnector(db, tenant_id, connector_id);
@@ -377,6 +382,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
       await recordConnectorMcpAuthorizationFailed({
         tenant_id,
         actor_id: started_by_actor_id,
+        actor_type: started_by_actor_type,
         request_source: requestSource,
         connector_id,
         connector_slug,
@@ -479,11 +485,13 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id,
         connector_id,
         actor_id: started_by_actor_id,
+        actor_type: started_by_actor_type,
       });
 
       await recordConnectorMcpAuthorized({
         tenant_id,
         actor_id: started_by_actor_id,
+        actor_type: started_by_actor_type,
         request_source: requestSource,
         connector_id,
         connector_slug,
@@ -559,6 +567,7 @@ async function startMcpAuthorization(p: {
   tenant_id: string;
   connector_id: string;
   actor_id: string | null;
+  actor_type: "user" | "system_account" | null;
   origin: OAuthFlowOrigin;
   request_source: RequestSource;
 }): Promise<McpAuthorizationStart> {
@@ -588,6 +597,7 @@ async function startMcpAuthorization(p: {
     redirect_uri,
     requested_scopes: auth.scope ?? null,
     started_by_actor_id: actor_id,
+    started_by_actor_type: p.actor_type,
     origin: p.origin,
     expires_at: new Date(now() + STATE_TTL_MS),
   });
@@ -623,6 +633,7 @@ async function startMcpAuthorization(p: {
     await recordConnectorMcpAuthorizationStarted({
       tenant_id,
       actor_id,
+      ...(p.actor_type ? { actor_type: p.actor_type } : {}),
       request_source: p.request_source,
       connector_id: id,
       connector_slug: server.slug,
@@ -649,6 +660,7 @@ async function startMcpAuthorization(p: {
     await recordConnectorMcpAuthorizationFailed({
       tenant_id,
       actor_id,
+      ...(p.actor_type ? { actor_type: p.actor_type } : {}),
       request_source: p.request_source,
       connector_id: id,
       connector_slug: server.slug,

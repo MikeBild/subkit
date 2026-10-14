@@ -120,6 +120,8 @@ export async function probeMcpConnector(p: {
   connector: ConnectorView;
   credential_override?: DecryptedCredential | null;
   requestSource?: RequestSource;
+  actor_id?: string | null;
+  actor_type?: AuditActorType;
 }): Promise<McpProbeResult> {
   const start = Date.now();
 
@@ -202,6 +204,8 @@ export async function probeMcpConnector(p: {
     const outcome = await connectServerById(p.db, p.tenant_id, p.connector.id, {
       environment: p.connector.environment,
       ...(p.requestSource ? { requestSource: p.requestSource } : {}),
+      actor_id: p.actor_id ?? null,
+      ...(p.actor_type ? { actor_type: p.actor_type } : {}),
     });
     const latency_ms = Date.now() - start;
     if (!outcome.ok) {
@@ -301,6 +305,7 @@ export async function invokeMcpConnectorCall(p: {
   db: Db;
   tenant_id: string;
   actor_id: string | null;
+  actor_type: AuditActorType;
   connector: ConnectorView;
   call: RemoteCall;
   requestSource?: RequestSource;
@@ -315,6 +320,7 @@ export async function invokeMcpConnectorCall(p: {
     db: p.db,
     tenant_id: p.tenant_id,
     actor_id: p.actor_id,
+    actor_type: p.actor_type,
     connector_id: p.connector.id,
     connector_slug: p.connector.slug,
     call: p.call,

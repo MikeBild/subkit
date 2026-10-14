@@ -1,6 +1,9 @@
+import { and, count, eq } from "drizzle-orm";
 import { AuditAction } from "../audit/index.ts";
+import { connectorNeedsReauth } from "../connectors/health-ratio.ts";
 import { listConnectors } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
+import { connectors } from "../db/schema/index.ts";
 import { aggregateAudit } from "../stats/aggregate-audit.ts";
 import { aggregateExecutions } from "../stats/aggregate-executions.ts";
 import { statsBucketFor } from "../stats/llm-cost.ts";
@@ -35,6 +38,7 @@ export interface OperatingFigures {
   connectors: {
     enabled: number;
     not_ok: number;
+    needs_reauth: number;
     healthy_percent: number | null;
     href: string | null;
   };
@@ -105,7 +109,7 @@ export async function readOperatingFigures(
 ): Promise<OperatingFigures> {
   const bucket = statsBucketFor(bounds.from, bounds.to);
   const window = { tenantId, bucket, from: bounds.from, to: bounds.to, tz: "UTC" } as const;
-  const [executions, repairs, enabled, notOk] = await Promise.all([
+  const [executions, repairs, enabled, notOk, needsReauth] = await Promise.all([
     aggregateExecutions(db, { ...window, groupBy: [] }),
     aggregateAudit(db, {
       ...window,
@@ -114,6 +118,10 @@ export async function readOperatingFigures(
     }),
     listConnectors(tenantId, { enabled: true, limit: 1 }, db),
     listConnectors(tenantId, { health: "not_ok", limit: 1 }, db),
+    db
+      .select({ total: count() })
+      .from(connectors)
+      .where(and(eq(connectors.tenant_id, tenantId), connectorNeedsReauth())),
   ]);
 
   const total = executions.totals.executions.count;
@@ -148,6 +156,7 @@ export async function readOperatingFigures(
     connectors: {
       enabled: enabled.total,
       not_ok: notOk.total,
+      needs_reauth: Number(needsReauth[0]?.total ?? 0),
       healthy_percent: percent(Math.max(enabled.total - notOk.total, 0), enabled.total),
       href: notOk.total > 0 ? cockpitHref("/connectors", { health: "not_ok" }) : null,
     },

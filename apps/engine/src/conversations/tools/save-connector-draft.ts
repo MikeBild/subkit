@@ -17,6 +17,7 @@ import {
   connectorFieldPatch,
   saveConnectorAtomic,
 } from "../persistence/save-connector.ts";
+import { auditActorFromToolContext } from "./audit-actor.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { buildConnectorUsage } from "./usage-guidance.ts";
 
@@ -195,7 +196,7 @@ export const saveConnectorDraftTool: ConversationTool = {
         });
         await recordConnectorUpdated({
           tenant_id: ctx.tenant_id,
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           executor: ctx.db,
           connector_id: existing.id,
           kind: reissueKind,
@@ -307,7 +308,7 @@ export const saveConnectorDraftTool: ConversationTool = {
       if (probeFailed) {
         await recordConnectorSavedOverride({
           tenant_id: ctx.tenant_id,
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           executor: ctx.db,
           connector_id,
           slug: connector?.slug ?? "",
@@ -323,7 +324,7 @@ export const saveConnectorDraftTool: ConversationTool = {
       } else {
         await recordConnectorCreated({
           tenant_id: ctx.tenant_id,
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           executor: ctx.db,
           connector_id,
           slug: connector?.slug ?? "",

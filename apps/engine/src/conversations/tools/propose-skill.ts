@@ -67,7 +67,10 @@ export const proposeSkillTool: ConversationTool = {
         tool_name: "ask_user_confirm",
         summary,
         input,
-        actor_id: ctx.actor_id,
+        actor_id: ctx.engineClient.context.actor_id,
+        ...(ctx.engineClient.context.actor_type
+          ? { actor_type: ctx.engineClient.context.actor_type }
+          : {}),
       },
       ctx.db,
     );

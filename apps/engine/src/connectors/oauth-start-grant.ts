@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, sql } from "drizzle-orm";
+import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth2/redirect-uri.ts";
@@ -47,11 +48,21 @@ export async function mintOAuthStartGrantUrl(
     >;
     actor_id: string | null;
     actor_type?: AuditActorType;
+    actor?: Actor | null;
     ttl_ms?: number;
   },
 ): Promise<MintedGrant | MintGrantError> {
   const { tenant_id, connector, actor_id, ttl_ms = 600_000 } = opts;
-  const actor_type = opts.actor_type ?? (actor_id ? "user" : "system");
+  const audit_actor =
+    opts.actor !== undefined
+      ? auditActor(opts.actor)
+      : opts.actor_type === "unknown"
+        ? { actor_type: "unknown" as const, actor_id: null }
+        : opts.actor_type
+          ? { actor_type: opts.actor_type, actor_id }
+          : actor_id
+            ? { actor_type: "unknown" as const, actor_id: null }
+            : auditActor(null);
 
   const signIn = connectorSignIn(connector);
   if (!signIn || connectorOAuthGrantType(connector) === "client_credentials_json") {
@@ -78,8 +89,7 @@ export async function mintOAuthStartGrantUrl(
   await auditAwait(
     {
       tenant_id,
-      actor_type,
-      actor_id,
+      ...audit_actor,
       action: AuditAction.CONNECTOR_OAUTH_GRANT_ISSUED,
       resource_type: "connector",
       resource_id: connector.id,

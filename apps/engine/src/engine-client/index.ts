@@ -58,7 +58,7 @@ import {
   updateWorkflowMetadata,
 } from "../workflows/service.ts";
 
-export type EngineClientActorType = "user" | "system_account" | "system";
+export type EngineClientActorType = "user" | "system_account" | "system" | "unknown";
 
 export interface EngineClientCtx {
   tenant_id: string;
@@ -71,18 +71,51 @@ export class EngineClient {
   private readonly tenant_id: string;
   private readonly actor_id: string | null;
   private readonly actor_type: EngineClientActorType;
+  private readonly api_key_creator: identitySvc.ApiKeyCreator | null;
   private readonly db: Db;
 
   constructor(ctx: EngineClientCtx) {
     this.tenant_id = ctx.tenant_id;
-    this.actor_id = ctx.actor_id;
-    this.actor_type = ctx.actor_type ?? (ctx.actor_id ? "user" : "system");
+    if (ctx.actor_type === "system") {
+      this.actor_type = "system";
+      this.actor_id = null;
+    } else if (ctx.actor_type === "unknown") {
+      this.actor_type = "unknown";
+      this.actor_id = null;
+    } else if (ctx.actor_type) {
+      this.actor_type = ctx.actor_id ? ctx.actor_type : "unknown";
+      this.actor_id = ctx.actor_id;
+    } else {
+      this.actor_type = ctx.actor_id ? "unknown" : "system";
+      this.actor_id = null;
+    }
+    this.api_key_creator =
+      this.actor_type === "system"
+        ? { kind: "system", id: null }
+        : (this.actor_type === "user" || this.actor_type === "system_account") && this.actor_id
+          ? { kind: this.actor_type, id: this.actor_id }
+          : null;
     this.db = ctx.db ?? getDb();
   }
 
   private get actor(): Actor | null {
-    if (!this.actor_id || this.actor_type === "system") return null;
+    if (!this.actor_id || this.actor_type === "system" || this.actor_type === "unknown")
+      return null;
     return { kind: this.actor_type, id: this.actor_id };
+  }
+
+  private get knowledgeActor(): Actor | { kind: "unknown" } | null {
+    return this.actor_type === "unknown" ? { kind: "unknown" } : this.actor;
+  }
+
+  private get connectorActor(): Actor | { kind: "unknown" } | null {
+    if (this.actor_type === "unknown") return { kind: "unknown" };
+    return this.actor;
+  }
+
+  private get subscriptionActor(): Actor | { kind: "unknown" } | null {
+    if (this.actor_type === "unknown") return { kind: "unknown" };
+    return this.actor;
   }
 
   get context(): EngineClientCtx {
@@ -107,7 +140,8 @@ export class EngineClient {
     triggerBindings: (ids: readonly string[]) => loadTriggerBindings(this.tenant_id, ids, this.db),
     get: (id: string) => getWorkflow(this.tenant_id, id, this.db),
     getBySlug: (slug: string) => getWorkflowBySlug(this.tenant_id, slug, this.db),
-    delete: (id: string) => deleteWorkflow(this.tenant_id, id, this.actor_id, this.db),
+    delete: (id: string) =>
+      deleteWorkflow(this.tenant_id, id, this.actor_id, this.db, this.actor_type),
     update: (
       params: Pick<
         UpdateWorkflowMetadataInput,
@@ -124,6 +158,7 @@ export class EngineClient {
           ...(params.category !== undefined ? { category: params.category } : {}),
           ...(params.lifecycle !== undefined ? { lifecycle: params.lifecycle } : {}),
           actor_id: this.actor_id,
+          actor_type: this.actor_type,
         },
         this.db,
       ),
@@ -143,9 +178,9 @@ export class EngineClient {
       listConnectors(this.tenant_id, opts ?? {}, this.db),
     get: (id: string) => getConnector(this.tenant_id, id, this.db),
     delete: (id: string, opts?: { orphaned_workflow_ids?: string[] }) =>
-      deleteConnector(this.tenant_id, id, this.actor_id, this.db, opts),
+      deleteConnector(this.tenant_id, id, this.connectorActor, this.db, opts),
     update: (id: string, patch: UpdateConnectorInput) =>
-      updateConnector(this.tenant_id, id, patch, this.actor_id, this.db),
+      updateConnector(this.tenant_id, id, patch, this.connectorActor, this.db),
     promote: (id: string, strategy: "copy" | "move", idempotencyKey: string) =>
       promoteConnector(
         {
@@ -194,10 +229,19 @@ export class EngineClient {
     list: () => skillsSvc.listSkills({ tenant_id: this.tenant_id }, this.db),
     get: (id: string) => skillsSvc.getSkill(this.tenant_id, id, this.db),
     create: (input: CreateSkillInput) =>
-      skillsSvc.createSkill({ tenant_id: this.tenant_id, input, actor_id: this.actor_id }, this.db),
+      skillsSvc.createSkill(
+        {
+          tenant_id: this.tenant_id,
+          input,
+          actor_id: this.actor_id,
+          actor_type: this.actor_type,
+        },
+        this.db,
+      ),
     update: (id: string, patch: UpdateSkillInput) =>
-      skillsSvc.updateSkill(this.tenant_id, id, patch, this.actor_id, this.db),
-    delete: (id: string) => skillsSvc.deleteSkill(this.tenant_id, id, this.actor_id, this.db),
+      skillsSvc.updateSkill(this.tenant_id, id, patch, this.actor_id, this.db, this.actor_type),
+    delete: (id: string) =>
+      skillsSvc.deleteSkill(this.tenant_id, id, this.actor_id, this.db, this.actor_type),
   };
 
   skillCandidates = {
@@ -241,7 +285,12 @@ export class EngineClient {
     preview: (id: string) => selfHealingSvc.previewPatchCandidate(this.tenant_id, id, this.db),
     dryRun: (id: string) =>
       selfHealingSvc.dryRunPatchCandidate(
-        { tenant_id: this.tenant_id, candidate_id: id, actor_id: this.actor_id },
+        {
+          tenant_id: this.tenant_id,
+          candidate_id: id,
+          actor_id: this.actor_id,
+          actor_type: this.actor_type,
+        },
         this.db,
       ),
   };
@@ -250,7 +299,13 @@ export class EngineClient {
     list: () => knowledgeSvc.listKnowledgeSources({ tenant_id: this.tenant_id }, this.db),
     get: (id: string) => knowledgeSvc.getKnowledgeSource(this.tenant_id, id, this.db),
     delete: (id: string) =>
-      knowledgeSvc.deleteKnowledgeSource(this.tenant_id, id, this.actor_id, this.db),
+      knowledgeSvc.deleteKnowledgeSource(
+        this.tenant_id,
+        id,
+        this.actor_id,
+        this.db,
+        this.knowledgeActor,
+      ),
     create: (params: {
       input: CreateKnowledgeSourceInput;
       upload: { buffer: Buffer | Uint8Array; filename: string; mime?: string };
@@ -274,7 +329,13 @@ export class EngineClient {
       ),
     update: (id: string, patch: UpdateKnowledgeSourceInput) =>
       knowledgeSvc.updateKnowledgeSource(
-        { tenant_id: this.tenant_id, id, patch, actor_id: this.actor_id },
+        {
+          tenant_id: this.tenant_id,
+          id,
+          patch,
+          actor_id: this.actor_id,
+          actor: this.knowledgeActor,
+        },
         this.db,
       ),
     analyze: (id: string, opts?: { force?: boolean }) =>
@@ -283,6 +344,7 @@ export class EngineClient {
           tenant_id: this.tenant_id,
           id,
           actor_id: this.actor_id,
+          actor: this.knowledgeActor,
           ...(opts?.force !== undefined ? { force: opts.force } : {}),
         },
         this.db,
@@ -364,7 +426,13 @@ export class EngineClient {
       await this.db
         .select()
         .from(llmUsageTable)
-        .where(and(eq(llmUsageTable.tenant_id, this.tenant_id), eq(llmUsageTable.user_id, userId)))
+        .where(
+          and(
+            eq(llmUsageTable.tenant_id, this.tenant_id),
+            eq(llmUsageTable.user_id, userId),
+            eq(llmUsageTable.actor_type, "user"),
+          ),
+        )
         .orderBy(desc(llmUsageTable.created_at))
         .limit(Math.min(limit, 200)),
   };
@@ -393,16 +461,29 @@ export class EngineClient {
           ...(input.allowed_workflows ? { allowed_workflows: input.allowed_workflows } : {}),
           ...(input.allowed_connectors ? { allowed_connectors: input.allowed_connectors } : {}),
           ...(input.expires_at ? { expires_at: input.expires_at } : {}),
-          actor_id: this.actor_id,
+          actor: this.api_key_creator,
         },
         this.db,
       ),
     revokeApiKey: (id: string) =>
-      identitySvc.revokeApiKey({ tenant_id: this.tenant_id, id, actor_id: this.actor_id }, this.db),
+      identitySvc.revokeApiKey(
+        {
+          tenant_id: this.tenant_id,
+          id,
+          actor_id: this.actor_id,
+          actor_kind: this.actor_type,
+        },
+        this.db,
+      ),
     listPortalTokens: () => identitySvc.listPortalTokens(this.tenant_id, this.db),
     revokePortalToken: (id: string) =>
       identitySvc.revokePortalToken(
-        { tenant_id: this.tenant_id, id, actor_id: this.actor_id },
+        {
+          tenant_id: this.tenant_id,
+          id,
+          actor_id: this.actor_id,
+          actor_kind: this.actor_type,
+        },
         this.db,
       ),
     listSystemAccounts: (opts?: { limit?: number; offset?: number }) =>
@@ -424,7 +505,7 @@ export class EngineClient {
     list: () => subscriptionsSvc.listSubscriptions(this.tenant_id, this.db),
     get: (id: string) => subscriptionsSvc.getSubscription(this.tenant_id, id, this.db),
     delete: (id: string) =>
-      subscriptionsSvc.deleteSubscription(this.tenant_id, id, this.actor_id, this.db),
+      subscriptionsSvc.deleteSubscription(this.tenant_id, id, this.subscriptionActor, this.db),
     update: (
       id: string,
       patch: Pick<
@@ -437,6 +518,8 @@ export class EngineClient {
           tenant_id: this.tenant_id,
           id,
           actor_id: this.actor_id,
+          actor: this.actor,
+          actor_type: this.actor_type,
           ...(patch.event_pattern !== undefined ? { event_pattern: patch.event_pattern } : {}),
           ...(patch.target_url !== undefined ? { target_url: patch.target_url } : {}),
           ...(patch.active !== undefined ? { active: patch.active } : {}),

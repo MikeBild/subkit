@@ -7,6 +7,7 @@ import type { ResolvedAuthorityReference } from "../llm/substitution/resolver.ts
 import type { RequestSource } from "../observability/service-metadata.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
 import type { CallerContext } from "./caller-context.ts";
+import type { CallerOrigin } from "./caller-origin.ts";
 import type { MaterializedRequest } from "./prepared-request.ts";
 
 export type ExecutionSourceKind = "saved" | "draft" | "step";
@@ -63,6 +64,7 @@ export interface ExecutionContext {
   trace_id: string | null;
   principal?: ResolvedPrincipal | null;
   caller_context?: CallerContext | null;
+  caller_origin?: CallerOrigin;
   execution_mode: ExecutionMode;
   llm_budget: RunLlmBudget;
   hold_writes?: boolean;
@@ -244,6 +246,7 @@ export interface RunOptions {
   trace_id?: string | null;
   principal?: ResolvedPrincipal | null;
   caller_context?: CallerContext | null;
+  caller_origin?: CallerOrigin;
   execution_mode?: ExecutionMode;
   existing_execution_id?: string;
   tool_approval_id?: string;

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   check,
+  foreignKey,
   index,
   jsonb,
   pgTable,
@@ -52,6 +53,40 @@ export const mcpOauthClients = pgTable(
   ],
 );
 
+export const mcpOauthUnknownGrants = pgTable(
+  "mcp_oauth_unknown_grants",
+  {
+    tenant_id: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    client_id: text("client_id").notNull(),
+    unknown_since: timestamp("unknown_since", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("mcp_oauth_unknown_grants_tenant_client_key").on(t.tenant_id, t.client_id),
+    index("mcp_oauth_unknown_grants_client_idx").on(t.client_id),
+  ],
+);
+
+export const mcpOauthGrants = pgTable(
+  "mcp_oauth_grants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    client_id: text("client_id").notNull(),
+    user_id: uuid("user_id").notNull(),
+    connected_at: timestamp("connected_at", { withTimezone: true }).defaultNow().notNull(),
+    revoked_at: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("mcp_oauth_grants_identity_key").on(t.id, t.tenant_id, t.client_id, t.user_id),
+    index("mcp_oauth_grants_client_idx").on(t.client_id),
+    index("mcp_oauth_grants_tenant_client_user_idx").on(t.tenant_id, t.client_id, t.user_id),
+  ],
+);
+
 export const mcpOauthAuthorizationCodes = pgTable(
   "mcp_oauth_authorization_codes",
   {
@@ -91,6 +126,7 @@ export const mcpOauthRefreshTokens = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     client_id: text("client_id").notNull(),
     user_id: uuid("user_id").notNull(),
+    grant_id: uuid("grant_id"),
     prefix: text("prefix").notNull(),
     token_sha256: text("token_sha256").notNull(),
     scope: text("scope").notNull(),
@@ -101,9 +137,22 @@ export const mcpOauthRefreshTokens = pgTable(
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
+    foreignKey({
+      name: "mcp_oauth_refresh_tokens_grant_identity_fk",
+      columns: [t.grant_id, t.tenant_id, t.client_id, t.user_id],
+      foreignColumns: [
+        mcpOauthGrants.id,
+        mcpOauthGrants.tenant_id,
+        mcpOauthGrants.client_id,
+        mcpOauthGrants.user_id,
+      ],
+    }).onDelete("cascade"),
     uniqueIndex("mcp_oauth_refresh_tokens_sha256_key").on(t.token_sha256),
     index("mcp_oauth_refresh_tokens_prefix_idx").on(t.prefix),
     index("mcp_oauth_refresh_tokens_tenant_idx").on(t.tenant_id),
+    index("mcp_oauth_refresh_tokens_unknown_grant_idx")
+      .on(t.client_id)
+      .where(sql`${t.grant_id} IS NULL`),
   ],
 );
 
@@ -116,6 +165,7 @@ export const mcpOauthAccessTokens = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     client_id: text("client_id").notNull(),
     user_id: uuid("user_id").notNull(),
+    grant_id: uuid("grant_id"),
     prefix: text("prefix").notNull(),
     token_sha256: text("token_sha256").notNull(),
     scope: text("scope").notNull(),
@@ -129,8 +179,21 @@ export const mcpOauthAccessTokens = pgTable(
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
+    foreignKey({
+      name: "mcp_oauth_access_tokens_grant_identity_fk",
+      columns: [t.grant_id, t.tenant_id, t.client_id, t.user_id],
+      foreignColumns: [
+        mcpOauthGrants.id,
+        mcpOauthGrants.tenant_id,
+        mcpOauthGrants.client_id,
+        mcpOauthGrants.user_id,
+      ],
+    }).onDelete("cascade"),
     uniqueIndex("mcp_oauth_access_tokens_sha256_key").on(t.token_sha256),
     index("mcp_oauth_access_tokens_prefix_idx").on(t.prefix),
     index("mcp_oauth_access_tokens_tenant_idx").on(t.tenant_id),
+    index("mcp_oauth_access_tokens_unknown_grant_idx")
+      .on(t.client_id)
+      .where(sql`${t.grant_id} IS NULL`),
   ],
 );

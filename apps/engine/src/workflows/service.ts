@@ -10,7 +10,8 @@ import {
   metadataChange,
 } from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
-import { AuditAction } from "../audit/types.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
+import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
@@ -274,8 +275,11 @@ export async function createWorkflow(
       await auditAwait(
         {
           tenant_id: input.tenant_id,
-          actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
-          actor_id: input.actor_id,
+          ...resolveActor({
+            tenant_id: input.tenant_id,
+            actor_id: input.actor_id,
+            ...(input.actor_type !== undefined ? { actor_type: input.actor_type } : {}),
+          }),
           action: AuditAction.WORKFLOW_CREATED,
           resource_type: "workflow",
           resource_id: wf.id,
@@ -289,7 +293,15 @@ export async function createWorkflow(
         type: "workflow.created",
         payload: { workflow_id: wf.id, slug, version: 1, actor_id: input.actor_id ?? null },
       });
-      await applyTriggerBindings(tx, input.tenant_id, wf.id, slug, def, input.actor_id);
+      await applyTriggerBindings(
+        tx,
+        input.tenant_id,
+        wf.id,
+        slug,
+        def,
+        input.actor_id,
+        input.actor_type,
+      );
       return wf.id;
     });
   } catch (err) {
@@ -365,7 +377,10 @@ export async function updateWorkflow(
         ...(def.description !== undefined ? { description: def.description } : {}),
         ...input.metadata,
       },
-      { actor_id: input.actor_id },
+      {
+        actor_id: input.actor_id,
+        ...(input.actor_type !== undefined ? { actor_type: input.actor_type } : {}),
+      },
     );
     if (dedup.unchanged) {
       return wf.id;
@@ -408,12 +423,16 @@ export async function updateWorkflow(
       from_version_id: wf.current_version_id,
       to_version_id: v.id,
       actor_id: input.actor_id ?? null,
+      ...(input.actor_type !== undefined ? { actor_type: input.actor_type } : {}),
     });
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
-        actor_id: input.actor_id,
+        ...resolveActor({
+          tenant_id: input.tenant_id,
+          actor_id: input.actor_id,
+          ...(input.actor_type !== undefined ? { actor_type: input.actor_type } : {}),
+        }),
         action: AuditAction.WORKFLOW_UPDATED,
         resource_type: "workflow",
         resource_id: wf.id,
@@ -444,7 +463,15 @@ export async function updateWorkflow(
       !dedup.current_def ||
       JSON.stringify(triggerOf(def)) !== JSON.stringify(triggerOf(dedup.current_def));
     if (triggerChanged) {
-      await applyTriggerBindings(tx, input.tenant_id, wf.id, wf.slug, def, input.actor_id);
+      await applyTriggerBindings(
+        tx,
+        input.tenant_id,
+        wf.id,
+        wf.slug,
+        def,
+        input.actor_id,
+        input.actor_type,
+      );
     }
     return wf.id;
   });
@@ -464,6 +491,7 @@ export interface UpdateWorkflowMetadataInput {
   category?: string | null;
   lifecycle?: "active" | "archived";
   actor_id: string | null;
+  actor_type?: AuditActorType;
 }
 
 export type UpdateWorkflowMetadataResult =
@@ -563,8 +591,22 @@ export async function updateWorkflowMetadata(
         .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, wf.id)))
         .returning({ category: workflows.category });
       if (patch.lifecycle === "archived") {
-        await inboundService.unbindFromWorkflow(input.tenant_id, wf.id, input.actor_id ?? null, tx);
-        await scheduleRepo.unbindFromWorkflow(tx, input.tenant_id, wf.id, input.actor_id ?? null);
+        await inboundService.unbindFromWorkflow(
+          input.tenant_id,
+          wf.id,
+          {
+            actor_id: input.actor_id ?? null,
+            ...(input.actor_type !== undefined ? { actor_type: input.actor_type } : {}),
+          },
+          tx,
+        );
+        await scheduleRepo.unbindFromWorkflow(
+          tx,
+          input.tenant_id,
+          wf.id,
+          input.actor_id ?? null,
+          input.actor_type,
+        );
       }
       if (patch.lifecycle === "active" && wf.lifecycle === "archived" && wf.current_version_id) {
         const [version] = await tx
@@ -586,13 +628,17 @@ export async function updateWorkflowMetadata(
             patch.slug ?? wf.slug,
             stored.definition,
             input.actor_id ?? null,
+            input.actor_type,
           );
       }
       await auditAwait(
         {
           tenant_id: input.tenant_id,
-          actor_type: input.actor_id ? "user" : "system",
-          actor_id: input.actor_id,
+          ...resolveActor({
+            tenant_id: input.tenant_id,
+            actor_id: input.actor_id,
+            ...(input.actor_type !== undefined ? { actor_type: input.actor_type } : {}),
+          }),
           action: AuditAction.WORKFLOW_UPDATED,
           resource_type: "workflow",
           resource_id: wf.id,
@@ -865,6 +911,7 @@ export async function deleteWorkflow(
   id: string,
   actor_id: string | null,
   exec?: Executor,
+  actor_type?: AuditActorType,
 ): Promise<boolean> {
   const db = exec ?? getDb();
   return db.transaction(async (tx) => {
@@ -876,13 +923,21 @@ export async function deleteWorkflow(
       )
       .returning();
     if (!row) return false;
-    await inboundService.unbindFromWorkflow(tenant_id, row.id, actor_id, tx);
-    await scheduleRepo.unbindFromWorkflow(tx, tenant_id, row.id, actor_id);
+    await inboundService.unbindFromWorkflow(
+      tenant_id,
+      row.id,
+      { actor_id, ...(actor_type !== undefined ? { actor_type } : {}) },
+      tx,
+    );
+    await scheduleRepo.unbindFromWorkflow(tx, tenant_id, row.id, actor_id, actor_type);
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...resolveActor({
+          tenant_id,
+          actor_id,
+          ...(actor_type !== undefined ? { actor_type } : {}),
+        }),
         action: AuditAction.WORKFLOW_DELETED,
         resource_type: "workflow",
         resource_id: row.id,

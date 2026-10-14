@@ -8,6 +8,7 @@ import {
   commitGateBypassedByAutoMode,
   commitWorkflowAtomic,
 } from "../persistence/commit-workflow.ts";
+import { auditActorFromToolContext } from "./audit-actor.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { savedDraftReadiness } from "./saved-draft-readiness.ts";
 
@@ -122,7 +123,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
       if (previewOverride) {
         await recordWorkflowCommitted({
           tenant_id: ctx.tenant_id,
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           executor: ctx.db,
           workflow_id,
           workflow_version_id,
@@ -136,7 +137,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
       } else {
         await recordWorkflowUpdated({
           tenant_id: ctx.tenant_id,
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           executor: ctx.db,
           workflow_id,
           slug: typeof data.slug === "string" ? data.slug : "",

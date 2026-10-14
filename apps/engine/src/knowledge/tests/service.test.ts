@@ -7,6 +7,9 @@ import {
   knowledgeSources,
   knowledgeSourceVersions,
 } from "../../db/schema/index.ts";
+import { EngineClient } from "../../engine-client/index.ts";
+import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import { runWithTestEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { upsertKnowledgeBundle } from "../bundle-service.ts";
 import { getKnowledgeSource, knowledgeSourceTotals, listKnowledgeSources } from "../catalog.ts";
@@ -46,6 +49,7 @@ describe.skipIf(skip)("knowledge/service", () => {
   let createdId: string;
 
   test("createKnowledgeSource persists source + chunks + audit", async () => {
+    const uploaderId = nextUuid();
     const result = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -60,7 +64,7 @@ describe.skipIf(skip)("knowledge/service", () => {
           filename: "compliance.md",
           mime: "text/markdown",
         },
-        actor: null,
+        actor: { kind: "system_account", id: uploaderId },
       },
       ctx.testDb.db,
     );
@@ -86,7 +90,76 @@ describe.skipIf(skip)("knowledge/service", () => {
       .from(auditLog)
       .where(eq(auditLog.resource_id, createdId));
     expect(audits.length).toBeGreaterThanOrEqual(1);
-    expect(audits.some((a) => a.action === "knowledge_source.created")).toBe(true);
+    expect(audits).toContainEqual(
+      expect.objectContaining({
+        action: "knowledge_source.created",
+        actor_type: "system_account",
+        actor_id: uploaderId,
+      }),
+    );
+    const fileAudits = await ctx.testDb.db
+      .select({
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+        action: auditLog.action,
+      })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.actor_id, uploaderId)));
+    const fileEvents = fileAudits.filter((audit) => audit.action.startsWith("file."));
+    expect(fileEvents.length).toBeGreaterThanOrEqual(2);
+    expect(
+      fileEvents.every(
+        (audit) => audit.actor_type === "system_account" && audit.actor_id === uploaderId,
+      ),
+    ).toBe(true);
+  });
+
+  test("EngineClient knowledge mutations retain typed actor provenance", async () => {
+    const actorId = "20000000-0000-4000-8000-000000000004";
+    const client = new EngineClient({
+      tenant_id: ctx.tenantId,
+      actor_id: actorId,
+      actor_type: "system_account",
+      db: ctx.testDb.db,
+    });
+    const source = await client.knowledgeSources.create({
+      input: { name: "Engine Client Actor Source", scope: "global" },
+      upload: {
+        buffer: Buffer.from("# Actor provenance\n\nThis content supports source analysis."),
+        filename: "actor-provenance.md",
+        mime: "text/markdown",
+      },
+    });
+
+    await client.knowledgeSources.update(source.id, { name: "Updated Actor Source" });
+    await runWithTestEnv({ LLM_PROVIDER: "mock" }, async () => {
+      resetMockProvider();
+      getMockProvider().generateOverrides.extract = () => ({ tags: ["actor-provenance"] });
+      try {
+        await client.knowledgeSources.analyze(source.id);
+      } finally {
+        resetMockProvider();
+      }
+    });
+    await client.knowledgeSources.delete(source.id);
+
+    for (const action of [
+      "knowledge_source.updated",
+      "knowledge_source.analyzed",
+      "knowledge_source.deleted",
+    ]) {
+      const [audit] = await ctx.testDb.db
+        .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, ctx.tenantId),
+            eq(auditLog.resource_id, source.id),
+            eq(auditLog.action, action),
+          ),
+        );
+      expect(audit).toEqual({ actor_type: "system_account", actor_id: actorId });
+    }
   });
 
   test("listKnowledgeSources returns active sources", async () => {
@@ -150,18 +223,79 @@ describe.skipIf(skip)("knowledge/service", () => {
   });
 
   test("updateKnowledgeSource updates metadata", async () => {
+    const editorId = nextUuid();
     const updated = await updateKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
         id: createdId,
         patch: { name: "Updated Compliance", description: "Updated description" },
-        actor_id: null,
+        actor_id: editorId,
+        actor: { kind: "system_account", id: editorId },
       },
       ctx.testDb.db,
     );
     expect(updated).not.toBeNull();
     expect(updated!.name).toBe("Updated Compliance");
     expect(updated!.description).toBe("Updated description");
+    const [audit] = await ctx.testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.resource_id, createdId), eq(auditLog.action, "knowledge_source.updated")),
+      )
+      .limit(1);
+    expect(audit).toEqual({ actor_type: "system_account", actor_id: editorId });
+  });
+
+  test("legacy untyped source actor ID is not attributed to a user", async () => {
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: { name: "Legacy Actor Source" },
+        upload: { buffer: Buffer.from("source"), filename: "legacy.md" },
+        actor: null,
+      },
+      ctx.testDb.db,
+    );
+    const legacyId = nextUuid();
+    await updateKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        id: source.id,
+        patch: { name: "Legacy Actor Source Updated" },
+        actor_id: legacyId,
+      },
+      ctx.testDb.db,
+    );
+    const [audit] = await ctx.testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.resource_id, source.id), eq(auditLog.action, "knowledge_source.updated")),
+      )
+      .limit(1);
+    expect(audit).toEqual({ actor_type: "unknown", actor_id: null });
+    await updateKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        id: source.id,
+        patch: { description: "No actor identity supplied" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const [systemAudit] = await ctx.testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.resource_id, source.id),
+          eq(auditLog.action, "knowledge_source.updated"),
+          eq(auditLog.actor_type, "system"),
+        ),
+      )
+      .limit(1);
+    expect(systemAudit).toEqual({ actor_type: "system", actor_id: null });
   });
 
   test("address changes preserve content and prevent a stale refresh from restoring the old address", async () => {

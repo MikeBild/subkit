@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { type CatalogMetadataPatch, humanMetadataWrite } from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { CatalogVocabularyBusyError, lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
@@ -203,8 +204,11 @@ export async function saveWorkflowDraft(
       await auditAwait(
         {
           tenant_id: input.tenant_id,
-          actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
-          actor_id: input.actor_id,
+          ...resolveActor({
+            tenant_id: input.tenant_id,
+            actor_id: input.actor_id,
+            ...(input.actor_type !== undefined ? { actor_type: input.actor_type } : {}),
+          }),
           action: input.workflow_id ? AuditAction.WORKFLOW_UPDATED : AuditAction.WORKFLOW_CREATED,
           resource_type: "workflow",
           resource_id: wf.id,

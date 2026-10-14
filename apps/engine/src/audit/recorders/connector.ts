@@ -1,11 +1,6 @@
 import { audit, auditAwait } from "../audit.ts";
 import { AuditAction } from "../types.ts";
-import {
-  type AuditOutcome,
-  type RecordedEntry,
-  type RecorderBase,
-  resolveActorType,
-} from "./types.ts";
+import { type AuditOutcome, type RecordedEntry, type RecorderBase, resolveActor } from "./types.ts";
 
 export interface RecordConnectorCreatedParams extends RecorderBase {
   connector_id: string;
@@ -24,8 +19,7 @@ export async function recordConnectorCreated(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_CREATED,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -65,8 +59,7 @@ export async function recordConnectorUpdated(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_UPDATED,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -102,8 +95,7 @@ export async function recordConnectorDeleted(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_DELETED,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -139,8 +131,7 @@ export async function recordConnectorInvoked(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_INVOKED,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -228,8 +219,7 @@ export async function recordConnectorSavedOverride(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_SAVED_OVERRIDE,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -267,8 +257,7 @@ export async function recordConnectorDiscovered(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_DISCOVERED,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -299,8 +288,7 @@ export function recordConnectorDraftCredentialRejected(
   return audit(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_DRAFT_CREDENTIAL_REJECTED,
       resource_type: "conversation",
       resource_id: p.conversation_id,

@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
+import type { AuditActorType } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import {
   type CredentialPlaintext,
@@ -64,7 +66,7 @@ export interface PromoteConnectorInput {
   strategy: ConnectorPromotionStrategy;
   idempotency_key: string;
   actor_id: string | null;
-  actor_type?: "user" | "system_account" | "system";
+  actor_type?: AuditActorType;
   request_source: string;
 }
 
@@ -111,6 +113,7 @@ export async function promoteConnector(
   input: PromoteConnectorInput,
   exec?: Executor,
 ): Promise<ConnectorPromotionResult> {
+  const auditActor = resolveActor(input);
   const db = exec ?? getDb();
   const idempotencyHash = digest(input.idempotency_key);
   const requestFingerprint = digest(
@@ -334,8 +337,7 @@ export async function promoteConnector(
     const connectorAudit = await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
-        actor_id: input.actor_id,
+        ...auditActor,
         action: AuditAction.CONNECTOR_ENVIRONMENT_PROMOTED,
         resource_type: "connector",
         resource_id: targetConnectorId,
@@ -357,8 +359,7 @@ export async function promoteConnector(
       const credentialAudit = await auditAwait(
         {
           tenant_id: input.tenant_id,
-          actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
-          actor_id: input.actor_id,
+          ...auditActor,
           action: AuditAction.CREDENTIAL_ENVIRONMENT_PROMOTED,
           resource_type: "credential",
           resource_id: mapping.target_credential_id,

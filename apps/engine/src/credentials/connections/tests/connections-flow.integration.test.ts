@@ -176,12 +176,18 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     expect(JSON.stringify(row)).not.toContain(fake.accessTokens[0] ?? "never");
 
     const created = await server.db
-      .select({ action: auditLog.action, metadata: auditLog.metadata })
+      .select({
+        action: auditLog.action,
+        metadata: auditLog.metadata,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+      })
       .from(auditLog)
       .where(
         and(eq(auditLog.tenant_id, server.tenantId), eq(auditLog.action, "connection.created")),
       );
     expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ actor_type: "user", actor_id: server.userId });
     expect(JSON.stringify(created[0]?.metadata)).not.toContain(fake.accessTokens[0] ?? "never");
   });
 
@@ -288,6 +294,17 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       fake.accessTokens.at(-1) ?? "fixture-token-not-present",
     );
     expect(await refreshDueConnections(server.db)).toEqual({ refreshed: 1, failed: 0 });
+    const [refreshAudit] = await server.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, server.tenantId),
+          eq(auditLog.action, "connection.refreshed"),
+          eq(auditLog.resource_id, connectionId),
+        ),
+      );
+    expect(refreshAudit).toEqual({ actor_type: "system", actor_id: null });
     expect(fake.accessTokens.length).toBe(before + 1);
     expect(fake.requests.at(-1)).toBe("POST /token");
 
@@ -735,5 +752,22 @@ describe("a server that issues refresh tokens only for offline_access", () => {
       .find((s) => s.name === names.refresh)
       ?.versions.find((v) => v.version === row?.refresh);
     expect(previous?.revoked_at ?? null).not.toBeNull();
+  });
+
+  test("disconnect attributes the authenticated HTTP principal", async () => {
+    const item = await view("plain");
+    const response = await api(`/v1/connections/${item.id}`, { method: "DELETE" });
+    expect(response.status).toBe(204);
+    const [audit] = await server.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, server.tenantId),
+          eq(auditLog.action, "connection.disconnected"),
+          eq(auditLog.resource_id, item.id),
+        ),
+      );
+    expect(audit).toEqual({ actor_type: "user", actor_id: server.userId });
   });
 });

@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { eq } from "drizzle-orm";
 import { auditAwait } from "../../../audit/audit.ts";
+import { resolveActor } from "../../../audit/recorders/types.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { listResolvedConnectorTemplates } from "../../../connectors/template-resolver.ts";
 import { conversations } from "../../../db/schema/index.ts";
@@ -171,8 +172,12 @@ export async function dispatchRollbackSkipped(
   await auditAwait(
     {
       tenant_id: ctx.tenant_id,
-      actor_type: ctx.actor_id ? "user" : "system",
-      actor_id: ctx.actor_id,
+      ...resolveActor({
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.engineClient.context.actor_id,
+        actor_type:
+          ctx.engineClient.context.actor_type ?? (ctx.actor_id === null ? "system" : "unknown"),
+      }),
       action: AuditAction.EXECUTION_ABORTED,
       resource_type: "execution",
       resource_id: execution_id ?? null,

@@ -48,6 +48,7 @@ export const OperatingFiguresResponse = z
     connectors: z.object({
       enabled: z.number().int(),
       not_ok: z.number().int(),
+      needs_reauth: z.number().int(),
       healthy_percent: z.number().int().nullable(),
       href: z.string().nullable(),
     }),

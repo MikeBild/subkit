@@ -99,6 +99,16 @@ If Postgres is not already listening on `localhost:5432`, start it first:
 These are choices that look arbitrary at first glance; documenting them once
 here saves a future maintainer the reverse-engineering trip.
 
+### Outbound connection OAuth starts
+
+OAuth starts retain the typed initiating actor separately from the user owner
+of the resulting connection. The nullable `user_id` column remains during the
+forward-only migration rollback window so an older binary can finish a pending
+callback. Callback fallback may use it only to recover a same-tenant user owner;
+it never establishes actor provenance and rejects IDs belonging to a
+same-tenant system account. Remove the compatibility column only after the
+rollback window has ended and no older binary can handle pending starts.
+
 ### File scanning — `NoopScanner` is an accepted posture
 
 `getScanner()` (`files/scanner.ts`) returns `NoopScanner`, which reports every

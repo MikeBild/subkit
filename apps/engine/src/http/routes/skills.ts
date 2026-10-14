@@ -260,7 +260,12 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const body = c.req.valid("json");
     const created = await createSkill(
-      { tenant_id: principal.tenant_id, input: body, actor_id: principal.id },
+      {
+        tenant_id: principal.tenant_id,
+        input: body,
+        actor_id: principal.id,
+        actor_type: principal.kind,
+      },
       db,
     );
     return c.json(created, 201);
@@ -280,7 +285,14 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const updated = await updateSkill(principal.tenant_id, id, body, principal.id, db);
+    const updated = await updateSkill(
+      principal.tenant_id,
+      id,
+      body,
+      principal.id,
+      db,
+      principal.kind,
+    );
     if (!updated) throw new NotFoundError("skill");
     return c.json(updated, 200);
   });
@@ -289,7 +301,7 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const ok = await deleteSkill(principal.tenant_id, id, principal.id, db);
+    const ok = await deleteSkill(principal.tenant_id, id, principal.id, db, principal.kind);
     if (!ok) throw new NotFoundError("skill");
     return c.body(null, 204);
   });
@@ -298,7 +310,7 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const s = await activateSkill(principal.tenant_id, id, principal.id, db);
+    const s = await activateSkill(principal.tenant_id, id, principal.id, db, principal.kind);
     if (!s) throw new NotFoundError("skill");
     return c.json(s, 200);
   });
@@ -307,7 +319,7 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const s = await archiveSkill(principal.tenant_id, id, principal.id, db);
+    const s = await archiveSkill(principal.tenant_id, id, principal.id, db, principal.kind);
     if (!s) throw new NotFoundError("skill");
     return c.json(s, 200);
   });
@@ -327,7 +339,14 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const { audit_entry_id } = c.req.valid("json");
-    const restored = await restoreSkill(principal.tenant_id, id, audit_entry_id, principal.id, db);
+    const restored = await restoreSkill(
+      principal.tenant_id,
+      id,
+      audit_entry_id,
+      principal.id,
+      db,
+      principal.kind,
+    );
     if (!restored) throw new NotFoundError("skill");
     return c.json(restored, 200);
   });

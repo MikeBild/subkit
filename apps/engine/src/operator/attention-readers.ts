@@ -453,6 +453,7 @@ const readConnectors: TenantReader = async (db, tenantId) => {
       id: connectors.id,
       name: connectors.display_name,
       health_state: connectors.health_state,
+      needs_reauth: connectors.needs_reauth,
       health_reason: connectors.health_reason,
       health_changed_at: connectors.health_changed_at,
       updated_at: connectors.updated_at,
@@ -462,7 +463,9 @@ const readConnectors: TenantReader = async (db, tenantId) => {
     .where(and(eq(connectors.tenant_id, tenantId), connectorCountsAgainstHealth()))
     .orderBy(asc(connectors.display_name), asc(connectors.id));
   return rows.map((row) => {
-    const reason = CONNECTOR_REASON[row.health_state] ?? "unhealthy";
+    const reason = row.needs_reauth
+      ? "needs_reauth"
+      : (CONNECTOR_REASON[row.health_state] ?? "unhealthy");
     const reauth = reason === "needs_reauth";
     return {
       source: "connectors",

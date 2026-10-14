@@ -141,10 +141,12 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
     let recognizedAuth: RecognizedAuth | null = null;
     if (!template && !chainedAuthType && inferredDriver === "http" && resolvedBaseUrl) {
       try {
+        const actor_type = ctx.principal?.kind ?? ctx.engineClient.context.actor_type;
         const out = await runDiscoveryCached(
           {
             db: ctx.db,
             tenant_id: ctx.tenant_id,
+            ...(actor_type ? { actor_type } : {}),
             actor_id: ctx.actor_id,
             ...(ctx.abortSignal ? { abortSignal: ctx.abortSignal } : {}),
           },

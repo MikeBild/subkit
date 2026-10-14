@@ -1,6 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
@@ -231,6 +233,8 @@ export interface UpsertCredentialInput {
   oauth2_granted_scopes?: string | null;
   connection_id?: string | null;
   actor_id: string | null;
+  actor?: Actor | null;
+  actor_type?: import("../audit/types.ts").AuditActorType;
   source?: CredentialWriteSource;
 }
 
@@ -399,8 +403,7 @@ export async function upsertCredential(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...(input.actor ? auditActor(input.actor) : resolveActor(input)),
         action: priorId ? AuditAction.CREDENTIAL_UPDATED : AuditAction.CREDENTIAL_CREATED,
         resource_type: "credential",
         resource_id: id,
@@ -442,6 +445,8 @@ export async function rotateOAuth2Tokens(
     refresh_token?: string | null | undefined;
     expires_at?: Date | null | undefined;
     actor_id: string | null;
+    actor?: Actor | null;
+    actor_type?: import("../audit/types.ts").AuditActorType;
   },
   exec?: Executor,
 ): Promise<{
@@ -549,8 +554,7 @@ export async function rotateOAuth2Tokens(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...(input.actor ? auditActor(input.actor) : resolveActor(input)),
         action: AuditAction.CREDENTIAL_ROTATED,
         resource_type: "credential",
         resource_id: input.credential_id,
@@ -965,7 +969,7 @@ export async function recordCredentialProviderIdentity(
 export async function deleteCredential(
   tenant_id: string,
   credential_id: string,
-  actor_id: string | null,
+  actor_input: string | Actor | null,
   exec?: Executor,
 ): Promise<boolean> {
   const db = exec ?? getDb();
@@ -980,8 +984,11 @@ export async function deleteCredential(
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...(typeof actor_input === "string"
+          ? resolveActor({ tenant_id, actor_id: actor_input })
+          : actor_input
+            ? auditActor(actor_input)
+            : resolveActor({ tenant_id, actor_id: null })),
         action: AuditAction.CREDENTIAL_DELETED,
         resource_type: "credential",
         resource_id: credential_id,

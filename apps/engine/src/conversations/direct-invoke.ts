@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
-import { actorFields } from "../llm/accounting/actor.ts";
+import { engineClientActorType } from "../llm/accounting/actor.ts";
 import { log, logger } from "../logging/logger.ts";
 import { recordConversationToolCall } from "../observability/instrumentation.ts";
 import { startToolSpan } from "../observability/langfuse-spans.ts";
@@ -150,7 +150,7 @@ export async function invokeConversationToolDirect(
     engineClient: new EngineClient({
       tenant_id: p.tenant_id,
       actor_id: p.actor_id,
-      actor_type: actorFields(p.principal).actor_type,
+      actor_type: engineClientActorType(p.principal, p.actor_id),
       db: p.db,
     }),
     getDraft: () => draft,

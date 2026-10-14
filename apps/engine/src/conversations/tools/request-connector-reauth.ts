@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { actorOf } from "../../audit/actor.ts";
 import { mintCredentialSetupGrantUrl } from "../../connectors/credential-setup-grant.ts";
 import { beginConnectorOAuthDance } from "../../connectors/oauth-start.ts";
 import { mintOAuthStartGrantUrl } from "../../connectors/oauth-start-grant.ts";
@@ -222,6 +223,7 @@ export const requestConnectorReauthTool: ConversationTool = {
           tenant_id: ctx.tenant_id,
           connector_id: connector.id,
           actor_id: ctx.actor_id,
+          actor: ctx.principal ? actorOf(ctx.principal) : null,
           redirect_uri,
           origin: "chat",
         });
@@ -256,6 +258,7 @@ export const requestConnectorReauthTool: ConversationTool = {
       ...(ctx.engineClient.context.actor_type
         ? { actor_type: ctx.engineClient.context.actor_type }
         : {}),
+      actor: ctx.principal ? actorOf(ctx.principal) : null,
     });
 
     if (!grantResult.ok) {

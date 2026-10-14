@@ -156,7 +156,12 @@ interface Figures {
     finished: number;
     success_rate_percent: number | null;
   };
-  connectors: { enabled: number; not_ok: number; healthy_percent: number | null };
+  connectors: {
+    enabled: number;
+    not_ok: number;
+    needs_reauth: number;
+    healthy_percent: number | null;
+  };
   repairs: { decided: number; applied: number; applied_percent: number | null };
 }
 

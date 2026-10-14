@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   apiKeys,
   auditLog,
   chatIdentities,
   chatWorkspaces,
+  systemAccounts,
   tenants,
   users,
 } from "../../db/schema/index.ts";
@@ -16,6 +17,7 @@ import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 let ctx: HttpTestServer;
 let otherUserId: string;
 let memberKey = "";
+let systemAccountKey = "";
 
 const apiKeyHex = createDeterministicHexFactory(0xcbb1101);
 function sha256Hex(v: string): string {
@@ -24,6 +26,18 @@ function sha256Hex(v: string): string {
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("chat-id");
+  await ctx.db
+    .update(systemAccounts)
+    .set({ role_id: await builtinRoleId(ctx.db, "admin") })
+    .where(eq(systemAccounts.id, ctx.systemAccountId));
+  systemAccountKey = `wf_live_${apiKeyHex(24).slice(0, 32)}`;
+  await ctx.db.insert(apiKeys).values({
+    tenant_id: ctx.tenantId,
+    system_account_id: ctx.systemAccountId,
+    prefix: systemAccountKey.slice(0, 12),
+    token_sha256: sha256Hex(systemAccountKey),
+    scopes: ["*"],
+  });
 
   const [t2] = await ctx.db
     .insert(tenants)
@@ -86,6 +100,13 @@ function memberHeaders(): Record<string, string> {
   };
 }
 
+function systemAccountHeaders(): Record<string, string> {
+  return {
+    authorization: `Bearer ${systemAccountKey}`,
+    "content-type": "application/json",
+  };
+}
+
 describe("POST /v1/chat/identities", () => {
   test("W-2: rejects a body.user_id that belongs to another tenant with 404", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/chat/identities`, {
@@ -141,6 +162,75 @@ describe("POST /v1/chat/identities", () => {
       .where(eq(chatIdentities.platform_user_id, "U_OK"));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.user_id).toBe(ctx.userId);
+    const [audit] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "chat_identity.linked"),
+          eq(auditLog.resource_id, ctx.userId),
+        ),
+      );
+    expect(audit).toEqual({ actor_type: "user", actor_id: ctx.userId });
+  });
+
+  test("a system-account key links and unlinks with its typed actor pair", async () => {
+    await ctx.db.insert(chatWorkspaces).values({
+      tenant_id: ctx.tenantId,
+      platform: "slack",
+      workspace_id: "T_SYSTEM_ACTOR",
+      bot_ciphertext: Buffer.from([0]),
+      bot_iv: Buffer.from([0]),
+      bot_auth_tag: Buffer.from([0]),
+    });
+
+    const linked = await fetch(`${ctx.baseUrl}/v1/chat/identities`, {
+      method: "POST",
+      headers: systemAccountHeaders(),
+      body: JSON.stringify({
+        platform: "slack",
+        workspace_id: "T_SYSTEM_ACTOR",
+        platform_user_id: "U_SYSTEM_ACTOR",
+        user_id: ctx.userId,
+      }),
+    });
+    expect(linked.status).toBe(201);
+    const linkedBody = (await linked.json()) as { id: string };
+    const [linkAudit] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "chat_identity.linked"),
+          eq(auditLog.resource_id, ctx.userId),
+        ),
+      );
+    expect(linkAudit).toEqual({
+      actor_type: "system_account",
+      actor_id: ctx.systemAccountId,
+    });
+
+    const unlinked = await fetch(`${ctx.baseUrl}/v1/chat/identities/${linkedBody.id}`, {
+      method: "DELETE",
+      headers: systemAccountHeaders(),
+    });
+    expect(unlinked.status).toBe(200);
+    const [unlinkAudit] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "chat_identity.unlinked"),
+          eq(auditLog.resource_id, ctx.userId),
+        ),
+      );
+    expect(unlinkAudit).toEqual({
+      actor_type: "system_account",
+      actor_id: ctx.systemAccountId,
+    });
   });
 
   test("rejects a body.workspace_id that isn't installed in this tenant with 404", async () => {
@@ -231,6 +321,7 @@ describe("DELETE /v1/chat/identities/{id}", () => {
       .from(auditLog)
       .where(eq(auditLog.action, "chat_identity.unlinked"));
     expect(unlinkAudits).toHaveLength(1);
+    expect(unlinkAudits[0]).toMatchObject({ actor_type: "user", actor_id: ctx.userId });
 
     const linkedAudits = await ctx.db
       .select()

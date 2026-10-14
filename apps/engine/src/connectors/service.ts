@@ -5,8 +5,9 @@ import {
   humanMetadataWrite,
   metadataChange,
 } from "../api/catalog-metadata.ts";
+import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
-import { AuditAction } from "../audit/types.ts";
+import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { storedScopes } from "../credentials/authority-scopes.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
@@ -177,6 +178,31 @@ export interface CreateConnectorParams {
   tenant_id: string;
   input: CreateConnectorInput;
   actor_id: string | null;
+  actor?: Actor | { kind: "unknown" } | null;
+  actor_type?: AuditActorType;
+}
+
+function connectorAuditActor(p: {
+  actor?: Actor | { kind: "unknown" } | null;
+  actor_id?: string | null;
+  actor_type?: AuditActorType;
+}): { actor_type: AuditActorType; actor_id: string | null } {
+  if (p.actor !== undefined) {
+    if (p.actor && p.actor.kind !== "unknown") return auditActor(p.actor);
+    if (p.actor?.kind === "unknown") return { actor_type: "unknown", actor_id: null };
+    return p.actor_id ? { actor_type: "unknown", actor_id: null } : auditActor(null);
+  }
+  if (p.actor_type === "unknown") return { actor_type: "unknown", actor_id: null };
+  if (p.actor_type) return { actor_type: p.actor_type, actor_id: p.actor_id ?? null };
+  return p.actor_id ? { actor_type: "unknown", actor_id: null } : auditActor(null);
+}
+
+type ConnectorActorInput = Actor | { kind: "unknown" } | string | null;
+
+function connectorActorFields(actor_input: ConnectorActorInput) {
+  if (typeof actor_input === "string" || actor_input?.kind === "unknown")
+    return { actor_type: "unknown" as const, actor_id: null };
+  return auditActor(actor_input);
 }
 
 export async function createConnector(
@@ -245,8 +271,7 @@ export async function createConnector(
       await auditAwait(
         {
           tenant_id: p.tenant_id,
-          actor_type: p.actor_id ? "user" : "system",
-          actor_id: p.actor_id,
+          ...connectorAuditActor(p),
           action: AuditAction.CONNECTOR_UPDATED,
           resource_type: "connector",
           resource_id: row.id,
@@ -298,8 +323,7 @@ export async function createConnector(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
+        ...connectorAuditActor(p),
         action: AuditAction.CONNECTOR_CREATED,
         resource_type: "connector",
         resource_id: row.id,
@@ -337,6 +361,7 @@ export async function listConnectors(
     enabled?: boolean;
     health_state?: string;
     health?: "not_ok";
+    needs_reauth?: boolean;
     q?: string;
     sort?: "name" | "driver" | "environment" | "enabled" | "updated_at";
     order?: "asc" | "desc";
@@ -368,6 +393,8 @@ export async function listConnectors(
   if (opts.enabled !== undefined) tenantConds.push(eq(connectors.enabled, opts.enabled));
   if (opts.health_state) tenantConds.push(eq(connectors.health_state, opts.health_state));
   if (opts.health === "not_ok") tenantConds.push(connectorCountsAgainstHealth());
+  if (opts.needs_reauth !== undefined)
+    tenantConds.push(eq(connectors.needs_reauth, opts.needs_reauth));
   if (opts.q) {
     const needle = `%${opts.q}%`;
     const search = or(
@@ -610,10 +637,11 @@ export async function updateConnector(
   tenant_id: string,
   id: string,
   requested: UpdateConnectorInput,
-  actor_id: string | null,
+  actor_input: ConnectorActorInput,
   exec?: Executor,
 ): Promise<ConnectorView | null> {
   const db = exec ?? getDb();
+  const actorFields = connectorActorFields(actor_input);
   const updated = await db.transaction(async (tx) => {
     await lockCatalogVocabulary(tx, tenant_id);
     const existing = await tx
@@ -718,8 +746,7 @@ export async function updateConnector(
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...actorFields,
         action: AuditAction.CONNECTOR_UPDATED,
         resource_type: "connector",
         resource_id: id,
@@ -744,10 +771,11 @@ export async function setConnectorEnabled(
   tenant_id: string,
   id: string,
   enabled: boolean,
-  actor_id: string | null,
+  actor_input: ConnectorActorInput,
   exec?: Executor,
 ): Promise<ConnectorView | null> {
   const db = exec ?? getDb();
+  const actorFields = connectorActorFields(actor_input);
   const [row] = await db
     .update(connectors)
     .set({ enabled, updated_at: new Date() })
@@ -763,8 +791,7 @@ export async function setConnectorEnabled(
   await auditAwait(
     {
       tenant_id,
-      actor_type: actor_id ? "user" : "system",
-      actor_id,
+      ...actorFields,
       action: AuditAction.CONNECTOR_UPDATED,
       resource_type: "connector",
       resource_id: id,
@@ -788,11 +815,12 @@ export async function setConnectorEnabled(
 export async function deleteConnector(
   tenant_id: string,
   id: string,
-  actor_id: string | null,
+  actor_input: ConnectorActorInput,
   exec?: Executor,
   opts?: { orphaned_workflow_ids?: string[] },
 ): Promise<boolean> {
   const db = exec ?? getDb();
+  const actorFields = connectorActorFields(actor_input);
   type EvictRow = {
     id: string;
     environment: "dev" | "prod";
@@ -822,8 +850,7 @@ export async function deleteConnector(
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...actorFields,
         action: AuditAction.CONNECTOR_DELETED,
         resource_type: "connector",
         resource_id: id,

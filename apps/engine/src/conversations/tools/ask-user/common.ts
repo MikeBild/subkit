@@ -115,8 +115,9 @@ async function secretElicitationBlockedOverMcp(
       await auditAwait(
         {
           tenant_id: ctx.tenant_id,
-          actor_type: ctx.engineClient.context.actor_type ?? (ctx.actor_id ? "user" : "system"),
-          actor_id: ctx.actor_id,
+          actor_type:
+            ctx.engineClient.context.actor_type ?? (ctx.actor_id === null ? "system" : "unknown"),
+          actor_id: ctx.engineClient.context.actor_id,
           action: AuditAction.CONNECTOR_CREDENTIAL_GRANT_ISSUED,
           resource_type: "conversation",
           resource_id: ctx.conversation_id,
@@ -214,7 +215,7 @@ export async function pauseForUserInput(
             conversation_id: ctx.conversation_id,
             id: sensitiveRow.id,
             output: null,
-            decided_by: decidedByFor(ctx.actor_id, ctx.principal),
+            decided_by: decidedByFor(ctx.actor_id, ctx.tenant_id, ctx.principal),
             status: "cancelled",
             reason: "sensitive_field_requires_url_elicitation",
             transport: "failed",
@@ -310,7 +311,7 @@ export async function pauseForUserInput(
               conversation_id: ctx.conversation_id,
               id: row.id,
               output,
-              decided_by: decidedByFor(ctx.actor_id, ctx.principal),
+              decided_by: decidedByFor(ctx.actor_id, ctx.tenant_id, ctx.principal),
               status: "resolved",
               transport: "succeeded",
             },
@@ -436,7 +437,9 @@ export async function pauseForUserInput(
       tool_name: p.tool_name,
       summary: p.summary,
       input: p.input,
-      actor_id: ctx.actor_id,
+      actor_id: ctx.engineClient.context.actor_id,
+      actor_type:
+        ctx.engineClient.context.actor_type ?? (ctx.actor_id === null ? "system" : "unknown"),
     },
     ctx.db,
   );

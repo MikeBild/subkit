@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { actorOf } from "../../audit/actor.ts";
 import { getBoss } from "../../queue/index.ts";
 import * as svc from "../../webhooks/index.ts";
 import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
@@ -157,6 +158,7 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
         {
           tenant_id: principal.tenant_id,
           actor_id: principal.id,
+          actor: actorOf(principal),
           slug: body.slug,
           workflow_id: body.workflow_id,
           verifier: body.verifier === "custom" ? "standard" : body.verifier,
@@ -180,7 +182,7 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const ok = await svc.deleteInbound(principal.tenant_id, id, principal.id, db);
+    const ok = await svc.deleteInbound(principal.tenant_id, id, actorOf(principal), db);
     if (!ok) throw new NotFoundError("webhook_inbound");
     return c.json({ deleted: true }, 200);
   });

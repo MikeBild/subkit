@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { auditLog, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { DEMO_WORKFLOWS, seedOnboardingDemo } from "../demo-seed.ts";
@@ -61,5 +61,40 @@ describe("onboarding demo seed", () => {
       expect(versions[0]!.author_user_id).toBe(seedAuthor);
       expect(versions[0]!.author_system_account_id).toBeNull();
     }
+  });
+
+  test("an actor ID without a type stays unknown and does not become a version author", async () => {
+    const [tenant] = await tdb.db
+      .insert(tenants)
+      .values({ slug: "demo-seed-unknown-actor", display_name: "Unknown Actor Seed" })
+      .returning();
+    if (!tenant) throw new Error("unknown actor tenant insert failed");
+
+    const actorId = "20000000-0000-4000-8000-000000000002";
+    const result = await seedOnboardingDemo({ tenant_id: tenant.id, actor_id: actorId }, tdb.db);
+    expect(result.created).toHaveLength(DEMO_WORKFLOWS.length);
+
+    const versions = await tdb.db
+      .select({
+        author_user_id: workflowVersions.author_user_id,
+        author_system_account_id: workflowVersions.author_system_account_id,
+      })
+      .from(workflowVersions)
+      .where(eq(workflowVersions.tenant_id, tenant.id));
+    expect(versions).toHaveLength(DEMO_WORKFLOWS.length);
+    expect(
+      versions.every(
+        (version) => version.author_user_id === null && version.author_system_account_id === null,
+      ),
+    ).toBe(true);
+
+    const audits = await tdb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(eq(auditLog.tenant_id, tenant.id));
+    expect(audits).toHaveLength(DEMO_WORKFLOWS.length);
+    expect(audits.every((audit) => audit.actor_type === "unknown" && audit.actor_id === null)).toBe(
+      true,
+    );
   });
 });

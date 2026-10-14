@@ -249,7 +249,12 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
         if (source.description === null || source.tags.length === 0) {
           try {
             await analyzeKnowledgeSource(
-              { tenant_id: principal.tenant_id, id: source.id, actor_id: principal.id },
+              {
+                tenant_id: principal.tenant_id,
+                id: source.id,
+                actor_id: principal.id,
+                actor: actorOf(principal),
+              },
               db,
             );
           } catch (enrichErr) {

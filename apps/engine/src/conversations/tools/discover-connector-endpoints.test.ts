@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import * as discoveryModule from "../../connectors/discovery/index.ts";
 import { DiscoveryError, type DiscoveryResult } from "../../connectors/discovery/types.ts";
 import { createConnector } from "../../connectors/service.ts";
+import { auditLog } from "../../db/schema/audit.ts";
 import { connectors } from "../../db/schema/connectors.ts";
 import { tenants } from "../../db/schema/identity.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
@@ -111,6 +112,40 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
 }
 
 describe("discover_connector_endpoints — cache miss", () => {
+  test("preserves a system-account owner from the trusted engine client", async () => {
+    const actor_id = "00000000-0000-4000-8000-000000000136";
+    const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
+      SAMPLE_RESULT,
+    );
+    try {
+      await discoverConnectorEndpointsTool.execute(
+        makeCtx({
+          actor_id,
+          engineClient: new EngineClient({
+            tenant_id,
+            actor_id,
+            actor_type: "system_account",
+            db: ctx.db,
+          }),
+        }),
+        { template_id: "digitalocean", force_refresh: false },
+      );
+      const [audit] = await ctx.db
+        .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, tenant_id),
+            eq(auditLog.actor_id, actor_id),
+            eq(auditLog.action, "knowledge_source.refreshed"),
+          ),
+        );
+      expect(audit).toEqual({ actor_type: "system_account", actor_id });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test("calls discovery, persists result, returns source=fresh", async () => {
     const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
       SAMPLE_RESULT,

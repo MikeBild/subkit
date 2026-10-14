@@ -14,6 +14,7 @@ export const AuditAction = {
   USER_LOGGED_IN: "user.logged_in",
   USER_LOGGED_OUT: "user.logged_out",
   USER_ROLE_CHANGED: "user.role_changed",
+  USER_PROFILE_UPDATED: "user.profile_updated",
   USER_DELETED: "user.deleted",
   INVITE_REDEEMED: "user_invite.redeemed",
   INVITE_REVOKED: "user_invite.revoked",
@@ -72,6 +73,7 @@ export const AuditAction = {
 
   EXECUTION_BOUNDARY_REFUSED: "execution.boundary_refused",
 
+  EXECUTION_QUEUED: "execution.queued",
   EXECUTION_STARTED: "execution.started",
   APPROVAL_DISPATCH_RESERVED: "approval.dispatch_reserved",
   APPROVAL_EXECUTION_BOUND: "approval.execution_bound",
@@ -377,7 +379,8 @@ export const FILE_AUDIT_ACTIONS: ReadonlySet<AuditActionValue> = new Set([
   AuditAction.FILE_RENAMED,
 ]);
 
-export type AuditActorType = "user" | "system_account" | "system";
+export type KnownAuditActorType = "user" | "system_account" | "system";
+export type AuditActorType = KnownAuditActorType | "unknown";
 export type AuditResult = "success" | "denied" | "error";
 
 export const ConversationForkedMetadataSchema = z.object({

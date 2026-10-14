@@ -313,7 +313,12 @@ async function invokeInner<T = unknown>(
   const estimated = assembled.prompt.token_counts.total + 1024;
   try {
     await checkBudget(params.tenant_id, estimated, route.monthly_budget, db);
-    const verdict = await checkAndDecrement(params.tenant_id, estimated, db, actor.user_id);
+    const verdict = await checkAndDecrement(
+      params.tenant_id,
+      estimated,
+      db,
+      actor.actor_type === "user" ? actor.user_id : null,
+    );
     if (!verdict.ok) {
       throw new LlmQuotaExhausted("llm_quota_exhausted", {
         used: verdict.used,

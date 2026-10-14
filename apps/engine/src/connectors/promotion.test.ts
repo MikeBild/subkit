@@ -11,6 +11,7 @@ import {
   tenants,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { createSystemAccount } from "../identity/service.ts";
 import { ConnectorPromotionError, promoteConnector } from "./promotion.ts";
 import { createConnector, getConnector, listConnectors } from "./service.ts";
 
@@ -75,6 +76,54 @@ function promoteInput(
 }
 
 describe("connector promotion", () => {
+  test("promotion audit preserves typed system accounts and unknown historical actors", async () => {
+    const tenant_id = await seedTenant("actor-provenance");
+    const account = await createSystemAccount(
+      { tenant_id, name: "promotion-actor", actor_id: null },
+      ctx.db,
+    );
+    const typedSource = await seedConnector(tenant_id, "typed-promotion-api");
+    const typed = await promoteConnector(
+      {
+        ...promoteInput(tenant_id, typedSource.id, "copy", nextKey("typed")),
+        actor_id: account.id,
+        actor_type: "system_account",
+      },
+      ctx.db,
+    );
+    const unknownSource = await seedConnector(tenant_id, "unknown-promotion-api");
+    const unknown = await promoteConnector(
+      {
+        ...promoteInput(tenant_id, unknownSource.id, "copy", nextKey("unknown")),
+        actor_id: account.id,
+      },
+      ctx.db,
+    );
+    const auditRows = await ctx.db
+      .select({
+        resource_id: auditLog.resource_id,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+      })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenant_id),
+          eq(auditLog.action, AuditAction.CONNECTOR_ENVIRONMENT_PROMOTED),
+        ),
+      );
+    expect(auditRows.find((row) => row.resource_id === typed.target_connector_id)).toEqual({
+      resource_id: typed.target_connector_id,
+      actor_type: "system_account",
+      actor_id: account.id,
+    });
+    expect(auditRows.find((row) => row.resource_id === unknown.target_connector_id)).toEqual({
+      resource_id: unknown.target_connector_id,
+      actor_type: "unknown",
+      actor_id: null,
+    });
+  });
+
   test("copy retains DEV, re-encrypts static credentials, audits, and replays idempotently", async () => {
     const tenant_id = await seedTenant("copy");
     const source = await seedConnector(tenant_id, "copy-api");

@@ -210,6 +210,7 @@ export function registerInviteRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(body.allowed_workflows ? { allowed_workflows: body.allowed_workflows } : {}),
         ...(body.allowed_connectors ? { allowed_connectors: body.allowed_connectors } : {}),
         ...(body.ttl_minutes !== undefined ? { ttl_minutes: body.ttl_minutes } : {}),
+        actor_kind: principal.kind,
         actor_id: principal.id,
       },
       db,
@@ -241,7 +242,12 @@ export function registerInviteRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
     const row = await identity.revokeInvite(
-      { tenant_id: principal.tenant_id, invite_id: id, actor_id: principal.id },
+      {
+        tenant_id: principal.tenant_id,
+        invite_id: id,
+        actor_kind: principal.kind,
+        actor_id: principal.id,
+      },
       db,
     );
     if (!row) throw new NotFoundError("user_invite");

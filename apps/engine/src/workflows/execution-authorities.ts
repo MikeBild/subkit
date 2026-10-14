@@ -293,6 +293,7 @@ export async function activateWorkflowDraft(
       from_version_id: previous,
       to_version_id: input.workflow_version_id,
       actor_id: principal.id,
+      actor_type: principal.kind,
     });
   });
   invalidateTenantState(principal.tenant_id);

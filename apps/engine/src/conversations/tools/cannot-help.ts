@@ -71,6 +71,12 @@ export const cannotHelpTool: ConversationTool = {
         requested: args.reason,
         missing_capability: args.missing_capability ?? null,
         ...(ctx.actor_id ? { actor_id: ctx.actor_id } : {}),
+        actor: (() => {
+          const context = ctx.engineClient.context;
+          if (!context.actor_id) return null;
+          if (context.actor_type !== "user" && context.actor_type !== "system_account") return null;
+          return { id: context.actor_id, kind: context.actor_type };
+        })(),
       },
       ctx.db,
     );

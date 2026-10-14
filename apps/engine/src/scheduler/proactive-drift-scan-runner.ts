@@ -89,6 +89,7 @@ export async function runProactiveDriftScanForTenant(
           signal,
           driftSignalContext(ctx, {
             actor_id: null,
+            actor_type: "system",
             source: "proactive_scheduler",
             scan_id,
           }),

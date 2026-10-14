@@ -8,6 +8,7 @@ import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sou
 import { knowledgeContentHash, recordKnowledgeVersion } from "../../knowledge/version-record.ts";
 import { invoke } from "../../llm/core/invoke.ts";
 import { logger } from "../../logging/logger.ts";
+import { auditActorFromToolContext } from "./audit-actor.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { toolActor } from "./tool-actor.ts";
 
@@ -262,7 +263,7 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
 
     await recordKnowledgeSourceCandidatesSynthesized({
       tenant_id: ctx.tenant_id,
-      actor_id: ctx.actor_id,
+      ...auditActorFromToolContext(ctx),
       knowledge_source_id: persisted.row_id,
       source_knowledge_source_id: args.knowledge_source_id,
       candidate_count: candidates.length,

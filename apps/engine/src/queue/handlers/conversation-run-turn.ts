@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
-import { auditActor } from "../../audit/actor.ts";
 import { auditAwait } from "../../audit/audit.ts";
+import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
 import {
   isExpectedCancellation,
@@ -14,11 +14,10 @@ import {
   humanPortalAnswer,
   MODEL_RELAYED_ANSWER,
 } from "../../conversations/answer-actor.ts";
-import { decidedByFor } from "../../conversations/decided-by.ts";
 import * as svc from "../../conversations/service.ts";
 import { describeTurnFailure } from "../../conversations/turn-failure.ts";
 import type { Db } from "../../db/client.ts";
-import { conversationMessages } from "../../db/schema/index.ts";
+import { conversationMessages, users } from "../../db/schema/index.ts";
 import {
   authorizationContextFromPrincipal,
   rehydrateExecutionPrincipal,
@@ -30,6 +29,7 @@ import {
   clearMcpTaskPark,
   getMcpTask,
   laterTurnCompleted,
+  type McpTaskRow,
   setMcpTaskFailure,
   setMcpTaskFailureIfNotTerminal,
   setMcpTaskJobId,
@@ -120,6 +120,31 @@ async function storeAttemptFailure(
 }
 
 export const SUPERSEDED_WHILE_PARKED_FAILURE_REASON = "superseded_while_parked";
+
+async function failureActor(data: ConversationRunTurnJob, task: McpTaskRow, db: Db) {
+  if (
+    data.answer_channel === "portal" &&
+    data.approver_user_id &&
+    data.actor_id === data.approver_user_id
+  ) {
+    const [approver] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(
+          eq(users.tenant_id, data.tenant_id),
+          eq(users.id, data.approver_user_id),
+          eq(users.status, "active"),
+          isNull(users.deleted_at),
+        ),
+      )
+      .limit(1);
+    return approver
+      ? resolveActor({ actor_type: "user", actor_id: approver.id })
+      : resolveActor({ actor_type: "unknown", actor_id: null });
+  }
+  return resolveActor({ actor_type: task.actor_kind ?? "unknown", actor_id: task.actor_id });
+}
 
 async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss): Promise<void> {
   const data = job.data;
@@ -320,20 +345,20 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
     });
   } catch (err) {
     const refusalCode = (err as { code?: string }).code;
-    if (
+    const authenticationRefusal =
       refusalCode === "execution_authentication_unavailable" ||
-      refusalCode?.startsWith("caller_")
-    ) {
+      (refusalCode?.startsWith("caller_") ?? false);
+    const actor = await failureActor(data, task, db);
+    if (authenticationRefusal) {
       await auditAwait(
         {
           tenant_id: data.tenant_id,
-          actor_type: data.principal?.kind ?? "system",
-          actor_id: data.principal?.id ?? null,
+          ...actor,
           action: AuditAction.POLICY_DENIED,
           resource_type: "conversation",
           resource_id: data.conversation_id,
           result: "denied",
-          reason: refusalCode,
+          reason: refusalCode ?? "caller_authentication_unavailable",
           metadata: { mcp_task_id: data.mcp_task_id, request_source: task.request_source },
         },
         db,
@@ -457,13 +482,17 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
     await auditAwait(
       {
         tenant_id: data.tenant_id,
-        ...auditActor(decidedByFor(data.actor_id, data.principal)),
+        ...actor,
         action: AuditAction.CONVERSATION_TURN_FAILED,
         resource_type: "conversation",
         resource_id: data.conversation_id,
         result: "error",
         reason: failureReason,
-        metadata: { mcp_task_id: data.mcp_task_id, kind: data.kind },
+        metadata: {
+          mcp_task_id: data.mcp_task_id,
+          kind: data.kind,
+          request_source: task.request_source,
+        },
       },
       db,
     );

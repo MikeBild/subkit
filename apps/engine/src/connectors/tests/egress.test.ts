@@ -122,6 +122,35 @@ describe("withEgressAudit", () => {
     expect(metadata.duration_ms).toBeNumber();
   });
 
+  test("preserves typed system-account attribution and keeps legacy IDs unknown", async () => {
+    const entries: Array<Record<string, unknown>> = [];
+    const run = async (actor_type?: "system_account") =>
+      withEgressAudit(
+        {
+          tenant_id: "tenant-x",
+          actor_id: "actor-y",
+          ...(actor_type ? { actor_type } : {}),
+          connector_id: "cn-1",
+          connector_slug: "cn-test",
+          driver: "http",
+          credential_id: null,
+        },
+        async () => ({ status: 204 }),
+        undefined,
+        async (entry) => {
+          entries.push(entry as Record<string, unknown>);
+        },
+      );
+
+    await run("system_account");
+    await run();
+    const invoked = entries.filter((entry) => entry.action === "connector.invoked");
+    expect(invoked.map(({ actor_type, actor_id }) => ({ actor_type, actor_id }))).toEqual([
+      { actor_type: "system_account", actor_id: "actor-y" },
+      { actor_type: "unknown", actor_id: null },
+    ]);
+  });
+
   test("re-throws inner errors without swallowing", async () => {
     const boom = new Error("upstream 503");
     let caught: unknown = null;

@@ -4,6 +4,7 @@ import type { Db } from "../db/client.ts";
 import { auditLog, executionSteps, executions, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
+import type { CallerContext } from "./caller-context.ts";
 import { runExecution } from "./engine.ts";
 import {
   createExecution,
@@ -13,6 +14,7 @@ import {
   markExecutionRunning,
   requestExecutionAbort,
 } from "./state.ts";
+import type { RequestSource } from "./types.ts";
 
 let testDb: TestDb;
 let db: Db;
@@ -32,14 +34,18 @@ afterAll(async () => {
   if (testDb) await testDb.cleanup();
 });
 
-async function newQueued(): Promise<string> {
+async function newQueued(
+  caller_context: CallerContext | null = null,
+  request_source: RequestSource = "api",
+): Promise<string> {
   return createExecution(db, {
     tenant_id: tenantId,
     workflow_id: null,
     workflow_version_id: null,
     source_kind: "draft",
     source_ref: null,
-    request_source: "api",
+    request_source,
+    caller_context,
   });
 }
 
@@ -95,8 +101,13 @@ describe("finalizeStepRow — compare-and-set", () => {
 });
 
 describe("a refused dispatch reaches the audit trail", () => {
-  async function refuse(code: string | null, message = "outside the boundary") {
-    const executionId = await newQueued();
+  async function refuse(
+    code: string | null,
+    message = "outside the boundary",
+    caller_context: CallerContext | null = null,
+    request_source: RequestSource = "api",
+  ) {
+    const executionId = await newQueued(caller_context, request_source);
     await markExecutionRunning(db, tenantId, executionId, new Date(FROZEN_NOW));
     const stepId = await insertStepRow(db, {
       tenant_id: tenantId,
@@ -123,14 +134,75 @@ describe("a refused dispatch reaches the audit trail", () => {
       .where(and(eq(auditLog.tenant_id, tenantId), eq(auditLog.resource_id, executionId)));
   }
 
+  test("an API execution without historical caller context remains unknown", async () => {
+    const executionId = await newQueued(null, "api");
+    const [entry] = await db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "execution.queued"),
+          eq(auditLog.resource_id, executionId),
+        ),
+      );
+    expect(entry?.actor_type).toBe("unknown");
+    expect(entry?.actor_id).toBeNull();
+    expect((entry?.metadata as { request_source?: string })?.request_source).toBe("api");
+  });
+
   test("the refusal is recorded with the step and the reason", async () => {
-    const rows = await refuse("request_outside_declared_boundary");
+    const caller: CallerContext = {
+      tenantId,
+      principalId: "00000000-0000-4000-8000-000000000001",
+      principalKind: "user",
+      provider: "api_key",
+      productId: null,
+    };
+    const rows = await refuse(
+      "request_outside_declared_boundary",
+      "outside the boundary",
+      caller,
+      "mcp",
+    );
     const entry = rows.find((row) => row.action === "execution.boundary_refused");
     expect(entry).toBeDefined();
+    expect(entry?.actor_type).toBe("user");
+    expect(entry?.actor_id).toBe(caller.principalId);
     expect(entry?.result).toBe("denied");
     expect(entry?.reason).toBe("request_outside_declared_boundary");
+    expect((entry?.metadata as { request_source?: string })?.request_source).toBe("mcp");
     expect((entry?.metadata as { step_key?: string })?.step_key).toBe("send");
     expect((entry?.metadata as { detail?: string })?.detail).toContain("outside the boundary");
+  });
+
+  test("a refused API execution with no caller context remains unknown", async () => {
+    const rows = await refuse(
+      "request_outside_declared_boundary",
+      "outside the boundary",
+      null,
+      "api",
+    );
+    const entry = rows.find((row) => row.action === "execution.boundary_refused");
+    expect(entry?.actor_type).toBe("unknown");
+    expect(entry?.actor_id).toBeNull();
+    expect(entry?.result).toBe("denied");
+    expect((entry?.metadata as { request_source?: string })?.request_source).toBe("api");
+  });
+
+  test("a typed system account remains a system account on refusal", async () => {
+    const caller: CallerContext = {
+      tenantId,
+      principalId: "00000000-0000-4000-8000-000000000002",
+      principalKind: "system_account",
+      provider: "api_key",
+      productId: null,
+    };
+    const rows = await refuse("request_outside_declared_boundary", "outside the boundary", caller);
+    const entry = rows.find((row) => row.action === "execution.boundary_refused");
+    expect(entry?.actor_type).toBe("system_account");
+    expect(entry?.actor_id).toBe(caller.principalId);
+    expect(entry?.result).toBe("denied");
   });
 
   test("the real refusal code is what the runtime reports, not a blanket one", async () => {

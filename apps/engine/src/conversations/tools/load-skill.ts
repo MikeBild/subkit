@@ -4,6 +4,7 @@ import { recordConversationSkillLoaded } from "../../audit/recorders/index.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { parseLoadedSkills } from "../loop/skill-recency.ts";
+import { auditActorFromToolContext } from "./audit-actor.ts";
 import type { ConversationTool } from "./index.ts";
 
 const Input = z.object({ slug: z.string().min(1) }).openapi("LoadSkillToolInput");
@@ -109,7 +110,7 @@ export const loadSkillTool: ConversationTool = {
         );
       await recordConversationSkillLoaded({
         tenant_id: ctx.tenant_id,
-        actor_id: ctx.actor_id,
+        ...auditActorFromToolContext(ctx),
         conversation_id: ctx.conversation_id,
         skill_id: match.id,
         skill_slug: key,
@@ -131,7 +132,7 @@ export const loadSkillTool: ConversationTool = {
       );
     await recordConversationSkillLoaded({
       tenant_id: ctx.tenant_id,
-      actor_id: ctx.actor_id,
+      ...auditActorFromToolContext(ctx),
       conversation_id: ctx.conversation_id,
       skill_id: match.id,
       skill_slug: key,

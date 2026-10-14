@@ -1,4 +1,4 @@
-import type { AuditActorType } from "../../audit/types.ts";
+import type { KnownAuditActorType } from "../../audit/types.ts";
 import type { Executor } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
@@ -31,7 +31,7 @@ export interface AccountParams {
   error?: string;
   estimated_prompt_tokens?: number;
   user_id?: string | null;
-  actor_type?: AuditActorType;
+  actor_type?: KnownAuditActorType;
 }
 
 export interface AccountResult {

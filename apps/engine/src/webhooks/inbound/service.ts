@@ -1,8 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+import { type Actor, auditActor } from "../../audit/actor.ts";
 import { audit, auditAwait } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
+import { resolveActor } from "../../audit/recorders/types.ts";
+import { AuditAction, type AuditActorType } from "../../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../../crypto/aes-gcm.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import { type Db, type Executor, getDb } from "../../db/client.ts";
@@ -71,6 +73,8 @@ function serialize(row: typeof webhooksInbound.$inferSelect): InboundRow {
 export interface CreateInboundInput {
   tenant_id: string;
   actor_id: string | null;
+  actor?: Actor | null;
+  actor_type?: import("../../audit/types.ts").AuditActorType;
   slug: string;
   workflow_id: string;
   verifier: InboundVerifierName;
@@ -162,8 +166,7 @@ async function insertInbound(input: CreateInboundInput, exec?: Executor): Promis
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...(input.actor ? auditActor(input.actor) : resolveActor(input)),
         action: AuditAction.WEBHOOK_INBOUND_CREATED,
         resource_type: "webhook_inbound",
         resource_id: row.id,
@@ -208,7 +211,7 @@ export async function getInbound(
 export async function deleteInbound(
   tenant_id: string,
   id: string,
-  actor_id: string | null,
+  actor_input: string | Actor | null,
   exec?: Executor,
 ): Promise<boolean> {
   const db = exec ?? getDb();
@@ -222,8 +225,11 @@ export async function deleteInbound(
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...(typeof actor_input === "string"
+          ? resolveActor({ tenant_id, actor_id: actor_input })
+          : actor_input
+            ? auditActor(actor_input)
+            : resolveActor({ tenant_id, actor_id: null })),
         action: AuditAction.WEBHOOK_INBOUND_DELETED,
         resource_type: "webhook_inbound",
         resource_id: id,
@@ -307,6 +313,8 @@ export interface BindFromWorkflowInput {
   workflow_slug: string;
   trigger: WebhookTrigger;
   actor_id: string | null;
+  actor?: Actor | null;
+  actor_type?: import("../../audit/types.ts").AuditActorType;
 }
 
 export type BindFromWorkflowOutcome =
@@ -376,8 +384,7 @@ export async function bindFromWorkflow(
       await auditAwait(
         {
           tenant_id: input.tenant_id,
-          actor_type: input.actor_id ? "user" : "system",
-          actor_id: input.actor_id,
+          ...(input.actor ? auditActor(input.actor) : resolveActor(input)),
           action: AuditAction.WEBHOOK_TRIGGER_BOUND,
           resource_type: "webhook_inbound",
           resource_id: final.id,
@@ -437,8 +444,7 @@ export async function bindFromWorkflow(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...(input.actor ? auditActor(input.actor) : resolveActor(input)),
         action: AuditAction.WEBHOOK_TRIGGER_BOUND,
         resource_type: "webhook_inbound",
         resource_id: row.id,
@@ -483,7 +489,7 @@ export async function rotateInboundSecret(
 export async function unbindFromWorkflow(
   tenant_id: string,
   workflow_id: string,
-  actor_id: string | null,
+  actor_input: string | Actor | { actor_id: string | null; actor_type?: AuditActorType } | null,
   exec?: Executor,
 ): Promise<number> {
   const db = exec ?? getDb();
@@ -498,8 +504,17 @@ export async function unbindFromWorkflow(
       await auditAwait(
         {
           tenant_id,
-          actor_type: actor_id ? "user" : "system",
-          actor_id,
+          ...(typeof actor_input === "string"
+            ? resolveActor({ tenant_id, actor_id: actor_input })
+            : actor_input && "kind" in actor_input
+              ? auditActor(actor_input)
+              : resolveActor({
+                  tenant_id,
+                  actor_id: actor_input?.actor_id ?? null,
+                  ...(actor_input?.actor_type !== undefined
+                    ? { actor_type: actor_input.actor_type }
+                    : {}),
+                })),
           action: AuditAction.WEBHOOK_TRIGGER_UNBOUND,
           resource_type: "webhook_inbound",
           resource_id: row.id,

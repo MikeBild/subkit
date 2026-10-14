@@ -307,10 +307,19 @@ describe("sign-in pages", () => {
     expect(html).toContain('data-testid="auth-product-icon"');
     expect(html).toContain("Bei SubKit anmelden");
     expect(html).toContain("SubKit · OAuth 2.1");
+    expect(html).toContain("Du bist abgemeldet. Wähle, wie du dich bei SubKit anmeldest.");
+    const companyProvider =
+      '<a class="button primary" href="/workforce" data-auth-provider="sso" data-testid="auth-provider-sso">Mit Firmenkonto anmelden</a>';
+    const apiKeyProvider =
+      '<a class="button outline" href="/api-key" data-auth-provider="api-key" data-testid="auth-provider-api-key">Mit API-Schlüssel anmelden</a>';
+    expect(html).toContain(companyProvider);
+    expect(html).toContain(apiKeyProvider);
+    expect(html.indexOf(companyProvider)).toBeLessThan(html.indexOf(apiKeyProvider));
     const english = renderProviderChoice(PROVIDERS, EN);
     expect(english.indexOf("Sign in with work account")).toBeLessThan(
       english.indexOf("Sign in with API key"),
     );
+    expect(english).toContain("You are signed out. Choose how to sign in to SubKit.");
   });
 
   test("a failed sign-in offers one retry in the reader's language", () => {
@@ -346,13 +355,37 @@ test("API key sign-in returns to the same authorization attempt and retains esca
   expect(html).toContain('href="/v1/identity/login/start?login_state=state%26value"');
   expect(html).toContain('name="login_state" value="state&amp;value"');
   expect(html).toContain(">Anmelden</button>");
+  expect(html).toContain(
+    '<a class="button outline" href="/v1/identity/login/start?login_state=state%26value" data-testid="auth-api-key-back">Zurück</a>',
+  );
 });
 
-test("only a confirmed missing account gets the account assignment title", () => {
-  expect(renderErrorPage("account_not_assigned", "/v1/identity/login/start", DE)).toContain(
-    "Konto nicht zugeordnet",
+test("an unassigned company account has its own error outcome", () => {
+  const unassigned = renderErrorPage("account_not_assigned", "/v1/identity/login/start", DE);
+  expect(unassigned.match(/<h1[\s>]/g)?.length).toBe(1);
+  expect(unassigned).toContain('<h1 data-family-slot="auth-heading">Konto nicht zugeordnet</h1>');
+  expect(unassigned).toContain('class="stack" role="alert"');
+  expect(unassigned).toContain(
+    "Dieses Firmenkonto ist SubKit nicht zugeordnet. Frag eine Person mit der Rolle Administrator.",
   );
-  expect(renderErrorPage("grant_denied", "/v1/identity/login/start", DE)).not.toContain(
-    "Konto nicht zugeordnet",
+  expect(unassigned).toContain(
+    '<a class="button primary" href="/v1/identity/login/start" data-testid="auth-retry">Erneut anmelden</a>',
   );
+  expect(unassigned).not.toContain("Anmeldung fehlgeschlagen");
+
+  const denied = renderErrorPage("grant_denied", "/v1/identity/login/start", DE);
+  expect(denied).toContain('<h1 data-family-slot="auth-heading">Anmeldung fehlgeschlagen</h1>');
+  expect(denied).toContain(
+    "Dein Konto ist für SubKit nicht freigegeben. Frag eine Person mit der Rolle Administrator.",
+  );
+  expect(denied).not.toContain("Konto nicht zugeordnet");
+
+  const unassignedEnglish = renderErrorPage("account_not_assigned", "/v1/identity/login/start", EN);
+  expect(unassignedEnglish).toContain(
+    '<h1 data-family-slot="auth-heading">Account not assigned</h1>',
+  );
+  expect(unassignedEnglish).toContain(
+    "This company account is not assigned to SubKit. Contact an administrator.",
+  );
+  expect(unassignedEnglish).not.toContain("Sign-in failed");
 });

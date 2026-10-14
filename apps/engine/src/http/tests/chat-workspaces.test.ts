@@ -7,6 +7,7 @@ import {
   auditLog,
   chatIdentities,
   chatWorkspaces,
+  systemAccounts,
   tenants,
   users,
 } from "../../db/schema/index.ts";
@@ -17,7 +18,9 @@ import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 let ctx: HttpTestServer;
 let otherTenantId: string;
 let otherUserId: string;
+let memberUserId: string;
 let memberKey = "";
+let systemAccountKey = "";
 const SIGNING_SECRET = "test-slack-signing-secret-xyz";
 
 const apiKeyHex = createDeterministicHexFactory(0xcbbaaa1);
@@ -27,6 +30,18 @@ function sha256Hex(v: string): string {
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("chat-ws");
+  await ctx.db
+    .update(systemAccounts)
+    .set({ role_id: await builtinRoleId(ctx.db, "admin") })
+    .where(eq(systemAccounts.id, ctx.systemAccountId));
+  systemAccountKey = `wf_live_${apiKeyHex(24).slice(0, 32)}`;
+  await ctx.db.insert(apiKeys).values({
+    tenant_id: ctx.tenantId,
+    system_account_id: ctx.systemAccountId,
+    prefix: systemAccountKey.slice(0, 12),
+    token_sha256: sha256Hex(systemAccountKey),
+    scopes: ["*"],
+  });
   await setConfigKey("platform.slack.signing_secret", SIGNING_SECRET);
 
   const [t2] = await ctx.db
@@ -55,6 +70,7 @@ beforeAll(async () => {
     })
     .returning();
   if (!member) throw new Error("seed member user");
+  memberUserId = member.id;
   const plain = `wf_live_${apiKeyHex(24).slice(0, 32)}`;
   await ctx.db.insert(apiKeys).values({
     tenant_id: ctx.tenantId,
@@ -93,6 +109,13 @@ function memberHeaders(): Record<string, string> {
   };
 }
 
+function systemAccountHeaders(): Record<string, string> {
+  return {
+    authorization: `Bearer ${systemAccountKey}`,
+    "content-type": "application/json",
+  };
+}
+
 describe("POST /v1/chat/workspaces", () => {
   test("happy path: install creates row + installer identity link", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/chat/workspaces`, {
@@ -110,6 +133,8 @@ describe("POST /v1/chat/workspaces", () => {
     const ws = await ctx.db.select().from(chatWorkspaces);
     expect(ws).toHaveLength(1);
     expect(ws[0]?.tenant_id).toBe(ctx.tenantId);
+    const workspaceId = ws[0]?.id;
+    if (!workspaceId) throw new Error("installed workspace row missing id");
 
     const ids = await ctx.db
       .select()
@@ -117,6 +142,17 @@ describe("POST /v1/chat/workspaces", () => {
       .where(eq(chatIdentities.platform_user_id, "U_OPERATOR"));
     expect(ids).toHaveLength(1);
     expect(ids[0]?.user_id).toBe(ctx.userId);
+    const [audit] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "chat_workspace.installed"),
+          eq(auditLog.resource_id, workspaceId),
+        ),
+      );
+    expect(audit).toEqual({ actor_type: "user", actor_id: ctx.userId });
   });
 
   test("W-3: installer link conflict rolls back the entire install", async () => {
@@ -310,12 +346,64 @@ describe("RBAC negative — non-admin lacks chat_workspace:write", () => {
       headers: memberHeaders(),
     });
     expect(res.status).toBe(403);
+    const [deniedAudit] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "policy.denied"),
+          eq(auditLog.actor_id, memberUserId),
+          eq(auditLog.reason, "permission_denied:chat_workspace:write"),
+        ),
+      );
+    expect(deniedAudit).toEqual({ actor_type: "user", actor_id: memberUserId });
     const after = await ctx.db.select().from(chatWorkspaces).where(eq(chatWorkspaces.id, seed.id));
     expect(after).toHaveLength(1);
   });
 });
 
 describe("DELETE /v1/chat/workspaces/{id}", () => {
+  test("a system-account key removes a workspace and retains its actor pair", async () => {
+    const [seeded] = await ctx.db
+      .insert(chatWorkspaces)
+      .values({
+        tenant_id: ctx.tenantId,
+        platform: "slack",
+        workspace_id: "T_SYSTEM_REMOVE",
+        bot_ciphertext: Buffer.from([0]),
+        bot_iv: Buffer.from([0]),
+        bot_auth_tag: Buffer.from([0]),
+      })
+      .returning();
+    if (!seeded) throw new Error("seed system-account workspace removal");
+
+    const response = await fetch(`${ctx.baseUrl}/v1/chat/workspaces/${seeded.id}`, {
+      method: "DELETE",
+      headers: systemAccountHeaders(),
+    });
+    expect(response.status).toBe(200);
+    const [audit] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "chat_workspace.removed"),
+          eq(auditLog.resource_id, seeded.id),
+        ),
+      );
+    expect(audit).toEqual({
+      actor_type: "system_account",
+      actor_id: ctx.systemAccountId,
+    });
+    const remaining = await ctx.db
+      .select()
+      .from(chatWorkspaces)
+      .where(and(eq(chatWorkspaces.id, seeded.id), eq(chatWorkspaces.tenant_id, ctx.tenantId)));
+    expect(remaining).toHaveLength(0);
+  });
+
   test("returns 404 for a workspace that belongs to another tenant", async () => {
     const [foreign] = await ctx.db
       .insert(chatWorkspaces)

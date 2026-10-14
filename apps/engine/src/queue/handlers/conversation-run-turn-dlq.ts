@@ -1,8 +1,7 @@
 import type { Job, PgBoss } from "pg-boss";
-import { auditActor } from "../../audit/actor.ts";
 import { auditAwait } from "../../audit/audit.ts";
+import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { decidedByFor } from "../../conversations/decided-by.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { getMcpTask, setMcpTaskFailureIfNotTerminal } from "../../mcp/tasks/store.ts";
@@ -39,22 +38,28 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
     );
     if (!didStamp) return false;
 
-    let conversationId = data.conversation_id;
-    if (!conversationId) {
-      const row = await getMcpTask(data.tenant_id, data.mcp_task_id, tx);
-      conversationId = row?.conversation_id ?? "";
-    }
+    const task = await getMcpTask(data.tenant_id, data.mcp_task_id, tx);
+    const conversationId = data.conversation_id ?? task?.conversation_id ?? "";
 
     await auditAwait(
       {
         tenant_id: data.tenant_id,
-        ...auditActor(decidedByFor(data.actor_id ?? null, data.principal)),
+        ...resolveActor(
+          task
+            ? { actor_type: task.actor_kind ?? "unknown", actor_id: task.actor_id }
+            : { actor_type: "unknown", actor_id: null },
+        ),
         action: AuditAction.CONVERSATION_TURN_FAILED,
         resource_type: "conversation",
         resource_id: conversationId,
         result: "error",
         reason: WORKER_EXPIRED_FAILURE_REASON,
-        metadata: { mcp_task_id: data.mcp_task_id, kind: data.kind, dead_lettered: true },
+        metadata: {
+          mcp_task_id: data.mcp_task_id,
+          kind: data.kind,
+          dead_lettered: true,
+          request_source: task?.request_source ?? null,
+        },
       },
       tx,
     );

@@ -1,7 +1,7 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { humanMetadataWrite, metadataChange } from "../api/catalog-metadata.ts";
-import { auditActor } from "../audit/actor.ts";
+import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -63,6 +63,16 @@ import { knowledgeSourceRowToView } from "./view.ts";
 
 export { countKnowledgeSources, getKnowledgeSource, listKnowledgeSources } from "./catalog.ts";
 export { knowledgeSourceRowToView } from "./view.ts";
+
+function knowledgeAuditActor(
+  actor: Actor | { kind: "unknown" } | null | undefined,
+  legacyActorId: string | null,
+) {
+  if (actor?.kind === "unknown") return { actor_type: "unknown" as const, actor_id: null };
+  if (actor) return auditActor(actor);
+  if (legacyActorId) return { actor_type: "unknown" as const, actor_id: null };
+  return auditActor(null);
+}
 
 function toSlug(name: string): string {
   return name
@@ -205,7 +215,7 @@ export async function applyKnowledgeCreate(
   if (prepared.persisted) {
     await linkKnowledgeFile(tx, {
       tenant_id: p.tenant_id,
-      actor_id: p.actor?.id ?? null,
+      actor: p.actor ?? null,
       knowledge_source_id: row.id,
       slug,
       filename: p.upload.filename,
@@ -378,8 +388,7 @@ export async function updateKnowledgeSource(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
+        ...knowledgeAuditActor(p.actor, p.actor_id),
         action: AuditAction.KNOWLEDGE_SOURCE_UPDATED,
         resource_type: "knowledge_source",
         resource_id: p.id,
@@ -495,8 +504,7 @@ export async function analyzeKnowledgeSource(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
+        ...knowledgeAuditActor(p.actor, p.actor_id),
         action: AuditAction.KNOWLEDGE_SOURCE_ANALYZED,
         resource_type: "knowledge_source",
         resource_id: p.id,
@@ -529,6 +537,7 @@ export async function deleteKnowledgeSource(
   id: string,
   actor_id: string | null,
   exec?: Executor,
+  actor?: Actor | { kind: "unknown" } | null,
 ): Promise<boolean> {
   const db = exec ?? getDb();
 
@@ -556,8 +565,7 @@ export async function deleteKnowledgeSource(
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...knowledgeAuditActor(actor, actor_id),
         action: AuditAction.KNOWLEDGE_SOURCE_DELETED,
         resource_type: "knowledge_source",
         resource_id: id,
@@ -729,7 +737,7 @@ export async function applyKnowledgeIngest(
   if (prepared.persisted) {
     await linkKnowledgeFile(tx, {
       tenant_id: p.tenant_id,
-      actor_id: p.actor?.id ?? null,
+      actor: p.actor ?? null,
       knowledge_source_id: p.knowledge_source_id,
       slug: prepared.source_slug,
       filename: p.upload.filename,

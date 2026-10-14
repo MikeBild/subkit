@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { AuditAction } from "../../audit/types.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import { conversationElicitations, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -116,6 +117,40 @@ async function readResolveAudit(elicitation_id: string, action: string) {
 }
 
 describe("pauseForUserInput — MCP-native form elicitation (capable client)", () => {
+  test("ask-user persists the EngineClient system-account actor", async () => {
+    const conversation_id = await freshConversation();
+    const actor_id = "10000000-0000-4000-8000-000000000021";
+    const toolContext = buildCtx(conversation_id);
+    toolContext.actor_id = actor_id;
+    toolContext.engineClient = new EngineClient({
+      tenant_id,
+      actor_id,
+      actor_type: "system_account",
+      db: ctx.db,
+    });
+
+    const result = await pauseForUserInput(toolContext, {
+      tool_name: "ask_user_text",
+      summary: "Choose a value",
+      input: { question: "Which value should be used?" },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || !result.pause) throw new Error("expected pending elicitation");
+    const [audit] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenant_id),
+          eq(auditLog.action, AuditAction.APPROVAL_REQUESTED),
+          eq(auditLog.resource_id, result.pause.elicitation_id),
+        ),
+      )
+      .limit(1);
+    expect(audit).toEqual({ actor_type: "system_account", actor_id });
+  });
+
   test("accept → no pause, conversation back to active, row protocol_native + resolved", async () => {
     const conversation_id = await freshConversation();
     const bridge = makeBridge({ kind: "accept", content: { value: "my-answer" } });

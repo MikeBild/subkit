@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+import { AuditAction } from "../../audit/types.ts";
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import { secretNames } from "../../credentials/connections/service.ts";
 import { upsertCredential } from "../../credentials/service.ts";
@@ -35,6 +36,8 @@ import {
   assertExecutionAuthorityCurrent,
 } from "../authority-admission.ts";
 import { bindExistingRun } from "../bound-run.ts";
+import type { CallerContext } from "../caller-context.ts";
+import { createExecution } from "../state.ts";
 import { runRequestStep } from "../steps/request.ts";
 import type { StepRunContext } from "../types.ts";
 
@@ -208,17 +211,123 @@ async function reservations(id: string) {
 
 test("successive runs automatically use the matching authority without another grant", async () => {
   const f = await fixture();
-  const first = await admitAuthorizedWorkflowExecution(f.params, ctx.db);
-  const second = await admitAuthorizedWorkflowExecution(f.params, ctx.db);
+  const caller = {
+    tenantId: f.params.tenant_id,
+    principalId: actor,
+    principalKind: "user" as const,
+    provider: "api_key",
+    productId: null,
+  };
+  const first = await admitAuthorizedWorkflowExecution(f.params, ctx.db, caller);
+  const second = await admitAuthorizedWorkflowExecution(f.params, ctx.db, caller);
   expect(first.execution_id).not.toBe(second.execution_id);
   expect(first.execution_authority_id).toBe(f.authority.id);
   expect(second.execution_authority_id).toBe(f.authority.id);
   expect(await reservations(f.authority.id)).toBe(2);
   await assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, first.execution_id);
   await assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, second.execution_id);
+  const queuedAudits = await ctx.db
+    .select({
+      resource_id: auditLog.resource_id,
+      actor_type: auditLog.actor_type,
+      actor_id: auditLog.actor_id,
+      metadata: auditLog.metadata,
+    })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, f.params.tenant_id),
+        eq(auditLog.action, AuditAction.EXECUTION_QUEUED),
+      ),
+    );
+  expect(queuedAudits).toHaveLength(2);
+  expect(queuedAudits).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        resource_id: first.execution_id,
+        actor_type: "user",
+        actor_id: actor,
+        metadata: expect.objectContaining({
+          request_source: "api",
+          source_kind: "saved",
+          workflow_id: f.workflow.id,
+          workflow_version_id: f.version.id,
+          execution_authority_id: f.authority.id,
+        }),
+      }),
+      expect.objectContaining({
+        resource_id: second.execution_id,
+        actor_type: "user",
+        actor_id: actor,
+        metadata: expect.objectContaining({
+          request_source: "api",
+          source_kind: "saved",
+          workflow_id: f.workflow.id,
+          workflow_version_id: f.version.id,
+          execution_authority_id: f.authority.id,
+        }),
+      }),
+    ]),
+  );
+  for (const entry of queuedAudits) {
+    expect(entry.metadata).not.toHaveProperty("input");
+    expect(entry.metadata).not.toHaveProperty("source_ref");
+    expect(entry.metadata).not.toHaveProperty("caller_context");
+  }
   await expect(admitAuthorizedWorkflowExecution(f.params, ctx.db)).rejects.toMatchObject({
     code: "execution_authority_unavailable",
   });
+});
+
+test("queue admission rejects caller context from another tenant before persisting it", async () => {
+  const f = await fixture();
+  const caller = {
+    tenantId: "00000000-0000-4000-8000-000000000099",
+    principalId: actor,
+    principalKind: "user" as const,
+    provider: "api_key",
+    productId: null,
+  };
+
+  await expect(
+    createExecution(ctx.db, {
+      tenant_id: f.params.tenant_id,
+      workflow_id: f.workflow.id,
+      workflow_version_id: f.version.id,
+      source_kind: "saved",
+      source_ref: null,
+      request_source: "api",
+      caller_context: caller,
+    }),
+  ).rejects.toMatchObject({ code: "caller_tenant_mismatch" });
+
+  await expect(
+    createExecution(ctx.db, {
+      tenant_id: f.params.tenant_id,
+      workflow_id: f.workflow.id,
+      workflow_version_id: f.version.id,
+      source_kind: "saved",
+      source_ref: null,
+      request_source: "api",
+      caller_context: false as unknown as CallerContext,
+    }),
+  ).rejects.toThrow();
+
+  const queued = await ctx.db
+    .select({ id: executions.id })
+    .from(executions)
+    .where(eq(executions.tenant_id, f.params.tenant_id));
+  const audit = await ctx.db
+    .select({ id: auditLog.id })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, f.params.tenant_id),
+        eq(auditLog.action, AuditAction.EXECUTION_QUEUED),
+      ),
+    );
+  expect(queued).toHaveLength(0);
+  expect(audit).toHaveLength(0);
 });
 
 test("an approval without run limit or end date admits every run and still counts them", async () => {
@@ -380,6 +489,17 @@ test("concurrent retries preserve one execution and one reservation", async () =
   expect(results[0]?.execution_id).toBe(results[1]?.execution_id);
   expect(results.map((row) => row.replayed).sort()).toEqual([false, true]);
   expect(await reservations(f.authority.id)).toBe(1);
+  const queuedAudits = await ctx.db
+    .select({ id: auditLog.id })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, f.params.tenant_id),
+        eq(auditLog.resource_id, results[0]?.execution_id ?? ""),
+        eq(auditLog.action, AuditAction.EXECUTION_QUEUED),
+      ),
+    );
+  expect(queuedAudits).toHaveLength(1);
   await expect(
     admitAuthorizedWorkflowExecution({ ...params, input: { message: "different" } }, ctx.db),
   ).rejects.toMatchObject({ code: "execution_boundary_mismatch" });

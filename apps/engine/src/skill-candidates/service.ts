@@ -916,11 +916,13 @@ export async function rejectSkillCandidate(
       .set({ status: "rejected", updated_at: new Date() })
       .where(eq(skillCandidates.id, p.candidate_id));
 
+    const actor_type = p.actor_type ?? (p.actor_id === null ? "system" : "unknown");
+
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
+        actor_type,
+        actor_id: actor_type === "unknown" ? null : p.actor_id,
         action: AuditAction.SKILL_CANDIDATE_REJECTED,
         resource_type: "skill_candidate",
         resource_id: p.candidate_id,

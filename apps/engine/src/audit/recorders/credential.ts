@@ -1,6 +1,6 @@
 import { auditAwait } from "../audit.ts";
 import { AuditAction } from "../types.ts";
-import { type RecordedEntry, type RecorderBase, resolveActorType } from "./types.ts";
+import { type RecordedEntry, type RecorderBase, resolveActor } from "./types.ts";
 
 export interface RecordCredentialAttachedParams extends RecorderBase {
   credential_id: string;
@@ -17,8 +17,7 @@ export async function recordCredentialAttached(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CREDENTIAL_CREATED,
       resource_type: "credential",
       resource_id: p.credential_id,
@@ -50,8 +49,7 @@ export async function recordCredentialRotated(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CREDENTIAL_ROTATED,
       resource_type: "credential",
       resource_id: p.credential_id,
@@ -82,8 +80,7 @@ export async function recordCredentialDeleted(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CREDENTIAL_DELETED,
       resource_type: "credential",
       resource_id: p.credential_id,
@@ -111,8 +108,7 @@ export async function recordOAuthClientRegistered(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.OAUTH_CLIENT_REGISTERED,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -139,8 +135,7 @@ export async function recordOAuthClientRegistrationFailed(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.OAUTH_CLIENT_REGISTRATION_FAILED,
       resource_type: "connector",
       resource_id: p.connector_id,

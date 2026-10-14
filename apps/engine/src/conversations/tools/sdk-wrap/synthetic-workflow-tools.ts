@@ -384,7 +384,8 @@ async function executeSyntheticRun(
           tool_name: "ask_user_confirm",
           summary,
           input: elicitationInput,
-          actor_id: ctx.actor_id,
+          actor_id: principal.id,
+          actor_type: principal.kind,
         },
         db,
       );
@@ -431,7 +432,7 @@ async function executeSyntheticRun(
     await auditAwait(
       {
         tenant_id: ctx.tenant_id,
-        actor_type: principal.kind === "user" ? "user" : "system",
+        actor_type: principal.kind,
         actor_id: principal.id,
         action: AuditAction.EXECUTION_STARTED,
         resource_type: "execution",

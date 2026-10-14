@@ -1,5 +1,5 @@
 import type { PrincipalKind } from "../auth/types.ts";
-import type { AuditActorType } from "./types.ts";
+import type { KnownAuditActorType } from "./types.ts";
 
 export interface PrincipalLike {
   kind: "user" | "system_account";
@@ -10,7 +10,7 @@ export interface Actor {
   id: string;
 }
 
-export function actorType(principal: PrincipalLike): AuditActorType {
+export function actorType(principal: PrincipalLike): KnownAuditActorType {
   return principal.kind === "user" ? "user" : "system_account";
 }
 
@@ -19,7 +19,7 @@ export function actorOf(principal: { kind: PrincipalKind; id: string }): Actor {
 }
 
 export function auditActor(actor: Actor | null): {
-  actor_type: AuditActorType;
+  actor_type: KnownAuditActorType;
   actor_id: string | null;
 } {
   if (!actor) return { actor_type: "system", actor_id: null };

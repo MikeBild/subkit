@@ -1,6 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
+import type { AuditActorType } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import {
   connectors,
@@ -208,6 +210,7 @@ export async function carryApprovalsForward(
     from_version_id: string | null;
     to_version_id: string;
     actor_id: string | null;
+    actor_type?: AuditActorType;
   },
 ): Promise<{ inherited: string[]; growth: Partial<Record<"dev" | "prod", BoundaryGrowth[]>> }> {
   const outcome = {
@@ -295,8 +298,11 @@ export async function carryApprovalsForward(
         await auditAwait(
           {
             tenant_id: input.tenant_id,
-            actor_type: input.actor_id ? "user" : "system",
-            actor_id: input.actor_id,
+            ...resolveActor({
+              tenant_id: input.tenant_id,
+              actor_id: input.actor_id,
+              ...(input.actor_type !== undefined ? { actor_type: input.actor_type } : {}),
+            }),
             action: AuditAction.WORKFLOW_AUTHORITY_INHERITED,
             resource_type: "workflow_execution_authority",
             resource_id: child.id,

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
-import { roles, tenants, users } from "../../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { auditLog, roles, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createRole, grantPermissionToRole } from "../../../rbac/roles.ts";
@@ -127,6 +127,39 @@ describe("inspect_role", () => {
 });
 
 describe("edit_role", () => {
+  test("system-account principal is retained in the role-update audit row", async () => {
+    const systemAccountId = crypto.randomUUID();
+    const machineRole = await createRole(ctx.db, tenant_id, "machine_role", "Machine role");
+    const toolCtx = {
+      ...makeToolCtx(),
+      actor_id: systemAccountId,
+      principal: {
+        kind: "system_account" as const,
+        id: systemAccountId,
+        tenant_id,
+        provider: "test",
+        roles: [],
+      },
+    };
+    const result = await editRoleTool.execute(toolCtx, {
+      role_id: machineRole.id,
+      add_permissions: ["audit:read"],
+    });
+    expect(result.ok).toBe(true);
+    const [row] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenant_id),
+          eq(auditLog.action, "rbac.role_updated"),
+          eq(auditLog.resource_id, machineRole.id),
+        ),
+      )
+      .limit(1);
+    expect(row).toEqual({ actor_type: "system_account", actor_id: systemAccountId });
+  });
+
   test("targeted add + remove permissions", async () => {
     const result = await editRoleTool.execute(makeToolCtx(), {
       role_id: auditorRoleId,

@@ -1,6 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { ConnectionStateEnum, ConnectionStateReasonEnum } from "../../../api/connection-schemas.ts";
+import { actorOf } from "../../../audit/actor.ts";
 import type { SignInFailure } from "../../../connectors/index.ts";
 import {
   buildConnectionCallbackUri,
@@ -288,7 +289,8 @@ export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
     try {
       const started = await startConnection(c.get("db"), {
         tenant_id: principal.tenant_id,
-        user_id: principal.id,
+        actor: actorOf(principal),
+        owner_user_id: principal.kind === "user" ? principal.id : null,
         name: body.name,
         base_url: body.base_url,
         scopes: body.scopes,
@@ -371,7 +373,8 @@ export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
       const current = await getConnection(db, principal.tenant_id, id);
       const started = await startConnection(db, {
         tenant_id: principal.tenant_id,
-        user_id: principal.id,
+        actor: actorOf(principal),
+        owner_user_id: principal.kind === "user" ? principal.id : null,
         name: current.name,
         base_url: current.base_url,
         scopes: current.scopes,
@@ -393,6 +396,7 @@ export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         id,
         actor_id: principal.id,
+        actor: actorOf(principal),
       });
     } catch (error) {
       rethrow(error);

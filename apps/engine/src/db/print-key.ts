@@ -23,7 +23,7 @@ async function main(): Promise<void> {
     tenant_id: tenant.id,
     owner_kind: "system_account",
     owner_id: account.id,
-    actor_id: null,
+    actor: { kind: "system", id: null },
   });
 
   process.stdout.write(`${result.plaintext}\n`);

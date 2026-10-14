@@ -32,7 +32,7 @@ export async function resolveAndError(
       conversation_id: ctx.conversation_id,
       id: rowId,
       output: p.output ?? null,
-      decided_by: decidedByFor(ctx.actor_id, ctx.principal),
+      decided_by: decidedByFor(ctx.actor_id, ctx.tenant_id, ctx.principal),
       status: "cancelled",
       reason: p.reason,
       ...(p.transport ? { transport: p.transport } : {}),

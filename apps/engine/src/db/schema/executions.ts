@@ -15,6 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { CredentialUseSnapshot } from "../../credentials/provider-identity.ts";
 import type { ExecutionAuthorizationContext } from "../../execution/authorization-context.ts";
+import type { CallerOrigin } from "../../execution/caller-origin.ts";
 import { executionModeEnum, tenantId, timestamps } from "./_common.ts";
 import { connectors } from "./connectors.ts";
 import { tenants } from "./identity.ts";
@@ -65,6 +66,7 @@ export const executions = pgTable(
       provider: string;
       productId: string | null;
     } | null>(),
+    caller_origin: text("caller_origin").$type<CallerOrigin>().notNull().default("unknown"),
     input: jsonb("input"),
     authorization_context: jsonb(
       "authorization_context",
@@ -92,6 +94,10 @@ export const executions = pgTable(
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
+    check(
+      "executions_caller_origin_check",
+      sql`${t.caller_origin} IN ('principal', 'trusted_system', 'unknown')`,
+    ),
     uniqueIndex("executions_single_tool_approval_uidx")
       .on(t.tool_approval_id)
       .where(sql`${t.tool_approval_id} IS NOT NULL`),

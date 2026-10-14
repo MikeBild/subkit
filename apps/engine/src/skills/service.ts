@@ -5,6 +5,7 @@ import {
   metadataChange,
 } from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
+import type { AuditActorType } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
@@ -27,6 +28,18 @@ import {
 } from "./types.ts";
 
 type SkillRow = typeof skills.$inferSelect;
+
+function resolveSkillActor(
+  actor_id: string | null,
+  actor_type?: AuditActorType,
+): { actor_id: string | null; actor_type: AuditActorType } {
+  if (actor_type === "system") return { actor_type, actor_id: null };
+  if (actor_type === "unknown" || (!actor_type && actor_id) || (actor_type && !actor_id)) {
+    return { actor_type: "unknown", actor_id: null };
+  }
+  if (actor_type) return { actor_type, actor_id };
+  return { actor_type: "system", actor_id: null };
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -98,10 +111,12 @@ export interface CreateSkillParams {
   tenant_id: string;
   input: CreateSkillInput;
   actor_id?: string | null;
+  actor_type?: AuditActorType;
 }
 
 export async function createSkill(p: CreateSkillParams, exec?: Executor): Promise<Skill> {
   const db = exec ?? getDb();
+  const actor = resolveSkillActor(p.actor_id ?? null, p.actor_type);
   validateScope(p.input);
   const blob: SkillExamplesBlob = {
     examples: p.input.examples ?? [],
@@ -144,8 +159,7 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id ?? null,
+        ...actor,
         action: AuditAction.SKILL_CREATED,
         resource_type: "skill",
         resource_id: row.id,
@@ -171,7 +185,7 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
       type: "skill.created",
       payload: {
         skill_id: row.id,
-        actor_id: p.actor_id ?? null,
+        actor_id: actor.actor_id,
         lifecycle: row.lifecycle,
         title: row.title,
       },
@@ -307,7 +321,9 @@ export async function updateSkill(
   patch: UpdateSkillInput,
   actor_id: string | null,
   exec?: Executor,
+  actor_type?: AuditActorType,
 ): Promise<Skill | null> {
+  const actor = resolveSkillActor(actor_id, actor_type);
   const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     await lockCatalogVocabulary(tx, tenant_id);
@@ -363,13 +379,12 @@ export async function updateSkill(
     if (!row) return null;
     const retired =
       prior.lifecycle !== "active" && row.lifecycle === "active"
-        ? await retireReplacedConnectorSkills(tx, tenant_id, id, actor_id)
+        ? await retireReplacedConnectorSkills(tx, tenant_id, id, actor.actor_id, actor.actor_type)
         : [];
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...actor,
         action: AuditAction.SKILL_UPDATED,
         resource_type: "skill",
         resource_id: id,
@@ -384,7 +399,7 @@ export async function updateSkill(
       skill_id: id,
       tenant_id,
       version: row.version,
-      actor_id,
+      actor_id: actor.actor_id,
     });
     await writeEvent(tx, {
       tenant_id,
@@ -392,7 +407,7 @@ export async function updateSkill(
       type: "skill.updated",
       payload: {
         skill_id: id,
-        actor_id,
+        actor_id: actor.actor_id,
         lifecycle: row.lifecycle,
         title: row.title,
       },
@@ -406,6 +421,7 @@ export async function retireReplacedConnectorSkills(
   tenant_id: string,
   skill_id: string,
   actor_id: string | null,
+  actor_type?: AuditActorType,
 ): Promise<string[]> {
   const [lineage] = await tx
     .select({ connector_id: skillCandidates.connector_id })
@@ -436,7 +452,7 @@ export async function retireReplacedConnectorSkills(
     );
   const retired: string[] = [];
   for (const r of replaced) {
-    if (await archiveSkill(tenant_id, r.id, actor_id, tx)) retired.push(r.id);
+    if (await archiveSkill(tenant_id, r.id, actor_id, tx, actor_type)) retired.push(r.id);
   }
   return retired;
 }
@@ -446,7 +462,9 @@ export async function activateSkill(
   id: string,
   actor_id: string | null,
   exec?: Executor,
+  actor_type?: AuditActorType,
 ): Promise<Skill | null> {
+  const actor = resolveSkillActor(actor_id, actor_type);
   const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     const existing = await tx
@@ -463,12 +481,17 @@ export async function activateSkill(
       .where(eq(skills.id, id))
       .returning();
     if (!row) return null;
-    const retired = await retireReplacedConnectorSkills(tx, tenant_id, id, actor_id);
+    const retired = await retireReplacedConnectorSkills(
+      tx,
+      tenant_id,
+      id,
+      actor.actor_id,
+      actor.actor_type,
+    );
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...actor,
         action: AuditAction.SKILL_ACTIVATED,
         resource_type: "skill",
         resource_id: id,
@@ -485,7 +508,7 @@ export async function activateSkill(
       tenant_id,
       from: prior.lifecycle,
       to: "active",
-      actor_id,
+      actor_id: actor.actor_id,
     });
     await writeEvent(tx, {
       tenant_id,
@@ -493,7 +516,7 @@ export async function activateSkill(
       type: "skill.activated",
       payload: {
         skill_id: id,
-        actor_id,
+        actor_id: actor.actor_id,
         lifecycle: row.lifecycle,
         title: row.title,
       },
@@ -507,7 +530,9 @@ export async function archiveSkill(
   id: string,
   actor_id: string | null,
   exec?: Executor,
+  actor_type?: AuditActorType,
 ): Promise<Skill | null> {
+  const actor = resolveSkillActor(actor_id, actor_type);
   const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     const existing = await tx
@@ -527,8 +552,7 @@ export async function archiveSkill(
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...actor,
         action: AuditAction.SKILL_ARCHIVED,
         resource_type: "skill",
         resource_id: id,
@@ -542,7 +566,7 @@ export async function archiveSkill(
       tenant_id,
       from: prior.lifecycle,
       to: "archived",
-      actor_id,
+      actor_id: actor.actor_id,
     });
     await writeEvent(tx, {
       tenant_id,
@@ -550,7 +574,7 @@ export async function archiveSkill(
       type: "skill.archived",
       payload: {
         skill_id: id,
-        actor_id,
+        actor_id: actor.actor_id,
         lifecycle: row.lifecycle,
         title: row.title,
       },
@@ -564,7 +588,9 @@ export async function deleteSkill(
   id: string,
   actor_id: string | null,
   exec?: Executor,
+  actor_type?: AuditActorType,
 ): Promise<boolean> {
+  const actor = resolveSkillActor(actor_id, actor_type);
   const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     const existing = await tx
@@ -577,8 +603,7 @@ export async function deleteSkill(
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...actor,
         action: AuditAction.SKILL_DELETED,
         resource_type: "skill",
         resource_id: id,
@@ -591,7 +616,7 @@ export async function deleteSkill(
     log.skill.deleted({
       skill_id: id,
       tenant_id,
-      actor_id,
+      actor_id: actor.actor_id,
     });
     await writeEvent(tx, {
       tenant_id,
@@ -599,7 +624,7 @@ export async function deleteSkill(
       type: "skill.deleted",
       payload: {
         skill_id: id,
-        actor_id,
+        actor_id: actor.actor_id,
       },
     });
     return true;
@@ -662,6 +687,7 @@ export async function restoreSkill(
   audit_entry_id: string,
   actor_id: string | null,
   exec?: Executor,
+  actor_type?: AuditActorType,
 ): Promise<Skill | null> {
   const db = exec ?? getDb();
   const rows = await db
@@ -708,6 +734,7 @@ export async function restoreSkill(
     },
     actor_id,
     db,
+    actor_type,
   );
 }
 

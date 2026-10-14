@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { actorOf } from "../../../audit/actor.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import { PREVIEW_CLASSIFICATIONS } from "../../../execution/index.ts";
 import { NotFoundError, UnprocessableEntityError } from "../../errors.ts";
@@ -136,6 +137,7 @@ export function registerConnectorRuntimeRoutes(app: OpenAPIHono<AppEnv>): void {
       tool: body.tool,
       confirm: body.confirm,
       actor_id: principal.id,
+      actor: actorOf(principal),
     });
     if (!result) throw new NotFoundError("connector");
     return c.json(result, 200);

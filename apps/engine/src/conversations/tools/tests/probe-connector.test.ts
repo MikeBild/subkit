@@ -451,6 +451,43 @@ describe("probe_connector — audit hygiene", () => {
     const serialised = JSON.stringify(row);
     expect(serialised.includes(CANARY)).toBe(false);
   });
+
+  test("probe audit preserves the resolved system-account actor", async () => {
+    const env = await seedProbeConnector({ slug: "system_actor_probe", tokenValue: CANARY });
+    const actorId = crypto.randomUUID();
+    const tctx = makeToolContext(env);
+    tctx.actor_id = actorId;
+    tctx.principal = {
+      provider: "test",
+      kind: "system_account",
+      id: actorId,
+      tenant_id: env.tenant_id,
+      roles: ["admin"],
+    };
+    tctx.engineClient = new EngineClient({
+      tenant_id: env.tenant_id,
+      actor_id: actorId,
+      actor_type: "system_account",
+      db: ctx.db,
+    });
+
+    const result = await probeConnectorTool.execute(tctx, {
+      connector_slug: "system_actor_probe",
+      method: "GET",
+      path: "/ping",
+      environment: "dev",
+    });
+    expect(result.ok).toBe(true);
+
+    const rows = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.tenant_id, env.tenant_id))
+      .orderBy(desc(auditLog.ts));
+    const row = rows.find((entry) => entry.action === "conversation.probe_connector");
+    expect(row?.actor_type).toBe("system_account");
+    expect(row?.actor_id).toBe(actorId);
+  });
 });
 
 describe("probe_connector — rate limit", () => {

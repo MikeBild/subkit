@@ -103,7 +103,7 @@ async function resolveOAuthApprovalElicitation(
       conversation_id: ctx.conversation_id,
       id: elicitationId,
       output: { status },
-      decided_by: decidedByFor(ctx.actor_id, ctx.principal),
+      decided_by: decidedByFor(ctx.actor_id, ctx.tenant_id, ctx.principal),
       status: status === "succeeded" ? "resolved" : "cancelled",
       ...(status === "succeeded" ? {} : { reason: mapOAuthWaitFailure(status).code }),
       transport: "succeeded",

@@ -3,7 +3,9 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export function normalizeMigrationSchema(sql: string): string {
-  return sql.replace(/REFERENCES "public"\./g, 'REFERENCES "subkit".');
+  return sql
+    .replace(/REFERENCES "public"\./g, 'REFERENCES "subkit".')
+    .replace(/ALTER TYPE "public"\./g, 'ALTER TYPE "subkit".');
 }
 
 export async function normalizeNewMigrations(): Promise<void> {

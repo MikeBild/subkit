@@ -10,9 +10,12 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { AuditActorType } from "../../audit/types.ts";
 import type { VerifiedProviderIdentity } from "../../credentials/provider-identity.ts";
 import { tenantId, timestamps } from "./_common.ts";
 import { tenants, users } from "./identity.ts";
+
+type ConnectionStartActorType = Extract<AuditActorType, "user" | "system_account" | "unknown">;
 
 export const outboundConnections = pgTable(
   "outbound_connections",
@@ -54,7 +57,10 @@ export const outboundConnectionStarts = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
-    user_id: uuid("user_id").notNull(),
+    user_id: uuid("user_id"),
+    actor_type: text("actor_type").$type<ConnectionStartActorType>().notNull().default("unknown"),
+    actor_id: uuid("actor_id"),
+    owner_user_id: uuid("owner_user_id").references(() => users.id, { onDelete: "set null" }),
     state_sha256: text("state_sha256").notNull(),
     code_verifier: text("code_verifier").notNull(),
     redirect_uri: text("redirect_uri").notNull(),
@@ -75,5 +81,15 @@ export const outboundConnectionStarts = pgTable(
     consumed_at: timestamp("consumed_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [uniqueIndex("outbound_connection_starts_state_key").on(t.state_sha256)],
+  (t) => [
+    uniqueIndex("outbound_connection_starts_state_key").on(t.state_sha256),
+    check(
+      "outbound_connection_starts_actor_type_check",
+      sql`${t.actor_type} IN ('user','system_account','unknown')`,
+    ),
+    check(
+      "outbound_connection_starts_unknown_actor_id_check",
+      sql`${t.actor_type} <> 'unknown' OR ${t.actor_id} IS NULL`,
+    ),
+  ],
 );

@@ -72,6 +72,7 @@ export function registerConnectorDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void
         {
           db,
           tenant_id: principal.tenant_id,
+          actor_type: principal.kind,
           actor_id: principal.id,
         },
         {

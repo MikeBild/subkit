@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
+import { actorOf } from "../../audit/actor.ts";
 import {
   AuditAction,
   actorType,
@@ -348,7 +349,12 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const result = await svc.approveDiscoveryArtifact(
-      { tenant_id: principal.tenant_id, artifact_id: id, actor_id: principal.id },
+      {
+        tenant_id: principal.tenant_id,
+        artifact_id: id,
+        actor_id: principal.id,
+        actor: actorOf(principal),
+      },
       db,
     );
     if (!result) throw new NotFoundError("discovery_artifact");
@@ -365,6 +371,7 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         artifact_id: id,
         actor_id: principal.id,
+        actor: actorOf(principal),
         ...(body.reason ? { reason: body.reason } : {}),
       },
       db,
@@ -412,6 +419,7 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         files: parsedFiles,
         actor_id: principal.id,
+        actor: actorOf(principal),
         ...(typeof label === "string" ? { label } : {}),
       },
       db,
@@ -479,6 +487,7 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         files: extracted.files,
         actor_id: principal.id,
+        actor: actorOf(principal),
         archive_file_id: archiveFile.id,
         ...(typeof label === "string" ? { label } : {}),
       },

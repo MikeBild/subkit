@@ -5,6 +5,7 @@ import {
   recordConnectorMcpHandshakeOk,
   recordMcpExternalToolInvoked,
 } from "../../audit/recorders/index.ts";
+import type { AuditActorType } from "../../audit/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
@@ -111,12 +112,15 @@ function backoffWindow(failures: number): number {
 
 type ConnectClientOutcome = { pooled: PooledClient } | { pooled: null; error: string };
 
+type McpAuditActor = { actor_id: string | null; actor_type?: AuditActorType };
+
 async function connectClient(
   db: Db,
   tenant_id: string,
   row: McpConnectorRow,
   environment: "dev" | "prod",
   requestSource: RequestSource,
+  actor: McpAuditActor = { actor_id: null },
 ): Promise<ConnectClientOutcome> {
   const bucket = tenantBucket(tenant_id);
   try {
@@ -138,7 +142,7 @@ async function connectClient(
       connector_slug: row.slug,
       observed_hash: manifest_hash,
       observed_tool_count: tools.length,
-      auditCtx: { actor_id: null, request_source: requestSource, executor: db },
+      auditCtx: { ...actor, request_source: requestSource, executor: db },
     });
 
     await recordMcpHandshakeState(db, row, manifest_hash);
@@ -151,7 +155,7 @@ async function connectClient(
     });
     await recordConnectorMcpHandshakeOk({
       tenant_id,
-      actor_id: null,
+      ...actor,
       connector_id: row.id,
       connector_slug: row.slug,
       tool_count: tools.length,
@@ -287,7 +291,12 @@ function toolSetOf(pooled: PooledClient, row: McpConnectorRow): TenantMcpToolSet
 export async function getTenantMcpTools(
   db: Db,
   tenant_id: string,
-  opts?: { environment?: "dev" | "prod"; requestSource?: RequestSource },
+  opts?: {
+    environment?: "dev" | "prod";
+    requestSource?: RequestSource;
+    actor_id?: string | null;
+    actor_type?: AuditActorType;
+  },
 ): Promise<TenantMcpToolSet[]> {
   const environment = opts?.environment ?? MCP_CREDENTIAL_ENVIRONMENT;
   const requestSource: RequestSource = opts?.requestSource ?? "chat";
@@ -316,7 +325,10 @@ export async function getTenantMcpTools(
       }
     }
 
-    const outcome = await connectClient(db, tenant_id, row, environment, requestSource);
+    const outcome = await connectClient(db, tenant_id, row, environment, requestSource, {
+      actor_id: opts?.actor_id ?? null,
+      ...(opts?.actor_type ? { actor_type: opts.actor_type } : {}),
+    });
     if (outcome.pooled) out.push(toolSetOf(outcome.pooled, row));
   }
   return out;
@@ -330,7 +342,12 @@ export async function connectServerById(
   db: Db,
   tenant_id: string,
   connector_id: string,
-  opts?: { environment?: "dev" | "prod"; requestSource?: RequestSource },
+  opts?: {
+    environment?: "dev" | "prod";
+    requestSource?: RequestSource;
+    actor_id?: string | null;
+    actor_type?: AuditActorType;
+  },
 ): Promise<ConnectServerOutcome> {
   const environment = opts?.environment ?? MCP_CREDENTIAL_ENVIRONMENT;
   const requestSource: RequestSource = opts?.requestSource ?? "chat";
@@ -338,7 +355,10 @@ export async function connectServerById(
   if (!row) return { ok: false, reason: "not_found", detail: null };
   if (!row.enabled) return { ok: false, reason: "disabled", detail: null };
   tenantBucket(tenant_id).backoff.delete(connector_id);
-  const outcome = await connectClient(db, tenant_id, row, environment, requestSource);
+  const outcome = await connectClient(db, tenant_id, row, environment, requestSource, {
+    actor_id: opts?.actor_id ?? null,
+    ...(opts?.actor_type ? { actor_type: opts.actor_type } : {}),
+  });
   if (!outcome.pooled) {
     return { ok: false, reason: "handshake_failed", detail: outcome.error };
   }
@@ -351,6 +371,7 @@ export interface InvokeRemoteToolInput {
   db: Db;
   tenant_id: string;
   actor_id: string | null;
+  actor_type?: AuditActorType;
   connector_id: string;
   connector_slug: string;
   call: RemoteCall;
@@ -406,7 +427,10 @@ async function invokeRemoteToolWithContext(
         failure: "not_connected",
       };
     }
-    const outcome = await connectClient(args.db, args.tenant_id, row, environment, requestSource);
+    const outcome = await connectClient(args.db, args.tenant_id, row, environment, requestSource, {
+      actor_id: args.actor_id,
+      ...(args.actor_type ? { actor_type: args.actor_type } : {}),
+    });
     if (!outcome.pooled) {
       return {
         ok: false,
@@ -489,6 +513,7 @@ async function invokeRemoteToolWithContext(
   await recordMcpExternalToolInvoked({
     tenant_id: args.tenant_id,
     actor_id: args.actor_id,
+    ...(args.actor_type ? { actor_type: args.actor_type } : {}),
     connector_id: args.connector_id,
     connector_slug: args.connector_slug,
     remote_tool: remoteCallTarget(args.call),

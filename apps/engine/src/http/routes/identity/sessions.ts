@@ -217,7 +217,7 @@ export function registerIdentitySessionsRoute(app: OpenAPIHono<AppEnv>): void {
         owner_kind: "user",
         owner_id: principal.id,
         scopes: ["*"],
-        actor_id: principal.id,
+        actor: { kind: principal.kind, id: principal.id },
       },
       db,
     );

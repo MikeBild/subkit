@@ -6,6 +6,7 @@ import {
 } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { actorType } from "../../../audit/index.ts";
 import { principalOrigin } from "../../../auth/index.ts";
 import type { ConversationStatus, TurnEvent } from "../../../conversations/index.ts";
 import * as svc from "../../../conversations/index.ts";
@@ -312,6 +313,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         conversation_id: id,
         actor_id: principal.id,
+        actor_type: actorType(principal),
         ...(body.model !== undefined ? { model: body.model } : {}),
         ...(body.title !== undefined ? { title: body.title } : {}),
       },

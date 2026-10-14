@@ -2,6 +2,7 @@ import { setDefaultTimeout } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
+import { localDatabaseUrl } from "../../../../../scripts/lib/local-database-url.ts";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
 import { createMigrationDbFromUrl } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
@@ -83,7 +84,7 @@ function ensureOrphanSweep(adminUrl: string): Promise<void> {
 }
 
 function getAdminUrl(): string {
-  return process.env.DATABASE_URL ?? "postgres://subkit:subkit@localhost:5432/subkit";
+  return localDatabaseUrl(process.env);
 }
 
 function rewriteDbName(url: string, newName: string): string {

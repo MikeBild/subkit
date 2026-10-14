@@ -291,7 +291,7 @@ async function auditPolicyDenied(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: p.principal.kind === "user" ? "user" : "system",
+      actor_type: p.principal.kind,
       actor_id: p.principal.id,
       action: AuditAction.POLICY_DENIED,
       resource_type: resource?.type ?? "conversation",

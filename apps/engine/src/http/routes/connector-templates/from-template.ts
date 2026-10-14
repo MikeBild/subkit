@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { actorOf } from "../../../audit/actor.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
@@ -79,6 +80,7 @@ export function registerFromTemplateRoutes(app: OpenAPIHono<AppEnv>): void {
             : {}),
         },
         actor_id: principal.id,
+        actor: actorOf(principal),
       },
       db,
     );
@@ -91,6 +93,7 @@ export function registerFromTemplateRoutes(app: OpenAPIHono<AppEnv>): void {
           connector_id: created.id,
           template,
           actor_id: principal.id,
+          actor: actorOf(principal),
         },
         db,
       );
@@ -98,7 +101,12 @@ export function registerFromTemplateRoutes(app: OpenAPIHono<AppEnv>): void {
 
     if (template.ingestion_url) {
       void runDiscoveryCached(
-        { db, tenant_id: principal.tenant_id, actor_id: principal.id },
+        {
+          db,
+          tenant_id: principal.tenant_id,
+          actor_type: principal.kind,
+          actor_id: principal.id,
+        },
         { template_id: template.slug, force_refresh: false },
       )
         .then((out) => {
@@ -152,6 +160,7 @@ export function registerFromTemplateRoutes(app: OpenAPIHono<AppEnv>): void {
                 doc_refs: skillDef.doc_refs,
               },
               actor_id: principal.id,
+              actor_type: principal.kind,
             },
             db,
           );

@@ -177,7 +177,7 @@ export function registerChatIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
       await auditAwait(
         {
           tenant_id: principal.tenant_id,
-          actor_type: "user",
+          actor_type: principal.kind,
           actor_id: principal.id,
           action: AuditAction.CHAT_IDENTITY_LINKED,
           resource_type: "chat_identity",
@@ -213,7 +213,7 @@ export function registerChatIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
       await auditAwait(
         {
           tenant_id: principal.tenant_id,
-          actor_type: "user",
+          actor_type: principal.kind,
           actor_id: principal.id,
           action: AuditAction.CHAT_IDENTITY_UNLINKED,
           resource_type: "chat_identity",

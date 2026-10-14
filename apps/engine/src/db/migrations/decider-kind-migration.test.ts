@@ -5,13 +5,7 @@ import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import type { Db } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
-import {
-  conversationElicitations,
-  conversations,
-  mcpTasks,
-  tenants,
-  users,
-} from "../schema/index.ts";
+import { conversationElicitations, conversations, mcpTasks, tenants } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
@@ -79,14 +73,11 @@ beforeAll(async () => {
     .returning({ id: tenants.id });
   if (!tenant) throw new Error("seed tenant failed");
   tenantId = tenant.id;
-  const [user] = await ctx.db
-    .insert(users)
-    .values({
-      tenant_id: tenantId,
-      email: "decider@test.local",
-      role_id: await builtinRoleId(ctx.db, "admin"),
-    })
-    .returning({ id: users.id });
+  const userResult = await ctx.pool.query(
+    "INSERT INTO users (tenant_id, email, role_id) VALUES ($1, $2, $3) RETURNING id",
+    [tenantId, "decider@test.local", await builtinRoleId(ctx.db, "admin")],
+  );
+  const user = userResult.rows[0] as { id: string } | undefined;
   if (!user) throw new Error("seed user failed");
   userId = user.id;
   const [conversation] = await ctx.db

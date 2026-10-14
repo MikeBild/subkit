@@ -25,14 +25,22 @@ const UserListResponse = paginatedResponse(UserDetailSchema, "UserListResponse")
 const CreateUserBody = z
   .object({
     email: z.string().email().min(3).max(254),
+    display_name: z.string().trim().min(1).max(120).nullable().optional(),
     role: z.enum(["admin", "member", "enduser"]).optional(),
   })
   .openapi("CreateUserBody");
 
 const UpdateUserBody = z
-  .object({
-    role: z.enum(["admin", "member", "enduser"]),
-  })
+  .union([
+    z.object({
+      role: z.enum(["admin", "member", "enduser"]),
+      display_name: z.string().trim().min(1).max(120).nullable().optional(),
+    }),
+    z.object({
+      role: z.enum(["admin", "member", "enduser"]).optional(),
+      display_name: z.string().trim().min(1).max(120).nullable(),
+    }),
+  ])
   .openapi("UpdateUserBody");
 
 const listRoute = createRoute({
@@ -86,7 +94,7 @@ const updateRoute = createRoute({
   method: "patch",
   path: "/v1/identity/users/{id}",
   tags: ["identity"],
-  summary: "Update a user's role",
+  summary: "Update a user's profile or role",
   request: {
     params: IdParam,
     body: { content: { "application/json": { schema: UpdateUserBody } } },
@@ -137,6 +145,7 @@ function serialize(
     id: u.id,
     tenant_id: u.tenant_id,
     email: u.email,
+    display_name: u.display_name,
     role: roleName,
     status: u.status,
     oauth_connections: oauthConnections,
@@ -287,7 +296,9 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
         {
           tenant_id: principal.tenant_id,
           email: body.email,
+          ...(body.display_name !== undefined ? { display_name: body.display_name } : {}),
           ...(body.role ? { role: body.role } : {}),
+          actor_kind: principal.kind,
           actor_id: principal.id,
         },
         db,
@@ -312,12 +323,29 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
     );
     const u = await identity
       .updateUser(
-        { tenant_id: principal.tenant_id, id, role: body.role, actor_id: principal.id },
+        {
+          tenant_id: principal.tenant_id,
+          id,
+          ...(body.role !== undefined ? { role: body.role } : {}),
+          ...(body.display_name !== undefined ? { display_name: body.display_name } : {}),
+          actor_kind: principal.kind,
+          actor_id: principal.id,
+        },
         db,
       )
       .catch(lastAdminAsConflict);
     if (!u) throw new NotFoundError("user");
-    return c.json(serialize(u, body.role), 200);
+    const [role] = await db
+      .select({ name: roles.name })
+      .from(roles)
+      .where(
+        and(
+          eq(roles.id, u.role_id),
+          or(isNull(roles.tenant_id), eq(roles.tenant_id, principal.tenant_id)),
+        ),
+      )
+      .limit(1);
+    return c.json(serialize(u, role?.name ?? null), 200);
   });
 
   app.openapi(deactivateRoute, async (c) => {
@@ -326,7 +354,15 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     enforce(principal, policy.adminOnly(principal), { resource_type: "user", resource_id: id }, db);
     const u = await identity
-      .deactivateUser({ tenant_id: principal.tenant_id, user_id: id, actor_id: principal.id }, db)
+      .deactivateUser(
+        {
+          tenant_id: principal.tenant_id,
+          user_id: id,
+          actor_kind: principal.kind,
+          actor_id: principal.id,
+        },
+        db,
+      )
       .catch(lastAdminAsConflict);
     if (!u) throw new NotFoundError("user");
     return c.body(null, 204);

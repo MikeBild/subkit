@@ -1,9 +1,9 @@
 import { z } from "@hono/zod-openapi";
+import { actorOf } from "../../../../audit/actor.ts";
 import { approvePatchCandidate } from "../../../../self-healing/candidate-decision.ts";
 import { approveSkillCandidate, getSkillCandidate } from "../../../../skill-candidates/service.ts";
 import type { ConversationTool } from "../../index.ts";
 import { checkTenantPermission } from "../../permission-gate.ts";
-import { toolActor } from "../../tool-actor.ts";
 
 const IdInput = z.object({ candidate_id: z.string().uuid() }).openapi("CandidateIdInput");
 
@@ -34,7 +34,7 @@ export const approveSkillCandidateTool: ConversationTool = {
       {
         tenant_id: ctx.tenant_id,
         candidate_id: args.candidate_id,
-        actor: toolActor(ctx),
+        actor: ctx.principal ? actorOf(ctx.principal) : null,
         may_write_knowledge: fact,
       },
       ctx.db,
@@ -89,6 +89,7 @@ export const approvePatchCandidateTool: ConversationTool = {
           tenant_id: ctx.tenant_id,
           candidate_id: args.candidate_id,
           actor_id: ctx.actor_id,
+          actor_type: ctx.principal?.kind ?? (ctx.actor_id === null ? "system" : "unknown"),
           expected_review_digest: args.expected_review_digest,
         },
         ctx.db,

@@ -164,11 +164,18 @@ describe("oidc provider — real flow", () => {
     const cookie = parseSetCookie(finishRes.headers.get("set-cookie"));
     expect(cookie).not.toBeNull();
 
-    const sessionRowList = await testDb.db
+    const [identity] = await testDb.db
+      .select()
+      .from(userIdentities)
+      .where(
+        and(eq(userIdentities.tenant_id, tenantId), eq(userIdentities.subject, "sliding-sub")),
+      );
+    if (!identity) throw new Error("sliding identity missing");
+    const [row] = await testDb.db
       .select()
       .from(sessions)
-      .where(eq(sessions.tenant_id, tenantId));
-    const row = sessionRowList[sessionRowList.length - 1]!;
+      .where(and(eq(sessions.tenant_id, tenantId), eq(sessions.user_id, identity.user_id)));
+    if (!row) throw new Error("sliding session missing");
     await testDb.db
       .update(sessions)
       .set({ last_seen_at: new Date(TEST_NOW_MS - 9 * 60 * 60 * 1000) })
@@ -193,6 +200,11 @@ describe("oidc provider — real flow", () => {
       );
     const reasons = auditRows.map((r) => r.reason);
     expect(reasons).toContain("expired_sliding");
+    const expiry = auditRows.find((row) => row.reason === "expired_sliding");
+    if (!expiry) throw new Error("expiry audit missing");
+    expect(expiry.actor_type).toBe("system");
+    expect(expiry.actor_id).toBeNull();
+    expect((expiry.metadata as Record<string, unknown>).subject_user_id).toBe(row.user_id);
   });
 
   test("absolute TTL: absolute_expires_at in the past denies with expired_absolute", async () => {

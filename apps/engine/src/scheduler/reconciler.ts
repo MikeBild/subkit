@@ -16,7 +16,7 @@ import {
 } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
 import { backfillEmbeddings } from "../embeddings/backfill.ts";
-import { admitAuthorizedWorkflowExecution } from "../execution/authority-admission.ts";
+import { admitSystemWorkflowExecution } from "../execution/authority-admission.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { enqueueApprovalElicitationResume } from "../queue/approval-resume.ts";
@@ -962,7 +962,7 @@ export class SchedulerReconciler {
       claimed_at: Date;
     },
   ): Promise<void> {
-    const admitted = await admitAuthorizedWorkflowExecution(
+    const admitted = await admitSystemWorkflowExecution(
       {
         tenant_id: payload.tenant_id,
         workflow_id: payload.workflow_id,

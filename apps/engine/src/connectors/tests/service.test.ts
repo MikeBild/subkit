@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { events, tenants } from "../../db/schema/index.ts";
+import { auditLog, events, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   createConnector,
@@ -30,6 +30,90 @@ async function seedTenant(): Promise<string> {
 }
 
 describe("connectors/service", () => {
+  test("persists trusted user and system-account actor provenance", async () => {
+    const tenant_id = await seedTenant();
+    const user_id = "10000000-0000-4000-8000-000000000001";
+    const system_account_id = "10000000-0000-4000-8000-000000000002";
+    const userConnector = await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "User connector",
+          driver: "http",
+          environment: "dev",
+          auth_type: "none",
+          base_url: "https://user.example.test",
+        },
+        actor_id: user_id,
+        actor: { kind: "user", id: user_id },
+      },
+      ctx.db,
+    );
+    const machineConnector = await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "Machine connector",
+          driver: "http",
+          environment: "dev",
+          auth_type: "none",
+          base_url: "https://machine.example.test",
+        },
+        actor_id: system_account_id,
+        actor: { kind: "system_account", id: system_account_id },
+      },
+      ctx.db,
+    );
+    const untrustedConnector = await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "Untrusted connector",
+          driver: "http",
+          environment: "dev",
+          auth_type: "none",
+          base_url: "https://untrusted.example.test",
+        },
+        actor_id: "10000000-0000-4000-8000-000000000003",
+        actor: null,
+      },
+      ctx.db,
+    );
+    await updateConnector(
+      tenant_id,
+      machineConnector.id,
+      { name: "Machine connector updated" },
+      { kind: "system_account", id: system_account_id },
+      ctx.db,
+    );
+    const rows = await ctx.db
+      .select({
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+        resource_id: auditLog.resource_id,
+      })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.resource_type, "connector")));
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { actor_type: "user", actor_id: user_id, resource_id: userConnector.id },
+        {
+          actor_type: "system_account",
+          actor_id: system_account_id,
+          resource_id: machineConnector.id,
+        },
+        { actor_type: "unknown", actor_id: null, resource_id: untrustedConnector.id },
+      ]),
+    );
+    const machineRows = rows.filter((row) => row.resource_id === machineConnector.id);
+    expect(machineRows).toHaveLength(2);
+    expect(
+      machineRows.every(
+        (row) => row.actor_type === "system_account" && row.actor_id === system_account_id,
+      ),
+    ).toBe(true);
+  });
+
   test("create + get + list + patch + delete", async () => {
     const tenant_id = await seedTenant();
     const created = await createConnector(

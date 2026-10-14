@@ -601,7 +601,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
-        actor_type: "user",
+        actor_type: principal.kind,
         actor_id: principal.id,
         action: status === "created" ? AuditAction.SCHEDULE_CREATED : AuditAction.SCHEDULE_UPDATED,
         resource_type: "schedule",
@@ -648,7 +648,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
-        actor_type: "user",
+        actor_type: principal.kind,
         actor_id: principal.id,
         action: AuditAction.SCHEDULE_UPDATED,
         resource_type: "schedule",
@@ -680,7 +680,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
-        actor_type: "user",
+        actor_type: principal.kind,
         actor_id: principal.id,
         action: AuditAction.SCHEDULE_DELETED,
         resource_type: "schedule",
@@ -781,6 +781,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         id,
         actor_id: principal.id,
+        actor_type: principal.kind,
         ...(body.slug !== undefined ? { slug: body.slug } : {}),
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
@@ -811,7 +812,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const ok = await svc.deleteWorkflow(principal.tenant_id, id, principal.id, db);
+    const ok = await svc.deleteWorkflow(principal.tenant_id, id, principal.id, db, principal.kind);
     if (!ok) throw new NotFoundError("workflow");
     return c.body(null, 204);
   });

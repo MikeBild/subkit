@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { actorOf } from "../../../audit/actor.ts";
 import {
   resolveConnectorTemplate,
   upsertTemplateOAuthCredentials,
@@ -56,6 +57,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
           client_secret: body.client_secret,
         },
         actor_id: principal.id,
+        actor: actorOf(principal),
       },
       db,
     );

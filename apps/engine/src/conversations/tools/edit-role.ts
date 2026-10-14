@@ -10,6 +10,7 @@ import {
   revokePermissionFromRole,
   updateRole,
 } from "../../rbac/roles.ts";
+import { auditActorFromToolContext } from "./audit-actor.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -88,8 +89,7 @@ export const editRoleTool: ConversationTool = {
       await auditAwait(
         {
           tenant_id: ctx.tenant_id,
-          actor_type: ctx.actor_id ? "user" : "system",
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           action: AuditAction.RBAC_ROLE_UPDATED,
           resource_type: "role",
           resource_id: args.role_id,

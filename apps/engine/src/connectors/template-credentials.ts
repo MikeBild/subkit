@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
+import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
-import { AuditAction } from "../audit/types.ts";
+import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { connectorTemplateCredentials } from "../db/schema/index.ts";
@@ -24,6 +25,8 @@ export async function upsertTemplateOAuthCredentials(
     template_slug: string;
     value: ConnectorTemplateOAuthCredentialValue;
     actor_id: string | null;
+    actor?: Actor | null;
+    actor_type?: AuditActorType;
   },
   exec?: Executor,
 ): Promise<{ id: string }> {
@@ -69,8 +72,15 @@ export async function upsertTemplateOAuthCredentials(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...(input.actor !== undefined
+          ? auditActor(input.actor)
+          : input.actor_type === "unknown"
+            ? { actor_type: "unknown" as const, actor_id: null }
+            : input.actor_type
+              ? { actor_type: input.actor_type, actor_id: input.actor_id }
+              : input.actor_id
+                ? { actor_type: "unknown" as const, actor_id: null }
+                : auditActor(null)),
         action: prior ? AuditAction.CREDENTIAL_UPDATED : AuditAction.CREDENTIAL_CREATED,
         resource_type: "connector_template_credential",
         resource_id: row.id,

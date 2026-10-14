@@ -1,17 +1,24 @@
 import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
-import { auditLog, executions, workflowsSchedules } from "../db/schema/index.ts";
+import { apiKeys, auditLog, executions, users, workflowsSchedules } from "../db/schema/index.ts";
 import {
   createEngineCtx,
   createWorkflowRow,
   type EngineTestCtx,
 } from "../execution/tests/setup.ts";
+import { deactivateUser } from "../identity/provisioning.ts";
+import { issueApiKey } from "../identity/service.ts";
 import { logger } from "../logging/logger.ts";
 import {
   getOperationalOverview,
   invalidateOperationalOverview,
 } from "../operator/operational-overview.ts";
+import { createBoss, disposeBoss } from "../queue/boss.ts";
+import { registerExecutionRunHandler } from "../queue/handlers/execution-run.ts";
+import { builtinRoleId } from "../rbac/roles.ts";
+import { databaseNow } from "../test-helpers/database-clock.ts";
+import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { SchedulerReconciler } from "./reconciler.ts";
 import { recordScheduleAdmission } from "./schedule-admission-state.ts";
 import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
@@ -29,7 +36,7 @@ test("missing authority stays held and retryable; later approval admits exactly 
   const { workflow_id } = await createWorkflowRow(ctx, {
     name: "Held schedule",
     slug: "held-schedule",
-    steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+    steps: [{ id: "noop", kind: "transform", language: "javascript", expression: "return input;" }],
   });
   const [schedule] = await ctx.testDb.db
     .insert(workflowsSchedules)
@@ -46,10 +53,11 @@ test("missing authority stays held and retryable; later approval admits exactly 
   if (!schedule) throw new Error("fixture schedule missing");
   const sent: unknown[] = [];
   const gateJobs: unknown[] = [];
+  const executionBoss = await createBoss({ connectionString: ctx.testDb.url });
   const boss = {
     send: async (queue: string, payload: unknown) => {
       (queue === "workflow.repair" ? gateJobs : sent).push(payload);
-      return "job";
+      return queue === "workflow.repair" ? "job" : executionBoss.send(queue, payload as object);
     },
   } as unknown as PgBoss;
   const reconciler = new SchedulerReconciler({ boss, db: ctx.testDb.db });
@@ -117,6 +125,63 @@ test("missing authority stays held and retryable; later approval admits exactly 
     await reconciler.reconcileWorkflowSchedules(now);
     await reconciler.reconcileWorkflowSchedules(now);
     expect(sent).toHaveLength(1);
+    const admittedRuns = await ctx.testDb.db
+      .select({
+        id: executions.id,
+        status: executions.status,
+        caller_origin: executions.caller_origin,
+        caller_context: executions.caller_context,
+      })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.workflow_id, workflow_id)));
+    expect(admittedRuns).toHaveLength(1);
+    expect(admittedRuns[0]).toMatchObject({
+      status: "queued",
+      caller_origin: "trusted_system",
+      caller_context: null,
+    });
+    const executionId = admittedRuns[0]?.id;
+    if (!executionId) throw new Error("admitted schedule execution missing");
+    await registerExecutionRunHandler({ boss: executionBoss, db: ctx.testDb.db });
+    const completed = await waitFor(
+      async () => {
+        const [row] = await ctx.testDb.db
+          .select()
+          .from(executions)
+          .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, executionId)));
+        if (!row || ["queued", "running"].includes(row.status)) return null;
+        const terminalAudit = await ctx.testDb.db
+          .select({ id: auditLog.id })
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.tenant_id, ctx.tenantId),
+              eq(auditLog.resource_id, executionId),
+              eq(auditLog.action, "execution.completed"),
+            ),
+          );
+        return terminalAudit.length ? row : null;
+      },
+      { tries: 150, sleepMs: 200, label: "scheduled system execution" },
+    );
+    expect(completed).toMatchObject({
+      status: "succeeded",
+      caller_origin: "trusted_system",
+      caller_context: null,
+    });
+    const lifecycle = await ctx.testDb.db
+      .select({
+        action: auditLog.action,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+      })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_id, executionId)));
+    for (const action of ["execution.started", "execution.completed"]) {
+      expect(lifecycle.filter((entry) => entry.action === action)).toEqual([
+        { action, actor_type: "system", actor_id: null },
+      ]);
+    }
     expect(
       (await ctx.testDb.db.select().from(workflowsSchedules).where(scheduleWhere))[0]
         ?.admission_hold,
@@ -162,6 +227,7 @@ test("missing authority stays held and retryable; later approval admits exactly 
   } finally {
     warn.mockRestore();
     error.mockRestore();
+    await disposeBoss(executionBoss);
   }
 });
 
@@ -223,6 +289,103 @@ test("dynamic effects require concrete review and stay out of the execution queu
     warn.mockRestore();
     error.mockRestore();
   }
+});
+
+test("deactivating a person revokes their key while an approved schedule still runs as system", async () => {
+  const [person] = await ctx.testDb.db
+    .insert(users)
+    .values({
+      tenant_id: ctx.tenantId,
+      email: "deactivated-scheduler-user@test.local",
+      role_id: await builtinRoleId(ctx.testDb.db, "member"),
+    })
+    .returning();
+  if (!person) throw new Error("fixture user missing");
+  const key = await issueApiKey(
+    { tenant_id: ctx.tenantId, owner_kind: "user", owner_id: person.id, actor_id: null },
+    ctx.testDb.db,
+  );
+  const { workflow_id } = await createWorkflowRow(ctx, {
+    name: "System-owned after person deactivation",
+    slug: "system-owned-after-person-deactivation",
+    steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+  });
+  const now = await databaseNow(ctx.testDb.db);
+  const [schedule] = await ctx.testDb.db
+    .insert(workflowsSchedules)
+    .values({
+      tenant_id: ctx.tenantId,
+      workflow_id,
+      cron: "* * * * *",
+      timezone: "UTC",
+      paused: false,
+      last_enqueued_at: null,
+      created_at: new Date(now.getTime() - 5 * 60_000),
+    })
+    .returning();
+  if (!schedule) throw new Error("fixture schedule missing");
+  await grantScheduleAuthorityFixture(ctx.testDb.db, ctx.tenantId, workflow_id);
+
+  await deactivateUser(
+    { tenant_id: ctx.tenantId, user_id: person.id, actor_id: null },
+    ctx.testDb.db,
+  );
+
+  const [revokedKey] = await ctx.testDb.db
+    .select({ revoked_at: apiKeys.revoked_at })
+    .from(apiKeys)
+    .where(eq(apiKeys.id, key.view.id));
+  expect(revokedKey?.revoked_at).toBeInstanceOf(Date);
+  const scheduleWhere = and(
+    eq(workflowsSchedules.id, schedule.id),
+    eq(workflowsSchedules.tenant_id, ctx.tenantId),
+  );
+  const [retainedSchedule] = await ctx.testDb.db
+    .select()
+    .from(workflowsSchedules)
+    .where(scheduleWhere);
+  expect(retainedSchedule).toMatchObject({
+    id: schedule.id,
+    workflow_id,
+    cron: "* * * * *",
+    timezone: "UTC",
+    paused: false,
+    last_enqueued_at: null,
+  });
+
+  const sent: Array<{ queue: string; payload: Record<string, unknown> }> = [];
+  const boss = {
+    send: async (queue: string, payload: Record<string, unknown>) => {
+      sent.push({ queue, payload });
+      return "job";
+    },
+  } as unknown as PgBoss;
+  await new SchedulerReconciler({ boss, db: ctx.testDb.db }).reconcileWorkflowSchedules(now);
+  const personIndependentRuns = sent.filter((job) => job.payload.workflow_id === workflow_id);
+  expect(personIndependentRuns).toHaveLength(1);
+  expect(personIndependentRuns[0]?.payload).toMatchObject({
+    tenant_id: ctx.tenantId,
+    workflow_id,
+    request_source: "scheduler",
+    execution_mode: "prod",
+  });
+  expect(personIndependentRuns[0]?.payload).not.toHaveProperty("caller_origin");
+  const [execution] = await ctx.testDb.db
+    .select({ caller_origin: executions.caller_origin, caller_context: executions.caller_context })
+    .from(executions)
+    .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.workflow_id, workflow_id)));
+  expect(execution).toEqual({ caller_origin: "trusted_system", caller_context: null });
+  const [fired] = await ctx.testDb.db
+    .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, ctx.tenantId),
+        eq(auditLog.action, "schedule.trigger.fired"),
+        eq(auditLog.resource_id, schedule.id),
+      ),
+    );
+  expect(fired).toEqual({ actor_type: "system", actor_id: null });
 });
 
 test("technical failures and lookalike messages remain errors", () => {

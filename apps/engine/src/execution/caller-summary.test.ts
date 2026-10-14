@@ -1,14 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { describeExecutionCaller, ExecutionCallerSchema } from "./caller-summary.ts";
 
 const RUN = "11111111-1111-4111-8111-111111111111";
 const ROOT = "22222222-2222-4222-8222-222222222222";
+const TENANT = "44444444-4444-4444-8444-444444444444";
 const PERSON = "33333333-3333-4333-8333-333333333333";
 
 describe("who started a run", () => {
   test("a person signed in through the browser is named with how SubKit checked them", () => {
     const caller = describeExecutionCaller({
       id: RUN,
+      tenant_id: TENANT,
+      workflow_id: null,
+      caller_origin: "principal",
       request_source: "cockpit",
       authority_root_execution_id: null,
       caller_context: {
@@ -37,6 +42,9 @@ describe("who started a run", () => {
     test(`a ${channel} run without saved identity reports an unknown caller`, () => {
       const caller = describeExecutionCaller({
         id: RUN,
+        tenant_id: TENANT,
+        workflow_id: null,
+        caller_origin: "unknown",
         request_source: channel,
         authority_root_execution_id: null,
         caller_context: null,
@@ -58,6 +66,9 @@ describe("who started a run", () => {
   test("a saved system account keeps its verified identity", () => {
     const caller = describeExecutionCaller({
       id: RUN,
+      tenant_id: TENANT,
+      workflow_id: null,
+      caller_origin: "principal",
       request_source: "scheduler",
       authority_root_execution_id: null,
       caller_context: {
@@ -85,6 +96,9 @@ describe("who started a run", () => {
   test("a nested run keeps pointing at the run that was originally asked for", () => {
     const nested = describeExecutionCaller({
       id: RUN,
+      tenant_id: TENANT,
+      workflow_id: null,
+      caller_origin: "unknown",
       request_source: "workflow",
       authority_root_execution_id: ROOT,
       caller_context: null,
@@ -92,6 +106,9 @@ describe("who started a run", () => {
     });
     const root = describeExecutionCaller({
       id: ROOT,
+      tenant_id: TENANT,
+      workflow_id: null,
+      caller_origin: "unknown",
       request_source: "api",
       authority_root_execution_id: ROOT,
       caller_context: null,
@@ -104,6 +121,9 @@ describe("who started a run", () => {
   test("the credential behind a run never leaves the engine", () => {
     const caller = describeExecutionCaller({
       id: RUN,
+      tenant_id: TENANT,
+      workflow_id: null,
+      caller_origin: "unknown",
       request_source: "api",
       authority_root_execution_id: null,
       caller_context: null,
@@ -118,8 +138,72 @@ describe("who started a run", () => {
     const text = JSON.stringify(caller);
     expect(caller.kind).toBe("unknown");
     expect(caller.principal_id).toBeNull();
-    expect(caller.verified_by).toBe("api_key");
+    expect(caller.verified_by).toBeNull();
     expect(text).not.toContain("66666666");
     expect(text).not.toContain("secret-version");
+  });
+
+  test("only stored system provenance identifies an engine run", () => {
+    const row = {
+      id: RUN,
+      tenant_id: TENANT,
+      workflow_id: null,
+      caller_origin: "trusted_system" as const,
+      request_source: "scheduler",
+      authority_root_execution_id: null,
+      caller_context: null,
+      authorization_context: null,
+    };
+    expect(describeExecutionCaller(row).kind).toBe("engine");
+    expect(describeExecutionCaller({ ...row, caller_origin: "unknown" }).kind).toBe("unknown");
+    expect(describeExecutionCaller(row).verified_by).toBeNull();
+  });
+
+  test("mismatched caller and permission snapshots never claim authentication", () => {
+    const caller = {
+      tenantId: TENANT,
+      principalId: PERSON,
+      principalKind: "user" as const,
+      provider: "oidc",
+      productId: null,
+    };
+    const row = {
+      id: RUN,
+      tenant_id: TENANT,
+      workflow_id: ROOT,
+      caller_origin: "principal" as const,
+      request_source: "cockpit",
+      authority_root_execution_id: null,
+      caller_context: caller,
+      authorization_context: {
+        source: { kind: "browser_session" as const, session_id: ROOT },
+        workflow_permission: {
+          permission: "workflow:run" as const,
+          phase: "admission" as const,
+          workflow_id: ROOT,
+          tenant_id: TENANT,
+          principal_id: PERSON,
+          principal_kind: "user" as const,
+          source: "role" as const,
+          checked_at: new Date(FROZEN_NOW).toISOString(),
+        },
+      },
+    };
+    expect(describeExecutionCaller(row).verified_by).toBe("browser_session");
+    for (const patch of [{ tenant_id: RUN }, { principal_id: RUN }, { workflow_id: RUN }]) {
+      expect(
+        describeExecutionCaller({
+          ...row,
+          authorization_context: {
+            ...row.authorization_context,
+            workflow_permission: { ...row.authorization_context.workflow_permission, ...patch },
+          },
+        }).verified_by,
+      ).toBeNull();
+    }
+    const foreign = describeExecutionCaller({ ...row, tenant_id: RUN });
+    expect(foreign.kind).toBe("unknown");
+    expect(foreign.verified_by).toBeNull();
+    expect(foreign.principal_id).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { recordKnowledgeSourceRefreshed } from "../../audit/recorders/index.ts";
+import type { AuditActorType } from "../../audit/types.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../../db/client.ts";
@@ -37,6 +38,7 @@ export interface DiscoveryServiceArgs {
 export interface DiscoveryServiceContext {
   db: Db;
   tenant_id: string;
+  actor_type?: AuditActorType;
   actor_id: string | null;
   abortSignal?: AbortSignal;
 }
@@ -302,6 +304,7 @@ async function writeCacheRows(
     });
     await recordKnowledgeSourceRefreshed({
       tenant_id: ctx.tenant_id,
+      ...(ctx.actor_type ? { actor_type: ctx.actor_type } : {}),
       actor_id: ctx.actor_id,
       executor: tx,
       knowledge_source_id: prior.id,
@@ -357,6 +360,7 @@ async function writeCacheRows(
   });
   await recordKnowledgeSourceRefreshed({
     tenant_id: ctx.tenant_id,
+    ...(ctx.actor_type ? { actor_type: ctx.actor_type } : {}),
     actor_id: ctx.actor_id,
     executor: tx,
     knowledge_source_id: inserted.id,

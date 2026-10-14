@@ -24,7 +24,14 @@ export const auditLog = pgTable(
   (t) => [
     index("audit_log_tenant_ts_idx").on(t.tenant_id, t.ts),
     index("audit_log_tenant_action_ts_idx").on(t.tenant_id, t.action, t.ts),
-    check("audit_log_actor_type_check", sql`${t.actor_type} IN ('user','system_account','system')`),
+    check(
+      "audit_log_actor_type_check",
+      sql`${t.actor_type} IN ('user','system_account','system','unknown')`,
+    ),
+    check(
+      "audit_log_unknown_actor_id_check",
+      sql`${t.actor_type} <> 'unknown' OR ${t.actor_id} IS NULL`,
+    ),
     check("audit_log_result_check", sql`${t.result} IN ('success','denied','error')`),
   ],
 );

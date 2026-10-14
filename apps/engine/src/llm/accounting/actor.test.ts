@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { actorFields } from "./actor.ts";
+import { actorFields, engineClientActorType } from "./actor.ts";
 
 const BASE: Omit<ResolvedPrincipal, "kind" | "id"> = {
   provider: "test",
@@ -47,5 +47,18 @@ describe("actorFields", () => {
     const result = actorFields();
     expect(result.user_id).toBeNull();
     expect(result.actor_type).toBe("system");
+  });
+});
+
+describe("engineClientActorType", () => {
+  it("preserves typed principals and treats legacy actor IDs as unknown", () => {
+    const principal: ResolvedPrincipal = {
+      ...BASE,
+      kind: "system_account",
+      id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    };
+    expect(engineClientActorType(principal, principal.id)).toBe("system_account");
+    expect(engineClientActorType(null, null)).toBe("system");
+    expect(engineClientActorType(null, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")).toBe("unknown");
   });
 });

@@ -110,7 +110,9 @@ function readLatency(row: Record<string, unknown>): LatencyAgg {
 }
 
 export function buildWhere(
-  p: Pick<LlmStatsParams, "tenantId" | "from" | "to" | "model" | "flow" | "userId">,
+  p: Pick<LlmStatsParams, "tenantId" | "from" | "to" | "model" | "flow" | "userId"> & {
+    groupBy?: LlmGroupDim[];
+  },
 ): SQL {
   const conds: SQL[] = [
     sql`llm_usage.tenant_id = ${p.tenantId}`,
@@ -119,7 +121,13 @@ export function buildWhere(
   ];
   if (p.model && p.model.length > 0) conds.push(sql`llm_usage.model in ${p.model}`);
   if (p.flow && p.flow.length > 0) conds.push(sql`llm_usage.flow in ${p.flow}`);
-  if (p.userId) conds.push(sql`llm_usage.user_id = ${p.userId}`);
+  if (p.userId) {
+    conds.push(sql`llm_usage.user_id = ${p.userId}`);
+    conds.push(sql`llm_usage.actor_type = 'user'`);
+  }
+  if (p.groupBy?.includes("user")) {
+    conds.push(sql`(llm_usage.actor_type = 'user' or llm_usage.user_id is null)`);
+  }
   return sql.join(conds, sql` and `);
 }
 

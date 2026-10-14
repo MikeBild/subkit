@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { AuditAction } from "../../../audit/types.ts";
 import { markConnectorNeedsReauth } from "../../../connectors/reauth.ts";
 import { upsertCredential } from "../../../credentials/service.ts";
-import { connectors } from "../../../db/schema/index.ts";
+import { auditLog, connectors } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { disabledConnectorRefusal } from "../../../execution/connector-availability.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
@@ -121,6 +122,18 @@ describe("call_connector tool — the re-auth clearing edge", () => {
     expect(result.ok).toBe(true);
     expect(authorizationSeen).toEqual([`Bearer ${STORED_TOKEN}`]);
     expect(await flagged(connector_id)).toBe(false);
+    const [audit] = await ctx.testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenant_id),
+          eq(auditLog.action, AuditAction.CONNECTOR_INVOKED),
+          eq(auditLog.resource_id, connector_id),
+        ),
+      )
+      .limit(1);
+    expect(audit).toEqual({ actor_type: "user", actor_id: ctx.user_id });
   });
 
   test("a caller Authorization collision is refused before dispatch and leaves reauth standing", async () => {

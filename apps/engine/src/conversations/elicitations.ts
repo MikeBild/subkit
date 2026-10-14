@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
-import { auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db, Executor } from "../db/client.ts";
@@ -12,7 +12,7 @@ import {
 } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { APPROVAL_TTL_MS } from "../tools/approval.ts";
-import type { DecidedBy } from "./decided-by.ts";
+import { type DecidedBy, decidedByAuditActor } from "./decided-by.ts";
 import {
   approvalHandleFromElicitationInput,
   isWorkflowInputForm,
@@ -153,6 +153,7 @@ export interface CreateElicitationParams {
   summary: string;
   input: unknown;
   actor_id: string | null;
+  actor_type?: import("../audit/types.ts").AuditActorType;
   expires_at?: Date;
 }
 
@@ -274,8 +275,11 @@ async function insertElicitation(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: "system",
-      actor_id: p.actor_id,
+      ...resolveActor({
+        tenant_id: p.tenant_id,
+        actor_id: p.actor_id,
+        actor_type: p.actor_type ?? (p.actor_id === null ? "system" : "unknown"),
+      }),
       action: isWorkflowInputForm(p.tool_name, p.input)
         ? AuditAction.CONVERSATION_UPDATED
         : AuditAction.APPROVAL_REQUESTED,
@@ -526,7 +530,7 @@ export async function resolveElicitation(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      ...auditActor(p.decided_by),
+      ...decidedByAuditActor(p.decided_by),
       action:
         status === "timeout"
           ? AuditAction.ELICITATION_EXPIRED

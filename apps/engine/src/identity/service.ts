@@ -1,6 +1,8 @@
 import { and, count, desc, eq, isNull, or } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
-import { AuditAction } from "../audit/types.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
+import { AuditAction, type AuditActorType } from "../audit/types.ts";
+import type { PrincipalKind } from "../auth/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import {
@@ -88,7 +90,9 @@ export interface UpdateUserInput {
   id: string;
   role?: UserRole;
   role_id?: string;
+  display_name?: string | null;
   actor_id: string | null;
+  actor_kind?: PrincipalKind | "system";
 }
 
 export async function updateUser(input: UpdateUserInput, exec?: Executor) {
@@ -104,28 +108,35 @@ export async function updateUser(input: UpdateUserInput, exec?: Executor) {
     const before = current[0];
     if (!before) return null;
 
-    const patch: { role_id?: string; updated_at: Date } = {
-      updated_at: new Date(now()),
-    };
+    const patch: { role_id?: string; display_name?: string | null; updated_at?: Date } = {};
     if (input.role_id !== undefined) patch.role_id = input.role_id;
     else if (input.role !== undefined) patch.role_id = await builtinRoleId(tx, input.role);
+    if (input.display_name !== undefined) patch.display_name = input.display_name;
 
     const nextRoleId = patch.role_id ?? before.role_id;
-    const [assigned] = await tx
-      .select({ name: roles.name })
-      .from(roles)
-      .where(
-        and(
-          eq(roles.id, nextRoleId),
-          or(isNull(roles.tenant_id), eq(roles.tenant_id, input.tenant_id)),
-        ),
-      )
-      .limit(1);
-    await assertAdminRemains(tx, {
-      tenant_id: input.tenant_id,
-      user_id: input.id,
-      nextEffectiveRole: assigned?.name ?? null,
-    });
+    const roleChanged = patch.role_id !== undefined && patch.role_id !== before.role_id;
+    const profileChanged =
+      patch.display_name !== undefined && patch.display_name !== before.display_name;
+    if (!roleChanged && !profileChanged) return before;
+    if (roleChanged) {
+      patch.updated_at = new Date(now());
+      const [assigned] = await tx
+        .select({ name: roles.name })
+        .from(roles)
+        .where(
+          and(
+            eq(roles.id, nextRoleId),
+            or(isNull(roles.tenant_id), eq(roles.tenant_id, input.tenant_id)),
+          ),
+        )
+        .limit(1);
+      await assertAdminRemains(tx, {
+        tenant_id: input.tenant_id,
+        user_id: input.id,
+        nextEffectiveRole: assigned?.name ?? null,
+      });
+    }
+    if (profileChanged && !roleChanged) patch.updated_at = new Date(now());
 
     const [row] = await tx
       .update(users)
@@ -133,21 +144,38 @@ export async function updateUser(input: UpdateUserInput, exec?: Executor) {
       .where(and(eq(users.tenant_id, input.tenant_id), eq(users.id, input.id)))
       .returning();
     if (!row) return null;
-    await auditAwait(
-      {
-        tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
-        action: AuditAction.USER_ROLE_CHANGED,
-        resource_type: "user",
-        resource_id: row.id,
-        result: "success",
-        before: { role_id: before.role_id },
-        after: { role_id: row.role_id },
-        metadata: { email: row.email },
-      },
-      tx,
-    );
+    if (roleChanged) {
+      await auditAwait(
+        {
+          tenant_id: input.tenant_id,
+          ...resolveActor({ actor_type: input.actor_kind, actor_id: input.actor_id }),
+          action: AuditAction.USER_ROLE_CHANGED,
+          resource_type: "user",
+          resource_id: row.id,
+          result: "success",
+          before: { role_id: before.role_id },
+          after: { role_id: row.role_id },
+          metadata: { email: row.email },
+        },
+        tx,
+      );
+    }
+    if (profileChanged) {
+      await auditAwait(
+        {
+          tenant_id: input.tenant_id,
+          ...resolveActor({ actor_type: input.actor_kind, actor_id: input.actor_id }),
+          action: AuditAction.USER_PROFILE_UPDATED,
+          resource_type: "user",
+          resource_id: row.id,
+          result: "success",
+          before: { display_name: before.display_name },
+          after: { display_name: row.display_name },
+          metadata: { email: row.email },
+        },
+        tx,
+      );
+    }
     return row;
   });
 }
@@ -171,6 +199,7 @@ export interface CreateSystemAccountInput {
   tenant_id: string;
   name: string;
   description?: string | null;
+  actor_kind?: PrincipalKind;
   actor_id: string | null;
 }
 
@@ -189,8 +218,7 @@ export async function createSystemAccount(input: CreateSystemAccountInput, exec?
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: "user",
-        actor_id: input.actor_id,
+        ...resolveActor({ actor_type: input.actor_kind, actor_id: input.actor_id }),
         action: AuditAction.SYSTEM_ACCOUNT_CREATED,
         resource_type: "system_account",
         resource_id: row.id,
@@ -206,6 +234,7 @@ export async function createSystemAccount(input: CreateSystemAccountInput, exec?
 export interface DeleteSystemAccountInput {
   tenant_id: string;
   id: string;
+  actor_kind?: PrincipalKind;
   actor_id: string | null;
 }
 
@@ -227,8 +256,7 @@ export async function deleteSystemAccount(input: DeleteSystemAccountInput, exec?
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: "user",
-        actor_id: input.actor_id,
+        ...resolveActor({ actor_type: input.actor_kind, actor_id: input.actor_id }),
         action: AuditAction.SYSTEM_ACCOUNT_DELETED,
         resource_type: "system_account",
         resource_id: row.id,
@@ -249,6 +277,7 @@ export interface ApiKeyView {
   scopes: string[];
   user_id: string | null;
   system_account_id: string | null;
+  creator: ApiKeyCreator | null;
   allowed_workflows: string[] | null;
   allowed_connectors: string[] | null;
   created_at: Date;
@@ -257,6 +286,27 @@ export interface ApiKeyView {
   rotating_out_at: Date | null;
   rotated_from_id: string | null;
   revoked_at: Date | null;
+}
+
+export type ApiKeyCreator =
+  | { kind: "user"; id: string }
+  | { kind: "system_account"; id: string }
+  | { kind: "system"; id: null };
+
+function resolveApiKeyCreator(
+  actor: ApiKeyCreator | null | undefined,
+  actorId: string | null | undefined,
+): ApiKeyCreator | null {
+  if (actor === undefined) return null;
+  const expectedActorId = actor && actor.kind !== "system" ? actor.id : null;
+  if (actorId !== undefined && actorId !== expectedActorId) {
+    throw new Error("api_key_actor_provenance_mismatch");
+  }
+  return actor;
+}
+
+function apiKeyActorId(actor: ApiKeyCreator | null | undefined): string | null {
+  return actor && actor.kind !== "system" ? actor.id : null;
 }
 
 function toApiKeyView(row: typeof apiKeys.$inferSelect): ApiKeyView {
@@ -268,6 +318,14 @@ function toApiKeyView(row: typeof apiKeys.$inferSelect): ApiKeyView {
     scopes: row.scopes,
     user_id: row.user_id ?? null,
     system_account_id: row.system_account_id ?? null,
+    creator:
+      row.creator_kind === "user" && row.creator_id
+        ? { kind: "user", id: row.creator_id }
+        : row.creator_kind === "system_account" && row.creator_id
+          ? { kind: "system_account", id: row.creator_id }
+          : row.creator_kind === "system" && row.creator_id === null
+            ? { kind: "system", id: null }
+            : null,
     allowed_workflows: row.allowed_workflows ?? null,
     allowed_connectors: row.allowed_connectors ?? null,
     created_at: row.created_at,
@@ -312,7 +370,8 @@ export interface IssueApiKeyInput {
   allowed_workflows?: string[];
   allowed_connectors?: string[];
   expires_at?: Date;
-  actor_id: string | null;
+  actor?: ApiKeyCreator | null;
+  actor_id?: string | null;
   rotated_from_id?: string;
 }
 
@@ -326,6 +385,8 @@ export async function issueApiKey(
   exec?: Executor,
 ): Promise<IssueApiKeyResult> {
   const db = exec ?? getDb();
+  const actor = resolveApiKeyCreator(input.actor, input.actor_id);
+  const actorId = apiKeyActorId(input.actor);
   const key = generateKey();
   return db.transaction(async (tx) => {
     const [row] = await tx
@@ -334,6 +395,8 @@ export async function issueApiKey(
         tenant_id: input.tenant_id,
         user_id: input.owner_kind === "user" ? input.owner_id : null,
         system_account_id: input.owner_kind === "system_account" ? input.owner_id : null,
+        creator_kind: actor?.kind ?? null,
+        creator_id: actor?.kind === "system" ? null : (actor?.id ?? null),
         prefix: key.prefix,
         token_sha256: key.hash,
         name: input.name ?? null,
@@ -348,8 +411,8 @@ export async function issueApiKey(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        actor_type: actor?.kind ?? "unknown",
+        actor_id: actor ? actorId : null,
         action: AuditAction.API_KEY_ISSUED,
         resource_type: "api_key",
         resource_id: row.id,
@@ -370,7 +433,7 @@ export async function issueApiKey(
       owner_kind: input.owner_kind,
       has_expiry: row.expires_at !== null,
       rotated_from_id: input.rotated_from_id ?? null,
-      actor_id: input.actor_id,
+      actor_id: actorId,
     });
     return { view: toApiKeyView(row), plaintext: key.plaintext };
   });
@@ -380,7 +443,8 @@ export interface RotateApiKeyInput {
   tenant_id: string;
   id: string;
   overlap_minutes?: number;
-  actor_id: string | null;
+  actor?: ApiKeyCreator | null;
+  actor_id?: string | null;
 }
 
 export interface RotateApiKeyResult {
@@ -394,6 +458,8 @@ export async function rotateApiKey(
   exec?: Executor,
 ): Promise<RotateApiKeyResult | null> {
   const db = exec ?? getDb();
+  const actor = resolveApiKeyCreator(input.actor, input.actor_id);
+  const actorId = apiKeyActorId(input.actor);
   const overlapMs = (input.overlap_minutes ?? 60) * 60_000;
   return db.transaction(async (tx) => {
     const existingRows = await tx
@@ -411,6 +477,8 @@ export async function rotateApiKey(
         tenant_id: existing.tenant_id,
         user_id: existing.user_id ?? null,
         system_account_id: existing.system_account_id ?? null,
+        creator_kind: actor?.kind ?? null,
+        creator_id: actor?.kind === "system" ? null : (actor?.id ?? null),
         prefix: key.prefix,
         token_sha256: key.hash,
         name: existing.name ?? null,
@@ -434,8 +502,8 @@ export async function rotateApiKey(
     await auditAwait(
       {
         tenant_id: existing.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        actor_type: actor?.kind ?? "unknown",
+        actor_id: actor ? actorId : null,
         action: AuditAction.API_KEY_ISSUED,
         resource_type: "api_key",
         resource_id: created.id,
@@ -452,8 +520,8 @@ export async function rotateApiKey(
     await auditAwait(
       {
         tenant_id: existing.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        actor_type: actor?.kind ?? "unknown",
+        actor_id: actor ? actorId : null,
         action: AuditAction.API_KEY_ROTATED,
         resource_type: "api_key",
         resource_id: existing.id,
@@ -474,7 +542,7 @@ export async function rotateApiKey(
       old_prefix: existing.prefix,
       new_prefix: created.prefix,
       overlap_minutes: input.overlap_minutes ?? 60,
-      actor_id: input.actor_id,
+      actor_id: actorId,
     });
 
     return {
@@ -489,6 +557,7 @@ export interface RevokeApiKeyInput {
   tenant_id: string;
   id: string;
   actor_id: string | null;
+  actor_kind?: AuditActorType;
 }
 
 export async function revokeApiKey(
@@ -512,8 +581,7 @@ export async function revokeApiKey(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...resolveActor({ actor_type: input.actor_kind, actor_id: input.actor_id }),
         action: AuditAction.API_KEY_REVOKED,
         resource_type: "api_key",
         resource_id: row.id,
@@ -572,6 +640,7 @@ export interface IssuePortalTokenInput {
   allowed_workflows: string[];
   ttl_minutes?: number;
   actor_id: string | null;
+  actor_kind?: PrincipalKind | "system";
 }
 
 export interface IssuePortalTokenResult {
@@ -602,8 +671,7 @@ export async function issuePortalToken(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...resolveActor({ actor_type: input.actor_kind, actor_id: input.actor_id }),
         action: AuditAction.PORTAL_TOKEN_ISSUED,
         resource_type: "portal_token",
         resource_id: row.id,
@@ -631,6 +699,7 @@ export interface RevokePortalTokenInput {
   tenant_id: string;
   id: string;
   actor_id: string | null;
+  actor_kind?: AuditActorType;
 }
 
 export async function revokePortalToken(input: RevokePortalTokenInput, exec?: Executor) {
@@ -651,8 +720,7 @@ export async function revokePortalToken(input: RevokePortalTokenInput, exec?: Ex
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...resolveActor({ actor_type: input.actor_kind, actor_id: input.actor_id }),
         action: AuditAction.PORTAL_TOKEN_REVOKED,
         resource_type: "portal_token",
         resource_id: row.id,

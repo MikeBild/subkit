@@ -1,6 +1,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
-import { AuditAction } from "../audit/types.ts";
+import { AuditAction, type AuditActorType } from "../audit/types.ts";
+import type { PrincipalKind } from "../auth/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { apiKeys, sessions, userInvites, users } from "../db/schema/index.ts";
@@ -13,6 +14,19 @@ import { assertAdminRemains } from "./last-admin.ts";
 import { revokeConnectionsForUser } from "./oauth-connections.ts";
 import { type IssueApiKeyResult, issueApiKey, type UserRole, type UserStatus } from "./service.ts";
 
+function auditActor(
+  actorKind: PrincipalKind | "system" | undefined,
+  actorId: string | null,
+): {
+  actor_type: AuditActorType;
+  actor_id: string | null;
+} {
+  if (!actorKind || (actorKind !== "system" && actorId === null)) {
+    return { actor_type: "unknown", actor_id: null };
+  }
+  return { actor_type: actorKind, actor_id: actorKind === "system" ? null : actorId };
+}
+
 export class DuplicateUserError extends Error {
   readonly code = "duplicate_user" as const;
   constructor(email: string) {
@@ -24,10 +38,12 @@ export class DuplicateUserError extends Error {
 export interface CreateUserInput {
   tenant_id: string;
   email: string;
+  display_name?: string | null;
   role?: UserRole;
   role_id?: string;
   status?: UserStatus;
   actor_id: string | null;
+  actor_kind?: PrincipalKind | "system";
 }
 
 export async function createUser(input: CreateUserInput, exec?: Executor) {
@@ -53,6 +69,7 @@ export async function createUser(input: CreateUserInput, exec?: Executor) {
       .values({
         tenant_id: input.tenant_id,
         email: input.email,
+        display_name: input.display_name ?? null,
         role_id: roleId,
         status: input.status ?? "active",
       })
@@ -61,13 +78,17 @@ export async function createUser(input: CreateUserInput, exec?: Executor) {
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...auditActor(input.actor_kind, input.actor_id),
         action: AuditAction.USER_CREATED,
         resource_type: "user",
         resource_id: row.id,
         result: "success",
-        metadata: { email: row.email, role_id: row.role_id, status: row.status },
+        metadata: {
+          email: row.email,
+          display_name: row.display_name,
+          role_id: row.role_id,
+          status: row.status,
+        },
       },
       tx,
     );
@@ -79,6 +100,7 @@ export interface DeactivateUserInput {
   tenant_id: string;
   user_id: string;
   actor_id: string | null;
+  actor_kind?: PrincipalKind | "system";
 }
 
 export async function deactivateUser(input: DeactivateUserInput, exec?: Executor) {
@@ -119,8 +141,7 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
       await auditAwait(
         {
           tenant_id: input.tenant_id,
-          actor_type: input.actor_id ? "user" : "system",
-          actor_id: input.actor_id,
+          ...auditActor(input.actor_kind, input.actor_id),
           action: AuditAction.API_KEY_REVOKED,
           resource_type: "api_key",
           resource_id: key.id,
@@ -141,8 +162,7 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
       await auditAwait(
         {
           tenant_id: input.tenant_id,
-          actor_type: input.actor_id ? "user" : "system",
-          actor_id: input.actor_id,
+          ...auditActor(input.actor_kind, input.actor_id),
           action: AuditAction.MCP_OAUTH_TOKEN_REVOKED,
           resource_type: "mcp_oauth_token",
           resource_id: row.id,
@@ -174,8 +194,7 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
       await auditAwait(
         {
           tenant_id: input.tenant_id,
-          actor_type: input.actor_id ? "user" : "system",
-          actor_id: input.actor_id,
+          ...auditActor(input.actor_kind, input.actor_id),
           action: AuditAction.SESSION_REVOKED,
           resource_type: "session",
           resource_id: session.id,
@@ -203,8 +222,7 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
       await auditAwait(
         {
           tenant_id: input.tenant_id,
-          actor_type: input.actor_id ? "user" : "system",
-          actor_id: input.actor_id,
+          ...auditActor(input.actor_kind, input.actor_id),
           action: AuditAction.INVITE_REVOKED,
           resource_type: "user_invite",
           resource_id: inv.id,
@@ -218,8 +236,7 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...auditActor(input.actor_kind, input.actor_id),
         action: AuditAction.USER_DELETED,
         resource_type: "user",
         resource_id: row.id,
@@ -279,6 +296,7 @@ export interface CreateInviteInput {
   allowed_connectors?: string[];
   ttl_minutes?: number;
   actor_id: string | null;
+  actor_kind?: PrincipalKind | "system";
 }
 
 export interface CreateInviteResult {
@@ -313,8 +331,7 @@ export async function createInvite(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...auditActor(input.actor_kind, input.actor_id),
         action: AuditAction.USER_INVITED,
         resource_type: "user_invite",
         resource_id: row.id,
@@ -376,6 +393,7 @@ export interface RevokeInviteInput {
   tenant_id: string;
   invite_id: string;
   actor_id: string | null;
+  actor_kind?: PrincipalKind | "system";
 }
 
 export async function revokeInvite(
@@ -400,8 +418,7 @@ export async function revokeInvite(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...auditActor(input.actor_kind, input.actor_id),
         action: AuditAction.INVITE_REVOKED,
         resource_type: "user_invite",
         resource_id: row.id,
@@ -488,7 +505,7 @@ export async function redeemInvite(
         scopes: claimed.scopes,
         ...(claimed.allowed_workflows ? { allowed_workflows: claimed.allowed_workflows } : {}),
         ...(claimed.allowed_connectors ? { allowed_connectors: claimed.allowed_connectors } : {}),
-        actor_id: null,
+        actor: { kind: "system", id: null },
       },
       tx,
     );

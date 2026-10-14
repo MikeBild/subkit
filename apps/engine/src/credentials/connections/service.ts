@@ -1,12 +1,16 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, asc, count, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
+import { type Actor, auditActor } from "../../audit/actor.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
+import { resolveActor } from "../../audit/recorders/types.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import {
   connectors,
   credentials,
   outboundConnectionStarts,
   outboundConnections,
+  systemAccounts,
+  users,
 } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { invalidateTenantState } from "../../operator/index.ts";
@@ -62,6 +66,25 @@ export function secretNames(tenantId: string, name: string): { access: string; r
   };
 }
 
+async function legacyOwnerForStart(
+  db: Executor,
+  start: Pick<typeof outboundConnectionStarts.$inferSelect, "tenant_id" | "user_id">,
+): Promise<string | null> {
+  if (!start.user_id) return null;
+  const [systemAccount] = await db
+    .select({ id: systemAccounts.id })
+    .from(systemAccounts)
+    .where(and(eq(systemAccounts.tenant_id, start.tenant_id), eq(systemAccounts.id, start.user_id)))
+    .limit(1);
+  if (systemAccount) return null;
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.tenant_id, start.tenant_id), eq(users.id, start.user_id)))
+    .limit(1);
+  return user?.id ?? null;
+}
+
 function assertName(name: string): void {
   if (!NAME_PATTERN.test(name)) {
     throw new ConnectionError(
@@ -73,7 +96,8 @@ function assertName(name: string): void {
 
 export interface StartConnectionInput {
   tenant_id: string;
-  user_id: string;
+  actor: Actor;
+  owner_user_id: string | null;
   name: string;
   base_url: string;
   scopes: string[];
@@ -127,7 +151,10 @@ export async function startConnection(
 
   await db.insert(outboundConnectionStarts).values({
     tenant_id: input.tenant_id,
-    user_id: input.user_id,
+    user_id: input.actor.kind === "user" ? input.actor.id : null,
+    actor_type: input.actor.kind,
+    actor_id: input.actor.id,
+    owner_user_id: input.owner_user_id,
     state_sha256: sha256(state),
     code_verifier,
     redirect_uri: input.redirect_uri,
@@ -260,8 +287,8 @@ export async function completeConnection(
     await auditAwait(
       {
         tenant_id: start.tenant_id,
-        actor_type: "user",
-        actor_id: start.user_id,
+        actor_type: start.actor_type,
+        actor_id: start.actor_id,
         action: AuditAction.CONNECTION_FAILED,
         resource_type: "connection",
         resource_id: start.connection_id,
@@ -328,11 +355,14 @@ export async function completeConnection(
       : [];
     if (start.connection_id && !existing)
       throw new ConnectionError("not_found", "connection was removed during authorization");
+    const ownerUserId = existing
+      ? existing.created_by
+      : (start.owner_user_id ?? (await legacyOwnerForStart(tx, start)));
     const versions = await storeTokens(tx, {
       tenant_id: start.tenant_id,
       name: start.name,
       token,
-      created_by: start.user_id,
+      created_by: ownerUserId,
       previous: {
         access: existing?.access_token_version ?? null,
         refresh: existing?.refresh_token_version ?? null,
@@ -382,7 +412,7 @@ export async function completeConnection(
         .values({
           tenant_id: start.tenant_id,
           name: start.name,
-          created_by: start.user_id,
+          created_by: ownerUserId,
           ...shared,
         })
         .returning({ id: outboundConnections.id });
@@ -393,8 +423,8 @@ export async function completeConnection(
     await auditAwait(
       {
         tenant_id: start.tenant_id,
-        actor_type: "user",
-        actor_id: start.user_id,
+        actor_type: start.actor_type,
+        actor_id: start.actor_id,
         action: existing ? AuditAction.CONNECTION_RENEWED : AuditAction.CONNECTION_CREATED,
         resource_type: "connection",
         resource_id: connectionId,
@@ -612,11 +642,7 @@ export async function summarizeConnections(
   return out;
 }
 
-async function refreshRow(
-  db: Db,
-  row: ConnectionRow,
-  actorId: string | null,
-): Promise<ConnectionRow> {
+async function refreshRow(db: Db, row: ConnectionRow, actor: Actor | null): Promise<ConnectionRow> {
   const names = secretNames(row.tenant_id, row.name);
   if (row.refresh_token_version === null) {
     throw new ConnectionError("refresh_failed", "no refresh token; renew the connection");
@@ -653,7 +679,7 @@ async function refreshRow(
         tenant_id: row.tenant_id,
         name: row.name,
         token,
-        created_by: actorId,
+        created_by: row.created_by,
         previous: { access: row.access_token_version, refresh: row.refresh_token_version },
         grant: "refresh_token",
       });
@@ -685,8 +711,9 @@ async function refreshRow(
       await auditAwait(
         {
           tenant_id: row.tenant_id,
-          actor_type: actorId ? "user" : "system",
-          actor_id: actorId,
+          ...(actor
+            ? auditActor(actor)
+            : resolveActor({ tenant_id: row.tenant_id, actor_id: null })),
           action: AuditAction.CONNECTION_REFRESHED,
           resource_type: "connection",
           resource_id: row.id,
@@ -720,8 +747,7 @@ async function refreshRow(
     await auditAwait(
       {
         tenant_id: row.tenant_id,
-        actor_type: actorId ? "user" : "system",
-        actor_id: actorId,
+        ...(actor ? auditActor(actor) : resolveActor({ tenant_id: row.tenant_id, actor_id: null })),
         action: AuditAction.CONNECTION_REFRESH_FAILED,
         resource_type: "connection",
         resource_id: row.id,
@@ -811,7 +837,7 @@ export async function refreshDueConnections(
 
 export async function disconnectConnection(
   db: Db,
-  args: { tenant_id: string; id: string; actor_id: string | null },
+  args: { tenant_id: string; id: string; actor_id?: string | null; actor?: Actor | null },
 ): Promise<{ name: string }> {
   const row = await requireConnection(db, args.tenant_id, args.id);
   const names = secretNames(row.tenant_id, row.name);
@@ -846,8 +872,9 @@ export async function disconnectConnection(
   await auditAwait(
     {
       tenant_id: args.tenant_id,
-      actor_type: args.actor_id ? "user" : "system",
-      actor_id: args.actor_id,
+      ...(args.actor
+        ? auditActor(args.actor)
+        : resolveActor({ tenant_id: args.tenant_id, actor_id: args.actor_id ?? null })),
       action: AuditAction.CONNECTION_DISCONNECTED,
       resource_type: "connection",
       resource_id: row.id,

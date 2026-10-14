@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { patchCandidates, workflowAutohealPolicies } from "../../db/schema/index.ts";
+import { EngineClient } from "../../engine-client/index.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { dryRunPatchCandidate, previewPatchCandidate } from "../candidate-review.ts";
 import { diffStepPaths } from "../patch-apply.ts";
@@ -121,6 +122,31 @@ describe("previewPatchCandidate", () => {
 });
 
 describe("dryRunPatchCandidate", () => {
+  test("persists an actor-id-only caller as unknown without an actor ID", async () => {
+    const outcome = await dryRunPatchCandidate(
+      {
+        tenant_id: ctx.tenant_id,
+        candidate_id: candidateId,
+        actor_id: "10000000-0000-4000-8000-000000000003",
+      },
+      ctx.testDb.db,
+    );
+    expect(outcome.status).toBe("ran");
+
+    const [audit] = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenant_id),
+          eq(auditLog.action, "patch_candidate.dry_run_requested"),
+          eq(auditLog.resource_id, candidateId),
+        ),
+      );
+    expect(audit?.actor_type).toBe("unknown");
+    expect(audit?.actor_id).toBeNull();
+  });
+
   test("replays without mutating status and writes an audit row", async () => {
     const outcome = await dryRunPatchCandidate(
       { tenant_id: ctx.tenant_id, candidate_id: candidateId, actor_id: null },
@@ -148,6 +174,32 @@ describe("dryRunPatchCandidate", () => {
         ),
       );
     expect(audits.length).toBeGreaterThan(0);
+  });
+
+  test("EngineClient dry runs retain the typed system-account actor", async () => {
+    const accountId = "20000000-0000-4000-8000-000000000003";
+    const client = new EngineClient({
+      tenant_id: ctx.tenant_id,
+      actor_id: accountId,
+      actor_type: "system_account",
+      db: ctx.testDb.db,
+    });
+
+    const outcome = await client.patchCandidates.dryRun(candidateId);
+    expect(outcome.status).toBe("ran");
+
+    const [audit] = await ctx.testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, "patch_candidate.dry_run_requested"),
+          eq(auditLog.resource_id, candidateId),
+          eq(auditLog.actor_id, accountId),
+        ),
+      )
+      .limit(1);
+    expect(audit).toEqual({ actor_type: "system_account", actor_id: accountId });
   });
 
   test("falls back to a synthesized fixture when fixture_id is null", async () => {

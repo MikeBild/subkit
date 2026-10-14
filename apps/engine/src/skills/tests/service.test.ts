@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
-import { skills, tenants } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { auditLog, skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   activateSkill,
@@ -33,6 +33,40 @@ async function seedTenant(): Promise<string> {
 }
 
 describe("skills/service", () => {
+  test("createSkill persists unknown legacy actors and system actors as normalized pairs", async () => {
+    const tenant_id = await seedTenant();
+    const legacy = await createSkill(
+      {
+        tenant_id,
+        input: { scope: "global", title: "legacy-actor", body: "test" },
+        actor_id: tenant_id,
+      },
+      ctx.db,
+    );
+    const system = await createSkill(
+      { tenant_id, input: { scope: "global", title: "system-actor", body: "test" } },
+      ctx.db,
+    );
+    const entries = await ctx.db
+      .select({
+        resource_id: auditLog.resource_id,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+      })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.action, "skill.created")));
+    expect(entries.find((entry) => entry.resource_id === legacy.id)).toEqual({
+      resource_id: legacy.id,
+      actor_type: "unknown",
+      actor_id: null,
+    });
+    expect(entries.find((entry) => entry.resource_id === system.id)).toEqual({
+      resource_id: system.id,
+      actor_type: "system",
+      actor_id: null,
+    });
+  });
+
   test("CRUD + lifecycle + retrieval order", async () => {
     const tenant_id = await seedTenant();
 

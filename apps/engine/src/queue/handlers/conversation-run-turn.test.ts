@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, loadConfig } from "../../config/loader.ts";
 import { createElicitation } from "../../conversations/elicitations.ts";
@@ -13,6 +13,7 @@ import {
   conversations,
   mcpTasks,
   sessions,
+  systemAccounts,
   tenants,
   users,
 } from "../../db/schema/index.ts";
@@ -31,6 +32,7 @@ import {
 import { ConversationTaskStore } from "../../mcp/tasks/task-store.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { flush, waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createQueueCtx, type QueueTestCtx } from "../tests/setup.ts";
 import {
@@ -43,6 +45,7 @@ let queue: QueueTestCtx;
 let tenantId: string;
 let userId: string;
 let queuedPrincipal: ResolvedPrincipal;
+const nextUuid = createDeterministicUuidFactory(0xc011a026);
 function enqueueConversationRunTurn(
   boss: Parameters<typeof enqueueRawConversationRunTurn>[0],
   payload: Parameters<typeof enqueueRawConversationRunTurn>[1],
@@ -157,6 +160,89 @@ async function seedConversationAndTask(
 }
 
 describe("conversation.run-turn worker", () => {
+  test("missing queued principal uses the persisted task caller for audit attribution", async () => {
+    const { conversation_id, mcp_task_id } =
+      await seedConversationAndTask("deny missing principal");
+    await enqueueRawConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      principal: null,
+      kind: "start",
+    });
+    await waitForTerminal(mcp_task_id);
+
+    const denials = await queue.testDb.db
+      .select({
+        action: auditLog.action,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+        reason: auditLog.reason,
+      })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          inArray(auditLog.action, ["policy.denied", "conversation.turn_failed"]),
+          eq(auditLog.resource_id, conversation_id),
+        ),
+      );
+    expect(denials).toHaveLength(2);
+    expect(denials).toContainEqual({
+      action: "policy.denied",
+      actor_type: "user",
+      actor_id: userId,
+      reason: "execution_authentication_unavailable",
+    });
+    expect(denials).toContainEqual({
+      action: "conversation.turn_failed",
+      actor_type: "user",
+      actor_id: userId,
+      reason: "Queued conversation requires authenticated credential provenance.",
+    });
+  }, 20_000);
+
+  test("cross-tenant queued principal does not override persisted task caller", async () => {
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask(
+      "deny cross-tenant principal",
+    );
+    const foreignPrincipal = {
+      ...queuedPrincipal,
+      id: userId,
+      tenant_id: nextUuid(),
+    };
+    await enqueueRawConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      principal: foreignPrincipal,
+      kind: "start",
+    });
+    await waitForTerminal(mcp_task_id);
+
+    const denials = await queue.testDb.db
+      .select({
+        action: auditLog.action,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+      })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          inArray(auditLog.action, ["policy.denied", "conversation.turn_failed"]),
+          eq(auditLog.resource_id, conversation_id),
+        ),
+      );
+    expect(denials).toHaveLength(2);
+    expect(denials).toHaveLength(2);
+    expect(denials.every((entry) => entry.actor_type === "user" && entry.actor_id === userId)).toBe(
+      true,
+    );
+  }, 20_000);
+
   test("a start job runs the turn and writes the terminal envelope into mcp_tasks.result", async () => {
     const { conversation_id, mcp_task_id } = await seedConversationAndTask("list users");
     await enqueueConversationRunTurn(queue.boss, {
@@ -341,6 +427,137 @@ describe("conversation.run-turn worker — failure path", () => {
     expect(audits[0]?.result).toBe("error");
     expect(audits[0]?.reason).toContain("overloaded");
     expect((audits[0]!.metadata as { mcp_task_id?: string }).mcp_task_id).toBe(mcp_task_id);
+  }, 45_000);
+
+  test("a normal failure uses persisted task caller instead of an unverified queued actor_id", async () => {
+    const created = await svc.createConversation(
+      { tenant_id: tenantId, actor_id: userId, initial_message: "fail with mismatched actor" },
+      queue.testDb.db,
+    );
+    const mcp_task_id = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id: created.conversation.id,
+        kind: "start",
+        actor: { kind: "user", id: userId },
+        request_source: "mcp",
+        user_message_id: created.initial_message_id,
+      },
+      queue.testDb.db,
+    );
+    const unverifiedActorId = nextUuid();
+    getMockProvider().setFailure("runturn-primary", "overloaded");
+    getMockProvider().setFailure("runturn-fallback", "overloaded");
+
+    await enqueueRawConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id: created.conversation.id,
+      mcp_task_id,
+      actor_id: unverifiedActorId,
+      principal: queuedPrincipal,
+      kind: "start",
+    });
+    await waitForTerminal(mcp_task_id);
+
+    const [audit] = await queue.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "conversation.turn_failed"),
+          eq(auditLog.resource_id, created.conversation.id),
+        ),
+      );
+    expect(audit?.actor_type).toBe("user");
+    expect(audit?.actor_id).toBe(userId);
+  }, 45_000);
+
+  test("failure audit preserves a persisted system-account caller without a queued principal", async () => {
+    const [account] = await queue.testDb.db
+      .insert(systemAccounts)
+      .values({
+        tenant_id: tenantId,
+        name: "turn-failure-system-account",
+        role_id: await builtinRoleId(queue.testDb.db, "member"),
+      })
+      .returning({ id: systemAccounts.id });
+    if (!account) throw new Error("system account missing");
+    const created = await svc.createConversation(
+      { tenant_id: tenantId, actor_id: null, initial_message: "fail as system account" },
+      queue.testDb.db,
+    );
+    const mcp_task_id = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id: created.conversation.id,
+        kind: "start",
+        actor: { kind: "system_account", id: account.id },
+        request_source: "mcp",
+        user_message_id: created.initial_message_id,
+      },
+      queue.testDb.db,
+    );
+    await enqueueRawConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id: created.conversation.id,
+      mcp_task_id,
+      actor_id: account.id,
+      principal: null,
+      kind: "start",
+    });
+    await waitForTerminal(mcp_task_id);
+    const [audit] = await queue.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "conversation.turn_failed"),
+          eq(auditLog.resource_id, created.conversation.id),
+        ),
+      );
+    expect(audit?.actor_type).toBe("system_account");
+    expect(audit?.actor_id).toBe(account.id);
+  }, 45_000);
+
+  test("a missing legacy caller stays unknown and retains the MCP source", async () => {
+    const created = await svc.createConversation(
+      { tenant_id: tenantId, actor_id: userId, initial_message: "fail without caller" },
+      queue.testDb.db,
+    );
+    const mcp_task_id = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id: created.conversation.id,
+        kind: "start",
+        actor: null,
+        request_source: "mcp",
+        user_message_id: created.initial_message_id,
+      },
+      queue.testDb.db,
+    );
+    await enqueueRawConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id: created.conversation.id,
+      mcp_task_id,
+      actor_id: null,
+      kind: "start",
+    });
+    await waitForTerminal(mcp_task_id);
+    const [audit] = await queue.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "conversation.turn_failed"),
+          eq(auditLog.resource_id, created.conversation.id),
+        ),
+      );
+    expect(audit?.actor_type).toBe("unknown");
+    expect(audit?.actor_id).toBeNull();
+    expect((audit?.metadata as { request_source?: string })?.request_source).toBe("mcp");
   }, 45_000);
 
   test("a provider quota error parks the turn instead of failing it — no failure_reason, job re-enqueued with startAfter", async () => {
@@ -553,6 +770,149 @@ describe("conversation.run-turn worker — cancel in the guard window", () => {
 });
 
 describe("conversation.run-turn worker — respond_elicitation surface threading", () => {
+  test("a failed portal continuation retains the verified approver as its actor", async () => {
+    const [approver] = await queue.testDb.db
+      .insert(users)
+      .values({
+        tenant_id: tenantId,
+        email: "portal-approver@test.local",
+        role_id: await builtinRoleId(queue.testDb.db, "admin"),
+      })
+      .returning({ id: users.id });
+    if (!approver) throw new Error("seed portal approver failed");
+    const created = await svc.createConversation(
+      { tenant_id: tenantId, actor_id: userId, initial_message: "portal failure seed" },
+      queue.testDb.db,
+    );
+    const elicitation = await createElicitation(
+      {
+        tenant_id: tenantId,
+        conversation_id: created.conversation.id,
+        tool_call_id: null,
+        tool_name: "ask_user_text",
+        summary: "portal failure probe",
+        input: { question: "probe?" },
+        actor_id: userId,
+      },
+      queue.testDb.db,
+    );
+    const mcp_task_id = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id: created.conversation.id,
+        kind: "respond_elicitation",
+        actor: { kind: "user", id: userId },
+        request_source: "portal",
+        user_message_id: null,
+      },
+      queue.testDb.db,
+    );
+    const spy = spyOn(svc, "respondElicitation").mockRejectedValue(
+      new Error("portal continuation failed"),
+    );
+    try {
+      await enqueueConversationRunTurn(queue.boss, {
+        tenant_id: tenantId,
+        conversation_id: created.conversation.id,
+        mcp_task_id,
+        actor_id: approver.id,
+        kind: "respond_elicitation",
+        elicitation_id: elicitation.id,
+        answer_channel: "portal",
+        approver_user_id: approver.id,
+      });
+      await waitForTerminal(mcp_task_id);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const [audit] = await queue.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "conversation.turn_failed"),
+          eq(auditLog.resource_id, created.conversation.id),
+        ),
+      );
+    expect(audit?.actor_type).toBe("user");
+    expect(audit?.actor_id).toBe(approver.id);
+  }, 30_000);
+
+  test("a disabled portal approver is unknown in a pre-response failure audit", async () => {
+    const [approver] = await queue.testDb.db
+      .insert(users)
+      .values({
+        tenant_id: tenantId,
+        email: "disabled-portal-approver@test.local",
+        role_id: await builtinRoleId(queue.testDb.db, "admin"),
+        status: "disabled",
+      })
+      .returning({ id: users.id });
+    if (!approver) throw new Error("seed disabled portal approver failed");
+    const created = await svc.createConversation(
+      { tenant_id: tenantId, actor_id: userId, initial_message: "disabled portal failure seed" },
+      queue.testDb.db,
+    );
+    const elicitation = await createElicitation(
+      {
+        tenant_id: tenantId,
+        conversation_id: created.conversation.id,
+        tool_call_id: null,
+        tool_name: "ask_user_text",
+        summary: "disabled portal failure probe",
+        input: { question: "probe?" },
+        actor_id: userId,
+      },
+      queue.testDb.db,
+    );
+    const mcp_task_id = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id: created.conversation.id,
+        kind: "respond_elicitation",
+        actor: { kind: "user", id: userId },
+        request_source: "portal",
+        user_message_id: null,
+      },
+      queue.testDb.db,
+    );
+    const spy = spyOn(svc, "respondElicitation").mockRejectedValue(
+      new Error("authorization failed before response"),
+    );
+    try {
+      await enqueueConversationRunTurn(queue.boss, {
+        tenant_id: tenantId,
+        conversation_id: created.conversation.id,
+        mcp_task_id,
+        actor_id: approver.id,
+        kind: "respond_elicitation",
+        elicitation_id: elicitation.id,
+        answer_channel: "portal",
+        approver_user_id: approver.id,
+      });
+      await waitForTerminal(mcp_task_id);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const [audit] = await queue.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "conversation.turn_failed"),
+          eq(auditLog.resource_id, created.conversation.id),
+        ),
+      );
+    expect(audit?.actor_type).toBe("unknown");
+    expect(audit?.actor_id).toBeNull();
+  }, 30_000);
+
   test("the respond branch passes surface:'mcp' into respondElicitation", async () => {
     const created = await svc.createConversation(
       { tenant_id: tenantId, actor_id: userId, initial_message: "respond surface seed" },

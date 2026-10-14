@@ -701,13 +701,13 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           {
             tenant_id: row.tenant_id,
             actor_type: "system",
-            actor_id: row.user_id,
+            actor_id: null,
             action: AuditAction.SESSION_REVOKED,
             resource_type: "session",
             resource_id: row.id,
             result: "denied",
             reason: denyReason,
-            metadata: { via: "oidc_resolve" },
+            metadata: { via: "oidc_resolve", subject_user_id: row.user_id },
           },
           exec,
         );

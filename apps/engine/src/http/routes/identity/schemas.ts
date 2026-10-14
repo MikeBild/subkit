@@ -15,6 +15,7 @@ export const UserSchema = z
     id: z.string().uuid(),
     tenant_id: z.string().uuid(),
     email: z.string(),
+    display_name: z.string().nullable(),
     role: z.string().nullable(),
     status: z.enum(["invited", "active", "disabled"]),
     oauth_connections: z.number().int().nonnegative(),
@@ -53,6 +54,16 @@ export const ApiKeySchema = z
     scopes: z.array(z.string()),
     user_id: z.string().uuid().nullable(),
     system_account_id: z.string().uuid().nullable(),
+    creator: z
+      .discriminatedUnion("kind", [
+        z.object({ kind: z.literal("user"), id: z.string().uuid() }),
+        z.object({ kind: z.literal("system_account"), id: z.string().uuid() }),
+        z.object({ kind: z.literal("system"), id: z.null() }),
+      ])
+      .nullable()
+      .describe(
+        "Typed creator of the key, or null when creator provenance is unavailable or unknown.",
+      ),
     allowed_workflows: z.array(z.string()).nullable(),
     allowed_connectors: z.array(z.string()).nullable(),
     created_at: z.string(),

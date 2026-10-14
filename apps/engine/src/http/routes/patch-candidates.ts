@@ -407,7 +407,12 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const outcome = await dryRunPatchCandidate(
-      { tenant_id: principal.tenant_id, candidate_id: id, actor_id: principal.id },
+      {
+        tenant_id: principal.tenant_id,
+        candidate_id: id,
+        actor_id: principal.id,
+        actor_type: principal.kind,
+      },
       db,
     );
     if (outcome.status === "not_found") throw new NotFoundError("patch_candidate");
@@ -467,6 +472,7 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
               tenant_id: principal.tenant_id,
               candidate_id: id,
               actor_id: principal.id,
+              actor_type: principal.kind,
               expected_review_digest: body.expected_review_digest,
             },
             db,
@@ -496,6 +502,7 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
                 tenant_id: principal.tenant_id,
                 candidate_id: id,
                 actor_id: principal.id,
+                actor_type: principal.kind,
                 expected_review_digest: body.expected_review_digest,
                 ...(body.execution_authority
                   ? { prepared_version_id: body.execution_authority.workflow_version_id }
@@ -511,7 +518,7 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
         await auditAwait(
           {
             tenant_id: principal.tenant_id,
-            actor_type: "user",
+            actor_type: principal.kind,
             actor_id: principal.id,
             action: AuditAction.PATCH_CANDIDATE_APPROVED,
             resource_type: "patch_candidate",
@@ -576,6 +583,7 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         candidate_id: id,
         actor_id: principal.id,
+        actor_type: principal.kind,
         ...(body.reason ? { reason: body.reason } : {}),
       },
       db,

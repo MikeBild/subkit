@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Executor } from "../db/client.ts";
@@ -105,6 +106,12 @@ export async function seedOnboardingDemo(
   p: SeedOnboardingDemoParams,
   exec: Executor,
 ): Promise<SeedOnboardingDemoResult> {
+  const actor = resolveActor({
+    tenant_id: p.tenant_id,
+    actor_id: p.actor_id ?? null,
+    ...(p.actor_type !== undefined ? { actor_type: p.actor_type } : {}),
+  });
+
   return exec.transaction(async (tx) => {
     await lockCatalogVocabulary(tx, p.tenant_id);
     const created: string[] = [];
@@ -137,7 +144,7 @@ export async function seedOnboardingDemo(
       const [version] = await tx
         .insert(workflowVersions)
         .values({
-          ...versionAuthorColumns(p),
+          ...versionAuthorColumns(actor),
           tenant_id: p.tenant_id,
           workflow_id: wf.id,
           version: 1,
@@ -157,8 +164,7 @@ export async function seedOnboardingDemo(
       await auditAwait(
         {
           tenant_id: p.tenant_id,
-          actor_type: p.actor_type ?? (p.actor_id ? "user" : "system"),
-          actor_id: p.actor_id ?? null,
+          ...actor,
           action: AuditAction.WORKFLOW_CREATED,
           resource_type: "workflow",
           resource_id: wf.id,

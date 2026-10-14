@@ -28,7 +28,13 @@ export function registerTestRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const connector = await connectorSvc.getConnector(principal.tenant_id, id, db);
     if (!connector) throw new NotFoundError("connector");
-    const result = await probeConnector({ db, tenant_id: principal.tenant_id, connector });
+    const result = await probeConnector({
+      db,
+      tenant_id: principal.tenant_id,
+      connector,
+      actor_id: principal.id,
+      actor_type: principal.kind === "user" ? "user" : "system_account",
+    });
     await recordConnectorProbed({
       tenant_id: principal.tenant_id,
       actor_id: principal.id,

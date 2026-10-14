@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { patchCandidates, workflowVersions } from "../db/schema/index.ts";
@@ -87,8 +88,11 @@ export async function preparePatchCandidate(
     await auditAwait(
       {
         tenant_id: params.tenant_id,
-        actor_type: params.actor_type ?? (params.actor_id ? "user" : "system"),
-        actor_id: params.actor_id,
+        ...resolveActor({
+          tenant_id: params.tenant_id,
+          actor_id: params.actor_id,
+          actor_type: params.actor_type,
+        }),
         action: AuditAction.PATCH_CANDIDATE_PREPARED,
         resource_type: "patch_candidate",
         resource_id: candidate.id,

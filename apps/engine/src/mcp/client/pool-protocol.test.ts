@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { closeDb } from "../../db/client.ts";
 import { auditLog, connectorMcpSessions, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -8,12 +8,14 @@ import { CLIENT_CAPABILITIES } from "./negotiation.ts";
 import {
   __resetMcpClientPoolForTests,
   __setMcpPoolFactoriesForTests,
+  connectServerById,
   getTenantMcpTools,
   invokeRemoteTool,
   type McpClientLike,
   type ServerCapabilitiesLike,
 } from "./pool.ts";
 import { getMcpConnector, parkMcpConnectorFailure, recordMcpHandshakeState } from "./registry.ts";
+import { reconcileManifestHash } from "./schema-drift.ts";
 import { seedMcpConnector } from "./test-fixtures.ts";
 
 interface FakeState {
@@ -171,6 +173,137 @@ describe("structuredContent passthrough", () => {
     const meta = rows.at(-1)!.metadata as Record<string, unknown>;
     expect(meta.structured).toBe(true);
     expect(meta.advertised_side_effect).toBe("read");
+  });
+});
+
+describe("MCP audit actor attribution", () => {
+  test("manifest drift preserves authenticated user and system-account actor types", async () => {
+    const row = await getMcpConnector(ctx.db, tenantId, serverId);
+    if (!row) throw new Error("test MCP connector was not found");
+    const cases = [
+      { actor_id: "00000000-0000-4000-8000-000000000126", actor_type: "user" as const },
+      {
+        actor_id: "00000000-0000-4000-8000-000000000127",
+        actor_type: "system_account" as const,
+      },
+    ];
+
+    for (const [index, actor] of cases.entries()) {
+      const previous_hash = `v2:${String(index + 1).repeat(64)}`;
+      const observed_hash = `v2:${String(index + 3).repeat(64)}`;
+      await recordMcpHandshakeState(ctx.db, row, previous_hash);
+      await reconcileManifestHash({
+        db: ctx.db,
+        tenant_id: tenantId,
+        connector_id: serverId,
+        connector_slug: "protofix",
+        observed_hash,
+        observed_tool_count: 1,
+        auditCtx: { ...actor, request_source: "mcp", executor: ctx.db },
+      });
+
+      const [entry] = await ctx.db
+        .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, tenantId),
+            eq(auditLog.action, "connector.mcp_manifest_drift"),
+            eq(auditLog.resource_id, serverId),
+            eq(auditLog.actor_id, actor.actor_id),
+          ),
+        )
+        .orderBy(desc(auditLog.ts));
+
+      expect(entry).toMatchObject(actor);
+    }
+  });
+
+  test("invoke-first connections attribute both the handshake and tool call", async () => {
+    const actorId = "00000000-0000-4000-8000-000000000123";
+    await invoke({ actor_id: actorId, actor_type: "system_account" });
+
+    const rows = await ctx.db
+      .select({
+        action: auditLog.action,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+      })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, tenantId), eq(auditLog.resource_id, serverId)));
+    const handshake = rows.find(
+      (row) => row.action === "connector.mcp_handshake_ok" && row.actor_id === actorId,
+    );
+    const call = rows.find(
+      (row) => row.action === "mcp_external_tool.invoked" && row.actor_id === actorId,
+    );
+
+    expect(handshake).toMatchObject({ actor_type: "system_account", actor_id: actorId });
+    expect(call).toMatchObject({ actor_type: "system_account", actor_id: actorId });
+  });
+
+  test("the chat palette's initial pool connection carries its authenticated principal", async () => {
+    const actorId = "00000000-0000-4000-8000-000000000124";
+    const tools = await getTenantMcpTools(ctx.db, tenantId, {
+      environment: "prod",
+      requestSource: "chat",
+      actor_id: actorId,
+      actor_type: "user",
+    });
+
+    expect(tools).toHaveLength(1);
+    const [handshake] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "connector.mcp_handshake_ok"),
+          eq(auditLog.resource_id, serverId),
+          eq(auditLog.actor_id, actorId),
+        ),
+      );
+    expect(handshake).toMatchObject({ actor_type: "user", actor_id: actorId });
+  });
+
+  test("background pool connections remain system/null", async () => {
+    await getTenantMcpTools(ctx.db, tenantId, { environment: "prod" });
+    const [handshake] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "connector.mcp_handshake_ok"),
+          eq(auditLog.resource_id, serverId),
+        ),
+      )
+      .orderBy(desc(auditLog.ts));
+    expect(handshake).toMatchObject({ actor_type: "system", actor_id: null });
+  });
+
+  test("authenticated connector inspection attributes its initial handshake", async () => {
+    const actorId = "00000000-0000-4000-8000-000000000125";
+    const result = await connectServerById(ctx.db, tenantId, serverId, {
+      environment: "prod",
+      requestSource: "api",
+      actor_id: actorId,
+      actor_type: "user",
+    });
+    expect(result.ok).toBe(true);
+
+    const [handshake] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "connector.mcp_handshake_ok"),
+          eq(auditLog.resource_id, serverId),
+          eq(auditLog.actor_id, actorId),
+        ),
+      );
+    expect(handshake).toMatchObject({ actor_type: "user", actor_id: actorId });
   });
 });
 

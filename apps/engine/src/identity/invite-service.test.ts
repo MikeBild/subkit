@@ -10,7 +10,7 @@ import {
   redeemInvite,
   revokeInvite,
 } from "./provisioning.ts";
-import { listApiKeys } from "./service.ts";
+import { createSystemAccount, listApiKeys } from "./service.ts";
 
 let testDb: TestDb;
 let tenantId = "";
@@ -46,6 +46,71 @@ async function seedInvitedUser(email: string) {
 }
 
 describe("createInvite", () => {
+  test("explicit system-account actors are preserved while untyped callers stay unknown", async () => {
+    const user = await seedInvitedUser("inv-typed-actor@test.local");
+    const actor = await createSystemAccount(
+      { tenant_id: tenantId, name: "invite-actor", actor_id: null },
+      testDb.db,
+    );
+    const created = await createInvite(
+      {
+        tenant_id: tenantId,
+        user_id: user.id,
+        actor_kind: "system_account",
+        actor_id: actor.id,
+      },
+      testDb.db,
+    );
+    const [createdAudit] = await testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "user.invited"), eq(auditLog.resource_id, created.view.id)));
+    expect(createdAudit).toEqual({ actor_type: "system_account", actor_id: actor.id });
+
+    const revoked = await revokeInvite(
+      {
+        tenant_id: tenantId,
+        invite_id: created.view.id,
+        actor_kind: "system_account",
+        actor_id: actor.id,
+      },
+      testDb.db,
+    );
+    expect(revoked).not.toBeNull();
+    const [revokedAudit] = await testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.action, "user_invite.revoked"), eq(auditLog.resource_id, created.view.id)),
+      );
+    expect(revokedAudit).toEqual({ actor_type: "system_account", actor_id: actor.id });
+
+    const legacy = await createInvite(
+      { tenant_id: tenantId, user_id: user.id, actor_id: actor.id },
+      testDb.db,
+    );
+    const [legacyAudit] = await testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "user.invited"), eq(auditLog.resource_id, legacy.view.id)));
+    expect(legacyAudit).toEqual({ actor_type: "unknown", actor_id: null });
+
+    const missingId = await createInvite(
+      {
+        tenant_id: tenantId,
+        user_id: user.id,
+        actor_kind: "system_account",
+        actor_id: null,
+      },
+      testDb.db,
+    );
+    const [missingIdAudit] = await testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "user.invited"), eq(auditLog.resource_id, missingId.view.id)));
+    expect(missingIdAudit).toEqual({ actor_type: "unknown", actor_id: null });
+  });
+
   test("mints an invite + USER_INVITED audit row; records the granted scopes", async () => {
     const user = await seedInvitedUser("inv-create@test.local");
     const { view, plaintext } = await createInvite(
@@ -176,6 +241,28 @@ describe("revokeInvite — tenant isolation", () => {
 });
 
 describe("deactivateUser", () => {
+  test("deactivation cascade preserves a system-account actor", async () => {
+    const user = await seedInvitedUser("inv-deactivate-typed-actor@test.local");
+    const actor = await createSystemAccount(
+      { tenant_id: tenantId, name: "deactivate-actor", actor_id: null },
+      testDb.db,
+    );
+    await deactivateUser(
+      {
+        tenant_id: tenantId,
+        user_id: user.id,
+        actor_kind: "system_account",
+        actor_id: actor.id,
+      },
+      testDb.db,
+    );
+    const [deletedAudit] = await testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "user.deleted"), eq(auditLog.resource_id, user.id)));
+    expect(deletedAudit).toEqual({ actor_type: "system_account", actor_id: actor.id });
+  });
+
   test("soft-deletes the user, sets status=disabled, and revokes their keys", async () => {
     const user = await seedInvitedUser("inv-deact@test.local");
     const { plaintext } = await createInvite(
@@ -257,13 +344,11 @@ describe("revokeInvite — INVITE_REVOKED audit row (H2)", () => {
     expect(revokedView).not.toBeNull();
 
     const auditRows = await testDb.db
-      .select()
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
       .from(auditLog)
       .where(and(eq(auditLog.action, "user_invite.revoked"), eq(auditLog.resource_id, view.id)));
     expect(auditRows.length).toBe(1);
-    expect(auditRows[0]?.tenant_id).toBe(tenantId);
-    expect(auditRows[0]?.actor_id).toBe(actorId);
-    expect(auditRows[0]?.result).toBe("success");
+    expect(auditRows[0]).toEqual({ actor_type: "unknown", actor_id: null });
   });
 });
 

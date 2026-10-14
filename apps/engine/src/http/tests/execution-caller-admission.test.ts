@@ -61,6 +61,12 @@ for (const mode of ["generic", "other", "machine"]) {
         ),
       );
     expect(denied.length).toBeGreaterThan(0);
+    for (const entry of denied) {
+      expect(entry).toMatchObject({
+        actor_type: mode === "machine" ? "system_account" : "user",
+        actor_id: mode === "machine" ? ctx.systemAccountId : ctx.userId,
+      });
+    }
     const rows = await ctx.db
       .select()
       .from(executions)
@@ -104,6 +110,13 @@ for (const code of [
         ),
       );
     expect(denied).toHaveLength(1);
+    expect(denied[0]).toMatchObject({ actor_type: "user", actor_id: ctx.userId });
+    expect(
+      await ctx.db
+        .select({ id: executions.id })
+        .from(executions)
+        .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.workflow_id, workflowId))),
+    ).toHaveLength(0);
   });
 }
 
@@ -131,6 +144,13 @@ test("an explicitly selected unavailable version returns an audited conflict", a
       ),
     );
   expect(denied).toHaveLength(1);
+  expect(denied[0]).toMatchObject({ actor_type: "user", actor_id: ctx.userId });
+  expect(
+    await ctx.db
+      .select({ id: executions.id })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.workflow_id, workflowId))),
+  ).toHaveLength(0);
 });
 
 test("unknown internal errors retain their original identity", async () => {

@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { Actor } from "../audit/actor.ts";
+import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { bucketSize } from "../audit/buckets.ts";
 import {
@@ -54,7 +54,7 @@ export async function linkKnowledgeFile(
   tx: Executor,
   p: {
     tenant_id: string;
-    actor_id: string | null;
+    actor: Actor | null;
     knowledge_source_id: string;
     slug: string;
     filename: string;
@@ -63,7 +63,7 @@ export async function linkKnowledgeFile(
   },
 ): Promise<void> {
   const { row, dedup, scan } = p.persisted;
-  const actor_type = p.actor_id ? ("user" as const) : ("system" as const);
+  const actorFields = auditActor(p.actor);
   await tx
     .insert(fileLinks)
     .values({
@@ -78,8 +78,7 @@ export async function linkKnowledgeFile(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type,
-      actor_id: p.actor_id,
+      ...actorFields,
       action: AuditAction.FILE_CREATED,
       resource_type: "file",
       resource_id: row.id,
@@ -100,8 +99,7 @@ export async function linkKnowledgeFile(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type,
-        actor_id: p.actor_id,
+        ...actorFields,
         action: AuditAction.FILE_SCAN_COMPLETED,
         resource_type: "file",
         resource_id: row.id,
@@ -120,8 +118,7 @@ export async function linkKnowledgeFile(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type,
-      actor_id: p.actor_id,
+      ...actorFields,
       action: AuditAction.FILE_LINK_ADDED,
       resource_type: "file",
       resource_id: row.id,

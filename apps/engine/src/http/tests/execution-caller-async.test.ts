@@ -21,6 +21,34 @@ let boss: PgBoss;
 let app: ReturnType<typeof createApp>;
 const secret = "ASYNC-SENSITIVE-CALLER-INPUT-CANARY";
 
+async function expectExecutionAuditCaller(execution_id: string, caller: CallerContext) {
+  const entries = await ctx.db
+    .select({
+      action: auditLog.action,
+      actor_type: auditLog.actor_type,
+      actor_id: auditLog.actor_id,
+    })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, ctx.tenantId),
+        eq(auditLog.resource_type, "execution"),
+        eq(auditLog.resource_id, execution_id),
+      ),
+    );
+  const executionEntries = entries.filter(
+    (entry) => entry.action === "execution.started" || entry.action === "execution.completed",
+  );
+  expect(executionEntries).toHaveLength(2);
+  expect(executionEntries.map((entry) => entry.action).sort()).toEqual([
+    "execution.completed",
+    "execution.started",
+  ]);
+  for (const entry of executionEntries) {
+    expect(entry).toMatchObject({ actor_type: caller.principalKind, actor_id: caller.principalId });
+  }
+}
+
 beforeAll(async () => {
   ctx = await createHttpTestServer("execution-caller-async");
   boss = await createBoss({ connectionString: ctx.testDb.url });
@@ -97,6 +125,8 @@ test("a real product browser session admits an asynchronous saved product workfl
     productId: "harmoniqs",
   };
   expect(row.caller_context).toEqual(caller);
+  expect(row.caller_origin).toBe("principal");
+  await expectExecutionAuditCaller(row.id, caller);
   expect(row.authorization_context).toMatchObject({
     source: { kind: "browser_session", session_id: session.id },
   });
@@ -127,11 +157,22 @@ for (const sensitive of [false, true]) {
         },
       ],
     });
-    const input = { text: secret, $caller: { principalId: "spoofed", productId: "harmoniqs" } };
+    const input = {
+      text: secret,
+      caller_origin: "trusted_system",
+      $caller: { principalId: "spoofed", productId: "harmoniqs" },
+    };
     const response = await app.request("/v1/executions", {
       method: "POST",
       headers: { Authorization: `Bearer ${ctx.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ source: "saved", workflow_id, hold_writes: true, async: true, input }),
+      body: JSON.stringify({
+        source: "saved",
+        workflow_id,
+        hold_writes: true,
+        async: true,
+        caller_origin: "trusted_system",
+        input,
+      }),
     });
     expect(response.status).toBe(202);
     const accepted = (await response.json()) as { execution_id: string };
@@ -156,6 +197,8 @@ for (const sensitive of [false, true]) {
       productId: null,
     };
     expect(row.caller_context).toEqual(caller);
+    expect(row.caller_origin).toBe("principal");
+    await expectExecutionAuditCaller(row.id, caller);
     expect(row.authorization_context).toMatchObject({
       source: { kind: "api_key", api_key_id: ctx.apiKeyId },
     });

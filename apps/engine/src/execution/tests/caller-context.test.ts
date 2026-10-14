@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { auditLog, executionSteps, executions } from "../../db/schema/index.ts";
 import { resolveStringPlaceholders } from "../../llm/substitution/resolver.ts";
@@ -377,47 +378,183 @@ describe("authenticated execution caller", () => {
         productId: "harmoniqs",
       },
     });
+    const children = await ctx.testDb.db
+      .select()
+      .from(executions)
+      .where(
+        and(
+          eq(executions.tenant_id, ctx.tenantId),
+          eq(executions.parent_execution_id, result.execution_id),
+        ),
+      );
+    expect(children).toHaveLength(1);
+    for (const executionId of [result.execution_id, children[0]?.id]) {
+      const [row] = await ctx.testDb.db
+        .select()
+        .from(executions)
+        .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, executionId ?? "")));
+      expect(row?.caller_origin).toBe("principal");
+      const audits = await ctx.testDb.db
+        .select()
+        .from(auditLog)
+        .where(
+          and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_id, executionId ?? "")),
+        );
+      for (const action of [
+        AuditAction.EXECUTION_QUEUED,
+        AuditAction.EXECUTION_STARTED,
+        AuditAction.EXECUTION_COMPLETED,
+      ]) {
+        expect(audits.filter((audit) => audit.action === action)).toHaveLength(1);
+        expect(audits.find((audit) => audit.action === action)).toMatchObject({
+          actor_type: "user",
+          actor_id: authenticated.id,
+        });
+      }
+    }
   });
 
-  test("resume cannot replace the persisted principal even inside the same tenant and product", async () => {
-    const authenticated = principal("00000000-0000-4000-8000-000000000022");
-    const { workflow_id, version_id } = await createWorkflowRow(ctx, {
-      name: "Resume caller boundary",
-      slug: "resume-caller-boundary",
-      product_id: "harmoniqs",
-      steps: [{ id: "observe", kind: "transform", expression: "return input.scope.$caller;" }],
+  test("a trusted system child inherits provenance without inventing a caller", async () => {
+    const child = await createWorkflowRow(ctx, {
+      name: "System caller child",
+      slug: "system-caller-child",
+      steps: [
+        { id: "observe", kind: "transform", expression: "return input.scope.$caller ?? null;" },
+      ],
     });
-    const caller = {
-      tenantId: ctx.tenantId,
-      principalId: authenticated.id,
-      principalKind: "user" as const,
-      provider: "test",
-      productId: "harmoniqs",
-    };
-    const execution_id = await createExecution(ctx.testDb.db, {
+    const parent = await createWorkflowRow(ctx, {
+      name: "System caller parent",
+      slug: "system-caller-parent",
+      steps: [
+        {
+          id: "child",
+          kind: "call",
+          workflow_id: child.workflow_id,
+          input: { caller_origin: "principal" },
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
       tenant_id: ctx.tenantId,
-      workflow_id,
-      workflow_version_id: version_id,
-      source_kind: "saved",
-      source_ref: null,
-      request_source: "api",
-      hold_writes: true,
+      source: { kind: "saved", workflow_id: parent.workflow_id },
       input: null,
-      caller_context: caller,
+      options: { hold_writes: true, caller_origin: "trusted_system" },
     });
-    const source = { kind: "saved" as const, workflow_id };
-    const resumed = await bindExistingRun(ctx.testDb.db, ctx.tenantId, source, null, {
-      existing_execution_id: execution_id,
-      principal: principal(caller.principalId),
-    });
-    expect(resumed.options.caller_context).toEqual(caller);
-    await expect(
-      bindExistingRun(ctx.testDb.db, ctx.tenantId, source, null, {
-        existing_execution_id: execution_id,
-        principal: principal("00000000-0000-4000-8000-000000000023"),
-      }),
-    ).rejects.toMatchObject({ code: "execution_boundary_mismatch" });
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toMatchObject({ status: "succeeded", output: null });
+    const children = await ctx.testDb.db
+      .select()
+      .from(executions)
+      .where(
+        and(
+          eq(executions.tenant_id, ctx.tenantId),
+          eq(executions.parent_execution_id, result.execution_id),
+        ),
+      );
+    expect(children).toHaveLength(1);
+    const childRow = children[0];
+    expect(childRow?.caller_origin).toBe("trusted_system");
+    expect(childRow?.caller_context).toBeNull();
+    const audits = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_id, childRow?.id ?? "")),
+      );
+    for (const action of [
+      AuditAction.EXECUTION_QUEUED,
+      AuditAction.EXECUTION_STARTED,
+      AuditAction.EXECUTION_COMPLETED,
+    ]) {
+      expect(audits.filter((audit) => audit.action === action)).toHaveLength(1);
+      expect(audits.find((audit) => audit.action === action)).toMatchObject({
+        actor_type: "system",
+        actor_id: null,
+      });
+    }
   });
+
+  for (const origin of ["unknown", "principal"] as const) {
+    test(`resume preserves ${origin} provenance and refuses caller or origin replacement`, async () => {
+      const authenticated = principal("00000000-0000-4000-8000-000000000022");
+      const { workflow_id, version_id } = await createWorkflowRow(ctx, {
+        name: `Resume caller boundary ${origin}`,
+        slug: `resume-caller-boundary-${origin}`,
+        product_id: "harmoniqs",
+        steps: [{ id: "observe", kind: "transform", expression: "return input.scope.$caller;" }],
+      });
+      const caller = {
+        tenantId: ctx.tenantId,
+        principalId: authenticated.id,
+        principalKind: "user" as const,
+        provider: "test",
+        productId: "harmoniqs",
+      };
+      const execution_id = await createExecution(ctx.testDb.db, {
+        tenant_id: ctx.tenantId,
+        workflow_id,
+        workflow_version_id: version_id,
+        source_kind: "saved",
+        source_ref: null,
+        request_source: "api",
+        hold_writes: true,
+        input: null,
+        caller_context: caller,
+        ...(origin === "principal" ? { caller_origin: origin } : {}),
+      });
+      const source = { kind: "saved" as const, workflow_id };
+      const resumed = await bindExistingRun(ctx.testDb.db, ctx.tenantId, source, null, {
+        existing_execution_id: execution_id,
+        principal: principal(caller.principalId),
+      });
+      expect(resumed.options.caller_context).toEqual(caller);
+      expect(resumed.options.caller_origin).toBe(origin);
+      await expect(
+        bindExistingRun(ctx.testDb.db, ctx.tenantId, source, null, {
+          existing_execution_id: execution_id,
+          principal: principal("00000000-0000-4000-8000-000000000023"),
+        }),
+      ).rejects.toMatchObject({ code: "execution_boundary_mismatch" });
+      await expect(
+        bindExistingRun(ctx.testDb.db, ctx.tenantId, source, null, {
+          existing_execution_id: execution_id,
+          principal: authenticated,
+          caller_origin: origin === "unknown" ? "principal" : "trusted_system",
+        }),
+      ).rejects.toMatchObject({ code: "execution_boundary_mismatch" });
+      const [unchanged] = await ctx.testDb.db
+        .select()
+        .from(executions)
+        .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, execution_id)));
+      expect(unchanged?.caller_origin).toBe(origin);
+      expect(unchanged?.caller_context).toEqual(caller);
+      const result = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source,
+        input: null,
+        options: { existing_execution_id: execution_id, principal: authenticated },
+      });
+      expect(result.status).toBe("succeeded");
+      expect(result.output).toEqual(caller);
+      const audits = await ctx.testDb.db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_id, execution_id)));
+      for (const action of [
+        AuditAction.EXECUTION_QUEUED,
+        AuditAction.EXECUTION_STARTED,
+        AuditAction.EXECUTION_COMPLETED,
+      ]) {
+        expect(audits.filter((audit) => audit.action === action)).toHaveLength(1);
+        expect(audits.find((audit) => audit.action === action)).toMatchObject({
+          actor_type: origin === "principal" ? "user" : "unknown",
+          actor_id: origin === "principal" ? authenticated.id : null,
+        });
+      }
+    });
+  }
 
   test("JSONata output transforms use trusted caller despite caller-shaped step output", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {

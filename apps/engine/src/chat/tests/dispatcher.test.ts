@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { toFileId } from "../../api/files-schemas.ts";
 import {
   type ConversationTestCtx,
   createConversationTestCtx,
@@ -9,13 +10,16 @@ import {
   chatIdentities,
   chatWorkspaces,
   conversationElicitations,
+  conversationMessages,
   conversations,
   conversationToolCalls,
   executions,
+  fileLinks,
   users,
   workflows as workflowsTable,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
@@ -56,6 +60,78 @@ afterAll(async () => {
 });
 
 describe("chat dispatcher", () => {
+  test("existing thread resolves a tenant attachment with the mapped chat principal", async () => {
+    await ctx.testDb.db.insert(chatWorkspaces).values({
+      tenant_id: ctx.tenant_id,
+      platform: "slack",
+      workspace_id: "T_ATTACH",
+      bot_ciphertext: detBytes(2),
+      bot_iv: detBytes(2),
+      bot_auth_tag: detBytes(2),
+    });
+    await ctx.testDb.db.insert(chatIdentities).values({
+      tenant_id: ctx.tenant_id,
+      user_id: ctx.user_id,
+      platform: "slack",
+      workspace_id: "T_ATTACH",
+      platform_user_id: "U_ATTACH",
+    });
+    const [unrelatedConversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({ tenant_id: ctx.tenant_id, status: "active" })
+      .returning({ id: conversations.id });
+    if (!unrelatedConversation) throw new Error("unrelated conversation missing");
+    const tenantFile = await attachInlineForTest({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenant_id,
+      conversation_id: unrelatedConversation.id,
+      filename: "shared-brief.txt",
+      content: "Shared brief content",
+      slug: "shared-brief",
+    });
+
+    const adapter = new FakeSlackAdapter();
+    const event: ChatEvent = {
+      platform: "slack",
+      workspace_id: "T_ATTACH",
+      channel_id: "C_ATTACH",
+      thread_id: "1700000000.000200",
+      user_id: "U_ATTACH",
+      kind: "mention",
+      text: "Start a conversation",
+      raw: {},
+    };
+    const initial = await handleChatEvent({ db: ctx.testDb.db, adapter }, event);
+    expect(initial.status).toBe("ok");
+    if (!initial.conversation_id) throw new Error("conversation missing");
+
+    const followup = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      { ...event, text: "Use @attachment:shared-brief" },
+    );
+    expect(followup.status).toBe("ok");
+
+    const messages = await ctx.testDb.db
+      .select({ content: conversationMessages.content })
+      .from(conversationMessages)
+      .where(eq(conversationMessages.conversation_id, initial.conversation_id));
+    expect(messages.map((message) => (message.content as { text?: unknown }).text)).toContain(
+      `Use [file:${toFileId(tenantFile.file_uuid)}]`,
+    );
+
+    const [link] = await ctx.testDb.db
+      .select({ file_id: fileLinks.file_id })
+      .from(fileLinks)
+      .where(
+        and(
+          eq(fileLinks.resource_type, "conversation"),
+          eq(fileLinks.resource_id, initial.conversation_id),
+          eq(fileLinks.slug, "shared-brief"),
+        ),
+      );
+    expect(link?.file_id).toBe(tenantFile.file_uuid);
+  });
+
   test("mention → approval → approve → read-only channel never commits", async () => {
     const ws = await ctx.testDb.db
       .insert(chatWorkspaces)
@@ -95,6 +171,16 @@ describe("chat dispatcher", () => {
     expect(initial.approval_sent).toBe(false);
     expect(adapter.approvals).toHaveLength(0);
     if (!initial.conversation_id) throw new Error("conversation missing");
+    const [creationAudit] = await ctx.testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, "conversation.created"),
+          eq(auditLog.resource_id, initial.conversation_id),
+        ),
+      );
+    expect(creationAudit).toEqual({ actor_type: "user", actor_id: ctx.user_id });
     getMockProvider().setConversePlan(initial.conversation_id, [
       {
         tool: "ask_user_confirm",

@@ -1,6 +1,8 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+import { actorOf, auditActor } from "../../audit/actor.ts";
 import { auditAwait } from "../../audit/audit.ts";
+import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
@@ -333,8 +335,9 @@ export const probeConnectorTool: ConversationTool = {
     await auditAwait(
       {
         tenant_id: ctx.tenant_id,
-        actor_type: ctx.actor_id ? "user" : "system",
-        actor_id: ctx.actor_id,
+        ...(principal
+          ? auditActor(actorOf(principal))
+          : resolveActor({ tenant_id: ctx.tenant_id, actor_id: ctx.actor_id })),
         action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
         resource_type: "connector",
         resource_id: connector.id,

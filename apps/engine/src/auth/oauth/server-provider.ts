@@ -4,12 +4,14 @@ import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../../audit/types.ts";
 import type { Config } from "../../config/schema.ts";
-import type { Db, Executor } from "../../db/client.ts";
+import type { Db } from "../../db/client.ts";
 import {
   mcpOauthAccessTokens,
   mcpOauthAuthorizationCodes,
   mcpOauthClients,
+  mcpOauthGrants,
   mcpOauthRefreshTokens,
+  mcpOauthUnknownGrants,
   users,
 } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -19,6 +21,7 @@ import {
   livenessRefusalDescription,
   userLivenessRefusal,
 } from "../liveness.ts";
+import { revokeOAuthRefreshTokenFamily } from "./refresh-token-revocation.ts";
 import {
   generateAccessToken,
   generateAuthorizationCode,
@@ -86,45 +89,6 @@ export interface ExchangeRefreshInput {
 export interface McpOAuthServerOptions {
   db: Db;
   config: Config;
-}
-
-export async function revokeOAuthRefreshTokenFamily(
-  db: Executor,
-  refreshId: string,
-  revokedAt: Date,
-): Promise<void> {
-  await db.execute(sql`
-    WITH RECURSIVE chain AS (
-      SELECT id, rotated_to_id
-      FROM mcp_oauth_refresh_tokens
-      WHERE id = ${refreshId}
-      UNION
-      SELECT r.id, r.rotated_to_id
-      FROM mcp_oauth_refresh_tokens r
-      INNER JOIN chain c ON r.id = c.rotated_to_id OR c.id = r.rotated_to_id
-      WHERE r.revoked_at IS NULL
-    )
-    UPDATE mcp_oauth_refresh_tokens
-    SET revoked_at = ${revokedAt}
-    WHERE id IN (SELECT id FROM chain)
-      AND revoked_at IS NULL
-  `);
-
-  await db.execute(sql`
-    WITH RECURSIVE chain AS (
-      SELECT id, rotated_to_id
-      FROM mcp_oauth_refresh_tokens
-      WHERE id = ${refreshId}
-      UNION
-      SELECT r.id, r.rotated_to_id
-      FROM mcp_oauth_refresh_tokens r
-      INNER JOIN chain c ON r.id = c.rotated_to_id OR c.id = r.rotated_to_id
-    )
-    UPDATE mcp_oauth_access_tokens
-    SET revoked_at = ${revokedAt}
-    WHERE refresh_token_id IN (SELECT id FROM chain)
-      AND revoked_at IS NULL
-  `);
 }
 
 export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
@@ -396,6 +360,13 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const refreshExpiresAt = new Date(now.getTime() + cfg.refresh_token_ttl_seconds * 1000);
 
     const minted = await db.transaction(async (tx) => {
+      const userRows = await tx
+        .select({ status: users.status, deleted_at: users.deleted_at })
+        .from(users)
+        .where(and(eq(users.id, codeRow.user_id), eq(users.tenant_id, codeRow.tenant_id)))
+        .for("update");
+      if (userLivenessRefusal(userRows[0])) return "user_revoked" as const;
+
       // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
       const [client] = await tx
         .select({
@@ -431,12 +402,25 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         );
       }
 
+      const [grant] = await tx
+        .insert(mcpOauthGrants)
+        .values({
+          tenant_id: codeRow.tenant_id,
+          client_id: codeRow.client_id,
+          user_id: codeRow.user_id,
+          connected_at: now,
+        })
+        .returning({ id: mcpOauthGrants.id });
+
+      if (!grant) throw new Error("oauth_grant_insert_failed");
+
       const [refreshRow] = await tx
         .insert(mcpOauthRefreshTokens)
         .values({
           tenant_id: codeRow.tenant_id,
           client_id: codeRow.client_id,
           user_id: codeRow.user_id,
+          grant_id: grant.id,
           prefix: refresh.prefix,
           token_sha256: refresh.hash,
           scope: codeRow.scope,
@@ -449,6 +433,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         tenant_id: codeRow.tenant_id,
         client_id: codeRow.client_id,
         user_id: codeRow.user_id,
+        grant_id: grant.id,
         prefix: access.prefix,
         token_sha256: access.hash,
         scope: codeRow.scope,
@@ -497,6 +482,23 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       throw Object.assign(new Error("invalid_grant: client_revoked"), {
         oauth_error: "invalid_grant",
         oauth_error_description: livenessRefusalDescription("client_revoked"),
+      });
+    }
+    if (minted === "user_revoked") {
+      await auditAwait(
+        {
+          tenant_id: codeRow.tenant_id,
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: { request_source: requestSource, reason: "user_disabled" },
+        },
+        db,
+      );
+      throw Object.assign(new Error("invalid_grant: user revoked"), {
+        oauth_error: "invalid_grant",
       });
     }
 
@@ -573,7 +575,9 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const livenessRefusal: LivenessRefusal | null =
       userLivenessRefusal(userRows[0]) ?? clientLivenessRefusal(clientRows[0]);
     if (livenessRefusal) {
-      await revokeOAuthRefreshTokenFamily(db, refreshRow.id, now);
+      await db.transaction((tx) =>
+        revokeOAuthRefreshTokenFamily(tx, refreshRow.id, refreshRow.tenant_id, now),
+      );
       await auditAwait(
         {
           tenant_id: refreshRow.tenant_id,
@@ -675,12 +679,91 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     let txResult: { newRefreshId: string; newAccessPrefix: string };
     try {
       txResult = await db.transaction(async (tx) => {
+        const lockedUserRows = await tx
+          .select({ status: users.status, deleted_at: users.deleted_at })
+          .from(users)
+          .where(and(eq(users.id, refreshRow.user_id), eq(users.tenant_id, refreshRow.tenant_id)))
+          .for("update");
+        if (userLivenessRefusal(lockedUserRows[0])) {
+          throw Object.assign(new Error("invalid_grant: user revoked"), {
+            oauth_error: "invalid_grant",
+            oauth_reason: "user_disabled",
+          });
+        }
+
+        // tenant-filter:exempt — OAuth clients are platform-global and have no tenant_id.
+        const [lockedClient] = await tx
+          .select({
+            disabled_at: mcpOauthClients.disabled_at,
+            retired_at: mcpOauthClients.retired_at,
+          })
+          .from(mcpOauthClients)
+          .where(eq(mcpOauthClients.client_id, refreshRow.client_id))
+          .for("update");
+        if (!lockedClient || clientLivenessRefusal(lockedClient)) {
+          throw Object.assign(new Error("invalid_grant: client revoked"), {
+            oauth_error: "invalid_grant",
+            oauth_reason: "client_revoked",
+          });
+        }
+        if (refreshRow.grant_id) {
+          const [grant] = await tx
+            .select({ revoked_at: mcpOauthGrants.revoked_at })
+            .from(mcpOauthGrants)
+            .where(
+              and(
+                eq(mcpOauthGrants.id, refreshRow.grant_id),
+                eq(mcpOauthGrants.tenant_id, refreshRow.tenant_id),
+                eq(mcpOauthGrants.client_id, refreshRow.client_id),
+                eq(mcpOauthGrants.user_id, refreshRow.user_id),
+              ),
+            )
+            .for("update");
+          if (!grant || grant.revoked_at) {
+            throw Object.assign(new Error("invalid_grant: OAuth grant revoked"), {
+              oauth_error: "invalid_grant",
+              oauth_reason: "grant_revoked",
+            });
+          }
+        }
+
+        const [parent] = await tx
+          .select({
+            revoked_at: mcpOauthRefreshTokens.revoked_at,
+            rotated_to_id: mcpOauthRefreshTokens.rotated_to_id,
+            expires_at: mcpOauthRefreshTokens.expires_at,
+          })
+          .from(mcpOauthRefreshTokens)
+          .where(
+            and(
+              eq(mcpOauthRefreshTokens.id, refreshRow.id),
+              eq(mcpOauthRefreshTokens.tenant_id, refreshRow.tenant_id),
+              eq(mcpOauthRefreshTokens.client_id, refreshRow.client_id),
+              eq(mcpOauthRefreshTokens.user_id, refreshRow.user_id),
+            ),
+          )
+          .for("update");
+        if (!parent || parent.revoked_at || parent.rotated_to_id || parent.expires_at <= now) {
+          throw Object.assign(new Error("invalid_grant: refresh token is no longer live"), {
+            oauth_error: "invalid_grant",
+            oauth_reason: parent?.rotated_to_id ? "refresh_replayed" : "refresh_not_live",
+          });
+        }
+
+        if (!refreshRow.grant_id) {
+          await tx
+            .insert(mcpOauthUnknownGrants)
+            .values({ tenant_id: refreshRow.tenant_id, client_id: refreshRow.client_id })
+            .onConflictDoNothing();
+        }
+
         const insertedRefreshRows = await tx
           .insert(mcpOauthRefreshTokens)
           .values({
             tenant_id: refreshRow.tenant_id,
             client_id: refreshRow.client_id,
             user_id: refreshRow.user_id,
+            grant_id: refreshRow.grant_id,
             prefix: newRefresh.prefix,
             token_sha256: newRefresh.hash,
             scope: grantedScope,
@@ -700,14 +783,15 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
             and(
               eq(mcpOauthRefreshTokens.id, refreshRow.id),
               isNull(mcpOauthRefreshTokens.rotated_to_id),
+              isNull(mcpOauthRefreshTokens.revoked_at),
             ),
           )
           .returning({ id: mcpOauthRefreshTokens.id });
 
         if (claimed.length === 0) {
-          tx.rollback();
           throw Object.assign(new Error("invalid_grant: token already rotated — chain revoked"), {
             oauth_error: "invalid_grant",
+            oauth_reason: "refresh_replayed",
           });
         }
 
@@ -715,6 +799,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
           tenant_id: refreshRow.tenant_id,
           client_id: refreshRow.client_id,
           user_id: refreshRow.user_id,
+          grant_id: refreshRow.grant_id,
           prefix: newAccess.prefix,
           token_sha256: newAccess.hash,
           scope: grantedScope,
@@ -727,6 +812,10 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       });
     } catch (txErr) {
       if ((txErr as { oauth_error?: string }).oauth_error === "invalid_grant") {
+        const oauthReason = (txErr as { oauth_reason?: string }).oauth_reason ?? "refresh_replayed";
+        if (oauthReason === "refresh_replayed") {
+          await revokeChain(refreshRow.id, refreshRow.tenant_id, refreshRow.user_id, now);
+        }
         await auditAwait(
           {
             tenant_id: refreshRow.tenant_id,
@@ -735,7 +824,10 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
             resource_type: "mcp_oauth_token",
             resource_id: null,
             result: "denied",
-            metadata: { request_source: "api", reason: "refresh_replayed" },
+            metadata: {
+              request_source: requestSource,
+              reason: oauthReason,
+            },
           },
           db,
         );
@@ -827,7 +919,9 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       .limit(1);
     const refreshRow = refreshRows[0];
     if (refreshRow) {
-      await revokeOAuthRefreshTokenFamily(db, refreshRow.id, now);
+      await db.transaction((tx) =>
+        revokeOAuthRefreshTokenFamily(tx, refreshRow.id, refreshRow.tenant_id, now),
+      );
       await auditAwait(
         {
           tenant_id: refreshRow.tenant_id,
@@ -854,7 +948,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     userId: string,
     now: Date,
   ): Promise<void> {
-    await revokeOAuthRefreshTokenFamily(db, refreshId, now);
+    await db.transaction((tx) => revokeOAuthRefreshTokenFamily(tx, refreshId, tenantId, now));
 
     await auditAwait(
       {

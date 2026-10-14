@@ -22,6 +22,7 @@ import {
   withConnectorValidation,
 } from "../authoring-state.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
+import { auditActorFromToolContext, connectorActorFromToolContext } from "../tools/audit-actor.ts";
 import {
   buildGateError,
   buildPersistencePayload,
@@ -144,7 +145,13 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
             }),
           };
         }
-        await updateConnector(ctx.tenant_id, existing.id, fieldPatch, ctx.actor_id, ctx.db);
+        await updateConnector(
+          ctx.tenant_id,
+          existing.id,
+          fieldPatch,
+          connectorActorFromToolContext(ctx),
+          ctx.db,
+        );
       }
 
       let credential_persisted = false;
@@ -162,16 +169,18 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       }
       clearDraftCredential(ctx.conversation_id);
       if (credential_persisted) {
+        const actor = connectorActorFromToolContext(ctx);
         await completeConnectorReauthorization(ctx.db as Db, {
           tenant_id: ctx.tenant_id,
           connector_id: existing.id,
           actor_id: ctx.actor_id,
+          ...(actor?.kind === "unknown" ? { actor_type: "unknown" as const } : { actor }),
         });
       }
       if (p.emitAutoPersistAudit) {
         await recordConnectorUpdated({
           tenant_id: ctx.tenant_id,
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           executor: ctx.db,
           connector_id: existing.id,
           kind: credential_persisted
@@ -402,6 +411,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     {
       tenant_id: ctx.tenant_id,
       actor_id: ctx.actor_id,
+      actor: connectorActorFromToolContext(ctx),
       input: toCreateConnectorInput(connector),
     },
     ctx.db,
@@ -457,7 +467,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   if (p.emitAutoPersistAudit) {
     await recordConnectorCreated({
       tenant_id: ctx.tenant_id,
-      actor_id: ctx.actor_id,
+      ...auditActorFromToolContext(ctx),
       executor: ctx.db,
       connector_id: saved.id,
       slug: saved.slug,
@@ -474,10 +484,12 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     p.skipBackgroundDiscovery === true ||
     (saved.auth_type === "oauth2" && credential_persisted !== true);
   if (saved.driver === "graphql" && saved.base_url && !skipGraphqlDiscovery) {
+    const actor_type = ctx.principal?.kind ?? ctx.engineClient.context.actor_type;
     void runDiscoveryCached(
       {
         db: ctx.db as Db,
         tenant_id: ctx.tenant_id,
+        ...(actor_type ? { actor_type } : {}),
         actor_id: ctx.actor_id,
       },
       {
@@ -489,7 +501,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       .then((out) => {
         void recordConnectorDiscovered({
           tenant_id: ctx.tenant_id,
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           executor: ctx.db,
           connector_id: saved.id,
           strategy: out.result.strategy,
@@ -530,7 +542,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   if (p.forceSave === true && requiresProbe && connector.latest_probe?.ok !== true) {
     await recordConnectorSavedOverride({
       tenant_id: ctx.tenant_id,
-      actor_id: ctx.actor_id,
+      ...auditActorFromToolContext(ctx),
       executor: ctx.db,
       connector_id: saved.id,
       slug: saved.slug,

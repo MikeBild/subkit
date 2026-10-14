@@ -650,7 +650,13 @@ async function handleChatEventImpl(
           const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
           try {
             const appended = await appendUserMessage(
-              { tenant_id, conversation_id, actor_id: user_id, message: prompt },
+              {
+                tenant_id,
+                conversation_id,
+                actor_id: user_id,
+                principal: chatPrincipal,
+                message: prompt,
+              },
               db,
             );
             const result = await runConversationTurn(
@@ -693,6 +699,7 @@ async function handleChatEventImpl(
       {
         tenant_id,
         actor_id: user_id,
+        principal: chatPrincipal,
         initial_message: prompt,
         origin_client: principalOrigin(chatPrincipal) ?? `chat:${ev.platform}`,
         surface: "chat",

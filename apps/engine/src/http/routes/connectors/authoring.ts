@@ -235,6 +235,8 @@ export function registerAuthoringRoutes(app: OpenAPIHono<AppEnv>): void {
       tenant_id: principal.tenant_id,
       connector: { ...connector, tenant_id: principal.tenant_id },
       credential_override: credential,
+      actor_id: principal.id,
+      actor_type: principal.kind === "user" ? "user" : "system_account",
     });
     return c.json(result, 200);
   });

@@ -3,6 +3,7 @@ import { recordConnectorProbed } from "../../audit/recorders/connector.ts";
 import { probeConnector } from "../../connectors/drivers/index.ts";
 import { computeConnectorScopeDiff } from "../../connectors/oauth-scope-diff.ts";
 import { getConnector } from "../../connectors/service.ts";
+import { auditActorFromToolContext } from "./audit-actor.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const TestConnectorInput = z
@@ -35,15 +36,17 @@ export const testConnectorTool: ConversationTool = {
       };
     }
 
+    const actor = auditActorFromToolContext(ctx);
     const result = await probeConnector({
       db: ctx.db,
       tenant_id: ctx.tenant_id,
       connector,
+      ...actor,
     });
 
     await recordConnectorProbed({
       tenant_id: ctx.tenant_id,
-      actor_id: ctx.actor_id,
+      ...actor,
       executor: ctx.db,
       connector,
       result,

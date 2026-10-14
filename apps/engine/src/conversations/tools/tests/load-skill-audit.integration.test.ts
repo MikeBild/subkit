@@ -26,6 +26,7 @@ function makeCtx(conversation_id: string): ToolContext {
     connector_id: null,
     workflow_id: null,
     engineClient: {
+      context: { actor_type: "user", actor_id: ctx.user_id },
       skills: {
         list: async () => [
           {
@@ -75,6 +76,8 @@ describe("load_skill — audit chokepoint", () => {
     expect(meta?.skill_slug).toBe("prefer-get-for-lists");
     expect(meta?.already_loaded).toBe(false);
     expect(rows[0]?.tenant_id).toBe(ctx.tenant_id);
+    expect(rows[0]?.actor_type).toBe("user");
+    expect(rows[0]?.actor_id).toBe(ctx.user_id);
   });
 
   test("re-load re-promotes and writes a second (already_loaded) audit row", async () => {

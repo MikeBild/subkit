@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { knowledgeSources, skillCandidates, tenants } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { auditLog, knowledgeSources, skillCandidates, tenants } from "../../db/schema/index.ts";
 import { issueApiKey } from "../../identity/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
@@ -161,4 +162,23 @@ test("source filters preserve source tenant isolation and require knowledge visi
     headers: { authorization: `Bearer ${issued.plaintext}` },
   });
   expect(unfiltered.status).toBe(200);
+});
+
+test("HTTP knowledge update audit records the authenticated principal type and ID", async () => {
+  const id = sources.get("learnings-ops");
+  if (!id) throw new Error("source missing");
+  const response = await fetch(`${server.baseUrl}/v1/knowledge-sources/${id}`, {
+    method: "PATCH",
+    headers: {
+      authorization: `Bearer ${server.apiKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ name: "Updated learning source" }),
+  });
+  expect(response.status).toBe(200);
+  const [audit] = await server.db
+    .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+    .from(auditLog)
+    .where(and(eq(auditLog.resource_id, id), eq(auditLog.action, "knowledge_source.updated")));
+  expect(audit).toEqual({ actor_type: "user", actor_id: server.userId });
 });

@@ -547,6 +547,59 @@ describe("dry_run_transform — javascript dialect", () => {
 });
 
 describe("dry_run_transform — audit hygiene", () => {
+  test("system-account principal is retained in the audit row", async () => {
+    const systemAccountId = crypto.randomUUID();
+    const toolCtx = {
+      ...makeCtx(),
+      actor_id: systemAccountId,
+      principal: {
+        kind: "system_account" as const,
+        id: systemAccountId,
+        tenant_id,
+        provider: "test",
+        roles: [],
+      },
+    };
+    await dryRunTransformTool.execute(toolCtx, {
+      expression: "value",
+      sample_data: { value: true },
+      dialect: "jsonata",
+    });
+    const [row] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenant_id),
+          eq(auditLog.action, "conversation.dry_run_transform"),
+          eq(auditLog.resource_id, toolCtx.conversation_id),
+        ),
+      )
+      .limit(1);
+    expect(row).toEqual({ actor_type: "system_account", actor_id: systemAccountId });
+  });
+
+  test("ID-only legacy context remains unknown rather than being attributed to a user", async () => {
+    const toolCtx = { ...makeCtx(), actor_id: crypto.randomUUID() };
+    await dryRunTransformTool.execute(toolCtx, {
+      expression: "value",
+      sample_data: { value: true },
+      dialect: "jsonata",
+    });
+    const [row] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenant_id),
+          eq(auditLog.action, "conversation.dry_run_transform"),
+          eq(auditLog.resource_id, toolCtx.conversation_id),
+        ),
+      )
+      .limit(1);
+    expect(row).toEqual({ actor_type: "unknown", actor_id: null });
+  });
+
   test("audit metadata stores expression_hash, not raw expression", async () => {
     const expression = "items.{ 'id': id }";
     const toolCtx = makeCtx();

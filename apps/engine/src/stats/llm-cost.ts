@@ -110,7 +110,7 @@ export async function readLlmCostByGroup(
   const { prices, currency } = tenantRates(params.tenantId);
   const rows = await readGroupedPricedTokens(
     db,
-    buildWhere(params),
+    buildWhere({ ...params, groupBy: [dim] }),
     longContextThresholds(prices),
     { column: dimColumn(dim), from: llmFromClause([dim]) },
   );

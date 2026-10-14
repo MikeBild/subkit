@@ -124,6 +124,7 @@ function serialize(v: identity.ApiKeyView) {
     scopes: v.scopes,
     user_id: v.user_id,
     system_account_id: v.system_account_id,
+    creator: v.creator,
     allowed_workflows: v.allowed_workflows,
     allowed_connectors: v.allowed_connectors,
     created_at: v.created_at.toISOString(),
@@ -195,7 +196,7 @@ export function registerApiKeyRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(body.allowed_workflows ? { allowed_workflows: body.allowed_workflows } : {}),
         ...(body.allowed_connectors ? { allowed_connectors: body.allowed_connectors } : {}),
         ...(expiresAt ? { expires_at: expiresAt } : {}),
-        actor_id: principal.id,
+        actor: { kind: principal.kind, id: principal.id },
       },
       db,
     );
@@ -233,7 +234,7 @@ export function registerApiKeyRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         id,
         ...(body.overlap_minutes !== undefined ? { overlap_minutes: body.overlap_minutes } : {}),
-        actor_id: principal.id,
+        actor: { kind: principal.kind, id: principal.id },
       },
       db,
     );
@@ -268,6 +269,7 @@ export function registerApiKeyRoutes(app: OpenAPIHono<AppEnv>): void {
       {
         tenant_id: principal.tenant_id,
         id,
+        actor_kind: principal.kind,
         actor_id: principal.id,
       },
       db,
