@@ -109,6 +109,7 @@ export async function verifyManagementEvidence(
             oauth_connections: 0,
             id: ACTOR_ID,
             email: EMAIL,
+            role: "member",
             status: "active",
             groups: [{ id: GROUP_ID, name: GROUP }],
           },
@@ -477,10 +478,47 @@ export async function verifyManagementEvidence(
       `${customSummary} · ${customRangeLabel}`, "Explicit audit time range must keep generic count copy and show its range");
 
     await verifyPeopleLoadsPerTab(page, stand, `management evidence (${locale})`);
-    await openRow(page, "people-list", 0);
+    await page.getByTestId("people-search").fill(EMAIL);
+    const targetPersonLink = page
+      .locator(
+        '[data-testid^="people-list-row-link-"], [data-testid^="people-list-mobile-row-link-"]',
+      )
+      .filter({ visible: true, hasText: EMAIL })
+      .first();
+    await targetPersonLink.click();
+    const personSheet = page.getByTestId("people-sheet");
+    await personSheet.waitFor({ state: "visible" });
+    require((await fact(page, "people-sheet-facts", t("people.email")).innerText()).trim() ===
+      EMAIL, "Person sheet must show the exact email address independently from the display name");
+    require((await page.getByTestId("people-role").innerText()).trim() ===
+      t(
+        "role.member",
+      ), "Person sheet must show the effective role alongside the saved group membership");
     await contains(page.getByTestId("people-sheet-groups"), GROUP, "saved human group membership");
     await capture("management-person-groups");
-    await closeRecordSheet(page.getByTestId("people-sheet"));
+    await page.getByTestId("people-deactivate").click();
+    const deactivateDialog = page.getByTestId("people-deactivate-confirm");
+    await deactivateDialog.waitFor({ state: "visible" });
+    const deactivationConsequence = translate(locale, "people.deactivateConsequence");
+    require((
+      await deactivateDialog.getByTestId("people-deactivate-confirm-consequence").innerText()
+    ).trim() ===
+      deactivationConsequence, "Deactivation must explain sign-in/access impact and that workflows and schedules continue");
+    const deactivationWrites = [];
+    const captureDeactivationWrite = (request) => {
+      if (
+        request.method() !== "GET" &&
+        new URL(request.url()).pathname === `/v1/identity/users/${ACTOR_ID}`
+      )
+        deactivationWrites.push(request.method());
+    };
+    page.on("request", captureDeactivationWrite);
+    await deactivateDialog.getByTestId("people-deactivate-confirm-cancel").click();
+    await deactivateDialog.waitFor({ state: "hidden" });
+    page.off("request", captureDeactivationWrite);
+    require(deactivationWrites.length ===
+      0, "Canceling deactivation must not issue a user mutation");
+    await closeRecordSheet(personSheet);
     await stand.visit(page, "people?section=groups");
     const groupHeaders = await page
       .getByTestId("groups-list-desktop")

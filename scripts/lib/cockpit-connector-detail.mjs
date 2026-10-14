@@ -427,33 +427,45 @@ async function assertConnectorMenu(page, localeName, includeAi, where) {
           ["connector-menu-delete", "Delete"],
         ];
   const expectedIds = actions.map(([id]) => id);
-  const snapshot = await page.waitForFunction(
-    () => {
-      const menus = [...document.querySelectorAll('[role="menu"]')].filter((menu) => {
-        const style = getComputedStyle(menu);
-        const rect = menu.getBoundingClientRect();
-        return (
-          style.visibility !== "hidden" &&
-          style.display !== "none" &&
-          rect.width > 0 &&
-          rect.height > 0
+  let snapshot;
+  try {
+    snapshot = await page.waitForFunction(
+      () => {
+        const menus = [...document.querySelectorAll('[role="menu"]')].filter((menu) => {
+          const style = getComputedStyle(menu);
+          const rect = menu.getBoundingClientRect();
+          return (
+            style.visibility !== "hidden" &&
+            style.display !== "none" &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        });
+        if (menus.length === 0) return null;
+        const items = menus.flatMap((menu) =>
+          [...menu.querySelectorAll('[role="menuitem"]')].map((item) => ({
+            id: item.getAttribute("data-testid"),
+            label: item.innerText.trim(),
+          })),
         );
-      });
-      if (menus.length === 0) return null;
-      const items = menus.flatMap((menu) =>
-        [...menu.querySelectorAll('[role="menuitem"]')].map((item) => ({
-          id: item.getAttribute("data-testid"),
-          label: item.innerText.trim(),
-        })),
-      );
-      if (items.length === 0) return null;
-      return {
-        count: menus.length,
-        items,
-      };
-    },
-    { timeout: 10_000 },
-  );
+        if (items.length === 0) return null;
+        return {
+          count: menus.length,
+          items,
+        };
+      },
+      { timeout: 10_000 },
+    );
+  } catch (error) {
+    const trigger = page.getByTestId("connector-menu");
+    const triggerCount = await trigger.count();
+    const expanded = triggerCount === 1 ? await trigger.getAttribute("aria-expanded") : null;
+    const visibleItems = await page.locator('[role="menuitem"]').allInnerTexts();
+    throw new Error(
+      `${where}: connector menu did not open (trigger=${triggerCount}, expanded=${expanded}, items=${JSON.stringify(visibleItems)})`,
+      { cause: error },
+    );
+  }
   const items = await snapshot.jsonValue();
   await snapshot.dispose();
   const actualIds = items.items.map((item) => item.id);
@@ -1046,6 +1058,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       throw new Error(
         `${where}: accepting AI text sent ${JSON.stringify(state.metadataPatches.at(-1))}`,
       );
+    await page.keyboard.press("Escape");
     await page.getByTestId("connector-menu").click();
     await assertConnectorMenu(page, localeName, false, `${where} · human description`);
     state.description = "";
