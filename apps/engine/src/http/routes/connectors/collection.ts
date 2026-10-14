@@ -1,7 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { compareCategoryCounts } from "../../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { actorOf } from "../../../audit/actor.ts";
+import { actorOf } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
   CreateConnectorSchema,

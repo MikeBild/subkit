@@ -1,8 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { actorOf } from "../../../audit/actor.ts";
-import { AuditAction, auditAwait, readRequestSource } from "../../../audit/index.ts";
+import { AuditAction, actorOf, auditAwait, readRequestSource } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
   beginConnectorOAuthDance,

@@ -2,10 +2,10 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { AUDIT_SOURCE_HEADER, DEPLOY_VERSION_HEADER } from "@shared/audit-source.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { actorType } from "../../audit/actor.ts";
 import {
   AuditAction,
   AuditSourceEnum,
+  actorType,
   auditAwait,
   DeployVersionSchema,
   SYSTEM_TENANT_ID,

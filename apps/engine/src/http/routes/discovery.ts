@@ -1,8 +1,8 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { actorOf } from "../../audit/actor.ts";
 import {
   AuditAction,
+  actorOf,
   actorType,
   auditAwait,
   bucketSize,
