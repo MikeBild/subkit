@@ -9,6 +9,8 @@ const VERSION = "2b4d6f81-9a3c-4e5d-b7f0-1c3e5a7b9d64";
 const MAIL_DEV = "8e0a2c4f-6b1d-4f37-a95c-3e5a7c9b1d76";
 const EXPIRED_CONNECTOR = "5c7e9a1b-3d2f-4b68-8a04-6e8c0a2d4f87";
 const HEALTHY_CONNECTOR = "9d1f3b5c-7e4a-4c26-b813-2f4b6d8e0a98";
+const CONNECTION_TO_REMOVE = "c1d3e5f7-9a2b-4c6d-8e0f-1a3b5c7d9e21";
+const CONNECTION_TO_KEEP = "d2e4f6a8-0b1c-4d5e-9f70-2b4c6d8e0f32";
 const FAILED_RUN = "1a3c5e7f-9b2d-4f48-a6c0-8e0a2c4e6b19";
 
 const json = (route, body, status = 200) =>
@@ -71,6 +73,36 @@ function connectorRecord(id, expired) {
     created_at: "2026-06-01T08:00:00.000Z",
     updated_at: "2026-07-23T08:00:00.000Z",
   };
+}
+
+function connectorConnections() {
+  return [CONNECTION_TO_REMOVE, CONNECTION_TO_KEEP].map((id, index) => ({
+    id,
+    name: index === 0 ? "Support account" : "Billing account",
+    base_url: "https://accounts.example.test",
+    issuer: "https://accounts.example.test",
+    service_name: index === 0 ? "Support account" : "Billing account",
+    service_description: null,
+    scopes: [],
+    granted_scopes: [],
+    state: "valid",
+    state_reason: null,
+    auto_renew: true,
+    expires_at: null,
+    last_used_at: null,
+    last_refreshed_at: null,
+    refresh_failed_at: null,
+    last_error: null,
+    used_by: [
+      {
+        connector_id: HEALTHY_CONNECTOR,
+        slug: "lager-api",
+        display_name: "Lager-API",
+        workflow_count: 0,
+      },
+    ],
+    created_at: "2026-06-01T08:00:00.000Z",
+  }));
 }
 
 function preview(workflowId, environment) {
@@ -151,6 +183,18 @@ function detailApi(state) {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname;
+    if (path === "/v1/connections" && request.method() === "GET") {
+      const items = state.connections.filter(
+        (connection) => !state.deletedConnectionIds.includes(connection.id),
+      );
+      state.connectionListReads.push(items.map(({ id, name }) => ({ id, name })));
+      return json(route, { items, total: items.length });
+    }
+    const connectionDelete = /^\/v1\/connections\/([^/]+)$/.exec(path);
+    if (connectionDelete && request.method() === "DELETE") {
+      state.deletedConnectionIds.push(decodeURIComponent(connectionDelete[1]));
+      return route.fulfill({ status: 204 });
+    }
     for (const id of [HELD, UNAVAILABLE, FAILED, PLAIN]) {
       if (path === `/v1/workflows/${id}`) return json(route, workflowRecord(id));
       if (path === `/v1/workflows/${id}/automation-status`)
@@ -208,6 +252,8 @@ const isDetailApi = (url) => {
   const ids = [HELD, UNAVAILABLE, FAILED, PLAIN, EXPIRED_CONNECTOR, HEALTHY_CONNECTOR];
   return (
     ids.some((id) => pathname.includes(id)) ||
+    pathname === "/v1/connections" ||
+    /^\/v1\/connections\/[^/]+$/.test(pathname) ||
     pathname === "/v1/schedules" ||
     (pathname === "/v1/executions" && ids.includes(searchParams.get("workflow_id") ?? ""))
   );
@@ -261,7 +307,12 @@ async function assertRecordHeader(page, where, de) {
 
 export async function verifyDetailAction(page, stand, uuid, localeName, capture) {
   const de = localeName === "de";
-  const state = { previews: 0 };
+  const state = {
+    previews: 0,
+    connections: connectorConnections(),
+    deletedConnectionIds: [],
+    connectionListReads: [],
+  };
   const handler = detailApi(state);
   await page.route(isDetailApi, handler);
   try {
@@ -367,6 +418,168 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     for (const stale of STALE)
       if (body.includes(stale)) throw new Error(`${where}: the page still offers "${stale}"`);
     await assertSingleTriggers(page, where);
+    const changeInChat = page.getByTestId("connector-menu-change");
+    await changeInChat.waitFor({ state: "visible" });
+    const changeLabel = (await changeInChat.innerText()).trim();
+    if (changeLabel !== (de ? "Im Chat ändern" : "Change in chat"))
+      throw new Error(`${where}: the chat action reads "${changeLabel}"`);
+    const changeUrl = new URL((await changeInChat.getAttribute("href")) ?? "", "http://x");
+    if (
+      changeUrl.pathname !== "/cockpit/chat/new" ||
+      changeUrl.searchParams.get("connector_id") !== HEALTHY_CONNECTOR ||
+      changeUrl.searchParams.get("references") !== `connector:${HEALTHY_CONNECTOR}` ||
+      changeUrl.searchParams.get("prompt") !==
+        (de ? "Nimm folgende Änderungen vor: " : "Make the following changes: ") ||
+      [...changeUrl.searchParams.keys()].length !== 3
+    )
+      throw new Error(
+        `${where}: the chat action lost its connector reference or action-only prompt`,
+      );
+    await changeInChat.click();
+    await page.waitForURL((url) => url.pathname === "/cockpit/chat/new");
+    const openedChat = new URL(page.url());
+    if (
+      openedChat.searchParams.get("connector_id") !== HEALTHY_CONNECTOR ||
+      openedChat.searchParams.get("references") !== `connector:${HEALTHY_CONNECTOR}`
+    )
+      throw new Error(`${where}: opening the chat action lost the connector context`);
+
+    await stand.visit(page, `connectors/${HEALTHY_CONNECTOR}`);
+    await page.getByTestId("connector-tabs-tab-connection").click();
+    await page.getByTestId("connector-account-connections").waitFor({ state: "visible" });
+    const disconnect = page
+      .locator('[data-testid="connector-account-0-disconnect"]:visible')
+      .first();
+    await disconnect.waitFor({ state: "visible" });
+    const disconnectLabel = (await disconnect.innerText()).trim();
+    if (disconnectLabel !== (de ? "Trennen" : "Disconnect"))
+      throw new Error(`${where}: the account disconnect action reads "${disconnectLabel}"`);
+    await disconnect.click();
+    const confirmation = page.getByTestId("connector-account-disconnect");
+    await confirmation.waitFor({ state: "visible" });
+    const confirmationTitle = await page
+      .getByTestId("connector-account-disconnect-title")
+      .innerText();
+    const confirmationConsequence = await page
+      .getByTestId("connector-account-disconnect-consequence")
+      .innerText();
+    if (
+      confirmationTitle !== (de ? "Kontoverbindung trennen?" : "Disconnect Account connection?") ||
+      confirmationConsequence !==
+        (de
+          ? "Aufrufe über diese Verbindung funktionieren erst nach erneuter Anmeldung wieder."
+          : "Calls through this connection work again only after signing in again.")
+    )
+      throw new Error(
+        `${where}: disconnect confirmation copy is unexpected: ${JSON.stringify({ confirmationTitle, confirmationConsequence })}`,
+      );
+    if (state.deletedConnectionIds.length !== 0)
+      throw new Error(`${where}: opening the disconnect confirmation already deleted a connection`);
+    await page.getByTestId("connector-account-disconnect-cancel").click();
+    await confirmation.waitFor({ state: "hidden" });
+    if (state.deletedConnectionIds.length !== 0)
+      throw new Error(`${where}: cancelling the disconnect deleted a connection`);
+
+    await page.locator('[data-testid="connector-account-0-disconnect"]:visible').first().click();
+    await confirmation.waitFor({ state: "visible" });
+    const deletion = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/v1/connections/${CONNECTION_TO_REMOVE}` &&
+        response.request().method() === "DELETE",
+    );
+    const refreshedConnections = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/v1/connections" &&
+        response.request().method() === "GET",
+    );
+    await page.getByTestId("connector-account-disconnect-confirm").click();
+    const deleted = await deletion;
+    const refreshed = await refreshedConnections;
+    if (deleted.status() !== 204)
+      throw new Error(`${where}: confirming disconnect returned ${deleted.status()}`);
+    await confirmation.waitFor({ state: "hidden" });
+    if (
+      state.deletedConnectionIds.length !== 1 ||
+      state.deletedConnectionIds[0] !== CONNECTION_TO_REMOVE
+    )
+      throw new Error(
+        `${where}: disconnect targeted ${JSON.stringify(state.deletedConnectionIds)}`,
+      );
+    if (
+      refreshed.status() !== 200 ||
+      state.connectionListReads
+        .at(-1)
+        ?.map(({ id }) => id)
+        .join("|") !== CONNECTION_TO_KEEP
+    )
+      throw new Error(`${where}: refreshed data does not contain only the unrelated account`);
+    const remainingRow = page
+      .locator(
+        '[data-testid="connector-account-row-0"]:visible, [data-testid="connector-account-mobile-row-0"]:visible',
+      )
+      .first();
+    await remainingRow.waitFor({ state: "visible" });
+    const remainingText = await remainingRow.innerText();
+    if (!remainingText.includes("Billing account") || remainingText.includes("Support account"))
+      throw new Error(`${where}: the refreshed account row is ${JSON.stringify(remainingText)}`);
+
+    const emptyConnections = (url) => new URL(url).pathname === "/v1/connections";
+    let emptyConnectionsPayload = null;
+    const emptyConnectionsHandler = async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      emptyConnectionsPayload = { items: [], total: 0 };
+      return json(route, emptyConnectionsPayload);
+    };
+    await page.route(emptyConnections, emptyConnectionsHandler);
+    try {
+      const emptyRead = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/v1/connections" &&
+          response.request().method() === "GET",
+      );
+      await stand.visit(page, `connectors/${HEALTHY_CONNECTOR}`);
+      await page.getByTestId("connector-tabs-tab-connection").click();
+      const accounts = page.getByTestId("connector-account-connections");
+      await accounts.waitFor({ state: "visible" });
+      const response = await emptyRead;
+      if (
+        response.status() !== 200 ||
+        JSON.stringify(emptyConnectionsPayload) !== JSON.stringify({ items: [], total: 0 })
+      )
+        throw new Error(
+          `${where}: empty connection fixture did not return the exact empty collection`,
+        );
+      const visibleEmptyStates = page.locator('[data-testid="connector-account-empty"]:visible');
+      await visibleEmptyStates.first().waitFor({ state: "visible" });
+      const visibleEmptyStateCount = await visibleEmptyStates.count();
+      if (visibleEmptyStateCount !== 1)
+        throw new Error(
+          `${where}: expected one visible empty connection state, found ${visibleEmptyStateCount}`,
+        );
+      const emptyTitle = (await visibleEmptyStates.first().innerText()).trim();
+      if (emptyTitle !== (de ? "Noch kein System verbunden" : "No system connected yet"))
+        throw new Error(`${where}: empty connection copy is "${emptyTitle}"`);
+      const visibleAccountRows = await page
+        .locator(
+          '[data-testid^="connector-account-row-"]:visible, [data-testid^="connector-account-mobile-row-"]:visible',
+        )
+        .count();
+      const visibleDisconnectActions = await page
+        .locator('[data-testid^="connector-account-"][data-testid$="-disconnect"]:visible')
+        .count();
+      if (visibleAccountRows !== 0 || visibleDisconnectActions !== 0)
+        throw new Error(
+          `${where}: empty connection state left ${visibleAccountRows} account rows or ${visibleDisconnectActions} disconnect actions visible`,
+        );
+      const accountSectionText = await accounts.innerText();
+      if (
+        accountSectionText.includes("Support account") ||
+        accountSectionText.includes("Billing account")
+      )
+        throw new Error(`${where}: empty account section contains stale account data`);
+    } finally {
+      await page.unroute(emptyConnections, emptyConnectionsHandler);
+    }
   } finally {
     await page.unroute(isDetailApi, handler);
   }

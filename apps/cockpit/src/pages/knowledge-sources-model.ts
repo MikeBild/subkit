@@ -2,6 +2,28 @@ import type { TranslationKey } from "@/lib/i18n";
 
 export type SourceKind = "url" | "discovered" | "file" | "text" | "bundle";
 
+export interface KnowledgeWorkflowTarget {
+  id: string;
+  name: string;
+}
+
+export function knowledgeWorkflowId(
+  scope: string | null | undefined,
+  workflowId: string | null | undefined,
+): string | null {
+  return scope === "workflow" && workflowId?.trim() ? workflowId : null;
+}
+
+export function knowledgeWorkflowTarget(
+  scope: string | null | undefined,
+  workflowId: string | null | undefined,
+  workflow: { id: string; name?: string | null; slug?: string | null } | null | undefined,
+): KnowledgeWorkflowTarget | null {
+  const id = knowledgeWorkflowId(scope, workflowId);
+  const name = workflow?.name?.trim() || workflow?.slug?.trim();
+  return id && workflow?.id === id && name ? { id, name } : null;
+}
+
 export function sourceKind(sourceType: string): SourceKind {
   if (sourceType === "url") return "url";
   if (sourceType === "discovery_endpoint_index") return "discovered";

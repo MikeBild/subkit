@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
+import { actorDirectoryName } from "@/app/actor-directory-model";
 import { absolute, RUNS_FILTER_PARAMS, runHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useNameIndex } from "@/app/use-decisions";
@@ -67,6 +68,7 @@ import {
   runStatusSentence,
   runsFilterSearch,
   runsSummaryText,
+  runsWindowSummaryText,
   runTraceEvidence,
   runVerdict,
   SOURCE_KIND_KEYS,
@@ -84,6 +86,7 @@ type ExecutionDetail = components["schemas"]["ExecutionDetail"];
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 type ExecutionStep = components["schemas"]["ExecutionStep"] & { credential_snapshots?: unknown };
 type ExecutionStepList = components["schemas"]["ExecutionStepListResponse"];
+type WorkflowExecutionAuthority = components["schemas"]["WorkflowExecutionAuthority"];
 
 type RerunSafety = {
   mode: "repeat_safe" | "prepare_only" | "unavailable";
@@ -198,6 +201,14 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
       : null;
 
   const canReadWorkflows = session.permissions.includes("workflow:read");
+  const executionAuthority = useQuery({
+    queryKey: ["run-authority", current.workflow_id, current.execution_authority_id],
+    enabled: Boolean(canReadWorkflows && current.workflow_id && current.execution_authority_id),
+    queryFn: () =>
+      apiRequest<WorkflowExecutionAuthority>(
+        `/v1/workflows/${encodeURIComponent(current.workflow_id ?? "")}/execution-authorities/${encodeURIComponent(current.execution_authority_id ?? "")}`,
+      ),
+  });
   const patch = useQuery({
     queryKey: ["run-open-repair", current.workflow_id],
     enabled: failed && canReadWorkflows && Boolean(current.workflow_id),
@@ -529,6 +540,25 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
                         ? `${t(`runs.permission.${permissionEvidence.basis}`)} · ${t(`runs.permission.${permissionEvidence.phase}`, { when: dateTime(permissionEvidence.checkedAt) })}`
                         : t("runs.caller.unknown"),
                     },
+                    ...(current.execution_authority_id
+                      ? [
+                          {
+                            label: t("runs.permission.authorizedBy"),
+                            value:
+                              actorDirectoryName(
+                                directory,
+                                "user",
+                                executionAuthority.data?.created_by ?? null,
+                              ) ??
+                              actorDirectoryName(
+                                directory,
+                                "system_account",
+                                executionAuthority.data?.created_by ?? null,
+                              ) ??
+                              t("runs.permission.authorizedByUnknown"),
+                          },
+                        ]
+                      : []),
                     {
                       label: t("authority.environment"),
                       value:
@@ -841,15 +871,18 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
     setStartedWindow({ from: null, to: null });
     forgetInAddress(RUNS_FILTER_KEYS);
   }, [forgetInAddress]);
+  const total = list.total ?? rows.length;
+  const sevenDayWindow =
+    startedWindow.from !== null &&
+    startedWindow.to !== null &&
+    Date.parse(startedWindow.to) - Date.parse(startedWindow.from) === 7 * 86_400_000;
+  const summary = sevenDayWindow
+    ? runsWindowSummaryText(total, failedCount, tn)
+    : `${runsSummaryText(total, failedCount, tn)}${startedWindow.from || startedWindow.to ? ` · ${windowFilterLabel(startedWindow.from, startedWindow.to, t, dateTime)}` : ""}`;
 
   return (
     <div className="flex flex-col gap-6">
-      {list.query.data ? (
-        <SummaryLine
-          text={`${runsSummaryText(list.total ?? rows.length, failedCount, tn)}${startedWindow.from || startedWindow.to ? ` · ${windowFilterLabel(startedWindow.from, startedWindow.to, t, dateTime)}` : ""}`}
-          testId="runs-summary"
-        />
-      ) : null}
+      {list.query.data ? <SummaryLine text={summary} testId="runs-summary" /> : null}
       <div className="flex h-[calc(100svh-14rem)] min-h-80 flex-col">
         <DataTable
           columns={columns}

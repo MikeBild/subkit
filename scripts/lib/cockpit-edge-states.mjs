@@ -1,3 +1,5 @@
+import { translate } from "../../apps/cockpit/src/lib/i18n.ts";
+
 const json = (route, body, status = 200) =>
   route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
@@ -51,6 +53,15 @@ export async function verifyEdgeStates(page, stand, capture) {
         throw new Error("/audit forbidden: the forbidden state offers an action no one can take");
       const title = (await forbidden.locator('[data-slot="failure-title"]').innerText()).trim();
       if (!title) throw new Error("/audit forbidden: the forbidden state has no title");
+      const language = await page.locator("html").getAttribute("lang");
+      const locale = language?.startsWith("de") ? "de" : "en";
+      const description = (
+        await forbidden.locator('[data-slot="failure-description"]').innerText()
+      ).trim();
+      if (description !== translate(locale, "resource.permission.description"))
+        throw new Error(
+          "/audit forbidden: the state must show the localized administrator contact guidance",
+        );
       await capture("forbidden-audit");
     },
   );

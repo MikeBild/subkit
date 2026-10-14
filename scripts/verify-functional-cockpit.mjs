@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import { verifyConventionJourneys } from "./konvention-check.mjs";
+import { verifyAccountMenuKeep } from "./lib/cockpit-account-menu.mjs";
 import { verifyApiAccess } from "./lib/cockpit-api-access.mjs";
 import { verifyApiKeyIntakePersonas } from "./lib/cockpit-api-key-personas.mjs";
 import { verifyCatalogEvidence } from "./lib/cockpit-catalog-evidence.mjs";
@@ -8,12 +9,19 @@ import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
 import { verifyChatApprovals, verifyChatDecidedApproval } from "./lib/cockpit-chat-approvals.mjs";
 import { verifyChatChoices } from "./lib/cockpit-chat-choices.mjs";
 import { verifyChatHeader } from "./lib/cockpit-chat-header.mjs";
+import { verifyNewConversationJourney } from "./lib/cockpit-chat-new-conversation.mjs";
 import { verifyChatOAuth } from "./lib/cockpit-chat-oauth.mjs";
 import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
 import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
+import { verifyChatStarterCards } from "./lib/cockpit-chat-starters.mjs";
 import { verifyConnectorDetail } from "./lib/cockpit-connector-detail.mjs";
 import { verifyCreateConnector } from "./lib/cockpit-create-connector.mjs";
-import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
+import {
+  verifyDecisionLifecycle,
+  verifyOverviewDecisionHistory,
+  verifyOverviewDecisionVerbs,
+  verifyOverviewOperationsSummary,
+} from "./lib/cockpit-decisions.mjs";
 import { verifyDescriptionEvidence } from "./lib/cockpit-description-evidence.mjs";
 import { verifyDetailAction } from "./lib/cockpit-detail-action.mjs";
 import { verifyEdgeStates } from "./lib/cockpit-edge-states.mjs";
@@ -24,6 +32,7 @@ import {
   verifyListPagination,
   verifyNotificationActions,
   verifyReviewCloseHistory,
+  verifyUsageWorkflowNavigation,
 } from "./lib/cockpit-functional-navigation.mjs";
 import { selectFunctionalJourneys } from "./lib/cockpit-functional-selection.mjs";
 import { verifyGateDiagnosis } from "./lib/cockpit-gate-diagnosis.mjs";
@@ -49,6 +58,8 @@ import { verifyKnowledgeTotals } from "./lib/cockpit-knowledge-totals.mjs";
 import { verifyKnowledgeWriteEvidence } from "./lib/cockpit-knowledge-write-evidence.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
 import { verifyManagementEvidence } from "./lib/cockpit-management-evidence.mjs";
+import { verifyPeopleDeactivationCopy } from "./lib/cockpit-people-deactivation.mjs";
+import { verifyPeopleDisplayName } from "./lib/cockpit-people-display-name.mjs";
 import { verifyPeopleLoadsPerTab } from "./lib/cockpit-people-tabs.mjs";
 import { startPreviewServer } from "./lib/cockpit-preview-server.mjs";
 import { verifyReleaseNotes } from "./lib/cockpit-release-notes.mjs";
@@ -56,18 +67,25 @@ import { verifyRunDialog } from "./lib/cockpit-run-dialog.mjs";
 import { verifyRunSheet, verifyRunsOverCatalog } from "./lib/cockpit-run-sheet.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
 import { verifySessionExpiry } from "./lib/cockpit-session-expiry.mjs";
+import { verifySkillEditorEvidence } from "./lib/cockpit-skill-editor-evidence.mjs";
 import { verifyTemplateLists } from "./lib/cockpit-template-lists.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
 import { verifyWorkflowHistoryEvidence } from "./lib/cockpit-workflow-history-evidence.mjs";
-import { verifyWorkflowPage } from "./lib/cockpit-workflow-page.mjs";
+import { verifyWorkflowPage, verifyWorkflowTechnicalFacts } from "./lib/cockpit-workflow-page.mjs";
 import { verifyWorkflowPreview } from "./lib/cockpit-workflow-preview.mjs";
 
 const capture = async () => {};
 const locale = "de";
 const journeys = [
+  ["verifyAccountMenuKeep", (page) => verifyAccountMenuKeep(page)],
   [
     "verifyReviewCloseHistory",
     (page, stand) => verifyReviewCloseHistory(page, stand, "functional/review-history"),
+  ],
+  [
+    "verifyUsageWorkflowNavigation",
+    (page, stand) =>
+      verifyUsageWorkflowNavigation(page, stand, "functional/usage-workflow-navigation", uuid),
   ],
   [
     "verifyNotificationActions",
@@ -84,7 +102,7 @@ const journeys = [
   ],
   [
     "verifyRunsOverCatalog",
-    (page, stand) => verifyRunsOverCatalog(page, stand, "functional/runs-over-catalog"),
+    (page, stand) => verifyRunsOverCatalog(page, stand, "functional/runs-over-catalog", mockApi),
   ],
   [
     "verifyApiAccess",
@@ -141,6 +159,7 @@ const journeys = [
     "verifyChatActivation",
     (page, stand) => verifyChatActivation(page, stand, conversation, locale, capture),
   ],
+  ["verifyChatStarterCards", (page, stand) => verifyChatStarterCards(page, stand, mockApi)],
   [
     "verifyChatActivity",
     (page, stand) => verifyChatActivity(page, stand, conversation, locale, capture),
@@ -170,6 +189,18 @@ const journeys = [
   [
     "verifyDecisionLifecycle",
     (page, stand) => verifyDecisionLifecycle(page, stand, uuid, locale, capture),
+  ],
+  [
+    "verifyOverviewDecisionVerbs",
+    (page, stand) => verifyOverviewDecisionVerbs(page, stand, uuid, locale),
+  ],
+  [
+    "verifyOverviewDecisionHistory",
+    (page, stand) => verifyOverviewDecisionHistory(page, stand, mockApi),
+  ],
+  [
+    "verifyOverviewOperationsSummary",
+    (page, stand) => verifyOverviewOperationsSummary(page, stand),
   ],
   ["verifyDetailAction", (page, stand) => verifyDetailAction(page, stand, uuid, locale, capture)],
   ["verifyEdgeStates", (page, stand) => verifyEdgeStates(page, stand, capture)],
@@ -207,6 +238,10 @@ const journeys = [
     (page, stand) =>
       verifyKnowledgeWriteEvidence(page, stand, locale, capture, { mockApi, recordId: uuid }),
   ],
+  [
+    "verifySkillEditorEvidence",
+    (page, stand) => verifySkillEditorEvidence(page, stand, locale, capture),
+  ],
   ["verifyLoadFailures", (page, stand) => verifyLoadFailures(page, stand, conversation, capture)],
   [
     "verifyManagementEvidence",
@@ -217,6 +252,12 @@ const journeys = [
     "verifyPeopleLoadsPerTab",
     (page, stand) => verifyPeopleLoadsPerTab(page, stand, "functional/people-tabs"),
   ],
+  ["verifyPeopleDisplayName", (page, stand) => verifyPeopleDisplayName(page, stand, mockApi)],
+  [
+    "verifyPeopleDeactivationCopy",
+    (page, stand) => verifyPeopleDeactivationCopy(page, stand, mockApi),
+  ],
+  ["verifyNewConversationJourney", (page, stand) => verifyNewConversationJourney(page, stand)],
   ["verifyRunDialog", (page, stand) => verifyRunDialog(page, stand, locale, capture)],
   ["verifySessionExpiry", (page, stand) => verifySessionExpiry(page, stand, uuid, locale, capture)],
   [
@@ -228,6 +269,7 @@ const journeys = [
     (page, stand) =>
       verifyWorkflowHistoryEvidence(page, stand, locale, capture, { mockApi, recordId: uuid }),
   ],
+  ["verifyWorkflowTechnicalFacts", (page, stand) => verifyWorkflowTechnicalFacts(page, stand)],
   [
     "verifyWorkflowPreview",
     (page, stand) => verifyWorkflowPreview(page, stand, uuid, locale, capture),

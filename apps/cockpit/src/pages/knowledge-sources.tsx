@@ -59,6 +59,8 @@ import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import {
   documentUnderTitle,
   knowledgeSummary,
+  knowledgeWorkflowId,
+  knowledgeWorkflowTarget,
   type RefreshRhythm,
   refreshFields,
   refreshRhythm,
@@ -505,6 +507,16 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     enabled: canRead && Boolean(id),
     ...live,
   });
+  const workflowId = knowledgeWorkflowId(query.data?.scope, query.data?.workflow_id);
+  const workflow = useQuery({
+    queryKey: ["knowledge-source-workflow", workflowId],
+    queryFn: () =>
+      apiRequest<{ id: string; name?: string | null; slug?: string | null }>(
+        `/v1/workflows/${encodeURIComponent(workflowId ?? "")}`,
+      ),
+    enabled: Boolean(workflowId) && permissions.includes("workflow:read"),
+    retry: false,
+  });
   const chunks = useQuery({
     queryKey: [...queryKey, "chunks", query.data?.version],
     queryFn: () => loadKnowledgeChunks(id),
@@ -610,6 +622,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
         testId="detail-load-failed"
       />,
     );
+  const workflowTarget = knowledgeWorkflowTarget(source.scope, source.workflow_id, workflow.data);
 
   const kind = sourceKind(source.source_type);
   const primary = canWrite ? sourcePrimaryAction(kind) : null;
@@ -691,21 +704,22 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     ...(kind === "url"
       ? [{ label: t("knowledge.field.refresh"), value: rhythmLabel(t, source) }]
       : []),
-    {
-      label: t("knowledge.field.scope"),
-      value:
-        source.scope === "workflow" && source.workflow_id ? (
-          <a
-            className="underline-offset-4 hover:underline"
-            href={absolute(workflowHref(source.workflow_id))}
-            data-testid="knowledge-scope-workflow"
-          >
-            {t("knowledge.scope.workflow")}
-          </a>
-        ) : (
-          t("knowledge.scope.global")
-        ),
-    },
+    ...(workflowTarget
+      ? [
+          {
+            label: t("knowledge.field.scope"),
+            value: (
+              <a
+                className="underline-offset-4 hover:underline"
+                href={absolute(workflowHref(workflowTarget.id))}
+                data-testid="knowledge-scope-workflow"
+              >
+                {workflowTarget.name}
+              </a>
+            ),
+          },
+        ]
+      : []),
   ];
   const technical: Fact[] = [
     {

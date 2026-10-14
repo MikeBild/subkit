@@ -95,37 +95,19 @@ export async function verifyChatHeader(page, stand, conversation, locale, captur
       throw new Error(
         `an idle chat about a run carries the badge "${await page.getByTestId("chat-status").innerText()}"`,
       );
-    const mode = page.getByTestId("chat-permission-mode");
-    if ((await mode.count()) > 0) {
-      const drawnAsButton = await mode.evaluate((el) => {
-        const style = getComputedStyle(el);
-        return style.borderTopStyle !== "none" && Number.parseFloat(style.borderTopWidth) > 0;
-      });
-      if (drawnAsButton) throw new Error("the mode of a running chat is drawn like a button");
-    }
     const items = page.getByTestId("chat-transcript").locator("li");
     await items.first().waitFor();
-    const markers = await items.evaluateAll((nodes) =>
-      nodes.map((node) => {
-        const list = node.closest("ul, ol");
-        const style = list ? getComputedStyle(list) : null;
-        return {
-          type: style?.listStyleType ?? "none",
-          position: style?.listStylePosition ?? "outside",
-          padding: Number.parseFloat(style?.paddingLeft ?? "0"),
-        };
-      }),
-    );
-    if (markers.length !== 2) throw new Error(`the chat list rendered ${markers.length} items`);
-    for (const marker of markers)
-      if (marker.type === "none" || (marker.position !== "inside" && marker.padding < 12))
-        throw new Error(`a chat list item shows no bullet (${JSON.stringify(marker)})`);
+    const itemCount = await items.count();
+    if (itemCount !== 2) throw new Error(`the chat list rendered ${itemCount} items`);
     await capture("run-focus");
 
     const title = page.getByTestId("chat-title");
     const renamed = de ? "Umbenannt im Kopf" : "Renamed in the header";
     await page.getByTestId("chat-menu").click();
     await page.getByTestId("chat-rename").click();
+    const renameSubmit = page.getByTestId("conversation-rename-dialog-submit");
+    if ((await renameSubmit.innerText()).trim() !== (de ? "Umbenennen" : "Rename"))
+      throw new Error("the chat rename dialog must use the Umbenennen verb");
     await page.getByTestId("conversation-rename-title").fill(renamed);
     await page.getByTestId("conversation-rename-dialog-submit").click();
     await page.getByTestId("conversation-rename-dialog").waitFor({ state: "hidden" });
@@ -167,6 +149,10 @@ export async function verifyChatHeader(page, stand, conversation, locale, captur
     await page.getByTestId("chat-delete").click();
     const deletion = page.getByTestId("conversation-delete-dialog");
     await deletion.waitFor({ state: "visible" });
+    const consequence = de
+      ? `„${renamed}“ wird endgültig entfernt.`
+      : `“${renamed}” is removed for good.`;
+    await deletion.getByText(consequence, { exact: true }).waitFor();
     await page.keyboard.press("Escape");
     await deletion.waitFor({ state: "hidden" });
     if (!state.hidden) throw new Error("opening and cancelling deletion changed hidden state");

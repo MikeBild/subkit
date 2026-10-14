@@ -20,6 +20,7 @@ const PUBLIC = "https://engine.example.org";
 const SLUG = "example-api-demo-fetch";
 const HOOK_SLUG = "auth-notify";
 const FAILED_RUN = "c3e5a7b9-2d4f-4a61-8c03-5e7a9c1b3d04";
+const scheduleCron = (state) => (state.mondaySchedule ? "0 8 * * 1" : "0 7 * * *");
 
 const json = (route, body, status = 200) =>
   route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -34,11 +35,14 @@ function record(state) {
     slug: SLUG,
     category: "example-api",
     description: "Lädt Nutzer aus der Example API und meldet das Ergebnis per E-Mail.",
+    description_source: state.descriptionSource ?? "llm",
     lifecycle: "active",
     invalid: Boolean(state.invalid),
     current_version: 9,
     current_version_id: VERSION,
-    draft_version_id: state.scenario === "apply" ? DRAFT : VERSION,
+    draft_version_id: state.scenario === "apply" || state.savedDraft ? DRAFT : VERSION,
+    checksum: "a".repeat(64),
+    creator: { kind: "user", id: CREATOR },
     health_state: state.failedWith ? "degraded" : "ok",
     health_reason: state.failedWith ? "2 consecutive failures" : null,
     health_changed_at: state.failedWith ? "2026-08-10T07:00:00.000Z" : null,
@@ -47,6 +51,9 @@ function record(state) {
     last_executed_at: "2026-08-10T07:00:00.000Z",
     input_schema: INPUT_SCHEMA,
     output_schema: OUTPUT_SCHEMA,
+    connector_references: state.deletedConnector
+      ? [{ connector_id: MAIL_CONNECTOR, name: "Mail", reason: "deleted" }]
+      : [],
     trigger: null,
     schedule: null,
     webhooks_active:
@@ -209,7 +216,7 @@ function fullInvocation(state) {
       bound && !state.hookOnly
         ? [
             {
-              cron: "0 7 * * *",
+              cron: scheduleCron(state),
               timezone: "Europe/Berlin",
               environment: "prod",
               input: { report: "daily" },
@@ -293,14 +300,16 @@ function authority(overrides = {}) {
 }
 
 function authorities(state) {
+  if (state.neverApproved) return [];
   const revoked = authority({
     id: OLD_GRANT,
+    created_at: state.grantCreatedAt,
     state: "revoked",
     revoked_at: new Date(Date.now() - 86_400_000).toISOString(),
     ready_for_new_run: false,
   });
   const dev = authority({ id: DEV_GRANT, execution_environment: "dev" });
-  if (state.devPending) return [authority(), revoked];
+  if (state.devPending) return [authority({ created_at: state.grantCreatedAt }), revoked];
   const posted = state.granted && state.granted.visit === state.visit ? state.granted.body : null;
   const granted = posted
     ? {
@@ -309,7 +318,7 @@ function authorities(state) {
         max_runs: posted.max_runs,
         remaining_runs: posted.max_runs,
         reserved_runs: 0,
-        created_at: new Date().toISOString(),
+        created_at: state.grantCreatedAt,
       }
     : {};
   if (state.scenario === "manual" && posted) return [authority(granted), revoked];
@@ -320,6 +329,7 @@ function authorities(state) {
           ? granted
           : state.untilRevoked
             ? {
+                created_at: state.grantCreatedAt,
                 valid_until: null,
                 max_runs: null,
                 remaining_runs: null,
@@ -327,8 +337,8 @@ function authorities(state) {
                 open_ended: true,
               }
             : state.expiring
-              ? { remaining_runs: 1, reserved_runs: 29 }
-              : {},
+              ? { created_at: state.grantCreatedAt, remaining_runs: 1, reserved_runs: 29 }
+              : { created_at: state.grantCreatedAt },
       ),
       dev,
       revoked,
@@ -352,7 +362,7 @@ function automationStatus(state) {
     workflow_id: WORKFLOW,
     state: environment === "dev" && state.devPending ? "approval_required" : rowState,
     ready: rowState === "authorized" && !(environment === "dev" && state.devPending),
-    cron: "0 7 * * *",
+    cron: scheduleCron(state),
     timezone: "Europe/Berlin",
     environment,
     next_run_at: null,
@@ -488,11 +498,42 @@ export function api(state) {
     const path = url.pathname;
     if (path === `/v1/workflows/${WORKFLOW}`) return json(route, record(state));
     if (path === `/v1/workflows/${WORKFLOW}/invocation`) return json(route, invocation(state));
+    if (path === "/v1/identity/users")
+      return json(route, {
+        items: [
+          {
+            id: CREATOR,
+            email: "grant-approver@example.test",
+            role: "admin",
+            status: "active",
+          },
+        ],
+      });
+    if (path === "/v1/identity/system-accounts") return json(route, { items: [] });
     if (path === "/v1/identity/api-keys")
       return json(route, {
         items: state.noKeys ? [] : [{ id: CREATOR, name: "ci-deploy", revoked_at: null }],
       });
+    if (path === `/v1/workflows/${WORKFLOW}/metadata` && request.method() === "PATCH") {
+      const patch = request.postDataJSON();
+      state.metadataPatches.push(patch);
+      if (patch.accept_description === true) state.descriptionSource = "human";
+      return json(route, { id: WORKFLOW, ...patch });
+    }
+    if (path === `/v1/workflows/${WORKFLOW}/draft` && request.method() === "PUT") {
+      const body = request.postDataJSON();
+      state.draftWrites.push(body);
+      state.savedDraft = {
+        workflow_id: WORKFLOW,
+        version_id: DRAFT,
+        current_version_id: VERSION,
+        version: 10,
+        definition: body.definition,
+      };
+      return json(route, state.savedDraft);
+    }
     if (path === `/v1/workflows/${WORKFLOW}/draft`) {
+      if (state.savedDraft) return json(route, state.savedDraft);
       const waiting = state.scenario === "apply";
       return json(route, {
         workflow_id: WORKFLOW,
@@ -507,6 +548,23 @@ export function api(state) {
         },
       });
     }
+    if (path === `/v1/workflows/${WORKFLOW}/history`)
+      return json(route, {
+        items: [
+          {
+            id: VERSION,
+            workflow_id: WORKFLOW,
+            version: 9,
+            note: "Initial workflow",
+            created_at: "2026-08-10T09:00:00.000Z",
+            invalid: false,
+            author: { kind: "user", id: CREATOR },
+            checksum: "b".repeat(64),
+          },
+        ],
+        total: 1,
+        next_cursor: null,
+      });
     if (path === `/v1/workflows/${WORKFLOW}/automation-status`)
       return json(route, automationStatus(state));
     if (path === `/v1/workflows/${WORKFLOW}/diagnosis`) {
@@ -552,7 +610,7 @@ export function api(state) {
         workflow_slug: SLUG,
         workflow_name: "Example API Demo Fetch",
         prepared_version_id: null,
-        cron: "0 7 * * *",
+        cron: scheduleCron(state),
         timezone: "Europe/Berlin",
         execution_mode,
         paused: state.scenario === "paused",
@@ -586,7 +644,31 @@ export function api(state) {
         });
       return json(route, { items, total: items.length });
     }
-    if (path === "/v1/patch-candidates") return json(route, { items: [], total: 0 });
+    if (path === "/v1/patch-candidates") {
+      const items = state.preparedRepair
+        ? [
+            {
+              id: REPAIR_CANDIDATE,
+              workflow_id: WORKFLOW,
+              workflow_name: "Example API Demo Fetch",
+              tenant_id: TENANT,
+              classification: "safe",
+              status: "proposed",
+              fixture_id: null,
+              created_at: "2026-08-10T08:00:00.000Z",
+              updated_at: "2026-08-10T08:00:00.000Z",
+              connector_id: MAIL_CONNECTOR,
+              endpoint_key: null,
+              reviewable: true,
+              review_reason: null,
+              review_digest: "a".repeat(64),
+              base_version_id: VERSION,
+              diff: { workflow_step_id: "send_email", drift_signal: { fixer: "use_utf8_encoder" } },
+            },
+          ]
+        : [];
+      return json(route, { items, total: items.length });
+    }
     return route.fallback();
   };
 }
@@ -597,6 +679,8 @@ export const isPageApi = (url) => {
     pathname.includes(WORKFLOW) ||
     pathname.startsWith("/v1/schedules") ||
     pathname === "/v1/connectors" ||
+    pathname === "/v1/identity/users" ||
+    pathname === "/v1/identity/system-accounts" ||
     pathname === "/v1/identity/api-keys" ||
     (["/v1/executions", "/v1/patch-candidates"].includes(pathname) &&
       searchParams.get("workflow_id") === WORKFLOW)
@@ -659,6 +743,9 @@ const WORDS = {
     required: "Pflicht",
     previewOnly: "Ohne Freigabe läuft nur ein Probelauf ohne Wirkung.",
     bearer: "API-Schlüssel als Bearer-Token",
+    httpSnippet: "Beispielaufruf",
+    mcpSignInLabel: "Anmeldung",
+    mcpSignInValue: "OAuth im MCP-Client",
     noAddress: "keine öffentliche Adresse",
     where: "Die Eingabe steht im Body unter „input“. Query-Parameter gibt es nicht.",
     webhookBody: "input.body",
@@ -668,6 +755,11 @@ const WORDS = {
     bodyInvalid: "Der Inhalt ist kein gültiges JSON.",
     invalidRun: "Repariere den Workflow vor dem Ausführen.",
     noSteps: "Noch keine Schritte",
+    emptySteps: "Noch keine Schritte.",
+    noStepsReason: "Füge vor dem Ausführen einen Schritt hinzu.",
+    renameTitle: "Workflow umbenennen",
+    renameHelp: "Die Kennung ändert sich nicht.",
+    savedVersion: "Gespeichert, noch nicht aktiv",
     daily: "täglich um 07:00",
     waiting: "Wartet auf Freigabe",
     active: "Aktiv",
@@ -699,6 +791,9 @@ const WORDS = {
     required: "required",
     previewOnly: "Without approval this is only a trial run without effect.",
     bearer: "API key as bearer token",
+    httpSnippet: "Example request",
+    mcpSignInLabel: "Authentication",
+    mcpSignInValue: "OAuth in the MCP client",
     noAddress: "No public address",
     where: "Input goes in the request body under “input”. There are no query parameters.",
     webhookBody: "input.body",
@@ -708,6 +803,11 @@ const WORDS = {
     bodyInvalid: "The body is not valid JSON.",
     invalidRun: "Repair the workflow before running it.",
     noSteps: "No steps yet",
+    emptySteps: "No steps yet.",
+    noStepsReason: "Add a step before running the workflow.",
+    renameTitle: "Rename workflow",
+    renameHelp: "The identifier stays the same.",
+    savedVersion: "Saved, not active yet",
     daily: "daily at 07:00",
     waiting: "Waiting for approval",
     active: "Active",
@@ -811,11 +911,17 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
   const state = {
     scenario: "grant",
     address: true,
+    grantCreatedAt: new Date(Date.now() - 3_600_000).toISOString(),
     expiring: false,
     grants: [],
+    metadataPatches: [],
+    draftWrites: [],
+    savedDraft: null,
+    descriptionSource: "llm",
     resumed: [],
     diagnosed: [],
     previews: 0,
+    mondaySchedule: false,
   };
   const handler = api(state);
   await page.route(isPageApi, handler);
@@ -857,6 +963,12 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if (await page.locator('[data-family-slot="detail-context"]').count())
       throw new Error(`${where}: the "Steuerung" row is still on the page`);
 
+    const invocationLabel = localeName === "de" ? "Aufrufart" : "Invocation type";
+    if (
+      (await page.getByTestId("workflow-invocation-modes").getAttribute("aria-label")) !==
+      invocationLabel
+    )
+      throw new Error(`${where}: invocation selector is not named ${invocationLabel}`);
     const kinds = await page.locator('[data-testid^="workflow-invocation-tab-"]').allInnerTexts();
     if (kinds.join("|") !== Object.values(words.tabs).join("|"))
       throw new Error(`${where}: the call kinds are ${JSON.stringify(kinds)}`);
@@ -891,6 +1003,9 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if (!httpUrl.includes(`${PUBLIC}/v1/executions`))
       throw new Error(`${where}: the call address reads "${httpUrl}"`);
     const block = page.getByTestId("workflow-invocation-snippet");
+    const snippetLabel = block.getByText(words.httpSnippet, { exact: true });
+    if ((await snippetLabel.count()) !== 1)
+      throw new Error(`${where}: HTTP code block label must be exactly "${words.httpSnippet}"`);
     const pre = block.locator("pre");
     if ((await pre.count()) !== 1) throw new Error(`${where}: the call is not in a code block`);
     let call = (await pre.textContent()) ?? "";
@@ -938,6 +1053,11 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: choosing Python did not change the call`);
 
     await page.getByTestId("workflow-invocation-tab-mcp").click();
+    const mcpAuth = page.getByTestId("workflow-invocation-mcp-auth");
+    for (const fact of [words.mcpSignInLabel, words.mcpSignInValue]) {
+      if ((await mcpAuth.getByText(fact, { exact: true }).count()) !== 1)
+        throw new Error(`${where}: MCP auth fact must contain exactly "${fact}"`);
+    }
     const tool = (await fieldValue(page, "workflow-invocation-mcp-tool")) ?? "";
     if (tool !== `wf_${SLUG}`) throw new Error(`${where}: the tool name reads "${tool}"`);
     if (!((await text(page, "workflow-invocation-mcp-fallback")) ?? "").includes("run_workflow"))
@@ -961,6 +1081,18 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       ).includes('"report": "daily"')
     )
       throw new Error(`${where}: the schedule's fixed input is not shown`);
+
+    state.mondaySchedule = true;
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("workflow-invocation-tab-schedule").click();
+    await page.getByTestId("workflow-schedule").waitFor({ timeout: 10_000 });
+    const mondaySchedule = (await text(page, "workflow-schedule")) ?? "";
+    const mondayAtEight = localeName === "de" ? "jeden Montag um 08:00" : "every Monday at 08:00";
+    if (!mondaySchedule.includes(mondayAtEight))
+      throw new Error(`${where}: the readable Monday schedule lacks "${mondayAtEight}"`);
+    if (mondaySchedule.includes("0 8 * * 1"))
+      throw new Error(`${where}: the Monday rhythm repeats the raw cron expression`);
 
     await page.getByTestId("workflow-invocation-tab-cli").click();
     const command = await page
@@ -1004,6 +1136,14 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     await page.getByTestId("workflow-steps").waitFor();
     if ((await page.locator('[data-testid^="workflow-step-list-row-"]').count()) < 10)
       throw new Error(`${where}: not every step has a row`);
+    const visibleStepRows = () =>
+      page
+        .locator(
+          '[data-testid^="workflow-step-list-row-link-"], [data-testid^="workflow-step-list-mobile-row-link-"]',
+        )
+        .filter({ visible: true });
+    if ((await visibleStepRows().count()) !== 10)
+      throw new Error(`${where}: the draft fixture should show exactly ten steps`);
     if ((await text(page, "workflow-step-1-essence")) !== words.branch)
       throw new Error(
         `${where}: the branch reads "${await text(page, "workflow-step-1-essence")}"`,
@@ -1034,6 +1174,13 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     await page.getByTestId("workflow-step-0-close").click();
     await page.getByTestId("workflow-step-0-sheet").waitFor({ state: "hidden" });
     await (await rowLink(page, "workflow-step-list", 2)).click();
+    const stepSheet = page.getByTestId("workflow-step-2-sheet");
+    const stepTitle = localeName === "de" ? "Schritt 3 · shape_success" : "Step 3 · shape_success";
+    if ((await stepSheet.getByRole("heading", { name: stepTitle, exact: true }).count()) !== 1)
+      throw new Error(`${where}: the step sheet title does not name step 3: ${stepTitle}`);
+    const stepSheetSubtitle = page.getByTestId("workflow-step-2-sheet-subtitle");
+    if ((await stepSheetSubtitle.innerText()).trim() !== "Example API Demo Fetch")
+      throw new Error(`${where}: the step sheet does not identify its workflow`);
     const expression =
       (await page
         .getByTestId("workflow-step-2-configuration")
@@ -1044,6 +1191,42 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: an identifier inside an expression was rewritten: ${expression}`);
     await page.getByTestId("workflow-step-2-close").click();
     await page.getByTestId("workflow-step-2-sheet").waitFor({ state: "hidden" });
+
+    const writesBeforeDiscard = state.draftWrites.length;
+    let removeDialog = null;
+    const captureRemoveDialog = async (dialog) => {
+      removeDialog = dialog.message();
+      await dialog.dismiss();
+    };
+    page.once("dialog", captureRemoveDialog);
+    await page.getByTestId("workflow-step-0-menu").filter({ visible: true }).first().click();
+    await page.getByTestId("workflow-step-0-remove").click();
+    page.off("dialog", captureRemoveDialog);
+    if (removeDialog !== null)
+      throw new Error(`${where}: step removal unexpectedly required confirmation: ${removeDialog}`);
+    if ((await visibleStepRows().count()) !== 9)
+      throw new Error(`${where}: removing a step did not update the local draft immediately`);
+    const remainingFirstRow = page
+      .locator(
+        '[data-testid="workflow-step-list-row-0"], [data-testid="workflow-step-list-mobile-row-0"]',
+      )
+      .filter({ visible: true })
+      .first();
+    const remainingFirstStepId = (
+      await remainingFirstRow.getByRole("cell").first().innerText()
+    ).trim();
+    if (
+      !remainingFirstStepId.includes("check_status") ||
+      remainingFirstStepId.includes("fetch_data")
+    )
+      throw new Error(`${where}: the first step is still "${remainingFirstStepId}"`);
+    await page.getByTestId("step-savebar").waitFor({ state: "visible" });
+    if (state.draftWrites.length !== writesBeforeDiscard)
+      throw new Error(`${where}: removing a step persisted before an explicit save`);
+    await page.getByTestId("step-savebar-discard").click();
+    await page.getByTestId("step-savebar").waitFor({ state: "hidden" });
+    if ((await visibleStepRows().count()) !== 10)
+      throw new Error(`${where}: discarding the draft did not restore all ten steps`);
 
     const editStep = async (index) => {
       await page
@@ -1096,16 +1279,61 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
 
     await assertNoVisibleUuids(page.getByTestId("detail-workflows"), where);
 
-    if (await page.getByTestId("workflow-technical-slug").count())
-      throw new Error(`${where}: the technical facts stand open`);
-    await page.getByTestId("workflow-technical-toggle").click();
-    if ((await text(page, "workflow-technical-slug")) === null)
-      throw new Error(`${where}: the technical facts do not open`);
-    if (!((await text(page, "workflow-technical-version")) ?? "").includes("v9"))
-      throw new Error(`${where}: the technical facts lack the version`);
+    await openTab(page, "structure");
+    const versions = page.getByTestId("workflow-versions");
+    await versions.getByTestId("workflow-versions-toggle").click();
+    const savedRow = page.getByTestId("workflow-versions-row-0");
+    await savedRow.waitFor({ state: "visible" });
+    const expectedSavedAt = await page.evaluate(
+      ({ locale, createdAt }) => {
+        return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(
+          new Date(createdAt),
+        );
+      },
+      {
+        locale: localeName === "de" ? "de-DE" : "en-US",
+        createdAt: "2026-08-10T09:00:00.000Z",
+      },
+    );
+    const expectedAuthorDate = `grant-approver@example.test · ${expectedSavedAt}`;
+    const savedCell = savedRow.getByRole("cell").nth(2);
+    if ((await savedCell.innerText()).trim() !== expectedAuthorDate)
+      throw new Error(`${where}: the saved-by cell reads "${await savedCell.innerText()}"`);
+    await page.getByTestId("workflow-versions-row-link-0").click();
+    const versionSheet = page.getByTestId("workflow-version-sheet");
+    await versionSheet.waitFor({ state: "visible" });
+    const savedFact = page.getByTestId("workflow-version-facts").locator("dd").nth(1);
+    if ((await savedFact.innerText()).trim() !== expectedAuthorDate)
+      throw new Error(`${where}: the saved-by version fact reads "${await savedFact.innerText()}"`);
+    await page.getByTestId("workflow-version-sheet-close").click();
+    await versionSheet.waitFor({ state: "hidden" });
 
     await page.getByTestId("workflow-menu").click();
     await page.getByTestId("workflow-menu-rename").waitFor({ state: "visible" });
+    const expectedMenu =
+      localeName === "de"
+        ? [
+            "Im Chat fragen",
+            "Umbenennen",
+            "Beschreibung und Kategorie",
+            "KI-Text übernehmen",
+            "Deaktivieren",
+            "Löschen",
+          ]
+        : [
+            "Ask in chat",
+            "Rename",
+            "Description and category",
+            "Accept AI text",
+            "Disable",
+            "Delete",
+          ];
+    const menu = page.locator('[role="menu"] [role="menuitem"]');
+    const menuLabels = (await menu.allInnerTexts()).map((label) => label.trim());
+    if (menuLabels.join("|") !== expectedMenu.join("|"))
+      throw new Error(`${where}: the workflow actions are ${JSON.stringify(menuLabels)}`);
+    if ((await page.getByTestId("catalog-metadata-accept").count()) !== 1)
+      throw new Error(`${where}: the LLM-origin description has no accept action`);
     if (await page.getByTestId("workflow-menu-category").count())
       throw new Error(`${where}: the menu still offers a second way to change the category`);
     const ask = page.getByTestId("workflow-menu-ask");
@@ -1124,8 +1352,29 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(
         `${where}: the question action loses its workflow reference or seeds an instruction`,
       );
+    await page.getByTestId("workflow-menu-rename").click();
+    const renameDialog = page.getByTestId("detail-metadata-dialog");
+    await renameDialog.waitFor({ state: "visible" });
+    const accessibleRenameDialog = page.getByRole("dialog", {
+      name: words.renameTitle,
+      exact: true,
+    });
+    await accessibleRenameDialog.waitFor({ state: "visible" });
+    const renameTitle = (
+      await renameDialog.getByTestId("detail-metadata-dialog-title").innerText()
+    ).trim();
+    if (renameTitle !== words.renameTitle)
+      throw new Error(`${where}: the rename dialog title is "${renameTitle}"`);
+    const renameHelp = (
+      await renameDialog.getByTestId("detail-metadata-dialog-description").innerText()
+    ).trim();
+    if (renameHelp !== words.renameHelp)
+      throw new Error(`${where}: the rename dialog help says "${renameHelp}"`);
+    const renameSubmit = page.getByTestId("detail-metadata-save");
+    if ((await renameSubmit.innerText()).trim() !== (localeName === "de" ? "Umbenennen" : "Rename"))
+      throw new Error(`${where}: the rename dialog must use the Umbenennen verb`);
     await page.keyboard.press("Escape");
-    await page.getByTestId("workflow-menu-rename").waitFor({ state: "hidden" });
+    await renameDialog.waitFor({ state: "hidden" });
     await page.getByTestId("workflow-menu").click();
     await page.getByTestId("catalog-metadata-edit").click();
     await page.getByTestId("catalog-metadata-dialog").waitFor({ state: "visible" });
@@ -1138,6 +1387,33 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: the description dialog offers to save an unchanged record`);
     await page.keyboard.press("Escape");
     await page.getByTestId("catalog-metadata-dialog").waitFor({ state: "hidden" });
+    await page.getByTestId("workflow-menu").click();
+    const acceptDescriptionResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/v1/workflows/${WORKFLOW}/metadata` &&
+        response.request().method() === "PATCH",
+    );
+    await page.getByTestId("catalog-metadata-accept").click();
+    const acceptResponse = await acceptDescriptionResponse;
+    if (acceptResponse.status() !== 200)
+      throw new Error(`${where}: accepting assistant text returned ${acceptResponse.status()}`);
+    const acceptBody = state.metadataPatches.at(-1);
+    if (
+      JSON.stringify(acceptBody) !==
+      JSON.stringify({
+        description: "Lädt Nutzer aus der Example API und meldet das Ergebnis per E-Mail.",
+        accept_description: true,
+      })
+    )
+      throw new Error(`${where}: accepting assistant text sent ${JSON.stringify(acceptBody)}`);
+    await page.getByTestId("catalog-metadata-by-assistant").waitFor({ state: "detached" });
+    await page.locator('[role="menu"]').waitFor({ state: "hidden" });
+    await page.getByTestId("workflow-menu").click();
+    const renameAfterAcceptance = page.getByTestId("workflow-menu-rename");
+    await renameAfterAcceptance.waitFor({ state: "visible" });
+    if (await page.getByTestId("catalog-metadata-accept").count())
+      throw new Error(`${where}: accepting assistant text did not remove its conditional action`);
+    await page.keyboard.press("Escape");
 
     await assertSingleTriggers(page, `${where}, sections open`, { approvalOpeners: 1 });
 
@@ -1176,6 +1452,12 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     const lastRun = localeName === "de" ? "Letzter Lauf" : "Last run";
     if (!approvedLine.includes(lastRun))
       throw new Error(`${where}: the headline does not say how the last run went: ${approvedLine}`);
+    const calmSuffix =
+      localeName === "de" ? " · kein Fehler in 7 Tagen" : " · no failures in 7 days";
+    if (!approvedLine.endsWith(calmSuffix))
+      throw new Error(
+        `${where}: approved quiet state omits the seven-day no-failure statement: ${approvedLine}`,
+      );
     await openTab(page, "use");
     await page.getByTestId("workflow-invocation-tab-webhook").click();
     if ((await text(page, "workflow-invocation-hook-0-state")) !== words.active)
@@ -1198,6 +1480,26 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: an approval stands open before anyone asked`);
     if ((await page.locator('[data-testid^="workflow-approvals-row-"]').count()) < 2)
       throw new Error(`${where}: the approvals a run can use are not both listed`);
+    const grantedHeader = page.getByTestId("workflow-approvals-desktop").getByRole("columnheader", {
+      name: localeName === "de" ? "Erteilt" : "Granted",
+      exact: true,
+    });
+    const grantedRow = page
+      .locator(
+        '[data-testid="workflow-approvals-row-0"], [data-testid="workflow-approvals-mobile-row-0"]',
+      )
+      .filter({ visible: true })
+      .first();
+    const grantedDate = await page.evaluate(
+      ({ timestamp, language }) =>
+        new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(
+          new Date(timestamp),
+        ),
+      { timestamp: state.grantCreatedAt, language: localeName === "de" ? "de-DE" : "en-US" },
+    );
+    const grantedFact = `grant-approver@example.test · ${grantedDate}`;
+    await grantedRow.getByText(grantedFact, { exact: true }).waitFor();
+    await grantedHeader.waitFor();
     await (await rowLink(page, "workflow-approvals", 0)).click();
     const sheet = page.getByTestId("authority-sheet");
     await sheet.waitFor();
@@ -1248,6 +1550,71 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     await capture("workflow-page-unknown");
     state.diagnosisFails = false;
 
+    where = at("saved, never approved");
+    state.neverApproved = true;
+    panel = await open(page, stand, state, "grant");
+    if (
+      (await panel.getAttribute("data-strip")) !== "unapproved" ||
+      (await text(page, "workflow-automation-state")) !==
+        (localeName === "de" ? "Nicht freigegeben" : "Not approved")
+    )
+      throw new Error(`${where}: saved version without approval is not explicitly unapproved`);
+    const neverApprovedLine =
+      localeName === "de"
+        ? "v9 gespeichert · noch nicht in Produktion"
+        : "v9 saved · not yet in production";
+    if ((await text(page, "workflow-automation-headline")) !== neverApprovedLine)
+      throw new Error(
+        `${where}: saved version/production state differs: ${await text(page, "workflow-automation-headline")}`,
+      );
+    state.neverApproved = false;
+
+    where = at("deleted connector");
+    state.deletedConnector = true;
+    panel = await open(page, stand, state, "approved");
+    if (
+      (await panel.getAttribute("data-strip")) !== "connector" ||
+      (await text(page, "workflow-automation-headline")) !==
+        (localeName === "de" ? "Mail wurde gelöscht" : "Mail was deleted")
+    )
+      throw new Error(`${where}: deleted connector is not named explicitly`);
+    const connectorAction = page.getByTestId("workflow-automation-action");
+    if ((await connectorAction.innerText()).trim() !== words.fixInChat)
+      throw new Error(`${where}: deleted connector does not offer the chat handoff`);
+    const chatTarget = new URL(await connectorAction.getAttribute("href"), page.url());
+    if (
+      chatTarget.pathname !== "/cockpit/chat/new" ||
+      chatTarget.searchParams.get("workflow_id") !== WORKFLOW
+    )
+      throw new Error(`${where}: deleted connector action does not lead to this workflow's chat`);
+    state.deletedConnector = false;
+
+    where = at("prepared repair");
+    state.preparedRepair = true;
+    panel = await open(page, stand, state, "approved");
+    if (
+      (await panel.getAttribute("data-strip")) !== "repairPrepared" ||
+      (await text(page, "workflow-automation-state")) !==
+        (localeName === "de" ? "Reparatur vorbereitet" : "Repair prepared")
+    )
+      throw new Error(`${where}: reviewable repair is not identified as prepared`);
+    const repairLine =
+      localeName === "de" ? "Nachricht als UTF-8 kodieren" : "Encode the message as UTF-8";
+    if ((await text(page, "workflow-automation-headline")) !== repairLine)
+      throw new Error(`${where}: prepared repair omits its concrete change`);
+    if (
+      (await text(page, "workflow-automation-action")) !==
+      (localeName === "de" ? "Reparatur prüfen" : "Review the repair")
+    )
+      throw new Error(`${where}: prepared repair does not offer review`);
+    await page.getByTestId("workflow-automation-action").click();
+    await page.waitForURL(
+      (url) =>
+        url.pathname.replace(/\/$/, "") === "/cockpit" &&
+        url.searchParams.get("review") === `workflow:${WORKFLOW}`,
+    );
+    state.preparedRepair = false;
+
     where = at("repair");
     panel = await open(page, stand, state, "repair");
     await expectState(page, panel, where, words, "repair", { action: null, openers: 0 });
@@ -1279,6 +1646,18 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     await expectState(page, panel, where, words, "repair", { action: null, openers: 0 });
     await page.getByTestId("workflow-strip-more").waitFor();
     await openTab(page, "history");
+    const workflowRunsDesktop = page.getByTestId("workflow-runs-desktop");
+    await workflowRunsDesktop.waitFor({ state: "visible" });
+    const workflowRunHeaders = await workflowRunsDesktop.getByRole("columnheader").allInnerTexts();
+    const expectedWorkflowRunHeaders =
+      localeName === "de"
+        ? ["Lauf", "Details", "Status", "Gestartet"]
+        : ["Run", "Details", "Status", "Started"];
+    if (
+      workflowRunHeaders.map((header) => header.trim()).join("|") !==
+      expectedWorkflowRunHeaders.join("|")
+    )
+      throw new Error(`${where}: workflow run columns are ${JSON.stringify(workflowRunHeaders)}`);
     const failedRow = await (await rowLink(page, "workflow-runs", 0)).getAttribute("href");
     if (
       !failedRow?.startsWith(`/cockpit/workflows/${WORKFLOW}?`) ||
@@ -1375,9 +1754,10 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: the headline lacks both versions: ${applying}`);
     await capture("workflow-page-apply");
     await openTab(page, "structure");
-    if (await page.getByTestId("workflow-build-saved").count())
-      throw new Error(`${where}: the build tab duplicates the pending-version status`);
-    const buildLine = (await text(page, "workflow-build-summary")) ?? "";
+    const buildSummary = page.getByTestId("workflow-build-summary");
+    if (await buildSummary.getByText(words.savedVersion, { exact: true }).count())
+      throw new Error(`${where}: the build summary duplicates the pending-version status`);
+    const buildLine = (await buildSummary.innerText()).trim();
     if (!buildLine.includes("v10") || !buildLine.includes("11"))
       throw new Error(`${where}: the build tab does not show the saved version: "${buildLine}"`);
     await page
@@ -1396,8 +1776,31 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(
         `${where}: a workflow without steps reads "${await text(page, "workflow-automation-state")}"`,
       );
-    if (!(await page.getByTestId("workflow-run-open").isDisabled()))
-      throw new Error(`${where}: a workflow without steps can be run`);
+    await openTab(page, "structure");
+    const noStepsEmptyLine = page
+      .getByTestId("workflow-step-list-empty")
+      .locator('[data-slot="data-state-line"]')
+      .filter({ visible: true })
+      .first();
+    if (
+      !(await noStepsEmptyLine.isVisible()) ||
+      (await noStepsEmptyLine.innerText()).trim() !== words.emptySteps
+    )
+      throw new Error(`${where}: the empty builder reads "${await noStepsEmptyLine.innerText()}"`);
+    if (await page.getByTestId("workflow-build-summary").count())
+      throw new Error(`${where}: a workflow without steps shows a version/step summary`);
+    const noStepsVersions = page.getByTestId("workflow-versions");
+    await noStepsVersions.getByTestId("workflow-versions-toggle").click();
+    await noStepsVersions.getByTestId("workflow-versions-row-0").waitFor({ state: "visible" });
+    const noStepsRun = page.getByTestId("workflow-run-open");
+    if (!(await noStepsRun.isVisible()) || !(await noStepsRun.isDisabled()))
+      throw new Error(`${where}: a workflow without steps lacks its visible disabled start`);
+    await page.getByTestId("workflow-run-open-blocked").hover();
+    const noStepsReason = page.getByRole("tooltip");
+    await noStepsReason.waitFor({ state: "visible" });
+    if ((await noStepsReason.innerText()).trim() !== words.noStepsReason)
+      throw new Error(`${where}: the disabled start explains "${await noStepsReason.innerText()}"`);
+    await page.keyboard.press("Escape");
     if (await page.getByTestId("workflow-automation-action").count())
       throw new Error(`${where}: a workflow without steps offers an approval`);
     await capture("workflow-page-no-steps");
@@ -1512,10 +1915,80 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: the request body is not shown`);
     await assertNoVisibleUuids(page.getByTestId("detail-workflows"), where);
     await capture("workflow-call-no-address");
+
+    where = at("saved draft change");
+    state.address = true;
+    state.noKeys = false;
+    panel = await open(page, stand, state, "grant");
+    await expectState(page, panel, where, words, "grant", { action: words.approve, openers: 1 });
+    await openTab(page, "structure");
+    if ((await visibleStepRows().count()) !== 10)
+      throw new Error(`${where}: the save fixture does not begin with ten steps`);
+    await page.getByTestId("workflow-step-0-menu").filter({ visible: true }).first().click();
+    await page.getByTestId("workflow-step-0-remove").click();
+    await page.getByTestId("step-savebar").waitFor({ state: "visible" });
+    const saveDraftResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/v1/workflows/${WORKFLOW}/draft` &&
+        response.request().method() === "PUT",
+    );
+    await page.getByTestId("step-savebar-save").click();
+    const savedResponse = await saveDraftResponse;
+    if (savedResponse.status() !== 200 || state.draftWrites.length !== 1)
+      throw new Error(`${where}: saving the step change did not persist exactly once`);
+    const savedDefinition = state.draftWrites[0]?.definition;
+    if (
+      !Array.isArray(savedDefinition?.steps) ||
+      savedDefinition.steps.length !== 9 ||
+      state.draftWrites[0]?.expected_draft_version_id !== VERSION
+    )
+      throw new Error(`${where}: the draft save is not the expected one-step removal`);
+    const savedToast = page.locator("[data-sonner-toast]").last();
+    await savedToast.waitFor({ state: "visible" });
+    const savedToastText = (await savedToast.innerText()).replaceAll("\n", " ");
+    const expectedToast =
+      localeName === "de" ? "v10 gespeichert · 1 Schritt entfernt" : "v10 saved · 1 step removed";
+    if (!savedToastText.includes(expectedToast))
+      throw new Error(`${where}: the success toast does not name the change: ${savedToastText}`);
   } finally {
     await page.unroute(isPageApi, handler);
     await stand.visit(page, "workflows");
   }
+}
+
+export async function verifyWorkflowTechnicalFacts(page, stand) {
+  const state = {
+    scenario: "grant",
+    address: true,
+    grantCreatedAt: new Date(Date.now() - 3_600_000).toISOString(),
+    expiring: false,
+    grants: [],
+    metadataPatches: [],
+    draftWrites: [],
+    savedDraft: null,
+    descriptionSource: "llm",
+    resumed: [],
+    diagnosed: [],
+    previews: 0,
+    mondaySchedule: false,
+  };
+  await page.route(isPageApi, api(state));
+  await open(page, stand, state, "grant");
+  await openTab(page, "structure");
+  await page.getByTestId("workflow-technical-toggle").click();
+  const facts = {
+    slug: await text(page, "workflow-technical-slug"),
+    version: await text(page, "workflow-technical-version"),
+    checksum: await text(page, "workflow-technical-checksum"),
+    creator: await text(page, "workflow-technical-creator"),
+  };
+  if (!facts.slug?.includes(SLUG)) throw new Error(`Workflow technical slug reads "${facts.slug}"`);
+  if (!facts.version?.includes("v9"))
+    throw new Error(`Workflow technical version reads "${facts.version}"`);
+  if (!facts.checksum?.includes("a".repeat(64)))
+    throw new Error("Workflow technical checksum is missing or incorrect");
+  if (!facts.creator?.includes("grant-approver@example.test"))
+    throw new Error(`Workflow technical creator reads "${facts.creator}"`);
 }
 
 export async function openWorkflowMenuEntry(page, entry) {

@@ -66,12 +66,12 @@ describe("the engine's operating figures", () => {
         schema_version: "operating-figures.v1",
         window: { from: "a", to: "b" },
         runs: { total: 40, succeeded: 36, failed: 4, success_rate_percent: 91 },
-        connectors: { enabled: 8, not_ok: 2, healthy_percent: 75 },
+        connectors: { enabled: 8, not_ok: 2, needs_reauth: 1, healthy_percent: 75 },
         repairs: { decided: 4, applied: 3, applied_percent: 75 },
       }),
     ).toEqual({
       runs: { total: 40, failed: 4, successRatePercent: 91 },
-      connectors: { enabled: 8, notOk: 2, healthyPercent: 75 },
+      connectors: { enabled: 8, notOk: 2, needsReauth: 1, healthyPercent: 75 },
       repairs: { decided: 4, appliedPercent: 75 },
     });
   });
@@ -113,7 +113,7 @@ describe("the operations figures", () => {
   const counts = (over: Partial<OperatingCounts> = {}) =>
     answered<OperatingCounts | null>({
       runs: { total: 40, failed: 2, successRatePercent: 95 },
-      connectors: { enabled: 8, notOk: 2, healthyPercent: 75 },
+      connectors: { enabled: 8, notOk: 2, needsReauth: 1, healthyPercent: 75 },
       repairs: { decided: 4, appliedPercent: 75 },
       ...over,
     });
@@ -152,7 +152,7 @@ describe("the operations figures", () => {
     const figures = figuresOf({
       counts: counts({
         runs: { total: 12, failed: 3, successRatePercent: 75 },
-        connectors: { enabled: 5, notOk: 2, healthyPercent: 60 },
+        connectors: { enabled: 5, notOk: 2, needsReauth: 1, healthyPercent: 60 },
       }),
     });
     expect(value(figures.find((figure) => figure.id === "runs"))?.detail).toEqual({
@@ -162,6 +162,7 @@ describe("the operations figures", () => {
     expect(value(figures.find((figure) => figure.id === "connectorHealth"))?.detail).toEqual({
       kind: "connectors",
       count: 2,
+      needsReauth: 1,
     });
     expect(
       figuresOf({ counts: { state: "failed" } })
@@ -210,7 +211,7 @@ describe("the operations figures", () => {
     const [, rate, connectors] = figuresOf({
       counts: counts({
         runs: { total: 12, failed: 0, successRatePercent: 100 },
-        connectors: { enabled: 5, notOk: 0, healthyPercent: 100 },
+        connectors: { enabled: 5, notOk: 0, needsReauth: 0, healthyPercent: 100 },
       }),
     }).map(value);
     expect(rate?.value).toBe(100);
@@ -223,7 +224,7 @@ describe("the operations figures", () => {
     const figures = figuresOf({
       counts: counts({
         runs: { total: 0, failed: 0, successRatePercent: null },
-        connectors: { enabled: 0, notOk: 0, healthyPercent: null },
+        connectors: { enabled: 0, notOk: 0, needsReauth: 0, healthyPercent: null },
         repairs: { decided: 0, appliedPercent: null },
       }),
       spend: answered({ calls: 0, cost: windowCost({ cost: { amount: 0, currency: "USD" } }) }),

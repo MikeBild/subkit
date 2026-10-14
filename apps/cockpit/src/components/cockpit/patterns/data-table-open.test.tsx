@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
 import { DataTable } from "./data-table";
+import { StatusBadge } from "./status-badge";
 
 const value = {
   locale: "de",
@@ -15,12 +16,21 @@ const value = {
 } as I18nValue;
 
 test("only available records expose row navigation on desktop and mobile", () => {
+  const longStatus = "Zugangsdaten abgelehnt und erneute Anmeldung erforderlich";
   const html = renderToStaticMarkup(
     <I18nContext.Provider value={value}>
       <DataTable
         collectionId="availability"
         collectionTier="embedded"
-        columns={[{ id: "name", accessorKey: "name", header: "Name" }]}
+        columns={[
+          { id: "name", accessorKey: "name", header: "Name" },
+          {
+            id: "status",
+            accessorKey: "available",
+            header: "Status",
+            cell: () => <StatusBadge state="rejected" label={longStatus} />,
+          },
+        ]}
         data={[
           { name: "Available", available: true },
           { name: "Unavailable", available: false },
@@ -28,6 +38,7 @@ test("only available records expose row navigation on desktop and mobile", () =>
         sorting={[]}
         onSortingChange={() => {}}
         onOpen={() => {}}
+        rowActions={() => <button type="button">Action</button>}
         canOpen={(row) => row.available}
         rowHref={(row) => (row.available ? "/workflows/available" : null)}
         emptyState={{
@@ -42,6 +53,25 @@ test("only available records expose row navigation on desktop and mobile", () =>
     </I18nContext.Provider>,
   );
   const document = new JSDOM(html).window.document;
+  expect(document.querySelector('[data-testid="availability-desktop"]')?.className).toContain(
+    "@4xl:block",
+  );
+  expect(document.querySelector('[data-testid="availability-mobile"]')?.className).toContain(
+    "@4xl:hidden",
+  );
+  expect(document.querySelector('[data-slot="row-actions"] span')?.className).toContain(
+    "flex-wrap",
+  );
+  const statusCell = document.querySelectorAll(
+    '[data-testid="availability-row-0"] [data-slot="table-cell"]',
+  )[1];
+  const statusBadge = statusCell?.querySelector('[data-slot="badge"]');
+  expect(statusCell?.className).toContain("min-w-0");
+  expect(statusCell?.className).not.toContain("overflow-hidden");
+  expect(statusBadge?.getAttribute("title")).toBe(longStatus);
+  expect(statusBadge?.getAttribute("aria-label")).toBe(longStatus);
+  expect(statusBadge?.className).toContain("max-w-full");
+  expect(statusBadge?.querySelector("span.min-w-0")?.className).toContain("truncate");
   const available = document.querySelector('[data-testid="availability-row-0"]');
   const unavailable = document.querySelector('[data-testid="availability-row-1"]');
   expect(available?.classList.contains("cursor-pointer")).toBe(true);

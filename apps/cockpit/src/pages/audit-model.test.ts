@@ -11,6 +11,7 @@ import {
   auditActionLabel,
   auditActionsFromUrl,
   auditActorName,
+  auditCountKey,
   auditDetailFacts,
   auditEvidenceBlocks,
   auditFilterFromUrl,
@@ -142,6 +143,16 @@ describe("audit vocabulary", () => {
     ];
     for (const [type, key] of named)
       expect(auditResourceLabel(type, deText), type).toEqual({ text: deText(key), machine: false });
+  });
+
+  test("uses the singular workflow resource label in both locales", () => {
+    const english = (key: TranslationKey, values?: Record<string, string | number>) =>
+      translate("en", key, values);
+    expect(auditResourceLabel("workflow", deText)).toEqual({ text: "Workflow", machine: false });
+    expect(auditResourceLabel("workflow", english)).toEqual({
+      text: "Workflow",
+      machine: false,
+    });
   });
 
   test("a type it does not know is the machine value, never a word for unknown", () => {
@@ -475,15 +486,28 @@ describe("what one record says about itself", () => {
     ).toBe(false);
   });
 
-  test("the outcome is read from the one map the table also reads", () => {
-    expect(auditResultLabel("denied", de)).toEqual({
-      text: de("audit.result.denied"),
-      machine: false,
-    });
-    expect(
-      labelled(auditDetailFacts(entry({ result: "denied" }), de, dateTime), "audit.column.result")
-        ?.value,
-    ).toBe(de("audit.result.denied"));
+  test("the shared result map prints every outcome word in both languages", () => {
+    const outcomes = [
+      { result: "success", key: "audit.result.success", de: "Erfolgreich", en: "Succeeded" },
+      { result: "error", key: "audit.result.error", de: "Fehlgeschlagen", en: "Failed" },
+      { result: "denied", key: "audit.result.denied", de: "Verweigert", en: "Denied" },
+    ] as const;
+
+    for (const outcome of outcomes) {
+      for (const locale of ["de", "en"] as const) {
+        const t = catalogue(locale);
+        const expected = outcome[locale];
+        expect(translate(locale, outcome.key), `${outcome.key} in ${locale}`).toBe(expected);
+        expect(auditResultLabel(outcome.result, t), `${outcome.result} in ${locale}`).toEqual({
+          text: expected,
+          machine: false,
+        });
+        const resultFact = auditDetailFacts(entry({ result: outcome.result }), t, dateTime).find(
+          (fact) => fact.label === translate(locale, "audit.column.result"),
+        );
+        expect(resultFact?.value, `detail result ${outcome.result} in ${locale}`).toBe(expected);
+      }
+    }
   });
 
   test("both languages carry every word this sheet prints", () => {
@@ -639,7 +663,10 @@ describe("who caused a row (§15.2 Verursacher)", () => {
     expect(
       auditActorName({ actor_type: "system_account", actor_id: "same" }, colliding, deText)?.text,
     ).toBe("Service");
-    expect(auditActorName({ actor_type: "", actor_id: "same" }, colliding, deText)).toBeNull();
+    expect(auditActorName({ actor_type: "unknown", actor_id: null }, colliding, deText)).toEqual({
+      text: deText("audit.actor.unknown"),
+      machine: false,
+    });
   });
   const directory: ActorDirectory = new Map([
     [actorKey("user", "018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa"), "operator@example.com"],
@@ -677,8 +704,11 @@ describe("who caused a row (§15.2 Verursacher)", () => {
     });
   });
 
-  test("no actor recorded is no actor — the dash, nothing inferred", () => {
-    expect(auditActorName({ actor_type: "", actor_id: null }, directory, deText)).toBeNull();
+  test("unavailable actor provenance is labeled unknown", () => {
+    expect(auditActorName({ actor_type: "unknown", actor_id: null }, directory, deText)).toEqual({
+      text: deText("audit.actor.unknown"),
+      machine: false,
+    });
   });
 
   test("the detail sheet names the same person the row does", () => {
@@ -897,7 +927,7 @@ test("audit names prefer historical evidence and never guess from an identifier"
       names,
       t,
     ),
-  ).toBe(t("resource.workflows.title"));
+  ).toBe(t("audit.resource.workflow"));
 });
 
 test("audit defaults to thirty days but keeps linked operation history unrestricted", () => {
@@ -907,4 +937,15 @@ test("audit defaults to thirty days but keeps linked operation history unrestric
   expect(initialAuditFilter("?ts_from=2025-01-01T00:00:00Z", now).tsFrom).toBe(
     "2025-01-01T00:00:00.000Z",
   );
+});
+
+test("audit count names the implicit thirty-day window and preserves linked-range copy", () => {
+  const implicit = initialAuditFilter("", Date.parse("2026-01-31T00:00:00Z"));
+  expect(auditCountKey("", implicit, 2, false)).toBe("audit.countWindow");
+  expect(auditCountKey("", implicit, 1, false)).toBe("audit.countWindow.one");
+  expect(auditCountKey("", implicit, 2, true)).toBe("audit.countWindowMore");
+
+  const linked = initialAuditFilter("?ts_from=2025-01-01T00:00:00Z", 1_760_000_000_000);
+  expect(auditCountKey("?ts_from=2025-01-01T00:00:00Z", linked, 2, false)).toBe("audit.count");
+  expect(auditCountKey("", { ...implicit, tsFrom: null }, 2, false)).toBe("audit.count");
 });

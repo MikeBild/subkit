@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { translate } from "@/lib/i18n";
 import {
   ATTENTION_READ_PERMISSIONS,
   NAVIGATION,
@@ -46,6 +47,8 @@ describe("cockpit navigation contract", () => {
       "nav.group.knowledge",
       "nav.group.admin",
     ]);
+    expect(translate("de", "nav.group.admin")).toBe("Installation");
+    expect(translate("en", "nav.group.admin")).toBe("Installation");
   });
 
   test("no entry for a page that was a second place for the same facts", () => {
@@ -89,6 +92,12 @@ describe("cockpit navigation contract", () => {
     for (const permission of ["api_key:read", "mcp_oauth_client:read", "connection:read"]) {
       expect(paths([permission])).toContain("/api-access");
     }
+  });
+
+  test("uses the decided API access label in German and English", () => {
+    expect(navigationItem("/api-access")?.labelKey).toBe("nav.apiAccess");
+    expect(translate("de", "nav.apiAccess")).toBe("API-Zugang");
+    expect(translate("en", "nav.apiAccess")).toBe("API access");
   });
 
   test("Personen & Rechte is one entry, shown for the directory or the rights alone", () => {

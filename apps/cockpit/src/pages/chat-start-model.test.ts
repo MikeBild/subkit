@@ -64,6 +64,19 @@ const FULL: StarterSources = {
 
 const ids = (starters: ChatStarter[]) => starters.map((starter) => starter.id);
 
+describe("chat copy from the conversation reference", () => {
+  test("keeps the header actions as the short rename and delete labels", () => {
+    expect(de("chat.rename")).toBe("Umbenennen");
+    expect(de("chat.delete")).toBe("Löschen");
+  });
+
+  test("states that deleting a conversation removes it permanently", () => {
+    expect(de("chat.delete.consequence", { title: "Projektbericht" })).toBe(
+      "„Projektbericht“ wird endgültig entfernt.",
+    );
+  });
+});
+
 describe("chat start: example cards drawn from the installation", () => {
   test("the same catalog always yields the same cards in the same order", () => {
     expect(chatStarters(FULL, de)).toEqual(chatStarters(structuredClone(FULL), de));

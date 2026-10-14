@@ -520,7 +520,7 @@ const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: T
   patch_proposed: { state: "proposed", label: "workflowStrip.state.repairPrepared" },
   needs_reauth: { state: "expired", label: "connectorStrip.state.expired" },
   needs_update: { state: "needs_update", label: "connectors.healthState.needsUpdate" },
-  degraded: { state: "failed", label: "workflowStrip.state.failing" },
+  degraded: { state: "degraded", label: "connectors.healthState.degraded" },
   unhealthy: { state: "failed", label: "workflowStrip.state.failing" },
   refresh_refused: { state: "expired", label: "connectorStrip.state.expired" },
   refresh_failed: { state: "expired", label: "connectorStrip.state.expired" },

@@ -98,6 +98,27 @@ export async function verifyDescriptionEvidence(
       require(body &&
         typeof body === "object" &&
         !Array.isArray(body), "Description acceptance must send a JSON object");
+      if (body.accept_description !== true) {
+        require(Object.keys(body).length === 1 &&
+          typeof body.description ===
+            "string", "Metadata editing must send only the changed description field");
+        mutation.description = body.description;
+        mutation.source = "human";
+        const result = {
+          ...mutation.base,
+          description: mutation.description,
+          description_source: mutation.source,
+        };
+        events.push({
+          kind: mutation.kind,
+          method: "PATCH",
+          body,
+          status: 200,
+          description: result.description,
+          source: result.description_source,
+        });
+        return route.fulfill({ status: 200, json: result });
+      }
       require(Object.keys(body).sort().join("|") ===
         "accept_description|description", "Description acceptance must not write category or unrelated metadata");
       require(body.accept_description === true &&
@@ -197,6 +218,63 @@ export async function verifyDescriptionEvidence(
     return response.json();
   }
 
+  async function verifyMetadataDialog(record) {
+    await page.getByTestId("catalog-metadata-edit").click();
+    const dialog = page.getByTestId("catalog-metadata-dialog");
+    await dialog.waitFor({ state: "visible" });
+    await dialog.getByRole("heading", { name: t("catalogMeta.dialogTitle"), exact: true }).waitFor({
+      state: "visible",
+    });
+    const resourceName =
+      record.base.name ?? record.base.filename ?? record.base.title ?? record.base.display_name;
+    const subtitle = `${t(`inbox.resource.${record.kind === "knowledge_source" ? "knowledgeSource" : record.kind}`)} · ${resourceName}`;
+    require((await dialog.getByText(subtitle, { exact: true }).count()) ===
+      1, `${record.kind} metadata dialog must identify its kind and name`);
+    await contains(
+      dialog.getByTestId("catalog-metadata-assistant-hint"),
+      t("catalogMeta.assistantHint"),
+      `${record.kind} AI description hint`,
+    );
+    require((await dialog
+      .getByTestId("catalog-metadata-description-input")
+      .getAttribute("placeholder")) ===
+      t(
+        "catalogMeta.empty",
+      ), `${record.kind} metadata dialog must show the description placeholder`);
+    require((await dialog.getByTestId("catalog-metadata-save").innerText()).trim() ===
+      t("common.save"), `${record.kind} metadata dialog must use the Save verb`);
+    require((await dialog.getByTestId("catalog-metadata-category-input").inputValue()) ===
+      record.base.category, `${record.kind} metadata dialog must show the current category`);
+    const edited = `${ORIGINAL} Edited.`;
+    await dialog.getByTestId("catalog-metadata-description-input").fill(edited);
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === record.patchPath &&
+        response.request().method() === "PATCH",
+    );
+    await page.getByTestId("catalog-metadata-save").click();
+    const response = await responsePromise;
+    require(response.status() ===
+      200, `${record.kind} metadata save returned ${response.status()}`);
+    await dialog.waitFor({ state: "hidden" });
+    await contains(
+      page.locator("[data-sonner-toast]").last(),
+      t("catalogMeta.saved"),
+      `${record.kind} metadata edit success toast`,
+    );
+    await contains(
+      page.getByTestId("catalog-metadata-description"),
+      edited,
+      `${record.kind} persisted edited description`,
+    );
+    require(record.description === edited &&
+      record.source ===
+        "human", `${record.kind} metadata edit must persist the human-authored description`);
+    record.description = ORIGINAL;
+    record.source = "llm";
+    await stand.visit(page, `${record.page}/${recordId}`);
+  }
+
   async function verifyAccepted(record, expected, since, phase) {
     await page.getByTestId("catalog-metadata-by-assistant").waitFor({ state: "hidden" });
     await contains(
@@ -237,11 +315,18 @@ export async function verifyDescriptionEvidence(
       );
       await page.getByTestId("catalog-metadata-by-assistant").waitFor({ state: "visible" });
       await openMenu(record, true);
+      await verifyMetadataDialog(record);
+      await openMenu(record, true);
       await capture(`description-${record.kind}-ai-menu`);
       const before = events.length;
       const category = record.base.category;
       const categorySource = record.base.category_source;
       const accepted = await accept(record, 200);
+      await contains(
+        page.locator("[data-sonner-toast]").last(),
+        t("catalogMeta.saved"),
+        `${record.kind} metadata success toast`,
+      );
       require(accepted.description === ORIGINAL &&
         accepted.description_source ===
           "human", "Successful PATCH must return the unchanged description as human");

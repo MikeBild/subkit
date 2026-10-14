@@ -1,3 +1,4 @@
+import { translate } from "../../apps/cockpit/src/lib/i18n.ts";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 
 const WORKFLOW_ID = "6c1e7f24-3b9a-4d05-8e61-2f7a9c4d1b83";
@@ -104,6 +105,8 @@ function runDialogApi(state) {
         items: state.variant === "live" ? [PROD_AUTHORITY] : [],
         next_cursor: null,
       });
+    if (path === "/v1/executions" && request.method() === "GET")
+      return json(route, { items: [], total: 0, next_cursor: null });
     if (path === "/v1/executions" && request.method() === "POST") {
       state.runs.push({
         environment: request.headers()["x-subkit-environment"],
@@ -162,20 +165,72 @@ async function assertNoEngineWords(page, where) {
     if (body.includes(raw)) throw new Error(`${where}: the dialog prints the engine's "${raw}"`);
 }
 
-async function openDialog(page, stand) {
+async function openDialog(page, stand, localeName, viaEmptyHistory = false) {
   await stand.visit(page, `workflows/${WORKFLOW_ID}`);
-  await page.getByTestId("workflow-run-open").click();
+  if (viaEmptyHistory) {
+    const history = page.getByTestId("workflow-tabs-tab-history");
+    await history.click();
+    const recentRuns = page.getByTestId("workflow-recent-runs");
+    await recentRuns.waitFor({ state: "visible", timeout: 10_000 });
+    const expectedEmptyHistory = localeName === "de" ? "Noch keine Läufe." : "No runs yet.";
+    const localizedEmptyHistory = translate(localeName, "detail.noRuns");
+    if (localizedEmptyHistory !== expectedEmptyHistory)
+      throw new Error(
+        `/workflows/<run dialog>: the empty-history translation is "${localizedEmptyHistory}", not "${expectedEmptyHistory}"`,
+      );
+    const emptyLine = recentRuns
+      .getByText(expectedEmptyHistory, { exact: true })
+      .filter({ visible: true });
+    await emptyLine.first().waitFor({ state: "visible" });
+    if ((await emptyLine.count()) === 0)
+      throw new Error("/workflows/<run dialog>: the empty-history message is not visible");
+    const renderedEmptyHistory = (await emptyLine.first().innerText()).trim();
+    if (renderedEmptyHistory !== expectedEmptyHistory)
+      throw new Error(
+        `/workflows/<run dialog>: the rendered empty-history message is "${renderedEmptyHistory}", not "${expectedEmptyHistory}"`,
+      );
+    const emptyAction = recentRuns.getByTestId("workflow-runs-run").filter({ visible: true });
+    await emptyAction.first().waitFor({ state: "visible" });
+    if ((await emptyAction.count()) !== 1)
+      throw new Error(
+        "/workflows/<run dialog>: the empty history does not offer exactly one visible run action",
+      );
+    const expectedAction = translate(localeName, "workflowRuns.runNow");
+    if ((await emptyAction.innerText()).trim() !== expectedAction)
+      throw new Error(
+        `/workflows/<run dialog>: the empty-history action reads "${await emptyAction.innerText()}", not "${expectedAction}"`,
+      );
+    await page.getByTestId("workflow-runs-status").click();
+    await page.getByTestId("workflow-runs-status-option-failed").click();
+    await emptyAction.first().waitFor({ state: "hidden" });
+    if ((await emptyAction.count()) !== 0)
+      throw new Error(
+        "/workflows/<run dialog>: a run action remains visible for the filtered empty result",
+      );
+    await page.getByTestId("workflow-runs-status").click();
+    await page.getByTestId("workflow-runs-status-option-all").click();
+    await emptyAction.first().waitFor({ state: "visible" });
+    if ((await emptyAction.count()) !== 1)
+      throw new Error(
+        "/workflows/<run dialog>: returning to all runs does not restore exactly one visible action",
+      );
+    await emptyAction.first().click();
+  } else {
+    await page.getByTestId("workflow-run-open").click();
+  }
   await page.getByTestId("workflow-run-dialog").waitFor({ state: "visible", timeout: 10_000 });
 }
 
 export async function verifyRunDialog(page, stand, localeName, capture) {
   const de = localeName === "de";
   const state = { variant: "refused", runs: [] };
+  let openedFromEmptyHistory = false;
   const handler = runDialogApi(state);
   await page.route(isRunDialogApi, handler);
   const where = `/workflows/<run dialog> (${localeName})`;
   try {
-    await openDialog(page, stand);
+    await openDialog(page, stand, localeName, !openedFromEmptyHistory);
+    openedFromEmptyHistory = true;
     const title = (await text(page, "workflow-run-dialog-title")) ?? "";
     const asked = de
       ? "Tagesbericht versenden jetzt ausführen?"
@@ -215,11 +270,17 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     await capture("run-dialog-refused");
 
     state.variant = "live";
-    await openDialog(page, stand);
+    await openDialog(page, stand, localeName);
     const live = page.getByTestId("workflow-run-dialog-description");
-    await live
-      .filter({ hasText: de ? "freigegebenen Version" : "approved version" })
-      .waitFor({ timeout: 10_000 });
+    const consequence = translate(localeName, "run.consequenceVersion", {
+      version: RECORD.current_version,
+    });
+    await live.filter({ hasText: consequence }).waitFor({ timeout: 10_000 });
+    const shownConsequence = (await live.innerText()).trim();
+    if (shownConsequence !== consequence)
+      throw new Error(
+        `${where} · live: the consequence says "${shownConsequence}", not "${consequence}"`,
+      );
     await page.getByTestId("workflow-run-submit").click();
     await page.getByTestId("workflow-run-dialog").waitFor({ state: "detached", timeout: 10_000 });
     if (state.runs.at(-1)?.environment !== "prod")
@@ -239,7 +300,7 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     await page.getByTestId("run-detail").waitFor({ state: "hidden" });
 
     state.variant = "crashed";
-    await openDialog(page, stand);
+    await openDialog(page, stand, localeName);
     await page.getByTestId("workflow-run-submit").click();
     await page.getByTestId("workflow-run-error").waitFor({ state: "visible", timeout: 10_000 });
     const crashed = (await text(page, "workflow-run-error")) ?? "";
@@ -251,7 +312,7 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     await assertNoEngineWords(page, `${where} · crashed`);
 
     state.variant = "invalid";
-    await openDialog(page, stand);
+    await openDialog(page, stand, localeName);
     await page.getByTestId("workflow-run-submit").waitFor({ state: "visible" });
     await page.getByTestId("workflow-run-submit").click();
     await page.getByTestId("workflow-run-error").waitFor({ state: "visible", timeout: 10_000 });
@@ -272,7 +333,7 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     await capture("run-dialog-invalid");
 
     state.variant = "typed";
-    await openDialog(page, stand);
+    await openDialog(page, stand, localeName);
     await page.getByTestId("workflow-run-inputs").waitFor({ state: "visible", timeout: 10_000 });
     const typed = `${where} · typed`;
     const limit = page.getByTestId("workflow-run-input-1");

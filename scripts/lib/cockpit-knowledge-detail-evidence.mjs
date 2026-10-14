@@ -5,6 +5,8 @@ const READ_AT = "2024-03-19T12:00:00.000Z";
 const UPDATED_AT = "2025-07-11T12:00:00.000Z";
 const ADDRESS = "https://docs.example.test/handbook";
 const REVISED_ADDRESS = "https://docs.example.test/revised-handbook";
+const WORKFLOW_ID = "018f4b4a-6d33-7b3a-9c2d-00000000a731";
+const WORKFLOW_NAME = "Escalation workflow";
 
 function require(condition, message) {
   if (!condition) throw new Error(message);
@@ -22,12 +24,20 @@ export async function verifyKnowledgeDetailEvidence(
   capture,
   { mockApi, recordId },
 ) {
-  const t = (key) => translate(locale, key);
+  const t = (key, values) => translate(locale, key, values);
   const endpoint = `/v1/knowledge-sources/${recordId}`;
   const pattern = "**/v1/**";
   const events = [];
+  const workflowRequests = [];
+  const proposalRequests = [];
+  const proposalResponses = [];
+  let withoutWorkflowRead = false;
   let address = ADDRESS;
   let source = null;
+  let stripMode = "url";
+  const proposalId = "018f4b4a-6d33-7b3a-9c2d-00000000b733";
+  const proposalTitle = "Evidence retained fact";
+  const proposalBody = "Keep this verified fact traceable to its source.";
   const content = "# Escalation\n\nCall the operator and record the outcome.";
   const chunks = [
     {
@@ -48,8 +58,100 @@ export async function verifyKnowledgeDetailEvidence(
   const handler = async (route) => {
     const request = route.request();
     const url = new URL(request.url());
+    if (
+      request.method() === "GET" &&
+      url.pathname === "/v1/cockpit/bootstrap" &&
+      withoutWorkflowRead
+    ) {
+      return mockApi({
+        request: () => request,
+        fulfill: async (response) => {
+          require((response.status ?? 200) === 200 &&
+            typeof response.body === "string", "Bootstrap permission fixture must be readable");
+          const body = JSON.parse(response.body);
+          const permissions = body.permissions ?? [];
+          require(permissions.includes(
+            "workflow:read",
+          ), "Bootstrap baseline must include workflow:read");
+          body.permissions = permissions.filter((permission) => permission !== "workflow:read");
+          await route.fulfill({ ...response, body: JSON.stringify(body) });
+        },
+      });
+    }
+    if (
+      request.method() === "GET" &&
+      (url.pathname === "/v1/workflows" || url.pathname.startsWith("/v1/workflows/"))
+    ) {
+      workflowRequests.push(url.pathname);
+      if (url.pathname === `/v1/workflows/${WORKFLOW_ID}`)
+        return route.fulfill({
+          json: { id: WORKFLOW_ID, name: WORKFLOW_NAME, slug: "escalation-workflow" },
+        });
+    }
     if (request.method() === "GET" && url.pathname === `${endpoint}/chunks`)
       return route.fulfill({ json: { items: chunks, total: 2 } });
+    if (request.method() === "GET" && url.pathname === "/v1/skill-candidates") {
+      proposalRequests.push(Object.fromEntries(url.searchParams));
+      const response =
+        stripMode === "proposal"
+          ? {
+              items: [
+                {
+                  id: proposalId,
+                  tenant_id: "018f4b4a-6d33-7b3a-9c2d-00000000b734",
+                  scope: "global",
+                  connector_id: null,
+                  endpoint_key: null,
+                  workflow_id: null,
+                  pattern_kind: "success_pattern",
+                  title: proposalTitle,
+                  body: proposalBody,
+                  examples: [],
+                  best_practices: [],
+                  pitfalls: [],
+                  doc_refs: [],
+                  facts: null,
+                  evidence_count: 1,
+                  confidence: "high",
+                  reviewable: true,
+                  review_digest: "evidence-digest",
+                  status: "proposed",
+                  promoted_skill_id: null,
+                  fingerprint: "evidence-fingerprint",
+                  version: 1,
+                  tags: [],
+                  proposed_by: null,
+                  created_at: READ_AT,
+                  updated_at: READ_AT,
+                },
+              ],
+              total: 1,
+              reviewable_total: 1,
+              next_cursor: null,
+            }
+          : { items: [], total: 0, reviewable_total: 0, next_cursor: null };
+      proposalResponses.push({
+        mode: stripMode,
+        requestedSourceId: url.searchParams.get("knowledge_source_id"),
+        total: response.total,
+        reviewable_total: response.reviewable_total,
+        items: response.items.map((item) => ({
+          id: item.id,
+          status: item.status,
+          reviewable: item.reviewable,
+          hasDigest: Boolean(item.review_digest),
+          title: item.title,
+        })),
+      });
+      return route.fulfill({ json: response });
+    }
+    if (request.method() === "GET" && url.pathname === `${endpoint}/history`)
+      return route.fulfill({
+        json: {
+          items: [{ version: 4, current: true, created_at: "2024-03-19T12:00:00.000Z" }],
+          total: 1,
+        },
+      });
     if (request.method() === "GET" && url.pathname === endpoint) {
       return mockApi({
         request: () => request,
@@ -59,7 +161,9 @@ export async function verifyKnowledgeDetailEvidence(
             body.id === recordId, "Canonical knowledge detail identity required");
           source = {
             ...body,
-            source_type: "url",
+            source_type: stripMode === "history" ? "inline" : "url",
+            scope: "workflow",
+            workflow_id: WORKFLOW_ID,
             source_uri: address,
             status: "active",
             chunk_count: 2,
@@ -89,6 +193,15 @@ export async function verifyKnowledgeDetailEvidence(
     await contains(page.getByTestId("knowledge-facts"), t("knowledge.column.kind"));
     await contains(page.getByTestId("knowledge-facts"), t("knowledge.kind.url"));
     await contains(page.getByTestId("knowledge-facts"), ADDRESS);
+    const workflowLink = page.getByTestId("knowledge-scope-workflow");
+    await workflowLink.waitFor({ state: "visible" });
+    require((await workflowLink.innerText()).trim() ===
+      WORKFLOW_NAME, "Workflow usage must show the persisted workflow name");
+    require(new URL(await workflowLink.getAttribute("href"), page.url()).pathname ===
+      `/cockpit/workflows/${WORKFLOW_ID}`, "Workflow usage must link to the exact persisted workflow");
+    require(workflowRequests.length === 1 &&
+      workflowRequests[0] ===
+        `/v1/workflows/${WORKFLOW_ID}`, "Workflow usage must fetch only the exact persisted workflow");
     await page
       .getByTestId(/^knowledge-sections-(?:mobile-)?row-link-0$/)
       .filter({ visible: true })
@@ -141,6 +254,62 @@ export async function verifyKnowledgeDetailEvidence(
     await capture("knowledge-address-saved");
     await stand.visit(page, `knowledge/${recordId}`);
     await contains(page.getByTestId("knowledge-facts"), REVISED_ADDRESS);
+    withoutWorkflowRead = true;
+    const requestsBeforeRestrictedVisit = workflowRequests.length;
+    await stand.visit(page, `knowledge/${recordId}`);
+    const restrictedFacts = page.getByTestId("knowledge-facts");
+    await contains(restrictedFacts, REVISED_ADDRESS);
+    require((await page.getByTestId("knowledge-scope-workflow").count()) ===
+      0, "A person without workflow:read must not see a workflow usage claim");
+    require(!(await restrictedFacts.innerText()).includes(
+      t("knowledge.field.scope"),
+    ), "A person without workflow:read must not see an unlabeled workflow usage claim");
+    require(workflowRequests.length ===
+      requestsBeforeRestrictedVisit, "A person without workflow:read must not trigger a workflow request");
+    withoutWorkflowRead = false;
+    stripMode = "proposal";
+    await page.reload();
+    const proposalStrip = page.getByTestId("knowledge-strip");
+    const expectedProposalLine = t("knowledge.strip.proposal.one");
+    const proposalLine = proposalStrip.locator('[data-slot="status-strip-line"]');
+    await proposalLine.filter({ hasText: expectedProposalLine }).waitFor({ state: "visible" });
+    const actualProposalLine = (await proposalLine.innerText()).trim();
+    require(actualProposalLine ===
+      expectedProposalLine, `Reviewable proposal strip mismatch; got=${JSON.stringify(actualProposalLine)} expected=${JSON.stringify(expectedProposalLine)} mode=${stripMode} requests=${JSON.stringify(proposalRequests)} responses=${JSON.stringify(proposalResponses)}`);
+    const reviewAction = page.getByTestId("knowledge-review-proposal");
+    require((await reviewAction.innerText()).trim() ===
+      t(
+        "knowledge.reviewProposal",
+      ), "Reviewable proposal strip must expose the exact Review action");
+    await reviewAction.waitFor({ state: "visible" });
+    await reviewAction.click();
+    const proposalSheet = page.getByTestId("skill-proposal");
+    await proposalSheet.waitFor({ state: "visible" });
+    require((await page.getByTestId("skill-proposal-title").innerText()).trim() ===
+      proposalTitle, "Review action must open the exact fixture proposal title");
+    await page
+      .getByTestId("skill-proposal-preview")
+      .getByText(proposalBody)
+      .waitFor({ state: "visible" });
+    await capture("knowledge-proposal-status-strip");
+    stripMode = "history";
+    await page.reload();
+    const changedWhen = await page.evaluate(
+      ({ value, tag }) =>
+        new Intl.DateTimeFormat(tag, { dateStyle: "medium" }).format(new Date(value)),
+      { value: "2024-03-19T12:00:00.000Z", tag: LOCALE_TAGS[locale] },
+    );
+    const expectedHistoryLine = t("knowledge.strip.version", {
+      version: 4,
+      when: changedWhen,
+    });
+    const historyLine = page
+      .getByTestId("knowledge-strip")
+      .locator('[data-slot="status-strip-line"]');
+    await historyLine.filter({ hasText: expectedHistoryLine }).waitFor({ state: "visible" });
+    require((await historyLine.innerText()).trim() ===
+      expectedHistoryLine, "Inline source strip must show the current saved version and its creation time, not refresh time");
+    await capture("knowledge-history-status-strip");
   } finally {
     await page.unroute(pattern, handler);
   }

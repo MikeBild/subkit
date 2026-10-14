@@ -214,7 +214,7 @@ import {
 import { ChatStart } from "./chat-start";
 import { type ChatText, chatText, composerAnswerAccepted, questionExcerpt } from "./chat-text";
 import { dedupeBackground, groupMessageParts } from "./chat-transcript";
-import { useChatWorkspace } from "./chat-workspace";
+import { chatContextControlsTarget, useChatWorkspace } from "./chat-workspace";
 import { budgetPressure, budgetSummary } from "./usage-model";
 
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -2126,7 +2126,8 @@ export function ChatPage() {
           ref={contextToggle}
           data-testid="chat-context-toggle"
           aria-expanded={chatWorkspace.open}
-          aria-controls="chat-context-content"
+          aria-controls={chatContextControlsTarget(chatWorkspace.open, Boolean(current))}
+          disabled={!current}
           onClick={() => chatWorkspace.setOpen(!chatWorkspace.open)}
         >
           <PanelRight />
@@ -2347,21 +2348,37 @@ export function ChatPage() {
     <Page kind="workspace" scroll="content" testId="chat-workspace" header={null}>
       <div
         ref={chatWorkspace.ref}
-        className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row"
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1",
+          chatWorkspace.horizontal ? "flex-row" : "flex-col",
+        )}
         data-testid="chat-layout"
       >
         <aside
-          className="grid min-h-0 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center border-b md:flex md:w-66 md:flex-col md:items-stretch px-4 md:border-r md:border-b-0"
+          className={cn(
+            "min-h-0 shrink-0 px-4",
+            chatWorkspace.horizontal
+              ? "flex w-66 flex-col items-stretch border-r"
+              : "grid grid-cols-[minmax(0,1fr)_auto] items-center border-b",
+          )}
           data-testid="chat-list-panel"
         >
-          <div className="md:-mx-4 md:h-18 md:border-b md:px-2">{chatHeader}</div>
-          {newConversation ? <div className="md:-mx-2 md:pt-2">{newConversation}</div> : null}
+          <div className={cn(chatWorkspace.horizontal && "-mx-4 h-18 border-b px-2")}>
+            {chatHeader}
+          </div>
+          {newConversation ? (
+            <div className={cn(chatWorkspace.horizontal && "-mx-2 pt-2")}>{newConversation}</div>
+          ) : null}
           <section
             id="chat-conversation-list"
             aria-label={t("chat.conversations")}
             className={cn(
               "col-span-2 -mx-2 min-h-0 flex-1 flex-col pt-2 pb-4",
-              listOpen ? "flex max-h-[40vh] md:max-h-none" : "hidden md:flex",
+              listOpen
+                ? cn("flex max-h-[40vh]", chatWorkspace.horizontal && "max-h-none")
+                : chatWorkspace.horizontal
+                  ? "flex"
+                  : "hidden",
             )}
           >
             {list}
@@ -2376,7 +2393,10 @@ export function ChatPage() {
           data-dragging={dragging ? "true" : undefined}
           {...dropFiles}
         >
-          <ReadingColumn testId="chat-header-column" className="shrink-0 border-b md:h-18">
+          <ReadingColumn
+            testId="chat-header-column"
+            className={cn("shrink-0 border-b", chatWorkspace.horizontal && "h-18")}
+          >
             {conversationHead}
           </ReadingColumn>
           {summaryLine ? (
@@ -2809,7 +2829,6 @@ export function ChatPage() {
                     onChange={setNewPermissionMode}
                   />
                 )}
-                <UsagePills usage={activeId ? detail.data?.usage : null} budget={budget} />
               </div>
               {composerHint ? (
                 <p
@@ -2856,13 +2875,20 @@ export function ChatPage() {
                   restoreRef={restoreComposer}
                 />
               </PromptInputProvider>
+              <div
+                className="mt-2 flex flex-wrap items-center gap-1.5"
+                data-testid="chat-usage-pills"
+              >
+                <UsagePills usage={activeId ? detail.data?.usage : null} budget={budget} />
+              </div>
             </div>
           </div>
         </div>
         {chatWorkspace.docked && chatWorkspace.open ? (
           <aside
             ref={contextDock}
-            className="flex min-h-0 w-80 shrink-0 flex-col border-l bg-background"
+            className="flex min-h-0 shrink-0 flex-col border-l bg-background"
+            style={{ width: chatWorkspace.dockWidth }}
             data-testid="chat-context"
             data-presentation="docked"
             aria-labelledby="chat-context-title"

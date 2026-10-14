@@ -9,6 +9,7 @@ import {
   asRuntime,
   authLabel,
   connectorCallsHref,
+  connectorConfiguredRuntime,
   connectorConfiguredTimeout,
   connectorFigures,
   connectorNotice,
@@ -429,5 +430,109 @@ describe("effective connector timeout evidence", () => {
         config: { mcp: { remote_tool_call_timeout_ms: 0 } },
       }),
     ).toBeNull();
+  });
+});
+
+describe("connector configuration scope", () => {
+  const hints = { requests_per_second: 2.5, burst_size: 8, recommended_backoff_ms: 1500 };
+  test("HTTP settings are stored but not applied, including zero retries", () => {
+    expect(
+      connectorConfiguredRuntime({ driver: "http", config: { timeout_ms: 12000, max_retries: 0 } }),
+    ).toEqual({ timeout: 12000, timeoutApplied: false, retries: 0, rateLimit: null });
+    expect(
+      connectorConfiguredRuntime({
+        driver: "mcp",
+        config: { timeout_ms: 12000, max_retries: 3, mcp: { remote_tool_call_timeout_ms: 45000 } },
+      }),
+    ).toEqual({ timeout: 45000, timeoutApplied: true, retries: null, rateLimit: null });
+  });
+  test("does not infer configuration from telemetry, workflow retries or another driver", () => {
+    expect(
+      connectorConfiguredRuntime({
+        driver: "postgres",
+        config: { timeout_ms: 12000, max_retries: 3 },
+        stats: { median_ms: 500 },
+        workflows: [{ max_retries: 4 }],
+      }),
+    ).toEqual({ timeout: null, timeoutApplied: false, retries: null, rateLimit: null });
+    expect(connectorConfiguredRuntime({ driver: "mcp", config: {} }).timeout).toBeNull();
+  });
+  test("rejects invalid or absent HTTP values instead of inventing limits", () => {
+    for (const value of [
+      undefined,
+      null,
+      "12000",
+      0,
+      -1,
+      Number.POSITIVE_INFINITY,
+      Number.NaN,
+      300001,
+    ]) {
+      expect(
+        connectorConfiguredRuntime({ driver: "http", config: { timeout_ms: value } }).timeout,
+      ).toBeNull();
+    }
+    for (const value of [undefined, null, "3", -1, 1.5, 6, Number.POSITIVE_INFINITY]) {
+      expect(
+        connectorConfiguredRuntime({ driver: "http", config: { max_retries: value } }).retries,
+      ).toBeNull();
+    }
+    expect(
+      connectorConfiguredRuntime({ driver: "http", config: { timeout_ms: 300000, max_retries: 5 } })
+        .timeout,
+    ).toBe(300000);
+  });
+  test("projects only numeric provider hints from the pinned template", () => {
+    const runtime = connectorConfiguredRuntime({
+      driver: "http",
+      template_snapshot: { capabilities: { rate_limits: { ...hints, password: "secret" } } },
+      config: { static_headers: { Authorization: "secret" }, static_query: { token: "secret" } },
+    });
+    expect(runtime.rateLimit).toEqual({
+      requestsPerSecond: 2.5,
+      burstSize: 8,
+      recommendedBackoffMs: 1500,
+      source: "template",
+    });
+    expect(JSON.stringify(runtime)).not.toContain("secret");
+  });
+  test("connector capability override takes precedence, including an explicit absent hint", () => {
+    const record = { driver: "http", template_snapshot: { capabilities: { rate_limits: hints } } };
+    expect(
+      connectorConfiguredRuntime({
+        ...record,
+        config: { capabilities: { rate_limits: { ...hints, requests_per_second: 10 } } },
+      }).rateLimit,
+    ).toEqual({
+      requestsPerSecond: 10,
+      burstSize: 8,
+      recommendedBackoffMs: 1500,
+      source: "provider",
+    });
+    for (const capabilities of [
+      null,
+      {},
+      { rate_limits: null },
+      { rate_limits: { ...hints, burst_size: -1 } },
+    ]) {
+      expect(
+        connectorConfiguredRuntime({ ...record, config: { capabilities } }).rateLimit,
+      ).toBeNull();
+    }
+  });
+  test("malformed, partial and nonnumeric rate hints stay unspecified", () => {
+    for (const rate_limits of [
+      null,
+      "secret",
+      {},
+      { ...hints, requests_per_second: Number.POSITIVE_INFINITY },
+      { ...hints, burst_size: 1.5 },
+      { ...hints, recommended_backoff_ms: 0 },
+      { ...hints, requests_per_second: "2.5" },
+    ]) {
+      expect(
+        connectorConfiguredRuntime({ config: { capabilities: { rate_limits } } }).rateLimit,
+      ).toBeNull();
+    }
   });
 });

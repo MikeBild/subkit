@@ -242,6 +242,12 @@ function visibleRows(page) {
   return page.getByTestId(/^data-table-(?:mobile-)?row-\d+$/).filter({ visible: true });
 }
 
+function visibleRowsFor(page, collectionId) {
+  return page
+    .getByTestId(new RegExp(`^${collectionId}-(?:mobile-)?row-\\d+$`))
+    .filter({ visible: true });
+}
+
 async function contains(locator, expected, context) {
   await locator.filter({ hasText: expected }).waitFor({ state: "visible" });
   require((await locator.innerText()).includes(expected), `${context}: missing ${expected}`);
@@ -261,34 +267,127 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
   const t = (key, values) => translate(locale, key, values);
   const workflow = workflowRows(tenantId);
   const connector = connectorRows(tenantId);
+  const knowledgeSource = ["human", "llm"].map((descriptionSource, index) => ({
+    id: idAt("8e01", index),
+    tenant_id: tenantId,
+    name: `Evidence source ${descriptionSource}`,
+    slug: `evidence-source-${descriptionSource}`,
+    description: `Evidence ${descriptionSource} description`,
+    description_source: descriptionSource,
+    category: "finance",
+    category_source: "human",
+    tags: [],
+    scope: "global",
+    workflow_id: null,
+    status: "active",
+    last_error: null,
+    source_type: "inline_text",
+    source_uri: `evidence://${descriptionSource}`,
+    mime_type: "text/markdown",
+    version: "1",
+    bytes_total: 120,
+    chunk_count: index + 2,
+    refresh_strategy: "manual",
+    refresh_cron: null,
+    last_refreshed_at: null,
+    created_at: CREATED,
+    updated_at: UPDATED,
+  }));
+  const skill = ["human", "llm"].map((descriptionSource, index) => ({
+    id: idAt("8f01", index),
+    tenant_id: tenantId,
+    scope: "global",
+    connector_id: null,
+    workflow_id: null,
+    slug: `evidence-skill-${descriptionSource}`,
+    title: `Evidence skill ${descriptionSource}`,
+    description: `Evidence ${descriptionSource} description`,
+    description_source: descriptionSource,
+    category: "finance",
+    category_source: "human",
+    body: "# Evidence skill",
+    examples: [],
+    best_practices: [],
+    pitfalls: [],
+    doc_refs: [],
+    gates_tools: [],
+    activates_when: [],
+    input_schema: null,
+    output_schema: null,
+    side_effects: "read",
+    idempotency: "none",
+    maturity: "stable",
+    tags: [],
+    applies_to: index === 1 ? null : "both",
+    status: "active",
+    source: "manual",
+    version: 1,
+    created_at: CREATED,
+    updated_at: UPDATED,
+  }));
+  const file = ["human", "llm"].map((descriptionSource, index) => ({
+    id: idAt("9001", index),
+    status: "ready",
+    filename: `evidence-file-${descriptionSource}.md`,
+    content_type: "text/markdown",
+    size_bytes: (index + 1) * 120,
+    sha256: null,
+    scan_result: "clean",
+    created_by: null,
+    creator: null,
+    created_at: CREATED,
+    updated_at: UPDATED,
+    replaced_at: null,
+    deleted_at: null,
+    slug: `evidence-file-${descriptionSource}`,
+    reference: `@attachment:evidence-file-${descriptionSource}`,
+    description: `Evidence ${descriptionSource} description`,
+    description_source: descriptionSource,
+    category: "finance",
+    category_source: "human",
+    usage: { workflows: 0, conversations: 0 },
+  }));
+  const resourcesByPath = {
+    "/v1/workflows": workflow,
+    "/v1/connectors": connector,
+    "/v1/knowledge-sources": knowledgeSource,
+    "/v1/skills": skill,
+    "/v1/files": file,
+  };
+  const resourcesByKind = {
+    workflow,
+    connector,
+    knowledge_source: knowledgeSource,
+    skill,
+    file,
+  };
   const requests = [];
   const categoryResponse = ["finance", "support", "other"].map((category) => {
-    const counts = {
-      workflow: workflow.filter((row) => row.category === category).length,
-      connector: connector.filter((row) => row.category === category).length,
-      knowledge_source: 0,
-      skill: 0,
-      file: 0,
-    };
+    const counts = Object.fromEntries(
+      Object.entries(resourcesByKind).map(([kind, rows]) => [
+        kind,
+        rows.filter((row) => row.category === category).length,
+      ]),
+    );
     return {
       category,
       purpose: category === "finance" ? "Invoices and receipts" : null,
       purpose_source: category === "finance" ? "llm" : null,
       aliases: category === "finance" ? ["Accounting"] : [],
       revision: category === "finance" ? 3 : category === "support" ? 7 : null,
-      total: counts.workflow + counts.connector,
+      total: Object.values(counts).reduce((sum, count) => sum + count, 0),
       counts,
-      llm_counts: {
-        workflow: workflow.filter(
-          (row) => row.category === category && row.description_source === "llm",
-        ).length,
-        connector: connector.filter(
-          (row) => row.category === category && row.description_source === "llm",
-        ).length,
-        knowledge_source: 0,
-        skill: 0,
-        file: 0,
-      },
+      llm_counts: Object.fromEntries(
+        Object.entries(resourcesByKind).map(([kind, rows]) => [
+          kind,
+          rows.filter(
+            (row) =>
+              row.category === category &&
+              row.description_source === "llm" &&
+              row.description?.trim(),
+          ).length,
+        ]),
+      ),
     };
   });
   const categoryWrites = [];
@@ -314,12 +413,11 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
     if (route.request().method() !== "GET") return route.fallback();
     if (url.pathname === "/v1/categories")
       return route.fulfill({ json: { categories: categoryResponse } });
-    const source =
-      url.pathname === "/v1/workflows"
-        ? workflow
-        : url.pathname === "/v1/connectors"
-          ? connector
-          : null;
+    if (url.pathname === "/v1/skill-candidates")
+      return route.fulfill({ json: { items: [], total: 0, next_cursor: null } });
+    const skillDetail = skill.find((row) => url.pathname === `/v1/skills/${row.id}`);
+    if (skillDetail) return route.fulfill({ json: skillDetail });
+    const source = resourcesByPath[url.pathname];
     if (!source) return route.fallback();
     const query = Object.fromEntries(url.searchParams);
     const filtered = source.filter(
@@ -327,13 +425,26 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
         (!query.operating_status || row.operating_status === query.operating_status) &&
         (!query.description_source || row.description_source === query.description_source) &&
         (!query.category || row.category === query.category) &&
+        (!query.q ||
+          [row.name, row.title, row.filename, row.description]
+            .filter(Boolean)
+            .some((value) => value.toLowerCase().includes(query.q.toLowerCase()))) &&
         kindMatches(row, query.kind),
     );
     const offset = Number(query.offset ?? 0);
     const items = filtered.slice(offset, offset + Number(query.limit ?? 25));
     requests.push({ path: url.pathname, query, ids: items.map((row) => row.id) });
     return route.fulfill({
-      json: { items, total: filtered.length, categories: categoriesFor(source) },
+      json: {
+        items,
+        total: filtered.length,
+        ...(url.pathname === "/v1/knowledge-sources"
+          ? { sections_total: items.reduce((sum, row) => sum + row.chunk_count, 0) }
+          : {}),
+        ...(url.pathname === "/v1/workflows" || url.pathname === "/v1/connectors"
+          ? { categories: categoriesFor(source) }
+          : {}),
+      },
     });
   };
   async function expectRows(resource, expected, query, requestStart = null) {
@@ -381,6 +492,12 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
   try {
     await stand.visit(page, "workflows");
     await expectRows("workflows", workflow, { operating_status: null });
+    const workflowLastRunHeader = page
+      .getByTestId("data-table-desktop")
+      .getByRole("columnheader", { name: t("catalog.lastRun"), exact: true })
+      .filter({ visible: true });
+    require((await workflowLastRunHeader.count()) ===
+      1, "Workflow catalog must retain one visible exact Last run column header");
     await contains(
       page.getByTestId("catalog-categories-open"),
       t("catalogCategories.summary.other", { count: 2 }),
@@ -430,14 +547,19 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
         "AI count",
       );
       await page.getByTestId("catalog-categories-open").click();
-      await contains(
-        page.getByTestId("catalog-categories-sheet"),
-        "Finance",
-        "category link target",
+      const sheet = page.getByTestId("catalog-categories-sheet");
+      const categoryLabels = (await sheet.locator("li span.font-medium").allTextContents()).map(
+        (label) => label.trim(),
       );
+      const expectedCategoryLabels = ["Finance", "Support", t("catalog.categoryOther")];
+      require(categoryLabels.length === expectedCategoryLabels.length &&
+        new Set(categoryLabels).size === expectedCategoryLabels.length &&
+        expectedCategoryLabels.every((label) =>
+          categoryLabels.includes(label),
+        ), `Category sheet must list each fixture category exactly once; got ${JSON.stringify(categoryLabels)}`);
+      await contains(sheet, "Finance", "category link target");
       await capture(`catalog-${resource}-categories`);
       if (resource === "workflows") {
-        const sheet = page.getByTestId("catalog-categories-sheet");
         const search = page.getByTestId("catalog-categories-search");
         for (const text of ["Invoices", "Accounting", "finance"]) {
           await search.fill(text);
@@ -447,6 +569,11 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
         }
         await sheet.getByTestId("catalog-category-edit").click();
         const dialog = page.getByTestId("catalog-category-dialog");
+        require((await page.getByTestId("catalog-category-name").inputValue()) === "finance" &&
+          (await page.getByTestId("catalog-category-purpose").inputValue()) ===
+            "Invoices and receipts" &&
+          (await page.getByTestId("catalog-category-aliases").inputValue()) ===
+            "Accounting", "Editing Finance must preload its exact name, purpose, and aliases");
         await contains(
           dialog.getByTestId("catalog-category-origin"),
           t("catalogCategories.originAI"),
@@ -541,8 +668,12 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
     ), "Unknown tool count must not become an invented number");
     const desktop = await page.getByTestId("data-table-row-0").isVisible();
     if (desktop) {
+      const testedLabel = locale === "de" ? "Geprüft" : "Tested";
+      require(t("catalog.tested") ===
+        testedLabel, `Connector catalog tested label must be ${testedLabel} in ${locale}`);
       await page
-        .getByRole("columnheader", { name: t("catalog.tested"), exact: true })
+        .getByTestId("data-table-desktop")
+        .getByRole("columnheader", { name: testedLabel, exact: true })
         .waitFor({ state: "visible" });
       const date = await page.evaluate(
         ({ value, tag }) =>
@@ -559,6 +690,9 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
         { value: UPDATED, tag: LOCALE_TAGS[locale] },
       );
       const known = visibleRows(page).filter({ hasText: "Evidence MCP seven" });
+      const expectedMcpType = `${t("catalog.kind.mcp")} · ${t("connectorDetail.tools.count.other", { count: 7 })}`;
+      require((await known.locator("td").nth(1).innerText()).trim() ===
+        expectedMcpType, `Connector Type cell must be exactly ${expectedMcpType}`);
       await contains(known, date, "recorded probe date");
       require(!(await known.innerText()).includes(
         differentDate,
@@ -566,6 +700,203 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
       await contains(unknown.locator("td").nth(3), "—", "unknown retained probe");
     }
     await capture("catalog-connector-recorded-facts");
+
+    for (const [route, endpoint, rows, kind, summaryTestId] of [
+      [
+        "knowledge",
+        "/v1/knowledge-sources",
+        knowledgeSource,
+        "knowledge_source",
+        "knowledge-summary",
+      ],
+      ["skills", "/v1/skills", skill, "skill", "skills-summary"],
+      ["files", "/v1/files", file, "file", "files-summary"],
+    ]) {
+      await stand.visit(page, route);
+      const summary = page.getByTestId(summaryTestId);
+      const totalLabel =
+        kind === "knowledge_source"
+          ? `${t("knowledge.summary.other", { count: rows.length })} · ${t("knowledge.sections.other", { count: 5 })}`
+          : kind === "skill"
+            ? t("skills.summary.other", { count: rows.length })
+            : t("files.summary.other", { count: rows.length, size: "360 B" });
+      await contains(summary, totalLabel, `${route} summary count`);
+      await contains(
+        page.getByTestId("catalog-categories-open"),
+        t("catalogCategories.summary.one", { count: 1 }),
+        `${route} category count`,
+      );
+      await contains(summary, t("catalog.aiCount", { count: 1 }), `${route} AI count`);
+      const resourceRows = visibleRowsFor(
+        page,
+        route === "knowledge" ? "knowledge-sources" : route,
+      );
+      if (route === "skills") {
+        const help = page.getByTestId("skills-summary-help");
+        await help.waitFor({ state: "visible" });
+        const helpDescription = await page
+          .locator(`[id="${await help.getAttribute("aria-describedby")}"]`)
+          .textContent();
+        require(helpDescription ===
+          t(
+            "skills.summaryHelp",
+          ), "Skills help must include the full saved description and category guidance");
+        const headers = await page
+          .getByTestId("catalog-skills")
+          .locator("thead tr")
+          .first()
+          .locator('th:not(:has(.sr-only)):not([aria-hidden="true"])')
+          .allTextContents();
+        require(headers
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .join("|") ===
+          [
+            t("skills.column.name"),
+            t("resource.field.status"),
+            t("skills.column.scope"),
+            t("skills.column.where"),
+            t("skills.column.changed"),
+          ].join(
+            "|",
+          ), `Skills table must retain the exact five Cockpit data columns in order; got ${JSON.stringify(headers)}`);
+        const emptyWhereRow = resourceRows.filter({ hasText: skill[1].title });
+        require((await emptyWhereRow.locator("td").nth(3).innerText()).trim() ===
+          "—", "A missing applies_to value must render as an em dash, without deriving from scope");
+      }
+      const rowName = (row) => row.name ?? row.title ?? row.filename;
+      await contains(
+        resourceRows.filter({ hasText: rowName(rows[0]) }),
+        rowName(rows[0]),
+        `${route} human row`,
+      );
+      await contains(
+        resourceRows.filter({ hasText: rowName(rows[1]) }),
+        rowName(rows[1]),
+        `${route} AI row`,
+      );
+      const requestStart = requests.length;
+      await page.getByTestId("catalog-origin-llm").click();
+      const aiRows = rows.filter((row) => row.description_source === "llm");
+      await contains(
+        resourceRows.filter({ hasText: rowName(aiRows[0]) }),
+        rowName(aiRows[0]),
+        `${route} filtered AI row`,
+      );
+      require((await resourceRows.count()) ===
+        1, `${route} AI filter must leave only AI-origin records`);
+      require(requests
+        .slice(requestStart)
+        .some(
+          (request) =>
+            request.path === endpoint &&
+            request.query.description_source === "llm" &&
+            request.ids.join("|") === aiRows.map((row) => row.id).join("|"),
+        ), `${route} AI filter must reach the correct API endpoint and return only AI-origin records`);
+      await page.getByTestId("catalog-origin-all").click();
+      await contains(
+        resourceRows.filter({ hasText: rowName(rows[0]) }),
+        rowName(rows[0]),
+        `${route} restored human row`,
+      );
+      await contains(
+        resourceRows.filter({ hasText: rowName(rows[1]) }),
+        rowName(rows[1]),
+        `${route} restored AI row`,
+      );
+      require((await resourceRows.count()) === 2, `${route} all filter must restore every record`);
+      if (route === "knowledge" || route === "skills") {
+        const collectionId = route === "knowledge" ? "knowledge-sources" : "skills";
+        const searchId = route === "knowledge" ? "knowledge-search" : "skills-search";
+        const noMatch = "catalog-evidence-no-match";
+        const emptyRequestStart = requests.length;
+        await page.getByTestId("catalog-origin-llm").click();
+        await choose(page, "catalog-category-filter", "finance");
+        await page.getByTestId(searchId).fill(noMatch);
+        const filteredEmpty = page.locator(`[data-testid="${collectionId}-empty"]:visible`);
+        await contains(filteredEmpty, t("resource.noMatches"), `${route} filtered empty state`);
+        require(!(await filteredEmpty.innerText()).includes(
+          t(route === "knowledge" ? "knowledge.empty" : "skills.empty"),
+        ), `${route} filtered results must not show the zero-state message`);
+        require((await resourceRows.count()) ===
+          0, `${route} combined filters must leave no fixture rows`);
+        require(requests
+          .slice(emptyRequestStart)
+          .some(
+            (request) =>
+              request.path === endpoint &&
+              request.query.category === "finance" &&
+              request.query.q === noMatch &&
+              request.query.description_source === "llm" &&
+              request.ids.length === 0,
+          ), `${route} combined category and search filters must reach the API`);
+
+        const resetRequestStart = requests.length;
+        await page.locator(`[data-testid="${collectionId}-reset-filters"]:visible`).click();
+        await contains(
+          resourceRows.filter({ hasText: rowName(rows[0]) }),
+          rowName(rows[0]),
+          `${route} reset human row`,
+        );
+        await contains(
+          resourceRows.filter({ hasText: rowName(rows[1]) }),
+          rowName(rows[1]),
+          `${route} reset AI row`,
+        );
+        require((await resourceRows.count()) ===
+          rows.length, `${route} reset must restore every fixture row`);
+        require((await page.getByTestId(searchId).inputValue()) ===
+          "", `${route} reset must clear the search field`);
+        await contains(
+          page.getByTestId("catalog-category-filter"),
+          t("catalog.allCategories"),
+          `${route} reset category selection`,
+        );
+        require((await page.getByTestId("catalog-origin-all").getAttribute("data-state")) ===
+          "on", `${route} reset must restore the All origin filter`);
+        await page.reload();
+        await contains(
+          resourceRows.filter({ hasText: rowName(rows[0]) }),
+          rowName(rows[0]),
+          `${route} reloaded human row after reset`,
+        );
+        require(requests
+          .slice(resetRequestStart)
+          .some(
+            (request) =>
+              request.path === endpoint &&
+              !request.query.category &&
+              !request.query.q &&
+              !request.query.description_source &&
+              request.ids.join("|") === rows.map((row) => row.id).join("|"),
+          ), `${route} reset followed by reload must request all fixtures without filters`);
+      }
+      if (route === "files") {
+        const noMatch = "catalog-evidence-no-match";
+        await page.getByTestId("files-search").fill(noMatch);
+        const filteredFilesEmpty = page
+          .getByTestId("files-page")
+          .getByTestId("files-empty")
+          .filter({ visible: true, hasText: t("resource.noMatches") })
+          .first();
+        await filteredFilesEmpty.waitFor({ state: "visible" });
+        require((await visibleRowsFor(page, "files").count()) ===
+          0, "Filtered files fixture must have no rows");
+        await page.getByTestId("files-upload").waitFor({ state: "visible" });
+        await page
+          .getByTestId("files-page")
+          .getByTestId("files-reset-filters")
+          .filter({ visible: true })
+          .first()
+          .click();
+        await contains(
+          visibleRowsFor(page, "files").filter({ hasText: rowName(rows[0]) }),
+          rowName(rows[0]),
+          "files restored after reset",
+        );
+      }
+      await capture(`catalog-${route}-origin-summary`);
+    }
   } finally {
     await page.unroute(ROUTE, handler);
   }

@@ -30,7 +30,7 @@ if ! bun x biome check --write --no-errors-on-unmatched $lintable > /tmp/subkit-
 fi
 
 # shellcheck disable=SC2086
-git add $lintable
+git add --update -- $lintable
 
 # shellcheck disable=SC2086
 if ! bun x biome check --no-errors-on-unmatched $lintable > /tmp/subkit-pre-commit.log 2>&1; then

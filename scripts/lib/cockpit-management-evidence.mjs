@@ -1,4 +1,5 @@
-import { LOCALE_TAGS, translate } from "../../apps/cockpit/src/lib/i18n.ts";
+import { formatDateTime, LOCALE_TAGS, translate } from "../../apps/cockpit/src/lib/i18n.ts";
+import { windowFilterLabel } from "../../apps/cockpit/src/lib/window-filter.ts";
 import { verifyPeopleLoadsPerTab } from "./cockpit-people-tabs.mjs";
 import { closeRecordSheet } from "./cockpit-record-sheet.mjs";
 
@@ -10,6 +11,7 @@ const EMAIL = "management-reader@example.test";
 const SERVICE = "Management automation";
 const GROUP = "Evidence reviewers";
 const DELETED_NAME = "Archived reconciliation";
+const DELETED_TRACE_ID = "6a8f2c14-1b73-4d9e-8f20-5c7a91e3b642";
 const USED_AT = "2024-01-17T12:00:00.000Z";
 const ROUTE = "**/v1/**";
 
@@ -77,8 +79,21 @@ export async function verifyManagementEvidence(
     created_at: "2024-01-01T12:00:00.000Z",
     updated_at: "2024-01-01T12:00:00.000Z",
   };
+  const auditWindowStartedAt = Date.now();
+  const auditTimestamp = (daysAgo) =>
+    new Date(auditWindowStartedAt - daysAgo * 86_400_000).toISOString();
+  const customFrom = auditTimestamp(10);
+  const customTo = auditTimestamp(0);
   const t = (key) => translate(locale, key);
+  const translateWithValues = (key, values) => translate(locale, key, values);
+  const formatDate = (value) => formatDateTime(locale, value);
   let entries = [];
+  const auditWrites = [];
+  const auditRequestListener = (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/v1/") && request.method() !== "GET")
+      auditWrites.push({ method: request.method(), path: url.pathname });
+  };
   const handler = async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     const path = new URL(route.request().url()).pathname;
@@ -161,12 +176,53 @@ export async function verifyManagementEvidence(
           })),
         ],
       }));
+    if (path === "/v1/rbac/grants")
+      return transform(route, mockApi, (body) => {
+        require(body.items.length > 0, "Management fixture requires a grant base row");
+        const base = body.items[0];
+        return {
+          ...body,
+          items: [
+            {
+              ...base,
+              id: "e78b1d88-307d-4407-bbb6-a84ea115db79",
+              resource_type: "workflow",
+              expires_at: null,
+            },
+            {
+              ...base,
+              id: "c57b38d7-4724-4bc5-9b95-ec5c4e7238fe",
+              resource_type: "workflow",
+              expires_at: null,
+            },
+            {
+              ...base,
+              id: "ce65126b-c819-4ce6-bab6-c9e87d7ee40f",
+              resource_type: "workflow",
+              expires_at: null,
+            },
+          ],
+          total: 3,
+        };
+      });
     if (path === "/v1/audit-log")
       return transform(route, mockApi, (body) => {
         require(body.items.length > 0, "Management fixture requires an audit base row");
+        const requestUrl = new URL(route.request().url());
+        if (requestUrl.searchParams.has("ts_to")) {
+          require(requestUrl.searchParams.get("ts_from") === customFrom &&
+            requestUrl.searchParams.get("ts_to") ===
+              customTo, "Custom audit query must preserve the linked time range");
+        } else {
+          const expectedFrom = auditWindowStartedAt - 30 * 86_400_000;
+          require(Math.abs(
+            Date.parse(requestUrl.searchParams.get("ts_from") ?? "") - expectedFrom,
+          ) < 10_000, "Default audit query must request the rolling thirty-day window");
+        }
         entries = [
           {
             ...body.items[0],
+            ts: auditTimestamp(1),
             id: "ef95c40f-acf2-474c-a19f-f909d36d5d8c",
             actor_type: "user",
             actor_id: ACTOR_ID,
@@ -174,6 +230,7 @@ export async function verifyManagementEvidence(
             resource_type: "workflow",
             resource_id: DELETED_ID,
             resource_name: DELETED_NAME,
+            trace_id: DELETED_TRACE_ID,
             result: "success",
             reason: null,
             before: null,
@@ -182,6 +239,7 @@ export async function verifyManagementEvidence(
           },
           {
             ...body.items[0],
+            ts: auditTimestamp(2),
             id: "b06359bf-a046-41ea-8765-b3b081b92a26",
             actor_type: "system_account",
             actor_id: ACTOR_ID,
@@ -189,6 +247,7 @@ export async function verifyManagementEvidence(
             resource_type: "workflow",
             resource_id: UNKNOWN_ID,
             resource_name: null,
+            trace_id: null,
             result: "success",
             reason: null,
             before: null,
@@ -252,16 +311,108 @@ export async function verifyManagementEvidence(
   };
   await page.route(ROUTE, handler);
   try {
-    await stand.visit(page, "audit?scope=all&ts_from=2020-01-01T00%3A00%3A00.000Z");
+    page.on("request", auditRequestListener);
+    await stand.visit(page, "audit");
+    await page
+      .getByRole("heading", { name: t("resource.audit.title"), exact: true })
+      .waitFor({ state: "visible" });
+    const auditHeaders = await page
+      .getByTestId("data-table-desktop")
+      .getByRole("columnheader")
+      .allInnerTexts();
+    require(auditHeaders.map((header) => header.trim()).join(" · ") ===
+      ["audit.column.event", "audit.column.actor", "audit.column.result", "audit.column.time"]
+        .map((key) => t(key))
+        .join(
+          " · ",
+        ), "Audit columns must follow the documented event, actor, result, time sequence");
+    const summaryNote = page.getByTestId("audit-scope-note");
+    const defaultWindowCount = translate(locale, "audit.countWindow", { count: 2 });
+    require((await summaryNote.innerText()).trim() ===
+      defaultWindowCount, "Default audit count must name the thirty-day window without an absolute-date chip");
     const deleted = row(page, "data-table", 0);
     const unknown = row(page, "data-table", 1);
     await contains(deleted, DELETED_NAME, "saved deleted object name");
     await contains(deleted, EMAIL, "typed human audit actor");
     await excludes(deleted, [SERVICE, ACTOR_ID, DELETED_ID], "human audit identity");
+    const deletedEvent = (await deleted.locator("td").first().innerText())
+      .replace(/\s+/g, " ")
+      .trim();
+    require(deletedEvent ===
+      `${t("audit.action.workflowDeleted")} · ${DELETED_NAME}`, `Deleted audit cell must show the localized action and saved object name: ${deletedEvent}`);
+    await openRow(page, "data-table", 0);
+    const auditDetail = page.getByTestId("audit-detail");
+    await auditDetail.waitFor({ state: "visible" });
+    const objectFact = fact(page, "audit-detail-facts", t("audit.detail.object"));
+    await contains(objectFact, DELETED_NAME, "audit detail object name");
+    const workflowOpen = page.getByTestId("audit-detail-open");
+    await workflowOpen.waitFor({ state: "visible" });
+    require((await workflowOpen.innerText()).trim() ===
+      translateWithValues("audit.detail.openRecord", {
+        resource: t("audit.resource.workflow"),
+      }), "Deleted workflow detail must use the localized open-record action and workflow resource label");
+    require(new URL(await workflowOpen.getAttribute("href"), page.url()).pathname ===
+      `/cockpit/workflows/${DELETED_ID}`, "Deleted workflow action must target its exact workflow record");
+    await page.getByTestId("audit-detail-menu").click();
+    const wholeOperation = page.getByRole("menuitem", {
+      name: t("audit.detail.wholeOperation"),
+      exact: true,
+    });
+    await wholeOperation.waitFor({ state: "visible" });
+    const wholeOperationUrl = new URL(await wholeOperation.getAttribute("href"), page.url());
+    require(wholeOperationUrl.searchParams.get("trace_id") === DELETED_TRACE_ID &&
+      wholeOperationUrl.searchParams.get("trace_id") !== "ef95c40f-acf2-474c-a19f-f909d36d5d8c" &&
+      wholeOperationUrl.searchParams.get("scope") ===
+        "all", "Whole-operation action must be gated by and target the exact trace, not the entry ID");
+    await page.keyboard.press("Escape");
+    const traceValue = page
+      .getByTestId("audit-detail-facts")
+      .locator(`span[title="${DELETED_TRACE_ID}"]`);
+    const traceRow = traceValue.locator("..").locator("..");
+    require((await traceRow.locator("dt").innerText()).trim() ===
+      t("audit.detail.trace"), "Trace fact must use the localized operation label");
+    require((await traceValue.innerText()).trim() ===
+      `${DELETED_TRACE_ID.slice(0, 8)}…`, "Trace fact must show the short form of its operation UUID");
+    require((await traceValue.getAttribute("title")) ===
+      DELETED_TRACE_ID, "Trace fact title must retain the exact operation ID");
+    const traceHelp = traceRow.getByRole("button", {
+      name: t("audit.detail.trace"),
+      exact: true,
+    });
+    await traceHelp.waitFor({ state: "visible" });
+    await traceHelp.hover();
+    await page
+      .getByText(t("audit.detail.traceHelp"), { exact: true })
+      .waitFor({ state: "visible" });
+    await closeRecordSheet(auditDetail);
+    await openRow(page, "data-table", 1);
+    await page.getByTestId("audit-detail").waitFor({ state: "visible" });
+    require((await page.getByTestId("audit-detail-menu").count()) ===
+      0, "Whole-operation action must be absent when the audit entry has no trace");
+    await closeRecordSheet(page.getByTestId("audit-detail"));
+    require(auditWrites.length ===
+      0, `Audit evidence journey made writes: ${JSON.stringify(auditWrites)}`);
+    page.off("request", auditRequestListener);
     await contains(unknown, SERVICE, "typed service audit actor");
-    await contains(unknown, t("nav.workflows"), "unknown object kind fallback");
+    await contains(unknown, t("audit.resource.workflow"), "unknown object kind fallback");
     await excludes(unknown, [EMAIL, DELETED_NAME, ACTOR_ID, UNKNOWN_ID], "unknown audit object");
     await capture("management-audit-saved-and-unknown");
+
+    await stand.visit(
+      page,
+      `audit?ts_from=${encodeURIComponent(customFrom)}&ts_to=${encodeURIComponent(customTo)}`,
+    );
+    const customRangeLabel = windowFilterLabel(
+      customFrom,
+      customTo,
+      translateWithValues,
+      formatDate,
+    );
+    require((await page.getByTestId("audit-window-filter").innerText()).trim() ===
+      customRangeLabel, "Explicit audit time range must retain its localized filter label");
+    const customSummary = translate(locale, "audit.count", { count: 2 });
+    require((await summaryNote.innerText()).trim() ===
+      `${customSummary} · ${customRangeLabel}`, "Explicit audit time range must keep generic count copy and show its range");
 
     await verifyPeopleLoadsPerTab(page, stand, `management evidence (${locale})`);
     await openRow(page, "people-list", 0);
@@ -269,6 +420,14 @@ export async function verifyManagementEvidence(
     await capture("management-person-groups");
     await closeRecordSheet(page.getByTestId("people-sheet"));
     await stand.visit(page, "people?section=groups");
+    const groupHeaders = await page
+      .getByTestId("groups-list-desktop")
+      .getByRole("columnheader")
+      .allInnerTexts();
+    require(groupHeaders.map((header) => header.trim()).join(" · ") ===
+      ["access.group", "access.members"]
+        .map((key) => t(key))
+        .join(" · "), "Group columns must follow the localized group, members sequence");
     await contains(row(page, "groups-list", 0), GROUP, "group list name");
     await openRow(page, "groups-list", 0);
     require((await page.getByTestId("groups-members-note").innerText()).trim() ===
@@ -302,6 +461,51 @@ export async function verifyManagementEvidence(
         members, `${name}: incorrect stored member count`);
     }
     await capture("management-role-rights-members");
+
+    const rolesSummary = page.getByTestId("roles-summary");
+    await rolesSummary.waitFor({ state: "visible" });
+    const roleHeaders = await page
+      .getByTestId("roles-list-desktop")
+      .getByRole("columnheader")
+      .allInnerTexts();
+    require(roleHeaders.map((header) => header.trim()).join(" · ") ===
+      ["people.role", "access.rolePermissions", "access.members"]
+        .map((key) => t(key))
+        .join(" · "), "Role columns must follow the localized role, permissions, members sequence");
+    require((await rolesSummary.getByTestId("roles-summary-help").count()) ===
+      1, "Role help must be attached to the roles summary");
+    require((await rolesSummary.locator('[data-slot="summary-line-text"]').innerText()).trim() ===
+      translate(locale, "access.rolesSummary", {
+        count: 3,
+      }), "Role summary must show the localized count");
+    await rolesSummary.getByTestId("roles-summary-help").hover();
+    const rolesHelp = page.locator('[data-slot="tooltip-content"]').filter({ visible: true });
+    await rolesHelp.waitFor({ state: "visible" });
+    require((await rolesHelp.innerText()).trim() ===
+      t("access.rolesHelp"), "Role summary help must show its localized explanation");
+    await page.mouse.move(0, 0);
+
+    await stand.visit(page, "people?section=grants");
+    const grantsSummary = page.getByTestId("grants-summary");
+    await grantsSummary.waitFor({ state: "visible" });
+    require((await grantsSummary.locator('[data-slot="summary-line-text"]').innerText()).trim() ===
+      translate(locale, "access.workflowGrants.other", {
+        count: 3,
+      }), "Workflow grant summary must name the individual workflows and localized count");
+    require((await grantsSummary.locator("[data-help-description]").innerText()).trim() ===
+      t("access.grantsHelp"), "Workflow grant summary must expose its localized help text");
+    const grantsHeaders = await page
+      .getByTestId("grants-list-desktop")
+      .getByRole("columnheader")
+      .allInnerTexts();
+    require(grantsHeaders.map((header) => header.trim()).join(" · ") ===
+      ["access.grant", "access.right", "access.validity"]
+        .map((key) => t(key))
+        .join(" · "), "Grant columns must follow the localized access, right, validity sequence");
+    require((
+      await page.getByTestId("grants-list-row-0").locator("td").nth(2).innerText()
+    ).trim() === t("status.active"), "Grant row must show the localized active validity badge");
+    await capture("management-workflow-grants-summary-validity");
 
     await stand.visit(page, "api-access?section=keys");
     const usedText = await page.evaluate(
@@ -340,6 +544,7 @@ export async function verifyManagementEvidence(
       await closeRecordSheet(page.getByTestId("api-key-sheet"));
     }
   } finally {
+    page.off("request", auditRequestListener);
     await page.unroute(ROUTE, handler);
   }
 }

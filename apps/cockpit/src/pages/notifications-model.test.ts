@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { translate } from "@/lib/i18n";
 import {
+  CHANNEL_PLATFORMS,
   channelTargetLabel,
   deliveryState,
   eventPatternLabels,
@@ -146,6 +147,39 @@ describe("rules", () => {
 });
 
 describe("channels", () => {
+  test("notification channel options are ordered and named in both languages without email", () => {
+    expect(CHANNEL_PLATFORMS).toEqual(["slack", "google_chat", "webhook"]);
+
+    const expected = {
+      de: [
+        ["slack", "Slack"],
+        ["google_chat", "Google Chat"],
+        ["webhook", "Webhook"],
+      ],
+      en: [
+        ["slack", "Slack"],
+        ["google_chat", "Google Chat"],
+        ["webhook", "Webhook"],
+      ],
+    } as const;
+
+    for (const locale of ["de", "en"] as const) {
+      const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+        translate(locale, key, values);
+      const options = CHANNEL_PLATFORMS.map((platform) => [
+        platform,
+        platformLabel(platform, t).text,
+      ]);
+      const expectedOptions: string[][] = expected[locale].map(([platform, label]) => [
+        platform,
+        label,
+      ]);
+      expect(options).toEqual(expectedOptions);
+      expect(CHANNEL_PLATFORMS.every((platform) => !platformLabel(platform, t).machine)).toBe(true);
+    }
+    expect(CHANNEL_PLATFORMS).not.toContain("email");
+  });
+
   test("the local inbox is named, never `sk_cli`", () => {
     expect(platformLabel("sk_cli", de)).toEqual({
       text: de("notifications.platform.inbox"),

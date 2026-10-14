@@ -1,3 +1,4 @@
+import { translate } from "../../apps/cockpit/src/lib/i18n.ts";
 import { closeRecordSheet } from "./cockpit-record-sheet.mjs";
 export async function verifyReviewCloseHistory(page, stand, label) {
   const open = page
@@ -30,7 +31,91 @@ export async function verifyReviewCloseHistory(page, stand, label) {
     );
 }
 
+export async function verifyUsageWorkflowNavigation(page, stand, label, knownWorkflowId) {
+  const deniedWorkflowId = "catalog-record-1";
+  const goneWorkflowId = "0e6b2c52-7d1f-4d8e-9d55-5f0c2f7a9e10";
+  await page.route(`**/v1/workflows/${deniedWorkflowId}`, (route) =>
+    route.fulfill({
+      status: 403,
+      contentType: "application/json",
+      body: JSON.stringify({ error: { code: "forbidden", message: "workflow" } }),
+    }),
+  );
+  const deniedResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === `/v1/workflows/${deniedWorkflowId}` && response.status() === 403;
+  });
+  const goneResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === `/v1/workflows/${goneWorkflowId}` && response.status() === 404;
+  });
+  const initialUsageRequests = Promise.all(
+    [
+      ["/v1/stats/llm", "flow"],
+      ["/v1/stats/llm", "workflow"],
+      ["/v1/stats/llm", "model"],
+      ["/v1/stats/executions", "workflow_id"],
+    ].map(([path, axis]) =>
+      page.waitForRequest((request) => {
+        const url = new URL(request.url());
+        return url.pathname === path && url.searchParams.get("group_by") === axis;
+      }),
+    ),
+  );
+  await stand.visit(page, "usage");
+  await Promise.all([deniedResponse, goneResponse]);
+  const defaultWindow = page.getByTestId("usage-window-7d");
+  await defaultWindow.waitFor({ state: "visible" });
+  if (
+    (await defaultWindow.getAttribute("data-state")) !== "on" ||
+    (await defaultWindow.innerText()).trim() !== translate("de", "resource.usage.windowOption.7d")
+  )
+    throw new Error(`${label}: usage does not visibly select seven days by default`);
+  for (const request of await initialUsageRequests) {
+    const url = new URL(request.url());
+    const from = Date.parse(url.searchParams.get("from") ?? "");
+    const to = Date.parse(url.searchParams.get("to") ?? "");
+    if (url.searchParams.get("bucket") !== "day" || to - from !== 7 * 24 * 60 * 60 * 1000)
+      throw new Error(`${label}: the initial ${url.pathname} request does not cover seven days`);
+  }
+  const row = (index) =>
+    page.getByTestId(`usage-consumption-table-row-${index}`).filter({ visible: true }).first();
+  const named = row(0);
+  const forbidden = row(1);
+  const gone = row(2);
+  const workflowLink = named.getByTestId("usage-workflow-link");
+  await workflowLink.waitFor({ state: "visible" });
+  const knownPath = `/cockpit/workflows/${knownWorkflowId}`;
+  if (new URL(await workflowLink.getAttribute("href"), page.url()).pathname !== knownPath)
+    throw new Error(`${label}: the named usage workflow link is not its exact internal route`);
+  if ((await forbidden.innerText()).includes("Name nicht lesbar") === false)
+    throw new Error(`${label}: a forbidden workflow lookup must be presented as unreadable`);
+  if ((await forbidden.innerText()).includes("Monatsreport für alle Tochtergesellschaften"))
+    throw new Error(`${label}: a forbidden workflow lookup disclosed the protected workflow name`);
+  if (
+    (await gone.innerText()).includes(
+      "Ein Workflow, den dieser Arbeitsbereich nicht mehr führt",
+    ) === false
+  )
+    throw new Error(`${label}: a missing workflow lookup must be presented as gone`);
+  for (const [description, candidate] of [
+    ["forbidden", forbidden],
+    ["gone", gone],
+  ]) {
+    if ((await candidate.getByTestId("usage-workflow-link").count()) !== 0)
+      throw new Error(`${label}: a ${description} workflow must not expose a workflow link`);
+    await candidate.locator("td").nth(1).click();
+    if (new URL(page.url()).pathname !== "/cockpit/usage")
+      throw new Error(`${label}: clicking a ${description} workflow row opened a workflow`);
+  }
+  await named.locator("td").nth(1).click();
+  await page.waitForURL((url) => url.pathname === knownPath);
+  if (new URL(page.url()).pathname !== knownPath)
+    throw new Error(`${label}: clicking a non-link cell did not open the named workflow`);
+}
+
 export async function verifyNotificationActions(page, stand, label) {
+  const t = (key) => translate("de", key);
   await stand.visit(page, "settings?tab=notifications");
   await page.getByTestId("notifications-rules").waitFor({ state: "visible" });
   const machineValues = (index) =>
@@ -74,14 +159,55 @@ export async function verifyNotificationActions(page, stand, label) {
   await page.getByTestId("notifications-rule-dialog-cancel").click();
   await ruleDialog.waitFor({ state: "detached" });
   await closeSheet("notifications-rule-sheet");
-  await openRow("notifications-channels-table", 1, "notifications-channel-sheet");
-  if (!(await page.getByTestId("notifications-channel-delete").isDisabled()))
-    throw new Error(`${label}: a channel two rules deliver to can be removed`);
-  await closeSheet("notifications-channel-sheet");
-  await openRow("notifications-channels-table", 2, "notifications-channel-sheet");
-  if (!(await page.getByTestId("notifications-channel-delete").isEnabled()))
-    throw new Error(`${label}: an unused channel cannot be removed`);
-  await closeSheet("notifications-channel-sheet");
+  const channelCases = [
+    {
+      index: 0,
+      platformKey: "notifications.platform.inbox",
+      target: t("notifications.target.inbox"),
+    },
+    { index: 1, platformKey: "notifications.platform.slack", target: "C0001" },
+    { index: 2, platformKey: "notifications.platform.googleChat", target: "spaces/AAA" },
+  ];
+  const desktopChannels = page
+    .getByTestId("notifications-channels-table-desktop")
+    .filter({ visible: true });
+  await desktopChannels
+    .getByRole("columnheader", { name: t("notifications.column.target"), exact: true })
+    .waitFor({ state: "visible" });
+  for (const { index, platformKey, target } of channelCases) {
+    const row = desktopChannels
+      .getByTestId(`notifications-channels-table-row-${index}`)
+      .filter({ visible: true });
+    await row.waitFor({ state: "visible" });
+    const cells = row.locator("td");
+    const platform = (await cells.nth(0).innerText()).trim();
+    if (platform !== t(platformKey))
+      throw new Error(`${label}: channel row ${index} labels its platform "${platform}"`);
+    const shownTarget = (await cells.nth(1).innerText()).trim();
+    if (shownTarget !== target)
+      throw new Error(
+        `${label}: channel row ${index} shows target "${shownTarget}", not "${target}"`,
+      );
+  }
+  for (const { index, platformKey, target } of channelCases) {
+    await openRow("notifications-channels-table", index, "notifications-channel-sheet");
+    const channelSheet = page.getByTestId("notifications-channel-sheet");
+    const platform = t(platformKey);
+    await channelSheet.getByText(platform, { exact: true }).waitFor({ state: "visible" });
+    const targetLabel = t("notifications.column.target");
+    const targetFact = channelSheet.locator("dt").filter({ hasText: targetLabel });
+    await targetFact.waitFor({ state: "visible" });
+    const shownTarget = (await targetFact.locator("xpath=../dd").innerText()).trim();
+    if (shownTarget !== target)
+      throw new Error(
+        `${label}: ${platform} detail shows target "${shownTarget}", not "${target}"`,
+      );
+    if (index === 1 && !(await page.getByTestId("notifications-channel-delete").isDisabled()))
+      throw new Error(`${label}: a channel two rules deliver to can be removed`);
+    if (index === 2 && !(await page.getByTestId("notifications-channel-delete").isEnabled()))
+      throw new Error(`${label}: an unused channel cannot be removed`);
+    await closeSheet("notifications-channel-sheet");
+  }
 }
 
 const ENDLESS_LISTS = {
