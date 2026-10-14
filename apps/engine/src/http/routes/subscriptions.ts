@@ -1,6 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { actorOf } from "../../audit/actor.ts";
 import { AuditAction, audit } from "../../audit/index.ts";
 import { deliveries, events } from "../../db/schema/index.ts";
 import { getBoss } from "../../queue/index.ts";
@@ -202,6 +203,7 @@ export function registerSubscriptionRoutes(app: OpenAPIHono<AppEnv>): void {
       {
         tenant_id: principal.tenant_id,
         actor_id: principal.id,
+        actor: actorOf(principal),
         event_pattern: body.event_pattern,
         target_url: body.target_url,
         secret: body.secret,
@@ -222,6 +224,7 @@ export function registerSubscriptionRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         id,
         actor_id: principal.id,
+        actor: actorOf(principal),
         ...(body.event_pattern !== undefined ? { event_pattern: body.event_pattern } : {}),
         ...(body.target_url !== undefined ? { target_url: body.target_url } : {}),
         ...(body.secret !== undefined ? { secret: body.secret } : {}),
@@ -238,7 +241,7 @@ export function registerSubscriptionRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const ok = await svc.deleteSubscription(principal.tenant_id, id, principal.id, db);
+    const ok = await svc.deleteSubscription(principal.tenant_id, id, actorOf(principal), db);
     if (!ok) throw new NotFoundError("subscription");
     return c.json({ deleted: true }, 200);
   });
@@ -319,6 +322,8 @@ export function registerSubscriptionRoutes(app: OpenAPIHono<AppEnv>): void {
     audit(
       {
         tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
         action: AuditAction.WEBHOOK_OUTBOUND_REPLAYED,
         resource_type: "subscription",
         resource_id: id,

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { getConfig, loadConfig } from "../../config/loader.ts";
 import {
+  auditLog,
   conversationMessages,
   conversations,
   conversationToolCalls,
@@ -173,6 +174,66 @@ function record(
 }
 
 describe("compactConversation — semantic summary through the summarize flow", () => {
+  test("records system-account attribution for manual compaction", async () => {
+    const seeded = await seedConversation();
+    const actor_id = "10000000-0000-4000-8000-000000000001";
+
+    await compactConversation(
+      {
+        tenant_id,
+        conversation_id: seeded.conversation_id,
+        actor_id,
+        principal: {
+          provider: "test",
+          kind: "system_account",
+          id: actor_id,
+          tenant_id,
+          roles: [],
+        },
+      },
+      ctx.db,
+    );
+
+    const [entry] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenant_id),
+          eq(auditLog.action, "conversation.compacted"),
+          eq(auditLog.resource_id, seeded.conversation_id),
+        ),
+      )
+      .limit(1);
+    expect(entry).toEqual({ actor_type: "system_account", actor_id });
+  });
+
+  test("does not infer a user from an untyped actor id", async () => {
+    const seeded = await seedConversation();
+
+    await compactConversation(
+      {
+        tenant_id,
+        conversation_id: seeded.conversation_id,
+        actor_id: "10000000-0000-4000-8000-000000000003",
+      },
+      ctx.db,
+    );
+
+    const [entry] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenant_id),
+          eq(auditLog.action, "conversation.compacted"),
+          eq(auditLog.resource_id, seeded.conversation_id),
+        ),
+      )
+      .limit(1);
+    expect(entry).toEqual({ actor_type: "unknown", actor_id: null });
+  });
+
   test("the summary carries the draft id and the open approval id, and the prompt is redacted", async () => {
     const seeded = await seedConversation();
     let seenPrompt = "";

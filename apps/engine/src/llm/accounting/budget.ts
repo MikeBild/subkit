@@ -35,6 +35,7 @@ export async function monthlyUsageForUser(
       and(
         eq(llmUsage.tenant_id, tenant_id),
         eq(llmUsage.user_id, user_id),
+        eq(llmUsage.actor_type, "user"),
         eq(llmUsage.month_bucket, bucket),
       ),
     );

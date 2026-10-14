@@ -123,6 +123,7 @@ export function registerSystemAccountRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         name: body.name,
         description: body.description ?? null,
+        actor_kind: principal.kind,
         actor_id: principal.id,
       },
       db,
@@ -139,6 +140,7 @@ export function registerSystemAccountRoutes(app: OpenAPIHono<AppEnv>): void {
       {
         tenant_id: principal.tenant_id,
         id,
+        actor_kind: principal.kind,
         actor_id: principal.id,
       },
       db,

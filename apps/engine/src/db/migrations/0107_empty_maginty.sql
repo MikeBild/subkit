@@ -1,0 +1,1 @@
+ALTER TYPE "subkit"."audit_actor_kind" ADD VALUE 'unknown';

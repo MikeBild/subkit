@@ -1,7 +1,7 @@
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { auditAwait } from "../audit.ts";
 import { AuditAction } from "../types.ts";
-import { type RecordedEntry, type RecorderBase, resolveActorType } from "./types.ts";
+import { type RecordedEntry, type RecorderBase, resolveActor } from "./types.ts";
 
 export interface RecordChatPaletteSurfaceEnforcedParams extends RecorderBase {
   conversation_id: string;
@@ -14,8 +14,7 @@ export async function recordChatPaletteSurfaceEnforced(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONVERSATION_PALETTE_SURFACE_ENFORCED,
       resource_type: "conversation",
       resource_id: p.conversation_id,
@@ -46,8 +45,7 @@ export async function recordToolPolicyConfirmationRequired(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.TOOL_POLICY_CONFIRMATION_REQUIRED,
       resource_type: "conversation",
       resource_id: p.conversation_id,

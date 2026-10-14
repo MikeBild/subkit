@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
+import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
-import { AuditAction } from "../audit/types.ts";
+import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth2/redirect-uri.ts";
 import type { DecryptedCredential } from "../credentials/types.ts";
 import type { Db, Executor } from "../db/client.ts";
@@ -51,7 +52,7 @@ export async function clearConnectorReauth(
   db: Executor,
   tenant_id: string,
   connector_id: string,
-  opts?: { actor_id?: string | null },
+  opts?: { actor_id?: string | null; actor?: Actor | null; actor_type?: AuditActorType },
 ): Promise<void> {
   const rows = await db.execute<{ id: string }>(sql`
     UPDATE connectors
@@ -73,11 +74,20 @@ export async function clearConnectorReauth(
     connector_id,
   });
   const actor_id = opts?.actor_id ?? null;
+  const actorFields =
+    opts?.actor !== undefined
+      ? auditActor(opts.actor)
+      : opts?.actor_type === "unknown"
+        ? { actor_type: "unknown" as const, actor_id: null }
+        : opts?.actor_type
+          ? { actor_type: opts.actor_type, actor_id }
+          : actor_id
+            ? { actor_type: "unknown" as const, actor_id: null }
+            : auditActor(null);
   await auditAwait(
     {
       tenant_id,
-      actor_type: actor_id ? "user" : "system",
-      actor_id,
+      ...actorFields,
       action: AuditAction.CONNECTOR_REAUTH_CLEARED,
       resource_type: "connector",
       resource_id: connector_id,
@@ -91,10 +101,30 @@ export async function clearConnectorReauth(
 
 export async function completeConnectorReauthorization(
   db: Db,
-  p: { tenant_id: string; connector_id: string; actor_id?: string | null },
+  p: {
+    tenant_id: string;
+    connector_id: string;
+    actor_id?: string | null;
+    actor?: Actor | null;
+    actor_type?: AuditActorType;
+  },
 ): Promise<void> {
   const actor_id = p.actor_id ?? null;
-  await clearConnectorReauth(db, p.tenant_id, p.connector_id, { actor_id });
+  await clearConnectorReauth(db, p.tenant_id, p.connector_id, {
+    actor_id,
+    ...(p.actor !== undefined ? { actor: p.actor } : {}),
+    ...(p.actor_type ? { actor_type: p.actor_type } : {}),
+  });
+  const actorFields =
+    p.actor !== undefined
+      ? auditActor(p.actor)
+      : p.actor_type === "unknown"
+        ? { actor_type: "unknown" as const, actor_id: null }
+        : p.actor_type
+          ? { actor_type: p.actor_type, actor_id }
+          : actor_id
+            ? { actor_type: "unknown" as const, actor_id: null }
+            : auditActor(null);
   const stored = await db.execute<{ slug: string }>(sql`
     SELECT slug FROM connectors
      WHERE id = ${p.connector_id} AND tenant_id = ${p.tenant_id}
@@ -114,8 +144,7 @@ export async function completeConnectorReauthorization(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: actor_id ? "user" : "system",
-      actor_id,
+      ...actorFields,
       action: AuditAction.CONNECTOR_CIRCUIT_RESET,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -132,7 +161,13 @@ export async function completeConnectorReauthorization(
 
 export function settleConnectorReauthorization(
   db: Db,
-  p: { tenant_id: string; connector_id: string; actor_id?: string | null },
+  p: {
+    tenant_id: string;
+    connector_id: string;
+    actor_id?: string | null;
+    actor?: Actor | null;
+    actor_type?: AuditActorType;
+  },
 ): Promise<void> {
   return completeConnectorReauthorization(db, p).catch((err) => {
     logger.warn({

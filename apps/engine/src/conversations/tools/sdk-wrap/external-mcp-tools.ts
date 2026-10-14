@@ -145,7 +145,11 @@ export async function buildExternalMcpTools(
   p: BuildExternalMcpToolsParams,
 ): Promise<Record<string, Tool<Record<string, unknown>, WrappedToolOutput>>> {
   if (builderOverride) return builderOverride(p);
-  const servers = await getTenantMcpTools(p.db, p.principal.tenant_id, { requestSource: "chat" });
+  const servers = await getTenantMcpTools(p.db, p.principal.tenant_id, {
+    requestSource: "chat",
+    actor_id: p.principal.id,
+    actor_type: p.principal.kind === "system_account" ? "system_account" : "user",
+  });
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
   for (const server of servers) {
     let guide = serverGuide(server);
@@ -245,7 +249,8 @@ async function executeExternalMcpTool(
     try {
       await recordMcpExternalToolPaletteAssemblyFailed({
         tenant_id: principal.tenant_id,
-        actor_id: ctx.actor_id,
+        actor_id: principal.id,
+        actor_type: principal.kind,
         reason: "tenant_mismatch",
         request_source: "chat",
         executor: db,
@@ -503,7 +508,10 @@ async function executeExternalMcpTool(
           tool_name: "ask_user_confirm",
           summary: elicitationSummary,
           input: elicitationInput,
-          actor_id: ctx.actor_id,
+          actor_id: ctx.engineClient.context.actor_id,
+          ...(ctx.engineClient.context.actor_type
+            ? { actor_type: ctx.engineClient.context.actor_type }
+            : {}),
         },
         db,
       );
@@ -652,6 +660,7 @@ async function executeExternalMcpTool(
         db,
         tenant_id: ctx.tenant_id,
         actor_id: principal.id,
+        actor_type: principal.kind === "system_account" ? "system_account" : "user",
         connector_id,
         connector_slug,
         call: resolved.call,

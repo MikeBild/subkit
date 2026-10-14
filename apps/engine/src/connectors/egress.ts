@@ -1,4 +1,5 @@
 import { auditAwait } from "../audit/audit.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
 import type { AuditActorType, AuditEntry } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
@@ -110,8 +111,7 @@ export async function withEgressAudit<T>(
   const emitCredentialAccess = async (credential_id: string) => {
     await auditWriter({
       tenant_id: input.tenant_id,
-      actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
-      actor_id: input.actor_id,
+      ...resolveActor(input),
       action: AuditAction.CREDENTIAL_ACCESSED,
       resource_type: "credential",
       resource_id: credential_id,
@@ -138,8 +138,7 @@ export async function withEgressAudit<T>(
     const latencyMs = Date.now() - start;
     await auditWriter({
       tenant_id: input.tenant_id,
-      actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
-      actor_id: input.actor_id,
+      ...resolveActor(input),
       action: AuditAction.CONNECTOR_INVOKED,
       resource_type: "connector",
       resource_id: input.connector_id,
@@ -178,8 +177,7 @@ export async function withEgressAudit<T>(
     const latencyMs = Date.now() - start;
     await auditWriter({
       tenant_id: input.tenant_id,
-      actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
-      actor_id: input.actor_id,
+      ...resolveActor(input),
       action: AuditAction.CONNECTOR_INVOKED,
       resource_type: "connector",
       resource_id: input.connector_id,

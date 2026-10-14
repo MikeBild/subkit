@@ -2,7 +2,7 @@ import type { RequestSource } from "../../observability/service-metadata.ts";
 import { auditAwait } from "../audit.ts";
 import { bucketSize } from "../buckets.ts";
 import { AuditAction } from "../types.ts";
-import { type RecordedEntry, type RecorderBase, resolveActorType } from "./types.ts";
+import { type RecordedEntry, type RecorderBase, resolveActor } from "./types.ts";
 
 function urlHost(url: string): string {
   try {
@@ -26,8 +26,7 @@ export async function recordConnectorMcpHandshakeOk(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_MCP_HANDSHAKE_OK,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -58,8 +57,7 @@ export async function recordConnectorMcpManifestDrift(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_MCP_MANIFEST_DRIFT,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -90,8 +88,7 @@ export async function recordConnectorMcpClientRegistered(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_MCP_CLIENT_REGISTERED,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -126,8 +123,7 @@ export async function recordMcpExternalToolInvoked(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.MCP_EXTERNAL_TOOL_INVOKED,
       resource_type: "mcp_external_tool",
       resource_id: p.connector_id,
@@ -165,8 +161,7 @@ export async function recordMcpExternalToolPaletteAssemblyFailed(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.MCP_EXTERNAL_TOOL_PALETTE_ASSEMBLY_FAILED,
       resource_type: "mcp_external_tool",
       resource_id: p.tenant_id,
@@ -194,8 +189,7 @@ export async function recordConnectorMcpAuthorizationStarted(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_MCP_AUTHORIZATION_STARTED,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -216,8 +210,7 @@ export async function recordConnectorMcpAuthorized(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_MCP_AUTHORIZED,
       resource_type: "connector",
       resource_id: p.connector_id,
@@ -243,8 +236,7 @@ export async function recordConnectorMcpAuthorizationFailed(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONNECTOR_MCP_AUTHORIZATION_FAILED,
       resource_type: "connector",
       resource_id: p.connector_id,

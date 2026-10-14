@@ -92,6 +92,10 @@ const hideRoute = createRoute({
       description: "OK",
       content: { "application/json": { schema: ConversationSchema } },
     },
+    403: {
+      description: "Forbidden — hiding is available for user-owned conversation lists",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -107,6 +111,10 @@ const unhideRoute = createRoute({
     200: {
       description: "OK",
       content: { "application/json": { schema: ConversationSchema } },
+    },
+    403: {
+      description: "Forbidden — visibility is available for user-owned conversation lists",
+      content: { "application/json": { schema: ErrorSchema } },
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -190,7 +198,13 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const row = await svc.cancelConversation(principal.tenant_id, id, principal.id, db);
+    const row = await svc.cancelConversation(
+      principal.tenant_id,
+      id,
+      principal.id,
+      db,
+      actorType(principal),
+    );
     if (!row) throw new NotFoundError("conversation");
     return c.json(row, 200);
   });
@@ -226,6 +240,9 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
   ] as const) {
     app.openapi(route, async (c) => {
       const principal = requireAuth(c);
+      if (principal.kind !== "user") {
+        throw new ForbiddenError("conversation_list_visibility_requires_user");
+      }
       const db = c.get("db");
       const { id } = c.req.valid("param");
       const row = await svc.setConversationHidden(
@@ -256,6 +273,7 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         conversation_id: id,
         actor_id: principal.id,
+        actor_type: actorType(principal),
         ...(body.keep_last !== undefined ? { keep_last: body.keep_last } : {}),
       },
       db,

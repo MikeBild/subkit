@@ -713,6 +713,7 @@ async function readHealthCauses(
         id: connectors.id,
         name: connectors.display_name,
         health_state: connectors.health_state,
+        needs_reauth: connectors.needs_reauth,
         health_reason: connectors.health_reason,
       })
       .from(connectors)
@@ -720,11 +721,11 @@ async function readHealthCauses(
       .orderBy(connectors.display_name, connectors.id)
       .limit(MAX_HEALTH_CAUSES);
     for (const row of unhealthy) {
-      const reason = connectorReason(row.health_state);
+      const reason = row.needs_reauth ? "needs_reauth" : connectorReason(row.health_state);
       causes.push({
         kind: "connector",
         id: row.id,
-        label: `${row.name}: ${row.health_state.replace(/_/g, " ")}`,
+        label: `${row.name}: ${reason.replace(/_/g, " ")}`,
         subject: { kind: "connector", id: row.id, name: row.name },
         reason,
         detail: row.health_reason ?? (reason === "unhealthy" ? row.health_state : null),

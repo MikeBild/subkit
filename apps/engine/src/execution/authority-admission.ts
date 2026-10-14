@@ -33,6 +33,7 @@ import { executableDefinition } from "../workflows/stored-definition.ts";
 import { JsonValueSchema } from "../workflows/types.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { assertCallerMatches, type CallerContext } from "./caller-context.ts";
+import { type CallerOrigin, resolveExecutionCallerOrigin } from "./caller-origin.ts";
 import { validateAgainstJsonSchema } from "./engine/envelope.ts";
 import { resolveDefinition } from "./resolve-definition.ts";
 import { recoverExecutionPayload } from "./sensitive-payload.ts";
@@ -83,8 +84,10 @@ export async function admitAuthorizedWorkflowExecution(
   db: Executor,
   caller: CallerContext | null = null,
   authorization: import("./authorization-context.ts").ExecutionAuthorizationContext | null = null,
+  callerOrigin: CallerOrigin = caller ? "principal" : "unknown",
 ) {
   const input = admissionSchema.parse(raw);
+  const origin = resolveExecutionCallerOrigin(input.tenant_id, caller, callerOrigin);
   return db.transaction(async (tx) => {
     if (input.idempotency_key) {
       await tx.execute(
@@ -124,6 +127,7 @@ export async function admitAuthorizedWorkflowExecution(
           existing.execution_mode !== input.execution_environment ||
           (existing.parent_execution_id ?? null) !== (input.parent_execution_id ?? null) ||
           !isDeepStrictEqual(existing.caller_context, caller) ||
+          existing.caller_origin !== origin ||
           !isDeepStrictEqual(
             recoverExecutionPayload(existing.input, input.tenant_id, existing.id),
             normalized,
@@ -234,6 +238,7 @@ export async function admitAuthorizedWorkflowExecution(
       source_ref: input.parent_execution_id ? { rerun_of: input.parent_execution_id } : null,
       input: normalized,
       caller_context: caller,
+      caller_origin: origin,
       authorization_context: authorization,
       execution_privacy: definition.execution_privacy,
       request_source: input.request_source,
@@ -249,6 +254,10 @@ export async function admitAuthorizedWorkflowExecution(
       replayed: false,
     };
   });
+}
+
+export function admitSystemWorkflowExecution(raw: unknown, db: Executor) {
+  return admitAuthorizedWorkflowExecution(raw, db, null, null, "trusted_system");
 }
 
 export async function assertExecutionAuthorityCurrent(

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
-import { selfHealingScans } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { AuditAction } from "../../audit/types.ts";
+import { auditLog, selfHealingScans } from "../../db/schema/index.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
@@ -58,5 +59,46 @@ describe("mcp self_healing_scan tool", () => {
     expect(rows[0]?.source).toBe("mcp");
     expect(rows[0]?.status).toBe("succeeded");
     expect(rows[0]?.tenant_id).toBe(suite.http.tenantId);
+    const audits = await suite.http.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.tenant_id, suite.http.tenantId), eq(auditLog.resource_id, payload.scan_id)),
+      );
+    const scanAudits = audits.filter(
+      (row) =>
+        row.action === AuditAction.SELF_HEALING_SCAN_TRIGGERED ||
+        row.action === AuditAction.SELF_HEALING_SCAN_COMPLETED,
+    );
+    expect(scanAudits).toHaveLength(2);
+    expect(
+      scanAudits.every((row) => row.actor_type === "user" && row.actor_id === suite.http.userId),
+    ).toBe(true);
+  });
+
+  test("system-account tool caller stays system_account in scan audit", async () => {
+    const key = await suite.issueSystemAccountApiKey(["*"], { roleName: "admin" });
+    const client = await suite.connectWithApiKey(key.plaintext);
+    const result = await client.callTool({ name: "self_healing_scan", arguments: {} });
+    expect(result.isError ?? false).toBe(false);
+    const content = result.content as Array<{ type: string; text: string }>;
+    const payload = JSON.parse(content[0]?.text ?? "{}") as { scan_id: string };
+    const audits = await suite.http.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.tenant_id, suite.http.tenantId), eq(auditLog.resource_id, payload.scan_id)),
+      );
+    const scanAudits = audits.filter(
+      (row) =>
+        row.action === AuditAction.SELF_HEALING_SCAN_TRIGGERED ||
+        row.action === AuditAction.SELF_HEALING_SCAN_COMPLETED,
+    );
+    expect(scanAudits).toHaveLength(2);
+    expect(
+      scanAudits.every(
+        (row) => row.actor_type === "system_account" && row.actor_id === key.system_account_id,
+      ),
+    ).toBe(true);
   });
 });

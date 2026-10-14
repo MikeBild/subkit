@@ -1,0 +1,1 @@
+ALTER TABLE "mcp_oauth_states" ADD COLUMN "started_by_actor_type" text;

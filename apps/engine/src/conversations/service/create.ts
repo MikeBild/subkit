@@ -178,6 +178,9 @@ export async function createConversation(
     })
     .returning();
   assertInsertRow(row, "conversations");
+  const auditActor = p.principal
+    ? { actor_type: p.principal.kind, actor_id: p.principal.id }
+    : { actor_type: "unknown" as const, actor_id: null };
 
   log.conversation.created({
     conversation_id: row.id,
@@ -192,8 +195,7 @@ export async function createConversation(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: p.actor_id ? "user" : "system",
-      actor_id: p.actor_id,
+      ...auditActor,
       action: AuditAction.CONVERSATION_CREATED,
       resource_type: "conversation",
       resource_id: row.id,
@@ -215,8 +217,7 @@ export async function createConversation(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
+        ...auditActor,
         action: AuditAction.CONVERSATION_MEMORY_INJECTED,
         resource_type: "conversation",
         resource_id: row.id,

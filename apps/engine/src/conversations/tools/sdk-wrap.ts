@@ -42,7 +42,8 @@ export async function wrapTools(
     try {
       await recordChatPaletteSurfaceEnforced({
         tenant_id: ctx.tenant_id,
-        actor_id: ctx.actor_id,
+        actor_id: principal.id,
+        actor_type: principal.kind,
         conversation_id: ctx.conversation_id,
         request_source: "chat",
         executor: db,
@@ -101,7 +102,8 @@ export async function wrapTools(
       try {
         await recordMcpExternalToolPaletteAssemblyFailed({
           tenant_id: ctx.tenant_id,
-          actor_id: ctx.actor_id,
+          actor_id: principal.id,
+          actor_type: principal.kind,
           reason: "pool_fault",
           detail,
           request_source: "chat",

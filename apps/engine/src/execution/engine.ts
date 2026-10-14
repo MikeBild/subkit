@@ -40,9 +40,9 @@ import { bindExistingRun } from "./bound-run.ts";
 import {
   assertCallerExecutionSource,
   assertCallerMatches,
-  callerAuditActorId,
   callerFromPrincipal,
 } from "./caller-context.ts";
+import { resolveExecutionCallerActor, resolveExecutionCallerOrigin } from "./caller-origin.ts";
 import { connectorStepRefusal, refusedConnectorOf } from "./connector-availability.ts";
 import { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 import {
@@ -257,6 +257,12 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       code: "execution_boundary_mismatch",
     });
   }
+  const caller_origin = resolveExecutionCallerOrigin(
+    tenant_id,
+    caller,
+    opts.caller_origin ?? (!opts.existing_execution_id && opts.principal ? "principal" : "unknown"),
+  );
+  const callerActor = resolveExecutionCallerActor(tenant_id, caller, caller_origin);
   if (execution_privacy === "sensitive") {
     const unsafe = def.steps.some(
       (step) =>
@@ -328,6 +334,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     : await createExecution(db, {
         tenant_id,
         caller_context: caller,
+        caller_origin,
         authorization_context: authorizationContextFromPrincipal(opts.principal),
         execution_privacy,
         workflow_id: resolved.persist_workflow_refs ? workflow_id : null,
@@ -383,8 +390,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   await auditAwait(
     {
       tenant_id,
-      actor_type: caller?.principalKind ?? "system",
-      actor_id: callerAuditActorId(caller),
+      ...callerActor,
       action: AuditAction.EXECUTION_STARTED,
       resource_type: "execution",
       resource_id: execution_id,
@@ -554,6 +560,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       trace_id: opts.trace_id ?? null,
       principal: opts.principal ?? null,
       caller_context: caller,
+      caller_origin,
       execution_privacy,
       execution_mode,
       step,
@@ -1081,6 +1088,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
               trace_id: opts.trace_id ?? null,
               principal: opts.principal ?? null,
               caller_context: caller,
+              caller_origin,
               execution_privacy,
               execution_mode,
               step: bodyStep,
@@ -1293,6 +1301,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
                   trace_id: opts.trace_id ?? null,
                   principal: opts.principal ?? null,
                   caller_context: caller,
+                  caller_origin,
                   execution_privacy,
                   execution_mode,
                   step: branchStepDef,
@@ -1772,8 +1781,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   await auditAwait(
     {
       tenant_id,
-      actor_type: caller?.principalKind ?? "system",
-      actor_id: callerAuditActorId(caller),
+      ...callerActor,
       action:
         finalStatus === "succeeded"
           ? AuditAction.EXECUTION_COMPLETED
@@ -1864,8 +1872,7 @@ async function runCallStep(
     await auditAwait(
       {
         tenant_id: ctx.tenant_id,
-        actor_type: "system",
-        actor_id: null,
+        ...resolveExecutionCallerActor(ctx.tenant_id, ctx.caller_context, ctx.caller_origin),
         action: AuditAction.APPROVAL_DISPATCH_DENIED,
         resource_type: "execution",
         resource_id: ctx.execution_id,
@@ -2075,6 +2082,7 @@ async function runCallStep(
         ...(ctx.hold_writes ? { hold_writes: true } : {}),
         ...(ctx.principal ? { principal: ctx.principal } : {}),
         caller_context: ctx.caller_context ?? null,
+        caller_origin: ctx.caller_origin ?? "unknown",
         execution_privacy: ctx.execution_privacy,
       },
     });

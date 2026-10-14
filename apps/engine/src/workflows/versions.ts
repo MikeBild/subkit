@@ -1,5 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
@@ -116,6 +117,11 @@ export async function restoreWorkflowVersion(
   actor_type?: VersionActor["actor_type"],
 ): Promise<WorkflowView | null> {
   const db = exec ?? getDb();
+  const resolvedActor = resolveActor({
+    tenant_id,
+    actor_id,
+    ...(actor_type !== undefined ? { actor_type } : {}),
+  });
   const updatedId = await db.transaction(async (tx) => {
     const locked = await lockWorkflowForVersionWrite(tx, tenant_id, id);
     if (!locked) return null;
@@ -163,13 +169,13 @@ export async function restoreWorkflowVersion(
       workflow_id: id,
       from_version_id: locked.current_version_id,
       to_version_id: v.id,
-      actor_id,
+      actor_id: resolvedActor.actor_id,
+      actor_type: resolvedActor.actor_type,
     });
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_type ?? (actor_id ? "user" : "system"),
-        actor_id,
+        ...resolvedActor,
         action: AuditAction.WORKFLOW_VERSION_RESTORED,
         resource_type: "workflow",
         resource_id: id,
@@ -201,7 +207,15 @@ export async function restoreWorkflowVersion(
       .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, id)))
       .limit(1);
     const wfSlug = wfRows[0]?.slug ?? id;
-    await applyTriggerBindings(tx, tenant_id, id, wfSlug, restoredDef, actor_id);
+    await applyTriggerBindings(
+      tx,
+      tenant_id,
+      id,
+      wfSlug,
+      restoredDef,
+      resolvedActor.actor_id,
+      resolvedActor.actor_type,
+    );
     return id;
   });
   if (!updatedId) return null;

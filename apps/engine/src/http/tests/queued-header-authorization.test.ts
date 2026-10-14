@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
+import { AuditAction } from "../../audit/types.ts";
 import {
   browserSessionCookie,
   signBrowserCsrf,
@@ -7,7 +8,14 @@ import {
 } from "../../auth/browser-session.ts";
 import { createConnector, updateConnector } from "../../connectors/service.ts";
 import { upsertCredential } from "../../credentials/service.ts";
-import { executionSteps, executions, roles, sessions, users } from "../../db/schema/index.ts";
+import {
+  auditLog,
+  executionSteps,
+  executions,
+  roles,
+  sessions,
+  users,
+} from "../../db/schema/index.ts";
 import { TEST_DB_HOOK_TIMEOUT } from "../../db/tests/setup.ts";
 import {
   createMockServer,
@@ -210,6 +218,32 @@ for (const change of ["session", "grant", "connector", "prod"] as const) {
           error_code: "execution_authentication_unavailable",
         });
         expect(steps).toHaveLength(0);
+        const denials = await ctx.db
+          .select({
+            actor_type: auditLog.actor_type,
+            actor_id: auditLog.actor_id,
+            result: auditLog.result,
+            reason: auditLog.reason,
+            metadata: auditLog.metadata,
+          })
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.tenant_id, ctx.tenantId),
+              eq(auditLog.action, AuditAction.POLICY_DENIED),
+              eq(auditLog.resource_type, "execution"),
+              eq(auditLog.resource_id, terminal.id),
+              eq(auditLog.reason, "execution_authentication_unavailable"),
+            ),
+          );
+        expect(denials).toHaveLength(1);
+        expect(denials[0]).toMatchObject({
+          actor_type: "user",
+          actor_id: user.id,
+          result: "denied",
+          reason: "execution_authentication_unavailable",
+          metadata: { workflow_id, request_source: "queue" },
+        });
       } else {
         expect(steps).toHaveLength(1);
         expect(steps[0]?.error).toMatchObject({

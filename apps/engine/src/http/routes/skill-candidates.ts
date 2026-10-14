@@ -362,6 +362,7 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         candidate_id: id,
         actor_id: principal.id,
+        actor_type: principal.kind,
         ...(body.reason ? { reason: body.reason } : {}),
       },
       db,

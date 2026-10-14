@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import type { Actor } from "../audit/actor.ts";
 import type { DriverName } from "../connectors/types.ts";
 
 export const DiscoveryRunStatusSchema = z.enum([
@@ -124,6 +125,7 @@ export interface CreateDiscoveryRunParams {
     mime?: string;
   }>;
   actor_id: string | null;
+  actor?: Actor | null;
   archive_file_id?: string;
 }
 

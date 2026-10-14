@@ -1,10 +1,23 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { connectors, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
+import {
+  auditLog,
+  connectors,
+  tenants,
+  workflows,
+  workflowsSchedules,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { workflowJsonDigest } from "../canonical-json.ts";
 import { saveWorkflowDraft } from "../drafts.ts";
-import { createWorkflow, getWorkflow, listWorkflows, updateWorkflow } from "../service.ts";
+import {
+  createWorkflow,
+  getWorkflow,
+  listWorkflows,
+  updateWorkflow,
+  updateWorkflowMetadata,
+} from "../service.ts";
 import { listWorkflowVersions, restoreWorkflowVersion } from "../versions.ts";
 
 let ctx: TestDb;
@@ -37,6 +50,13 @@ function definition(variant: string) {
   };
 }
 
+function scheduledDefinition(variant: string) {
+  return {
+    ...definition(variant),
+    trigger: { kind: "schedule" as const, cron: "0 9 * * *", tz: "UTC" },
+  };
+}
+
 test("version writes retain typed authors and restore records its current actor", async () => {
   const created = await createWorkflow(
     { tenant_id, actor_id: user, actor_type: "user", def: definition("initial") },
@@ -45,10 +65,22 @@ test("version writes retain typed authors and restore records its current actor"
   if (!created.workflow) throw new Error(created.errors.join("; "));
   const id = created.workflow.id;
   const updated = await updateWorkflow(
-    { tenant_id, id, actor_id: account, actor_type: "system_account", def: definition("updated") },
+    {
+      tenant_id,
+      id,
+      actor_id: account,
+      actor_type: "system_account",
+      def: scheduledDefinition("updated"),
+    },
     ctx.db,
   );
   if (!updated.workflow) throw new Error(updated.errors.join("; "));
+  const [schedule] = await ctx.db
+    .select({ id: workflowsSchedules.id })
+    .from(workflowsSchedules)
+    .where(eq(workflowsSchedules.workflow_id, id))
+    .limit(1);
+  if (!schedule) throw new Error("schedule trigger missing");
   const draft = await saveWorkflowDraft(
     {
       tenant_id,
@@ -65,6 +97,18 @@ test("version writes retain typed authors and restore records its current actor"
   expect(
     await restoreWorkflowVersion(tenant_id, id, 1, account, ctx.db, "system_account"),
   ).not.toBeNull();
+  const unbound = await ctx.db
+    .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, tenant_id),
+        eq(auditLog.action, "schedule.trigger.unbound"),
+        eq(auditLog.resource_id, schedule.id),
+      ),
+    )
+    .limit(1);
+  expect(unbound).toEqual([{ actor_type: "system_account", actor_id: account }]);
   expect(await restoreWorkflowVersion(tenant_id, id, 1, user, ctx.db)).not.toBeNull();
   const history = await listWorkflowVersions(tenant_id, id, {}, ctx.db);
   expect(history.rows.map((row) => row.author)).toEqual([
@@ -114,6 +158,65 @@ test("version writes retain typed authors and restore records its current actor"
   expect(withoutOriginal?.creator).toBeNull();
   expect(withoutOriginal?.checksum).toBe(view?.checksum);
   expect(await getWorkflow("10000000-0000-4000-8000-000000000003", id, ctx.db)).toBeNull();
+});
+
+test("legacy workflow actor IDs remain unknown across create, update, drafts, metadata, and restore", async () => {
+  const legacyDefinition = (variant: string) => ({
+    ...definition(variant),
+    name: "Legacy actor workflow",
+    slug: "legacy-actor-workflow",
+  });
+  const created = await createWorkflow(
+    { tenant_id, actor_id: account, def: legacyDefinition("initial") },
+    ctx.db,
+  );
+  if (!created.workflow) throw new Error(created.errors.join("; "));
+  const id = created.workflow.id;
+  const updated = await updateWorkflow(
+    { tenant_id, id, actor_id: account, def: legacyDefinition("updated") },
+    ctx.db,
+  );
+  if (!updated.workflow) throw new Error(updated.errors.join("; "));
+  const draft = await saveWorkflowDraft(
+    {
+      tenant_id,
+      workflow_id: id,
+      expected_draft_version_id: null,
+      actor_id: account,
+      request_source: "api",
+      def: legacyDefinition("draft"),
+      metadata: { description: "Legacy metadata update" },
+    },
+    ctx.db,
+  );
+  if (!draft.draft) throw new Error(draft.errors.join("; "));
+  const metadata = await updateWorkflowMetadata(
+    { tenant_id, id, actor_id: account, name: "Legacy renamed workflow" },
+    ctx.db,
+  );
+  if (!metadata.workflow) throw new Error(metadata.errors.join("; "));
+  expect(await restoreWorkflowVersion(tenant_id, id, 1, account, ctx.db)).not.toBeNull();
+
+  const actions = [
+    "workflow.created",
+    "workflow.updated",
+    "catalog_metadata.updated",
+    "workflow.version_restored",
+  ];
+  const audits = await ctx.db
+    .select({
+      action: auditLog.action,
+      actor_type: auditLog.actor_type,
+      actor_id: auditLog.actor_id,
+    })
+    .from(auditLog)
+    .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.resource_id, id)));
+  for (const action of actions) {
+    expect(audits.filter((audit) => audit.action === action).length).toBeGreaterThan(0);
+  }
+  expect(audits.every((audit) => audit.actor_type === "unknown" && audit.actor_id === null)).toBe(
+    true,
+  );
 });
 
 test("workflow views preserve deleted connector reasons without exposing another tenant's records", async () => {

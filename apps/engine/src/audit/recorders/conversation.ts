@@ -1,6 +1,6 @@
 import { auditAwait } from "../audit.ts";
 import { AuditAction } from "../types.ts";
-import { type RecordedEntry, type RecorderBase, resolveActorType } from "./types.ts";
+import { type RecordedEntry, type RecorderBase, resolveActor } from "./types.ts";
 
 export interface RecordConversationSkillLoadedParams extends RecorderBase {
   conversation_id: string;
@@ -16,8 +16,7 @@ export async function recordConversationSkillLoaded(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.CONVERSATION_SKILL_LOADED,
       resource_type: "conversation",
       resource_id: p.conversation_id,

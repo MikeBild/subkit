@@ -116,7 +116,7 @@ export async function handleSelfHealingScan(
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
-        actor_type: "user",
+        actor_type: principal.kind,
         actor_id: principal.id,
         action: AuditAction.SELF_HEALING_SCAN_TRIGGERED,
         resource_type: "self_healing_scan",
@@ -156,6 +156,7 @@ export async function handleSelfHealingScan(
             ...(signalCtx.connector_id ? { connector_id: signalCtx.connector_id } : {}),
             ...(signalCtx.endpoint_key ? { endpoint_key: signalCtx.endpoint_key } : {}),
             actor_id: principal.id,
+            actor_type: principal.kind,
             source: "proactive_mcp",
             scan_id,
             repair_input: signalCtx.repair_input,
@@ -222,7 +223,7 @@ export async function handleSelfHealingScan(
   await auditAwait(
     {
       tenant_id: principal.tenant_id,
-      actor_type: "user",
+      actor_type: principal.kind,
       actor_id: principal.id,
       action: AuditAction.SELF_HEALING_SCAN_COMPLETED,
       resource_type: "self_healing_scan",

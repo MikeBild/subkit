@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { apiKeys, auditLog } from "../../db/schema/index.ts";
-import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import {
+  createDeterministicClock,
+  getTestNow,
+  installClock,
+  restoreClock,
+} from "../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
@@ -29,7 +34,7 @@ async function countAudit(action: string, resourceId?: string): Promise<number> 
 }
 
 describe("/v1/identity/api-keys", () => {
-  test("issue + list + rotate + revoke", async () => {
+  test("issue + list + rotate with 24-hour overlap + revoke", async () => {
     const headers = {
       authorization: `Bearer ${ctx.apiKey}`,
       "content-type": "application/json",
@@ -64,18 +69,26 @@ describe("/v1/identity/api-keys", () => {
       expect((item as Record<string, unknown>).plaintext_key).toBeUndefined();
     }
 
-    const rotateRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys/${issued.id}/rotate`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ overlap_minutes: 5 }),
-    });
+    const previousClock = installClock(createDeterministicClock(TEST_NOW_MS));
+    let rotateRes: Response;
+    try {
+      rotateRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys/${issued.id}/rotate`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ overlap_minutes: 24 * 60 }),
+      });
+    } finally {
+      restoreClock(previousClock);
+    }
     expect(rotateRes.status).toBe(200);
     const rotated = (await rotateRes.json()) as {
       old: { id: string; expires_at: string | null; rotating_out_at: string | null };
       new: { id: string; rotated_from_id: string | null; plaintext_key: string };
     };
     expect(rotated.old.id).toBe(issued.id);
-    expect(rotated.old.rotating_out_at).not.toBeNull();
+    expect(rotated.old.rotating_out_at).toBe(
+      new Date(TEST_NOW_MS + 24 * 60 * 60 * 1_000).toISOString(),
+    );
     expect(rotated.old.expires_at).toBeNull();
     expect(rotated.new.rotated_from_id).toBe(issued.id);
     expect(rotated.new.plaintext_key).toMatch(/^wf_live_/);

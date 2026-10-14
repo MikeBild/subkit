@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import * as discoveryModule from "../../../connectors/discovery/index.ts";
 import type { DiscoveryResult } from "../../../connectors/discovery/types.ts";
+import { apiKeys, auditLog } from "../../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
 let server: HttpTestServer;
@@ -37,6 +40,44 @@ async function createConnector(body: Record<string, unknown>): Promise<Response>
 }
 
 describe("POST /v1/connectors — GraphQL schema warm (OPT-D)", () => {
+  test("a system-account key keeps its actor type through connector creation", async () => {
+    const key = "wf_live_01234567890123456789012345678901";
+    await server.db.insert(apiKeys).values({
+      tenant_id: server.tenantId,
+      system_account_id: server.systemAccountId,
+      prefix: key.slice(0, 12),
+      token_sha256: createHash("sha256").update(key).digest("hex"),
+      scopes: ["*"],
+    });
+    const response = await fetch(`${server.baseUrl}/v1/connectors`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        slug: "machine-actor",
+        name: "Machine Actor",
+        driver: "http",
+        base_url: "https://machine.example.test",
+        auth_type: "none",
+      }),
+    });
+    expect(response.status).toBe(201);
+    const connector = (await response.json()) as { id: string };
+    const [audit] = await server.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, server.tenantId),
+          eq(auditLog.resource_id, connector.id),
+          eq(auditLog.action, "connector.created"),
+        ),
+      );
+    expect(audit).toEqual({ actor_type: "system_account", actor_id: server.systemAccountId });
+  });
+
   test("a graphql connector warms discovery against its own base_url", async () => {
     const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
       SAMPLE_RESULT,
@@ -50,6 +91,28 @@ describe("POST /v1/connectors — GraphQL schema warm (OPT-D)", () => {
         auth_type: "none",
       });
       expect(res.status).toBe(201);
+      const connector = (await res.json()) as { id: string };
+      const [audit] = await server.db
+        .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, server.tenantId),
+            eq(auditLog.resource_id, connector.id),
+            eq(auditLog.action, "connector.created"),
+          ),
+        );
+      expect(audit).toEqual({ actor_type: "user", actor_id: server.userId });
+      const [discoveryAudit] = await server.db
+        .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, server.tenantId),
+            eq(auditLog.action, "knowledge_source.refreshed"),
+          ),
+        );
+      expect(discoveryAudit).toEqual({ actor_type: "user", actor_id: server.userId });
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0]?.[0]).toMatchObject({
         base_url: "https://api.example.test/graphql",

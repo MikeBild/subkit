@@ -117,6 +117,17 @@ import sql0096AmbiguousLockheed from "./0096_ambiguous_lockheed.sql" with { type
 import sql0097BentMadelynePryor from "./0097_bent_madelyne_pryor.sql" with { type: "text" };
 import sql0098IntakeCategoryAssignment from "./0098_intake_category_assignment.sql" with { type: "text" };
 import sql0099YummyFantasticFour from "./0099_yummy_fantastic_four.sql" with { type: "text" };
+import sql0100IdentityOauthProvenance from "./0100_identity_oauth_provenance.sql" with { type: "text" };
+import sql0101OauthUnknownGrantBackfill from "./0101_oauth_unknown_grant_backfill.sql" with { type: "text" };
+import sql0102LazyHitman from "./0102_lazy_hitman.sql" with { type: "text" };
+import sql0103DeepWreckingCrew from "./0103_deep_wrecking_crew.sql" with { type: "text" };
+import sql0104OutboundConnectionOwnerBackfill from "./0104_outbound_connection_owner_backfill.sql" with { type: "text" };
+import sql0105ClassyEdwinJarvis from "./0105_classy_edwin_jarvis.sql" with { type: "text" };
+import sql0106ChubbyWolfCub from "./0106_chubby_wolf_cub.sql" with { type: "text" };
+import sql0107EmptyMaginty from "./0107_empty_maginty.sql" with { type: "text" };
+import sql0108CurvedCharlesXavier from "./0108_curved_charles_xavier.sql" with { type: "text" };
+import sql0109ApiKeyCreatorIdentityNulls from "./0109_api_key_creator_identity_nulls.sql" with { type: "text" };
+import sql0110CarelessWiccan from "./0110_careless_wiccan.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -241,6 +252,17 @@ const SQL_BY_TAG: Record<string, string> = {
   "0097_bent_madelyne_pryor": sql0097BentMadelynePryor,
   "0098_intake_category_assignment": sql0098IntakeCategoryAssignment,
   "0099_yummy_fantastic_four": sql0099YummyFantasticFour,
+  "0100_identity_oauth_provenance": sql0100IdentityOauthProvenance,
+  "0101_oauth_unknown_grant_backfill": sql0101OauthUnknownGrantBackfill,
+  "0102_lazy_hitman": sql0102LazyHitman,
+  "0103_deep_wrecking_crew": sql0103DeepWreckingCrew,
+  "0104_outbound_connection_owner_backfill": sql0104OutboundConnectionOwnerBackfill,
+  "0105_classy_edwin_jarvis": sql0105ClassyEdwinJarvis,
+  "0106_chubby_wolf_cub": sql0106ChubbyWolfCub,
+  "0107_empty_maginty": sql0107EmptyMaginty,
+  "0108_curved_charles_xavier": sql0108CurvedCharlesXavier,
+  "0109_api_key_creator_identity_nulls": sql0109ApiKeyCreatorIdentityNulls,
+  "0110_careless_wiccan": sql0110CarelessWiccan,
 };
 
 const journal = journalMeta as unknown as Journal;

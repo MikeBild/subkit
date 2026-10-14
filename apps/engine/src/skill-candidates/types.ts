@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import type { Actor } from "../audit/actor.ts";
+import type { AuditActorType } from "../audit/types.ts";
 import { PREVIEW_CLASSIFICATIONS } from "../execution/classify.ts";
 
 export const SkillCandidateStatusSchema = z.enum([
@@ -185,6 +186,7 @@ export interface RejectSkillCandidateParams {
   tenant_id: string;
   candidate_id: string;
   actor_id: string | null;
+  actor_type?: AuditActorType;
   reason?: string;
 }
 

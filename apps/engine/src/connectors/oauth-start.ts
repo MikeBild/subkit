@@ -1,10 +1,12 @@
 import { and, eq } from "drizzle-orm";
+import { type Actor, auditActor } from "../audit/actor.ts";
 import {
   AuditAction,
   auditAwait,
   recordOAuthClientRegistered,
   recordOAuthClientRegistrationFailed,
 } from "../audit/index.ts";
+import type { AuditActorType } from "../audit/types.ts";
 import * as credsvc from "../credentials/index.ts";
 import {
   DynamicRegistrationError,
@@ -36,6 +38,8 @@ export interface BeginConnectorOAuthDanceOptions {
   tenant_id: string;
   connector_id: string;
   actor_id: string | null;
+  actor?: Actor | null;
+  actor_type?: AuditActorType;
   redirect_uri: string;
   origin: OAuthFlowOrigin;
 }
@@ -44,6 +48,16 @@ export async function beginConnectorOAuthDance(
   opts: BeginConnectorOAuthDanceOptions,
 ): Promise<OAuthDanceResult> {
   const { db, tenant_id, connector_id, actor_id, redirect_uri, origin } = opts;
+  const audit_actor =
+    opts.actor !== undefined
+      ? auditActor(opts.actor)
+      : opts.actor_type === "unknown"
+        ? { actor_type: "unknown" as const, actor_id: null }
+        : opts.actor_type
+          ? { actor_type: opts.actor_type, actor_id }
+          : actor_id
+            ? { actor_type: "unknown" as const, actor_id: null }
+            : auditActor(null);
 
   let connector = await getConnector(tenant_id, connector_id, db);
   if (!connector) throw new NotFoundError("connector");
@@ -113,7 +127,7 @@ export async function beginConnectorOAuthDance(
           .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.id, connector_id)));
         await recordOAuthClientRegistered({
           tenant_id,
-          actor_id,
+          ...audit_actor,
           connector_id,
           issuer_url_host: issuerHost,
           registration_endpoint_host: resolvedRegistrationHost,
@@ -135,7 +149,7 @@ export async function beginConnectorOAuthDance(
       const errorCode = err instanceof DynamicRegistrationError ? err.error_code : "unknown";
       await recordOAuthClientRegistrationFailed({
         tenant_id,
-        actor_id,
+        ...audit_actor,
         connector_id,
         issuer_url_host: issuerHost,
         registration_endpoint_host: registrationEndpointHost,
@@ -206,12 +220,17 @@ export async function beginConnectorOAuthDance(
       },
       db,
     );
-    await completeConnectorReauthorization(db, { tenant_id, connector_id, actor_id });
+    await completeConnectorReauthorization(db, {
+      tenant_id,
+      connector_id,
+      actor_id,
+      ...("actor" in opts ? { actor: opts.actor } : {}),
+      ...(opts.actor_type ? { actor_type: opts.actor_type } : {}),
+    });
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...audit_actor,
         action: AuditAction.CREDENTIAL_OAUTH2_REFRESHED,
         resource_type: "credential",
         resource_id: connector_id,

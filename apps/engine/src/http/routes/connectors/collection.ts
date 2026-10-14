@@ -1,6 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { compareCategoryCounts } from "../../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { actorOf } from "../../../audit/actor.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
   CreateConnectorSchema,
@@ -18,13 +19,14 @@ import { ConnectorListResponse, ConnectorSchema, serialize } from "./schemas.ts"
 async function warmGraphqlSchema(
   db: AppEnv["Variables"]["db"],
   tenant_id: string,
+  actor_type: "user" | "system_account",
   actor_id: string | null,
   connector: { id: string; driver: string; base_url: string | null },
 ): Promise<void> {
   if (connector.driver !== "graphql" || !connector.base_url) return;
   try {
     await runDiscoveryCached(
-      { db, tenant_id, actor_id, abortSignal: AbortSignal.timeout(6_000) },
+      { db, tenant_id, actor_type, actor_id, abortSignal: AbortSignal.timeout(6_000) },
       { base_url: connector.base_url, connector_id: connector.id },
     );
   } catch (err) {
@@ -209,10 +211,15 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const body = c.req.valid("json");
     const created = await connectorSvc.createConnector(
-      { tenant_id: principal.tenant_id, input: body, actor_id: principal.id },
+      {
+        tenant_id: principal.tenant_id,
+        input: body,
+        actor_id: principal.id,
+        actor: actorOf(principal),
+      },
       db,
     );
-    await warmGraphqlSchema(db, principal.tenant_id, principal.id, created);
+    await warmGraphqlSchema(db, principal.tenant_id, principal.kind, principal.id, created);
     return c.json(serialize(created), 201);
   });
 
@@ -247,7 +254,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       principal.tenant_id,
       id,
       body,
-      principal.id,
+      actorOf(principal),
       db,
     );
     if (!updated) throw new NotFoundError("connector");
@@ -266,7 +273,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
         principal.tenant_id,
         id,
         enabled,
-        principal.id,
+        actorOf(principal),
         db,
       );
       if (!updated) throw new NotFoundError("connector");
@@ -278,7 +285,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const ok = await connectorSvc.deleteConnector(principal.tenant_id, id, principal.id, db);
+    const ok = await connectorSvc.deleteConnector(principal.tenant_id, id, actorOf(principal), db);
     if (!ok) throw new NotFoundError("connector");
     return c.body(null, 204);
   });

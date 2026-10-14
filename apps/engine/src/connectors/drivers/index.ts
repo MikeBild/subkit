@@ -1,3 +1,4 @@
+import type { AuditActorType } from "../../audit/types.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { clearConnectorReauth } from "../reauth.ts";
@@ -39,6 +40,8 @@ export async function probeConnector(p: {
   tenant_id: string;
   connector: ConnectorView;
   credential_override?: DecryptedCredential | null;
+  actor_id?: string | null;
+  actor_type?: AuditActorType;
 }): Promise<ProbeResult> {
   if (!p.connector.enabled) {
     return {
@@ -65,6 +68,8 @@ async function probeWithDriver(p: {
   tenant_id: string;
   connector: ConnectorView;
   credential_override?: DecryptedCredential | null;
+  actor_id?: string | null;
+  actor_type?: AuditActorType;
 }): Promise<ProbeResult> {
   switch (p.connector.driver) {
     case "http":

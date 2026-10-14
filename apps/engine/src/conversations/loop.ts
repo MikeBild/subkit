@@ -1,6 +1,7 @@
 import { hasToolCall, type ModelMessage, stepCountIs, streamText, type ToolSet } from "ai";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
@@ -18,6 +19,7 @@ import {
   checkBudget,
   contextCapFor,
   countModelMessagesTokens,
+  engineClientActorType,
   monthlyUsage,
   recordUsage,
 } from "../llm/accounting/index.ts";
@@ -296,7 +298,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     engineClient: new EngineClient({
       tenant_id: p.tenant_id,
       actor_id: p.actor_id,
-      actor_type: actorFields(p.principal).actor_type,
+      actor_type: engineClientActorType(p.principal, p.actor_id),
       db: p.db,
     }),
     getDraft: () => draft,
@@ -675,7 +677,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   });
   if (estimatedPromptTokens > contextCap) {
     const compaction = await compactConversation(
-      { tenant_id: p.tenant_id, conversation_id: p.conversation_id, actor_id: p.actor_id },
+      {
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        actor_id: p.actor_id,
+        ...(p.principal !== undefined ? { principal: p.principal } : {}),
+      },
       p.db,
     );
     if (compaction.messages_collapsed > 0) {
@@ -728,7 +735,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const actor = actorFields(p.principal);
   try {
     await checkBudget(p.tenant_id, estimated, route.monthly_budget, p.db);
-    const verdict = await checkAndDecrement(p.tenant_id, estimated, p.db, actor.user_id);
+    const verdict = await checkAndDecrement(
+      p.tenant_id,
+      estimated,
+      p.db,
+      actor.actor_type === "user" ? actor.user_id : null,
+    );
     if (!verdict.ok) {
       throw new LlmQuotaExhausted("llm_quota_exhausted", {
         used: verdict.used,
@@ -1809,6 +1821,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                   },
                 },
                 actor_id: p.actor_id,
+                actor_type: p.principal?.kind ?? (p.actor_id === null ? "system" : "unknown"),
               },
               p.db,
             );
@@ -1858,8 +1871,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         await auditAwait(
           {
             tenant_id: p.tenant_id,
-            actor_type: p.actor_id ? "user" : "system",
-            actor_id: p.actor_id,
+            ...resolveActor({
+              tenant_id: p.tenant_id,
+              actor_id: p.principal?.id ?? p.actor_id,
+              actor_type: p.principal?.kind ?? (p.actor_id === null ? "system" : "unknown"),
+            }),
             action: AuditAction.CONVERSATION_ANSWER_CITED,
             resource_type: "conversation",
             resource_id: p.conversation_id,
@@ -1929,6 +1945,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               metadata: { source: "loop.prose_question_parked" },
             },
             actor_id: p.actor_id,
+            actor_type: p.principal?.kind ?? (p.actor_id === null ? "system" : "unknown"),
           },
           p.db,
         );
@@ -1980,6 +1997,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                 metadata: { source: "loop.budget_exhausted", step_budget: budget },
               },
               actor_id: p.actor_id,
+              actor_type: p.principal?.kind ?? (p.actor_id === null ? "system" : "unknown"),
             },
             p.db,
           );

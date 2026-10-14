@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
+import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction, ConversationDeletedMetadataSchema } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import {
@@ -32,6 +33,7 @@ export async function cancelConversation(
   conversation_id: string,
   actor_id: string | null,
   exec: Db,
+  actor_type?: "user" | "system_account" | "system" | "unknown",
 ): Promise<ConversationRecord | null> {
   const [row] = await exec
     .update(conversations)
@@ -42,8 +44,11 @@ export async function cancelConversation(
   await auditAwait(
     {
       tenant_id,
-      actor_type: actor_id ? "user" : "system",
-      actor_id,
+      ...resolveActor({
+        tenant_id,
+        actor_id,
+        actor_type: actor_type ?? (actor_id === null ? "system" : "unknown"),
+      }),
       action: AuditAction.CONVERSATION_CANCELLED,
       resource_type: "conversation",
       resource_id: conversation_id,
@@ -473,6 +478,7 @@ export interface PatchConversationParams {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
+  actor_type?: "user" | "system_account" | "system" | "unknown";
   model?: string | null;
   title?: string | null;
 }
@@ -496,8 +502,11 @@ export async function patchConversation(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: p.actor_id ? "user" : "system",
-      actor_id: p.actor_id,
+      ...resolveActor({
+        tenant_id: p.tenant_id,
+        actor_id: p.actor_id,
+        ...(p.actor_type ? { actor_type: p.actor_type } : {}),
+      }),
       action: AuditAction.CONVERSATION_UPDATED,
       resource_type: "conversation",
       resource_id: p.conversation_id,

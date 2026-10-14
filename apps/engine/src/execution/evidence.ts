@@ -10,6 +10,7 @@ type EvidenceRow = Pick<
   | "execution_mode"
   | "execution_authority_id"
   | "caller_context"
+  | "caller_origin"
   | "authorization_context"
   | "request_source"
   | "authority_root_execution_id"

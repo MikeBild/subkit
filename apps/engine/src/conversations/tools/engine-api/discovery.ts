@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import type { Actor } from "../../../audit/actor.ts";
 import {
   approveDiscoveryArtifact,
   getDiscoveryArtifact,
@@ -19,6 +20,14 @@ const ListInput = z
 const GetInput = z.object({ id: z.string().uuid() }).openapi("GetDiscoveryArtifactInput");
 
 const ApproveInput = z.object({ id: z.string().uuid() }).openapi("ApproveDiscoveryArtifactInput");
+
+function contextActor(ctx: {
+  engineClient: { context: { actor_id: string | null; actor_type?: string } };
+}): Actor | null {
+  const { actor_id, actor_type } = ctx.engineClient.context;
+  if (!actor_id || (actor_type !== "user" && actor_type !== "system_account")) return null;
+  return { id: actor_id, kind: actor_type };
+}
 
 export const listDiscoveryArtifactsTool: ConversationTool = {
   name: "list_discovery_artifacts",
@@ -116,6 +125,7 @@ export const approveDiscoveryArtifactTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         artifact_id: args.id,
         actor_id: ctx.actor_id,
+        actor: contextActor(ctx),
       },
       ctx.db,
     );

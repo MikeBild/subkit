@@ -295,7 +295,7 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
       await auditAwait(
         {
           tenant_id: principal.tenant_id,
-          actor_type: "user",
+          actor_type: principal.kind,
           actor_id: principal.id,
           action: AuditAction.SELF_HEALING_SCAN_TRIGGERED,
           resource_type: "self_healing_scan",
@@ -330,7 +330,12 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
         try {
           const result = await processDriftSignal(
             signal,
-            driftSignalContext(ctx, { actor_id: principal.id, source, scan_id }),
+            driftSignalContext(ctx, {
+              actor_id: principal.id,
+              actor_type: principal.kind,
+              source,
+              scan_id,
+            }),
             { allowAutoApply: false },
             db,
           );
@@ -393,7 +398,7 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
-        actor_type: "user",
+        actor_type: principal.kind,
         actor_id: principal.id,
         action: AuditAction.SELF_HEALING_SCAN_COMPLETED,
         resource_type: "self_healing_scan",

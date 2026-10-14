@@ -1,6 +1,6 @@
 import { auditAwait } from "../audit.ts";
 import { AuditAction } from "../types.ts";
-import { type RecordedEntry, type RecorderBase, resolveActorType } from "./types.ts";
+import { type RecordedEntry, type RecorderBase, resolveActor } from "./types.ts";
 
 export interface RecordWorkflowCreatedParams extends RecorderBase {
   workflow_id: string;
@@ -20,8 +20,7 @@ export async function recordWorkflowCreated(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.WORKFLOW_CREATED,
       resource_type: "workflow",
       resource_id: p.workflow_id,
@@ -68,8 +67,7 @@ export async function recordWorkflowUpdated(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.WORKFLOW_UPDATED,
       resource_type: "workflow",
       resource_id: p.workflow_id,
@@ -111,8 +109,7 @@ export async function recordWorkflowDeleted(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.WORKFLOW_DELETED,
       resource_type: "workflow",
       resource_id: p.workflow_id,
@@ -145,8 +142,7 @@ export async function recordWorkflowCommitted(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.WORKFLOW_COMMITTED_OVERRIDE,
       resource_type: "workflow",
       resource_id: p.workflow_id,
@@ -182,8 +178,7 @@ export async function recordWorkflowScheduleNotBound(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.WORKFLOW_SCHEDULE_NOT_BOUND,
       resource_type: "workflow",
       resource_id: p.workflow_id,

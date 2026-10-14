@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { AuditAction } from "../../audit/types.ts";
 import {
   auditLog,
   connectors,
@@ -111,7 +112,11 @@ async function version(tenant_id: string, workflow_id: string, n: number, steps:
   return row.id;
 }
 
-async function activate(f: Awaited<ReturnType<typeof fixture>>, steps: Step[]) {
+async function activate(
+  f: Awaited<ReturnType<typeof fixture>>,
+  steps: Step[],
+  actor_type?: "user" | "system_account",
+) {
   const id = await version(f.tenant_id, f.workflow_id, f.next++, steps);
   const [current] = await ctx.db
     .select({ id: workflows.current_version_id })
@@ -128,10 +133,27 @@ async function activate(f: Awaited<ReturnType<typeof fixture>>, steps: Step[]) {
       from_version_id: current?.id ?? null,
       to_version_id: id,
       actor_id: actor,
+      ...(actor_type ? { actor_type } : {}),
     });
   });
   return { id, outcome };
 }
+
+test("approval inheritance preserves a system account actor", async () => {
+  const f = await fixture(({ main }) => [post(main)]);
+  const next = await activate(f, [post(f.ids.main)], "system_account");
+  expect(next.outcome.inherited).toHaveLength(1);
+  const entries = await ctx.db
+    .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, f.tenant_id),
+        eq(auditLog.action, AuditAction.WORKFLOW_AUTHORITY_INHERITED),
+      ),
+    );
+  expect(entries).toContainEqual({ actor_type: "system_account", actor_id: actor });
+});
 
 async function grantsOf(workflow_id: string) {
   return ctx.db

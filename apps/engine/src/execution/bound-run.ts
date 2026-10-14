@@ -7,6 +7,7 @@ import { workflowAuthorityExecutionOptions } from "../workflows/execution-author
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { assertExecutionAuthorityCurrent } from "./authority-admission.ts";
 import { CallerContextSchema, callerFromPrincipal } from "./caller-context.ts";
+import { resolveExecutionCallerOrigin } from "./caller-origin.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
 import {
   authorizeSensitiveResume,
@@ -36,6 +37,11 @@ export async function bindExistingRun(
     });
   if (!row) throw mismatch();
   const persistedCaller = row.caller_context ? CallerContextSchema.parse(row.caller_context) : null;
+  const persistedCallerOrigin = resolveExecutionCallerOrigin(
+    tenant_id,
+    row.caller_context,
+    row.caller_origin,
+  );
   if (persistedCaller && !options.principal) {
     if (isSensitivePayload(row.input))
       throw Object.assign(
@@ -52,7 +58,8 @@ export async function bindExistingRun(
         persistedCaller,
       )) ||
     (options.caller_context !== undefined &&
-      !isDeepStrictEqual(options.caller_context, persistedCaller))
+      !isDeepStrictEqual(options.caller_context, persistedCaller)) ||
+    (options.caller_origin !== undefined && options.caller_origin !== persistedCallerOrigin)
   )
     throw mismatch();
   if (isSensitivePayload(row.input)) {
@@ -80,7 +87,15 @@ export async function bindExistingRun(
     };
   }
   if (row.source_kind !== "saved" && source.kind !== "saved")
-    return { source, options: { ...options, caller_context: persistedCaller }, input };
+    return {
+      source,
+      options: {
+        ...options,
+        caller_context: persistedCaller,
+        caller_origin: persistedCallerOrigin,
+      },
+      input,
+    };
   if (
     row.source_kind !== "saved" ||
     source.kind !== "saved" ||
@@ -125,6 +140,7 @@ export async function bindExistingRun(
       request_source: RequestSourceSchema.parse(row.request_source),
       parent_execution_id: row.parent_execution_id,
       caller_context: persistedCaller,
+      caller_origin: persistedCallerOrigin,
     },
   };
 }

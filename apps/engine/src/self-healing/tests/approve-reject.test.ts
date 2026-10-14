@@ -64,6 +64,36 @@ async function seedProposedCandidate(): Promise<string> {
 }
 
 describe("approvePatchCandidate", () => {
+  test("preparation does not infer an actor type from an actor ID", async () => {
+    const candidateId = await seedProposedCandidate();
+    const db = ctx.testDb.db;
+    const preview = await previewPatchCandidate(ctx.tenant_id, candidateId, db);
+    if (!preview?.review_digest) throw new Error("expected executable preview");
+
+    await preparePatchCandidate(
+      {
+        tenant_id: ctx.tenant_id,
+        candidate_id: candidateId,
+        actor_id: "10000000-0000-4000-8000-000000000004",
+        expected_review_digest: preview.review_digest,
+      },
+      db,
+    );
+
+    const [audit] = await db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenant_id),
+          eq(auditLog.action, "patch_candidate.prepared"),
+          eq(auditLog.resource_id, candidateId),
+        ),
+      );
+    expect(audit?.actor_type).toBe("unknown");
+    expect(audit?.actor_id).toBeNull();
+  });
+
   test("preparation is inert and idempotent; approval activates exactly the reviewed version", async () => {
     const candidateId = await seedProposedCandidate();
     const db = ctx.testDb.db;
@@ -113,6 +143,20 @@ describe("approvePatchCandidate", () => {
     expect(after?.review_reason).toBe("already_decided");
     const [workflow] = await db.select().from(workflows).where(eq(workflows.id, ctx.workflow_id));
     expect(workflow?.current_version_id).toBe(prepared.workflow_version_id);
+    const [approvalAudit] = await db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenant_id),
+          eq(auditLog.resource_id, candidateId),
+          eq(auditLog.action, "patch_candidate.approved"),
+        ),
+      );
+    expect([approvalAudit?.actor_type, approvalAudit?.actor_id]).toEqual([
+      "system_account",
+      params.actor_id,
+    ]);
   });
 
   test("stale review cannot change the workflow and the refusal is audited", async () => {
@@ -314,7 +358,8 @@ describe("rejectPatchCandidate", () => {
       {
         tenant_id: ctx.tenant_id,
         candidate_id: candidateId,
-        actor_id: null,
+        actor_id: "10000000-0000-4000-8000-000000000001",
+        actor_type: "system_account",
         reason: "operator_review",
       },
       db,
@@ -334,6 +379,68 @@ describe("rejectPatchCandidate", () => {
       );
     expect(auditRows.length).toBe(1);
     expect(auditRows[0]?.reason).toBe("operator_review");
+    expect([auditRows[0]?.actor_type, auditRows[0]?.actor_id]).toEqual([
+      "system_account",
+      "10000000-0000-4000-8000-000000000001",
+    ]);
+  });
+
+  test("audits an untyped non-null actor as unknown without an actor ID", async () => {
+    const candidateId = await seedProposedCandidate();
+    const actorId = "10000000-0000-4000-8000-000000000003";
+    const db = ctx.testDb.db;
+
+    expect(
+      await rejectPatchCandidate(
+        { tenant_id: ctx.tenant_id, candidate_id: candidateId, actor_id: actorId },
+        db,
+      ),
+    ).toBe(true);
+    const [auditRow] = await db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenant_id),
+          eq(auditLog.resource_id, candidateId),
+          eq(auditLog.action, "patch_candidate.rejected"),
+        ),
+      );
+    expect([auditRow?.actor_type, auditRow?.actor_id]).toEqual(["unknown", null]);
+  });
+
+  test("keeps the candidate proposed when its rejection audit cannot persist", async () => {
+    const candidateId = await seedProposedCandidate();
+    const db = ctx.testDb.db;
+
+    await expect(
+      rejectPatchCandidate(
+        {
+          tenant_id: ctx.tenant_id,
+          candidate_id: candidateId,
+          actor_id: "10000000-0000-4000-8000-000000000009",
+          actor_type: "invalid" as never,
+        },
+        db,
+      ),
+    ).rejects.toThrow();
+
+    const [candidate] = await db
+      .select({ status: patchCandidates.status })
+      .from(patchCandidates)
+      .where(eq(patchCandidates.id, candidateId));
+    expect(candidate?.status).toBe("proposed");
+    const [audit] = await db
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenant_id),
+          eq(auditLog.action, "patch_candidate.rejected"),
+          eq(auditLog.resource_id, candidateId),
+        ),
+      );
+    expect(audit).toBeUndefined();
   });
 
   test("returns false on cross-tenant attempt; row stays proposed", async () => {

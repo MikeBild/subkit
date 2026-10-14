@@ -713,7 +713,13 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     const body = c.req.valid("json");
     try {
       const updated = await svc.updateKnowledgeSource(
-        { tenant_id: principal.tenant_id, id, patch: body, actor_id: principal.id },
+        {
+          tenant_id: principal.tenant_id,
+          id,
+          patch: body,
+          actor_id: principal.id,
+          actor: actorOf(principal),
+        },
         db,
       );
       if (!updated) throw new NotFoundError("knowledge_source");
@@ -736,6 +742,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         id,
         actor_id: principal.id,
+        actor: actorOf(principal),
         ...(body.force !== undefined ? { force: body.force } : {}),
       },
       db,
@@ -748,7 +755,13 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const deleted = await svc.deleteKnowledgeSource(principal.tenant_id, id, principal.id, db);
+    const deleted = await svc.deleteKnowledgeSource(
+      principal.tenant_id,
+      id,
+      principal.id,
+      db,
+      actorOf(principal),
+    );
     if (!deleted) throw new NotFoundError("knowledge_source");
     return c.json({ deleted: true }, 200);
   });
@@ -928,7 +941,12 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     if (source.description === null && source.tags.length === 0) {
       try {
         const enriched = await svc.analyzeKnowledgeSource(
-          { tenant_id: principal.tenant_id, id: source.id, actor_id: principal.id },
+          {
+            tenant_id: principal.tenant_id,
+            id: source.id,
+            actor_id: principal.id,
+            actor: actorOf(principal),
+          },
           db,
         );
         if (enriched) source = enriched;

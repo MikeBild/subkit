@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth2/redirect-uri.ts";
 import type { Db } from "../db/client.ts";
@@ -41,7 +42,7 @@ export async function mintCredentialSetupGrantUrl(
   },
 ): Promise<MintedCredentialSetupGrant | MintCredentialSetupGrantError> {
   const { tenant_id, connector, actor_id, ttl_ms = 600_000 } = opts;
-  const actor_type = opts.actor_type ?? (actor_id ? "user" : "system");
+  const actor = resolveActor(opts);
 
   const redirect_uri = buildOAuthRedirectUri();
   if (!redirect_uri) {
@@ -63,8 +64,7 @@ export async function mintCredentialSetupGrantUrl(
   await auditAwait(
     {
       tenant_id,
-      actor_type,
-      actor_id,
+      ...actor,
       action: AuditAction.CONNECTOR_CREDENTIAL_GRANT_ISSUED,
       resource_type: "connector",
       resource_id: connector.id,

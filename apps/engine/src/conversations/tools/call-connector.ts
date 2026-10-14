@@ -1,5 +1,4 @@
 import { z } from "@hono/zod-openapi";
-import { actorType } from "../../audit/actor.ts";
 import { recordConnectorInvoked } from "../../audit/recorders/index.ts";
 import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
@@ -26,6 +25,7 @@ import {
   directConnectorUrl,
   type LoadedConnectorCredential,
 } from "../../tools/direct-connector-binding.ts";
+import { auditActorFromToolContext } from "./audit-actor.ts";
 import { directConnectorGuard, preflightDirectConnector } from "./direct-connector-guard.ts";
 import type { ConversationTool, ToolContext, ToolEffect, ToolResult } from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
@@ -335,8 +335,7 @@ export const callConnectorTool: ConversationTool = {
 
     await recordConnectorInvoked({
       tenant_id: ctx.tenant_id,
-      actor_id: ctx.actor_id,
-      ...(ctx.principal ? { actor_type: actorType(ctx.principal) } : {}),
+      ...auditActorFromToolContext(ctx),
       executor: ctx.db,
       connector_id: connector.id,
       connector_slug: connector.slug,

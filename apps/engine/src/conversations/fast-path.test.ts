@@ -483,7 +483,13 @@ describe("tryFastPath — RBAC denial", () => {
     const audit = await tdb.db
       .select()
       .from(auditLog)
-      .where(and(eq(auditLog.action, AuditAction.POLICY_DENIED), eq(auditLog.tenant_id, tenantId)));
+      .where(
+        and(
+          eq(auditLog.action, AuditAction.POLICY_DENIED),
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.resource_id, conversationId),
+        ),
+      );
     expect(audit.length).toBeGreaterThan(0);
     expect(
       audit.some(
@@ -857,6 +863,7 @@ describe("tryFastPath — one catalog block", () => {
     await seedCategoryCatalog();
     const restricted = makePrincipal({
       provider: "portal_token",
+      kind: "system_account",
       roles: ["portal_token_user"],
       allowed_workflows: ["00000000-0000-0000-0000-000000000099"],
     });
@@ -869,12 +876,12 @@ describe("tryFastPath — one catalog block", () => {
       .select()
       .from(auditLog)
       .where(and(eq(auditLog.action, AuditAction.POLICY_DENIED), eq(auditLog.tenant_id, tenantId)));
-    expect(
-      audit.some(
-        (row) =>
-          (row.metadata as Record<string, unknown>)?.permission === "workflow:read" &&
-          (row.metadata as Record<string, unknown>)?.tool === "list_workflows",
-      ),
-    ).toBe(true);
+    const denied = audit.find(
+      (row) =>
+        row.actor_id === restricted.id &&
+        (row.metadata as Record<string, unknown>)?.permission === "workflow:read" &&
+        (row.metadata as Record<string, unknown>)?.tool === "list_workflows",
+    );
+    expect(denied).toMatchObject({ actor_type: "system_account", actor_id: restricted.id });
   });
 });

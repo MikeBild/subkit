@@ -18,6 +18,7 @@ import {
   type TransformRepairFailureKind,
   type TransformRepairOutcome,
 } from "../transform-repair.ts";
+import { auditActorFromToolContext } from "./audit-actor.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { getLastPreview } from "./last-preview-store.ts";
 
@@ -436,8 +437,7 @@ export const dryRunTransformTool: ConversationTool = {
     await auditAwait(
       {
         tenant_id: ctx.tenant_id,
-        actor_type: ctx.actor_id ? "user" : "system",
-        actor_id: ctx.actor_id,
+        ...auditActorFromToolContext(ctx),
         action: AuditAction.CONVERSATION_DRY_RUN_TRANSFORM,
         resource_type: "conversation",
         resource_id: ctx.conversation_id,

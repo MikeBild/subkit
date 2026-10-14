@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
+import type { AuditActorType } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
@@ -61,6 +62,7 @@ export interface SignalContext {
   connector_id?: string | null;
   endpoint_key?: string | null;
   actor_id: string | null;
+  actor_type?: AuditActorType;
   source: SignalSource;
   scan_id?: string;
   repair_input: {
@@ -539,6 +541,7 @@ async function processDriftSignalLocked(
       },
       audit_metadata: {
         policy,
+        ...(ctx.actor_type ? { initiating_actor: { type: ctx.actor_type, id: ctx.actor_id } } : {}),
         drift_kind: signal.kind,
         fixture_id: gatedFixtureId,
         dry_run_ok: dryRunOk,

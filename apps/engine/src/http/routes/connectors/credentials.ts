@@ -1,11 +1,9 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { ConnectionSummarySchema } from "../../../api/connection-schemas.ts";
-import { AuditAction, auditAwait } from "../../../audit/index.ts";
+import { actorOf } from "../../../audit/actor.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
-import { runClientCredentialsGrant } from "../../../credentials/index.ts";
-import { encryptSecret } from "../../../crypto/aes-gcm.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -97,7 +95,7 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
           principal.tenant_id,
           id,
           { auth_type: "oauth2" },
-          principal.id,
+          actorOf(principal),
           db,
         );
       }
@@ -110,6 +108,7 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
           value: { mode: "oauth2", access_token: "", token_type: "Bearer" },
           connection_id: connection.id,
           actor_id: principal.id,
+          actor: actorOf(principal),
           source: "http_route",
         },
         db,
@@ -118,6 +117,7 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         connector_id: id,
         actor_id: principal.id,
+        actor: actorOf(principal),
       });
       return c.json({ id: row.id }, 201);
     }
@@ -129,7 +129,7 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
         principal.tenant_id,
         id,
         { auth_type: body.mode },
-        principal.id,
+        actorOf(principal),
         db,
       );
     }
@@ -149,6 +149,7 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
       tenant_id: principal.tenant_id,
       connector_id: id,
       actor_id: principal.id,
+      actor: actorOf(principal),
     });
     return c.json({ id: row.id }, 201);
   });

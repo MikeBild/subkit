@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants } from "../../db/schema/index.ts";
+import { and, eq, inArray } from "drizzle-orm";
+import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   approveDiscoveryArtifact,
@@ -29,6 +30,46 @@ afterAll(async () => {
 }, 30_000);
 
 describe.skipIf(skip)("discovery/edge-cases", () => {
+  test("run audit preserves a typed system-account actor", async () => {
+    const actorId = "00000000-0000-4000-8000-000000000034";
+    const run = await createDiscoveryRun(
+      {
+        tenant_id: tenantId,
+        files: [],
+        actor_id: actorId,
+        actor: { kind: "system_account", id: actorId },
+      },
+      testDb.db,
+    );
+    const [audit] = await testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(and(eq(auditLog.resource_id, run.id), eq(auditLog.action, "discovery.run_created")));
+    expect(audit).toEqual({ actor_type: "system_account", actor_id: actorId });
+  });
+
+  test("missing and legacy discovery actors never become users", async () => {
+    const legacyId = "00000000-0000-4000-8000-000000000035";
+    const missing = await createDiscoveryRun(
+      { tenant_id: tenantId, files: [], actor_id: null },
+      testDb.db,
+    );
+    const legacy = await createDiscoveryRun(
+      { tenant_id: tenantId, files: [], actor_id: legacyId },
+      testDb.db,
+    );
+    const rows = await testDb.db
+      .select({
+        resource_id: auditLog.resource_id,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+      })
+      .from(auditLog)
+      .where(inArray(auditLog.resource_id, [missing.id, legacy.id]));
+    expect(rows).toContainEqual({ resource_id: missing.id, actor_type: "system", actor_id: null });
+    expect(rows).toContainEqual({ resource_id: legacy.id, actor_type: "unknown", actor_id: null });
+  });
+
   test("run with 0 files creates run with file_count=0", async () => {
     const run = await createDiscoveryRun(
       { tenant_id: tenantId, files: [], actor_id: null },

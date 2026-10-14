@@ -1,6 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
+import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations } from "../../db/schema/index.ts";
 import { runSummarizeFlow } from "../../llm/flows/summarize.ts";
@@ -25,6 +27,8 @@ export interface CompactConversationParams {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
+  actor_type?: import("../../audit/types.ts").AuditActorType;
+  principal?: ResolvedPrincipal | null;
   keep_last?: number;
 }
 
@@ -264,8 +268,12 @@ export async function compactConversation(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: p.actor_id ? "user" : "system",
-      actor_id: p.actor_id,
+      ...resolveActor({
+        tenant_id: p.tenant_id,
+        actor_id: p.principal?.id ?? p.actor_id,
+        actor_type:
+          p.principal?.kind ?? p.actor_type ?? (p.actor_id === null ? "system" : "unknown"),
+      }),
       action: AuditAction.CONVERSATION_COMPACTED,
       resource_type: "conversation",
       resource_id: p.conversation_id,

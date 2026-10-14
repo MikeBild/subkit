@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
 import { proposeLearning } from "../../agent/sessions.ts";
+import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
-import { tenants } from "../../db/schema/index.ts";
+import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { deleteSkill, getSkill } from "../../skills/service.ts";
 import {
@@ -89,6 +91,31 @@ describe.skipIf(skip)("session_learning capture loop", () => {
     expect(rejected).toBe(true);
     const again = await propose("Verworfene Regel");
     expect(again.action).toBe("skipped");
+  });
+
+  test("legacy rejection actor ids are persisted as unknown without an id", async () => {
+    const first = await propose("Legacy rejection actor provenance");
+    const rejected = await rejectSkillCandidate(
+      {
+        tenant_id: tenantId,
+        candidate_id: first.candidate_id ?? "",
+        actor_id: "10000000-0000-4000-8000-000000000099",
+      },
+      db,
+    );
+
+    expect(rejected).toBe(true);
+    const [audit] = await db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, AuditAction.SKILL_CANDIDATE_REJECTED),
+          eq(auditLog.resource_id, first.candidate_id ?? ""),
+        ),
+      );
+    expect(audit).toEqual({ actor_type: "unknown", actor_id: null });
   });
 
   test("deleting a promoted skill nulls the candidate reference instead of failing", async () => {

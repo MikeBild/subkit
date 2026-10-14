@@ -8,7 +8,12 @@ import { executionSteps, executions, workflowVersions } from "../db/schema/index
 import { logger } from "../logging/logger.ts";
 import { recordExecutionTerminal } from "../observability/instrumentation.ts";
 import type { ExecutionAuthorizationContext } from "./authorization-context.ts";
-import type { CallerContext } from "./caller-context.ts";
+import { type CallerContext, CallerContextSchema } from "./caller-context.ts";
+import {
+  type CallerOrigin,
+  resolveExecutionCallerActor,
+  resolveExecutionCallerOrigin,
+} from "./caller-origin.ts";
 import {
   isSensitivePayload,
   protectExecutionPayload,
@@ -28,6 +33,7 @@ export interface CreateExecutionParams {
   execution_privacy?: "sensitive" | undefined;
   tenant_id: string;
   caller_context?: CallerContext | null;
+  caller_origin?: CallerOrigin;
   authorization_context?: ExecutionAuthorizationContext | null;
   execution_authority_id?: string | null;
   tool_approval_id?: string | null;
@@ -87,6 +93,11 @@ export async function createExecution(
   db: Executor,
   params: CreateExecutionParams,
 ): Promise<string> {
+  const caller =
+    params.caller_context == null ? null : CallerContextSchema.parse(params.caller_context);
+  if (caller && caller.tenantId !== params.tenant_id)
+    throw Object.assign(new Error("caller_tenant_mismatch"), { code: "caller_tenant_mismatch" });
+  const callerOrigin = resolveExecutionCallerOrigin(params.tenant_id, caller, params.caller_origin);
   const id = await db.transaction(async (tx) => {
     const [version] = params.workflow_version_id
       ? await tx
@@ -120,7 +131,8 @@ export async function createExecution(
           sensitive && params.source_ref
             ? protectExecutionPayload(params.source_ref, params.tenant_id, executionId, "source")
             : params.source_ref,
-        caller_context: params.caller_context ?? null,
+        caller_context: caller,
+        caller_origin: callerOrigin,
         authorization_context: params.authorization_context ?? null,
         status: "queued",
         request_source: params.request_source,
@@ -150,6 +162,29 @@ export async function createExecution(
         parent_execution_id: params.parent_execution_id ?? null,
       },
     });
+    await auditAwait(
+      {
+        tenant_id: params.tenant_id,
+        ...resolveExecutionCallerActor(params.tenant_id, caller, callerOrigin),
+        action: AuditAction.EXECUTION_QUEUED,
+        resource_type: "execution",
+        resource_id: row.id,
+        result: "success",
+        metadata: {
+          request_source: params.request_source,
+          source_kind: params.source_kind,
+          workflow_id: params.workflow_id,
+          workflow_version_id: params.workflow_version_id,
+          ...(params.execution_authority_id
+            ? { execution_authority_id: params.execution_authority_id }
+            : {}),
+          ...(params.parent_execution_id
+            ? { parent_execution_id: params.parent_execution_id }
+            : {}),
+        },
+      },
+      tx,
+    );
     return row.id;
   });
   logger.info({
@@ -450,7 +485,14 @@ export async function finalizeStepRow(
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const [persisted] = await tx
-      .select({ input: executions.input, tenant: executions.tenant_id, execution: executions.id })
+      .select({
+        input: executions.input,
+        tenant: executions.tenant_id,
+        execution: executions.id,
+        caller_context: executions.caller_context,
+        caller_origin: executions.caller_origin,
+        request_source: executions.request_source,
+      })
       .from(executionSteps)
       .innerJoin(
         executions,
@@ -512,12 +554,15 @@ export async function finalizeStepRow(
       });
     const row = updated[0];
     if (!row) return;
-    if (result.error?.code && GOVERNANCE_REFUSALS.has(result.error.code))
+    if (result.error?.code && GOVERNANCE_REFUSALS.has(result.error.code)) {
       await auditAwait(
         {
           tenant_id: row.tenant_id,
-          actor_type: "system",
-          actor_id: null,
+          ...resolveExecutionCallerActor(
+            row.tenant_id,
+            persisted?.caller_context,
+            persisted?.caller_origin,
+          ),
           action: AuditAction.EXECUTION_BOUNDARY_REFUSED,
           resource_type: "execution",
           resource_id: row.execution_id,
@@ -525,6 +570,7 @@ export async function finalizeStepRow(
           reason: result.error.code,
           metadata: {
             stage: "dispatch",
+            request_source: persisted?.request_source ?? null,
             step_key: row.step_key,
             step_index: row.step_index,
             kind: row.kind,
@@ -534,6 +580,7 @@ export async function finalizeStepRow(
         },
         tx,
       );
+    }
     await writeEvent(tx, {
       tenant_id: row.tenant_id,
       channel: "execution.status",

@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { recordConnectorMcpManifestDrift } from "../../audit/recorders/index.ts";
+import type { AuditActorType } from "../../audit/types.ts";
 import type { Executor } from "../../db/client.ts";
 import { connectorMcpSessions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -15,6 +16,7 @@ export interface ReconcileManifestHashInput {
   observed_tool_count: number;
   auditCtx: {
     actor_id: string | null;
+    actor_type?: AuditActorType;
     request_source: RequestSource;
     executor?: Executor;
   };
@@ -92,6 +94,7 @@ export async function reconcileManifestHash(
 
   await recordConnectorMcpManifestDrift({
     actor_id: auditCtx.actor_id,
+    ...(auditCtx.actor_type ? { actor_type: auditCtx.actor_type } : {}),
     tenant_id,
     connector_id,
     connector_slug,

@@ -140,6 +140,8 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
     audit(
       {
         tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
         action: AuditAction.EVENT_EMITTED,
         resource_type: "event",
         resource_id: String(event_id),

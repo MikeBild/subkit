@@ -1,13 +1,20 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import { AuditAction } from "../../audit/types.ts";
 import {
+  apiKeys,
+  auditLog,
   connectors,
   conversationMessages,
   conversations,
   conversationToolCalls,
+  systemAccounts,
 } from "../../db/schema/index.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 
 let http: HttpTestServer;
@@ -251,7 +258,7 @@ describe("http/conversations citations replay", () => {
     });
   }
 
-  async function seedConversation(http: HttpTestServer): Promise<string> {
+  async function seedConversation(http: HttpTestServer, owner_id = http.userId): Promise<string> {
     const draft = {
       ...createEmptyDraftDocument(),
       session: { permission_mode: "auto" as const },
@@ -261,7 +268,7 @@ describe("http/conversations citations replay", () => {
       .values({
         tenant_id: http.tenantId,
         status: "active",
-        owner_id: http.userId,
+        owner_id,
         draft: draft as unknown as Record<string, unknown>,
       })
       .returning();
@@ -273,7 +280,19 @@ describe("http/conversations citations replay", () => {
     const token = "zphreplaymarker9001";
     const sourceName = "Citations Replay Runbook";
     await seedKnowledgeChunk(http, { sourceName, token });
-    const conversationId = await seedConversation(http);
+    await http.db
+      .update(systemAccounts)
+      .set({ role_id: await builtinRoleId(http.db, "admin") })
+      .where(eq(systemAccounts.id, http.systemAccountId));
+    const citationApiKey = "wf_live_citation_system_account_test_key";
+    await http.db.insert(apiKeys).values({
+      tenant_id: http.tenantId,
+      system_account_id: http.systemAccountId,
+      prefix: citationApiKey.slice(0, 12),
+      token_sha256: createHash("sha256").update(citationApiKey).digest("hex"),
+      scopes: ["*"],
+    });
+    const conversationId = await seedConversation(http, http.systemAccountId);
 
     getMockProvider().setConversePlan(conversationId, [
       { tool: "search_knowledge", args: { query: token } },
@@ -281,14 +300,17 @@ describe("http/conversations citations replay", () => {
 
     const appendRes = await fetch(`${http.baseUrl}/v1/conversations/${conversationId}/messages`, {
       method: "POST",
-      headers: { authorization: `Bearer ${http.apiKey}`, "content-type": "application/json" },
+      headers: {
+        authorization: `Bearer ${citationApiKey}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ message: `What do you know about ${token}?` }),
     });
     expect(appendRes.status).toBe(200);
     expect(appendRes.headers.get("content-type") ?? "").toMatch(/application\/json/);
 
     const streamRes = await fetch(`${http.baseUrl}/v1/conversations/${conversationId}/stream`, {
-      headers: { authorization: `Bearer ${http.apiKey}`, accept: "text/event-stream" },
+      headers: { authorization: `Bearer ${citationApiKey}`, accept: "text/event-stream" },
     });
     expect(streamRes.status).toBe(200);
     const frames = await readSse(streamRes);
@@ -301,6 +323,19 @@ describe("http/conversations citations replay", () => {
     expect(parsed.citations.length).toBeGreaterThan(0);
     expect(parsed.citations[0]?.source_type).toBe("knowledge_chunk");
     expect(parsed.citations[0]?.source_name).toBe(sourceName);
+
+    const [citationAudit] = await http.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, http.tenantId),
+          eq(auditLog.action, AuditAction.CONVERSATION_ANSWER_CITED),
+          eq(auditLog.resource_id, conversationId),
+        ),
+      )
+      .limit(1);
+    expect(citationAudit).toEqual({ actor_type: "system_account", actor_id: http.systemAccountId });
 
     const assistantMessageIds = frames
       .filter(

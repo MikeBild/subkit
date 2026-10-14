@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { recordWorkflowScheduleNotBound as recordWorkflowScheduleNotBoundAudit } from "../audit/recorders/index.ts";
+import type { AuditActorType } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
@@ -23,6 +24,7 @@ export async function applyTriggerBindings(
   workflow_slug: string,
   def: WorkflowDef,
   actor_id: string | null,
+  actor_type?: AuditActorType,
 ): Promise<void> {
   const trigger = triggerOf(def);
   recordWorkflowTriggerKind({ tenant_id, kind: trigger.kind });
@@ -34,10 +36,11 @@ export async function applyTriggerBindings(
         workflow_slug,
         trigger,
         actor_id,
+        ...(actor_type !== undefined ? { actor_type } : {}),
       },
       exec,
     );
-    await scheduleRepo.unbindFromWorkflow(exec, tenant_id, workflow_id, actor_id);
+    await scheduleRepo.unbindFromWorkflow(exec, tenant_id, workflow_id, actor_id, actor_type);
     return;
   }
   if (trigger.kind === "schedule") {
@@ -46,12 +49,23 @@ export async function applyTriggerBindings(
       workflow_id,
       trigger,
       actor_id,
+      ...(actor_type !== undefined ? { actor_type } : {}),
     });
-    await inboundService.unbindFromWorkflow(tenant_id, workflow_id, actor_id, exec);
+    await inboundService.unbindFromWorkflow(
+      tenant_id,
+      workflow_id,
+      { actor_id, ...(actor_type !== undefined ? { actor_type } : {}) },
+      exec,
+    );
     return;
   }
-  await inboundService.unbindFromWorkflow(tenant_id, workflow_id, actor_id, exec);
-  await scheduleRepo.unbindFromWorkflow(exec, tenant_id, workflow_id, actor_id);
+  await inboundService.unbindFromWorkflow(
+    tenant_id,
+    workflow_id,
+    { actor_id, ...(actor_type !== undefined ? { actor_type } : {}) },
+    exec,
+  );
+  await scheduleRepo.unbindFromWorkflow(exec, tenant_id, workflow_id, actor_id, actor_type);
   const [row] = await exec
     .select({ description: workflows.description })
     .from(workflows)
@@ -75,6 +89,7 @@ export async function applyTriggerBindings(
     await recordWorkflowScheduleNotBoundAudit({
       tenant_id,
       actor_id,
+      ...(actor_type !== undefined ? { actor_type } : {}),
       executor: exec,
       workflow_id,
       slug: workflow_slug,

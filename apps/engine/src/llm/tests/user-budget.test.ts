@@ -241,6 +241,44 @@ describe.skipIf(skip)("monthlyUsageForUser — per-user sums and isolation", () 
     const usage = await monthlyUsageForUser(tenantId, USER_A, testDb.db);
     expect(usage).toBe(0);
   });
+
+  test("does not count a system account with the same UUID as a user", async () => {
+    const bucket = currentMonthBucket();
+    await testDb.db.insert(llmUsage).values([
+      {
+        tenant_id: tenantId,
+        flow: "converse",
+        model: "mock",
+        prompt_tokens: 100,
+        completion_tokens: 0,
+        total_tokens: 100,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        latency_ms: 10,
+        result: "success",
+        user_id: USER_A,
+        actor_type: "user",
+        month_bucket: bucket,
+      },
+      {
+        tenant_id: tenantId,
+        flow: "converse",
+        model: "mock",
+        prompt_tokens: 10_000,
+        completion_tokens: 0,
+        total_tokens: 10_000,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        latency_ms: 10,
+        result: "success",
+        user_id: USER_A,
+        actor_type: "system_account",
+        month_bucket: bucket,
+      },
+    ]);
+
+    expect(await monthlyUsageForUser(tenantId, USER_A, testDb.db)).toBe(100);
+  });
 });
 
 describe.skipIf(skip)("resolveUserMonthlyBudget — per-user budget reads", () => {
@@ -284,6 +322,37 @@ describe.skipIf(skip)("resolveUserMonthlyBudget — per-user budget reads", () =
 });
 
 describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () => {
+  test("system-account usage with a colliding UUID does not consume the user's cap", async () => {
+    const bucket = currentMonthBucket();
+    await setConfigKey("tokens.monthly_budget", 100_000, { tenantId, force: true });
+    await testDb.db.insert(userLlmSettings).values({
+      tenant_id: tenantId,
+      user_id: USER_A,
+      llm_monthly_token_budget: 500,
+    });
+    await testDb.db.insert(llmUsage).values({
+      tenant_id: tenantId,
+      flow: "converse",
+      model: "mock",
+      prompt_tokens: 1_000,
+      completion_tokens: 0,
+      total_tokens: 1_000,
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0,
+      latency_ms: 10,
+      result: "success",
+      user_id: USER_A,
+      actor_type: "system_account",
+      month_bucket: bucket,
+    });
+
+    const verdict = await checkAndDecrement(tenantId, 100, testDb.db, USER_A);
+
+    expect(verdict.ok).toBe(true);
+    expect(verdict.scope).toBeUndefined();
+    expect(await monthlyUsageForUser(tenantId, USER_A, testDb.db)).toBe(0);
+  });
+
   test("user cap trips with scope=user when user usage exceeds per-user budget", async () => {
     const bucket = currentMonthBucket();
 

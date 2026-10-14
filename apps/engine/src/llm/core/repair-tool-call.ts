@@ -9,7 +9,7 @@ import type {
 } from "ai";
 import { generateObject, jsonSchema } from "ai";
 import type { ZodType } from "zod";
-import type { AuditActorType } from "../../audit/types.ts";
+import type { KnownAuditActorType } from "../../audit/types.ts";
 import type { Executor } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
@@ -29,7 +29,7 @@ export interface RepairToolCallParams<TOOLS extends ToolSet> {
     tenant_id: string;
     conversation_id?: string | undefined;
     user_id?: string | null | undefined;
-    actor_type?: AuditActorType | undefined;
+    actor_type?: KnownAuditActorType | undefined;
     db?: Executor | undefined;
   };
 }

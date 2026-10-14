@@ -4,7 +4,7 @@ import { z } from "@hono/zod-openapi";
 import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { executions } from "../../db/schema/index.ts";
-import { admitAuthorizedWorkflowExecution } from "../../execution/authority-admission.ts";
+import { admitSystemWorkflowExecution } from "../../execution/authority-admission.ts";
 import { recoverExecutionPayload } from "../../execution/sensitive-payload.ts";
 import { JsonValueSchema } from "../../workflows/types.ts";
 
@@ -69,7 +69,7 @@ export async function admitWebhookExecution(
       }
       input = original.data;
     }
-    return admitAuthorizedWorkflowExecution(
+    return admitSystemWorkflowExecution(
       {
         tenant_id: binding.tenant_id,
         workflow_id: binding.workflow_id,

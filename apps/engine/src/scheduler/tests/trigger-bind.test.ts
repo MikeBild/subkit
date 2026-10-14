@@ -113,7 +113,11 @@ describe("scheduler trigger bind/unbind helpers", () => {
       actor_id: null,
     });
     const audits = await ctx.engine.testDb.db
-      .select()
+      .select({
+        resource_type: auditLog.resource_type,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+      })
       .from(auditLog)
       .where(
         and(
@@ -123,6 +127,61 @@ describe("scheduler trigger bind/unbind helpers", () => {
       );
     expect(audits.length).toBe(1);
     expect(audits[0]?.resource_type).toBe("workflow_schedule");
+    expect(audits[0]).toMatchObject({ actor_type: "system", actor_id: null });
+  });
+
+  test("typed machine and ID-only legacy actors retain correct schedule audit provenance", async () => {
+    const userId = "00000000-0000-4000-8000-000000000009";
+    const machineId = "00000000-0000-4000-8000-000000000010";
+    const legacyId = "00000000-0000-4000-8000-000000000011";
+    const created = await bindFromWorkflow(ctx.engine.testDb.db, {
+      tenant_id: ctx.engine.tenantId,
+      workflow_id: workflowId,
+      trigger: triggerDaily,
+      actor_id: userId,
+      actor_type: "user",
+    });
+    const [userAudit] = await ctx.engine.testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.resource_id, created.row.id),
+          eq(auditLog.action, "schedule.trigger.bound"),
+        ),
+      );
+    expect(userAudit).toEqual({ actor_type: "user", actor_id: userId });
+
+    const bound = await bindFromWorkflow(ctx.engine.testDb.db, {
+      tenant_id: ctx.engine.tenantId,
+      workflow_id: workflowId,
+      trigger: { ...triggerDaily, tz: "America/New_York" },
+      actor_id: machineId,
+      actor_type: "system_account",
+    });
+    expect(bound.status).toBe("updated");
+    const machineAudits = await ctx.engine.testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.resource_id, created.row.id),
+          eq(auditLog.action, "schedule.trigger.bound"),
+        ),
+      );
+    expect(machineAudits).toContainEqual({ actor_type: "system_account", actor_id: machineId });
+
+    await unbindFromWorkflow(ctx.engine.testDb.db, ctx.engine.tenantId, workflowId, legacyId);
+    const [legacyAudit] = await ctx.engine.testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.resource_id, created.row.id),
+          eq(auditLog.action, "schedule.trigger.unbound"),
+        ),
+      );
+    expect(legacyAudit).toEqual({ actor_type: "unknown", actor_id: null });
   });
 
   test("unbindFromWorkflow removes the row + emits SCHEDULE_TRIGGER_UNBOUND", async () => {
@@ -147,7 +206,7 @@ describe("scheduler trigger bind/unbind helpers", () => {
     expect(remaining.length).toBe(0);
 
     const audits = await ctx.engine.testDb.db
-      .select()
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
       .from(auditLog)
       .where(
         and(
@@ -156,6 +215,7 @@ describe("scheduler trigger bind/unbind helpers", () => {
         ),
       );
     expect(audits.length).toBe(1);
+    expect(audits[0]).toEqual({ actor_type: "system", actor_id: null });
   });
 
   test("unbindFromWorkflow with no prior schedule returns 0", async () => {

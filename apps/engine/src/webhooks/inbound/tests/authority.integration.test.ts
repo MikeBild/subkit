@@ -11,10 +11,12 @@ import {
 } from "../../../db/schema/index.ts";
 import { buildAttention } from "../../../operator/attention.ts";
 import { getOperationalOverview } from "../../../operator/operational-overview.ts";
+import { registerExecutionRunHandler } from "../../../queue/handlers/execution-run.ts";
 import { EXECUTION_RUN_QUEUE } from "../../../queue/queues.ts";
 import { inboundHookAutomationView } from "../../../scheduler/workflow-automation-view.ts";
 import { databaseNow } from "../../../test-helpers/database-clock.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
+import { waitFor } from "../../../test-helpers/determinism/wait.ts";
 import { adminPrincipal } from "../../../test-helpers/principals.ts";
 import { wasSeen } from "../dedup.ts";
 import { handleInbound } from "../service.ts";
@@ -90,6 +92,53 @@ describe("webhook execution authority admission", () => {
     expect(await receive(input)).toMatchObject({ status: "ok" });
     expect(await reserved(authority.id)).toBe(1);
     expect((await rows())[0]?.execution_authority_id).toBe(authority.id);
+    expect((await rows())[0]).toMatchObject({
+      status: "queued",
+      caller_origin: "trusted_system",
+      caller_context: null,
+    });
+    const executionId = (await rows())[0]?.id;
+    if (!executionId) throw new Error("admitted webhook execution missing");
+    await registerExecutionRunHandler({ boss: ctx.boss, db: ctx.db });
+    const completed = await waitFor(
+      async () => {
+        const [row] = await ctx.db
+          .select()
+          .from(executions)
+          .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, executionId)));
+        if (!row || ["queued", "running"].includes(row.status)) return null;
+        const terminalAudit = await ctx.db
+          .select({ id: auditLog.id })
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.tenant_id, ctx.tenantId),
+              eq(auditLog.resource_id, executionId),
+              eq(auditLog.action, "execution.completed"),
+            ),
+          );
+        return terminalAudit.length ? row : null;
+      },
+      { tries: 150, sleepMs: 200, label: "webhook system execution" },
+    );
+    expect(completed).toMatchObject({
+      status: "succeeded",
+      caller_origin: "trusted_system",
+      caller_context: null,
+    });
+    const lifecycle = await ctx.db
+      .select({
+        action: auditLog.action,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+      })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_id, executionId)));
+    for (const action of ["execution.started", "execution.completed"]) {
+      expect(lifecycle.filter((entry) => entry.action === action)).toEqual([
+        { action, actor_type: "system", actor_id: null },
+      ]);
+    }
   });
 
   test("a hook the authority gate refuses reads as blocked until a delivery is admitted", async () => {
@@ -212,6 +261,11 @@ describe("webhook execution authority admission", () => {
     );
     expect(jobs.rows).toHaveLength(1);
     expect(jobs.rows[0]?.id).toBe((await rows())[0]?.id);
+    expect((await rows())[0]).toMatchObject({
+      caller_origin: "trusted_system",
+      caller_context: null,
+    });
+    expect(jobs.rows[0]?.data).not.toHaveProperty("caller_origin");
   });
 
   test("queue failure retries the original reservation with a fresh valid delivery signature", async () => {
@@ -228,10 +282,15 @@ describe("webhook execution authority admission", () => {
     expect(await seen("retry")).toBe(false);
     const original = (await rows())[0];
     expect(original?.execution_authority_id).toBe(authority.id);
+    expect(original).toMatchObject({ caller_origin: "trusted_system", caller_context: null });
     const replay = await receive(delivery("retry", input.rawBody, 60));
     expect(replay).toMatchObject({ status: "ok", execution_id: original?.id });
     expect(await rows()).toHaveLength(1);
     expect((await rows())[0]?.input).toEqual(original?.input);
+    expect((await rows())[0]).toMatchObject({
+      caller_origin: "trusted_system",
+      caller_context: null,
+    });
     expect(await reserved(authority.id)).toBe(1);
     expect(await receive(input)).toMatchObject({ status: "deduped" });
   });

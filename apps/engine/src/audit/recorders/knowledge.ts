@@ -1,6 +1,6 @@
 import { auditAwait } from "../audit.ts";
 import { AuditAction } from "../types.ts";
-import { type RecordedEntry, type RecorderBase, resolveActorType } from "./types.ts";
+import { type RecordedEntry, type RecorderBase, resolveActor } from "./types.ts";
 
 export interface RecordKnowledgeSourceCreatedParams extends RecorderBase {
   knowledge_source_id: string;
@@ -18,8 +18,7 @@ export async function recordKnowledgeSourceCreated(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.KNOWLEDGE_SOURCE_CREATED,
       resource_type: "knowledge_source",
       resource_id: p.knowledge_source_id,
@@ -54,8 +53,7 @@ export async function recordKnowledgeSourceRefreshed(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.KNOWLEDGE_SOURCE_REFRESHED,
       resource_type: "knowledge_source",
       resource_id: p.knowledge_source_id,
@@ -90,8 +88,7 @@ export async function recordKnowledgeSourceCandidatesSynthesized(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.KNOWLEDGE_SOURCE_CANDIDATES_SYNTHESIZED,
       resource_type: "knowledge_source",
       resource_id: p.knowledge_source_id,

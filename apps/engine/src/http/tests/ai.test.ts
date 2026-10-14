@@ -1,15 +1,27 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { llmUsage } from "../../db/schema/index.ts";
+import { apiKeys, auditLog, llmUsage } from "../../db/schema/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
+const nextKeyHex = createDeterministicHexFactory(0x51a11);
+let systemAccountKey = "";
 
 beforeAll(async () => {
   process.env.LLM_PROVIDER = "mock";
   resetMockProvider();
   srv = await createHttpTestServer("ai");
+  systemAccountKey = `wf_live_${nextKeyHex(24)}`;
+  await srv.db.insert(apiKeys).values({
+    tenant_id: srv.tenantId,
+    system_account_id: srv.systemAccountId,
+    prefix: systemAccountKey.slice(0, 12),
+    token_sha256: createHash("sha256").update(systemAccountKey).digest("hex"),
+    scopes: ["*"],
+  });
 });
 
 afterAll(async () => {
@@ -17,6 +29,30 @@ afterAll(async () => {
 });
 
 describe("http /v1/skills + /v1/ai/generate", () => {
+  test("skill creation audit preserves the authenticated system-account principal", async () => {
+    const response = await fetch(`${srv.baseUrl}/v1/skills`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${systemAccountKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ scope: "global", title: "system-skill", body: "test" }),
+    });
+    expect(response.status).toBe(201);
+    const created = (await response.json()) as { id: string };
+    const [entry] = await srv.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, srv.tenantId),
+          eq(auditLog.action, "skill.created"),
+          eq(auditLog.resource_id, created.id),
+        ),
+      );
+    expect(entry).toEqual({ actor_type: "system_account", actor_id: srv.systemAccountId });
+  });
+
   test("create skill then generate draft workflow and record usage", async () => {
     const skillRes = await fetch(`${srv.baseUrl}/v1/skills`, {
       method: "POST",

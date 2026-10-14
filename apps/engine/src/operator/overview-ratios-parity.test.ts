@@ -1,6 +1,14 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { AuditAction } from "../audit/index.ts";
-import { auditLog, executions, tenants, workflows, workflowVersions } from "../db/schema/index.ts";
+import { listConnectors } from "../connectors/service.ts";
+import {
+  auditLog,
+  connectors,
+  executions,
+  tenants,
+  workflows,
+  workflowVersions,
+} from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getMetrics } from "../observability/metrics.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
@@ -114,6 +122,78 @@ test("the success and repair ratios are the operating figures' counts", async ()
   const repairs = sectionMetric(overview, "repairs.applied_ratio");
   expect(repairs?.value).toBe(figures.repairs.applied / figures.repairs.decided);
   expect(repairs?.value).toBe(0.5);
+});
+
+test("connector health and sign-in counts use their persisted states and tenant scope", async () => {
+  await testDb.db.insert(connectors).values([
+    {
+      tenant_id,
+      slug: "healthy",
+      display_name: "Healthy",
+      driver: "http",
+      health_state: "ok",
+    },
+    {
+      tenant_id,
+      slug: "reauth-with-ok-health",
+      display_name: "Needs sign-in",
+      driver: "http",
+      health_state: "ok",
+      needs_reauth: true,
+    },
+    {
+      tenant_id,
+      slug: "degraded",
+      display_name: "Degraded",
+      driver: "http",
+      health_state: "degraded",
+    },
+    {
+      tenant_id,
+      slug: "needs-update",
+      display_name: "Needs update",
+      driver: "http",
+      health_state: "needs_update",
+    },
+    {
+      tenant_id,
+      slug: "disabled-reauth",
+      display_name: "Disabled",
+      driver: "http",
+      enabled: false,
+      needs_reauth: true,
+    },
+    {
+      tenant_id: quiet_tenant_id,
+      slug: "other-tenant-reauth",
+      display_name: "Other tenant",
+      driver: "http",
+      needs_reauth: true,
+    },
+  ]);
+
+  const bounds = resolveOperatingBounds({ window: "24h" }, new Date(getTestNow()));
+  if (!bounds.ok) throw new Error(bounds.reason);
+  const figures = await readOperatingFigures(testDb.db, tenant_id, bounds);
+  expect(figures.connectors).toMatchObject({
+    enabled: 4,
+    not_ok: 3,
+    needs_reauth: 1,
+    healthy_percent: 25,
+  });
+
+  const notOk = await listConnectors(tenant_id, { health: "not_ok" }, testDb.db);
+  expect(new Set(notOk.rows.map((connector) => connector.slug))).toEqual(
+    new Set(["reauth-with-ok-health", "degraded", "needs-update"]),
+  );
+  const signIn = await listConnectors(tenant_id, { enabled: true, needs_reauth: true }, testDb.db);
+  expect(signIn.rows.map((connector) => connector.slug)).toEqual(["reauth-with-ok-health"]);
+
+  invalidateOperationalOverview(tenant_id);
+  const overview = await getOperationalOverview(testDb.db, tenant_id);
+  expect(
+    overview.core.health.causes.find((cause) => cause.subject.name === "Needs sign-in"),
+  ).toMatchObject({ reason: "needs_reauth", label: "Needs sign-in: needs reauth" });
 });
 
 test("a ratio with nothing to count is scraped as NaN, not as its last value", async () => {

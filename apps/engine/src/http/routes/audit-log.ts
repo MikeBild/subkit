@@ -20,7 +20,7 @@ const AuditEntrySchema = z
     id: z.string(),
     ts: z.string(),
     tenant_id: z.string(),
-    actor_type: z.string(),
+    actor_type: z.enum(["user", "system_account", "system", "unknown"]),
     actor_id: z.string().nullable(),
     action: z.string(),
     resource_type: z.string(),
@@ -45,7 +45,7 @@ const FilterQuery = z
   .object({
     action: z.string().optional(),
     actor_id: z.string().uuid().optional(),
-    actor_type: z.enum(["user", "system_account", "system"]).optional(),
+    actor_type: z.enum(["user", "system_account", "system", "unknown"]).optional(),
     resource_type: z.string().optional(),
     resource_types: z.string().max(2000).optional(),
     resource_id: z.string().optional(),
@@ -107,7 +107,7 @@ function parseActions(raw?: string): string[] | undefined {
 interface RawFilterQuery {
   action?: string | undefined;
   actor_id?: string | undefined;
-  actor_type?: "user" | "system_account" | "system" | undefined;
+  actor_type?: "user" | "system_account" | "system" | "unknown" | undefined;
   resource_type?: string | undefined;
   resource_types?: string | undefined;
   resource_id?: string | undefined;
@@ -145,7 +145,7 @@ export function registerAuditLogRoutes(app: OpenAPIHono<AppEnv>): void {
     const filters = filtersFromQuery(principal.tenant_id, {
       action: rawQ.action,
       actor_id: rawQ.actor_id,
-      actor_type: rawQ.actor_type as "user" | "system_account" | "system" | undefined,
+      actor_type: rawQ.actor_type as "user" | "system_account" | "system" | "unknown" | undefined,
       resource_type: rawQ.resource_type,
       resource_types: rawQ.resource_types,
       resource_id: rawQ.resource_id,

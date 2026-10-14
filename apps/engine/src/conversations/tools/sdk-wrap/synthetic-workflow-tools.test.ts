@@ -479,7 +479,7 @@ test("a hook-started workflow is judged in production, where its deliveries run"
   expect(await workflowExecutionEnvironment(tdb.db, tenantId, wf.id)).toBe("dev");
 });
 
-test("saved tool executes the configured production environment instead of hardcoded dev", async () => {
+test("saved tool audits execution with the typed system-account principal", async () => {
   const workflow = await seedTool("production-report");
   await tdb.db.insert(workflowsSchedules).values({
     tenant_id: tenantId,
@@ -490,7 +490,10 @@ test("saved tool executes the configured production environment instead of hardc
   const logMessages: string[] = [];
   const tools = await buildSyntheticWorkflowTools({
     db: tdb.db,
-    principal: makePrincipal(),
+    principal: makePrincipal({
+      kind: "system_account",
+      id: "10000000-0000-4000-8000-000000000002",
+    }),
     ctx: makeCtx({ onLog: (_level, msg) => logMessages.push(msg) }),
     signals: makeTurnSignals(),
     events: [],
@@ -500,10 +503,24 @@ test("saved tool executes the configured production environment instead of hardc
   const result = (await tool.execute(
     {},
     { toolCallId: "production-test", messages: [], context: {} },
-  )) as { ok: boolean };
+  )) as unknown as { ok: boolean; data: { execution_id: string } };
   expect(result.ok).toBe(true);
   expect(logMessages.some((message) => message.includes("env=prod"))).toBe(true);
   expect(requests).toBe(1);
+  const [audit] = await tdb.db
+    .select()
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.action, AuditAction.EXECUTION_STARTED),
+        eq(auditLog.resource_id, result.data.execution_id),
+      ),
+    )
+    .limit(1);
+  expect(audit).toMatchObject({
+    actor_type: "system_account",
+    actor_id: "10000000-0000-4000-8000-000000000002",
+  });
 });
 
 test("production preparation pauses in chat and human approval dispatches once in its reviewed environment", async () => {

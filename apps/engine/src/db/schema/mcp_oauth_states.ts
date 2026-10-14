@@ -18,6 +18,7 @@ export const mcpOauthStates = pgTable(
     as_issuer: text("as_issuer"),
     requested_scopes: text("requested_scopes"),
     started_by_actor_id: uuid("started_by_actor_id"),
+    started_by_actor_type: text("started_by_actor_type").$type<"user" | "system_account">(),
     origin: text("origin"),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

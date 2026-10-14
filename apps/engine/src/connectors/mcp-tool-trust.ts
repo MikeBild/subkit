@@ -1,5 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
+import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
+import type { AuditActorType } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
@@ -84,6 +86,8 @@ export interface SetMcpToolConfirmationParams {
   tool: string;
   confirm: boolean;
   actor_id: string | null;
+  actor?: Actor | null;
+  actor_type?: AuditActorType;
 }
 
 export interface McpToolConfirmationResult {
@@ -128,8 +132,15 @@ export async function setMcpToolConfirmation(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
+        ...(p.actor !== undefined
+          ? auditActor(p.actor)
+          : p.actor_type === "unknown"
+            ? { actor_type: "unknown" as const, actor_id: null }
+            : p.actor_type
+              ? { actor_type: p.actor_type, actor_id: p.actor_id }
+              : p.actor_id
+                ? { actor_type: "unknown" as const, actor_id: null }
+                : auditActor(null)),
         action: AuditAction.CONNECTOR_UPDATED,
         resource_type: "connector",
         resource_id: p.connector_id,

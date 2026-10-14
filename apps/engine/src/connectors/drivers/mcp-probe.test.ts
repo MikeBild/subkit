@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { and, eq, isNull } from "drizzle-orm";
 import { UNDESCRIBED_METADATA } from "../../api/catalog-metadata.ts";
 import { closeDb } from "../../db/client.ts";
-import { tenants } from "../../db/schema/index.ts";
+import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   __resetMcpClientPoolForTests,
@@ -134,6 +135,45 @@ describe("probeMcpConnector", () => {
     expect(res.detail).toContain("2 tool(s)");
     expect(res.status).toBeUndefined();
     expect(res.error_code).toBeUndefined();
+    const [handshake] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "connector.mcp_handshake_ok"),
+          eq(auditLog.resource_id, seeded.id),
+          isNull(auditLog.actor_id),
+        ),
+      );
+    expect(handshake).toMatchObject({ actor_type: "system", actor_id: null });
+  });
+
+  test("an authenticated connector probe attributes its handshake", async () => {
+    __resetMcpClientPoolForTests();
+    const seeded = await seedSession("probeactor", "actor");
+    const actorId = "00000000-0000-4000-8000-000000000126";
+    const res = await probeMcpConnector({
+      db: ctx.db,
+      tenant_id: tenantId,
+      connector: connectorView({ id: seeded.id, slug: "probeactor", base_url: seeded.url }),
+      requestSource: "api",
+      actor_id: actorId,
+      actor_type: "user",
+    });
+    expect(res.ok).toBe(true);
+    const [handshake] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "connector.mcp_handshake_ok"),
+          eq(auditLog.resource_id, seeded.id),
+          eq(auditLog.actor_id, actorId),
+        ),
+      );
+    expect(handshake).toMatchObject({ actor_type: "user", actor_id: actorId });
   });
 
   test("a refused handshake reports credential_invalid, not a generic failure", async () => {

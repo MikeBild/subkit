@@ -1,0 +1,2 @@
+ALTER TABLE "executions" ADD COLUMN "caller_origin" text DEFAULT 'unknown' NOT NULL;--> statement-breakpoint
+ALTER TABLE "executions" ADD CONSTRAINT "executions_caller_origin_check" CHECK ("executions"."caller_origin" IN ('principal', 'trusted_system', 'unknown'));

@@ -176,7 +176,7 @@ export function registerChatWorkspaceRoutes(
       await auditAwait(
         {
           tenant_id: principal.tenant_id,
-          actor_type: "user",
+          actor_type: principal.kind,
           actor_id: principal.id,
           action: AuditAction.CHAT_WORKSPACE_INSTALLED,
           resource_type: "chat_workspace",
@@ -199,7 +199,7 @@ export function registerChatWorkspaceRoutes(
       await auditAwait(
         {
           tenant_id: principal.tenant_id,
-          actor_type: "user",
+          actor_type: principal.kind,
           actor_id: principal.id,
           action: AuditAction.CHAT_WORKSPACE_INSTALLED,
           resource_type: "chat_workspace",
@@ -232,7 +232,7 @@ export function registerChatWorkspaceRoutes(
         await auditAwait(
           {
             tenant_id: principal.tenant_id,
-            actor_type: "user",
+            actor_type: principal.kind,
             actor_id: principal.id,
             action: AuditAction.CHAT_WORKSPACE_INSTALLED,
             resource_type: "chat_workspace",
@@ -336,7 +336,7 @@ export function registerChatWorkspaceRoutes(
           await auditAwait(
             {
               tenant_id: principal.tenant_id,
-              actor_type: "user",
+              actor_type: principal.kind,
               actor_id: principal.id,
               action: AuditAction.CHAT_IDENTITY_LINKED,
               resource_type: "chat_identity",
@@ -363,7 +363,7 @@ export function registerChatWorkspaceRoutes(
       await auditAwait(
         {
           tenant_id: principal.tenant_id,
-          actor_type: "user",
+          actor_type: principal.kind,
           actor_id: principal.id,
           action: AuditAction.CHAT_WORKSPACE_INSTALLED,
           resource_type: "chat_workspace",
@@ -379,7 +379,7 @@ export function registerChatWorkspaceRoutes(
       await auditAwait(
         {
           tenant_id: principal.tenant_id,
-          actor_type: "user",
+          actor_type: principal.kind,
           actor_id: principal.id,
           action: AuditAction.CHAT_IDENTITY_LINKED,
           resource_type: "chat_identity",
@@ -464,7 +464,7 @@ export function registerChatWorkspaceRoutes(
       await auditAwait(
         {
           tenant_id: principal.tenant_id,
-          actor_type: "user",
+          actor_type: principal.kind,
           actor_id: principal.id,
           action: AuditAction.CHAT_WORKSPACE_REMOVED,
           resource_type: "chat_workspace",

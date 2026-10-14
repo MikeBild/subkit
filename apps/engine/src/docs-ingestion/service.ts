@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { sanitizeForAudit } from "../audit/sanitize.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -39,7 +40,14 @@ export interface IngestParams {
   connector_id: string;
   input: IngestSourceInput;
   actor_id?: string | null;
+  actor?: Actor | null;
   fetchImpl?: typeof fetch;
+}
+
+function docsAuditActor(actor: Actor | null | undefined, legacyActorId: string | null | undefined) {
+  if (actor) return auditActor(actor);
+  if (legacyActorId) return { actor_type: "unknown" as const, actor_id: null };
+  return auditActor(null);
 }
 
 function parseInlineOpenApiChunks(content: string): RawChunk[] {
@@ -215,8 +223,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
       await auditAwait(
         {
           tenant_id: p.tenant_id,
-          actor_type: "system",
-          actor_id: null,
+          ...docsAuditActor(p.actor, p.actor_id),
           action: AuditAction.CONNECTOR_DOCS_INGESTED,
           resource_type: "connector",
           resource_id: p.connector_id,
@@ -315,8 +322,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id ?? null,
+        ...docsAuditActor(p.actor, p.actor_id),
         action: AuditAction.CONNECTOR_DOCS_INGESTED,
         resource_type: "connector",
         resource_id: p.connector_id,
@@ -371,6 +377,7 @@ export async function ingestTemplateDocsForConnector(
     connector_id: string;
     template: ConnectorTemplate;
     actor_id?: string | null;
+    actor?: Actor | null;
     fetchImpl?: typeof fetch;
   },
   exec?: Executor,
@@ -381,6 +388,7 @@ export async function ingestTemplateDocsForConnector(
       tenant_id: p.tenant_id,
       connector_id: p.connector_id,
       actor_id: p.actor_id ?? null,
+      actor: p.actor ?? null,
       input: {
         source_type: template.inline_schema.format,
         content: template.inline_schema.content,
@@ -407,6 +415,7 @@ export async function ingestTemplateDocsForConnector(
     tenant_id: p.tenant_id,
     connector_id: p.connector_id,
     actor_id: p.actor_id ?? null,
+    actor: p.actor ?? null,
     input: {
       source_type: template.ingestion_source,
       url: template.ingestion_url,
@@ -451,6 +460,7 @@ export interface DeleteDocParams {
   connector_id: string;
   document_id: string;
   actor_id?: string | null;
+  actor?: Actor | null;
 }
 
 export async function deleteDoc(p: DeleteDocParams, exec?: Executor): Promise<boolean> {
@@ -473,8 +483,7 @@ export async function deleteDoc(p: DeleteDocParams, exec?: Executor): Promise<bo
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id ?? null,
+        ...docsAuditActor(p.actor, p.actor_id),
         action: AuditAction.CONNECTOR_DOCS_CLEARED,
         resource_type: "connector",
         resource_id: p.connector_id,

@@ -1,6 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { actorOf } from "../../../audit/actor.ts";
 import { AuditAction, auditAwait, readRequestSource } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
@@ -112,6 +113,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         connector_id: id,
         actor_id: principal.id,
+        actor: actorOf(principal),
         redirect_uri,
         origin: readRequestSource(c) === "ui" ? "cockpit" : "cli",
       });

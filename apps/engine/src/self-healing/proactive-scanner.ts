@@ -1,4 +1,5 @@
 import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import type { AuditActorType } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { schemaVersions } from "../db/schema/connectors.ts";
 import { executions } from "../db/schema/executions.ts";
@@ -39,7 +40,12 @@ export interface ScannedSignal {
 
 export function driftSignalContext(
   ctx: ScannedSignalContext,
-  extra: { actor_id: string | null; source: SignalSource; scan_id: string },
+  extra: {
+    actor_id: string | null;
+    actor_type: AuditActorType;
+    source: SignalSource;
+    scan_id: string;
+  },
 ): {
   tenant_id: string;
   workflow_id: string;
@@ -49,6 +55,7 @@ export function driftSignalContext(
   connector_id?: string;
   endpoint_key?: string;
   actor_id: string | null;
+  actor_type: AuditActorType;
   source: SignalSource;
   scan_id: string;
   repair_input: ScannedSignalContext["repair_input"];
@@ -62,6 +69,7 @@ export function driftSignalContext(
     ...(ctx.connector_id ? { connector_id: ctx.connector_id } : {}),
     ...(ctx.endpoint_key ? { endpoint_key: ctx.endpoint_key } : {}),
     actor_id: extra.actor_id,
+    actor_type: extra.actor_type,
     source: extra.source,
     scan_id: extra.scan_id,
     repair_input: ctx.repair_input,

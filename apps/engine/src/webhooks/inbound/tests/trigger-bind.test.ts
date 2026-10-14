@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { auditLog, webhooksInbound } from "../../../db/schema/index.ts";
 import { bindFromWorkflow, unbindFromWorkflow } from "../service.ts";
@@ -22,6 +23,58 @@ const triggerStripe = {
 };
 
 describe("inbound trigger bind/unbind helpers", () => {
+  test("trigger audit preserves explicit actor types and leaves background actor empty", async () => {
+    const userId = randomUUID();
+    const accountId = randomUUID();
+    const user = await bindFromWorkflow(
+      {
+        tenant_id: ctx.tenantId,
+        workflow_id: ctx.workflowId,
+        workflow_slug: "wf-test",
+        trigger: triggerStripe,
+        actor_id: userId,
+        actor: { kind: "user", id: userId },
+      },
+      ctx.db,
+    );
+    await bindFromWorkflow(
+      {
+        tenant_id: ctx.tenantId,
+        workflow_id: ctx.workflowId,
+        workflow_slug: "wf-test",
+        trigger: { ...triggerStripe, events: ["invoice.created"] },
+        actor_id: accountId,
+        actor: { kind: "system_account", id: accountId },
+      },
+      ctx.db,
+    );
+    await bindFromWorkflow(
+      {
+        tenant_id: ctx.tenantId,
+        workflow_id: ctx.workflowId,
+        workflow_slug: "wf-test",
+        trigger: { ...triggerStripe, events: ["invoice.updated"] },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    const rows = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.resource_id, user.row.id),
+          eq(auditLog.action, "webhook.trigger.bound"),
+        ),
+      );
+    expect(rows).toEqual([
+      { actor_type: "user", actor_id: userId },
+      { actor_type: "system_account", actor_id: accountId },
+      { actor_type: "system", actor_id: null },
+    ]);
+  });
+
   test("bindFromWorkflow creates a single inbound row, idempotent on repeat", async () => {
     const first = await bindFromWorkflow(
       {
@@ -144,6 +197,7 @@ describe("inbound trigger bind/unbind helpers", () => {
   });
 
   test("unbindFromWorkflow removes the row + emits WEBHOOK_TRIGGER_UNBOUND", async () => {
+    const accountId = randomUUID();
     const created = await bindFromWorkflow(
       {
         tenant_id: ctx.tenantId,
@@ -154,7 +208,12 @@ describe("inbound trigger bind/unbind helpers", () => {
       },
       ctx.db,
     );
-    const removed = await unbindFromWorkflow(ctx.tenantId, ctx.workflowId, null, ctx.db);
+    const removed = await unbindFromWorkflow(
+      ctx.tenantId,
+      ctx.workflowId,
+      { kind: "system_account", id: accountId },
+      ctx.db,
+    );
     expect(removed).toBe(1);
 
     const remaining = await ctx.db
@@ -170,6 +229,7 @@ describe("inbound trigger bind/unbind helpers", () => {
         and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.action, "webhook.trigger.unbound")),
       );
     expect(audits.length).toBe(1);
+    expect(audits[0]).toMatchObject({ actor_type: "system_account", actor_id: accountId });
   });
 
   test("unbindFromWorkflow with no prior binding is a no-op (returns 0)", async () => {

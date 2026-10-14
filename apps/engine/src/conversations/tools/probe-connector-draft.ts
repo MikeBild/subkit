@@ -26,6 +26,7 @@ import {
 import type { AtomicCredentialInput } from "../persistence/save-connector.ts";
 import { saveConnectorAtomic } from "../persistence/save-connector.ts";
 import type { ConnectorDraftProbeSummary } from "../types.ts";
+import { auditActorFromToolContext } from "./audit-actor.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { resolveDraftProbeSecrets } from "./probe-draft-secrets.ts";
@@ -192,8 +193,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       await auditAwait(
         {
           tenant_id: ctx.tenant_id,
-          actor_type: ctx.actor_id ? "user" : "system",
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
           resource_type: "conversation",
           resource_id: ctx.conversation_id,
@@ -301,8 +301,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       await auditAwait(
         {
           tenant_id: ctx.tenant_id,
-          actor_type: ctx.actor_id ? "user" : "system",
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
           resource_type: "conversation",
           resource_id: ctx.conversation_id,
@@ -365,8 +364,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       await auditAwait(
         {
           tenant_id: ctx.tenant_id,
-          actor_type: ctx.actor_id ? "user" : "system",
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
           resource_type: "conversation",
           resource_id: ctx.conversation_id,
@@ -491,8 +489,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       await auditAwait(
         {
           tenant_id: ctx.tenant_id,
-          actor_type: ctx.actor_id ? "user" : "system",
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
           resource_type: "conversation",
           resource_id: ctx.conversation_id,
@@ -630,8 +627,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       await auditAwait(
         {
           tenant_id: ctx.tenant_id,
-          actor_type: ctx.actor_id ? "user" : "system",
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
           resource_type: "conversation",
           resource_id: ctx.conversation_id,
@@ -706,8 +702,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       await auditAwait(
         {
           tenant_id: ctx.tenant_id,
-          actor_type: ctx.actor_id ? "user" : "system",
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
           resource_type: "conversation",
           resource_id: ctx.conversation_id,
@@ -813,8 +808,7 @@ export const probeConnectorDraftTool: ConversationTool = {
     await auditAwait(
       {
         tenant_id: ctx.tenant_id,
-        actor_type: ctx.actor_id ? "user" : "system",
-        actor_id: ctx.actor_id,
+        ...auditActorFromToolContext(ctx),
         action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
         resource_type: "conversation",
         resource_id: ctx.conversation_id,

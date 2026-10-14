@@ -257,6 +257,7 @@ async function recordConfirmationRequired(p: {
   db: Db;
   tenant_id: string;
   actor_id: string | null;
+  actor_type: "user" | "system_account" | "system" | "unknown";
   conversation_id: string;
   tool: string;
   mode: ToolPolicyMode;
@@ -267,6 +268,7 @@ async function recordConfirmationRequired(p: {
   await recordToolPolicyConfirmationRequired({
     tenant_id: p.tenant_id,
     actor_id: p.actor_id,
+    actor_type: p.actor_type,
     executor: p.db,
     conversation_id: p.conversation_id,
     tool: p.tool,
@@ -325,6 +327,7 @@ export async function runConfirmGate(input: ConfirmGateInput): Promise<ConfirmGa
       db: input.db,
       tenant_id: input.tenant_id,
       actor_id: input.actor_id,
+      actor_type: input.principal?.kind ?? (input.actor_id === null ? "system" : "unknown"),
       conversation_id: input.conversation_id,
       tool: input.approval_tool,
       mode: decision.mode,
@@ -413,6 +416,7 @@ export async function openHeldWritesApproval(p: {
     db: p.db,
     tenant_id: p.principal.tenant_id,
     actor_id: p.actor_id,
+    actor_type: p.principal.kind,
     conversation_id: p.conversation_id,
     tool: p.tool,
     mode: p.decision.mode,

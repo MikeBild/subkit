@@ -7,7 +7,11 @@ import type { Db } from "../../db/client.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
 import { auditAdmissionRefusal } from "../../execution/admission-audit.ts";
 import { rehydrateExecutionPrincipal } from "../../execution/authorization-context.ts";
-import { CallerContextSchema, callerAuditActorId } from "../../execution/caller-context.ts";
+import { CallerContextSchema } from "../../execution/caller-context.ts";
+import {
+  resolveExecutionCallerActor,
+  resolveExecutionCallerOrigin,
+} from "../../execution/caller-origin.ts";
 import { runExecution } from "../../execution/engine.ts";
 import {
   captureWorkflowPermission,
@@ -162,7 +166,9 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
             authority: executions.execution_authority_id,
             input: executions.input,
             caller: executions.caller_context,
+            caller_origin: executions.caller_origin,
             authorization: executions.authorization_context,
+            request_source: executions.request_source,
           })
           .from(executions)
           .where(
@@ -180,19 +186,27 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
       await auditAdmissionRefusal(
         {
           tenant_id: data.tenant_id,
+          ...resolveExecutionCallerActor(data.tenant_id, boundary?.caller, boundary?.caller_origin),
           reason: "execution_authority_required",
           message,
           workflow_id: data.workflow_id,
           execution_id: data.execution_id ?? null,
-          request_source: (data.request_source as string) ?? "api",
+          request_source: boundary?.request_source ?? (data.request_source as string) ?? "api",
           extra: { queue: EXECUTION_RUN_QUEUE },
         },
         db,
       );
       throw Object.assign(new Error(message), { code: "execution_authority_required" });
     }
-    runOptions.caller_context = boundary.caller ? CallerContextSchema.parse(boundary.caller) : null;
     try {
+      runOptions.caller_origin = resolveExecutionCallerOrigin(
+        data.tenant_id,
+        boundary.caller,
+        boundary.caller_origin,
+      );
+      runOptions.caller_context = boundary.caller
+        ? CallerContextSchema.parse(boundary.caller)
+        : null;
       runOptions.principal = await rehydrateExecutionPrincipal(
         db,
         boundary.caller,
@@ -228,14 +242,13 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
       await auditAwait(
         {
           tenant_id: data.tenant_id,
-          actor_type: runOptions.caller_context?.principalKind ?? "system",
-          actor_id: callerAuditActorId(runOptions.caller_context),
+          ...resolveExecutionCallerActor(data.tenant_id, boundary.caller, boundary.caller_origin),
           action: AuditAction.POLICY_DENIED,
           resource_type: "execution",
           resource_id: data.execution_id ?? null,
           result: "denied",
           reason: "execution_authentication_unavailable",
-          metadata: { workflow_id: data.workflow_id, request_source: "queue" },
+          metadata: { workflow_id: data.workflow_id, request_source: boundary.request_source },
         },
         db,
       );

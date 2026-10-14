@@ -1146,7 +1146,7 @@ async function dispatchRequestStep(
                     on_credential_use: persistCredentialUse,
                     db: p.ctx.db,
                     tenant_id: p.ctx.tenant_id,
-                    actor_id: p.ctx.principal?.id ?? null,
+                    ...requestEgressActor(p.ctx.principal),
                     connector,
                     call,
                     requestSource: p.ctx.request_source,

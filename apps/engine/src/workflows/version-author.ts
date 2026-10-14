@@ -2,7 +2,7 @@ import type { PrincipalKind } from "../auth/types.ts";
 
 export interface VersionActor {
   actor_id?: string | null;
-  actor_type?: PrincipalKind | "system" | undefined;
+  actor_type?: PrincipalKind | "system" | "unknown" | undefined;
 }
 
 export interface VersionAuthorColumns {

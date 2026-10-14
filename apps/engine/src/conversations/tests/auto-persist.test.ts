@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { AuditAction } from "../../audit/types.ts";
 import {
   auditLog,
   connectors,
@@ -210,7 +211,7 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
       actor_id: null,
       principal: {
         provider: "test",
-        kind: "user",
+        kind: "system_account",
         id: principal_id,
         tenant_id,
         roles: ["admin"],
@@ -224,6 +225,18 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
     expect(dispatch.synthetic_result?.ok).toBe(true);
     expect(dispatch.synthetic_result?.error_code).toBeUndefined();
     expect(dispatch.synthetic_result?.tool).toBe("run_workflow");
+    const [approvalAudit] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenant_id),
+          eq(auditLog.action, AuditAction.CONVERSATION_RESUMED),
+          eq(auditLog.resource_id, elicitation.id),
+        ),
+      )
+      .limit(1);
+    expect(approvalAudit).toEqual({ actor_type: "system_account", actor_id: principal_id });
     const data = dispatch.synthetic_result?.data as {
       workflow_id: string;
       workflow_slug: string;

@@ -1,14 +1,13 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { auditActor } from "../../audit/actor.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
-import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
+import { conversations, conversationToolCalls, users } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
 import type { AnswerActor } from "../answer-actor.ts";
-import { decidedByFor } from "../decided-by.ts";
+import { decidedByAuditActor, decidedByFor } from "../decided-by.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import { runLoop } from "../loop.ts";
 import { applyElicitationOutcome } from "../persistence/apply-outcome.ts";
@@ -54,6 +53,13 @@ export class ElicitationActorMismatchError extends Error {
     public readonly actor_id: string | null,
   ) {
     super(`actor ${actor_id ?? "(anon)"} is not the owner of conversation ${conversation_id}`);
+  }
+}
+
+export class ElicitationAnswerActorUnavailableError extends Error {
+  readonly code = "ELICITATION_ANSWER_ACTOR_UNAVAILABLE";
+  constructor(public readonly user_id: string) {
+    super(`human answer actor ${user_id} is not an active user in this tenant`);
   }
 }
 
@@ -135,6 +141,21 @@ export async function respondElicitation(
 
   const { getElicitation, resolveElicitation } = await import("../elicitations.ts");
   const pendingRow = await getElicitation(p.tenant_id, p.elicitation_id, exec);
+  if (p.answer_actor.kind === "human" && p.answer_actor.via === "portal") {
+    const [answerUser] = await exec
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(
+          eq(users.id, p.answer_actor.user_id),
+          eq(users.tenant_id, p.tenant_id),
+          eq(users.status, "active"),
+          isNull(users.deleted_at),
+        ),
+      )
+      .limit(1);
+    if (!answerUser) throw new ElicitationAnswerActorUnavailableError(p.answer_actor.user_id);
+  }
   const output =
     pendingRow?.tool_name === "ask_user_confirm" ? normalizeConfirmOutput(p.output) : p.output;
   if (pendingRow && pendingRow.status === "pending") {
@@ -153,7 +174,7 @@ export async function respondElicitation(
       });
     }
   }
-  const decided_by = decidedByFor(p.actor_id, p.principal);
+  const decided_by = decidedByFor(p.actor_id, p.tenant_id, p.principal, p.answer_actor);
   const resolveOutcome = await resolveElicitation(
     {
       tenant_id: p.tenant_id,
@@ -323,7 +344,7 @@ export async function respondElicitation(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        ...auditActor(decided_by),
+        ...decidedByAuditActor(decided_by),
         action: AuditAction.CONVERSATION_COMMITTED,
         resource_type: "conversation",
         resource_id: p.conversation_id,
@@ -363,7 +384,7 @@ export async function respondElicitation(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        ...auditActor(decided_by),
+        ...decidedByAuditActor(decided_by),
         action: AuditAction.CONVERSATION_COMMITTED,
         resource_type: "conversation",
         resource_id: p.conversation_id,

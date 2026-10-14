@@ -1,10 +1,12 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
-import { connectors, credentials } from "../../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { auditLog, connectors, credentials } from "../../../db/schema/index.ts";
+import { EngineClient } from "../../../engine-client/index.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import { createConversation } from "../../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import type { DraftDocument } from "../../types.ts";
+import type { ToolContext } from "../index.ts";
 import { inspectConnectorDraftTool } from "../inspect-connector-draft.ts";
 import { probeConnectorDraftTool } from "../probe-connector-draft.ts";
 import { saveConnectorDraftTool } from "../save-connector-draft.ts";
@@ -59,25 +61,26 @@ async function createToolCtx() {
     ctx.testDb.db,
   );
   let draft: DraftDocument = createEmptyDraftDocument();
+  const base: ToolContext = {
+    db: ctx.testDb.db,
+    tenant_id: ctx.tenant_id,
+    conversation_id: created.conversation.id,
+    actor_id: ctx.user_id,
+    connector_id: null,
+    workflow_id: null,
+    engineClient: {} as never,
+    getDraft: () => draft,
+    setDraft: async (next: DraftDocument) => {
+      draft = next;
+    },
+  };
   return {
     conversation_id: created.conversation.id,
     getDraft: () => draft,
     setDraft: async (next: DraftDocument) => {
       draft = next;
     },
-    base: {
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenant_id,
-      conversation_id: created.conversation.id,
-      actor_id: ctx.user_id,
-      connector_id: null,
-      workflow_id: null,
-      engineClient: {} as never,
-      getDraft: () => draft,
-      setDraft: async (next: DraftDocument) => {
-        draft = next;
-      },
-    },
+    base,
   };
 }
 
@@ -398,6 +401,44 @@ describe("connector draft tools", () => {
     expect(data.connector.template_slug).toBe("github");
     expect(data.connector.auth_type).toBe("bearer");
     expect(data.recognized_auth).toBeUndefined();
+  });
+
+  test("system-account engine context is retained in the connector-probe audit row", async () => {
+    const toolCtx = await createToolCtx();
+    const systemAccountId = crypto.randomUUID();
+    toolCtx.base.actor_id = null;
+    toolCtx.base.engineClient = new EngineClient({
+      tenant_id: ctx.tenant_id,
+      actor_id: systemAccountId,
+      actor_type: "system_account",
+      db: ctx.testDb.db,
+    });
+    await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "machine-probe",
+      driver: "http",
+      environment: "dev",
+      base_url: baseUrl,
+      auth_type: "none",
+    });
+    await inspectConnectorDraftTool.execute(toolCtx.base, {});
+    await validateConnectorDraftTool.execute(toolCtx.base, {});
+    const probe = await probeConnectorDraftTool.execute(toolCtx.base, {
+      method: "GET",
+      path: "/health",
+    });
+    expect(probe.ok).toBe(true);
+    const [row] = await ctx.testDb.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenant_id),
+          eq(auditLog.action, "conversation.probe_connector"),
+          eq(auditLog.resource_id, toolCtx.conversation_id),
+        ),
+      )
+      .limit(1);
+    expect(row).toEqual({ actor_type: "system_account", actor_id: systemAccountId });
   });
 
   test("probe_connector_draft stores the latest probe summary", async () => {

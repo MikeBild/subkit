@@ -63,7 +63,7 @@ export const conversationElicitations = pgTable(
       .where(sql`${t.status} = 'pending'`),
     check(
       "conversation_elicitations_decided_by_kind_check",
-      sql`(${t.decided_by} IS NULL) = (${t.decided_by_kind} IS NULL) AND (${t.decided_by_kind} IS NULL OR ${t.decided_by_kind} <> 'system')`,
+      sql`(${t.decided_by_kind} IS NULL AND ${t.decided_by} IS NULL) OR (${t.decided_by_kind} = 'unknown' AND ${t.decided_by} IS NULL) OR (${t.decided_by_kind} IN ('user', 'system_account') AND ${t.decided_by} IS NOT NULL)`,
     ),
   ],
 );

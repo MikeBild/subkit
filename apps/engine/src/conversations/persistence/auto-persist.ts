@@ -1,5 +1,6 @@
 import { and, desc, eq, isNull, like, not } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
+import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConnector } from "../../connectors/service.ts";
@@ -93,6 +94,14 @@ export interface AutoPersistInput {
   };
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   db: Db;
+}
+
+function autoPersistActor(p: AutoPersistInput) {
+  return resolveActor({
+    tenant_id: p.tenant_id,
+    actor_id: p.principal?.id ?? p.actor_id,
+    actor_type: p.principal?.kind ?? (p.actor_id === null ? "system" : "unknown"),
+  });
 }
 
 async function recordGatedCallOutcome(p: AutoPersistInput, outcome: "ok" | "error"): Promise<void> {
@@ -318,8 +327,7 @@ export async function maybeAutoPersistFromElicitation(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
+        ...autoPersistActor(p),
         action: AuditAction.POLICY_DENIED,
         resource_type: "conversation_elicitation",
         resource_id: p.elicitation.id,
@@ -362,8 +370,8 @@ export async function maybeAutoPersistFromElicitation(
     permission_mode: null,
     engineClient: new EngineClient({
       tenant_id: p.tenant_id,
-      actor_id: p.actor_id,
-      actor_type: p.actor_id ? "user" : "system",
+      actor_id: autoPersistActor(p).actor_id,
+      actor_type: autoPersistActor(p).actor_type,
       db: p.db,
     }),
     getDraft: () => liveDraft,
@@ -1179,8 +1187,7 @@ export async function maybeAutoPersistFromElicitation(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: p.actor_id ? "user" : "system",
-      actor_id: p.actor_id,
+      ...autoPersistActor(p),
       action:
         intent.kind === "run_workflow"
           ? AuditAction.CONVERSATION_RESUMED

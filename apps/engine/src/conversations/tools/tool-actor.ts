@@ -3,5 +3,5 @@ import type { ToolContext } from "./index.ts";
 
 export function toolActor(ctx: Pick<ToolContext, "principal" | "actor_id">): Actor | null {
   if (ctx.principal) return actorOf(ctx.principal);
-  return ctx.actor_id ? { kind: "user", id: ctx.actor_id } : null;
+  return null;
 }

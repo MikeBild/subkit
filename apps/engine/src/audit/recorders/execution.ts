@@ -1,6 +1,6 @@
 import { auditAwait } from "../audit.ts";
 import { AuditAction } from "../types.ts";
-import { type RecordedEntry, type RecorderBase, resolveActorType } from "./types.ts";
+import { type RecordedEntry, type RecorderBase, resolveActor } from "./types.ts";
 
 export interface RecordExecutionCrashRecoveredParams extends RecorderBase {
   execution_id: string;
@@ -15,8 +15,7 @@ export async function recordExecutionCrashRecovered(
   return auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: resolveActorType(p),
-      actor_id: p.actor_id,
+      ...resolveActor(p),
       action: AuditAction.EXECUTION_CRASH_RECOVERED,
       resource_type: "execution",
       resource_id: p.execution_id,

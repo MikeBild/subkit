@@ -6,12 +6,15 @@ import type { Db } from "../../db/client.ts";
 import {
   auditLog,
   mcpOauthAccessTokens,
+  mcpOauthGrants,
   mcpOauthRefreshTokens,
   tenants,
   users,
 } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { revokeOAuthRefreshTokenFamily } from "./refresh-token-revocation.ts";
 import { createMcpOAuthProvider, type McpOAuthProvider } from "./server-provider.ts";
 import { sha256Hex } from "./tokens.ts";
 
@@ -220,6 +223,33 @@ describe("registerClient", () => {
 });
 
 describe("authorization code flow", () => {
+  test("records one user and client grant for the access and refresh token family", async () => {
+    const clientId = await registerTestClient();
+    const tokens = await issueTokenPair({ clientId });
+    const accessHash = sha256Hex(tokens.access_token);
+    const refreshHash = sha256Hex(tokens.refresh_token);
+    const [access] = await db
+      .select({ grant_id: mcpOauthAccessTokens.grant_id })
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.token_sha256, accessHash));
+    const [refresh] = await db
+      .select({ grant_id: mcpOauthRefreshTokens.grant_id })
+      .from(mcpOauthRefreshTokens)
+      .where(eq(mcpOauthRefreshTokens.token_sha256, refreshHash));
+    expect(access?.grant_id).toBeDefined();
+    expect(refresh?.grant_id).toBe(access?.grant_id);
+
+    const [grant] = await db
+      .select({
+        tenant_id: mcpOauthGrants.tenant_id,
+        client_id: mcpOauthGrants.client_id,
+        user_id: mcpOauthGrants.user_id,
+      })
+      .from(mcpOauthGrants)
+      .where(eq(mcpOauthGrants.id, access!.grant_id!));
+    expect(grant).toEqual({ tenant_id: tenantId, client_id: clientId, user_id: userId });
+  });
+
   test("happy path returns access_token + refresh_token", async () => {
     const tokens = await issueTokenPair();
     expect(tokens.access_token).toMatch(/^wf_mcp_/);
@@ -375,10 +405,12 @@ describe("authorization code flow", () => {
 
 describe("refresh token rotation", () => {
   test("rotation returns new access_token + refresh_token", async () => {
-    const first = await issueTokenPair({ scope: "mcp:read" });
     const clientId = await registerTestClient({ scope: "mcp:read mcp:authoring" });
-
     const firstPair = await issueTokenPair({ clientId, scope: "mcp:read" });
+    const [original] = await db
+      .select({ grant_id: mcpOauthRefreshTokens.grant_id })
+      .from(mcpOauthRefreshTokens)
+      .where(eq(mcpOauthRefreshTokens.token_sha256, sha256Hex(firstPair.refresh_token)));
 
     const refreshed = await provider.exchangeRefreshToken({
       refreshToken: firstPair.refresh_token,
@@ -388,7 +420,11 @@ describe("refresh token rotation", () => {
     expect(refreshed.refresh_token).toMatch(/^wf_mcr_/);
     expect(refreshed.access_token).not.toBe(firstPair.access_token);
     expect(refreshed.refresh_token).not.toBe(firstPair.refresh_token);
-    void first;
+    const [rotated] = await db
+      .select({ grant_id: mcpOauthRefreshTokens.grant_id })
+      .from(mcpOauthRefreshTokens)
+      .where(eq(mcpOauthRefreshTokens.token_sha256, sha256Hex(refreshed.refresh_token)));
+    expect(rotated?.grant_id).toBe(original?.grant_id);
   });
 
   test("old refresh token has rotated_to_id set after rotation", async () => {
@@ -490,11 +526,81 @@ describe("refresh token rotation", () => {
 
     const oldHash = sha256Hex(firstPair.refresh_token);
     const rows = await db
-      .select({ revoked_at: mcpOauthRefreshTokens.revoked_at })
+      .select({
+        revoked_at: mcpOauthRefreshTokens.revoked_at,
+        grant_id: mcpOauthRefreshTokens.grant_id,
+      })
       .from(mcpOauthRefreshTokens)
       .where(eq(mcpOauthRefreshTokens.token_sha256, oldHash))
       .limit(1);
     expect(rows[0]?.revoked_at).not.toBeNull();
+    const grants = await db
+      .select({ revoked_at: mcpOauthGrants.revoked_at })
+      .from(mcpOauthGrants)
+      .where(eq(mcpOauthGrants.id, rows[0]!.grant_id!));
+    expect(grants[0]?.revoked_at).not.toBeNull();
+  });
+
+  test("concurrent replay revokes the family after the losing rotation rolls back", async () => {
+    const clientId = await registerTestClient({ scope: "mcp:read" });
+    const firstPair = await issueTokenPair({ clientId, scope: "mcp:read" });
+    const oldHash = sha256Hex(firstPair.refresh_token);
+    const [original] = await db
+      .select({ id: mcpOauthRefreshTokens.id, grant_id: mcpOauthRefreshTokens.grant_id })
+      .from(mcpOauthRefreshTokens)
+      .where(eq(mcpOauthRefreshTokens.token_sha256, oldHash));
+    if (!original?.grant_id) throw new Error("refresh grant fixture missing");
+
+    const blocker = await testDb.pool.connect();
+    await blocker.query("BEGIN");
+    await blocker.query("SELECT id FROM subkit.users WHERE id = $1 FOR UPDATE", [userId]);
+    const requests = Promise.allSettled([
+      provider.exchangeRefreshToken({ refreshToken: firstPair.refresh_token, clientId }),
+      provider.exchangeRefreshToken({ refreshToken: firstPair.refresh_token, clientId }),
+    ]);
+
+    try {
+      await waitFor(
+        async () => {
+          const result = await testDb.pool.query<{ waiting: number }>(
+            "SELECT count(*)::int AS waiting FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE '%for update%'",
+          );
+          return (result.rows[0]?.waiting ?? 0) >= 2;
+        },
+        { tries: 2_000, label: "two OAuth rotations waiting on the user lock" },
+      );
+    } finally {
+      await blocker.query("COMMIT");
+      blocker.release();
+    }
+
+    const outcomes = await requests;
+    const fulfilled = outcomes.filter((outcome) => outcome.status === "fulfilled");
+    const rejected = outcomes.filter((outcome) => outcome.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    const failure = rejected[0];
+    if (failure?.status !== "rejected") throw new Error("expected a replay rejection");
+    expect((failure.reason as { oauth_error?: string }).oauth_error).toBe("invalid_grant");
+
+    const refreshRows = await db
+      .select({ revoked_at: mcpOauthRefreshTokens.revoked_at })
+      .from(mcpOauthRefreshTokens)
+      .where(eq(mcpOauthRefreshTokens.grant_id, original.grant_id));
+    const accessRows = await db
+      .select({ revoked_at: mcpOauthAccessTokens.revoked_at })
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.grant_id, original.grant_id));
+    const [grant] = await db
+      .select({ revoked_at: mcpOauthGrants.revoked_at })
+      .from(mcpOauthGrants)
+      .where(eq(mcpOauthGrants.id, original.grant_id));
+
+    expect(refreshRows).toHaveLength(2);
+    expect(refreshRows.every((row) => row.revoked_at !== null)).toBe(true);
+    expect(accessRows).toHaveLength(2);
+    expect(accessRows.every((row) => row.revoked_at !== null)).toBe(true);
+    expect(grant?.revoked_at).not.toBeNull();
   });
 
   test("revoked refresh token rejected immediately", async () => {
@@ -685,6 +791,48 @@ describe("refresh token rotation", () => {
 });
 
 describe("revokeToken", () => {
+  test("refresh-family revocation is a no-op for a different tenant", async () => {
+    const pair = await issueTokenPair();
+    const refreshHash = sha256Hex(pair.refresh_token);
+    const accessHash = sha256Hex(pair.access_token);
+    const [refreshBefore] = await db
+      .select({ id: mcpOauthRefreshTokens.id, grant_id: mcpOauthRefreshTokens.grant_id })
+      .from(mcpOauthRefreshTokens)
+      .where(eq(mcpOauthRefreshTokens.token_sha256, refreshHash))
+      .limit(1);
+    if (!refreshBefore) throw new Error("refresh token fixture missing");
+
+    await db.transaction((tx) =>
+      revokeOAuthRefreshTokenFamily(
+        tx,
+        refreshBefore.id,
+        "00000000-0000-4000-8000-000000000000",
+        new Date("2026-10-11T00:00:00.000Z"),
+      ),
+    );
+
+    const [refreshAfter] = await db
+      .select({ revoked_at: mcpOauthRefreshTokens.revoked_at })
+      .from(mcpOauthRefreshTokens)
+      .where(eq(mcpOauthRefreshTokens.id, refreshBefore.id))
+      .limit(1);
+    const [accessAfter] = await db
+      .select({ revoked_at: mcpOauthAccessTokens.revoked_at })
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.token_sha256, accessHash))
+      .limit(1);
+    expect(refreshAfter?.revoked_at).toBeNull();
+    expect(accessAfter?.revoked_at).toBeNull();
+    if (refreshBefore.grant_id) {
+      const [grantAfter] = await db
+        .select({ revoked_at: mcpOauthGrants.revoked_at })
+        .from(mcpOauthGrants)
+        .where(eq(mcpOauthGrants.id, refreshBefore.grant_id))
+        .limit(1);
+      expect(grantAfter?.revoked_at).toBeNull();
+    }
+  });
+
   test("revoking an access token sets revoked_at and writes mcp_oauth.token_revoked audit row", async () => {
     const pair = await issueTokenPair();
     await provider.revokeToken(pair.access_token);

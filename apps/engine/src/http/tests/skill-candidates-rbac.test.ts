@@ -1,7 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
-import { apiKeys, skillCandidates, skills } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { AuditAction } from "../../audit/types.ts";
+import {
+  apiKeys,
+  auditLog,
+  skillCandidates,
+  skills,
+  systemAccounts,
+} from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -9,6 +17,7 @@ let srv: HttpTestServer;
 let readOnlyKey = "";
 let writeKey = "";
 let unrelatedKey = "";
+let systemWriteKey = "";
 
 function sha256Hex(v: string): string {
   return createHash("sha256").update(v).digest("hex");
@@ -55,6 +64,19 @@ beforeAll(async () => {
   readOnlyKey = await mintKey(["skill:read"]);
   writeKey = await mintKey(["skill:read", "skill:write"]);
   unrelatedKey = await mintKey(["workflow:read"]);
+  await srv.db
+    .update(systemAccounts)
+    .set({ role_id: await builtinRoleId(srv.db, "admin") })
+    .where(eq(systemAccounts.id, srv.systemAccountId));
+  const systemPlaintext = `wf_live_${randomBytes(24).toString("base64url").slice(0, 32)}`;
+  await srv.db.insert(apiKeys).values({
+    tenant_id: srv.tenantId,
+    system_account_id: srv.systemAccountId,
+    prefix: systemPlaintext.slice(0, 12),
+    token_sha256: sha256Hex(systemPlaintext),
+    scopes: ["skill:read", "skill:write"],
+  });
+  systemWriteKey = systemPlaintext;
 });
 
 afterAll(async () => {
@@ -105,6 +127,29 @@ describe("the finding — approve/reject on a read-only credential", () => {
 
     const [after] = await srv.db.select().from(skillCandidates).where(eq(skillCandidates.id, id));
     expect(after?.status).toBe("proposed");
+  });
+});
+
+describe("system-account rejection attribution", () => {
+  test("reject audit keeps the system-account actor pair", async () => {
+    const id = await seedCandidate("system-account-reject");
+    const res = await fetch(`${srv.baseUrl}/v1/skill-candidates/${id}/reject`, {
+      method: "POST",
+      headers: { ...auth(systemWriteKey), "content-type": "application/json" },
+      body: JSON.stringify({ reason: "machine review" }),
+    });
+    expect(res.status).toBe(200);
+    const [entry] = await srv.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, srv.tenantId),
+          eq(auditLog.resource_id, id),
+          eq(auditLog.action, AuditAction.SKILL_CANDIDATE_REJECTED),
+        ),
+      );
+    expect([entry?.actor_type, entry?.actor_id]).toEqual(["system_account", srv.systemAccountId]);
   });
 });
 

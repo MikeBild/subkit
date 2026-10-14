@@ -7,7 +7,9 @@ import {
   llmUsage,
   workflows,
 } from "../../db/schema/index.ts";
+import { createSystemAccount } from "../../identity/service.ts";
 import { answeringModelLabel } from "../loop/model-resolver.ts";
+import { createConversation } from "../service.ts";
 import {
   type ConversationTestCtx,
   createConversationTestCtx,
@@ -26,6 +28,51 @@ afterAll(async () => {
 });
 
 describe("conversations/audit-trail", () => {
+  test("creation audit uses the authenticated principal and keeps missing principals unknown", async () => {
+    const account = await createSystemAccount(
+      { tenant_id: ctx.tenant_id, name: "conversation-actor", actor_id: ctx.user_id },
+      ctx.testDb.db,
+    );
+    const typed = await createConversation(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.user_id,
+        principal: {
+          provider: "test",
+          kind: "system_account",
+          id: account.id,
+          tenant_id: ctx.tenant_id,
+          roles: [],
+        },
+      },
+      ctx.testDb.db,
+    );
+    const unknown = await createConversation(
+      { tenant_id: ctx.tenant_id, actor_id: ctx.user_id },
+      ctx.testDb.db,
+    );
+    const rows = await ctx.testDb.db
+      .select({
+        resource_id: auditLog.resource_id,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+      })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.action, "conversation.created")),
+      );
+    expect(rows.find((row) => row.resource_id === typed.conversation.id)).toEqual({
+      resource_id: typed.conversation.id,
+      actor_type: "system_account",
+      actor_id: account.id,
+    });
+    expect(rows.find((row) => row.resource_id === unknown.conversation.id)).toEqual({
+      resource_id: unknown.conversation.id,
+      actor_type: "unknown",
+      actor_id: null,
+    });
+  });
+
   test("list-users flow writes exactly the expected DB rows + audit entries", async () => {
     const created = await createConversationWithTurn(
       {

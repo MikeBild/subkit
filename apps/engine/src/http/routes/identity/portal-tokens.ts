@@ -126,6 +126,7 @@ export function registerPortalTokenRoutes(app: OpenAPIHono<AppEnv>): void {
         user_id: body.user_id,
         allowed_workflows: body.allowed_workflows,
         ...(body.ttl_minutes !== undefined ? { ttl_minutes: body.ttl_minutes } : {}),
+        actor_kind: principal.kind,
         actor_id: principal.id,
       },
       db,
@@ -148,6 +149,7 @@ export function registerPortalTokenRoutes(app: OpenAPIHono<AppEnv>): void {
       {
         tenant_id: principal.tenant_id,
         id,
+        actor_kind: principal.kind,
         actor_id: principal.id,
       },
       db,

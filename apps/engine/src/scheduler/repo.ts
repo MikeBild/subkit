@@ -1,6 +1,7 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
-import { AuditAction } from "../audit/types.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
+import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import type { ListResult } from "../db/list-result.ts";
 import { workflows, workflowsSchedules, workflowVersions } from "../db/schema/index.ts";
@@ -302,6 +303,7 @@ export interface BindScheduleFromWorkflowInput {
   workflow_id: string;
   trigger: ScheduleTrigger;
   actor_id: string | null;
+  actor_type?: AuditActorType;
 }
 
 export type BindScheduleOutcome =
@@ -362,8 +364,7 @@ export async function bindFromWorkflow(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...resolveActor(input),
         action: AuditAction.SCHEDULE_TRIGGER_BOUND,
         resource_type: "workflow_schedule",
         resource_id: row.id,
@@ -399,8 +400,7 @@ export async function bindFromWorkflow(
   await auditAwait(
     {
       tenant_id: input.tenant_id,
-      actor_type: input.actor_id ? "user" : "system",
-      actor_id: input.actor_id,
+      ...resolveActor(input),
       action: AuditAction.SCHEDULE_TRIGGER_BOUND,
       resource_type: "workflow_schedule",
       resource_id: row.id,
@@ -425,6 +425,7 @@ export async function unbindFromWorkflow(
   tenant_id: string,
   workflow_id: string,
   actor_id: string | null,
+  actor_type?: AuditActorType,
 ): Promise<number> {
   const rows = await db
     .delete(workflowsSchedules)
@@ -439,8 +440,11 @@ export async function unbindFromWorkflow(
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...resolveActor({
+          tenant_id,
+          actor_id,
+          ...(actor_type !== undefined ? { actor_type } : {}),
+        }),
         action: AuditAction.SCHEDULE_TRIGGER_UNBOUND,
         resource_type: "workflow_schedule",
         resource_id: row.id,

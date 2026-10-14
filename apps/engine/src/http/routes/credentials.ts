@@ -1,6 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { actorOf } from "../../audit/actor.ts";
 import * as connectorSvc from "../../connectors/index.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/index.ts";
 import {
@@ -84,7 +85,7 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
       .limit(1);
     if (!rows[0]) throw new NotFoundError("credential");
 
-    await deleteCredential(principal.tenant_id, id, principal.id, db);
+    await deleteCredential(principal.tenant_id, id, actorOf(principal), db);
     return c.json({ deleted: true as const }, 200);
   });
 
@@ -155,6 +156,7 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
         refresh_token: bundle.refresh_token ?? fetched.value.refresh_token,
         expires_at: bundle.expires_at,
         actor_id: principal.id,
+        actor: actorOf(principal),
       },
       db,
     );

@@ -775,7 +775,10 @@ export function wrapOne(
               tool_name: "ask_user_confirm",
               summary: policyGateSummary,
               input: elicitationInput,
-              actor_id: ctx.actor_id,
+              actor_id: ctx.engineClient.context.actor_id,
+              ...(ctx.engineClient.context.actor_type
+                ? { actor_type: ctx.engineClient.context.actor_type }
+                : {}),
             },
             db,
           );
@@ -1325,7 +1328,10 @@ export function wrapOne(
                 ...confirmationMetadataForTool(inner.name, rawArgs),
                 pending_output: resultPayload,
               },
-              actor_id: ctx.actor_id,
+              actor_id: ctx.engineClient.context.actor_id,
+              ...(ctx.engineClient.context.actor_type
+                ? { actor_type: ctx.engineClient.context.actor_type }
+                : {}),
             },
             db,
           );

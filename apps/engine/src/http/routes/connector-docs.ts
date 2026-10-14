@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { actorOf } from "../../audit/actor.ts";
 import * as connectorSvc from "../../connectors/index.ts";
 import * as docs from "../../docs-ingestion/index.ts";
 import { NotImplementedError, PageTooLargeError } from "../../docs-ingestion/index.ts";
@@ -171,6 +172,7 @@ export function registerConnectorDocsRoutes(app: OpenAPIHono<AppEnv>): void {
           connector_id: id,
           input,
           actor_id: principal.id,
+          actor: actorOf(principal),
         },
         db,
       );
@@ -225,6 +227,7 @@ export function registerConnectorDocsRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id: id,
         document_id,
         actor_id: principal.id,
+        actor: actorOf(principal),
       },
       db,
     );

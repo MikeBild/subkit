@@ -5,6 +5,7 @@ import {
   conversationElicitations,
   conversationToolCalls,
 } from "../../db/schema/index.ts";
+import { decidedByFor } from "../decided-by.ts";
 import { createElicitation, resolveElicitation } from "../elicitations.ts";
 import { buildModelMessages } from "../persist.ts";
 import { createConversation, getConversation } from "../service.ts";
@@ -27,6 +28,56 @@ afterAll(async () => {
 });
 
 describe("conversations/elicitation", () => {
+  test("an unverified decider persists as unknown without an actor ID", async () => {
+    const created = await createConversation(
+      { tenant_id: ctx.tenant_id, actor_id: ctx.user_id },
+      ctx.testDb.db,
+    );
+    const pending = await createElicitation(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: created.conversation.id,
+        tool_call_id: null,
+        tool_name: "ask_user_text",
+        summary: "unknown decider probe",
+        input: { question: "Continue?" },
+        actor_id: ctx.user_id,
+      },
+      ctx.testDb.db,
+    );
+    await resolveElicitation(
+      {
+        tenant_id: ctx.tenant_id,
+        id: pending.id,
+        output: { text: "yes" },
+        decided_by: decidedByFor(ctx.user_id, ctx.tenant_id, null),
+      },
+      ctx.testDb.db,
+    );
+
+    const [row] = await ctx.testDb.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, pending.id))
+      .limit(1);
+    const [audit] = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenant_id),
+          eq(auditLog.resource_type, "conversation_elicitation"),
+          eq(auditLog.resource_id, pending.id),
+        ),
+      )
+      .limit(1);
+
+    expect(row?.decided_by).toBeNull();
+    expect(row?.decided_by_kind).toBe("unknown");
+    expect(audit?.actor_type).toBe("unknown");
+    expect(audit?.actor_id).toBeNull();
+  });
+
   test("rejecting a confirm keeps the conversation active and audits the decision", async () => {
     const outcome = await createConversationWithTurn(
       {

@@ -52,6 +52,24 @@ async function fetchRow(id: string) {
   return rows[0];
 }
 
+describe("recorder actor normalization", () => {
+  test("persists an untyped actor ID as unknown without an actor ID", async () => {
+    const entry = await recordWorkflowCreated({
+      tenant_id: tenantId,
+      actor_id: "untyped-actor",
+      executor: testDb.db,
+      workflow_id: "11111111-1111-1111-1111-111111111111",
+      slug: "unknown-actor",
+      version: null,
+      reason: "test",
+      source: "service",
+    });
+    const row = await fetchRow(entry.id);
+    expect(row?.actor_type).toBe("unknown");
+    expect(row?.actor_id).toBeNull();
+  });
+});
+
 describe("recorder catalog — connector", () => {
   test("recordConnectorCreated", async () => {
     const entry = await recordConnectorCreated({
@@ -216,7 +234,27 @@ describe("recorder catalog — workflow", () => {
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.WORKFLOW_CREATED);
     expect(row?.reason).toBe("auto_persist_on_confirmation");
+    expect(row?.actor_type).toBe("system");
+    expect(row?.actor_id).toBeNull();
     expect((row!.metadata as Record<string, unknown>).version).toBe(1);
+  });
+
+  test("recordWorkflowCreated preserves a typed user actor", async () => {
+    const actorId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    const entry = await recordWorkflowCreated({
+      tenant_id: tenantId,
+      actor_type: "user",
+      actor_id: actorId,
+      executor: testDb.db,
+      workflow_id: "99999999-9999-9999-9999-999999999999",
+      slug: "wf-typed-user",
+      version: 1,
+      reason: "test",
+      source: "service",
+    });
+    const row = await fetchRow(entry.id);
+    expect(row?.actor_type).toBe("user");
+    expect(row?.actor_id).toBe(actorId);
   });
 
   test("recordWorkflowUpdated", async () => {

@@ -1,0 +1,2 @@
+ALTER TABLE "api_keys" DROP CONSTRAINT "api_keys_creator_identity_check";--> statement-breakpoint
+ALTER TABLE "api_keys" ADD CONSTRAINT "api_keys_creator_identity_check" CHECK (("api_keys"."creator_kind" is null and "api_keys"."creator_id" is null) or ("api_keys"."creator_kind" is not null and "api_keys"."creator_kind" = 'system' and "api_keys"."creator_id" is null) or ("api_keys"."creator_kind" is not null and "api_keys"."creator_kind" in ('user', 'system_account') and "api_keys"."creator_id" is not null));

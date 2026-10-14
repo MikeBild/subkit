@@ -9,6 +9,7 @@ import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import { clearDraftCredential, getDraftCredential } from "../persistence/draft-credential-cache.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
+import { auditActorFromToolContext } from "./audit-actor.ts";
 import { buildDraftMutationPayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -150,7 +151,7 @@ export const updateConnectorDraftTool: ConversationTool = {
         });
         recordConnectorDraftCredentialRejected({
           tenant_id: ctx.tenant_id,
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           executor: ctx.db,
           conversation_id: ctx.conversation_id,
           matched_key_path: authParamKey,
@@ -178,7 +179,7 @@ export const updateConnectorDraftTool: ConversationTool = {
         });
         recordConnectorDraftCredentialRejected({
           tenant_id: ctx.tenant_id,
-          actor_id: ctx.actor_id,
+          ...auditActorFromToolContext(ctx),
           executor: ctx.db,
           conversation_id: ctx.conversation_id,
           matched_key_path: hitPath,

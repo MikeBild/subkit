@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { browserSessionFromRequest, issueBrowserSession } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { setConfigKey } from "../../config/loader.ts";
-import { auditLog, sessions, toolApprovals } from "../../db/schema/index.ts";
+import { auditLog, connectors, sessions, toolApprovals } from "../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { requestApproval } from "../../tools/approval.ts";
@@ -76,6 +76,17 @@ async function seedApproval(opts?: {
 
 function grantParam(url: string): string {
   return new URL(url).searchParams.get("grant") ?? "";
+}
+
+function expectPortalActors(html: string, locale: "de" | "en"): void {
+  expect(html).toContain(locale === "de" ? "<dt>Angefragt von</dt>" : "<dt>Requested by</dt>");
+  expect(html).toContain(
+    locale === "de"
+      ? "<dd>bot-tool-approvals-portal · Systemkonto</dd>"
+      : "<dd>bot-tool-approvals-portal · System account</dd>",
+  );
+  expect(html).toContain(locale === "de" ? "<dt>Entscheidet</dt>" : "<dt>Deciding person</dt>");
+  expect(html).toContain("<dd>admin-tool-approvals-portal@test.local</dd>");
 }
 
 async function approvalRow(approval_id: string) {
@@ -159,7 +170,7 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
     const { approval_id, approval_url } = await seedApproval();
 
     const res = await fetch(approval_url, {
-      headers: { cookie: browserCookie },
+      headers: { cookie: browserCookie, "accept-language": "en" },
     });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
@@ -173,6 +184,19 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
     expect(html).toContain("ledger.example.test/entries");
 
     expect(html).not.toContain(SECRET_ARG_VALUE);
+    expectPortalActors(html, "en");
+    expect(html).toContain('<h1 data-family-slot="auth-heading">Authorize this action once?</h1>');
+    expect(html).not.toContain("Authorize POST to");
+    const german = await fetch(approval_url, {
+      headers: { cookie: browserCookie, "accept-language": "de" },
+    });
+    const germanHtml = await german.text();
+    expect(german.status).toBe(200);
+    expectPortalActors(germanHtml, "de");
+    expect(germanHtml).toContain(
+      '<h1 data-family-slot="auth-heading">Diese Aktion einmalig freigeben?</h1>',
+    );
+    expect(germanHtml).not.toContain("POST an ledger.example.test");
 
     const row = await approvalRow(approval_id);
     expect(row).not.toBeNull();
@@ -183,6 +207,43 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
 
     expect(row?.granted_at).toBeNull();
     expect(row?.declined_at).toBeNull();
+  });
+
+  test("derives the title from a captured direct-connector effect, not caller preview text", async () => {
+    const connector_id = nextApprovalId();
+    await server.db.insert(connectors).values({
+      id: connector_id,
+      tenant_id: server.tenantId,
+      slug: "approval-title-target",
+      display_name: "Approval title target",
+      driver: "http",
+      auth_type: "none",
+      environment: "dev",
+      base_url: "https://bound-ledger.example.test",
+    });
+    const { approval_id, approval_url } = await seedApproval({
+      tool: "call_connector",
+      args: { connector_id, method: "POST", path: "/entries" },
+      would_write: [{ step: "caller-text", method: "DELETE", url: "https://unbound.example.test" }],
+    });
+
+    for (const locale of ["de", "en"] as const) {
+      const response = await fetch(approval_url, {
+        headers: { cookie: browserCookie, "accept-language": locale },
+      });
+      const html = await response.text();
+      expect(response.status).toBe(200);
+      expectPortalActors(html, locale);
+      expect(html).toContain(
+        locale === "de"
+          ? '<h1 data-family-slot="auth-heading">POST an https://bound-ledger.example.test/entries einmalig freigeben?</h1>'
+          : '<h1 data-family-slot="auth-heading">Authorize POST to https://bound-ledger.example.test/entries once?</h1>',
+      );
+      expect(html).toContain("bound-ledger.example.test/entries");
+      expect(html).not.toContain("caller-text");
+      expect(html).not.toContain("unbound.example.test");
+    }
+    expect((await approvalRow(approval_id))?.granted_at).toBeNull();
   });
 
   test("renders for a signed-in browser session whose cookie carries no email", async () => {

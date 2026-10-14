@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { runMigrations } from "../../db/migrate.ts";
+import { auditLog } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   hasCredentialAuthorityRevisionColumn,
@@ -66,6 +69,31 @@ test("scope comparison preserves case and distinguishes unknown from an empty gr
   expect(sameAuthorityScopes("read", "Read")).toBe(false);
   expect(sameAuthorityScopes(null, "")).toBe(false);
   expect(sameAuthorityScopes(null, null)).toBe(true);
+});
+
+test("credential audit keeps trusted actor type and clears legacy ID-only attribution", async () => {
+  const f = await fixture();
+  const userId = randomUUID();
+  const serviceId = randomUUID();
+  const legacyId = randomUUID();
+  await upsertCredential(
+    { ...f.input, actor_id: userId, actor: { kind: "user", id: userId } },
+    ctx.db,
+  );
+  await upsertCredential(
+    { ...f.input, actor_id: serviceId, actor: { kind: "system_account", id: serviceId } },
+    ctx.db,
+  );
+  await upsertCredential({ ...f.input, actor_id: legacyId }, ctx.db);
+  const rows = await ctx.db
+    .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+    .from(auditLog)
+    .where(eq(auditLog.resource_id, f.credential.id));
+  expect(rows.slice(-3)).toEqual([
+    { actor_type: "user", actor_id: userId },
+    { actor_type: "system_account", actor_id: serviceId },
+    { actor_type: "unknown", actor_id: null },
+  ]);
 });
 
 test("ordinary refresh and omitted scopes preserve the credential authority identity", async () => {

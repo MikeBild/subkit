@@ -2,10 +2,10 @@ import { and, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
-import { mcpOauthAccessTokens, users } from "../../db/schema/index.ts";
+import { mcpOauthAccessTokens, mcpOauthClients, users } from "../../db/schema/index.ts";
 import { issueApiKey } from "../../identity/index.ts";
+import { revokeOAuthRefreshTokenFamily } from "./refresh-token-revocation.ts";
 import { CLI_LOGIN_SCOPE, oauthResource } from "./resources.ts";
-import { revokeOAuthRefreshTokenFamily } from "./server-provider.ts";
 import { constantTimeHexEquals, parseMcpToken } from "./tokens.ts";
 
 export type CliSessionTokenError = "invalid_token" | "insufficient_scope";
@@ -60,6 +60,34 @@ export async function consumeCliLoginToken(input: {
 
   try {
     return await input.db.transaction(async (tx) => {
+      const userRows = await tx
+        .select({
+          id: users.id,
+          email: users.email,
+          status: users.status,
+          deleted_at: users.deleted_at,
+        })
+        .from(users)
+        .where(and(eq(users.id, tokenRow.user_id), eq(users.tenant_id, tokenRow.tenant_id)))
+        .for("update");
+
+      // tenant-filter:exempt — OAuth clients are platform-global.
+      await tx
+        .select({ client_id: mcpOauthClients.client_id })
+        .from(mcpOauthClients)
+        .where(eq(mcpOauthClients.client_id, tokenRow.client_id))
+        .for("update");
+
+      if (tokenRow.refresh_token_id) {
+        await revokeOAuthRefreshTokenFamily(
+          tx,
+          tokenRow.refresh_token_id,
+          tokenRow.tenant_id,
+          checkedAt,
+          tokenRow.id,
+        );
+      }
+
       const claimed = await tx
         .update(mcpOauthAccessTokens)
         .set({ revoked_at: checkedAt, last_used_at: checkedAt })
@@ -73,23 +101,10 @@ export async function consumeCliLoginToken(input: {
         .returning({ id: mcpOauthAccessTokens.id });
       if (claimed.length !== 1) throw new Error("cli_oauth_token_already_consumed");
 
-      const userRows = await tx
-        .select({ id: users.id, email: users.email })
-        .from(users)
-        .where(
-          and(
-            eq(users.id, tokenRow.user_id),
-            eq(users.tenant_id, tokenRow.tenant_id),
-            eq(users.status, "active"),
-            isNull(users.deleted_at),
-          ),
-        )
-        .limit(1);
       const user = userRows[0];
-      if (tokenRow.refresh_token_id) {
-        await revokeOAuthRefreshTokenFamily(tx, tokenRow.refresh_token_id, checkedAt);
+      if (!user || user.status !== "active" || user.deleted_at) {
+        return { ok: false as const, error: "invalid_token" as const };
       }
-      if (!user) return { ok: false as const, error: "invalid_token" as const };
 
       const issued = await issueApiKey(
         {
@@ -98,7 +113,7 @@ export async function consumeCliLoginToken(input: {
           owner_id: user.id,
           name: "SubKit CLI",
           scopes: ["*"],
-          actor_id: user.id,
+          actor: { kind: "user", id: user.id },
         },
         tx,
       );

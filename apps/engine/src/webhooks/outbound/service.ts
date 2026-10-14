@@ -1,5 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
+import { type Actor, auditActor } from "../../audit/actor.ts";
 import { auditAwait } from "../../audit/audit.ts";
+import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../../crypto/aes-gcm.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
@@ -43,6 +45,8 @@ function serialize(row: typeof subscriptions.$inferSelect): SubscriptionRow {
 export interface CreateSubscriptionInput {
   tenant_id: string;
   actor_id: string | null;
+  actor?: Actor | null;
+  actor_type?: import("../../audit/types.ts").AuditActorType;
   event_pattern: string;
   target_url: string;
   secret: string;
@@ -87,8 +91,7 @@ export async function createSubscription(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...(input.actor ? auditActor(input.actor) : resolveActor(input)),
         action: AuditAction.SUBSCRIPTION_CREATED,
         resource_type: "subscription",
         resource_id: row.id,
@@ -177,6 +180,8 @@ export interface UpdateSubscriptionInput {
   tenant_id: string;
   id: string;
   actor_id: string | null;
+  actor?: Actor | null;
+  actor_type?: import("../../audit/types.ts").AuditActorType;
   event_pattern?: string;
   target_url?: string;
   active?: boolean;
@@ -232,8 +237,7 @@ export async function updateSubscription(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
-        actor_id: input.actor_id,
+        ...(input.actor ? auditActor(input.actor) : resolveActor(input)),
         action: AuditAction.SUBSCRIPTION_UPDATED,
         resource_type: "subscription",
         resource_id: input.id,
@@ -251,7 +255,7 @@ export async function updateSubscription(
 export async function deleteSubscription(
   tenant_id: string,
   id: string,
-  actor_id: string | null,
+  actor_input: string | Actor | { kind: "unknown" } | null,
   exec?: Executor,
 ): Promise<boolean> {
   const db = exec ?? (await import("../../db/client.ts")).getDb();
@@ -265,8 +269,13 @@ export async function deleteSubscription(
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
-        actor_id,
+        ...(typeof actor_input === "string"
+          ? resolveActor({ tenant_id, actor_id: actor_input })
+          : actor_input?.kind === "unknown"
+            ? resolveActor({ tenant_id, actor_id: null, actor_type: "unknown" })
+            : actor_input
+              ? auditActor(actor_input)
+              : resolveActor({ tenant_id, actor_id: null })),
         action: AuditAction.SUBSCRIPTION_DELETED,
         resource_type: "subscription",
         resource_id: id,

@@ -184,12 +184,14 @@ export interface UpdateKnowledgeSourceParams {
   id: string;
   patch: UpdateKnowledgeSourceInput;
   actor_id: string | null;
+  actor?: Actor | { kind: "unknown" } | null;
 }
 
 export interface AnalyzeKnowledgeSourceParams {
   tenant_id: string;
   id: string;
   actor_id: string | null;
+  actor?: Actor | { kind: "unknown" } | null;
   force?: boolean;
 }
 

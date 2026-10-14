@@ -1,5 +1,7 @@
 import { and, eq } from "drizzle-orm";
-import { audit, auditAwait } from "../audit/audit.ts";
+import { auditAwait } from "../audit/audit.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
+import type { AuditActorType } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
@@ -24,6 +26,7 @@ export async function approvePatchCandidate(
     tenant_id: string;
     candidate_id: string;
     actor_id: string | null;
+    actor_type?: AuditActorType;
     expected_review_digest?: string;
     prepared_version_id?: string;
   },
@@ -64,8 +67,7 @@ export async function approvePatchCandidate(
       await auditAwait(
         {
           tenant_id: params.tenant_id,
-          actor_type: params.actor_id ? "user" : "system",
-          actor_id: params.actor_id,
+          ...resolveActor(params),
           action: AuditAction.PATCH_CANDIDATE_APPROVED,
           resource_type: "patch_candidate",
           resource_id: row.id,
@@ -93,8 +95,7 @@ export async function approvePatchCandidate(
       await auditAwait(
         {
           tenant_id: params.tenant_id,
-          actor_type: params.actor_id ? "user" : "system",
-          actor_id: params.actor_id,
+          ...resolveActor(params),
           action: AuditAction.PATCH_CANDIDATE_APPROVED,
           resource_type: "patch_candidate",
           resource_id: row.id,
@@ -117,8 +118,7 @@ export async function approvePatchCandidate(
     await auditAwait(
       {
         tenant_id: params.tenant_id,
-        actor_type: params.actor_id ? "user" : "system",
-        actor_id: params.actor_id,
+        ...resolveActor(params),
         action: AuditAction.PATCH_CANDIDATE_APPROVED,
         resource_type: "patch_candidate",
         resource_id: row.id,
@@ -164,6 +164,7 @@ export async function rejectPatchCandidate(
     tenant_id: string;
     candidate_id: string;
     actor_id: string | null;
+    actor_type?: AuditActorType;
     reason?: string;
   },
   exec?: Db,
@@ -182,11 +183,10 @@ export async function rejectPatchCandidate(
       )
       .returning();
     if (rows.length === 0) return false;
-    audit(
+    await auditAwait(
       {
         tenant_id: params.tenant_id,
-        actor_type: params.actor_id ? "user" : "system",
-        actor_id: params.actor_id,
+        ...resolveActor(params),
         action: AuditAction.PATCH_CANDIDATE_REJECTED,
         resource_type: "patch_candidate",
         resource_id: params.candidate_id,

@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { type CatalogMetadataPatch, metadataChange } from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
@@ -21,8 +22,7 @@ export async function writeWorkflowMetadata(
   await auditAwait(
     {
       tenant_id: wf.tenant_id,
-      actor_type: actor.actor_type ?? (actor.actor_id ? "user" : "system"),
-      actor_id: actor.actor_id,
+      ...resolveActor({ tenant_id: wf.tenant_id, ...actor }),
       action: AuditAction.CATALOG_METADATA_UPDATED,
       resource_type: "workflow",
       resource_id: wf.id,

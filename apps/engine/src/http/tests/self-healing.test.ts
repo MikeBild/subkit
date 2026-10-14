@@ -3,13 +3,14 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
 import { auditLog } from "../../db/schema/audit.ts";
-import { apiKeys, selfHealingScans, users } from "../../db/schema/index.ts";
+import { apiKeys, selfHealingScans, systemAccounts, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
 let memberKey = "";
+let systemKey = "";
 
 const apiKeyHex = createDeterministicHexFactory(0xa11);
 const idemHex = createDeterministicHexFactory(0xbeef);
@@ -45,6 +46,20 @@ beforeAll(async () => {
     scopes: ["*"],
   });
   memberKey = key.plaintext;
+
+  await srv.db
+    .update(systemAccounts)
+    .set({ role_id: await builtinRoleId(srv.db, "admin") })
+    .where(eq(systemAccounts.id, srv.systemAccountId));
+  const systemKeyData = newKey();
+  await srv.db.insert(apiKeys).values({
+    tenant_id: srv.tenantId,
+    system_account_id: srv.systemAccountId,
+    prefix: systemKeyData.prefix,
+    token_sha256: sha256Hex(systemKeyData.plaintext),
+    scopes: ["*"],
+  });
+  systemKey = systemKeyData.plaintext;
 });
 
 afterAll(async () => {
@@ -102,6 +117,40 @@ describe("/v1/self-healing/scans", () => {
     const actions = audits.map((a) => a.action);
     expect(actions).toContain(AuditAction.SELF_HEALING_SCAN_TRIGGERED);
     expect(actions).toContain(AuditAction.SELF_HEALING_SCAN_COMPLETED);
+    const scanAudits = audits.filter(
+      (a) =>
+        a.action === AuditAction.SELF_HEALING_SCAN_TRIGGERED ||
+        a.action === AuditAction.SELF_HEALING_SCAN_COMPLETED,
+    );
+    expect(scanAudits).toHaveLength(2);
+    expect(scanAudits.every((a) => a.actor_type === "user" && a.actor_id === srv.userId)).toBe(
+      true,
+    );
+  });
+
+  test("system-account scan preserves its actor kind in both audit entries", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/self-healing/scans`, {
+      method: "POST",
+      headers: { ...adminHeaders(), authorization: `Bearer ${systemKey}` },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { scan_id: string };
+    const audits = await srv.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, srv.tenantId), eq(auditLog.resource_id, body.scan_id)));
+    const scanAudits = audits.filter(
+      (a) =>
+        a.action === AuditAction.SELF_HEALING_SCAN_TRIGGERED ||
+        a.action === AuditAction.SELF_HEALING_SCAN_COMPLETED,
+    );
+    expect(scanAudits).toHaveLength(2);
+    expect(
+      scanAudits.every(
+        (a) => a.actor_type === "system_account" && a.actor_id === srv.systemAccountId,
+      ),
+    ).toBe(true);
   });
 
   test("non-admin POST is denied with 403", async () => {

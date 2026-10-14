@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, desc, eq } from "drizzle-orm";
-import { patchCandidates, schemaVersions } from "../../db/schema/index.ts";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { AuditAction } from "../../audit/index.ts";
+import { auditLog, patchCandidates, schemaVersions } from "../../db/schema/index.ts";
 import { driftSignalContext } from "../../self-healing/proactive-scanner.ts";
 import {
   createSelfHealingCtx,
@@ -46,6 +47,34 @@ describe("proactive drift scan", () => {
 
     await runProactiveDriftScanForTenant(ctx.tenant_id, new Date(now), ctx.testDb.db);
 
+    const scanAudit = await ctx.testDb.db
+      .select({
+        action: auditLog.action,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+        resource_id: auditLog.resource_id,
+      })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenant_id),
+          inArray(auditLog.action, [
+            AuditAction.SELF_HEALING_SCAN_TRIGGERED,
+            AuditAction.SELF_HEALING_SCAN_COMPLETED,
+          ]),
+        ),
+      );
+    expect(scanAudit).toHaveLength(2);
+    expect(
+      Object.fromEntries(
+        scanAudit.map(({ action, actor_type, actor_id }) => [action, { actor_type, actor_id }]),
+      ),
+    ).toEqual({
+      [AuditAction.SELF_HEALING_SCAN_TRIGGERED]: { actor_type: "system", actor_id: null },
+      [AuditAction.SELF_HEALING_SCAN_COMPLETED]: { actor_type: "system", actor_id: null },
+    });
+    expect(scanAudit[0]?.resource_id).toBe(scanAudit[1]?.resource_id);
+
     const rows = await ctx.testDb.db
       .select({ diff: patchCandidates.diff })
       .from(patchCandidates)
@@ -75,7 +104,7 @@ describe("proactive drift scan", () => {
         endpoint_key: "GET /users/1",
         repair_input: { failing_step_id: "proactive:schema_diff" },
       },
-      { actor_id: null, source: "proactive_admin", scan_id: "s" },
+      { actor_id: null, actor_type: "system", source: "proactive_admin", scan_id: "s" },
     );
     expect(context.workflow_step_id).toBe(SEED_STEP_ID);
     expect(context.connector_id).toBe("c");
@@ -92,7 +121,7 @@ describe("proactive drift scan", () => {
         step_id: null,
         repair_input: { failing_step_id: "proactive:stdlib" },
       },
-      { actor_id: null, source: "proactive_scheduler", scan_id: "s" },
+      { actor_id: null, actor_type: "system", source: "proactive_scheduler", scan_id: "s" },
     );
     expect("workflow_step_id" in context).toBe(false);
   });

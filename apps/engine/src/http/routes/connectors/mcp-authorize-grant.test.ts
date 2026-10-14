@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { and, eq } from "drizzle-orm";
 import { getConfig, setConfigKey } from "../../../config/loader.ts";
@@ -10,6 +11,7 @@ import {
 import { buildReauthUrl } from "../../../connectors/reauth.ts";
 import { getConnector } from "../../../connectors/service.ts";
 import {
+  apiKeys,
   auditLog,
   connectorOauthStartGrants,
   connectors,
@@ -123,6 +125,60 @@ const open = (id: string, grant: string) =>
   fetch(`${server.baseUrl}/v1/connectors/${id}/mcp/authorize?grant=${encodeURIComponent(grant)}`, {
     redirect: "manual",
   });
+
+async function createSystemApiKey(): Promise<string> {
+  const plaintext = `wf_live_${"system-attribution-key-000000000000"}`;
+  await server.db.insert(apiKeys).values({
+    tenant_id: server.tenantId,
+    system_account_id: server.systemAccountId,
+    prefix: plaintext.slice(0, 12),
+    token_sha256: createHash("sha256").update(plaintext).digest("hex"),
+    scopes: ["*"],
+  });
+  return plaintext;
+}
+
+async function seedCallbackState(
+  state: string,
+  actor: { actor_type: "user" | "system_account" | null; actor_id: string | null },
+) {
+  await server.db.insert(mcpOauthStates).values({
+    tenant_id: server.tenantId,
+    connector_id: mcpId,
+    state,
+    code_verifier: "",
+    redirect_uri: `${server.baseUrl}/v1/connectors/mcp/oauth/callback`,
+    started_by_actor_type: actor.actor_type,
+    started_by_actor_id: actor.actor_id,
+    expires_at: new Date(now() + 5 * 60_000),
+  });
+}
+
+async function callbackAuditRows(action: string) {
+  return server.db
+    .select()
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, server.tenantId),
+        eq(auditLog.action, action),
+        eq(auditLog.resource_id, mcpId),
+      ),
+    );
+}
+
+async function completeCallback(state: string, outcome: "success" | "error") {
+  if (outcome === "success") {
+    __setSdkAuthForTests(
+      (async () => "AUTHORIZED") as unknown as Parameters<typeof __setSdkAuthForTests>[0],
+    );
+  }
+  const query =
+    outcome === "success"
+      ? `state=${state}&code=callback-code`
+      : `state=${state}&error=access_denied`;
+  return fetch(`${server.baseUrl}/v1/connectors/mcp/oauth/callback?${query}`);
+}
 
 async function stillHeld(grant: string): Promise<boolean> {
   const rows = await server.db
@@ -279,5 +335,82 @@ describe("the MCP `authenticate` tool starts only the flow it runs", () => {
       { connector_id: cognitoId },
     );
     expect(cognito).toMatchObject({ ok: false, data: { reason: "no_browser_sign_in" } });
+  });
+});
+
+describe("MCP OAuth callback actor provenance", () => {
+  test("authenticated user and system-account starts persist their trusted actor pair", async () => {
+    const systemKey = await createSystemApiKey();
+    for (const actor of [
+      { kind: "user", id: server.userId, key: server.apiKey },
+      { kind: "system_account", id: server.systemAccountId, key: systemKey },
+    ] as const) {
+      const response = await fetch(`${server.baseUrl}/v1/connectors/${mcpId}/mcp/authorize`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${actor.key}` },
+      });
+      expect(response.status).toBe(200);
+      const flow = (await response.json()) as { state: string };
+      const [state] = await server.db
+        .select()
+        .from(mcpOauthStates)
+        .where(eq(mcpOauthStates.state, flow.state));
+      expect(state).toMatchObject({
+        started_by_actor_type: actor.kind,
+        started_by_actor_id: actor.id,
+      });
+    }
+  });
+
+  test("success and failure callbacks retain both authenticated actor kinds", async () => {
+    const cases = [
+      {
+        state: "mcp-user-success",
+        type: "user" as const,
+        id: server.userId,
+        outcome: "success" as const,
+      },
+      {
+        state: "mcp-user-error",
+        type: "user" as const,
+        id: server.userId,
+        outcome: "error" as const,
+      },
+      {
+        state: "mcp-system-success",
+        type: "system_account" as const,
+        id: server.systemAccountId,
+        outcome: "success" as const,
+      },
+      {
+        state: "mcp-system-error",
+        type: "system_account" as const,
+        id: server.systemAccountId,
+        outcome: "error" as const,
+      },
+    ];
+
+    for (const item of cases) {
+      await seedCallbackState(item.state, { actor_type: item.type, actor_id: item.id });
+      const response = await completeCallback(item.state, item.outcome);
+      expect(response.status).toBe(item.outcome === "success" ? 200 : 400);
+      const action =
+        item.outcome === "success"
+          ? "connector.mcp_authorized"
+          : "connector.mcp_authorization_failed";
+      const rows = await callbackAuditRows(action);
+      expect(rows.some((row) => row.actor_type === item.type && row.actor_id === item.id)).toBe(
+        true,
+      );
+    }
+  });
+
+  test("a legacy NULL actor type stays unknown and clears the unverifiable ID", async () => {
+    const state = "mcp-legacy-unknown-actor";
+    await seedCallbackState(state, { actor_type: null, actor_id: server.userId });
+    const response = await completeCallback(state, "error");
+    expect(response.status).toBe(400);
+    const rows = await callbackAuditRows("connector.mcp_authorization_failed");
+    expect(rows.some((row) => row.actor_type === "unknown" && row.actor_id === null)).toBe(true);
   });
 });

@@ -137,6 +137,7 @@ export async function admitWorkflowRun(
           existing.execution_mode !== input.execution_environment ||
           (existing.parent_execution_id ?? null) !== (input.parent_execution_id ?? null) ||
           !isDeepStrictEqual(existing.caller_context, caller) ||
+          existing.caller_origin !== (caller ? "principal" : "unknown") ||
           !isDeepStrictEqual(
             recoverExecutionPayload(existing.input, input.tenant_id, existing.id),
             normalized,
@@ -172,6 +173,7 @@ export async function admitWorkflowRun(
       parent_execution_id: input.parent_execution_id ?? null,
       hold_writes: true,
       caller_context: caller,
+      caller_origin: caller ? "principal" : "unknown",
       authorization_context: authorizationContextFromPrincipal(
         principal,
         workflowPermission,

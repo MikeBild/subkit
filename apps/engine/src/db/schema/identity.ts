@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -13,7 +15,12 @@ import {
 import { bytea, tenantId, timestamps } from "./_common.ts";
 
 export const userStatusEnum = pgEnum("user_status", ["invited", "active", "disabled"]);
-export const auditActorKindEnum = pgEnum("audit_actor_kind", ["user", "system_account", "system"]);
+export const auditActorKindEnum = pgEnum("audit_actor_kind", [
+  "user",
+  "system_account",
+  "system",
+  "unknown",
+]);
 export const egressGuardModeEnum = pgEnum("egress_guard_mode", ["strict", "permissive"]);
 
 export const tenants = pgTable(
@@ -55,6 +62,7 @@ export const users = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
+    display_name: text("display_name"),
     role_id: uuid("role_id").notNull(),
     status: userStatusEnum("status").default("active").notNull(),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
@@ -157,6 +165,8 @@ export const apiKeys = pgTable(
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     user_id: uuid("user_id"),
     system_account_id: uuid("system_account_id"),
+    creator_kind: auditActorKindEnum("creator_kind"),
+    creator_id: uuid("creator_id"),
     prefix: text("prefix").notNull(),
     token_sha256: text("token_sha256").notNull(),
     name: text("name"),
@@ -173,6 +183,10 @@ export const apiKeys = pgTable(
   },
   (t) => [
     uniqueIndex("api_keys_prefix_key").on(t.prefix),
+    check(
+      "api_keys_creator_identity_check",
+      sql`(${t.creator_kind} is null and ${t.creator_id} is null) or (${t.creator_kind} is not null and ${t.creator_kind} = 'system' and ${t.creator_id} is null) or (${t.creator_kind} is not null and ${t.creator_kind} in ('user', 'system_account') and ${t.creator_id} is not null)`,
+    ),
     index("api_keys_tenant_revoked_idx").on(t.tenant_id, t.revoked_at),
     index("api_keys_rotating_out_at_idx").on(t.rotating_out_at),
   ],

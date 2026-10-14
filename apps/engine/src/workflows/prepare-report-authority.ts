@@ -96,6 +96,7 @@ export async function prepareReportAuthority(
       source_ref: null,
       input: start.input,
       caller_context: caller,
+      caller_origin: caller ? "principal" : "unknown",
       authorization_context: authorizationContextFromPrincipal(principal),
       request_source: "ui",
       hold_writes: true,

@@ -119,6 +119,28 @@ describe.skipIf(skip)("aggregateLlm — groupBy:user", () => {
     expect(userAGroup!.totals.tokens.total).toBe(450);
   });
 
+  test("groupBy:['user'] excludes a system account sharing a user's UUID", async () => {
+    await testDb.db
+      .insert(llmUsage)
+      .values([
+        baseRow({ user_id: USER_A, actor_type: "user", total_tokens: 150 }),
+        baseRow({ user_id: USER_A, actor_type: "system_account", total_tokens: 900 }),
+      ]);
+
+    const result = await aggregateLlm(testDb.db, {
+      tenantId,
+      bucket: "hour",
+      from: FROM,
+      to: TO,
+      tz: "UTC",
+      groupBy: ["user"],
+    });
+
+    expect(result.groups).toHaveLength(1);
+    expect(result.groups[0]?.key.user).toBe(USER_A);
+    expect(result.groups[0]?.totals.tokens.total).toBe(150);
+  });
+
   test("groupBy:['user'] row with null user_id appears under empty key", async () => {
     await testDb.db
       .insert(llmUsage)
@@ -151,6 +173,28 @@ describe.skipIf(skip)("aggregateLlm — userId filter", () => {
       .values([
         baseRow({ user_id: USER_A, actor_type: "user", total_tokens: 150 }),
         baseRow({ user_id: USER_B, actor_type: "user", total_tokens: 999 }),
+      ]);
+
+    const result = await aggregateLlm(testDb.db, {
+      tenantId,
+      bucket: "hour",
+      from: FROM,
+      to: TO,
+      tz: "UTC",
+      groupBy: [],
+      userId: USER_A,
+    });
+
+    expect(result.totals.calls.total).toBe(1);
+    expect(result.totals.tokens.total).toBe(150);
+  });
+
+  test("userId filter excludes a system account sharing the user's UUID", async () => {
+    await testDb.db
+      .insert(llmUsage)
+      .values([
+        baseRow({ user_id: USER_A, actor_type: "user", total_tokens: 150 }),
+        baseRow({ user_id: USER_A, actor_type: "system_account", total_tokens: 900 }),
       ]);
 
     const result = await aggregateLlm(testDb.db, {

@@ -1,5 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
+import { resolveActor } from "../audit/recorders/types.ts";
+import type { AuditActorType } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
 import {
@@ -155,7 +157,12 @@ export type CandidateDryRunOutcome =
   | { status: "gate_fix" };
 
 export async function dryRunPatchCandidate(
-  params: { tenant_id: string; candidate_id: string; actor_id: string | null },
+  params: {
+    tenant_id: string;
+    candidate_id: string;
+    actor_id: string | null;
+    actor_type?: AuditActorType;
+  },
   exec?: Db,
 ): Promise<CandidateDryRunOutcome> {
   const db = exec ?? getDb();
@@ -207,8 +214,11 @@ export async function dryRunPatchCandidate(
   await auditAwait(
     {
       tenant_id: params.tenant_id,
-      actor_type: params.actor_id ? "user" : "system",
-      actor_id: params.actor_id,
+      ...resolveActor({
+        tenant_id: params.tenant_id,
+        actor_id: params.actor_id,
+        actor_type: params.actor_type,
+      }),
       action: AuditAction.PATCH_CANDIDATE_DRY_RUN_REQUESTED,
       resource_type: "patch_candidate",
       resource_id: params.candidate_id,

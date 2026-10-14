@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
+import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -16,6 +17,12 @@ import type {
   ListDiscoveryArtifactsParams,
   ListDiscoveryRunsParams,
 } from "./types.ts";
+
+function discoveryAuditActor(actor: Actor | null | undefined, legacyActorId?: string | null) {
+  if (actor) return auditActor(actor);
+  if (legacyActorId) return { actor_type: "unknown" as const, actor_id: null };
+  return auditActor(null);
+}
 
 function toRunView(row: typeof discoveryRuns.$inferSelect): DiscoveryRunView {
   const usage = (row.token_usage ?? {
@@ -175,8 +182,7 @@ export async function createDiscoveryRun(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
+        ...discoveryAuditActor(p.actor, p.actor_id),
         action: AuditAction.DISCOVERY_RUN_CREATED,
         resource_type: "discovery_run",
         resource_id: run.id,
@@ -376,7 +382,12 @@ export async function getDiscoveryArtifact(
 }
 
 export async function approveDiscoveryArtifact(
-  params: { tenant_id: string; artifact_id: string; actor_id: string | null },
+  params: {
+    tenant_id: string;
+    artifact_id: string;
+    actor_id?: string | null;
+    actor?: Actor | null;
+  },
   exec?: Executor,
 ): Promise<{ materialized_id: string | null; materialized_type: string | null } | null> {
   const db = exec ?? getDb();
@@ -405,8 +416,7 @@ export async function approveDiscoveryArtifact(
     await auditAwait(
       {
         tenant_id: params.tenant_id,
-        actor_type: params.actor_id ? "user" : "system",
-        actor_id: params.actor_id,
+        ...discoveryAuditActor(params.actor, params.actor_id),
         action: AuditAction.DISCOVERY_ARTIFACT_APPROVED,
         resource_type: "discovery_artifact",
         resource_id: params.artifact_id,
@@ -428,6 +438,7 @@ export async function rejectDiscoveryArtifact(
     tenant_id: string;
     artifact_id: string;
     actor_id: string | null;
+    actor?: Actor | null;
     reason?: string;
   },
   exec?: Executor,
@@ -461,8 +472,7 @@ export async function rejectDiscoveryArtifact(
     await auditAwait(
       {
         tenant_id: params.tenant_id,
-        actor_type: params.actor_id ? "user" : "system",
-        actor_id: params.actor_id,
+        ...discoveryAuditActor(params.actor, params.actor_id),
         action: AuditAction.DISCOVERY_ARTIFACT_REJECTED,
         resource_type: "discovery_artifact",
         resource_id: params.artifact_id,
@@ -495,6 +505,7 @@ export interface RecordGapCandidateParams {
   missing_capability: string | null;
   suggested_kind?: SuggestedGapKind;
   actor_id?: string | null;
+  actor?: Actor | null;
 }
 
 export interface CapabilityGapDraft {
@@ -608,8 +619,7 @@ export async function recordGapCandidate(
       await auditAwait(
         {
           tenant_id: p.tenant_id,
-          actor_type: p.actor_id ? "user" : "system",
-          actor_id: p.actor_id ?? null,
+          ...discoveryAuditActor(p.actor, p.actor_id),
           action: AuditAction.DISCOVERY_ARTIFACT_PROPOSED,
           resource_type: "discovery_artifact",
           resource_id: artifact.id,

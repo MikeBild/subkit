@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { SYSTEM_TENANT_ID } from "../../../audit/index.ts";
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
 import { auditLog } from "../../../db/schema/audit.ts";
-import { apiKeys, tenants, users } from "../../../db/schema/index.ts";
+import { apiKeys, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
@@ -249,6 +249,47 @@ describe("GET /v1/settings/{path}", () => {
 });
 
 describe("PUT /v1/settings/{path}", () => {
+  test("fallback settings audit preserves system-account actor kind", async () => {
+    await server.db
+      .update(systemAccounts)
+      .set({ role_id: await builtinRoleId(server.db, "admin") })
+      .where(eq(systemAccounts.id, server.systemAccountId));
+    const machineKey = "wf_live_SYS_settings_actor_fallback_000";
+    await server.db.insert(apiKeys).values({
+      tenant_id: server.tenantId,
+      system_account_id: server.systemAccountId,
+      prefix: machineKey.slice(0, 12),
+      token_sha256: createHash("sha256").update(machineKey).digest("hex"),
+      scopes: ["*"],
+    });
+
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "test";
+    try {
+      const response = await fetch(
+        `${server.baseUrl}/v1/settings/tokens.monthly_budget?tenant=${server.tenantId}`,
+        {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${machineKey}`,
+          },
+          body: JSON.stringify({ value: 100 }),
+        },
+      );
+      expect(response.status).toBe(200);
+
+      const [audit] = await server.db
+        .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+        .from(auditLog)
+        .where(eq(auditLog.action, "settings.changed"));
+      expect(audit).toEqual({ actor_type: "system_account", actor_id: server.systemAccountId });
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
+  });
+
   test("OIDC providers apply hot and remain private", async () => {
     const providers = [
       { protocol: "api_key", id: "api-key", label: "SubKit API key" },

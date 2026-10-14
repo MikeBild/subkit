@@ -2,11 +2,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
-import { apiKeys, users } from "../../db/schema/index.ts";
+import { apiKeys, tenants, users } from "../../db/schema/index.ts";
 import {
   mcpOauthAccessTokens,
   mcpOauthClients,
+  mcpOauthGrants,
   mcpOauthRefreshTokens,
+  mcpOauthUnknownGrants,
 } from "../../db/schema/mcp_oauth.ts";
 import { builtinRoleId, createRole } from "../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
@@ -15,6 +17,8 @@ import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 let ctx: HttpTestServer;
 let priorBaseUrl = "";
 let memberApiKey = "";
+const PAST_DATE = new Date("2000-01-01T00:00:00.000Z");
+const FUTURE_DATE = new Date("2099-01-01T00:00:00.000Z");
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("oauth-clients-admin");
@@ -84,9 +88,8 @@ async function seedApprovedConnection(
   userId: string,
   state: "live" | "revoked" | "expired" = "live",
 ): Promise<void> {
-  const now = Date.now(); // allow-wall-clock
-  const expiresAt = new Date(state === "expired" ? now - 60_000 : now + 3_600_000);
-  const revokedAt = state === "revoked" ? new Date(now - 60_000) : null;
+  const expiresAt = state === "expired" ? PAST_DATE : FUTURE_DATE;
+  const revokedAt = state === "revoked" ? PAST_DATE : null;
   const n = ++tokenSeq;
   await ctx.db.insert(mcpOauthAccessTokens).values({
     tenant_id: ctx.tenantId,
@@ -222,6 +225,152 @@ describe("GET /v1/oauth/clients", () => {
     expect(found?.approved_by).toEqual([]);
     expect(found?.live_connections).toBe(0);
   });
+
+  test("reports the tenant user and timestamp for a known OAuth grant", async () => {
+    const clientId = "connected-by-client-fff666";
+    await seedClient(clientId);
+    const [person] = await ctx.db
+      .insert(users)
+      .values({
+        tenant_id: ctx.tenantId,
+        email: "connected-by@example.test",
+        display_name: "Connected By",
+        role_id: await builtinRoleId(ctx.db, "admin"),
+      })
+      .returning({ id: users.id, email: users.email, display_name: users.display_name });
+    if (!person) throw new Error("seed connected-by person failed");
+    const connectedAt = new Date("2026-10-10T09:00:00.000Z");
+    const [grant] = await ctx.db
+      .insert(mcpOauthGrants)
+      .values({
+        tenant_id: ctx.tenantId,
+        client_id: clientId,
+        user_id: person.id,
+        connected_at: connectedAt,
+      })
+      .returning({ id: mcpOauthGrants.id });
+    if (!grant) throw new Error("seed OAuth grant failed");
+    const [access] = await ctx.db
+      .insert(mcpOauthAccessTokens)
+      .values({
+        tenant_id: ctx.tenantId,
+        client_id: clientId,
+        user_id: person.id,
+        grant_id: grant.id,
+        prefix: "wf_mcp_known",
+        token_sha256: createHash("sha256").update("known-grant-access").digest("hex"),
+        scope: "mcp:read",
+        expires_at: FUTURE_DATE,
+      })
+      .returning({ id: mcpOauthAccessTokens.id });
+    expect(access).toBeDefined();
+
+    const found = (await listClients()).find((i) => i.client_id === clientId);
+    expect(found?.connected_by).toEqual({
+      grants: [
+        {
+          user_id: person.id,
+          display_name: person.display_name,
+          email: person.email,
+          connected_at: connectedAt.toISOString(),
+          revoked_at: null,
+        },
+      ],
+      has_unknown_legacy: false,
+    });
+  });
+
+  test("marks legacy OAuth rows unknown without attributing them to a user", async () => {
+    const clientId = "connected-by-unknown-client-ggg777";
+    await seedClient(clientId);
+    const person = await seedPerson();
+    await seedApprovedConnection(clientId, person.id);
+
+    const found = (await listClients()).find((i) => i.client_id === clientId);
+    expect(found?.connected_by).toEqual({ grants: [], has_unknown_legacy: true });
+  });
+
+  test("does not return another tenant's OAuth identities or activity", async () => {
+    const clientId = "connected-by-tenant-isolation-client-hhh888";
+    await seedClient(clientId);
+    const ownUser = await seedPerson();
+    const connectedAt = new Date("2026-10-10T09:00:00.000Z");
+    const [ownGrant] = await ctx.db
+      .insert(mcpOauthGrants)
+      .values({
+        tenant_id: ctx.tenantId,
+        client_id: clientId,
+        user_id: ownUser.id,
+        connected_at: connectedAt,
+      })
+      .returning({ id: mcpOauthGrants.id });
+    if (!ownGrant) throw new Error("seed own OAuth grant failed");
+
+    const [otherTenant] = await ctx.db
+      .insert(tenants)
+      .values({ slug: "oauth-other-tenant", display_name: "Other OAuth tenant" })
+      .returning({ id: tenants.id });
+    if (!otherTenant) throw new Error("seed other tenant failed");
+    const [otherUser] = await ctx.db
+      .insert(users)
+      .values({
+        tenant_id: otherTenant.id,
+        email: "private-other-tenant@example.test",
+        display_name: "Private Other Tenant",
+        role_id: await builtinRoleId(ctx.db, "admin"),
+      })
+      .returning({ id: users.id });
+    if (!otherUser) throw new Error("seed other OAuth user failed");
+    await ctx.db.insert(mcpOauthGrants).values({
+      tenant_id: otherTenant.id,
+      client_id: clientId,
+      user_id: otherUser.id,
+      connected_at: new Date("2026-10-10T10:00:00.000Z"),
+    });
+    await ctx.db.insert(mcpOauthUnknownGrants).values({
+      tenant_id: otherTenant.id,
+      client_id: clientId,
+    });
+    await ctx.db.insert(mcpOauthAccessTokens).values({
+      tenant_id: ctx.tenantId,
+      client_id: clientId,
+      user_id: ownUser.id,
+      grant_id: ownGrant.id,
+      prefix: "wf_mcp_own",
+      token_sha256: createHash("sha256").update("own-tenant-token").digest("hex"),
+      scope: "mcp:read",
+      expires_at: FUTURE_DATE,
+      last_used_at: new Date(FROZEN_NOW - 1_000),
+    });
+    await ctx.db.insert(mcpOauthAccessTokens).values({
+      tenant_id: otherTenant.id,
+      client_id: clientId,
+      user_id: otherUser.id,
+      prefix: "wf_mcp_other",
+      token_sha256: createHash("sha256").update("other-tenant-token").digest("hex"),
+      scope: "mcp:read",
+      expires_at: FUTURE_DATE,
+      last_used_at: new Date(FROZEN_NOW),
+    });
+
+    const found = (await listClients()).find((i) => i.client_id === clientId);
+    expect(found?.connected_by).toEqual({
+      grants: [
+        {
+          user_id: ownUser.id,
+          display_name: null,
+          email: ownUser.email,
+          connected_at: connectedAt.toISOString(),
+          revoked_at: null,
+        },
+      ],
+      has_unknown_legacy: false,
+    });
+    expect(found?.approved_by).toEqual([ownUser.email]);
+    expect(found?.last_used_at).toBe(new Date(FROZEN_NOW - 1_000).toISOString());
+    expect(JSON.stringify(found)).not.toContain("private-other-tenant@example.test");
+    expect(JSON.stringify(found)).not.toContain(otherUser.id);
+  });
 });
 
 describe("DELETE /v1/oauth/clients/{client_id}", () => {
@@ -270,6 +419,73 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
       .where(eq(mcpOauthClients.client_id, clientId));
     expect(rows).toHaveLength(1);
     expect(rows[0]!.disabled_at).not.toBeNull();
+  });
+
+  test("global client revocation ends OAuth grants and tokens in every tenant", async () => {
+    const clientId = "global-revoke-client-iii999";
+    await seedClient(clientId);
+    const [otherTenant] = await ctx.db
+      .insert(tenants)
+      .values({ slug: "oauth-revoke-other-tenant", display_name: "Other revoke tenant" })
+      .returning({ id: tenants.id });
+    if (!otherTenant) throw new Error("seed other tenant failed");
+    const otherRoleId = await builtinRoleId(ctx.db, "admin");
+    const [otherUser] = await ctx.db
+      .insert(users)
+      .values({
+        tenant_id: otherTenant.id,
+        email: "global-revoke-other@example.test",
+        role_id: otherRoleId,
+      })
+      .returning({ id: users.id });
+    if (!otherUser) throw new Error("seed other tenant user failed");
+    const ownUser = await seedPerson();
+    const grants = await ctx.db
+      .insert(mcpOauthGrants)
+      .values([
+        { tenant_id: ctx.tenantId, client_id: clientId, user_id: ownUser.id },
+        { tenant_id: otherTenant.id, client_id: clientId, user_id: otherUser.id },
+      ])
+      .returning({ id: mcpOauthGrants.id, tenant_id: mcpOauthGrants.tenant_id });
+    const ownGrant = grants.find((grant) => grant.tenant_id === ctx.tenantId);
+    const otherGrant = grants.find((grant) => grant.tenant_id === otherTenant.id);
+    if (!ownGrant || !otherGrant) throw new Error("seed cross-tenant grants failed");
+    for (const [tenant_id, user_id, grant_id, suffix] of [
+      [ctx.tenantId, ownUser.id, ownGrant.id, "own"],
+      [otherTenant.id, otherUser.id, otherGrant.id, "other"],
+    ] as const) {
+      await ctx.db.insert(mcpOauthAccessTokens).values({
+        tenant_id,
+        client_id: clientId,
+        user_id,
+        grant_id,
+        prefix: `wf_mcp_${suffix}`,
+        token_sha256: createHash("sha256").update(`global-revoke-access-${suffix}`).digest("hex"),
+        scope: "mcp:read",
+        expires_at: FUTURE_DATE,
+      });
+    }
+
+    const res = await fetch(`${ctx.baseUrl}/v1/oauth/clients/${clientId}`, {
+      method: "DELETE",
+      headers: authHeader(),
+    });
+    expect(res.status).toBe(204);
+    const revokedGrants = await ctx.db
+      .select({ tenant_id: mcpOauthGrants.tenant_id, revoked_at: mcpOauthGrants.revoked_at })
+      .from(mcpOauthGrants)
+      .where(eq(mcpOauthGrants.client_id, clientId));
+    expect(revokedGrants).toHaveLength(2);
+    expect(revokedGrants.every((grant) => grant.revoked_at !== null)).toBe(true);
+    const revokedTokens = await ctx.db
+      .select({
+        tenant_id: mcpOauthAccessTokens.tenant_id,
+        revoked_at: mcpOauthAccessTokens.revoked_at,
+      })
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.client_id, clientId));
+    expect(revokedTokens).toHaveLength(2);
+    expect(revokedTokens.every((token) => token.revoked_at !== null)).toBe(true);
   });
 
   test("is idempotent — second DELETE still returns 204", async () => {
