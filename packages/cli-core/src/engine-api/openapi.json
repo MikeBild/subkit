@@ -28403,6 +28403,16 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Product principals have no tenant status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -34221,6 +34231,16 @@
           },
           "401": {
             "description": "Unauthenticated — no bearer or invalid bearer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Product principals have no CLI bootstrap.",
             "content": {
               "application/json": {
                 "schema": {

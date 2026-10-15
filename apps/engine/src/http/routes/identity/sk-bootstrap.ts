@@ -6,7 +6,7 @@ import { conversations, roles, systemAccounts, tenants, users } from "../../../d
 import { resolveEngineUrl } from "../../../llm/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { can, UX_GATING_PERMISSIONS, type UxGatingPermission } from "../../../rbac/index.ts";
-import { HttpError } from "../../errors.ts";
+import { HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
@@ -120,6 +120,10 @@ const route = createRoute({
       description: "Unauthenticated — no bearer or invalid bearer.",
       content: { "application/json": { schema: ErrorSchema } },
     },
+    404: {
+      description: "Product principals have no CLI bootstrap.",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     500: {
       description: "Internal — engine bug or schema regression.",
       content: { "application/json": { schema: ErrorSchema } },
@@ -130,6 +134,7 @@ const route = createRoute({
 export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, async (c) => {
     const principal = requireAuth(c);
+    if (principal.product_id) throw new NotFoundError("bootstrap");
     const db = c.get("db");
 
     if (principal.kind !== "user" && principal.kind !== "system_account") {

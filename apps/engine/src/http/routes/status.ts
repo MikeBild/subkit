@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { ErrorSchema } from "../../api/common-schemas.ts";
 import { connectors, llmUsage, skills, tenants } from "../../db/schema/index.ts";
 import {
   monthlyUsageForUser,
@@ -7,6 +8,7 @@ import {
   resolveUserMonthlyBudget,
   validateProviderSetup,
 } from "../../llm/index.ts";
+import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 
@@ -59,12 +61,17 @@ const route = createRoute({
       description: "OK",
       content: { "application/json": { schema: StatusSchema } },
     },
+    404: {
+      description: "Product principals have no tenant status",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
 export function registerStatusRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, async (c) => {
     const principal = requireAuth(c);
+    if (principal.product_id) throw new NotFoundError("status");
     const db = c.get("db");
 
     const tenantId = principal.tenant_id;
