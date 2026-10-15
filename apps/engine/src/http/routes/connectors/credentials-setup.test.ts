@@ -239,7 +239,8 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
         ),
       );
     expect(resetAudit.length).toBe(1);
-    expect(resetAudit[0]?.actor_id).toBe(server.userId);
+    expect(resetAudit[0]?.actor_type).toBe("unknown");
+    expect(resetAudit[0]?.actor_id).toBeNull();
 
     const [completedElicitation] = await server.db
       .select()
