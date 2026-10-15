@@ -50,7 +50,6 @@ function guardedDefinition(limit: number, extra: Record<string, unknown> = {}) {
         limit,
         tz: "Europe/Berlin",
         unit: "turn_id",
-        round: "round",
         billable_steps: ["round"],
         max_metered: 3,
         commit_when: "$count(output[type = 'function_call']) = 0",
@@ -183,6 +182,12 @@ describe("workflow definition", () => {
     expect(WorkflowDefSchema.safeParse(guardedDefinition(5, { tz: "Mars/Olympus" })).success).toBe(
       false,
     );
+    expect(
+      WorkflowDefSchema.safeParse(guardedDefinition(5, { max_metered: undefined })).success,
+    ).toBe(false);
+    expect(WorkflowDefSchema.safeParse(guardedDefinition(5, { round: "round" })).success).toBe(
+      false,
+    );
   });
 });
 
@@ -244,14 +249,18 @@ describe("reservation at admission", () => {
     expect(active).toHaveLength(1);
   });
 
-  test("a later round without a reservation answers turn_closed", async () => {
+  test("a call whose cancel was requested no longer blocks the next call of its turn", async () => {
     const principal = await productUser();
-    await expect(admit(principal, { turn_id: "ghost", round: 2 })).rejects.toMatchObject({
-      code: "turn_closed",
-    });
+    const first = await admit(principal, { turn_id: "cancelled", round: 1 });
+    await ctx.testDb.db
+      .update(executions)
+      .set({ abort_requested_at: new Date(getTestNow()) })
+      .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, first.execution_id)));
+    await admit(principal, { turn_id: "cancelled", round: 1 });
+    expect((await usage(principal)).usedToday).toBe(1);
   });
 
-  test("a committed turn answers turn_closed", async () => {
+  test("a committed turn admits later calls without a charge until max_metered", async () => {
     const principal = await productUser();
     const admitted = await admit(principal, { turn_id: "done", round: 1 });
     await finalizeExecution(
@@ -268,8 +277,20 @@ describe("reservation at admission", () => {
       { output: [{ type: "message" }] },
     );
     expect((await unit(principal, "done"))?.state).toBe("committed");
+    await keepOpen((await admit(principal, { turn_id: "done", round: 1 })).execution_id);
+    expect((await unit(principal, "done"))?.state).toBe("committed");
+    expect((await usage(principal)).usedToday).toBe(1);
+    await ctx.testDb.db
+      .update(callerBudgetUnits)
+      .set({ metered: 3 })
+      .where(
+        and(
+          eq(callerBudgetUnits.tenant_id, ctx.tenantId),
+          eq(callerBudgetUnits.principal_id, principal.id),
+        ),
+      );
     await expect(admit(principal, { turn_id: "done", round: 1 })).rejects.toMatchObject({
-      code: "turn_closed",
+      code: "turn_limit",
     });
   });
 
@@ -335,13 +356,13 @@ describe("reservation at admission", () => {
     expect(await unit(principal, "big")).toBeUndefined();
   });
 
-  test("a product caller from another principal cannot share a unit", async () => {
+  test("the same unit key of another principal is charged to that principal", async () => {
     const owner = await productUser();
     const other = await productUser();
     await admit(owner, { turn_id: "shared", round: 1 });
-    await expect(admit(other, { turn_id: "shared", round: 2 })).rejects.toMatchObject({
-      code: "turn_closed",
-    });
+    await admit(other, { turn_id: "shared", round: 2 });
+    expect((await usage(owner)).usedToday).toBe(1);
+    expect((await usage(other)).usedToday).toBe(1);
   });
 });
 

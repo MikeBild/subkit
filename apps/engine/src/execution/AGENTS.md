@@ -91,12 +91,11 @@ manifest; changing them asks for a new approval.
   reserved.
 - `execution_guards.caller_daily_limit` reserves one unit per caller and local
   day in `caller_budget_units` inside the admission transaction, after the
-  idempotency replay check, under a per-caller advisory lock. `unit` and `round`
-  are `$input` dot paths. A reserved unit is reused by later rounds without a
-  charge; a committed unit or a later round without a reservation refuses
-  `turn_closed`; a unit with a queued or running execution refuses
-  `turn_busy`; `max_metered` refuses `turn_limit`; a full day refuses
-  `rate_limited` with `usage`.
+  idempotency replay check, under a per-caller advisory lock. `unit` is an
+  `$input` dot path. A reserved or committed unit is reused by later calls
+  without a charge; a unit with a queued or running execution whose cancel was
+  not requested refuses `turn_busy`; `max_metered` refuses `turn_limit`; a
+  full day refuses `rate_limited` with `usage`.
 - Every request a step listed in `billable_steps` sends marks the unit
   billable and adds 1 to `metered` in its own committed transaction, after the
   execution authority check and before the request leaves. A success of such a
