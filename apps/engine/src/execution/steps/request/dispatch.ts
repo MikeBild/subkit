@@ -126,6 +126,7 @@ import { RequestError } from "./errors.ts";
 import { promoteResponseToFile } from "./file-output.ts";
 import { runGraphqlWithRetry } from "./graphql-retry.ts";
 import { runMcpWithRetry } from "./mcp-retry.ts";
+import { redactOwnCredentials } from "./own-credentials.ts";
 import { isDocumentedReadOperation } from "./read-operations.ts";
 import {
   backoffMs,
@@ -539,6 +540,15 @@ function materializePaginatedBody(
   );
 }
 
+function sameOrigin(url: URL, baseUrl: string | null): boolean {
+  if (!baseUrl) return false;
+  try {
+    return new URL(baseUrl).origin === url.origin;
+  } catch {
+    return false;
+  }
+}
+
 export interface RunRequestStepParams {
   ctx: StepRunContext;
   step: RequestStep;
@@ -549,9 +559,17 @@ export interface RunRequestStepParams {
 
 export async function runRequestStep(p: RunRequestStepParams): Promise<StepResult> {
   const dispatchedEffects: Array<"read" | "write"> = [];
-  const result = await dispatchRequestStep(p, (effect) => {
-    dispatchedEffects.push(effect);
-  });
+  const ownCredentials: string[] = [];
+  const result = redactOwnCredentials(
+    await dispatchRequestStep(
+      p,
+      (effect) => {
+        dispatchedEffects.push(effect);
+      },
+      ownCredentials,
+    ),
+    ownCredentials,
+  );
   if (!dispatchedEffects.length) return result;
   const metadata: RequestMeta = result.request_meta ?? { driver: "error", url: null };
   return {
@@ -569,6 +587,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
 async function dispatchRequestStep(
   p: RunRequestStepParams,
   recordEffect: (effect: "read" | "write") => void,
+  ownCredentials: string[],
 ): Promise<StepResult> {
   const start = Date.now();
   const referencedCredentials: CredentialUseSnapshot[] = [];
@@ -667,7 +686,7 @@ async function dispatchRequestStep(
         : {}),
     });
     lastMaterializedHttpRequest = request;
-    return policy;
+    return ownCredentials.length > 0 ? { redirect: "manual" as const } : policy;
   };
   const heldHttpResult = (held: HeldStepResultParams) => {
     const proof = held.url
@@ -771,14 +790,62 @@ async function dispatchRequestStep(
     scope: resolvedScope,
     ...(p.ctx.principal ? { principal: p.ctx.principal } : {}),
   };
+  const ownConnector = p.step.connector_id
+    ? await getConnectorForEnvironment(
+        p.ctx.tenant_id,
+        p.step.connector_id,
+        p.ctx.execution_mode,
+        p.ctx.db,
+      ).catch(() => null)
+    : null;
+  const requestPartsCtx =
+    ownConnector && ownConnector.environment === p.ctx.execution_mode
+      ? {
+          ...resolverCtx,
+          own_connector: {
+            id: ownConnector.id,
+            onSecret: (value: string) => {
+              ownCredentials.push(value);
+            },
+          },
+        }
+      : resolverCtx;
   const pathRes = p.step.path ? await resolveStringPlaceholders(p.step.path, resolverCtx) : null;
   const urlRes = p.step.url ? await resolveStringPlaceholders(p.step.url, resolverCtx) : null;
-  const headersRes = p.step.headers ? await resolvePlaceholders(p.step.headers, resolverCtx) : null;
-  const queryRes = p.step.query ? await resolvePlaceholders(p.step.query, resolverCtx) : null;
+  const headersRes = p.step.headers
+    ? await resolvePlaceholders(p.step.headers, requestPartsCtx)
+    : null;
+  const queryRes = p.step.query ? await resolvePlaceholders(p.step.query, requestPartsCtx) : null;
   const bodyRes =
     p.step.body !== undefined && p.step.body !== null
-      ? await resolvePlaceholdersTypePreserving(p.step.body, resolverCtx)
+      ? await resolvePlaceholdersTypePreserving(p.step.body, requestPartsCtx)
       : null;
+  const credentialUnresolved = [
+    ...(headersRes?.unresolved ?? []),
+    ...(queryRes?.unresolved ?? []),
+    ...(bodyRes?.unresolved ?? []),
+  ].filter((u) => /^\$\{\s*cred\./.test(u.token));
+  if (credentialUnresolved.length > 0) {
+    clearTimeout(timer);
+    return {
+      status: "failed",
+      retry_count: 0,
+      duration_ms: Date.now() - start,
+      error: {
+        code: "placeholder_unresolved",
+        message: `credential placeholder(s) not resolved and not sent: ${credentialUnresolved
+          .map((u) => `${u.token} (${u.code})`)
+          .join(", ")}`,
+        details: { unresolved: credentialUnresolved },
+      },
+      request_meta: {
+        driver: "error",
+        url: null,
+        method: p.step.method,
+        unresolved_placeholders: credentialUnresolved.map((u) => u.token),
+      },
+    };
+  }
   const pathUrlUnresolved = [...(pathRes?.unresolved ?? []), ...(urlRes?.unresolved ?? [])];
   if (pathUrlUnresolved.length > 0) {
     clearTimeout(timer);
@@ -1689,7 +1756,26 @@ async function dispatchRequestStep(
         path_or_url: resolvedStepPath ?? resolvedStepUrl ?? "/",
         headers,
         query,
+        ...(ownCredentials.length > 0
+          ? { redact_log_url: (url: string) => redactOwnCredentials(url, ownCredentials) }
+          : {}),
       });
+      if (
+        ownCredentials.length > 0 &&
+        (connector.id !== ownConnector?.id || !sameOrigin(plan.url, connector.base_url))
+      ) {
+        clearTimeout(timer);
+        return {
+          status: "failed",
+          retry_count: 0,
+          duration_ms: Date.now() - start,
+          error: {
+            code: "credential_boundary_violation",
+            message:
+              "the request carries the connector's own credential and may only go to the connector's base_url origin",
+          },
+        };
+      }
       baseUrl = plan.url;
       storedCredentialUsed = plan.stored_credential_used;
       activeCredentialId = plan.credential_id;
@@ -1943,7 +2029,10 @@ async function dispatchRequestStep(
             driver: "http" as const,
             credential_id: activeCredentialId,
             operation: p.step.method,
-            url: baseUrl,
+            url:
+              ownCredentials.length > 0
+                ? redactOwnCredentials(baseUrl.toString(), ownCredentials)
+                : baseUrl,
             source: "execution" as const,
             execution_id: p.ctx.execution_id,
             workflow_id: p.ctx.workflow_id,

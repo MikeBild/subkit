@@ -257,6 +257,7 @@ export interface ResolveConnectorRequestParams {
   query?: Record<string, string | number | boolean>;
   credential_override?: DecryptedCredential | null;
   idempotency_key?: string;
+  redact_log_url?: (url: string) => string;
 }
 
 export type AppliedAuthMethod =
@@ -506,7 +507,7 @@ export async function buildRequestPlan(
     connector_id: p.connector.id,
     auth_type: p.connector.auth_type,
     url_host: url.host,
-    url: scrubUrl(url),
+    url: p.redact_log_url ? p.redact_log_url(scrubUrl(url)) : scrubUrl(url),
     has_credential: credential !== null,
     oauth2_refreshed: oauth2Refreshed,
   });

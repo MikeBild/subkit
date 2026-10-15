@@ -33,6 +33,7 @@ export interface ResolverContext {
   input?: unknown;
   scope?: Record<string, unknown>;
   principal?: ResolvedPrincipal;
+  own_connector?: { id: string; onSecret: (value: string) => void };
   onAuthorityReference?: (reference: ResolvedAuthorityReference) => void;
   onCredentialUse?: (snapshot: CredentialUseSnapshot) => void;
 }
@@ -358,7 +359,8 @@ async function resolveCred(tok: Placeholder, ctx: ResolverContext): Promise<OneR
       message: `no connector with slug '${tok.slug}' in ${ctx.environment}`,
     };
   }
-  if (!(await checkRbac(ctx, row.id, tok))) {
+  const ownConnector = ctx.own_connector?.id === row.id ? ctx.own_connector : null;
+  if (!ownConnector && !(await checkRbac(ctx, row.id, tok))) {
     return { ok: false, code: "rbac_denied", message: "connector:read denied" };
   }
   const credential = await fetchCredential(ctx, row.id);
@@ -406,6 +408,7 @@ async function resolveCred(tok: Placeholder, ctx: ResolverContext): Promise<OneR
     credential_id: credential.id,
     credential_revision: credential.authority_revision,
   });
+  ownConnector?.onSecret(v);
   return { ok: true, value: v };
 }
 
