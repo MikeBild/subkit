@@ -9,6 +9,7 @@ export interface TestBearerIssuer {
   issuer: string;
   jwksFetches: () => number;
   discoveryFetches: () => number;
+  setDiscoveryAvailable: (available: boolean) => void;
   provider: (overrides?: Partial<OidcBearerProviderConfig>) => OidcBearerProviderConfig;
   mint: (claims: Record<string, unknown>, options?: MintOptions) => Promise<string>;
   rotate: () => Promise<string>;
@@ -40,11 +41,13 @@ export async function startTestBearerIssuer(): Promise<TestBearerIssuer> {
   let published = 1;
   let jwks = 0;
   let discovery = 0;
+  let discoveryAvailable = true;
   let issuer = "";
   const server = await startLocalTargetServer((req) => {
     const path = new URL(req.url).pathname;
     if (path === "/auth/v1/.well-known/openid-configuration") {
       discovery += 1;
+      if (!discoveryAvailable) return new Response("unavailable", { status: 503 });
       return Response.json({ issuer, jwks_uri: `${issuer}/.well-known/jwks.json` });
     }
     if (path === "/auth/v1/.well-known/jwks.json") {
@@ -59,6 +62,9 @@ export async function startTestBearerIssuer(): Promise<TestBearerIssuer> {
     issuer,
     jwksFetches: () => jwks,
     discoveryFetches: () => discovery,
+    setDiscoveryAvailable: (available) => {
+      discoveryAvailable = available;
+    },
     provider: (overrides = {}) => ({
       protocol: "oidc_bearer",
       id: "tekit-supabase",

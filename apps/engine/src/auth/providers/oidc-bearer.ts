@@ -26,6 +26,7 @@ export const OIDC_BEARER_PROVIDER_NAME = "oidc_bearer";
 
 const JWKS_TIMEOUT_MS = 5_000;
 const JWKS_COOLDOWN_MS = 30_000;
+const DISCOVERY_FAILURE_COOLDOWN_MS = 30_000;
 const COMPACT_JWS = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
 
 export interface OidcBearerProviderOptions {
@@ -33,6 +34,7 @@ export interface OidcBearerProviderOptions {
   providers?: () => OidcBearerProviderConfig[];
   now?: () => Date;
   jwksCooldownMs?: number;
+  discoveryFailureCooldownMs?: number;
 }
 
 interface JwksEntry {
@@ -41,9 +43,35 @@ interface JwksEntry {
 }
 
 const jwksCache = new Map<string, JwksEntry>();
+const discoveryFailures = new Map<string, { digest: string; until: number }>();
 
 export function flushOidcBearerKeys(): void {
   jwksCache.clear();
+  discoveryFailures.clear();
+}
+
+async function discoveredJwksUri(
+  provider: OidcBearerProviderConfig,
+  now: Date,
+  failureCooldownMs: number,
+): Promise<string> {
+  const digest = providerDigest(provider);
+  const failed = discoveryFailures.get(provider.id);
+  if (failed?.digest === digest && now.getTime() < failed.until)
+    throw Object.assign(new Error("issuer discovery failed recently"), {
+      code: "issuer_discovery_unavailable",
+    });
+  try {
+    const jwksUri = (await fetchDiscovery(new URL(provider.issuer_url))).jwks_uri;
+    if (!jwksUri) throw new Error("issuer discovery publishes no jwks_uri");
+    discoveryFailures.delete(provider.id);
+    return jwksUri;
+  } catch (error) {
+    discoveryFailures.set(provider.id, { digest, until: now.getTime() + failureCooldownMs });
+    throw Object.assign(error instanceof Error ? error : new Error(String(error)), {
+      code: "issuer_discovery_unavailable",
+    });
+  }
 }
 
 function configuredBearerProviders(): OidcBearerProviderConfig[] {
@@ -85,13 +113,13 @@ function unverifiedAlgorithm(token: string): string | null {
 async function keySetFor(
   provider: OidcBearerProviderConfig,
   cooldownMs: number,
+  now: Date,
+  failureCooldownMs: number,
 ): Promise<JWTVerifyGetKey> {
   const digest = `${providerDigest(provider)}:${cooldownMs}`;
   const cached = jwksCache.get(provider.id);
   if (cached?.digest === digest) return cached.getKey;
-  const jwksUri =
-    provider.jwks_uri ?? (await fetchDiscovery(new URL(provider.issuer_url))).jwks_uri;
-  if (!jwksUri) throw new Error("issuer discovery publishes no jwks_uri");
+  const jwksUri = provider.jwks_uri ?? (await discoveredJwksUri(provider, now, failureCooldownMs));
   const getKey = createRemoteJWKSet(new URL(jwksUri), {
     timeoutDuration: JWKS_TIMEOUT_MS,
     cooldownDuration: cooldownMs,
@@ -158,7 +186,12 @@ export function createOidcBearerProvider(
       try {
         const verified = await jwtVerify(
           token,
-          await keySetFor(provider, opts.jwksCooldownMs ?? JWKS_COOLDOWN_MS),
+          await keySetFor(
+            provider,
+            opts.jwksCooldownMs ?? JWKS_COOLDOWN_MS,
+            now(),
+            opts.discoveryFailureCooldownMs ?? DISCOVERY_FAILURE_COOLDOWN_MS,
+          ),
           {
             issuer: provider.issuer_url,
             audience: provider.audience,
