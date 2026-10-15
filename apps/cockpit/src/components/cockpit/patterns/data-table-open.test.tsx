@@ -38,7 +38,11 @@ test("only available records expose row navigation on desktop and mobile", () =>
         sorting={[]}
         onSortingChange={() => {}}
         onOpen={() => {}}
-        rowActions={() => <button type="button">Action</button>}
+        rowActions={() => (
+          <button type="button" data-testid="test-row-action">
+            Action
+          </button>
+        )}
         canOpen={(row) => row.available}
         rowHref={(row) => (row.available ? "/workflows/available" : null)}
         emptyState={{
