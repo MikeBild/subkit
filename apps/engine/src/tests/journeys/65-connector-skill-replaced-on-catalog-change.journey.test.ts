@@ -214,6 +214,18 @@ describe("journey: a changed MCP catalog replaces the connector skill", () => {
     const rows = await archivedAuditRows(v1Skill);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ actor_type: "user", actor_id: ctx.userId });
+    const created = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "skill.created"),
+          eq(auditLog.resource_id, v2Skill),
+        ),
+      );
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ actor_type: "user", actor_id: ctx.userId });
   });
 
   test("AC3: a draft approval keeps the active skill; activating it replaces it", async () => {
