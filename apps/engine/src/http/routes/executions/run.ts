@@ -23,7 +23,11 @@ import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { admissionRefusal, callerBudgetRefusal } from "./admission-errors.ts";
+import {
+  admissionRefusal,
+  callerBudgetRefusal,
+  isBearerProductPrincipal,
+} from "./admission-errors.ts";
 import {
   type ClientDeclaredRunSource,
   RunBodySchema,
@@ -66,7 +70,7 @@ const runExecutionRoute = createRoute({
     },
     403: {
       description:
-        "Caller identity or workflow permission does not allow this run. A product principal also gets 403 when the workflow has no live execution authority, no active version or no usable prepared credential, and when it asks for a held preparation; its runs are never downgraded to a preparation.",
+        "Caller identity or workflow permission does not allow this run. A product principal verified by an oidc_bearer provider also gets 403 when the workflow has no live execution authority, no active version or no usable prepared credential, and when it asks for a held preparation; its runs are never downgraded to a preparation.",
       content: { "application/json": { schema: ErrorSchema } },
     },
     404: {
@@ -211,13 +215,14 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       execution_mode = envHeader;
 
     if (body.source === "saved") {
-      if (principal.product_id && body.hold_writes === true)
+      const bearerProduct = isBearerProductPrincipal(principal);
+      if (bearerProduct && body.hold_writes === true)
         throw new HttpError(
           403,
           "product_preparation_forbidden",
           "A product caller runs only under a live execution authority; held preparations are for operators.",
         );
-      const holdWrites = principal.product_id ? false : body.hold_writes;
+      const holdWrites = bearerProduct ? false : body.hold_writes;
       if (body.async && body.execution_authority_id && !idempotencyKey) {
         throw new BadRequestError(
           "An authorized async run requires an idempotency_key so queue retries reuse its reservation",

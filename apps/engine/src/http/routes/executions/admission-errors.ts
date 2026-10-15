@@ -22,8 +22,12 @@ const productNotReadyCodes = new Set([
   "prepared_credential_unavailable",
 ]);
 
+export function isBearerProductPrincipal(principal: ResolvedPrincipal): boolean {
+  return Boolean(principal.product_id) && principal.auth_source?.kind === "external_bearer";
+}
+
 function productNotReady(principal: ResolvedPrincipal, code: string): boolean {
-  return Boolean(principal.product_id) && productNotReadyCodes.has(code);
+  return isBearerProductPrincipal(principal) && productNotReadyCodes.has(code);
 }
 
 function isRefusal(code: string | undefined): code is string {
