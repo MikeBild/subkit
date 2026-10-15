@@ -57,6 +57,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
 
   "auth.providers": "Browser authentication providers",
   "auth.enable_signup": "SSO signup (JIT user provisioning)",
+  products: "App products",
   "auth.session.secret": "Session signing secret",
   "auth.mcp_oauth.enabled": "MCP OAuth server enabled",
   "auth.mcp_oauth.dynamic_registration_enabled": "MCP OAuth dynamic client registration",
@@ -181,6 +182,7 @@ export const SECTION_LABEL: Readonly<Record<string, string>> = {
   database: "Database",
   llm: "AI / LLM",
   auth: "Authentication",
+  products: "Products",
   platform: "Chat platforms",
   storage: "Storage",
   observability: "Observability",
