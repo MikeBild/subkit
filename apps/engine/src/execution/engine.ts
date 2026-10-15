@@ -353,6 +353,10 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       });
 
   const evaluationSeed = preparedClock?.seed ?? execution_id;
+  const ownConnectorCredentials =
+    resolved.source_kind === "saved" && !opts.hold_writes
+      ? await runsUnderExecutionAuthority(db, tenant_id, execution_id)
+      : false;
   const billableSteps = new Set(def.execution_guards?.caller_daily_limit?.billable_steps ?? []);
   const beforeExternalRequest =
     (step_key: string) => async (snapshot: import("./types.ts").RequestAuthoritySnapshot) => {
@@ -581,6 +585,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       step_row_id,
       llm_budget: llmBudget,
       persist_workflow_refs: resolved.persist_workflow_refs,
+      ...(ownConnectorCredentials ? { own_connector_credentials: true } : {}),
       ...(opts.hold_writes ? { hold_writes: true } : {}),
     };
     let childHeld = false;
@@ -1108,6 +1113,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
               step_row_id: bodyStepRowId,
               llm_budget: llmBudget,
               persist_workflow_refs: resolved.persist_workflow_refs,
+              ...(ownConnectorCredentials ? { own_connector_credentials: true } : {}),
               ...(opts.hold_writes ? { hold_writes: true } : {}),
             };
             const bodyOutcome = await instrument({
@@ -1320,6 +1326,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
                   step_row_id: branchStepRowId,
                   llm_budget: llmBudget,
                   persist_workflow_refs: resolved.persist_workflow_refs,
+                  ...(ownConnectorCredentials ? { own_connector_credentials: true } : {}),
                   ...(opts.hold_writes ? { hold_writes: true } : {}),
                 };
                 const branchOutcome = await instrument({
@@ -1840,6 +1847,22 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   if (resolutions.length > 0) runResult.connector_resolutions = resolutions;
   if (warningsAccum.length > 0) runResult.warnings = warningsAccum;
   return runResult;
+}
+
+async function runsUnderExecutionAuthority(
+  db: Db,
+  tenant_id: string,
+  execution_id: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({
+      authority_id: executions.execution_authority_id,
+      root_id: executions.authority_root_execution_id,
+    })
+    .from(executions)
+    .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, execution_id)))
+    .limit(1);
+  return Boolean(row?.authority_id || row?.root_id);
 }
 
 function collectCredentialTokens(value: unknown): string[] {

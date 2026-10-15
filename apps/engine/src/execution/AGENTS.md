@@ -112,3 +112,17 @@ manifest; changing them asks for a new approval.
   revoked, the user disabled and anonymised, `caller_context.subject` nulled on
   its executions, and a tombstone with only the SHA-256 of the subject is kept
   so tokens issued before the erasure are refused.
+
+## Own-connector credentials
+
+- `dispatch.ts` passes `own_connector` to the placeholder resolver only when
+  the step context carries `own_connector_credentials` and is not holding
+  writes. The engine sets it for a saved, non-held run whose execution (or its
+  authority root) has an `execution_authority_id`; `before_external_request`
+  then checks that the authority is live and that every referenced credential
+  is inside its boundary before anything is sent.
+- Draft and step runs, held preparations and saved runs without an authority
+  resolve `${cred.…}` only with `connector:read`.
+- The boundary is the authority, the connector origin and the refused redirect.
+  `redactOwnCredentials` is a best-effort aid for the raw, URL-, form- and
+  JSON-escaped forms; never rely on it to keep a value out of a response.
