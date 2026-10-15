@@ -138,6 +138,6 @@ test("queued system-account execution is denied and audited after account deleti
     actor_id: ctx.systemAccountId,
     result: "denied",
     reason: "execution_authentication_unavailable",
-    metadata: { workflow_id, request_source: "queue" },
+    metadata: { workflow_id, request_source: "api" },
   });
 });
