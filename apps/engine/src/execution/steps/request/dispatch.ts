@@ -790,14 +790,15 @@ async function dispatchRequestStep(
     scope: resolvedScope,
     ...(p.ctx.principal ? { principal: p.ctx.principal } : {}),
   };
-  const ownConnector = p.step.connector_id
-    ? await getConnectorForEnvironment(
-        p.ctx.tenant_id,
-        p.step.connector_id,
-        p.ctx.execution_mode,
-        p.ctx.db,
-      ).catch(() => null)
-    : null;
+  const ownConnector =
+    p.step.connector_id && p.ctx.own_connector_credentials === true && !p.ctx.hold_writes
+      ? await getConnectorForEnvironment(
+          p.ctx.tenant_id,
+          p.step.connector_id,
+          p.ctx.execution_mode,
+          p.ctx.db,
+        ).catch(() => null)
+      : null;
   const requestPartsCtx =
     ownConnector && ownConnector.environment === p.ctx.execution_mode
       ? {

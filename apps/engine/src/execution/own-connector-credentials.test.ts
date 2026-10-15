@@ -87,7 +87,11 @@ async function seedConnector(slug: string, baseUrl: string, value: unknown, auth
 
 async function run(
   step: Omit<RequestStep, "kind" | "id" | "method"> & { method?: RequestStep["method"] },
-  options: { principal?: ResolvedPrincipal | null; hold_writes?: boolean } = {},
+  options: {
+    principal?: ResolvedPrincipal | null;
+    hold_writes?: boolean;
+    under_authority?: boolean;
+  } = {},
 ) {
   const [exec] = await testDb.db
     .insert(executions)
@@ -137,6 +141,7 @@ async function run(
     persist_workflow_refs: false,
     llm_budget: new RunLlmBudget(null),
     ...(options.hold_writes ? { hold_writes: true } : {}),
+    ...(options.under_authority === false ? {} : { own_connector_credentials: true }),
   };
   return runRequestStep({ ctx, step: requestStep, scope: { $input: { code: "auth-code-1" } } });
 }
@@ -231,6 +236,24 @@ describe("credentials of the step's own connector", () => {
     expect(serialized).toContain("***redacted***");
     expect(await storedText()).not.toContain(OWN_SECRET);
     expect(JSON.stringify(logged)).not.toContain(OWN_SECRET);
+  });
+
+  test("without an execution authority the own credential needs connector:read", async () => {
+    const result = await run(
+      {
+        connector_id: ownConnectorId,
+        path: "/auth/token",
+        method: "GET",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+        headers: { "x-probe": "${cred.own-idp.client_secret}" },
+      },
+      { under_authority: false },
+    );
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("placeholder_unresolved");
+    expect(JSON.stringify(result.error)).toContain("rbac_denied");
+    expect(ownReceived).toHaveLength(0);
+    expect(JSON.stringify(result)).not.toContain(OWN_SECRET);
   });
 
   test("a held preparation shows no resolved credential", async () => {

@@ -68,6 +68,7 @@ export interface ExecutionContext {
   execution_mode: ExecutionMode;
   llm_budget: RunLlmBudget;
   hold_writes?: boolean;
+  own_connector_credentials?: boolean;
   persist_workflow_refs: boolean;
 }
 

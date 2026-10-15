@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { connectors, workflowExecutionAuthorities } from "../../db/schema/index.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { previewWorkflowAuthority } from "../../workflows/execution-authorities.ts";
 import { admitAuthorizedWorkflowExecution } from "../authority-admission.ts";
+import { callerFromPrincipal } from "../caller-context.ts";
 import { runExecution } from "../engine.ts";
 import {
   createEngineCtx,
@@ -50,22 +52,46 @@ async function seed(slug: string, secret: string) {
   return row.id;
 }
 
-async function authorizedRun(body: string) {
+let runs = 0;
+
+const readerless = (): ResolvedPrincipal => ({
+  provider: "local",
+  kind: "user",
+  id: "7a1c0e52-3b4d-4e6f-8a9b-0c1d2e3f4a5b",
+  tenant_id: ctx.tenantId,
+  roles: ["enduser"],
+});
+
+function exchangeStep(body: string) {
+  return {
+    id: "exchange",
+    kind: "request",
+    connector_id: ownId,
+    method: "POST",
+    path: "/token",
+    side_effects: "write",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body,
+    boundary: { variables: {}, max_body_bytes: 4096, max_calls: 1 },
+  };
+}
+
+function readStep(header: string) {
+  return {
+    id: "probe",
+    kind: "request",
+    connector_id: ownId,
+    method: "GET",
+    path: "/probe",
+    headers: { "x-probe": header },
+  };
+}
+
+async function authorizedRun(body: string, principal: ResolvedPrincipal | null = null) {
+  runs += 1;
   const workflow = await createWorkflowRow(ctx, {
-    name: `exchange ${bodies.length}-${body.length}`,
-    steps: [
-      {
-        id: "exchange",
-        kind: "request",
-        connector_id: ownId,
-        method: "POST",
-        path: "/token",
-        side_effects: "write",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body,
-        boundary: { variables: {}, max_body_bytes: 4096, max_calls: 1 },
-      },
-    ],
+    name: `exchange ${runs}`,
+    steps: [exchangeStep(body)],
   });
   const preview = await previewWorkflowAuthority(
     {
@@ -99,13 +125,17 @@ async function authorizedRun(body: string) {
       input: {},
     },
     ctx.testDb.db,
+    principal ? callerFromPrincipal(principal, ctx.tenantId) : null,
   );
   return runExecution({
     db: ctx.testDb.db,
     tenant_id: ctx.tenantId,
     source: { kind: "saved", workflow_id: workflow.workflow_id },
     input: admitted.input,
-    options: { existing_execution_id: admitted.execution_id },
+    options: {
+      existing_execution_id: admitted.execution_id,
+      ...(principal ? { principal } : {}),
+    },
   });
 }
 
@@ -135,12 +165,100 @@ describe("credential placeholders under an execution authority", () => {
     expect(bodies).toEqual([`secret=${OWN_SECRET}`]);
   });
 
+  test("a caller without connector:read gets the own credential under the authority", async () => {
+    bodies = [];
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+    const result = await authorizedRun("secret=${cred.own-token.client_secret}", readerless());
+    expect(result.status).toBe("succeeded");
+    expect(bodies).toEqual([`secret=${OWN_SECRET}`]);
+    expect(JSON.stringify(result)).not.toContain(OWN_SECRET);
+  });
+
   test("another connector's credential is outside it and nothing is sent", async () => {
     bodies = [];
     // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     const result = await authorizedRun("secret=${cred.other-token.client_secret}");
     expect(result.status).toBe("failed");
     expect(JSON.stringify(result)).toContain("execution_authority_changed");
+    expect(bodies).toEqual([]);
+  });
+});
+
+describe("credential placeholders without an execution authority", () => {
+  const unresolvedFor = (result: Awaited<ReturnType<typeof runExecution>>) => {
+    const serialized = JSON.stringify(result);
+    expect(result.status).toBe("failed");
+    expect(serialized).toContain("placeholder_unresolved");
+    expect(serialized).toContain("rbac_denied");
+    expect(serialized).not.toContain(OWN_SECRET);
+  };
+
+  test("a step run of a caller without connector:read does not resolve the own credential", async () => {
+    bodies = [];
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+      source: { kind: "step", step: readStep("${cred.own-token.client_secret}") },
+      input: {},
+      options: { principal: readerless(), hold_writes: true },
+    });
+    unresolvedFor(result);
+    expect(bodies).toEqual([]);
+  });
+
+  test("a draft run of a caller without connector:read does not resolve the own credential", async () => {
+    bodies = [];
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: {
+        kind: "draft",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+        definition: { name: "probe draft", steps: [readStep("${cred.own-token.client_secret}")] },
+      },
+      input: {},
+      options: { principal: readerless() },
+    });
+    unresolvedFor(result);
+    expect(bodies).toEqual([]);
+  });
+
+  test("a saved run without an authority does not resolve the own credential", async () => {
+    bodies = [];
+    runs += 1;
+    const workflow = await createWorkflowRow(ctx, {
+      name: `unauthorized ${runs}`,
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+      steps: [readStep("${cred.own-token.client_secret}")],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id: workflow.workflow_id },
+      input: {},
+      options: { principal: readerless() },
+    });
+    unresolvedFor(result);
+    expect(bodies).toEqual([]);
+  });
+
+  test("a held saved preparation does not resolve the own credential", async () => {
+    bodies = [];
+    runs += 1;
+    const workflow = await createWorkflowRow(ctx, {
+      name: `held ${runs}`,
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+      steps: [readStep("${cred.own-token.client_secret}")],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id: workflow.workflow_id },
+      input: {},
+      options: { principal: readerless(), hold_writes: true },
+    });
+    unresolvedFor(result);
     expect(bodies).toEqual([]);
   });
 });
