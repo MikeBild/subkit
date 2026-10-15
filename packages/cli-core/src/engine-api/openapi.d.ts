@@ -21279,7 +21279,7 @@ export interface components {
         };
         ExecutionGuards: {
             caller_daily_limit?: components["schemas"]["CallerDailyLimit"];
-            /** @description Maximum UTF-8 bytes of JSON.stringify of each $input path; checked at admission before any charge */
+            /** @description Maximum UTF-8 bytes per $input path (a string counts itself, other values their JSON text); checked at admission before any charge */
             input_bytes?: {
                 [key: string]: number;
             };
