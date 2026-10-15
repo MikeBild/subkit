@@ -7,7 +7,12 @@ import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { flushOidcBearerKeys } from "../../auth/providers/oidc-bearer.ts";
 import { loadConfig } from "../../config/loader.ts";
-import { connectors, executions, workflowExecutionAuthorities } from "../../db/schema/index.ts";
+import {
+  callerBudgetUnits,
+  connectors,
+  executions,
+  workflowExecutionAuthorities,
+} from "../../db/schema/index.ts";
 import { createWorkflowRow } from "../../execution/tests/setup.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -175,6 +180,54 @@ describe("te-brain compatible budget over HTTP", () => {
     expect(body).toMatchObject({ usedToday: 0, dailyLimit: 2 });
     expect(typeof body.day).toBe("string");
     expect(typeof body.resetsAt).toBe("string");
+  });
+
+  test("without a live authority a product run is refused, never held, and charges nothing", async () => {
+    const unapproved = await createWorkflowRow(ctx, {
+      name: "unapproved brain round",
+      product_id: "tekit",
+      required_caller_kind: "user",
+      execution_privacy: "sensitive",
+      steps: [{ id: "round", kind: "transform", expression: "return { output: [] };" }],
+      execution_guards: {
+        caller_daily_limit: {
+          bucket: "brain",
+          limit: 2,
+          tz: "Europe/Berlin",
+          unit: "turn_id",
+          billable_steps: ["round"],
+          max_metered: 13,
+          commit_when: "true",
+        },
+      },
+    });
+    const bearer = await token(nextUuid());
+    const refused = await run(
+      bearer,
+      { turn_id: "unapproved" },
+      { workflow_id: unapproved.workflow_id },
+    );
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({ code: "execution_authority_unavailable" });
+    const held = await run(bearer, { turn_id: "held" }, { hold_writes: true });
+    expect(held.status).toBe(403);
+    expect(await held.json()).toMatchObject({ code: "product_preparation_forbidden" });
+    const rows = await ctx.db
+      .select({ id: executions.id })
+      .from(executions)
+      .where(
+        and(
+          eq(executions.tenant_id, ctx.tenantId),
+          eq(executions.workflow_id, unapproved.workflow_id),
+        ),
+      );
+    expect(rows).toEqual([]);
+    const units = await ctx.db
+      .select({ key: callerBudgetUnits.unit_key })
+      .from(callerBudgetUnits)
+      .where(eq(callerBudgetUnits.tenant_id, ctx.tenantId));
+    expect(units.map((unit) => unit.key)).not.toContain("unapproved");
+    expect(units.map((unit) => unit.key)).not.toContain("held");
   });
 
   test("an environment header cannot move a product run out of the product environment", async () => {

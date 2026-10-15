@@ -7009,7 +7009,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"] | components["schemas"]["CallerBudgetRefusal"];
                     };
                 };
-                /** @description Caller identity or workflow permission does not allow this run */
+                /** @description Caller identity or workflow permission does not allow this run. A product principal also gets 403 when the workflow has no live execution authority, no active version or no usable prepared credential, and when it asks for a held preparation; its runs are never downgraded to a preparation. */
                 403: {
                     headers: {
                         [name: string]: unknown;
