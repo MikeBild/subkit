@@ -739,6 +739,101 @@ export type WebhookTrigger = z.infer<typeof WebhookTriggerSchema>;
 export type ScheduleTrigger = z.infer<typeof ScheduleTriggerSchema>;
 export type WorkflowTrigger = z.infer<typeof TriggerSchema>;
 
+function isIanaTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const INPUT_PATH = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
+
+export const CallerDailyLimitSchema = z
+  .object({
+    bucket: z
+      .string()
+      .regex(/^[a-z][a-z0-9_-]{0,63}$/)
+      .describe("Ledger bucket shared by workflows that draw from the same daily allowance"),
+    limit: z.number().int().min(1).max(10_000).describe("Units per caller and local day"),
+    tz: z
+      .string()
+      .min(1)
+      .refine(isIanaTimeZone, "tz must be an IANA time zone")
+      .describe("Time zone whose midnight resets the daily allowance"),
+    unit: z
+      .string()
+      .regex(INPUT_PATH)
+      .describe(
+        "Dot path into $input whose value (1..128 characters) is the unit one charge covers",
+      ),
+    round: z
+      .string()
+      .regex(INPUT_PATH)
+      .optional()
+      .describe(
+        "Dot path into $input holding the round number; a round above 1 needs a reserved unit",
+      ),
+    lease_ms: z
+      .number()
+      .int()
+      .min(60_000)
+      .max(86_400_000)
+      .default(600_000)
+      .describe("How long a reserved unit waits for its next round before it settles"),
+    billable_steps: z
+      .array(z.string().min(1))
+      .min(1)
+      .describe("Step ids whose success makes the unit billable (no refund on failure)"),
+    meter: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("JSONata over a billable step output yielding the calls it used (default 1)"),
+    max_metered: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("Metered calls a unit may use before admission refuses with turn_limit"),
+    commit_when: z
+      .string()
+      .min(1)
+      .describe("JSONata over the run output; true commits the unit, false keeps it reserved"),
+    attach_usage_as: z
+      .string()
+      .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/)
+      .default("usage")
+      .describe("Result key that receives {usedToday, dailyLimit} after settlement"),
+  })
+  .strict()
+  .openapi("CallerDailyLimit");
+
+export const InputByteLimitsSchema = z
+  .record(
+    z.string().regex(INPUT_PATH),
+    z
+      .number()
+      .int()
+      .min(1)
+      .max(16 * 1024 * 1024),
+  )
+  .describe(
+    "Maximum UTF-8 bytes of JSON.stringify of each $input path; checked at admission before any charge",
+  );
+
+export const ExecutionGuardsSchema = z
+  .object({
+    caller_daily_limit: CallerDailyLimitSchema.optional(),
+    input_bytes: InputByteLimitsSchema.optional(),
+  })
+  .strict()
+  .openapi("ExecutionGuards");
+
+export type CallerDailyLimit = z.infer<typeof CallerDailyLimitSchema>;
+export type ExecutionGuards = z.infer<typeof ExecutionGuardsSchema>;
+
 const _baseWorkflowDefSchema = z.object({
   name: z.string().min(1),
   product_id: z
@@ -764,6 +859,8 @@ const _baseWorkflowDefSchema = z.object({
   max_llm_tokens_per_run: z.number().int().positive().optional(),
   runtime: WorkflowRuntimeSchema.optional(),
   trigger: TriggerSchema.optional(),
+  execution_guards: ExecutionGuardsSchema.optional(),
+  caller_erasure: z.literal("on_success").optional(),
 });
 
 const WORKFLOW_TIMEOUT_DEFAULT_MS_LITERAL = 6 * 60 * 60_000;
@@ -782,6 +879,36 @@ export const WorkflowDefSchema = _baseWorkflowDefSchema
             code: z.ZodIssueCode.custom,
             path: ["steps", idx, "s3", "scope"],
             message: "product S3 steps require a caller-bound product folder",
+          });
+        }
+      });
+    }
+    const dailyLimit = s.execution_guards?.caller_daily_limit;
+    if (dailyLimit || s.caller_erasure) {
+      if (!s.product_id || s.required_caller_kind !== "user") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [dailyLimit ? "execution_guards" : "caller_erasure"],
+          message:
+            "caller guards and caller erasure require product_id and required_caller_kind user",
+        });
+      }
+      if (s.execution_privacy !== "sensitive") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [dailyLimit ? "execution_guards" : "caller_erasure"],
+          message: "caller guards and caller erasure require execution_privacy sensitive",
+        });
+      }
+    }
+    if (dailyLimit) {
+      const stepIds = new Set(s.steps.map((step) => step.id));
+      dailyLimit.billable_steps.forEach((id, idx) => {
+        if (!stepIds.has(id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["execution_guards", "caller_daily_limit", "billable_steps", idx],
+            message: `billable step "${id}" is not a step of this workflow`,
           });
         }
       });

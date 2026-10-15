@@ -8,6 +8,7 @@ import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { JsonValueSchema } from "../workflows/types.ts";
 import { admitAuthorizedWorkflowExecution } from "./authority-admission.ts";
 import { authorizationContextFromPrincipal } from "./authorization-context.ts";
+import { bindCallerBudget, reserveCallerBudget } from "./caller-budget.ts";
 import { callerFromPrincipal } from "./caller-context.ts";
 import { validateAgainstJsonSchema } from "./engine/envelope.ts";
 import { resolveDefinition } from "./resolve-definition.ts";
@@ -160,6 +161,7 @@ export async function admitWorkflowRun(
         };
       }
     }
+    const reservation = await reserveCallerBudget(tx, resolved.def, caller, normalized);
     const execution_id = await createExecution(tx, {
       tenant_id: input.tenant_id,
       workflow_id: input.workflow_id,
@@ -181,6 +183,7 @@ export async function admitWorkflowRun(
       ),
       execution_privacy: resolved.def.execution_privacy,
     });
+    await bindCallerBudget(tx, input.tenant_id, execution_id, reservation);
     return {
       execution_id,
       execution_authority_id: null,

@@ -62,6 +62,7 @@ const safeFailureCodes = new Set([
   "sensitive_resume_forbidden",
   "sensitive_execution_unsupported",
   "input_schema_violation",
+  "invalid",
   "caller_required",
   "caller_tenant_mismatch",
   "caller_product_mismatch",

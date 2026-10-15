@@ -8,6 +8,7 @@ import { executionSteps, executions, workflowVersions } from "../db/schema/index
 import { logger } from "../logging/logger.ts";
 import { recordExecutionTerminal } from "../observability/instrumentation.ts";
 import type { ExecutionAuthorizationContext } from "./authorization-context.ts";
+import { markBillableStep, settleExecutionGuards } from "./caller-budget.ts";
 import { type CallerContext, CallerContextSchema } from "./caller-context.ts";
 import {
   type CallerOrigin,
@@ -378,6 +379,29 @@ export async function finalizeExecution(
       return;
     }
     applied = true;
+    const settlement = await settleExecutionGuards(tx, {
+      tenant_id,
+      execution_id,
+      status: refused ? "failed" : status,
+      output: sensitive_result,
+    });
+    const resultObject =
+      sensitive_result && typeof sensitive_result === "object" && !Array.isArray(sensitive_result)
+        ? (sensitive_result as Record<string, unknown>)
+        : null;
+    if (settlement.attach && resultObject && isSensitivePayload(persisted?.input)) {
+      await tx
+        .update(executions)
+        .set({
+          sensitive_result: protectExecutionPayload(
+            { ...resultObject, [settlement.attach.key]: settlement.attach.usage },
+            tenant_id,
+            execution_id,
+            "result",
+          ),
+        })
+        .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, execution_id)));
+    }
     workflow_id = row.workflow_id ?? null;
     request_source = row.request_source ?? "api";
     if (row.started_at && row.finished_at) {
@@ -492,6 +516,9 @@ export async function finalizeStepRow(
         caller_context: executions.caller_context,
         caller_origin: executions.caller_origin,
         request_source: executions.request_source,
+        workflow_version_id: executions.workflow_version_id,
+        guard_bucket: executions.guard_bucket,
+        guard_unit_key: executions.guard_unit_key,
       })
       .from(executionSteps)
       .innerJoin(
@@ -554,6 +581,15 @@ export async function finalizeStepRow(
       });
     const row = updated[0];
     if (!row) return;
+    if (status === "succeeded" && persisted?.guard_unit_key) {
+      await markBillableStep(tx, {
+        tenant_id: row.tenant_id,
+        execution_id: row.execution_id,
+        step_key: row.step_key,
+        output: result.output,
+        row: persisted,
+      });
+    }
     if (result.error?.code && GOVERNANCE_REFUSALS.has(result.error.code)) {
       await auditAwait(
         {
