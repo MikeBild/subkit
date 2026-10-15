@@ -10737,7 +10737,7 @@
             "enum": [
               "saved"
             ],
-            "description": "Omitted means saved when workflow_id is present."
+            "description": "May be omitted when workflow_id is present."
           },
           "hold_writes": {
             "type": "boolean",
@@ -10777,6 +10777,7 @@
           }
         },
         "required": [
+          "source",
           "workflow_id"
         ]
       },
@@ -36959,7 +36960,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
+                "oneOf": [
                   {
                     "$ref": "#/components/schemas/ExecutionRunSavedBody"
                   },
@@ -36969,7 +36970,15 @@
                   {
                     "$ref": "#/components/schemas/ExecutionRunStepBody"
                   }
-                ]
+                ],
+                "discriminator": {
+                  "propertyName": "source",
+                  "mapping": {
+                    "saved": "#/components/schemas/ExecutionRunSavedBody",
+                    "draft": "#/components/schemas/ExecutionRunDraftBody",
+                    "step": "#/components/schemas/ExecutionRunStepBody"
+                  }
+                }
               }
             }
           }
