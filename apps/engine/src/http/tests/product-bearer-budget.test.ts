@@ -49,10 +49,16 @@ async function call(path: string, bearer: string | null, init: RequestInit = {})
 
 let sequence = 0;
 
-function run(bearer: string, input: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+function run(
+  bearer: string,
+  input: Record<string, unknown>,
+  extra: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+) {
   sequence += 1;
   return call("/v1/executions", bearer, {
     method: "POST",
+    headers,
     body: JSON.stringify({
       workflow_id: assistantId,
       async: true,
@@ -169,6 +175,18 @@ describe("te-brain compatible budget over HTTP", () => {
     expect(body).toMatchObject({ usedToday: 0, dailyLimit: 2 });
     expect(typeof body.day).toBe("string");
     expect(typeof body.resetsAt).toBe("string");
+  });
+
+  test("an environment header cannot move a product run out of the product environment", async () => {
+    const bearer = await token(nextUuid());
+    const res = await run(bearer, { turn_id: "env-turn" }, {}, { "x-subkit-environment": "dev" });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { execution_id: string };
+    const [row] = await ctx.db
+      .select({ mode: executions.execution_mode })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, body.execution_id)));
+    expect(row).toEqual({ mode: "prod" });
   });
 
   test("an async run defaults to the product environment and is accepted with 202", async () => {
