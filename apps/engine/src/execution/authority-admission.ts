@@ -345,6 +345,7 @@ export async function assertExecutionAuthorityCurrent(
       connector_id: _connector,
       request_max_attempts: _attempts,
       principal_id: _principal,
+      referenced_authorities: referencedAuthorities,
       ...authoritySnapshot
     } = snapshot;
     const parsed = requestSnapshotSchema.safeParse(authoritySnapshot);
@@ -363,6 +364,19 @@ export async function assertExecutionAuthorityCurrent(
         "execution_authority_changed",
         "the loaded request configuration is outside its approved boundary",
       );
+    for (const reference of referencedAuthorities ?? []) {
+      if (
+        reference.connector_id !== effect.connector_id ||
+        reference.configuration_digest !== parsed.data.configuration_digest ||
+        (reference.credential_id !== null &&
+          (reference.credential_id !== parsed.data.credential_id ||
+            reference.credential_revision !== parsed.data.credential_revision))
+      )
+        fail(
+          "execution_authority_changed",
+          "a placeholder of the request reads a connector outside its approved boundary",
+        );
+    }
     if (effect.report_delivery) assertReportDelivery(effect.report_delivery, snapshot.request);
     if (effect.content_publication?.kind === "content_revision")
       assertContentRevision(effect.content_publication, snapshot.request);
