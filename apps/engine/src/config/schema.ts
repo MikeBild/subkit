@@ -291,10 +291,62 @@ const AuthProviders = z
             .optional(),
         })
         .strict(),
+      z
+        .object({
+          protocol: z.literal("oidc_bearer"),
+          id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
+          label: z.string().min(1).max(120),
+          issuer_url: z.url().refine(
+            (value) => {
+              const url = new URL(value);
+              return url.protocol === "https:" || ["127.0.0.1", "localhost"].includes(url.hostname);
+            },
+            {
+              message: "OIDC issuer_url must use HTTPS outside localhost",
+            },
+          ),
+          jwks_uri: z
+            .url()
+            .refine(
+              (value) => {
+                const url = new URL(value);
+                return (
+                  url.protocol === "https:" || ["127.0.0.1", "localhost"].includes(url.hostname)
+                );
+              },
+              { message: "jwks_uri must use HTTPS outside localhost" },
+            )
+            .optional(),
+          audience: z.string().min(1).default("authenticated"),
+          algorithms: z
+            .array(z.enum(["ES256", "ES384", "ES512", "RS256", "RS384", "RS512", "PS256", "EdDSA"]))
+            .min(1)
+            .default(["ES256"]),
+          product_id: z.string().regex(/^[a-z][a-z0-9-]{0,62}$/),
+          tenant_slug: z.string().min(1).default("default"),
+          required_claims: z
+            .array(
+              z
+                .object({
+                  path: z
+                    .string()
+                    .regex(/^[A-Za-z0-9_:-]+(\.[A-Za-z0-9_:-]+)*$/)
+                    .describe("Dot path into the verified token payload"),
+                  equals: z.union([z.string(), z.boolean(), z.number()]),
+                })
+                .strict(),
+            )
+            .max(16)
+            .default([{ path: "role", equals: "authenticated" }]),
+          reject_anonymous: z.boolean().default(true),
+          clock_tolerance_s: z.number().int().min(0).max(120).default(30),
+        })
+        .strict(),
     ]),
   )
   .superRefine((providers, ctx) => {
     const seen = new Set<string>();
+    const bearerIssuers = new Set<string>();
     let apiKeyConfigured = false;
     providers.forEach((provider, index) => {
       if (seen.has(provider.id)) {
@@ -315,12 +367,22 @@ const AuthProviders = z
         }
         apiKeyConfigured = true;
       }
+      if (provider.protocol === "oidc_bearer") {
+        if (bearerIssuers.has(provider.issuer_url)) {
+          ctx.addIssue({
+            code: "custom",
+            path: [index, "issuer_url"],
+            message: "Two oidc_bearer providers cannot share one issuer_url",
+          });
+        }
+        bearerIssuers.add(provider.issuer_url);
+      }
     });
   })
   .min(1)
   .default([{ protocol: "api_key", id: "api-key", label: "SubKit API key" }])
   .describe(
-    "Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration.",
+    "Provider-neutral authentication adapters. OIDC records are public browser clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration. oidc_bearer records accept an external issuer's access token as an Authorization bearer for one product, verified against the issuer's JWKS; they never issue API keys or browser sessions.",
   )
   .meta(global({ structural: true, runtimeEditable: true }));
 
@@ -1345,6 +1407,33 @@ const TenantOverlaySchema = z
   })
   .describe("Per-tenant overrides — only scope:tenant leaves may appear");
 
+const ProductsSection = z
+  .record(
+    z.string().regex(/^[a-z][a-z0-9-]{0,62}$/),
+    z
+      .object({
+        execution_environment: z
+          .enum(["dev", "prod"])
+          .describe(
+            "Execution environment for runs of this product's principals without an x-subkit-environment header",
+          ),
+        assistant_workflow_id: z
+          .uuid()
+          .describe(
+            "Saved workflow whose caller_daily_limit guard backs GET /v1/budget and GET /v1/health",
+          ),
+        budget_bucket: z
+          .string()
+          .min(1)
+          .max(64)
+          .describe("caller_daily_limit bucket reported by GET /v1/budget"),
+      })
+      .strict(),
+  )
+  .prefault({})
+  .describe("Product settings keyed by product_id for product principals (oidc_bearer providers)")
+  .meta(global({ structural: true, runtimeEditable: true }));
+
 export const ConfigSchema = z
   .object({
     log: LogSection,
@@ -1367,6 +1456,7 @@ export const ConfigSchema = z
     ui: UiSection,
     notifications: NotificationsSection,
     connectors: ConnectorsSection,
+    products: ProductsSection,
     tenants: z
       .record(z.string(), TenantOverlaySchema)
       .prefault({})
@@ -1411,5 +1501,16 @@ export const SECTION_ORDER = [
   "ui",
   "notifications",
   "connectors",
+  "products",
 ] as const;
 export type SectionKey = (typeof SECTION_ORDER)[number];
+
+export type AuthProviderConfig = Config["auth"]["providers"][number];
+export type OidcBearerProviderConfig = Extract<AuthProviderConfig, { protocol: "oidc_bearer" }>;
+export type ProductConfig = Config["products"][string];
+
+export function isBrowserLoginProvider(
+  provider: AuthProviderConfig,
+): provider is Exclude<AuthProviderConfig, OidcBearerProviderConfig> {
+  return provider.protocol !== "oidc_bearer";
+}
