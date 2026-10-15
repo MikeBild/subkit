@@ -14,13 +14,16 @@ const forbiddenCodes = new Set([
   "sensitive_resume_forbidden",
 ]);
 
+const productNotReadyCodes = new Set([
+  "execution_authority_required",
+  "execution_authority_unavailable",
+  "execution_authority_changed",
+  "workflow_version_not_active",
+  "prepared_credential_unavailable",
+]);
+
 function productNotReady(principal: ResolvedPrincipal, code: string): boolean {
-  return (
-    Boolean(principal.product_id) &&
-    (code.startsWith("execution_authority_") ||
-      code.startsWith("workflow_version_") ||
-      code === "prepared_credential_unavailable")
-  );
+  return Boolean(principal.product_id) && productNotReadyCodes.has(code);
 }
 
 function isRefusal(code: string | undefined): code is string {
