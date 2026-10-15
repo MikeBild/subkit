@@ -167,20 +167,26 @@ export const ClientDeclaredRunSourceSchema = z
       "Which program holds the API key: api or cli. Honoured only when the credential is an API key; ignored for a verified cockpit session, an MCP token or any other credential. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.",
   });
 
-export const RuntimeRunBodySchema = z.union([
-  z
-    .object({
-      source: z.literal("saved").optional(),
-      hold_writes: SavedRunModeSchema,
-      workflow_id: z.string().uuid(),
-      version_id: z.string().uuid().optional(),
-      execution_authority_id: z.string().uuid().optional(),
-      input: z.unknown().optional(),
-      async: z.boolean().optional(),
-      idempotency_key: IdempotencyKeySchema.optional(),
-      request_source: ClientDeclaredRunSourceSchema,
-    })
-    .transform((body) => ({ ...body, source: "saved" as const })),
+function savedWhenUnnamed(body: unknown): unknown {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) return body;
+  const record = body as Record<string, unknown>;
+  return record.source === undefined && record.workflow_id !== undefined
+    ? { ...record, source: "saved" }
+    : body;
+}
+
+const RuntimeRunBodyVariants = z.discriminatedUnion("source", [
+  z.object({
+    source: z.literal("saved"),
+    hold_writes: SavedRunModeSchema,
+    workflow_id: z.string().uuid(),
+    version_id: z.string().uuid().optional(),
+    execution_authority_id: z.string().uuid().optional(),
+    input: z.unknown().optional(),
+    async: z.boolean().optional(),
+    idempotency_key: IdempotencyKeySchema.optional(),
+    request_source: ClientDeclaredRunSourceSchema,
+  }),
   z.object({
     source: z.literal("draft"),
     hold_writes: HoldWritesPreviewSchema,
@@ -201,6 +207,8 @@ export const RuntimeRunBodySchema = z.union([
   }),
 ]);
 
+export const RuntimeRunBodySchema = z.preprocess(savedWhenUnnamed, RuntimeRunBodyVariants);
+
 const OpenApiDraftDefinitionSchema = z
   .object({
     name: z.string().min(1),
@@ -218,11 +226,11 @@ const OpenApiStepSchema = z
   .catchall(z.unknown())
   .openapi("ExecutionRunStep");
 
-export const RunBodySchema = z.union([
+const RunBodyVariants = z.discriminatedUnion("source", [
   z
     .object({
-      source: z.literal("saved").optional().openapi({
-        description: "Omitted means saved when workflow_id is present.",
+      source: z.literal("saved").openapi({
+        description: "May be omitted when workflow_id is present.",
       }),
       hold_writes: SavedRunModeSchema,
       workflow_id: z.string().uuid(),
@@ -260,6 +268,8 @@ export const RunBodySchema = z.union([
     })
     .openapi("ExecutionRunStepBody"),
 ]);
+
+export const RunBodySchema = z.preprocess(savedWhenUnnamed, RunBodyVariants);
 
 const AppliedAuthMethodEnum = z.enum([
   "none",

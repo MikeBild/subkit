@@ -21807,10 +21807,10 @@ export interface components {
         };
         ExecutionRunSavedBody: {
             /**
-             * @description Omitted means saved when workflow_id is present.
+             * @description May be omitted when workflow_id is present. (enum property replaced by openapi-typescript)
              * @enum {string}
              */
-            source?: "saved";
+            source: "saved";
             /** @description Omit to discover an existing matching local authority or run a held preparation. True always holds writes without spending a live run. False requires live authorization and rejects a missing or changed authority. */
             hold_writes?: boolean;
             /** Format: uuid */
@@ -21836,7 +21836,10 @@ export interface components {
             request_source?: "api" | "cli";
         };
         ExecutionRunDraftBody: {
-            /** @enum {string} */
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
             source: "draft";
             /**
              * @description Temporary definitions always hold writes and unknown effects, including when this flag is omitted. Reads still execute against real systems. This flag is not a live-execution authorization.
@@ -21868,7 +21871,10 @@ export interface components {
             timeout_ms?: number;
         };
         ExecutionRunStepBody: {
-            /** @enum {string} */
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
             source: "step";
             /**
              * @description Temporary definitions always hold writes and unknown effects, including when this flag is omitted. Reads still execute against real systems. This flag is not a live-execution authorization.
