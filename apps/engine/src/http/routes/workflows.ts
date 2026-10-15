@@ -28,7 +28,7 @@ import {
   TriggerSchema,
   validateTenantWorkflowDef,
 } from "../../workflows/index.ts";
-import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -69,6 +69,10 @@ const CreateBody = z
 
 const CreateRequestBody = CreateBody.extend({
   recipe: svc.RecipeOriginSchema.optional(),
+  id: z.string().uuid().optional().openapi({
+    description:
+      "Operator-chosen workflow id, for a client that addresses the workflow by a fixed id. Admins only; unique per installation.",
+  }),
 }).openapi("CreateWorkflowRequest");
 
 type WorkflowBody = z.infer<typeof CreateBody>;
@@ -696,12 +700,15 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(createRouteSpec, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
-    const { category, recipe, ...def } = c.req.valid("json");
+    const { category, recipe, id: chosenId, ...def } = c.req.valid("json");
     if (recipe) assertRecipeOrigin(recipe, def);
+    if (chosenId && !principal.roles.includes("admin"))
+      throw new ForbiddenError("only an admin may choose a workflow id");
     const result = await svc.createWorkflow(
       {
         tenant_id: principal.tenant_id,
         def,
+        ...(chosenId ? { workflow_id: chosenId } : {}),
         actor_id: principal.id,
         actor_type: principal.kind,
         ...(category !== undefined ? { metadata: { category } } : {}),
