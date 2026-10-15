@@ -341,6 +341,72 @@ describe("resolver — RBAC enforcement", () => {
     expect(r.value).not.toContain("private-abc");
     expect(connector_id).toBeTruthy();
   });
+
+  const unprivileged = (tenant_id: string): ResolvedPrincipal => ({
+    provider: "test",
+    kind: "user",
+    id: "11111111-1111-1111-1111-111111111111",
+    tenant_id,
+    roles: [],
+    scopes: [],
+  });
+
+  test("the step's own connector resolves without connector:read and reports the secret", async () => {
+    const { tenant_id, connector_id } = await seed({ slug: "own1", tokenValue: "own-secret" });
+    const reported: string[] = [];
+    const r = await resolvePlaceholdersTypePreserving(
+      { body: `token=\${cred.own1.token}` },
+      {
+        tenant_id,
+        environment: "dev",
+        db: ctx.db,
+        principal: unprivileged(tenant_id),
+        own_connector: { id: connector_id, onSecret: (value) => reported.push(value) },
+      },
+    );
+    expect(r.unresolved).toEqual([]);
+    expect(r.value).toEqual({ body: "token=own-secret" });
+    expect(reported).toEqual(["own-secret"]);
+  });
+
+  test("another connector's credential stays refused next to the own connector", async () => {
+    const own = await seed({ slug: "own2", tokenValue: "own-secret" });
+    const [other] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id: own.tenant_id,
+        slug: "other2",
+        display_name: "other2",
+        driver: "http",
+        environment: "dev",
+        auth_type: "bearer",
+        base_url: "https://other.example.test",
+      })
+      .returning();
+    if (!other) throw new Error("connector fixture missing");
+    await upsertCredential(
+      {
+        tenant_id: own.tenant_id,
+        connector_id: other.id,
+        environment: "dev",
+        mode: "bearer",
+        actor_id: null,
+        value: { mode: "bearer", token: "foreign-secret" },
+      },
+      ctx.db,
+    );
+    const reported: string[] = [];
+    const r = await resolveStringPlaceholders(`\${cred.other2.token}`, {
+      tenant_id: own.tenant_id,
+      environment: "dev",
+      db: ctx.db,
+      principal: unprivileged(own.tenant_id),
+      own_connector: { id: own.connector_id, onSecret: (value) => reported.push(value) },
+    });
+    expect(r.unresolved[0]?.code).toBe("rbac_denied");
+    expect(r.value).not.toContain("foreign-secret");
+    expect(reported).toEqual([]);
+  });
 });
 
 describe("resolver — canary redaction (values never appear in logs)", () => {
