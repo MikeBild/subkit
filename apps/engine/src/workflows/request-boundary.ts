@@ -4,11 +4,14 @@ import type { MaterializedRequest } from "../execution/prepared-request.ts";
 import { hasRuntimeValue } from "./report-delivery-boundary.ts";
 import type { RequestStep } from "./types.ts";
 
-const expression = z.string().regex(/^(?:item|input|scope)(?:\.[A-Za-z_][A-Za-z0-9_]*)+$/);
+const expression = z
+  .string()
+  .regex(/^(?:(?:item|input|scope)(?:\.[A-Za-z_][A-Za-z0-9_]*)+|caller\.(?:subject|principalId))$/);
 const VARIABLES_KEY_ERROR =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
   "a `variables` key is the placeholder expression without its `${}`, rooted at `input`, " +
-  "`scope` or `item` — for example `scope.window.data.start` or `item.id`. A query " +
+  "`scope` or `item` — for example `scope.window.data.start` or `item.id` — or one of " +
+  "`caller.subject` and `caller.principalId` with the rule `{ caller_bound: true }`. A query " +
   "parameter's name or a path segment's label is not a key.";
 const variablesError = (issue: { code?: string }) =>
   issue.code === "invalid_key" ? VARIABLES_KEY_ERROR : undefined;
@@ -52,8 +55,23 @@ const CLASS_SAMPLE: Record<ValueClass, string> = {
 const rule = z.union([
   z.object({ enum: z.array(enumValue).min(1).max(50) }).strict(),
   z.object({ class: z.enum(VALUE_CLASS_NAMES) }).strict(),
+  z.object({ caller_bound: z.literal(true) }).strict(),
 ]);
 export type RequestVariableRule = z.infer<typeof rule>;
+
+function isCallerExpression(name: string): boolean {
+  return name.startsWith("caller.");
+}
+
+function callerRulesConsistent(variables: Record<string, RequestVariableRule>): boolean {
+  return Object.entries(variables).every(
+    ([name, entry]) => isCallerExpression(name) === "caller_bound" in entry,
+  );
+}
+
+function fixedForDelete(entry: RequestVariableRule): boolean {
+  return "enum" in entry || "caller_bound" in entry;
+}
 
 export const RequestBoundaryScopeSchema = z
   .object({
@@ -107,10 +125,15 @@ export const RequestBoundarySchema = z
   })
   .refine(
     (boundary) =>
-      boundary.method !== "DELETE" ||
-      Object.values(boundary.variables).every((entry) => "enum" in entry),
-    { message: "a DELETE request boundary may only vary over listed values" },
-  );
+      boundary.method !== "DELETE" || Object.values(boundary.variables).every(fixedForDelete),
+    {
+      message:
+        "a DELETE request boundary may only vary over listed values or the authenticated caller",
+    },
+  )
+  .refine((boundary) => callerRulesConsistent(boundary.variables), {
+    message: "caller.* variables need the rule { caller_bound: true }, and only they may use it",
+  });
 export type RequestBoundary = z.infer<typeof RequestBoundarySchema>;
 
 export type RequestBoundaryRefusal =
@@ -128,6 +151,7 @@ export type RequestBoundaryRefusal =
   | "variables_mismatch"
   | "delete_requires_destructive"
   | "delete_requires_enum"
+  | "caller_bound_mismatch"
   | "target_unresolved"
   | "variable_in_base_prefix"
   | "enum_value_unroutable"
@@ -240,10 +264,8 @@ export function compileRequestBoundary(
   if (!(HTTP_METHODS as readonly string[]).includes(method)) return refuse("not_http_step");
   if (method === "DELETE" && scope.data.destructive !== true)
     return refuse("delete_requires_destructive");
-  if (
-    method === "DELETE" &&
-    Object.values(scope.data.variables).some((entry) => !("enum" in entry))
-  )
+  if (!callerRulesConsistent(scope.data.variables)) return refuse("caller_bound_mismatch");
+  if (method === "DELETE" && !Object.values(scope.data.variables).every(fixedForDelete))
     return refuse("delete_requires_enum");
 
   {
@@ -321,7 +343,8 @@ export function compileRequestBoundary(
   const samples = (name: string): string[] => {
     const entry = scope.data.variables[name];
     if (!entry) return [""];
-    return "enum" in entry ? entry.enum : [CLASS_SAMPLE[entry.class]];
+    if ("enum" in entry) return entry.enum;
+    return "caller_bound" in entry ? [CLASS_SAMPLE.uuid] : [CLASS_SAMPLE[entry.class]];
   };
   for (const name of declared) {
     for (const value of samples(name)) {
@@ -359,6 +382,7 @@ export function requestBoundaryTarget(boundary: RequestBoundary): string {
 function valueAllowed(variableRule: RequestVariableRule | undefined, value: string): boolean {
   if (!variableRule) return false;
   if ("enum" in variableRule) return variableRule.enum.includes(value);
+  if ("caller_bound" in variableRule) return VALUE_CLASSES.uuid.test(value);
   if (variableRule.class === "path") return false;
   return VALUE_CLASSES[variableRule.class]?.test(value) === true;
 }
@@ -441,7 +465,9 @@ function queryViolation(boundary: RequestBoundary, url: URL): RequestQueryViolat
           ? "no rule"
           : "enum" in variableRule
             ? `enum of ${variableRule.enum.length} value(s)`
-            : `class ${variableRule.class}`,
+            : "caller_bound" in variableRule
+              ? "the authenticated caller"
+              : `class ${variableRule.class}`,
       };
   }
   return null;

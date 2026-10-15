@@ -422,6 +422,60 @@ test("a removal may only vary over listed values", () => {
   expect(compileRequestBoundary(removal, BASE).refusal).toBe("delete_requires_enum");
 });
 
+test("a removal of the authenticated caller's own record is bound to the caller", () => {
+  const removal = step({
+    method: "DELETE",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+    path: "/auth/v1/admin/users/${caller.subject}",
+    boundary: {
+      variables: { "caller.subject": { caller_bound: true } },
+      max_body_bytes: 0,
+      max_calls: 1,
+      destructive: true,
+    },
+  });
+  const { boundary, refusal } = compileRequestBoundary(removal, "https://auth.example.test");
+  expect(refusal).toBeUndefined();
+  const subject = "6f1c2a8e-4b1d-4c55-9a77-1f0e2d3c4b5a";
+  const send = (id: string) => ({
+    method: "DELETE",
+    url: `https://auth.example.test/auth/v1/admin/users/${id}`,
+    headers: {},
+    body: null,
+  });
+  expect(requestBoundaryViolation(boundary!, send(subject))).toBeNull();
+  expect(requestBoundaryViolation(boundary!, send("..%2F..%2Fsettings"))).toMatchObject({
+    kind: "target",
+  });
+});
+
+test("caller_bound belongs only to caller expressions and a value class on DELETE stays refused", () => {
+  const classOnDelete = step({
+    method: "DELETE",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+    path: "/users/${caller.subject}",
+    boundary: {
+      variables: { "caller.subject": { class: "uuid" } },
+      max_body_bytes: 0,
+      max_calls: 1,
+      destructive: true,
+    },
+  });
+  expect(compileRequestBoundary(classOnDelete, BASE).refusal).toBe("caller_bound_mismatch");
+  const inputBound = step({
+    method: "DELETE",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+    path: "/users/${input.user}",
+    boundary: {
+      variables: { "input.user": { caller_bound: true } },
+      max_body_bytes: 0,
+      max_calls: 1,
+      destructive: true,
+    },
+  });
+  expect(compileRequestBoundary(inputBound, BASE).refusal).toBe("caller_bound_mismatch");
+});
+
 const ENCODED_SITE = "https%3A%2F%2Fexample.com%2F";
 const searchQuery = step({
   method: "POST",
