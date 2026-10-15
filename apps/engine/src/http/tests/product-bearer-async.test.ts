@@ -11,6 +11,7 @@ import { workflowExecutionAuthorities } from "../../db/schema/index.ts";
 import { createWorkflowRow } from "../../execution/tests/setup.ts";
 import { createBoss, disposeBoss } from "../../queue/boss.ts";
 import { registerExecutionRunHandler } from "../../queue/handlers/execution-run.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import {
@@ -121,7 +122,7 @@ beforeAll(async () => {
     effect_manifest: { ...preview.manifest },
     target_constraints: { targets: [] },
     execution_environment: "prod",
-    valid_from: new Date(Date.now() - 60_000),
+    valid_from: new Date(getTestNow() - 60_000),
     created_by: ctx.userId,
   });
   boss = await createBoss({ connectionString: ctx.testDb.url });
