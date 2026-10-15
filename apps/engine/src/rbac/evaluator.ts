@@ -229,12 +229,15 @@ function ceilingDeny(check: PermissionCheck, cause: string): Decision {
   };
 }
 
+export const PRODUCT_PERMISSIONS: ReadonlySet<string> = new Set([
+  "workflow:run",
+  "execution:read",
+  "execution:abort",
+]);
+
 function credentialCeiling(check: PermissionCheck): Decision | null {
   const { principal } = check;
-  if (
-    principal.product_id &&
-    !["workflow:run", "execution:read", "execution:abort"].includes(check.permission)
-  ) {
+  if (principal.product_id && !PRODUCT_PERMISSIONS.has(check.permission)) {
     return ceilingDeny(check, "product_permission_not_granted");
   }
   if (principal.provider === "portal_token") return null;
