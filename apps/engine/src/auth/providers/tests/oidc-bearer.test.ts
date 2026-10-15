@@ -215,6 +215,43 @@ describe("oidc_bearer verification", () => {
     });
   });
 
+  describe("a product claim next to the sign-in method", () => {
+    beforeEach(() => {
+      config = [
+        issuer.provider({
+          tenant_slug: "bearer-tenant",
+          required_claims: [
+            { path: "app_metadata.provider", equals: "apple" },
+            { path: "app_metadata.tekit", equals: true },
+          ],
+        }),
+      ];
+    });
+
+    test("a token of another app on the same issuer is denied", async () => {
+      expectDenied(
+        await resolve(await issuer.mint({ sub: nextUuid(), app_metadata: { provider: "apple" } })),
+        "required_claim_missing",
+      );
+      expectDenied(
+        await resolve(
+          await issuer.mint({
+            sub: nextUuid(),
+            app_metadata: { provider: "apple", tekit: "true", products: ["tekit"] },
+          }),
+        ),
+        "required_claim_mismatch",
+      );
+    });
+
+    test("a token carrying the product claim resolves", async () => {
+      const accepted = await resolve(
+        await issuer.mint({ sub: nextUuid(), app_metadata: { provider: "apple", tekit: true } }),
+      );
+      expect(isAuthDenial(accepted)).toBe(false);
+    });
+  });
+
   test("the token query parameter is never read", async () => {
     const token = await issuer.mint({ sub: nextUuid() });
     const req = new Request(`https://engine.example.test/v1/budget?token=${token}`);
