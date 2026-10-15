@@ -15,6 +15,12 @@ export { compileJsonSchemaContract } from "./json-schema-contract.ts";
 export * from "./jsonata-engine.ts";
 export * from "./list.ts";
 export * from "./outcome.ts";
+export {
+  type ProductContext,
+  type ProductHealth,
+  productBudget,
+  productHealth,
+} from "./product-status.ts";
 export * from "./request-meta-schema.ts";
 export * from "./resolve-definition.ts";
 export * from "./response-filter.ts";
