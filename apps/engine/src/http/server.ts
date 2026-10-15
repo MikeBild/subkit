@@ -4,6 +4,7 @@ import { createTokenExchangeProvider } from "../auth/oauth/token-exchange.ts";
 import { createApiKeyProvider } from "../auth/providers/api-key.ts";
 import { createBrowserSessionProvider } from "../auth/providers/browser-session.ts";
 import { createMcpOAuthAuthProvider } from "../auth/providers/mcp-oauth.ts";
+import { createOidcBearerProvider } from "../auth/providers/oidc-bearer.ts";
 import { createPortalTokenProvider } from "../auth/providers/portal-token.ts";
 import { AuthProviderRegistry } from "../auth/registry.ts";
 import { ChatAdapterRegistry } from "../chat/registry.ts";
@@ -137,6 +138,8 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
   const enableMcpOAuth = auth?.mcp_oauth.enabled ?? true;
   const registered: string[] = [];
 
+  reg.register(createOidcBearerProvider(db ? { db } : {}));
+  registered.push("oidc_bearer");
   if (enableMcpOAuth) {
     reg.register(createMcpOAuthAuthProvider(db ? { db } : {}));
     registered.push("mcp_oauth");

@@ -8,6 +8,7 @@ export const CallerContextSchema = z
     principalKind: z.enum(["user", "system_account"]),
     provider: z.string().min(1),
     productId: z.string().min(1).nullable(),
+    subject: z.string().uuid().nullable().optional(),
   })
   .strict()
   .refine(
@@ -57,6 +58,7 @@ export function callerFromPrincipal(
     principalKind: principal.kind,
     provider: principal.provider,
     productId: principal.product_id ?? null,
+    ...(principal.subject && principal.product_id ? { subject: principal.subject } : {}),
   });
 }
 

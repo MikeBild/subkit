@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { SESSION_SLIDING_TTL_MS } from "../auth/browser-session.ts";
+import { productSubjectDigest } from "../auth/identity-link.ts";
 import { clientLivenessRefusal } from "../auth/liveness.ts";
 import { resolvePrincipalFromApiKeyRow } from "../auth/providers/api-key-row.ts";
 import { isCeilingScope, isMcpModeMarkerScope } from "../auth/scopes.ts";
@@ -10,9 +11,11 @@ import {
   apiKeys,
   mcpOauthAccessTokens,
   mcpOauthClients,
+  productIdentityTombstones,
   roles,
   sessions,
   systemAccounts,
+  userIdentities,
   users,
 } from "../db/schema/index.ts";
 import { sha256Hex } from "../identity/api-key.ts";
@@ -37,6 +40,15 @@ const SourceSchema = z.discriminatedUnion("kind", [
       kind: z.literal("token_exchange"),
       api_key_id: z.uuid(),
       credential_version: z.string(),
+      expires_at: z.iso.datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("external_bearer"),
+      provider_id: z.string().min(1),
+      identity_id: z.uuid(),
+      issued_at: z.iso.datetime(),
       expires_at: z.iso.datetime(),
     })
     .strict(),
@@ -179,6 +191,57 @@ async function currentIdentity(db: Db, caller: CallerContext): Promise<ResolvedP
   };
 }
 
+async function rehydrateExternalBearer(
+  db: Db,
+  caller: CallerContext,
+  source: Extract<ExecutionAuthorizationContext["source"], { kind: "external_bearer" }>,
+  identity: ResolvedPrincipal,
+): Promise<ResolvedPrincipal> {
+  if (
+    caller.principalKind !== "user" ||
+    caller.provider !== source.provider_id ||
+    !caller.productId ||
+    !caller.subject
+  )
+    refuse();
+  const [binding] = await db
+    .select({
+      user_id: userIdentities.user_id,
+      provider_id: userIdentities.provider_id,
+      product_id: userIdentities.product_id,
+      subject: userIdentities.subject,
+    })
+    .from(userIdentities)
+    .where(
+      and(eq(userIdentities.tenant_id, caller.tenantId), eq(userIdentities.id, source.identity_id)),
+    )
+    .limit(1);
+  if (
+    !binding ||
+    binding.user_id !== caller.principalId ||
+    binding.provider_id !== source.provider_id ||
+    binding.product_id !== caller.productId ||
+    binding.subject !== caller.subject
+  )
+    refuse();
+  const [tombstone] = await db
+    .select({ erased_at: productIdentityTombstones.erased_at })
+    .from(productIdentityTombstones)
+    .where(
+      and(
+        eq(productIdentityTombstones.tenant_id, caller.tenantId),
+        eq(productIdentityTombstones.provider_id, source.provider_id),
+        eq(productIdentityTombstones.subject_sha256, productSubjectDigest(binding.subject)),
+      ),
+    )
+    .limit(1);
+  if (tombstone && new Date(source.issued_at) <= tombstone.erased_at) refuse();
+  identity.product_id = binding.product_id;
+  identity.subject = binding.subject;
+  delete identity.email;
+  return identity;
+}
+
 export async function rehydrateExecutionPrincipal(
   db: Db,
   rawCaller: unknown,
@@ -232,6 +295,8 @@ export async function rehydrateExecutionPrincipal(
     principal = identity;
     principal.session_id = session.id;
     if (session.product_id) principal.product_id = session.product_id;
+  } else if (source.kind === "external_bearer") {
+    principal = await rehydrateExternalBearer(db, caller, source, identity);
   } else {
     const [token] = await db
       .select()

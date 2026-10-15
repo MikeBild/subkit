@@ -205,6 +205,9 @@ export function registerIdentitySessionsRoute(app: OpenAPIHono<AppEnv>): void {
     if (provider.protocol === "api_key") {
       throw new BadRequestError("api_key does not accept identity assertions");
     }
+    if (provider.protocol === "oidc_bearer") {
+      throw new BadRequestError("bearer providers do not issue API keys");
+    }
     if (provider.product_id) {
       throw new ForbiddenError("product identity assertions cannot issue unbound API keys");
     }

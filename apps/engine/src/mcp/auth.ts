@@ -1,7 +1,7 @@
 import { createTokenExchangeProvider } from "../auth/oauth/token-exchange.ts";
 import { createApiKeyProvider } from "../auth/providers/api-key.ts";
 import { AuthProviderRegistry } from "../auth/registry.ts";
-import type { ResolvedPrincipal } from "../auth/types.ts";
+import { isAuthDenial, type ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 
 export async function resolveStdioPrincipal(
@@ -14,5 +14,6 @@ export async function resolveStdioPrincipal(
   const req = new Request("http://stdio.local/", {
     headers: { authorization: `Bearer ${apiKey}` },
   });
-  return registry.resolve(req);
+  const resolved = await registry.resolve(req);
+  return isAuthDenial(resolved) ? null : resolved;
 }

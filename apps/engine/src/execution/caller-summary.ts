@@ -10,6 +10,7 @@ export const CALLER_VERIFICATION_METHODS = [
   "browser_session",
   "mcp_oauth",
   "token_exchange",
+  "external_bearer",
 ] as const;
 
 export const ExecutionCallerSchema = z
