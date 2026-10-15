@@ -1314,6 +1314,7 @@ const EN = {
   "settings.section.server": "HTTP server",
   "settings.section.spec": "Specifications",
   "settings.section.storage": "Storage",
+  "settings.section.products": "Products",
   "settings.section.tokens": "Token budget",
   "settings.section.ui": "Interface",
   "settings.label.enabled": "Enabled",
@@ -3300,6 +3301,7 @@ const EN = {
   "settings.leaf.llm.critic.min_steps": "Draft critic · minimum steps",
   "settings.leaf.llm.critic.max_consecutive_rejections":
     "Draft critic · rejections before skipping",
+  "settings.leaf.products": "App products",
   "settings.leaf.auth.providers": "Sign-in providers",
   "settings.leaf.auth.enable_signup": "Sign-up on first sign-in",
   "settings.leaf.auth.session.secret": "Session signing secret",
@@ -3435,6 +3437,8 @@ const EN = {
     "How long a client stays connected without anyone signing in again.",
   "settings.help.auth.mcp_oauth.scopes_supported":
     "The permissions a client may ask for. metrics:read always stays in the list.",
+  "settings.help.products":
+    "Per product: the environment its signed-in users run in, and the assistant workflow whose daily limit the app shows.",
   "settings.help.auth.providers":
     "How people sign in to the cockpit. Keep at least one provider you can use yourself; removing the last one locks everybody out.",
   "settings.help.auth.session.secret":
@@ -5802,6 +5806,7 @@ const DE: Record<TranslationKey, string> = {
   "settings.section.server": "HTTP-Server",
   "settings.section.spec": "Spezifikationen",
   "settings.section.storage": "Speicher",
+  "settings.section.products": "Produkte",
   "settings.section.tokens": "Token-Budget",
   "settings.section.ui": "Oberfläche",
   "settings.label.enabled": "Aktiviert",
@@ -7834,6 +7839,7 @@ const DE: Record<TranslationKey, string> = {
   "settings.leaf.llm.critic.min_steps": "Entwurfsprüfung · Mindestschritte",
   "settings.leaf.llm.critic.max_consecutive_rejections":
     "Entwurfsprüfung · Ablehnungen bis zum Aussetzen",
+  "settings.leaf.products": "App-Produkte",
   "settings.leaf.auth.providers": "Anmelde-Provider",
   "settings.leaf.auth.enable_signup": "Registrierung bei erster Anmeldung",
   "settings.leaf.auth.session.secret": "Signaturgeheimnis für Sitzungen",
@@ -7976,6 +7982,8 @@ const DE: Record<TranslationKey, string> = {
     "Wie lange ein Client verbunden bleibt, ohne dass sich jemand erneut anmeldet.",
   "settings.help.auth.mcp_oauth.scopes_supported":
     "Die Berechtigungen, die ein Client anfragen darf. metrics:read bleibt immer in der Liste.",
+  "settings.help.products":
+    "Je Produkt: die Umgebung, in der seine angemeldeten Personen ausführen, und der Assistenz-Workflow, dessen Tageslimit die App zeigt.",
   "settings.help.auth.providers":
     "Wie sich Menschen im Cockpit anmelden. Behalte mindestens einen Anbieter, den du selbst nutzen kannst; ohne ihn ist niemand mehr drin.",
   "settings.help.auth.session.secret":

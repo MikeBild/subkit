@@ -112,6 +112,7 @@ export const SETTING_SECTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   observability: "settings.section.observability",
   operations: "settings.section.operations",
   platform: "settings.section.platform",
+  products: "settings.section.products",
   queue: "settings.section.queue",
   repl: "settings.section.repl",
   sandbox: "settings.section.sandbox",
@@ -141,7 +142,11 @@ export const SETTING_GROUPS: readonly {
   sections: readonly string[];
 }[] = [
   { id: "ai", label: "settings.group.ai", sections: ["llm", "tokens"] },
-  { id: "access", label: "settings.group.access", sections: ["auth", "mcp", "egress", "spec"] },
+  {
+    id: "access",
+    label: "settings.group.access",
+    sections: ["auth", "products", "mcp", "egress", "spec"],
+  },
   {
     id: "integrations",
     label: "settings.group.integrations",
