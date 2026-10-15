@@ -4,7 +4,7 @@ export interface RequestBoundaryView {
   method: string;
   origin: string;
   segments: Array<string | { var: string }>;
-  variables: Record<string, { enum: string[] } | { class: string }>;
+  variables: Record<string, { enum: string[] } | { class: string } | { caller_bound: true }>;
   query: { fixed: Record<string, string>; variable: Array<{ key: string; var: string }> };
   max_body_bytes: number;
   max_calls: number;
@@ -65,6 +65,8 @@ export function presentRequestBoundary(
               values: { name, values, decoded },
             };
       }
+      if ("caller_bound" in entry)
+        return { key: "authority.boundary.callerBound" as const, values: { name } };
       const key = CLASS_KEYS[entry.class];
       if (key) return { key, values: { name } };
       unknownRule = true;
@@ -97,7 +99,7 @@ export function presentRequestBoundary(
     target,
     variables,
     paging,
-    classNotice: Object.values(boundary.variables).some((entry) => !("enum" in entry)),
+    classNotice: Object.values(boundary.variables).some((entry) => "class" in entry),
     body,
     calls: boundary.max_calls,
     declaredDestructive: boundary.destructive === true && boundary.method !== "DELETE",

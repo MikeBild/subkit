@@ -30,6 +30,29 @@ describe("presentRequestBoundary", () => {
     expect(shown.title).toBe("authority.boundary.send");
   });
 
+  test("a removal bound to the signed-in caller names that binding and stays destructive", () => {
+    const shown = presentRequestBoundary(
+      {
+        ...base,
+        method: "DELETE",
+        segments: ["", "auth", "v1", "admin", "users", { var: "caller.subject" }],
+        variables: { "caller.subject": { caller_bound: true } },
+        max_body_bytes: 0,
+        max_calls: 1,
+        destructive: true,
+      },
+      plain,
+    );
+    expect(shown.variables).toEqual([
+      { key: "authority.boundary.callerBound", values: { name: "caller.subject" } },
+    ]);
+    expect(shown.classNotice).toBe(false);
+    expect(shown.destructive).toBe(true);
+    expect(translate("en", shown.variables[0]!.key, shown.variables[0]!.values)).toContain(
+      "signed-in caller",
+    );
+  });
+
   test("a static query is part of the target the approver sees", () => {
     const shown = presentRequestBoundary(
       {
