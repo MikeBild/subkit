@@ -629,6 +629,15 @@ export interface paths {
                         "application/json": components["schemas"]["StatusSummary"];
                     };
                 };
+                /** @description Product principals have no tenant status */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         put?: never;
@@ -4863,6 +4872,15 @@ export interface paths {
                 };
                 /** @description Unauthenticated — no bearer or invalid bearer. */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Product principals have no CLI bootstrap. */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
