@@ -121,6 +121,7 @@ describe("pool: mid-session 401 invalidates the oauth2 token credential", () => 
       db: ctx.db,
       tenant_id: tenantId,
       actor_id: INVOKING_ACTOR,
+      actor_type: "user",
       connector_id: server.id,
       connector_slug: "oauth401server",
       call: { operation: "call_tool", tool: "acme_tool", arguments: {} },

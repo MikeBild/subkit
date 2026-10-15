@@ -21,6 +21,7 @@ beforeAll(async () => {
       source_kind: "draft",
       request_source: "api",
       execution_mode: "prod",
+      caller_origin: "principal",
       caller_context: {
         tenantId: suite.http.tenantId,
         principalId: "77777777-7777-4777-8777-777777777777",
@@ -137,6 +138,7 @@ test("execution evidence and dispatch snapshots agree across HTTP, MCP detail, l
     .set({
       workflow_id: workflow.id,
       execution_mode: "prod",
+      caller_origin: "principal",
       caller_context: {
         tenantId: suite.http.tenantId,
         principalId,
@@ -208,6 +210,7 @@ test("execution evidence and dispatch snapshots agree across HTTP, MCP detail, l
   });
   expect(response.status).toBe(200);
   const viaHttp = (await response.json()) as Record<string, unknown>;
+  expect(viaHttp.caller).toMatchObject({ kind: "system_account", principal_id: principalId });
   const client = await suite.connect();
   const call = async (name: string, args: Record<string, unknown>) => {
     const result = await client.callTool({ name, arguments: args });
