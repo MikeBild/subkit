@@ -99,6 +99,7 @@ import { registerAttentionRoute } from "./routes/operator/attention.ts";
 import { registerOperatorRoutes } from "./routes/operator/health-digest.ts";
 import { registerOperationalOverviewRoute } from "./routes/operator/operational-overview.ts";
 import { registerPatchCandidateRoutes } from "./routes/patch-candidates.ts";
+import { registerProductStatusRoutes } from "./routes/product-status.ts";
 import { registerRbacRoutes } from "./routes/rbac/index.ts";
 import { registerRequestHookRoutes } from "./routes/request-hooks.ts";
 import { registerRootRoute } from "./routes/root.ts";
@@ -299,6 +300,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerSkBootstrapRoute(app);
   registerWorkflowRoutes(app);
   registerExecutionRoutes(app);
+  registerProductStatusRoutes(app);
   registerConnectorTemplateRoutes(app);
   registerConnectorRoutes(app);
   registerConnectorDiscoveryRoutes(app);

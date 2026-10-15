@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { AuditAction, actorType, auditAwait, readRequestSource } from "../../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/index.ts";
+import { getConfig, isConfigLoaded } from "../../../config/loader.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
   admitWorkflowRun,
@@ -22,13 +23,22 @@ import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { admissionRefusal } from "./admission-errors.ts";
+import { admissionRefusal, callerBudgetRefusal } from "./admission-errors.ts";
 import {
   type ClientDeclaredRunSource,
   RunBodySchema,
   RunResponseSchema,
   RuntimeRunBodySchema,
 } from "./schemas.ts";
+
+const CallerBudgetRefusalSchema = z
+  .object({
+    error: z.enum(["rate-limited", "turn-closed", "turn-limit", "invalid"]),
+    code: z.enum(["rate_limited", "turn_closed", "turn_limit", "invalid"]),
+    message: z.string(),
+    usage: z.object({ usedToday: z.number().int(), dailyLimit: z.number().int() }).optional(),
+  })
+  .openapi("CallerBudgetRefusal");
 
 const runExecutionRoute = createRoute({
   method: "post",
@@ -49,7 +59,11 @@ const runExecutionRoute = createRoute({
       description: "Run queued",
       content: { "application/json": { schema: RunResponseSchema } },
     },
-    400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
+    400: {
+      description:
+        'Bad request. A workflow input part above its declared byte limit answers `{error:"invalid", code:"invalid"}`.',
+      content: { "application/json": { schema: ErrorSchema.or(CallerBudgetRefusalSchema) } },
+    },
     403: {
       description: "Caller identity or workflow permission does not allow this run",
       content: { "application/json": { schema: ErrorSchema } },
@@ -60,8 +74,13 @@ const runExecutionRoute = createRoute({
     },
     409: {
       description:
-        "Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`.",
-      content: { "application/json": { schema: ErrorSchema } },
+        'Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. A caller budget refuses a closed turn with `{error:"turn-closed", code:"turn_closed"}`.',
+      content: { "application/json": { schema: ErrorSchema.or(CallerBudgetRefusalSchema) } },
+    },
+    429: {
+      description:
+        "The workflow's caller daily limit is reached (`rate_limited`, with `usage`) or the turn has used all of its metered calls (`turn_limit`). Nothing was reserved.",
+      content: { "application/json": { schema: CallerBudgetRefusalSchema } },
     },
   },
 });
@@ -100,6 +119,11 @@ export async function enforceSavedWorkflowAllowlist(
   throw new HttpError(403, "forbidden", "workflow_not_in_allowlist", {
     hint: "your account's allowed_workflows grant does not include this workflow — ask an operator to add it (sk rbac / api-key allowed_workflows) or run a workflow you are granted",
   });
+}
+
+function productEnvironment(principal: ResolvedPrincipal): ExecutionMode | null {
+  if (!principal.product_id || !isConfigLoaded()) return null;
+  return getConfig().products[principal.product_id]?.execution_environment ?? null;
 }
 
 export function runRequestSource(c: Context, declared?: ClientDeclaredRunSource): RequestSource {
@@ -181,7 +205,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
     }
 
     const envHeader = c.req.header("x-subkit-environment");
-    let execution_mode: ExecutionMode = "dev";
+    let execution_mode: ExecutionMode = productEnvironment(principal) ?? "dev";
     if (envHeader === "dev" || envHeader === "prod") execution_mode = envHeader;
 
     if (body.source === "saved") {
@@ -215,6 +239,13 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           await assertExecutionAuthorityCurrent(db, principal.tenant_id, admitted.execution_id);
         }
       } catch (error) {
+        const budgetRefusal = await callerBudgetRefusal(c, error, {
+          db,
+          principal,
+          workflow_id: body.workflow_id,
+          request_source,
+        });
+        if (budgetRefusal) return budgetRefusal as never;
         return admissionRefusal(error, {
           db,
           principal,
