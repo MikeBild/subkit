@@ -19,6 +19,8 @@ import {
 export const ExecSchema = z
   .object({
     id: z.string(),
+    execution_id: z.string(),
+    error: z.object({ code: z.string() }).nullable(),
     workflow_id: z.string().nullable(),
     workflow_name: z.string().nullable(),
     workflow_version_id: z.string().nullable(),
@@ -350,6 +352,11 @@ export function serializeExec(
 ) {
   return {
     id: row.id,
+    execution_id: row.id,
+    error:
+      row.status === "failed" || row.status === "timed_out"
+        ? { code: row.failure?.error_code ?? row.status }
+        : null,
     workflow_id: row.workflow_id ?? null,
     workflow_name: workflowName,
     workflow_version_id: row.workflow_version_id ?? null,
