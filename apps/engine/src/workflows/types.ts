@@ -785,18 +785,24 @@ export const CallerDailyLimitSchema = z
     billable_steps: z
       .array(z.string().min(1))
       .min(1)
-      .describe("Step ids whose success makes the unit billable (no refund on failure)"),
+      .describe(
+        "Step ids whose sent requests or success make the unit billable; a sent request is never refunded",
+      ),
     meter: z
       .string()
       .min(1)
       .optional()
-      .describe("JSONata over a billable step output yielding the calls it used (default 1)"),
+      .describe(
+        "JSONata over a billable step output yielding the calls it used (default 1); requests already sent count toward it",
+      ),
     max_metered: z
       .number()
       .int()
       .min(1)
       .optional()
-      .describe("Metered calls a unit may use before admission refuses with turn_limit"),
+      .describe(
+        "Metered calls a unit may use before admission refuses with turn_limit; one round runs at a time",
+      ),
     commit_when: z
       .string()
       .min(1)

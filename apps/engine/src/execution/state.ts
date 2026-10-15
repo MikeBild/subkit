@@ -8,7 +8,11 @@ import { executionSteps, executions, workflowVersions } from "../db/schema/index
 import { logger } from "../logging/logger.ts";
 import { recordExecutionTerminal } from "../observability/instrumentation.ts";
 import type { ExecutionAuthorizationContext } from "./authorization-context.ts";
-import { markBillableStep, settleExecutionGuards } from "./caller-budget.ts";
+import {
+  markBillableStep,
+  settleExecutionGuards,
+  takeBillableDispatches,
+} from "./caller-budget.ts";
 import { type CallerContext, CallerContextSchema } from "./caller-context.ts";
 import {
   type CallerOrigin,
@@ -579,6 +583,7 @@ export async function finalizeStepRow(
         step_index: executionSteps.step_index,
         kind: executionSteps.kind,
       });
+    const dispatched = takeBillableDispatches(step_row_id);
     const row = updated[0];
     if (!row) return;
     if (status === "succeeded" && persisted?.guard_unit_key) {
@@ -588,6 +593,7 @@ export async function finalizeStepRow(
         step_key: row.step_key,
         output: result.output,
         row: persisted,
+        dispatched,
       });
     }
     if (result.error?.code && GOVERNANCE_REFUSALS.has(result.error.code)) {

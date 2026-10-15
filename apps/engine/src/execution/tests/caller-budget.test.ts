@@ -113,6 +113,22 @@ function admit(
   );
 }
 
+function keepOpen(execution_id: string) {
+  return finalizeExecution(
+    ctx.testDb.db,
+    ctx.tenantId,
+    execution_id,
+    "succeeded",
+    null,
+    null,
+    undefined,
+    null,
+    "none",
+    false,
+    { output: [{ type: "function_call" }] },
+  );
+}
+
 async function unit(principal: ResolvedPrincipal, turn: string) {
   const [row] = await ctx.testDb.db
     .select()
@@ -185,11 +201,47 @@ describe("reservation at admission", () => {
 
   test("later rounds of a reserved turn extend the lease without charging", async () => {
     const principal = await productUser();
-    await admit(principal, { turn_id: "turn", round: 1 });
+    await keepOpen((await admit(principal, { turn_id: "turn", round: 1 })).execution_id);
     for (let round = 2; round <= 6; round += 1) {
-      await admit(principal, { turn_id: "turn", round });
+      await keepOpen((await admit(principal, { turn_id: "turn", round })).execution_id);
     }
     expect((await usage(principal)).usedToday).toBe(1);
+    expect(await unit(principal, "turn")).toMatchObject({ state: "reserved" });
+  });
+
+  test("a round while the previous round is still queued answers turn_busy", async () => {
+    const principal = await productUser();
+    await admit(principal, { turn_id: "queued", round: 1 });
+    await expect(admit(principal, { turn_id: "queued", round: 2 })).rejects.toMatchObject({
+      code: "turn_busy",
+    });
+    await expect(admit(principal, { turn_id: "queued", round: 1 })).rejects.toMatchObject({
+      code: "turn_busy",
+    });
+    expect((await usage(principal)).usedToday).toBe(1);
+  });
+
+  test("concurrent rounds of one turn admit exactly one", async () => {
+    const principal = await productUser();
+    await keepOpen((await admit(principal, { turn_id: "flood", round: 1 })).execution_id);
+    const results = await Promise.allSettled(
+      Array.from({ length: 40 }, () => admit(principal, { turn_id: "flood", round: 2 })),
+    );
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    for (const result of results.filter((entry) => entry.status === "rejected")) {
+      expect((result as PromiseRejectedResult).reason).toMatchObject({ code: "turn_busy" });
+    }
+    const active = await ctx.testDb.db
+      .select({ id: executions.id })
+      .from(executions)
+      .where(
+        and(
+          eq(executions.tenant_id, ctx.tenantId),
+          eq(executions.guard_unit_key, `${principal.id}/flood`),
+          eq(executions.status, "queued"),
+        ),
+      );
+    expect(active).toHaveLength(1);
   });
 
   test("a later round without a reservation answers turn_closed", async () => {
@@ -223,7 +275,7 @@ describe("reservation at admission", () => {
 
   test("a turn that used its metered calls answers turn_limit", async () => {
     const principal = await productUser();
-    await admit(principal, { turn_id: "busy", round: 1 });
+    await keepOpen((await admit(principal, { turn_id: "busy", round: 1 })).execution_id);
     await ctx.testDb.db
       .update(callerBudgetUnits)
       .set({ metered: 3 })
@@ -332,7 +384,16 @@ describe("settlement when the run ends", () => {
   test("a refund waits while another run of the same turn is active", async () => {
     const principal = await productUser();
     const first = await admit(principal, { turn_id: "twin", round: 1 });
-    await admit(principal, { turn_id: "twin", round: 2 });
+    await ctx.testDb.db.insert(executions).values({
+      tenant_id: ctx.tenantId,
+      status: "running",
+      request_source: "api",
+      execution_mode: "dev",
+      caller_origin: "principal",
+      caller_context: callerFromPrincipal(principal, ctx.tenantId, "tekit"),
+      guard_bucket: "brain",
+      guard_unit_key: `${principal.id}/twin`,
+    });
     await end(first.execution_id, "failed");
     expect((await unit(principal, "twin"))?.state).toBe("reserved");
   });

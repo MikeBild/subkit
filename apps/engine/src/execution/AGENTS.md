@@ -94,10 +94,14 @@ manifest; changing them asks for a new approval.
   idempotency replay check, under a per-caller advisory lock. `unit` and `round`
   are `$input` dot paths. A reserved unit is reused by later rounds without a
   charge; a committed unit or a later round without a reservation refuses
-  `turn_closed`; `max_metered` refuses `turn_limit`; a full day refuses
+  `turn_closed`; a unit with a queued or running execution refuses
+  `turn_busy`; `max_metered` refuses `turn_limit`; a full day refuses
   `rate_limited` with `usage`.
-- A success of a step listed in `billable_steps` marks the unit billable and
-  adds `meter` (JSONata over the step output, default 1) to `metered`.
+- Every request a step listed in `billable_steps` sends marks the unit
+  billable and adds 1 to `metered` in its own committed transaction, after the
+  execution authority check and before the request leaves. A success of such a
+  step adds what `meter` (JSONata over the step output, default 1) exceeds the
+  sent requests; a step without requests therefore still counts `meter`.
 - `finalizeExecution` settles in its own transaction: success commits when
   `commit_when` (JSONata over the run output) is true and otherwise extends the
   lease; failure refunds only a unit that is not billable and has no other

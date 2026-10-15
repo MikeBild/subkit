@@ -400,7 +400,7 @@ describe("thin LLM gate under a product caller", () => {
     expect(received).toHaveLength(0);
   });
 
-  test("a failed model call is refunded and reports a safe failure", async () => {
+  test("a model call that reached the upstream and failed stays charged and reports a safe failure", async () => {
     const principal = await productUser();
     reply = { status: 500, body: { error: { message: "upstream" } } };
     const { execution_id, result } = await turn(principal, {
@@ -413,6 +413,29 @@ describe("thin LLM gate under a product caller", () => {
     expect((await storedResult(execution_id)).failure?.error_code).toBe(
       "sensitive_execution_failure",
     );
-    expect(await unit(principal, "t-fail")).toMatchObject({ state: "refunded", billable: false });
+    expect(received).toHaveLength(1);
+    expect(await unit(principal, "t-fail")).toMatchObject({
+      state: "reserved",
+      billable: true,
+      metered: 1,
+    });
+  });
+
+  test("a request its boundary refuses before sending is refunded", async () => {
+    const principal = await productUser();
+    const { result } = await turn(principal, {
+      turn_id: "t-refused",
+      round: 1,
+      request: request({
+        input: [{ role: "user", content: [{ type: "input_text", text: "x".repeat(450_000) }] }],
+      }),
+    });
+    expect(result.status).toBe("failed");
+    expect(received).toHaveLength(0);
+    expect(await unit(principal, "t-refused")).toMatchObject({
+      state: "refunded",
+      billable: false,
+      metered: 0,
+    });
   });
 });
