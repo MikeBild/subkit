@@ -117,6 +117,8 @@ describe("GET /ready", () => {
         string,
         {
           get: {
+            summary?: string;
+            security?: unknown;
             responses: Record<
               string,
               { headers?: Record<string, { schema?: { enum?: string[] } }> }
@@ -133,7 +135,10 @@ describe("GET /ready", () => {
     };
     expect(Object.keys(doc.paths)).toContain("/health");
     expect(Object.keys(doc.paths)).toContain("/ready");
-    expect(Object.keys(doc.paths)).not.toContain("/v1/health");
+    expect(doc.paths["/v1/health"]?.get.summary).toBe(
+      "Readiness of the product assistant workflow",
+    );
+    expect(doc.paths["/v1/health"]?.get.security).toEqual([{ bearerAuth: [] }]);
     expect(Object.keys(doc.paths)).not.toContain("/v1/readyz");
     for (const [path, statuses] of [
       ["/health", ["200"]],
