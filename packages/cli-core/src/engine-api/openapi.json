@@ -8808,17 +8808,17 @@
               "minLength": 1
             },
             "minItems": 1,
-            "description": "Step ids whose success makes the unit billable (no refund on failure)"
+            "description": "Step ids whose sent requests or success make the unit billable; a sent request is never refunded"
           },
           "meter": {
             "type": "string",
             "minLength": 1,
-            "description": "JSONata over a billable step output yielding the calls it used (default 1)"
+            "description": "JSONata over a billable step output yielding the calls it used (default 1); requests already sent count toward it"
           },
           "max_metered": {
             "type": "integer",
             "minimum": 1,
-            "description": "Metered calls a unit may use before admission refuses with turn_limit"
+            "description": "Metered calls a unit may use before admission refuses with turn_limit; one round runs at a time"
           },
           "commit_when": {
             "type": "string",
@@ -10695,6 +10695,7 @@
             "enum": [
               "rate-limited",
               "turn-closed",
+              "turn-busy",
               "turn-limit",
               "invalid"
             ]
@@ -10704,6 +10705,7 @@
             "enum": [
               "rate_limited",
               "turn_closed",
+              "turn_busy",
               "turn_limit",
               "invalid"
             ]
@@ -37025,7 +37027,7 @@
             }
           },
           "409": {
-            "description": "Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. A caller budget refuses a closed turn with `{error:\"turn-closed\", code:\"turn_closed\"}`.",
+            "description": "Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. A caller budget refuses a closed turn with `{error:\"turn-closed\", code:\"turn_closed\"}` and a turn whose previous round is still queued or running with `{error:\"turn-busy\", code:\"turn_busy\"}`.",
             "content": {
               "application/json": {
                 "schema": {

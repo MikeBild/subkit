@@ -37,6 +37,7 @@ import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
 import { assertExecutionAuthorityCurrent } from "./authority-admission.ts";
 import { authorizationContextFromPrincipal } from "./authorization-context.ts";
 import { bindExistingRun } from "./bound-run.ts";
+import { markBillableDispatch } from "./caller-budget.ts";
 import {
   assertCallerExecutionSource,
   assertCallerMatches,
@@ -352,6 +353,19 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       });
 
   const evaluationSeed = preparedClock?.seed ?? execution_id;
+  const billableSteps = new Set(def.execution_guards?.caller_daily_limit?.billable_steps ?? []);
+  const beforeExternalRequest =
+    (step_key: string) => async (snapshot: import("./types.ts").RequestAuthoritySnapshot) => {
+      const policy = await assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot);
+      if (billableSteps.has(step_key))
+        await markBillableDispatch(db, {
+          tenant_id,
+          execution_id,
+          step_key,
+          ...(snapshot.step_row_id ? { step_row_id: snapshot.step_row_id } : {}),
+        });
+      return policy;
+    };
 
   const ctrl = registerAbort(execution_id, tenant_id);
   if (opts.signal) {
@@ -542,8 +556,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     });
     const ctx: StepRunContext = {
       ...(preparedReferences ? { prepared_workflow_references: preparedReferences } : {}),
-      before_external_request: (snapshot) =>
-        assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot),
+      before_external_request: beforeExternalRequest(step.id),
       db,
       tenant_id,
       execution_id,
@@ -1070,8 +1083,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
             });
             const bodyCtx: import("./types.ts").StepRunContext = {
               ...(preparedReferences ? { prepared_workflow_references: preparedReferences } : {}),
-              before_external_request: (snapshot) =>
-                assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot),
+              before_external_request: beforeExternalRequest(bodyStep.id),
               db,
               tenant_id,
               execution_id,
@@ -1283,8 +1295,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
                   ...(preparedReferences
                     ? { prepared_workflow_references: preparedReferences }
                     : {}),
-                  before_external_request: (snapshot) =>
-                    assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot),
+                  before_external_request: beforeExternalRequest(branchStepDef.id),
                   db,
                   tenant_id,
                   execution_id,

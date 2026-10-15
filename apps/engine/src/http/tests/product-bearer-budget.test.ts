@@ -191,6 +191,14 @@ describe("te-brain compatible budget over HTTP", () => {
     expect(budget.usedToday).toBe(0);
   });
 
+  test("a round while the previous round of the turn is queued answers 409 turn_busy", async () => {
+    const bearer = await token(nextUuid());
+    expect((await run(bearer, { turn_id: "busy-turn", round: 1 })).status).toBe(202);
+    const busy = await run(bearer, { turn_id: "busy-turn", round: 2 });
+    expect(busy.status).toBe(409);
+    expect(await busy.json()).toMatchObject({ error: "turn-busy", code: "turn_busy" });
+  });
+
   test("a finished turn returns its result with usage, and the third turn is rate limited", async () => {
     const bearer = await token(nextUuid());
     const first = await run(bearer, { turn_id: "turn-1", round: 1, final: true }, { async: false });

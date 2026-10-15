@@ -7009,7 +7009,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. A caller budget refuses a closed turn with `{error:"turn-closed", code:"turn_closed"}`. */
+                /** @description Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. A caller budget refuses a closed turn with `{error:"turn-closed", code:"turn_closed"}` and a turn whose previous round is still queued or running with `{error:"turn-busy", code:"turn_busy"}`. */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -21300,11 +21300,11 @@ export interface components {
              * @default 600000
              */
             lease_ms: number;
-            /** @description Step ids whose success makes the unit billable (no refund on failure) */
+            /** @description Step ids whose sent requests or success make the unit billable; a sent request is never refunded */
             billable_steps: string[];
-            /** @description JSONata over a billable step output yielding the calls it used (default 1) */
+            /** @description JSONata over a billable step output yielding the calls it used (default 1); requests already sent count toward it */
             meter?: string;
-            /** @description Metered calls a unit may use before admission refuses with turn_limit */
+            /** @description Metered calls a unit may use before admission refuses with turn_limit; one round runs at a time */
             max_metered?: number;
             /** @description JSONata over the run output; true commits the unit, false keeps it reserved */
             commit_when: string;
@@ -21780,9 +21780,9 @@ export interface components {
         };
         CallerBudgetRefusal: {
             /** @enum {string} */
-            error: "rate-limited" | "turn-closed" | "turn-limit" | "invalid";
+            error: "rate-limited" | "turn-closed" | "turn-busy" | "turn-limit" | "invalid";
             /** @enum {string} */
-            code: "rate_limited" | "turn_closed" | "turn_limit" | "invalid";
+            code: "rate_limited" | "turn_closed" | "turn_busy" | "turn_limit" | "invalid";
             message: string;
             usage?: {
                 usedToday: number;

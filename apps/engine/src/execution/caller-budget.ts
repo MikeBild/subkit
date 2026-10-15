@@ -1,5 +1,5 @@
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
-import type { Executor } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { callerBudgetUnits, executions, workflowVersions } from "../db/schema/index.ts";
 import { eraseProductCaller } from "../identity/product-erasure.ts";
 import { logger } from "../logging/logger.ts";
@@ -35,7 +35,12 @@ export interface CallerBudgetReservation {
   charged: boolean;
 }
 
-export type CallerBudgetRefusalCode = "rate_limited" | "turn_closed" | "turn_limit" | "invalid";
+export type CallerBudgetRefusalCode =
+  | "rate_limited"
+  | "turn_closed"
+  | "turn_busy"
+  | "turn_limit"
+  | "invalid";
 
 function refuse(code: CallerBudgetRefusalCode, message: string, details?: unknown): never {
   throw Object.assign(new Error(message), { code, ...(details ? { details } : {}) });
@@ -139,6 +144,25 @@ export async function callerUsage(
   return { usedToday: await usedOn(tx, ledger, day), dailyLimit: ledger.limit, day, resetsAt };
 }
 
+async function hasActiveExecution(
+  tx: Executor,
+  tenant_id: string,
+  guard_unit_key: string,
+): Promise<boolean> {
+  const [active] = await tx
+    .select({ id: executions.id })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, tenant_id),
+        eq(executions.guard_unit_key, guard_unit_key),
+        inArray(executions.status, ACTIVE_STATUSES),
+      ),
+    )
+    .limit(1);
+  return active !== undefined;
+}
+
 function unitKeyOf(guard: CallerDailyLimit, input: unknown): string {
   const value = valueAt(input, guard.unit);
   const key = typeof value === "number" && Number.isFinite(value) ? String(value) : value;
@@ -211,6 +235,8 @@ export async function reserveCallerBudget(
   if (unit?.state === "committed") refuse("turn_closed", "this turn is already closed");
   if (round > 1 && unit?.state !== "reserved")
     refuse("turn_closed", "a later round needs an open turn");
+  if (await hasActiveExecution(tx, ledger.tenant_id, reservation.execution_guard_key))
+    refuse("turn_busy", "this turn already has a round in progress");
   if (unit && guard.max_metered !== undefined && unit.metered >= guard.max_metered)
     refuse("turn_limit", "this turn has used all of its model calls");
   if (unit?.state === "reserved") {
@@ -329,6 +355,14 @@ function unitWhere(tenant_id: string, unit: NonNullable<ReturnType<typeof unitOf
   );
 }
 
+const billableDispatches = new Map<string, number>();
+
+export function takeBillableDispatches(step_row_id: string): number {
+  const count = billableDispatches.get(step_row_id) ?? 0;
+  billableDispatches.delete(step_row_id);
+  return count;
+}
+
 async function meterOf(guard: CallerDailyLimit, output: unknown): Promise<number> {
   if (!guard.meter) return 1;
   try {
@@ -339,6 +373,60 @@ async function meterOf(guard: CallerDailyLimit, output: unknown): Promise<number
   }
 }
 
+async function guardedUnit(
+  tx: Executor,
+  tenant_id: string,
+  step_key: string,
+  row: GuardedExecution,
+) {
+  if (!row.guard_unit_key) return null;
+  const caller = CallerContextSchema.safeParse(row.caller_context);
+  if (!caller.success) return null;
+  const unit = unitOf(row, caller.data);
+  if (!unit) return null;
+  const def = await guardedDefinition(tx, tenant_id, row);
+  const guard = def?.execution_guards?.caller_daily_limit;
+  if (!guard?.billable_steps.includes(step_key)) return null;
+  return { unit, guard };
+}
+
+export async function markBillableDispatch(
+  db: Db,
+  params: { tenant_id: string; execution_id: string; step_key: string; step_row_id?: string },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({
+        workflow_version_id: executions.workflow_version_id,
+        guard_bucket: executions.guard_bucket,
+        guard_unit_key: executions.guard_unit_key,
+        caller_context: executions.caller_context,
+      })
+      .from(executions)
+      .where(
+        and(eq(executions.tenant_id, params.tenant_id), eq(executions.id, params.execution_id)),
+      )
+      .limit(1);
+    if (!row) return;
+    const guarded = await guardedUnit(tx, params.tenant_id, params.step_key, row);
+    if (!guarded) return;
+    await lockLedger(tx, { tenant_id: params.tenant_id, ...guarded.unit });
+    await tx
+      .update(callerBudgetUnits)
+      .set({
+        billable: true,
+        metered: sql`${callerBudgetUnits.metered} + 1`,
+        updated_at: new Date(),
+      })
+      .where(unitWhere(params.tenant_id, guarded.unit));
+  });
+  if (params.step_row_id)
+    billableDispatches.set(
+      params.step_row_id,
+      (billableDispatches.get(params.step_row_id) ?? 0) + 1,
+    );
+}
+
 export async function markBillableStep(
   tx: Executor,
   params: {
@@ -347,25 +435,20 @@ export async function markBillableStep(
     step_key: string;
     output: unknown;
     row: GuardedExecution;
+    dispatched: number;
   },
 ): Promise<void> {
-  if (!params.row.guard_unit_key) return;
-  const caller = CallerContextSchema.safeParse(params.row.caller_context);
-  if (!caller.success) return;
-  const unit = unitOf(params.row, caller.data);
-  if (!unit) return;
-  const def = await guardedDefinition(tx, params.tenant_id, params.row);
-  const guard = def?.execution_guards?.caller_daily_limit;
-  if (!guard?.billable_steps.includes(params.step_key)) return;
-  const metered = await meterOf(guard, params.output);
+  const guarded = await guardedUnit(tx, params.tenant_id, params.step_key, params.row);
+  if (!guarded) return;
+  const extra = Math.max((await meterOf(guarded.guard, params.output)) - params.dispatched, 0);
   await tx
     .update(callerBudgetUnits)
     .set({
       billable: true,
-      metered: sql`${callerBudgetUnits.metered} + ${metered}`,
+      metered: sql`${callerBudgetUnits.metered} + ${extra}`,
       updated_at: new Date(),
     })
-    .where(unitWhere(params.tenant_id, unit));
+    .where(unitWhere(params.tenant_id, guarded.unit));
 }
 
 export interface GuardSettlement {

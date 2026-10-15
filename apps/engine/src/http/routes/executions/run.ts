@@ -33,8 +33,8 @@ import {
 
 const CallerBudgetRefusalSchema = z
   .object({
-    error: z.enum(["rate-limited", "turn-closed", "turn-limit", "invalid"]),
-    code: z.enum(["rate_limited", "turn_closed", "turn_limit", "invalid"]),
+    error: z.enum(["rate-limited", "turn-closed", "turn-busy", "turn-limit", "invalid"]),
+    code: z.enum(["rate_limited", "turn_closed", "turn_busy", "turn_limit", "invalid"]),
     message: z.string(),
     usage: z.object({ usedToday: z.number().int(), dailyLimit: z.number().int() }).optional(),
   })
@@ -74,7 +74,7 @@ const runExecutionRoute = createRoute({
     },
     409: {
       description:
-        'Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. A caller budget refuses a closed turn with `{error:"turn-closed", code:"turn_closed"}`.',
+        'Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. A caller budget refuses a closed turn with `{error:"turn-closed", code:"turn_closed"}` and a turn whose previous round is still queued or running with `{error:"turn-busy", code:"turn_busy"}`.',
       content: { "application/json": { schema: ErrorSchema.or(CallerBudgetRefusalSchema) } },
     },
     429: {
