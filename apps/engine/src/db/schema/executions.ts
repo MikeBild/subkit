@@ -65,6 +65,7 @@ export const executions = pgTable(
       principalKind: "user" | "system_account";
       provider: string;
       productId: string | null;
+      subject?: string | null | undefined;
     } | null>(),
     caller_origin: text("caller_origin").$type<CallerOrigin>().notNull().default("unknown"),
     input: jsonb("input"),
@@ -89,6 +90,8 @@ export const executions = pgTable(
       connector?: { connector_id: string | null; reason: string };
     } | null>(),
     output_contract: text("output_contract"),
+    guard_bucket: text("guard_bucket"),
+    guard_unit_key: text("guard_unit_key"),
     started_at: timestamp("started_at", { withTimezone: true }),
     finished_at: timestamp("finished_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -147,6 +150,9 @@ export const executions = pgTable(
     index("executions_tenant_status_started_idx").on(t.tenant_id, t.status, t.started_at),
     index("executions_tenant_request_source_idx").on(t.tenant_id, t.request_source),
     index("executions_tenant_source_kind_idx").on(t.tenant_id, t.source_kind),
+    index("executions_active_guard_unit_idx")
+      .on(t.tenant_id, t.guard_unit_key)
+      .where(sql`${t.status} IN ('queued', 'running') AND ${t.guard_unit_key} IS NOT NULL`),
     uniqueIndex("executions_tenant_idempotency_key_uidx")
       .on(t.tenant_id, t.idempotency_key)
       .where(sql`${t.idempotency_key} IS NOT NULL`),
