@@ -32,6 +32,7 @@ import { assertStorageRequest } from "../workflows/storage-boundary.ts";
 import { executableDefinition } from "../workflows/stored-definition.ts";
 import { JsonValueSchema } from "../workflows/types.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
+import { bindCallerBudget, reserveCallerBudget } from "./caller-budget.ts";
 import { assertCallerMatches, type CallerContext } from "./caller-context.ts";
 import { type CallerOrigin, resolveExecutionCallerOrigin } from "./caller-origin.ts";
 import { validateAgainstJsonSchema } from "./engine/envelope.ts";
@@ -228,6 +229,7 @@ export async function admitAuthorizedWorkflowExecution(
         "execution_authority_changed",
         "the execution authority no longer matches the current effect boundary",
       );
+    const reservation = await reserveCallerBudget(tx, definition, caller, normalized);
     const execution_id = await createExecution(tx, {
       tenant_id: input.tenant_id,
       workflow_id: input.workflow_id,
@@ -245,6 +247,7 @@ export async function admitAuthorizedWorkflowExecution(
       parent_execution_id: input.parent_execution_id ?? null,
       idempotency_key: input.idempotency_key ?? null,
     });
+    await bindCallerBudget(tx, input.tenant_id, execution_id, reservation);
     return {
       execution_id,
       execution_authority_id: authority.id,

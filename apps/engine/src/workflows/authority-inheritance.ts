@@ -136,6 +136,15 @@ export function boundaryGrowth(
     if (!sameShape.some((candidate) => effectCovered(effect, candidate)))
       add("wider_effect", effect);
   }
+  if (!isDeepStrictEqual(granted.caller_guards ?? null, next.caller_guards ?? null)) {
+    const entry = {
+      kind: "changed_boundary" as const,
+      connector_id: null,
+      target: "execution_guards",
+      effect: "write" as const,
+    };
+    growth.set(JSON.stringify(entry), entry);
+  }
   return [...growth.values()];
 }
 

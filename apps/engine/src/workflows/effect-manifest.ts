@@ -132,6 +132,13 @@ export const WorkflowEffectManifestSchema = z
       }),
     ),
     calls: z.array(CallPinSchema).min(1).optional(),
+    caller_guards: z
+      .object({
+        execution_guards: JsonValueSchema.optional(),
+        caller_erasure: z.literal("on_success").optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .openapi("WorkflowEffectManifest");
@@ -214,6 +221,16 @@ export function compileWorkflowEffectManifest(raw: unknown): {
     execution_options_digest: input.execution_options_digest,
     effects: [],
     issues: [],
+    ...(definition.execution_guards || definition.caller_erasure
+      ? {
+          caller_guards: {
+            ...(definition.execution_guards
+              ? { execution_guards: JsonValueSchema.parse(definition.execution_guards) }
+              : {}),
+            ...(definition.caller_erasure ? { caller_erasure: definition.caller_erasure } : {}),
+          },
+        }
+      : {}),
   };
   for (const step of definition.steps) {
     if (step.kind === "call") {
