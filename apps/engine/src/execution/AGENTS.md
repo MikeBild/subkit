@@ -38,7 +38,7 @@ Bare path expressions (without `$`) walk the second arg of
 `step1` is a key on the scope object passed as data. Authors should
 prefer `$scope.step1.data` for clarity; both forms are supported.
 
-Request placeholders use `${caller.tenantId}`, `${caller.principalId}`, `${caller.principalKind}`, `${caller.provider}`, and `${caller.productId}`. They resolve from the same persisted caller, never from `$input`. A workflow with `product_id` requires a matching product-bound principal before execution. Product S3 steps must declare a principal-bound scope rooted at `products/<product_id>/`; the next object-key segment is the authenticated principal ID.
+Request placeholders use `${caller.tenantId}`, `${caller.principalId}`, `${caller.principalKind}`, `${caller.provider}`, `${caller.productId}` and `${caller.subject}`. They resolve from the same persisted caller, never from `$input`. `subject` is present only for a product principal verified by an `oidc_bearer` provider: it is the issuer's `sub` of the token proven at admission, and caller erasure overwrites it with `null`. A request boundary may bind `caller.subject` or `caller.principalId` with `{caller_bound: true}`; that rule also admits a DELETE because the value is fixed by the authenticated caller. A workflow with `product_id` requires a matching product-bound principal before execution. Product S3 steps must declare a principal-bound scope rooted at `products/<product_id>/`; the next object-key segment is the authenticated principal ID.
 
 ## No-rollback / no-compensation contract
 
@@ -78,3 +78,33 @@ On `"fail"`, downstream steps are marked aborted. On `"continue"`, the
 step's scope value is `undefined` and execution proceeds. There is no
 third "retry indefinitely" option; the retry envelope above is the
 ceiling.
+
+## Caller guards
+
+A sensitive product workflow with `required_caller_kind: "user"` may declare
+`execution_guards` and `caller_erasure`. Both are part of the reviewed effect
+manifest; changing them asks for a new approval.
+
+- `execution_guards.input_bytes` maps `$input` dot paths to a maximum UTF-8
+  size of their JSON text. Admission refuses a larger part with `invalid`
+  before anything is reserved.
+- `execution_guards.caller_daily_limit` reserves one unit per caller and local
+  day in `caller_budget_units` inside the admission transaction, after the
+  idempotency replay check, under a per-caller advisory lock. `unit` and `round`
+  are `$input` dot paths. A reserved unit is reused by later rounds without a
+  charge; a committed unit or a later round without a reservation refuses
+  `turn_closed`; `max_metered` refuses `turn_limit`; a full day refuses
+  `rate_limited` with `usage`.
+- A success of a step listed in `billable_steps` marks the unit billable and
+  adds `meter` (JSONata over the step output, default 1) to `metered`.
+- `finalizeExecution` settles in its own transaction: success commits when
+  `commit_when` (JSONata over the run output) is true and otherwise extends the
+  lease; failure refunds only a unit that is not billable and has no other
+  queued or running execution. Expired leases settle lazily: billable units
+  commit, the rest are refunded. On success `{usedToday, dailyLimit}` is merged
+  into the sensitive result under `attach_usage_as`.
+- `caller_erasure: "on_success"` erases the product caller in the same
+  transaction: budget rows and identity bindings are deleted, sessions and keys
+  revoked, the user disabled and anonymised, `caller_context.subject` nulled on
+  its executions, and a tombstone with only the SHA-256 of the subject is kept
+  so tokens issued before the erasure are refused.

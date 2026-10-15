@@ -88,16 +88,21 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
   boundary_invalid:
     "This step already has `boundary`, but it does not parse: `variables` maps an expression such " +
     'as `"input.site"` to `{enum: [...]}` (1 to 50 values of letters, digits, `.`, `_`, `~`, `-`, ' +
-    '`:` and `%XX` escapes, exactly as sent) or to `{class: "identifier" | "uuid" | "integer" | "date" | "timestamp"}`, never both; ' +
+    '`:` and `%XX` escapes, exactly as sent) or to `{class: "identifier" | "uuid" | "integer" | "date" | "timestamp"}`, never both, and `caller.subject` or `caller.principalId` to `{caller_bound: true}`; ' +
     "`max_body_bytes` is an integer from 0 to 10000000; `max_calls` an integer from 1 to " +
     "10000; `destructive` may only be `true`. No other keys.",
   delete_requires_destructive:
     "This step already has `boundary`; a DELETE additionally needs `destructive: true` inside it, so " +
     "a removal is never approved by omission.",
   delete_requires_enum:
-    "This step already has `boundary`, but a DELETE may only vary over listed values: replace " +
-    "each `{class: …}` with `{enum: [every value that may be removed]}`. A removal of anything " +
-    "that merely looks like an id is not something a human can approve.",
+    "This step already has `boundary`, but a DELETE may only vary over listed values or the " +
+    "authenticated caller: replace each `{class: …}` with `{enum: [every value that may be " +
+    "removed]}`, or address the caller's own record with `${caller.subject}` or " +
+    "`${caller.principalId}` and the rule `{caller_bound: true}`. A removal of anything that " +
+    "merely looks like an id is not something a human can approve.",
+  caller_bound_mismatch:
+    "This step already has `boundary`, but its caller rules disagree: `caller.subject` and " +
+    "`caller.principalId` take exactly `{caller_bound: true}`, and no other variable may use it.",
   partial_segment_placeholder:
     "`boundary` cannot cover this step as written: a placeholder is only PART of a path segment " +
     "(text before or after it between two `/`), several segments hide in one placeholder, or its " +
