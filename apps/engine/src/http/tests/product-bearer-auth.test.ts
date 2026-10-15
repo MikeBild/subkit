@@ -153,7 +153,7 @@ describe("product bearer authentication over HTTP", () => {
       });
       const res = await call("/v1/executions", token, {
         method: "POST",
-        body: JSON.stringify({ source: "saved", workflow_id, hold_writes: true, input: {} }),
+        body: JSON.stringify({ source: "saved", workflow_id, input: {} }),
       });
       expect(res.status).toBe(403);
       expect(await res.text()).toContain("caller_product_mismatch");
