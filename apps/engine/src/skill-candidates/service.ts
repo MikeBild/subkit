@@ -720,7 +720,8 @@ export async function approveSkillCandidate(
   exec?: Db,
 ): Promise<ApproveSkillCandidateResult | null> {
   const db = exec ?? (getDb() as Db);
-  const actor_id = p.actor?.id ?? null;
+  const actor = auditActor(p.actor);
+  const actor_id = actor.actor_id;
 
   const out = await db.transaction(async (tx) => {
     await tx.execute(
@@ -776,7 +777,7 @@ export async function approveSkillCandidate(
             pitfalls: (blob.pitfalls as string[]) ?? [],
             doc_refs: (blob.doc_refs as string[]) ?? [],
           },
-          actor_id,
+          ...actor,
         },
         tx,
       );
@@ -798,7 +799,7 @@ export async function approveSkillCandidate(
 
     const retired_skill_ids =
       skill_id && promoted_active
-        ? await retireReplacedConnectorSkills(tx, p.tenant_id, skill_id, actor_id)
+        ? await retireReplacedConnectorSkills(tx, p.tenant_id, skill_id, actor_id, actor.actor_type)
         : [];
 
     await auditAwait(
