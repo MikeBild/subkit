@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
+import { _drainAuditWritesForTests } from "../../audit/audit.ts";
 import { apiKeys, auditLog } from "../../db/schema/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { EXTRACT_BODY_CAP_BYTES } from "../routes/ai/extract.ts";
@@ -58,6 +59,7 @@ describe("http /v1/ai/extract body cap", () => {
     expect(res.status).toBe(413);
     const envelope = (await res.json()) as { code: string };
     expect(envelope.code).toBe("payload_too_large");
+    await _drainAuditWritesForTests(srv.db);
     const [entry] = await srv.db
       .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
       .from(auditLog)

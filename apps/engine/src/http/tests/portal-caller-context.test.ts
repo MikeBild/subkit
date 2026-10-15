@@ -187,7 +187,7 @@ describe("portal caller identity compatibility", () => {
         ),
       );
     expect(entry).toMatchObject({
-      actor_type: "user",
+      actor_type: "unknown",
       actor_id: null,
       metadata: {
         execution_id: body.execution_id,
