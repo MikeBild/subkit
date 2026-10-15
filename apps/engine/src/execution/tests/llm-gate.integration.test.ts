@@ -13,6 +13,7 @@ import {
 } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { previewWorkflowAuthority } from "../../workflows/execution-authorities.ts";
 import { admitAuthorizedWorkflowExecution } from "../authority-admission.ts";
@@ -160,8 +161,8 @@ async function productUser(): Promise<ResolvedPrincipal> {
       kind: "external_bearer",
       provider_id: "tekit-supabase",
       identity_id: identity.id,
-      issued_at: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+      issued_at: new Date(getTestNow()).toISOString(),
+      expires_at: new Date(getTestNow() + 3_600_000).toISOString(),
     },
   };
 }

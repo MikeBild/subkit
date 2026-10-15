@@ -9,6 +9,7 @@ import { flushOidcBearerKeys } from "../../auth/providers/oidc-bearer.ts";
 import { loadConfig } from "../../config/loader.ts";
 import { connectors, executions, workflowExecutionAuthorities } from "../../db/schema/index.ts";
 import { createWorkflowRow } from "../../execution/tests/setup.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import {
   BEARER_NOW_SECONDS,
@@ -102,7 +103,7 @@ async function authorize(workflow_id: string, workflow_version_id: string) {
     effect_manifest: { ...preview.manifest },
     target_constraints: { targets: [] },
     execution_environment: "prod",
-    valid_from: new Date(Date.now() - 60_000),
+    valid_from: new Date(getTestNow() - 60_000),
     created_by: ctx.userId,
   });
 }

@@ -1,13 +1,19 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import {
+  createDeterministicHexFactory,
+  createDeterministicUuidFactory,
+} from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const CHOSEN = "00000000-0000-4000-8000-00000000b4a1";
 let ctx: HttpTestServer;
 let memberKey: string;
+const hex = createDeterministicHexFactory(4161);
+const nextUuid = createDeterministicUuidFactory(4162);
 
 function definition(name: string, id?: string) {
   return {
@@ -36,7 +42,7 @@ beforeAll(async () => {
     })
     .returning({ id: users.id });
   if (!member) throw new Error("member fixture missing");
-  memberKey = `wf_live_${randomBytes(24).toString("base64url").slice(0, 32)}`;
+  memberKey = `wf_live_${hex(16)}`;
   await ctx.db.insert(apiKeys).values({
     tenant_id: ctx.tenantId,
     user_id: member.id,
@@ -71,7 +77,7 @@ describe("operator-chosen workflow id", () => {
   });
 
   test("a non-admin may create workflows but never choose their id", async () => {
-    const chosen = await create(memberKey, definition("member chosen", crypto.randomUUID()));
+    const chosen = await create(memberKey, definition("member chosen", nextUuid()));
     expect(chosen.status).toBe(403);
     expect((await create(memberKey, definition("member plain"))).status).toBe(201);
   });

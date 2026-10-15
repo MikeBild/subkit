@@ -10,6 +10,7 @@ import {
   users,
 } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
 import { assertInputByteLimits, callerUsage, reserveCallerBudget } from "../caller-budget.ts";
@@ -126,7 +127,7 @@ async function unit(principal: ResolvedPrincipal, turn: string) {
   return row;
 }
 
-function usage(principal: ResolvedPrincipal, limit = 50, now = new Date()) {
+function usage(principal: ResolvedPrincipal, limit = 50, now = new Date(getTestNow())) {
   return ctx.testDb.db.transaction((tx) =>
     callerUsage(
       tx,
@@ -368,7 +369,7 @@ describe("settlement when the run ends", () => {
           eq(callerBudgetUnits.unit_key, "lease-paid"),
         ),
       );
-    const later = new Date(Date.now() + 11 * 60_000);
+    const later = new Date(getTestNow() + 11 * 60_000);
     expect((await usage(principal, 50, later)).usedToday).toBe(1);
     expect((await unit(principal, "lease-paid"))?.state).toBe("committed");
     expect((await unit(principal, "lease-free"))?.state).toBe("refunded");
