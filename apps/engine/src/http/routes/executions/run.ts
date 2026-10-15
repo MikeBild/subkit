@@ -206,7 +206,8 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
 
     const envHeader = c.req.header("x-subkit-environment");
     let execution_mode: ExecutionMode = productEnvironment(principal) ?? "dev";
-    if (envHeader === "dev" || envHeader === "prod") execution_mode = envHeader;
+    if (!principal.product_id && (envHeader === "dev" || envHeader === "prod"))
+      execution_mode = envHeader;
 
     if (body.source === "saved") {
       if (body.async && body.execution_authority_id && !idempotencyKey) {
