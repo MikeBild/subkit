@@ -13,6 +13,7 @@ import {
   verifyLoginState,
 } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
+import { isBrowserLoginProvider } from "../../../config/schema.ts";
 import type { Db } from "../../../db/client.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { parseFormBody } from "../oauth/shared.ts";
@@ -47,9 +48,11 @@ type OidcConfig = {
 };
 
 function providers() {
-  return [...getConfig().auth.providers].sort(
-    (left, right) => Number(left.protocol === "api_key") - Number(right.protocol === "api_key"),
-  );
+  return [...getConfig().auth.providers]
+    .filter(isBrowserLoginProvider)
+    .sort(
+      (left, right) => Number(left.protocol === "api_key") - Number(right.protocol === "api_key"),
+    );
 }
 
 const DEFAULT_LOGIN_REDIRECT = "/cockpit";

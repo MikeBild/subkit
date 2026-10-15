@@ -1,4 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { isBrowserLoginProvider } from "../../../config/schema.ts";
 import type { AppEnv } from "../../openapi.ts";
 
 const ProviderEntry = z
@@ -41,6 +42,7 @@ export function registerProvidersRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, async (c) => {
     const { getConfig } = await import("../../../config/loader.ts");
     const providers: z.infer<typeof ProviderEntry>[] = [...getConfig().auth.providers]
+      .filter(isBrowserLoginProvider)
       .sort(
         (left, right) => Number(left.protocol === "api_key") - Number(right.protocol === "api_key"),
       )

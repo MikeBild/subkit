@@ -2,7 +2,7 @@ import type { MiddlewareHandler } from "hono";
 import { browserSessionForPrincipal } from "../../auth/browser-session.ts";
 import { recordAuthFailure } from "../../auth/failed-auth-tracker.ts";
 import type { AuthProviderRegistry } from "../../auth/registry.ts";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { isAuthDenial, type ResolvedPrincipal } from "../../auth/types.ts";
 import { withContext } from "../../logging/context.ts";
 import { buildServiceMetadata } from "../../observability/service-metadata.ts";
 import { UnauthorizedError } from "../errors.ts";
@@ -11,10 +11,16 @@ import type { AppEnv } from "../openapi.ts";
 export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     if (c.req.method === "POST" && c.req.path === "/v1/identity/cli-session") {
-      await next();
-      return;
+      return next();
     }
     const principal = await registry.resolve(c.req.raw);
+    if (isAuthDenial(principal)) {
+      recordAuthFailure(requestIp(c.req.header.bind(c.req)));
+      return c.json(
+        { code: "unauthorized", error: "unauthorized", message: "invalid bearer token" },
+        401,
+      );
+    }
     if (principal) {
       c.set("principal", principal);
       const cockpitRequest =
@@ -42,17 +48,17 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
           await next();
         },
       );
-      return;
+      return undefined;
     }
     if (c.req.header("authorization")) {
-      const ip =
-        c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-        c.req.header("x-real-ip") ??
-        "unknown";
-      recordAuthFailure(ip);
+      recordAuthFailure(requestIp(c.req.header.bind(c.req)));
     }
-    await next();
+    return next();
   };
+}
+
+function requestIp(header: (name: string) => string | undefined): string {
+  return header("x-forwarded-for")?.split(",")[0]?.trim() ?? header("x-real-ip") ?? "unknown";
 }
 
 export function requireAuth(c: {

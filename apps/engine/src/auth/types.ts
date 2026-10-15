@@ -11,6 +11,13 @@ export type ExecutionAuthSource =
       api_key_id: string;
       credential_version: string;
       expires_at: string;
+    }
+  | {
+      kind: "external_bearer";
+      provider_id: string;
+      identity_id: string;
+      issued_at: string;
+      expires_at: string;
     };
 
 export interface ResolvedPrincipal {
@@ -28,7 +35,20 @@ export interface ResolvedPrincipal {
   allowed_workflows?: AllowList;
   allowed_connectors?: AllowList;
   email?: string;
+  subject?: string;
   via?: "token_exchange";
+}
+
+export interface AuthDenial {
+  denied: true;
+  provider: string;
+  reason: string;
+}
+
+export function isAuthDenial(value: unknown): value is AuthDenial {
+  return (
+    typeof value === "object" && value !== null && (value as { denied?: unknown }).denied === true
+  );
 }
 
 export interface AuthProviderCapabilities {
@@ -48,6 +68,13 @@ export interface AuthProvider {
   refreshSession?(req: Request): Promise<Response>;
   revoke?(req: Request): Promise<Response>;
 }
+
+export interface DenyingAuthProvider extends Omit<AuthProvider, "resolve"> {
+  resolve(req: Request): Promise<ResolvedPrincipal | AuthDenial | null>;
+  claims(req: Request): boolean;
+}
+
+export type RegisteredAuthProvider = AuthProvider | DenyingAuthProvider;
 
 export interface PolicyContext {
   principal: ResolvedPrincipal;
