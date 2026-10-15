@@ -45,6 +45,20 @@ const TOOL = {
   strict: false,
 };
 
+const PAYLOAD = [
+  "const r = input.input.request;",
+  "if (input.input.purpose === 'classify') return { model: 'gpt-5.6-terra', store: false, instructions: r.instructions, input: r.input, max_output_tokens: 400, text: { format: { type: 'json_schema', name: 'session_classifier', strict: true, schema: { type: 'object', additionalProperties: false, required: ['about_session'], properties: { about_session: { type: 'boolean' } } } } } };",
+  "const body = { model: 'gpt-5.6-terra', store: false, instructions: r.instructions, input: r.input, max_output_tokens: 4096 };",
+  "if (Array.isArray(r.tools)) { body.tools = r.tools; body.tool_choice = r.tool_choice || 'auto'; } else body.tool_choice = 'none';",
+  "return body;",
+].join(" ");
+
+const CLEAN = [
+  "const d = (input.scope.respond && input.scope.respond.data) || {};",
+  "const output = (Array.isArray(d.output) ? d.output : []).flatMap((it) => it.type === 'reasoning' ? [{ type: 'reasoning', id: it.id, summary: Array.isArray(it.summary) ? it.summary : [] }] : it.type === 'message' ? [{ type: 'message', role: 'assistant', content: (it.content || []).filter((c) => c.type === 'output_text').map((c) => ({ type: 'output_text', text: c.text })) }] : it.type === 'function_call' ? [{ type: 'function_call', call_id: it.call_id, name: it.name, arguments: it.arguments }] : []);",
+  "return { status: d.status || 'completed', output, incomplete_details: d.incomplete_details || null, model: d.model || null, model_usage: d.usage || null };",
+].join(" ");
+
 function gateDefinition(connectorId: string) {
   return {
     name: "llm gate",
@@ -55,13 +69,13 @@ function gateDefinition(connectorId: string) {
     timeout_ms: 30000,
     input_schema: {
       type: "object",
-      required: ["turn_id", "round", "request"],
+      required: ["turn_id", "purpose", "request"],
       properties: {
         turn_id: { type: "string" },
-        round: { type: "integer", minimum: 1, maximum: 6 },
+        purpose: { enum: ["round", "classify"] },
         request: {
           type: "object",
-          required: ["instructions", "input", "tools", "tool_choice"],
+          required: ["instructions", "input"],
           properties: {
             tools: {
               type: "array",
@@ -89,13 +103,13 @@ function gateDefinition(connectorId: string) {
         limit: 50,
         tz: "Europe/Berlin",
         unit: "turn_id",
-        round: "round",
         billable_steps: ["respond"],
         max_metered: 13,
-        commit_when: "$count(output[type = 'function_call']) = 0",
+        commit_when: "true",
       },
     },
     steps: [
+      { id: "payload", kind: "transform", language: "javascript", expression: PAYLOAD },
       {
         id: "respond",
         kind: "request",
@@ -104,24 +118,13 @@ function gateDefinition(connectorId: string) {
         path: "/v1/responses",
         side_effects: "write",
         timeout_ms: 30000,
-        body: {
-          model: "gpt-5.6-terra",
-          store: false,
-          max_output_tokens: 4096,
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-          instructions: "${input.request.instructions}",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-          input: "${input.request.input}",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-          tools: "${input.request.tools}",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-          tool_choice: "${input.request.tool_choice}",
-        },
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+        body: "${scope.payload.data}",
         boundary: { variables: {}, max_body_bytes: 400000, max_calls: 1 },
       },
+      { id: "result", kind: "transform", language: "javascript", expression: CLEAN },
     ],
-    output_transform:
-      '{ "status": $scope.respond.data.status, "output": $scope.respond.data.output[], "model_usage": $scope.respond.data.usage }',
+    output_transform: "$scope.result.data",
   };
 }
 
@@ -313,10 +316,16 @@ beforeEach(() => {
   };
 });
 
+const round = (turn_id: string, extra: Record<string, unknown> = {}) => ({
+  turn_id,
+  purpose: "round",
+  request: request(extra),
+});
+
 describe("thin LLM gate under a product caller", () => {
   test("the server sets model, store and token cap and drops client-only fields", async () => {
     const principal = await productUser();
-    const { result } = await turn(principal, { turn_id: "t-final", round: 1, request: request() });
+    const { result } = await turn(principal, round("t-final"));
     expect(result.status).toBe("succeeded");
     expect(received).toHaveLength(1);
     const sent = received[0];
@@ -332,55 +341,102 @@ describe("thin LLM gate under a product caller", () => {
     });
   });
 
-  test("a final answer commits the turn and returns items, model usage and budget usage", async () => {
+  test("a classify call gets the classifier answer format and no tools", async () => {
     const principal = await productUser();
-    const { execution_id } = await turn(principal, {
-      turn_id: "t-commit",
-      round: 1,
-      request: request(),
+    await turn(principal, {
+      turn_id: "t-classify",
+      purpose: "classify",
+      request: { instructions: "Classify.", input: [{ role: "user", content: [] }] },
     });
-    expect((await storedResult(execution_id)).result).toEqual({
-      status: "completed",
-      output: [{ type: "message", id: "msg_1", content: [{ type: "output_text", text: "C" }] }],
-      model_usage: { input_tokens: 12, output_tokens: 3 },
-      usage: { usedToday: 1, dailyLimit: 50 },
+    expect(received[0]?.body).toMatchObject({
+      model: "gpt-5.6-terra",
+      store: false,
+      max_output_tokens: 400,
+      text: { format: { type: "json_schema", name: "session_classifier", strict: true } },
     });
-    expect(await unit(principal, "t-commit")).toMatchObject({
-      state: "committed",
-      billable: true,
-      metered: 1,
-    });
+    expect(received[0]?.body).not.toHaveProperty("tools");
+    expect(received[0]?.body).not.toHaveProperty("tool_choice");
   });
 
-  test("a tool call keeps the turn open and the next round costs nothing", async () => {
+  test("a round without tools sends tool_choice none and no tools", async () => {
+    const principal = await productUser();
+    await turn(principal, {
+      turn_id: "t-no-tools",
+      purpose: "round",
+      request: { instructions: "Answer.", input: [], tool_choice: "none" },
+    });
+    expect(received[0]?.body).not.toHaveProperty("tools");
+    expect(received[0]?.body).toMatchObject({ tool_choice: "none" });
+  });
+
+  test("a whole turn costs one unit: classify, tool rounds and the answer are free after the first call", async () => {
     const principal = await productUser();
     reply.body = {
       status: "completed",
-      output: [{ type: "function_call", call_id: "call_1", name: "show", arguments: "{}" }],
-      usage: { input_tokens: 5, output_tokens: 1 },
+      output: [
+        { type: "message", content: [{ type: "output_text", text: '{"about_session":false}' }] },
+      ],
     };
-    await turn(principal, { turn_id: "t-tools", round: 1, request: request() });
-    expect(await unit(principal, "t-tools")).toMatchObject({ state: "reserved", metered: 1 });
-    reply.body = { status: "completed", output: [{ type: "message" }], usage: {} };
-    const { execution_id } = await turn(principal, {
-      turn_id: "t-tools",
-      round: 2,
-      request: request(),
+    await turn(principal, {
+      turn_id: "t-turn",
+      purpose: "classify",
+      request: { instructions: "Classify.", input: [] },
     });
+    expect(await unit(principal, "t-turn")).toMatchObject({ state: "committed", metered: 1 });
+    reply.body = {
+      status: "completed",
+      output: [{ type: "function_call", call_id: "call_1", name: "show", arguments: "{}" }],
+    };
+    await turn(principal, round("t-turn"));
+    reply.body = {
+      status: "completed",
+      output: [{ type: "message", content: [{ type: "output_text", text: "C" }] }],
+    };
+    const { execution_id } = await turn(principal, round("t-turn"));
     expect((await storedResult(execution_id)).result).toMatchObject({
       usage: { usedToday: 1, dailyLimit: 50 },
     });
-    expect(await unit(principal, "t-tools")).toMatchObject({ state: "committed", metered: 2 });
+    for (let call = 4; call <= 13; call += 1) await turn(principal, round("t-turn"));
+    expect(await unit(principal, "t-turn")).toMatchObject({ state: "committed", metered: 13 });
+    await expect(turn(principal, round("t-turn"))).rejects.toMatchObject({ code: "turn_limit" });
+    expect(received).toHaveLength(13);
+  });
+
+  test("the result carries cleaned items, the incomplete reason, the model and budget usage", async () => {
+    const principal = await productUser();
+    reply.body = {
+      status: "incomplete",
+      model: "gpt-5.6-terra-2026",
+      incomplete_details: { reason: "max_output_tokens" },
+      output: [
+        { type: "reasoning", id: "rs_1", summary: [], status: "completed", extra: 1 },
+        {
+          type: "message",
+          id: "msg_1",
+          status: "completed",
+          content: [{ type: "output_text", text: "C", annotations: [] }],
+        },
+      ],
+      usage: { input_tokens: 12, output_tokens: 3 },
+    };
+    const { execution_id } = await turn(principal, round("t-clean"));
+    expect((await storedResult(execution_id)).result).toEqual({
+      status: "incomplete",
+      output: [
+        { type: "reasoning", id: "rs_1", summary: [] },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "C" }] },
+      ],
+      incomplete_details: { reason: "max_output_tokens" },
+      model: "gpt-5.6-terra-2026",
+      model_usage: { input_tokens: 12, output_tokens: 3 },
+      usage: { usedToday: 1, dailyLimit: 50 },
+    });
   });
 
   test("an oversized part is refused as invalid without a model call or a charge", async () => {
     const principal = await productUser();
     await expect(
-      turn(principal, {
-        turn_id: "t-big",
-        round: 1,
-        request: request({ instructions: "x".repeat(100) }),
-      }),
+      turn(principal, round("t-big", { instructions: "x".repeat(100) })),
     ).rejects.toMatchObject({ code: "invalid" });
     expect(received).toHaveLength(0);
     expect(await unit(principal, "t-big")).toBeUndefined();
@@ -393,9 +449,9 @@ describe("thin LLM gate under a product caller", () => {
       { tools: [{ type: "web_search" }] },
       { tool_choice: "required" },
     ]) {
-      await expect(
-        turn(principal, { turn_id: "t-tool", round: 1, request: request(extra) }),
-      ).rejects.toMatchObject({ code: "input_schema_violation" });
+      await expect(turn(principal, round("t-tool", extra))).rejects.toMatchObject({
+        code: "input_schema_violation",
+      });
     }
     expect(received).toHaveLength(0);
   });
@@ -403,11 +459,7 @@ describe("thin LLM gate under a product caller", () => {
   test("a model call that reached the upstream and failed stays charged and reports a safe failure", async () => {
     const principal = await productUser();
     reply = { status: 500, body: { error: { message: "upstream" } } };
-    const { execution_id, result } = await turn(principal, {
-      turn_id: "t-fail",
-      round: 1,
-      request: request(),
-    });
+    const { execution_id, result } = await turn(principal, round("t-fail"));
     expect(result.status).toBe("failed");
     expect(result.error?.code).toBe("sensitive_execution_failure");
     expect((await storedResult(execution_id)).failure?.error_code).toBe(
@@ -423,13 +475,12 @@ describe("thin LLM gate under a product caller", () => {
 
   test("a request its boundary refuses before sending is refunded", async () => {
     const principal = await productUser();
-    const { result } = await turn(principal, {
-      turn_id: "t-refused",
-      round: 1,
-      request: request({
+    const { result } = await turn(
+      principal,
+      round("t-refused", {
         input: [{ role: "user", content: [{ type: "input_text", text: "x".repeat(450_000) }] }],
       }),
-    });
+    );
     expect(result.status).toBe("failed");
     expect(received).toHaveLength(0);
     expect(await unit(principal, "t-refused")).toMatchObject({

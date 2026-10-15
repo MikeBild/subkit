@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { Db, Executor } from "../db/client.ts";
 import { callerBudgetUnits, executions, workflowVersions } from "../db/schema/index.ts";
 import { eraseProductCaller } from "../identity/product-erasure.ts";
@@ -35,12 +35,7 @@ export interface CallerBudgetReservation {
   charged: boolean;
 }
 
-export type CallerBudgetRefusalCode =
-  | "rate_limited"
-  | "turn_closed"
-  | "turn_busy"
-  | "turn_limit"
-  | "invalid";
+export type CallerBudgetRefusalCode = "rate_limited" | "turn_busy" | "turn_limit" | "invalid";
 
 function refuse(code: CallerBudgetRefusalCode, message: string, details?: unknown): never {
   throw Object.assign(new Error(message), { code, ...(details ? { details } : {}) });
@@ -157,6 +152,7 @@ async function hasActiveExecution(
         eq(executions.tenant_id, tenant_id),
         eq(executions.guard_unit_key, guard_unit_key),
         inArray(executions.status, ACTIVE_STATUSES),
+        isNull(executions.abort_requested_at),
       ),
     )
     .limit(1);
@@ -169,14 +165,6 @@ function unitKeyOf(guard: CallerDailyLimit, input: unknown): string {
   if (typeof key !== "string" || key.length < 1 || key.length > UNIT_KEY_MAX)
     refuse("invalid", "the budget unit must be a string of 1..128 characters");
   return key;
-}
-
-function roundOf(guard: CallerDailyLimit, input: unknown): number {
-  if (!guard.round) return 1;
-  const value = valueAt(input, guard.round);
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1)
-    refuse("invalid", "the budget round must be an integer of at least 1");
-  return value;
 }
 
 function productCaller(caller: CallerContext | null): CallerContext & { productId: string } {
@@ -203,7 +191,6 @@ export async function reserveCallerBudget(
   if (!guard) return null;
   const owner = productCaller(caller);
   const unit_key = unitKeyOf(guard, input);
-  const round = roundOf(guard, input);
   const ledger = {
     tenant_id: owner.tenantId,
     bucket: guard.bucket,
@@ -232,13 +219,12 @@ export async function reserveCallerBudget(
     execution_guard_key: executionGuardKey(owner.principalId, unit_key),
     principal_id: owner.principalId,
   };
-  if (unit?.state === "committed") refuse("turn_closed", "this turn is already closed");
-  if (round > 1 && unit?.state !== "reserved")
-    refuse("turn_closed", "a later round needs an open turn");
+  const open = unit?.state === "reserved" || unit?.state === "committed";
   if (await hasActiveExecution(tx, ledger.tenant_id, reservation.execution_guard_key))
-    refuse("turn_busy", "this turn already has a round in progress");
-  if (unit && guard.max_metered !== undefined && unit.metered >= guard.max_metered)
-    refuse("turn_limit", "this turn has used all of its model calls");
+    refuse("turn_busy", "this turn already has a call in progress");
+  if (open && unit.metered >= guard.max_metered)
+    refuse("turn_limit", "this turn has used all of its metered calls");
+  if (unit?.state === "committed") return { ...reservation, charged: false };
   if (unit?.state === "reserved") {
     await tx
       .update(callerBudgetUnits)

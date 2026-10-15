@@ -768,13 +768,6 @@ export const CallerDailyLimitSchema = z
       .describe(
         "Dot path into $input whose value (1..128 characters) is the unit one charge covers",
       ),
-    round: z
-      .string()
-      .regex(INPUT_PATH)
-      .optional()
-      .describe(
-        "Dot path into $input holding the round number; a round above 1 needs a reserved unit",
-      ),
     lease_ms: z
       .number()
       .int()
@@ -799,14 +792,15 @@ export const CallerDailyLimitSchema = z
       .number()
       .int()
       .min(1)
-      .optional()
       .describe(
-        "Metered calls a unit may use before admission refuses with turn_limit; one round runs at a time",
+        "Metered calls a unit may use before admission refuses with turn_limit; later calls of a reserved or committed unit are free and one call of a unit runs at a time",
       ),
     commit_when: z
       .string()
       .min(1)
-      .describe("JSONata over the run output; true commits the unit, false keeps it reserved"),
+      .describe(
+        "JSONata over the run output; true commits the unit so it is never refunded, false keeps it reserved",
+      ),
     attach_usage_as: z
       .string()
       .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/)
