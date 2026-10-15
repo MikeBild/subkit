@@ -93,7 +93,7 @@ export async function admissionRefusal(
 
 const callerBudgetRefusals = {
   rate_limited: { status: 429, error: "rate-limited" },
-  turn_busy: { status: 429, error: "busy" },
+  turn_busy: { status: 409, error: "turn-busy" },
   turn_limit: { status: 429, error: "turn-limit" },
   invalid: { status: 400, error: "invalid" },
 } as const;

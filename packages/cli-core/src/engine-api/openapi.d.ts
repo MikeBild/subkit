@@ -7027,16 +7027,16 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. */
+                /** @description Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. Another call of the same caller budget unit is still queued or running without a cancel request: `{error:"turn-busy", code:"turn_busy"}` without `execution_id`; that call keeps running, and repeating the request with the same `idempotency_key` replays it. Nothing was reserved. */
                 409: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Error"];
+                        "application/json": components["schemas"]["Error"] | components["schemas"]["CallerBudgetRefusal"];
                     };
                 };
-                /** @description The workflow's caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage}`), the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`) or another call of the same turn is still queued or running without a cancel request (`{error:"busy", code:"turn_busy"}`). Nothing was reserved. */
+                /** @description The workflow's caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage}`) or the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`). Nothing was reserved. */
                 429: {
                     headers: {
                         [name: string]: unknown;
@@ -21796,7 +21796,7 @@ export interface components {
         };
         CallerBudgetRefusal: {
             /** @enum {string} */
-            error: "rate-limited" | "busy" | "turn-limit" | "invalid";
+            error: "rate-limited" | "turn-busy" | "turn-limit" | "invalid";
             /** @enum {string} */
             code: "rate_limited" | "turn_busy" | "turn_limit" | "invalid";
             message: string;
