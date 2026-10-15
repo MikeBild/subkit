@@ -9,7 +9,12 @@ import { checkBeforeGate } from "../conversations/tools/sdk-wrap/pregate.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import { denialDetails, denialHint } from "../rbac/denial.ts";
-import { type ConnectorAccessLevel, can, connectorAccessLevel } from "../rbac/evaluator.ts";
+import {
+  type ConnectorAccessLevel,
+  can,
+  connectorAccessLevel,
+  PRODUCT_PERMISSIONS,
+} from "../rbac/evaluator.ts";
 import {
   type ApprovalAuditResource,
   approvalAuditResource,
@@ -209,6 +214,27 @@ export async function dispatchTool(
       reason: DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON,
     };
     decisionLabel = "not_available_on_surface";
+  } else if (
+    deps.principal.product_id &&
+    !PRODUCT_PERMISSIONS.has(entry.descriptor.rbac?.permission ?? "")
+  ) {
+    const permission = entry.descriptor.rbac?.permission ?? "tool";
+    await emitPolicyDenied(
+      deps,
+      entry.descriptor.name,
+      invocation.surface,
+      permission,
+      "credential_ceiling:product_permission_not_granted",
+      null,
+      null,
+      invocation.args,
+    );
+    envelope = {
+      status: "error",
+      error_code: "policy_denied",
+      message: "a product caller may only run its product workflows and read its own executions",
+    };
+    decisionLabel = "policy_denied";
   } else {
     const confirmed = isConfirmedRequest(invocation.args, invocation.meta);
     let halted = false;

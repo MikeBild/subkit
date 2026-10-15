@@ -4,7 +4,7 @@ import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
-import { UnauthorizedError } from "../../http/errors.ts";
+import { ForbiddenError, UnauthorizedError } from "../../http/errors.ts";
 import { requireAuth } from "../../http/middleware/auth.ts";
 import type { AppEnv } from "../../http/openapi.ts";
 import { logger } from "../../logging/logger.ts";
@@ -98,6 +98,7 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
       throw new UnauthorizedError("missing_or_invalid_credentials", wwwAuth);
     }
     const principal = requireAuth(c);
+    if (principal.product_id) throw new ForbiddenError("product_caller_forbidden");
     const db = c.get("db");
     const sessionHeader = c.req.header("mcp-session-id");
     const trafficClass = trafficClassFromHeader(c.req.header("x-subkit-traffic-class"));

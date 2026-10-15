@@ -93,6 +93,42 @@ describe("product bearer authentication over HTTP", () => {
     expect(res.status).toBe(403);
   });
 
+  test("a product principal is refused on the MCP endpoint before any tool runs", async () => {
+    const token = await liveToken(nextUuid());
+    const mcpHeaders = { accept: "application/json, text/event-stream" };
+    const messages = [
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "product-probe", version: "1" },
+        },
+      },
+      ...["list_workflows", "find_user", "whoami", "get_engine_status", "run_workflow"].map(
+        (name, index) => ({
+          jsonrpc: "2.0",
+          id: index + 2,
+          method: "tools/call",
+          params: { name, arguments: {} },
+        }),
+      ),
+    ];
+    for (const message of messages) {
+      const res = await call("/mcp", token, {
+        method: "POST",
+        headers: mcpHeaders,
+        body: JSON.stringify(message),
+      });
+      expect(res.status).toBe(403);
+      expect(await res.text()).toContain("product_caller_forbidden");
+    }
+    const stream = await call("/mcp", token, { headers: { accept: "text/event-stream" } });
+    expect(stream.status).toBe(403);
+  });
+
   test("a product principal cannot run a workflow without or with another product", async () => {
     const token = await liveToken(nextUuid());
     for (const product of [undefined, "harmoniqs"]) {
