@@ -382,7 +382,7 @@ const AuthProviders = z
   .min(1)
   .default([{ protocol: "api_key", id: "api-key", label: "SubKit API key" }])
   .describe(
-    "Provider-neutral authentication adapters. OIDC records are public browser clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration. oidc_bearer records accept an external issuer's access token as an Authorization bearer for one product, verified against the issuer's JWKS; they never issue API keys or browser sessions.",
+    "Authentication adapters: api_key, oidc (public browser client with PKCE, no secret) and oidc_bearer (an issuer's access token as bearer for one product, verified against its JWKS).",
   )
   .meta(global({ structural: true, runtimeEditable: true }));
 
