@@ -29,6 +29,7 @@ export interface Relation {
 interface ColumnOptions {
   sortable?: boolean;
   width?: string;
+  align?: "start" | "end";
   ownsRowLink?: boolean;
   interactive?: boolean;
   cardLabel?: boolean;
@@ -49,6 +50,7 @@ export function tableColumns<TRow extends RowData>({
     enableSorting: options?.sortable ?? false,
     meta: {
       width: options?.width,
+      align: options?.align,
       ownsRowLink: options?.ownsRowLink,
       interactive: options?.interactive,
       cardLabel: options?.cardLabel,

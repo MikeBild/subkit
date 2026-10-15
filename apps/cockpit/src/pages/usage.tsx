@@ -133,10 +133,8 @@ export function UsagePage() {
   const runCounts = useMemo(() => runsByWorkflow(runs.data), [runs.data]);
   const budget = useMemo(() => budgetSummary(status.data), [status.data]);
   const money = useMemo(() => windowCost(byWorkflow.data), [byWorkflow.data]);
-  const windowTokens = useMemo(
-    () => workflowRows.reduce((sum, row) => sum + row.tokens, 0),
-    [workflowRows],
-  );
+  const windowCalls = useMemo(() => origins.reduce((sum, row) => sum + row.calls, 0), [origins]);
+  const windowTokens = useMemo(() => origins.reduce((sum, row) => sum + row.tokens, 0), [origins]);
 
   const workflowIds = useMemo(
     () => workflowRows.filter((row) => !row.unattributed).map((row) => row.key),
@@ -177,26 +175,24 @@ export function UsagePage() {
 
   const costCell = useCallback(
     (row: { cost: number | null; tokens: number; share: number | null }) => (
-      <span className="flex items-center gap-3">
-        <span
-          aria-hidden="true"
-          className="hidden h-1.5 w-28 shrink-0 overflow-hidden rounded-full bg-muted sm:block"
-        >
+      <span className="flex items-center justify-end gap-3">
+        {row.cost !== null ? (
           <span
-            className="block h-full rounded-full bg-accent"
-            style={{ width: `${Math.round((row.share ?? 0) * 100)}%` }}
-          />
-        </span>
-        <span className="whitespace-nowrap tabular-nums">
-          {row.cost !== null
-            ? currency.format(row.cost)
-            : t(pluralKey("resource.usage.tokensAmount", row.tokens), {
-                count: number.format(row.tokens),
-              })}
+            aria-hidden="true"
+            className="hidden h-1.5 w-28 shrink-0 overflow-hidden rounded-full bg-muted sm:block"
+          >
+            <span
+              className="block h-full rounded-full bg-accent"
+              style={{ width: `${Math.round((row.share ?? 0) * 100)}%` }}
+            />
+          </span>
+        ) : null}
+        <span className="whitespace-nowrap text-right tabular-nums">
+          {row.cost !== null ? currency.format(row.cost) : MISSING}
         </span>
       </span>
     ),
-    [t, currency, number],
+    [currency],
   );
 
   const originColumns = useMemo<CockpitColumn<OriginRow>[]>(() => {
@@ -214,6 +210,10 @@ export function UsagePage() {
             data-origin={row.key}
           >
             {t(ORIGIN_LABEL[row.key])}
+            <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+              {number.format(row.calls)} {t("resource.field.calls")} · {number.format(row.tokens)}{" "}
+              {t("resource.field.tokens")}
+            </span>
             {row.key === "other" && row.flows.some(Boolean) ? (
               <span className="ml-2 font-normal text-muted-foreground">
                 {row.flows.filter(Boolean).join(", ")}
@@ -221,13 +221,14 @@ export function UsagePage() {
             ) : null}
           </span>
         ),
-        { width: "w-[60%]" },
+        { width: "w-[58%]" },
       ),
       column.custom("cost", (row) => row.cost ?? row.tokens, t("resource.usage.cost"), costCell, {
-        width: "w-[40%]",
+        width: "w-[42%]",
+        align: "end",
       }),
     ];
-  }, [t, dateTime, costCell]);
+  }, [t, dateTime, costCell, number]);
 
   const workflowColumns = useMemo<CockpitColumn<ConsumptionRow>[]>(() => {
     const column = tableColumns<ConsumptionRow>({ t, dateTime });
@@ -238,8 +239,8 @@ export function UsagePage() {
         t("resource.usage.axis.workflow"),
         (row) => {
           const lookup = workflowName.get(row.key);
-          if (lookup?.kind === "named")
-            return (
+          const name =
+            lookup?.kind === "named" ? (
               <a
                 className="block break-words font-medium underline-offset-4 hover:underline"
                 href={absolute(workflowHref(row.key))}
@@ -247,22 +248,32 @@ export function UsagePage() {
               >
                 {lookup.name}
               </a>
+            ) : !lookup || lookup.kind === "pending" ? (
+              MISSING
+            ) : (
+              <span className="block break-words text-muted-foreground">
+                {t(
+                  lookup.kind === "gone"
+                    ? "resource.usage.unknownWorkflow"
+                    : "resource.usage.workflowUnreadable",
+                )}
+              </span>
             );
-          if (!lookup || lookup.kind === "pending") return MISSING;
           return (
-            <span className="block break-words text-muted-foreground">
-              {t(
-                lookup.kind === "gone"
-                  ? "resource.usage.unknownWorkflow"
-                  : "resource.usage.workflowUnreadable",
-              )}
-            </span>
+            <div className="min-w-0">
+              {name}
+              <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                {number.format(row.calls)} {t("resource.field.calls")} · {number.format(row.tokens)}{" "}
+                {t("resource.field.tokens")}
+              </span>
+            </div>
           );
         },
-        { width: "w-[52%]", ownsRowLink: true },
+        { width: "w-[58%]", ownsRowLink: true },
       ),
       column.custom("cost", (row) => row.cost ?? row.tokens, t("resource.usage.cost"), costCell, {
-        width: "w-[32%]",
+        width: "w-[24%]",
+        align: "end",
       }),
       column.custom(
         "runs",
@@ -273,7 +284,7 @@ export function UsagePage() {
             {number.format(runCounts.get(row.key) ?? 0)}
           </span>
         ),
-        { width: "w-[16%]", cardLabel: true },
+        { width: "w-[18%]", cardLabel: true, align: "end" },
       ),
     ];
   }, [t, dateTime, workflowName, costCell, number, runCounts]);
@@ -288,6 +299,10 @@ export function UsagePage() {
         (row) => (
           <span className="block break-words font-medium" title={row.name ? row.key : undefined}>
             {row.unattributed ? t("resource.usage.unattributed") : (row.name ?? row.key)}
+            <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+              {number.format(row.calls)} {t("resource.field.calls")} · {number.format(row.tokens)}{" "}
+              {t("resource.field.tokens")}
+            </span>
           </span>
         ),
         { width: "w-[70%]" },
@@ -301,12 +316,29 @@ export function UsagePage() {
             {row.share === null ? MISSING : percent.format(row.share)}
           </span>
         ),
-        { width: "w-[30%]" },
+        { width: "w-[30%]", align: "end" },
       ),
     ];
-  }, [t, dateTime, percent]);
+  }, [t, dateTime, percent, number]);
 
-  const header = <PageHeader title={title} />;
+  const header = (
+    <PageHeader
+      title={title}
+      secondary={
+        <SegmentedControl
+          label={t("resource.usage.windowPicker")}
+          testId="usage-window"
+          value={span}
+          onValueChange={chooseWindow}
+          options={STATS_WINDOWS.map((candidate) => ({
+            value: candidate,
+            label: t(WINDOW_OPTION[candidate]),
+            testId: `usage-window-${candidate}`,
+          }))}
+        />
+      }
+    />
+  );
 
   if (!allowed)
     return (
@@ -315,11 +347,6 @@ export function UsagePage() {
       </Page>
     );
 
-  const spent = money
-    ? currency.format(money.amount)
-    : t(pluralKey("resource.usage.tokensAmount", windowTokens), {
-        count: number.format(windowTokens),
-      });
   const share = budgetPercent(budget);
   const pressure = budgetPressure(budget);
   const capPart = status.error ? (
@@ -361,48 +388,66 @@ export function UsagePage() {
 
   return (
     <Page kind="list" surface="collection" testId="resource-usage" scroll="page" header={header}>
-      <div className="flex flex-col gap-8">
+      <div className="flex min-w-0 flex-col gap-8">
         <SummaryLine
           testId="usage-cap-line"
           text={
             <span data-testid="usage-spend">
-              {spent}
+              {money
+                ? currency.format(money.amount)
+                : t(pluralKey("resource.usage.tokensAmount", windowTokens), {
+                    count: number.format(windowTokens),
+                  })}
               {capPart ? <> · {capPart}</> : null}
+              {byFlow.data ? (
+                <>
+                  {" "}
+                  · {number.format(windowCalls)} {t("resource.field.calls")} ·{" "}
+                  {number.format(windowTokens)} {t("resource.field.tokens")}
+                </>
+              ) : null}
             </span>
           }
           help={t("resource.usage.consumptionDescription")}
-          aside={
-            <SegmentedControl
-              label={t("resource.usage.windowPicker")}
-              testId="usage-window"
-              value={span}
-              onValueChange={chooseWindow}
-              options={STATS_WINDOWS.map((candidate) => ({
-                value: candidate,
-                label: t(WINDOW_OPTION[candidate]),
-                testId: `usage-window-${candidate}`,
-              }))}
-            />
-          }
         />
 
-        <Section label={t("resource.usage.byOrigin")} testId="usage-origins">
-          <DataTable
-            collectionId="usage-origin-table"
-            collectionTier="embedded"
-            columns={originColumns}
-            data={origins}
-            pending={byFlow.isPending}
-            error={byFlow.error ? tableError(() => void byFlow.refetch()) : null}
-            emptyState={emptyState}
-            hasActiveFilters={false}
-            sorting={[] as SortingState}
-            onSortingChange={() => {}}
-            columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byOrigin")}`}
-            recordsLabel={t("catalog.records")}
-            actionsLabel={t("common.actions")}
-          />
-        </Section>
+        <div className="grid min-w-0 grid-cols-1 gap-8 2xl:grid-cols-2">
+          <Section label={t("resource.usage.byOrigin")} testId="usage-origins">
+            <DataTable
+              collectionId="usage-origin-table"
+              collectionTier="embedded"
+              columns={originColumns}
+              data={origins}
+              pending={byFlow.isPending}
+              error={byFlow.error ? tableError(() => void byFlow.refetch()) : null}
+              emptyState={emptyState}
+              hasActiveFilters={false}
+              sorting={[] as SortingState}
+              onSortingChange={() => {}}
+              columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byOrigin")}`}
+              recordsLabel={t("catalog.records")}
+              actionsLabel={t("common.actions")}
+            />
+          </Section>
+
+          <Section label={t("resource.usage.byModel")} testId="usage-models">
+            <DataTable
+              collectionId="usage-model-table"
+              collectionTier="embedded"
+              columns={modelColumns}
+              data={modelRows}
+              pending={byModel.isPending}
+              error={byModel.error ? tableError(() => void byModel.refetch()) : null}
+              emptyState={emptyState}
+              hasActiveFilters={false}
+              sorting={[] as SortingState}
+              onSortingChange={() => {}}
+              columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byModel")}`}
+              recordsLabel={t("catalog.records")}
+              actionsLabel={t("common.actions")}
+            />
+          </Section>
+        </div>
 
         {byWorkflow.isPending || byWorkflow.error || attributedRows.length > 0 ? (
           <Section label={t("resource.usage.byWorkflow")} testId="usage-breakdown">
@@ -428,24 +473,6 @@ export function UsagePage() {
             />
           </Section>
         ) : null}
-
-        <Section label={t("resource.usage.byModel")} testId="usage-models">
-          <DataTable
-            collectionId="usage-model-table"
-            collectionTier="embedded"
-            columns={modelColumns}
-            data={modelRows}
-            pending={byModel.isPending}
-            error={byModel.error ? tableError(() => void byModel.refetch()) : null}
-            emptyState={emptyState}
-            hasActiveFilters={false}
-            sorting={[] as SortingState}
-            onSortingChange={() => {}}
-            columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byModel")}`}
-            recordsLabel={t("catalog.records")}
-            actionsLabel={t("common.actions")}
-          />
-        </Section>
       </div>
     </Page>
   );
