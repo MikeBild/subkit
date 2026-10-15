@@ -47,16 +47,17 @@ async function call(path: string, bearer: string | null, init: RequestInit = {})
   });
 }
 
+let sequence = 0;
+
 function run(bearer: string, input: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  sequence += 1;
   return call("/v1/executions", bearer, {
     method: "POST",
     body: JSON.stringify({
-      source: "saved",
       workflow_id: assistantId,
-      hold_writes: false,
       async: true,
-      idempotency_key: `${input.turn_id}:${input.round}:1`,
-      input,
+      idempotency_key: `${input.turn_id}:${sequence}`,
+      input: { purpose: "round", ...input },
       ...extra,
     }),
   });
@@ -118,10 +119,10 @@ beforeAll(async () => {
     execution_privacy: "sensitive",
     input_schema: {
       type: "object",
-      required: ["turn_id", "round"],
+      required: ["turn_id", "purpose"],
       properties: {
         turn_id: { type: "string" },
-        round: { type: "integer", minimum: 1, maximum: 6 },
+        purpose: { enum: ["round", "classify"] },
         final: { type: "boolean" },
         padding: { type: "string" },
       },
@@ -140,10 +141,9 @@ beforeAll(async () => {
         limit: 2,
         tz: "Europe/Berlin",
         unit: "turn_id",
-        round: "round",
         billable_steps: ["round"],
         max_metered: 13,
-        commit_when: "$count(output[type = 'function_call']) = 0",
+        commit_when: "true",
       },
     },
   });
@@ -173,7 +173,7 @@ describe("te-brain compatible budget over HTTP", () => {
 
   test("an async run defaults to the product environment and is accepted with 202", async () => {
     const bearer = await token(nextUuid());
-    const res = await run(bearer, { turn_id: "async-turn", round: 1 });
+    const res = await run(bearer, { turn_id: "async-turn" });
     expect(res.status).toBe(202);
     const body = (await res.json()) as { execution_id: string; status: string };
     expect(body.status).toBe("queued");
@@ -191,17 +191,17 @@ describe("te-brain compatible budget over HTTP", () => {
     expect(budget.usedToday).toBe(0);
   });
 
-  test("a round while the previous round of the turn is queued answers 409 turn_busy", async () => {
+  test("a call while the previous call of the turn is queued answers 429 busy", async () => {
     const bearer = await token(nextUuid());
-    expect((await run(bearer, { turn_id: "busy-turn", round: 1 })).status).toBe(202);
-    const busy = await run(bearer, { turn_id: "busy-turn", round: 2 });
-    expect(busy.status).toBe(409);
-    expect(await busy.json()).toMatchObject({ error: "turn-busy", code: "turn_busy" });
+    expect((await run(bearer, { turn_id: "busy-turn" })).status).toBe(202);
+    const busy = await run(bearer, { turn_id: "busy-turn" });
+    expect(busy.status).toBe(429);
+    expect(await busy.json()).toMatchObject({ error: "busy", code: "turn_busy" });
   });
 
   test("a finished turn returns its result with usage, and the third turn is rate limited", async () => {
     const bearer = await token(nextUuid());
-    const first = await run(bearer, { turn_id: "turn-1", round: 1, final: true }, { async: false });
+    const first = await run(bearer, { turn_id: "turn-1", final: true }, { async: false });
     expect(first.status).toBe(200);
     const { execution_id } = (await first.json()) as { execution_id: string };
     const polled = (await (await call(`/v1/executions/${execution_id}`, bearer)).json()) as Record<
@@ -218,8 +218,8 @@ describe("te-brain compatible budget over HTTP", () => {
         usage: { usedToday: 1, dailyLimit: 2 },
       },
     });
-    expect((await run(bearer, { turn_id: "turn-2", round: 1 })).status).toBe(202);
-    const refused = await run(bearer, { turn_id: "turn-3", round: 1 });
+    expect((await run(bearer, { turn_id: "turn-2" })).status).toBe(202);
+    const refused = await run(bearer, { turn_id: "turn-3" });
     expect(refused.status).toBe(429);
     expect(await refused.json()).toEqual({
       error: "rate-limited",
@@ -227,14 +227,15 @@ describe("te-brain compatible budget over HTTP", () => {
       message: "the daily limit is reached",
       usage: { usedToday: 2, dailyLimit: 2 },
     });
-    const closed = await run(bearer, { turn_id: "turn-1", round: 2 });
-    expect(closed.status).toBe(409);
-    expect(await closed.json()).toMatchObject({ error: "turn-closed", code: "turn_closed" });
+    const later = await run(bearer, { turn_id: "turn-1" });
+    expect(later.status).toBe(202);
+    const budget = (await (await call("/v1/budget", bearer)).json()) as { usedToday: number };
+    expect(budget.usedToday).toBe(2);
   });
 
   test("an input outside the schema is refused with 400 before any charge", async () => {
     const bearer = await token(nextUuid());
-    const res = await run(bearer, { turn_id: "bad", round: 1 }, { input: { round: 1 } });
+    const res = await run(bearer, { turn_id: "bad" }, { input: { purpose: "round" } });
     expect(res.status).toBe(400);
     const budget = (await (await call("/v1/budget", bearer)).json()) as { usedToday: number };
     expect(budget.usedToday).toBe(0);
@@ -242,14 +243,14 @@ describe("te-brain compatible budget over HTTP", () => {
 
   test("a body of 256 KiB is accepted", async () => {
     const bearer = await token(nextUuid());
-    const res = await run(bearer, { turn_id: "large", round: 1, padding: "x".repeat(262_144) });
+    const res = await run(bearer, { turn_id: "large", padding: "x".repeat(262_144) });
     expect(res.status).toBe(202);
   });
 
   test("another caller cannot read a caller's execution or result", async () => {
     const owner = await token(nextUuid());
     const intruder = await token(nextUuid());
-    const res = await run(owner, { turn_id: "own", round: 1, final: true }, { async: false });
+    const res = await run(owner, { turn_id: "own", final: true }, { async: false });
     const { execution_id } = (await res.json()) as { execution_id: string };
     expect((await call(`/v1/executions/${execution_id}`, intruder)).status).toBe(404);
     expect((await call(`/v1/executions/${execution_id}/result`, intruder)).status).toBe(404);

@@ -7009,16 +7009,16 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. A caller budget refuses a closed turn with `{error:"turn-closed", code:"turn_closed"}` and a turn whose previous round is still queued or running with `{error:"turn-busy", code:"turn_busy"}`. */
+                /** @description Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. */
                 409: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Error"] | components["schemas"]["CallerBudgetRefusal"];
+                        "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description The workflow's caller daily limit is reached (`rate_limited`, with `usage`) or the turn has used all of its metered calls (`turn_limit`). Nothing was reserved. */
+                /** @description The workflow's caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage}`), the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`) or another call of the same turn is still queued or running without a cancel request (`{error:"busy", code:"turn_busy"}`). Nothing was reserved. */
                 429: {
                     headers: {
                         [name: string]: unknown;
@@ -21293,8 +21293,6 @@ export interface components {
             tz: string;
             /** @description Dot path into $input whose value (1..128 characters) is the unit one charge covers */
             unit: string;
-            /** @description Dot path into $input holding the round number; a round above 1 needs a reserved unit */
-            round?: string;
             /**
              * @description How long a reserved unit waits for its next round before it settles
              * @default 600000
@@ -21304,9 +21302,9 @@ export interface components {
             billable_steps: string[];
             /** @description JSONata over a billable step output yielding the calls it used (default 1); requests already sent count toward it */
             meter?: string;
-            /** @description Metered calls a unit may use before admission refuses with turn_limit; one round runs at a time */
-            max_metered?: number;
-            /** @description JSONata over the run output; true commits the unit, false keeps it reserved */
+            /** @description Metered calls a unit may use before admission refuses with turn_limit; later calls of a reserved or committed unit are free and one call of a unit runs at a time */
+            max_metered: number;
+            /** @description JSONata over the run output; true commits the unit so it is never refunded, false keeps it reserved */
             commit_when: string;
             /**
              * @description Result key that receives {usedToday, dailyLimit} after settlement
@@ -21780,9 +21778,9 @@ export interface components {
         };
         CallerBudgetRefusal: {
             /** @enum {string} */
-            error: "rate-limited" | "turn-closed" | "turn-busy" | "turn-limit" | "invalid";
+            error: "rate-limited" | "busy" | "turn-limit" | "invalid";
             /** @enum {string} */
-            code: "rate_limited" | "turn_closed" | "turn_busy" | "turn_limit" | "invalid";
+            code: "rate_limited" | "turn_busy" | "turn_limit" | "invalid";
             message: string;
             usage?: {
                 usedToday: number;
@@ -21791,10 +21789,10 @@ export interface components {
         };
         ExecutionRunSavedBody: {
             /**
-             * @description discriminator enum property added by openapi-typescript
+             * @description Omitted means saved when workflow_id is present.
              * @enum {string}
              */
-            source: "saved";
+            source?: "saved";
             /** @description Omit to discover an existing matching local authority or run a held preparation. True always holds writes without spending a live run. False requires live authorization and rejects a missing or changed authority. */
             hold_writes?: boolean;
             /** Format: uuid */
@@ -21820,10 +21818,7 @@ export interface components {
             request_source?: "api" | "cli";
         };
         ExecutionRunDraftBody: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             source: "draft";
             /**
              * @description Temporary definitions always hold writes and unknown effects, including when this flag is omitted. Reads still execute against real systems. This flag is not a live-execution authorization.
@@ -21855,10 +21850,7 @@ export interface components {
             timeout_ms?: number;
         };
         ExecutionRunStepBody: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             source: "step";
             /**
              * @description Temporary definitions always hold writes and unknown effects, including when this flag is omitted. Reads still execute against real systems. This flag is not a live-execution authorization.
