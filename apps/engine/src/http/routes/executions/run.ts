@@ -65,7 +65,8 @@ const runExecutionRoute = createRoute({
       content: { "application/json": { schema: ErrorSchema.or(CallerBudgetRefusalSchema) } },
     },
     403: {
-      description: "Caller identity or workflow permission does not allow this run",
+      description:
+        "Caller identity or workflow permission does not allow this run. A product principal also gets 403 when the workflow has no live execution authority, no active version or no usable prepared credential, and when it asks for a held preparation; its runs are never downgraded to a preparation.",
       content: { "application/json": { schema: ErrorSchema } },
     },
     404: {
@@ -210,6 +211,13 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       execution_mode = envHeader;
 
     if (body.source === "saved") {
+      if (principal.product_id && body.hold_writes === true)
+        throw new HttpError(
+          403,
+          "product_preparation_forbidden",
+          "A product caller runs only under a live execution authority; held preparations are for operators.",
+        );
+      const holdWrites = principal.product_id ? false : body.hold_writes;
       if (body.async && body.execution_authority_id && !idempotencyKey) {
         throw new BadRequestError(
           "An authorized async run requires an idempotency_key so queue retries reuse its reservation",
@@ -230,7 +238,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
             request_source,
             input: body.input,
             idempotency_key: idempotencyKey ?? undefined,
-            hold_writes: body.hold_writes,
+            hold_writes: holdWrites,
           },
           db,
           principal,

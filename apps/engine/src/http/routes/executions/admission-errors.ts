@@ -14,6 +14,15 @@ const forbiddenCodes = new Set([
   "sensitive_resume_forbidden",
 ]);
 
+function productNotReady(principal: ResolvedPrincipal, code: string): boolean {
+  return (
+    Boolean(principal.product_id) &&
+    (code.startsWith("execution_authority_") ||
+      code.startsWith("workflow_version_") ||
+      code === "prepared_credential_unavailable")
+  );
+}
+
 function isRefusal(code: string | undefined): code is string {
   return (
     code !== undefined &&
@@ -68,7 +77,7 @@ export async function admissionRefusal(
         ? { execution_id: context.execution_id }
         : undefined;
   throw new HttpError(
-    forbiddenCodes.has(code) ? 403 : 409,
+    forbiddenCodes.has(code) || productNotReady(context.principal, code) ? 403 : 409,
     code,
     message,
     details ? { details } : {},
