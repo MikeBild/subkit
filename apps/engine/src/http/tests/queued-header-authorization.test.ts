@@ -242,7 +242,7 @@ for (const change of ["session", "grant", "connector", "prod"] as const) {
           actor_id: user.id,
           result: "denied",
           reason: "execution_authentication_unavailable",
-          metadata: { workflow_id, request_source: "queue" },
+          metadata: { workflow_id, request_source: "api" },
         });
       } else {
         expect(steps).toHaveLength(1);
