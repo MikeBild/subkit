@@ -12,7 +12,7 @@ import {
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
-import { callerUsage, reserveCallerBudget } from "../caller-budget.ts";
+import { assertInputByteLimits, callerUsage, reserveCallerBudget } from "../caller-budget.ts";
 import { callerFromPrincipal } from "../caller-context.ts";
 import { runExecution } from "../engine.ts";
 import { recoverExecutionPayload } from "../sensitive-payload.ts";
@@ -527,5 +527,87 @@ describe("caller erasure", () => {
       .from(users)
       .where(and(eq(users.tenant_id, ctx.tenantId), eq(users.id, principal.id)));
     expect(user?.status).toBe("active");
+  });
+});
+
+describe("input byte limits", () => {
+  const def = WorkflowDefSchema.parse({
+    ...guardedDefinition(5),
+    execution_guards: { input_bytes: { "request.instructions": 32768, "request.input": 64 } },
+  });
+
+  test("a string counts its own UTF-8 bytes, newlines and quotes included", () => {
+    const text = `${"line\n".repeat(6553)}ab"`;
+    expect(Buffer.byteLength(text)).toBe(32768);
+    expect(() => assertInputByteLimits(def, { request: { instructions: text } })).not.toThrow();
+    expect(() => assertInputByteLimits(def, { request: { instructions: `${text}x` } })).toThrow(
+      "exceeds 32768 bytes",
+    );
+    expect(() =>
+      assertInputByteLimits(def, { request: { instructions: "ü".repeat(16_385) } }),
+    ).toThrow();
+  });
+
+  test("an array counts its JSON text", () => {
+    const items = [{ text: "x".repeat(40) }];
+    expect(JSON.stringify(items).length).toBeLessThanOrEqual(64);
+    expect(() => assertInputByteLimits(def, { request: { input: items } })).not.toThrow();
+    expect(() =>
+      assertInputByteLimits(def, { request: { input: [...items, { text: "y" }] } }),
+    ).toThrow();
+  });
+});
+
+describe("caller erasure robustness", () => {
+  async function erasureWorkflow(slug: string) {
+    return (
+      await createWorkflowRow(ctx, {
+        name: slug,
+        slug,
+        product_id: "tekit",
+        required_caller_kind: "user",
+        execution_privacy: "sensitive",
+        caller_erasure: "on_success",
+        steps: [{ id: "noop", kind: "transform", expression: "return { deleted: true };" }],
+      })
+    ).workflow_id;
+  }
+
+  test("an erasure run without a verified subject is refused at admission", async () => {
+    const principal = await productUser();
+    const workflow_id = await erasureWorkflow("erasure-needs-subject");
+    const { subject: _subject, ...withoutSubject } = principal;
+    await expect(admit(withoutSubject, {}, workflow_id)).rejects.toMatchObject({
+      code: "caller_required",
+    });
+  });
+
+  test("an erasure still finishes when the identity binding is already gone", async () => {
+    const principal = await productUser();
+    const workflow_id = await erasureWorkflow("erasure-without-binding");
+    const admitted = await admit(principal, {}, workflow_id);
+    await ctx.testDb.db
+      .delete(userIdentities)
+      .where(
+        and(eq(userIdentities.tenant_id, ctx.tenantId), eq(userIdentities.user_id, principal.id)),
+      );
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: admitted.input,
+      options: { existing_execution_id: admitted.execution_id, principal, hold_writes: true },
+    });
+    expect(result.status).toBe("succeeded");
+    const [row] = await ctx.testDb.db
+      .select({ status: executions.status })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, admitted.execution_id)));
+    expect(row?.status).toBe("succeeded");
+    const [user] = await ctx.testDb.db
+      .select({ status: users.status })
+      .from(users)
+      .where(and(eq(users.tenant_id, ctx.tenantId), eq(users.id, principal.id)));
+    expect(user?.status).toBe("disabled");
   });
 });

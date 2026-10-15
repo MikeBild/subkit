@@ -58,7 +58,8 @@ export function assertInputByteLimits(def: WorkflowDef, input: unknown): void {
   for (const [path, max] of Object.entries(def.execution_guards?.input_bytes ?? {})) {
     const value = valueAt(input, path);
     if (value === undefined) continue;
-    if (Buffer.byteLength(JSON.stringify(value), "utf8") > max)
+    const text = typeof value === "string" ? value : JSON.stringify(value);
+    if (Buffer.byteLength(text, "utf8") > max)
       refuse("invalid", `input ${path} exceeds ${max} bytes`);
   }
 }
@@ -170,6 +171,10 @@ export async function reserveCallerBudget(
   now: Date = new Date(),
 ): Promise<CallerBudgetReservation | null> {
   assertInputByteLimits(def, input);
+  if (def.caller_erasure && !caller?.subject)
+    throw Object.assign(new Error("caller erasure needs a caller verified by a bearer provider"), {
+      code: "caller_required",
+    });
   const guard = def.execution_guards?.caller_daily_limit;
   if (!guard) return null;
   const owner = productCaller(caller);
@@ -390,6 +395,7 @@ export async function settleExecutionGuards(
     .limit(1);
   const caller = CallerContextSchema.safeParse(row?.caller_context);
   if (!row || !caller.success || !caller.data.productId) return {};
+  if (!row.guard_unit_key && !caller.data.subject) return {};
   const def = await guardedDefinition(tx, params.tenant_id, row);
   if (!def) return {};
   const settlement: GuardSettlement = {};
