@@ -262,12 +262,46 @@ describe("te-brain compatible budget over HTTP", () => {
     expect(budget.usedToday).toBe(0);
   });
 
-  test("a call while the previous call of the turn is queued answers 429 busy", async () => {
+  test("a call while the previous call of the turn is queued answers 409 turn-busy", async () => {
     const bearer = await token(nextUuid());
     expect((await run(bearer, { turn_id: "busy-turn" })).status).toBe(202);
     const busy = await run(bearer, { turn_id: "busy-turn" });
-    expect(busy.status).toBe(429);
-    expect(await busy.json()).toMatchObject({ error: "busy", code: "turn_busy" });
+    expect(busy.status).toBe(409);
+    const body = (await busy.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ error: "turn-busy", code: "turn_busy" });
+    expect(body).not.toHaveProperty("execution_id");
+  });
+
+  test("after turn-busy the same key is admitted once the earlier call stops", async () => {
+    const bearer = await token(nextUuid());
+    const first = await run(
+      bearer,
+      { turn_id: "replay-turn" },
+      { idempotency_key: "replay-turn:1" },
+    );
+    expect(first.status).toBe(202);
+    const { execution_id: firstId } = (await first.json()) as { execution_id: string };
+    const second = { idempotency_key: "replay-turn:2" };
+    expect((await run(bearer, { turn_id: "replay-turn" }, second)).status).toBe(409);
+    const replay = await run(
+      bearer,
+      { turn_id: "replay-turn" },
+      { idempotency_key: "replay-turn:1" },
+    );
+    expect(replay.status).toBe(202);
+    expect(await replay.json()).toMatchObject({ execution_id: firstId, idempotent_replay: true });
+    expect((await run(bearer, { turn_id: "replay-turn" }, second)).status).toBe(409);
+    const cancel = await call(`/v1/executions/${firstId}/cancel`, bearer, {
+      method: "POST",
+      body: "{}",
+    });
+    expect([200, 202]).toContain(cancel.status);
+    const admitted = await run(bearer, { turn_id: "replay-turn" }, second);
+    expect(admitted.status).toBe(202);
+    const admittedBody = (await admitted.json()) as { execution_id: string };
+    expect(admittedBody.execution_id).not.toBe(firstId);
+    const budget = (await (await call("/v1/budget", bearer)).json()) as { usedToday: number };
+    expect(budget.usedToday).toBe(1);
   });
 
   test("a finished turn returns its result with usage, and the third turn is rate limited", async () => {

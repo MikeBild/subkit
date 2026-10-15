@@ -37,7 +37,7 @@ import {
 
 const CallerBudgetRefusalSchema = z
   .object({
-    error: z.enum(["rate-limited", "busy", "turn-limit", "invalid"]),
+    error: z.enum(["rate-limited", "turn-busy", "turn-limit", "invalid"]),
     code: z.enum(["rate_limited", "turn_busy", "turn_limit", "invalid"]),
     message: z.string(),
     usage: z.object({ usedToday: z.number().int(), dailyLimit: z.number().int() }).optional(),
@@ -79,12 +79,12 @@ const runExecutionRoute = createRoute({
     },
     409: {
       description:
-        "Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`.",
-      content: { "application/json": { schema: ErrorSchema } },
+        'Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. Another call of the same caller budget unit is still queued or running without a cancel request: `{error:"turn-busy", code:"turn_busy"}` without `execution_id`; that call keeps running, and repeating the request with the same `idempotency_key` replays it. Nothing was reserved.',
+      content: { "application/json": { schema: ErrorSchema.or(CallerBudgetRefusalSchema) } },
     },
     429: {
       description:
-        'The workflow\'s caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage}`), the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`) or another call of the same turn is still queued or running without a cancel request (`{error:"busy", code:"turn_busy"}`). Nothing was reserved.',
+        'The workflow\'s caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage}`) or the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`). Nothing was reserved.',
       content: { "application/json": { schema: CallerBudgetRefusalSchema } },
     },
   },
