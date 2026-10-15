@@ -93,6 +93,7 @@ beforeAll(async () => {
   const call = (model: string, ts: string, user_id: string | null = suite.http.userId) => ({
     tenant_id,
     user_id,
+    actor_type: user_id ? "user" : "system",
     flow: "chat",
     model,
     prompt_tokens: 12_000,
