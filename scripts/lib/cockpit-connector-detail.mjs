@@ -1059,6 +1059,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
         `${where}: accepting AI text sent ${JSON.stringify(state.metadataPatches.at(-1))}`,
       );
     await page.keyboard.press("Escape");
+    await page.getByRole("menu").waitFor({ state: "hidden" });
     await page.getByTestId("connector-menu").click();
     await assertConnectorMenu(page, localeName, false, `${where} · human description`);
     state.description = "";
@@ -1067,6 +1068,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     await page.getByTestId("connector-menu").click();
     await assertConnectorMenu(page, localeName, false, `${where} · empty AI description`);
     await page.keyboard.press("Escape");
+    await page.getByRole("menu").waitFor({ state: "hidden" });
     await assertNoVisibleUuids(page.locator("main").first(), where);
     await assertNoSidewaysScroll(page, where);
     await assertSingleTriggers(page, where);
