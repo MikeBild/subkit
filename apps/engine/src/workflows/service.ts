@@ -205,9 +205,19 @@ async function workflowViewsFromRows(
   });
 }
 
+function isPrimaryKeyConflict(err: unknown): boolean {
+  for (let cur: unknown = err, depth = 0; cur && depth < 5; depth += 1) {
+    const e = cur as { code?: string; constraint?: string; cause?: unknown };
+    if (e.code === "23505" && e.constraint === "workflows_pkey") return true;
+    cur = e.cause;
+  }
+  return false;
+}
+
 export interface CreateWorkflowInput extends VersionActor {
   tenant_id: string;
   def: unknown;
+  workflow_id?: string;
   actor_id: string | null;
   metadata?: CatalogMetadataPatch;
   audit_metadata?: Record<string, unknown>;
@@ -251,6 +261,7 @@ export async function createWorkflow(
       const [wf] = await tx
         .insert(workflows)
         .values({
+          ...(input.workflow_id ? { id: input.workflow_id } : {}),
           tenant_id: input.tenant_id,
           slug,
           name: def.name,
@@ -284,7 +295,12 @@ export async function createWorkflow(
           resource_type: "workflow",
           resource_id: wf.id,
           result: "success",
-          metadata: { ...input.audit_metadata, slug, version: 1 },
+          metadata: {
+            ...input.audit_metadata,
+            slug,
+            version: 1,
+            ...(input.workflow_id ? { operator_chosen_id: true } : {}),
+          },
         },
         tx,
       );
@@ -305,6 +321,8 @@ export async function createWorkflow(
       return wf.id;
     });
   } catch (err) {
+    if (input.workflow_id && isPrimaryKeyConflict(err))
+      return { errors: ["id: this workflow id is already in use"] };
     const conflict = await slugConflictResult(err, db, input.tenant_id, slug);
     if (conflict) return { errors: conflict.errors };
     throw err;
