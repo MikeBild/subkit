@@ -33,8 +33,8 @@ import {
 
 const CallerBudgetRefusalSchema = z
   .object({
-    error: z.enum(["rate-limited", "turn-closed", "turn-busy", "turn-limit", "invalid"]),
-    code: z.enum(["rate_limited", "turn_closed", "turn_busy", "turn_limit", "invalid"]),
+    error: z.enum(["rate-limited", "busy", "turn-limit", "invalid"]),
+    code: z.enum(["rate_limited", "turn_busy", "turn_limit", "invalid"]),
     message: z.string(),
     usage: z.object({ usedToday: z.number().int(), dailyLimit: z.number().int() }).optional(),
   })
@@ -74,12 +74,12 @@ const runExecutionRoute = createRoute({
     },
     409: {
       description:
-        'Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. A caller budget refuses a closed turn with `{error:"turn-closed", code:"turn_closed"}` and a turn whose previous round is still queued or running with `{error:"turn-busy", code:"turn_busy"}`.',
-      content: { "application/json": { schema: ErrorSchema.or(CallerBudgetRefusalSchema) } },
+        "Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`.",
+      content: { "application/json": { schema: ErrorSchema } },
     },
     429: {
       description:
-        "The workflow's caller daily limit is reached (`rate_limited`, with `usage`) or the turn has used all of its metered calls (`turn_limit`). Nothing was reserved.",
+        'The workflow\'s caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage}`), the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`) or another call of the same turn is still queued or running without a cancel request (`{error:"busy", code:"turn_busy"}`). Nothing was reserved.',
       content: { "application/json": { schema: CallerBudgetRefusalSchema } },
     },
   },
@@ -158,7 +158,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       let workflowId: string | undefined;
       try {
         const savedTarget = z
-          .object({ source: z.literal("saved"), workflow_id: z.string().uuid() })
+          .object({ source: z.literal("saved").optional(), workflow_id: z.string().uuid() })
           .safeParse(await c.req.json().catch(() => null));
         workflowId = savedTarget.success ? savedTarget.data.workflow_id : undefined;
       } catch {}

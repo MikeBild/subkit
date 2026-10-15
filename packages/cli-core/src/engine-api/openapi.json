@@ -8789,11 +8789,6 @@
             "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$",
             "description": "Dot path into $input whose value (1..128 characters) is the unit one charge covers"
           },
-          "round": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$",
-            "description": "Dot path into $input holding the round number; a round above 1 needs a reserved unit"
-          },
           "lease_ms": {
             "type": "integer",
             "minimum": 60000,
@@ -8818,12 +8813,12 @@
           "max_metered": {
             "type": "integer",
             "minimum": 1,
-            "description": "Metered calls a unit may use before admission refuses with turn_limit; one round runs at a time"
+            "description": "Metered calls a unit may use before admission refuses with turn_limit; later calls of a reserved or committed unit are free and one call of a unit runs at a time"
           },
           "commit_when": {
             "type": "string",
             "minLength": 1,
-            "description": "JSONata over the run output; true commits the unit, false keeps it reserved"
+            "description": "JSONata over the run output; true commits the unit so it is never refunded, false keeps it reserved"
           },
           "attach_usage_as": {
             "type": "string",
@@ -8838,6 +8833,7 @@
           "tz",
           "unit",
           "billable_steps",
+          "max_metered",
           "commit_when"
         ],
         "additionalProperties": false
@@ -10694,8 +10690,7 @@
             "type": "string",
             "enum": [
               "rate-limited",
-              "turn-closed",
-              "turn-busy",
+              "busy",
               "turn-limit",
               "invalid"
             ]
@@ -10704,7 +10699,6 @@
             "type": "string",
             "enum": [
               "rate_limited",
-              "turn_closed",
               "turn_busy",
               "turn_limit",
               "invalid"
@@ -10742,7 +10736,8 @@
             "type": "string",
             "enum": [
               "saved"
-            ]
+            ],
+            "description": "Omitted means saved when workflow_id is present."
           },
           "hold_writes": {
             "type": "boolean",
@@ -10782,7 +10777,6 @@
           }
         },
         "required": [
-          "source",
           "workflow_id"
         ]
       },
@@ -36945,7 +36939,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "oneOf": [
+                "anyOf": [
                   {
                     "$ref": "#/components/schemas/ExecutionRunSavedBody"
                   },
@@ -36955,15 +36949,7 @@
                   {
                     "$ref": "#/components/schemas/ExecutionRunStepBody"
                   }
-                ],
-                "discriminator": {
-                  "propertyName": "source",
-                  "mapping": {
-                    "saved": "#/components/schemas/ExecutionRunSavedBody",
-                    "draft": "#/components/schemas/ExecutionRunDraftBody",
-                    "step": "#/components/schemas/ExecutionRunStepBody"
-                  }
-                }
+                ]
               }
             }
           }
@@ -37027,24 +37013,17 @@
             }
           },
           "409": {
-            "description": "Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. A caller budget refuses a closed turn with `{error:\"turn-closed\", code:\"turn_closed\"}` and a turn whose previous round is still queued or running with `{error:\"turn-busy\", code:\"turn_busy\"}`.",
+            "description": "Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`.",
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/Error"
-                    },
-                    {
-                      "$ref": "#/components/schemas/CallerBudgetRefusal"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
           },
           "429": {
-            "description": "The workflow's caller daily limit is reached (`rate_limited`, with `usage`) or the turn has used all of its metered calls (`turn_limit`). Nothing was reserved.",
+            "description": "The workflow's caller daily limit is reached (`{error:\"rate-limited\", code:\"rate_limited\", usage}`), the turn has used all of its metered calls (`{error:\"turn-limit\", code:\"turn_limit\"}`) or another call of the same turn is still queued or running without a cancel request (`{error:\"busy\", code:\"turn_busy\"}`). Nothing was reserved.",
             "content": {
               "application/json": {
                 "schema": {

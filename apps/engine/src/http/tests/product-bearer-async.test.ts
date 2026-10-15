@@ -73,9 +73,9 @@ beforeAll(async () => {
         limit: 50,
         tz: "Europe/Berlin",
         unit: "turn_id",
-        round: "round",
         billable_steps: ["round"],
-        commit_when: "$count(output[type = 'function_call']) = 0",
+        max_metered: 13,
+        commit_when: "true",
       },
     },
   });
@@ -142,12 +142,10 @@ describe("a BRAIN turn through the queue", () => {
     const accepted = await call("/v1/executions", bearer, {
       method: "POST",
       body: JSON.stringify({
-        source: "saved",
         workflow_id: workflowId,
-        hold_writes: false,
+        idempotency_key: "turn-a:1",
         async: true,
-        idempotency_key: "turn-a:1:1",
-        input: { turn_id: "turn-a", round: 1 },
+        input: { turn_id: "turn-a", purpose: "round", request: { instructions: "x", input: [] } },
       }),
     });
     expect(accepted.status).toBe(202);

@@ -167,18 +167,20 @@ export const ClientDeclaredRunSourceSchema = z
       "Which program holds the API key: api or cli. Honoured only when the credential is an API key; ignored for a verified cockpit session, an MCP token or any other credential. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.",
   });
 
-export const RuntimeRunBodySchema = z.discriminatedUnion("source", [
-  z.object({
-    source: z.literal("saved"),
-    hold_writes: SavedRunModeSchema,
-    workflow_id: z.string().uuid(),
-    version_id: z.string().uuid().optional(),
-    execution_authority_id: z.string().uuid().optional(),
-    input: z.unknown().optional(),
-    async: z.boolean().optional(),
-    idempotency_key: IdempotencyKeySchema.optional(),
-    request_source: ClientDeclaredRunSourceSchema,
-  }),
+export const RuntimeRunBodySchema = z.union([
+  z
+    .object({
+      source: z.literal("saved").optional(),
+      hold_writes: SavedRunModeSchema,
+      workflow_id: z.string().uuid(),
+      version_id: z.string().uuid().optional(),
+      execution_authority_id: z.string().uuid().optional(),
+      input: z.unknown().optional(),
+      async: z.boolean().optional(),
+      idempotency_key: IdempotencyKeySchema.optional(),
+      request_source: ClientDeclaredRunSourceSchema,
+    })
+    .transform((body) => ({ ...body, source: "saved" as const })),
   z.object({
     source: z.literal("draft"),
     hold_writes: HoldWritesPreviewSchema,
@@ -216,10 +218,12 @@ const OpenApiStepSchema = z
   .catchall(z.unknown())
   .openapi("ExecutionRunStep");
 
-export const RunBodySchema = z.discriminatedUnion("source", [
+export const RunBodySchema = z.union([
   z
     .object({
-      source: z.literal("saved"),
+      source: z.literal("saved").optional().openapi({
+        description: "Omitted means saved when workflow_id is present.",
+      }),
       hold_writes: SavedRunModeSchema,
       workflow_id: z.string().uuid(),
       version_id: z.string().uuid().optional(),
