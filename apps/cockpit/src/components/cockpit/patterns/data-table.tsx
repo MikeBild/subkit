@@ -58,6 +58,7 @@ import { Skeleton } from "./skeleton";
 
 export interface CockpitColumnMeta {
   width?: string;
+  align?: "start" | "end";
   ownsRowLink?: boolean;
   interactive?: boolean;
   priority?: "high" | "low";
@@ -553,6 +554,7 @@ export function DataTable<TData extends RowData>({
                       style={{ width: widthByColumnId.get(header.column.id) }}
                       className={cn(
                         header.column.columnDef.meta?.width,
+                        header.column.columnDef.meta?.align === "end" && "text-right",
                         priorityClass(header.column.columnDef.meta?.priority),
                       )}
                     >
@@ -664,6 +666,7 @@ export function DataTable<TData extends RowData>({
                         style={{ width: widthByColumnId.get(cell.column.id) }}
                         className={cn(
                           "min-w-0",
+                          cell.column.columnDef.meta?.align === "end" && "text-right",
                           priorityClass(cell.column.columnDef.meta?.priority),
                           cellIndex === 0 ? "font-medium" : "text-muted-foreground",
                         )}
