@@ -86,8 +86,9 @@ A sensitive product workflow with `required_caller_kind: "user"` may declare
 manifest; changing them asks for a new approval.
 
 - `execution_guards.input_bytes` maps `$input` dot paths to a maximum UTF-8
-  size of their JSON text. Admission refuses a larger part with `invalid`
-  before anything is reserved.
+  size: a string counts its own bytes, any other value the bytes of its JSON
+  text. Admission refuses a larger part with `invalid` before anything is
+  reserved.
 - `execution_guards.caller_daily_limit` reserves one unit per caller and local
   day in `caller_budget_units` inside the admission transaction, after the
   idempotency replay check, under a per-caller advisory lock. `unit` and `round`

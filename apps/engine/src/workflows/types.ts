@@ -820,7 +820,7 @@ export const InputByteLimitsSchema = z
       .max(16 * 1024 * 1024),
   )
   .describe(
-    "Maximum UTF-8 bytes of JSON.stringify of each $input path; checked at admission before any charge",
+    "Maximum UTF-8 bytes per $input path (a string counts itself, other values their JSON text); checked at admission before any charge",
   );
 
 export const ExecutionGuardsSchema = z
