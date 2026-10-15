@@ -46,12 +46,12 @@ describe("audit append-only surface", () => {
     expect(banned).toEqual([]);
   });
 
-  test("the only writers are audit() and auditAwait()", () => {
-    const writers = Object.keys(auditModule).filter(
+  test("the public surface contains two writers and actor normalization", () => {
+    const functions = Object.keys(auditModule).filter(
       (k) =>
         typeof (auditModule as Record<string, unknown>)[k] === "function" && !k.startsWith("_"),
     );
-    expect(writers.sort()).toEqual(["audit", "auditAwait"].sort());
+    expect(functions.sort()).toEqual(["audit", "auditAwait", "normalizeAuditActorId"].sort());
   });
 });
 
