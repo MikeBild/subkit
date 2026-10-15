@@ -583,7 +583,12 @@ describe("dry_run_transform — audit hygiene", () => {
   });
 
   test("ID-only legacy context remains unknown rather than being attributed to a user", async () => {
-    const toolCtx = { ...makeCtx(), actor_id: nextActorId() };
+    const actor_id = nextActorId();
+    const toolCtx = {
+      ...makeCtx(),
+      actor_id,
+      engineClient: new EngineClient({ tenant_id, actor_id, db: ctx.db }),
+    };
     await dryRunTransformTool.execute(toolCtx, {
       expression: "value",
       sample_data: { value: true },

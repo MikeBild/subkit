@@ -234,11 +234,26 @@ describe("completeConnectorReauthorization", () => {
     await completeConnectorReauthorization(testDb.db, {
       tenant_id: tenantId,
       connector_id: connector.id,
-      actor_id,
+      actor: { kind: "user", id: actor_id },
     });
     for (const entry of await audit(connector.id)) {
       expect(entry.actor_type).toBe("user");
       expect(entry.actor_id).toBe(actor_id);
+    }
+  });
+
+  test("an untyped identifier does not establish a person", async () => {
+    const connector = await seedConnector({ ...OPEN, needs_reauth: true });
+    await completeConnectorReauthorization(testDb.db, {
+      tenant_id: tenantId,
+      connector_id: connector.id,
+      actor_id: connector.id,
+    });
+    const entries = await audit(connector.id);
+    expect(entries).toHaveLength(2);
+    for (const entry of entries) {
+      expect(entry.actor_type).toBe("unknown");
+      expect(entry.actor_id).toBeNull();
     }
   });
 
