@@ -6982,13 +6982,13 @@ export interface paths {
                         "application/json": components["schemas"]["ExecutionRunResponse"];
                     };
                 };
-                /** @description Bad request */
+                /** @description Bad request. A workflow input part above its declared byte limit answers `{error:"invalid", code:"invalid"}`. */
                 400: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Error"];
+                        "application/json": components["schemas"]["Error"] | components["schemas"]["CallerBudgetRefusal"];
                     };
                 };
                 /** @description Caller identity or workflow permission does not allow this run */
@@ -7009,13 +7009,22 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. */
+                /** @description Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. A caller budget refuses a closed turn with `{error:"turn-closed", code:"turn_closed"}`. */
                 409: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Error"];
+                        "application/json": components["schemas"]["Error"] | components["schemas"]["CallerBudgetRefusal"];
+                    };
+                };
+                /** @description The workflow's caller daily limit is reached (`rate_limited`, with `usage`) or the turn has used all of its metered calls (`turn_limit`). Nothing was reserved. */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CallerBudgetRefusal"];
                     };
                 };
             };
@@ -7475,6 +7484,120 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Daily allowance of the authenticated product caller
+         * @description Reports the product assistant workflow's caller_daily_limit for the authenticated product principal. Expired reservations settle before counting.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Usage for the caller's local day */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProductBudget"];
+                    };
+                };
+                /** @description Unauthenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The caller is not a product principal or the product is not configured */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readiness of the product assistant workflow
+         * @description ok is true when the product assistant workflow is active, a live execution authority exists for the product environment, and every connector it uses holds a usable credential. No secret is read.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Product readiness */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProductHealth"];
+                    };
+                };
+                /** @description Unauthenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The caller is not a product principal or the product is not configured */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -20310,6 +20433,9 @@ export interface components {
                         } | {
                             /** @enum {string} */
                             class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "file_name" | "path";
+                        } | {
+                            /** @enum {boolean} */
+                            caller_bound: true;
                         };
                     };
                     query: {
@@ -20356,6 +20482,11 @@ export interface components {
                 workflow_digest: string;
                 execution_options_digest: string;
             }[];
+            caller_guards?: {
+                execution_guards?: components["schemas"]["WorkflowJsonValue"];
+                /** @enum {string} */
+                caller_erasure?: "on_success";
+            };
         };
         WorkflowAuthorityPreview: {
             manifest: components["schemas"]["WorkflowEffectManifest"];
@@ -20708,6 +20839,9 @@ export interface components {
             max_llm_tokens_per_run?: number;
             runtime?: components["schemas"]["WorkflowRuntime"];
             trigger?: components["schemas"]["WorkflowTrigger"];
+            execution_guards?: components["schemas"]["ExecutionGuards"];
+            /** @enum {string} */
+            caller_erasure?: "on_success";
         };
         ResponseFilter: {
             /** @enum {string} */
@@ -20753,6 +20887,9 @@ export interface components {
                     } | {
                         /** @enum {string} */
                         class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "file_name" | "path";
+                    } | {
+                        /** @enum {boolean} */
+                        caller_bound: true;
                     };
                 };
                 max_body_bytes: number;
@@ -21140,6 +21277,43 @@ export interface components {
             business_days_only?: boolean;
             skip_dates?: string[];
         };
+        ExecutionGuards: {
+            caller_daily_limit?: components["schemas"]["CallerDailyLimit"];
+            /** @description Maximum UTF-8 bytes of JSON.stringify of each $input path; checked at admission before any charge */
+            input_bytes?: {
+                [key: string]: number;
+            };
+        };
+        CallerDailyLimit: {
+            /** @description Ledger bucket shared by workflows that draw from the same daily allowance */
+            bucket: string;
+            /** @description Units per caller and local day */
+            limit: number;
+            /** @description Time zone whose midnight resets the daily allowance */
+            tz: string;
+            /** @description Dot path into $input whose value (1..128 characters) is the unit one charge covers */
+            unit: string;
+            /** @description Dot path into $input holding the round number; a round above 1 needs a reserved unit */
+            round?: string;
+            /**
+             * @description How long a reserved unit waits for its next round before it settles
+             * @default 600000
+             */
+            lease_ms: number;
+            /** @description Step ids whose success makes the unit billable (no refund on failure) */
+            billable_steps: string[];
+            /** @description JSONata over a billable step output yielding the calls it used (default 1) */
+            meter?: string;
+            /** @description Metered calls a unit may use before admission refuses with turn_limit */
+            max_metered?: number;
+            /** @description JSONata over the run output; true commits the unit, false keeps it reserved */
+            commit_when: string;
+            /**
+             * @description Result key that receives {usedToday, dailyLimit} after settlement
+             * @default usage
+             */
+            attach_usage_as: string;
+        };
         CreateWorkflowDraft: {
             definition: components["schemas"]["WorkflowDef"];
             category?: components["schemas"]["CatalogCategory"];
@@ -21371,6 +21545,11 @@ export interface components {
         };
         CreateWorkflowRequest: components["schemas"]["CreateWorkflowBody"] & ({
             recipe?: components["schemas"]["RecipeOrigin"];
+            /**
+             * Format: uuid
+             * @description Operator-chosen workflow id, for a client that addresses the workflow by a fixed id. Admins only; unique per installation.
+             */
+            id?: string;
         } & {
             [key: string]: unknown;
         });
@@ -21599,6 +21778,17 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        CallerBudgetRefusal: {
+            /** @enum {string} */
+            error: "rate-limited" | "turn-closed" | "turn-limit" | "invalid";
+            /** @enum {string} */
+            code: "rate_limited" | "turn_closed" | "turn_limit" | "invalid";
+            message: string;
+            usage?: {
+                usedToday: number;
+                dailyLimit: number;
+            };
+        };
         ExecutionRunSavedBody: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -21748,13 +21938,17 @@ export interface components {
             provider: string | null;
             product_id: string | null;
             /** @enum {string|null} */
-            verified_by: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | null;
+            verified_by: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | "external_bearer" | null;
             channel: string;
             /** Format: uuid */
             origin_execution_id: string | null;
         };
         Execution: {
             id: string;
+            execution_id: string;
+            error: {
+                code: string;
+            } | null;
             workflow_id: string | null;
             workflow_name: string | null;
             workflow_version_id: string | null;
@@ -21912,6 +22106,24 @@ export interface components {
             payload?: {
                 [key: string]: unknown;
             };
+        };
+        ProductBudget: {
+            usedToday: number;
+            dailyLimit: number;
+            day: string;
+            resetsAt: string;
+        };
+        ProductHealth: {
+            ok: boolean;
+            /** @enum {string} */
+            version: "1";
+            model: {
+                id: null;
+                /** @enum {string} */
+                status: "unchecked";
+            };
+            /** @enum {string} */
+            key: "present" | "missing";
         };
         ConnectorSpecImportResponse: {
             draft: components["schemas"]["ConnectorSpecImportDraft"];

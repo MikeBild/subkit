@@ -99,6 +99,8 @@ type RunFixture = Parameters<typeof runName>[0];
 function run(patch: Partial<RunFixture> = {}): RunFixture {
   return {
     id: "run",
+    execution_id: "run",
+    error: null,
     workflow_id: null,
     workflow_name: null,
     workflow_version_id: null,

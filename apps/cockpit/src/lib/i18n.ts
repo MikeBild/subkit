@@ -435,6 +435,7 @@ const EN = {
   "authority.boundary.class.identifier":
     "{name} may be any identifier made of letters, digits, “_” and “-” (up to 200 characters).",
   "authority.boundary.class.uuid": "{name} may be any UUID.",
+  "authority.boundary.callerBound": "{name} is always the signed-in caller's own identity.",
   "authority.boundary.class.integer":
     "{name} may be any whole number without a sign (up to 19 digits).",
   "authority.boundary.class.date": "{name} may be any date written YYYY-MM-DD.",
@@ -2119,6 +2120,7 @@ const EN = {
   "runs.caller.method.browser_session": "Cockpit session",
   "runs.caller.method.mcp_oauth": "MCP sign-in (OAuth)",
   "runs.caller.method.token_exchange": "Exchanged token",
+  "runs.caller.method.external_bearer": "Product sign-in token",
   "runs.caller.method.none": "Verification not documented",
   "runs.caller.method.engine": "Started by SubKit, no sign-in",
   "runs.filterSource": "Filter by source",
@@ -4907,6 +4909,8 @@ const DE: Record<TranslationKey, string> = {
   "authority.boundary.class.identifier":
     "{name} darf jede Kennung aus Buchstaben, Ziffern, „_“ und „-“ sein (bis 200 Zeichen).",
   "authority.boundary.class.uuid": "{name} darf jede UUID sein.",
+  "authority.boundary.callerBound":
+    "{name} ist immer die eigene Identität der angemeldeten Person.",
   "authority.boundary.class.integer":
     "{name} darf jede ganze Zahl ohne Vorzeichen sein (bis 19 Stellen).",
   "authority.boundary.class.date": "{name} darf jedes Datum in der Form JJJJ-MM-TT sein.",
@@ -6611,6 +6615,7 @@ const DE: Record<TranslationKey, string> = {
   "runs.caller.method.browser_session": "Cockpit-Sitzung",
   "runs.caller.method.mcp_oauth": "MCP-Anmeldung (OAuth)",
   "runs.caller.method.token_exchange": "Getauschter Token",
+  "runs.caller.method.external_bearer": "Produkt-Anmeldetoken",
   "runs.caller.method.none": "Prüfverfahren nicht dokumentiert",
   "runs.caller.method.engine": "Von SubKit gestartet, ohne Anmeldung",
   "runs.filterSource": "Nach Auslöser filtern",

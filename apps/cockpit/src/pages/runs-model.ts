@@ -193,6 +193,7 @@ const VERIFICATION_KEYS = {
   browser_session: "runs.caller.method.browser_session",
   mcp_oauth: "runs.caller.method.mcp_oauth",
   token_exchange: "runs.caller.method.token_exchange",
+  external_bearer: "runs.caller.method.external_bearer",
 } as const satisfies Record<string, TranslationKey>;
 
 export type RunCaller = {
