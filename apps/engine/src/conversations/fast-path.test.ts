@@ -878,6 +878,7 @@ describe("tryFastPath — one catalog block", () => {
       .where(and(eq(auditLog.action, AuditAction.POLICY_DENIED), eq(auditLog.tenant_id, tenantId)));
     const denied = audit.find(
       (row) =>
+        row.resource_id === conversationId &&
         row.actor_id === restricted.id &&
         (row.metadata as Record<string, unknown>)?.permission === "workflow:read" &&
         (row.metadata as Record<string, unknown>)?.tool === "list_workflows",

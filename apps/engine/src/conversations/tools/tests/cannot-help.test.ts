@@ -1,8 +1,39 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { conversations, tenants } from "../../../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { EngineClient } from "../../../engine-client/index.ts";
 import { cannotHelpTool } from "../cannot-help.ts";
 import type { ToolContext } from "../index.ts";
 
-const ctx = {} as ToolContext;
+let database: TestDb;
+let ctx: ToolContext;
+
+beforeAll(async () => {
+  database = await createTestDb("cannot_help");
+  const [tenant] = await database.db
+    .insert(tenants)
+    .values({ slug: "cannot-help", display_name: "Cannot help" })
+    .returning();
+  const [conversation] = await database.db
+    .insert(conversations)
+    .values({ tenant_id: tenant!.id, status: "active", draft: {} })
+    .returning();
+  ctx = {
+    tenant_id: tenant!.id,
+    conversation_id: conversation!.id,
+    actor_id: null,
+    connector_id: null,
+    workflow_id: null,
+    db: database.db,
+    engineClient: new EngineClient({ tenant_id: tenant!.id, actor_id: null, db: database.db }),
+    getDraft: () => ({ workflow: { name: "", steps: [] } }),
+    setDraft: async () => {},
+  };
+});
+
+afterAll(async () => {
+  await database?.cleanup();
+});
 
 describe("cannot_help", () => {
   it("registers as a tenant_read tool with a stable name", () => {

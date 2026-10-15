@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { EngineClient } from "../../engine-client/index.ts";
 import { appendSnapshot } from "../draft.ts";
 import {
   askUserChoiceTool,
@@ -250,7 +251,11 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
       actor_id: null,
       connector_id: null,
       workflow_id: null,
-      engineClient: null as never,
+      engineClient: new EngineClient({
+        tenant_id: integrationTenantId,
+        actor_id: null,
+        db: integrationDb.db,
+      }),
       getDraft: () => draft,
       setDraft: async () => {},
     };
@@ -313,7 +318,11 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
       actor_id: null,
       connector_id: null,
       workflow_id: null,
-      engineClient: null as never,
+      engineClient: new EngineClient({
+        tenant_id: integrationTenantId,
+        actor_id: null,
+        db: integrationDb.db,
+      }),
       getDraft: () => draft,
       setDraft: async () => {},
     };

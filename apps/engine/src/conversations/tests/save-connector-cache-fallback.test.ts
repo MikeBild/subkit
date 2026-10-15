@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import * as discoveryService from "../../connectors/discovery/service.ts";
 import { connectors, conversations, credentials, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { EngineClient } from "../../engine-client/index.ts";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import {
   withConnectorInspection,
@@ -96,7 +97,7 @@ async function seed(slug: string): Promise<{ conversation_id: string; tool_ctx: 
     connector_id: null,
     workflow_id: null,
     permission_mode: null,
-    engineClient: {} as never,
+    engineClient: new EngineClient({ tenant_id, actor_id: null, db: ctx.db }),
     getDraft: () => live,
     setDraft: async (next) => {
       live = next;
@@ -276,7 +277,7 @@ describe("saveConnectorAtomic — cognito_user_password cache fallback for oauth
       connector_id: null,
       workflow_id: null,
       permission_mode: null,
-      engineClient: {} as never,
+      engineClient: new EngineClient({ tenant_id, actor_id: null, db: ctx.db }),
       getDraft: () => live,
       setDraft: async (next) => {
         live = next;
