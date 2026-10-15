@@ -47,7 +47,6 @@ export async function eraseProductCaller(
       ),
     )
     .limit(1);
-  if (!identity) refuse("the caller's product identity is no longer bound");
   await tx
     .delete(callerBudgetUnits)
     .where(
@@ -98,7 +97,7 @@ export async function eraseProductCaller(
     .values({
       tenant_id: caller.tenantId,
       provider_id: caller.provider,
-      issuer_url: identity.issuer_url ?? "",
+      issuer_url: identity?.issuer_url ?? "",
       subject_sha256: productSubjectDigest(subject),
       erased_at: now,
     })
@@ -108,7 +107,7 @@ export async function eraseProductCaller(
         productIdentityTombstones.provider_id,
         productIdentityTombstones.subject_sha256,
       ],
-      set: { erased_at: now, issuer_url: identity.issuer_url ?? "" },
+      set: { erased_at: now, issuer_url: identity?.issuer_url ?? "" },
     });
   await tx
     .update(executions)
