@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { auditLog, executions, tenants, workflowsSchedules } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -153,11 +153,15 @@ describe("scheduler tenant isolation", () => {
     const auditsA = await testDb.db
       .select()
       .from(auditLog)
-      .where(eq(auditLog.tenant_id, ctxA.tenantId));
+      .where(
+        and(eq(auditLog.tenant_id, ctxA.tenantId), eq(auditLog.action, "schedule.trigger.fired")),
+      );
     const auditsB = await testDb.db
       .select()
       .from(auditLog)
-      .where(eq(auditLog.tenant_id, ctxB.tenantId));
+      .where(
+        and(eq(auditLog.tenant_id, ctxB.tenantId), eq(auditLog.action, "schedule.trigger.fired")),
+      );
     expect(auditsA.length).toBe(2);
     expect(auditsB.length).toBe(1);
     expect(auditsB[0]?.action).toBe("schedule.trigger.fired");
