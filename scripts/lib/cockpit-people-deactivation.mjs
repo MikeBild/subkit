@@ -5,9 +5,8 @@ export async function verifyPeopleDeactivationCopy(page, stand, mockApi) {
   });
   await stand.visit(page, "people");
   await page.getByTestId("people-list-row-link-1").filter({ visible: true }).click();
-  const deactivate = page.getByTestId("people-deactivate");
-  if ((await deactivate.count()) === 0) await page.getByTestId("people-sheet-menu").click();
-  await deactivate.click();
+  await page.getByTestId("people-sheet-menu").click();
+  await page.getByTestId("people-deactivate").click();
   const dialog = page.getByTestId("people-deactivate-confirm");
   const consequence = await dialog.getByTestId("people-deactivate-confirm-consequence").innerText();
   for (const phrase of [
