@@ -318,6 +318,34 @@ describe("oidc_bearer key set caching", () => {
   });
 });
 
+describe("oidc_bearer issuer discovery failures", () => {
+  test("a failed discovery is not repeated for 30 seconds and is retried afterwards", async () => {
+    const down = await startTestBearerIssuer();
+    try {
+      down.setDiscoveryAvailable(false);
+      config = [down.provider({ tenant_slug: "bearer-tenant" })];
+      let nowMs = FROZEN_NOW;
+      const verifier = createOidcBearerProvider({
+        db,
+        providers: () => config,
+        now: () => new Date(nowMs),
+      });
+      const attempt = async () => verifier.resolve(bearer(await down.mint({ sub: nextUuid() })));
+      expectDenied(await attempt());
+      expect(down.discoveryFetches()).toBe(1);
+      nowMs += 29_000;
+      expectDenied(await attempt(), "issuer_discovery_unavailable");
+      expect(down.discoveryFetches()).toBe(1);
+      down.setDiscoveryAvailable(true);
+      nowMs += 2_000;
+      expect(isAuthDenial(await attempt())).toBe(false);
+      expect(down.discoveryFetches()).toBe(2);
+    } finally {
+      await down.stop();
+    }
+  });
+});
+
 describe("oidc_bearer product identity provisioning", () => {
   test("the first token creates one placeholder user and never links by email", async () => {
     const sub = nextUuid();
