@@ -78,8 +78,8 @@ describe("DataTable", () => {
     expect(priorityClass("high")).toBeUndefined();
     const html = table();
     expect(html).toContain("hidden @4xl:table-cell");
-    expect(html).toContain("@2xl:block");
-    expect(html).toContain("@2xl:hidden");
+    expect(html).toContain("@4xl:block");
+    expect(html).toContain("@4xl:hidden");
   });
 
   test("a phone card reads like a row: the name as link, then up to two facts without labels", () => {
@@ -128,7 +128,7 @@ describe("DataTable", () => {
     const html = table({ collectionTier: "embedded", layout: "rows" });
     expect(html).toContain('data-testid="t-desktop"');
     expect(html).not.toContain('data-testid="t-mobile"');
-    expect(html).not.toContain("@2xl:block");
+    expect(html).not.toContain("@4xl:block");
     expect(html).not.toContain("data-family-collection-mobile-card");
     expect(html).not.toContain("responsive-cards");
   });
