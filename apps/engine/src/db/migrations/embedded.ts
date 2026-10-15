@@ -128,6 +128,7 @@ import sql0107EmptyMaginty from "./0107_empty_maginty.sql" with { type: "text" }
 import sql0108CurvedCharlesXavier from "./0108_curved_charles_xavier.sql" with { type: "text" };
 import sql0109ApiKeyCreatorIdentityNulls from "./0109_api_key_creator_identity_nulls.sql" with { type: "text" };
 import sql0110CarelessWiccan from "./0110_careless_wiccan.sql" with { type: "text" };
+import sql0111MarvelousEnderWiggin from "./0111_marvelous_ender_wiggin.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -263,6 +264,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0108_curved_charles_xavier": sql0108CurvedCharlesXavier,
   "0109_api_key_creator_identity_nulls": sql0109ApiKeyCreatorIdentityNulls,
   "0110_careless_wiccan": sql0110CarelessWiccan,
+  "0111_marvelous_ender_wiggin": sql0111MarvelousEnderWiggin,
 };
 
 const journal = journalMeta as unknown as Journal;

@@ -195,6 +195,37 @@ describe("0089_decider_kind", () => {
       .returning({ actor_kind: mcpTasks.actor_kind });
     expect(task?.actor_kind).toBe("system_account");
 
+    const [unattributed] = await ctx.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: tenantId,
+        conversation_id: conversationId,
+        tool_name: "ask_user_confirm",
+        summary: "historical decision without attribution",
+        input: {},
+        decided_by: null,
+        decided_by_kind: "unknown",
+      })
+      .returning({
+        decided_by: conversationElicitations.decided_by,
+        decided_by_kind: conversationElicitations.decided_by_kind,
+      });
+    expect(unattributed).toEqual({ decided_by: null, decided_by_kind: "unknown" });
+
+    expect(
+      await failureOf(
+        ctx.db.insert(conversationElicitations).values({
+          tenant_id: tenantId,
+          conversation_id: conversationId,
+          tool_name: "ask_user_confirm",
+          summary: "unknown actor cannot retain an identifier",
+          input: {},
+          decided_by: systemAccountId,
+          decided_by_kind: "unknown",
+        }),
+      ),
+    ).toMatch(/conversation_elicitations_decided_by_kind_check/);
+
     const rejected = [
       { decided_by: systemAccountId, decided_by_kind: null },
       { decided_by: null, decided_by_kind: "user" as const },
