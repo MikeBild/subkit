@@ -187,7 +187,7 @@ export function UsagePage() {
             />
           </span>
         ) : null}
-        <span className="whitespace-nowrap text-right tabular-nums">
+        <span className="min-w-24 whitespace-nowrap text-right tabular-nums">
           {row.cost !== null ? currency.format(row.cost) : MISSING}
         </span>
       </span>
