@@ -193,6 +193,58 @@ Product providers require this binding and disable account creation and email li
 
 Pins are checked for new logins. Changing provider configuration does not revoke existing browser sessions; revoke those separately or let their configured lifetime expire.
 
+## Product bearer tokens and caller budgets
+
+A native app can call SubKit with its own sign-in instead of a SubKit key. Add an `oidc_bearer` provider and a `products` entry through runtime configuration. Hosts below are placeholders.
+
+```json
+{
+  "auth": {
+    "providers": [
+      { "protocol": "api_key", "id": "api-key", "label": "SubKit API key" },
+      {
+        "protocol": "oidc_bearer",
+        "id": "app-accounts",
+        "label": "App account",
+        "issuer_url": "https://auth.example.test/auth/v1",
+        "audience": "authenticated",
+        "algorithms": ["ES256"],
+        "product_id": "app",
+        "tenant_slug": "default",
+        "required_claims": [
+          { "path": "role", "equals": "authenticated" },
+          { "path": "app_metadata.provider", "equals": "apple" }
+        ],
+        "reject_anonymous": true,
+        "clock_tolerance_s": 30
+      }
+    ]
+  },
+  "products": {
+    "app": {
+      "execution_environment": "prod",
+      "assistant_workflow_id": "00000000-0000-4000-8000-000000000001",
+      "budget_bucket": "assistant"
+    }
+  }
+}
+```
+
+The app sends `Authorization: Bearer <access token>`. SubKit reads only that header, never a `token` query parameter. A token is claimed only when it is a compact JWS whose `iss` equals a configured `issuer_url`; SubKit keys, portal tokens, MCP tokens and exchanged tokens are never claimed. SubKit verifies the signature against the issuer's JWKS (from `jwks_uri` or the issuer's OIDC discovery, cached per provider and refetched once for an unknown key), the audience, the algorithm list, `exp`, `iat`, a UUID `sub` and every `required_claims` entry (`path` is a dot path into the verified payload). Anonymous subjects are refused when `reject_anonymous` is true. A claimed token that fails any check answers `401 {"code":"unauthorized","error":"unauthorized","message":"invalid bearer token"}`; no other provider, cookie or key is tried for that request.
+
+The first verified token of a subject provisions a product user with the built-in member role, a placeholder address and an identity binding to the provider, issuer and product; addresses are never linked. The product ceiling then limits the principal to `workflow:run`, `execution:read` and `execution:abort` on saved workflows with the same `product_id` and on its own executions. `oidc_bearer` providers never issue API keys or browser sessions and are not listed for browser login. Runs of a product principal without an `x-subkit-environment` header use the product's `execution_environment`.
+
+A sensitive product workflow with `required_caller_kind: "user"` may declare `execution_guards.caller_daily_limit` (`bucket`, `limit`, IANA `tz`, `$input` paths `unit` and `round`, `lease_ms`, `billable_steps`, optional JSONata `meter` and `max_metered`, JSONata `commit_when` over the run output, `attach_usage_as`) and `execution_guards.input_bytes` (maximum UTF-8 size per `$input` path). Admission checks the sizes and then reserves one unit per caller and local day in the same transaction that creates the execution, after the idempotency replay check; a replay never charges. Later rounds of a reserved unit are free. Refusals carry no execution:
+
+- `429 {"error":"rate-limited","code":"rate_limited","message":"…","usage":{"usedToday":50,"dailyLimit":50}}` when the day is used up,
+- `409 {"error":"turn-closed","code":"turn_closed"}` for a committed unit or a later round without a reservation,
+- `429 {"error":"turn-limit","code":"turn_limit"}` once `max_metered` calls were used,
+- `400 {"error":"invalid","code":"invalid"}` for an input part above its byte limit.
+
+When a run ends, a success commits the unit if `commit_when` is true and otherwise keeps it reserved for the next round; a failed, aborted or timed-out run refunds it only when no billable step succeeded and no other run of the unit is active. Reservations whose lease expires settle on the next read: billable units commit, others are refunded. A successful run's sensitive result carries `usage: {usedToday, dailyLimit}`. `GET /v1/budget` answers `{usedToday, dailyLimit, day, resetsAt}` for the product's assistant workflow, and `GET /v1/health` answers `{ok, version, model, key}`, where `ok` needs the active workflow, a live execution authority for the product environment and a usable credential on every connector it uses; no secret is read. Both answer 404 to principals without a product. `GET /v1/executions/{id}` also returns `execution_id` and `error: {code}` for failed or timed-out runs.
+
+`caller_erasure: "on_success"` on such a workflow erases the caller when the run succeeds: budget rows and identity bindings are deleted, sessions and keys revoked, the user disabled and anonymised, the subject removed from its executions' caller context, and a tombstone with only the subject's SHA-256 refuses tokens issued before the erasure. Request steps can address the caller's own record with `${caller.subject}` and the boundary rule `{caller_bound: true}`, which is also accepted on a DELETE. An admin may create a workflow under a fixed `id` so an app can address it without configuration; the id must be unused.
+
 ## Supabase-backed product workflows
 
 Use Supabase through the `supabase` connector and ordinary workflow authoring; workflows do not need direct PostgreSQL access or SQL steps. Store required gateway headers as encrypted connector credentials. `apikey` is the public project key; `Authorization` carries the JWT for the intended database role. A tenant-wide connector credential cannot represent separate mobile users; never pass an app user's JWT as workflow input. Use an owner-binding RPC that maps immutable `$caller` when a workflow needs user-owned data. A protected server-to-server RPC may additionally require `x-subkit-token`, stored only on the connector. It authenticates SubKit to the product backend; it is not the end user's identity and never replaces the workflow's immutable `$caller`. Never put credentials in app code, workflow inputs or steps, client context, generated workflow source, or logs. Do not use `service_role` for caller-scoped access because it bypasses RLS. Bind product workflows to their product and required caller kind, derive owner identifiers from `$caller`, and fail closed when an atomic authorization or quota reservation does not explicitly permit the next step.
@@ -2583,7 +2635,7 @@ Authentication
 | `auth.mcp_oauth.enabled` | boolean | `true` | global | no | yes | Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor). |
 | `auth.mcp_oauth.refresh_token_ttl_seconds` | number | `2592000` | global | no | no | Lifetime in seconds for MCP OAuth refresh tokens (30 days). |
 | `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin","metrics:read"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. Add, reorder and remove freely, except metrics:read: GET /metrics enforces it, so it is restored whenever a written value omits it. |
-| `auth.providers` | json | `[{"protocol":"api_key","id":"api-key","label":"SubKit API key"}]` | global | no | no | Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration. |
+| `auth.providers` | json | `[{"protocol":"api_key","id":"api-key","label":"SubKit API key"}]` | global | no | no | Authentication adapters: api_key, oidc (public browser client with PKCE, no secret) and oidc_bearer (an issuer's access token as bearer for one product, verified against its JWKS). |
 | `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
 
 ## platform
@@ -2767,6 +2819,13 @@ Per-connector tunables. Each sub-section is owned by one connector template.
 | `connectors.web_scraper.runtime.max_pages` | number | `1000` | tenant | no | no | Per-run crawl cap. Hard ceiling 10 000 (crawl_max_pages_exceeded). |
 | `connectors.web_scraper.runtime.respect_robots` | boolean | `true` | tenant | no | no | Skip URLs that robots.txt disallows for the configured User-Agent. |
 | `connectors.web_scraper.runtime.user_agent` | string | `"sk-web-scraper/1.0 (+https://subkit.io/bot)"` | tenant | no | no | User-Agent header on every fetch; passed to robots-parser matching. |
+
+## products
+Product settings keyed by product_id for product principals (oidc_bearer providers)
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `products` | json | `—` | global | no | no | Product settings keyed by product_id for product principals (oidc_bearer providers) |
 
 ## Authentication providers
 

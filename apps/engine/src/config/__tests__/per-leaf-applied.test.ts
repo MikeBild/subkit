@@ -123,6 +123,13 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
             tenant_slug: "default",
           },
         ],
+        products: {
+          [`app-${salt}`]: {
+            execution_environment: "prod",
+            assistant_workflow_id: "00000000-0000-4000-8000-000000000001",
+            budget_bucket: `bucket-${salt}`,
+          },
+        },
         "tokens.prices": [
           {
             model: `model-${salt}`,
