@@ -1780,7 +1780,14 @@ const EN = {
   "apps.users.count": "Signed in",
   "apps.users.lastSeen": "Last seen",
   "apps.users.never": "Never",
-  "apps.users.open": "Show users of this app",
+  "apps.users.none": "Nobody has signed in through this app yet.",
+  "apps.users.erase": "Erase",
+  "apps.users.erase.verb": "Erase",
+  "apps.users.erase.object": "{person} from {id}",
+  "apps.users.erase.consequence":
+    "Removes SubKit's own data about this person: the sign-in link, budget usage and personal details. The person's SubKit account is disabled and all of their sessions and API keys are revoked. Tokens issued before now stop working; signing in again creates a new, empty user. The account at the sign-in provider stays untouched. This cannot be undone.",
+  "apps.users.erase.done": "Person erased from this app.",
+  "apps.users.loadFailed": "The users of this app could not be loaded.",
   "apps.budget.none.detail":
     "The assistant workflow has no daily limit, so today's budget cannot be shown.",
   "apps.budget.day": "Day",
@@ -6417,7 +6424,14 @@ const DE: Record<TranslationKey, string> = {
   "apps.users.count": "Angemeldet",
   "apps.users.lastSeen": "Zuletzt gesehen",
   "apps.users.never": "Noch nie",
-  "apps.users.open": "Nutzer dieser App anzeigen",
+  "apps.users.none": "Über diese App hat sich noch niemand angemeldet.",
+  "apps.users.erase": "Löschen",
+  "apps.users.erase.verb": "Löschen",
+  "apps.users.erase.object": "{person} aus {id}",
+  "apps.users.erase.consequence":
+    "Entfernt die eigenen Daten von SubKit zu dieser Person: Anmelde-Verknüpfung, Budget-Verbrauch und persönliche Angaben. Das SubKit-Konto der Person wird deaktiviert, alle Sitzungen und API-Schlüssel werden widerrufen. Vorher ausgestellte Tokens werden abgelehnt; eine neue Anmeldung legt einen neuen, leeren Nutzer an. Das Konto beim Anmeldeanbieter bleibt unberührt. Das lässt sich nicht rückgängig machen.",
+  "apps.users.erase.done": "Person aus dieser App gelöscht.",
+  "apps.users.loadFailed": "Die Nutzer dieser App konnten nicht geladen werden.",
   "apps.budget.none.detail":
     "Der Assistenz-Workflow hat kein Tageslimit, daher lässt sich das heutige Budget nicht zeigen.",
   "apps.budget.day": "Tag",

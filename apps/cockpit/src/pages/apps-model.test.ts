@@ -8,8 +8,11 @@ import {
   appGoneFromList,
   appReadiness,
   appSettingsPatch,
+  appUserLabel,
+  appUserLastSeen,
   definitionGuardBucket,
   definitionProductId,
+  eraseAppUserPath,
   fetchCurrentVersionDag,
   personApps,
   personEmailText,
@@ -323,6 +326,36 @@ describe("people who signed in through an app", () => {
       }),
     ).toEqual(["blog", "shop"]);
     expect(personApps({})).toEqual([]);
+  });
+});
+
+describe("erasing an app user", () => {
+  const user = {
+    id: "4b1d0000-0000-4000-8000-0000000000aa",
+    email: "shop-bearer:4b1d0000@invalid",
+    display_name: null,
+    identities: [
+      { provider_id: "shop-bearer", product_id: "shop", last_seen_at: "2026-10-01T08:00:00.000Z" },
+      { provider_id: "shop-bearer", product_id: "shop", last_seen_at: "2026-10-15T08:00:00.000Z" },
+      { provider_id: "blog-bearer", product_id: "blog", last_seen_at: "2026-10-16T08:00:00.000Z" },
+    ],
+  };
+
+  test("last seen counts only the identities of that app", () => {
+    expect(appUserLastSeen(user, "shop")).toBe("2026-10-15T08:00:00.000Z");
+    expect(appUserLastSeen(user, "blog")).toBe("2026-10-16T08:00:00.000Z");
+    expect(appUserLastSeen(user, "other")).toBeNull();
+    expect(appUserLastSeen({}, "shop")).toBeNull();
+  });
+
+  test("the label names the person and tells same-provider users apart", () => {
+    expect(appUserLabel(user, de)).toBe("App-Nutzer · shop-bearer (4b1d0000)");
+    expect(appUserLabel({ ...user, display_name: "Lena" }, de)).toBe("Lena (4b1d0000)");
+  });
+
+  test("the request path is encoded per segment", () => {
+    expect(eraseAppUserPath("shop", user.id)).toBe(`/v1/apps/shop/users/${user.id}`);
+    expect(eraseAppUserPath("a/b", "x y")).toBe("/v1/apps/a%2Fb/users/x%20y");
   });
 });
 

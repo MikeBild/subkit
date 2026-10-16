@@ -7746,6 +7746,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{id}/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Erase one app user's data in SubKit (irreversible)
+         * @description Removes SubKit's own data about this person for this app: sign-in links, budget units, sessions and API keys are deleted or revoked, the account is anonymised, tokens issued before the erasure are refused (a new sign-in at the provider creates a new, empty app user) and the subject is removed from execution caller context. The account at the sign-in provider is untouched. Needs identity:write and an administrator; product principals are refused. A user who also has sign-in links to another app or to SubKit itself is refused with 409 and left unchanged. A repeated request answers 404.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    user_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The user was erased */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErasedAppUser"];
+                    };
+                };
+                /** @description Unauthenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Missing settings:read; product principals are always refused */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No such user in this app (also after it was already erased) */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The user also has access outside this app; nothing was changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connector-templates/import": {
         parameters: {
             query?: never;
@@ -22365,6 +22443,13 @@ export interface components {
             ok: boolean;
             message: string;
             next_action: string | null;
+        };
+        ErasedAppUser: {
+            /** Format: uuid */
+            user_id: string;
+            app_id: string;
+            /** @enum {boolean} */
+            erased: true;
         };
         ConnectorSpecImportResponse: {
             draft: components["schemas"]["ConnectorSpecImportDraft"];

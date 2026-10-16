@@ -1,3 +1,4 @@
+import * as prompts from "@clack/prompts";
 import { exitCodeFor, isEngineError, reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
@@ -65,7 +66,32 @@ function section(title: string, rows: Array<[string, string]>): string[] {
   return [title, ...rows.map(([key, value]) => `  ${key.padEnd(width)}  ${value}`)];
 }
 
-export function formatAppView(view: AppView): string {
+export const APP_USER_PLACEHOLDER_DOMAIN = "@invalid";
+
+export const ERASE_CONSEQUENCES =
+  "This erases SubKit's own data about this person for this app: sign-in links, budget counters, sessions and API keys, and the identity in past runs. Their account at the sign-in provider stays untouched. This cannot be undone.";
+
+export interface AppUserRow {
+  id: string;
+  email: string;
+  display_name?: string | null;
+  identities?: Array<{ provider_id?: string; product_id?: string | null }>;
+}
+
+export function appUserLabel(user: AppUserRow): string {
+  if (user.display_name) return user.display_name;
+  if (!user.email.toLowerCase().endsWith(APP_USER_PLACEHOLDER_DOMAIN)) return user.email;
+  const local = user.email.slice(0, -APP_USER_PLACEHOLDER_DOMAIN.length);
+  const colon = local.indexOf(":");
+  const provider = colon > 0 ? local.slice(0, colon) : (user.identities?.[0]?.provider_id ?? "");
+  return provider ? `App user · ${provider}` : "App user";
+}
+
+export function appUserRows(users: AppUserRow[]): Array<[string, string]> {
+  return users.map((user) => [user.id, appUserLabel(user)]);
+}
+
+export function formatAppView(view: AppView, appUsers: AppUserRow[] | null = null): string {
   const failing = view.checks.filter((check) => !check.ok);
   const lines: string[] = [
     `App ${view.id} — ${readiness(
@@ -143,8 +169,11 @@ export function formatAppView(view: AppView): string {
       ["signed in", String(view.users.count)],
       ["last seen", view.users.last_seen_at ?? "never"],
     ]),
-    "",
   );
+  if (appUsers !== null && appUsers.length > 0) {
+    lines.push(...section("User ids (erase one with sk apps erase-user)", appUserRows(appUsers)));
+  }
+  lines.push("");
 
   const budget = view.budget_today;
   lines.push(
@@ -176,6 +205,20 @@ export function formatAppView(view: AppView): string {
     "Change it with sk settings get products --json, then sk settings set products '<whole object>'; set replaces the whole value.",
   );
   return `${lines.join("\n")}\n`;
+}
+
+export function friendlyEraseError(err: unknown, appId: string, userId: string): string | null {
+  if (!isEngineError(err)) return null;
+  if (err.status === 403) {
+    return "forbidden: erasing an app user needs the identity:write permission and an admin role. Ask an admin to run it.";
+  }
+  if (err.status === 404) {
+    return `no user "${userId}" of app "${appId}" is visible in this workspace (it may already be erased). sk apps show ${appId} lists the user ids.`;
+  }
+  if (err.status === 409) {
+    return `refused: "${userId}" also has sign-in links to another app or to SubKit itself, so nothing was changed. Only people who belong to app "${appId}" alone can be erased here.`;
+  }
+  return null;
 }
 
 export function friendlyAppsError(err: unknown, id?: string): string | null {
@@ -233,14 +276,75 @@ const showCmd = defineCommand({
   async run({ args }) {
     const id = String(args.id);
     try {
-      const view = await makeClient().getApp(id);
+      const client = makeClient();
+      const view = await client.getApp(id);
+      const appUsers = await client
+        .listIdentityUsers({ product_id: id })
+        .then(({ items }) => items as unknown as AppUserRow[])
+        .catch(() => null);
       if (args.json) {
-        printJson(view);
+        printJson({
+          ...view,
+          app_users: appUsers?.map((user) => ({ id: user.id, label: appUserLabel(user) })) ?? null,
+        });
         return;
       }
-      process.stdout.write(formatAppView(view));
+      process.stdout.write(formatAppView(view, appUsers));
     } catch (err) {
       fail(err, Boolean(args.json), id);
+    }
+  },
+});
+
+const eraseUserCmd = defineCommand({
+  meta: {
+    name: "erase-user",
+    description:
+      "Erase an app user: removes SubKit's own data about that person for this app; the account at the sign-in provider stays. Irreversible",
+  },
+  args: {
+    app: { type: "positional", required: true, description: "App id (the product_id)" },
+    user: {
+      type: "positional",
+      required: true,
+      description: "User id (listed by sk apps show <app>)",
+    },
+    yes: { type: "boolean", description: "Confirm the erasure without asking", default: false },
+    json: { type: "boolean", description: "JSON output", default: false },
+  },
+  async run({ args }) {
+    const appId = String(args.app);
+    const userId = String(args.user);
+    const asJson = Boolean(args.json);
+    try {
+      if (!args.yes) {
+        if (asJson || !process.stdin.isTTY) {
+          process.stderr.write(
+            `error: refusing to erase without confirmation. ${ERASE_CONSEQUENCES} Re-run with --yes to confirm.\n`,
+          );
+          process.exit(2);
+        }
+        process.stderr.write(`${ERASE_CONSEQUENCES}\n`);
+        const confirmed = await prompts.confirm({
+          message: `Erase user "${userId}" of app "${appId}"?`,
+        });
+        if (!confirmed || prompts.isCancel(confirmed)) return;
+      }
+      const result = await makeClient().eraseAppUser(appId, userId);
+      if (asJson) {
+        printJson(result);
+        return;
+      }
+      process.stdout.write(
+        `erased user ${result.user_id} of app ${result.app_id}. Their account at the sign-in provider is untouched.\n`,
+      );
+    } catch (err) {
+      const friendly = asJson ? null : friendlyEraseError(err, appId, userId);
+      if (friendly) {
+        process.stderr.write(`${friendly}\n`);
+        process.exit(exitCodeFor(err));
+      }
+      reportCommandError(err, { json: asJson });
     }
   },
 });
@@ -249,7 +353,7 @@ export const appsCommand = defineCommand({
   meta: {
     name: "apps",
     description:
-      "Read-only view of the apps that sign their users in and call SubKit (products settings, sign-in providers, workflows, users, budget)",
+      "The apps that sign their users in and call SubKit (products settings, sign-in providers, workflows, users, budget); erase-user removes one app user's SubKit data",
   },
-  subCommands: { list: listCmd, show: showCmd },
+  subCommands: { list: listCmd, show: showCmd, "erase-user": eraseUserCmd },
 });

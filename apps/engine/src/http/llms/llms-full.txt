@@ -363,7 +363,7 @@ Rollback: revoke the execution authority of the workflow (the app then receives 
 
 ### Inspect an app
 
-An app is a read-only view assembled at read time from the `products` entry, the sign-in providers carrying its `product_id`, the workflows whose definition carries it, the users who signed in through it and today's caller budget. It has no storage and no write path of its own: changes go through `auth.providers`, `products` and the workflows, as in steps 2 to 5.
+An app is a read-only view assembled at read time from the `products` entry, the sign-in providers carrying its `product_id`, the workflows whose definition carries it, the users who signed in through it and today's caller budget. It has no storage of its own: changes go through `auth.providers`, `products` and the workflows, as in steps 2 to 5.
 
 ```bash
 sk apps list                      # app, environment, users, budget today, readiness
@@ -375,6 +375,18 @@ sk users list --app <product-id>  # users who signed in to that app
 In Cockpit the same view is the "Apps" tab under "People & access" (German: "Personen & Rechte"); selecting an app opens its details. It is also available as `GET /v1/apps` and `GET /v1/apps/{id}`, and in admin-mode MCP as the read-only tools `list_apps` and `get_app`. All of them need `settings:read`; product principals are always refused with 403. A workspace sees an app when one of its sign-in providers (`tenant_slug`), workflows or signed-in users carries the `product_id`, or when the app's assistant workflow belongs to it; any other id answers 404. An id without a `products` entry is still listed, with `configured: false`.
 
 Readiness consists of six checks, each with a message and, when it fails, a next action: `product_configured`, `sign_in_provider`, `assistant_workflow` (exists in the workspace, carries the `product_id`, is active and valid), `execution_authority` (live for the product's environment), `credentials` (usable on every connector the assistant uses) and `budget_guard` (a `caller_daily_limit` whose bucket equals `budget_bucket`). Budget today shows the units consumed and reserved in the guard's bucket for the current local day, the audited refusals of the app's workflows since local midnight (`rate_limited`, `turn_limit`, `turn_busy`) and when the day resets. Each entry in a user record's `identities` lists provider, `product_id` and last sign-in, without the subject; the placeholder `email` of a product principal still contains it.
+
+### Erase an app user
+
+Erasing removes SubKit's own data about one person for one app: their sign-in bindings, budget counters, sessions and API keys, and the subject in the caller context of past runs. The user record is anonymised and a tombstone makes tokens issued before the erasure be refused; a new sign-in at the provider creates a new, empty app user. A person who also has sign-in links to another app or to SubKit itself is not erased (409), because that would remove that access too. The account at the sign-in provider is not touched; deleting it stays with the app and its identity provider. Erasing is irreversible and needs an explicit confirmation by a person. It needs `identity:write` and an admin role; product principals are refused. The audit entry names the operator as actor with `source: operator_erasure`.
+
+```bash
+sk apps show <product-id>                          # lists the user ids of the app
+sk apps erase-user <product-id> <user-id>          # asks for confirmation
+sk apps erase-user <product-id> <user-id> --yes    # non-interactive; --json prints the result
+```
+
+In Cockpit the same action is on the user in the app's details, behind a confirmation dialog. Over HTTP it is `DELETE /v1/apps/{id}/users/{user_id}`, which answers `{ "user_id", "app_id", "erased": true }`, or 404 for an unknown, foreign or already erased user. Apps in MCP stay read-only. `DELETE /v1/identity/users/{id}` is unchanged and only deactivates a user.
 
 Activating a settings revision that adds, removes, reorders or changes a sign-in provider, or adds, removes or changes a `products` entry, writes an audit entry (`auth_provider.*`, `product.*`) that names the provider or product and the changed fields; the changed values are not recorded.
 
@@ -648,7 +660,7 @@ every API call.
 | ------- | -------- | ----------- | ----------- |
 | `sk agent` | `skill:read` | Coding-agent integration: session briefings and hook setup | `briefing`, `capture`, `init` |
 | `sk apikeys` | `api_key:read` | Manage API keys | `create`, `list`, `revoke`, `rotate` |
-| `sk apps` | `settings:read` | Read-only view of the apps that sign their users in and call SubKit (products settings, sign-in providers, workflows, users, budget) | `list`, `show` |
+| `sk apps` | `settings:read` | The apps that sign their users in and call SubKit (products settings, sign-in providers, workflows, users, budget); erase-user removes one app user's SubKit data | `erase-user`, `list`, `show` |
 | `sk attach` | `file:write` | Upload a file and link it to a conversation (shortcut) | — |
 | `sk audit` | `audit:read` | Query the append-only audit log | `export`, `query`, `show` |
 | `sk auth` | `connector:write` | Start a connector's browser sign-in and print the URL to open. Works for every connector that signs in with an account — a web service or an MCP server; the engine names the route. | — |
@@ -778,7 +790,16 @@ Rotate an API key (new key shown once)
 
 ### `sk apps`
 
-Read-only view of the apps that sign their users in and call SubKit (products settings, sign-in providers, workflows, users, budget)
+The apps that sign their users in and call SubKit (products settings, sign-in providers, workflows, users, budget); erase-user removes one app user's SubKit data
+
+#### `sk apps erase-user`
+
+Erase an app user: removes SubKit's own data about that person for this app; the account at the sign-in provider stays. Irreversible
+
+- `<app>` (positional, required) — App id (the product_id)
+- `<user>` (positional, required) — User id (listed by sk apps show <app>)
+- `--yes` (default: false) — Confirm the erasure without asking
+- `--json` (default: false) — JSON output
 
 #### `sk apps list`
 

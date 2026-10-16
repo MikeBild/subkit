@@ -36,6 +36,7 @@ import {
   FilterBar,
   FormDialog,
   type InfiniteRows,
+  InfiniteSentinel,
   Input,
   Page,
   PageHeader,
@@ -97,10 +98,13 @@ import {
   appGoneFromList,
   appReadiness,
   appSettingsPatch,
+  appUserLabel,
+  appUserLastSeen,
   type ClaimDraft,
   type ClaimType,
   definitionGuardBucket,
   EXECUTION_ENVIRONMENTS,
+  eraseAppUserPath,
   PRODUCTS_PATH,
   PROVIDERS_PATH,
   type ProductDraft,
@@ -2144,6 +2148,108 @@ function SignInFacts({ provider, index }: { provider: AppSignIn; index: number }
   );
 }
 
+function AppUsers({ app }: { app: AppView }) {
+  const { t, dateTime } = useI18n();
+  const session = useSession();
+  const client = useQueryClient();
+  const canErase =
+    session.principal.role_name === "admin" &&
+    session.permissions.includes("identity:write") &&
+    session.permissions.includes("settings:read");
+  const list = usePeopleList(true, app.id);
+  const users = list.view.data?.items ?? [];
+  const [target, setTarget] = useState<UserItem | null>(null);
+  const erase = useMutation({
+    mutationFn: (user: UserItem) =>
+      apiRequest<unknown>(eraseAppUserPath(app.id, user.id), { method: "DELETE" }),
+    onSettled: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: ["admin", "apps"] }),
+        client.invalidateQueries({ queryKey: ["admin", "people"] }),
+      ]),
+  });
+  if (list.view.error)
+    return (
+      <DataState
+        state="error"
+        line={t("apps.users.loadFailed")}
+        onRetry={() => void list.view.refetch()}
+        testId="apps-users-load-failed"
+      />
+    );
+  if (list.view.isPending) return null;
+  if (users.length === 0)
+    return (
+      <p className="text-sm text-muted-foreground" data-testid="apps-users-none">
+        {t("apps.users.none")}
+      </p>
+    );
+  return (
+    <>
+      <ul className="grid gap-2" data-testid="apps-users-list">
+        {users.map((user, index) => {
+          const seen = appUserLastSeen(user, app.id);
+          return (
+            <li
+              key={user.id}
+              className="flex items-center justify-between gap-3"
+              data-testid={`apps-users-${index}`}
+            >
+              <span className="flex min-w-0 flex-col">
+                <span className="break-words text-sm" data-testid={`apps-users-${index}-name`}>
+                  {personNameText(user, t)}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  <span className="font-mono">{user.id.slice(0, 8)}</span>
+                  {" · "}
+                  {t("apps.users.lastSeen")}: {seen ? dateTime(seen) : t("apps.users.never")}
+                </span>
+              </span>
+              {canErase ? (
+                <ActionMenu
+                  size="sm"
+                  items={[
+                    {
+                      label: t("apps.users.erase"),
+                      destructive: true,
+                      onSelect: () => setTarget(user),
+                      testId: `apps-users-${index}-erase`,
+                    },
+                  ]}
+                />
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      <InfiniteSentinel infinite={list.infinite} testId="apps-users-more" />
+      <ConfirmDialog
+        open={target !== null}
+        onOpenChange={(open) => !open && setTarget(null)}
+        object={t("apps.users.erase.object", {
+          person: target ? appUserLabel(target, t) : "",
+          id: app.id,
+        })}
+        verb={t("apps.users.erase.verb")}
+        consequence={t("apps.users.erase.consequence")}
+        destructive
+        pending={erase.isPending}
+        onConfirm={async () => {
+          if (!target) return;
+          await erase
+            .mutateAsync(target)
+            .then(() => {
+              setTarget(null);
+              toast.success(t("apps.users.erase.done"));
+            })
+            .catch((error) => refusalToast(error, t));
+        }}
+        testId="apps-users-erase-confirm"
+      />
+    </>
+  );
+}
+
 function AppSheet({ appId, onClose }: { appId: string | null; onClose(): void }) {
   const { t, dateTime } = useI18n();
   const session = useSession();
@@ -2312,18 +2418,7 @@ function AppSheet({ appId, onClose }: { appId: string | null; onClose(): void })
                   },
                 ]}
               />
-              {canPeople && app.users.count > 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  <Link
-                    to={peopleHref("people", { app: app.id })}
-                    className="font-medium text-foreground underline underline-offset-2"
-                    onClick={close}
-                    data-testid="apps-sheet-users-link"
-                  >
-                    {t("apps.users.open")}
-                  </Link>
-                </p>
-              ) : null}
+              {canPeople ? <AppUsers app={app} /> : null}
             </Section>
             <Section label={t("apps.section.budget")} testId="apps-sheet-budget">
               {app.budget_today ? (

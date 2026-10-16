@@ -1,5 +1,6 @@
 export * from "./abort.ts";
 export * from "./admission-audit.ts";
+export { type ErasedAppUser, eraseAppUser } from "./app-user-erasure.ts";
 export { type AppConfig, type AppTenant, getApp, listApps } from "./apps.ts";
 export {
   admitAuthorizedWorkflowExecution,

@@ -196,6 +196,33 @@ export function personApps(user: {
   ].sort();
 }
 
+export function appUserLastSeen(
+  user: { identities?: readonly { product_id: string | null; last_seen_at: string }[] },
+  appId: string,
+): string | null {
+  const seen = (user.identities ?? [])
+    .filter((identity) => identity.product_id === appId)
+    .map((identity) => identity.last_seen_at)
+    .sort();
+  return seen.at(-1) ?? null;
+}
+
+export function appUserLabel(
+  user: {
+    id: string;
+    email: string;
+    display_name: string | null;
+    identities?: readonly { provider_id: string }[];
+  },
+  t: Translate,
+): string {
+  return `${personNameText(user, t)} (${user.id.slice(0, 8)})`;
+}
+
+export function eraseAppUserPath(appId: string, userId: string): string {
+  return `/v1/apps/${encodeURIComponent(appId)}/users/${encodeURIComponent(userId)}`;
+}
+
 function dagRecord(dag: unknown): SettingsEntry | null {
   return isEntry(dag) ? dag : null;
 }

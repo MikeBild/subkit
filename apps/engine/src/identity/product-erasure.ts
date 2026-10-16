@@ -25,10 +25,43 @@ function refuse(message: string): never {
   throw Object.assign(new Error(message), { code: "caller_erasure_unavailable" });
 }
 
+export type ErasureContext =
+  | { kind: "workflow"; execution_id: string; now?: Date }
+  | { kind: "operator"; operator: ErasureOperator; now?: Date };
+
+export interface ErasureOperator {
+  kind: "user" | "system_account";
+  id: string;
+}
+
+function erasureAudit(caller: ErasableCaller & { productId: string }, context: ErasureContext) {
+  if (context.kind === "workflow")
+    return {
+      actor_type: "user" as const,
+      actor_id: caller.principalId,
+      metadata: {
+        source: "caller_erasure",
+        product_id: caller.productId,
+        provider_id: caller.provider,
+        execution_id: context.execution_id,
+      },
+    };
+  return {
+    actor_type: context.operator.kind,
+    actor_id: context.operator.id,
+    metadata: {
+      source: "operator_erasure",
+      product_id: caller.productId,
+      provider_id: caller.provider,
+      erased_user_id: caller.principalId,
+    },
+  };
+}
+
 export async function eraseProductCaller(
   tx: Executor,
   caller: ErasableCaller,
-  context: { execution_id: string; now?: Date },
+  context: ErasureContext,
 ): Promise<void> {
   if (caller.principalKind !== "user" || !caller.productId || !caller.subject)
     refuse("caller erasure needs a product user with a verified subject");
@@ -119,21 +152,17 @@ export async function eraseProductCaller(
         sql`${executions.caller_context} ? 'subject'`,
       ),
     );
+  const audit = erasureAudit({ ...caller, productId: caller.productId }, context);
   await auditAwait(
     {
       tenant_id: caller.tenantId,
-      actor_type: "user",
-      actor_id: caller.principalId,
+      actor_type: audit.actor_type,
+      actor_id: audit.actor_id,
       action: AuditAction.USER_DELETED,
       resource_type: "user",
       resource_id: caller.principalId,
       result: "success",
-      metadata: {
-        source: "caller_erasure",
-        product_id: caller.productId,
-        provider_id: caller.provider,
-        execution_id: context.execution_id,
-      },
+      metadata: audit.metadata,
     },
     tx,
   );
