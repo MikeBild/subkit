@@ -53,7 +53,12 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { EngineWording } from "@/lib/machine-label";
 import type { DecisionItem } from "./decisions-model";
-import { OperationsBar, useOperationsFigures } from "./operations-bar";
+import {
+  OperationsBar,
+  RepairRequiredHint,
+  useOperationsFigures,
+  useRepairRequiredCount,
+} from "./operations-bar";
 import { type StatsWindow, type WindowBounds, windowBounds } from "./operations-figures";
 import {
   type AttentionAction,
@@ -380,6 +385,7 @@ export function OverviewPage() {
   const sheets = useOpenRunSheet();
   const [bounds, setBounds] = useState<WindowBounds>(() => windowBounds("24h"));
   const operations = useOperationsFigures(bounds, session.permissions);
+  const repairRequired = useRepairRequiredCount(session.permissions);
   const href = useRouterState({ select: (state) => state.location.href });
   const [review, setReview] = useState<string | null>(() => reviewFromUrl(window.location.search));
 
@@ -505,10 +511,12 @@ export function OverviewPage() {
                 (KPI_IDS as readonly string[]).includes(figure.id),
               )}
               ids={KPI_IDS}
+              window={bounds.window}
               pending={operations.pending}
               onRetry={operations.retry}
             />
           ) : null}
+          <RepairRequiredHint count={repairRequired} />
         </div>
         {unread.length > 0 ? (
           <DataState

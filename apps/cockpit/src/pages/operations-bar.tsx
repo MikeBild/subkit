@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { apiRequest } from "@/api/client";
-import { absolute } from "@/app/links";
+import { absolute, workflowsHref } from "@/app/links";
 import { ActionButton, TileSkeleton } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -15,8 +15,11 @@ import {
   operatingCounts,
   operatingFigures,
   operatingFiguresEndpoint,
+  REPAIR_REQUIRED_ENDPOINT,
   type Read,
+  repairRequiredCount,
   STATUS_ENDPOINT,
+  type StatsWindow,
   type WindowBounds,
   windowSpend,
 } from "./operations-figures";
@@ -40,8 +43,13 @@ const NONE_TEXT: Record<OperatingFigureId, TranslationKey> = {
   budget: "overview.operations.uncapped",
 };
 
-const BASIS_LABEL: Record<FigureBasis, TranslationKey | null> = {
-  window: null,
+const WINDOW_LABEL: Record<StatsWindow, TranslationKey> = {
+  "24h": "overview.operations.windowOption.24h",
+  "7d": "overview.operations.windowOption.7d",
+  "30d": "overview.operations.windowOption.30d",
+};
+
+const BASIS_LABEL: Record<Exclude<FigureBasis, "window">, TranslationKey> = {
   now: "overview.operations.current",
   month: "overview.operations.month",
 };
@@ -54,6 +62,31 @@ const PRESSURE_TONE = {
 
 export function canReadOperations(permissions: readonly string[]): boolean {
   return permissions.includes("stats:read");
+}
+
+export function useRepairRequiredCount(permissions: readonly string[]): number | null {
+  const query = useQuery({
+    queryKey: ["repair-required-count"],
+    enabled: permissions.includes("workflow:read"),
+    queryFn: () => apiRequest<unknown>(REPAIR_REQUIRED_ENDPOINT),
+  });
+  return query.isError ? null : repairRequiredCount(query.data);
+}
+
+export function RepairRequiredHint({ count }: { count: number | null }) {
+  const { tn } = useI18n();
+  if (!count || count <= 0) return null;
+  return (
+    <p className="text-sm text-muted-foreground" data-testid="overview-repair-required">
+      <a
+        className="font-medium text-foreground underline underline-offset-2"
+        href={absolute(workflowsHref({ operatingStatus: "repair_required" }))}
+        data-testid="overview-repair-required-link"
+      >
+        {tn("overview.repairRequired", count)}
+      </a>
+    </p>
+  );
 }
 
 export function useOperationsFigures(bounds: WindowBounds, permissions: readonly string[]) {
@@ -116,11 +149,13 @@ export function OperationsBar({
   pending,
   onRetry,
   ids = OPERATING_FIGURE_IDS,
+  window,
 }: {
   figures: readonly OperatingFigure[];
   pending: boolean;
   onRetry: (id: OperatingFigureId) => void;
   ids?: readonly OperatingFigureId[];
+  window?: StatsWindow;
 }) {
   const { t } = useI18n();
   return (
@@ -136,21 +171,26 @@ export function OperationsBar({
     >
       {pending
         ? ids.map((id) => <TileSkeleton key={id} />)
-        : figures.map((figure) => <Figure key={figure.id} figure={figure} onRetry={onRetry} />)}
+        : figures.map((figure) => (
+            <Figure key={figure.id} figure={figure} window={window} onRetry={onRetry} />
+          ))}
     </section>
   );
 }
 
 function Figure({
   figure,
+  window,
   onRetry,
 }: {
   figure: OperatingFigure;
+  window?: StatsWindow;
   onRetry: (id: OperatingFigureId) => void;
 }) {
   const { t, locale } = useI18n();
   const tag = locale === "de" ? "de-DE" : "en-US";
-  const basis = BASIS_LABEL[figure.basis];
+  const basis =
+    figure.basis === "window" ? (window ? WINDOW_LABEL[window] : null) : BASIS_LABEL[figure.basis];
   const label = (
     <p className="truncate text-xs text-muted-foreground">
       {t(FIGURE_LABEL[figure.id])}
@@ -217,7 +257,14 @@ function Figure({
           }).format(figure.value)}`
         : `${figure.value} %`;
   const pressure = figure.budget?.pressure ?? null;
-  const detail = figure.detail
+  const budgetNote = figure.budget
+    ? figure.money
+      ? t("overview.operations.tokenPercent", { percent: figure.budget.percent })
+      : null
+    : figure.uncapped
+      ? t("overview.operations.uncapped")
+      : null;
+  const detailText = figure.detail
     ? t(
         figure.detail.kind === "failures"
           ? "overview.operations.failedCount"
@@ -232,6 +279,7 @@ function Figure({
     : partial && figure.money
       ? t("overview.operations.unpricedCalls", { calls: figure.money.unpricedCalls })
       : null;
+  const detail = [detailText, budgetNote].filter(Boolean).join(" · ") || null;
   return (
     <div
       className={box}
@@ -242,10 +290,10 @@ function Figure({
       data-budget-pressure={pressure ?? undefined}
     >
       {label}
-      <p className="flex min-w-0 items-baseline gap-1.5">
+      <p className="flex min-w-0 items-baseline">
         <span
           className={[
-            "truncate text-2xl font-semibold leading-8 tracking-[-0.02em] tabular-nums",
+            "shrink-0 text-2xl font-semibold leading-8 tracking-[-0.02em] tabular-nums",
             pressure && pressure !== "ample" ? PRESSURE_TONE[pressure] : null,
           ]
             .filter(Boolean)
@@ -263,21 +311,11 @@ function Figure({
             display
           )}
         </span>
-        {figure.budget ? (
-          <span className="truncate text-xs text-muted-foreground">
-            {figure.money
-              ? t("overview.operations.tokenPercent", { percent: figure.budget.percent })
-              : null}
-          </span>
-        ) : figure.uncapped ? (
-          <span className="truncate text-xs text-muted-foreground">
-            {t("overview.operations.uncapped")}
-          </span>
-        ) : null}
       </p>
       {detail ? (
         <p
-          className="truncate text-xs text-muted-foreground"
+          className="text-xs text-muted-foreground"
+          title={detail}
           data-testid={`operations-figure-${figure.id}-detail`}
         >
           {detail}
