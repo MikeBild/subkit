@@ -195,7 +195,7 @@ Pins are checked for new logins. Changing provider configuration does not revoke
 
 ## Product bearer tokens and caller budgets
 
-A native app can call SubKit with its own sign-in instead of a SubKit key. Add an `oidc_bearer` provider and a `products` entry through runtime configuration. Hosts below are placeholders.
+A native app can call SubKit with its own sign-in instead of a SubKit key. Add an `oidc_bearer` provider and a `products` entry through runtime configuration. Hosts below are placeholders. `audience` and `required_claims` have no defaults; the operator states both for the issuer in use (see "Onboard an app" for the complete checklist). `reject_anonymous` refuses tokens whose `is_anonymous` claim is true.
 
 ```json
 {
@@ -206,14 +206,14 @@ A native app can call SubKit with its own sign-in instead of a SubKit key. Add a
         "protocol": "oidc_bearer",
         "id": "app-accounts",
         "label": "App account",
-        "issuer_url": "https://auth.example.test/auth/v1",
-        "audience": "authenticated",
+        "issuer_url": "https://idp.example.test",
+        "audience": "app-audience",
         "algorithms": ["ES256"],
         "product_id": "app",
         "tenant_slug": "default",
         "required_claims": [
-          { "path": "role", "equals": "authenticated" },
-          { "path": "app_metadata.provider", "equals": "apple" }
+          { "path": "idp", "equals": "primary" },
+          { "path": "claims.tier", "equals": "member" }
         ],
         "reject_anonymous": true,
         "clock_tolerance_s": 30
@@ -247,9 +247,115 @@ When a run ends, a success commits the unit if `commit_when` is true and otherwi
 
 A request step of a saved workflow that runs under a live execution authority, and is not a held preparation, can read its own connector's credential as `${cred.<own-slug>.<field>}` without `connector:read`; the reference must stay inside the approved authority. Draft and step runs, held preparations and saved runs without an authority still need `connector:read` on that connector. The credential is sent only to that connector's origin and never with a redirect. That is the boundary. SubKit also redacts the raw, URL-encoded, form-encoded and JSON-escaped forms of the value from step outputs, errors, audit and logs, but this redaction is a best-effort aid: an upstream that reflects the value in another encoding, or stores it and returns it later, is not covered.
 
+## Onboard an app
+
+This checklist applies to any app that signs its users in at an identity provider and calls SubKit with that provider's access token. Hosts and ids below are placeholders (`example.test`, `<...>`). Work through it in order; the app only needs the product id and the workflow ids at the end.
+
+### 1. Decide
+
+- `product_id`: a lowercase name (`^[a-z][a-z0-9-]{0,62}$`), one per app. It ties provider, workflows, budget rows and the identity binding together.
+- `issuer_url`: the provider's issuer, exactly as it appears in the token's `iss` claim. HTTPS outside localhost.
+- `audience`: the value the token's `aud` claim carries. Read it from a real token of the app; the issuer defines it, SubKit has no default.
+- `required_claims`: who may sign in. Every entry is a dot path into the verified payload with an exact value, for example `{ "path": "idp", "equals": "primary" }`. The key is required. An empty list `[]` admits every token of that issuer and audience and should be a deliberate choice.
+- Sign-up by first token: the first verified token of a subject provisions a product user with the built-in member role (see above). If every holder of a valid token may become a user, nothing more is needed. If not, narrow `required_claims` so only the intended accounts qualify.
+
+### 2. Runtime configuration
+
+`auth.providers` is replaced as a whole array. Read the current value first and send it back with the new provider added; otherwise the other providers are removed.
+
+```bash
+sk settings get auth.providers --json
+sk settings set auth.providers '[
+  {"protocol":"api_key","id":"api-key","label":"SubKit API key"},
+  {"protocol":"oidc_bearer","id":"<provider-id>","label":"<app> account",
+   "issuer_url":"https://idp.example.test","audience":"<audience>","algorithms":["ES256"],
+   "product_id":"<product-id>","tenant_slug":"default",
+   "required_claims":[{"path":"idp","equals":"primary"}],
+   "reject_anonymous":true,"clock_tolerance_s":30}
+]'
+sk settings get products --json
+sk settings set products '{"<product-id>":{"execution_environment":"prod",
+  "assistant_workflow_id":"<assistant-workflow-id>","budget_bucket":"<bucket>"}}'
+```
+
+`products` is also replaced as a whole object. `assistant_workflow_id` must be the id you choose for the guarded workflow in step 4.
+
+### 3. Connectors
+
+Create one connector per upstream the workflows call: the model API, and the identity provider's admin API if the app deletes accounts. Write each definition as a JSON file without any secret, then:
+
+```bash
+sk connectors create --file connector-model.json --skip-checks
+sk credentials set <model-connector-id> --mode bearer --token "$MODEL_API_KEY"
+sk credentials set <idp-admin-connector-id> --mode header --header "Authorization=Bearer $IDP_ADMIN_KEY,apikey=$IDP_ADMIN_KEY"
+```
+
+`--skip-checks` is needed because a definition is probed before it is saved and the credential does not exist yet; `credentials set` probes afterwards. `bearer` sends `Authorization: Bearer <token>`; `header` sends the named headers (comma-separated `Name=Value`). Secrets come from your shell or secret store, never from a file, the app or this repository. A workflow reads its own connector's credential only as `${cred.<own-slug>.<field>}` under an approved authority.
+
+### 4. Workflows
+
+Keep the definitions in the app's own repository and create them with operator-chosen ids so the app can hard-code them. A workflow definition accepts `id` (a UUID that must be unused; only an administrator may choose it).
+
+```bash
+sk workflows create --file workflows/assistant.json
+sk workflows create --file workflows/delete-account.json
+```
+
+Each product workflow sets:
+
+- `"id": "<fixed-uuid>"` and `"product_id": "<product-id>"`.
+- `"required_caller_kind": "user"` and `"execution_privacy": "sensitive"`.
+- On the metered workflow, `execution_guards.caller_daily_limit` (bucket equal to `budget_bucket`, limit, `tz`, unit path) and `execution_guards.input_bytes`.
+- On the deletion workflow, `"caller_erasure": "on_success"`.
+
+Division of responsibility. The identity provider owns the account: credentials, e-mail, sign-in methods and the account's existence. SubKit owns only its shadow records of the caller: the identity binding, budget rows, sessions and keys, the user row, the caller context stored on its executions, and the tombstone. The deletion workflow therefore runs in this order:
+
+1. Delete the account at the identity provider with the admin connector, using `${caller.subject}` (bound with `{caller_bound: true}`). A 404 means the account is already gone and counts as success, so a retry is safe.
+2. Best-effort revokes at other upstreams, for example a sign-in provider token. A failure here must not block step 3.
+3. SubKit erases its own caller data last, through `caller_erasure: "on_success"` when the run succeeds. After it, tokens issued earlier are refused by the tombstone.
+
+If step 1 fails, the run fails, nothing is erased and the app retries with the same `idempotency_key`.
+
+### 5. Approve the execution authority
+
+Without a live execution authority a product run answers 403. For each product workflow, a person opens the workflow in Cockpit, selects the product's environment (`prod`), reviews the effect boundary (connectors, addresses, read or write) and approves it. Choose open-ended standing approval, or limit it by runs and time. The approval follows a newly activated version whose boundary does not grow and is asked for again when it grows. Revoke it in the same place.
+
+### 6. Verify
+
+Use a real access token `$TOKEN` of a test account and the workflow ids from step 4. `$BAD_TOKEN` is `$TOKEN` with the last characters of its signature changed. `$BASE` is the engine URL.
+
+```bash
+curl -s -w '\n%{http_code}\n' -H "Authorization: Bearer $BAD_TOKEN" $BASE/v1/budget
+curl -s -H "Authorization: Bearer $TOKEN" $BASE/v1/health
+curl -s -H "Authorization: Bearer $TOKEN" $BASE/v1/budget
+curl -s -X POST $BASE/v1/executions -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"workflow_id":"<workflow-id>","idempotency_key":"check-1","async":true,"input":{}}'
+```
+
+Expected:
+
+- `$BAD_TOKEN`, a wrong audience, a missing required claim or an expired token answers `401 invalid bearer token`.
+- `GET /v1/health` with `ok: false` and a run answering `403` mean the authority from step 5 or a connector credential is missing.
+- Using up the daily limit answers `429 rate_limited`; a second call while a unit runs answers `409 turn_busy`; the same `idempotency_key` replays instead.
+- `sk executions` and the execution record show the caller summary and the authority used.
+
+Secrets held in connectors can expire: provider client secrets often have a limited lifetime, and admin keys may be rotated. Record each secret's name, connector, owner and expiry date in the app's own repository (not the value), and renew it before expiry: attach the new value with `sk credentials set`, check it, then remove the old one with `sk credentials delete <credential-id>`. A probe with `sk connectors test <connector-id>` shows whether a credential still works. Cockpit and `GET /v1/health` show failing connectors.
+
+Rollback: revoke the execution authority of the workflow (the app then receives 403 and nothing runs), restore the previous `auth.providers` and `products` values you read in step 2, and use `sk workflows history <id>` and `sk workflows restore <id>` for a workflow version. Removing the provider makes the app's tokens unclaimed; existing shadow records stay until the deletion workflow erases them.
+
+### Generic or per app
+
+| Concern | Where it lives |
+| --- | --- |
+| Token verification, binding, budgets, erasure, authority checks | Engine code, identical for every app |
+| Provider entry, `products` entry, connectors and their credentials | Runtime configuration per deployment, set with `sk` |
+| Workflow definitions and their fixed ids | The app's own repository, created with `sk workflows create` |
+| Execution authority approvals | A person, per workflow and environment, in Cockpit |
+| Secret expiry records | The app's own repository (metadata only) |
+
 ## Supabase-backed product workflows
 
-Use Supabase through the `supabase` connector and ordinary workflow authoring; workflows do not need direct PostgreSQL access or SQL steps. Store required gateway headers as encrypted connector credentials. `apikey` is the public project key; `Authorization` carries the JWT for the intended database role. A tenant-wide connector credential cannot represent separate mobile users; never pass an app user's JWT as workflow input. Use an owner-binding RPC that maps immutable `$caller` when a workflow needs user-owned data. A protected server-to-server RPC may additionally require `x-subkit-token`, stored only on the connector. It authenticates SubKit to the product backend; it is not the end user's identity and never replaces the workflow's immutable `$caller`. Never put credentials in app code, workflow inputs or steps, client context, generated workflow source, or logs. Do not use `service_role` for caller-scoped access because it bypasses RLS. Bind product workflows to their product and required caller kind, derive owner identifiers from `$caller`, and fail closed when an atomic authorization or quota reservation does not explicitly permit the next step.
+This section covers the `supabase` connector only; it does not depend on which identity provider signs the app's users in. Use Supabase through the `supabase` connector and ordinary workflow authoring; workflows do not need direct PostgreSQL access or SQL steps. Store required gateway headers as encrypted connector credentials. `apikey` is the public project key; `Authorization` carries the JWT for the intended database role. A tenant-wide connector credential cannot represent separate mobile users; never pass an app user's JWT as workflow input. Use an owner-binding RPC that maps immutable `$caller` when a workflow needs user-owned data. A protected server-to-server RPC may additionally require `x-subkit-token`, stored only on the connector. It authenticates SubKit to the product backend; it is not the end user's identity and never replaces the workflow's immutable `$caller`. Never put credentials in app code, workflow inputs or steps, client context, generated workflow source, or logs. Do not use `service_role` for caller-scoped access because it bypasses RLS. Bind product workflows to their product and required caller kind, derive owner identifiers from `$caller`, and fail closed when an atomic authorization or quota reservation does not explicitly permit the next step.
 
 ## Use sk from a coding agent
 
