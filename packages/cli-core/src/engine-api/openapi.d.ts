@@ -22821,6 +22821,11 @@ export interface components {
             detail?: string;
             error_code?: components["schemas"]["ProbeErrorCode"];
             provider_action_url?: string;
+            warning_only?: boolean;
+            warnings?: {
+                code: string;
+                message: string;
+            }[];
             partial_grant?: boolean | "unknown";
             granted_scopes?: string[];
             expected_scopes?: string[];
@@ -22828,7 +22833,7 @@ export interface components {
             partial_grant_note?: string;
         };
         /** @enum {string} */
-        ProbeErrorCode: "credential_missing" | "credential_invalid" | "credential_expired" | "scope_insufficient" | "remote_api_disabled" | "remote_resource_not_found" | "connector_disabled" | "unknown_upstream_error";
+        ProbeErrorCode: "credential_missing" | "credential_invalid" | "credential_expired" | "credential_unverified" | "scope_insufficient" | "remote_api_disabled" | "remote_resource_not_found" | "connector_disabled" | "unknown_upstream_error";
         ConnectorPromotionResponse: {
             /** @enum {string} */
             strategy: "copy" | "move";

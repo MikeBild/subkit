@@ -425,6 +425,85 @@ describe("probeHttpConnector", () => {
     });
   });
 
+  test("a signed fallback probe answered 401 or 403 reports the credential as unverified, not rejected", async () => {
+    for (const status of [401, 403]) {
+      mock.setHandler((_req, res) => jsonResponse(res, status, { error: "unauthorized" }));
+      const conn = await makeConnector({ auth_type: "bearer" });
+      const probe = await probeHttpConnector({
+        db: ctx.db,
+        tenant_id: tenantId,
+        connector: conn,
+        credential_override: { mode: "bearer", token: "valid-token" },
+      });
+      expect(probe.ok).toBe(false);
+      expect(probe.status).toBe(status);
+      expect(probe.error_code).toBe("credential_unverified");
+      expect(probe.warning_only).toBe(true);
+      expect(probe.warnings).toHaveLength(1);
+      expect(probe.warnings[0]?.code).toBe("PROBE_AUTH_UNVERIFIED");
+      expect(probe.warnings[0]?.message).toContain("config.probe_endpoint");
+    }
+    mock.setHandler((req: IncomingMessage, res: ServerResponse) => {
+      lastRequest = {
+        method: req.method ?? "GET",
+        url: req.url ?? "",
+        headers: req.headers as Record<string, string>,
+      };
+      jsonResponse(res, 200, { ok: true });
+    });
+  });
+
+  test("a configured probe_endpoint answered 401 keeps rejecting the credential", async () => {
+    mock.setHandler((_req, res) => jsonResponse(res, 401, { error: "unauthorized" }));
+    const conn = await makeConnector({
+      auth_type: "bearer",
+      config: {
+        probe_endpoint: { method: "GET", path: "/users/me", expected_status: [200, 200] },
+      },
+    });
+    const probe = await probeHttpConnector({
+      db: ctx.db,
+      tenant_id: tenantId,
+      connector: conn,
+      credential_override: { mode: "bearer", token: "revoked-token" },
+    });
+    expect(probe.ok).toBe(false);
+    expect(probe.error_code).toBe("credential_invalid");
+    expect(probe.warning_only).toBe(false);
+    expect(probe.warnings).toEqual([]);
+    mock.setHandler((req: IncomingMessage, res: ServerResponse) => {
+      lastRequest = {
+        method: req.method ?? "GET",
+        url: req.url ?? "",
+        headers: req.headers as Record<string, string>,
+      };
+      jsonResponse(res, 200, { ok: true });
+    });
+  });
+
+  test("a signed fallback probe answered 404 stays an ambiguous success", async () => {
+    mock.setHandler((_req, res) => jsonResponse(res, 404, { error: "not found" }));
+    const conn = await makeConnector({ auth_type: "bearer" });
+    const probe = await probeHttpConnector({
+      db: ctx.db,
+      tenant_id: tenantId,
+      connector: conn,
+      credential_override: { mode: "bearer", token: "valid-token" },
+    });
+    expect(probe.ok).toBe(true);
+    expect(probe.warning_only).toBe(true);
+    expect(probe.warnings[0]?.code).toBe("PROBE_AMBIGUOUS");
+    expect(probe.error_code).toBeUndefined();
+    mock.setHandler((req: IncomingMessage, res: ServerResponse) => {
+      lastRequest = {
+        method: req.method ?? "GET",
+        url: req.url ?? "",
+        headers: req.headers as Record<string, string>,
+      };
+      jsonResponse(res, 200, { ok: true });
+    });
+  });
+
   test("an explicit probe_endpoint config drives method/path and expected_status range", async () => {
     mock.setHandler((req, res) => {
       if (req.method === "HEAD" && req.url === "/healthz") {

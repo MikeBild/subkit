@@ -108,7 +108,19 @@ const getCommand = defineCommand({
   },
 });
 
-function renderProbeOutcome(
+export function probeWarnings(value: unknown): Array<{ code: string; message: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) =>
+    entry &&
+    typeof entry === "object" &&
+    typeof (entry as { code?: unknown }).code === "string" &&
+    typeof (entry as { message?: unknown }).message === "string"
+      ? [entry as { code: string; message: string }]
+      : [],
+  );
+}
+
+export function renderProbeOutcome(
   result: Record<string, unknown> & { ok?: unknown },
   jsonMode: boolean,
 ): boolean {
@@ -126,6 +138,9 @@ function renderProbeOutcome(
     if (typeof result.provider_action_url === "string") {
       process.stdout.write(`${pc.dim("fix:")} ${result.provider_action_url}\n`);
     }
+  }
+  for (const warning of probeWarnings(result.warnings)) {
+    process.stdout.write(`${pc.yellow("warning:")} ${warning.message} (${warning.code})\n`);
   }
   return ok;
 }

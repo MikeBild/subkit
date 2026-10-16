@@ -7,6 +7,7 @@ export type ConnectorStripKind =
   | "expired"
   | "off"
   | "unreachable"
+  | "unverified"
   | "notSignedIn"
   | "incomplete"
   | "signedIn"
@@ -34,7 +35,7 @@ export interface ConnectorStripInput {
   way: RenewalWay;
   enabled: boolean;
   health: string | null;
-  probe: { ok: boolean } | null;
+  probe: { ok: boolean; unverified?: boolean } | null;
   missingScopes: number;
   returned: boolean;
   signInFailed: boolean;
@@ -46,6 +47,7 @@ export const CONNECTOR_STRIP_KEYS: Record<ConnectorStripKind, TranslationKey> = 
   expired: "connectorStrip.state.expired",
   off: "connectorStrip.state.off",
   unreachable: "connectorStrip.state.unreachable",
+  unverified: "connectorStrip.state.unverified",
   notSignedIn: "connectorStrip.state.notSignedIn",
   incomplete: "connectorStrip.state.incomplete",
   signedIn: "connectorState.signedIn",
@@ -88,14 +90,16 @@ export function connectorStrip(input: ConnectorStripInput): ConnectorStrip {
     });
   if (!input.enabled)
     candidates.push({ kind: "off", action: input.rights.write ? { kind: "enable" } : null });
+  const unverified = input.probe !== null && !input.probe.ok && input.probe.unverified === true;
   const unreachable =
-    (input.probe !== null && !input.probe.ok && input.auth !== "expired") ||
+    (input.probe !== null && !input.probe.ok && !unverified && input.auth !== "expired") ||
     (input.probe === null && input.health === "degraded");
   if (unreachable)
     candidates.push({
       kind: "unreachable",
       action: input.rights.test ? { kind: "recheck" } : null,
     });
+  if (unverified && input.auth !== "expired") candidates.push({ kind: "unverified", action: null });
   if (input.auth === "credentials_missing" || input.missingScopes > 0)
     candidates.push({
       kind: input.auth === "credentials_missing" ? "notSignedIn" : "incomplete",

@@ -6,10 +6,12 @@ import {
   recordMcpExternalToolInvoked,
 } from "../../audit/recorders/index.ts";
 import { createConnector } from "../../connectors/index.ts";
+import { upsertCredential } from "../../credentials/service.ts";
 import { apiKeys, auditLog, connectorMcpSessions } from "../../db/schema/index.ts";
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { createMockServer, jsonResponse } from "../../test-helpers/mock-http.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const uuid = createDeterministicUuidFactory(0x5c);
@@ -348,6 +350,55 @@ describe("POST /v1/connectors/{id}/test is the newest call on record", () => {
     };
     expect(runtime.last_success_at).toBeNull();
     expect(typeof runtime.last_failure?.at).toBe("string");
+  });
+
+  test("a root that answers 401 without a probe_endpoint comes back unverified with its warning", async () => {
+    const upstream = await createMockServer((_req, res) => {
+      jsonResponse(res, 401, { error: "unauthorized" });
+    });
+    try {
+      const connector = await createConnector(
+        {
+          tenant_id: srv.tenantId,
+          actor_id: null,
+          input: {
+            name: "runtime-probed-root-401",
+            slug: "runtime-probed-root-401",
+            driver: "http",
+            environment: "prod",
+            auth_type: "bearer",
+            base_url: upstream.baseUrl,
+            config: {},
+          },
+        },
+        srv.db,
+      );
+      await upsertCredential(
+        {
+          tenant_id: srv.tenantId,
+          connector_id: connector.id,
+          environment: "prod",
+          mode: "bearer",
+          value: { mode: "bearer", token: "valid-token" },
+          actor_id: null,
+        },
+        srv.db,
+      );
+      const res = await call(`/v1/connectors/${connector.id}/test`, { method: "POST" });
+      expect(res.status).toBe(200);
+      const probe = (await res.json()) as {
+        ok: boolean;
+        error_code?: string;
+        warning_only?: boolean;
+        warnings?: Array<{ code: string; message: string }>;
+      };
+      expect(probe.ok).toBe(false);
+      expect(probe.error_code).toBe("credential_unverified");
+      expect(probe.warning_only).toBe(true);
+      expect(probe.warnings?.map((w) => w.code)).toEqual(["PROBE_AUTH_UNVERIFIED"]);
+    } finally {
+      await upstream.close();
+    }
   });
 
   test("a passed test moves the last successful call", async () => {
