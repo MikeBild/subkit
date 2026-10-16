@@ -22,22 +22,31 @@ let app: ReturnType<typeof createApp>;
 const secret = "ASYNC-SENSITIVE-CALLER-INPUT-CANARY";
 
 async function expectExecutionAuditCaller(execution_id: string, caller: CallerContext) {
-  const entries = await ctx.db
-    .select({
-      action: auditLog.action,
-      actor_type: auditLog.actor_type,
-      actor_id: auditLog.actor_id,
-    })
-    .from(auditLog)
-    .where(
-      and(
-        eq(auditLog.tenant_id, ctx.tenantId),
-        eq(auditLog.resource_type, "execution"),
-        eq(auditLog.resource_id, execution_id),
-      ),
+  const readExecutionEntries = async () => {
+    const entries = await ctx.db
+      .select({
+        action: auditLog.action,
+        actor_type: auditLog.actor_type,
+        actor_id: auditLog.actor_id,
+      })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.resource_type, "execution"),
+          eq(auditLog.resource_id, execution_id),
+        ),
+      );
+    return entries.filter(
+      (entry) => entry.action === "execution.started" || entry.action === "execution.completed",
     );
-  const executionEntries = entries.filter(
-    (entry) => entry.action === "execution.started" || entry.action === "execution.completed",
+  };
+  const executionEntries = await waitFor(
+    async () => {
+      const found = await readExecutionEntries();
+      return found.length >= 2 ? found : null;
+    },
+    { tries: 100, sleepMs: 50, label: "execution started and completed audit entries" },
   );
   expect(executionEntries).toHaveLength(2);
   expect(executionEntries.map((entry) => entry.action).sort()).toEqual([
