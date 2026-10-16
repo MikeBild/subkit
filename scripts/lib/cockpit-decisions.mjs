@@ -445,8 +445,10 @@ export async function verifyOverviewOperationsSummary(page, stand) {
   await runsFigure.waitFor({ state: "visible" });
   const runsTitle = runsFigure.locator(":scope > p").first();
   const runsTitleText = (await runsTitle.innerText()).trim();
-  if (runsTitleText !== "Ausführungen")
-    throw new Error(`Overview runs title showed "${runsTitleText}" instead of Ausführungen`);
+  if (runsTitleText !== "Ausführungen · 24 Std")
+    throw new Error(
+      `Overview runs title showed "${runsTitleText}" instead of Ausführungen · 24 Std`,
+    );
   const runsFigureText = await runsFigure.innerText();
   if (runsFigureText.includes("Läufe") || runsFigureText.includes("in 24 h"))
     throw new Error("Overview runs tile contains Dummy-only title or subtitle copy");
@@ -471,12 +473,12 @@ export async function verifyOverviewOperationsSummary(page, stand) {
     .trim();
   if (budgetAmount !== "mind. 412,87 €")
     throw new Error(`Overview budget amount showed "${budgetAmount}" instead of mind. 412,87 €`);
-  const budgetShare = (await budgetPrimary.locator("span").nth(1).innerText())
+  const budgetShare = (await page.getByTestId("operations-figure-budget-detail").innerText())
     .replace(/\s+/gu, " ")
     .trim();
-  if (budgetShare !== "95 % des Tokenkontingents")
+  if (!budgetShare.includes("95 % des Tokenkontingents"))
     throw new Error(
-      `Overview budget share showed "${budgetShare}" instead of 95 % des Tokenkontingents`,
+      `Overview budget detail showed "${budgetShare}" instead of including 95 % des Tokenkontingents`,
     );
   if ((await budgetFigure.getAttribute("data-budget-pressure")) !== "critical")
     throw new Error("Overview budget tile did not retain the critical budget pressure state");
