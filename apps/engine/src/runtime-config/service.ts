@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, inArray, isNull, max, ne, sql } from "drizzle-orm";
+import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import { getConfig, installRuntimeConfig } from "../config/loader.ts";
 import { type Config, ConfigSchema } from "../config/schema.ts";
 import { dottedPath, findLeafByPath, listConfigLeaves } from "../config/walk.ts";
@@ -11,6 +12,7 @@ import {
   runtimeSecretVersions,
 } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { type AppBoundaryActor, recordAppBoundaryActivation } from "./app-boundary-audit.ts";
 import {
   ACTIVATION_TIMEOUT_MS,
   CONFIG_STATE_KEY,
@@ -373,7 +375,9 @@ async function initializeRuntimeConfigOnce(
   seed: Config,
   ownInstanceId: string,
 ): Promise<RuntimeConfigStateView> {
+  let bootActivation: { before: RuntimeRevision; after: RuntimeRevision } | null = null;
   const state = await db.transaction(async (tx) => {
+    bootActivation = null;
     await tx.insert(runtimeConfigState).values({ key: CONFIG_STATE_KEY }).onConflictDoNothing();
     // tenant-filter:exempt — the canonical active/desired pointer is product-global.
     const [locked] = await tx
@@ -419,6 +423,7 @@ async function initializeRuntimeConfigOnce(
             .update(runtimeConfigState)
             .set({ active_revision: savedRevision, updated_at: activatedAt })
             .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY));
+          bootActivation = { before: active, after: desired };
           active = { ...desired, status: "active", activated_at: activatedAt };
         }
       }
@@ -459,6 +464,17 @@ async function initializeRuntimeConfigOnce(
   const { preflightObjectStoreConfig } = await import("../storage/object-store.ts");
   await preflightObjectStoreConfig(resolved.storage);
   await applyRuntimeConfig(resolved);
+  const activated = bootActivation as { before: RuntimeRevision; after: RuntimeRevision } | null;
+  if (activated) {
+    await recordAppBoundaryActivation(db, {
+      before: activated.before.document,
+      after: activated.after.document,
+      actor: { tenant_id: SYSTEM_TENANT_ID, actor_type: "system", actor_id: null },
+      revision: activated.after.revision,
+      previous_revision: activated.before.revision,
+      source: "boot",
+    });
+  }
   return {
     saved_revision: state.savedRevision,
     active_revision: state.active.revision,
@@ -718,9 +734,14 @@ export async function applyRuntimeConfig(config: Config): Promise<void> {
   resetObjectStoreForRuntimeConfig();
 }
 
+export interface RevisionActivationActor extends AppBoundaryActor {
+  source: string;
+}
+
 export async function activateRuntimeRevision(
   db: Db,
   revisionNumber: number,
+  actor: RevisionActivationActor,
 ): Promise<{
   saved_revision: number;
   active_revision: number;
@@ -747,6 +768,7 @@ export async function activateRuntimeRevision(
       `revision ${revisionNumber} is not the current saved revision ${state.desired_revision}`,
     );
   }
+  const previous = await requireRevision(db, state.active_revision);
   if (revision.pending_restart_fields.length > 0) {
     await db
       .update(runtimeConfigRevisions)
@@ -887,6 +909,15 @@ export async function activateRuntimeRevision(
       .update(runtimeConfigRevisions)
       .set({ status: "active", activated_at: new Date(), failure_reason: null })
       .where(eq(runtimeConfigRevisions.revision, revisionNumber));
+  });
+
+  await recordAppBoundaryActivation(db, {
+    before: previous.document,
+    after: revision.document,
+    actor: { tenant_id: actor.tenant_id, actor_type: actor.actor_type, actor_id: actor.actor_id },
+    revision: revisionNumber,
+    previous_revision: previous.revision,
+    source: actor.source,
   });
 
   return {

@@ -104,6 +104,8 @@ const authenticationValues = new Set([key]);
 const redact = (error) => redactLocalVerificationError(error, authenticationValues);
 let ownedWorkflow = null;
 let sessionIdentity = null;
+let sessionHeaders = null;
+let writeHeaders = null;
 let ownedConversation = null;
 try {
   await context.exposeBinding("__subkitCaptureOwnedConversation", async (_source, value) => {
@@ -159,7 +161,7 @@ try {
   );
   if (!sessionCookie) throw new Error("Browser login did not establish a session cookie");
   authenticationValues.add(sessionCookie.value);
-  const sessionHeaders = { cookie: `${sessionCookie.name}=${sessionCookie.value}` };
+  sessionHeaders = { cookie: `${sessionCookie.name}=${sessionCookie.value}` };
   const bootstrap = await context.request.get(`${base.origin}/v1/cockpit/bootstrap`, {
     headers: sessionHeaders,
   });
@@ -169,7 +171,7 @@ try {
     throw new Error("Browser session does not match the selected local demo database tenant");
   sessionIdentity = { tenantId: session.tenant.id, ownerId: session.principal.id };
   if (typeof session.csrf_token === "string") authenticationValues.add(session.csrf_token);
-  const writeHeaders = {
+  writeHeaders = {
     origin: base.origin,
     "x-subkit-client": "cockpit",
     "x-subkit-csrf": session.csrf_token,

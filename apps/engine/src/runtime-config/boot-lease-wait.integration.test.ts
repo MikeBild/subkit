@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq, sql } from "drizzle-orm";
+import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import { _resetConfigForTests, getConfig, loadConfig } from "../config/loader.ts";
 import { runtimeConfigReplicas, runtimeConfigState } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
@@ -13,6 +14,13 @@ import {
   RuntimeConfigConflictError,
   saveRuntimeConfigPatch,
 } from "./service.ts";
+
+const ACTIVATION_ACTOR = {
+  tenant_id: SYSTEM_TENANT_ID,
+  actor_type: "system" as const,
+  actor_id: null,
+  source: "test",
+};
 
 let tdb: TestDb;
 let configDir: string;
@@ -43,7 +51,7 @@ async function waitForRestart(port: number): Promise<void> {
     scope: "global",
     created_by: null,
   });
-  const activation = await activateRuntimeRevision(tdb.db, saved.saved_revision);
+  const activation = await activateRuntimeRevision(tdb.db, saved.saved_revision, ACTIVATION_ACTOR);
   expect(activation.activation_status).toBe("restart_required");
 }
 

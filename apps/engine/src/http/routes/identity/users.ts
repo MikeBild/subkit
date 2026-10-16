@@ -43,12 +43,21 @@ const UpdateUserBody = z
   ])
   .openapi("UpdateUserBody");
 
+const UserListQuery = PaginationQuery.extend({
+  product_id: z
+    .string()
+    .max(128)
+    .regex(/^[a-z0-9][a-z0-9-]*$/)
+    .optional()
+    .describe("Only users with a sign-in identity for this app"),
+});
+
 const listRoute = createRoute({
   method: "get",
   path: "/v1/identity/users",
   tags: ["identity"],
   summary: "List users in the caller's tenant",
-  request: { query: PaginationQuery },
+  request: { query: UserListQuery },
   security: [{ bearerAuth: [] }],
   responses: {
     200: { description: "OK", content: { "application/json": { schema: UserListResponse } } },
@@ -136,6 +145,29 @@ function lastAdminAsConflict(err: unknown): never {
   throw err;
 }
 
+async function identitiesByUser(
+  db: Parameters<typeof identity.listIdentitiesByUser>[0],
+  tenantId: string,
+  userIds: string[],
+) {
+  const rows = await identity.listIdentitiesByUser(db, tenantId, userIds);
+  const result = new Map<
+    string,
+    { provider_id: string; product_id: string | null; last_seen_at: string }[]
+  >();
+  for (const row of rows) {
+    result.set(row.user_id, [
+      ...(result.get(row.user_id) ?? []),
+      {
+        provider_id: row.provider_id,
+        product_id: row.product_id,
+        last_seen_at: row.last_seen_at.toISOString(),
+      },
+    ]);
+  }
+  return result;
+}
+
 function serialize(
   u: NonNullable<Awaited<ReturnType<typeof identity.getUser>>>,
   roleName: string | null,
@@ -182,10 +214,15 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
         {
           ...(q.limit !== undefined ? { limit: q.limit } : {}),
           ...(q.offset !== undefined ? { offset: q.offset } : {}),
+          ...(q.product_id !== undefined ? { productId: q.product_id } : {}),
         },
         db,
       ),
-      identity.countUsers(principal.tenant_id, db),
+      identity.countUsers(
+        principal.tenant_id,
+        db,
+        q.product_id !== undefined ? { productId: q.product_id } : {},
+      ),
     ]);
     const roleRows = await db
       .select({ id: roles.id, name: roles.name })
@@ -212,6 +249,11 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
           items.map((user) => user.id),
         )
       : [];
+    const identities = await identitiesByUser(
+      db,
+      principal.tenant_id,
+      items.map((user) => user.id),
+    );
     const groupsByUser = new Map<string, { id: string; name: string }[]>();
     for (const membership of memberships) {
       const groups = groupsByUser.get(membership.user_id) ?? [];
@@ -223,6 +265,7 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
         items: items.map((user) => ({
           ...serialize(user, roleNames.get(user.role_id) ?? null, connections.get(user.id) ?? 0),
           groups: canReadGroups ? (groupsByUser.get(user.id) ?? []) : null,
+          identities: identities.get(user.id) ?? [],
         })),
         total,
       },
@@ -272,6 +315,7 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
     const memberships = canReadGroups
       ? await listTenantGroupMemberships(db, principal.tenant_id, [u.id])
       : [];
+    const identities = await identitiesByUser(db, principal.tenant_id, [u.id]);
     return c.json(
       {
         ...serialize(u, role?.name ?? null, connections.get(u.id) ?? 0),
@@ -281,6 +325,7 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
               name: membership.group_name,
             }))
           : null,
+        identities: identities.get(u.id) ?? [],
       },
       200,
     );

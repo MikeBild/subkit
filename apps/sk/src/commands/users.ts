@@ -34,23 +34,49 @@ export function formatInviteIssued(invite: UserInviteIssuedWire): string {
   );
 }
 
+export const USER_LIST_COLUMNS = ["id", "email", "role", "status", "apps", "created_at"];
+
+export function userAppIds(user: Record<string, unknown>): string[] {
+  const identities = Array.isArray(user.identities) ? user.identities : [];
+  const ids = identities
+    .map((identity) => (identity as { product_id?: unknown }).product_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  return [...new Set(ids)].sort();
+}
+
+export function userListRows(items: Record<string, unknown>[]): Record<string, unknown>[] {
+  return items.map((user) => ({ ...user, apps: userAppIds(user).join(", ") }));
+}
+
+export function userListQuery(args: {
+  limit?: unknown;
+  app?: unknown;
+}): Record<string, string | number | undefined> {
+  const q: Record<string, string | number | undefined> = {};
+  if (args.limit) q.limit = Number(args.limit);
+  if (typeof args.app === "string" && args.app.length > 0) q.product_id = args.app;
+  return q;
+}
+
 const listCmd = defineCommand({
   meta: { name: "list", description: "List identity users" },
   args: {
     limit: { type: "string", description: "Max rows" },
+    app: {
+      type: "string",
+      description: "Only users who signed in to this app (product_id, see sk apps list)",
+    },
     json: { type: "boolean", description: "JSON output" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
-      const q: Record<string, string | number | undefined> = {};
-      if (args.limit) q.limit = Number(args.limit);
-      const { items } = await client.listIdentityUsers(q);
-      emitList(
-        !!args.json,
-        ["id", "email", "role", "status", "created_at"],
-        items as Record<string, unknown>[],
-      );
+      const { items } = await client.listIdentityUsers(userListQuery(args));
+      if (args.json) {
+        printJson(items);
+        return;
+      }
+      emitList(false, USER_LIST_COLUMNS, userListRows(items));
     } catch (err) {
       reportCommandError(err, { json: Boolean(args.json) });
     }

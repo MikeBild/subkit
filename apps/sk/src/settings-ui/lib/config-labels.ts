@@ -55,9 +55,10 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "llm.critic.min_steps": "Critic minimum steps",
   "llm.critic.max_consecutive_rejections": "Critic max consecutive rejections",
 
-  "auth.providers": "Browser authentication providers",
+  "auth.providers":
+    "Sign-in providers (API key, browser OIDC, product bearer; set replaces the whole list)",
   "auth.enable_signup": "SSO signup (JIT user provisioning)",
-  products: "App products",
+  products: "Apps (product settings; set replaces the whole object, inspect with sk apps show)",
   "auth.session.secret": "Session signing secret",
   "auth.mcp_oauth.enabled": "MCP OAuth server enabled",
   "auth.mcp_oauth.dynamic_registration_enabled": "MCP OAuth dynamic client registration",
@@ -182,7 +183,7 @@ export const SECTION_LABEL: Readonly<Record<string, string>> = {
   database: "Database",
   llm: "AI / LLM",
   auth: "Authentication",
-  products: "Products",
+  products: "Apps",
   platform: "Chat platforms",
   storage: "Storage",
   observability: "Observability",

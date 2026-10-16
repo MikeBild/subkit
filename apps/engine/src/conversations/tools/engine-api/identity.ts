@@ -12,14 +12,19 @@ const ListUsersInput = z
 
 export const whoamiTool: ConversationTool = {
   name: "whoami",
-  description: "Return the current tenant record and calling actor id.",
+  description:
+    "Return the current tenant record, the calling actor id and the app (product_id) the caller signed in to, or null.",
   inputSchema: EmptyInput,
   category: "tenant_read",
   async execute(ctx) {
     const tenant = await ctx.engineClient.identity.whoami();
     return {
       ok: true,
-      data: { tenant, actor_id: ctx.engineClient.context.actor_id },
+      data: {
+        tenant,
+        actor_id: ctx.engineClient.context.actor_id,
+        product_id: ctx.principal?.product_id ?? null,
+      },
     };
   },
 };

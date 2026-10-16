@@ -41,6 +41,22 @@ describe("owned conversation cleanup", () => {
     expect(result).toEqual({ deleted: true, alreadyMissing: true });
   });
 
+  test("treats a successful first deletion as deleted without cancelling", async () => {
+    let posted = false;
+    const result = await deleteOwnedConversation({
+      ...args,
+      request: {
+        delete: async () => ({ status: () => 200, ok: () => true }),
+        post: async () => {
+          posted = true;
+          return { status: () => 200, ok: () => true };
+        },
+      },
+    });
+    expect(posted).toBe(false);
+    expect(result).toEqual({ deleted: true, alreadyMissing: false });
+  });
+
   test("refuses 404 handling when the selected database generation changed", async () => {
     let called = false;
     await expect(

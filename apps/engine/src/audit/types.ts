@@ -154,6 +154,11 @@ export const AuditAction = {
   AUTH_PROVIDER_ADDED: "auth_provider.added",
   AUTH_PROVIDER_REMOVED: "auth_provider.removed",
   AUTH_PROVIDER_REORDERED: "auth_provider.reordered",
+  AUTH_PROVIDER_CHANGED: "auth_provider.changed",
+
+  PRODUCT_ADDED: "product.added",
+  PRODUCT_REMOVED: "product.removed",
+  PRODUCT_CHANGED: "product.changed",
 
   DATA_EXPORTED: "data.exported",
   DATA_IMPORTED: "data.imported",

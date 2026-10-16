@@ -3219,12 +3219,42 @@
                   ]
                 },
                 "description": "Group memberships, or null when the caller cannot read RBAC membership."
+              },
+              "identities": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/UserIdentity"
+                },
+                "description": "Sign-in identities linked by an oidc or oidc_bearer provider; product_id names the app the identity signed in to."
               }
             },
             "required": [
-              "groups"
+              "groups",
+              "identities"
             ]
           }
+        ]
+      },
+      "UserIdentity": {
+        "type": "object",
+        "properties": {
+          "provider_id": {
+            "type": "string"
+          },
+          "product_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_id",
+          "product_id",
+          "last_seen_at"
         ]
       },
       "User": {
@@ -4530,6 +4560,13 @@
             "items": {
               "type": "string"
             }
+          },
+          "product_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "App the caller signed in to through an oidc_bearer provider, or null"
           }
         },
         "required": [
@@ -4541,7 +4578,8 @@
           "role_name",
           "provider",
           "base_url",
-          "scopes"
+          "scopes",
+          "product_id"
         ]
       },
       "EffectivePermissions": {
@@ -12020,6 +12058,421 @@
           "version",
           "model",
           "key"
+        ]
+      },
+      "AppListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppSummary"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "AppSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/AppSettings"
+          },
+          "sign_in_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "workflow_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "users": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "last_seen_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "count",
+              "last_seen_at"
+            ]
+          },
+          "failing_checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppCheckKey"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "configured",
+          "ready",
+          "settings",
+          "sign_in_count",
+          "workflow_count",
+          "users",
+          "failing_checks"
+        ]
+      },
+      "AppSettings": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "execution_environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "budget_bucket": {
+            "type": "string"
+          },
+          "assistant_workflow": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "slug": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "slug"
+            ]
+          },
+          "daily_limit": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "bucket": {
+                "type": "string"
+              },
+              "limit_per_caller": {
+                "type": "integer"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "tz": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "bucket",
+              "limit_per_caller",
+              "unit",
+              "tz"
+            ],
+            "description": "caller_daily_limit of the assistant workflow; limit_per_caller counts per caller"
+          }
+        },
+        "required": [
+          "execution_environment",
+          "budget_bucket",
+          "assistant_workflow",
+          "daily_limit"
+        ]
+      },
+      "AppCheckKey": {
+        "type": "string",
+        "enum": [
+          "product_configured",
+          "sign_in_provider",
+          "assistant_workflow",
+          "execution_authority",
+          "credentials",
+          "budget_guard"
+        ]
+      },
+      "AppView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/AppSettings"
+          },
+          "sign_in_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "workflow_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "users": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "last_seen_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "count",
+              "last_seen_at"
+            ]
+          },
+          "sign_in": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppSignIn"
+            }
+          },
+          "workflows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppWorkflow"
+            }
+          },
+          "budget_today": {
+            "$ref": "#/components/schemas/AppBudgetToday"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppCheck"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "configured",
+          "ready",
+          "settings",
+          "sign_in_count",
+          "workflow_count",
+          "users",
+          "sign_in",
+          "workflows",
+          "budget_today",
+          "checks"
+        ]
+      },
+      "AppSignIn": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "oidc",
+              "oidc_bearer"
+            ]
+          },
+          "issuer_url": {
+            "type": "string"
+          },
+          "tenant_slug": {
+            "type": "string"
+          },
+          "audience": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "algorithms": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "required_claims": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "equals": {}
+              },
+              "required": [
+                "path"
+              ]
+            }
+          },
+          "reject_anonymous": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "protocol",
+          "issuer_url",
+          "tenant_slug",
+          "audience",
+          "algorithms",
+          "required_claims",
+          "reject_anonymous"
+        ]
+      },
+      "AppWorkflow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "archived"
+            ]
+          },
+          "is_assistant": {
+            "type": "boolean"
+          },
+          "definition_valid": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "lifecycle",
+          "is_assistant",
+          "definition_valid"
+        ]
+      },
+      "AppBudgetToday": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "bucket": {
+            "type": "string"
+          },
+          "day": {
+            "type": "string"
+          },
+          "tz": {
+            "type": "string"
+          },
+          "resets_at": {
+            "type": "string"
+          },
+          "consumed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reserved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "refusals_today": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "bucket",
+          "day",
+          "tz",
+          "resets_at",
+          "consumed",
+          "reserved",
+          "refusals_today"
+        ]
+      },
+      "AppCheck": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/AppCheckKey"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "next_action": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "ok",
+          "message",
+          "next_action"
         ]
       },
       "ConnectorSpecImportResponse": {
@@ -31949,6 +32402,18 @@
             "required": false,
             "name": "offset",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^[a-z0-9][a-z0-9-]*$",
+              "description": "Only users with a sign-in identity for this app"
+            },
+            "required": false,
+            "description": "Only users with a sign-in identity for this app",
+            "name": "product_id",
+            "in": "query"
           }
         ],
         "responses": {
@@ -37741,6 +38206,119 @@
           },
           "404": {
             "description": "The caller is not a product principal or the product is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/apps": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "List the apps visible to the caller's workspace",
+        "description": "Read-only view derived from products settings, sign-in providers, workflows, signed-in identities and the caller budget ledger. An app is visible when a provider of this workspace, a workflow of this workspace or a signed-in identity carries its product_id, or when its assistant workflow belongs to this workspace. Changes go through settings revisions.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Apps of the workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing settings:read; product principals are always refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/apps/{id}": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Read one app with its sign-in, workflows, readiness checks and today's budget",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^[a-z0-9][a-z0-9-]*$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The app",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing settings:read; product principals are always refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No app with this id is visible to the workspace",
             "content": {
               "application/json": {
                 "schema": {

@@ -67,6 +67,9 @@ describe("live invalidation table", () => {
     expect(ids("rbac.changed")).toContain(keyId(["admin"]));
     expect(ids("api_key.changed")).toContain(keyId(["admin", "api-keys"]));
     expect(ids("settings.changed")).toContain(keyId(["admin", "settings"]));
+    expect(ids("settings.changed")).toContain(keyId(["admin", "apps"]));
+    expect(ids("workflow.updated")).toContain(keyId(["admin", "apps"]));
+    expect(ids("workflow.created")).toContain(keyId(["admin", "apps"]));
   });
 
   test("every change refreshes the audit trail, a step frame does not", () => {

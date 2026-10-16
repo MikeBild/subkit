@@ -1119,11 +1119,16 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     const expectedToolCount = de ? "2 Werkzeuge" : "2 tools";
     const toolSummary = page.getByTestId("connector-mcp-session");
     const assertToolCount = async () => {
-      const summary = (await toolSummary.innerText()).trim();
+      const readMarker = de ? "eingelesen" : "read";
+      let summary = "";
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        summary = (await toolSummary.innerText()).trim();
+        if (summary.startsWith(`${expectedToolCount} · `) && summary.includes(readMarker)) return;
+        await page.waitForTimeout(200);
+      }
       if (!summary.startsWith(`${expectedToolCount} · `))
         throw new Error(`${where}: tool summary omits the inspected count: ${summary}`);
-      if (!summary.includes(de ? "eingelesen" : "read"))
-        throw new Error(`${where}: tool summary omits when tools were read: ${summary}`);
+      throw new Error(`${where}: tool summary omits when tools were read: ${summary}`);
     };
     await assertToolCount();
     const visibleTools = () =>

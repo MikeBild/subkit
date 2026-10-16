@@ -223,8 +223,16 @@ export function isGrantResourceType(value: string): value is GrantResourceType {
   return (GRANT_RESOURCE_TYPES as readonly string[]).includes(value);
 }
 
-export function readablePeopleSections(can: { identity: boolean; rbac: boolean }): PeopleSection[] {
-  return PEOPLE_SECTIONS.filter((section) => (section === "people" ? can.identity : can.rbac));
+export function readablePeopleSections(can: {
+  identity: boolean;
+  rbac: boolean;
+  settings: boolean;
+}): PeopleSection[] {
+  return PEOPLE_SECTIONS.filter((section) => {
+    if (section === "people") return can.identity;
+    if (section === "apps") return can.settings;
+    return can.rbac;
+  });
 }
 
 export function openPeopleSection(

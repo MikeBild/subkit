@@ -88,7 +88,7 @@ async function loadProductConfig(assistant: string) {
         enable_signup: false,
       },
       products: {
-        tekit: {
+        testapp: {
           execution_environment: "prod",
           assistant_workflow_id: assistant,
           budget_bucket: "brain",
@@ -125,7 +125,7 @@ beforeAll(async () => {
   issuer = await startTestBearerIssuer();
   const created = await createWorkflowRow(ctx, {
     name: "te-kit-brain-round",
-    product_id: "tekit",
+    product_id: "testapp",
     required_caller_kind: "user",
     execution_privacy: "sensitive",
     input_schema: {
@@ -185,7 +185,7 @@ describe("te-brain compatible budget over HTTP", () => {
   test("without a live authority a product run is refused, never held, and charges nothing", async () => {
     const unapproved = await createWorkflowRow(ctx, {
       name: "unapproved brain round",
-      product_id: "tekit",
+      product_id: "testapp",
       required_caller_kind: "user",
       execution_privacy: "sensitive",
       steps: [{ id: "round", kind: "transform", expression: "return { output: [] };" }],
@@ -393,7 +393,7 @@ describe("te-brain compatible budget over HTTP", () => {
     if (!connector) throw new Error("connector fixture missing");
     const gated = await createWorkflowRow(ctx, {
       name: "gate with missing key",
-      product_id: "tekit",
+      product_id: "testapp",
       required_caller_kind: "user",
       execution_privacy: "sensitive",
       steps: [

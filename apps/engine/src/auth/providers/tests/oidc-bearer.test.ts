@@ -83,8 +83,8 @@ describe("oidc_bearer verification", () => {
     expect(isAuthDenial(result)).toBe(false);
     const principal = result as ResolvedPrincipal;
     expect(principal.kind).toBe("user");
-    expect(principal.product_id).toBe("tekit");
-    expect(principal.provider).toBe("tekit-supabase");
+    expect(principal.product_id).toBe("testapp");
+    expect(principal.provider).toBe("testapp-supabase");
     expect(principal.tenant_id).toBe(tenantId);
     expect(principal.subject).toBe(sub);
     expect(principal.roles).toEqual(["member"]);
@@ -92,7 +92,7 @@ describe("oidc_bearer verification", () => {
     expect(principal.scopes).toBeUndefined();
     expect(principal.auth_source).toEqual({
       kind: "external_bearer",
-      provider_id: "tekit-supabase",
+      provider_id: "testapp-supabase",
       identity_id: expect.any(String),
       issued_at: new Date(BEARER_NOW_SECONDS * 1000).toISOString(),
       expires_at: new Date((BEARER_NOW_SECONDS + 3600) * 1000).toISOString(),
@@ -222,7 +222,7 @@ describe("oidc_bearer verification", () => {
           tenant_slug: "bearer-tenant",
           required_claims: [
             { path: "app_metadata.provider", equals: "apple" },
-            { path: "app_metadata.tekit", equals: true },
+            { path: "app_metadata.testapp", equals: true },
           ],
         }),
       ];
@@ -237,7 +237,7 @@ describe("oidc_bearer verification", () => {
         await resolve(
           await issuer.mint({
             sub: nextUuid(),
-            app_metadata: { provider: "apple", tekit: "true", products: ["tekit"] },
+            app_metadata: { provider: "apple", testapp: "true", products: ["testapp"] },
           }),
         ),
         "required_claim_mismatch",
@@ -246,7 +246,7 @@ describe("oidc_bearer verification", () => {
 
     test("a token carrying the product claim resolves", async () => {
       const accepted = await resolve(
-        await issuer.mint({ sub: nextUuid(), app_metadata: { provider: "apple", tekit: true } }),
+        await issuer.mint({ sub: nextUuid(), app_metadata: { provider: "apple", testapp: true } }),
       );
       expect(isAuthDenial(accepted)).toBe(false);
     });
@@ -361,12 +361,12 @@ describe("oidc_bearer product identity provisioning", () => {
       .select()
       .from(users)
       .where(and(eq(users.tenant_id, tenantId), eq(users.id, principal.id)));
-    expect(row?.email).toBe(`tekit-supabase:${sub}@invalid`);
+    expect(row?.email).toBe(`testapp-supabase:${sub}@invalid`);
     const [identity] = await db
       .select()
       .from(userIdentities)
       .where(and(eq(userIdentities.tenant_id, tenantId), eq(userIdentities.subject, sub)));
-    expect(identity?.product_id).toBe("tekit");
+    expect(identity?.product_id).toBe("testapp");
     expect(identity?.issuer_url).toBe(issuer.issuer);
     const again = (await resolve(await issuer.mint({ sub }))) as ResolvedPrincipal;
     expect(again.id).toBe(principal.id);
@@ -381,7 +381,9 @@ describe("oidc_bearer product identity provisioning", () => {
     const rows = await db
       .select()
       .from(users)
-      .where(and(eq(users.tenant_id, tenantId), eq(users.email, `tekit-supabase:${sub}@invalid`)));
+      .where(
+        and(eq(users.tenant_id, tenantId), eq(users.email, `testapp-supabase:${sub}@invalid`)),
+      );
     expect(rows).toHaveLength(1);
   });
 
@@ -399,7 +401,7 @@ describe("oidc_bearer product identity provisioning", () => {
     const sub = nextUuid();
     await db.insert(productIdentityTombstones).values({
       tenant_id: tenantId,
-      provider_id: "tekit-supabase",
+      provider_id: "testapp-supabase",
       issuer_url: issuer.issuer,
       subject_sha256: productSubjectDigest(sub),
       erased_at: new Date(FROZEN_NOW),

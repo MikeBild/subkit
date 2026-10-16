@@ -2580,7 +2580,7 @@ async function checkRightsPage(page) {
   }
 }
 
-const RIGHTS_TABS = ["Schlüssel", "Apps"];
+const RIGHTS_TABS = ["Schlüssel", "Verbundene Clients"];
 const RIGHTS_INTRO = `Wer darf auf ${PRODUCT_NAME} zugreifen — und worauf greift ${PRODUCT_NAME} in deinem Namen zu.`;
 const RIGHTS_BADGES = { apps: null, keys: "2" };
 
@@ -2662,7 +2662,7 @@ async function checkAccessRedirect(context) {
         (tab) => tab.textContent?.trim() ?? "",
       ),
     );
-    if (tabs.join("|") !== "Personen|Rollen|Gruppen|Zugriffe")
+    if (tabs.join("|") !== "Personen|Rollen|Gruppen|Zugriffe|Apps")
       breach("§6", "/people", `sections are ${tabs.join(", ")}`);
   } catch (error) {
     if (error instanceof NichtGemessen) throw error;

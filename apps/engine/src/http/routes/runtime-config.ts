@@ -458,7 +458,12 @@ export function registerRuntimeConfigRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const revision = c.req.valid("param").revision;
     try {
-      const result = await activateRuntimeRevision(c.get("db"), revision);
+      const result = await activateRuntimeRevision(c.get("db"), revision, {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind === "system_account" ? "system_account" : "user",
+        actor_id: principal.id,
+        source: "api",
+      });
       const success = result.activation_status === "active";
       const restartRequired = result.activation_status === "restart_required";
       await auditAwait(

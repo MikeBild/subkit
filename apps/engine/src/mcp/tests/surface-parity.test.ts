@@ -8,6 +8,7 @@ import {
   llmUsage,
   outboundConnections,
 } from "../../db/schema/index.ts";
+import { createWorkflowRow } from "../../execution/tests/setup.ts";
 import { currentMonthBucket } from "../../llm/accounting/index.ts";
 import { invalidateAttention } from "../../operator/attention.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -366,5 +367,67 @@ describe("settings", () => {
     const tool = await mcp<SettingsList>("subkit_settings", { path: "server.port" }, plaintext);
     expect(tool.items).toEqual([http]);
     expect(http.meta.requiresRestart).toBe(true);
+  });
+});
+
+describe("apps", () => {
+  interface AppList {
+    items: Array<{ id: string; configured: boolean; workflow_count: number }>;
+  }
+
+  beforeAll(async () => {
+    await createWorkflowRow(suite.http, {
+      name: "parity-app-flow",
+      slug: "parity-app-flow",
+      product_id: "parity-app",
+      steps: [{ id: "a", kind: "transform", expression: "return {};" }],
+    });
+  });
+
+  test("list_apps returns the body GET /v1/apps returns", async () => {
+    const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read"]);
+    const http = await rest<AppList>("/v1/apps");
+    const tool = await mcp<AppList>("list_apps", {}, plaintext);
+    expect(tool).toEqual(http);
+    expect(http.items.find((item) => item.id === "parity-app")).toMatchObject({
+      configured: false,
+      workflow_count: 1,
+    });
+  });
+
+  test("get_app returns the body GET /v1/apps/{id} returns", async () => {
+    const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read"]);
+    const http = await rest<{ id: string; workflows: Array<{ slug: string }> }>(
+      "/v1/apps/parity-app",
+    );
+    const tool = await mcp<typeof http>("get_app", { id: "parity-app" }, plaintext);
+    expect(tool).toEqual(http);
+    expect(http.workflows.map((workflow) => workflow.slug)).toEqual(["parity-app-flow"]);
+  });
+
+  test("get_app answers not_found for an app the workspace cannot see", async () => {
+    const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read"]);
+    const client = await suite.connectWithApiKey(plaintext);
+    const result = await client.callTool({ name: "get_app", arguments: { id: "parity-unseen" } });
+    expect(result.isError).toBe(true);
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content[0]?.text ?? "").toContain("not_found");
+  });
+
+  test("both tools are refused without settings:read", async () => {
+    const { plaintext } = await suite.issueApiKey(["mcp:admin", "workflow:read"]);
+    const client = await suite.connectWithApiKey(plaintext);
+    for (const [name, args] of [
+      ["list_apps", {}],
+      ["get_app", { id: "parity-app" }],
+    ] as const) {
+      const result = await client.callTool({ name, arguments: args });
+      expect(result.isError).toBe(true);
+      const content = result.content as Array<{ type: string; text: string }>;
+      expect(JSON.parse(content[0]?.text ?? "{}")).toMatchObject({
+        error_code: "policy_denied",
+        details: { required: "settings:read" },
+      });
+    }
   });
 });

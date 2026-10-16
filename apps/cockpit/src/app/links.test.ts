@@ -20,6 +20,7 @@ import {
   connectorsHref,
   conversationHref,
   PEOPLE_SECTIONS,
+  peopleAppFromUrl,
   peopleHref,
   peopleSectionFromUrl,
   recordHref,
@@ -316,13 +317,15 @@ describe("the remaining addresses", () => {
   });
 
   test("the tab the address names opens, and one the reader may not read falls back", () => {
-    const all = readableSections({ apps: true, keys: true });
-    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=apps"), all)).toBe("apps");
+    const all = readableSections({ clients: true, keys: true });
+    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=clients"), all)).toBe("clients");
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=keys"), all)).toBe("keys");
     expect(openApiAccessSection(apiAccessSectionFromUrl(""), all)).toBe("keys");
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=grants"), all)).toBe("keys");
-    const keysOnly = readableSections({ apps: false, keys: true });
-    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=apps"), keysOnly)).toBe("keys");
+    const keysOnly = readableSections({ clients: false, keys: true });
+    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=clients"), keysOnly)).toBe(
+      "keys",
+    );
   });
 });
 
@@ -339,6 +342,17 @@ describe("Personen & Rechte", () => {
     expect(peopleHref()).toBe("/people");
   });
 
+  test("the people list carries an app filter; other sections drop it", () => {
+    const href = peopleHref("people", { app: "shop-app" });
+    expect(href).toBe("/people?app=shop-app");
+    expect(peopleAppFromUrl(query(href))).toBe("shop-app");
+    expect(peopleHref(null, { app: "shop-app" })).toBe("/people?app=shop-app");
+    expect(peopleHref("apps", { app: "shop-app" })).toBe("/people?section=apps");
+    expect(peopleAppFromUrl("?app=Shop%20App")).toBeNull();
+    expect(peopleAppFromUrl("?app=-shop")).toBeNull();
+    expect(peopleAppFromUrl("")).toBeNull();
+  });
+
   test("anything that is not a section is dropped, including the old permissions tab", () => {
     expect(peopleSectionFromUrl("?section=permissions")).toBeNull();
     expect(peopleSectionFromUrl("?section=keys")).toBeNull();
@@ -347,15 +361,20 @@ describe("Personen & Rechte", () => {
   });
 
   test("the page opens at the named section only where the reader may read it", () => {
-    const both = readablePeopleSections({ identity: true, rbac: true });
+    const all = readablePeopleSections({ identity: true, rbac: true, settings: true });
+    expect(all).toEqual(["people", "roles", "groups", "grants", "apps"]);
+    const both = readablePeopleSections({ identity: true, rbac: true, settings: false });
     expect(both).toEqual(["people", "roles", "groups", "grants"]);
     expect(openPeopleSection(null, both)).toBe("people");
     expect(openPeopleSection("grants", both)).toBe("grants");
-    const rbacOnly = readablePeopleSections({ identity: false, rbac: true });
+    const rbacOnly = readablePeopleSections({ identity: false, rbac: true, settings: false });
     expect(rbacOnly).toEqual(["roles", "groups", "grants"]);
     expect(openPeopleSection(null, rbacOnly)).toBe("roles");
     expect(openPeopleSection("people", rbacOnly)).toBe("roles");
-    const identityOnly = readablePeopleSections({ identity: true, rbac: false });
+    const settingsOnly = readablePeopleSections({ identity: false, rbac: false, settings: true });
+    expect(settingsOnly).toEqual(["apps"]);
+    expect(openPeopleSection("people", settingsOnly)).toBe("apps");
+    const identityOnly = readablePeopleSections({ identity: true, rbac: false, settings: false });
     expect(identityOnly).toEqual(["people"]);
     expect(openPeopleSection("roles", identityOnly)).toBe("people");
     expect(openPeopleSection("roles", [])).toBeNull();

@@ -1,3 +1,5 @@
+import { appUserProvider } from "@/lib/app-user";
+
 export type ActorKind = "user" | "system_account";
 export type ActorKey = `${ActorKind}:${string}`;
 export type ActorDirectory = ReadonlyMap<ActorKey, string>;
@@ -16,10 +18,13 @@ export function actorDirectoryName(directory: ActorDirectory, kind: string, id: 
 export function actorDirectory(
   people: People | undefined,
   accounts: Accounts | undefined,
+  appUserLabel: (provider: string) => string = (provider) => provider,
 ): ActorDirectory {
   const byActor = new Map<ActorKey, string>();
   for (const item of people?.items ?? []) {
-    const label = item.email?.trim();
+    const email = item.email?.trim();
+    const provider = appUserProvider(email);
+    const label = provider === null ? email : appUserLabel(provider);
     if (label) byActor.set(actorKey("user", item.id), label);
   }
   for (const item of accounts?.items ?? []) {

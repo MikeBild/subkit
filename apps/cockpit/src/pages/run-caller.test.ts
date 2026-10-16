@@ -155,6 +155,31 @@ describe("who asked for a run", () => {
     expect(line.state).toBe("unknown");
   });
 
+  test("an app user reads as the app's user and the run names its app", () => {
+    const appUser = actorDirectory(
+      {
+        items: [{ id: PERSON, email: "shop-bearer:9f1c0000-0000-4000-8000-000000000000@invalid" }],
+      },
+      undefined,
+      (provider) => german("people.appUser", { provider }),
+    );
+    const line = runCaller(
+      run({
+        kind: "user",
+        principal_id: PERSON,
+        verified_by: "external_bearer",
+        provider: "shop-bearer",
+        product_id: "shop",
+        channel: "api",
+        origin_execution_id: null,
+      }),
+      appUser,
+      german,
+    );
+    expect(line.who).toBe("App-Nutzer · shop-bearer");
+    expect(line.why).toContainEqual(["App", "shop"]);
+  });
+
   test("every channel the engine records has a name, so no machine value reaches the reader", () => {
     for (const source of [
       "api",

@@ -6,6 +6,7 @@ import { type CommandDef, defineCommand, runCommand, type SubCommandsDef, showUs
 import pc from "picocolors";
 import { agentCommand } from "./commands/agent.ts";
 import { apiKeysCommand } from "./commands/apikeys.ts";
+import { appsCommand } from "./commands/apps.ts";
 import { auditCommand } from "./commands/audit.ts";
 import { authCommand } from "./commands/auth.ts";
 import { categoriesCommand } from "./commands/categories.ts";
@@ -451,6 +452,7 @@ const mainCommand = defineCommand({
     audit: auditCommand,
     apikeys: apiKeysCommand,
     "portal-tokens": portalTokensCommand,
+    apps: appsCommand,
     users: usersCommand,
     invites: invitesCommand,
     system: systemCommand,
@@ -619,6 +621,7 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   audit: { command: auditCommand, requires: "audit:read" },
   apikeys: { command: apiKeysCommand, requires: "api_key:read" },
   "portal-tokens": { command: portalTokensCommand, requires: "portal_token:read" },
+  apps: { command: appsCommand, requires: "settings:read" },
   users: { command: usersCommand, requires: "identity:read" },
   invites: { command: invitesCommand, requires: "identity:read" },
   system: { command: systemCommand, requires: "system:restart" },

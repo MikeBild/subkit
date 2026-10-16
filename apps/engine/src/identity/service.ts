@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNull, or } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
@@ -12,6 +12,7 @@ import {
   sessions,
   systemAccounts,
   tenants,
+  userIdentities,
   users,
 } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
@@ -27,6 +28,14 @@ export const SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export interface ListOptions {
   limit?: number;
   offset?: number;
+  productId?: string;
+}
+
+export interface UserIdentitySummary {
+  user_id: string;
+  provider_id: string;
+  product_id: string | null;
+  last_seen_at: Date;
 }
 
 const DEFAULT_LIMIT = 50;
@@ -52,24 +61,56 @@ export async function listTenantsForPrincipal(tenantId: string, exec?: Executor)
   return t ? [t] : [];
 }
 
+function userTenantConds(tenantId: string, productId: string | undefined) {
+  return and(
+    eq(users.tenant_id, tenantId),
+    isNull(users.deleted_at),
+    productId === undefined
+      ? undefined
+      : sql`EXISTS (SELECT 1 FROM ${userIdentities} WHERE ${userIdentities.tenant_id} = ${tenantId} AND ${userIdentities.user_id} = ${users.id} AND ${userIdentities.product_id} = ${productId})`,
+  );
+}
+
 export async function listUsers(tenantId: string, opts: ListOptions = {}, exec?: Executor) {
   const db = exec ?? getDb();
   return db
     .select()
     .from(users)
-    .where(and(eq(users.tenant_id, tenantId), isNull(users.deleted_at)))
+    .where(userTenantConds(tenantId, opts.productId))
     .orderBy(desc(users.created_at))
     .limit(clampLimit(opts.limit))
     .offset(opts.offset ?? 0);
 }
 
-export async function countUsers(tenantId: string, exec?: Executor): Promise<number> {
+export async function countUsers(
+  tenantId: string,
+  exec?: Executor,
+  opts: Pick<ListOptions, "productId"> = {},
+): Promise<number> {
   const db = exec ?? getDb();
   const [row] = await db
     .select({ total: count() })
     .from(users)
-    .where(and(eq(users.tenant_id, tenantId), isNull(users.deleted_at)));
+    .where(userTenantConds(tenantId, opts.productId));
   return row?.total ?? 0;
+}
+
+export async function listIdentitiesByUser(
+  exec: Executor,
+  tenantId: string,
+  userIds: string[],
+): Promise<UserIdentitySummary[]> {
+  if (userIds.length === 0) return [];
+  return exec
+    .select({
+      user_id: userIdentities.user_id,
+      provider_id: userIdentities.provider_id,
+      product_id: userIdentities.product_id,
+      last_seen_at: userIdentities.last_seen_at,
+    })
+    .from(userIdentities)
+    .where(and(eq(userIdentities.tenant_id, tenantId), inArray(userIdentities.user_id, userIds)))
+    .orderBy(desc(userIdentities.last_seen_at));
 }
 
 export async function getUser(tenantId: string, id: string, exec?: Executor) {

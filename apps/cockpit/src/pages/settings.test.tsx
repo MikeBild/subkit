@@ -7,6 +7,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { type Locale, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
 import {
+  AuthProvidersEditor,
+  authProvidersFromDraft,
+  moveAuthProvider,
+  removeAuthProvider,
+  replaceAuthProvider,
   SettingEnumSelect,
   SettingNumberInput,
   SettingRow,
@@ -505,5 +510,96 @@ describe("the page's frame", () => {
     expect(source).toContain('method: "PATCH"');
     expect(source).not.toMatch(/method: "PUT"/);
     expect(source).not.toMatch(/setTimeout|autosave/i);
+  });
+});
+
+describe("the sign-in provider editor", () => {
+  const stored = [
+    { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+    {
+      protocol: "oidc",
+      id: "workforce",
+      label: "Workforce",
+      issuer_url: "https://issuer.example.com",
+      client_id: "cockpit",
+      scopes: "openid profile email",
+      tenant_slug: "default",
+      link_by_email: true,
+      product_id: "helpdesk",
+    },
+    {
+      protocol: "oidc_bearer",
+      id: "helpdesk-users",
+      label: "Helpdesk users",
+      issuer_url: "https://auth.example.com",
+      jwks_uri: "https://auth.example.com/jwks.json",
+      audience: "helpdesk-api",
+      algorithms: ["ES256", "RS256"],
+      product_id: "helpdesk",
+      tenant_slug: "default",
+      required_claims: [{ path: "app_metadata.role", equals: "member" }],
+      reject_anonymous: true,
+      clock_tolerance_s: 30,
+    },
+    { protocol: "saml", id: "partner", label: "Partner", metadata_url: "https://idp.example.com" },
+  ];
+  const raw = JSON.stringify(stored);
+
+  test("keeps every provider it does not edit, byte for byte, when another one changes", () => {
+    const providers = authProvidersFromDraft(raw, []);
+    expect(providers).toHaveLength(stored.length);
+    const apiKey = providers[0]!;
+    const edited = replaceAuthProvider(providers, 0, { ...apiKey, label: "Team key" });
+    const expected = structuredClone(stored);
+    expected[0]!.label = "Team key";
+    expect(JSON.stringify(edited)).toBe(JSON.stringify(expected));
+    expect(JSON.stringify(edited.slice(1))).toBe(JSON.stringify(stored.slice(1)));
+  });
+
+  test("keeps the extra fields of an edited OIDC provider", () => {
+    const providers = authProvidersFromDraft(raw, []);
+    const oidc = providers[1]!;
+    const edited = replaceAuthProvider(providers, 1, { ...oidc, label: "Staff" });
+    expect(edited[1]).toEqual({ ...stored[1]!, label: "Staff" });
+  });
+
+  test("reorders and removes without losing a managed or unknown provider", () => {
+    const providers = authProvidersFromDraft(raw, []);
+    const moved = moveAuthProvider(providers, 1, 1);
+    expect(moved.map((provider) => provider.id)).toEqual([
+      "api-key",
+      "helpdesk-users",
+      "workforce",
+      "partner",
+    ]);
+    const removed = removeAuthProvider(moved, 2);
+    expect(JSON.stringify(removed)).toBe(JSON.stringify([stored[0], stored[2], stored[3]]));
+  });
+
+  test("reads the stored value when the draft is not valid JSON", () => {
+    expect(JSON.stringify(authProvidersFromDraft("{", stored))).toBe(raw);
+  });
+
+  test("shows an app sign-in and an unknown protocol read-only, with where they are managed", () => {
+    const html = render(
+      <AuthProvidersEditor
+        value={authProvidersFromDraft(raw, [])}
+        publicBaseUrl="https://subkit.example.com"
+        disabled={false}
+        onChange={() => {}}
+      />,
+      "en",
+    );
+    expect(html).toContain('data-testid="settings-auth-provider-2-facts"');
+    expect(html).toContain("auth.example.com");
+    expect(html).toContain("helpdesk-api");
+    expect(html).toContain("helpdesk");
+    expect(html).toContain(translate("en", "settings.auth.managedInApps").replace("&", "&amp;"));
+    expect(html).not.toContain('data-testid="settings-auth-provider-2-issuer-url"');
+    expect(html).toContain('data-testid="settings-auth-provider-3-facts"');
+    expect(html).toContain("saml");
+    expect(html).toContain(translate("en", "settings.auth.managedElsewhere"));
+    expect(html).toContain('data-testid="settings-auth-provider-2-remove"');
+    expect(html).toContain('data-testid="settings-auth-provider-1-issuer-url"');
   });
 });

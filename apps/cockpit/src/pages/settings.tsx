@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import { absolute, auditHref, settingsHref } from "@/app/links";
+import { absolute, auditHref, peopleHref, settingsHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { useDirtyGuard } from "@/app/version-notice";
@@ -14,6 +14,8 @@ import {
   ConfirmDialog,
   ContextHelp,
   DataState,
+  type Fact,
+  FactList,
   Input,
   Page,
   PageHeader,
@@ -78,40 +80,102 @@ import {
 } from "@/pages/settings-restart";
 import { restartOfferAfterSave, restartSaveNote } from "@/pages/settings-restart-model";
 
-type AuthProviderSetting =
-  | {
-      protocol: "api_key";
-      id: string;
-      label: string;
-    }
-  | {
-      protocol: "oidc";
-      id: string;
-      label: string;
-      issuer_url: string;
-      client_id: string;
-      scopes: string;
-      tenant_slug: string;
-    };
+type ApiKeyProviderSetting = {
+  protocol: "api_key";
+  id: string;
+  label: string;
+};
 
-function authProvidersFrom(value: unknown): AuthProviderSetting[] {
+type OidcProviderSetting = {
+  protocol: "oidc";
+  id: string;
+  label: string;
+  issuer_url: string;
+  client_id: string;
+  scopes: string;
+  tenant_slug: string;
+  link_by_email?: boolean;
+  product_id?: string;
+};
+
+type OidcBearerProviderSetting = {
+  protocol: "oidc_bearer";
+  id: string;
+  label: string;
+  issuer_url: string;
+  jwks_uri?: string;
+  audience: string;
+  algorithms?: string[];
+  product_id: string;
+  tenant_slug?: string;
+  required_claims?: { path: string; equals: string | boolean | number }[];
+  reject_anonymous?: boolean;
+  clock_tolerance_s?: number;
+};
+
+type EditableAuthProvider = ApiKeyProviderSetting | OidcProviderSetting;
+
+type ManagedAuthProvider = { readonly [field: string]: unknown };
+
+export type AuthProviderSetting =
+  | EditableAuthProvider
+  | OidcBearerProviderSetting
+  | ManagedAuthProvider;
+
+function isEditableAuthProvider(provider: AuthProviderSetting): provider is EditableAuthProvider {
+  return provider.protocol === "api_key" || provider.protocol === "oidc";
+}
+
+function providerText(provider: AuthProviderSetting, field: string): string {
+  const value = provider[field as keyof AuthProviderSetting];
+  return typeof value === "string" ? value : "";
+}
+
+export function authProvidersFrom(value: unknown): AuthProviderSetting[] {
   if (!Array.isArray(value)) return [];
   return value.filter(
     (provider): provider is AuthProviderSetting =>
-      typeof provider === "object" &&
-      provider !== null &&
-      ((provider as { protocol?: unknown }).protocol === "api_key" ||
-        (provider as { protocol?: unknown }).protocol === "oidc"),
+      typeof provider === "object" && provider !== null && !Array.isArray(provider),
   );
 }
 
-function authProvidersFromDraft(raw: string | undefined, fallback: unknown): AuthProviderSetting[] {
+export function authProvidersFromDraft(
+  raw: string | undefined,
+  fallback: unknown,
+): AuthProviderSetting[] {
   if (raw === undefined) return authProvidersFrom(fallback);
   try {
     return authProvidersFrom(JSON.parse(raw));
   } catch {
     return authProvidersFrom(fallback);
   }
+}
+
+export function replaceAuthProvider(
+  value: readonly AuthProviderSetting[],
+  index: number,
+  provider: AuthProviderSetting,
+): AuthProviderSetting[] {
+  return value.map((current, currentIndex) => (currentIndex === index ? provider : current));
+}
+
+export function moveAuthProvider(
+  value: readonly AuthProviderSetting[],
+  index: number,
+  direction: -1 | 1,
+): AuthProviderSetting[] {
+  const target = index + direction;
+  if (target < 0 || target >= value.length) return [...value];
+  const next = [...value];
+  [next[index], next[target]] = [next[target]!, next[index]!];
+  return next;
+}
+
+export function removeAuthProvider(
+  value: readonly AuthProviderSetting[],
+  index: number,
+): AuthProviderSetting[] {
+  return value.filter((_, currentIndex) => currentIndex !== index);
 }
 
 function AuthProviderInput({
@@ -144,7 +208,60 @@ function AuthProviderInput({
   );
 }
 
-function AuthProvidersEditor({
+function ManagedAuthProviderFacts({
+  provider,
+  index,
+}: {
+  provider: AuthProviderSetting;
+  index: number;
+}) {
+  const { t } = useI18n();
+  const facts: Fact[] = [
+    { label: t("settings.auth.providerId"), value: providerText(provider, "id") || "—" },
+  ];
+  if (provider.protocol === "oidc_bearer") {
+    facts.push(
+      {
+        label: t("settings.auth.issuerUrl"),
+        value: providerText(provider, "issuer_url") || "—",
+      },
+      { label: t("settings.auth.audience"), value: providerText(provider, "audience") || "—" },
+      { label: t("settings.auth.productId"), value: providerText(provider, "product_id") || "—" },
+    );
+  }
+  return (
+    <div className="grid gap-2">
+      <FactList items={facts} testId={`settings-auth-provider-${index}-facts`} />
+      <p className="text-xs text-muted-foreground">
+        {provider.protocol === "oidc_bearer" ? (
+          <a
+            className="font-medium underline-offset-2 hover:underline"
+            href={absolute(peopleHref("apps"))}
+            data-testid={`settings-auth-provider-${index}-managed`}
+          >
+            {t("settings.auth.managedInApps")} →
+          </a>
+        ) : (
+          <span data-testid={`settings-auth-provider-${index}-managed`}>
+            {t("settings.auth.managedElsewhere")}
+          </span>
+        )}
+      </p>
+    </div>
+  );
+}
+
+function authProviderKindLabel(
+  provider: AuthProviderSetting,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  if (provider.protocol === "oidc") return t("settings.auth.oidcPublicClient");
+  if (provider.protocol === "api_key") return t("settings.auth.apiKey");
+  if (provider.protocol === "oidc_bearer") return t("settings.auth.oidcBearer");
+  return providerText(provider, "protocol") || t("settings.auth.unknownProtocol");
+}
+
+export function AuthProvidersEditor({
   value,
   publicBaseUrl,
   disabled,
@@ -167,15 +284,11 @@ function AuthProvidersEditor({
   }, [publicBaseUrl]);
 
   function update(index: number, provider: AuthProviderSetting) {
-    onChange(value.map((current, currentIndex) => (currentIndex === index ? provider : current)));
+    onChange(replaceAuthProvider(value, index, provider));
   }
 
   function move(index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= value.length) return;
-    const next = [...value];
-    [next[index], next[target]] = [next[target]!, next[index]!];
-    onChange(next);
+    onChange(moveAuthProvider(value, index, direction));
   }
 
   return (
@@ -194,20 +307,16 @@ function AuthProvidersEditor({
       </div>
       {value.map((provider, index) => (
         <div
-          key={`${provider.protocol}-${provider.id}-${index}`}
+          key={`${providerText(provider, "protocol")}-${providerText(provider, "id")}-${index}`}
           className="grid gap-3 rounded-xl border border-border p-4"
           data-testid={`settings-auth-provider-${index}`}
         >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">
-                {provider.label || t("settings.auth.unnamedProvider")}
+                {providerText(provider, "label") || t("settings.auth.unnamedProvider")}
               </p>
-              <p className="text-xs text-muted-foreground">
-                {provider.protocol === "oidc"
-                  ? t("settings.auth.oidcPublicClient")
-                  : t("settings.auth.apiKey")}
-              </p>
+              <p className="text-xs text-muted-foreground">{authProviderKindLabel(provider, t)}</p>
             </div>
             <div className="flex items-center gap-1">
               <IconButton
@@ -236,57 +345,61 @@ function AuthProvidersEditor({
               </IconButton>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <AuthProviderInput
-              label={t("settings.auth.providerId")}
-              testId={`settings-auth-provider-${index}-id`}
-              value={provider.id}
-              disabled={disabled}
-              onChange={(id) => update(index, { ...provider, id })}
-            />
-            <AuthProviderInput
-              label={t("settings.auth.label")}
-              testId={`settings-auth-provider-${index}-label`}
-              value={provider.label}
-              disabled={disabled}
-              onChange={(label) => update(index, { ...provider, label })}
-            />
-            {provider.protocol === "oidc" && (
-              <>
-                <div className="sm:col-span-2">
+          {isEditableAuthProvider(provider) ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <AuthProviderInput
+                label={t("settings.auth.providerId")}
+                testId={`settings-auth-provider-${index}-id`}
+                value={provider.id}
+                disabled={disabled}
+                onChange={(id) => update(index, { ...provider, id })}
+              />
+              <AuthProviderInput
+                label={t("settings.auth.label")}
+                testId={`settings-auth-provider-${index}-label`}
+                value={provider.label}
+                disabled={disabled}
+                onChange={(label) => update(index, { ...provider, label })}
+              />
+              {provider.protocol === "oidc" && (
+                <>
+                  <div className="sm:col-span-2">
+                    <AuthProviderInput
+                      label={t("settings.auth.issuerUrl")}
+                      testId={`settings-auth-provider-${index}-issuer-url`}
+                      type="url"
+                      value={provider.issuer_url}
+                      disabled={disabled}
+                      onChange={(issuer_url) => update(index, { ...provider, issuer_url })}
+                    />
+                  </div>
                   <AuthProviderInput
-                    label={t("settings.auth.issuerUrl")}
-                    testId={`settings-auth-provider-${index}-issuer-url`}
-                    type="url"
-                    value={provider.issuer_url}
+                    label={t("settings.auth.clientId")}
+                    testId={`settings-auth-provider-${index}-client-id`}
+                    value={provider.client_id}
                     disabled={disabled}
-                    onChange={(issuer_url) => update(index, { ...provider, issuer_url })}
+                    onChange={(client_id) => update(index, { ...provider, client_id })}
                   />
-                </div>
-                <AuthProviderInput
-                  label={t("settings.auth.clientId")}
-                  testId={`settings-auth-provider-${index}-client-id`}
-                  value={provider.client_id}
-                  disabled={disabled}
-                  onChange={(client_id) => update(index, { ...provider, client_id })}
-                />
-                <AuthProviderInput
-                  label={t("settings.auth.scopes")}
-                  testId={`settings-auth-provider-${index}-scopes`}
-                  value={provider.scopes}
-                  disabled={disabled}
-                  onChange={(scopes) => update(index, { ...provider, scopes })}
-                />
-                <AuthProviderInput
-                  label={t("settings.auth.tenantSlug")}
-                  testId={`settings-auth-provider-${index}-tenant-slug`}
-                  value={provider.tenant_slug}
-                  disabled={disabled}
-                  onChange={(tenant_slug) => update(index, { ...provider, tenant_slug })}
-                />
-              </>
-            )}
-          </div>
+                  <AuthProviderInput
+                    label={t("settings.auth.scopes")}
+                    testId={`settings-auth-provider-${index}-scopes`}
+                    value={provider.scopes}
+                    disabled={disabled}
+                    onChange={(scopes) => update(index, { ...provider, scopes })}
+                  />
+                  <AuthProviderInput
+                    label={t("settings.auth.tenantSlug")}
+                    testId={`settings-auth-provider-${index}-tenant-slug`}
+                    value={provider.tenant_slug}
+                    disabled={disabled}
+                    onChange={(tenant_slug) => update(index, { ...provider, tenant_slug })}
+                  />
+                </>
+              )}
+            </div>
+          ) : (
+            <ManagedAuthProviderFacts provider={provider} index={index} />
+          )}
         </div>
       ))}
       <Button
@@ -315,12 +428,15 @@ function AuthProvidersEditor({
       <ConfirmDialog
         open={removing !== null}
         onOpenChange={(open) => !open && setRemoving(null)}
-        object={removingProvider?.label || t("settings.auth.unnamedProvider")}
+        object={
+          (removingProvider && providerText(removingProvider, "label")) ||
+          t("settings.auth.unnamedProvider")
+        }
         verb={t("settings.auth.remove")}
         consequence={t("settings.auth.removeConsequence")}
         destructive
         onConfirm={() => {
-          onChange(value.filter((_, currentIndex) => currentIndex !== removing));
+          if (removing !== null) onChange(removeAuthProvider(value, removing));
           setRemoving(null);
         }}
         testId="settings-auth-provider-remove-confirm"
@@ -1153,6 +1269,29 @@ function SystemSettings() {
             disabled={disabled}
             onChange={(next) => draft(JSON.stringify(next))}
           />
+        </SettingRow>
+      );
+    if (item.path === "products")
+      return (
+        <SettingRow key={item.path} {...rowProps}>
+          <div className="grid gap-2">
+            <Input
+              id={`setting-${index}`}
+              type="text"
+              value={settingFieldValue(item, drafts[item.path])}
+              placeholder={isUnset(item) ? t("settings.unset") : undefined}
+              onChange={(event) => draft(event.target.value)}
+              disabled={disabled}
+              data-testid={`setting-input-${index}`}
+            />
+            <a
+              className="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline"
+              href={absolute(peopleHref("apps"))}
+              data-testid={`setting-products-apps-${index}`}
+            >
+              {t("settings.products.appsView")} →
+            </a>
+          </div>
         </SettingRow>
       );
     if (item.meta.sensitive)

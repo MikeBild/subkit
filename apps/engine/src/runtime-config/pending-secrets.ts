@@ -1,4 +1,5 @@
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { runtimeSecretVersions } from "../db/schema/index.ts";
 import { invalidateTenantState } from "../operator/index.ts";
@@ -88,7 +89,12 @@ export async function approvePendingSecretVersion(
         scope: "global",
         created_by: args.created_by,
       });
-      const activated = await activateRuntimeRevision(db, saved.saved_revision);
+      const activated = await activateRuntimeRevision(db, saved.saved_revision, {
+        tenant_id: SYSTEM_TENANT_ID,
+        actor_type: args.created_by ? "user" : "system",
+        actor_id: args.created_by,
+        source: "api",
+      });
       bindings.push({
         path,
         outcome: activated.activation_status === "failed" ? "failed" : "rebound",

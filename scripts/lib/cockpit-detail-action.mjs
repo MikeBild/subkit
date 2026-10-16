@@ -222,6 +222,7 @@ function detailApi(state) {
         });
       if (path.startsWith(`/v1/workflows/${id}/versions/`) && path.endsWith("/authority-preview")) {
         state.previews += 1;
+        state.previewEnvironments.push(url.searchParams.get("environment"));
         return json(route, preview(id, url.searchParams.get("environment")));
       }
       if (path === `/v1/workflows/${id}/execution-authorities`)
@@ -309,6 +310,7 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
   const de = localeName === "de";
   const state = {
     previews: 0,
+    previewEnvironments: [],
     connections: connectorConnections(),
     deletedConnectionIds: [],
     connectionListReads: [],
@@ -342,10 +344,15 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
 
     where = `/workflows/<unavailable> (${localeName})`;
     state.previews = 0;
+    state.previewEnvironments = [];
     await stand.visit(page, `workflows/${UNAVAILABLE}`);
     await expectWorkflowTitle(page, where);
-    if (state.previews !== 0)
-      throw new Error(`${where}: opening the page ran ${state.previews} authority reviews`);
+    if (state.previewEnvironments.some((environment) => environment !== "dev"))
+      throw new Error(
+        `${where}: opening the page previewed ${state.previewEnvironments.join(", ")} instead of only resolving the connector environment`,
+      );
+    if (await page.getByTestId("authority-grant-cancel").count())
+      throw new Error(`${where}: opening the page opened an authority review`);
     await assertSingleTriggers(page, where);
 
     where = `/workflows/<failed> (${localeName})`;

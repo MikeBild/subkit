@@ -67,7 +67,7 @@ const CLIENTS_QUERY = ["admin", "oauth-clients"] as const;
 
 const SECTION_TITLE_KEYS = {
   keys: "apiAccess.section.keys",
-  apps: "apiAccess.section.clients",
+  clients: "apiAccess.section.clients",
 } as const;
 
 function KeyBadge({ apiKey, now }: { apiKey: ApiKeyItem; now: number }) {
@@ -103,7 +103,7 @@ export function ApiAccessPage() {
   });
 
   const readable = useMemo(
-    () => readableSections({ keys: canKeys, apps: canClients }),
+    () => readableSections({ keys: canKeys, clients: canClients }),
     [canKeys, canClients],
   );
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
@@ -115,7 +115,7 @@ export function ApiAccessPage() {
   const nowMs = Date.now();
   const counts: Record<ApiAccessSection, number> = {
     keys: keys.data ? keysNeedingAction(keys.data.items, nowMs) : 0,
-    apps: 0,
+    clients: 0,
   };
   const activeKeys = groupApiKeys(keys.data?.items ?? []).active.length;
 
@@ -135,7 +135,7 @@ export function ApiAccessPage() {
         onIssued={setIssued}
       />
     ),
-    apps: <ClientsSection query={clients} />,
+    clients: <ClientsSection query={clients} />,
   };
   const tabs: PageTab[] = readable.map((section) => ({
     value: section,
