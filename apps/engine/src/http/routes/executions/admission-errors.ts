@@ -112,6 +112,7 @@ export async function callerBudgetRefusal(
     principal: ResolvedPrincipal;
     workflow_id: string;
     request_source: string;
+    extra?: Record<string, unknown>;
   },
 ): Promise<Response | null> {
   const code = (error as { code?: unknown }).code;
@@ -126,6 +127,7 @@ export async function callerBudgetRefusal(
       request_source: context.request_source,
       actor_id: context.principal.id ?? null,
       actor_type: actorType(context.principal),
+      ...(context.extra ? { extra: context.extra } : {}),
     },
     context.db,
   );

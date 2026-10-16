@@ -29,20 +29,12 @@ import {
   isBearerProductPrincipal,
 } from "./admission-errors.ts";
 import {
+  CallerBudgetRefusalSchema,
   type ClientDeclaredRunSource,
   RunBodySchema,
   RunResponseSchema,
   RuntimeRunBodySchema,
 } from "./schemas.ts";
-
-const CallerBudgetRefusalSchema = z
-  .object({
-    error: z.enum(["rate-limited", "turn-busy", "turn-limit", "invalid"]),
-    code: z.enum(["rate_limited", "turn_busy", "turn_limit", "invalid"]),
-    message: z.string(),
-    usage: z.object({ usedToday: z.number().int(), dailyLimit: z.number().int() }).optional(),
-  })
-  .openapi("CallerBudgetRefusal");
 
 const runExecutionRoute = createRoute({
   method: "post",

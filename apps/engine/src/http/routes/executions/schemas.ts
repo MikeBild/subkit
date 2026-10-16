@@ -408,3 +408,12 @@ export function serializeStep(row: typeof executionSteps.$inferSelect) {
     finished_at: row.finished_at ? row.finished_at.toISOString() : null,
   };
 }
+
+export const CallerBudgetRefusalSchema = z
+  .object({
+    error: z.enum(["rate-limited", "turn-busy", "turn-limit", "invalid"]),
+    code: z.enum(["rate_limited", "turn_busy", "turn_limit", "invalid"]),
+    message: z.string(),
+    usage: z.object({ usedToday: z.number().int(), dailyLimit: z.number().int() }).optional(),
+  })
+  .openapi("CallerBudgetRefusal");
