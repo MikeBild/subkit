@@ -40,9 +40,10 @@ const CreateSkillInput = z
 export const createSkillTool: ConversationTool = {
   name: "create_skill",
   description:
-    "Propose a new tenant skill as a PROPOSED candidate for human review. It does NOT " +
-    "become an active skill until an operator approves it (approve_skill_candidate in " +
-    "this session, or `sk learnings review`). Re-proposing IDENTICAL content dedups " +
+    "Propose a new tenant skill as a PROPOSED candidate for human review. Nothing is " +
+    "created or active after this call: it only files a candidate, and no skill exists " +
+    "until an operator approves it (approve_skill_candidate in this session, or " +
+    "`sk learnings review`). Report it as 'proposed', never as 'created'. Re-proposing IDENTICAL content dedups " +
     "onto the existing candidate; revised content files a fresh candidate next to it.",
   inputSchema: CreateSkillInput,
   category: "tenant_write",
@@ -80,8 +81,12 @@ export const createSkillTool: ConversationTool = {
           note:
             result.action === "skipped"
               ? "An identical proposal was already reviewed (approved or rejected) — nothing new was queued."
-              : "Queued as a skill candidate for human review — it is NOT active yet. Approve it right here (call approve_skill_candidate when the user asks) or via `sk learnings review`.",
-          next_best_actions: ["approve_skill_candidate", "list_skill_candidates"],
+              : "Proposed, not created: this only queued a skill candidate for human review. No skill exists and nothing is active until it is approved — approve it right here (call approve_skill_candidate when the user asks), decline it with reject_skill_candidate, or use `sk learnings review`. Tell the user it is proposed, not created.",
+          next_best_actions: [
+            "approve_skill_candidate",
+            "reject_skill_candidate",
+            "list_skill_candidates",
+          ],
         },
       };
     } catch (err) {

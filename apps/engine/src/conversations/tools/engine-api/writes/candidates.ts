@@ -1,7 +1,11 @@
 import { z } from "@hono/zod-openapi";
 import { actorOf } from "../../../../audit/actor.ts";
 import { approvePatchCandidate } from "../../../../self-healing/candidate-decision.ts";
-import { approveSkillCandidate, getSkillCandidate } from "../../../../skill-candidates/service.ts";
+import {
+  approveSkillCandidate,
+  getSkillCandidate,
+  rejectSkillCandidate,
+} from "../../../../skill-candidates/service.ts";
 import type { ConversationTool } from "../../index.ts";
 import { checkTenantPermission } from "../../permission-gate.ts";
 
@@ -66,6 +70,95 @@ export const approveSkillCandidateTool: ConversationTool = {
       data: out.knowledge
         ? { candidate: out.candidate, knowledge: out.knowledge }
         : { candidate: out.candidate, skill_id: out.skill_id, skill_status: "draft" },
+    };
+  },
+};
+
+const MAX_REJECT_BATCH = 100;
+
+const RejectInput = z
+  .object({
+    candidate_ids: z.array(z.string().uuid()).min(1).max(MAX_REJECT_BATCH),
+    titles: z
+      .array(z.string().trim().min(1).max(200))
+      .min(1)
+      .max(MAX_REJECT_BATCH)
+      .describe(
+        "Candidate titles in the same order as candidate_ids, shown to the person before they confirm",
+      ),
+    reason: z.string().trim().min(1).max(500).optional(),
+  })
+  .refine((v) => v.titles.length === v.candidate_ids.length, {
+    message: "titles must have one entry per candidate_ids entry",
+    path: ["titles"],
+  })
+  .openapi("RejectSkillCandidatesInput");
+
+export const rejectSkillCandidateTool: ConversationTool = {
+  name: "reject_skill_candidate",
+  description:
+    "Reject one or more proposed skill candidates (1-100 ids with one title each, one confirmation covers the batch). Rejected candidates never become skills or knowledge; the proposal stays on record as decided. Only candidates still in the proposed state are rejected — others are reported as not_actionable. Writes audit per candidate.",
+  inputSchema: RejectInput,
+  category: "tenant_write",
+  visible_when_readonly: true,
+  authoring_only: true,
+  permission: {
+    action: "skill:write",
+    resourceType: "skill_candidate",
+    resolveResourceId: async (_ctx, rawArgs) => {
+      const ids = rawArgs.candidate_ids;
+      return Array.isArray(ids) && typeof ids[0] === "string" ? ids[0] : null;
+    },
+  },
+  async execute(ctx, args: z.infer<typeof RejectInput>) {
+    const ids = [...new Set(args.candidate_ids)];
+    for (const candidateId of ids) {
+      const gate = await checkTenantPermission(ctx, "skill:write", {
+        type: "skill_candidate",
+        id: candidateId,
+      });
+      if (!gate.allow) {
+        return {
+          ok: false,
+          data: { error: "permission_denied", permission: gate.permission, reason: gate.reason },
+        };
+      }
+    }
+    const actorType = ctx.principal?.kind ?? (ctx.actor_id === null ? "system" : "unknown");
+    const results: Array<{ candidate_id: string; outcome: "rejected" | "not_actionable" }> = [];
+    for (const candidateId of ids) {
+      const rejected = await rejectSkillCandidate(
+        {
+          tenant_id: ctx.tenant_id,
+          candidate_id: candidateId,
+          actor_id: ctx.actor_id,
+          actor_type: actorType,
+          ...(args.reason ? { reason: args.reason } : {}),
+        },
+        ctx.db,
+      );
+      await ctx.engineClient.audit_write({
+        resource_type: "skill_candidate",
+        resource_id: candidateId,
+        action: "conversation.reject_skill_candidate",
+        result: rejected ? "success" : "error",
+        ...(rejected ? {} : { reason: "candidate not found or not in proposed state" }),
+        metadata: { conversation_id: ctx.conversation_id },
+      });
+      results.push({
+        candidate_id: candidateId,
+        outcome: rejected ? "rejected" : "not_actionable",
+      });
+    }
+    const rejectedCount = results.filter((r) => r.outcome === "rejected").length;
+    return {
+      ok: rejectedCount > 0,
+      data: {
+        results,
+        rejected: rejectedCount,
+        not_actionable: results.length - rejectedCount,
+        ...(rejectedCount === 0 ? { error: "skill_candidate_not_actionable" } : {}),
+      },
     };
   },
 };

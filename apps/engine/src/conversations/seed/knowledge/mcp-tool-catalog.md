@@ -302,7 +302,9 @@ Proposed (not auto-applied) improvements.
   **[authoring]**; `create_skill` (files a PROPOSED candidate for human review —
   never an active skill), `update_skill`, `delete_skill` **[admin]**.
 - Skill candidates / suggestions: `list_skill_candidates`, `get_skill_candidate`,
-  `list_skill_suggestions`, `approve_skill_candidate` **[authoring]** — approval is
+  `list_skill_suggestions`, `approve_skill_candidate`, `reject_skill_candidate`
+  (batch of 1-100 ids) **[authoring]** — `list_skill_candidates` pages with
+  `limit`/`offset` and reports `total`; approval and rejection are
   directly callable so the coding-agent capture loop closes in-session; the
   client's native destructive-write dialog is the explicit operator approval and
   RBAC `skill:write` stays the hard gate.

@@ -255,6 +255,19 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     defaultMode: "confirm_before_execution",
     buildPendingOutput: (input) => pickFields(input, ["candidate_id", "title"]),
   },
+  reject_skill_candidate: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => {
+      const obj = asObj(input);
+      const ids = Array.isArray(obj.candidate_ids) ? obj.candidate_ids : [];
+      return {
+        candidate_count: ids.length,
+        candidate_ids: ids,
+        titles: Array.isArray(obj.titles) ? obj.titles : [],
+        ...(obj.reason !== undefined ? { reason: obj.reason } : {}),
+      };
+    },
+  },
   approve_discovery_artifact: {
     defaultMode: "confirm_before_execution",
     buildPendingOutput: (input) => pickFields(input, ["artifact_id", "kind", "title"]),

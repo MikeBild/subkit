@@ -141,6 +141,7 @@ const ACTION_TOOLS: Record<string, TranslationKey> = {
   approve_patch_candidate: "tool.name.approvePatchCandidate",
   dry_run_patch_candidate: "tool.name.dryRunPatchCandidate",
   approve_skill_candidate: "tool.name.approveSkillCandidate",
+  reject_skill_candidate: "tool.name.rejectSkillCandidate",
   approve_discovery_artifact: "tool.name.approveDiscoveryArtifact",
   call_connector: "tool.name.callConnector",
   probe_connector: "tool.name.probeConnector",

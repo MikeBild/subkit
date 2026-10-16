@@ -1,7 +1,11 @@
 import type { ConversationTool } from "../../index.ts";
 import { intakeTools } from "../intake.ts";
 import { analyzeKnowledgeSourceTool } from "./analyze-knowledge-source.ts";
-import { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidates.ts";
+import {
+  approvePatchCandidateTool,
+  approveSkillCandidateTool,
+  rejectSkillCandidateTool,
+} from "./candidates.ts";
 import { cleanupWriteTools } from "./cleanup.ts";
 import { createApiKeyTool } from "./create-api-key.ts";
 import { createKnowledgeSourceTool } from "./create-knowledge-source.ts";
@@ -18,7 +22,11 @@ import { updateSubscriptionTool } from "./update-subscription.ts";
 import { updateWorkflowTool } from "./update-workflow.ts";
 
 export { analyzeKnowledgeSourceTool } from "./analyze-knowledge-source.ts";
-export { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidates.ts";
+export {
+  approvePatchCandidateTool,
+  approveSkillCandidateTool,
+  rejectSkillCandidateTool,
+} from "./candidates.ts";
 export {
   deleteConnectorTool,
   deleteKnowledgeSourceTool,
@@ -51,6 +59,7 @@ export const ALL_ENGINE_API_WRITE_TOOLS: ConversationTool[] = [
   rerunExecutionTool,
   promoteConnectorTool,
   approveSkillCandidateTool,
+  rejectSkillCandidateTool,
   approvePatchCandidateTool,
   createApiKeyTool,
   createKnowledgeSourceTool,

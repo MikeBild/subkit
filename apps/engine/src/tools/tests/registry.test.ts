@@ -59,6 +59,7 @@ describe("tools/registry — providers (active)", () => {
     expect(writes.map((d) => d.name).sort()).toEqual([
       "approve_skill_candidate",
       "propose_workflow_repair",
+      "reject_skill_candidate",
       "run_workflow",
       "save_learning",
     ]);
