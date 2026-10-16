@@ -9,6 +9,7 @@ import { cockpitDemoCheckoutFingerprint } from "./lib/cockpit-demo-fingerprint.t
 import {
   assertCockpitDemoActionMarker,
   assertCockpitDemoMarker,
+  cockpitDemoEngineNeedsRecreate,
   cockpitDemoImage,
   cockpitDemoMarker,
   readCockpitDemoMarker,
@@ -151,6 +152,16 @@ function sourceFingerprint(): string {
 
 function imageId(): string {
   const image = spawnSync("docker", ["image", "inspect", IMAGE, "--format", "{{.Id}}"], {
+    encoding: "utf8",
+  });
+  return image.status === 0 ? image.stdout.trim() : "";
+}
+
+function engineContainerImage(): string {
+  const container = run(["ps", "-q", "engine"], true);
+  const id = container.status === 0 ? container.stdout.trim() : "";
+  if (!id) return "";
+  const image = spawnSync("docker", ["inspect", "--format", "{{.Image}}", id], {
     encoding: "utf8",
   });
   return image.status === 0 ? image.stdout.trim() : "";
@@ -375,6 +386,15 @@ async function main(): Promise<void> {
   }
   if (run(["up", "-d", "--wait", "--no-build"]).status !== 0)
     fail("The isolated demo stack did not become healthy");
+  if (cockpitDemoEngineNeedsRecreate(engineContainerImage(), imageId())) {
+    if (
+      run(["up", "-d", "--wait", "--no-build", "--force-recreate", "--no-deps", "engine"])
+        .status !== 0
+    )
+      fail("The demo engine on the rebuilt image did not become healthy");
+    if (cockpitDemoEngineNeedsRecreate(engineContainerImage(), imageId()))
+      fail("The demo engine still runs an older image after it was recreated");
+  }
   checkDockerStorage(false);
   const currentImage = imageId();
   save(BUILD_FILE, { source: fingerprint, image: currentImage });

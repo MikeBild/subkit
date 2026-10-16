@@ -15,12 +15,31 @@ import {
   assertCockpitDemoActionMarker,
   assertCockpitDemoMarker,
   cockpitDemoBaseUrl,
+  cockpitDemoEngineNeedsRecreate,
   cockpitDemoImage,
   cockpitDemoMarker,
   cockpitDemoStateDirectory,
   readCockpitDemoMarker,
   resolveCockpitDemoInstance,
 } from "./cockpit-demo-instance.ts";
+
+describe("a rebuilt demo image replaces the running engine container", () => {
+  test("a container on an older image under the same tag is recreated", () => {
+    expect(cockpitDemoEngineNeedsRecreate("sha256:old", "sha256:new")).toBe(true);
+  });
+
+  test("a missing engine container is recreated", () => {
+    expect(cockpitDemoEngineNeedsRecreate("", "sha256:new")).toBe(true);
+  });
+
+  test("a container on the built image is kept", () => {
+    expect(cockpitDemoEngineNeedsRecreate("sha256:new", "sha256:new")).toBe(false);
+  });
+
+  test("without a built image nothing is recreated", () => {
+    expect(cockpitDemoEngineNeedsRecreate("sha256:old", "")).toBe(false);
+  });
+});
 
 describe("cockpit demo instance identity", () => {
   test("preserves the default installation and isolates explicitly named instances", () => {

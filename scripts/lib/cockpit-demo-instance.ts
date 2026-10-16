@@ -154,3 +154,7 @@ export function readCockpitDemoMarker(instance: CockpitDemoInstance): CockpitDem
     throw new Error("Local demo instance marker is unreadable; refusing to touch Docker resources");
   }
 }
+
+export function cockpitDemoEngineNeedsRecreate(runningImage: string, builtImage: string): boolean {
+  return builtImage !== "" && runningImage !== builtImage;
+}
