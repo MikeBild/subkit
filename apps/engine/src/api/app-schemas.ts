@@ -115,6 +115,21 @@ export const AppIdParam = z.object({
     .openapi({ param: { name: "id", in: "path" } }),
 });
 
+export const AppUserParam = AppIdParam.extend({
+  user_id: z
+    .string()
+    .uuid()
+    .openapi({ param: { name: "user_id", in: "path" } }),
+});
+
+export const ErasedAppUserSchema = z
+  .object({
+    user_id: z.string().uuid(),
+    app_id: z.string(),
+    erased: z.literal(true),
+  })
+  .openapi("ErasedAppUser");
+
 export type AppCheckKey = z.infer<typeof AppCheckKeySchema>;
 export type AppCheck = z.infer<typeof AppCheckSchema>;
 export type AppSignIn = z.infer<typeof AppSignInSchema>;

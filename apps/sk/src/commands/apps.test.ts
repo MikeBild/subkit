@@ -6,12 +6,16 @@ import {
   APP_LIST_COLUMNS,
   appListRows,
   appsCommand,
+  appUserLabel,
   budgetsToday,
+  ERASE_CONSEQUENCES,
   formatAppView,
   friendlyAppsError,
+  friendlyEraseError,
 } from "./apps.ts";
 import { userAppIds, userListQuery, userListRows } from "./users.ts";
 
+const USER_ID = "22222222-2222-4222-8222-222222222222";
 const ASSISTANT_ID = "11111111-1111-4111-8111-111111111111";
 
 const settings: NonNullable<AppSummary["settings"]> = {
@@ -105,9 +109,9 @@ function capturingClient(body: unknown, urls: string[]): EngineClient {
 }
 
 describe("sk apps — command surface", () => {
-  test("registers list and show, gated by settings:read", () => {
+  test("registers list, show and erase-user, gated by settings:read", () => {
     const cmd = appsCommand as unknown as { subCommands: Record<string, unknown> };
-    expect(Object.keys(cmd.subCommands).sort()).toEqual(["list", "show"]);
+    expect(Object.keys(cmd.subCommands).sort()).toEqual(["erase-user", "list", "show"]);
     expect(SUB_COMMANDS.apps?.requires).toBe("settings:read");
   });
 });
@@ -269,5 +273,72 @@ describe("sk users apps column", () => {
     const urls: string[] = [];
     await capturingClient({ items: [] }, urls).listIdentityUsers(userListQuery({ app: "app" }));
     expect(urls).toEqual(["http://engine.test/v1/identity/users?product_id=app"]);
+  });
+});
+
+describe("sk apps erase-user", () => {
+  test("the consequences name what goes, what stays and that it is irreversible", () => {
+    expect(ERASE_CONSEQUENCES).toContain("SubKit's own data");
+    expect(ERASE_CONSEQUENCES).toContain("sign-in provider stays untouched");
+    expect(ERASE_CONSEQUENCES).toContain("cannot be undone");
+  });
+
+  test("eraseAppUser sends DELETE /v1/apps/{id}/users/{user_id}", async () => {
+    const calls: Array<{ url: string; method: string | undefined }> = [];
+    const client = new EngineClient({
+      engine_url: "http://engine.test",
+      api_key: "sk_test",
+      tenant: "t",
+      fetchImpl: ((url: string, init?: RequestInit) => {
+        calls.push({ url, method: init?.method });
+        return Promise.resolve(jsonResponse({ user_id: USER_ID, app_id: "app", erased: true }));
+      }) as unknown as typeof fetch,
+    });
+    const out = await client.eraseAppUser("app", USER_ID);
+    expect(calls).toEqual([
+      { url: `http://engine.test/v1/apps/app/users/${USER_ID}`, method: "DELETE" },
+    ]);
+    expect(out.erased).toBe(true);
+  });
+
+  test("403 names the permission and 404 points to sk apps show", () => {
+    expect(
+      friendlyEraseError(new EngineError(403, { code: "forbidden" }), "app", USER_ID),
+    ).toContain("identity:write");
+    expect(
+      friendlyEraseError(new EngineError(404, { code: "not_found" }), "app", USER_ID),
+    ).toContain("sk apps show app");
+    expect(friendlyEraseError(new EngineError(500, { code: "boom" }), "app", USER_ID)).toBeNull();
+    expect(friendlyEraseError(new Error("x"), "app", USER_ID)).toBeNull();
+  });
+
+  test("409 says nothing was changed because the person belongs to more than this app", () => {
+    const message = friendlyEraseError(new EngineError(409, { code: "conflict" }), "app", USER_ID);
+    expect(message).toContain("nothing was changed");
+    expect(message).toContain("another app");
+  });
+});
+
+describe("sk apps show user ids", () => {
+  const people = [
+    { id: USER_ID, email: "idp:raw-subject-123@invalid", display_name: null },
+    { id: "u2", email: "a@example.test", display_name: "Ada" },
+  ];
+
+  test("an app user reads as app user with provider, never the raw subject", () => {
+    expect(appUserLabel(people[0] as never)).toBe("App user · idp");
+    expect(appUserLabel(people[1] as never)).toBe("Ada");
+  });
+
+  test("the view lists user ids with their labels and no raw subject", () => {
+    const text = formatAppView(view, people as never);
+    expect(text).toContain("sk apps erase-user");
+    expect(text).toContain(`${USER_ID}  App user · idp`);
+    expect(text).not.toContain("raw-subject-123");
+  });
+
+  test("without listed users the view has no user id section", () => {
+    expect(formatAppView(view, null)).not.toContain("erase-user");
+    expect(formatAppView(view, [])).not.toContain("erase-user");
   });
 });

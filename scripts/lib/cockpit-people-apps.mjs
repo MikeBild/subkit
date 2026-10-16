@@ -78,7 +78,8 @@ function settingsResponse(state) {
   };
 }
 
-function summary(id, product) {
+function summary(id, product, erased = false) {
+  const shopUsers = id === "shop" && !erased;
   return {
     id,
     configured: Boolean(product),
@@ -103,15 +104,15 @@ function summary(id, product) {
     sign_in_count: 1,
     workflow_count: 1,
     users: {
-      count: id === "shop" ? 1 : 0,
-      last_seen_at: id === "shop" ? "2026-10-15T08:00:00.000Z" : null,
+      count: shopUsers ? 1 : 0,
+      last_seen_at: shopUsers ? "2026-10-15T08:00:00.000Z" : null,
     },
     failing_checks: id === "shop" ? ["execution_authority"] : [],
   };
 }
 
-function view(id, product) {
-  const { failing_checks: _failing, ...rest } = summary(id, product);
+function view(id, product, erased = false) {
+  const { failing_checks: _failing, ...rest } = summary(id, product, erased);
   return {
     ...rest,
     sign_in: [id === "shop" ? SHOP_BEARER : BLOG_BEARER].map((provider) => ({
@@ -170,15 +171,28 @@ export async function verifyPeopleApps(page, stand) {
   const patches = [];
   const activations = [];
   const userQueries = [];
+  const erasures = [];
+  let erased = false;
+  let eraseFails = true;
   let conflictOnce = false;
   await page.route("**/v1/apps**", (route) => {
-    const path = new URL(route.request().url()).pathname;
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
     const ids = ["blog", "shop"];
+    if (request.method() === "DELETE") {
+      erasures.push(path);
+      if (eraseFails) {
+        eraseFails = false;
+        return json(route, { code: "forbidden", message: "administrator required" }, 403);
+      }
+      erased = true;
+      return json(route, { user_id: SHOP_USER, app_id: "shop", erased: true });
+    }
     if (path === "/v1/apps")
-      return json(route, { items: ids.map((id) => summary(id, state.products[id])) });
+      return json(route, { items: ids.map((id) => summary(id, state.products[id], erased)) });
     const id = decodeURIComponent(path.split("/").at(-1));
     if (!ids.includes(id)) return json(route, { error: { code: "not_found" } }, 404);
-    return json(route, view(id, state.products[id]));
+    return json(route, view(id, state.products[id], erased));
   });
   await page.route("**/v1/settings**", (route) => {
     const request = route.request();
@@ -239,7 +253,9 @@ export async function verifyPeopleApps(page, stand) {
       groups: null,
       identities: [],
     };
-    const items = url.searchParams.get("product_id") === "shop" ? [appUser] : [operator, appUser];
+    const everyone = erased ? [operator] : [operator, appUser];
+    const items =
+      url.searchParams.get("product_id") === "shop" ? (erased ? [] : [appUser]) : everyone;
     return json(route, { items, total: items.length });
   });
   await page.route("**/v1/workflows?**", (route) =>
@@ -341,14 +357,48 @@ export async function verifyPeopleApps(page, stand) {
   await page.getByTestId("apps-remove-confirm").waitFor({ state: "detached" });
   same(patches.at(-1).changes, { products: { blog: BLOG } }, "removing the shop app removed more");
 
-  await sheet.getByTestId("apps-sheet-users-link").click();
-  const person = page.getByTestId("people-name-0").filter({ visible: true });
-  await person.waitFor();
-  require(userQueries.includes("shop"), "the users link did not filter people by app");
-  const name = await person.innerText();
-  require(name.includes("App-Nutzer · shop-bearer"), `the app user reads as ${name}`);
-  require(name.includes("App: shop"), "the app user carries no app badge");
-  require(!(await page.locator("body").innerText()).includes(
-    "@invalid",
-  ), "a placeholder address is shown");
+  await stand.visit(page, "people?section=apps");
+  await page.getByTestId("apps-section").waitFor();
+  await page.getByTestId("apps-list-row-link-1").filter({ visible: true }).click();
+  const users = sheet.getByTestId("apps-users-list");
+  await users.waitFor();
+  require(userQueries.includes("shop"), "the app users were not filtered by app");
+  const row = await sheet.getByTestId("apps-users-0").innerText();
+  require(row.includes("App-Nutzer · shop-bearer"), `the app user row reads as ${row}`);
+  require(row.includes(SHOP_USER.slice(0, 8)), "the row does not tell users apart");
+  require(!row.includes("@invalid"), "a placeholder address is shown in the app users");
+  require((await sheet.getByTestId("apps-users-0").getByRole("button").count()) ===
+    1, "the user row offers more than one action");
+
+  await sheet.getByTestId("apps-users-0-erase").click();
+  const confirm = page.getByTestId("apps-users-erase-confirm");
+  const consequence = await confirm.getByTestId("apps-users-erase-confirm-consequence").innerText();
+  require(consequence.includes("Anmeldeanbieter"), `the consequence reads as ${consequence}`);
+  require(consequence.includes("nicht rückgängig"), "the erase does not say it cannot be undone");
+  await confirm.getByTestId("apps-users-erase-confirm-cancel").click();
+  await confirm.waitFor({ state: "detached" });
+  require(erasures.length === 0, "cancelling the dialog erased the user");
+  await sheet.getByTestId("apps-users-0").waitFor();
+
+  await sheet.getByTestId("apps-users-0-erase").click();
+  await confirm.getByTestId("apps-users-erase-confirm-confirm").click();
+  await page
+    .getByText("Nicht geändert: Dein Zugang erlaubt diese Änderung nicht.")
+    .first()
+    .waitFor();
+  require(erasures.length === 1, "a refused erase was not sent once");
+  require(!erased, "a refused erase removed the user");
+  await sheet.getByTestId("apps-users-0").waitFor();
+
+  await confirm.getByTestId("apps-users-erase-confirm-confirm").click();
+  await confirm.waitFor({ state: "detached" });
+  same(
+    erasures,
+    [`/v1/apps/shop/users/${SHOP_USER}`, `/v1/apps/shop/users/${SHOP_USER}`],
+    "the erase hit another path",
+  );
+  await sheet.getByTestId("apps-users-none").waitFor();
+  require((await sheet.getByTestId("apps-users-0").count()) ===
+    0, "the erased user is still listed");
+  require(erased, "the erase did not reach the engine");
 }

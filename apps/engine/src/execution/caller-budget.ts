@@ -606,7 +606,11 @@ export async function settleExecutionGuards(
     }
   }
   if (params.status === "succeeded" && def.caller_erasure === "on_success") {
-    await eraseProductCaller(tx, caller.data, { execution_id: params.execution_id, now });
+    await eraseProductCaller(tx, caller.data, {
+      kind: "workflow",
+      execution_id: params.execution_id,
+      now,
+    });
   }
   return settlement;
 }
