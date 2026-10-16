@@ -74,6 +74,12 @@ export function monthSpendEndpoint(now = new Date()): string {
   return `/v1/stats/llm?bucket=day&from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(now.toISOString())}`;
 }
 
+export const REPAIR_REQUIRED_ENDPOINT = "/v1/workflows?operating_status=repair_required&limit=1";
+
+export function repairRequiredCount(envelope: unknown): number | null {
+  return isRecord(envelope) ? countOf(envelope.total) : null;
+}
+
 export const STATUS_ENDPOINT = "/v1/status";
 
 export interface WindowSpend {

@@ -11,6 +11,8 @@ import {
   operatingCounts,
   operatingFigures,
   operatingFiguresEndpoint,
+  REPAIR_REQUIRED_ENDPOINT,
+  repairRequiredCount,
   usageWindowFromUrl,
   usageWindowSearch,
   windowBounds,
@@ -431,5 +433,15 @@ describe("the operations figures", () => {
   test("a reader who may not read connectors is told so, whatever the engine counted", () => {
     const connector = figuresOf({ connectorsPermitted: false })[2];
     expect([connector?.id, connector?.state]).toEqual(["connectorHealth", "not_permitted"]);
+  });
+});
+
+describe("the repair-required count", () => {
+  test("reads the total of the filtered workflow list and refuses malformed answers", () => {
+    expect(REPAIR_REQUIRED_ENDPOINT).toBe("/v1/workflows?operating_status=repair_required&limit=1");
+    expect(repairRequiredCount({ items: [], total: 13 })).toBe(13);
+    expect(repairRequiredCount({ total: -1 })).toBeNull();
+    expect(repairRequiredCount({ total: "13" })).toBeNull();
+    expect(repairRequiredCount(null)).toBeNull();
   });
 });

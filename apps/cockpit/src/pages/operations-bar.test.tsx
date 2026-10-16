@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type Locale, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
-import { OperationsBar } from "./operations-bar";
-import { operatingFigures, windowBounds } from "./operations-figures";
+import { OperationsBar, RepairRequiredHint } from "./operations-bar";
+import { operatingFigures, type StatsWindow, windowBounds } from "./operations-figures";
 import { budgetSummary } from "./usage-model";
 
 const NOW = new Date("2026-09-28T12:00:00.000Z");
@@ -34,8 +34,8 @@ const monthSpend = answered({
   cost: { amount: 135.8, currency: "USD", unpricedModels: [], unpricedCalls: 0 },
 });
 
-function render(figures: ReturnType<typeof operatingFigures>, locale: Locale = "de"): string {
-  const value = {
+function i18nValue(locale: Locale): I18nValue {
+  return {
     locale,
     preference: locale,
     setPreference() {},
@@ -43,9 +43,16 @@ function render(figures: ReturnType<typeof operatingFigures>, locale: Locale = "
     tn: (key, count, values) => translatePlural(locale, key, count, values),
     dateTime: (date) => String(date),
   } as I18nValue;
+}
+
+function render(
+  figures: ReturnType<typeof operatingFigures>,
+  locale: Locale = "de",
+  window?: StatsWindow,
+): string {
   return renderToStaticMarkup(
-    <I18nContext.Provider value={value}>
-      <OperationsBar figures={figures} pending={false} onRetry={() => {}} />
+    <I18nContext.Provider value={i18nValue(locale)}>
+      <OperationsBar figures={figures} pending={false} onRetry={() => {}} window={window} />
     </I18nContext.Provider>,
   );
 }
@@ -111,6 +118,49 @@ describe("the operations bar", () => {
     expect(html).toContain("Stand jetzt");
     expect(links[4]).toBe("/cockpit/usage?window=24h");
     expect(links[5]).toBe("/cockpit/usage");
+  });
+
+  test("window tiles name the chosen window, current and month tiles keep their own basis", () => {
+    for (const window of ["24h", "7d", "30d"] as const) {
+      const html = render(figuresOf({ bounds: windowBounds(window, NOW) }), "de", window);
+      const label = { "24h": "24 Std", "7d": "7 Tage", "30d": "30 Tage" }[window];
+      expect(figureText(html, "runs")).toContain(`Ausführungen · ${label}`);
+      expect(figureText(html, "successRate")).toContain(`Erfolgsquote · ${label}`);
+      expect(figureText(html, "cost")).toContain(`Kosten · ${label}`);
+      expect(figureText(html, "connectorHealth")).toContain("Gesunde Konnektoren · Stand jetzt");
+      expect(figureText(html, "budget")).toContain("Nutzung · Monat");
+    }
+    expect(figureText(render(figuresOf(), "de"), "runs")).not.toContain("·");
+  });
+
+  test("the usage tile keeps its value unshrinkable and puts the token share in the detail line", () => {
+    const html = render(figuresOf());
+    expect(html).toContain("shrink-0 text-2xl");
+    const detail = html.match(/data-testid="operations-figure-budget-detail"[^>]*>([^<]+)</);
+    expect(detail?.[1]).toBe("27 % des Tokenkontingents");
+    const partial = render(
+      figuresOf({
+        monthSpend: answered({
+          calls: 900,
+          cost: { amount: 135.8, currency: "USD", unpricedModels: ["x"], unpricedCalls: 14 },
+        }),
+      }),
+    );
+    expect(partial).toContain("Aufrufe ohne Preis: 14 · 27 % des Tokenkontingents");
+  });
+
+  test("the repair hint links to the filtered workflow list only when workflows need repair", () => {
+    const hint = (count: number | null) =>
+      renderToStaticMarkup(
+        <I18nContext.Provider value={i18nValue("de")}>
+          <RepairRequiredHint count={count} />
+        </I18nContext.Provider>,
+      );
+    expect(hint(null)).toBe("");
+    expect(hint(0)).toBe("");
+    expect(hrefs(hint(13))).toEqual(["/cockpit/workflows?operating_status=repair_required"]);
+    expect(hint(13)).toContain("13 Workflows brauchen eine Reparatur");
+    expect(hint(1)).toContain("1 Workflow braucht eine Reparatur");
   });
 
   test("the cost figure shows the window's spend in its currency", () => {

@@ -4232,7 +4232,9 @@ const EN = {
   "overview.count.none": "Nothing needs you right now.",
   "overview.count.noneRead": "Nothing from the sources that answered needs you.",
   "overview.countHelp":
-    "The figures count over the chosen window; failed counts only runs that ended with an error.",
+    "These are the entries that need a decision from you now. The time window applies only to executions and success rate; connectors and usage are shown as of now or for the month. More repairs are listed under Workflows.",
+  "overview.repairRequired.one": "{count} workflow needs a repair",
+  "overview.repairRequired.other": "{count} workflows need a repair",
   "overview.needsYou": "Needs you",
   "overview.lastFailures": "Latest failures",
   "overview.noFailures": "No failures.",
@@ -8937,7 +8939,9 @@ const DE: Record<TranslationKey, string> = {
   "overview.count.none": "Nichts braucht dich gerade.",
   "overview.count.noneRead": "Aus den Quellen, die geantwortet haben, braucht dich nichts.",
   "overview.countHelp":
-    "Die Kennzahlen gelten für den gewählten Zeitraum; fehlgeschlagen zählt nur Läufe, die mit einem Fehler endeten.",
+    "Hier stehen Einträge, die jetzt eine Entscheidung von dir brauchen. Der Zeitraum gilt nur für Ausführungen und Erfolgsquote; Konnektoren und Nutzung zeigen den aktuellen Stand bzw. den Monat. Weitere Reparaturen siehe Workflows.",
+  "overview.repairRequired.one": "{count} Workflow braucht eine Reparatur",
+  "overview.repairRequired.other": "{count} Workflows brauchen eine Reparatur",
   "overview.needsYou": "Braucht dich",
   "overview.lastFailures": "Letzte Fehlschläge",
   "overview.noFailures": "Keine Fehlschläge.",

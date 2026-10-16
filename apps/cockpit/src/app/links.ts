@@ -102,8 +102,13 @@ export function recordHref(resource: CatalogResource, id: string): string {
   return record(resource, id);
 }
 
-export function workflowsHref(filter: { connector?: string | null } = {}): string {
-  return withQuery("/workflows", { connector: filter.connector });
+export function workflowsHref(
+  filter: { connector?: string | null; operatingStatus?: "repair_required" | null } = {},
+): string {
+  return withQuery("/workflows", {
+    connector: filter.connector,
+    operating_status: filter.operatingStatus,
+  });
 }
 
 export function conversationHref(id: string): string {
