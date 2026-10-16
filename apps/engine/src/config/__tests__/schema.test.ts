@@ -250,4 +250,52 @@ describe("ConfigSchema — llm.web_search leaf", () => {
     expect(leaf).toBeDefined();
     expect(leaf!.meta.scope).toBe("tenant");
   });
+
+  describe("oidc_bearer provider", () => {
+    const provider = {
+      protocol: "oidc_bearer",
+      id: "app-accounts",
+      label: "App account",
+      issuer_url: "https://issuer.example.test",
+      audience: "app-audience",
+      product_id: "app",
+      required_claims: [{ path: "idp", equals: "primary" }],
+    };
+    const parse = (override: Record<string, unknown>, drop: string[] = []) => {
+      const candidate: Record<string, unknown> = { ...provider, ...override };
+      for (const key of drop) delete candidate[key];
+      return ConfigSchema.safeParse({
+        database: { url: "postgres://x" },
+        auth: { providers: [candidate] },
+      });
+    };
+
+    test("explicit audience and required_claims parse", () => {
+      const result = parse({});
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      const parsed = result.data.auth.providers[0];
+      expect(parsed?.protocol === "oidc_bearer" && parsed.audience).toBe("app-audience");
+    });
+
+    test("an explicitly empty required_claims list parses", () => {
+      expect(parse({ required_claims: [] }).success).toBe(true);
+    });
+
+    test("a provider without audience is rejected naming the field", () => {
+      const result = parse({}, ["audience"]);
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.issues.some((issue) => issue.path.includes("audience"))).toBe(true);
+    });
+
+    test("a provider without required_claims is rejected naming the field", () => {
+      const result = parse({}, ["required_claims"]);
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.issues.some((issue) => issue.path.includes("required_claims"))).toBe(
+        true,
+      );
+    });
+  });
 });
