@@ -371,6 +371,28 @@ describe("P17 SegmentedControl", () => {
     expect(count(html, /role="radio"/g)).toBe(3);
     expect(html).toMatch(/aria-checked="true"[^>]*>7 Tage|7 Tage/);
   });
+
+  test("a long label shrinks with an ellipsis instead of running into its neighbours", () => {
+    const html = render(
+      <SegmentedControl
+        label="Anmeldung"
+        value="current"
+        onValueChange={() => {}}
+        options={[
+          { value: "current", label: "Schlüssel im Header Authorization, apikey" },
+          { value: "none", label: "Ohne" },
+        ]}
+      />,
+    );
+    const items = [...html.matchAll(/<button[^>]*role="radio"[^>]*>/g)].map((m) => m[0]);
+    expect(items).toHaveLength(2);
+    for (const item of items) {
+      expect(item).toContain("min-w-0");
+      expect(item).toMatch(/ shrink /);
+      expect(item).not.toMatch(/ shrink-0 /);
+    }
+    expect(count(html, /<span class="truncate">/g)).toBe(2);
+  });
 });
 
 describe("P19 ChatCard", () => {

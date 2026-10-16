@@ -15,7 +15,7 @@ export function ConnectorSignInFields({
   target,
   signIn,
   onSignIn,
-  currentLabel,
+  currentDetail,
   secret,
   onSecret,
   keepsKey,
@@ -29,7 +29,7 @@ export function ConnectorSignInFields({
   target: ConnectorTarget;
   signIn: ConnectorSignIn | null;
   onSignIn(signIn: ConnectorSignIn | null): void;
-  currentLabel?: string;
+  currentDetail?: string;
   secret: string;
   onSecret(secret: string): void;
   keepsKey: boolean;
@@ -49,9 +49,12 @@ export function ConnectorSignInFields({
         value={signIn ?? "current"}
         onChange={(next) => onSignIn(next === "current" ? null : next)}
         help={t("create.connector.signInHelp")}
+        description={signIn === null ? currentDetail : undefined}
         testId={testId}
         options={[
-          ...(currentLabel ? [{ value: "current" as const, label: currentLabel }] : []),
+          ...(currentDetail
+            ? [{ value: "current" as const, label: t("create.connector.signIn.current") }]
+            : []),
           { value: "none", label: t("create.connector.signIn.none") },
           { value: "key", label: t("create.connector.signIn.key") },
           { value: "account", label: t("create.connector.signIn.account") },
