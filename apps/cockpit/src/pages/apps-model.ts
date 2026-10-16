@@ -441,3 +441,14 @@ export function signInErrors(
     errors.push("apps.error.claim");
   return errors;
 }
+
+export function mayEraseAppUsers(session: {
+  permissions: readonly string[];
+  principal: { role_name?: string | null };
+}): boolean {
+  return (
+    session.principal.role_name === "admin" &&
+    session.permissions.includes("identity:write") &&
+    session.permissions.includes("settings:read")
+  );
+}

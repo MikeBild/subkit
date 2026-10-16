@@ -14,6 +14,7 @@ import {
   definitionProductId,
   eraseAppUserPath,
   fetchCurrentVersionDag,
+  mayEraseAppUsers,
   personApps,
   personEmailText,
   personNameText,
@@ -326,6 +327,27 @@ describe("people who signed in through an app", () => {
       }),
     ).toEqual(["blog", "shop"]);
     expect(personApps({})).toEqual([]);
+  });
+});
+
+describe("only an administrator may erase app users", () => {
+  const rights = ["identity:write", "settings:read"];
+
+  test("an administrator with identity and settings rights may erase", () => {
+    expect(mayEraseAppUsers({ permissions: rights, principal: { role_name: "admin" } })).toBe(true);
+  });
+
+  test("a member with the same rights sees no erase action", () => {
+    expect(mayEraseAppUsers({ permissions: rights, principal: { role_name: "member" } })).toBe(
+      false,
+    );
+    expect(mayEraseAppUsers({ permissions: rights, principal: { role_name: null } })).toBe(false);
+  });
+
+  test("an administrator without identity write sees no erase action", () => {
+    expect(
+      mayEraseAppUsers({ permissions: ["settings:read"], principal: { role_name: "admin" } }),
+    ).toBe(false);
   });
 });
 

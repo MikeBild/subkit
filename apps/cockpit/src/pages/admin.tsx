@@ -105,6 +105,7 @@ import {
   definitionGuardBucket,
   EXECUTION_ENVIRONMENTS,
   eraseAppUserPath,
+  mayEraseAppUsers,
   PRODUCTS_PATH,
   PROVIDERS_PATH,
   type ProductDraft,
@@ -2152,10 +2153,7 @@ function AppUsers({ app }: { app: AppView }) {
   const { t, dateTime } = useI18n();
   const session = useSession();
   const client = useQueryClient();
-  const canErase =
-    session.principal.role_name === "admin" &&
-    session.permissions.includes("identity:write") &&
-    session.permissions.includes("settings:read");
+  const canErase = mayEraseAppUsers(session);
   const list = usePeopleList(true, app.id);
   const users = list.view.data?.items ?? [];
   const [target, setTarget] = useState<UserItem | null>(null);
