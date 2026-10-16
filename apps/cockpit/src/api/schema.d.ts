@@ -7162,13 +7162,13 @@ export interface paths {
                         "application/json": components["schemas"]["ExecutionRunResponse"];
                     };
                 };
-                /** @description Bad request or unsupported asynchronous authentication source */
+                /** @description Bad request or unsupported asynchronous authentication source. A workflow input part above its declared byte limit or an invalid caller budget unit answers `{error:"invalid", code:"invalid"}`. */
                 400: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Error"];
+                        "application/json": components["schemas"]["Error"] | components["schemas"]["CallerBudgetRefusal"];
                     };
                 };
                 /** @description The caller is not authorized to rerun this execution */
@@ -7189,13 +7189,22 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Original execution is not rerunnable, or the rerun was refused before it started. `prepared_credential_unavailable` carries `details` naming `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`. */
+                /** @description Original execution is not rerunnable, or the rerun was refused before it started. `prepared_credential_unavailable` carries `details` naming `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`. Another call of the same caller budget unit is still queued or running without a cancel request: `{error:"turn-busy", code:"turn_busy"}` without `execution_id`; that call keeps running. Nothing was reserved. */
                 409: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Error"];
+                        "application/json": components["schemas"]["Error"] | components["schemas"]["CallerBudgetRefusal"];
+                    };
+                };
+                /** @description The workflow's caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage}`) or the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`). Nothing was reserved. */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CallerBudgetRefusal"];
                     };
                 };
             };

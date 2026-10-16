@@ -22,13 +22,17 @@ import { HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { admissionRefusal } from "./admission-errors.ts";
+import { admissionRefusal, callerBudgetRefusal } from "./admission-errors.ts";
 import {
   enforceAsyncAuthentication,
   enforceSavedWorkflowAllowlist,
   runRequestSource,
 } from "./run.ts";
-import { ClientDeclaredRunSourceSchema, RunResponseSchema } from "./schemas.ts";
+import {
+  CallerBudgetRefusalSchema,
+  ClientDeclaredRunSourceSchema,
+  RunResponseSchema,
+} from "./schemas.ts";
 
 const RerunBody = z
   .object({
@@ -63,8 +67,9 @@ const rerunRoute = createRoute({
       content: { "application/json": { schema: RunResponseSchema } },
     },
     400: {
-      description: "Bad request or unsupported asynchronous authentication source",
-      content: { "application/json": { schema: ErrorSchema } },
+      description:
+        'Bad request or unsupported asynchronous authentication source. A workflow input part above its declared byte limit or an invalid caller budget unit answers `{error:"invalid", code:"invalid"}`.',
+      content: { "application/json": { schema: ErrorSchema.or(CallerBudgetRefusalSchema) } },
     },
     403: {
       description: "The caller is not authorized to rerun this execution",
@@ -73,8 +78,13 @@ const rerunRoute = createRoute({
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
     409: {
       description:
-        "Original execution is not rerunnable, or the rerun was refused before it started. `prepared_credential_unavailable` carries `details` naming `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`.",
-      content: { "application/json": { schema: ErrorSchema } },
+        'Original execution is not rerunnable, or the rerun was refused before it started. `prepared_credential_unavailable` carries `details` naming `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`. Another call of the same caller budget unit is still queued or running without a cancel request: `{error:"turn-busy", code:"turn_busy"}` without `execution_id`; that call keeps running. Nothing was reserved.',
+      content: { "application/json": { schema: ErrorSchema.or(CallerBudgetRefusalSchema) } },
+    },
+    429: {
+      description:
+        'The workflow\'s caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage}`) or the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`). Nothing was reserved.',
+      content: { "application/json": { schema: CallerBudgetRefusalSchema } },
     },
   },
 });
@@ -215,6 +225,14 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
         await assertExecutionAuthorityCurrent(db, principal.tenant_id, admitted.execution_id);
       }
     } catch (error) {
+      const budgetRefusal = await callerBudgetRefusal(c, error, {
+        db,
+        principal,
+        workflow_id: original.workflow_id,
+        request_source,
+        extra: { rerun_of: original.id },
+      });
+      if (budgetRefusal) return budgetRefusal as never;
       return admissionRefusal(error, {
         db,
         principal,

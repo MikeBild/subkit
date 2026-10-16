@@ -3,11 +3,13 @@ import { mkdtempSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+import { AuditAction } from "../../audit/index.ts";
 import { flushOidcBearerKeys } from "../../auth/providers/oidc-bearer.ts";
 import { loadConfig } from "../../config/loader.ts";
 import {
+  auditLog,
   callerBudgetUnits,
   connectors,
   executions,
@@ -72,6 +74,20 @@ function run(
       ...extra,
     }),
   });
+}
+
+function rerun(bearer: string, execution_id: string, input: Record<string, unknown>) {
+  return call(`/v1/executions/${execution_id}/rerun`, bearer, {
+    method: "POST",
+    body: JSON.stringify({ input: { purpose: "round", ...input } }),
+  });
+}
+
+async function appRefusalsToday(): Promise<number> {
+  const res = await call("/v1/apps/testapp", ctx.apiKey);
+  expect(res.status).toBe(200);
+  const view = (await res.json()) as { budget_today: { refusals_today: number } };
+  return view.budget_today.refusals_today;
 }
 
 async function loadProductConfig(assistant: string) {
@@ -336,6 +352,51 @@ describe("te-brain compatible budget over HTTP", () => {
     expect(later.status).toBe(202);
     const budget = (await (await call("/v1/budget", bearer)).json()) as { usedToday: number };
     expect(budget.usedToday).toBe(2);
+  });
+
+  test("a rerun past the daily limit answers 429 and is counted as a refusal of the app", async () => {
+    const bearer = await token(nextUuid());
+    const first = await run(bearer, { turn_id: "rerun-1", final: true }, { async: false });
+    expect(first.status).toBe(200);
+    const { execution_id } = (await first.json()) as { execution_id: string };
+    expect((await run(bearer, { turn_id: "rerun-2" })).status).toBe(202);
+    const refusalsBefore = await appRefusalsToday();
+    const refused = await rerun(bearer, execution_id, { turn_id: "rerun-3" });
+    expect(refused.status).toBe(429);
+    expect(await refused.json()).toEqual({
+      error: "rate-limited",
+      code: "rate_limited",
+      message: "the daily limit is reached",
+      usage: { usedToday: 2, dailyLimit: 2 },
+    });
+    const [audit] = await ctx.db
+      .select({ reason: auditLog.reason, metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, AuditAction.EXECUTION_BOUNDARY_REFUSED),
+          sql`${auditLog.metadata}->>'rerun_of' = ${execution_id}`,
+        ),
+      )
+      .orderBy(desc(auditLog.ts))
+      .limit(1);
+    expect(audit?.reason).toBe("rate_limited");
+    expect(audit?.metadata).toMatchObject({ workflow_id: assistantId, rerun_of: execution_id });
+    expect(await appRefusalsToday()).toBe(refusalsBefore + 1);
+  });
+
+  test("a rerun into a turn whose call is still queued answers 409 turn-busy", async () => {
+    const bearer = await token(nextUuid());
+    const first = await run(bearer, { turn_id: "rerun-busy-1", final: true }, { async: false });
+    expect(first.status).toBe(200);
+    const { execution_id } = (await first.json()) as { execution_id: string };
+    expect((await run(bearer, { turn_id: "rerun-busy-2" })).status).toBe(202);
+    const busy = await rerun(bearer, execution_id, { turn_id: "rerun-busy-2" });
+    expect(busy.status).toBe(409);
+    const body = (await busy.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ error: "turn-busy", code: "turn_busy" });
+    expect(body).not.toHaveProperty("execution_id");
   });
 
   test("an input outside the schema is refused with 400 before any charge", async () => {
