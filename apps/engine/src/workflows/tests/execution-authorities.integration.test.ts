@@ -1123,6 +1123,65 @@ test("operating status verifies approval effect binding and does not infer readi
   ).toBe(0);
 });
 
+test("operating status of a workflow without triggers or approvals follows its connectors", async () => {
+  const statusFor = async (environment: "dev" | "prod") => {
+    const f = await fixture();
+    const [connector] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id: f.workflow.tenant_id,
+        slug: `untriggered-${environment}`,
+        display_name: `Untriggered ${environment}`,
+        driver: "http",
+        auth_type: "none",
+        environment,
+        base_url: "https://approved.example.test",
+      })
+      .returning();
+    if (!connector) throw new Error("missing connector fixture");
+    await ctx.db
+      .update(workflowVersions)
+      .set({
+        dag: {
+          name: f.workflow.name,
+          steps: [
+            {
+              id: "send",
+              kind: "request",
+              connector_id: connector.id,
+              method: "POST",
+              path: "/messages",
+              body: { recipient: "reviewed@example.test" },
+            },
+          ],
+        },
+      })
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, f.workflow.tenant_id),
+          eq(workflowVersions.id, f.version.id),
+        ),
+      );
+    await ctx.db
+      .update(workflows)
+      .set({ lifecycle: "active", current_version_id: f.version.id, draft_version_id: null })
+      .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
+    const listed = await listWorkflows(
+      f.workflow.tenant_id,
+      {
+        include_operating_status: true,
+        operating_access: { schedules: true, hooks: true, connectors: true },
+      },
+      ctx.db,
+    );
+    return listed.rows.find((row) => row.id === f.workflow.id)?.operating_status;
+  };
+  const inDev = await statusFor("dev");
+  const inProd = await statusFor("prod");
+  expect(inProd).toBe(inDev);
+  expect(inProd).not.toBe("stopped");
+});
+
 test("batched operating evidence keeps workflow versions, environments and effect boundaries separate", async () => {
   const f = await fixture();
   const tenantId = f.workflow.tenant_id;

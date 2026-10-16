@@ -4,6 +4,7 @@ import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
 import type { WorkflowAutomation } from "@/components/cockpit/automation-panel";
 import { useConnectorNames } from "@/components/cockpit/connector-names";
+import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
 import {
   ActionMenu,
   type CockpitColumn,
@@ -330,6 +331,18 @@ export function WorkflowApprovals({ automation }: { automation: WorkflowAutomati
           text={summary}
           help={t("workflowApprovals.summaryHelp")}
           testId="workflow-approvals-summary"
+        />
+      ) : null}
+      {state && automation.canWrite && !state.grant && state.primaryAction?.kind === "grant" ? (
+        <ActionMenu
+          items={[
+            {
+              label: t("workflowStrip.action.grant"),
+              onSelect: automation.openGrant,
+              testId: "workflow-approvals-grant",
+              data: OPENS_APPROVAL,
+            },
+          ]}
         />
       ) : null}
       {state ? (

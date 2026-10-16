@@ -30,6 +30,7 @@ import {
   type AutomationTrigger,
   type AutomationWorkflow,
   automationEnvironment,
+  automationEnvironmentUndecided,
   automationNeedsMoreApprovals,
   automationState,
 } from "@/lib/automation-state";
@@ -39,6 +40,8 @@ import { cronWords } from "@/lib/cron-words";
 import { grantOpeningNotice, hookStartedOnly, OPENING_NOTICE_KEYS } from "@/lib/grant-context";
 import { formatRelativeTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { environmentToCorrectTo, type ReviewLike } from "@/lib/resolved-environment";
+import { reviewTarget } from "@/lib/review-target";
 import { liveRunEnvironment, type RunEnvironment } from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
@@ -168,7 +171,26 @@ export function useWorkflowAutomation(
     authorities: authorities.error ? null : items,
     now,
   };
-  const environment = settled ? automationEnvironment(inputs) : null;
+  const undecided = settled && automationEnvironmentUndecided(inputs);
+  const previewVersionId = reviewTarget(workflow, draft.data ?? null)?.version_id ?? null;
+  const mayPreview = permissions.includes("workflow:read");
+  const connectorPreview = useQuery({
+    queryKey: ["workflow-connector-environment", workflowId, previewVersionId],
+    enabled: undecided && mayPreview && previewVersionId !== null,
+    queryFn: () =>
+      apiRequest<ReviewLike>(
+        `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(previewVersionId ?? "")}/authority-preview?environment=dev`,
+      ),
+    retry: false,
+  });
+  const connectorEnvironment =
+    undecided && !connectorPreview.isPending
+      ? environmentToCorrectTo(connectorPreview.data, "dev", [])
+      : null;
+  const environment =
+    settled && !(undecided && mayPreview && previewVersionId !== null && connectorPreview.isPending)
+      ? automationEnvironment({ ...inputs, connectorEnvironment })
+      : null;
   const mayDiagnose = permissions.includes("workflow:read");
   const diagnosis = useQuery({
     ...workflowDiagnosisQuery(workflowId, environment),
@@ -184,7 +206,12 @@ export function useWorkflowAutomation(
       !Array.isArray(diagnosis.data?.diagnoses),
   };
   const decided = ready
-    ? automationState({ ...inputs, diagnosis: diagnosis.data ?? null, unanswered })
+    ? automationState({
+        ...inputs,
+        connectorEnvironment,
+        diagnosis: diagnosis.data ?? null,
+        unanswered,
+      })
     : null;
   const approvalOutOfSight =
     decided !== null && automationNeedsMoreApprovals(decided, Boolean(authorities.hasNextPage));
