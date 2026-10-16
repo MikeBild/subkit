@@ -3907,6 +3907,9 @@ const EN = {
   "connectorEdit.title": "Edit {name}",
   "connectorEdit.secret": "Replace credentials",
   "connectorEdit.secretPlaceholder": "Leave empty to keep them",
+  "connectorEdit.headerValue": "Replace {name}",
+  "connectorEdit.headersIncomplete":
+    "Replace every header together, or leave all empty to keep them.",
   "connectorEdit.saved": "Saved",
   "connectorEdit.savedWithKey": "Saved · credentials replaced",
   "connectorEdit.deleted": "{name} deleted",
@@ -8459,6 +8462,9 @@ const DE: Record<TranslationKey, string> = {
   "connectorEdit.title": "{name} bearbeiten",
   "connectorEdit.secret": "Zugangsdaten ersetzen",
   "connectorEdit.secretPlaceholder": "Leer lassen, um sie zu behalten",
+  "connectorEdit.headerValue": "{name} ersetzen",
+  "connectorEdit.headersIncomplete":
+    "Ersetze alle Header gemeinsam oder lass alle leer, um sie zu behalten.",
   "connectorEdit.saved": "Gespeichert",
   "connectorEdit.savedWithKey": "Gespeichert · Zugangsdaten ersetzt",
   "connectorEdit.deleted": "{name} gelöscht",

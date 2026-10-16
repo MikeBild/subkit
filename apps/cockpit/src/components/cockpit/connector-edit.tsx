@@ -13,8 +13,10 @@ import {
   connectorEditPlan,
   connectorEditProblem,
   connectorTargetOf,
+  missingHeaderValues,
   type OAuthClientFields,
   oauthClientOf,
+  replacesEveryHeader,
   signInOf,
 } from "@/components/cockpit/create-connector-model";
 import { TextField } from "@/components/cockpit/form-field";
@@ -35,13 +37,13 @@ export function ConnectorEditDialog({
   onOpenChange,
   id,
   record,
-  headerName,
+  headerNames,
 }: {
   open: boolean;
   onOpenChange(open: boolean): void;
   id: string;
   record: RecordValue;
-  headerName: string;
+  headerNames: readonly string[];
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
@@ -52,6 +54,7 @@ export function ConnectorEditDialog({
     name: text(record, "display_name") || text(record, "name"),
     address: text(record, "base_url"),
     config: record.config,
+    headerNames,
   };
   const target = connectorTargetOf(prior.driver);
   const priorSignIn = signInOf(prior.authType);
@@ -61,9 +64,20 @@ export function ConnectorEditDialog({
   const [secret, setSecret] = useState("");
   const [oauth, setOAuth] = useState<OAuthClientFields>(() => oauthClientOf(prior.config));
   const [typedHeader, setHeader] = useState<string | null>(null);
-  const header = typedHeader ?? headerName;
+  const header = typedHeader ?? headerNames[0] ?? "";
+  const [headerValues, setHeaderValues] = useState<Record<string, string>>({});
+  const [missingHeaders, setMissingHeaders] = useState<readonly string[]>([]);
+  const everyHeader = replacesEveryHeader(prior);
   const [error, setError] = useState<string | null>(null);
-  const draft: ConnectorEditDraft = { name, address, signIn, secret, header, oauth };
+  const draft: ConnectorEditDraft = {
+    name,
+    address,
+    signIn,
+    secret,
+    header,
+    headerValues,
+    oauth,
+  };
   const unchangedKind = signIn === priorSignIn;
   const save = useMutation({
     mutationFn: async () => {
@@ -85,6 +99,7 @@ export function ConnectorEditDialog({
     },
     onSuccess: async ({ replaced, route }) => {
       setSecret("");
+      setHeaderValues({});
       await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] });
       await client.invalidateQueries({ queryKey: ["connector-credential", id] });
       await client.invalidateQueries({ queryKey: ["connectors", "lookup"] });
@@ -121,6 +136,8 @@ export function ConnectorEditDialog({
       submit={{ label: t("common.save"), pending: save.isPending }}
       onSubmit={() => {
         const problem = connectorEditProblem(prior, draft, callbackUrl);
+        setMissingHeaders(missingHeaderValues(prior, draft));
+        if (problem === "connectorEdit.headersIncomplete") return setError(null);
         if (problem) return setError(t(problem));
         setError(null);
         save.mutate();
@@ -152,7 +169,7 @@ export function ConnectorEditDialog({
           signIn={signIn}
           onSignIn={setSignIn}
           currentDetail={
-            priorSignIn === null ? authLabel(prior.authType, header ? [header] : [], t) : undefined
+            priorSignIn === null ? authLabel(prior.authType, headerNames, t) : undefined
           }
           secret={secret}
           onSecret={setSecret}
@@ -163,7 +180,27 @@ export function ConnectorEditDialog({
           callbackUrl={callbackUrl}
         />
       ) : null}
-      {(!target || signIn === null) && prior.authType === "header" ? (
+      {(!target || signIn === null) && everyHeader
+        ? headerNames.map((headerName, index) => (
+            <TextField
+              key={headerName}
+              id={`connector-edit-header-value-${index}`}
+              type="password"
+              label={t("connectorEdit.headerValue", { name: headerName })}
+              placeholder={t("connectorEdit.secretPlaceholder")}
+              help={t("connectorEdit.secretHelp")}
+              value={headerValues[headerName] ?? ""}
+              onChange={(value) => {
+                setHeaderValues((current) => ({ ...current, [headerName]: value }));
+                setMissingHeaders((current) => current.filter((name) => name !== headerName));
+              }}
+              error={
+                missingHeaders.includes(headerName) ? t("connectorEdit.headersIncomplete") : null
+              }
+            />
+          ))
+        : null}
+      {(!target || signIn === null) && prior.authType === "header" && !everyHeader ? (
         <TextField
           id="connector-edit-header"
           label={t("connectorCredentials.headerName")}
@@ -172,7 +209,7 @@ export function ConnectorEditDialog({
           mono
         />
       ) : null}
-      {(!target || signIn === null) && offersKeyReplacement(prior.authType) ? (
+      {(!target || signIn === null) && offersKeyReplacement(prior.authType) && !everyHeader ? (
         <TextField
           id="connector-edit-secret"
           type="password"

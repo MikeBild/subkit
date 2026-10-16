@@ -140,6 +140,7 @@ export interface ConnectorEditPrior {
   name: string;
   address: string;
   config: unknown;
+  headerNames: readonly string[];
 }
 
 export interface ConnectorEditDraft {
@@ -148,7 +149,32 @@ export interface ConnectorEditDraft {
   signIn: ConnectorSignIn | null;
   secret: string;
   header: string;
+  headerValues: Readonly<Record<string, string>>;
   oauth: OAuthClientFields;
+}
+
+export function replacesEveryHeader(prior: ConnectorEditPrior): boolean {
+  return prior.authType === "header" && prior.headerNames.length > 1;
+}
+
+export function missingHeaderValues(
+  prior: ConnectorEditPrior,
+  draft: ConnectorEditDraft,
+): string[] {
+  if (!replacesEveryHeader(prior)) return [];
+  const empty = prior.headerNames.filter((name) => !(draft.headerValues[name] ?? "").trim());
+  return empty.length === prior.headerNames.length ? [] : empty;
+}
+
+function everyHeaderBody(
+  prior: ConnectorEditPrior,
+  draft: ConnectorEditDraft,
+): Record<string, unknown> | null {
+  const entries = prior.headerNames.map(
+    (name) => [name, (draft.headerValues[name] ?? "").trim()] as const,
+  );
+  if (entries.some(([, value]) => !value)) return null;
+  return { mode: "header", headers: Object.fromEntries(entries) };
 }
 
 export interface ConnectorEditPlan {
@@ -193,7 +219,9 @@ export function connectorEditPlan(
     if (editsClient) patch.config = editedOAuthConfig(prior.config, draft.oauth);
     return {
       patch,
-      credential: credentialBody(prior.authType, draft.secret, draft.header),
+      credential: replacesEveryHeader(prior)
+        ? everyHeaderBody(prior, draft)
+        : credentialBody(prior.authType, draft.secret, draft.header),
       startSignIn: false,
     };
   }
@@ -224,6 +252,7 @@ export function connectorEditProblem(
   const target = connectorTargetOf(prior.driver);
   const from = signInOf(prior.authType);
   if (!target || draft.signIn === null || draft.signIn === from) {
+    if (missingHeaderValues(prior, draft).length > 0) return "connectorEdit.headersIncomplete";
     if (draft.signIn === "account" && target && needsOAuthClient(target, "account"))
       return oauthProblem(draft.oauth);
     return null;
