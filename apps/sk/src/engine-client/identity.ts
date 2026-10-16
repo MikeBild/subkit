@@ -46,6 +46,7 @@ export const identityMethods = {
     email: string | null;
     role_name: string | null;
     provider: string;
+    product_id: string | null;
   }> {
     return this.request("GET", "/v1/identity/whoami");
   },

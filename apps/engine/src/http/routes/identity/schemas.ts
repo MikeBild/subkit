@@ -24,11 +24,24 @@ export const UserSchema = z
   })
   .openapi("User");
 
+export const UserIdentitySchema = z
+  .object({
+    provider_id: z.string(),
+    product_id: z.string().nullable(),
+    last_seen_at: z.string(),
+  })
+  .openapi("UserIdentity");
+
 export const UserDetailSchema = UserSchema.extend({
   groups: z
     .array(z.object({ id: z.string().uuid(), name: z.string() }))
     .nullable()
     .describe("Group memberships, or null when the caller cannot read RBAC membership."),
+  identities: z
+    .array(UserIdentitySchema)
+    .describe(
+      "Sign-in identities linked by an oidc or oidc_bearer provider; product_id names the app the identity signed in to.",
+    ),
 }).openapi("UserDetail");
 
 export const SystemAccountSchema = z

@@ -36,6 +36,7 @@ const WORKFLOW: QueryKey[] = [
   ["catalog-detail"],
   ["catalog-workflow-index"],
   ["admin", "workflows"],
+  ["admin", "apps"],
   ["admin", "grants"],
   ["attention"],
   ["decisions"],
@@ -85,7 +86,10 @@ const RBAC: QueryKey[] = [["admin"]];
 
 const API_KEYS: QueryKey[] = [["admin", "api-keys"]];
 
-const SETTINGS: QueryKey[] = [["admin", "settings"]];
+const SETTINGS: QueryKey[] = [
+  ["admin", "settings"],
+  ["admin", "apps"],
+];
 
 const AUDIT: QueryKey = ["audit"];
 

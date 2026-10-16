@@ -63,7 +63,7 @@ function gateDefinition(connectorId: string) {
   return {
     name: "llm gate",
     slug: "llm-gate",
-    product_id: "tekit",
+    product_id: "testapp",
     required_caller_kind: "user",
     execution_privacy: "sensitive",
     timeout_ms: 30000,
@@ -134,7 +134,7 @@ async function productUser(): Promise<ResolvedPrincipal> {
     .insert(users)
     .values({
       tenant_id: ctx.tenantId,
-      email: `tekit-supabase:${subject}@invalid`,
+      email: `testapp-supabase:${subject}@invalid`,
       role_id: await builtinRoleId(ctx.testDb.db, "member"),
     })
     .returning({ id: users.id });
@@ -144,25 +144,25 @@ async function productUser(): Promise<ResolvedPrincipal> {
     .values({
       tenant_id: ctx.tenantId,
       user_id: user.id,
-      provider_id: "tekit-supabase",
+      provider_id: "testapp-supabase",
       issuer_url: "https://auth.example.test/auth/v1",
-      product_id: "tekit",
+      product_id: "testapp",
       subject,
-      email: `tekit-supabase:${subject}@invalid`,
+      email: `testapp-supabase:${subject}@invalid`,
     })
     .returning({ id: userIdentities.id });
   if (!identity) throw new Error("identity fixture missing");
   return {
-    provider: "tekit-supabase",
+    provider: "testapp-supabase",
     kind: "user",
     id: user.id,
     tenant_id: ctx.tenantId,
-    product_id: "tekit",
+    product_id: "testapp",
     roles: ["member"],
     subject,
     auth_source: {
       kind: "external_bearer",
-      provider_id: "tekit-supabase",
+      provider_id: "testapp-supabase",
       identity_id: identity.id,
       issued_at: new Date(getTestNow()).toISOString(),
       expires_at: new Date(getTestNow() + 3_600_000).toISOString(),
@@ -196,7 +196,7 @@ async function turn(principal: ResolvedPrincipal, input: Record<string, unknown>
       input,
     },
     ctx.testDb.db,
-    callerFromPrincipal(principal, ctx.tenantId, "tekit", "user"),
+    callerFromPrincipal(principal, ctx.tenantId, "testapp", "user"),
     authorizationContextFromPrincipal(principal),
   );
   const result = await runExecution({

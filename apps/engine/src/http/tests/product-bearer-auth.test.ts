@@ -178,8 +178,8 @@ describe("product bearer authentication over HTTP", () => {
           tenantId: ctx.tenantId,
           principalId: ctx.userId,
           principalKind: "user",
-          provider: "tekit-supabase",
-          productId: "tekit",
+          provider: "testapp-supabase",
+          productId: "testapp",
         },
       })
       .returning({ id: executions.id });
@@ -193,7 +193,7 @@ describe("product bearer authentication over HTTP", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        provider_id: "tekit-supabase",
+        provider_id: "testapp-supabase",
         identity_token: await liveToken(nextUuid()),
       }),
     });
@@ -207,6 +207,6 @@ describe("product bearer authentication over HTTP", () => {
     expect(body.providers.map((provider) => provider.id)).toEqual(["api-key"]);
     const login = await fetch(`${ctx.baseUrl}/v1/identity/login/start`, { redirect: "manual" });
     const page = await login.text();
-    expect(page).not.toContain("tekit-supabase");
+    expect(page).not.toContain("testapp-supabase");
   });
 });

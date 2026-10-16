@@ -1,5 +1,6 @@
 export * from "./abort.ts";
 export * from "./admission-audit.ts";
+export { type AppConfig, type AppTenant, getApp, listApps } from "./apps.ts";
 export {
   admitAuthorizedWorkflowExecution,
   assertExecutionAuthorityCurrent,
@@ -20,6 +21,7 @@ export {
   type ProductHealth,
   productBudget,
   productHealth,
+  productReadiness,
 } from "./product-status.ts";
 export * from "./request-meta-schema.ts";
 export * from "./resolve-definition.ts";

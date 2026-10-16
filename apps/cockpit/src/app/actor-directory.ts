@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { apiRequest } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
+import { useI18n } from "@/lib/i18n-context";
 import { canReadDirectory } from "@/pages/audit-model";
 import {
   type Accounts,
@@ -13,6 +14,7 @@ import {
 
 export function useActorDirectory(enabled: boolean): ActorDirectory {
   const session = useSession();
+  const { t } = useI18n();
   const live = useLiveQueryOptions();
   const readable = enabled && canReadDirectory(session);
   const people = useQuery({
@@ -27,5 +29,11 @@ export function useActorDirectory(enabled: boolean): ActorDirectory {
     queryFn: () => apiRequest<Accounts>("/v1/identity/system-accounts"),
     ...live,
   });
-  return useMemo(() => actorDirectory(people.data, accounts.data), [people.data, accounts.data]);
+  return useMemo(
+    () =>
+      actorDirectory(people.data, accounts.data, (provider) =>
+        provider ? t("people.appUser", { provider }) : t("people.appUserUnknown"),
+      ),
+    [people.data, accounts.data, t],
+  );
 }

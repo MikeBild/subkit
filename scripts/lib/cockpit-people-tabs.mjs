@@ -3,6 +3,7 @@ const LISTS = {
   roles: "/v1/rbac/roles",
   groups: "/v1/rbac/groups",
   grants: "/v1/rbac/grants",
+  apps: "/v1/apps",
   workflows: "/v1/workflows",
   connectors: "/v1/connectors",
 };
@@ -12,6 +13,7 @@ const OWN = {
   roles: ["roles"],
   groups: ["groups"],
   grants: ["grants", "people", "groups", "workflows", "connectors"],
+  apps: ["apps"],
 };
 
 function listsIn(paths) {
@@ -31,7 +33,7 @@ export async function verifyPeopleLoadsPerTab(page, stand, where) {
     await stand.visit(page, "people");
     const first = listsIn(seen).filter((name) => !OWN.people.includes(name));
     if (first.length) throw new Error(`${where}: the people tab also loads ${first.join(", ")}`);
-    for (const section of ["roles", "groups", "grants", "people"]) {
+    for (const section of ["roles", "groups", "grants", "apps", "people"]) {
       seen.length = 0;
       await page.getByTestId(`people-tab-${section}`).click();
       await page.waitForLoadState("networkidle");

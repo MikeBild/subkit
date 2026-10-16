@@ -2642,6 +2642,38 @@ async function mockApi(route, options = {}) {
     });
   }
 
+  if (path === "/v1/apps" || path.startsWith("/v1/apps/")) {
+    const app = {
+      id: "shop",
+      configured: true,
+      ready: true,
+      settings: {
+        execution_environment: "prod",
+        budget_bucket: "chat",
+        assistant_workflow: { id: uuid, name: "Shop assistant", slug: "shop-assistant" },
+        daily_limit: {
+          bucket: "chat",
+          limit_per_caller: 20,
+          unit: "conversation_id",
+          tz: "Europe/Berlin",
+        },
+      },
+      sign_in_count: 1,
+      workflow_count: 1,
+      users: { count: 0, last_seen_at: null },
+    };
+    if (path === "/v1/apps") return json(route, { items: [{ ...app, failing_checks: [] }] });
+    return json(route, {
+      ...app,
+      sign_in: [],
+      workflows: [],
+      budget_today: null,
+      checks: [
+        { key: "product_configured", ok: true, message: "App settings exist", next_action: null },
+      ],
+    });
+  }
+
   const label = path.split("/").filter(Boolean).at(-1)?.replaceAll("-", " ") || "record";
   return json(route, {
     items: Array.from({ length: 14 }, (_, index) => ({

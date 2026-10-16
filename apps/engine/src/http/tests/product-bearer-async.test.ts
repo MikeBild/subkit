@@ -56,7 +56,7 @@ beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), "sk-product-async-"));
   const created = await createWorkflowRow(ctx, {
     name: "async brain round",
-    product_id: "tekit",
+    product_id: "testapp",
     required_caller_kind: "user",
     execution_privacy: "sensitive",
     steps: [
@@ -92,7 +92,7 @@ beforeAll(async () => {
         enable_signup: false,
       },
       products: {
-        tekit: {
+        testapp: {
           execution_environment: "prod",
           assistant_workflow_id: workflowId,
           budget_bucket: "brain",

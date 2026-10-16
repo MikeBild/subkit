@@ -25,6 +25,8 @@ export async function deleteOwnedConversation({
 
   const path = `/v1/conversations/${encodeURIComponent(id)}`;
   let response = await request.delete(path, { headers });
+  if (response.status() >= 200 && response.status() < 300)
+    return { deleted: true, alreadyMissing: false };
   if (response.status() === 404) return { deleted: true, alreadyMissing: true };
   if (response.status() !== 409)
     throw new Error(`Owned conversation cleanup failed: HTTP ${response.status()}`);

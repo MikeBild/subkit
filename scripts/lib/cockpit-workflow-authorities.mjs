@@ -837,7 +837,8 @@ async function verifyEnvironmentKept(page, stand, workflowId, capture, why) {
         `${where}: production became ${environment} after the review answered; asked ${asked.join(", ")}`,
       );
     const expected = runsInProduction ? ["prod"] : ["dev", "prod"];
-    if (asked.join(",") !== expected.join(","))
+    const askedInOrder = asked.filter((environment, index) => environment !== asked[index - 1]);
+    if (askedInOrder.join(",") !== expected.join(","))
       throw new Error(`${where}: environments asked about: ${asked.join(", ") || "(none)"}`);
     if ((await page.getByTestId("authority-issues").count()) === 0)
       throw new Error(`${where}: production cannot be approved, and the dialog does not say why`);
@@ -862,6 +863,8 @@ async function verifyLateReviewDropped(page, stand, workflowId) {
   const grantPattern = `**/v1/workflows/${workflowId}/execution-authorities`;
   const historyPattern = `**/v1/workflows/${workflowId}/execution-authorities**`;
   let previews = 0;
+  let pageReads = 0;
+  let reviewing = false;
   let granted = null;
   let lateAnswered;
   const late = new Promise((resolve) => {
@@ -894,11 +897,13 @@ async function verifyLateReviewDropped(page, stand, workflowId) {
         })
       : route.fallback();
   const preview = async (route) => {
-    previews += 1;
+    const read = !reviewing;
+    if (read) pageReads += 1;
+    else previews += 1;
     const call = previews;
     const url = new URL(route.request().url());
     const body = JSON.stringify({
-      digest: String(call).repeat(64),
+      digest: String(read ? 0 : call).repeat(64),
       manifest: {
         schema_version: 1,
         workflow_id: workflowId,
@@ -913,7 +918,8 @@ async function verifyLateReviewDropped(page, stand, workflowId) {
       suggested_bounds_basis: { kind: "manual" },
       execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
     });
-    if (call !== 1) return route.fulfill({ status: 200, contentType: "application/json", body });
+    if (read || call !== 1)
+      return route.fulfill({ status: 200, contentType: "application/json", body });
     await new Promise((resolve) => setTimeout(resolve, 1_500));
     try {
       await route.fulfill({ status: 200, contentType: "application/json", body });
@@ -933,6 +939,10 @@ async function verifyLateReviewDropped(page, stand, workflowId) {
   await page.route(grantPattern, grant);
   try {
     await stand.visit(page, `workflows/${workflowId}`);
+    await page.getByTestId("workflow-automation-action").waitFor();
+    await page.waitForTimeout(500);
+    if (pageReads > 1) throw new Error(`Opening the page read the preview ${pageReads} times`);
+    reviewing = true;
     await page.getByTestId("workflow-automation-action").click();
     const dialog = page.getByRole("dialog");
     await dialog.waitFor();

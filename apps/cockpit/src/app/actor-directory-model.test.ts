@@ -19,4 +19,13 @@ describe("typed actor directory", () => {
     expect(actorDirectoryName(directory, "user", "same")).toBeUndefined();
     expect(actorDirectoryName(directory, "user", null)).toBeUndefined();
   });
+
+  test("an app user's placeholder address never reaches the label", () => {
+    const directory = actorDirectory(
+      { items: [{ id: "app", email: "shop-bearer:7d3e0000-0000-4000-8000-000000000000@invalid" }] },
+      undefined,
+      (provider) => `App user · ${provider}`,
+    );
+    expect(actorDirectoryName(directory, "user", "app")).toBe("App user · shop-bearer");
+  });
 });

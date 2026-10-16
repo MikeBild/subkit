@@ -295,7 +295,12 @@ export async function handleSubkitUpdateSetting(
           },
           ctx.db,
         );
-        const activation = await activateRuntimeRevision(ctx.db, saved.saved_revision);
+        const activation = await activateRuntimeRevision(ctx.db, saved.saved_revision, {
+          tenant_id: tenant_id ?? ctx.principal.tenant_id,
+          actor_type: ctx.principal.kind === "user" ? "user" : "system_account",
+          actor_id: ctx.principal.id,
+          source: "mcp",
+        });
         if (saved.pending_restart_fields.length === 0) {
           if (activation.activation_status !== "active") {
             throw new Error(

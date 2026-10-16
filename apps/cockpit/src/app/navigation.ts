@@ -146,9 +146,9 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         labelKey: "nav.people",
         path: "/people",
         permission: "identity:read",
-        anyPermissions: ["identity:read", "rbac:read"],
+        anyPermissions: ["identity:read", "rbac:read", "settings:read"],
         icon: Users,
-        api: ["GET /v1/identity/users", "GET /v1/rbac/roles"],
+        api: ["GET /v1/identity/users", "GET /v1/rbac/roles", "GET /v1/apps"],
       },
       {
         labelKey: "nav.apiAccess",

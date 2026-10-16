@@ -11,6 +11,8 @@ describe("tools/registry — providers (active)", () => {
     expect(names).toContain("list_recipes");
     expect(names).toContain("self_healing_scan");
     expect(names).toContain("subkit_settings");
+    expect(names).toContain("list_apps");
+    expect(names).toContain("get_app");
     expect(names).toContain("subkit_update_setting");
     expect(names).not.toContain("test_connector");
     expect(names).not.toContain("match_connector_template_by_url");
@@ -24,6 +26,8 @@ describe("tools/registry — providers (active)", () => {
       .map((d) => d.name);
     expect(productNames).not.toContain("self_healing_scan");
     expect(productNames).not.toContain("subkit_settings");
+    expect(productNames).not.toContain("list_apps");
+    expect(productNames).not.toContain("get_app");
     expect(productNames).not.toContain("subkit_update_setting");
     expect(productNames).toContain("authenticate");
   });

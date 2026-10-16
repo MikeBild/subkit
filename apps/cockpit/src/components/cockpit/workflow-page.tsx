@@ -52,12 +52,13 @@ import {
   WorkflowTestResult,
   WorkflowTestRun,
 } from "@/components/cockpit/workflow-steps-list";
-import { WorkflowVersions } from "@/components/cockpit/workflow-versions";
+import { useCurrentVersionDag, WorkflowVersions } from "@/components/cockpit/workflow-versions";
 import { useI18n } from "@/lib/i18n-context";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { removalConsequenceKeys } from "@/lib/workflow-removal";
 import { deletedConnectorReference } from "@/lib/workflow-strip";
 import { workflowVersionAuthor } from "@/lib/workflow-versions";
+import { definitionProductId } from "@/pages/apps-model";
 
 type RecordValue = Record<string, unknown>;
 
@@ -78,6 +79,12 @@ function draftDefinition(record: RecordValue, steps: readonly RecordValue[]): Re
 function useTechnicalFacts(record: RecordValue): Fact[] {
   const { t } = useI18n();
   const directory = useActorDirectory(true);
+  const currentDag = useCurrentVersionDag(
+    text(record, "id") ?? "",
+    text(record, "current_version_id"),
+    typeof record.current_version === "number" ? record.current_version : null,
+  );
+  const productId = definitionProductId(currentDag.data);
   const slug = text(record, "slug");
   const checksum = text(record, "checksum");
   const creator =
@@ -109,6 +116,15 @@ function useTechnicalFacts(record: RecordValue): Fact[] {
       value: workflowVersionAuthor(actor, directory, t),
       testId: "workflow-technical-creator",
     },
+    ...(productId
+      ? [
+          {
+            label: t("workflowPage.app"),
+            value: <span className="break-all font-mono text-xs">{productId}</span>,
+            testId: "workflow-technical-app",
+          },
+        ]
+      : []),
   ];
 }
 

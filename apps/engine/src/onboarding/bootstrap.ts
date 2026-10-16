@@ -366,7 +366,12 @@ async function consumeClaimed(
       tenant_id: result.tenant_id,
       created_by: result.user_id,
     });
-    const activated = await activateRuntimeRevision(db, saved.saved_revision);
+    const activated = await activateRuntimeRevision(db, saved.saved_revision, {
+      tenant_id: result.tenant_id,
+      actor_type: "user",
+      actor_id: result.user_id,
+      source: "bootstrap",
+    });
     if (activated.activation_status !== "active") {
       throw new Error(`bootstrap config activation failed: ${activated.activation_status}`);
     }

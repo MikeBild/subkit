@@ -3,8 +3,8 @@ import { REVIEWER_ID, uuid } from "./cockpit-journey-fixtures.mjs";
 import { closeRecordSheet } from "./cockpit-record-sheet.mjs";
 
 const TAB_NAMES = {
-  de: ["Schlüssel", "Apps"],
-  en: ["Keys", "Apps"],
+  de: ["Schlüssel", "Verbundene Clients"],
+  en: ["Keys", "Connected clients"],
 };
 const RETIRED_NAMES = {
   de: ["Kontoverbindung", "Verbundene Anwendungen"],
@@ -51,7 +51,7 @@ async function assertNoCommandLine(page, where) {
 export async function verifyApiAccess(page, stand, locale, fixture) {
   const where = `/api-access (${locale})`;
 
-  await openTab(page, stand, "apps", "connected-clients");
+  await openTab(page, stand, "clients", "connected-clients");
   const shape = await page.evaluate(() => {
     const tabs = [...document.querySelectorAll('[data-testid^="api-access-tab-"][role="tab"]')];
     return {
@@ -70,7 +70,7 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
   if (shape.tabs.join("|") !== TAB_NAMES[locale].join("|"))
     throw new Error(`${where}: the tabs are "${shape.tabs.join(", ")}"`);
   if (!shape.tabListVisible) throw new Error(`${where}: the tab bar is not on screen`);
-  if (shape.counts.apps !== null || shape.counts.keys !== "1")
+  if (shape.counts.clients !== null || shape.counts.keys !== "1")
     throw new Error(
       `${where}: the tabs should show one action-needed key only — ${JSON.stringify(shape.counts)}`,
     );

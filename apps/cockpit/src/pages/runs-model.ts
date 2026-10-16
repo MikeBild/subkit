@@ -248,6 +248,7 @@ export function runCaller(
       ...(caller.provider && verified
         ? [[t("runs.caller.provider"), caller.provider] as RunFact]
         : []),
+      ...(caller.product_id ? [[t("runs.caller.app"), caller.product_id] as RunFact] : []),
       ...runAuthorityFacts(run, t),
       ...(caller.origin_execution_id
         ? [identifierFact(t("runs.caller.origin"), caller.origin_execution_id)]

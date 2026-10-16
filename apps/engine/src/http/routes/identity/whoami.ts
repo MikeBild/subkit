@@ -16,6 +16,10 @@ const WhoamiSchema = z
     provider: z.string(),
     base_url: z.string().nullable(),
     scopes: z.array(z.string()).nullable(),
+    product_id: z
+      .string()
+      .nullable()
+      .describe("App the caller signed in to through an oidc_bearer provider, or null"),
   })
   .openapi("Whoami");
 
@@ -87,6 +91,7 @@ export function registerWhoamiRoute(app: OpenAPIHono<AppEnv>): void {
         provider: principal.provider,
         base_url: resolveEngineUrl(c.req.raw) ?? null,
         scopes: Array.isArray(principal.scopes) ? principal.scopes : null,
+        product_id: principal.product_id ?? null,
       },
       200,
     );

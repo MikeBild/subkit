@@ -402,7 +402,12 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
             db,
           );
           const restartRequired = saved.pending_restart_fields.length > 0;
-          const activated = await activateRuntimeRevision(db, saved.saved_revision);
+          const activated = await activateRuntimeRevision(db, saved.saved_revision, {
+            tenant_id: tenant ?? principal.tenant_id,
+            actor_type: principal.kind === "system_account" ? "system_account" : "user",
+            actor_id: principal.id,
+            source: "api",
+          });
           await auditAwait(
             {
               tenant_id: tenant ?? principal.tenant_id,

@@ -40,7 +40,7 @@ const roundSteps = [
 function guardedDefinition(limit: number, extra: Record<string, unknown> = {}) {
   return {
     name: `guarded ${limit}`,
-    product_id: "tekit",
+    product_id: "testapp",
     required_caller_kind: "user",
     execution_privacy: "sensitive",
     steps: roundSteps,
@@ -66,7 +66,7 @@ async function productUser(): Promise<ResolvedPrincipal> {
     .insert(users)
     .values({
       tenant_id: ctx.tenantId,
-      email: `tekit-supabase:${subject}@invalid`,
+      email: `testapp-supabase:${subject}@invalid`,
       role_id: await builtinRoleId(ctx.testDb.db, "member"),
     })
     .returning({ id: users.id });
@@ -74,19 +74,19 @@ async function productUser(): Promise<ResolvedPrincipal> {
   await ctx.testDb.db.insert(userIdentities).values({
     tenant_id: ctx.tenantId,
     user_id: user.id,
-    provider_id: "tekit-supabase",
+    provider_id: "testapp-supabase",
     issuer_url: "https://auth.example.test/auth/v1",
-    product_id: "tekit",
+    product_id: "testapp",
     subject,
-    email: `tekit-supabase:${subject}@invalid`,
+    email: `testapp-supabase:${subject}@invalid`,
   });
   return {
-    provider: "tekit-supabase",
+    provider: "testapp-supabase",
     kind: "user",
     id: user.id,
     tenant_id: ctx.tenantId,
     roles: ["member"],
-    product_id: "tekit",
+    product_id: "testapp",
     subject,
   };
 }
@@ -411,7 +411,7 @@ describe("settlement when the run ends", () => {
       request_source: "api",
       execution_mode: "dev",
       caller_origin: "principal",
-      caller_context: callerFromPrincipal(principal, ctx.tenantId, "tekit"),
+      caller_context: callerFromPrincipal(principal, ctx.tenantId, "testapp"),
       guard_bucket: "brain",
       guard_unit_key: `${principal.id}/twin`,
     });
@@ -425,7 +425,7 @@ describe("settlement when the run ends", () => {
       await reserveCallerBudget(
         tx,
         roundDef,
-        callerFromPrincipal(principal, ctx.tenantId, "tekit"),
+        callerFromPrincipal(principal, ctx.tenantId, "testapp"),
         {
           turn_id: "lease-paid",
           round: 1,
@@ -434,7 +434,7 @@ describe("settlement when the run ends", () => {
       await reserveCallerBudget(
         tx,
         roundDef,
-        callerFromPrincipal(principal, ctx.tenantId, "tekit"),
+        callerFromPrincipal(principal, ctx.tenantId, "testapp"),
         {
           turn_id: "lease-free",
           round: 1,
@@ -504,7 +504,7 @@ describe("local day in the configured time zone", () => {
       reserveCallerBudget(
         tx,
         roundDef,
-        callerFromPrincipal(principal, ctx.tenantId, "tekit"),
+        callerFromPrincipal(principal, ctx.tenantId, "testapp"),
         { turn_id: turn, round: 1 },
         new Date(at),
       ),
@@ -538,7 +538,7 @@ describe("caller erasure", () => {
     const principal = await productUser();
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "delete account",
-      product_id: "tekit",
+      product_id: "testapp",
       required_caller_kind: "user",
       execution_privacy: "sensitive",
       caller_erasure: "on_success",
@@ -590,7 +590,7 @@ describe("caller erasure", () => {
     const principal = await productUser();
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "delete account failing",
-      product_id: "tekit",
+      product_id: "testapp",
       required_caller_kind: "user",
       execution_privacy: "sensitive",
       caller_erasure: "on_success",
@@ -647,7 +647,7 @@ describe("caller erasure robustness", () => {
       await createWorkflowRow(ctx, {
         name: slug,
         slug,
-        product_id: "tekit",
+        product_id: "testapp",
         required_caller_kind: "user",
         execution_privacy: "sensitive",
         caller_erasure: "on_success",

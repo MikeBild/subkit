@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
@@ -29,8 +29,42 @@ import {
   workflowVersionState,
   workflowVersionView,
 } from "@/lib/workflow-versions";
+import { fetchCurrentVersionDag } from "@/pages/apps-model";
 
 const VERSION_PAGE = 20;
+
+export function useWorkflowVersionList(workflowId: string, enabled = true) {
+  return useInfiniteList<WorkflowVersion>(
+    `/v1/workflows/${encodeURIComponent(workflowId)}/history`,
+    {},
+    {
+      queryKey: ["workflow", workflowId, "versions"],
+      limit: VERSION_PAGE,
+      enabled: enabled && workflowId !== "",
+    },
+  );
+}
+
+export function useCurrentVersionDag(
+  workflowId: string,
+  currentVersionId: string | null | undefined,
+  currentVersion: number | null | undefined,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["workflow", workflowId, "current-definition", currentVersionId ?? null],
+    enabled: enabled && workflowId !== "" && Boolean(currentVersionId),
+    queryFn: () =>
+      fetchCurrentVersionDag(
+        (limit, offset) =>
+          apiRequest<{ items: WorkflowVersion[]; total: number }>(
+            `/v1/workflows/${encodeURIComponent(workflowId)}/history?limit=${limit}&offset=${offset}`,
+          ),
+        currentVersionId,
+        currentVersion,
+      ),
+  });
+}
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
@@ -62,11 +96,7 @@ export function WorkflowVersions({
   const { t, dateTime } = useI18n();
   const directory = useActorDirectory(true);
   const [open, setOpen] = useState<WorkflowVersion | null>(null);
-  const list = useInfiniteList<WorkflowVersion>(
-    `/v1/workflows/${encodeURIComponent(workflowId)}/history`,
-    {},
-    { queryKey: ["workflow", workflowId, "versions"], limit: VERSION_PAGE },
-  );
+  const list = useWorkflowVersionList(workflowId);
   const columns = useMemo<CockpitColumn<WorkflowVersion>[]>(() => {
     const column = tableColumns<WorkflowVersion>({ t, dateTime });
     return [

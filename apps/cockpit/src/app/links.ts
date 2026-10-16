@@ -249,7 +249,7 @@ export function chatTargetFromUrl(search: string): {
   };
 }
 
-export const API_ACCESS_SECTIONS = ["apps", "keys"] as const;
+export const API_ACCESS_SECTIONS = ["clients", "keys"] as const;
 export type ApiAccessSection = (typeof API_ACCESS_SECTIONS)[number];
 
 export function apiAccessHref(section?: ApiAccessSection | null): string {
@@ -263,11 +263,24 @@ export function apiAccessSectionFromUrl(search: string): ApiAccessSection | null
     : null;
 }
 
-export const PEOPLE_SECTIONS = ["people", "roles", "groups", "grants"] as const;
+export const PEOPLE_SECTIONS = ["people", "roles", "groups", "grants", "apps"] as const;
 export type PeopleSection = (typeof PEOPLE_SECTIONS)[number];
 
-export function peopleHref(section?: PeopleSection | null): string {
-  return withQuery("/people", { section: section === "people" ? null : section });
+export const PEOPLE_APP_PARAM = "app";
+
+export function peopleHref(
+  section?: PeopleSection | null,
+  filter: { app?: string | null } = {},
+): string {
+  return withQuery("/people", {
+    section: section === "people" ? null : section,
+    [PEOPLE_APP_PARAM]: section === "people" || !section ? filter.app : null,
+  });
+}
+
+export function peopleAppFromUrl(search: string): string | null {
+  const raw = new URLSearchParams(search).get(PEOPLE_APP_PARAM)?.trim() ?? "";
+  return raw.length <= 128 && /^[a-z0-9][a-z0-9-]*$/.test(raw) ? raw : null;
 }
 
 export function peopleSectionFromUrl(search: string): PeopleSection | null {

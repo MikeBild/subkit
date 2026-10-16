@@ -3035,6 +3035,8 @@ export interface paths {
                 query?: {
                     limit?: number;
                     offset?: number | null;
+                    /** @description Only users with a sign-in identity for this app */
+                    product_id?: string;
                 };
                 header?: never;
                 path?: never;
@@ -7604,6 +7606,128 @@ export interface paths {
                     };
                 };
                 /** @description The caller is not a product principal or the product is not configured */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the apps visible to the caller's workspace
+         * @description Read-only view derived from products settings, sign-in providers, workflows, signed-in identities and the caller budget ledger. An app is visible when a provider of this workspace, a workflow of this workspace or a signed-in identity carries its product_id, or when its assistant workflow belongs to this workspace. Changes go through settings revisions.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Apps of the workspace */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AppListResponse"];
+                    };
+                };
+                /** @description Unauthenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Missing settings:read; product principals are always refused */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one app with its sign-in, workflows, readiness checks and today's budget */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The app */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AppView"];
+                    };
+                };
+                /** @description Unauthenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Missing settings:read; product principals are always refused */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No app with this id is visible to the workspace */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -19908,6 +20032,13 @@ export interface components {
                 id: string;
                 name: string;
             }[] | null;
+            /** @description Sign-in identities linked by an oidc or oidc_bearer provider; product_id names the app the identity signed in to. */
+            identities: components["schemas"]["UserIdentity"][];
+        };
+        UserIdentity: {
+            provider_id: string;
+            product_id: string | null;
+            last_seen_at: string;
         };
         User: {
             /** Format: uuid */
@@ -20212,6 +20343,8 @@ export interface components {
             provider: string;
             base_url: string | null;
             scopes: string[] | null;
+            /** @description App the caller signed in to through an oidc_bearer provider, or null */
+            product_id: string | null;
         };
         EffectivePermissions: {
             /** @enum {string} */
@@ -22140,6 +22273,98 @@ export interface components {
             };
             /** @enum {string} */
             key: "present" | "missing";
+        };
+        AppListResponse: {
+            items: components["schemas"]["AppSummary"][];
+        };
+        AppSummary: {
+            id: string;
+            configured: boolean;
+            ready: boolean;
+            settings: components["schemas"]["AppSettings"];
+            sign_in_count: number;
+            workflow_count: number;
+            users: {
+                count: number;
+                last_seen_at: string | null;
+            };
+            failing_checks: components["schemas"]["AppCheckKey"][];
+        };
+        AppSettings: {
+            /** @enum {string} */
+            execution_environment: "dev" | "prod";
+            budget_bucket: string;
+            assistant_workflow: {
+                /** Format: uuid */
+                id: string;
+                name: string | null;
+                slug: string | null;
+            };
+            /** @description caller_daily_limit of the assistant workflow; limit_per_caller counts per caller */
+            daily_limit: {
+                bucket: string;
+                limit_per_caller: number;
+                unit: string;
+                tz: string;
+            } | null;
+        } | null;
+        /** @enum {string} */
+        AppCheckKey: "product_configured" | "sign_in_provider" | "assistant_workflow" | "execution_authority" | "credentials" | "budget_guard";
+        AppView: {
+            id: string;
+            configured: boolean;
+            ready: boolean;
+            settings: components["schemas"]["AppSettings"];
+            sign_in_count: number;
+            workflow_count: number;
+            users: {
+                count: number;
+                last_seen_at: string | null;
+            };
+            sign_in: components["schemas"]["AppSignIn"][];
+            workflows: components["schemas"]["AppWorkflow"][];
+            budget_today: components["schemas"]["AppBudgetToday"];
+            checks: components["schemas"]["AppCheck"][];
+        };
+        AppSignIn: {
+            id: string;
+            label: string;
+            /** @enum {string} */
+            protocol: "oidc" | "oidc_bearer";
+            issuer_url: string;
+            tenant_slug: string;
+            audience: string | null;
+            algorithms: string[] | null;
+            required_claims: {
+                path: string;
+                equals?: unknown;
+            }[];
+            reject_anonymous: boolean | null;
+        };
+        AppWorkflow: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+            /** @enum {string} */
+            lifecycle: "draft" | "active" | "archived";
+            is_assistant: boolean;
+            definition_valid: boolean;
+        };
+        AppBudgetToday: {
+            bucket: string;
+            day: string;
+            tz: string;
+            resets_at: string;
+            consumed: number;
+            reserved: number;
+            refusals_today: number;
+        } | null;
+        AppCheck: {
+            key: components["schemas"]["AppCheckKey"];
+            ok: boolean;
+            message: string;
+            next_action: string | null;
         };
         ConnectorSpecImportResponse: {
             draft: components["schemas"]["ConnectorSpecImportDraft"];

@@ -2,6 +2,14 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
+import {
+  GET_APP_TOOL_NAME,
+  getAppMcpTool,
+  handleGetApp,
+  handleListApps,
+  LIST_APPS_TOOL_NAME,
+  listAppsMcpTool,
+} from "../../mcp/tools/apps.ts";
 import { attentionMcpTool, handleAttention } from "../../mcp/tools/attention.ts";
 import {
   AUTHENTICATE_TOOL_NAME,
@@ -216,6 +224,30 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
     },
   },
   {
+    tool: listAppsMcpTool,
+    visibleInMcpModes: ["admin"],
+    visibleOnChat: false,
+    category: "tenant_read",
+    rbac: { permission: "settings:read" },
+    async invoke(ctx) {
+      const result = await handleListApps({ db: ctx.db, principal: ctx.principal });
+      if (result.ok) return envelopeForOk(result.data);
+      return envelopeForError(result.error_code, result.message);
+    },
+  },
+  {
+    tool: getAppMcpTool,
+    visibleInMcpModes: ["admin"],
+    visibleOnChat: false,
+    category: "tenant_read",
+    rbac: { permission: "settings:read" },
+    async invoke(ctx, args) {
+      const result = await handleGetApp({ db: ctx.db, principal: ctx.principal }, args);
+      if (result.ok) return envelopeForOk(result.data);
+      return envelopeForError(result.error_code, result.message);
+    },
+  },
+  {
     tool: subkitUpdateSettingMcpTool,
     visibleInMcpModes: ["admin"],
     visibleOnChat: false,
@@ -282,6 +314,8 @@ export const staticToolProvider: ToolProvider = {
 
 export {
   AUTHENTICATE_TOOL_NAME,
+  GET_APP_TOOL_NAME,
+  LIST_APPS_TOOL_NAME,
   LIST_RECIPES_TOOL_NAME,
   SELF_HEALING_SCAN_TOOL_NAME,
   SUBKIT_SETTINGS_TOOL_NAME,

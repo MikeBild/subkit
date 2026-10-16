@@ -8,6 +8,7 @@ import {
   serializeDebugError,
 } from "./debug.ts";
 import { agentMethods } from "./engine-client/agent.ts";
+import { appsMethods } from "./engine-client/apps.ts";
 import { catalogMethods } from "./engine-client/catalog.ts";
 import { chatMethods } from "./engine-client/chat.ts";
 import { connectorsMethods } from "./engine-client/connectors.ts";
@@ -33,6 +34,7 @@ import { skillsMethods } from "./engine-client/skills.ts";
 import { statsMethods } from "./engine-client/stats.ts";
 import { workflowsMethods } from "./engine-client/workflows.ts";
 
+export type { AppCheck, AppSummary, AppView } from "./engine-client/apps.ts";
 export type { ConnectorPromotionResponse } from "./engine-client/connectors.ts";
 export type {
   ConversationContextSnapshot,
@@ -560,6 +562,7 @@ type ApiMethods<T> = { [K in keyof T]: OmitThisParameter<T[K]> };
 
 export interface EngineClient
   extends ApiMethods<typeof agentMethods>,
+    ApiMethods<typeof appsMethods>,
     ApiMethods<typeof catalogMethods>,
     ApiMethods<typeof chatMethods>,
     ApiMethods<typeof connectorsMethods>,
@@ -582,6 +585,7 @@ export interface EngineClient
 Object.assign(
   EngineClient.prototype,
   agentMethods,
+  appsMethods,
   catalogMethods,
   chatMethods,
   connectorsMethods,

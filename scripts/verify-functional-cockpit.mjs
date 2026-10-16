@@ -58,6 +58,7 @@ import { verifyKnowledgeTotals } from "./lib/cockpit-knowledge-totals.mjs";
 import { verifyKnowledgeWriteEvidence } from "./lib/cockpit-knowledge-write-evidence.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
 import { verifyManagementEvidence } from "./lib/cockpit-management-evidence.mjs";
+import { verifyPeopleApps } from "./lib/cockpit-people-apps.mjs";
 import { verifyPeopleDeactivationCopy } from "./lib/cockpit-people-deactivation.mjs";
 import { verifyPeopleDisplayName } from "./lib/cockpit-people-display-name.mjs";
 import { verifyPeopleLoadsPerTab } from "./lib/cockpit-people-tabs.mjs";
@@ -253,6 +254,7 @@ const journeys = [
     (page, stand) => verifyPeopleLoadsPerTab(page, stand, "functional/people-tabs"),
   ],
   ["verifyPeopleDisplayName", (page, stand) => verifyPeopleDisplayName(page, stand, mockApi)],
+  ["verifyPeopleApps", (page, stand) => verifyPeopleApps(page, stand)],
   [
     "verifyPeopleDeactivationCopy",
     (page, stand) => verifyPeopleDeactivationCopy(page, stand, mockApi),

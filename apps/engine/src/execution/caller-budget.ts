@@ -1,6 +1,8 @@
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import type { AppBudgetToday } from "../api/app-schemas.ts";
+import { AuditAction } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
-import { callerBudgetUnits, executions, workflowVersions } from "../db/schema/index.ts";
+import { auditLog, callerBudgetUnits, executions, workflowVersions } from "../db/schema/index.ts";
 import { eraseProductCaller } from "../identity/product-erasure.ts";
 import { logger } from "../logging/logger.ts";
 import { executableDefinition } from "../workflows/stored-definition.ts";
@@ -83,6 +85,82 @@ async function localDay(
   const row = result.rows[0];
   if (!row) throw new Error("local day unavailable");
   return { day: row.day, resetsAt: row.resets_at };
+}
+
+export interface LocalDayWindow {
+  day: string;
+  startsAt: string;
+  resetsAt: string;
+}
+
+export async function localDayWindow(
+  tx: Executor,
+  tz: string,
+  now: Date = new Date(),
+): Promise<LocalDayWindow> {
+  const at = now.toISOString();
+  const { day, resetsAt } = await localDay(tx, tz, now);
+  const result = await tx.execute<{ starts_at: string }>(
+    sql`SELECT to_char((date_trunc('day', ${at}::timestamptz AT TIME ZONE ${tz}) AT TIME ZONE ${tz}) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at`,
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("local day unavailable");
+  return { day, startsAt: row.starts_at, resetsAt };
+}
+
+export const BUDGET_REFUSAL_REASONS = ["rate_limited", "turn_limit", "turn_busy"] as const;
+
+export async function bucketUsageToday(
+  tx: Executor,
+  input: {
+    tenant_id: string;
+    product_id: string;
+    bucket: string;
+    tz: string;
+    workflow_ids: string[];
+  },
+  now: Date = new Date(),
+): Promise<AppBudgetToday> {
+  const window = await localDayWindow(tx, input.tz, now);
+  const [units] = await tx
+    .select({
+      consumed: sql<number>`count(*) FILTER (WHERE ${callerBudgetUnits.state} = 'committed')::int`,
+      reserved: sql<number>`count(*) FILTER (WHERE ${callerBudgetUnits.state} = 'reserved')::int`,
+    })
+    .from(callerBudgetUnits)
+    .where(
+      and(
+        eq(callerBudgetUnits.tenant_id, input.tenant_id),
+        eq(callerBudgetUnits.product_id, input.product_id),
+        eq(callerBudgetUnits.bucket, input.bucket),
+        eq(callerBudgetUnits.day, window.day),
+      ),
+    );
+  let refusals = 0;
+  if (input.workflow_ids.length > 0) {
+    const [row] = await tx
+      .select({ refusals: sql<number>`count(*)::int` })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, input.tenant_id),
+          eq(auditLog.action, AuditAction.EXECUTION_BOUNDARY_REFUSED),
+          inArray(auditLog.reason, [...BUDGET_REFUSAL_REASONS]),
+          inArray(sql<string>`${auditLog.metadata}->>'workflow_id'`, input.workflow_ids),
+          sql`${auditLog.ts} >= ${window.startsAt}::timestamptz`,
+        ),
+      );
+    refusals = row?.refusals ?? 0;
+  }
+  return {
+    bucket: input.bucket,
+    day: window.day,
+    tz: input.tz,
+    resets_at: window.resetsAt,
+    consumed: units?.consumed ?? 0,
+    reserved: units?.reserved ?? 0,
+    refusals_today: refusals,
+  };
 }
 
 async function settleExpiredLeases(

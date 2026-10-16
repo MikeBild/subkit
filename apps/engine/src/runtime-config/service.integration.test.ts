@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import { _resetConfigForTests, getConfig, loadConfig } from "../config/loader.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { RuntimeConfigCoordinator } from "./coordinator.ts";
@@ -17,6 +18,13 @@ import {
   revokeSecretVersion,
   saveRuntimeConfigPatch,
 } from "./service.ts";
+
+const ACTIVATION_ACTOR = {
+  tenant_id: SYSTEM_TENANT_ID,
+  actor_type: "system" as const,
+  actor_id: null,
+  source: "test",
+};
 
 let tdb: TestDb;
 let configDir: string;
@@ -77,7 +85,7 @@ describe("runtime configuration revisions", () => {
         pending_restart_fields: [],
       });
 
-      const activated = await activateRuntimeRevision(tdb.db, 2);
+      const activated = await activateRuntimeRevision(tdb.db, 2, ACTIVATION_ACTOR);
       expect(activated.activation_status).toBe("active");
       expect(activated.replicas).toEqual([
         expect.objectContaining({ instance_id: "replica-a", status: "ack" }),
@@ -113,7 +121,9 @@ describe("runtime configuration revisions", () => {
       expect(JSON.stringify(stored.document)).not.toContain(
         "plaintext-must-never-land-in-settings",
       );
-      expect((await activateRuntimeRevision(tdb.db, 3)).activation_status).toBe("active");
+      expect((await activateRuntimeRevision(tdb.db, 3, ACTIVATION_ACTOR)).activation_status).toBe(
+        "active",
+      );
       await expect(
         revokeSecretVersion(tdb.db, {
           name: secret.name,
@@ -128,7 +138,11 @@ describe("runtime configuration revisions", () => {
         created_by: null,
       });
       expect(restart.pending_restart_fields).toEqual(["server.port"]);
-      const restartActivation = await activateRuntimeRevision(tdb.db, restart.saved_revision);
+      const restartActivation = await activateRuntimeRevision(
+        tdb.db,
+        restart.saved_revision,
+        ACTIVATION_ACTOR,
+      );
       expect(restartActivation).toMatchObject({
         active_revision: 3,
         activation_status: "restart_required",

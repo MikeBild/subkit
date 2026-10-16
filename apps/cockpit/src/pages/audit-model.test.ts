@@ -227,6 +227,13 @@ describe("the decision trail is named", () => {
     "engine.restart.completed",
     "engine.restart.failed",
     "workflow.preview_auto_repaired",
+    "auth_provider.added",
+    "auth_provider.removed",
+    "auth_provider.reordered",
+    "auth_provider.changed",
+    "product.added",
+    "product.removed",
+    "product.changed",
   ];
 
   test("every verb a person answers for has a name", () => {
