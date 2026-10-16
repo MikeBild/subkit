@@ -589,7 +589,7 @@ export function ConnectorPage({
             onOpenChange={setEditing}
             id={id}
             record={record}
-            headerName={credential.data?.header_names?.[0] ?? ""}
+            headerNames={credential.data?.header_names ?? []}
           />
           <ConnectorDeleteDialog
             open={deleting}

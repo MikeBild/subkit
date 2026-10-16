@@ -13,6 +13,7 @@ import {
   DEFAULT_SIGN_IN,
   EMPTY_OAUTH_CLIENT,
   manualConnectorProblem,
+  missingHeaderValues,
   needsOAuthClient,
   needsSecret,
   oauthClientOf,
@@ -178,6 +179,7 @@ const PRIOR: ConnectorEditPrior = {
   name: "Billing",
   address: "https://api.example.com",
   config: {},
+  headerNames: [],
 };
 
 function draftOf(overrides: Partial<ConnectorEditDraft> = {}): ConnectorEditDraft {
@@ -187,6 +189,7 @@ function draftOf(overrides: Partial<ConnectorEditDraft> = {}): ConnectorEditDraf
     signIn: "key",
     secret: "",
     header: "",
+    headerValues: {},
     oauth: EMPTY_OAUTH_CLIENT,
     ...overrides,
   };
@@ -225,6 +228,48 @@ describe("editing a connector's sign-in", () => {
     );
     expect(plan.patch.auth_type).toBeUndefined();
     expect(plan.credential).toEqual({ mode: "header", headers: { "X-Api-Key": "v" } });
+  });
+
+  test("a header connector with one header keeps the single-header body", () => {
+    const prior = { ...PRIOR, authType: "header", headerNames: ["X-Api-Key"] };
+    const draft = draftOf({ signIn: null, header: "X-Api-Key", secret: " v " });
+    expect(connectorEditProblem(prior, draft, null)).toBeNull();
+    expect(connectorEditPlan(prior, draft).credential).toEqual({
+      mode: "header",
+      headers: { "X-Api-Key": "v" },
+    });
+  });
+
+  const TWO_HEADERS = { ...PRIOR, authType: "header", headerNames: ["Authorization", "apikey"] };
+
+  test("replacing a two-header credential writes both headers together", () => {
+    const draft = draftOf({
+      signIn: null,
+      headerValues: { Authorization: " Bearer new ", apikey: "new-key" },
+    });
+    expect(connectorEditProblem(TWO_HEADERS, draft, null)).toBeNull();
+    expect(connectorEditPlan(TWO_HEADERS, draft).credential).toEqual({
+      mode: "header",
+      headers: { Authorization: "Bearer new", apikey: "new-key" },
+    });
+  });
+
+  test("filling only some headers is refused and names the empty ones", () => {
+    const draft = draftOf({ signIn: null, headerValues: { Authorization: "Bearer new" } });
+    expect(connectorEditProblem(TWO_HEADERS, draft, null)).toBe("connectorEdit.headersIncomplete");
+    expect(missingHeaderValues(TWO_HEADERS, draft)).toEqual(["apikey"]);
+    expect(connectorEditPlan(TWO_HEADERS, draft).credential).toBeNull();
+  });
+
+  test("leaving every header empty keeps the stored credential untouched", () => {
+    const draft = draftOf({ signIn: null, headerValues: { Authorization: " ", apikey: "" } });
+    expect(connectorEditProblem(TWO_HEADERS, draft, null)).toBeNull();
+    expect(missingHeaderValues(TWO_HEADERS, draft)).toEqual([]);
+    expect(connectorEditPlan(TWO_HEADERS, draft)).toEqual({
+      patch: { name: "Billing" },
+      credential: null,
+      startSignIn: false,
+    });
   });
 
   test("switching to none drops the sign-in", () => {
