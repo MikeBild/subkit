@@ -70,6 +70,8 @@ export const testConnectorTool: ConversationTool = {
         ...(result.provider_action_url !== undefined
           ? { provider_action_url: result.provider_action_url }
           : {}),
+        ...(result.warning_only ? { warning_only: true } : {}),
+        ...(result.warnings && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
         ...(result.body_snippet !== undefined ? { body_snippet: result.body_snippet } : {}),
         ...(result.response_headers !== undefined
           ? { response_headers: result.response_headers }

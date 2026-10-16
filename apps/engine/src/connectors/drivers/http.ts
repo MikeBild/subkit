@@ -906,6 +906,7 @@ export interface HttpProbeResult {
     | "credential_missing"
     | "credential_invalid"
     | "credential_expired"
+    | "credential_unverified"
     | "scope_insufficient"
     | "remote_api_disabled"
     | "remote_resource_not_found"
@@ -1083,6 +1084,7 @@ export async function probeHttpConnector(p: {
     const warnings: Array<{ code: string; message: string }> = [];
     let ok: boolean;
     let warning_only = false;
+    let unverifiedFallback = false;
 
     if (probeConfig !== null) {
       const [lo, hi] = probeConfig.expected_status ?? [200, 299];
@@ -1097,6 +1099,7 @@ export async function probeHttpConnector(p: {
         });
       } else if (res.status === 401 || res.status === 403) {
         ok = false;
+        unverifiedFallback = probeCredential !== null;
       } else {
         ok = res.status < 500;
       }
@@ -1105,7 +1108,14 @@ export async function probeHttpConnector(p: {
     const result: HttpProbeResult = { ok, latency_ms, status: res.status, warning_only, warnings };
     if (!ok) {
       const classification = classifyHttpProbeStatus(res.status, p.connector, res.body);
-      if (classification.code) {
+      if (unverifiedFallback && classification.code !== "remote_api_disabled") {
+        result.error_code = "credential_unverified";
+        result.warning_only = true;
+        warnings.push({
+          code: "PROBE_AUTH_UNVERIFIED",
+          message: `Fallback probe GET / returned ${res.status}: the root path requires sign-in, so the credential was not verified. Set config.probe_endpoint to a cheap authenticated read.`,
+        });
+      } else if (classification.code) {
         result.error_code = classification.code;
       }
       if (classification.provider_action_url) {

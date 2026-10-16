@@ -4142,6 +4142,9 @@ const EN = {
   "connectorStrip.state.expired": "Sign-in expired",
   "connectorStrip.state.off": "Switched off",
   "connectorStrip.state.unreachable": "Not reachable",
+  "connectorStrip.state.unverified": "Connected · sign-in not verified",
+  "connectorStrip.line.unverified":
+    "The root address requires sign-in, so the credential was not checked. Set config.probe_endpoint to a cheap read that needs sign-in.",
   "connectorStrip.state.incomplete": "Credentials incomplete",
   "connectorStrip.state.tested": "Connection tested",
   "connectorStrip.state.ready": "Ready",
@@ -8703,6 +8706,9 @@ const DE: Record<TranslationKey, string> = {
   "connectorStrip.state.expired": "Anmeldung abgelaufen",
   "connectorStrip.state.off": "Abgeschaltet",
   "connectorStrip.state.unreachable": "Nicht erreichbar",
+  "connectorStrip.state.unverified": "Verbunden · Anmeldung nicht geprüft",
+  "connectorStrip.line.unverified":
+    "Die Startadresse verlangt eine Anmeldung, daher wurden die Zugangsdaten nicht geprüft. Trag in config.probe_endpoint einen günstigen Lesepfad mit Anmeldung ein.",
   "connectorStrip.state.incomplete": "Zugangsdaten unvollständig",
   "connectorStrip.state.tested": "Verbindung geprüft",
   "connectorStrip.state.ready": "Bereit",

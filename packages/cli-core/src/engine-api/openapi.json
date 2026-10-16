@@ -14677,6 +14677,27 @@
           "provider_action_url": {
             "type": "string"
           },
+          "warning_only": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ]
+            }
+          },
           "partial_grant": {
             "anyOf": [
               {
@@ -14723,6 +14744,7 @@
           "credential_missing",
           "credential_invalid",
           "credential_expired",
+          "credential_unverified",
           "scope_insufficient",
           "remote_api_disabled",
           "remote_resource_not_found",

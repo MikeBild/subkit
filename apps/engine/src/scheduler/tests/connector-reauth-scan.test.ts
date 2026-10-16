@@ -64,6 +64,7 @@ async function seedConnector(opts: {
   base_url?: string;
   needs_reauth?: boolean;
   auth_type?: string;
+  config?: Record<string, unknown>;
 }): Promise<string> {
   const [c] = await db.db
     .insert(connectors)
@@ -75,7 +76,7 @@ async function seedConnector(opts: {
       environment: "dev",
       auth_type: (opts.auth_type ?? "bearer") as "bearer",
       base_url: opts.base_url ?? okBaseUrl,
-      config: {},
+      config: opts.config ?? {},
       needs_reauth: opts.needs_reauth ?? false,
     })
     .returning();
@@ -107,10 +108,13 @@ async function queryAuthFailedEventsForTenant(tid: string) {
 }
 
 describe("runConnectorReauthScanForTenant — 401 connector flagged", () => {
-  test("connector whose probe returns 401 is flagged and emits one event", async () => {
+  test("connector whose configured probe returns 401 is flagged and emits one event", async () => {
     const connectorId = await seedConnector({
       slug: "scan-401",
       base_url: unauthBaseUrl,
+      config: {
+        probe_endpoint: { method: "GET", path: "/users/me", expected_status: [200, 200] },
+      },
     });
     await seedBearerCredential({ tenantId, connectorId });
 
@@ -129,6 +133,29 @@ describe("runConnectorReauthScanForTenant — 401 connector flagged", () => {
     const payload = newEvents[0]!.payload as { connector_id?: string; severity?: string };
     expect(payload.connector_id).toBe(connectorId);
     expect(payload.severity).toBe("error");
+  });
+});
+
+describe("runConnectorReauthScanForTenant — root answers 401 without a probe_endpoint", () => {
+  test("an unverified fallback probe does not flag the connector or emit an event", async () => {
+    const connectorId = await seedConnector({
+      slug: "scan-401-root",
+      base_url: unauthBaseUrl,
+    });
+    await seedBearerCredential({ tenantId, connectorId });
+
+    const countBefore = (await queryAuthFailedEventsForTenant(tenantId)).length;
+
+    await runConnectorReauthScanForTenant(tenantId, NOW, db.db);
+
+    const rows = await db.db.select().from(connectors).where(eq(connectors.id, connectorId));
+    expect(rows[0]!.needs_reauth).toBe(false);
+    expect(rows[0]!.auth_failed_at).toBeNull();
+    const after = await queryAuthFailedEventsForTenant(tenantId);
+    const mine = after
+      .slice(countBefore)
+      .filter((e) => (e.payload as { connector_id?: string }).connector_id === connectorId);
+    expect(mine).toHaveLength(0);
   });
 });
 

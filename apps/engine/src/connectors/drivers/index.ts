@@ -13,6 +13,7 @@ export type ProbeErrorCode =
   | "credential_missing"
   | "credential_invalid"
   | "credential_expired"
+  | "credential_unverified"
   | "scope_insufficient"
   | "remote_api_disabled"
   | "remote_resource_not_found"
@@ -28,6 +29,8 @@ export interface ProbeResult {
   body_snippet?: string;
   response_headers?: Record<string, string>;
   provider_action_url?: string;
+  warning_only?: boolean;
+  warnings?: Array<{ code: string; message: string }>;
 }
 
 export type DriverProbeResult = Pick<

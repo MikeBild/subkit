@@ -302,7 +302,9 @@ export function ConnectorPage({
     way,
     enabled,
     health: text(record, "health_state"),
-    probe: probe.data ? { ok: probe.data.ok } : null,
+    probe: probe.data
+      ? { ok: probe.data.ok, unverified: probe.data.error_code === "credential_unverified" }
+      : null,
     missingScopes: credential.data?.missing_scopes?.length ?? 0,
     returned: notice === "signed_in" || notice === "signed_in_off",
     signInFailed: failedSignIn !== null,
@@ -350,6 +352,7 @@ export function ConnectorPage({
           .join(" · ") || null
       );
     if (strip.kind === "notSignedIn") return t("connectorStrip.line.notSignedIn");
+    if (strip.kind === "unverified") return t("connectorStrip.line.unverified");
     if (["tested", "connected", "signedIn", "notRequired"].includes(strip.kind))
       return (
         [

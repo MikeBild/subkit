@@ -292,6 +292,10 @@ sk credentials set <idp-admin-connector-id> --mode header --header "Authorizatio
 
 `--skip-checks` is needed because a definition is probed before it is saved and the credential does not exist yet; `credentials set` probes afterwards. `bearer` sends `Authorization: Bearer <token>`; `header` sends the named headers (comma-separated `Name=Value`). Secrets come from your shell or secret store, never from a file, the app or this repository. A workflow reads its own connector's credential only as `${cred.<own-slug>.<field>}` under an approved authority.
 
+SubKit probes every connector in the background and flags it as signed out when its configured probe answers 401 or 403; workflows that use a flagged connector are blocked until it is signed in again. Without a configured probe, SubKit sends `GET /` to the connector's base URL. Many admin APIs answer 401 or 403 there even with a valid credential, so that answer does not flag the connector: the probe reports `credential_unverified` with the warning `PROBE_AUTH_UNVERIFIED`, `sk connectors test <id>` prints the warning and exits non-zero, and the Cockpit shows "Verbunden · Anmeldung nicht geprüft" with a hint to set a probe path. To verify the credential, give the connector a cheap authenticated read as its probe, for example `"config": {"probe_endpoint": {"method": "GET", "path": "/admin/users?per_page=1", "expected_status": [200, 200]}}`, and check it with `sk connectors test <id>`.
+
+To replace a stored credential, edit the connector in the Cockpit. A header credential with several headers, such as `Authorization` and `apikey` above, shows one field per header name: fill all of them to replace them together, or leave all empty to keep them. Filling only some is refused, so no header is dropped.
+
 ### 4. Workflows
 
 Keep the definitions in the app's own repository and create them with operator-chosen ids so the app can hard-code them. A workflow definition accepts `id` (a UUID that must be unused; only an administrator may choose it).

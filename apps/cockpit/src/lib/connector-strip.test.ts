@@ -58,6 +58,18 @@ describe("connector status strip (D15)", () => {
     expect(connectorStrip(input({ probe: { ok: true } })).kind).toBe("tested");
   });
 
+  test("an unverified sign-in is a warning, not unreachable, and offers no action", () => {
+    expect(connectorStrip(input({ probe: { ok: false, unverified: true } }))).toEqual({
+      kind: "unverified",
+      tone: "warn",
+      action: null,
+      lower: [],
+    });
+    expect(
+      connectorStrip(input({ auth: "expired", probe: { ok: false, unverified: true } })).kind,
+    ).toBe("expired");
+  });
+
   test("missing credentials read as not signed in; withheld permissions are completed", () => {
     expect(connectorStrip(input({ auth: "credentials_missing", way: "key" }))).toMatchObject({
       kind: "notSignedIn",
