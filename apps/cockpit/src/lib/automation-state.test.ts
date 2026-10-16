@@ -9,6 +9,7 @@ import {
   automationActionPermitted,
   automationCard,
   automationEnvironment,
+  automationEnvironmentUndecided,
   automationNeedsMoreApprovals,
   automationState,
   EXTEND_BELOW_RUN_SHARE,
@@ -589,6 +590,69 @@ describe("automationEnvironment", () => {
     expect(automationEnvironment(inputs({ status: null, schedules: [], authorities: [] }))).toBe(
       "dev",
     );
+  });
+});
+
+describe("a workflow started only over HTTP", () => {
+  const bare = (overrides: Partial<AutomationInputs> = {}) =>
+    inputs({ status: null, schedules: [], authorities: [], ...overrides });
+
+  test("is undecided without trigger, hook or approval", () => {
+    expect(automationEnvironmentUndecided(bare())).toBe(true);
+  });
+
+  test("is decided by any approval, trigger or hook", () => {
+    expect(automationEnvironmentUndecided(bare({ authorities: [authority()] }))).toBe(false);
+    expect(automationEnvironmentUndecided(bare({ schedules: [schedule()] }))).toBe(false);
+    expect(automationEnvironmentUndecided(bare({ workflow: hooked }))).toBe(false);
+    expect(automationEnvironmentUndecided(bare({ authorities: null }))).toBe(false);
+  });
+
+  test("uses the environment its connectors live in", () => {
+    expect(automationEnvironment(bare({ connectorEnvironment: "prod" }))).toBe("prod");
+  });
+
+  test("falls back to development without a resolved environment", () => {
+    expect(automationEnvironment(bare({ connectorEnvironment: null }))).toBe("dev");
+    expect(automationEnvironment(bare())).toBe("dev");
+  });
+
+  test("never overrides an approval, a trigger or a hook", () => {
+    expect(
+      automationEnvironment(
+        bare({
+          authorities: [authority({ execution_environment: "dev" })],
+          connectorEnvironment: "prod",
+        }),
+      ),
+    ).toBe("dev");
+    expect(
+      automationEnvironment(
+        bare({ schedules: [schedule({ execution_mode: "dev" })], connectorEnvironment: "prod" }),
+      ),
+    ).toBe("dev");
+    expect(automationEnvironment(bare({ workflow: hooked, connectorEnvironment: "dev" }))).toBe(
+      "prod",
+    );
+  });
+
+  test("offers the approval in the resolved environment without a repair", () => {
+    const state = automationState(bare({ connectorEnvironment: "prod" }));
+    expect(state.environment).toBe("prod");
+    expect(state.state).toBe("manual");
+    expect(state.primaryAction).toEqual({ kind: "grant" });
+    expect(state.pendingEnvironments).toEqual(["prod"]);
+  });
+
+  test("still shows the repair state when the diagnosis blocks a step", () => {
+    const state = automationState(
+      bare({
+        connectorEnvironment: null,
+        diagnosis: { is_current: true, diagnoses: [block({ code: "environment_mismatch" })] },
+      }),
+    );
+    expect(state.state).toBe("repair");
+    expect(state.environment).toBe("dev");
   });
 });
 

@@ -1,5 +1,6 @@
 import {
   automationEnvironment,
+  automationEnvironmentUndecided,
   automationState,
   type WorkflowAuthority,
 } from "@shared/workflow-automation.ts";
@@ -7,6 +8,7 @@ import {
   type WorkflowOperatingStatus,
   workflowOperatingStatus,
 } from "@shared/workflow-operating-status.ts";
+import { environmentToCorrectTo } from "@shared/workflow-review-environment.ts";
 import {
   deletedConnectorReference,
   type WaitingConnector,
@@ -154,13 +156,34 @@ export async function loadWorkflowOperatingStates(
       authorities,
       now: now.getTime(),
     };
-    const environment = automationEnvironment(inputs);
+    const workflow = facts?.workflows.get(view.id);
+    const version_id = workflow?.draft_version_id ?? workflow?.current_version_id;
+    const version = facts && version_id ? factVersion(facts, view.id, version_id) : undefined;
+    let connectorEnvironment: "dev" | "prod" | null = null;
+    if (facts && version && automationEnvironmentUndecided(inputs)) {
+      try {
+        connectorEnvironment = environmentToCorrectTo(
+          await previewWorkflowAuthority(
+            {
+              tenant_id,
+              workflow_id: view.id,
+              workflow_version_id: version.id,
+              execution_environment: "dev",
+            },
+            db,
+            { facts },
+          ),
+          "dev",
+          [],
+        );
+      } catch {
+        connectorEnvironment = null;
+      }
+    }
+    const environment = automationEnvironment({ ...inputs, connectorEnvironment });
     let diagnosis = null;
     let diagnosisUnavailable = false;
     try {
-      const workflow = facts?.workflows.get(view.id);
-      const version_id = workflow?.draft_version_id ?? workflow?.current_version_id;
-      const version = facts && version_id ? factVersion(facts, view.id, version_id) : undefined;
       diagnosis = await diagnoseWorkflow(
         db,
         tenant_id,
@@ -193,6 +216,7 @@ export async function loadWorkflowOperatingStates(
     }
     const automation = automationState({
       ...inputs,
+      connectorEnvironment,
       diagnosis,
       unanswered: { status: false, diagnosis: diagnosisUnavailable },
     });

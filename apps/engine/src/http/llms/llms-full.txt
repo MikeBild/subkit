@@ -318,7 +318,13 @@ If step 1 fails, the run fails, nothing is erased and the app retries with the s
 
 ### 5. Approve the execution authority
 
-Without a live execution authority a product run answers 403. For each product workflow, a person opens the workflow in Cockpit, selects the product's environment (`prod`), reviews the effect boundary (connectors, addresses, read or write) and approves it. Choose open-ended standing approval, or limit it by runs and time. The approval follows a newly activated version whose boundary does not grow and is asked for again when it grows. Revoke it in the same place.
+Without a live execution authority a product run answers 403. A person with write access approves each product workflow once per environment:
+
+1. Open the workflow in Cockpit. A workflow that nothing starts but the app's HTTP calls (no schedule, no webhook) is checked in the environment its connectors live in, so for a production-only workflow the status line reads "Nicht freigegeben" (English: "Not approved") without a repair banner. If a step resolves to a connector in another environment, or a connector is missing, the repair state stays; fix that first.
+2. Select "Freigeben…" in the status line, or on the "Freigaben" tab, which shows the same button while no approval is live. The dialog "Freigabe prüfen" opens with that environment already selected in the "Umgebung" field ("Produktion" or "Entwicklung"). Change it only if the product's `execution_environment` is a different one.
+3. Review the effect boundary (connectors, addresses, read or write), choose open-ended or limit it by runs and time, and confirm.
+
+The approval follows a newly activated version whose boundary does not grow and is asked for again when it grows. Revoke it on the "Freigaben" tab.
 
 ### 6. Verify
 

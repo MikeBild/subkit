@@ -114,6 +114,7 @@ export interface AutomationInputs<A extends WorkflowAuthority = WorkflowAuthorit
   authorities: readonly A[] | null;
   diagnosis: { is_current: boolean; diagnoses: readonly GateDiagnosis[] } | null;
   unanswered: { status: boolean; diagnosis: boolean };
+  connectorEnvironment?: ReviewEnvironment | null;
   now: number;
 }
 
@@ -272,9 +273,12 @@ function uncoveredEnvironments(
   );
 }
 
-export function automationEnvironment(
-  input: Pick<AutomationInputs, "workflow" | "schedules" | "status" | "authorities" | "now">,
-): ReviewEnvironment {
+type EnvironmentInputs = Pick<
+  AutomationInputs,
+  "workflow" | "schedules" | "status" | "authorities" | "now" | "connectorEnvironment"
+>;
+
+function decidedEnvironment(input: EnvironmentInputs): ReviewEnvironment | null {
   const [pending] = [...pendingRowEnvironments(input.status), ...uncoveredEnvironments(input)];
   if (pending) return pending;
   const triggers = automationTriggers(input.status, input.schedules);
@@ -283,7 +287,17 @@ export function automationEnvironment(
   if (pool.some((trigger) => trigger.environment === "prod")) return "prod";
   if ((input.workflow.webhooks_active ?? 0) > 0) return "prod";
   if (pool.length > 0) return "dev";
-  return reviewEnvironment(input.authorities ?? [], undefined, new Date(input.now));
+  if (input.authorities === null || input.authorities.length > 0)
+    return reviewEnvironment(input.authorities ?? [], undefined, new Date(input.now));
+  return null;
+}
+
+export function automationEnvironmentUndecided(input: EnvironmentInputs): boolean {
+  return decidedEnvironment(input) === null;
+}
+
+export function automationEnvironment(input: EnvironmentInputs): ReviewEnvironment {
+  return decidedEnvironment(input) ?? input.connectorEnvironment ?? "dev";
 }
 
 export function automationRepairAction(
