@@ -242,8 +242,11 @@ describe("authoring tool palette — inert proposals", () => {
 });
 
 describe("authoring tool palette — review decisions", () => {
-  test("the set is exactly the skill-candidate approval", () => {
-    expect([...REVIEW_DECISIONS].sort()).toEqual(["approve_skill_candidate"]);
+  test("the set is exactly the skill-candidate approval and rejection", () => {
+    expect([...REVIEW_DECISIONS].sort()).toEqual([
+      "approve_skill_candidate",
+      "reject_skill_candidate",
+    ]);
   });
 
   test("each is a registered tenant write behind the confirm gate", () => {

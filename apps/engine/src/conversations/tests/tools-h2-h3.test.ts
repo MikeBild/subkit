@@ -126,6 +126,7 @@ describe("conversation tools — registration", () => {
     "revoke_api_key",
     "revoke_portal_token",
     "approve_skill_candidate",
+    "reject_skill_candidate",
     "approve_patch_candidate",
     "create_api_key",
     "create_knowledge_source",

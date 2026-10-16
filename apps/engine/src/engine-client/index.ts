@@ -42,6 +42,7 @@ import * as rbacRoles from "../rbac/roles.ts";
 import { loadTriggerBindings } from "../scheduler/trigger-bindings.ts";
 import * as selfHealingSvc from "../self-healing/index.ts";
 import * as skillCandidatesSvc from "../skill-candidates/service.ts";
+import type { SkillCandidateStatus } from "../skill-candidates/types.ts";
 import * as skillsSvc from "../skills/service.ts";
 import type { CreateSkillInput, UpdateSkillInput } from "../skills/types.ts";
 import { readLlmWindowCost, statsBucketFor } from "../stats/llm-cost.ts";
@@ -245,7 +246,10 @@ export class EngineClient {
   };
 
   skillCandidates = {
-    list: () => skillCandidatesSvc.listSkillCandidates({ tenant_id: this.tenant_id }, this.db),
+    list: (opts?: { limit?: number; offset?: number; status?: SkillCandidateStatus }) =>
+      skillCandidatesSvc.listSkillCandidates({ tenant_id: this.tenant_id, ...opts }, this.db),
+    count: (opts?: { status?: SkillCandidateStatus }) =>
+      skillCandidatesSvc.countSkillCandidates({ tenant_id: this.tenant_id, ...opts }, this.db),
     get: (id: string) => skillCandidatesSvc.getSkillCandidate(this.tenant_id, id, this.db),
   };
 

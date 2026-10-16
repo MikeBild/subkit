@@ -98,7 +98,10 @@ const DIAGNOSIS_TOOLS: ReadonlySet<string> = new Set(["diagnose_latest_execution
 
 const ALWAYS_AVAILABLE_EXECUTION: ReadonlySet<string> = new Set(["run_workflow"]);
 
-export const REVIEW_DECISIONS: ReadonlySet<string> = new Set(["approve_skill_candidate"]);
+export const REVIEW_DECISIONS: ReadonlySet<string> = new Set([
+  "approve_skill_candidate",
+  "reject_skill_candidate",
+]);
 
 function addNames(target: Set<string>, names: ReadonlySet<string>): void {
   for (const name of names) target.add(name);

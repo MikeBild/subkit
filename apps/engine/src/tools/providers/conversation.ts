@@ -127,6 +127,14 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
       return typeof id === "string" && id.length > 0 ? { type: "skill_candidate", id } : null;
     },
   },
+  reject_skill_candidate: {
+    permission: "skill:write",
+    resource: (args) => {
+      const ids = (args as { candidate_ids?: unknown }).candidate_ids;
+      const id = Array.isArray(ids) ? ids[0] : undefined;
+      return typeof id === "string" && id.length > 0 ? { type: "skill_candidate", id } : null;
+    },
+  },
   restore_workflow_version: {
     permission: "workflow:restore",
     resource: (args) => {
