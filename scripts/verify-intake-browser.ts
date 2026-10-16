@@ -435,8 +435,13 @@ try {
   );
 
   const detailActions = page.getByTestId("intake-detail-actions");
-  if ((await detailActions.getAttribute("data-state")) !== "open") await detailActions.click();
-  await page.getByTestId("intake-detail-restore").dispatchEvent("click");
+  const restore = page.getByTestId("intake-detail-restore");
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if ((await restore.count()) > 0) break;
+    await detailActions.click();
+    await restore.waitFor({ state: "attached", timeout: 2_000 }).catch(() => {});
+  }
+  await restore.dispatchEvent("click");
   await page.getByTestId("intake-detail").getByText("Gesammelt", { exact: true }).waitFor();
   assert.deepEqual(requests.at(-1)?.body, { state: "collected", expected_version: 4 });
 
