@@ -151,7 +151,7 @@ export function ConnectorEditDialog({
           target={target}
           signIn={signIn}
           onSignIn={setSignIn}
-          currentLabel={
+          currentDetail={
             priorSignIn === null ? authLabel(prior.authType, header ? [header] : [], t) : undefined
           }
           secret={secret}

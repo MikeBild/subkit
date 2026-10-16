@@ -188,6 +188,7 @@ export function ChoiceField<T extends string>({
   onChange,
   options,
   help,
+  description,
   testId,
 }: {
   label: string;
@@ -195,6 +196,7 @@ export function ChoiceField<T extends string>({
   onChange(value: T): void;
   options: { value: T; label: string }[];
   help?: string;
+  description?: string;
   testId: string;
 }) {
   return (
@@ -214,6 +216,11 @@ export function ChoiceField<T extends string>({
         testId={testId}
         options={options.map((option) => ({ ...option, testId: `${testId}-${option.value}` }))}
       />
+      {description ? (
+        <p className="text-muted-foreground text-xs" data-testid={`${testId}-description`}>
+          {description}
+        </p>
+      ) : null}
     </div>
   );
 }
