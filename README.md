@@ -277,6 +277,8 @@ sk credentials set <idp-admin-connector-id> --mode header --header "Authorizatio
 
 `--skip-checks` is needed because a definition is probed before it is saved and the credential does not exist yet; `credentials set` probes afterwards. `bearer` sends `Authorization: Bearer <token>`; `header` sends the named headers (comma-separated `Name=Value`). Secrets come from your shell or secret store, never from a file, the app or this repository. A workflow reads its own connector's credential only as `${cred.<own-slug>.<field>}` under an approved authority.
 
+SubKit probes every connector in the background and flags it as signed out when the probe answers 401 or 403. The default probe is `GET /` on the connector's base URL. Many admin APIs answer 401 there even with a valid credential, and the Cockpit then reports "Anmeldung abgelaufen" and blocks the workflows that use the connector. Give such a connector a probe in its definition, a cheap authenticated read, for example `"config": {"probe_endpoint": {"method": "GET", "path": "/admin/users?per_page=1", "expected_status": [200, 200]}}`, and check it with `sk connectors test <id>`.
+
 ### 4. Workflows
 
 Keep the definitions in the app's own repository and create them with operator-chosen ids so the app can hard-code them. A workflow definition accepts `id` (a UUID that must be unused; only an administrator may choose it).
