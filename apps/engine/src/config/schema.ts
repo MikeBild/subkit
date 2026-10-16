@@ -317,7 +317,10 @@ const AuthProviders = z
               { message: "jwks_uri must use HTTPS outside localhost" },
             )
             .optional(),
-          audience: z.string().min(1).default("authenticated"),
+          audience: z
+            .string()
+            .min(1)
+            .describe("Value the token's aud claim must contain; set by the issuer, no default"),
           algorithms: z
             .array(z.enum(["ES256", "ES384", "ES512", "RS256", "RS384", "RS512", "PS256", "EdDSA"]))
             .min(1)
@@ -337,8 +340,13 @@ const AuthProviders = z
                 .strict(),
             )
             .max(16)
-            .default([{ path: "role", equals: "authenticated" }]),
-          reject_anonymous: z.boolean().default(true),
+            .describe(
+              "Claims a verified token must carry, all of them; states who may sign in. Required; an empty list admits every token of the issuer with the audience",
+            ),
+          reject_anonymous: z
+            .boolean()
+            .default(true)
+            .describe("Refuse tokens whose is_anonymous claim is true"),
           clock_tolerance_s: z.number().int().min(0).max(120).default(30),
         })
         .strict(),
