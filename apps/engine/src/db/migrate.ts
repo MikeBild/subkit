@@ -212,6 +212,8 @@ async function applyMigrations(
     await db.transaction(async (tx) => {
       if (replayFromScratch && m.tag <= ISOLATION_MIGRATION_TAG) {
         await tx.execute(sql.raw(MIGRATION_SEARCH_PATH_SQL));
+      } else if (m.tag > ISOLATION_MIGRATION_TAG) {
+        await tx.execute(sql`SET LOCAL search_path = subkit, pg_catalog, public`);
       }
       if (m.tag === "0089_decider_kind") {
         await normalizeMcpTaskActorConstraint(tx);
