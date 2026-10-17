@@ -81,3 +81,85 @@ export function detectAuthoringIntent(message: string | null | undefined): boole
   if (!trimmed) return false;
   return matchesWorkflowAuthoringPattern(trimmed);
 }
+
+const CONNECTOR_VERBS = [
+  ...AUTHORING_VERBS,
+  "add",
+  "set\\s+up",
+  "connect",
+  "wire\\s+up",
+  "hook\\s+up",
+  "lege",
+  "anlegen",
+  "richte",
+  "einrichten",
+  "verbinde",
+  "anbinden",
+] as const;
+
+const CONNECTOR_NOUN = String.raw`connectors?|integrations?|konnektoren?|integrationen?|mcp[\s-]?servers?`;
+
+const ONBOARDING_REQUEST = /\bonboarding\b/i;
+
+const CONNECTOR_ENUMERATION_REJECT = new RegExp(
+  String.raw`\b(?:list|show|search|find|zeige|liste|suche|finde|display|enumerate|welche|which)\b.{0,40}\b(?:${CONNECTOR_NOUN})\b`,
+  "i",
+);
+
+const CONNECTOR_VERB_TO_NOUN = new RegExp(
+  String.raw`\b(?:${CONNECTOR_VERBS.join("|")})\b[^.;!?\n]{0,${PROXIMITY_WINDOW}}\b(?:${CONNECTOR_NOUN})\b`,
+  "i",
+);
+const CONNECTOR_NOUN_TO_VERB = new RegExp(
+  String.raw`\b(?:${CONNECTOR_NOUN})\b[^.;!?\n]{0,${PROXIMITY_WINDOW}}\b(?:${CONNECTOR_VERBS.join("|")})\b`,
+  "i",
+);
+
+export function detectConnectorAuthoringIntent(message: string | null | undefined): boolean {
+  const trimmed = message?.trim();
+  if (!trimmed) return false;
+  if (CONNECTOR_ENUMERATION_REJECT.test(trimmed)) return false;
+  return (
+    hasUnnegatedMatch(trimmed, ONBOARDING_REQUEST) ||
+    hasUnnegatedMatch(trimmed, CONNECTOR_VERB_TO_NOUN) ||
+    hasUnnegatedMatch(trimmed, CONNECTOR_NOUN_TO_VERB)
+  );
+}
+
+const REPAIR_VERBS = [
+  "repair",
+  "fix",
+  "debug",
+  "diagnose",
+  "troubleshoot",
+  "reparier(?:e|en|t)?",
+  "behebe",
+  "beheben",
+  "diagnostizier(?:e|en)?",
+  "untersuche",
+] as const;
+
+const RUN_NOUN = String.raw`workflows?|pipelines?|runs?|executions?|steps?|lauf|läufe|laufs|ausführung(?:en)?|schritte?s?`;
+
+const REPAIR_VERB_TO_NOUN = new RegExp(
+  String.raw`\b(?:${REPAIR_VERBS.join("|")})\b[^.;!?\n]{0,${PROXIMITY_WINDOW}}(?<![\p{L}])(?:${RUN_NOUN})(?![\p{L}])`,
+  "iu",
+);
+const REPAIR_NOUN_TO_VERB = new RegExp(
+  String.raw`(?<![\p{L}])(?:${RUN_NOUN})(?![\p{L}])[^.;!?\n]{0,${PROXIMITY_WINDOW}}\b(?:${REPAIR_VERBS.join("|")})\b`,
+  "iu",
+);
+const FAILURE_QUESTION = new RegExp(
+  String.raw`\b(?:why|warum|wieso|weshalb)\b[^.;!?\n]{0,60}?(?<![\p{L}])(?:${RUN_NOUN})(?![\p{L}])[^.;!?\n]{0,60}?(?<![\p{L}])(?:fail(?:s|ed|ing)?|fehlgeschlagen|gescheitert|abgebrochen|broke|broken|kaputt)(?![\p{L}])`,
+  "iu",
+);
+
+export function detectRepairIntent(message: string | null | undefined): boolean {
+  const trimmed = message?.trim();
+  if (!trimmed) return false;
+  return (
+    hasUnnegatedMatch(trimmed, REPAIR_VERB_TO_NOUN) ||
+    hasUnnegatedMatch(trimmed, REPAIR_NOUN_TO_VERB) ||
+    FAILURE_QUESTION.test(trimmed)
+  );
+}

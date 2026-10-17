@@ -95,8 +95,8 @@ describe("error-recovery vs troubleshooting-workflow-failures — disambiguated"
 describe("connector-creation-guidance skill — creation-intent triggers only", () => {
   const body = read("connector-creation-guidance.md");
 
-  it("keeps auto_load on so the checklist fires when the user actually wants to create a connector", () => {
-    expect(autoLoads(body)).toBe(true);
+  it("is not a baseline skill, so it only joins a conversation on creation intent", () => {
+    expect(autoLoads(body)).toBe(false);
   });
 
   it("triggers on creation-intent multi-word phrases", () => {
@@ -118,5 +118,25 @@ describe("connector-creation-guidance skill — creation-intent triggers only", 
     expect(kws).not.toContain("bearer");
     expect(kws).not.toContain("oauth2");
     expect(kws).not.toContain("api-key");
+  });
+});
+
+describe("workflow-authoring skill — unambiguous authoring triggers", () => {
+  const body = read("workflow-authoring.md");
+
+  it("is not a baseline skill", () => {
+    expect(autoLoads(body)).toBe(false);
+  });
+
+  it("triggers on explicit workflow-authoring phrases in English and German", () => {
+    const kws = triggerKeywords(body);
+    expect(kws).toContain("create workflow");
+    expect(kws).toContain("new workflow");
+    expect(kws).toContain("workflow erstellen");
+    expect(kws).toContain("neuen workflow");
+  });
+
+  it("does NOT trigger on the bare word `freigabe`, which also names knowledge and approval decisions", () => {
+    expect(triggerKeywords(body)).not.toContain("freigabe");
   });
 });

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { detectAuthoringIntent } from "./authoring-intent.ts";
+import {
+  detectAuthoringIntent,
+  detectConnectorAuthoringIntent,
+  detectRepairIntent,
+} from "./authoring-intent.ts";
 
 describe("detectAuthoringIntent — authoring phrases", () => {
   it("matches 'build a workflow'", () => {
@@ -128,5 +132,62 @@ describe("detectAuthoringIntent — non-authoring phrases", () => {
         "Bearbeite den bestehenden Workflow als neue persistierte Workflow-Version. Erzeuge ausdrücklich keinen neuen Workflow.",
       ),
     ).toBe(false);
+  });
+});
+
+describe("detectConnectorAuthoringIntent", () => {
+  it("matches connector and integration creation phrasing in English and German", () => {
+    expect(detectConnectorAuthoringIntent("create a connector for the Stripe API")).toBe(true);
+    expect(detectConnectorAuthoringIntent("set up a new integration for HubSpot")).toBe(true);
+    expect(detectConnectorAuthoringIntent("Erstelle einen Connector für unser CRM")).toBe(true);
+    expect(detectConnectorAuthoringIntent("richte eine Integration für Jira ein")).toBe(true);
+  });
+
+  it("treats an external MCP server as a connector and onboarding as connector-first", () => {
+    expect(detectConnectorAuthoringIntent("Connect our Metabase MCP server for reporting")).toBe(
+      true,
+    );
+    expect(detectConnectorAuthoringIntent("verbinde den MCP-Server von Linear")).toBe(true);
+    expect(detectConnectorAuthoringIntent("subkit engine onboarding")).toBe(true);
+    expect(detectConnectorAuthoringIntent("list my MCP servers")).toBe(false);
+    expect(detectConnectorAuthoringIntent("welche MCP-Server gibt es")).toBe(false);
+    expect(detectConnectorAuthoringIntent("the server returned 500")).toBe(false);
+  });
+
+  it("rejects enumeration, negation and unrelated messages", () => {
+    expect(detectConnectorAuthoringIntent("list my connectors")).toBe(false);
+    expect(detectConnectorAuthoringIntent("welche Connectors habe ich?")).toBe(false);
+    expect(detectConnectorAuthoringIntent("do not create a connector, just run it")).toBe(false);
+    expect(detectConnectorAuthoringIntent("why did the report fail?")).toBe(false);
+    expect(detectConnectorAuthoringIntent(null)).toBe(false);
+  });
+});
+
+describe("detectRepairIntent", () => {
+  it("matches repair and diagnosis of a workflow or run in English and German", () => {
+    for (const message of [
+      "repair workflow ga4-daily-report",
+      "fix the failing workflow",
+      "Bitte reparier den Workflow",
+      "diagnose the latest execution of ga4-daily-report",
+      "Warum ist mein letzter Lauf von ga4-daily-report fehlgeschlagen?",
+      "why did the last run fail?",
+    ]) {
+      expect(detectRepairIntent(message)).toBe(true);
+    }
+  });
+
+  it("rejects unrelated, negated and run-less wording", () => {
+    for (const message of [
+      "what failed last night?",
+      "list my workflows",
+      "please list users from the api",
+      "do not fix the workflow",
+      "fix the typo in my message",
+      "Warum ist der Himmel blau?",
+    ]) {
+      expect(detectRepairIntent(message)).toBe(false);
+    }
+    expect(detectRepairIntent(null)).toBe(false);
   });
 });
