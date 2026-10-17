@@ -1,6 +1,6 @@
 {
-  "sha256": "d4df0f382a7e9354c13a5733d489f9d5738acbd02d39a3b09491c146dade6c7a",
-  "bytes": 1335383,
+  "sha256": "75269d8f4606acab75488df16f559ed505e6def7bca7dfa9b26a501dc3364f3d",
+  "bytes": 1350319,
   "bundles": {
     "money": {
       "sha256": "361a052dc82dee20dd84cd41c25ce4d1dadd6ae00b3719bd3cc4ed87eae237ee",
@@ -15,12 +15,12 @@
       "bytes": 935565
     },
     "schema": {
-      "sha256": "344b580bcf1044d94dc252d0ed37846b69ab1ecc9d9d4645c6161859ceed0779",
-      "bytes": 117161
+      "sha256": "bcec59f0d076796dc8b8ea72af49f35e03389678a53618448b8cfce3e961e033",
+      "bytes": 124629
     },
     "assert": {
-      "sha256": "fcd30c95d117e7f5649f0bd798c44a2faeb952bb5362ec4e81d5bab53572014f",
-      "bytes": 117232
+      "sha256": "8a2062af0d5e7f0ab329cb4fd3ead3a66c07a5146a352ade20345f6c63bfe2e4",
+      "bytes": 124700
     },
     "url": {
       "sha256": "074f406bd3825d39cf221d79cd43aa0d081aae74f63bd2961ee9d790cb8d5d4d",
