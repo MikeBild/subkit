@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-17T23:27:43Z**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-17T23:33:11Z**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
-- Geprüfter Produktcommit: **9c8a2cbd5**, `main`, Version **9.15.2**; vollständiges lokales Gate PASS, E94.
+- Geprüfter Produktcommit: **9035691f8**, `main`, Version **9.15.2**; Verpackungsänderungen E98/E99 gezielt geprüft. Letztes vollständiges lokales Gate PASS: **9c8a2cbd5**, E94.
 - Checkout und origin/main waren nach `git pull --ff-only origin main` identisch; vor Dateierstellung sauber.
-- Synchronisation: **Produktänderungen bis 9c8a2cbd5 auf origin/main bestätigt**, lokale/Remote-Divergenz 0/0; normale Commit-/Pre-Push-Hooks bestanden. Nachweise E92–E94 als b50175f42 gepusht; alle acht normalen Pre-Push-Gates PASS, 0/0 bestätigt. Keine Veröffentlichung.
+- Synchronisation: **Produktänderungen bis 9035691f8 auf origin/main bestätigt**, lokale/Remote-Divergenz 0/0; alle acht normalen Pre-Push-Gates PASS. Jüngste Statusaktualisierung bis zum Dokument-Push LOCAL_ONLY. Keine Veröffentlichung.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -29,7 +29,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L10 | IN_PROGRESS | Zweisprachige Listing-Texte, Berechtigungsbegründungen, Datenfluss-/Privacy-Arbeitsblatt und Reviewer-Ablauf als Entwurf in LAUNCH.md vorbereitet. Vier PNG-Icons werden aus bestehendem Cockpit-Logo generiert und mit Lucide-Lizenz im Manifest/ZIP ausgeliefert, E53. Paket-/Browser-/Binärprüfungen und macOS/Linux-Reproduzierbarkeit bestanden. Visuelle Iconabnahme, Promo-Grafik/Screenshots, Pflichtlinks und menschliche Zertifizierung offen. ENTWURF, nicht veröffentlicht. |
 | L11 | BLOCKED | L10, öffentliche Pflichtlinks, Publisherstatus und explizite Einreichungsfreigabe fehlen. |
 | L12 | IN_PROGRESS | Isolierter aktueller Kandidat: API-/Browser-/Intake-Prüfungen PASS, E37–E39; MCP-Cockpit-Handoff und echter Clipper gegen Engine PASS, E42/E43. Mock-Läufe und begrenzter echter Provider-Chat E45 getrennt belegt; vollständige Cross-Surface-Abnahme weiterhin offen. Manuelle Demo unverändert. |
-| L13 | IN_PROGRESS | Aktuelles vollständiges bun run verify für 9c8a2cbd5 PASS, Exit 0, unveränderter Quellstand (E94). Live-Modellmatrix E73 PASS. Aktuelle gepaarte Referenz-Benchmarks fehlen; lokale Umgebung ungeeignet (E75/E80). Vorherige Fehlläufe und ihre Korrekturen bleiben dokumentiert. |
+| L13 | IN_PROGRESS | Vollständiges bun run verify für 9c8a2cbd5 PASS, unveränderter Quellstand (E94). Spätere Lizenz-Verpackungsänderungen E98/E99 gezielt und über Pre-Push geprüft; vollständiges Gate des neuen Releasekandidaten noch offen. Live-Modellmatrix E73 PASS; aktuelle gepaarte Referenz-Benchmarks fehlen (E75/E80). |
 | L14 | BLOCKED | L04/L05/L13 und Freigabe für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Externer Installationstest aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -204,7 +204,7 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 
 | Gegenstand | Zustand |
 | --- | --- |
-| Lokale vollständige Verifikation | **PASS für 9c8a2cbd5**, Exit 0, unveränderte Quellen (E94). Umfasst sämtliche Schritte von bun run verify einschließlich funktionalem Cockpit, isolierten Tests, AI-Verträgen, Binär-/Browserprüfungen und E2E. |
+| Lokale vollständige Verifikation | **PASS für 9c8a2cbd5**, Exit 0, unveränderte Quellen (E94). Nachfolgende Verpackungsänderungen bis 9035691f8 gezielt geprüft; kein vollständiges verify dieses neueren Stands behauptet. |
 | Release-Workflow | Jüngste Läufe fehlgeschlagen; Actions-Verfügbarkeit bekannter externer Blocker, keine neue Billing-Diagnose |
 | Öffentliche Beta / GA | Nicht freigegeben; tatsächliche aktuelle öffentliche Installierbarkeit UNVERIFIED |
 | Website | Kanal bekannt, SubKit-Produktauftritt/Downloads/Recht/Support UNVERIFIED |
@@ -257,4 +257,6 @@ Parallel kann der Nutzer Betreiber-/Supportangaben und Store-Kontostatus bereits
 
 | E98 | L04/L05 | Eigene LICENSE als Pflichtdatei in lokalem Release-Bundle und GitHub-Release-Staging ergänzt, einschließlich Hash-/Signaturabdeckung und Uploadliste; Dockerfile kopiert sie nach /usr/local/share/subkit/LICENSE. 13 lokale Release-Tests/39 Assertions PASS, darunter fehlende Lizenz abweisen und nachträgliche Änderung erkennen. Isoliertes ARM64-Derivat mit exakt ergänzter COPY-Anweisung enthält bytegleiche LICENSE. `.artifacts/launch/own-license-packaging.json`, Test-/Buildlogs daneben. | Als ccb19cd16 committed/gepusht; alle acht normalen Pre-Push-Gates PASS. Keine Drittanbieter-Gesamtfreigabe, kein kanonischer vollständiger Image-Rebuild und kein GitHub-Release ausgeführt. E94 gilt für den vorherigen Produktstand; Verpackungsänderungen gezielt geprüft, neuer vollständiger Release-Gateabschluss bei Release-Vorbereitung erforderlich. |
 
-| E99 | L03/L04 | Clipper-Generator ergänzt licenses/subkit.txt aus der bestehenden Root-LICENSE. ZIP/Manifest ausschließlich über build:clipper erneuert; Build-Clipper-Tests PASS. Echte ZIP-Extraktion bestätigt bytegleiche Lizenz; Archiv-SHA-256 34e8cc834dad3591728bc0f87e4f1b88aa4bc549da58e1934ff2aa4bf0854cb4. `.artifacts/launch/clipper-own-license-{archive.json,build.log,tests.log}`. | LOCAL_ONLY bis Commit/Push; nur Verpackungsänderung, keine Browserfunktion geändert. Keine neue Store-/Drittanbieter- oder vollständige Release-Freigabe. |
+| E99 | L03/L04 | Clipper-Generator ergänzt licenses/subkit.txt aus der bestehenden Root-LICENSE. ZIP/Manifest ausschließlich über build:clipper erneuert; Build-Clipper-Tests PASS. Echte ZIP-Extraktion bestätigt bytegleiche Lizenz; Archiv-SHA-256 34e8cc834dad3591728bc0f87e4f1b88aa4bc549da58e1934ff2aa4bf0854cb4. `.artifacts/launch/clipper-own-license-{archive.json,build.log,tests.log}`. | Als 9035691f8 committed/gepusht; alle acht normalen Pre-Push-Gates PASS und 0/0 bestätigt; nur Verpackungsänderung, keine Browserfunktion geändert. Keine neue Store-/Drittanbieter- oder vollständige Release-Freigabe. |
+
+| E100 | L04 | Reproduzierbarer Generator scripts/third-party-notices.ts ergänzt: liest Bun-Metafile-Eingaben, übernimmt installierte Paket-Lizenztexte bytegetreu in einen eindeutig gekennzeichneten Entwurf; keine absoluten Maschinenpfade im Ergebnis. Fehlende Texte bleiben UNVERIFIED, leere Texte/fehlerhafte Metadaten/widersprüchliche Paketkopien werden abgewiesen. Fünf Tests/zehn Assertions PASS; Lauf mit vorhandenen diagnostischen Engine-/CLI-Graphen: 303 Pakete, 16 ohne installierten Notice-Text. `.artifacts/launch/notice-generator-{tests,run}.log`, generated-installed-notices-draft.txt. | LOCAL_ONLY bis Commit/Push. Noch keine Release-Einbindung oder Gesamtfreigabe. Dieser Lauf enthält keine Cockpit-Source-Maps und keine separat recherchierten Upstream-Texte; daher nicht mit den sechs Restfällen des breiteren E70-Entwurfs gleichsetzen. Modell-/Native-/Containerabdeckung separat offen. |
