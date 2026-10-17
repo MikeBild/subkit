@@ -4,15 +4,50 @@ sk is a self-hosted engine for governed workflows: describe the work in plain la
 
 ## Run the engine
 
-Requires Docker with Compose.
+Requires Docker with Compose, OpenSSL and a POSIX shell. Use `docker-compose.yml`
+from the same published release as the engine image, in a dedicated directory.
+Development checkouts may reference an image that has not been published yet;
+a failed image pull is not a working installation. Do not silently substitute an
+older image with a newer Compose file.
+
+Create the installation secrets once, before the first start. This command refuses
+to overwrite an existing `.env` and restricts access to its owner:
 
 ```bash
-curl -O https://<engine-host>/docker-compose.yml   # or use docker-compose.yml from this repository
-MASTER_KEY=$(openssl rand -hex 32) docker compose up -d
-curl -s http://localhost:3000/health
+(
+  set -eu
+  umask 077
+  set -C
+  install_master_key=$(openssl rand -hex 32)
+  install_database_password=$(openssl rand -hex 32)
+  printf 'MASTER_KEY=%s\nSUBKIT_DB_PASSWORD=%s\n' \
+    "$install_master_key" "$install_database_password" > .env
+)
 ```
 
-Keep `MASTER_KEY`. It encrypts stored secrets; losing it loses them.
+After the command succeeds, start the installation:
+
+```bash
+docker compose pull && docker compose up -d --wait
+curl -fsS http://localhost:3000/health
+```
+
+Keep an encrypted backup of `.env` outside this directory. `MASTER_KEY` encrypts
+stored secrets; losing it makes those secrets unreadable. Never regenerate it for
+an existing database. Keep the database password unchanged when reusing its volume;
+changing `.env` does not change the password inside an initialized PostgreSQL database.
+Never commit `.env` or share `docker compose config` output, which contains secrets.
+
+For subsequent starts, run `docker compose up -d --wait` from the same directory.
+`docker compose stop` stops services without deleting data. The database and object
+store use named volumes; `docker compose down -v` deletes them. Keep the same Compose
+project name when resuming an installation. A recovery backup needs the database,
+object-store data, `.env`, and the matching Compose file and image identity together.
+Test restoration in a separate installation before relying on a backup or upgrading.
+
+The default API and database bindings are loopback-only. Complete first-run setup
+locally before exposing the API. Remote access requires HTTPS and access controls;
+do not expose the database or object store publicly.
 
 From a checkout, `bun run start:local` starts the stack and completes first-run setup with the `mock` LLM provider.
 
