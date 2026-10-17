@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-17T17:33:22Z**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-17T17:49:18Z**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktcommit: **7c00b46e7832e97f9c08613ce04b1e5540841bfe**, `main`, Version **9.15.2**.
 - Checkout und origin/main waren nach `git pull --ff-only origin main` identisch; vor Dateierstellung sauber.
-- Synchronisation: **431f49b369bd28600e30216307eab4ebf538541b auf origin/main bestätigt**; sauberer Checkout, Divergenz 0/0 nach Push. Neuere lokale Änderungen sind erst mit ihrem eigenen Push synchronisiert. Produkt-Baseline oben bleibt für historische Nachweise erhalten.
+- Synchronisation: **b98d91bb678088cd3e49bf87f5f471999260f847 auf origin/main bestätigt**; sauberer Checkout, Divergenz 0/0 nach Push. Neuere lokale Änderungen sind erst mit ihrem eigenen Push synchronisiert. Produkt-Baseline oben bleibt für historische Nachweise erhalten.
 - Countdown am 17.10.: **10/11 Kalendertage bis Beta**, **29 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -23,7 +23,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L04 | IN_PROGRESS | Historienscan abgeschlossen: 11 Treffer, davon 3 Dokumentationsbeispiele und 8 Vorkommen desselben historischen Firebase-Clientkeys. API-Einschränkungen/Stilllegung dieses Keys ungeprüft; Lizenz-/Publikationsprüfung offen, E19. |
 | L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17; Signatur gegen Updater-Schlüssel vor Upload geprüft, E18. GitHub-Installer mit Signaturprüfung und lokalem Alias korrigiert, E20. Lokaler check/prepare/publish-Weg implementiert, 18 Prüfungen PASS, E21; echter Vorbereitungs-/Publikationslauf weiterhin UNVERIFIED. |
 | L06 | BLOCKED | Betreiber-/Supportangaben und juristische Freigabe erforderlich. |
-| L07 | IN_PROGRESS | Quickstart mit einmaliger geschützter .env, Wiederverwendung und Recovery-Grenzen korrigiert; Shell-/Compose-Prüfung E16. Commit 1c4c5d5cf gepusht. Echter Start/Restore offen; Docker hat nur 8,9 GiB frei gegenüber 12 GiB Build-Vorgabe. |
+| L07 | DONE | Persistenter Quickstart und Backup-/Recovery-Anleitung; Linux-amd64-Build, frische Installation, Engine-Neustart und Restore in getrennte leere Volumes mit verschlüsselten Testdaten PASS, E22. Compose-Speicherfix und Nachweis LOCAL_ONLY bis Push. Öffentliche Installation bleibt L15, Versionsupgrade L18. |
 | L08 | TODO | Launch-Security-Prüfung und Befundregister. |
 | L09 | TODO | Bestehenden Website-Kanal verwenden; Produktbereich/Links/Recht noch nicht abgenommen. |
 | L10 | TODO | Store-Paket, Icons, Listing, Disclosures und echte Installation. |
@@ -82,6 +82,7 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 | E19 | L04 | Gitleaks git --all mit Repo-Konfiguration und Redaction: Exit 1, 2291 Commits/1,39 GB/17m6s, 11 Treffer in 4 historischen Dateien. Drei kurze API-Key-Dokumentationsbeispiele mit Demo-Suffix als Beispielbefunde eingeordnet. Acht Firebase-Befunde betreffen denselben Clientkey; am geprüften HEAD nicht mehr vorhanden | Kein Nachweis eines missbrauchten Secrets. Laut [Firebase-Dokumentation](https://firebase.google.com/docs/projects/api-keys) sind passend eingeschränkte Firebase-Clientkeys nicht geheim; konkrete API-/App-Einschränkungen oder Stilllegung hier UNVERIFIED. Keine Key-Werte, privaten Projektangaben oder Rohreports im Repository; keine Historienumschreibung/Rotation vorgenommen. |
 | E20 | L05 | GitHub-Installer lädt nur veröffentlichte sk-Datei, verifiziert Ed25519-Signatur und exakten eindeutigen Hash vor Ersetzung, erstellt lokalen subkit-Link. Rotation aktualisiert beide öffentlichen Schlüssel. 71 Installer-/Release-/Updater-Tests, 171 Assertions PASS; bash -n, Generator und diff --check PASS | Echte Shell/Kryptografie mit deterministischem Testschlüssel, isolierte Download-/OS-/Codesign-Fixtures. Keine öffentliche Installation und keine echte macOS-Codesign-/Linux-Plattformabnahme; kein Produktionsschlüssel erzeugt oder rotiert. Lokale Engine weiter 9.11.2, Checkout 9.15.2. |
 | E21 | L05 | release:local prüft sauberes main, Tag-/Commit-/Gatebindung; baut Git-Snapshot und isolierten Docker-Smoke; signiert zehn Nutzartefakte samt Provenance. Publish braucht explizites Argument, öffentliches Repo, unverwendete Versionen und erneut gültige Nachweise. 18 Bundle-/Befehlsgrenzen-/Provenance-/Workflow-Tests, 78 Assertions PASS; Typecheck PASS | Echte Kryptografie und lokale Subprozesse mit isolierten Tool-Fixtures. Kein vollständiger Docker-Build/Smoke/Signierlauf, kein privater Release-Schlüssel verwendet, keine Registry-/GitHub-Publikation. Tatsächliche Route bleibt UNVERIFIED bis zum freigegebenen Kandidatenlauf. |
+| E22 | L07 | Docker-Build aus b98d91bb678088cd3e49bf87f5f471999260f847 für linux/amd64 PASS; Image sha256:7969fd79125bedad388161269578fe4ce11c3e2c38e81ad519ade8c83989b973. Frischer Compose-Start, Health 9.15.2, authentifizierter Workflow-/Dateizugriff, persistierte Testcredential-Entschlüsselung und falscher Schlüssel abgewiesen PASS; nach Engine-Ersetzung erneut PASS. Quiesziertes pg_dump (935364 Bytes) plus Objektarchiv (153600 Bytes), Restore in separate leere Volumes: dieselben Daten-/Schlüsselprüfungen PASS. Eigene Testprojekte/Volumes danach entfernt. 12 Start-/Compose-Vertragstests, 22 Assertions PASS; llms-Generator PASS. Receipt lokal: .artifacts/launch/installation-acceptance.json; Ablauf in README | Lokales Image plus Compose-Korrektur, keine öffentliche Installation. Erster Start scheiterte an SeaweedFS-Vorabreservierung; explizites master.volumePreallocate=false behebt diese. Vorübergehende Healthcheck-Timeouts beim Neustart unter amd64-Emulation; unveränderte Gates danach bestanden. Mock-LLM, kein realer Provider-/Chatlauf, kein Versionsupgrade, keine vollständige Rollen-/Provenienzabnahme. |
 
 ## Release, Website, Store und Automation
 
@@ -95,8 +96,8 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 | Daily / Weekly | Laut Nutzer vorhanden: täglich 06:00 / montags ca. 08:00 Europe/Berlin; Konfiguration/Lesezugriff UNVERIFIED |
 | Lokale globale Hooks | In geprüften Dateien nicht eingerichtet; keine Änderungen vorgenommen |
 
-Nicht durchgeführt: Vollgate, Live-Modelle, Docker-E2E, frische Installation, Plattformabnahme,
-Upgrade/Restore, produktive Smoke-Tests oder visuelle Abnahme. Für diese Dokumentänderung
+Nicht durchgeführt: Vollgate, Live-Modelle, vollständiges Docker-E2E, öffentliche Installation, vollständige Plattformabnahme,
+Versionsupgrade, vollständige Rollen-/Provenienz-Wiederherstellung, produktive Smoke-Tests oder visuelle Abnahme. Same-image-Restore ist durch E22 geprüft. Für diese Dokumentänderung
 werden keine teuren Produktgates wiederholt. Vorherige Mocktests ersetzen keine dieser Prüfungen.
 
 ## Nutzerentscheidungen und nächste Arbeit
@@ -109,14 +110,13 @@ Commit und Push mit regulären Hooks freigegeben. Keine weitergehende Veröffent
 Offen: Betreiber-/Supportangaben, juristische Prüfung, Store-Konto/Freigabe, vorhandener Release-Signing-Key für lokale Abnahme, Testzugänge und
 Zielsysteme, Nachweis zu Einschränkungen/Stilllegung des historischen Firebase-Keys, globale Hooks/Transkript-Datenfluss, Sichtabnahme sowie gesonderte Publikationsfreigaben. Commit/Push sind für den vereinbarten Scope freigegeben.
 
-Aktiv: L04 (Befundklärung/Lizenzinventur) und L05 (signierte Distribution).
-L07 wartet auf ausreichenden Docker-Buildspeicher und den Installations-/Restore-Test; L02/L03 sind auf main synchronisiert. Implementierung bleibt auf einen technischen Hauptstrom begrenzt.
+L07 ist lokal abgeschlossen; Commit/Push mit regulären Hooks folgt. L04 benötigt noch Lizenzprüfung und menschliche Key-Befundklärung; L05 wartet für die reale Release-Abnahme auf Kandidat/Signing-Key. Nächster technischer Hauptstrom: L08 (Launch-Security-Prüfung).
 
 Nächste drei priorisierte Aufgaben:
 
-1. **L04:** Historischen Firebase-Key hinsichtlich Einschränkungen/Stilllegung klären; Auslieferungslizenzen prüfen.
-2. **L05:** Lokalen Release-Weg praktisch abnehmen, sobald freigegebener Kandidat und vorhandener Signing-Key verfügbar sind.
-3. **L07:** Persistenten Quickstart und isolierte Installationsprüfung vorbereiten.
+1. **L08:** Bestehende Security-Prüfungen und reale Rechte-/Approval-Grenzen prüfen; relevante Befunde beheben und dokumentieren.
+2. **L04:** Auslieferungslizenzen prüfen; menschlichen Nachweis zu Einschränkungen/Stilllegung des historischen Firebase-Keys ergänzen.
+3. **L12:** Aktuelle reale Kern-/Intake-Journeys ausführen; vorhandene funktionale Verifier und isolierte Testdaten verwenden.
 
-Nächster Codex-Schritt: L04-Befundklärung und isolierten L07-Installations-/Restore-Nachweis vorbereiten; Docker-Speicherkapazität für L07 prüfen und isolierte Installation/Restore vorbereiten. L05-Code E21 ist vorhanden; reale Abnahme benötigt einen freigegebenen Kandidaten und vorhandenen Signing-Key außerhalb des Repos. Installer-/Signaturkorrekturen E20 nicht wiederholen. L03 nicht wiederholen. Fertige Pakete mit regulären Hooks committen und pushen.
+Nächster Codex-Schritt: L07-Paket mit normalen Hooks committen/pushen, danach L08 anhand vorhandener Security-Verifier ausführen. L03 und den bestandenen Same-image-Restore nicht wiederholen. L05-Code E21 ist vorhanden; reale Abnahme benötigt einen freigegebenen Kandidaten und vorhandenen Signing-Key außerhalb des Repos.
 Parallel kann der Nutzer Betreiber-/Supportangaben und Store-Kontostatus bereitstellen.

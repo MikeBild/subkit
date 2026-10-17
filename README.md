@@ -51,6 +51,63 @@ do not expose the database or object store publicly.
 
 From a checkout, `bun run start:local` starts the stack and completes first-run setup with the `mock` LLM provider.
 
+### Backup and recovery
+
+Use a maintenance window for a consistent backup. These steps apply to the bundled
+PostgreSQL and object store; external services need their own recovery procedure.
+Run commands from the installation directory with its original Compose project name.
+Use a new owner-only backup directory outside the checkout, set `umask 077`, and keep
+it encrypted at rest. The dump, object archive and `.env` contain sensitive data.
+
+1. Record the running engine image identity with `docker inspect --format '{{.Image}}' "$(docker compose ps -q engine)"`.
+   Preserve that image in an accessible registry or with `docker image save`, together
+   with `docker-compose.yml` and `.env`. Do not rely on a mutable tag for recovery.
+2. Stop writers with `docker compose stop engine`. Back up PostgreSQL with
+   `docker compose exec -T postgres pg_dump -U subkit -d subkit -Fc > /path/to/backup/postgres.dump`.
+   Check the exit status before proceeding. Keep the engine stopped until both data stores are backed up.
+3. Stop the object store with `docker compose stop object-store`. Find its exact volume
+   using `docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$(docker compose ps -aq object-store)"`.
+   Archive it read-only with `docker run --rm --network none -v <object-volume>:/data:ro --entrypoint tar oven/bun:1.4.0-debian -C /data -cf - . > /path/to/backup/objects.tar`.
+   Replace `<object-volume>` with that inspected name, not a guessed volume name.
+4. Check each command succeeded, restrict all backup files to mode `0600`, and record
+   their SHA-256 checksums. Restart the original installation with `docker compose up -d --wait`.
+   If a backup command fails, retain the original volumes and investigate; an incomplete backup is not a recovery point.
+
+Test recovery in a separate directory using `docker compose -p subkit-recovery` for
+**every** Compose command below. First confirm that this project name has no existing
+containers or volumes; choose another unused name otherwise. Copy the saved Compose
+file and `.env`, preserve `MASTER_KEY` and the database password, select the saved
+engine image with `SUBKIT_IMAGE`, and set unused loopback ports through
+`SUBKIT_HOST_PORT` and `SUBKIT_DB_PORT`. Do not connect the recovery installation to
+external writers. Before starting services, add `docker-compose.override.yml` in
+the recovery directory with the following network isolation. Keep it in effect until
+restored schedules, triggers and connector permissions have been reviewed; starting
+the engine also starts its scheduler. Do not use this recovery project to perform
+real external effects.
+
+```yaml
+networks:
+  default:
+    internal: true
+```
+
+1. Create fresh storage with `docker compose -p subkit-recovery create postgres object-store`.
+   Inspect the new object-store container's `/data` volume as above, using the recovery
+   project. Restore only into that new volume:
+   `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:1.4.0-debian -C /data -xf - < /path/to/backup/objects.tar`.
+2. Start the new database with `docker compose -p subkit-recovery up -d --wait postgres`.
+   Restore it with `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump`.
+   This command replaces database contents: use it only against the new recovery project.
+3. Start the recovered services with `docker compose -p subkit-recovery up -d --wait`.
+   Check `/health` and `/ready` on the selected port, sign in with an existing account,
+   compare workflow records and downloaded file checksums, and verify an encrypted
+   credential through a controlled test. A successful HTTP health check alone does
+   not prove that the database, object files and encryption key match.
+
+This restores the same application image and a consistent backup. It does not
+establish an upgrade or schema-downgrade path. Data written after the backup is not
+included. Retain the original installation until recovery has been accepted.
+
 ### Local installation for manual Cockpit testing
 
 Run `bun run demo:local`. This builds changed application sources when needed, starts an isolated installation at `http://localhost:3000/cockpit`, runs migrations and first-run setup, seeds the synthetic dataset, configures the real AI providers and checks API-key browser login. Docker must be running. Put your Anthropic key in `claude-key.txt` and/or your OpenAI key in `openai-key.txt`; these files are excluded from Git and Docker build contexts. The default primary route is Anthropic `claude-sonnet-4-6`, with OpenAI `gpt-5.6-sol` as fallback when both keys exist. Setup itself makes no paid model probe. For an explicitly offline installation, use `bun run demo:local -- --mock`.
