@@ -2,11 +2,18 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
 import { tenants, usageEvents } from "../../db/schema/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
-const FROM = "2026-07-19T00:00:00.000Z";
-const TO = "2026-07-20T00:00:00.000Z";
+const DAY_MS = 86_400_000;
+const WINDOW_START_MS = Math.floor((getTestNow() - 2 * DAY_MS) / DAY_MS) * DAY_MS;
+const FROM = new Date(WINDOW_START_MS).toISOString();
+const TO = new Date(WINDOW_START_MS + DAY_MS).toISOString();
+
+function hourAt(hour: number) {
+  return sql`${new Date(WINDOW_START_MS + hour * 3_600_000).toISOString()}::timestamptz`;
+}
 const WINDOW = `bucket=hour&from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`;
 
 beforeAll(async () => {
@@ -34,7 +41,7 @@ beforeAll(async () => {
       response_bytes: 100,
       stream_outcome: "not_streamed",
       response_mode: "json",
-      created_at: sql`${FROM}::timestamptz`,
+      created_at: hourAt(0),
     },
     {
       tenant_id: srv.tenantId,
@@ -51,7 +58,7 @@ beforeAll(async () => {
       response_bytes: 200,
       stream_outcome: "not_streamed",
       response_mode: "json",
-      created_at: sql`'2026-07-19T01:00:00.000Z'::timestamptz`,
+      created_at: hourAt(1),
     },
     {
       tenant_id: srv.tenantId,
@@ -67,7 +74,7 @@ beforeAll(async () => {
       request_bytes: 10,
       response_bytes: 50,
       response_mode: "json",
-      created_at: sql`'2026-07-19T02:00:00.000Z'::timestamptz`,
+      created_at: hourAt(2),
     },
     {
       tenant_id: srv.tenantId,
@@ -81,7 +88,7 @@ beforeAll(async () => {
       session_hmac: "canary-session",
       duration_ms: 5,
       response_mode: "json",
-      created_at: sql`'2026-07-19T03:00:00.000Z'::timestamptz`,
+      created_at: hourAt(3),
     },
     {
       tenant_id: srv.tenantId,
@@ -95,7 +102,7 @@ beforeAll(async () => {
       session_hmac: "mcp-session",
       response_mode: "sse",
       active_sessions: 4,
-      created_at: sql`'2026-07-19T04:00:00.000Z'::timestamptz`,
+      created_at: hourAt(4),
     },
     {
       tenant_id: srv.tenantId,
@@ -109,7 +116,7 @@ beforeAll(async () => {
       session_hmac: "mcp-session",
       response_mode: "none",
       active_sessions: 3,
-      created_at: sql`'2026-07-19T05:00:00.000Z'::timestamptz`,
+      created_at: hourAt(5),
     },
     {
       tenant_id: foreignTenant.id,
@@ -123,7 +130,7 @@ beforeAll(async () => {
       session_hmac: "foreign-session",
       duration_ms: 999,
       response_mode: "json",
-      created_at: sql`'2026-07-19T06:00:00.000Z'::timestamptz`,
+      created_at: hourAt(6),
     },
   ]);
 });
