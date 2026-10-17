@@ -51,6 +51,12 @@ do not expose the database or object store publicly.
 
 From a checkout, `bun run start:local` starts the stack and completes first-run setup with the `mock` LLM provider.
 
+Connector discovery in the supplied container supports HTTP-based documentation
+sources. Optional Playwright crawling is not available out of the box. For documentation
+that requires JavaScript rendering, provide an accessible OpenAPI specification or
+configure the connector endpoints explicitly. A bundled browser executable alone does
+not establish that the discovery integration is available.
+
 ### Backup and recovery
 
 Use a maintenance window for a consistent backup. These steps apply to the bundled

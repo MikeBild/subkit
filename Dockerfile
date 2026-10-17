@@ -48,6 +48,7 @@ RUN set -eux; \
       echo "apt-get update failed (attempt $attempt) — retrying"; sleep 5; \
     done; \
     apt-get install -y --no-install-recommends curl ca-certificates libssl3t64 openssl; \
+    apt-get purge -y gstreamer1.0-plugins-bad libgstreamer-plugins-bad1.0-0; \
     rm -rf /var/lib/apt/lists/* /usr/lib/node_modules/npm; \
     rm -f /usr/bin/npm /usr/bin/npx
 

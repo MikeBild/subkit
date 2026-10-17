@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-17T20:47:03Z**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-17T21:03:57Z**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
-- Geprüfter Produktcommit: **908935136**, `main`, Version **9.15.2**.
+- Geprüfter Produktcommit: **ec9d89757**, `main`, Version **9.15.2**.
 - Checkout und origin/main waren nach `git pull --ff-only origin main` identisch; vor Dateierstellung sauber.
-- Synchronisation: **Produktänderungen bis 908935136 auf origin/main bestätigt**, lokale/Remote-Divergenz 0/0; normale Commit-/Pre-Push-Hooks bestanden, E50. Website-/Store-Texte sind weiterhin Entwürfe; keine Veröffentlichung.
+- Synchronisation: **Produktänderungen bis ec9d89757 auf origin/main bestätigt**, lokale/Remote-Divergenz 0/0; normale Commit-/Pre-Push-Hooks bestanden, E50. Website-/Store-Texte sind weiterhin Entwürfe; keine Veröffentlichung.
 - Countdown am 17.10.: **10/11 Kalendertage bis Beta**, **29 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -163,6 +163,8 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 
 | E77 | L13 | Vergleichbare Test-DSNs und selbst angelegte Tabellen geprüft. Workflow-SQL-Fixtures und Hold-Writes-Fixture qualifizieren Tabellen/Funktion nun ausdrücklich im public-Schema. Positiver Schreibfunktions-Kontrollaufruf verwendet den echten Connectorpool statt des Engine-Testpools. Sieben isolierte Dateien einschließlich Introspektion, Treiber, Circuit-Breaker, Freigabegrenzen, SQL-Transaktionen und Authoring-E2E: **64 PASS, 0 FAIL, 338 Assertions** mit unveränderter separater PostgreSQL-Instanz/abweichendem Benutzernamen. `.artifacts/launch/postgres-fixture-sweep.{json,log}`. | Nur Testfixtures korrigiert, keine Connector-/Approval-Semantik geändert oder Prüfungen deaktiviert. Erste lokale Berichtszählung übersah singular test; regex korrigiert, tatsächliche sieben Einzeldateiergebnisse bestätigt. Neues Vollgate nach ausstehender kanonischer Containerkorrektur, keine weitere unveränderte Wiederholung. |
 
+| E78 | L08/L07 | Kanonisches Dockerfile entfernt genau die beiden ungenutzten GStreamer-bad-Pakete. README und generierte llms dokumentieren die bestehende Grenze der optionalen Playwright-Discovery. Frischer ARM64-Build aus ec9d89757 plus dokumentiertem Diff: Image sha256:ec6247066cc25a7e57dfd1ee57a354385aff2058b9c271d58757c319a255194f. Frischer Compose-Start, Bootstrap, authentifizierte Workflow-/Objektpersistenz vor/nach Neustart, Engine-Smoke, CLI/Node und npm-Abwesenheit PASS; Testprojekt/Volumes entfernt. Chromium-JavaScript/DOM PASS. Trivy: **0 CRITICAL/0 HIGH**, 842 MEDIUM/88 LOW. Reports `.artifacts/launch/gstreamer-candidate-{source,acceptance,audit-summary}.json`, Browser-Retry- und Buildlogs daneben. | Lokal geprüft, Commit/Push ausstehend. Keine AMD64-, vollständige Native-/WASM- oder optionale Browser-Discovery-Abnahme. Erster Installations-/Browserlauf scheiterte an voller Docker-Disk; Fehlerberichte erhalten. Ausschließlich zwölf identifizierte eigene ungeteilte Buildcache-Einträge und obsolete eigene Probe-Tags entfernt; unverändertes Image danach bestanden. Cleanup-Beleg `owned-builder-cache-cleanup.json`. Keine fremden Volumes/Demos verändert. Vollgate noch offen. |
+
 ## Security-Befundregister (L08)
 
 | ID | Befund und Einordnung | Erforderlicher Abschlussnachweis |
@@ -188,12 +190,11 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 | Daily / Weekly | Laut Nutzer vorhanden: täglich 06:00 / montags ca. 08:00 Europe/Berlin; Konfiguration/Lesezugriff UNVERIFIED |
 | Lokale globale Hooks | In geprüften Dateien nicht eingerichtet; keine Änderungen vorgenommen |
 
-E49 belegt das vollständige lokale Gate für den Sicherheitskandidaten 1ac0017f6.
-Spätere Änderungen E51–E62 haben gezielte Prüfungen und normale Pre-Push-Gates bestanden,
-aber noch kein neues vollständiges Release-Gate. Begrenzte echte Modellläufe stehen in
-E45/E52; sie ersetzen nicht verify:llm-live. Frische lokale Installation und Same-image-Restore
-sind durch E22 geprüft. Weiterhin offen: öffentliche Installation, vollständige Plattformabnahme,
-Versionsupgrade/Rollback, finale Runtime-/Modellmatrix, vollständige Channel-Parität und manuelle
+E49 belegt ein historisches vollständiges Gate für 1ac0017f6. Der jüngste Vollgate-Lauf
+scheiterte an Testfixtures (E76); Korrektur gezielt bestanden (E77), neuer Gesamtlauf offen.
+Live-Modellmatrix E73 und begrenztes Versionsupgrade/Restore E72 sind bestanden.
+Aktuelle ARM64-Installation und Imageaudit siehe E78. Offen bleiben öffentliche Installation,
+Plattformabnahme, aktuelle Referenz-Benchmarks, vollständige Channel-Parität und manuelle
 visuelle Abnahme. Kein produktiver Smoke-Test oder Deployment in dieser Launch-Vorbereitung.
 
 ## Nutzerentscheidungen und nächste Arbeit
@@ -214,5 +215,5 @@ Nächste drei priorisierte Aufgaben:
 2. **L12:** Verbleibende echte Channel-/Client- und visuelle Abnahmen getrennt nachweisen. E52 ist implementiert, begrenzt live geprüft und gepusht; nicht erneut umsetzen.
 3. **L04/L08:** Fehlende Auslieferungslizenzen und konkret erreichbare Advisory-Pfade schließen; menschlichen Nachweis zum historischen Firebase-Key ergänzen. OAuth-Altclient-Wiedereinrichtung bleibt offene Abnahmelücke.
 
-Nächster Codex-Schritt: E77 mit regulären Hooks committen/pushen; danach kanonische Entfernung der im Experiment E69 als ungenutzt geprüften GStreamer-Pakete und Dokumentation der Browsergrenze E74. Erst nach diesen Änderungen vollständiges Gate erneut starten. Session 52851 ist terminal (Exit 1), keine Wiederholung unverändert. Live-Modellmatrix E73 und Upgrade/Restore E72 sind bestanden, nicht erneut ausführen ohne relevante Änderung. Alle Upgrade-Testprojekte entfernt; eigene Gate-DB subkit-launch-parser-db noch vorhanden. Sechs Lizenzzuordnungen/Beigaben (E70), aktuelle Benchmarkpaare (E75) und menschliche Freigaben bleiben offen. Betreiber-/Supportangaben wurden asynchron abgefragt; Antwort steht aus.
+Nächster Codex-Schritt: E78 mit regulären Hooks committen und pushen, anschließend ein neues vollständiges Gate für diesen Kandidaten starten. E76 ist terminal, E77 korrigiert/gepusht. Live-Modellmatrix E73 und Upgrade/Restore E72 nicht ohne relevante Änderung wiederholen. Sechs Lizenzzuordnungen/Beigaben (E70), aktuelle Benchmarkpaare (E75) und menschliche Freigaben bleiben offen. Betreiber-/Supportangaben wurden abgefragt; Antwort steht aus.
 Parallel kann der Nutzer Betreiber-/Supportangaben und Store-Kontostatus bereitstellen.
