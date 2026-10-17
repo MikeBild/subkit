@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const cockpitDemoFingerprintInputs = [
+  "vendor/embedding-assets.json",
   "docker-compose.test.yml",
   "docker-compose.demo.yml",
   "scripts/start-cockpit-demo.ts",

@@ -30,3 +30,17 @@ describe("local demo source fingerprint", () => {
     }
   });
 });
+
+test("model asset manifest changes invalidate the demo fingerprint without discovery", () => {
+  const root = mkdtempSync(join(tmpdir(), "subkit-demo-assets-"));
+  try {
+    mkdirSync(join(root, "vendor"));
+    const manifest = join(root, "vendor/embedding-assets.json");
+    writeFileSync(manifest, JSON.stringify({ revision: "initial" }));
+    const initial = cockpitDemoSourceFingerprint(root, []);
+    writeFileSync(manifest, JSON.stringify({ revision: "changed" }));
+    expect(cockpitDemoSourceFingerprint(root, [])).not.toBe(initial);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

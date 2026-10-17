@@ -590,6 +590,19 @@ judgment or replace a real browser/chat verification. It never deploys code.
 
 MIT
 
+## Build asset verification
+
+Engine builds fetch the embedding model from the immutable revision in
+`vendor/embedding-assets.json`. Every model and ONNX runtime asset must match its
+recorded byte length and SHA-256 checksum, including files already cached locally.
+Downloads replace an existing file only after verification; unexpected runtime
+package contents fail the build. Valid cached assets do not require a network fetch.
+
+When intentionally updating the model or runtime dependency, verify the upstream
+revision, license and asset provenance before updating this manifest. Do not accept
+a newly downloaded checksum merely to clear a failed build. Asset-manifest changes
+also invalidate the local demo build receipt.
+
 ## Sandbox data tools
 
 JavaScript workflow transforms can use bounded, synchronous `sk` helpers. They
