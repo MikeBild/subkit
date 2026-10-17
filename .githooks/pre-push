@@ -17,6 +17,7 @@ echo "[pre-push] 4/8 audit:invariants (route layering, file size, tenant filter,
 bun run audit:invariants
 
 echo "[pre-push] 5/8 generated-artifact drift (regenerate; fail on diff)"
+bun run check:sandbox-tools-drift
 bun run check:openapi-drift
 bun run check:config-example-drift
 bun run check:embedded-drift
