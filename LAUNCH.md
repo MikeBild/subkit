@@ -1,0 +1,375 @@
+# SubKit Public Launch
+
+Planfreigabe: Der Nutzer hat diesen Plan am 17.10.2026 zur Umsetzung der
+Planungs- und Synchronisationsdateien angenommen. Dies ist keine Freigabe für
+Produktänderungen, Commit, Push, Repository-Öffnung, globale Agent-Konfiguration,
+Release, Deployment oder Store-Einreichung. Aktueller Nachweisstand:
+[LAUNCH_STATUS.md](LAUNCH_STATUS.md). Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md).
+Die bestehenden Regeln in [AGENTS.md](AGENTS.md) bleiben maßgeblich.
+
+Folgefreigabe am 17.10.2026: Der Nutzer beauftragt autonome Launch-Vorbereitung als Goal
+einschließlich normal geprüfter Commits und Pushes. Diese Freigabe gilt fortlaufend für
+den vereinbarten Scope; keine erneute Commit-/Push-Rückfrage. Gesonderte menschliche
+Rechts-/Sichtabnahmen sowie Release-, Deployment-, Repository-Öffnungs- und Store-Freigaben
+bleiben bestehen.
+
+## Ziel und verbindliche Entscheidungen
+
+SubKit ist eine selbst hostbare Plattform für kontrollierte, versionierte und
+auditierbare KI-gestützte Workflows gegen verbundene Systeme. Ein Team beschreibt
+Arbeit, prüft die vorgeschlagene Wirkung, gibt sie menschlich frei und kann die
+Ausführungen nachvollziehen. KI-Unterstützung ersetzt keine Ausführungsfreigabe.
+
+- Öffentliche, extern installierbare Beta: 27./28.10.2026.
+- General Availability (GA): möglichst bis 15.11.2026; früher, sobald alle Gates erfüllt sind.
+- Veröffentlichung hat Vorrang vor neuen Features, Refactorings und Architekturarbeit.
+- Kostenloses Self-Hosting, kein SaaS, kein Checkout und kein kostenpflichtiges B2C-Angebot.
+- Bestehende Website verwenden; Quellrepository nach Prüfung öffentlich machen.
+- Clipper einschließlich späterer öffentlicher Chrome-Web-Store-Version gehört zum Launch.
+- Praktisch getestete Installation, menschliche Freigaben und Release-Gates sind zwingend.
+- Deutsche rechtliche Anforderungen anhand des tatsächlichen Angebots prüfen und freigeben.
+- Der Nutzer stellt täglich 1–2 Stunden für Entscheidungen und Abnahmen bereit.
+- GitHub main ist der gemeinsame freigegebene Stand; Codex dokumentiert lokalen Fortschritt.
+- Daily/Weekly priorisieren anhand desselben Stands; SubKit liefert ergänzendes Domänenwissen.
+- Keine automatische Gleichsetzung von Knowledge, Gesprächsaussagen und Release-Nachweisen.
+- Actions-Verfügbarkeit gilt laut Nutzer bis zum erwarteten 01.11.2026 als externer Blocker.
+  Keine Billing-Analyse und keine tägliche Wiederholung dieses bekannten Sachverhalts.
+
+## Scope und Abnahme
+
+### Public Beta
+
+Engine, sk CLI, Cockpit, Chat/MCP, Workflow-Ausführung mit RBAC, Approval und Audit,
+Knowledge-Intake, Clipper, öffentliche Website, Quickstart, Downloads, Pflichtinformationen,
+Kontakt und Versionsinformationen sind enthalten. Eine lokale Entwicklungsversion genügt nicht.
+
+- Docker-Engine zunächst Linux amd64 entsprechend der bestehenden Release-Pipeline.
+- Bestehende CLI-Buildziele: macOS ARM64/x64, Linux ARM64/x64, Windows x64.
+  Ein als unterstützt ausgelobtes Ziel braucht echte Installations- und Startnachweise.
+  Fehlender Zugang zu einem Zielsystem ist eine offene Entscheidung, keine implizite Abnahme.
+- Clipper als öffentliches ZIP mit Version/Prüfsumme, dokumentierter entpackter Installation
+  und manuellem Updateweg. Store-Verfügbarkeit darf während der Beta ausstehen.
+- Kernpfade einschließlich verpflichtender Client-Handoffs funktionieren auf einer echten
+  isolierten Testinstallation mit der ausgewiesenen Kandidatenversion.
+- Sicherheitskritische Prüfungen und notwendige rechtliche Freigaben gelten bereits vor Beta.
+- Vor empfohlenen Beta-Updates muss ein geprüfter Backup-/Wiederherstellungsweg vorliegen.
+
+### General Availability
+
+Zusätzlich: reproduzierbare Builds, verifizierte signierte Artefakte, erfolgreiche öffentliche
+Release-Strecke, stabile Installation/Updates, getesteter Restore, abgeschlossene relevante
+Dokumentation, öffentliche Store-Installation, finale Produktabnahme und Supportbetrieb.
+
+### Nicht-Ziele
+
+Neue Connectoren, Slack-/Teams-Adapter, SaaS, Abrechnung, Marketplace, Kubernetes,
+zusätzliche Engine-Architekturen, neue Website-Plattform und UI-Redesign sind P2.
+Vorhandene Roadmap-Issues werden nicht automatisch Launch-Blocker. Das ältere GitHub-Issue
+#318 zur ChatGPT-Katalogauffindbarkeit wird nur anhand eines aktuellen Pflichtpfads bewertet;
+kein vorsorglicher Katalog- oder Architekturumbau. Issues #305, #278 und #264–#272 bleiben
+außerhalb des Launch-Scope, solange keine konkrete Pflichtfunktion davon abhängt.
+
+## Komponenten und noch erforderliche Nachweise
+
+Dies ist eine Quellen- und Nachweisbestandsaufnahme, kein vollständiges Code- oder Security-Audit.
+Vorhandener Code und Testdateien sind keine bestandene Produktabnahme. Aktuelle Ergebnisse,
+öffentliche Verfügbarkeit und Prüfzeitpunkte stehen ausschließlich im Statusdokument.
+
+| Komponente | Implementierung und vorhandene Prüfmittel | Beta-Nachweis | GA-Zusatz | Unnötiger Scope |
+| --- | --- | --- | --- | --- |
+| Engine | Bootstrap, Tenant-Modell, Queue, Scheduler, Connectoren, Execution, RBAC, Approval, Audit, Credentials, Sandbox, Health/Readiness; Tests/Benchmarks vorhanden | Kandidatenstart, Fehler-/Neustartverhalten, Sicherheitsgrenzen, echte Ausführung, Kapazität | Betriebsdiagnose, Upgrade/Restore und dokumentierte Grenzen | Neue Subsysteme/Connectoren |
+| CLI | Init/Login, Workflows, MCP, Clipper, Agent-Befehle, Updates und fünf Buildziele | Installation, Anmeldung, Kernaktionen und Fehlermeldungen auf ausgelobten Zielen | Updatepfad und Plattformregressionen | Neue Paketmanager |
+| Cockpit | Onboarding, Login, Navigation, Chat, Workflows, Runs, Connectoren, Approval, Knowledge, Intake, Settings, Rollen | Reale Journeys auf passender Runtime, Fehler-/Berechtigungsfälle, menschliche Sichtabnahme | Beta-Befunde schließen | Redesign |
+| Clipper | MV3, Capture/YouTube, Drafts, Kategorien, API-Verbindung, ZIP und Tests | Reproduzierbarkeit, Installation, Capture und vollständiger Intake-Pfad | Store-Installation/Update | Weitere Browser |
+| Knowledge | Review, Proposal, Admission, Provenienz, Retrieval und Prüfer vorhanden | Vor Bestätigung ausgeschlossen; danach domänenrichtig auffindbar | Dokumentation und Regressionen | Neue Wissensarchitektur |
+| Distribution | Compose/Dockerfile, Binary-Staging, Checksummen, Signierung, Gate-Provenance | Anonym abrufbarer konsistenter Kandidat und frische Installation | Vollständige Release-Pipeline, Upgrade/Restore | Neue Deploymentplattform |
+| Website/Recht | Bestehender redaktioneller Kanal; MIT und einzelne Drittanbieterhinweise | Freigegebener Produktbereich, Quickstart, Recht und Support | Finale Vollständigkeits-/Produktabnahme | Neue Website-Engine |
+| Integrationen | MCP, Chat/Provider, Google Chat, Coding-Agent-Befehle und Hooks | Reale Pflichtpfade; native Grenzen mit funktionierendem Handoff | Dokumentierte Clientgrenzen | Neue Adapter |
+
+## Meilensteine, Kapazität und kritischer Pfad
+
+| Phase | Zeitraum | Abschlussziel |
+| --- | --- | --- |
+| Scope und Blocker | 17.–20.10. | Gemeinsame Dateien, Scope-Freeze, Buildursache, sichere Distribution und Installationsweg |
+| Öffentliche Voraussetzungen | 20.–22.10. | Website-/Rechtsentwürfe, Store-Paket, gesondert freigegebene Einreichung |
+| Beta | 23.–28.10. | Reale Tests, Gates, öffentliche Artefakte, externer Installationstest, Beta-Go |
+| Härtung | 29.10.–08.11. | Upgrade/Restore, Pipeline, Beta-Befunde, Store-Review |
+| GA | 09.–15.11. | Finaler Kandidat, Abnahme, Veröffentlichung, Support und Monitoring |
+
+Beta-Pfad: **L03 → L07/L08 → L12 → L13 → L14 → L15 → L16/L17**.
+Zusätzliche Voraussetzungen vor Publikation: **L04/L05 → L14**.
+Parallel: **Betreiberangaben → L06 → L09 → L16**.
+GA-Pfad: **L17 → L18/L19/L20 → L22 → L23**.
+Externer GA-Pfad: **L10 → L11 → Google → L21 → L22**.
+
+Planungsannahme: ein technischer Hauptstrom, tägliche menschliche Entscheidungen und
+rechtzeitig verfügbare Rechtsprüfung. Bis Beta ungefähr 60–80 technische Stunden inklusive
+Fehlerreserve, zusätzlich 10–16 menschliche Stunden; bis GA weitere 35–55 technische Stunden.
+Spannen sind Schätzungen, keine gemessenen Laufzeiten. Aktive Stunden und externe Wartezeit
+werden getrennt geführt. Am 20.10. anhand Befunden und verbleibender Arbeit neu prognostizieren.
+
+Beta am 27./28.10. ist bedingt erreichbar; frühestens 26.10. bei vollständig erfüllten Gates.
+Interne GA-Fertigstellung für 11.–13.11. planen, 15.11. als Reserve. Google kann den Termin
+überschreiten. Keine Phase künstlich abwarten, keine Pflichtprüfung zugunsten eines Datums streichen.
+
+WIP: höchstens **ein aktives technisches Umsetzungspaket und ein menschliches/externes Paket**.
+Konfliktfreie Tests und lesende Reviews dürfen parallel laufen. Im gemeinsamen Checkout nur
+eine schreibende Hauptsession. Zuerst abschließen, dann Neues beginnen.
+
+## Arbeitspakete
+
+P0 verhindert sichere Beta/Veröffentlichung; P1 ist für GA erforderlich; P2 ist verschiebbar.
+C = Codex, M = Mensch, E = extern. ★ = kritischer Beta-Pfad, ◆ = kritischer GA-Pfad.
+Aufwände sind aktive Stunden, sofern nicht anders angegeben. Die folgenden IDs sind stabil.
+Der aktuelle Status aller Aufgaben steht in LAUNCH_STATUS.md, damit keine zweite Statusliste driftet.
+Jede Aufgabe besteht aus ihrer Planzeile, der DoD-Zeile und ihrem Status-/Nachweiseintrag.
+
+| ID | Prio | Komponente | Ergebnis / Meilenstein | Rolle | Abhängigkeiten | Aufwand | Deadline |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| L01 | P0 | Planung | Belegte Ausgangslage und Scope / Planung | C/M | — | erfolgt | 17.10. |
+| L02 ★ | P0 | Synchronisation | Drei Launchdateien und kurzer AGENTS-Verweis / Planung | C | Planannahme | 2 h | 18.10. |
+| L03 ★ | P0 | Clipper-Build | Driftursache beheben, Builds reproduzieren / Beta | C | L01 | 3–6 h | 18.10. |
+| L04 ★ | P0 | Öffentlichkeit | Historien-, Geheimnis- und Lizenzprüfung / Beta | C/M | L01 | 4–6 h | 19.10. |
+| L05 ★ | P0 | Distribution | Kontrollierte Publikation ohne privaten Deploy-Zwang / Beta | C | L01 | 5–8 h | 20.10. |
+| L06 ★ | P0 | Recht | Betreiber-/Datenschutzunterlagen freigeben / Beta | C/M/E | Betreiberangaben | 7–12 h verteilt | 21.10. |
+| L07 ★ | P0 | Installation | Sicherer persistenter Quickstart, Backup-Rückweg / Beta | C | L03 | 4–6 h | 20.10. |
+| L08 ★ | P0 | Security | Launchrelevante Sicherheitsbefunde schließen / Beta | C | L03 | 6–10 h | 22.10. |
+| L09 ★ | P0 | Website | Produktbereich, Dokumentation, Support vorbereiten / Beta | C/M | L06/L07; Entwurf parallel | 6–8 h | 22.10. |
+| L10 ◆ | P1 | Store | Listing, Privacy, Icons, Screenshots, ZIP / GA | C/M | L03/L06 | 5–7 h | 21.10. |
+| L11 ◆ | P1 | Store | Freigegebene Einreichung / GA | M/E | L10, öffentliche Pflichtlinks, Freigabe | 1–2 h | 20.–22.10. |
+| L12 ★ | P0 | Produktprüfung | Reale Kern-, Intake- und Client-Journeys / Beta | C/M | L07/L08 | 7–10 h | 24.10. |
+| L13 ★ | P0 | Release | Beta-Kandidat mit vollständigen Gates / Beta | C | L03/L04/L05/L06/L07/L08/L12 | 3–5 h plus Laufzeit | 25.10. |
+| L14 ★ | P0 | Distribution | Repository und Beta-Artefakte veröffentlichen / Beta | C/M | L04/L05/L13, Freigabe | 2–3 h | 25.10. |
+| L15 ★ | P0 | Installation | Externer Nutzer installiert öffentliche Artefakte / Beta | C/M | L14 | 5–7 h | 26.10. |
+| L16 ★ | P0 | Website | Website, Recht und Support öffentlich abnehmen / Beta | C/M | L06/L09/L15, Freigabe | 3–4 h | 26.10. |
+| L17 ★ | P0 | Beta | Beta-Go und Kommunikation / Beta | M/C | L12/L13/L14/L15/L16 | 1 h | 27./28.10. |
+| L18 ◆ | P1 | Betrieb | Upgrade, Backup und vollständigen Restore prüfen / GA | C | L17 | 8–12 h | 03.11. |
+| L19 ◆ | P1 | Release | Öffentliche Release-Pipeline erfolgreich / GA | C | L05, verfügbare Ausführung | 4–8 h plus Laufzeit | 05.11. |
+| L20 ◆ | P1 | Qualität | Beta-Befunde, Security, Betriebsdokumentation / GA | C/M | L17/L18; Triage parallel | 10–16 h | 08.11. |
+| L21 ◆ | P1 | Store | Google-Freigabe und öffentliche Installation / GA | C/M/E | L11, Google | 2–6 h plus Wartezeit | Ziel 08.11. |
+| L22 ◆ | P1 | GA | GA-Kandidat und finale Abnahme / GA | C/M | L18/L19/L20/L21 | 6–8 h | 11.–13.11. |
+| L23 ◆ | P1 | GA | GA veröffentlichen, Support/Monitoring übernehmen / GA | C/M | L22, Freigabe | 2–3 h | spätestens 15.11. |
+| L24 | P2 | Roadmap | Nicht launchrelevante Features zurückstellen / nach Launch | M | L23 | kein Launchbudget | nach Launch |
+| L25 | P1 | Agent-Kontext | Lokale Hooks und Daily-/Weekly-Handoff verifizieren / GA | C/M | L02, CLI, Zugang, Datenflussfreigabe | 3–5 h | Ziel 23.10. |
+
+L25 ist Komfort-/Arbeitsprozess-Einrichtung und kein Anlass, die Beta zu verschieben.
+Die sichere beworbene Hook-Produktfunktion bleibt Teil von L12. Bis zur Einrichtung funktioniert
+die manuelle Repository-Übergabe. Eine Aufgabe darf nach Nachweisen früh fertig werden,
+ohne dass ihr Zielmeilenstein bereits veröffentlicht ist.
+
+### Definition of Done und Prüfnachweise
+
+| ID | Definition of Done | Prüfnachweis |
+| --- | --- | --- |
+| L01 | Tatsachen, Annahmen, unbekannte Zustände und Nutzerentscheidungen getrennt | Status-Evidenzregister; begrenzten Prüfumfang benennen |
+| L02 | Drei konsistente Dateien; gültige IDs/Links; nur kurzer AGENTS-Verweis; keine privaten Daten | Geprüfter Diff und Dokumentvalidierung; zunächst LOCAL_ONLY |
+| L03 | Ursache erklärt; zweimal identischer ZIP-Build unter Release-Toolchain; Driftcheck erfolgreich | Toolchain, Lockfile-/ZIP-Hashes, Exitcodes, betroffene Vertragstests |
+| L04 | Gesamte zur Veröffentlichung vorgesehene Historie und Artefakte geprüft; Lizenzpflichten erfüllt | Bereinigter Scanbericht, Lizenzinventar, menschliche Freigabe; keine Historienumschreibung ohne Freigabe |
+| L05 | Publikation bewahrt Gates und Signaturen; kein privater Deploy-Zwang | Ablauf/Diff, Vertragsprüfungen, Ablehnung fehlender Gate-Evidenz; Probe ohne Publikation |
+| L06 | Texte stimmen mit Betreiber, Angebot und Datenflüssen überein | Freigabe konkreter Textrevision und juristische Prüfung |
+| L07 | Frische Installation, Neustart und Wiederherstellung ohne Schlüsselverlust; sichere Defaults | Protokoll mit verschlüsselten Testdaten, persistierten Schlüsseln, dokumentiertem Backup-Rückweg |
+| L08 | Keine offenen kritischen/hohen ausnutzbaren Befunde im Launchpfad | Befundregister, Reproduktion und Gegenprüfung; verbleibende Risiken benannt |
+| L09 | Website-Inhalte, Downloads, Recht, Support und technische Doku konsistent vorbereitet | Vorschau, Claim-/Linkprüfung, menschlicher Inhaltsreview |
+| L10 | Store-Paket und Listing vollständig; realer Installations-/E2E-Test | Paket-Hash, Permission-/Privacy-Matrix, Assets, Testreport |
+| L11 | Einreichung konkret freigegeben und tatsächlich erfolgt | Nutzerfreigabe, Paket-Hash, bereinigter Einreichungsbeleg; keine Publikationsbehauptung |
+| L12 | Pflichtjourneys und Negativfälle erfüllt; Mock und Live getrennt | Kandidaten-/Runtimebindung, Cross-Surface-Report, Fixture-Cleanup, menschliche Sichtabnahme |
+| L13 | Exakter Kandidat besteht sämtliche bestehenden Release-Gates | Numerische Exits, Commit-/Source-/Lockfilebindung, Runtimevergleich, Live-Modellresultat |
+| L14 | Freigegebenes Repository und geprüfte Artefakte öffentlich abrufbar | Öffentliche Links, Digests, Signaturprüfung und Versionszuordnung |
+| L15 | Außenstehender installiert ohne privaten Zugang und nutzt Kernpfad | Sauberes Testsystem, Download-/Installationsbericht, echte Ausführung, Hindernisliste |
+| L16 | Öffentliche Website und Support erreichbar, Pflichttexte und Darstellung abgenommen | Öffentliche Seiten, Kontaktprobe, manuelle Abnahme |
+| L17 | Alle Beta-P0 erfüllt; Einschränkungen klar; Beta freigegeben | Menschliches Go, öffentliche Artefakte/Website, freigegebene Kommunikation |
+| L18 | Unterstützte Upgrade-/Restore-Strecke erhält Daten, Schlüssel, Rollen und Provenienz | Vorher-/Nachher-Prüfungen, gemessene Dauer und Datenverlustgrenze |
+| L19 | Vollständige öffentliche Pipeline produziert abrufbare gültige Artefakte | Erfolgreicher Lauf, Provenance, Signaturen, anonymer Download/Pull |
+| L20 | Launchrelevante Beta-Bugs und Security-Restbefunde geschlossen; Doku stimmt | Fehlerregister, gezielte Regressionen, Betriebsdokumentationsreview |
+| L21 | Listing öffentlich; Store-Installation und unterstützter Updatepfad funktionieren | Öffentlicher Listinglink, Version und realer Test |
+| L22 | GA-Gates, Plattformen und Produktumfang final abgenommen | Versionsgebundene technische und menschliche Abnahme |
+| L23 | GA-Artefakte/Website/Notes öffentlich; Support und Monitoring übernommen | Öffentliche Nachweise, Kommunikation, Kontakt und Zuständigkeiten |
+| L24 | Nach-Launch-Arbeit getrennt priorisiert, ohne Launch-Gates aufzuweichen | Nutzerentscheidung und spätere Roadmap |
+| L25 | Lokale Hooks ausgelöst, Briefing/MCP geprüft, Daily/Weekly lesen gepushten Stand | Bereinigte Client-Lifecycle-Nachweise und erste beobachtete Automationsläufe |
+
+## Technische Release- und Sicherheitsgates
+
+### Kandidat und Distribution
+
+1. Arbeitsstand sichern, main nach AGENTS.md synchronisieren; Checkout und Runtime separat feststellen.
+2. Toolchain, Lockfile und exakten Kandidaten festhalten; keine verwendete Version ungeprüft wiederverwenden.
+3. Gezielt prüfen; Architektur-, Implementierungs-, Review- und Testprüfung gemäß AGENTS.md abschließen.
+4. Bestehende Runtime-Baseline/Kandidatenprüfung mit Source- und Lockfilebindung bestehen lassen.
+5. Vollständiges `bun run verify` sowie verpflichtendes `verify:llm-live` im bestehenden Release-Verfahren.
+6. Artefakte aus demselben Kandidaten bauen, Checksummen/Signaturen prüfen, frische Installation testen.
+7. Erst nach eigener Publikationsfreigabe veröffentlichen; anschließend anonyme Verfügbarkeit prüfen.
+
+Bestehende Gates umfassen Lint, Typecheck, Invarianten, Determinismus, Contracts, funktionales
+Cockpit, Clipper/Intake, E2E und generierte Assets einschließlich OpenAPI und Release Notes.
+Docker-Journeys zusätzlich passend zur Distributionsänderung verwenden. `verify:release`
+ersetzt keine Produktjourneys; übersprungene authentifizierte Checks bleiben UNVERIFIED.
+Keine automatischen visuellen Matrizen. Funktionale Browserprüfungen bleiben automatisiert.
+
+Lokal bestanden, Release-Workflow bestanden, Deployment bestanden und produktiver Smoke
+bestanden werden getrennt geführt. Kein neues allgemeines CI-Projekt als Launch-Voraussetzung.
+Keine Produktionskontakte mit Schreibwirkung ohne ausdrücklich ausgewählten Testumfang.
+
+Die bisherige Veröffentlichung löst auch einen privaten Deployment-Dispatch aus. L05 trennt
+diese Wirkung, ohne private Deploymentimplementierung oder Kennungen in das Produktrepo zu übernehmen.
+Während Actions fehlen, lokale Builds, Gates und Proben fortsetzen. Für Beta wird eine lokal
+ausführbare Publikationsstrecke mit denselben Sicherheitskontrollen benötigt; keine gefälschten
+Statusbelege, Signaturauslassung oder manuellen Tags als Abkürzung. Fehlt bis 23.10. ein geprüft
+gleichwertiger Weg, Beta-Termin offen korrigieren. Veröffentlichung selbst bleibt freigabepflichtig.
+
+### Sicherheits- und Kernjourneys
+
+- Tenant-Isolation für Reads, Writes, Deletes und indirekte Chat-/MCP-Pfade; der bestehende
+  AST-Scan allein deckt laut Engine-Guide nicht sämtliche Schreibpfade ab.
+- RBAC-Verweigerung; Wirkungserweiterung erfordert neue Approval; Widerruf wirkt; Audit mit Actor.
+- Credential-Verschlüsselung, keine Secrets in Logs/Reports; Sandboxbudgets, Egress/SSRF und untrusted Input.
+- Queue-/Scheduler-Neustart, Fehlerpfade und Wiederholungen; Health/Readiness und Kapazitätsgrenzen.
+- Installieren, initialisieren, anmelden, Workflow erstellen/versionieren, freigeben und wirklich ausführen.
+- Bestehende akzeptierte Sicherheitsgrenzen wie fehlende aktive AV-Prüfung dokumentieren und anhand
+  des Launch-Threat-Models bewerten; keine neue Infrastruktur ohne konkreten Blocker.
+
+### Clipper-/Knowledge-Abnahme
+
+- Installation, Login, Capture einschließlich unterstütztem YouTube-Pfad, Drafts und Fehlerzustände.
+- Kategorien wählen/umbenennen/wechseln, ohne Wissen aufzunehmen.
+- Unbestätigter Clip: **null normale Knowledge-Suchtreffer**.
+- Review, Discard/Restore, Vorschlag, authentifizierter Bestätigungshandoff.
+- Identische wiederholte Bestätigung: **genau eine Admission**.
+- Veraltete Vorschläge und eingeschränkte Berechtigungen negativ prüfen.
+- Jede vorgeschlagene Quelle nachvollziehbar; Original und Provenienz erhalten.
+- Bestätigte Quellen in vorgesehener Domäne auffindbar; beide Coding-Agent-Hooks entdecken sie.
+- Briefings enthalten keine rohen Clipbodies, nur begrenzte berechtigte Review-Hinweise.
+- Clipper, sk, HTTP, MCP, Cockpit und Google Chat real prüfen. Unsupported native Aktionen
+  brauchen funktionierende Fortsetzung, keine falsche Erfolgsmeldung.
+- Echte Providerantwort getrennt von deterministischen Vertrags-/Mocktests dokumentieren.
+- Isolierte Testtenants/Fixtures, exakte IDs und Cleanup; manuelle Nutzer-Inbox nicht befüllen.
+- Discovery, Review, Bestätigung, Provenienz und Retrieval getrennt messen; vorhandene Auditdaten
+  verwenden und einen begrenzten Realmodell-Test vom deterministischen Vertragstest trennen.
+
+### Installation, Upgrade und Rollback
+
+Quickstart braucht dauerhaft gesicherten MASTER_KEY, sichere Zugangsdaten, persistente
+PostgreSQL-/Objektdaten, HTTPS-Hinweise und reproduzierbare Bootstrap-/Login-Schritte.
+Temporär gesetzte Schlüssel ohne Sicherung sind keine fertige Betriebsanleitung.
+
+Vor Beta-Updateempfehlungen Backup/Restore prüfen. Für GA die unterstützte Strecke vom
+geeigneten öffentlichen Ausgangsstand über Beta zum GA-Kandidaten festlegen und testen;
+notwendige Zwischenversionen explizit dokumentieren. Bei inkompatiblen Migrationen ist ein
+altes Image kein Rollback: passende Anwendung, DB, Objektbestand und Schlüssel gemeinsam
+wiederherstellen. Wiederherstellungsdauer und möglicher Datenverlust werden gemessen.
+
+## Website und Recht
+
+Vorhandene redaktionelle Quelle: `MikeBild/mikebild-dev-content`; sie ist von diesem Repo
+getrennt. README/AGENTS dieses Repositories wurden in der Bestandsaufnahme gelesen. ContentKit
+ist dort das Publikationssystem; dessen Inhaltsreview und Publikationsfreigaben bleiben bestehen.
+Der tatsächliche Website-Runtime-/Hosting-Code ist noch nicht vollständig verifiziert.
+Konkrete Hosts und private Infrastruktur bleiben außerhalb dieser Dateien.
+
+| Website-Bereich | Beta-Ergebnis |
+| --- | --- |
+| Landingpage | Kundennutzen, Zielgruppe, Beta-/GA-Status; primär Self-Hosting starten, sekundär Downloads/Quellcode |
+| Features/Use Cases | Nur belegte Fähigkeiten: kontrollierte Workflow-Wirkung, menschliche Freigabe, Versionen und Audit |
+| Quickstart | Docker → Bootstrap → Cockpit → sk → freigegebener Workflow |
+| Self-Hosting | Voraussetzungen, persistente Schlüssel/Daten, Provider, HTTPS, Backup, Update, Diagnose |
+| Downloads | Version, Plattform, Prüfsumme, Signaturprüfung, Release Notes |
+| Clipper | Installation, manuelles Beta-Update, Collect → Review → Confirm → Knowledge |
+| Sicherheit/Privacy | Verantwortlichkeiten, Datenflüsse, Provider, Grenzen und Meldestelle |
+| Support | Funktionierender Kontakt, Feedbackkanal, Zuständigkeit und realistische Reaktionszeiten |
+| Recht/Lizenzen | Freigegebenes Impressum, Datenschutzhinweise und erforderliche Drittanbieterhinweise |
+
+Technische Dokumentation bleibt aus README/Code und bestehenden Generatoren abgeleitet;
+keine zweite unabhängig gepflegte technische Dokumentationsstruktur. Website verlinkt oder
+übernimmt versioniert diese Inhalte. Neue Produktseiten erhalten kein zusätzliches Tracking;
+bestehende Dienste dennoch inventarisieren. Manuelle Sichtabnahme und funktionale Link-/Downloadtests.
+
+### Rechtliche Launch-Checkliste
+
+Dies ist ein Prüfauftrag, keine juristische Freigabe. Entwürfe bleiben als solche markiert.
+
+| Bereich | Technischer Beitrag | Menschliche/juristische Freigabe |
+| --- | --- | --- |
+| Kostenlose Open-Source-Software | MIT, Abhängigkeiten, eingebettete Ressourcen und Hinweise inventarisieren | Rechte, Lizenzpflichten, konkrete vertragsrechtliche Einordnung |
+| Produktwebsite / DDG § 5 | Dauerhaft erreichbare Anbieter-/Kontaktinformationen | Betreiber, Anschrift, gegebenenfalls Register-/Steuerangaben und Anwendbarkeit |
+| DSGVO | Website-Logs, Kontakt/Support, Clipper, Engine, Hooks, Provider/Connectoren erfassen | Zwecke, Rechtsgrundlagen, Empfänger, Retention, Rechte, Transfers und TOMs |
+| Auftragsverarbeitung | Tatsächlichen Zugang zu Kundendaten und Dienstleister erfassen | Rollen/Verträge prüfen; Self-Hosting macht den Softwareautor nicht automatisch zum Auftragsverarbeiter |
+| TDDDG § 25 | Cookies, Storage und eingebundene Dienste erfassen | Erforderlichkeit oder notwendige Einwilligung beurteilen |
+| BFSG | Tastatur, Fokus, Semantik und Kontraste berücksichtigen | Angebot und Betreiberstatus prüfen; keine pauschale Ausnahme behaupten |
+| Browser Extension | URLs, Inhalte, Autoren/Zeitangaben, Drafts, Schlüssel, Origins und Übertragungen dokumentieren | Privacy Policy und Store-Disclosures stimmen mit realem Verhalten überein |
+| Self-Hosting | Betreiberverantwortung, Retention, Löschung, Providerkonfiguration erklären | Tatsächliche Verantwortlichkeiten und erforderliche Vertragsgrundlagen |
+| Kostenpflichtige Angebote | Kein Checkout im Launch | Bei späterem Angebot Preisangaben, AGB, Widerruf und Verbraucherrecht neu prüfen |
+
+Kostenlos bedeutet nicht automatisch frei von Informations- oder Datenschutzpflichten.
+Auch kostenlose digitale Angebote und die besondere Open-Source-Ausnahme sind konkret zu prüfen.
+Keine fiktiven Anbieterangaben. Persönliche Entwürfe nicht im öffentlichen Launchtracker sammeln.
+
+Offizielle Prüfgrundlagen, recherchiert am 17.10.2026:
+
+- [DDG](https://www.gesetze-im-internet.de/ddg/BJNR0950B0024.html)
+- [DSGVO](https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32016R0679)
+- [TDDDG](https://www.gesetze-im-internet.de/ttdsg/BJNR198210021.html)
+- [BFSG: E-Commerce](https://www.bundesfachstelle-barrierefreiheit.de/DE/Barrierefreiheitsstaerkungsgesetz/E-Commerce/online-shops_node.html)
+- [BGB § 327](https://www.gesetze-im-internet.de/bgb/__327.html)
+
+## Chrome Web Store
+
+Einreichung möglichst 20.–22.10.; tatsächliche Einreichung nur nach gesonderter Nutzerfreigabe.
+Öffentliche Datenschutz-/Supportseiten dürfen als separat freigegebene Vorabseiten vor dem
+vollständigen Beta-Produktauftritt erscheinen; dadurch entsteht keine Abhängigkeit von L16.
+
+- Entwicklerkonto, Identitäts-/Kontaktstatus und gegebenenfalls bestehende Listing-ID prüfen.
+- MV3, Single Purpose, Remote-Code-Policy und jede Berechtigung prüfen; MV3 allein beweist keine Policy-Konformität.
+- `activeTab`, `scripting`, `contextMenus`, `storage` einzeln begründen. Breite optionale
+  HTTPS-Origins durch frei wählbares Self-Hosting begründen, tatsächliche Freigabe minimal halten.
+- Lokale API-Schlüssel/Drafts und Übertragung an gewählte Engine offenlegen; spätere
+  Chatverarbeitung durch konfigurierte Provider erklären. Kein pauschales „keine Datenverarbeitung“.
+- Fehlende Icons, Listing-Icon, echte Screenshots und benötigte Werbegrafik ergänzen;
+  aktuelle Store-Abmessungen bei Erstellung anhand offizieller Vorgaben prüfen.
+- Name, Kurz-/Langtext, Privacy-Disclosures, Support und öffentliche Privacy Policy fertigstellen.
+- Reproduzierbares ZIP ohne Schlüssel, lokale Konfiguration oder Testdaten; Versionsbindung.
+- Installations-/E2E-Test gegen reale isolierte Instanz und nachvollziehbare Reviewer-Anleitung.
+- Falls Reviewerzugang nötig: eingeschränkter Testzugang separat, niemals im Repository.
+
+Zustände getrennt protokollieren: vorbereitet → zur Einreichung freigegeben → eingereicht →
+Google-freigegeben → öffentlich → Installation verifiziert. Kein Store-Badge vor öffentlicher
+Verfügbarkeit. Google nennt wenige Tage bis mehrere Wochen; keine Termingarantie.
+
+- [Policies](https://developer.chrome.com/docs/webstore/program-policies/policies)
+- [Bilder](https://developer.chrome.com/docs/webstore/images)
+- [Reviewprozess](https://developer.chrome.com/docs/webstore/review-process)
+
+## Menschliche Entscheidungen, Risiken und nächste Tage
+
+Noch erforderlich: Betreiber-/Supportangaben, juristische Freigabe, Store-Konto und Einreichung,
+Testzugänge/Zielsysteme, globale Hooks und Transkript-Datenfluss, visuelle Abnahme sowie
+gesonderte Freigaben für Commit/Push, Repository-Öffnung, Website, Beta und GA.
+
+| Risiko | Auslöser / Reaktion |
+| --- | --- |
+| Publikationsweg nicht bereit | Bis 23.10. keine gleichwertig geprüfte lokale Strecke: Beta neu terminieren, keine Gates umgehen |
+| Google verzögert/ablehnt | Beanstandung gezielt bearbeiten; Beta-ZIP bleibt möglich, GA wartet auf öffentliche Store-Version |
+| Recht/Betreiber fehlt | Öffentliche Pflichtseiten und Launch warten auf echte Angaben/Freigabe |
+| Security-/Datenverlustbefund | Publikation stoppen, Befund beheben, betroffene Nachweise erneuern |
+| Kapazität oder Zielsystem fehlt | P2 bleibt ausgeschlossen; Pflichtnachweis offen halten, Termin transparent korrigieren |
+| Versionsdrift | Runtime/Artefakt vor jedem realen Abnahmelauf prüfen; alte Erfolge nicht umetikettieren |
+| Fehlende Automation/Hook | Manuelle Repository-Übergabe verwenden; keine automatische Synchronisation behaupten |
+
+### Nächste drei Tage
+
+| Tag | Technischer Hauptstrom | Menschlicher/externer Parallelstrom |
+| --- | --- | --- |
+| 18.10. | L02 abschließen, L03 unter Release-Toolchain isolieren | Betreiber-/Supportangaben, Store-Kontostatus |
+| 19.10. | L04 prüfen, L05 Publikations-/Deploygrenze konkretisieren | Rechtstexte prüfen, Website-Inhalte freigeben |
+| 20.10. | L07 Installation/Neustart/Backup-Rückweg, Prognose aktualisieren | Store-Assets und Reviewerinformationen, Freigabevorbereitung |
+
+### Nächster technischer Auftrag: L03
+
+Aktuellen Git-Stand prüfen, fremde Arbeiten sichern und nach AGENTS.md synchronisieren.
+Clipper-Drift unter Bun 1.4.0 mit identischem Lockfile in isolierter Umgebung reproduzieren.
+Zwei ZIP-Builds vergleichen und Ursache gegenüber eingechecktem Archiv bestimmen.
+Ausschließlich die belegte Ursache über bestehende Generatoren beheben. Driftcheck,
+betroffene Build-Verträge und Paketinstallation prüfen. Toolchain, Source/Lockfile,
+ZIP-Hashes, Exitcodes und Grenzen in LAUNCH_STATUS.md dokumentieren.
+Keine Features, Commits, Pushes, Tags, Deployments oder Store-Einreichung ohne Freigabe.
+
+Erfolg des Gesamtplans: Ein externer Nutzer kann SubKit aus öffentlichen Kanälen installieren
+und die freigegebenen Produktpfade sicher tatsächlich verwenden.
