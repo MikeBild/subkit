@@ -37,6 +37,7 @@ import {
   type PatternSignal,
   type RejectSkillCandidateParams,
   type SkillCandidateEvidenceView,
+  type SkillCandidatePattern,
   type SkillCandidateStatus,
   type SkillCandidateView,
 } from "./types.ts";
@@ -144,7 +145,13 @@ export const LIST_PROPOSED_FOR_AUTHORING_CAP = 8;
 
 const OPEN_STATUSES: SkillCandidateStatus[] = ["proposed", "context"];
 
-const UNREVIEWED_PROMPT_EXCLUDED_KINDS: ReadonlySet<string> = new Set(["connector_capability"]);
+const AUTHORING_PROMPT_PATTERN_KINDS: ReadonlySet<SkillCandidatePattern> = new Set([
+  "repair_pattern",
+  "failure_pattern",
+  "success_pattern",
+  "chained_workflow_pattern",
+  "authoring_capability",
+]);
 
 export async function listProposedForAuthoring(
   tenant_id: string,
@@ -188,7 +195,7 @@ export async function listProposedForAuthoring(
   ]);
 
   const merged: SkillCandidateView[] = [...globalRows, ...connectorRows, ...workflowRows].filter(
-    (c) => !UNREVIEWED_PROMPT_EXCLUDED_KINDS.has(c.pattern_kind),
+    (c) => AUTHORING_PROMPT_PATTERN_KINDS.has(c.pattern_kind),
   );
 
   const scopeSpecificity = (scope: SkillCandidateView["scope"]): number =>
@@ -233,6 +240,38 @@ export async function getSkillCandidate(
   if (!rows[0]) return null;
   const counts = await getEvidenceCounts([rows[0].id], db);
   return toView(rows[0], counts.get(rows[0].id) ?? 0);
+}
+
+export interface SkillCandidateReviewSubject {
+  id: string;
+  title: string;
+  status: SkillCandidateStatus;
+  body: string;
+  pattern_kind: string;
+  tags: string[];
+  review_digest: string;
+}
+
+export async function getSkillCandidatesForReview(
+  tenant_id: string,
+  ids: readonly string[],
+  exec?: Executor,
+): Promise<SkillCandidateReviewSubject[]> {
+  if (ids.length === 0) return [];
+  const db = exec ?? getDb();
+  const rows = await db
+    .select()
+    .from(skillCandidates)
+    .where(and(eq(skillCandidates.tenant_id, tenant_id), inArray(skillCandidates.id, [...ids])));
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    body: row.body,
+    pattern_kind: row.pattern_kind,
+    tags: row.tags ?? [],
+    review_digest: skillReviewDigest(row),
+  }));
 }
 
 export async function getSkillCandidateEvidence(
@@ -891,31 +930,44 @@ export async function approveSkillCandidate(
   };
 }
 
+export type RejectSkillCandidateOutcome =
+  | { kind: "rejected" }
+  | { kind: "not_found" }
+  | { kind: "already_decided"; status: SkillCandidateStatus };
+
 export async function rejectSkillCandidate(
   p: RejectSkillCandidateParams,
   exec?: Db,
-): Promise<boolean> {
+): Promise<RejectSkillCandidateOutcome> {
   const db = exec ?? (getDb() as Db);
 
-  const rejected = await db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx): Promise<RejectSkillCandidateOutcome> => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`skill-candidates:${p.tenant_id}`}, 0))`,
+    );
     const rows = await tx
-      .select()
+      .select({ id: skillCandidates.id, status: skillCandidates.status })
       .from(skillCandidates)
+      .where(
+        and(eq(skillCandidates.tenant_id, p.tenant_id), eq(skillCandidates.id, p.candidate_id)),
+      )
+      .for("update")
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) return { kind: "not_found" };
+    if (row.status !== "proposed") return { kind: "already_decided", status: row.status };
+
+    await tx
+      .update(skillCandidates)
+      .set({ status: "rejected", updated_at: new Date() })
       .where(
         and(
           eq(skillCandidates.tenant_id, p.tenant_id),
           eq(skillCandidates.id, p.candidate_id),
           eq(skillCandidates.status, "proposed"),
         ),
-      )
-      .limit(1);
-
-    if (!rows[0]) return false;
-
-    await tx
-      .update(skillCandidates)
-      .set({ status: "rejected", updated_at: new Date() })
-      .where(eq(skillCandidates.id, p.candidate_id));
+      );
 
     const actor_type = p.actor_type ?? (p.actor_id === null ? "system" : "unknown");
 
@@ -939,8 +991,8 @@ export async function rejectSkillCandidate(
       reason: p.reason ?? null,
     });
 
-    return true;
+    return { kind: "rejected" };
   });
-  if (rejected) invalidateTenantState(p.tenant_id);
-  return rejected;
+  if (outcome.kind === "rejected") invalidateTenantState(p.tenant_id);
+  return outcome;
 }

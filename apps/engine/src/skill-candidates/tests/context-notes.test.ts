@@ -100,7 +100,7 @@ describe.skipIf(skip)("drafting context notes", () => {
           { tenant_id: tenantId, candidate_id: id, actor_id: null },
           testDb.db,
         ),
-      ).toBe(false);
+      ).toEqual({ kind: "already_decided", status: "context" });
       const [after] = await testDb.db
         .select({ status: skillCandidates.status })
         .from(skillCandidates)

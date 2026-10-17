@@ -156,6 +156,35 @@ describe("system-account rejection attribution", () => {
   });
 });
 
+describe("reject outcomes", () => {
+  test("an unknown candidate answers 404 and a decided one answers 409", async () => {
+    const unknown = await fetch(
+      `${srv.baseUrl}/v1/skill-candidates/00000000-0000-4000-8000-00000000abcd/reject`,
+      {
+        method: "POST",
+        headers: { ...auth(writeKey), "content-type": "application/json" },
+        body: "{}",
+      },
+    );
+    expect(unknown.status).toBe(404);
+
+    const id = await seedCandidate("reject-twice");
+    const first = await fetch(`${srv.baseUrl}/v1/skill-candidates/${id}/reject`, {
+      method: "POST",
+      headers: { ...auth(writeKey), "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(first.status).toBe(200);
+    const second = await fetch(`${srv.baseUrl}/v1/skill-candidates/${id}/reject`, {
+      method: "POST",
+      headers: { ...auth(writeKey), "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({ code: "already_decided" });
+  });
+});
+
 describe("the escalation — approve with status:active vs. the skill:activate gate", () => {
   test("the dedicated activate route DOES require skill:activate", async () => {
     const [skill] = await srv.db

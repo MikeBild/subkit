@@ -82,7 +82,7 @@ describe.skipIf(skip)("skill-candidates/edge-cases (db)", () => {
     expect(result).toBeNull();
   });
 
-  test("reject non-existent candidate returns false", async () => {
+  test("reject non-existent candidate reports not_found", async () => {
     const result = await rejectSkillCandidate(
       {
         tenant_id: tenantId,
@@ -91,7 +91,7 @@ describe.skipIf(skip)("skill-candidates/edge-cases (db)", () => {
       },
       testDb.db,
     );
-    expect(result).toBe(false);
+    expect(result).toEqual({ kind: "not_found" });
   });
 
   test("list with no candidates returns empty array", async () => {

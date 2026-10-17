@@ -211,7 +211,7 @@ describe("confirm gate — both surfaces require locally verifiable human approv
       expect(
         confirmEnvelopeFor({
           tool: "run_workflow",
-          args: mcpArgs,
+          pending_output: null,
           rule: mcp.rule,
           approval_id: APPROVAL_ID,
           approval_url: null,

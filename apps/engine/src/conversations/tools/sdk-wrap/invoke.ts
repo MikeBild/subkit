@@ -36,7 +36,6 @@ import {
 } from "../../skill-autoload.ts";
 import { computeLineDiff } from "../../text-line-diff.ts";
 import {
-  buildPendingOutputForTool,
   type PermissionMode,
   prerequisitesForTool,
   type ToolPolicies,
@@ -54,7 +53,7 @@ import {
 import { normalizeToolResultPayload, toolCallOutcome } from "../result-payload.ts";
 import { truncateForLlm } from "../truncate.ts";
 import { buildCapAlternatives } from "./error-recovery-hints.ts";
-import { resolveGateSubjects } from "./gate-subjects.ts";
+import { prepareGate } from "./gate-subjects.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import {
   buildConfirmedToolCallIntent,
@@ -583,11 +582,17 @@ export function wrapOne(
         }
         const principal = ctx.principal ?? (await resolveConversationPrincipal(perCallCtx));
         const pendingElicitationBeforeGate = signals.pendingElicitation;
+        const preparedGate = await prepareGate(
+          inner.name,
+          stripConfirmMarkers(rawArgs),
+          ctx.tenant_id,
+          db,
+        );
         const gate = await runConfirmGate({
           tool: inner.name,
           category: inner.category,
           surface: "chat",
-          args: stripConfirmMarkers(rawArgs),
+          args: preparedGate.args,
           overrides: toolPolicies,
           permission_mode: permissionMode,
           prior_approval: priorApproval,
@@ -697,11 +702,7 @@ export function wrapOne(
         }
 
         if (gate.kind === "needs_confirm") {
-          const basePendingOutput = buildPendingOutputForTool(inner.name, rawArgs);
-          const gateSubjects = await resolveGateSubjects(inner.name, rawArgs, ctx.tenant_id, db);
-          const pendingOutput = gateSubjects
-            ? { ...(basePendingOutput ?? {}), ...gateSubjects }
-            : basePendingOutput;
+          const pendingOutput = preparedGate.pending_output;
           const buildPolicyGateSummary = (): string => {
             if (inner.name === "run_workflow") {
               const draft = ctx.getDraft();
@@ -1277,7 +1278,8 @@ export function wrapOne(
               ? (inputPayload as { pending_output?: Record<string, unknown> })
               : undefined;
           const pausePending =
-            pauseInputRecord?.pending_output ?? buildPendingOutputForTool(inner.name, rawArgs);
+            pauseInputRecord?.pending_output ??
+            (await prepareGate(inner.name, rawArgs, ctx.tenant_id, db)).pending_output;
           events.push({
             type: "elicit_request",
             elicitation_id: result.pause.elicitation_id,

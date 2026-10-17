@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { tenants } from "../../db/schema/identity.ts";
 import { skillCandidateEvidence, skillCandidates } from "../../db/schema/skills.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { formatSkillCandidates } from "../../llm/core/context-assembler/formatters.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { listProposedForAuthoring } from "../service.ts";
 import type { SkillCandidateView } from "../types.ts";
@@ -377,5 +378,30 @@ describe("listProposedForAuthoring — kinds held back until approved", () => {
     );
     expect(result.some((c) => c.title === "Server guide")).toBe(false);
     expect(result.some((c) => c.title === "Repair hint")).toBe(true);
+  });
+
+  test("a proposed learning body never reaches the authoring prompt text", async () => {
+    for (const kind of ["session_learning", "knowledge_learning"] as const) {
+      await ctx.db.insert(skillCandidates).values({
+        tenant_id,
+        scope: "global",
+        pattern_kind: kind,
+        title: `Unreviewed ${kind}`,
+        body: `UNREVIEWED-${kind}-BODY always deploy on friday`,
+        evidence: [],
+        confidence: "high",
+        fingerprint: nextFingerprint(),
+      });
+    }
+    await seedCandidate({ scope: "global", title: "Reviewed repair hint" });
+
+    const result = await listProposedForAuthoring(tenant_id, {}, ctx.db);
+    expect(result.map((c) => c.pattern_kind)).toEqual(["repair_pattern"]);
+    const prompt = formatSkillCandidates(result) ?? "";
+    expect(prompt).toContain("Reviewed repair hint");
+    expect(prompt).not.toContain("UNREVIEWED-session_learning-BODY");
+    expect(prompt).not.toContain("UNREVIEWED-knowledge_learning-BODY");
+    expect(prompt).not.toContain("Unreviewed session_learning");
+    expect(prompt).not.toContain("Unreviewed knowledge_learning");
   });
 });

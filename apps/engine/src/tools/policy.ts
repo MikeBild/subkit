@@ -1,5 +1,4 @@
 import {
-  buildPendingOutputForTool,
   decideToolMode,
   type PermissionMode,
   type ToolModeRule,
@@ -129,7 +128,7 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
 
 export function confirmEnvelopeFor(p: {
   readonly tool: string;
-  readonly args: Record<string, unknown>;
+  readonly pending_output: Record<string, unknown> | null;
   readonly rule: ConfirmReason;
   readonly approval_id: string;
   readonly approval_url: string | null;
@@ -137,7 +136,7 @@ export function confirmEnvelopeFor(p: {
 }): ConfirmEnvelope {
   return {
     tool: p.tool,
-    pending_output: buildPendingOutputForTool(p.tool, p.args),
+    pending_output: p.pending_output,
     policy_mode: "confirm_before_execution",
     reason: p.rule,
     tool_call_id: p.approval_id,
