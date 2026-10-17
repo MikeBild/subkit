@@ -1,26 +1,29 @@
 {
   "client": "codex",
-  "verified_at": "2026-07-19",
+  "verified_at": "2026-10-17",
   "transports": ["streamable-http", "stdio"],
-  "config_path_hints": ["Codex Settings → MCP Servers (UI)", "~/.codex/config.toml (advanced)"],
+  "config_path_hints": [
+    "~/.codex/config.toml (shared by the ChatGPT desktop app, Codex CLI and IDE extension)",
+    ".codex/config.toml in a trusted project (project scope)",
+    "ChatGPT desktop app: Settings → MCP servers → Add server, then Restart"
+  ],
   "config_template_streamable_http": {
-    "mcpServers": {
+    "mcp_servers": {
       "subkit": {
         "url": "${engine_url}/mcp",
-        "transport": "streamable-http",
-        "headers": {
+        "http_headers": {
           "Authorization": "Bearer ${plaintext_key}"
         }
       }
     }
   },
   "config_template_stdio": {
-    "mcpServers": {
+    "mcp_servers": {
       "subkit": {
         "command": "sk",
         "args": ["mcp"]
       }
     }
   },
-  "notes": "Streamable HTTP is the recommended transport. The stdio path requires `sk login` on the local machine first; the proxy reads SUBKIT_API_KEY / SUBKIT_ENGINE_URL / ~/.sk/config.json."
+  "notes": "Codex reads TOML, not JSON: write the template as the table [mcp_servers.subkit] with the same keys (http_headers as an inline table). Streamable HTTP is the recommended transport. The stdio path requires `sk login` on the local machine first; the proxy reads SUBKIT_API_KEY / SUBKIT_ENGINE_URL / ~/.sk/config.json."
 }

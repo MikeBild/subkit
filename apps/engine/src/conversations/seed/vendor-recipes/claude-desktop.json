@@ -1,19 +1,18 @@
 {
   "client": "claude-desktop",
-  "verified_at": "2026-07-19",
+  "verified_at": "2026-10-17",
   "transports": ["streamable-http", "stdio"],
   "config_path_hints": [
-    "macOS: ~/Library/Application Support/Claude/claude_desktop_config.json",
-    "Windows: %APPDATA%/Claude/claude_desktop_config.json"
+    "Remote server: Customize → Connectors → + Add → Add custom connector",
+    "Local (stdio) server, macOS: ~/Library/Application Support/Claude/claude_desktop_config.json",
+    "Local (stdio) server, Windows: %APPDATA%\\Claude\\claude_desktop_config.json"
   ],
   "config_template_streamable_http": {
-    "mcpServers": {
-      "subkit": {
-        "url": "${engine_url}/mcp",
-        "transport": "streamable-http",
-        "headers": {
-          "Authorization": "Bearer ${plaintext_key}"
-        }
+    "custom_connector": {
+      "name": "subkit",
+      "url": "${engine_url}/mcp",
+      "request_headers": {
+        "Authorization": "Bearer ${plaintext_key}"
       }
     }
   },
@@ -25,5 +24,5 @@
       }
     }
   },
-  "notes": "Restart Claude Desktop fully (Cmd-Q on macOS) after editing the config — the app reads it once at launch."
+  "notes": "The streamable HTTP server is added in the app, not in the JSON file: enter name and URL in the custom connector dialog and add the Authorization header under Request headers (fixed credentials sent on every request). Alternatively sign in with OAuth instead of a header. The server must be reachable over the public internet from Anthropic's IP ranges. The JSON file only takes local stdio servers (command/args); after editing it, quit Claude Desktop completely (Cmd-Q on macOS) and start it again — the app reads it once at launch."
 }
