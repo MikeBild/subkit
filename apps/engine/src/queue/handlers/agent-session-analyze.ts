@@ -57,6 +57,7 @@ export async function processAgentSessionAnalyzeJob(
       proposed: result.proposed,
       updated: result.updated,
       skipped: result.skipped,
+      dropped: result.dropped,
       duration_ms: Date.now() - started,
     });
   } catch (err) {

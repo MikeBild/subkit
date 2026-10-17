@@ -97,6 +97,19 @@ describe("POST /v1/agent/sessions — happy path", () => {
     expect((captured.metadata as { agent?: string })?.agent).toBe("claude-code");
   });
 
+  test("the queued transcript is scrubbed before it is enqueued", async () => {
+    const token = ["ghp", "abcdefghijklmnopqrstuvwxyz0123456789"].join("_");
+    const before = enqueued.length;
+    const res = await post(
+      { agent: "codex", transcript: `user: push with ${token}\nassistant: ok` },
+      ctx.apiKey,
+    );
+    expect(res.status).toBe(202);
+    const job = enqueued[before];
+    expect(job?.transcript).not.toContain(token);
+    expect(job?.transcript).toContain("***REDACTED:pat***");
+  });
+
   test("the candidate list accepts the session_learning filter (curation path)", async () => {
     const res = await fetch(
       `${ctx.baseUrl}/v1/skill-candidates?status=proposed&pattern_kind=session_learning`,

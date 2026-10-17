@@ -9,6 +9,7 @@ import type { Actor } from "../audit/actor.ts";
 import type { Db } from "../db/client.ts";
 import { DOMAIN_TAG_PREFIX } from "../knowledge/tags.ts";
 import { invoke } from "../llm/core/invoke.ts";
+import { referencesKeyMaterialPath, scrubString } from "../logging/scrub-secrets.ts";
 import { upsertFromSignal } from "../skill-candidates/service.ts";
 import type { PatternSignal, SkillCandidateConfidence } from "../skill-candidates/types.ts";
 
@@ -50,23 +51,48 @@ function domainTags(domains: string[]): string[] {
   return domains.map((d) => `${DOMAIN_TAG_PREFIX}${d}`);
 }
 
+export interface LearningText {
+  title: string;
+  body: string;
+  pitfalls: string[];
+}
+
+export type RedactedLearning = { kind: "dropped" } | ({ kind: "kept" } & LearningText);
+
+export function redactLearning(learning: LearningText): RedactedLearning {
+  const texts = [learning.title, learning.body, ...learning.pitfalls];
+  if (texts.some(referencesKeyMaterialPath)) return { kind: "dropped" };
+  return {
+    kind: "kept",
+    title: scrubString(learning.title),
+    body: scrubString(learning.body),
+    pitfalls: learning.pitfalls.map(scrubString),
+  };
+}
+
+export type ProposeLearningAction = "proposed" | "updated" | "skipped" | "dropped";
+
 export async function proposeLearning(
   p: ProposeLearningParams,
-): Promise<{ action: "proposed" | "updated" | "skipped"; candidate_id: string | null }> {
+): Promise<{ action: ProposeLearningAction; candidate_id: string | null }> {
+  const redacted = redactLearning({ title: p.title, body: p.body, pitfalls: p.pitfalls ?? [] });
+  if (redacted.kind === "dropped") return { action: "dropped", candidate_id: null };
   const signal: PatternSignal = {
     pattern_kind: learningPattern(p.kind),
     scope: "global",
-    title: p.title,
-    body: p.body,
+    title: redacted.title,
+    body: redacted.body,
     examples: [],
     best_practices: [],
-    pitfalls: p.pitfalls ?? [],
+    pitfalls: redacted.pitfalls,
     doc_refs: [],
-    fingerprint: learningFingerprint(p.domains, p.title, p.kind),
+    fingerprint: learningFingerprint(p.domains, redacted.title, p.kind),
     confidence: p.confidence,
     tags: domainTags(p.domains),
     proposer: p.actor,
-    evidence: [{ evidence_type: "agent_session", summary: p.evidence_summary.slice(0, 2_000) }],
+    evidence: [
+      { evidence_type: "agent_session", summary: scrubString(p.evidence_summary).slice(0, 2_000) },
+    ],
   };
   const result = await upsertFromSignal(p.tenant_id, signal, p.db);
   if (result.action === "recorded")
@@ -132,14 +158,17 @@ export interface AnalyzeAgentSessionResult {
   proposed: number;
   updated: number;
   skipped: number;
+  dropped: number;
 }
 
 export async function analyzeAgentSession(
   p: AnalyzeAgentSessionParams,
 ): Promise<AnalyzeAgentSessionResult> {
-  const sample = sampleTranscript(p.transcript.slice(0, TRANSCRIPT_MAX_CHARS));
+  const sample = scrubString(
+    sampleTranscript(scrubString(p.transcript.slice(0, TRANSCRIPT_MAX_CHARS))),
+  );
   if (sample.trim().length === 0) {
-    return { learnings_found: 0, proposed: 0, updated: 0, skipped: 0 };
+    return { learnings_found: 0, proposed: 0, updated: 0, skipped: 0, dropped: 0 };
   }
 
   const domainLabel = p.meta.domains.length > 0 ? p.meta.domains.join(", ") : "(none declared)";
@@ -180,7 +209,7 @@ export async function analyzeAgentSession(
     .filter(Boolean)
     .join(" ");
 
-  const counts = { proposed: 0, updated: 0, skipped: 0 };
+  const counts = { proposed: 0, updated: 0, skipped: 0, dropped: 0 };
   for (const learning of learnings) {
     const { action } = await proposeLearning({
       tenant_id: p.tenant_id,
