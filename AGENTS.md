@@ -146,6 +146,10 @@ never remove unrelated user content.
 
 ## Sources and workflow
 
+For launch work, read [LAUNCH.md](LAUNCH.md), [LAUNCH_STATUS.md](LAUNCH_STATUS.md),
+and [LAUNCH_SYNC.md](LAUNCH_SYNC.md). Record verified progress and preserve the
+approval and validation rules in this guide.
+
 Read touched code and the nearest AGENTS.md:
 - apps/engine/AGENTS.md for engine work
 - apps/sk/AGENTS.md for CLI work
