@@ -118,14 +118,60 @@ test("a form the reader cannot render is refused at call time with a recovery hi
   });
 });
 
-test("resume projects the titles a confirmation concerns and drops everything else", () => {
+test("resume projects the stored subjects a confirmation concerns and drops everything else", () => {
   const prompt = pendingPrompt({
-    question: "Policy requires confirmation before running approve_skill_candidate. Proceed?",
+    question: "Policy requires confirmation before running reject_skill_candidate. Proceed?",
     commit_intent: { kind: "execute_confirmed_tool_call" },
-    pending_output: { titles: ["Chord analysis", "", 7, "  Retention  "], candidate_id: "hidden" },
+    pending_output: {
+      titles: ["Model supplied title"],
+      candidate_ids: ["hidden"],
+      subjects: [
+        { id: "a", title: "Chord analysis", status: "proposed" },
+        { id: "b", title: "  Retention  ", status: "proposed" },
+        { id: "c", title: null, status: "not_found" },
+        7,
+      ],
+    },
   });
-  expect(prompt.prompt?.subjects).toEqual(["Chord analysis", "Retention"]);
+  expect(prompt.prompt?.subjects).toEqual(["Chord analysis", "Retention", "c (not found)"]);
   expect(
-    pendingPrompt({ question: "Proceed?", pending_output: { titles: [] } }).prompt,
+    pendingPrompt({ question: "Proceed?", pending_output: { titles: ["Only the model"] } }).prompt,
   ).not.toHaveProperty("subjects");
+  expect(
+    pendingPrompt({ question: "Proceed?", pending_output: { subjects: [] } }).prompt,
+  ).not.toHaveProperty("subjects");
+});
+
+test("resume shows every subject of a large batch", () => {
+  const subjects = Array.from({ length: 45 }, (_, i) => ({
+    id: `id-${i}`,
+    title: `Candidate ${i}`,
+    status: "proposed",
+  }));
+  const prompt = pendingPrompt({ question: "Proceed?", pending_output: { subjects } });
+  expect(prompt.prompt?.subjects).toHaveLength(45);
+});
+
+test("resume shows the approval target and the body excerpt after the subject", () => {
+  const draft = pendingPrompt({
+    question: "Proceed?",
+    pending_output: {
+      subjects: [{ id: "a", title: "Retry budget", status: "proposed" }],
+      target: { kind: "skill_draft" },
+      body_excerpt: "Retry twice, then stop.",
+    },
+  });
+  expect(draft.prompt?.subjects).toEqual([
+    "Retry budget",
+    "Target: new draft skill (needs activation)",
+    "Retry twice, then stop.",
+  ]);
+  const fact = pendingPrompt({
+    question: "Proceed?",
+    pending_output: {
+      subjects: [{ id: "a", title: "Rota", status: "proposed" }],
+      target: { kind: "knowledge", knowledge_source_name: "Learnings · ops" },
+    },
+  });
+  expect(fact.prompt?.subjects).toEqual(["Rota", "Target: knowledge source Learnings · ops"]);
 });

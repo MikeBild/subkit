@@ -51,6 +51,26 @@ afterAll(async () => {
 }, 30_000);
 
 describe.skipIf(skip)("session_learning capture loop", () => {
+  test("a token in title and body is masked before it is persisted", async () => {
+    const token = ["ghp", "abcdefghijklmnopqrstuvwxyz0123456789"].join("_");
+    const result = await propose(`Push mit ${token}`, { body: `Vor dem Push ${token} setzen.` });
+    expect(result.action).toBe("proposed");
+    const candidate = await getSkillCandidate(tenantId, result.candidate_id ?? "", db);
+    expect(JSON.stringify(candidate)).not.toContain(token);
+    expect(candidate?.title).toContain("***REDACTED:pat***");
+    expect(candidate?.body).toContain("***REDACTED:pat***");
+  });
+
+  test("a learning naming a key file location is never persisted", async () => {
+    const title = "Schlüsselablage des Engine-Hosts";
+    const result = await propose(title, {
+      body: "Der Schlüssel liegt unter /etc/subkit/master.key.",
+    });
+    expect(result).toEqual({ action: "dropped", candidate_id: null });
+    const items = await listSkillCandidates({ tenant_id: tenantId }, db);
+    expect(items.map((c) => c.title)).not.toContain(title);
+  });
+
   test("proposes with domain tags and stays proposed", async () => {
     const result = await propose("Halbgeviertstrich als Gedankenstrich");
     expect(result.action).toBe("proposed");
@@ -88,7 +108,7 @@ describe.skipIf(skip)("session_learning capture loop", () => {
       { tenant_id: tenantId, candidate_id: first.candidate_id ?? "", actor_id: null },
       db,
     );
-    expect(rejected).toBe(true);
+    expect(rejected).toEqual({ kind: "rejected" });
     const again = await propose("Verworfene Regel");
     expect(again.action).toBe("skipped");
   });
@@ -104,7 +124,7 @@ describe.skipIf(skip)("session_learning capture loop", () => {
       db,
     );
 
-    expect(rejected).toBe(true);
+    expect(rejected).toEqual({ kind: "rejected" });
     const [audit] = await db
       .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
       .from(auditLog)

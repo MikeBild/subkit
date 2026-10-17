@@ -44206,6 +44206,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The skill candidate was already decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }

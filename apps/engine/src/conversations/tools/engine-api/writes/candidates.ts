@@ -6,20 +6,68 @@ import {
   getSkillCandidate,
   rejectSkillCandidate,
 } from "../../../../skill-candidates/service.ts";
-import type { ConversationTool } from "../../index.ts";
+import type { ConversationTool, ToolContext, ToolPrecheck, ToolResult } from "../../index.ts";
 import { checkTenantPermission } from "../../permission-gate.ts";
+import {
+  type GateCard,
+  resolveGateSubjects,
+  unresolvedGateSubjects,
+} from "../../sdk-wrap/gate-subjects.ts";
 
 const IdInput = z.object({ candidate_id: z.string().uuid() }).openapi("CandidateIdInput");
+
+const ApproveSkillInput = IdInput.extend({
+  expected_review_digest: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional()
+    .describe(
+      "Review digest of the candidate the person confirmed. The engine binds it at the confirmation; leave it out.",
+    ),
+}).openapi("ApproveSkillCandidateInput");
+
+function unresolvedRefusal(card: GateCard): ToolResult | null {
+  const { not_found, already_decided } = unresolvedGateSubjects(card);
+  if (not_found.length === 0 && already_decided.length === 0) return null;
+  const code = not_found.length > 0 ? "not_found" : "already_decided";
+  const parts: string[] = [];
+  if (not_found.length > 0)
+    parts.push(`These skill candidate ids do not exist in this tenant: ${not_found.join(", ")}.`);
+  if (already_decided.length > 0)
+    parts.push(
+      `These skill candidates are no longer proposed and were already decided: ${already_decided.join(", ")}.`,
+    );
+  const message = `Nothing ran and nobody was asked to confirm it. ${parts.join(" ")} Look the candidates up with list_skill_candidates and retry only with proposed ids.`;
+  return {
+    ok: false,
+    error_code: code,
+    message,
+    data: { error: code, not_found, already_decided, message },
+    next_best_actions: ["list_skill_candidates"],
+  };
+}
+
+async function refuseUnresolved(
+  tool: string,
+  ctx: ToolContext,
+  args: unknown,
+): Promise<ToolPrecheck> {
+  const raw = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+  const card = await resolveGateSubjects(tool, raw, ctx.tenant_id, ctx.db);
+  const refusal = card ? unresolvedRefusal(card) : null;
+  return refusal ? { ok: false, result: refusal } : { ok: true };
+}
 
 export const approveSkillCandidateTool: ConversationTool = {
   name: "approve_skill_candidate",
   description:
-    "Approve a skill candidate. A practice or detected pattern becomes a draft tenant skill (activation is a separate permissioned action); a fact (`knowledge_learning`) is appended to the domain's knowledge source as a new version. Writes audit. Idempotent — already-approved candidates return ok=false.",
-  inputSchema: IdInput,
+    "Approve a proposed skill candidate. A practice or detected pattern becomes a draft tenant skill that stays unused until someone activates it (a separate permissioned action); a fact (`knowledge_learning`) is appended to the domain's knowledge source as a new version. The confirmation shows the target and an excerpt of the candidate; if the candidate changes before it is confirmed the call fails with changed_since_review. Unknown ids fail with not_found, decided ones with already_decided. Writes audit.",
+  inputSchema: ApproveSkillInput,
   category: "tenant_write",
   visible_when_readonly: true,
   authoring_only: true,
-  async execute(ctx, args: z.infer<typeof IdInput>) {
+  precheck: (ctx, args) => refuseUnresolved("approve_skill_candidate", ctx, args),
+  async execute(ctx, args: z.infer<typeof ApproveSkillInput>) {
     const pending = await getSkillCandidate(ctx.tenant_id, args.candidate_id, ctx.db);
     const fact = pending?.pattern_kind === "knowledge_learning";
     if (fact) {
@@ -40,19 +88,34 @@ export const approveSkillCandidateTool: ConversationTool = {
         candidate_id: args.candidate_id,
         actor: ctx.principal ? actorOf(ctx.principal) : null,
         may_write_knowledge: fact,
+        ...(args.expected_review_digest
+          ? { expected_review_digest: args.expected_review_digest }
+          : {}),
       },
       ctx.db,
     );
     if (!out) {
+      const current = await getSkillCandidate(ctx.tenant_id, args.candidate_id, ctx.db);
+      const error = !current
+        ? "not_found"
+        : current.status === "proposed"
+          ? "changed_since_review"
+          : "already_decided";
+      const message =
+        error === "changed_since_review"
+          ? "The skill candidate changed after the confirmation was shown. Nothing was approved; show the current candidate and ask again."
+          : error === "not_found"
+            ? "The skill candidate no longer exists. Nothing was approved."
+            : "The skill candidate was already decided. Nothing was approved.";
       await ctx.engineClient.audit_write({
         resource_type: "skill_candidate",
         resource_id: args.candidate_id,
         action: "conversation.approve_skill_candidate",
         result: "error",
-        reason: "candidate not found or not in proposed state",
+        reason: error,
         metadata: { conversation_id: ctx.conversation_id },
       });
-      return { ok: false, data: { error: "skill_candidate_not_actionable" } };
+      return { ok: false, error_code: error, message, data: { error, message } };
     }
     await ctx.engineClient.audit_write({
       resource_type: "skill_candidate",
@@ -65,11 +128,25 @@ export const approveSkillCandidateTool: ConversationTool = {
         ...(out.knowledge ? { knowledge_source_id: out.knowledge.knowledge_source_id } : {}),
       },
     });
+    if (out.knowledge) {
+      return {
+        ok: true,
+        data: {
+          candidate: out.candidate,
+          knowledge: out.knowledge,
+          message: `Added "${out.candidate.title}" to the knowledge source ${out.knowledge.slug}.`,
+        },
+      };
+    }
     return {
       ok: true,
-      data: out.knowledge
-        ? { candidate: out.candidate, knowledge: out.knowledge }
-        : { candidate: out.candidate, skill_id: out.skill_id, skill_status: "draft" },
+      data: {
+        candidate: out.candidate,
+        skill_id: out.skill_id,
+        skill_status: "draft",
+        activation_required: true,
+        message: `Created the skill "${out.candidate.title}" as a draft. It is not used until someone activates it.`,
+      },
     };
   },
 };
@@ -79,25 +156,16 @@ const MAX_REJECT_BATCH = 100;
 const RejectInput = z
   .object({
     candidate_ids: z.array(z.string().uuid()).min(1).max(MAX_REJECT_BATCH),
-    titles: z
-      .array(z.string().trim().min(1).max(200))
-      .min(1)
-      .max(MAX_REJECT_BATCH)
-      .describe(
-        "Candidate titles in the same order as candidate_ids, shown to the person before they confirm",
-      ),
     reason: z.string().trim().min(1).max(500).optional(),
   })
-  .refine((v) => v.titles.length === v.candidate_ids.length, {
-    message: "titles must have one entry per candidate_ids entry",
-    path: ["titles"],
-  })
   .openapi("RejectSkillCandidatesInput");
+
+type RejectResultOutcome = "rejected" | "not_found" | "already_decided";
 
 export const rejectSkillCandidateTool: ConversationTool = {
   name: "reject_skill_candidate",
   description:
-    "Reject one or more proposed skill candidates (1-100 ids with one title each, one confirmation covers the batch). Rejected candidates never become skills or knowledge; the proposal stays on record as decided. Only candidates still in the proposed state are rejected — others are reported as not_actionable. Writes audit per candidate.",
+    "Reject one or more proposed skill candidates (1-100 ids, one confirmation covers the batch; the engine shows each candidate's stored title). Rejected candidates never become skills or knowledge; the proposal stays on record as decided. Unknown ids fail the whole call with not_found and candidates no longer proposed with already_decided, both before anyone is asked to confirm. Writes audit per candidate.",
   inputSchema: RejectInput,
   category: "tenant_write",
   visible_when_readonly: true,
@@ -110,6 +178,7 @@ export const rejectSkillCandidateTool: ConversationTool = {
       return Array.isArray(ids) && typeof ids[0] === "string" ? ids[0] : null;
     },
   },
+  precheck: (ctx, args) => refuseUnresolved("reject_skill_candidate", ctx, args),
   async execute(ctx, args: z.infer<typeof RejectInput>) {
     const ids = [...new Set(args.candidate_ids)];
     for (const candidateId of ids) {
@@ -125,9 +194,9 @@ export const rejectSkillCandidateTool: ConversationTool = {
       }
     }
     const actorType = ctx.principal?.kind ?? (ctx.actor_id === null ? "system" : "unknown");
-    const results: Array<{ candidate_id: string; outcome: "rejected" | "not_actionable" }> = [];
+    const results: Array<{ candidate_id: string; outcome: RejectResultOutcome }> = [];
     for (const candidateId of ids) {
-      const rejected = await rejectSkillCandidate(
+      const outcome = await rejectSkillCandidate(
         {
           tenant_id: ctx.tenant_id,
           candidate_id: candidateId,
@@ -141,24 +210,31 @@ export const rejectSkillCandidateTool: ConversationTool = {
         resource_type: "skill_candidate",
         resource_id: candidateId,
         action: "conversation.reject_skill_candidate",
-        result: rejected ? "success" : "error",
-        ...(rejected ? {} : { reason: "candidate not found or not in proposed state" }),
+        result: outcome.kind === "rejected" ? "success" : "error",
+        ...(outcome.kind === "rejected" ? {} : { reason: outcome.kind }),
         metadata: { conversation_id: ctx.conversation_id },
       });
-      results.push({
-        candidate_id: candidateId,
-        outcome: rejected ? "rejected" : "not_actionable",
-      });
+      results.push({ candidate_id: candidateId, outcome: outcome.kind });
     }
-    const rejectedCount = results.filter((r) => r.outcome === "rejected").length;
+    const count = (kind: RejectResultOutcome) => results.filter((r) => r.outcome === kind).length;
+    const rejectedCount = count("rejected");
+    const notFoundCount = count("not_found");
+    const alreadyDecidedCount = count("already_decided");
+    const data = {
+      results,
+      rejected: rejectedCount,
+      not_found: notFoundCount,
+      already_decided: alreadyDecidedCount,
+    };
+    if (rejectedCount > 0) return { ok: true, data };
+    const error = notFoundCount > 0 ? "not_found" : "already_decided";
+    const message = `Nothing was rejected. The confirmed skill candidates changed before the rejection ran: ${notFoundCount} no longer exist and ${alreadyDecidedCount} were already decided. Look them up with list_skill_candidates before trying again.`;
     return {
-      ok: rejectedCount > 0,
-      data: {
-        results,
-        rejected: rejectedCount,
-        not_actionable: results.length - rejectedCount,
-        ...(rejectedCount === 0 ? { error: "skill_candidate_not_actionable" } : {}),
-      },
+      ok: false,
+      error_code: error,
+      message,
+      data: { ...data, error, message },
+      next_best_actions: ["list_skill_candidates"],
     };
   },
 };

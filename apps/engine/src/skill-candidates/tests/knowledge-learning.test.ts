@@ -171,7 +171,7 @@ describe.skipIf(skip)("a fact learning becomes knowledge", () => {
         { tenant_id: tenantId, candidate_id: first.candidate_id ?? "", actor_id: approver.id },
         db,
       ),
-    ).toBe(true);
+    ).toEqual({ kind: "rejected" });
     expect((await propose("Wrong rota", "Page by chat at night.")).action).toBe("skipped");
   });
 

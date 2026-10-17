@@ -182,6 +182,10 @@ const rejectRoute = createRoute({
       content: { "application/json": { schema: z.object({ rejected: z.boolean() }) } },
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "The skill candidate was already decided",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -357,7 +361,7 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const rejected = await svc.rejectSkillCandidate(
+    const outcome = await svc.rejectSkillCandidate(
       {
         tenant_id: principal.tenant_id,
         candidate_id: id,
@@ -367,7 +371,11 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
-    if (!rejected) throw new NotFoundError("skill_candidate");
+    if (outcome.kind === "not_found") throw new NotFoundError("skill_candidate");
+    if (outcome.kind === "already_decided")
+      throw new HttpError(409, "already_decided", "The skill candidate was already decided", {
+        details: { status: outcome.status },
+      });
     return c.json({ rejected: true }, 200);
   });
 }
