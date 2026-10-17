@@ -203,6 +203,7 @@ export const ConversationDetailSchema = z
                     target: z.string().nullable(),
                   })
                   .optional(),
+                subjects: z.array(z.string()).optional(),
               })
               .optional(),
             expires_at: z.string(),

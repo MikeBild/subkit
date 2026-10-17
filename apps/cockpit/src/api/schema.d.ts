@@ -24440,6 +24440,7 @@ export interface components {
                             method: string;
                             target: string | null;
                         };
+                        subjects?: string[];
                     };
                     expires_at: string;
                 } | null;

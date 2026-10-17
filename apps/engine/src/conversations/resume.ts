@@ -37,6 +37,7 @@ export interface ResumeSummary {
       fields?: ResumeFormField[];
       external_tool?: ExternalToolSubject;
       effect?: ConnectorCallSubject;
+      subjects?: string[];
     };
     summary: string;
     expires_at: string;
@@ -366,6 +367,17 @@ function externalToolSubject(value: unknown): ExternalToolSubject | undefined {
   };
 }
 
+function pendingSubjects(value: unknown): string[] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const titles = (value as Record<string, unknown>).titles;
+  if (!Array.isArray(titles)) return undefined;
+  const subjects = titles
+    .filter((title): title is string => typeof title === "string" && title.trim().length > 0)
+    .slice(0, 20)
+    .map((title) => title.trim().slice(0, 200));
+  return subjects.length > 0 ? subjects : undefined;
+}
+
 export function pendingPrompt(input: unknown): {
   prompt?: {
     question: string;
@@ -374,6 +386,7 @@ export function pendingPrompt(input: unknown): {
     fields?: ResumeFormField[];
     external_tool?: ExternalToolSubject;
     effect?: ConnectorCallSubject;
+    subjects?: string[];
   };
 } {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
@@ -382,6 +395,7 @@ export function pendingPrompt(input: unknown): {
   const fields = resumeFormFields(value.fields);
   const externalTool = externalToolSubject(value.external_tool);
   const effect = connectorCallSubject(value.effect);
+  const subjects = pendingSubjects(value.pending_output);
   const intent = value.commit_intent as { kind?: unknown } | undefined;
   let authorizationUrl: string | undefined;
   if (intent?.kind === "oauth_completed" && typeof value.authorization_url === "string") {
@@ -405,6 +419,7 @@ export function pendingPrompt(input: unknown): {
       ...(authorizationUrl ? { authorization_url: authorizationUrl } : {}),
       ...(externalTool ? { external_tool: externalTool } : {}),
       ...(effect ? { effect } : {}),
+      ...(subjects ? { subjects } : {}),
     },
   };
 }

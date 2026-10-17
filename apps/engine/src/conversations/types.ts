@@ -507,6 +507,7 @@ export interface ConversationResumeSummary {
       fields?: ResumeFormField[];
       external_tool?: ExternalToolSubject;
       effect?: ConnectorCallSubject;
+      subjects?: string[];
     };
     summary: string;
     expires_at: string;

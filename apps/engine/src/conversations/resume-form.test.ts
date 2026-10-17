@@ -117,3 +117,15 @@ test("a form the reader cannot render is refused at call time with a recovery hi
     message: expect.stringContaining("unique name"),
   });
 });
+
+test("resume projects the titles a confirmation concerns and drops everything else", () => {
+  const prompt = pendingPrompt({
+    question: "Policy requires confirmation before running approve_skill_candidate. Proceed?",
+    commit_intent: { kind: "execute_confirmed_tool_call" },
+    pending_output: { titles: ["Chord analysis", "", 7, "  Retention  "], candidate_id: "hidden" },
+  });
+  expect(prompt.prompt?.subjects).toEqual(["Chord analysis", "Retention"]);
+  expect(
+    pendingPrompt({ question: "Proceed?", pending_output: { titles: [] } }).prompt,
+  ).not.toHaveProperty("subjects");
+});
