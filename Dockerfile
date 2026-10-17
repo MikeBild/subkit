@@ -26,12 +26,19 @@ RUN set -eux; \
       --external cpu-features \
       --define "process.env.NODE_ENV=process.env.NODE_ENV" \
       --define "BUILD_VERSION=\"$VERSION\"" \
+      --metafile=/out/engine.json \
       --outfile /out/engine; \
     bun build apps/sk/src/index.ts --compile \
       --external cpu-features \
       --define "process.env.NODE_ENV=process.env.NODE_ENV" \
       --define "BUILD_VERSION=\"$VERSION\"" \
+      --metafile=/out/sk.json \
       --outfile /out/sk
+
+RUN NODE_ENV=production bunx vite build --config apps/cockpit/vite.config.ts \
+      --sourcemap --outDir /out/notice-cockpit && \
+    bun scripts/third-party-notices.ts /out/engine.json /out/sk.json \
+      /out/notice-cockpit/assets/*.map > /out/THIRD_PARTY_NOTICES.txt
 
 FROM builder AS generated-cli
 RUN set -eux; \
@@ -72,6 +79,7 @@ COPY --from=builder /out/engine /usr/local/bin/engine.bin
 COPY --from=builder /out/sk /usr/local/bin/sk.bin
 COPY --from=cli-binaries /out/binaries /usr/local/share/subkit/binaries
 COPY LICENSE /usr/local/share/subkit/LICENSE
+COPY --from=builder /out/THIRD_PARTY_NOTICES.txt /usr/local/share/subkit/THIRD_PARTY_NOTICES.txt
 COPY deploy/docker/subkit-wrap.sh /usr/local/bin/subkit-wrap.sh
 COPY deploy/docker/entrypoint.sh /usr/local/bin/subkit-entrypoint.sh
 RUN chmod +x /usr/local/bin/engine.bin /usr/local/bin/sk.bin \

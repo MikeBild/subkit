@@ -6,6 +6,7 @@ import { releaseGateContext } from "./release-gate-provenance.ts";
 
 export const LOCAL_RELEASE_FILES = [
   "LICENSE",
+  "THIRD_PARTY_NOTICES.txt",
   "docker-compose.yml",
   "engine_linux_x64",
   "release-notes.md",

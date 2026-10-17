@@ -109,6 +109,18 @@ describe("local release evidence", () => {
     expect(() => bundle.verifyLocalBundle(assets, tag, commit)).toThrow("checksum");
   });
 
+  test("requires third-party notices and rejects replacement after signing", async () => {
+    const { assets, bundle } = await fixture();
+    const license = join(assets, "THIRD_PARTY_NOTICES.txt");
+    rmSync(license, { force: true });
+    expect(() => bundle.signLocalBundle(assets, pem)).toThrow();
+    writeFileSync(license, "license fixture");
+    bundle.signLocalBundle(assets, pem);
+    expect(bundle.verifyLocalBundle(assets, tag, commit)).toEqual(provenance);
+    writeFileSync(license, "changed license");
+    expect(() => bundle.verifyLocalBundle(assets, tag, commit)).toThrow("checksum");
+  });
+
   test("rejects altered signature and altered manifest", async () => {
     const { assets, bundle } = await fixture();
     bundle.signLocalBundle(assets, pem);

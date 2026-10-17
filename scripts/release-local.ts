@@ -268,6 +268,11 @@ async function prepare(tag: string, keyFile: string): Promise<void> {
       join(assets, "engine_linux_x64"),
     ]);
     run("docker", ["cp", `${container}:/usr/local/share/subkit/binaries/.`, assets]);
+    run("docker", [
+      "cp",
+      `${container}:/usr/local/share/subkit/THIRD_PARTY_NOTICES.txt`,
+      join(assets, "THIRD_PARTY_NOTICES.txt"),
+    ]);
   } finally {
     run("docker", ["rm", container]);
   }
