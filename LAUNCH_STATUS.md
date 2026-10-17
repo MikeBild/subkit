@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-17T17:18:21Z**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-17T17:22:46Z**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktcommit: **7c00b46e7832e97f9c08613ce04b1e5540841bfe**, `main`, Version **9.15.2**.
 - Checkout und origin/main waren nach `git pull --ff-only origin main` identisch; vor Dateierstellung sauber.
-- Synchronisation: **1c4c5d5cfbcd4ca576b3bdead1ae7dcaaa15f02b auf origin/main bestätigt**; sauberer Checkout, Divergenz 0/0 nach Push. Neuere lokale Änderungen sind erst mit ihrem eigenen Push synchronisiert. Produkt-Baseline oben bleibt für historische Nachweise erhalten.
+- Synchronisation: **fb067a581d7e7287b23921bfbb47afb9f51da1b0 auf origin/main bestätigt**; sauberer Checkout, Divergenz 0/0 nach Push. Neuere lokale Änderungen sind erst mit ihrem eigenen Push synchronisiert. Produkt-Baseline oben bleibt für historische Nachweise erhalten.
 - Countdown am 17.10.: **10/11 Kalendertage bis Beta**, **29 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -21,7 +21,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L02 | DONE | Drei Dateien und kurzer AGENTS-Verweis erstellt; Dokumentvalidierung E11 bestanden. Commit 01257eb8a gepusht, E15. |
 | L03 | DONE | Veraltetes generiertes ZIP mit bestehendem Generator erneuert; Bun 1.4.0 macOS/Linux identisch; 63 Tests und funktionaler Chromium-Lauf PASS, E12. Commit 61ee865d3 gepusht, E15. |
 | L04 | IN_PROGRESS | Historienscan abgeschlossen: 11 Treffer, davon 3 Dokumentationsbeispiele und 8 Vorkommen desselben historischen Firebase-Clientkeys. API-Einschränkungen/Stilllegung dieses Keys ungeprüft; Lizenz-/Publikationsprüfung offen, E19. |
-| L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17; Signatur gegen Updater-Schlüssel vor Upload geprüft, E18. Lokale Publikationsstrecke noch offen. |
+| L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17; Signatur gegen Updater-Schlüssel vor Upload geprüft, E18. GitHub-Installer mit Signaturprüfung und lokalem Alias korrigiert, E20. Lokale Publikationsstrecke noch offen. |
 | L06 | BLOCKED | Betreiber-/Supportangaben und juristische Freigabe erforderlich. |
 | L07 | IN_PROGRESS | Quickstart mit einmaliger geschützter .env, Wiederverwendung und Recovery-Grenzen korrigiert; Shell-/Compose-Prüfung E16. Commit 1c4c5d5cf gepusht. Echter Start/Restore offen; Docker hat nur 8,9 GiB frei gegenüber 12 GiB Build-Vorgabe. |
 | L08 | TODO | Launch-Security-Prüfung und Befundregister. |
@@ -78,8 +78,9 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 | E15 | L02/L03/L05 | Drei Commits bis 01257eb8a mit normalen Hooks gepusht; alle acht Pre-Push-Schritte PASS (Lint, Typecheck, Determinismus, Invarianten, Drift, Commitnachrichten, Gitleaks neuer Commits, CLI-/Engine-Build). Danach sauber, HEAD=origin/main, 0/0 | Kein Release/Deployment; historischer Vollscan separat. Bestehende Lint- und Bundlegrößenwarnungen bleiben. |
 | E16 | L07 | README-Shellblock in temporärem Verzeichnis ausgeführt: Neuanlage, Modus 0600, Überschreibschutz, unveränderte Secrets und zweimalige identische Compose-Konfiguration PASS; llms-Generator und diff --check Exit 0 | Keine Dienste gestartet; kein Verschlüsselungs-, Neustart- oder Restore-E2E. |
 | E17 | L05 | 6 Release-/Provenance-Tests mit 39 Assertions PASS. Originaler Staging-Shellblock mit echter Compose-Datei/Clipper-ZIP und sechs Binärplatzhaltern: acht Prüfsummen korrekt, temporäre Ed25519-Signatur verifiziert, manipuliertes ZIP abgewiesen. Receipt lokal gitignored | Kein Imagebuild, keine echten Release-Binärdateien oder Release-Schlüssel verwendet; keine Publikation. |
-| E18 | L05 | 60 Release-/Provenance-/Updater-Tests, 113 Assertions PASS. Exakten Workflow-Signaturbefehl isoliert ausgeführt: falscher Trust-Root abgewiesen, passender temporärer Schlüssel akzeptiert, manipuliertes Manifest abgewiesen | Reale Kryptografie mit Testschlüssel; Produktions-Signing-Key nicht verwendet oder geprüft. Zusätzlich offen: scripts/install.sh erwartet nicht veröffentlichte subkit-Alias-Binärdateien und prüft keine Signatur; dokumentierter Engine-Installer ist ein separater Pfad. |
+| E18 | L05 | 60 Release-/Provenance-/Updater-Tests, 113 Assertions PASS. Exakten Workflow-Signaturbefehl isoliert ausgeführt: falscher Trust-Root abgewiesen, passender temporärer Schlüssel akzeptiert, manipuliertes Manifest abgewiesen | Reale Kryptografie mit Testschlüssel; Produktions-Signing-Key nicht verwendet oder geprüft. Damals zusätzlich festgestellt, inzwischen durch E20 korrigiert: scripts/install.sh erwartete nicht veröffentlichte subkit-Alias-Binärdateien und prüfte keine Signatur; dokumentierter Engine-Installer ist ein separater Pfad. |
 | E19 | L04 | Gitleaks git --all mit Repo-Konfiguration und Redaction: Exit 1, 2291 Commits/1,39 GB/17m6s, 11 Treffer in 4 historischen Dateien. Drei kurze API-Key-Dokumentationsbeispiele mit Demo-Suffix als Beispielbefunde eingeordnet. Acht Firebase-Befunde betreffen denselben Clientkey; am geprüften HEAD nicht mehr vorhanden | Kein Nachweis eines missbrauchten Secrets. Laut [Firebase-Dokumentation](https://firebase.google.com/docs/projects/api-keys) sind passend eingeschränkte Firebase-Clientkeys nicht geheim; konkrete API-/App-Einschränkungen oder Stilllegung hier UNVERIFIED. Keine Key-Werte, privaten Projektangaben oder Rohreports im Repository; keine Historienumschreibung/Rotation vorgenommen. |
+| E20 | L05 | GitHub-Installer lädt nur veröffentlichte sk-Datei, verifiziert Ed25519-Signatur und exakten eindeutigen Hash vor Ersetzung, erstellt lokalen subkit-Link. Rotation aktualisiert beide öffentlichen Schlüssel. 71 Installer-/Release-/Updater-Tests, 171 Assertions PASS; bash -n, Generator und diff --check PASS | Echte Shell/Kryptografie mit deterministischem Testschlüssel, isolierte Download-/OS-/Codesign-Fixtures. Keine öffentliche Installation und keine echte macOS-Codesign-/Linux-Plattformabnahme; kein Produktionsschlüssel erzeugt oder rotiert. Lokale Engine weiter 9.11.2, Checkout 9.15.2. |
 
 ## Release, Website, Store und Automation
 
@@ -116,5 +117,5 @@ Nächste drei priorisierte Aufgaben:
 2. **L05:** Kontrollierte öffentliche Publikation ohne privaten Deploy-Zwang vorbereiten.
 3. **L07:** Persistenten Quickstart und isolierte Installationsprüfung vorbereiten.
 
-Nächster Codex-Schritt: L04-Befundklärung und isolierten L07-Installations-/Restore-Nachweis vorbereiten; L05 mit GitHub-Installer/Signaturprüfung und lokaler Publikationsstrecke fortsetzen. L03 nicht wiederholen. Fertige Pakete mit regulären Hooks committen und pushen.
+Nächster Codex-Schritt: L04-Befundklärung und isolierten L07-Installations-/Restore-Nachweis vorbereiten; L05 mit lokaler Publikationsstrecke fortsetzen; Installer-/Signaturkorrekturen E20 nicht wiederholen. L03 nicht wiederholen. Fertige Pakete mit regulären Hooks committen und pushen.
 Parallel kann der Nutzer Betreiber-/Supportangaben und Store-Kontostatus bereitstellen.
