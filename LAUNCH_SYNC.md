@@ -245,3 +245,27 @@ Funktionsnachweise nicht auf Cloud-Sessions übertragen.
 - [Offizielle MCP-Dokumentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
 
 Aktueller Implementierungs-/Konfigurations-/Live-Teststatus steht in LAUNCH_STATUS.md.
+
+## Geprüfter CLI-Zugang
+
+Der lesende Aufruf der aktuellen Quell-CLI `bun run apps/sk/src/index.ts agent briefing --json`
+im Repository liefert mit dem vorhandenen lokalen Profil derzeit Exit 2 und
+`unauthorized` (LAUNCH_STATUS.md, E32). Die Domain-Datei allein stellt keine
+Authentifizierung her. Vor der Hook-Abnahme braucht die CLI ein vom Nutzer
+authentifiziertes Profil mit den benötigten Leserechten. Keine Tokens in Chat,
+Repository oder Nachweise kopieren. Ein funktionierender separater MCP-App-Zugang
+beweist diesen CLI-Zugang nicht. Globale Hooks wurden nicht verändert. Nach
+Einrichtung denselben lesenden Aufruf wiederholen und erst bei tatsächlichem
+Briefing-Erfolg den Status aktualisieren.
+
+### Isolierter Integrationsnachweis
+
+E38 in LAUNCH_STATUS.md belegt das aktuelle CLI-Briefing mit expliziten
+`SUBKIT_ENGINE_URL`, `SUBKIT_API_KEY` und `SUBKIT_TENANT` einer synthetischen
+lokalen Testidentität. Diese Variablen werden nur im Kindprozess gesetzt;
+keine Zugangsdaten oder Profile werden in Git gespeichert. Der gemeinsame
+Codex-/Claude-Hook-Handler wurde mit SessionStart und UserPromptSubmit gegen
+die reale isolierte Engine geprüft. Bestätigte Quellen sind auffindbar; rohe
+Clips werden nicht als Kontext ausgegeben. Dies ersetzt weder den tatsächlichen
+Hook-Dispatch durch die Agent-Clients noch die Reparatur des bestehenden
+Nutzerprofils (E32: unauthorized). Globale Hooks bleiben unverändert.

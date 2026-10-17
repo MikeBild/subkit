@@ -409,3 +409,235 @@ Keine Features, Commits, Pushes, Tags, Deployments oder Store-Einreichung ohne F
 
 Erfolg des Gesamtplans: Ein externer Nutzer kann SubKit aus öffentlichen Kanälen installieren
 und die freigegebenen Produktpfade sicher tatsächlich verwenden.
+
+## Vorbereiteter Chrome-Store-Einreichungsentwurf
+
+Dieser Anhang ist ein überprüfbarer Arbeitsentwurf für L10, keine Freigabe zur Einreichung.
+
+Internal preparation only. Not submitted, not approved by Google, not legally approved.
+Source: apps/clipper/public/manifest.json, src/api.ts, src/options.ts,
+src/service-worker.ts, src/types.ts and src/capture.ts. Recheck against the final ZIP.
+All placeholders below must be replaced with verified public information before submission.
+
+### Listing text
+
+Name: SubKit Clipper
+
+Short description (English):
+Save web pages and selections to your own SubKit Inbox for review.
+
+Kurzbeschreibung (Deutsch):
+Speichere Webseiten und Textauswahlen zur Prüfung in deiner eigenen SubKit-Inbox.
+
+English description:
+SubKit Clipper collects web content for your self-hosted SubKit installation.
+Capture the current page or selected text, check the draft, choose a category,
+and save the item with its source URL. Local drafts let you return to an unfinished
+capture or retry a failed save.
+
+You need a reachable SubKit installation and a personal API key with intake access.
+Enter your engine address in the extension settings and grant access to that origin.
+The extension does not install or host the SubKit engine for you.
+
+Capturing an item is separate from admitting it as confirmed knowledge. Review and
+knowledge admission take place in SubKit, with explicit human confirmation. Publish
+this paragraph only after the complete current intake/knowledge journey passes L12.
+
+Some browser-internal pages and protected content cannot be captured. Source metadata
+and video transcripts are available only when the source provides them; availability
+is not guaranteed. Do not use the extension to collect content you are not permitted
+to process.
+
+German description:
+SubKit Clipper sammelt Webinhalte für deine selbst gehostete SubKit-Installation.
+Erfasse die aktuelle Seite oder eine Textauswahl, prüfe den Entwurf, wähle eine
+Kategorie und speichere den Eintrag mit seiner Quelladresse. Lokale Entwürfe helfen
+dir, eine Erfassung fortzusetzen oder einen fehlgeschlagenen Speichervorgang erneut
+zu versuchen.
+
+Du benötigst eine erreichbare SubKit-Installation und einen persönlichen API-Schlüssel
+mit Intake-Zugriff. Trage die Engine-Adresse in den Einstellungen ein und erlaube den
+Zugriff auf diese Adresse. Die Erweiterung installiert oder betreibt keine Engine.
+
+Das Sammeln eines Eintrags und die Übernahme als bestätigtes Wissen sind getrennte
+Schritte. Prüfung und Wissensübernahme erfolgen in SubKit mit ausdrücklicher
+menschlicher Bestätigung. Diesen Absatz erst nach bestandener L12-Abnahme veröffentlichen.
+
+Browserinterne Seiten und geschützte Inhalte lassen sich teilweise nicht erfassen.
+Quellmetadaten und Video-Transkripte stehen nur zur Verfügung, wenn die Quelle sie
+bereitstellt. Erfasse nur Inhalte, die du verarbeiten darfst.
+
+### Single purpose and permission justifications
+
+Single purpose:
+Collect a user-selected web page or selection as a reviewable item in the user's
+configured self-hosted SubKit installation, retaining the source reference.
+
+| Permission | Reviewer explanation |
+| --- | --- |
+| activeTab | Temporary access to the current page after the user invokes capture; used to read the selected text or page content and source metadata. |
+| scripting | Runs the packaged capture code in the user-selected tab; no downloaded executable code is needed for capture. Verify this against the final ZIP before certification. |
+| contextMenus | Provides an explicit capture action in the page/selection context menu. |
+| storage | Saves engine settings, the personal API key, pending drafts and retry state in chrome.storage.local. Access is restricted to trusted extension contexts. Local storage is not claimed to be encrypted. |
+| Optional HTTPS hosts | The user may run SubKit on any HTTPS origin. Setup requests the selected engine origin, not blanket permission for every site. Previous engine-origin permission is removed when changed. |
+| Optional loopback HTTP hosts | Supports a locally self-hosted engine on localhost, 127.0.0.1 or ::1. Public remote engines require HTTPS. |
+
+### Privacy disclosure worksheet — requires final human certification
+
+Collected/processed: selected page content, page URL/title, available author/publication
+metadata, capture time, category and user-edited draft content; personal API key and
+configured engine address. User-selected content can itself contain personal or
+sensitive information. Do not certify that the extension processes no user data.
+
+Local storage: settings/API key and drafts, including original capture snapshots and
+retry state. Key removal is available in settings. Inspect each draft deletion path
+and uninstall behavior before specifying exact retention guarantees.
+
+Network destinations: chosen SubKit engine for authenticated categories/preferences
+and intake submission. YouTube capture may additionally request the selected source
+page and transcript data; do not describe traffic as exclusively engine-bound.
+Subsequent review in the engine can use providers configured by that engine's operator.
+Distinguish extension capture from later server-side model processing in the privacy policy.
+
+Dashboard categories to review against Google's actual current form: website content,
+authentication information and web-history-related data (selected source URLs, not a
+claim of background browsing-history collection). Classify personal information
+contained in captured content according to the current definitions; operator/legal
+review remains required. Limited-use and no-sale certifications require an authorized
+person's confirmation of actual practices.
+
+Required public fields: [PRIVACY_POLICY_URL], [SUPPORT_URL], [SUPPORT_EMAIL],
+[PRODUCT_URL], [PUBLISHER_IDENTITY]. No contact/address values have been invented.
+
+### Reviewer procedure
+
+1. Provide the final ZIP and a dedicated, nonproduction reviewer installation with
+   synthetic content. Deliver its limited test credential through the private reviewer
+   channel only; never embed it in the extension or this document.
+2. Install, open settings, enter the reviewer engine URL/key, grant that origin and
+   verify the connection. Verify failure behavior with an invalid key separately.
+3. Capture a supplied public sample page and a text selection. Inspect title, source,
+   content and category before saving. Confirm the item in the engine's Intake view.
+4. Simulate a temporary connection failure, retain/reopen the local draft and retry;
+   verify the submission is not duplicated.
+5. In the engine, confirm that an unreviewed item is absent from ordinary knowledge
+   retrieval; prepare and explicitly confirm a proposal, then check source provenance.
+6. Record the exact tested ZIP hash, engine version, results and cleanup. These are
+   instructions for a pending real acceptance run, not a claim that it has passed.
+
+### Assets and submission blockers
+
+The current packaged file list has no icons. Add generated PNG icons to the manifest
+and archive using the existing SubKit artwork and generator workflow; obtain manual
+visual acceptance. Google requires a 128x128 extension icon, a 440x280 small promotional
+image and at least one screenshot. Create screenshots from the real isolated accepted
+installation, without personal data or credentials. No automatic visual matrix.
+
+Open: final icons/listing imagery, actual screenshots, public privacy/support URLs,
+publisher identity/account access, current real end-to-end acceptance, authorized
+privacy certification and explicit submission approval. Review timing is external.
+Submission is not publication.
+
+Official sources checked during preparation:
+- https://developer.chrome.com/docs/webstore/cws-dashboard-privacy
+- https://developer.chrome.com/docs/webstore/images
+
+## Website-Inhaltsentwurf für den bestehenden Produktbereich
+
+Status: redaktioneller Entwurf, nicht veröffentlicht. Zielquelle nach Review:
+`MikeBild/mikebild-dev-content`, `content/site/projects/subkit.md`.
+Der gelesene main-Baum enthält noch keine SubKit-Projektseite. Keine vorhandene Seite
+wurde ersetzt. Editorial voice, anti-slop und maintenance-policy wurden berücksichtigt.
+ContentKit bleibt Publikationssystem; dessen Approval Gate bleibt bestehen.
+
+### Claim Map vor der Prosa
+
+| Aussage | Quelle und Klasse | Freigabegrenze |
+| --- | --- | --- |
+| Selbst hostbare Engine mit Cockpit, sk und MCP | README, Architektur; lokale Installation E22 | Öffentliche Installierbarkeit erst nach L14/L15 behaupten |
+| RBAC, Ausführungsfreigabe und Protokollierung sind getrennte Kontrollen | README Execution identity and permission; Security E23 | Kein pauschales Sicherheits-, Compliance- oder Vollständigkeitsversprechen |
+| Sammlung wird erst nach bestätigter Übernahme zu Wissen | AGENTS/README Clippings; Produktvertrag | Für die Beta-Fassung erst nach realer L12-Abnahme als verfügbar darstellen |
+| Docker-Quickstart und Wiederherstellung | README Run the engine / Backup and recovery, E22 | Versionsupgrade und ältere Binärversionen nicht als geprüft darstellen |
+| Clipper wird als Paket bereitgestellt | E12, README Collect ideas | Store-Link erst nach öffentlicher Google-Freigabe; ZIP erst nach L14 |
+| Kostenloses Self-Hosting, externe Provider separat | Nutzerentscheidung, README Providerkonfiguration | Keine Zusage kostenlosen Hostings oder kostenloser Modellaufrufe |
+
+Gliederung: konkretes Teamproblem → Produktgrenzen → Arbeitsablauf → Self-Hosting →
+Clipper → Verfügbarkeit → Dokumentation, Sicherheit und Kontakt.
+
+### Seitenentwurf
+
+#### SubKit
+
+KI-gestützte Workflows ausführen, ihre Berechtigungen begrenzen und Entscheidungen nachvollziehen.
+
+Ein Team verbindet mit einem Workflow oft mehrere Systeme. Dabei muss klar bleiben,
+welche Daten gelesen werden dürfen, welche Änderungen erlaubt sind und wer einen Lauf
+ausgelöst hat. SubKit bündelt dafür Workflow-Ausführung, menschliche Freigaben und
+Protokollierung in einer selbst hostbaren Plattform.
+
+Die Engine führt Workflows aus. Im Cockpit verwaltet das Team Abläufe und prüft
+Ergebnisse. Die sk CLI und MCP machen dieselben Produktfunktionen für Skripte und
+angebundenen KI-Assistenten zugänglich. Die jeweilige Identität und ihre Rechte
+bestimmen, welche Aktionen verfügbar sind.
+
+### Arbeit vorbereiten und Wirkung freigeben
+
+Ein Workflow hat eine Version. Eine Person prüft, welche Systeme und Adressen er in
+einer Umgebung erreichen und ob er dort lesen oder schreiben darf. Wird diese
+Wirkungsgrenze erweitert, braucht es eine neue Freigabe. Eine bestehende Freigabe
+kann widerrufen werden.
+
+Zugangsdaten, Benutzerrechte und Freigaben erfüllen unterschiedliche Aufgaben.
+Ein gespeicherter API-Schlüssel allein erlaubt keine beliebige Ausführung. Zu einem
+Lauf lassen sich unter anderem Status, Workflow-Version und Ausführungsnachweise prüfen.
+
+### Im eigenen Betrieb
+
+SubKit wird mit Docker Compose installiert. Datenbank, Objektablage und die Schlüssel
+für gespeicherte Zugangsdaten gehören zur Installation und zu ihrem Backup. Der Betreiber
+entscheidet, welche Connectoren und Modellanbieter verwendet werden.
+
+Self-Hosting bedeutet dabei nicht automatisch, dass alle Daten lokal bleiben.
+Ein freigegebener Workflow kann Daten an angebundene Dienste senden; Modellaufrufe
+verwenden die konfigurierten Anbieter. Deren Datenverarbeitung gehört zur eigenen
+Betriebsentscheidung. Das kostenlose Self-Hosting-Angebot umfasst weder Infrastruktur
+noch Nutzungsgebühren externer Anbieter.
+
+### Seiten sammeln und gezielt übernehmen
+
+Der SubKit Clipper ist für die Sammlung von Webseiten und markierten Texten vorgesehen.
+Der anschließende Weg führt von der Inbox über die Prüfung im Chat zur ausdrücklich
+bestätigten Übernahme in Knowledge. Eine Kategorie oder das bloße Sammeln ersetzt diese
+Inhaltsentscheidung nicht. Die ursprüngliche Quelle bleibt mit dem Ergebnis verbunden.
+
+Der Clipper benötigt eine eigene SubKit-Installation und einen passend berechtigten
+API-Schlüssel. Für die Beta ist ein installierbares Paket vorgesehen. Die Veröffentlichung
+im Chrome Web Store ist ein gesonderter Schritt und hängt von Googles Freigabe ab.
+
+### Verfügbarkeit
+
+Die öffentliche Beta wird vorbereitet. Installationspakete, Versionsinformationen und
+der Quickstart werden hier verlinkt, sobald der Kandidat freigegeben und die öffentliche
+Installation geprüft ist. Eine lokale Entwicklungsfassung ist noch keine öffentliche Beta.
+
+### Redaktionelle Linkplätze, vor Veröffentlichung auflösen
+
+- **Self-Hosting starten:** Quickstart der tatsächlich freigegebenen Release-Version,
+  aus README abgeleitet; keine zweite separat gepflegte Installationsanleitung.
+- **Downloads:** exakte Version, unterstützte Plattformen, Prüfsummen, Signaturprüfung
+  und Release Notes; kein Verweis auf einen unfertigen latest-Kanal.
+- **Clipper:** freigegebenes ZIP mit Installationsanleitung; Store-Link nur bei Veröffentlichung.
+- **Sicherheit und Datenschutz:** tatsächliche Datenflüsse, Betreiberverantwortung,
+  bestätigter Kontakt für Sicherheitsmeldungen und freigegebene Datenschutzhinweise.
+- **Kontakt/Support und Impressum:** vom Betreiber bestätigte Angaben. Keine erfundene
+  Adresse, Reaktionszeit oder Service-Level-Zusage.
+
+### Getrennte Kritik und Übergabe
+
+Die Produktbeschreibung ist an README und lokale Nachweise gebunden. Vor Übernahme
+sind drei kleine, zwingende Anpassungen nötig: den Knowledge-Abschnitt anhand L12
+bestätigen, die Verfügbarkeit auf den tatsächlich freigegebenen Meilenstein setzen
+und alle Linkplätze durch geprüfte öffentliche Ziele ersetzen. Bis dahin bleibt
+auch dieser Entwurf unveröffentlicht. Keine Tracking-Pixel oder zusätzlichen externen
+Badges aufnehmen. Finaler Fakten-/Stimmenreview, konkrete Preview-Revision und die
+ContentKit-Freigabe werden separat dokumentiert.
