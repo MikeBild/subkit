@@ -47,8 +47,9 @@ RUN set -eux; \
       apt-get -o Acquire::Retries=3 update && break; \
       echo "apt-get update failed (attempt $attempt) — retrying"; sleep 5; \
     done; \
-    apt-get install -y --no-install-recommends curl ca-certificates; \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends curl ca-certificates libssl3t64 openssl; \
+    rm -rf /var/lib/apt/lists/* /usr/lib/node_modules/npm; \
+    rm -f /usr/bin/npm /usr/bin/npx
 
 COPY --from=builder /out/engine /usr/local/bin/engine.bin
 COPY --from=builder /out/sk /usr/local/bin/sk.bin

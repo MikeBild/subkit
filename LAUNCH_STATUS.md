@@ -2,9 +2,9 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-17T20:26:58Z**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-17T20:31:00Z**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
-- Geprüfter Produktcommit: **3d808505b**, `main`, Version **9.15.2**.
+- Geprüfter Produktcommit: **b5c360cb3**, `main`, Version **9.15.2**.
 - Checkout und origin/main waren nach `git pull --ff-only origin main` identisch; vor Dateierstellung sauber.
 - Synchronisation: **Produktänderungen bis 3d808505b auf origin/main bestätigt**, lokale/Remote-Divergenz 0/0; normale Commit-/Pre-Push-Hooks bestanden, E50. Website-/Store-Texte sind weiterhin Entwürfe; keine Veröffentlichung.
 - Countdown am 17.10.: **10/11 Kalendertage bis Beta**, **29 bis GA**; bei jedem Refresh neu berechnen.
@@ -143,6 +143,8 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 
 | E67 | L13 | E66 gezielt reproduziert: 12 PASS/5 FAIL. Testfixture legte scratch_items über produktspezifischen Pool im subkit-Schema an; externer Connectorpool verwendet seinen eigenen Standardsuchpfad. Fixture-/Testqueries qualifizieren nun public.scratch_items, ohne Connectorverhalten zu ändern. Rollbackprüfung verlangt konkret SQLSTATE 42601 statt beliebigem Fehler. Mit derselben isolierten PostgreSQL-Instanz/abweichendem Benutzernamen: **17 PASS, 0 FAIL, 38 Assertions**. Logs `.artifacts/launch/connector-schema-{before,after}.log`. | Nur gezielter Testabschluss, kein neues Vollgate-PASS. Keine Testdeaktivierung, keine Änderung des Produkt-Suchpfads für fremde Datenbanken; kanonische Runtimekorrektur E65 und erneutes Gesamtgate offen. |
 
+| E68 | L08/L07 | Kanonisches Dockerfile aktualisiert libssl3t64/openssl beim Build und entfernt npm samt npm/npx-Links; Node und Browser bleiben. Frischer linux/arm64-Build aus b5c360cb3 plus Dockerfile-Diff (SHA-256 5884606335b0ae55306ad4a21cf0fa0c4e6b686c5668f6f1e720490fdf0a9f91). Image sha256:f260f0f709dd9bf51501bf4dbb269682f99fcdfae5015d30820b9a4116fbdd45: frischer Compose-Start, Health/Readiness, Bootstrap, authentifizierte Workflow-/Dateizugriffe vor/nach Engine-Ersetzung, kompilierter Engine-Smoke, CLI/Node und npm-Abwesenheit PASS. Chromium verarbeitet lokale HTML-Seite ohne Netzwerk PASS. Isoliertes Compose-Projekt/Volumes entfernt. Aktueller Imageaudit: 0 CRITICAL, 2 HIGH (GStreamer CVE-2025-3887 ohne Fixversion), 844 MEDIUM/88 LOW; kein npm-/OpenSSL-Befund. `.artifacts/launch/runtime-candidate-{acceptance,audit-summary}.json`, Build-/Browser-/Auditlogs daneben. | Lokaler ARM64-Kandidat, synthetische Testdaten/Mockprovider; keine AMD64-/Release-/PROD-Freigabe oder vollständige Browser-Connector-/WASM-Prüfung. GStreamer und verbleibende Befunde offen; Scanner-Exit 0 bedeutet erfolgreiche Analyse, nicht Sicherheitsfreigabe. Experiment E65 ersetzt nicht diesen aktuellen Image-Nachweis. |
+
 ## Security-Befundregister (L08)
 
 | ID | Befund und Einordnung | Erforderlicher Abschlussnachweis |
@@ -194,5 +196,5 @@ Nächste drei priorisierte Aufgaben:
 2. **L12:** Verbleibende echte Channel-/Client- und visuelle Abnahmen getrennt nachweisen. E52 ist implementiert, begrenzt live geprüft und gepusht; nicht erneut umsetzen.
 3. **L04/L08:** Fehlende Auslieferungslizenzen und konkret erreichbare Advisory-Pfade schließen; menschlichen Nachweis zum historischen Firebase-Key ergänzen. OAuth-Altclient-Wiedereinrichtung bleibt offene Abnahmelücke.
 
-Nächster Codex-Schritt: E67 mit regulären Hooks committen/pushen; anschließend kanonische Runtimekorrektur aus Experiment E65 umsetzen und aktuelles Image mit echten Engine-Journeys prüfen. Danach vollständiges Gate erneut ausführen. Alle bisherigen Gate-/Probe-Sessions sind terminal. Eigene DB subkit-launch-parser-db für nächste Verifikation erhalten. Lizenzgegenprüfung E63 nicht unverändert wiederholen; bereits gepushte Korrekturen nicht erneut umsetzen.
+Nächster Codex-Schritt: E68 mit regulären Hooks committen/pushen. Danach neues vollständiges verify für aktuellen Stand starten (alte Sessions terminal), GStreamer-Befunde und Lizenz-Auslieferung weiter bearbeiten. E67 ist als b5c360cb3 gepusht, alle acht Pre-Push-Gates PASS. Eigene DB subkit-launch-parser-db für nächste Verifikation erhalten. E68-Compose-Ressourcen bereits vollständig entfernt. Keine unveränderte Wiederholung früherer Probes oder Lizenzgegenprüfung E63.
 Parallel kann der Nutzer Betreiber-/Supportangaben und Store-Kontostatus bereitstellen.
