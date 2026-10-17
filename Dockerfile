@@ -71,6 +71,7 @@ RUN set -eux; \
 COPY --from=builder /out/engine /usr/local/bin/engine.bin
 COPY --from=builder /out/sk /usr/local/bin/sk.bin
 COPY --from=cli-binaries /out/binaries /usr/local/share/subkit/binaries
+COPY LICENSE /usr/local/share/subkit/LICENSE
 COPY deploy/docker/subkit-wrap.sh /usr/local/bin/subkit-wrap.sh
 COPY deploy/docker/entrypoint.sh /usr/local/bin/subkit-entrypoint.sh
 RUN chmod +x /usr/local/bin/engine.bin /usr/local/bin/sk.bin \

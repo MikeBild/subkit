@@ -272,6 +272,7 @@ async function prepare(tag: string, keyFile: string): Promise<void> {
     run("docker", ["rm", container]);
   }
   cpSync(join(source, "docker-compose.yml"), join(assets, "docker-compose.yml"));
+  cpSync(join(source, "LICENSE"), join(assets, "LICENSE"));
   cpSync(join(source, "assets/clipper/clipper.zip"), join(assets, "subkit-clipper.zip"));
   if (candidate(tag) !== commit) throw new Error("Candidate changed during preparation");
   writeFileSync(

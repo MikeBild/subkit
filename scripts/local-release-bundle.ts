@@ -5,6 +5,7 @@ import { RELEASE_PUBLIC_KEY } from "../packages/cli-core/src/release-public-key.
 import { releaseGateContext } from "./release-gate-provenance.ts";
 
 export const LOCAL_RELEASE_FILES = [
+  "LICENSE",
   "docker-compose.yml",
   "engine_linux_x64",
   "release-notes.md",
