@@ -38,12 +38,14 @@ function makeConnector(overrides: Partial<ConnectorView> = {}): ConnectorView {
 beforeAll(async () => {
   if (skip) return;
   ctx = await createTestDb("pg-driver-unit");
-  await ctx.pool.query("CREATE TABLE scratch_items (id serial primary key, name text not null)");
+  await ctx.pool.query(
+    "CREATE TABLE public.scratch_items (id serial primary key, name text not null)",
+  );
 }, 60_000);
 
 afterEach(async () => {
   if (skip) return;
-  await ctx.pool.query("TRUNCATE scratch_items RESTART IDENTITY");
+  await ctx.pool.query("TRUNCATE public.scratch_items RESTART IDENTITY");
 });
 
 afterAll(async () => {
@@ -126,7 +128,7 @@ describe.skipIf(skip)("pgQueryWithCount", () => {
   test("parameterised INSERT without RETURNING reports row_count but no rows", async () => {
     const res = await pgQueryWithCount({
       connector: makeConnector(),
-      sql: "INSERT INTO scratch_items (name) VALUES ($1), ($2)",
+      sql: "INSERT INTO public.scratch_items (name) VALUES ($1), ($2)",
       params: ["a", "b"],
     });
     expect(res.rows).toEqual([]);
@@ -147,8 +149,14 @@ describe.skipIf(skip)("pgTransaction", () => {
     const result = await pgTransaction<{ id: number; name: string }>({
       connector: makeConnector(),
       statements: [
-        { query: "INSERT INTO scratch_items (name) VALUES ($1) RETURNING id, name", params: ["x"] },
-        { query: "INSERT INTO scratch_items (name) VALUES ($1) RETURNING id, name", params: ["y"] },
+        {
+          query: "INSERT INTO public.scratch_items (name) VALUES ($1) RETURNING id, name",
+          params: ["x"],
+        },
+        {
+          query: "INSERT INTO public.scratch_items (name) VALUES ($1) RETURNING id, name",
+          params: ["y"],
+        },
       ],
     });
     expect(result.rows_per_statement.length).toBe(2);
@@ -156,7 +164,7 @@ describe.skipIf(skip)("pgTransaction", () => {
     expect(result.rows_per_statement[1]?.[0]?.name).toBe("y");
     expect(result.row_count_per_statement).toEqual([1, 1]);
     expect(result.total_row_count).toBe(2);
-    const check = await ctx.pool.query("SELECT count(*)::int as n FROM scratch_items");
+    const check = await ctx.pool.query("SELECT count(*)::int as n FROM public.scratch_items");
     expect(check.rows[0].n).toBe(2);
   });
 
@@ -165,12 +173,15 @@ describe.skipIf(skip)("pgTransaction", () => {
       pgTransaction({
         connector: makeConnector(),
         statements: [
-          { query: "INSERT INTO scratch_items (name) VALUES ($1)", params: ["ok"] },
-          { query: "INSERT INTO scratch_items (name) VALUES ($1, $2)", params: ["bad", "extra"] },
+          { query: "INSERT INTO public.scratch_items (name) VALUES ($1)", params: ["ok"] },
+          {
+            query: "INSERT INTO public.scratch_items (name) VALUES ($1, $2)",
+            params: ["bad", "extra"],
+          },
         ],
       }),
-    ).rejects.toThrow();
-    const check = await ctx.pool.query("SELECT count(*)::int as n FROM scratch_items");
+    ).rejects.toMatchObject({ code: "42601" });
+    const check = await ctx.pool.query("SELECT count(*)::int as n FROM public.scratch_items");
     expect(check.rows[0].n).toBe(0);
   });
 
@@ -180,8 +191,8 @@ describe.skipIf(skip)("pgTransaction", () => {
       pgTransaction({
         connector: makeConnector(),
         statements: [
-          { query: "INSERT INTO scratch_items (name) VALUES ($1)", params: ["a"] },
-          { query: "INSERT INTO scratch_items (name) VALUES ($1)", params: ["b"] },
+          { query: "INSERT INTO public.scratch_items (name) VALUES ($1)", params: ["a"] },
+          { query: "INSERT INTO public.scratch_items (name) VALUES ($1)", params: ["b"] },
         ],
         onStatement: (index, _rows, rowCount) => {
           seenIndexes.push(index);
@@ -191,7 +202,7 @@ describe.skipIf(skip)("pgTransaction", () => {
       }),
     ).rejects.toThrow("guard rejected second statement");
     expect(seenIndexes).toEqual([0, 1]);
-    const check = await ctx.pool.query("SELECT count(*)::int as n FROM scratch_items");
+    const check = await ctx.pool.query("SELECT count(*)::int as n FROM public.scratch_items");
     expect(check.rows[0].n).toBe(0);
   });
 });
@@ -199,11 +210,11 @@ describe.skipIf(skip)("pgTransaction", () => {
 describe.skipIf(skip)("pgQueryCursor", () => {
   test("streams rows across multiple fetch batches and preserves order", async () => {
     for (let i = 0; i < 25; i++) {
-      await ctx.pool.query("INSERT INTO scratch_items (name) VALUES ($1)", [`row-${i}`]);
+      await ctx.pool.query("INSERT INTO public.scratch_items (name) VALUES ($1)", [`row-${i}`]);
     }
     const rows = await pgQueryCursor<{ id: number; name: string }>({
       connector: makeConnector(),
-      sql: "SELECT id, name FROM scratch_items ORDER BY id",
+      sql: "SELECT id, name FROM public.scratch_items ORDER BY id",
       fetch_size: 10,
     });
     expect(rows.length).toBe(25);
@@ -214,7 +225,7 @@ describe.skipIf(skip)("pgQueryCursor", () => {
   test("empty result set returns an empty array", async () => {
     const rows = await pgQueryCursor({
       connector: makeConnector(),
-      sql: "SELECT * FROM scratch_items WHERE name = $1",
+      sql: "SELECT * FROM public.scratch_items WHERE name = $1",
       params: ["does-not-exist"],
       fetch_size: 10,
     });
