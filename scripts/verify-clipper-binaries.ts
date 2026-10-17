@@ -15,6 +15,7 @@ const adminUrl = localDatabaseUrl(process.env);
 const databaseUrl = new URL(adminUrl);
 const fixtureEngineUrl = "https://engine.example/fixture";
 databaseUrl.pathname = `/${databaseName}`;
+databaseUrl.searchParams.set("options", "-c search_path=subkit,pg_catalog,public");
 const admin = new pg.Client({ connectionString: adminUrl });
 let engine: ReturnType<typeof Bun.spawn> | undefined;
 let createdDatabase = false;
