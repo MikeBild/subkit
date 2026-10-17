@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-17T17:09:44Z**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-17T17:14:02Z**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktcommit: **7c00b46e7832e97f9c08613ce04b1e5540841bfe**, `main`, Version **9.15.2**.
 - Checkout und origin/main waren nach `git pull --ff-only origin main` identisch; vor Dateierstellung sauber.
-- Synchronisation: **01257eb8a72f37c70545fb11f13d7f7a0a496e2b auf origin/main bestätigt**; sauberer Checkout, Divergenz 0/0 nach Push. Neuere lokale Änderungen sind erst mit ihrem eigenen Push synchronisiert. Produkt-Baseline oben bleibt für historische Nachweise erhalten.
+- Synchronisation: **1c4c5d5cfbcd4ca576b3bdead1ae7dcaaa15f02b auf origin/main bestätigt**; sauberer Checkout, Divergenz 0/0 nach Push. Neuere lokale Änderungen sind erst mit ihrem eigenen Push synchronisiert. Produkt-Baseline oben bleibt für historische Nachweise erhalten.
 - Countdown am 17.10.: **10/11 Kalendertage bis Beta**, **29 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -21,9 +21,9 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L02 | DONE | Drei Dateien und kurzer AGENTS-Verweis erstellt; Dokumentvalidierung E11 bestanden. Commit 01257eb8a gepusht, E15. |
 | L03 | DONE | Veraltetes generiertes ZIP mit bestehendem Generator erneuert; Bun 1.4.0 macOS/Linux identisch; 63 Tests und funktionaler Chromium-Lauf PASS, E12. Commit 61ee865d3 gepusht, E15. |
 | L04 | IN_PROGRESS | Vollständiger Gitleaks-Historienscan läuft lesend; Lizenz-/Publikationsprüfung weiterhin offen. |
-| L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Lokale Publikationsstrecke noch offen. |
+| L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17. Lokale Publikationsstrecke noch offen. |
 | L06 | BLOCKED | Betreiber-/Supportangaben und juristische Freigabe erforderlich. |
-| L07 | IN_PROGRESS | Quickstart mit einmaliger geschützter .env, Wiederverwendung und Recovery-Grenzen korrigiert; Shell-/Compose-Prüfung E16. Echter Start/Restore weiterhin offen. |
+| L07 | IN_PROGRESS | Quickstart mit einmaliger geschützter .env, Wiederverwendung und Recovery-Grenzen korrigiert; Shell-/Compose-Prüfung E16. Commit 1c4c5d5cf gepusht. Echter Start/Restore offen; Docker hat nur 8,9 GiB frei gegenüber 12 GiB Build-Vorgabe. |
 | L08 | TODO | Launch-Security-Prüfung und Befundregister. |
 | L09 | TODO | Bestehenden Website-Kanal verwenden; Produktbereich/Links/Recht noch nicht abgenommen. |
 | L10 | TODO | Store-Paket, Icons, Listing, Disclosures und echte Installation. |
@@ -77,6 +77,7 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 | E14 | L04 | `bun pm licenses --prod --json`: Exit 0, 1187 installierte Produktions-Paketeinträge. Ein Unknown-Metadateneintrag (khroma 2.1.0) anhand mitgelieferter license als MIT geklärt. LGPL-/CC-BY-Einträge identifiziert | Lokales Installationsinventar, keine vollständige Auslieferungs-/Container-Lizenzfreigabe. Rohinventar bleibt gitignored. |
 | E15 | L02/L03/L05 | Drei Commits bis 01257eb8a mit normalen Hooks gepusht; alle acht Pre-Push-Schritte PASS (Lint, Typecheck, Determinismus, Invarianten, Drift, Commitnachrichten, Gitleaks neuer Commits, CLI-/Engine-Build). Danach sauber, HEAD=origin/main, 0/0 | Kein Release/Deployment; historischer Vollscan separat. Bestehende Lint- und Bundlegrößenwarnungen bleiben. |
 | E16 | L07 | README-Shellblock in temporärem Verzeichnis ausgeführt: Neuanlage, Modus 0600, Überschreibschutz, unveränderte Secrets und zweimalige identische Compose-Konfiguration PASS; llms-Generator und diff --check Exit 0 | Keine Dienste gestartet; kein Verschlüsselungs-, Neustart- oder Restore-E2E. |
+| E17 | L05 | 6 Release-/Provenance-Tests mit 39 Assertions PASS. Originaler Staging-Shellblock mit echter Compose-Datei/Clipper-ZIP und sechs Binärplatzhaltern: acht Prüfsummen korrekt, temporäre Ed25519-Signatur verifiziert, manipuliertes ZIP abgewiesen. Receipt lokal gitignored | Kein Imagebuild, keine echten Release-Binärdateien oder Release-Schlüssel verwendet; keine Publikation. |
 
 ## Release, Website, Store und Automation
 
@@ -104,8 +105,8 @@ Commit und Push mit regulären Hooks freigegeben. Keine weitergehende Veröffent
 Offen: Betreiber-/Supportangaben, juristische Prüfung, Store-Konto/Freigabe, Testzugänge und
 Zielsysteme, globale Hooks/Transkript-Datenfluss, Sichtabnahme sowie gesonderte Publikationsfreigaben. Commit/Push sind für den vereinbarten Scope freigegeben.
 
-Aktiv: L04 (lesender Historienscan/Lizenzinventur) und L07 (Installationsvorbereitung).
-L05 wartet auf den nächsten technischen Arbeitsschritt; L02/L03 sind auf main synchronisiert. Implementierung bleibt auf einen technischen Hauptstrom begrenzt.
+Aktiv: L04 (lesender Historienscan/Lizenzinventur) und L05 (signierte Distribution).
+L07 wartet auf ausreichenden Docker-Buildspeicher und den Installations-/Restore-Test; L02/L03 sind auf main synchronisiert. Implementierung bleibt auf einen technischen Hauptstrom begrenzt.
 
 Nächste drei priorisierte Aufgaben:
 
