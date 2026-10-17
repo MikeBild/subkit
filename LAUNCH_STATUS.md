@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-17T22:32:15Z**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-17T23:24:40Z**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
-- Geprüfter Produktcommit: **96a070db4**, `main`, Version **9.15.2**.
+- Geprüfter Produktcommit: **9c8a2cbd5**, `main`, Version **9.15.2**; vollständiges lokales Gate PASS, E94.
 - Checkout und origin/main waren nach `git pull --ff-only origin main` identisch; vor Dateierstellung sauber.
-- Synchronisation: **Produktänderungen bis 96a070db4 auf origin/main bestätigt**, lokale/Remote-Divergenz 0/0; normale Commit-/Pre-Push-Hooks bestanden, E50. Website-/Store-Texte sind weiterhin Entwürfe; keine Veröffentlichung.
+- Synchronisation: **Produktänderungen bis 9c8a2cbd5 auf origin/main bestätigt**, lokale/Remote-Divergenz 0/0; normale Commit-/Pre-Push-Hooks bestanden. Jüngste Nachweise E92–E94 bis zum Dokument-Push LOCAL_ONLY. Keine Veröffentlichung.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -29,7 +29,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L10 | IN_PROGRESS | Zweisprachige Listing-Texte, Berechtigungsbegründungen, Datenfluss-/Privacy-Arbeitsblatt und Reviewer-Ablauf als Entwurf in LAUNCH.md vorbereitet. Vier PNG-Icons werden aus bestehendem Cockpit-Logo generiert und mit Lucide-Lizenz im Manifest/ZIP ausgeliefert, E53. Paket-/Browser-/Binärprüfungen und macOS/Linux-Reproduzierbarkeit bestanden. Visuelle Iconabnahme, Promo-Grafik/Screenshots, Pflichtlinks und menschliche Zertifizierung offen. ENTWURF, nicht veröffentlicht. |
 | L11 | BLOCKED | L10, öffentliche Pflichtlinks, Publisherstatus und explizite Einreichungsfreigabe fehlen. |
 | L12 | IN_PROGRESS | Isolierter aktueller Kandidat: API-/Browser-/Intake-Prüfungen PASS, E37–E39; MCP-Cockpit-Handoff und echter Clipper gegen Engine PASS, E42/E43. Mock-Läufe und begrenzter echter Provider-Chat E45 getrennt belegt; vollständige Cross-Surface-Abnahme weiterhin offen. Manuelle Demo unverändert. |
-| L13 | IN_PROGRESS | Historisches Vollgate E49 PASS. Spätere Läufe E61/E66/E76/E81 fehlgeschlagen; jeweilige Ursachen gezielt korrigiert. Vollgate für d2855457e fehlgeschlagen (E87), Testverbindung korrigiert und gezielt bestanden (E88). Vollgate für 96a070db4 an Clipper-Binärfixture gescheitert (E90); gezielte Korrektur bestanden (E91), Gesamtabschluss weiterhin offen. Live-Modellmatrix E73 PASS; aktuelle gepaarte Referenz-Benchmarks fehlen, lokale Umgebung ungeeignet (E75/E80). |
+| L13 | IN_PROGRESS | Aktuelles vollständiges bun run verify für 9c8a2cbd5 PASS, Exit 0, unveränderter Quellstand (E94). Live-Modellmatrix E73 PASS. Aktuelle gepaarte Referenz-Benchmarks fehlen; lokale Umgebung ungeeignet (E75/E80). Vorherige Fehlläufe und ihre Korrekturen bleiben dokumentiert. |
 | L14 | BLOCKED | L04/L05/L13 und Freigabe für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Externer Installationstest aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -204,7 +204,7 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 
 | Gegenstand | Zustand |
 | --- | --- |
-| Lokale vollständige Verifikation | Historisch E49 PASS. Aktueller Gesamtlauf 96a070db4: Exit 1 nach isolierten Tests und AI-Prüfungen beim Clipper-Binärtest (E90). Verbindung der isolierten Fixture korrigiert; Binärtest gezielt PASS (E91). Kein aktuelles Gesamt-PASS. |
+| Lokale vollständige Verifikation | **PASS für 9c8a2cbd5**, Exit 0, unveränderte Quellen (E94). Umfasst sämtliche Schritte von bun run verify einschließlich funktionalem Cockpit, isolierten Tests, AI-Verträgen, Binär-/Browserprüfungen und E2E. |
 | Release-Workflow | Jüngste Läufe fehlgeschlagen; Actions-Verfügbarkeit bekannter externer Blocker, keine neue Billing-Diagnose |
 | Öffentliche Beta / GA | Nicht freigegeben; tatsächliche aktuelle öffentliche Installierbarkeit UNVERIFIED |
 | Website | Kanal bekannt, SubKit-Produktauftritt/Downloads/Recht/Support UNVERIFIED |
@@ -212,8 +212,8 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 | Daily / Weekly | Laut Nutzer vorhanden: täglich 06:00 / montags ca. 08:00 Europe/Berlin; Konfiguration/Lesezugriff UNVERIFIED |
 | Lokale globale Hooks | In geprüften Dateien nicht eingerichtet; keine Änderungen vorgenommen |
 
-E49 belegt ein historisches vollständiges Gate für 1ac0017f6. Der jüngste Vollgate-Lauf
-scheiterte nach den isolierten Tests und AI-Prüfungen an der Clipper-Binärfixture (E90); Korrektur gezielt bestanden (E91), neuer Gesamtlauf offen.
+E94 belegt das aktuelle vollständige Gate für 9c8a2cbd5. Der vorherige Fehllauf E90
+wurde durch die gezielt geprüfte Fixture-Korrektur E91 behoben. E49 bleibt historischer Nachweis.
 Live-Modellmatrix E73 und begrenztes Versionsupgrade/Restore E72 sind bestanden.
 Aktuelle ARM64-Installation und Imageaudit siehe E89. Offen bleiben öffentliche Installation,
 Plattformabnahme, aktuelle Referenz-Benchmarks, vollständige Channel-Parität und manuelle
@@ -229,7 +229,7 @@ Commit und Push mit regulären Hooks freigegeben. Keine weitergehende Veröffent
 Offen: Betreiber-/Supportangaben, juristische Prüfung, Store-Konto/Freigabe, vorhandener Release-Signing-Key für lokale Abnahme, Testzugänge und
 Zielsysteme, Nachweis zu Einschränkungen/Stilllegung des historischen Firebase-Keys, globale Hooks/Transkript-Datenfluss, Sichtabnahme sowie gesonderte Publikationsfreigaben. Commit/Push sind für den vereinbarten Scope freigegeben.
 
-L07 ist auf main abgeschlossen und synchronisiert. L04 benötigt noch Lizenzprüfung und menschliche Key-Befundklärung; L05 wartet für die reale Release-Abnahme auf Kandidat/Signing-Key. Sicherheitskandidat 1ac0017f6 besteht das vollständige lokale Gate E49. Isolierte Installation mit echten API-/Browser-/MCP-/Clipper-Nachweisen sowie begrenztem Live-Modelllauf E37–E46. Keine manuelle Demo verändert. Modellasset-Korrektur E51 und Autor-/Sammlertrennung E52 sind implementiert, geprüft und gepusht. E46 bleibt ein historischer Befund; die begrenzte Gegenprüfung steht in E52.
+L07 ist auf main abgeschlossen und synchronisiert. L04 benötigt noch Lizenzprüfung und menschliche Key-Befundklärung; L05 wartet für die reale Release-Abnahme auf Kandidat/Signing-Key. Aktueller Kandidat 9c8a2cbd5 besteht das vollständige lokale Gate E94. Isolierte Installation mit echten API-/Browser-/MCP-/Clipper-Nachweisen sowie begrenztem Live-Modelllauf E37–E46. Keine manuelle Demo verändert. Modellasset-Korrektur E51 und Autor-/Sammlertrennung E52 sind implementiert, geprüft und gepusht. E46 bleibt ein historischer Befund; die begrenzte Gegenprüfung steht in E52.
 
 Nächste drei priorisierte Aufgaben:
 
@@ -237,8 +237,14 @@ Nächste drei priorisierte Aufgaben:
 2. **L12:** Verbleibende echte Channel-/Client- und visuelle Abnahmen getrennt nachweisen. E52 ist implementiert, begrenzt live geprüft und gepusht; nicht erneut umsetzen.
 3. **L04/L08:** Fehlende Auslieferungslizenzen und konkret erreichbare Advisory-Pfade schließen; menschlichen Nachweis zum historischen Firebase-Key ergänzen. OAuth-Altclient-Wiedereinrichtung bleibt offene Abnahmelücke.
 
-Nächster Codex-Schritt: Clipper-Binärfixture-Korrektur mit normalen Hooks committen/pushen; verbleibende Browser-/E2E-Gates und vollständigen aktuellen Gateabschluss nachweisen. E90/Session 61272 terminal, nicht weiter pollen. Referenzbenchmark, Lizenzbeigaben und menschliche Freigaben bleiben offen. Eigene Gate-DB beibehalten.
+Nächster Codex-Schritt: Abschlussnachweis E94 mit normalen Hooks committen/pushen; anschließend aktuelle Artefakt-/Lizenzabdeckung L04/L08 vervollständigen. Vollgate-Session 54878 ist terminal PASS und darf nicht erneut gepollt werden. Unveränderte bestandene Tests wiederverwenden. Referenzbenchmark, Signing-Key, echte Channel-/Plattformabnahme und menschliche Freigaben bleiben offen.
 Parallel kann der Nutzer Betreiber-/Supportangaben und Store-Kontostatus bereitstellen.
 
 | E90 | L13 | Vollgate 96a070db4 terminal Exit 1, Quellhashes unverändert. Alle 2040 isolierten Testdateien durchlaufen, danach 40/40 AI-Vertragsprüfungen PASS. Clipper-Binärtest scheitert beim Engine-Start: Suchpfad der isolierten Verbindung löst public statt subkit auf. `.artifacts/launch/os-security-verify.{json,log}`, Log-SHA-256 1ed7860ddb521e402756d357e390a990df3403000c3bfd218c2543ba7eb00323. | Kein Gesamt-PASS. Nachfolgende Clipper-/Intake-Browser- und E2E-Stufen in diesem Lauf nicht erreicht. Session 61272 terminal. |
-| E91 | L13 | scripts/verify-clipper-binaries.ts setzt den Anwendungssuchpfad ausschließlich an der Verbindung zur selbst erzeugten Testdatenbank, entsprechend dem gemeinsamen DB-Testhelper. Derselbe kompilierte Kandidat und dieselbe isolierte PostgreSQL-Rolle: echter CLI-Install/Update und Engine-ZIP mit identischen Bytes/Hash PASS, Exit 0. `.artifacts/launch/clipper-binary-schema-after.log`. | LOCAL_ONLY bis Commit/Push. Keine Änderung der Engine-Suchpfadschutzprüfung oder globaler Datenbankrollen; kein neues vollständiges Gate-PASS. |
+| E91 | L13 | scripts/verify-clipper-binaries.ts setzt den Anwendungssuchpfad ausschließlich an der Verbindung zur selbst erzeugten Testdatenbank, entsprechend dem gemeinsamen DB-Testhelper. Derselbe kompilierte Kandidat und dieselbe isolierte PostgreSQL-Rolle: echter CLI-Install/Update und Engine-ZIP mit identischen Bytes/Hash PASS, Exit 0. `.artifacts/launch/clipper-binary-schema-after.log`. | Als 9c8a2cbd5 committed/gepusht; alle acht normalen Pre-Push-Gates PASS, HEAD=origin/main (0/0) bestätigt. Typecheck PASS; `.artifacts/launch/clipper-schema-validation.json`. Keine Änderung der Engine-Suchpfadschutzprüfung oder globaler Datenbankrollen; kein neues vollständiges Gate-PASS. |
+
+| E92 | L12/L13 | Am Commit 9c8a2cbd5 verify:clipper-browser und verify:intake-browser jeweils Exit 0. Echte Chromium-Funktionstests mit kontrollierten API-Fixtures: Capture, geschützter Storage, Drafts, Kategorien, Provenienz, idempotenter Retry und Intake-Review-/Bestätigungshandling. Loghashes in `.artifacts/launch/clipper-schema-validation.json`. | Kein Live-Channel-/Produktionsnachweis, keine visuelle Abnahme. Anschließender E2E-Lauf PASS, E93; vollständiges verify weiterhin offen. |
+
+| E93 | L12/L13 | test:e2e für 9c8a2cbd5 terminal Exit 0: 42 Suiten, 257 PASS, 0 FAIL. Isolierte PostgreSQL-Fixtures und Mock-Modellprovider. `.artifacts/launch/clipper-schema-e2e.json` und gleichnamiges Log, SHA-256 07ccb686b5b977655c59e614b6f8d9bd8aa5836ad463eb181b79d815f7393edd. | Lokale E2E-Prüfung, kein verbundenes Google-Chat-/Produktionssystem. Kein vollständiges verify-PASS; neuer unveränderter Gesamtlauf folgt. |
+
+| E94 | L13 | Vollständiges bun run verify für 9c8a2cbd5db6f3dea1007b4a02b9e4da25603b91 **PASS, Exit 0**, abgeschlossen 2026-10-17T23:24:08.777474+00:00. Lint, Typecheck, Rezepte, Invarianten, Dependency-/Build-/Dokumentdrift, Runtime-Smoke, funktionales Cockpit, Contract-/Determinismusprüfungen, 2040 isolierte Testdateien, 40 AI-Vertragsfälle, kompilierte Clipper-Installation/Engine-Download, Clipper-/Intake-Browser und E2E erfolgreich durchlaufen. Quellhashes unverändert, kein getrackter Produktdiff. `.artifacts/launch/clipper-schema-full-verify.{json,log}`, Log-SHA-256 0cfc65eeb74dfe0111201fe1ad49a1716f052759aa62b0471a4a63acd3076b80. | Lokales Gate mit isolierter PostgreSQL-Instanz und Mockprovider; echte Modellmatrix separat E73. Kein gepaarter Release-Referenzbenchmark, kein öffentlicher Artefakt-/Plattform-/PROD-Nachweis und keine menschliche Freigabe. Session 54878 terminal. |
