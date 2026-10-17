@@ -2,12 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-17T17:02:31Z**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-17T17:09:44Z**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktcommit: **7c00b46e7832e97f9c08613ce04b1e5540841bfe**, `main`, Version **9.15.2**.
 - Checkout und origin/main waren nach `git pull --ff-only origin main` identisch; vor Dateierstellung sauber.
-- Synchronisation: **LOCAL_ONLY**. Commit/Push der verifizierten Pakete ist beauftragt. Letzter belegter Remote-Stand ist der
-  Produktcommit oben; den tatsächlich gelesenen main-Commit beim nächsten Refresh prüfen.
+- Synchronisation: **01257eb8a72f37c70545fb11f13d7f7a0a496e2b auf origin/main bestätigt**; sauberer Checkout, Divergenz 0/0 nach Push. Neuere lokale Änderungen sind erst mit ihrem eigenen Push synchronisiert. Produkt-Baseline oben bleibt für historische Nachweise erhalten.
 - Countdown am 17.10.: **10/11 Kalendertage bis Beta**, **29 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -19,12 +18,12 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | ID | Status | Ergebnis, Blocker oder nächster Nachweis |
 | --- | --- | --- |
 | L01 | DONE | Begrenzte Bestandsaufnahme und Scopeentscheidungen; E01–E10. Kein vollständiges Security-Audit. |
-| L02 | DONE | Drei Dateien und kurzer AGENTS-Verweis erstellt; Dokumentvalidierung E11 bestanden. LOCAL_ONLY. |
-| L03 | DONE | Veraltetes generiertes ZIP mit bestehendem Generator erneuert; Bun 1.4.0 macOS/Linux identisch; 63 Tests und funktionaler Chromium-Lauf PASS, E12. Commit 61ee865d3, noch nicht gepusht. |
+| L02 | DONE | Drei Dateien und kurzer AGENTS-Verweis erstellt; Dokumentvalidierung E11 bestanden. Commit 01257eb8a gepusht, E15. |
+| L03 | DONE | Veraltetes generiertes ZIP mit bestehendem Generator erneuert; Bun 1.4.0 macOS/Linux identisch; 63 Tests und funktionaler Chromium-Lauf PASS, E12. Commit 61ee865d3 gepusht, E15. |
 | L04 | IN_PROGRESS | Vollständiger Gitleaks-Historienscan läuft lesend; Lizenz-/Publikationsprüfung weiterhin offen. |
 | L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Lokale Publikationsstrecke noch offen. |
 | L06 | BLOCKED | Betreiber-/Supportangaben und juristische Freigabe erforderlich. |
-| L07 | TODO | Persistenter Quickstart, frische Installation und Backup-Rückweg prüfen. |
+| L07 | IN_PROGRESS | Quickstart mit einmaliger geschützter .env, Wiederverwendung und Recovery-Grenzen korrigiert; Shell-/Compose-Prüfung E16. Echter Start/Restore weiterhin offen. |
 | L08 | TODO | Launch-Security-Prüfung und Befundregister. |
 | L09 | TODO | Bestehenden Website-Kanal verwenden; Produktbereich/Links/Recht noch nicht abgenommen. |
 | L10 | TODO | Store-Paket, Icons, Listing, Disclosures und echte Installation. |
@@ -76,6 +75,8 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 | E12 | L03 | Bun 1.4.0 (34cbb9a40): Build/Driftcheck Exit 0 auf macOS arm64 und Linux arm64; frische Frozen-Lockfile-Installation und veränderter Buildpfad liefern identische ZIP-Bytes. SHA-256 `2ac97e963ae6c71ca582d51a155478c0658eb1def34b35820d4d2b2f9c6252f2`. 63 Tests/195 Assertions in 9 Dateien PASS; scripts/verify-clipper-browser.ts Exit 0, reale Chromium-Installation und funktionale Capture/Draft/Retry-Prüfung | Eingangsarchiv war gegenüber kanonischem Build veraltet; historische Erzeugungsursache nicht belegt. Browser nutzt isolierte API-Fixtures, kein produktiver Intake-E2E-Nachweis. Source/Lockfile unverändert; nur generierte ZIP-/Manifestdateien erneuert. |
 | E13 | L05 | Commit e6f6b68bf trennt öffentlichen Artefaktrelease von privatem Deploy-Dispatch. 6 Release-Vertrags-/Provenance-Tests, 36 Assertions, Exit 0; regulärer Commit-Hook einschließlich Typecheck PASS | Kein Workflow ausgeführt, keine Publikation. Lokaler Publikationsweg weiterhin offen. |
 | E14 | L04 | `bun pm licenses --prod --json`: Exit 0, 1187 installierte Produktions-Paketeinträge. Ein Unknown-Metadateneintrag (khroma 2.1.0) anhand mitgelieferter license als MIT geklärt. LGPL-/CC-BY-Einträge identifiziert | Lokales Installationsinventar, keine vollständige Auslieferungs-/Container-Lizenzfreigabe. Rohinventar bleibt gitignored. |
+| E15 | L02/L03/L05 | Drei Commits bis 01257eb8a mit normalen Hooks gepusht; alle acht Pre-Push-Schritte PASS (Lint, Typecheck, Determinismus, Invarianten, Drift, Commitnachrichten, Gitleaks neuer Commits, CLI-/Engine-Build). Danach sauber, HEAD=origin/main, 0/0 | Kein Release/Deployment; historischer Vollscan separat. Bestehende Lint- und Bundlegrößenwarnungen bleiben. |
+| E16 | L07 | README-Shellblock in temporärem Verzeichnis ausgeführt: Neuanlage, Modus 0600, Überschreibschutz, unveränderte Secrets und zweimalige identische Compose-Konfiguration PASS; llms-Generator und diff --check Exit 0 | Keine Dienste gestartet; kein Verschlüsselungs-, Neustart- oder Restore-E2E. |
 
 ## Release, Website, Store und Automation
 
@@ -103,8 +104,8 @@ Commit und Push mit regulären Hooks freigegeben. Keine weitergehende Veröffent
 Offen: Betreiber-/Supportangaben, juristische Prüfung, Store-Konto/Freigabe, Testzugänge und
 Zielsysteme, globale Hooks/Transkript-Datenfluss, Sichtabnahme sowie gesonderte Publikationsfreigaben. Commit/Push sind für den vereinbarten Scope freigegeben.
 
-Aktiv: L04 (lesender Historienscan/Lizenzinventur) und L05 (Publikationsvorbereitung).
-L02/L03 lokal abgeschlossen. Implementierung bleibt auf einen technischen Hauptstrom begrenzt.
+Aktiv: L04 (lesender Historienscan/Lizenzinventur) und L07 (Installationsvorbereitung).
+L05 wartet auf den nächsten technischen Arbeitsschritt; L02/L03 sind auf main synchronisiert. Implementierung bleibt auf einen technischen Hauptstrom begrenzt.
 
 Nächste drei priorisierte Aufgaben:
 
@@ -112,6 +113,5 @@ Nächste drei priorisierte Aufgaben:
 2. **L05:** Kontrollierte öffentliche Publikation ohne privaten Deploy-Zwang vorbereiten.
 3. **L07:** Persistenten Quickstart und isolierte Installationsprüfung vorbereiten.
 
-Nächster Codex-Schritt: L04-Scan ohne Geheimniswerte auswerten und L05-Publikationsgrenze
-vorbereiten. L03 nicht wiederholen. Fertige Pakete mit regulären Hooks committen und pushen.
+Nächster Codex-Schritt: L04-Scan ohne Geheimniswerte auswerten und isolierten L07-Installations-/Restore-Nachweis vorbereiten; danach L05-Publikationsstrecke fortsetzen. L03 nicht wiederholen. Fertige Pakete mit regulären Hooks committen und pushen.
 Parallel kann der Nutzer Betreiber-/Supportangaben und Store-Kontostatus bereitstellen.
