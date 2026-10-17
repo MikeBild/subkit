@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-17T17:49:18Z**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-17T17:53:40Z**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktcommit: **7c00b46e7832e97f9c08613ce04b1e5540841bfe**, `main`, Version **9.15.2**.
 - Checkout und origin/main waren nach `git pull --ff-only origin main` identisch; vor Dateierstellung sauber.
-- Synchronisation: **b98d91bb678088cd3e49bf87f5f471999260f847 auf origin/main bestätigt**; sauberer Checkout, Divergenz 0/0 nach Push. Neuere lokale Änderungen sind erst mit ihrem eigenen Push synchronisiert. Produkt-Baseline oben bleibt für historische Nachweise erhalten.
+- Synchronisation: **765a2fe269b9f930a44c301a7c43734b5e2f128c auf origin/main bestätigt**, Checkout sauber und 0/0 vor dieser Prüfung; git pull --ff-only erneut erfolgreich. Neue L08-Nachweise LOCAL_ONLY bis Push.
 - Countdown am 17.10.: **10/11 Kalendertage bis Beta**, **29 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -23,8 +23,8 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L04 | IN_PROGRESS | Historienscan abgeschlossen: 11 Treffer, davon 3 Dokumentationsbeispiele und 8 Vorkommen desselben historischen Firebase-Clientkeys. API-Einschränkungen/Stilllegung dieses Keys ungeprüft; Lizenz-/Publikationsprüfung offen, E19. |
 | L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17; Signatur gegen Updater-Schlüssel vor Upload geprüft, E18. GitHub-Installer mit Signaturprüfung und lokalem Alias korrigiert, E20. Lokaler check/prepare/publish-Weg implementiert, 18 Prüfungen PASS, E21; echter Vorbereitungs-/Publikationslauf weiterhin UNVERIFIED. |
 | L06 | BLOCKED | Betreiber-/Supportangaben und juristische Freigabe erforderlich. |
-| L07 | DONE | Persistenter Quickstart und Backup-/Recovery-Anleitung; Linux-amd64-Build, frische Installation, Engine-Neustart und Restore in getrennte leere Volumes mit verschlüsselten Testdaten PASS, E22. Compose-Speicherfix und Nachweis LOCAL_ONLY bis Push. Öffentliche Installation bleibt L15, Versionsupgrade L18. |
-| L08 | TODO | Launch-Security-Prüfung und Befundregister. |
+| L07 | DONE | Persistenter Quickstart und Backup-/Recovery-Anleitung; Linux-amd64-Build, frische Installation, Engine-Neustart und Restore in getrennte leere Volumes mit verschlüsselten Testdaten PASS, E22. Commit 765a2fe26 gepusht, alle acht Pre-Push-Gates bestanden. Öffentliche Installation bleibt L15, Versionsupgrade L18. |
+| L08 | IN_PROGRESS | 139 gezielte Sicherheitsprüfungen PASS, E23. Abhängigkeitsscan meldet 88 Produktions-Advisories; MCP-OAuth-Issuerbindung als konkreter Launch-Befund identifiziert, S01/E24. Keine Security-Freigabe. |
 | L09 | TODO | Bestehenden Website-Kanal verwenden; Produktbereich/Links/Recht noch nicht abgenommen. |
 | L10 | TODO | Store-Paket, Icons, Listing, Disclosures und echte Installation. |
 | L11 | BLOCKED | L10, öffentliche Pflichtlinks, Publisherstatus und explizite Einreichungsfreigabe fehlen. |
@@ -84,6 +84,18 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 | E21 | L05 | release:local prüft sauberes main, Tag-/Commit-/Gatebindung; baut Git-Snapshot und isolierten Docker-Smoke; signiert zehn Nutzartefakte samt Provenance. Publish braucht explizites Argument, öffentliches Repo, unverwendete Versionen und erneut gültige Nachweise. 18 Bundle-/Befehlsgrenzen-/Provenance-/Workflow-Tests, 78 Assertions PASS; Typecheck PASS | Echte Kryptografie und lokale Subprozesse mit isolierten Tool-Fixtures. Kein vollständiger Docker-Build/Smoke/Signierlauf, kein privater Release-Schlüssel verwendet, keine Registry-/GitHub-Publikation. Tatsächliche Route bleibt UNVERIFIED bis zum freigegebenen Kandidatenlauf. |
 | E22 | L07 | Docker-Build aus b98d91bb678088cd3e49bf87f5f471999260f847 für linux/amd64 PASS; Image sha256:7969fd79125bedad388161269578fe4ce11c3e2c38e81ad519ade8c83989b973. Frischer Compose-Start, Health 9.15.2, authentifizierter Workflow-/Dateizugriff, persistierte Testcredential-Entschlüsselung und falscher Schlüssel abgewiesen PASS; nach Engine-Ersetzung erneut PASS. Quiesziertes pg_dump (935364 Bytes) plus Objektarchiv (153600 Bytes), Restore in separate leere Volumes: dieselben Daten-/Schlüsselprüfungen PASS. Eigene Testprojekte/Volumes danach entfernt. 12 Start-/Compose-Vertragstests, 22 Assertions PASS; llms-Generator PASS. Receipt lokal: .artifacts/launch/installation-acceptance.json; Ablauf in README | Lokales Image plus Compose-Korrektur, keine öffentliche Installation. Erster Start scheiterte an SeaweedFS-Vorabreservierung; explizites master.volumePreallocate=false behebt diese. Vorübergehende Healthcheck-Timeouts beim Neustart unter amd64-Emulation; unveränderte Gates danach bestanden. Mock-LLM, kein realer Provider-/Chatlauf, kein Versionsupgrade, keine vollständige Rollen-/Provenienzabnahme. |
 
+| E23 | L08 | Auf 765a2fe26 mit Bun 1.4.0: 14 isolierte Testsuiten, **139 pass, 0 fail, 1677 Assertions**, Exit 0. RBAC-Matrix/Grants/Ressourcenzugriff, MCP-Mandantentrennung/Audit und Ablehnung vor Approval, QuickJS fail-closed/Runtime sowie HTTP/MCP/Webhook-Mandantenjourney. Eigene PostgreSQL-Instanz auf isoliertem Port mit flüchtigem Datenvolume; keine Demo-Daten verwendet; Testcontainer danach entfernt. Receipt .artifacts/launch/security-boundaries.log | Reale Datenbank und lokale Transporttests, synthetische Connectoren/Mock-LLM. Keine vollständige Penetrationsprüfung, keine Prüfung veröffentlichter Artefakte; bestandene Tests schließen Dependency-Befunde nicht aus. |
+| E24 | L08 | bun audit --json und --prod --json: jeweils Exit 1. Gesamt 149 Advisory-Einträge/28 Pakete (65 high, 2 critical); Produktion 88/24 (41 high, 2 critical, 34 moderate, 11 low). MCP SDK 1.30.0 vorhanden. Isolierte SDK-Reproduktion mit synthetischem Clientsecret und Fetch-Fixture: AUTHORIZED, Secret an vom MCP-Server ausgewählten Issuer übergeben; 0 externe Requests | Advisory-Anzahl ist keine Anzahl bewiesener Produktlücken. Reproduktion trifft SDK-Verhalten; SubKit ruft denselben Provider ohne expectedIssuer auf, vollständige Produkt-Gegenprüfung noch nötig. Kein echtes Secret verwendet, keine produktive Verbindung geprüft. |
+
+## Security-Befundregister (L08)
+
+| ID | Befund und Einordnung | Erforderlicher Abschlussnachweis |
+| --- | --- | --- |
+| S01 | **P0, offen:** MCP OAuth SDK 1.30.0 liegt im betroffenen Bereich von [GHSA-6qxp-vccf-f47h](https://github.com/modelcontextprotocol/typescript-sdk/security/advisories/GHSA-6qxp-vccf-f47h). session-auth.ts erzeugt ClientCredentialsProvider/PrivateKeyJwtProvider ohne expectedIssuer; oauth-provider.ts persistiert/liefert issuer nicht mit Token/Clientinformationen. Vorhandene Token-Response-Evidenz bewertet Antworten erst nach dem Request und verhindert diesen Versand nicht. SDK-Fixture bestätigt das Verhalten. | SDK mindestens 1.31.0, feste erwartete Issuer für M2M, verlustfreie Issuer-Persistenz für Client/Token und fail-closed Umgang mit nicht gebundenem Altbestand. Regression: geänderter Autorisierungsserver erhält keine Credentials; gültiger Issuer und Refresh bleiben funktionsfähig. Keine automatische Produktionsrotation ohne Befund/Freigabe. |
+| S02 | **Offene Einordnung:** proxy-addr 2.0.7 (SDK → Express) und shell-quote 1.10.0 (react-devtools-core) mit kritischen Registry-Advisories. Produktionsabhängigkeitsbaum enthält sie; tatsächliche Erreichbarkeit im ausgelieferten Engine-/CLI-Pfad noch ungeprüft. | Callgraph und konkrete Angriffsvoraussetzungen prüfen; erreichbare Pfade korrigieren bzw. kompatible Fixversionen mit zielgerichteten Regressionen übernehmen. Keine pauschale Entwarnung aus der Paketposition. |
+| S03 | **Offene Einordnung:** übrige Produktions-Advisories u. a. Hono, ZIP-/Textparser, Undici, gRPC und Grafikabhängigkeiten. | Gegen ausgelieferte Aufrufpfade und Hersteller-Advisories prüfen; hohe ausnutzbare Launch-Befunde schließen. Rohscan lokal gitignored, keine automatische Massenaktualisierung. |
+
+
 ## Release, Website, Store und Automation
 
 | Gegenstand | Zustand |
@@ -110,13 +122,13 @@ Commit und Push mit regulären Hooks freigegeben. Keine weitergehende Veröffent
 Offen: Betreiber-/Supportangaben, juristische Prüfung, Store-Konto/Freigabe, vorhandener Release-Signing-Key für lokale Abnahme, Testzugänge und
 Zielsysteme, Nachweis zu Einschränkungen/Stilllegung des historischen Firebase-Keys, globale Hooks/Transkript-Datenfluss, Sichtabnahme sowie gesonderte Publikationsfreigaben. Commit/Push sind für den vereinbarten Scope freigegeben.
 
-L07 ist lokal abgeschlossen; Commit/Push mit regulären Hooks folgt. L04 benötigt noch Lizenzprüfung und menschliche Key-Befundklärung; L05 wartet für die reale Release-Abnahme auf Kandidat/Signing-Key. Nächster technischer Hauptstrom: L08 (Launch-Security-Prüfung).
+L07 ist auf main abgeschlossen und synchronisiert. L04 benötigt noch Lizenzprüfung und menschliche Key-Befundklärung; L05 wartet für die reale Release-Abnahme auf Kandidat/Signing-Key. Aktiver technischer Hauptstrom: L08, zuerst S01 (MCP-OAuth-Issuerbindung).
 
 Nächste drei priorisierte Aufgaben:
 
-1. **L08:** Bestehende Security-Prüfungen und reale Rechte-/Approval-Grenzen prüfen; relevante Befunde beheben und dokumentieren.
+1. **L08/S01:** MCP-SDK und Issuerbindung einschließlich gespeichertem Altbestand korrigieren; manipulierte Discovery ohne Credential-Versand verifizieren.
 2. **L04:** Auslieferungslizenzen prüfen; menschlichen Nachweis zu Einschränkungen/Stilllegung des historischen Firebase-Keys ergänzen.
 3. **L12:** Aktuelle reale Kern-/Intake-Journeys ausführen; vorhandene funktionale Verifier und isolierte Testdaten verwenden.
 
-Nächster Codex-Schritt: L07-Paket mit normalen Hooks committen/pushen, danach L08 anhand vorhandener Security-Verifier ausführen. L03 und den bestandenen Same-image-Restore nicht wiederholen. L05-Code E21 ist vorhanden; reale Abnahme benötigt einen freigegebenen Kandidaten und vorhandenen Signing-Key außerhalb des Repos.
+Nächster Codex-Schritt: S01 beheben. Dazu zuerst einen SubKit-Regressionstest für abweichende OAuth-Discovery ergänzen, SDK-Fixversion und vollständige Client-/Token-Issuerbindung umsetzen, Altbestand ohne belegte Bindung zur erneuten Autorisierung führen, gültigen Issuer/Refresh sowie Credential-Generation- und Approval-Grenzen prüfen. Danach S02/S03 triagieren. E23 ist Baseline vor diesen Änderungen und danach gezielt zu erneuern. L03/L07 nicht wiederholen.
 Parallel kann der Nutzer Betreiber-/Supportangaben und Store-Kontostatus bereitstellen.
