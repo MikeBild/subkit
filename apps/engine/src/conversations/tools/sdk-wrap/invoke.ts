@@ -54,6 +54,7 @@ import {
 import { normalizeToolResultPayload, toolCallOutcome } from "../result-payload.ts";
 import { truncateForLlm } from "../truncate.ts";
 import { buildCapAlternatives } from "./error-recovery-hints.ts";
+import { resolveGateSubjects } from "./gate-subjects.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import {
   buildConfirmedToolCallIntent,
@@ -696,7 +697,11 @@ export function wrapOne(
         }
 
         if (gate.kind === "needs_confirm") {
-          const pendingOutput = buildPendingOutputForTool(inner.name, rawArgs);
+          const basePendingOutput = buildPendingOutputForTool(inner.name, rawArgs);
+          const gateSubjects = await resolveGateSubjects(inner.name, rawArgs, ctx.tenant_id, db);
+          const pendingOutput = gateSubjects
+            ? { ...(basePendingOutput ?? {}), ...gateSubjects }
+            : basePendingOutput;
           const buildPolicyGateSummary = (): string => {
             if (inner.name === "run_workflow") {
               const draft = ctx.getDraft();

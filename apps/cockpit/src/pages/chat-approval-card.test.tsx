@@ -85,3 +85,15 @@ test("a gated connector call names connector, method and target in the reader's 
     "Diese Aktion braucht deine Freigabe.",
   );
 });
+
+test("a gated action lists what it concerns", () => {
+  const html = render(
+    { ...gated, gatedTool: "approve_skill_candidate", subjects: ["Chord analysis"] },
+    "de",
+  );
+  expect(html).toContain("Chord analysis");
+  expect(html).toContain('data-testid="approval-subjects"');
+  expect(render({ ...gated, gatedTool: "approve_skill_candidate" }, "de")).not.toContain(
+    "approval-subjects",
+  );
+});

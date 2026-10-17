@@ -100,6 +100,13 @@ export function ChatApprovalCard({
           </a>
         </Button>
       )}
+      {approval.subjects && approval.subjects.length > 0 && (
+        <ul className="list-disc space-y-0.5 pl-5 text-sm" data-testid={`${testId}-subjects`}>
+          {approval.subjects.map((subject) => (
+            <li key={subject}>{readable(subject)}</li>
+          ))}
+        </ul>
+      )}
       {approval.externalTool?.server_claim && (
         <p className="text-sm text-muted-foreground" data-testid={`${testId}-server-claim`}>
           {t("chat.decision.serverClaim", {

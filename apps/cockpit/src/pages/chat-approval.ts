@@ -16,6 +16,7 @@ export interface ChatApproval {
   externalTool?: { connector: string; tool: string; server_claim?: string };
   connectorCall?: { connector: string; method: string; target: string | null };
   gatedTool?: string;
+  subjects?: string[];
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -53,6 +54,7 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
     ...(externalTool ? { externalTool } : {}),
     ...(connectorCall ? { connectorCall } : {}),
     ...(gatedTool ? { gatedTool } : {}),
+    ...(pending.prompt?.subjects?.length ? { subjects: pending.prompt.subjects } : {}),
     savesInactiveWorkflow: intent.kind === "save_workflow_draft",
     expiresAt: pending.expires_at,
     ...(intent.kind === "commit_held_workflow_writes" || intent.kind === "run_workflow"
