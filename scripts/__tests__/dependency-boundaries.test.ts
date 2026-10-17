@@ -7,8 +7,24 @@ const sdk = createRequire(root.resolve("@modelcontextprotocol/sdk/server/index.j
 const express = createRequire(sdk.resolve("express"));
 const shell = devtools("shell-quote");
 const proxy = express("proxy-addr");
+const ajv = createRequire(root.resolve("ajv"));
+const uri = ajv("fast-uri");
 
 describe("transitive dependency trust boundaries", () => {
+  test("URI serialization rejects ports that replace the intended authority", () => {
+    expect(() =>
+      uri.serialize({
+        scheme: "https",
+        host: "trusted.example",
+        port: "@127.0.0.1:8124",
+        path: "/app",
+      }),
+    ).toThrow(TypeError);
+    expect(
+      uri.serialize({ scheme: "https", host: "trusted.example", port: 8443, path: "/app" }),
+    ).toBe("https://trusted.example:8443/app");
+  });
+
   test("shell quoting rejects line terminators after a comment", () => {
     for (const separator of ["\n", "\r", "\u2028", "\u2029"]) {
       expect(() =>
