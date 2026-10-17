@@ -104,6 +104,7 @@ export async function buildClipper(check = false): Promise<string> {
     );
   }
   files.set("licenses/lucide.txt", await readFile(join(root, "node_modules/lucide-react/LICENSE")));
+  files.set("licenses/subkit.txt", await readFile(join(root, "LICENSE")));
 
   const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as {
     version: string;
