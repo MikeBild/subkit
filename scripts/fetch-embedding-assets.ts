@@ -1,33 +1,45 @@
-import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import manifest from "../vendor/embedding-assets.json";
 
 const REPO_ROOT = join(import.meta.dir, "..");
 const MINILM_DIR = join(REPO_ROOT, "apps/engine/assets/embeddings/minilm");
 const ORT_DIR = join(REPO_ROOT, "apps/engine/assets/embeddings/onnxruntime");
 const ORT_SRC = join(REPO_ROOT, "node_modules/onnxruntime-web/dist");
 
-const MODEL_ID = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
-const REVISION = "main";
-const HF_BASE = `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}`;
-
-const MODEL_FILES: Array<{ remote: string; local: string; minBytes: number }> = [
-  { remote: "config.json", local: "config.bin", minBytes: 100 },
-  { remote: "tokenizer.json", local: "tokenizer.bin", minBytes: 1_000_000 },
-  { remote: "tokenizer_config.json", local: "tokenizer_config.bin", minBytes: 100 },
-  { remote: "special_tokens_map.json", local: "special_tokens_map.bin", minBytes: 50 },
-  { remote: "onnx/model_quantized.onnx", local: "model_quantized.onnx", minBytes: 50_000_000 },
-];
-
-const ORT_FILES = ["ort-wasm-simd-threaded.asyncify.mjs", "ort-wasm-simd-threaded.asyncify.wasm"];
-
-async function ensureDir(dir: string): Promise<void> {
-  if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+export interface AssetDigest {
+  bytes: number;
+  sha256: string;
 }
 
-function ok(path: string, minBytes: number): boolean {
-  if (!existsSync(path)) return false;
-  return Bun.file(path).size >= minBytes;
+function digest(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+export async function matchesAsset(path: string, expected: AssetDigest): Promise<boolean> {
+  const file = Bun.file(path);
+  if (!(await file.exists()) || file.size !== expected.bytes) return false;
+  return digest(new Uint8Array(await file.arrayBuffer())) === expected.sha256;
+}
+
+async function writeAtomically(dest: string, bytes: Uint8Array): Promise<void> {
+  await mkdir(dirname(dest), { recursive: true });
+  const temporary = await mkdtemp(join(dirname(dest), ".embedding-"));
+  try {
+    const candidate = join(temporary, "asset");
+    await writeFile(candidate, bytes);
+    await rename(candidate, dest);
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+}
+
+function assertAsset(bytes: Uint8Array, expected: AssetDigest, source: string): void {
+  if (bytes.length !== expected.bytes) {
+    throw new Error(`${source} returned ${bytes.length} bytes (expected ${expected.bytes})`);
+  }
+  if (digest(bytes) !== expected.sha256) throw new Error(`${source}: asset checksum mismatch`);
 }
 
 export function isTransient(err: unknown): boolean {
@@ -44,68 +56,54 @@ export function isTransient(err: unknown): boolean {
 export async function download(
   url: string,
   dest: string,
-  minBytes: number,
+  expected: AssetDigest,
   fetchImpl: typeof fetch = fetch,
   sleep: (ms: number) => Promise<void> = (ms) => Bun.sleep(ms),
 ): Promise<void> {
   const attempts = 4;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const res = await fetchImpl(url);
-      if (!res.ok) throw new Error(`GET ${url} -> ${res.status} ${res.statusText} `);
-      const buf = new Uint8Array(await res.arrayBuffer());
-      if (buf.byteLength < minBytes) {
-        throw new Error(`GET ${url} returned ${buf.byteLength} bytes (< ${minBytes} expected)`);
+      const response = await fetchImpl(url, { signal: AbortSignal.timeout(60_000) });
+      if (!response.ok) {
+        throw new Error(`GET ${url} -> ${response.status} ${response.statusText} `);
       }
-      await ensureDir(dirname(dest));
-      await Bun.write(dest, buf);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      assertAsset(bytes, expected, `GET ${url}`);
+      await writeAtomically(dest, bytes);
       return;
     } catch (err) {
       if (attempt === attempts || !isTransient(err)) throw err;
-      const backoffMs = 1000 * 2 ** (attempt - 1);
-      console.log(
-        `  ! ${url} failed (attempt ${attempt}/${attempts}): ${
-          err instanceof Error ? err.message : String(err)
-        } — retrying in ${backoffMs}ms`,
-      );
-      await sleep(backoffMs);
+      await sleep(1000 * 2 ** (attempt - 1));
     }
   }
 }
 
+export async function copyRuntimeAsset(
+  source: string,
+  dest: string,
+  expected: AssetDigest,
+): Promise<void> {
+  const bytes = new Uint8Array(await Bun.file(source).arrayBuffer());
+  assertAsset(bytes, expected, source);
+  if (await matchesAsset(dest, expected)) return;
+  await writeAtomically(dest, bytes);
+}
+
 async function main(): Promise<void> {
-  await ensureDir(MINILM_DIR);
-  await ensureDir(ORT_DIR);
-
-  for (const f of MODEL_FILES) {
-    const dest = join(MINILM_DIR, f.local);
-    if (ok(dest, f.minBytes)) {
-      console.log(`  ✓ ${f.local} (cached)`);
-      continue;
-    }
-    console.log(`  ↓ ${f.local} …`);
-    await download(`${HF_BASE}/${f.remote}`, dest, f.minBytes);
-    console.log(`  ✓ ${f.local} (${(Bun.file(dest).size / 1e6).toFixed(1)} MB)`);
+  if (!/^[a-f0-9]{40}$/.test(manifest.revision)) {
+    throw new Error("Embedding model requires an immutable revision");
   }
-
-  for (const name of ORT_FILES) {
-    const src = join(ORT_SRC, name);
-    const dest = join(ORT_DIR, name);
-    if (!existsSync(src)) {
-      throw new Error(
-        `onnxruntime-web asset missing at ${src} — run \`bun install\` before building`,
-      );
+  const base = `https://huggingface.co/${manifest.model}/resolve/${manifest.revision}`;
+  for (const asset of manifest.files) {
+    const dest = join(MINILM_DIR, asset.local);
+    if (!(await matchesAsset(dest, asset))) {
+      await download(`${base}/${asset.remote}`, dest, asset);
     }
-    const srcSize = Bun.file(src).size;
-    if (ok(dest, srcSize)) {
-      console.log(`  ✓ ${name} (in sync)`);
-      continue;
-    }
-    await Bun.write(dest, Bun.file(src));
-    console.log(`  ✓ ${name} (${(srcSize / 1e6).toFixed(1)} MB, copied)`);
   }
-
-  console.log("embedding assets ready");
+  for (const asset of manifest.runtime) {
+    await copyRuntimeAsset(join(ORT_SRC, asset.name), join(ORT_DIR, asset.name), asset);
+  }
+  console.log("embedding assets verified");
 }
 
 if (import.meta.main) await main();
