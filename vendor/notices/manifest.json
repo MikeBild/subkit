@@ -1,0 +1,144 @@
+[
+  {
+    "name": "@ai-sdk/provider-utils",
+    "version": "5.0.15",
+    "files": [
+      {
+        "path": "@ai-sdk__provider-utils__tag-license.txt",
+        "sha256": "b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529",
+        "source": "https://github.com/vercel/ai/blob/a56fbc08fd5c171574a499babfbd82f0b2a7b3fe/LICENSE"
+      }
+    ],
+    "qualification": "Version-bound notice source; legal distribution approval remains separate."
+  },
+  {
+    "name": "drizzle-orm",
+    "version": "0.45.2",
+    "files": [
+      {
+        "path": "drizzle-orm__tag-license.txt",
+        "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+        "source": "https://github.com/drizzle-team/drizzle-orm/blob/273c78071d4841b497f5144734b38294df7ec64b/LICENSE"
+      }
+    ],
+    "qualification": "Version-bound notice source; legal distribution approval remains separate."
+  },
+  {
+    "name": "isarray",
+    "version": "1.0.0",
+    "files": [
+      {
+        "path": "isarray__README-LICENSE.txt",
+        "sha256": "a1bd5deadb6a06dd74efa852c1b8b23f63b67f2214fbe9c8bd591da51da69268",
+        "source": "node_modules/.bun/isarray@1.0.0/node_modules/isarray/README.md"
+      }
+    ],
+    "qualification": "Version-bound notice source; legal distribution approval remains separate."
+  },
+  {
+    "name": "js-tiktoken",
+    "version": "1.0.21",
+    "files": [
+      {
+        "path": "js-tiktoken__LICENSE.txt",
+        "sha256": "418cb499b436128d653d79941333a5437b7be2ea9213dcc2f04d15d5d2c51d86",
+        "source": "https://github.com/dqbd/tiktoken/blob/4c8b748e07992c00386f3180af5c574b27b65139/LICENSE"
+      }
+    ],
+    "qualification": "Version-bound notice source; legal distribution approval remains separate."
+  },
+  {
+    "name": "onnxruntime-common",
+    "version": "1.24.0-dev.20251116-b39e144322",
+    "files": [
+      {
+        "path": "onnxruntime-common-LICENSE",
+        "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+        "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/b39e14432259d5f579f34c3e338f1f70aa368f01/LICENSE"
+      },
+      {
+        "path": "onnxruntime-common-ThirdPartyNotices.txt",
+        "sha256": "e9e90971a8e75a9a8ac0c6412e29c1202d079998389915aa485f46c816c3b4cc",
+        "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/b39e14432259d5f579f34c3e338f1f70aa368f01/ThirdPartyNotices.txt"
+      }
+    ],
+    "qualification": "Upstream commit matched to the development version suffix; binary build provenance and full native notice coverage remain unverified."
+  },
+  {
+    "name": "onnxruntime-web",
+    "version": "1.26.0-dev.20260416-b7804b056c",
+    "files": [
+      {
+        "path": "onnxruntime-web-LICENSE",
+        "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+        "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/b7804b056c30aa35c1748f8e4e239d0e2ff25d6d/LICENSE"
+      },
+      {
+        "path": "onnxruntime-web-ThirdPartyNotices.txt",
+        "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2",
+        "source": "https://raw.githubusercontent.com/microsoft/onnxruntime/b7804b056c30aa35c1748f8e4e239d0e2ff25d6d/ThirdPartyNotices.txt"
+      }
+    ],
+    "qualification": "Upstream commit matched to the development version suffix; binary build provenance and full native notice coverage remain unverified."
+  },
+  {
+    "name": "pg-types",
+    "version": "2.2.0",
+    "files": [
+      {
+        "path": "pg-types__README-LICENSE.txt",
+        "sha256": "2c8a6e1b7782f0ca241792868af742f1c281c9661f59ec36c9acf40381c86645",
+        "source": "node_modules/.bun/pg-types@2.2.0/node_modules/pg-types/README.md"
+      }
+    ],
+    "qualification": "Version-bound notice source; legal distribution approval remains separate."
+  },
+  {
+    "name": "pgpass",
+    "version": "1.0.5",
+    "files": [
+      {
+        "path": "pgpass__README-LICENSE.txt",
+        "sha256": "492e56ee92e47d39ca91d60ef75f55b1104678fab8f09838206b61b43136e211",
+        "source": "node_modules/.bun/pgpass@1.0.5/node_modules/pgpass/README.md"
+      }
+    ],
+    "qualification": "Version-bound notice source; legal distribution approval remains separate."
+  },
+  {
+    "name": "react-devtools-core",
+    "version": "7.0.1",
+    "files": [
+      {
+        "path": "react-devtools-core__LICENSE.txt",
+        "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+        "source": "https://github.com/react/react/blob/3cde211b0cb1c707114c27d7fd23683d02086e31/LICENSE"
+      }
+    ],
+    "qualification": "Version-bound notice source; legal distribution approval remains separate."
+  },
+  {
+    "name": "saxes",
+    "version": "6.0.0",
+    "files": [
+      {
+        "path": "saxes__LICENSE.txt",
+        "sha256": "0fac2374380621b22e6b50451057721a9c52935b02d16d106a9f04897f061d0e",
+        "source": "https://github.com/lddubeau/saxes/blob/211fa0ebec9b628affc09219199639887174bfc3/LICENSE"
+      }
+    ],
+    "qualification": "Version-bound notice source; legal distribution approval remains separate."
+  },
+  {
+    "name": "yoga-layout",
+    "version": "3.2.1",
+    "files": [
+      {
+        "path": "yoga-layout__tag-license.txt",
+        "sha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85",
+        "source": "https://github.com/react/yoga/blob/042f5013152eb81c1552dec945b88f7b95ca350f/LICENSE"
+      }
+    ],
+    "qualification": "Version-bound notice source; legal distribution approval remains separate."
+  }
+]
