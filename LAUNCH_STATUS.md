@@ -2,7 +2,7 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-17T17:14:02Z**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-17T17:18:21Z**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktcommit: **7c00b46e7832e97f9c08613ce04b1e5540841bfe**, `main`, Version **9.15.2**.
 - Checkout und origin/main waren nach `git pull --ff-only origin main` identisch; vor Dateierstellung sauber.
@@ -20,7 +20,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L01 | DONE | Begrenzte Bestandsaufnahme und Scopeentscheidungen; E01–E10. Kein vollständiges Security-Audit. |
 | L02 | DONE | Drei Dateien und kurzer AGENTS-Verweis erstellt; Dokumentvalidierung E11 bestanden. Commit 01257eb8a gepusht, E15. |
 | L03 | DONE | Veraltetes generiertes ZIP mit bestehendem Generator erneuert; Bun 1.4.0 macOS/Linux identisch; 63 Tests und funktionaler Chromium-Lauf PASS, E12. Commit 61ee865d3 gepusht, E15. |
-| L04 | IN_PROGRESS | Vollständiger Gitleaks-Historienscan läuft lesend; Lizenz-/Publikationsprüfung weiterhin offen. |
+| L04 | IN_PROGRESS | Historienscan abgeschlossen: 11 Treffer, davon 3 Dokumentationsbeispiele und 8 Vorkommen desselben historischen Firebase-Clientkeys. API-Einschränkungen/Stilllegung dieses Keys ungeprüft; Lizenz-/Publikationsprüfung offen, E19. |
 | L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17; Signatur gegen Updater-Schlüssel vor Upload geprüft, E18. Lokale Publikationsstrecke noch offen. |
 | L06 | BLOCKED | Betreiber-/Supportangaben und juristische Freigabe erforderlich. |
 | L07 | IN_PROGRESS | Quickstart mit einmaliger geschützter .env, Wiederverwendung und Recovery-Grenzen korrigiert; Shell-/Compose-Prüfung E16. Commit 1c4c5d5cf gepusht. Echter Start/Restore offen; Docker hat nur 8,9 GiB frei gegenüber 12 GiB Build-Vorgabe. |
@@ -79,6 +79,7 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 | E16 | L07 | README-Shellblock in temporärem Verzeichnis ausgeführt: Neuanlage, Modus 0600, Überschreibschutz, unveränderte Secrets und zweimalige identische Compose-Konfiguration PASS; llms-Generator und diff --check Exit 0 | Keine Dienste gestartet; kein Verschlüsselungs-, Neustart- oder Restore-E2E. |
 | E17 | L05 | 6 Release-/Provenance-Tests mit 39 Assertions PASS. Originaler Staging-Shellblock mit echter Compose-Datei/Clipper-ZIP und sechs Binärplatzhaltern: acht Prüfsummen korrekt, temporäre Ed25519-Signatur verifiziert, manipuliertes ZIP abgewiesen. Receipt lokal gitignored | Kein Imagebuild, keine echten Release-Binärdateien oder Release-Schlüssel verwendet; keine Publikation. |
 | E18 | L05 | 60 Release-/Provenance-/Updater-Tests, 113 Assertions PASS. Exakten Workflow-Signaturbefehl isoliert ausgeführt: falscher Trust-Root abgewiesen, passender temporärer Schlüssel akzeptiert, manipuliertes Manifest abgewiesen | Reale Kryptografie mit Testschlüssel; Produktions-Signing-Key nicht verwendet oder geprüft. Zusätzlich offen: scripts/install.sh erwartet nicht veröffentlichte subkit-Alias-Binärdateien und prüft keine Signatur; dokumentierter Engine-Installer ist ein separater Pfad. |
+| E19 | L04 | Gitleaks git --all mit Repo-Konfiguration und Redaction: Exit 1, 2291 Commits/1,39 GB/17m6s, 11 Treffer in 4 historischen Dateien. Drei kurze API-Key-Dokumentationsbeispiele mit Demo-Suffix als Beispielbefunde eingeordnet. Acht Firebase-Befunde betreffen denselben Clientkey; am geprüften HEAD nicht mehr vorhanden | Kein Nachweis eines missbrauchten Secrets. Laut [Firebase-Dokumentation](https://firebase.google.com/docs/projects/api-keys) sind passend eingeschränkte Firebase-Clientkeys nicht geheim; konkrete API-/App-Einschränkungen oder Stilllegung hier UNVERIFIED. Keine Key-Werte, privaten Projektangaben oder Rohreports im Repository; keine Historienumschreibung/Rotation vorgenommen. |
 
 ## Release, Website, Store und Automation
 
@@ -104,16 +105,16 @@ dieser Planungsdateien. Anschließend: autonome Launch-Vorbereitung als Goal ein
 Commit und Push mit regulären Hooks freigegeben. Keine weitergehende Veröffentlichungsfreigabe daraus ableiten.
 
 Offen: Betreiber-/Supportangaben, juristische Prüfung, Store-Konto/Freigabe, Testzugänge und
-Zielsysteme, globale Hooks/Transkript-Datenfluss, Sichtabnahme sowie gesonderte Publikationsfreigaben. Commit/Push sind für den vereinbarten Scope freigegeben.
+Zielsysteme, Nachweis zu Einschränkungen/Stilllegung des historischen Firebase-Keys, globale Hooks/Transkript-Datenfluss, Sichtabnahme sowie gesonderte Publikationsfreigaben. Commit/Push sind für den vereinbarten Scope freigegeben.
 
-Aktiv: L04 (lesender Historienscan/Lizenzinventur) und L05 (signierte Distribution).
+Aktiv: L04 (Befundklärung/Lizenzinventur) und L05 (signierte Distribution).
 L07 wartet auf ausreichenden Docker-Buildspeicher und den Installations-/Restore-Test; L02/L03 sind auf main synchronisiert. Implementierung bleibt auf einen technischen Hauptstrom begrenzt.
 
 Nächste drei priorisierte Aufgaben:
 
-1. **L04:** Historienscan auswerten, Geheimnis- und Lizenzprüfung fortsetzen.
+1. **L04:** Historischen Firebase-Key hinsichtlich Einschränkungen/Stilllegung klären; Auslieferungslizenzen prüfen.
 2. **L05:** Kontrollierte öffentliche Publikation ohne privaten Deploy-Zwang vorbereiten.
 3. **L07:** Persistenten Quickstart und isolierte Installationsprüfung vorbereiten.
 
-Nächster Codex-Schritt: L04-Scan ohne Geheimniswerte auswerten und isolierten L07-Installations-/Restore-Nachweis vorbereiten; L05 mit GitHub-Installer/Signaturprüfung und lokaler Publikationsstrecke fortsetzen. L03 nicht wiederholen. Fertige Pakete mit regulären Hooks committen und pushen.
+Nächster Codex-Schritt: L04-Befundklärung und isolierten L07-Installations-/Restore-Nachweis vorbereiten; L05 mit GitHub-Installer/Signaturprüfung und lokaler Publikationsstrecke fortsetzen. L03 nicht wiederholen. Fertige Pakete mit regulären Hooks committen und pushen.
 Parallel kann der Nutzer Betreiber-/Supportangaben und Store-Kontostatus bereitstellen.
