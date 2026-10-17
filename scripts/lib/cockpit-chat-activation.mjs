@@ -610,6 +610,15 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
       await page.reload();
       const card = page.getByTestId("chat-live-test-result");
       await card.waitFor();
+      await card.scrollIntoViewIfNeeded();
+      await page.waitForFunction(
+        (expectedText) =>
+          document
+            .querySelector('[data-testid="chat-live-test-result"]')
+            ?.innerText.toLowerCase()
+            .includes(expectedText.toLowerCase()),
+        expected,
+      );
       const text = (await card.innerText()).toLowerCase();
       if (!text.includes(expected.toLowerCase()))
         throw new Error(`Reloaded live-test status did not describe ${state}: ${text}`);
