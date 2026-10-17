@@ -1,12 +1,38 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { LearningSchema } from "../api/agent-sessions.ts";
+import type { Db } from "../db/client.ts";
+import * as invokeModule from "../llm/core/invoke.ts";
 import {
+  analyzeAgentSession,
   learningFingerprint,
   learningPattern,
+  proposeLearning,
+  redactLearning,
   sampleTranscript,
   transcriptLineText,
 } from "./sessions.ts";
+
+const FAKE_PAT = ["ghp", "abcdefghijklmnopqrstuvwxyz0123456789"].join("_");
+
+const untouchableDb = new Proxy(
+  {},
+  {
+    get() {
+      throw new Error("the database must not be touched");
+    },
+  },
+) as Db;
+
+function invokeReturning(learnings: unknown[]) {
+  return spyOn(invokeModule, "invoke").mockResolvedValue({
+    object: { learnings },
+  } as unknown as Awaited<ReturnType<typeof invokeModule.invoke>>);
+}
+
+afterEach(() => {
+  (invokeModule.invoke as unknown as { mockRestore?: () => void }).mockRestore?.();
+});
 
 describe("learningFingerprint", () => {
   test("normalizes whitespace and case in the title", () => {
@@ -100,5 +126,103 @@ describe("sampleTranscript", () => {
     expect(sampled).toContain("TAILMARK");
     expect(sampled).toContain("[…transcript truncated…]");
     expect(sampled.length).toBeLessThan(30_000);
+  });
+});
+
+describe("redactLearning", () => {
+  test("masks a token in title, body and pitfalls", () => {
+    const result = redactLearning({
+      title: `Push with ${FAKE_PAT}`,
+      body: `Authenticate using ${FAKE_PAT} before pushing.`,
+      pitfalls: [`never echo ${FAKE_PAT}`],
+    });
+    if (result.kind !== "kept") throw new Error("expected the learning to be kept");
+    expect(JSON.stringify(result)).not.toContain(FAKE_PAT);
+    expect(result.title).toContain("***REDACTED:pat***");
+    expect(result.body).toContain("***REDACTED:pat***");
+    expect(result.pitfalls[0]).toContain("***REDACTED:pat***");
+  });
+
+  test("drops a learning that names a key file location", () => {
+    expect(
+      redactLearning({
+        title: "Engine master key",
+        body: "The master key is stored at /etc/subkit/master.key on the host.",
+        pitfalls: [],
+      }),
+    ).toEqual({ kind: "dropped" });
+  });
+
+  test("drops when only a pitfall names the location", () => {
+    expect(
+      redactLearning({ title: "Deploy", body: "Deploy via the script.", pitfalls: ["~/.ssh"] }),
+    ).toEqual({ kind: "dropped" });
+  });
+
+  test("keeps an ordinary learning unchanged", () => {
+    const learning = {
+      title: "Halbgeviertstrich als Gedankenstrich",
+      body: "Read config through process.env.FOO, never inline.",
+      pitfalls: [],
+    };
+    expect(redactLearning(learning)).toEqual({ kind: "kept", ...learning });
+  });
+});
+
+describe("proposeLearning redaction", () => {
+  test("a key-path learning is dropped before anything is persisted", async () => {
+    const result = await proposeLearning({
+      tenant_id: "00000000-0000-4000-8000-000000000001",
+      title: "TLS key",
+      body: "The private key is /etc/ssl/private/server.key",
+      domains: ["infra"],
+      kind: "fact",
+      actor: null,
+      confidence: "high",
+      evidence_summary: "agent=claude-code",
+      db: untouchableDb,
+    });
+    expect(result).toEqual({ action: "dropped", candidate_id: null });
+  });
+});
+
+describe("analyzeAgentSession redaction", () => {
+  test("the extraction model receives the transcript with tokens masked", async () => {
+    const spy = invokeReturning([]);
+    const transcript = [
+      JSON.stringify({ message: { role: "user", content: `my token is ${FAKE_PAT}` } }),
+      `assistant: noted ${FAKE_PAT}`,
+    ].join("\n");
+    const result = await analyzeAgentSession({
+      tenant_id: "00000000-0000-4000-8000-000000000001",
+      transcript,
+      meta: { agent: "claude-code", domains: ["infra"] },
+      actor: null,
+      db: untouchableDb,
+    });
+    expect(result).toEqual({ learnings_found: 0, proposed: 0, updated: 0, skipped: 0, dropped: 0 });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const prompt = JSON.stringify(spy.mock.calls[0]?.[0]);
+    expect(prompt).not.toContain(FAKE_PAT);
+    expect(prompt).toContain("***REDACTED:pat***");
+  });
+
+  test("extracted key-path learnings are dropped and counted", async () => {
+    invokeReturning([
+      {
+        title: "Deploy key",
+        body: "Deploys use ~/.ssh/id_ed25519",
+        kind: "fact",
+        confidence: "high",
+      },
+    ]);
+    const result = await analyzeAgentSession({
+      tenant_id: "00000000-0000-4000-8000-000000000001",
+      transcript: "user: the deploy key is in ~/.ssh",
+      meta: { agent: "codex", domains: ["infra"] },
+      actor: null,
+      db: untouchableDb,
+    });
+    expect(result).toEqual({ learnings_found: 1, proposed: 0, updated: 0, skipped: 0, dropped: 1 });
   });
 });

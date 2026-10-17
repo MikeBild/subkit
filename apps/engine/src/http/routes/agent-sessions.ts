@@ -3,6 +3,7 @@ import { TRANSCRIPT_MAX_CHARS } from "../../api/agent-sessions.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { DOMAIN_SLUG_RE } from "../../api/domain-slug.ts";
 import { AuditAction, actorOf, audit, auditActor } from "../../audit/index.ts";
+import { scrubString } from "../../logging/scrub-secrets.ts";
 import type { AgentSessionAnalyzeJob } from "../../queue/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -61,6 +62,7 @@ export function registerAgentSessionRoutes(
   app.openapi(captureRoute, async (c) => {
     const principal = requireAuth(c);
     const body = c.req.valid("json");
+    const transcript = scrubString(body.transcript);
 
     const job: AgentSessionAnalyzeJob = {
       tenant_id: principal.tenant_id,
@@ -68,7 +70,7 @@ export function registerAgentSessionRoutes(
       ...(body.session_id ? { session_id: body.session_id } : {}),
       ...(body.repo ? { repo: body.repo } : {}),
       domains: body.domains,
-      transcript: body.transcript,
+      transcript,
       actor: actorOf(principal),
     };
     await opts.enqueue(job);
@@ -86,12 +88,12 @@ export function registerAgentSessionRoutes(
           session_id: body.session_id ?? null,
           repo: body.repo ?? null,
           domains: body.domains,
-          transcript_chars: body.transcript.length,
+          transcript_chars: transcript.length,
         },
       },
       c.get("db"),
     );
 
-    return c.json({ queued: true, transcript_chars: body.transcript.length }, 202);
+    return c.json({ queued: true, transcript_chars: transcript.length }, 202);
   });
 }

@@ -57,6 +57,15 @@ export const saveLearningTool: ConversationTool = {
       evidence_summary: `explicit save_learning (conversation=${ctx.conversation_id})`,
       db: ctx.db,
     });
+    if (result.action === "dropped") {
+      return {
+        ok: false,
+        error_code: "sensitive_path",
+        message:
+          "Not saved: the learning names a key or credential file location. Nothing was queued; restate it without the path.",
+        data: { action: result.action, candidate_id: null, kind: args.kind },
+      };
+    }
     return {
       ok: true,
       data: {

@@ -389,3 +389,19 @@ function redactInner(input: unknown, depth: number, maxDepth: number): unknown {
 export function redactWithMaxDepth(input: unknown, maxDepth: number, depth = 0): unknown {
   return scrubSecrets(redactInner(input, depth, maxDepth));
 }
+
+const PATH_START = "(?<![\\w.~/$-])";
+
+const KEY_MATERIAL_PATH_PATTERNS: ReadonlyArray<RegExp> = [
+  new RegExp(`${PATH_START}[\\w.~-]*\\/[\\w./~-]*[\\w-]\\.key(?![\\w-])`, "i"),
+  new RegExp(`${PATH_START}[\\w./~-]*[\\w-]\\.(?:pem|p12|pfx)(?![\\w-])`, "i"),
+  new RegExp(`${PATH_START}(?:[\\w.~-]*\\/)*\\.env(?:\\.[\\w-]+)*(?![\\w-])`, "i"),
+  /(?:~|\$HOME|(?<![\w.-])[\w.-]*)\/\.(?:ssh|gnupg)(?![\w-])/i,
+  /\bid_(?:rsa|dsa|ecdsa|ed25519)(?![\w-])/i,
+  /\/etc\/(?:[\w.-]+\/)+[\w.-]*(?:key|secret|credential)s?[\w.-]*/i,
+  /(?:\/run\/secrets|\/\.aws\/credentials|\/\.docker\/config\.json|\/\.netrc|\/\.pgpass)(?![\w-])/i,
+];
+
+export function referencesKeyMaterialPath(text: string): boolean {
+  return KEY_MATERIAL_PATH_PATTERNS.some((pattern) => pattern.test(text));
+}
