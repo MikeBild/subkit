@@ -31,6 +31,7 @@ import { readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
 import {
   hasRuntimeValue,
   reportDeliveryDiscrepancy,
+  supportsReadQuery,
   supportsReportDelivery,
 } from "./report-delivery-boundary.ts";
 import {
@@ -329,8 +330,14 @@ async function resolveBindings(
               ).length > 0
             ? ({ refusal: "connector_adds_query" } as const)
             : compileRequestBoundary(step, connector?.base_url ?? null);
-        if (compiled.refusal) request_refusals.push({ step_id: step.id, reason: compiled.refusal });
-        else {
+        const admittedAsRead =
+          compiled.refusal === "no_boundary" &&
+          !authoredBoundary &&
+          (readPath !== null || supportsReadQuery(step));
+        if (compiled.refusal) {
+          if (!admittedAsRead)
+            request_refusals.push({ step_id: step.id, reason: compiled.refusal });
+        } else {
           boundary = compiled.boundary;
           target = requestBoundaryTarget(compiled.boundary);
         }
