@@ -773,6 +773,7 @@ export async function readAccessToken(
   connectionId: string,
 ): Promise<{
   access_token: string;
+  issuer: string;
   expires_at: Date | null;
   connection_authority: ConnectionAuthorityIdentity;
   access_token_version: number;
@@ -800,6 +801,7 @@ export async function readAccessToken(
   }
   return {
     access_token,
+    issuer: row.issuer,
     expires_at: row.expires_at,
     connection_authority: { id: row.id, revision: row.authority_revision },
     access_token_version: row.access_token_version,

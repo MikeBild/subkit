@@ -54,6 +54,7 @@ test("wire identity accepts only the discovered configured issuer token endpoint
       undefined,
     );
     await provider.saveTokens({
+      issuer: FAKE_ISSUER,
       access_token: `wire-${rejection}`,
       token_type: "Bearer",
       ...{ sub: "untrusted-subject" },
@@ -83,7 +84,11 @@ test("conflicting token endpoint subjects for identical token material remain un
       undefined,
     );
   }
-  await provider.saveTokens({ access_token: "conflicting-wire-token", token_type: "Bearer" });
+  await provider.saveTokens({
+    issuer: FAKE_ISSUER,
+    access_token: "conflicting-wire-token",
+    token_type: "Bearer",
+  });
   await provider.tokens();
   expect(provider.credentialSnapshot("conflicting-wire-token")?.identity).toBeNull();
 });
@@ -93,6 +98,7 @@ test("a refresh response cannot acquire the identity of an intervening authoriza
   const interactive = makeInteractiveProvider(tenantA, serverId, "state-wire-replacement");
   await observeSubject(interactive, "old-access", "old-account");
   await interactive.saveTokens({
+    issuer: FAKE_ISSUER,
     access_token: "old-access",
     refresh_token: "old-refresh",
     token_type: "Bearer",
@@ -113,6 +119,7 @@ test("a refresh response cannot acquire the identity of an intervening authoriza
       async () => {
         await observeSubject(interactive, "replacement-access", "replacement-account", 1);
         await interactive.saveTokens({
+          issuer: FAKE_ISSUER,
           access_token: "replacement-access",
           refresh_token: "replacement-refresh",
           token_type: "Bearer",
@@ -127,7 +134,11 @@ test("a refresh response cannot acquire the identity of an intervening authoriza
       await response.json();
     });
     await expect(
-      automatic.saveTokens({ access_token: "late-refresh-token", token_type: "Bearer" }),
+      automatic.saveTokens({
+        issuer: FAKE_ISSUER,
+        access_token: "late-refresh-token",
+        token_type: "Bearer",
+      }),
     ).rejects.toMatchObject({ code: "credential_generation_changed" });
   });
   const tokens = await interactive.tokens();
@@ -159,7 +170,11 @@ test("a rejected response cannot reuse an earlier identity for the same token by
         undefined,
       );
     }
-    await provider.saveTokens({ access_token: "reused-access", token_type: "Bearer" });
+    await provider.saveTokens({
+      issuer: FAKE_ISSUER,
+      access_token: "reused-access",
+      token_type: "Bearer",
+    });
     await provider.tokens();
     expect(provider.credentialSnapshot("reused-access")?.identity).toBeNull();
   }
@@ -306,6 +321,7 @@ describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", (
     const provider = makeInteractiveProvider(tenantA, serverId, "state-scl1");
 
     await provider.saveClientInformation({
+      issuer: FAKE_ISSUER,
       client_id: "acme-client-001",
       client_secret: "acme-secret-shhh",
     });
@@ -321,6 +337,7 @@ describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", (
     const provider = makeInteractiveProvider(tenantA, serverId, "state-scl2");
 
     await provider.saveClientInformation({
+      issuer: FAKE_ISSUER,
       client_id: "acme-client-002",
       client_secret: "acme-plaintext-secret-002",
     });
@@ -351,7 +368,7 @@ describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", (
     const serverId = await seedOAuth2Server(tenantA, "saveclient3");
     const provider = makeInteractiveProvider(tenantA, serverId, "state-scl3");
 
-    await provider.saveClientInformation({ client_id: "acme-public-client" });
+    await provider.saveClientInformation({ issuer: FAKE_ISSUER, client_id: "acme-public-client" });
 
     const info = await provider.clientInformation();
     expect(info!.client_id).toBe("acme-public-client");
@@ -391,7 +408,11 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     const serverId = await seedOAuth2Server(tenantA, "authority-no-initial-grant");
     const provider = makeNonInteractiveProvider(tenantA, serverId);
     await expect(
-      provider.saveTokens({ access_token: "not-authorized", token_type: "Bearer" }),
+      provider.saveTokens({
+        issuer: FAKE_ISSUER,
+        access_token: "not-authorized",
+        token_type: "Bearer",
+      }),
     ).rejects.toThrow("interactive authorization required");
     expect(await provider.tokens()).toBeUndefined();
   });
@@ -400,6 +421,7 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     const serverId = await seedOAuth2Server(tenantA, "authority-refresh-binding");
     const interactive = makeInteractiveProvider(tenantA, serverId, "authority-refresh-state");
     await interactive.saveTokens({
+      issuer: FAKE_ISSUER,
       access_token: "original",
       refresh_token: "refresh",
       token_type: "Bearer",
@@ -429,6 +451,7 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     });
     expect(await revision()).toBe(2);
     await interactive.saveTokens({
+      issuer: FAKE_ISSUER,
       access_token: "new-login",
       token_type: "Bearer",
       scope: "read write",
@@ -449,6 +472,7 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
 
     const expiresIn = 3600;
     await provider.saveTokens({
+      issuer: FAKE_ISSUER,
       access_token: "acme-access-tok-abc",
       token_type: "Bearer",
       refresh_token: "acme-refresh-tok-abc",
@@ -467,6 +491,7 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     const provider = makeInteractiveProvider(tenantA, serverId, "state-tok3");
 
     await provider.saveTokens({
+      issuer: FAKE_ISSUER,
       access_token: "acme-access-tok-past",
       token_type: "Bearer",
       refresh_token: "acme-refresh-for-expiry-test",
@@ -499,6 +524,7 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     const provider = makeInteractiveProvider(tenantA, serverId, "state-tok-norefresh");
 
     await provider.saveTokens({
+      issuer: FAKE_ISSUER,
       access_token: "acme-access-no-refresh",
       token_type: "Bearer",
       expires_in: 3600,
@@ -529,6 +555,7 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     const provider = makeInteractiveProvider(tenantA, serverId, "state-tok4");
 
     await provider.saveTokens({
+      issuer: FAKE_ISSUER,
       access_token: "acme-access-v1",
       token_type: "Bearer",
       refresh_token: "acme-refresh-v1-keeper",
@@ -536,6 +563,7 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     });
 
     await provider.saveTokens({
+      issuer: FAKE_ISSUER,
       access_token: "acme-access-v2",
       token_type: "Bearer",
       expires_in: 7200,
@@ -634,7 +662,11 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
     const serverId = await seedOAuth2Server(tenantA, "inval1");
     const provider = makeInteractiveProvider(tenantA, serverId, "state-inval1");
 
-    await provider.saveTokens({ access_token: "tok-to-remove", token_type: "Bearer" });
+    await provider.saveTokens({
+      issuer: FAKE_ISSUER,
+      access_token: "tok-to-remove",
+      token_type: "Bearer",
+    });
 
     const beforeRows = await ctx.db
       .select({ id: credentials.id })
@@ -668,6 +700,7 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
     const provider = makeInteractiveProvider(tenantA, serverId, "state-inval2");
 
     await provider.saveClientInformation({
+      issuer: FAKE_ISSUER,
       client_id: "client-to-remove",
       client_secret: "secret-to-remove",
     });
@@ -741,7 +774,11 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
       interactive: true,
       request_source: "api",
     });
-    await providerB.saveTokens({ access_token: "b-only-token", token_type: "Bearer" });
+    await providerB.saveTokens({
+      issuer: FAKE_ISSUER,
+      access_token: "b-only-token",
+      token_type: "Bearer",
+    });
 
     const serverIdA = await seedOAuth2Server(tenantA, "isolate1");
     const providerA = makeMcpOAuthProvider({
@@ -773,7 +810,7 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
       interactive: true,
       request_source: "api",
     });
-    await providerB.saveClientInformation({ client_id: "b-client-id" });
+    await providerB.saveClientInformation({ issuer: FAKE_ISSUER, client_id: "b-client-id" });
 
     const serverIdA = await seedOAuth2Server(tenantA, "isolateclient1");
     const providerA = makeMcpOAuthProvider({
@@ -798,6 +835,7 @@ test("identical token material across generations loses ambiguous session attrib
   const interactive = makeInteractiveProvider(tenantA, serverId, "identity-collision-state");
   await observeSubject(interactive, "same-token", "first-account");
   await interactive.saveTokens({
+    issuer: FAKE_ISSUER,
     access_token: "same-token",
     refresh_token: "refresh",
     token_type: "Bearer",
@@ -836,7 +874,7 @@ async function saveRefreshResponse(
       const response = await provider.fetch(`${FAKE_ISSUER}/token`, { method: "POST" });
       await response.json();
     });
-    await provider.saveTokens(tokens);
+    await provider.saveTokens({ ...tokens, issuer: FAKE_ISSUER });
   });
 }
 
@@ -844,19 +882,25 @@ test("refresh without consumed response evidence and conflicting token generatio
   const serverId = await seedOAuth2Server(tenantA, "response-generation-binding");
   const interactive = makeInteractiveProvider(tenantA, serverId, "response-generation-state");
   await interactive.saveTokens({
+    issuer: FAKE_ISSUER,
     access_token: "initial-response-token",
     refresh_token: "initial-refresh",
     token_type: "Bearer",
   });
   const automatic = makeNonInteractiveProvider(tenantA, serverId);
   await expect(
-    automatic.saveTokens({ access_token: "unobserved-token", token_type: "Bearer" }),
+    automatic.saveTokens({
+      issuer: FAKE_ISSUER,
+      access_token: "unobserved-token",
+      token_type: "Bearer",
+    }),
   ).rejects.toMatchObject({ code: "credential_generation_changed" });
   await saveRefreshResponse(automatic, {
     access_token: "repeated-response-token",
     token_type: "Bearer",
   });
   await interactive.saveTokens({
+    issuer: FAKE_ISSUER,
     access_token: "new-interactive-token",
     refresh_token: "new-interactive-refresh",
     token_type: "Bearer",

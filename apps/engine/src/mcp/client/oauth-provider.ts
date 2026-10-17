@@ -178,17 +178,19 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       this.db,
     );
     if (cred) {
-      const info: OAuthClientInformation = { client_id: cred.client_id };
+      if (!cred.issuer) return undefined;
+      const info: OAuthClientInformation = { client_id: cred.client_id, issuer: cred.issuer };
       if (cred.client_secret !== undefined) info.client_secret = cred.client_secret;
       return info;
     }
-    if (this.auth.client_id) {
-      return { client_id: this.auth.client_id };
+    if (this.auth.client_id && this.auth.issuer) {
+      return { client_id: this.auth.client_id, issuer: this.auth.issuer };
     }
     return undefined;
   }
 
   async saveClientInformation(info: OAuthClientInformation): Promise<void> {
+    if (!info.issuer) throw new Error("OAuth client issuer binding is required");
     await upsertCredential(
       {
         tenant_id: this.tenant_id,
@@ -197,6 +199,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
         mode: "oauth2_client",
         value: {
           mode: "oauth2_client",
+          issuer: info.issuer,
           client_id: info.client_id,
           ...(info.client_secret !== undefined ? { client_secret: info.client_secret } : {}),
         },
@@ -229,7 +232,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     );
     if (resolved?.value.mode !== "oauth2") return undefined;
     const v = resolved.value;
-    if (!v.access_token) return undefined;
+    if (!v.access_token || !v.issuer) return undefined;
     captureMcpCredentialGeneration(
       this.connector_id,
       resolved.row.credential_generation,
@@ -239,6 +242,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     const expired = expiresAt ? expiresAt.getTime() <= now() : false;
     if (expired && !v.refresh_token) return undefined;
     const out: OAuthTokens = {
+      issuer: v.issuer,
       access_token: v.access_token,
       token_type: v.token_type || "Bearer",
     };
@@ -275,6 +279,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
+    if (!tokens.issuer) throw new Error("OAuth token issuer binding is required");
     const responseCredential = this.responseCredentialCapacityReached
       ? null
       : this.responseCredentials.get(
@@ -290,11 +295,17 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
             this.db,
           )
         : null;
-    if (!refresh && prior?.value.mode === "oauth2") refresh = prior.value.refresh_token;
+    if (
+      !refresh &&
+      prior?.value.mode === "oauth2" &&
+      prior.value.issuer &&
+      new URL(prior.value.issuer).href === new URL(tokens.issuer).href
+    )
+      refresh = prior.value.refresh_token;
     const expiresAt =
       typeof tokens.expires_in === "number" ? new Date(now() + tokens.expires_in * 1000) : null;
     if (!this.interactive) {
-      if (prior?.value.mode !== "oauth2" || prior.row.connection_id) {
+      if (prior?.value.mode !== "oauth2" || !prior.value.issuer || prior.row.connection_id) {
         throw new Error("interactive authorization required before tokens can be saved");
       }
       if (
@@ -311,6 +322,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
           tenant_id: this.tenant_id,
           credential_id: responseCredential.credential_id,
           expected_generation: responseCredential.generation,
+          issuer: tokens.issuer,
           access_token: tokens.access_token,
           verified_identity: this.tokenIdentity(tokens),
           token_type: tokens.token_type,
@@ -331,6 +343,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
           mode: "oauth2",
           value: {
             mode: "oauth2",
+            issuer: tokens.issuer,
             access_token: tokens.access_token,
             token_type: tokens.token_type || "Bearer",
             ...(tokens.scope !== undefined ? { scope: tokens.scope } : {}),
