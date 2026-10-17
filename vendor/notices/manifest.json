@@ -140,5 +140,29 @@
       }
     ],
     "qualification": "Version-bound notice source; legal distribution approval remains separate."
+  },
+  {
+    "name": "@hono/zod-openapi",
+    "version": "1.6.3",
+    "files": [
+      {
+        "path": "hono-middleware-license.txt",
+        "sha256": "6895190430d809c4c57a7582ecc2f99acbc2ea39a5dfad20262a41d5b3e91733",
+        "source": "https://github.com/honojs/middleware/blob/a8e2af4d857aa7fabf290cdf6f67307678e50409/LICENSE"
+      }
+    ],
+    "qualification": "Repository license at a revision declaring this exact package version; npm omits the text. Legal distribution approval remains separate."
+  },
+  {
+    "name": "@hono/zod-validator",
+    "version": "0.9.1",
+    "files": [
+      {
+        "path": "hono-middleware-license.txt",
+        "sha256": "6895190430d809c4c57a7582ecc2f99acbc2ea39a5dfad20262a41d5b3e91733",
+        "source": "https://github.com/honojs/middleware/blob/a8e2af4d857aa7fabf290cdf6f67307678e50409/LICENSE"
+      }
+    ],
+    "qualification": "Repository license at a revision declaring this exact package version; npm omits the text. Legal distribution approval remains separate."
   }
 ]

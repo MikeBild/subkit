@@ -1,5 +1,6 @@
 import { APICallError, NoObjectGeneratedError } from "ai";
 import type { Context, MiddlewareHandler } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { DescriptionAcceptanceError } from "../../api/catalog-metadata.ts";
 import {
   describeTurnFailure,
@@ -167,6 +168,8 @@ export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Respons
   }
   if (err instanceof DescriptionAcceptanceError)
     return envelope(c, err.code === "description_changed" ? 409 : 400, err.code, err.message);
+  if (err instanceof HTTPException && err.status === 415)
+    return envelope(c, 415, "unsupported_media_type", "Unsupported request Content-Type");
   if (err instanceof HttpError) {
     if (err.status >= 500) captureToRing(c, err, err.status, err.code, "http");
     if (err instanceof UnauthorizedError && err.wwwAuthenticate) {
