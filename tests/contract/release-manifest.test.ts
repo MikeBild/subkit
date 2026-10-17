@@ -14,7 +14,7 @@ describe("release manifest workflow", () => {
     expect(WORKFLOW).toContain("- name: Sign SHA256SUMS");
   });
 
-  test("checksums every shipped binary and signs the manifest before publishing", () => {
+  test("checksums every shipped artifact and signs the manifest before publishing", () => {
     const extract = WORKFLOW.indexOf("- name: Extract release binaries from the image");
     const sign = WORKFLOW.indexOf("- name: Sign SHA256SUMS");
     const publish = WORKFLOW.indexOf("- name: Publish GitHub release");
@@ -31,10 +31,17 @@ describe("release manifest workflow", () => {
       "sk_linux_arm64",
       "sk_linux_x64",
       "sk_windows_x64.exe",
+      "docker-compose.yml",
+      "subkit-clipper.zip",
     ]) {
       expect(extractStep).toContain(asset);
     }
-    expect(extractStep).toContain("sha256sum engine_* sk_* > SHA256SUMS");
+    expect(extractStep).toContain(
+      "sha256sum engine_* sk_* docker-compose.yml subkit-clipper.zip > SHA256SUMS",
+    );
+    expect(WORKFLOW.slice(publish)).toContain(
+      "assets/docker-compose.yml assets/subkit-clipper.zip",
+    );
     expect(WORKFLOW.slice(sign, publish)).toContain("-out assets/SHA256SUMS.sig");
   });
 });
