@@ -139,10 +139,9 @@ export async function createTestDb(
     await migration.pool.end();
   }
 
-  const pool = new Pool({
-    connectionString: url,
-    options: "-c search_path=subkit,pg_catalog,public",
-  });
+  const applicationUrl = new URL(url);
+  applicationUrl.searchParams.set("options", "-c search_path=subkit,pg_catalog,public");
+  const pool = new Pool({ connectionString: applicationUrl.toString() });
   pool.on("error", () => {});
 
   const db = drizzle(pool, { schema });
@@ -178,5 +177,5 @@ export async function createTestDb(
     }
   };
 
-  return { dbName, url, pool, db, cleanup };
+  return { dbName, url: applicationUrl.toString(), pool, db, cleanup };
 }
