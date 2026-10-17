@@ -46,6 +46,7 @@ export const BasicCredentialValue = z.object({
 export type BasicCredentialValue = z.infer<typeof BasicCredentialValue>;
 
 export const OAuth2CredentialValue = z.object({
+  issuer: z.string().url().optional(),
   access_token: z.string(),
   token_type: z.string().default("Bearer"),
   scope: z.string().optional(),
@@ -82,6 +83,7 @@ export const AwsSigV4CredentialValue = z.object({
 export type AwsSigV4CredentialValue = z.infer<typeof AwsSigV4CredentialValue>;
 
 export const OAuth2ClientCredentialValue = z.object({
+  issuer: z.string().url().optional(),
   client_id: z.string(),
   client_secret: z.string().optional(),
 });

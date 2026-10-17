@@ -286,6 +286,26 @@ export async function invalidateOAuth2TokenForServer(
     connector_slug: row.slug,
   });
 }
+function requiredOAuthIssuer(auth: McpAuthConfig): string {
+  try {
+    const issuer = new URL(auth.issuer ?? "");
+    if (
+      !["https:", "http:"].includes(issuer.protocol) ||
+      issuer.username ||
+      issuer.password ||
+      issuer.search ||
+      issuer.hash
+    )
+      throw new Error("invalid issuer");
+    return issuer.href;
+  } catch {
+    throw new McpPreflightError(
+      "credential_invalid",
+      "Configure the trusted OAuth issuer before using this MCP credential.",
+    );
+  }
+}
+
 export async function resolveAuthProvider(
   db: Db,
   tenant_id: string,
@@ -309,6 +329,7 @@ export async function resolveAuthProvider(
       });
 
     case "oauth2_client_credentials": {
+      const expectedIssuer = requiredOAuthIssuer(auth);
       const cred = await getOAuth2ClientCredential(tenant_id, row.id, environment, db);
       if (cred == null) {
         throw new McpPreflightError(
@@ -324,6 +345,7 @@ export async function resolveAuthProvider(
       }
       return bindM2mCredential(
         new ClientCredentialsProvider({
+          expectedIssuer,
           clientId: cred.client_id,
           clientSecret: cred.client_secret,
           ...(auth.scope ? { scope: auth.scope } : {}),
@@ -337,6 +359,7 @@ export async function resolveAuthProvider(
     }
 
     case "oauth2_private_key_jwt": {
+      const expectedIssuer = requiredOAuthIssuer(auth);
       const cred = await getOAuth2PrivateKeyCredential(tenant_id, row.id, environment, db);
       if (cred == null) {
         throw new McpPreflightError(
@@ -346,6 +369,7 @@ export async function resolveAuthProvider(
       }
       return bindM2mCredential(
         new PrivateKeyJwtProvider({
+          expectedIssuer,
           clientId: cred.client_id,
           privateKey: cred.private_key,
           algorithm: cred.algorithm,

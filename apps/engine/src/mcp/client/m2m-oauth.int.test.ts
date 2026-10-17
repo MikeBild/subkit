@@ -100,6 +100,7 @@ describe("pool: oauth2_client_credentials server with credential row", () => {
       url: "https://m2m-cc.mcp-test.example.com",
       auth: {
         kind: "oauth2_client_credentials",
+        issuer: "https://auth.example.test",
         client_id: "cc-client-001",
         scope: "tools:read",
       },
@@ -179,6 +180,7 @@ describe("pool: oauth2_private_key_jwt server with credential row", () => {
       url: "https://m2m-pk.mcp-test.example.com",
       auth: {
         kind: "oauth2_private_key_jwt",
+        issuer: "https://auth.example.test",
         client_id: "pk-client-002",
         algorithm: "RS256",
         scope: "mcp:invoke",
@@ -254,6 +256,7 @@ describe("pool: oauth2_client_credentials server with no credential row", () => 
       url: "https://m2m-no-cred.mcp-test.example.com",
       auth: {
         kind: "oauth2_client_credentials",
+        issuer: "https://auth.example.test",
         client_id: "no-cred-client",
       },
     });
@@ -300,6 +303,7 @@ describe("pool: oauth2_private_key_jwt server with no credential row", () => {
       url: "https://m2m-no-key.mcp-test.example.com",
       auth: {
         kind: "oauth2_private_key_jwt",
+        issuer: "https://auth.example.test",
         client_id: "no-key-client",
         algorithm: "ES256",
       },
@@ -341,6 +345,7 @@ describe("pool: tenant isolation for M2M credential resolution", () => {
       url: "https://tenant-a-m2m.mcp-test.example.com",
       auth: {
         kind: "oauth2_client_credentials",
+        issuer: "https://auth.example.test",
         client_id: "a-client",
       },
     });
