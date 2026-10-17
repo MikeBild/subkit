@@ -1,5 +1,5 @@
 {
-  "sha256": "6675b2211b743b29985b67e398db817d30562f08ff4c9f6c6755418faf61208e",
+  "sha256": "34e8cc834dad3591728bc0f87e4f1b88aa4bc549da58e1934ff2aa4bf0854cb4",
   "files": [
     "capture.js",
     "clipper.css",
@@ -11,6 +11,7 @@
     "licenses/defuddle.txt",
     "licenses/lucide.txt",
     "licenses/mathml-to-latex.txt",
+    "licenses/subkit.txt",
     "licenses/temml.txt",
     "licenses/turndown.txt",
     "licenses/xmldom.txt",

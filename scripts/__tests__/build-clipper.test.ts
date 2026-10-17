@@ -74,6 +74,7 @@ describe("clipper release archive", () => {
     expect(files.get("licenses/lucide.txt")).toEqual(
       await readFile(join(root, "node_modules/lucide-react/LICENSE")),
     );
+    expect(files.get("licenses/subkit.txt")).toEqual(await readFile(join(root, "LICENSE")));
   });
 
   test("rejects traversal in release archive paths", () => {
