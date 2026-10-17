@@ -370,3 +370,50 @@ test("resolves S3 scope from the loaded connector without a network probe", asyn
   expect(result.execution_shape?.requests[0]?.opaque_payload_omitted).toBe(false);
   expect(result.execution_shape?.requests[0]?.redacted_request_json).toContain("reports/daily/");
 });
+
+test("a read whose only runtime values are in its query is admitted without a request refusal", async () => {
+  const f = await fixture({
+    method: "GET",
+    path: "/api/v1/stats",
+    body: undefined,
+    side_effects: "read",
+    query: { from: "${scope.window.data.start}", bucket: "hour" },
+  });
+  const result = await resolveWorkflowEffectManifest(f.input, ctx.db);
+  expect(result.request_refusals).toEqual([]);
+  expect(result.manifest.issues).toEqual([]);
+  expect(result.eligible_for_repeated_runs).toBe(true);
+});
+
+test("a read whose only runtime value is a path identifier is admitted without a request refusal", async () => {
+  const f = await fixture({
+    method: "GET",
+    path: "/api/v1/items/${scope.pick.data.id}",
+    body: undefined,
+    side_effects: "read",
+  });
+  const result = await resolveWorkflowEffectManifest(f.input, ctx.db);
+  expect(result.request_refusals).toEqual([]);
+  expect(result.eligible_for_repeated_runs).toBe(true);
+});
+
+test("a write with runtime values and no boundary is still refused", async () => {
+  const f = await fixture({ body: { recipient: "${input.to}", text: "Hello" } });
+  const result = await resolveWorkflowEffectManifest(f.input, ctx.db);
+  expect(result.request_refusals.map((refusal) => refusal.reason)).toContain("no_boundary");
+  expect(result.eligible_for_repeated_runs).toBe(false);
+});
+
+test("a read with a runtime header is still refused", async () => {
+  const f = await fixture({
+    method: "GET",
+    path: "/api/v1/stats",
+    body: undefined,
+    side_effects: "read",
+    query: { from: "${scope.window.data.start}" },
+    headers: { "x-trace": "${input.trace}" },
+  });
+  const result = await resolveWorkflowEffectManifest(f.input, ctx.db);
+  expect(result.request_refusals.length).toBeGreaterThan(0);
+  expect(result.eligible_for_repeated_runs).toBe(false);
+});
