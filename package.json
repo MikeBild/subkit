@@ -268,6 +268,7 @@
     "vite": "^8.2.0"
   },
   "overrides": {
+    "@grpc/grpc-js": "1.14.6",
     "@protobufjs/utf8": "1.1.2",
     "@xmldom/xmldom": "0.8.15",
     "protobufjs": "7.6.6",
