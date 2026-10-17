@@ -205,12 +205,19 @@ export type ToolLabel =
   | { kind: "background"; words: BackgroundWords }
   | { kind: "literal"; text: string };
 
-export function toolLabel(toolName: string): ToolLabel {
+const PROPOSED_SKILL_ACTIONS: ReadonlySet<unknown> = new Set(["proposed", "updated"]);
+
+function outcomeActionKey(toolName: string, output: unknown): TranslationKey | null {
+  if (toolName !== "create_skill") return null;
+  return PROPOSED_SKILL_ACTIONS.has(runPayload(output)?.action) ? "tool.name.proposeSkill" : null;
+}
+
+export function toolLabel(toolName: string, output?: unknown): ToolLabel {
   const slug = workflowSlugFromTool(toolName);
   if (slug) return { kind: "workflow", slug };
   const background = BACKGROUND_TOOLS[toolName];
   if (background) return { kind: "background", words: background };
-  const action = ACTION_TOOLS[toolName];
+  const action = outcomeActionKey(toolName, output) ?? ACTION_TOOLS[toolName];
   if (action) return { kind: "key", key: action };
   return { kind: "literal", text: humaniseToolName(toolName) };
 }

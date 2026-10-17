@@ -132,7 +132,7 @@ describe("error-recovery.md · 5-failure cap", () => {
   });
 });
 
-test("existing chats load repair guidance before an automation permission handoff", () => {
+test("explicit workflow-authoring phrasing loads the recipe; a knowledge approval does not", () => {
   const parsed = loadSkillSeedsFromContent([
     { file: "workflow-authoring.md", content: workflowAuthoring },
   ]);
@@ -141,13 +141,22 @@ test("existing chats load repair guidance before an automation permission handof
   if (!skill) throw new Error("missing shipped skill");
   const catalog = [skill];
   for (const user_text of [
-    "Bereite die fehlende Freigabe vor",
+    "Erstelle einen neuen Workflow für den Tagesbericht",
     "Bitte automatisch laufen lassen",
     "Prepare automatic operation",
+    "Create workflow for the weekly digest",
   ]) {
     expect(
       autoloadForUserTurn({ user_text, first_turn: false, surface: "cockpit" }, catalog, []),
     ).toContain("workflow-authoring");
+  }
+  for (const user_text of [
+    "Bereite die Freigabe der Übernahme vor",
+    "Ich bestätige die Freigabe als Wissen",
+  ]) {
+    expect(
+      autoloadForUserTurn({ user_text, first_turn: false, surface: "cockpit" }, catalog, []),
+    ).not.toContain("workflow-authoring");
   }
   for (const tool of [
     "inspect_workflow",

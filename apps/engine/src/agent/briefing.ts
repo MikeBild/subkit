@@ -73,6 +73,13 @@ export function inDomain(
   return domains.some((d) => item.tags.includes(`${DOMAIN_TAG_PREFIX}${d}`) || item.category === d);
 }
 
+export function proposedInDomains(
+  candidates: ReadonlyArray<{ tags: string[] }>,
+  domains: readonly string[],
+): number {
+  return candidates.filter((candidate) => inDomain(candidate, domains)).length;
+}
+
 export function catalogInDomain(entry: Pick<CatalogEntry, "slug" | "category">, domains: string[]) {
   return domains.some(
     (d) => entry.category === d || entry.slug === d || entry.slug.startsWith(`${d}-`),
@@ -210,7 +217,7 @@ function assemble(input: AssembleInput, state: AssembleState): string {
   if (input.proposedCandidates > 0) {
     lines.push(
       "",
-      `${input.proposedCandidates} suggestions are ready for review. Offer to help review them when relevant, in the user's language. They remain suggestions until a person reviews them.`,
+      `${input.proposedCandidates} suggestions for these domains are ready for review. Offer to help review them when relevant, in the user's language. They remain suggestions until a person reviews them.`,
     );
   }
 
@@ -343,6 +350,7 @@ export async function buildAgentBriefing(p: BriefingParams): Promise<BriefingRes
   const knowledge = allKnowledge
     .filter((k) => inDomain(k, p.domains))
     .sort((a, b) => a.name.localeCompare(b.name));
+  const proposedCandidates = proposedInDomains(proposed, p.domains);
 
   const { markdown, state } = trimToBudget(
     {
@@ -354,7 +362,7 @@ export async function buildAgentBriefing(p: BriefingParams): Promise<BriefingRes
       connectors: catalog.connectors,
       files: catalog.files,
       guides,
-      proposedCandidates: proposed.length,
+      proposedCandidates,
       intake,
     },
     p.budget_tokens,
@@ -376,7 +384,7 @@ export async function buildAgentBriefing(p: BriefingParams): Promise<BriefingRes
     files: catalog.files.slice(0, state.fileCount),
     files_omitted: catalog.files.length - state.fileCount,
     guides: guides.map((g) => g.slug ?? g.title),
-    proposed_candidates: proposed.length,
+    proposed_candidates: proposedCandidates,
     intake,
   };
 }

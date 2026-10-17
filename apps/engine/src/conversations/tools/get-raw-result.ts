@@ -60,6 +60,14 @@ function atPath(value: unknown, path: Array<string | number>): unknown {
   return current;
 }
 
+const MAX_LISTED_KEYS = 50;
+
+function topLevelShape(value: unknown): { available_keys: string[] } | { total_items: number } {
+  if (Array.isArray(value)) return { total_items: value.length };
+  if (value === null || typeof value !== "object") return { available_keys: [] };
+  return { available_keys: Object.keys(value).slice(0, MAX_LISTED_KEYS) };
+}
+
 function tooLarge(value: unknown, path: Array<string | number>, totalChars: number) {
   return {
     ok: false,
@@ -97,7 +105,11 @@ export const getRawResultTool: ConversationTool = {
     if (selected === undefined) {
       return {
         ok: false,
-        data: { error: "raw_result_path_not_found", path: args.path ?? [] },
+        data: {
+          error: "raw_result_path_not_found",
+          path: args.path ?? [],
+          ...topLevelShape(raw),
+        },
       };
     }
 

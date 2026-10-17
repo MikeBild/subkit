@@ -1,13 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { UNDESCRIBED_METADATA } from "../api/catalog-metadata.ts";
+import { skillCandidates, tenants } from "../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import type { KnowledgeSourceView } from "../knowledge/types.ts";
 import { countTokens } from "../llm/accounting/count.ts";
 import type { Skill } from "../skills/types.ts";
 import {
   type AssembleInput,
+  buildAgentBriefing,
   type CatalogEntry,
   catalogInDomain,
   inDomain,
+  proposedInDomains,
   trimToBudget,
 } from "./briefing.ts";
 
@@ -128,7 +132,7 @@ describe("trimToBudget", () => {
     expect(markdown).toContain("never do the bad thing");
     expect(markdown).toContain("## Knowledge index");
     expect(markdown).toContain("**Source 2**");
-    expect(markdown).toContain("2 suggestions are ready for review");
+    expect(markdown).toContain("2 suggestions for these domains are ready for review");
     expect(markdown).toContain("in the user's language");
     expect(markdown).not.toContain("sk learnings review");
     expect(markdown).toContain('search_knowledge` with `tags: ["domain:blog-de"]');
@@ -246,7 +250,7 @@ describe("trimToBudget", () => {
 
   test("renders no curation reminder when nothing is proposed", () => {
     const { markdown } = trimToBudget(input({ proposedCandidates: 0 }), 16000);
-    expect(markdown).not.toContain("proposed skill candidate");
+    expect(markdown).not.toContain("suggestions");
   });
 
   test("describes collected material without a CLI action or implicit admission", () => {
@@ -288,5 +292,68 @@ describe("inDomain", () => {
     expect(inDomain({ tags: [], category: "ops" }, ["ops"])).toBe(true);
     expect(inDomain({ tags: ["foundations"], category: "platform" }, ["ops"])).toBe(false);
     expect(inDomain({ tags: ["domain:radar"], category: null }, ["ops", "radar"])).toBe(true);
+  });
+});
+
+describe("proposedInDomains", () => {
+  test("counts only proposals tagged for a requested domain", () => {
+    const candidates = [
+      { tags: ["domain:blog-de"] },
+      { tags: ["domain:radar"] },
+      { tags: ["domain:blog-de", "authoring"] },
+      { tags: [] },
+    ];
+    expect(proposedInDomains(candidates, ["blog-de"])).toBe(2);
+    expect(proposedInDomains(candidates, ["blog-de", "radar"])).toBe(3);
+    expect(proposedInDomains(candidates, ["ops"])).toBe(0);
+  });
+});
+
+describe("buildAgentBriefing proposal count", () => {
+  let testDb: TestDb;
+  let tenantId = "";
+
+  beforeAll(async () => {
+    testDb = await createTestDb("agent-briefing-proposals");
+    const [row] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "briefing-proposals", display_name: "Briefing Proposals" })
+      .returning();
+    if (!row) throw new Error("tenant seed failed");
+    tenantId = row.id;
+    await testDb.db.insert(skillCandidates).values(
+      ["domain:a", "domain:b", "domain:b"].map((tag, i) => ({
+        tenant_id: tenantId,
+        scope: "global" as const,
+        pattern_kind: "session_learning" as const,
+        title: `Proposal ${i}`,
+        body: `Body ${i}`,
+        tags: [tag],
+        evidence: [],
+        confidence: "medium" as const,
+        fingerprint: `briefing-proposal-${i}`,
+      })),
+    );
+  });
+
+  afterAll(async () => {
+    await testDb?.cleanup();
+  });
+
+  test("counts only the proposals tagged for the requested domain", async () => {
+    const briefing = await buildAgentBriefing({
+      tenant_id: tenantId,
+      domains: ["a"],
+      budget_tokens: 16000,
+      include_knowledge_index: false,
+      workflow_visible: null,
+      connector_visible: null,
+      file_visible: null,
+      file_tenant_wide: false,
+      db: testDb.db,
+    });
+    expect(briefing.proposed_candidates).toBe(1);
+    expect(briefing.markdown).toContain("1 suggestions for these domains are ready for review.");
+    expect(briefing.markdown).not.toContain("Body 0");
   });
 });
