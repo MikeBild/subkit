@@ -358,7 +358,7 @@ vollständigen Beta-Produktauftritt erscheinen; dadurch entsteht keine Abhängig
   HTTPS-Origins durch frei wählbares Self-Hosting begründen, tatsächliche Freigabe minimal halten.
 - Lokale API-Schlüssel/Drafts und Übertragung an gewählte Engine offenlegen; spätere
   Chatverarbeitung durch konfigurierte Provider erklären. Kein pauschales „keine Datenverarbeitung“.
-- Fehlende Icons, Listing-Icon, echte Screenshots und benötigte Werbegrafik ergänzen;
+- Generierte Paket-Icons visuell freigeben; Listing-Icon, echte Screenshots und benötigte Werbegrafik fertigstellen;
   aktuelle Store-Abmessungen bei Erstellung anhand offizieller Vorgaben prüfen.
 - Name, Kurz-/Langtext, Privacy-Disclosures, Support und öffentliche Privacy Policy fertigstellen.
 - Reproduzierbares ZIP ohne Schlüssel, lokale Konfiguration oder Testdaten; Versionsbindung.
@@ -527,13 +527,14 @@ Required public fields: [PRIVACY_POLICY_URL], [SUPPORT_URL], [SUPPORT_EMAIL],
 
 ### Assets and submission blockers
 
-The current packaged file list has no icons. Add generated PNG icons to the manifest
-and archive using the existing SubKit artwork and generator workflow; obtain manual
-visual acceptance. Google requires a 128x128 extension icon, a 440x280 small promotional
+The package now generates PNG icons at 16/32/48/128 px from the existing Cockpit
+artwork, declares them in the manifest and includes the Lucide license. Technical
+package and reproducibility evidence is recorded in LAUNCH_STATUS.md; manual visual
+acceptance remains open. Google requires a 128x128 extension icon, a 440x280 small promotional
 image and at least one screenshot. Create screenshots from the real isolated accepted
 installation, without personal data or credentials. No automatic visual matrix.
 
-Open: final icons/listing imagery, actual screenshots, public privacy/support URLs,
+Open: manual icon acceptance and listing imagery, actual screenshots, public privacy/support URLs,
 publisher identity/account access, current real end-to-end acceptance, authorized
 privacy certification and explicit submission approval. Review timing is external.
 Submission is not publication.

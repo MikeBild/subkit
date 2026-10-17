@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { deflateRawSync } from "node:zlib";
+import sharp from "sharp";
 
 const root = join(import.meta.dir, "..");
 const app = join(root, "apps/clipper");
@@ -92,6 +93,18 @@ async function staticFiles(directory: string, files: Map<string, Uint8Array>): P
 export async function buildClipper(check = false): Promise<string> {
   const files = new Map<string, Uint8Array>();
   await staticFiles(join(app, "public"), files);
+  const icon = await readFile(join(root, "apps/cockpit/public/favicon.svg"));
+  for (const size of [16, 32, 48, 128]) {
+    files.set(
+      `icons/icon-${size}.png`,
+      await sharp(icon, { density: 384 })
+        .resize(size, size)
+        .png({ compressionLevel: 9, adaptiveFiltering: false })
+        .toBuffer(),
+    );
+  }
+  files.set("licenses/lucide.txt", await readFile(join(root, "node_modules/lucide-react/LICENSE")));
+
   const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as {
     version: string;
   };
