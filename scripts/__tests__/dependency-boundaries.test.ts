@@ -9,8 +9,20 @@ const shell = devtools("shell-quote");
 const proxy = express("proxy-addr");
 const ajv = createRequire(root.resolve("ajv"));
 const uri = ajv("fast-uri");
+const yaml = root("js-yaml");
 
 describe("transitive dependency trust boundaries", () => {
+  test("YAML merge budgets count empty mappings", () => {
+    const options = { schema: yaml.YAML11_SCHEMA, maxTotalMergeKeys: 2 };
+    expect(() => yaml.load("arr: &arr [{}, {}, {}, {}]\ntarget: {<<: *arr}", options)).toThrow(
+      /maxTotalMergeKeys/,
+    );
+    expect(yaml.load("arr: &arr [{}]\ntarget: {<<: *arr}", options)).toEqual({
+      arr: [{}],
+      target: {},
+    });
+  });
+
   test("URI serialization rejects ports that replace the intended authority", () => {
     expect(() =>
       uri.serialize({
