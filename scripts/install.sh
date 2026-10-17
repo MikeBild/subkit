@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-main() {
+main() (
   local REPO="mikebild/subkit"
   local INSTALL_DIR="${SUBKIT_INSTALL_DIR:-$HOME/.subkit/bin}"
 
@@ -22,76 +22,76 @@ main() {
 
   echo "Fetching latest release..."
   local LATEST
-  LATEST=$(curl --retry 3 --retry-delay 2 -fsSL \
+  LATEST=$(curl --proto '=https' --proto-redir '=https' --retry 3 --retry-delay 2 -fsSL \
     "https://api.github.com/repos/$REPO/releases/latest" \
     | grep '"tag_name"' | cut -d'"' -f4)
-  if [ -z "$LATEST" ]; then
+  if [[ ! "$LATEST" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "error: could not determine latest release"; exit 1
   fi
   echo "Installing subkit $LATEST for ${OS}/${ARCH}..."
 
-  mkdir -p "$INSTALL_DIR"
   local TMP_DIR
   TMP_DIR=$(mktemp -d)
   trap 'rm -rf "$TMP_DIR"' EXIT
 
-  local BINARY ASSET URL
-  for BINARY in sk subkit; do
-    ASSET="${BINARY}_${OS}_${ARCH}"
-    URL="https://github.com/$REPO/releases/download/$LATEST/$ASSET"
-    echo "  downloading $ASSET..."
-    curl --retry 3 --retry-delay 2 -fSL --progress-bar \
-      -o "$TMP_DIR/$ASSET" "$URL"
-
-    if [ ! -s "$TMP_DIR/$ASSET" ]; then
-      echo "error: downloaded $ASSET is empty"; exit 1
+  local ASSET="sk_${OS}_${ARCH}"
+  local FILE
+  for FILE in "$ASSET" SHA256SUMS SHA256SUMS.sig; do
+    echo "  downloading $FILE..."
+    curl --proto '=https' --proto-redir '=https' --retry 3 --retry-delay 2 -fsSL \
+      -o "$TMP_DIR/$FILE" "https://github.com/$REPO/releases/download/$LATEST/$FILE"
+    if [ ! -s "$TMP_DIR/$FILE" ]; then
+      echo "error: downloaded $FILE is empty"; exit 1
     fi
   done
 
-  echo "  downloading SHA256SUMS..."
-  curl --retry 3 --retry-delay 2 -fsSL \
-    -o "$TMP_DIR/SHA256SUMS" \
-    "https://github.com/$REPO/releases/download/$LATEST/SHA256SUMS"
-
-  if [ ! -s "$TMP_DIR/SHA256SUMS" ]; then
-    echo "error: SHA256SUMS is empty"; exit 1
+  cat > "$TMP_DIR/release-public-key.pem" <<'PUBLIC_KEY'
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAyF3lL39nLly5M13CruFCrfZJfJiCcvlyJi/ZeTIhe/U=
+-----END PUBLIC KEY-----
+PUBLIC_KEY
+  if ! openssl pkeyutl -verify -pubin -inkey "$TMP_DIR/release-public-key.pem" \
+    -rawin -in "$TMP_DIR/SHA256SUMS" -sigfile "$TMP_DIR/SHA256SUMS.sig"; then
+    echo "error: release signature verification failed; OpenSSL with Ed25519 support is required" >&2
+    exit 1
   fi
 
-  echo "Verifying checksums..."
   local EXPECTED ACTUAL
-  for BINARY in sk subkit; do
-    ASSET="${BINARY}_${OS}_${ARCH}"
-    EXPECTED=$(grep "$ASSET" "$TMP_DIR/SHA256SUMS" | awk '{print $1}')
-    if [ -z "$EXPECTED" ]; then
-      echo "error: no checksum found for $ASSET"; exit 1
-    fi
-    if command -v sha256sum >/dev/null 2>&1; then
-      ACTUAL=$(sha256sum "$TMP_DIR/$ASSET" | awk '{print $1}')
-    else
-      ACTUAL=$(shasum -a 256 "$TMP_DIR/$ASSET" | awk '{print $1}')
-    fi
-    if [ "$EXPECTED" != "$ACTUAL" ]; then
-      echo "error: checksum mismatch for $ASSET"
-      echo "  expected: $EXPECTED"
-      echo "  actual:   $ACTUAL"
-      exit 1
-    fi
-  done
-  echo "Checksums verified."
-
-  for BINARY in sk subkit; do
-    ASSET="${BINARY}_${OS}_${ARCH}"
-    chmod 755 "$TMP_DIR/$ASSET"
-    mv "$TMP_DIR/$ASSET" "$INSTALL_DIR/$BINARY"
-  done
-
-  if [ "$OS" = "darwin" ]; then
-    echo "Signing binaries (macOS)..."
-    for BINARY in sk subkit; do
-      codesign --remove-signature "$INSTALL_DIR/$BINARY" 2>/dev/null || true
-      codesign --sign - --force "$INSTALL_DIR/$BINARY"
-    done
+  EXPECTED=$(awk -v asset="$ASSET" '$2 == asset { print $1 }' "$TMP_DIR/SHA256SUMS")
+  if [[ ! "$EXPECTED" =~ ^[a-fA-F0-9]{64}$ ]]; then
+    echo "error: missing, duplicate or invalid checksum for $ASSET" >&2
+    exit 1
   fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL=$(sha256sum "$TMP_DIR/$ASSET" | awk '{print $1}')
+  else
+    ACTUAL=$(shasum -a 256 "$TMP_DIR/$ASSET" | awk '{print $1}')
+  fi
+  if [ "$EXPECTED" != "$ACTUAL" ]; then
+    echo "error: checksum mismatch for $ASSET" >&2
+    exit 1
+  fi
+  echo "Signature and checksum verified."
+
+  chmod 755 "$TMP_DIR/$ASSET"
+  if [ "$OS" = "darwin" ]; then
+    echo "Signing binary (macOS)..."
+    codesign --remove-signature "$TMP_DIR/$ASSET" 2>/dev/null || true
+    codesign --sign - --force "$TMP_DIR/$ASSET"
+  fi
+
+  if [ -d "$INSTALL_DIR/sk" ] || [ -d "$INSTALL_DIR/subkit" ]; then
+    echo "error: installation targets must not be directories" >&2
+    exit 1
+  fi
+  mkdir -p "$INSTALL_DIR"
+  local STAGED
+  STAGED=$(mktemp "$INSTALL_DIR/.sk.XXXXXXXX")
+  trap 'rm -rf "$TMP_DIR"; rm -f "$STAGED"' EXIT
+  cp "$TMP_DIR/$ASSET" "$STAGED"
+  chmod 755 "$STAGED"
+  mv -f "$STAGED" "$INSTALL_DIR/sk"
+  ln -sfn sk "$INSTALL_DIR/subkit"
 
   echo ""
   echo "Installed sk and compatibility alias subkit to $INSTALL_DIR"
@@ -113,6 +113,6 @@ main() {
   echo ""
   echo "Run 'sk --version' to verify the installation."
   echo "Run 'sk update' at any time to update to the latest version."
-}
+)
 
 main "$@"

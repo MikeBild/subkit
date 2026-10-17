@@ -113,6 +113,16 @@ sk
 
 `sk --help` lists every command. The engine describes itself at `/openapi.json` and `/llms.txt`.
 
+For a published public GitHub release, `bash scripts/install.sh` from a reviewed
+checkout installs the matching CLI for Linux or macOS and creates the local
+`subkit` compatibility link. It requires Bash, curl, and OpenSSL with Ed25519 support
+(for example OpenSSL 3 on your PATH). It verifies the signed checksum manifest
+against the pinned release public key, then verifies the selected binary before
+replacing an existing installation. Missing signatures or unsupported cryptography
+stop installation. This path requires publicly downloadable release assets; a local
+build or a private repository is not sufficient. The engine-served installer above
+is a separate download path from your own installation.
+
 ## Collect ideas and turn them into knowledge
 
 Collect pages and ideas now; decide later what becomes knowledge. Use the shared categories to organize clips, with Inbox as your personal starting default.
