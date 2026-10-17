@@ -49,6 +49,22 @@ RUN set -eux; \
     done; \
     apt-get install -y --no-install-recommends curl ca-certificates libssl3t64 openssl; \
     apt-get purge -y gstreamer1.0-plugins-bad libgstreamer-plugins-bad1.0-0; \
+    apt-get install -y --no-install-recommends --only-upgrade \
+      bsdutils coreutils diffutils dirmngr gpg \
+      gpg-agent gpgconf gpgv gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+      gzip libaom3 libattr1 libblkid1 libbz2-1.0 \
+      libc-bin libc6 libde265-0 libevent-2.1-7t64 libexpat1 \
+      libfdisk1 libfreetype6 libgcrypt20 libglib2.0-0t64 libgstreamer-gl1.0-0 \
+      libgstreamer-plugins-base1.0-0 libgstreamer-plugins-good1.0-0 libmount1 libncurses6 libncursesw6 \
+      libp11-kit0 libpam-modules libpam-modules-bin libpam-runtime libpam-systemd \
+      libpam0g libperl5.38t64 libpng16-16t64 libpython3.12-minimal libpython3.12-stdlib \
+      librabbitmq4 librsvg2-2 libsmartcols1 libsoup-3.0-0 libsoup-3.0-common \
+      libsqlite3-0 libssh-4 libssh-gcrypt-4 libsystemd-shared libsystemd0 \
+      libtinfo6 libudev1 libuuid1 libx11-6 libx11-data \
+      libx11-xcb1 libxml2 libxpm4 mount ncurses-base \
+      ncurses-bin openssh-client perl perl-base perl-modules-5.38 \
+      python3.12 python3.12-minimal systemd systemd-dev systemd-sysv \
+      tar util-linux zlib1g; \
     rm -rf /var/lib/apt/lists/* /usr/lib/node_modules/npm; \
     rm -f /usr/bin/npm /usr/bin/npx
 
