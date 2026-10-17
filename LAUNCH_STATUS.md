@@ -2,12 +2,12 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-17T21:11:36Z**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-17T22:32:15Z**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
-- Geprüfter Produktcommit: **d2855457e**, `main`, Version **9.15.2**.
+- Geprüfter Produktcommit: **96a070db4**, `main`, Version **9.15.2**.
 - Checkout und origin/main waren nach `git pull --ff-only origin main` identisch; vor Dateierstellung sauber.
-- Synchronisation: **Produktänderungen bis d2855457e auf origin/main bestätigt**, lokale/Remote-Divergenz 0/0; normale Commit-/Pre-Push-Hooks bestanden, E50. Website-/Store-Texte sind weiterhin Entwürfe; keine Veröffentlichung.
-- Countdown am 17.10.: **10/11 Kalendertage bis Beta**, **29 bis GA**; bei jedem Refresh neu berechnen.
+- Synchronisation: **Produktänderungen bis 96a070db4 auf origin/main bestätigt**, lokale/Remote-Divergenz 0/0; normale Commit-/Pre-Push-Hooks bestanden, E50. Website-/Store-Texte sind weiterhin Entwürfe; keine Veröffentlichung.
+- Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
 
@@ -29,7 +29,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L10 | IN_PROGRESS | Zweisprachige Listing-Texte, Berechtigungsbegründungen, Datenfluss-/Privacy-Arbeitsblatt und Reviewer-Ablauf als Entwurf in LAUNCH.md vorbereitet. Vier PNG-Icons werden aus bestehendem Cockpit-Logo generiert und mit Lucide-Lizenz im Manifest/ZIP ausgeliefert, E53. Paket-/Browser-/Binärprüfungen und macOS/Linux-Reproduzierbarkeit bestanden. Visuelle Iconabnahme, Promo-Grafik/Screenshots, Pflichtlinks und menschliche Zertifizierung offen. ENTWURF, nicht veröffentlicht. |
 | L11 | BLOCKED | L10, öffentliche Pflichtlinks, Publisherstatus und explizite Einreichungsfreigabe fehlen. |
 | L12 | IN_PROGRESS | Isolierter aktueller Kandidat: API-/Browser-/Intake-Prüfungen PASS, E37–E39; MCP-Cockpit-Handoff und echter Clipper gegen Engine PASS, E42/E43. Mock-Läufe und begrenzter echter Provider-Chat E45 getrennt belegt; vollständige Cross-Surface-Abnahme weiterhin offen. Manuelle Demo unverändert. |
-| L13 | IN_PROGRESS | Historisches Vollgate E49 PASS. Spätere Läufe E61/E66/E76/E81 fehlgeschlagen; jeweilige Ursachen gezielt korrigiert. Vollgate für d2855457e fehlgeschlagen (E87), Testverbindung korrigiert und gezielt bestanden (E88). Neuer Gesamtlauf offen. Live-Modellmatrix E73 PASS; aktuelle gepaarte Referenz-Benchmarks fehlen, lokale Umgebung ungeeignet (E75/E80). |
+| L13 | IN_PROGRESS | Historisches Vollgate E49 PASS. Spätere Läufe E61/E66/E76/E81 fehlgeschlagen; jeweilige Ursachen gezielt korrigiert. Vollgate für d2855457e fehlgeschlagen (E87), Testverbindung korrigiert und gezielt bestanden (E88). Vollgate für 96a070db4 an Clipper-Binärfixture gescheitert (E90); gezielte Korrektur bestanden (E91), Gesamtabschluss weiterhin offen. Live-Modellmatrix E73 PASS; aktuelle gepaarte Referenz-Benchmarks fehlen, lokale Umgebung ungeeignet (E75/E80). |
 | L14 | BLOCKED | L04/L05/L13 und Freigabe für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Externer Installationstest aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -185,7 +185,7 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 
 | E88 | L13 | Gemeinsamer DB-Testhelfer kodiert den bereits vorgesehenen Produktschema-Suchpfad nun in der exportierten Verbindungs-URL; eigener Pool verwendet exakt dieselbe URL. CLI-Unterprozess: **3 PASS/0 FAIL/15 Assertions** statt 1 PASS/2 FAIL. Neun isolierte Regressionen für Migration/Suchpfad, externe Connectoren, Ausführung/Freigaben, Operator-Unterprozess, Queue und Pub/Sub: **79 PASS/0 FAIL/376 Assertions**. `.artifacts/launch/token-cli-after.log`, `fixture-url-sweep.{json,log}`. | Ausschließlich Testverbindung korrigiert; Produkt-Suchpfad, Token-/Approval-Semantik und Assertions unverändert. Als 811145264 committed/gepusht; alle acht Pre-Push-Gates PASS, HEAD=origin/main (0/0), fixture-url-push.log. Vollständiges neues Gate offen. |
 
-| E89 | L08/L07 | Kanonisches Dockerfile aktualisiert gezielt 73 vorhandene Ubuntu-Pakete, Node unverändert. Frischer ARM64-Build aus 811145264 plus Dockerfile-Diff (1392acc8d5bcb037d568a64b77e837771f1447a8cc735b59356d968e897f0739); Image sha256:09bb76e5f049f376623c557041816ed5d8981e0c7334c57c3c05f5845b621007. Frische Compose-Installation, Health/Readiness, Bootstrap, authentifizierte Workflow-/Objektpersistenz vor/nach Engine-Neustart, Engine-Smoke und CLI/Node/npm-Abwesenheit PASS. Chromium-DOM PASS. Scanner mit gleicher DB: **0 CRITICAL/0 HIGH/558 MEDIUM/74 LOW**. `.artifacts/launch/os-security-candidate-{source,acceptance,audit-summary}.json`, Build-/Browser-/Auditlogs. | Lokal ARM64, synthetische Daten/Mockprovider, kein vollständiges Release oder Native-/WASM-Freigabe. Erste Versuche durch volle Docker-Disk und object_store_unreachable gescheitert; Fehlerreports erhalten. Nur zugeordnete alte Launchcache-Einträge und drei unbenutzte ersetzte Probe-/Kandidatentags entfernt, keine laufenden Demos/Volumen. 5,5 GB frei, unverändertes Image danach PASS; Cleanup PASS. Bereinigungsreports os-update-*-cleanup.json. Commit/Push und neues Vollgate offen. |
+| E89 | L08/L07 | Kanonisches Dockerfile aktualisiert gezielt 73 vorhandene Ubuntu-Pakete, Node unverändert. Frischer ARM64-Build aus 811145264 plus Dockerfile-Diff (1392acc8d5bcb037d568a64b77e837771f1447a8cc735b59356d968e897f0739); Image sha256:09bb76e5f049f376623c557041816ed5d8981e0c7334c57c3c05f5845b621007. Frische Compose-Installation, Health/Readiness, Bootstrap, authentifizierte Workflow-/Objektpersistenz vor/nach Engine-Neustart, Engine-Smoke und CLI/Node/npm-Abwesenheit PASS. Chromium-DOM PASS. Scanner mit gleicher DB: **0 CRITICAL/0 HIGH/558 MEDIUM/74 LOW**. `.artifacts/launch/os-security-candidate-{source,acceptance,audit-summary}.json`, Build-/Browser-/Auditlogs. | Lokal ARM64, synthetische Daten/Mockprovider, kein vollständiges Release oder Native-/WASM-Freigabe. Erste Versuche durch volle Docker-Disk und object_store_unreachable gescheitert; Fehlerreports erhalten. Nur zugeordnete alte Launchcache-Einträge und drei unbenutzte ersetzte Probe-/Kandidatentags entfernt, keine laufenden Demos/Volumen. 5,5 GB frei, unverändertes Image danach PASS; Cleanup PASS. Bereinigungsreports os-update-*-cleanup.json. Als 96a070db4 committed/gepusht, alle acht Pre-Push-Gates PASS; origin/main gleich HEAD (0/0), os-security-candidate-push.log. Neuer Vollgate-Lauf aktiv. |
 
 ## Security-Befundregister (L08)
 
@@ -204,7 +204,7 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 
 | Gegenstand | Zustand |
 | --- | --- |
-| Lokale vollständige Verifikation | Historisch E49 PASS. Kandidat d2855457e: Vollgate Exit 1 (E87), Testverbindung gezielt korrigiert (E88), noch kein neues PASS. Voriger Lauf E81 Exit 1; Synchronisationsfehler im funktionalen Test korrigiert/geprüft/gepusht, E82. |
+| Lokale vollständige Verifikation | Historisch E49 PASS. Aktueller Gesamtlauf 96a070db4: Exit 1 nach isolierten Tests und AI-Prüfungen beim Clipper-Binärtest (E90). Verbindung der isolierten Fixture korrigiert; Binärtest gezielt PASS (E91). Kein aktuelles Gesamt-PASS. |
 | Release-Workflow | Jüngste Läufe fehlgeschlagen; Actions-Verfügbarkeit bekannter externer Blocker, keine neue Billing-Diagnose |
 | Öffentliche Beta / GA | Nicht freigegeben; tatsächliche aktuelle öffentliche Installierbarkeit UNVERIFIED |
 | Website | Kanal bekannt, SubKit-Produktauftritt/Downloads/Recht/Support UNVERIFIED |
@@ -213,9 +213,9 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 | Lokale globale Hooks | In geprüften Dateien nicht eingerichtet; keine Änderungen vorgenommen |
 
 E49 belegt ein historisches vollständiges Gate für 1ac0017f6. Der jüngste Vollgate-Lauf
-scheiterte an Testfixtures (E76); Korrektur gezielt bestanden (E77), neuer Gesamtlauf offen.
+scheiterte nach den isolierten Tests und AI-Prüfungen an der Clipper-Binärfixture (E90); Korrektur gezielt bestanden (E91), neuer Gesamtlauf offen.
 Live-Modellmatrix E73 und begrenztes Versionsupgrade/Restore E72 sind bestanden.
-Aktuelle ARM64-Installation und Imageaudit siehe E78. Offen bleiben öffentliche Installation,
+Aktuelle ARM64-Installation und Imageaudit siehe E89. Offen bleiben öffentliche Installation,
 Plattformabnahme, aktuelle Referenz-Benchmarks, vollständige Channel-Parität und manuelle
 visuelle Abnahme. Kein produktiver Smoke-Test oder Deployment in dieser Launch-Vorbereitung.
 
@@ -237,5 +237,8 @@ Nächste drei priorisierte Aufgaben:
 2. **L12:** Verbleibende echte Channel-/Client- und visuelle Abnahmen getrennt nachweisen. E52 ist implementiert, begrenzt live geprüft und gepusht; nicht erneut umsetzen.
 3. **L04/L08:** Fehlende Auslieferungslizenzen und konkret erreichbare Advisory-Pfade schließen; menschlichen Nachweis zum historischen Firebase-Key ergänzen. OAuth-Altclient-Wiedereinrichtung bleibt offene Abnahmelücke.
 
-Nächster Codex-Schritt: E88 als 811145264 mit allen acht Pre-Push-Gates gepusht. Vorbereiteten `.artifacts/launch/container-os-security.patch` aus E84/E85 übernehmen, kanonischen Build/Installation/Audit prüfen, dann neues vollständiges Gate. Session 52520 terminal (Exit 1), kein unveränderter Gesamtlauf. Benchmarkreferenz und menschliche Angaben bleiben offen.
+Nächster Codex-Schritt: Clipper-Binärfixture-Korrektur mit normalen Hooks committen/pushen; verbleibende Browser-/E2E-Gates und vollständigen aktuellen Gateabschluss nachweisen. E90/Session 61272 terminal, nicht weiter pollen. Referenzbenchmark, Lizenzbeigaben und menschliche Freigaben bleiben offen. Eigene Gate-DB beibehalten.
 Parallel kann der Nutzer Betreiber-/Supportangaben und Store-Kontostatus bereitstellen.
+
+| E90 | L13 | Vollgate 96a070db4 terminal Exit 1, Quellhashes unverändert. Alle 2040 isolierten Testdateien durchlaufen, danach 40/40 AI-Vertragsprüfungen PASS. Clipper-Binärtest scheitert beim Engine-Start: Suchpfad der isolierten Verbindung löst public statt subkit auf. `.artifacts/launch/os-security-verify.{json,log}`, Log-SHA-256 1ed7860ddb521e402756d357e390a990df3403000c3bfd218c2543ba7eb00323. | Kein Gesamt-PASS. Nachfolgende Clipper-/Intake-Browser- und E2E-Stufen in diesem Lauf nicht erreicht. Session 61272 terminal. |
+| E91 | L13 | scripts/verify-clipper-binaries.ts setzt den Anwendungssuchpfad ausschließlich an der Verbindung zur selbst erzeugten Testdatenbank, entsprechend dem gemeinsamen DB-Testhelper. Derselbe kompilierte Kandidat und dieselbe isolierte PostgreSQL-Rolle: echter CLI-Install/Update und Engine-ZIP mit identischen Bytes/Hash PASS, Exit 0. `.artifacts/launch/clipper-binary-schema-after.log`. | LOCAL_ONLY bis Commit/Push. Keine Änderung der Engine-Suchpfadschutzprüfung oder globaler Datenbankrollen; kein neues vollständiges Gate-PASS. |
