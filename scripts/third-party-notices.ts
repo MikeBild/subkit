@@ -92,15 +92,30 @@ export function renderNoticeDraft(packages: NoticePackage[]): string {
   return `${parts.join("\n")}\n`;
 }
 
+export async function noticeInputs(graph: string): Promise<string[]> {
+  const data = JSON.parse(await readFile(graph, "utf8"));
+  if (data.inputs && typeof data.inputs === "object" && !Array.isArray(data.inputs))
+    return Object.keys(data.inputs);
+  if (
+    data.version === 3 &&
+    Array.isArray(data.sources) &&
+    data.sources.every((source: unknown) => typeof source === "string") &&
+    (data.sourceRoot === undefined || typeof data.sourceRoot === "string")
+  ) {
+    const sourceRoot = data.sourceRoot ?? "";
+    if ([sourceRoot, ...data.sources].some((value: string) => /^[a-z][a-z\d+.-]*:/i.test(value)))
+      throw new Error("Source map must reference local source files");
+    return data.sources.map((source: string) => resolve(dirname(graph), sourceRoot, source));
+  }
+  throw new Error("Invalid bundle input graph or source map");
+}
+
 if (import.meta.main) {
   const graphs = process.argv.slice(2);
-  if (!graphs.length) throw new Error("Provide Bun bundle metafile paths");
+  if (!graphs.length) throw new Error("Provide Bun bundle metafile or browser source map paths");
   const inputs: string[] = [];
   for (const graph of graphs) {
-    const data = JSON.parse(await readFile(graph, "utf8"));
-    if (!data.inputs || typeof data.inputs !== "object" || Array.isArray(data.inputs))
-      throw new Error("Invalid bundle input graph");
-    inputs.push(...Object.keys(data.inputs));
+    inputs.push(...(await noticeInputs(graph)));
   }
   const packages = await collectNotices(process.cwd(), inputs);
   if (!packages.length) throw new Error("No third-party packages found");

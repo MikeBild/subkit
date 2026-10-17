@@ -2,9 +2,35 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { collectNotices, renderNoticeDraft } from "../third-party-notices.ts";
+import { collectNotices, noticeInputs, renderNoticeDraft } from "../third-party-notices.ts";
 
 const temporary: string[] = [];
+
+test("resolves browser source roots and shares package collection with Bun graphs", async () => {
+  const root = await fixture("browser package notice");
+  const graph = join(root, "browser.map");
+  await writeFile(
+    graph,
+    JSON.stringify({ version: 3, sourceRoot: "node_modules", sources: ["example/index.js"] }),
+  );
+  const browser = await collectNotices(root, await noticeInputs(graph));
+  await writeFile(graph, JSON.stringify({ inputs: { "node_modules/example/index.js": {} } }));
+  expect(await collectNotices(root, await noticeInputs(graph))).toEqual(browser);
+  expect(browser[0]?.texts[0]?.text).toBe("browser package notice");
+});
+
+test("rejects remote and malformed browser source maps", async () => {
+  const root = await fixture("notice");
+  const graph = join(root, "browser.map");
+  for (const data of [
+    { version: 3, sources: [42] },
+    { version: 3, sourceRoot: "https://example.test/", sources: ["file.js"] },
+    { version: 3, sources: ["file:///private/file.js"] },
+  ]) {
+    await writeFile(graph, JSON.stringify(data));
+    await expect(noticeInputs(graph)).rejects.toThrow();
+  }
+});
 
 async function fixture(notice?: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "subkit-notices-"));
