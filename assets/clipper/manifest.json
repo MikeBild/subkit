@@ -1,10 +1,15 @@
 {
-  "sha256": "2ac97e963ae6c71ca582d51a155478c0658eb1def34b35820d4d2b2f9c6252f2",
+  "sha256": "4c6c690f42a70f541ed9fead9a7f57f67accc687ec281b9e85fd1e062ed56b33",
   "files": [
     "capture.js",
     "clipper.css",
+    "icons/icon-128.png",
+    "icons/icon-16.png",
+    "icons/icon-32.png",
+    "icons/icon-48.png",
     "install-config.json",
     "licenses/defuddle.txt",
+    "licenses/lucide.txt",
     "licenses/mathml-to-latex.txt",
     "licenses/temml.txt",
     "licenses/turndown.txt",
