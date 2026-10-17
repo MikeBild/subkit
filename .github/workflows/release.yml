@@ -97,14 +97,15 @@ jobs:
           docker cp "$id:/usr/local/share/subkit/binaries/." assets/
           docker rm "$id"
           cp docker-compose.yml assets/docker-compose.yml
+          cp LICENSE assets/LICENSE
           cp assets/clipper/clipper.zip assets/subkit-clipper.zip
           rm -f assets/SHA256SUMS
-          for a in engine_linux_x64 sk_darwin_arm64 sk_darwin_x64 sk_linux_arm64 sk_linux_x64 sk_windows_x64.exe docker-compose.yml subkit-clipper.zip; do
+          for a in engine_linux_x64 sk_darwin_arm64 sk_darwin_x64 sk_linux_arm64 sk_linux_x64 sk_windows_x64.exe docker-compose.yml subkit-clipper.zip LICENSE; do
             test -s "assets/$a"
           done
           chmod 755 assets/engine_linux_x64
           assets/engine_linux_x64 --smoke
-          (cd assets && sha256sum engine_* sk_* docker-compose.yml subkit-clipper.zip > SHA256SUMS && cat SHA256SUMS)
+          (cd assets && sha256sum engine_* sk_* docker-compose.yml subkit-clipper.zip LICENSE > SHA256SUMS && cat SHA256SUMS)
 
       - name: Sign SHA256SUMS
         env:
@@ -148,4 +149,4 @@ jobs:
         run: |
           set -euo pipefail
           bun -e 'import { RELEASE_HISTORY } from "./apps/cockpit/src/app/release-notes.generated.ts"; const release = RELEASE_HISTORY.releases.find((entry) => entry.version === process.env.TAG); if (!release) throw new Error(`missing release notes for ${process.env.TAG}`); process.stdout.write(release.notes.length ? release.notes.map((note) => `- ${note}`).join("\n") + "\n" : "No short notes were recorded for this version.\n");' > notes.md
-          gh release create "$TAG" assets/engine_* assets/sk_* assets/docker-compose.yml assets/subkit-clipper.zip assets/SHA256SUMS assets/SHA256SUMS.sig --title "$TAG" --notes-file notes.md
+          gh release create "$TAG" assets/engine_* assets/sk_* assets/docker-compose.yml assets/subkit-clipper.zip assets/LICENSE assets/SHA256SUMS assets/SHA256SUMS.sig --title "$TAG" --notes-file notes.md
