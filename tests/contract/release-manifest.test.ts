@@ -6,6 +6,14 @@ const REPO = join(import.meta.dir, "..", "..");
 const WORKFLOW = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8");
 
 describe("release manifest workflow", () => {
+  test("publishing artifacts cannot dispatch a deployment to another repository", () => {
+    expect(WORKFLOW).not.toContain("/dispatches");
+    expect(WORKFLOW).not.toContain("repository_dispatch");
+    expect(WORKFLOW).not.toContain("DEPLOY_TOKEN");
+    expect(WORKFLOW).toContain("- name: Require mandatory local release gate");
+    expect(WORKFLOW).toContain("- name: Sign SHA256SUMS");
+  });
+
   test("checksums every shipped binary and signs the manifest before publishing", () => {
     const extract = WORKFLOW.indexOf("- name: Extract release binaries from the image");
     const sign = WORKFLOW.indexOf("- name: Sign SHA256SUMS");
