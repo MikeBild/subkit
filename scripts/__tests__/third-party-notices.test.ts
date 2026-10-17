@@ -1,10 +1,51 @@
 import { afterEach, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { collectNotices, noticeInputs, renderNoticeDraft } from "../third-party-notices.ts";
+import {
+  collectNotices,
+  noticeInputs,
+  renderNoticeDraft,
+  supplementNotices,
+} from "../third-party-notices.ts";
 
 const temporary: string[] = [];
+
+test("supplements only the exact package version and verifies source bytes", async () => {
+  const root = await fixture();
+  const text = "Upstream copyright and permission";
+  const manifest = join(root, "manifest.json");
+  const entry = {
+    name: "example",
+    version: "1",
+    qualification: "Source review remains separate",
+    files: [
+      {
+        path: "upstream.txt",
+        source: "https://example.test/pinned/LICENSE",
+        sha256: createHash("sha256").update(text).digest("hex"),
+      },
+    ],
+  };
+  await writeFile(join(root, "upstream.txt"), text);
+  await writeFile(manifest, JSON.stringify([entry]));
+  const packages = await collectNotices(root, ["node_modules/example/index.js"]);
+  const supplemented = await supplementNotices(packages, manifest);
+  expect(supplemented[0]?.texts[0]?.text).toBe(text);
+  expect(renderNoticeDraft(supplemented)).toContain(entry.qualification);
+  expect(packages[0]?.texts).toEqual([]);
+  await writeFile(manifest, JSON.stringify([{ ...entry, version: "different" }]));
+  expect((await supplementNotices(packages, manifest))[0]?.texts).toEqual([]);
+  await writeFile(manifest, JSON.stringify([entry]));
+  await writeFile(join(root, "upstream.txt"), "changed");
+  await expect(supplementNotices(packages, manifest)).rejects.toThrow("checksum");
+  await writeFile(
+    manifest,
+    JSON.stringify([{ ...entry, files: [{ ...entry.files[0], path: "../outside" }] }]),
+  );
+  await expect(supplementNotices(packages, manifest)).rejects.toThrow("path");
+});
 
 test("resolves browser source roots and shares package collection with Bun graphs", async () => {
   const root = await fixture("browser package notice");

@@ -9,6 +9,42 @@ export interface NoticePackage {
   texts: Array<{ name: string; sha256: string; text: string }>;
 }
 
+interface SupplementalNotice {
+  name: string;
+  version: string;
+  qualification: string;
+  files: Array<{ path: string; sha256: string; source: string }>;
+}
+
+export async function supplementNotices(
+  packages: NoticePackage[],
+  manifest: string,
+): Promise<NoticePackage[]> {
+  const entries = JSON.parse(await readFile(manifest, "utf8")) as SupplementalNotice[];
+  if (!Array.isArray(entries)) throw new Error("Invalid supplemental notice manifest");
+  const result = structuredClone(packages);
+  for (const entry of entries) {
+    const item = result.find((item) => item.name === entry.name && item.version === entry.version);
+    if (!item) continue;
+    if (!Array.isArray(entry.files) || !entry.files.length || !entry.qualification?.trim())
+      throw new Error("Supplemental notice evidence is missing");
+    for (const file of entry.files) {
+      if (!file.path || /[/\\]/.test(file.path) || !file.source?.trim())
+        throw new Error("Invalid supplemental notice path or source");
+      const bytes = await readFile(join(dirname(manifest), file.path));
+      const hash = createHash("sha256").update(bytes).digest("hex");
+      if (hash !== file.sha256 || !bytes.toString("utf8").trim())
+        throw new Error("Supplemental notice checksum mismatch or empty text");
+      item.texts.push({
+        name: `${file.path}\nSource: ${file.source}\nQualification: ${entry.qualification}`,
+        sha256: hash,
+        text: bytes.toString("utf8"),
+      });
+    }
+  }
+  return result;
+}
+
 export async function collectNotices(root: string, inputs: string[]): Promise<NoticePackage[]> {
   root = resolve(root);
   const packages = new Map<string, NoticePackage>();
@@ -117,7 +153,10 @@ if (import.meta.main) {
   for (const graph of graphs) {
     inputs.push(...(await noticeInputs(graph)));
   }
-  const packages = await collectNotices(process.cwd(), inputs);
+  const packages = await supplementNotices(
+    await collectNotices(process.cwd(), inputs),
+    join(import.meta.dir, "../vendor/notices/manifest.json"),
+  );
   if (!packages.length) throw new Error("No third-party packages found");
   process.stdout.write(renderNoticeDraft(packages));
   process.stderr.write(
