@@ -209,12 +209,48 @@ Lokal bestanden, Release-Workflow bestanden, Deployment bestanden und produktive
 bestanden werden getrennt geführt. Kein neues allgemeines CI-Projekt als Launch-Voraussetzung.
 Keine Produktionskontakte mit Schreibwirkung ohne ausdrücklich ausgewählten Testumfang.
 
-Die bisherige Veröffentlichung löst auch einen privaten Deployment-Dispatch aus. L05 trennt
-diese Wirkung, ohne private Deploymentimplementierung oder Kennungen in das Produktrepo zu übernehmen.
+Der private Deployment-Dispatch wurde aus dem öffentlichen Release-Workflow entfernt.
 Während Actions fehlen, lokale Builds, Gates und Proben fortsetzen. Für Beta wird eine lokal
-ausführbare Publikationsstrecke mit denselben Sicherheitskontrollen benötigt; keine gefälschten
+geprüfte Publikationsstrecke mit denselben Sicherheitskontrollen benötigt; keine gefälschten
 Statusbelege, Signaturauslassung oder manuellen Tags als Abkürzung. Fehlt bis 23.10. ein geprüft
 gleichwertiger Weg, Beta-Termin offen korrigieren. Veröffentlichung selbst bleibt freigabepflichtig.
+
+### Lokaler Release-Weg
+
+`bun run release:local` implementiert drei getrennte Schritte. Implementiert bedeutet noch
+nicht praktisch abgenommen; den aktuellen Nachweisstand von L05 in LAUNCH_STATUS.md lesen.
+
+1. Den Kandidaten über das bestehende Release-Verfahren freigeben. Der normale Tagger bleibt
+   für Vollgate, Live-Modelle, Runtime-Benchmarks und unveränderliche Tags zuständig. Das
+   Schneiden/Pushen eines Release-Tags benötigt weiterhin die eigene Veröffentlichungsfreigabe.
+2. `bun run release:local check <tag>` prüft sauberes main, gepinnte Bun-Version,
+   Paketversion, lokalen/Remote-Tag, Remote-main und den exakten GitHub-Gatestatus.
+3. `bun run release:local prepare <tag> --signing-key-file <datei-außerhalb-des-repos>`
+   baut einen Git-Snapshot für linux/amd64. Voraussetzung: vorhandener passender privater
+   Release-Schlüssel mit reinen Besitzerrechten, Docker/Buildx/Compose, GitHub-Lesezugriff,
+   erreichbare Registries und mindestens 12 GiB freier Docker-Speicher. Der Schlüssel wird
+   weder erzeugt noch protokolliert. Das gepinnte Builder-Image muss lokal verfügbar sein.
+   Eigene Loopback-Ports 43180/43181 müssen frei sein. Bereits vorhandene Ressourcen des
+   vorgesehenen Smoke-Projekts werden nicht übernommen.
+4. Vor Veröffentlichung Artefakte unter `.artifacts/local-release/<tag>/assets` prüfen und
+   menschlich freigeben. Der lokale Weg signiert zusätzlich `release-provenance.json` und
+   `release-notes.md`; die Signatur umfasst sämtliche zehn Nutzdateien. Der Nachweis bindet
+   Commit, Plattform, Image-ID, Gate-Kontext und erfolgreichen Smoke-Test. Der Smoke-Test
+   ersetzt nicht die vollständigen Produkt-, Installations- und Restore-Journeys.
+5. Nur nach separater Freigabe:
+   `bun run release:local publish <tag> --confirm-publish <tag>`.
+   Dieser Schritt verlangt ein bereits öffentlich freigegebenes Repository und vorhandene
+   Docker-/GitHub-Schreibberechtigungen, prüft Gate/Refs/Signatur/Hashes erneut, publiziert
+   unverwendete Versionstags, verifiziert zurückgeladene Images und GitHub-Artefakte und
+   aktualisiert anschließend latest. Es erfolgt kein Deployment und keine Store-Einreichung.
+
+Für einen Tag genau einen Publisher verwenden: lokalen Weg oder GitHub-Workflow, niemals
+parallel. Bestehende GitHub-Releases und Registry-Versionstags werden lokal nicht überschrieben.
+Ein Teilfehler nach einem Upload kann bereits öffentliche Artefakte hinterlassen: Befund
+prüfen und dokumentieren, nicht blind wiederholen oder Tags verschieben. Vorhandene
+Vorbereitungsverzeichnisse werden nicht überschrieben; gescheiterte Versuche erst nach
+Nachweis-/Ressourcenprüfung gezielt bereinigen. Anonyme Downloads und externe Installation
+bleiben eigene Freigabenachweise nach der Publikation.
 
 ### Sicherheits- und Kernjourneys
 

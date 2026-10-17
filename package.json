@@ -66,6 +66,7 @@
     "metrics": "curl -sS http://localhost:${PORT:-3000}/metrics",
     "postinstall": "sh scripts/setup-hooks.sh",
     "release:tag": "bun run scripts/tag-release.ts",
+    "release:local": "bun run scripts/release-local.ts",
     "smoke:surfaces": "bun run tests/e2e/onboarding-surfaces.smoke.ts",
     "storage:conformance": "bun run scripts/check-object-storage-contract.ts",
     "test": "bun test",
