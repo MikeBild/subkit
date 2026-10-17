@@ -17,11 +17,18 @@ describe("release manifest workflow", () => {
   test("checksums every shipped artifact and signs the manifest before publishing", () => {
     const extract = WORKFLOW.indexOf("- name: Extract release binaries from the image");
     const sign = WORKFLOW.indexOf("- name: Sign SHA256SUMS");
+    const verify = WORKFLOW.indexOf("- name: Verify signature against the updater trust root");
+    const upload = WORKFLOW.indexOf("- name: Push image");
     const publish = WORKFLOW.indexOf("- name: Publish GitHub release");
 
     expect(extract).toBeGreaterThan(-1);
     expect(sign).toBeGreaterThan(extract);
-    expect(publish).toBeGreaterThan(sign);
+    expect(verify).toBeGreaterThan(sign);
+    expect(upload).toBeGreaterThan(verify);
+    expect(publish).toBeGreaterThan(upload);
+    expect(WORKFLOW.slice(verify, upload)).toContain(
+      "./packages/cli-core/src/release-public-key.ts",
+    );
 
     const extractStep = WORKFLOW.slice(extract, sign);
     for (const asset of [

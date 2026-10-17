@@ -21,7 +21,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L02 | DONE | Drei Dateien und kurzer AGENTS-Verweis erstellt; Dokumentvalidierung E11 bestanden. Commit 01257eb8a gepusht, E15. |
 | L03 | DONE | Veraltetes generiertes ZIP mit bestehendem Generator erneuert; Bun 1.4.0 macOS/Linux identisch; 63 Tests und funktionaler Chromium-Lauf PASS, E12. Commit 61ee865d3 gepusht, E15. |
 | L04 | IN_PROGRESS | Vollständiger Gitleaks-Historienscan läuft lesend; Lizenz-/Publikationsprüfung weiterhin offen. |
-| L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17. Lokale Publikationsstrecke noch offen. |
+| L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17; Signatur gegen Updater-Schlüssel vor Upload geprüft, E18. Lokale Publikationsstrecke noch offen. |
 | L06 | BLOCKED | Betreiber-/Supportangaben und juristische Freigabe erforderlich. |
 | L07 | IN_PROGRESS | Quickstart mit einmaliger geschützter .env, Wiederverwendung und Recovery-Grenzen korrigiert; Shell-/Compose-Prüfung E16. Commit 1c4c5d5cf gepusht. Echter Start/Restore offen; Docker hat nur 8,9 GiB frei gegenüber 12 GiB Build-Vorgabe. |
 | L08 | TODO | Launch-Security-Prüfung und Befundregister. |
@@ -78,6 +78,7 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 | E15 | L02/L03/L05 | Drei Commits bis 01257eb8a mit normalen Hooks gepusht; alle acht Pre-Push-Schritte PASS (Lint, Typecheck, Determinismus, Invarianten, Drift, Commitnachrichten, Gitleaks neuer Commits, CLI-/Engine-Build). Danach sauber, HEAD=origin/main, 0/0 | Kein Release/Deployment; historischer Vollscan separat. Bestehende Lint- und Bundlegrößenwarnungen bleiben. |
 | E16 | L07 | README-Shellblock in temporärem Verzeichnis ausgeführt: Neuanlage, Modus 0600, Überschreibschutz, unveränderte Secrets und zweimalige identische Compose-Konfiguration PASS; llms-Generator und diff --check Exit 0 | Keine Dienste gestartet; kein Verschlüsselungs-, Neustart- oder Restore-E2E. |
 | E17 | L05 | 6 Release-/Provenance-Tests mit 39 Assertions PASS. Originaler Staging-Shellblock mit echter Compose-Datei/Clipper-ZIP und sechs Binärplatzhaltern: acht Prüfsummen korrekt, temporäre Ed25519-Signatur verifiziert, manipuliertes ZIP abgewiesen. Receipt lokal gitignored | Kein Imagebuild, keine echten Release-Binärdateien oder Release-Schlüssel verwendet; keine Publikation. |
+| E18 | L05 | 60 Release-/Provenance-/Updater-Tests, 113 Assertions PASS. Exakten Workflow-Signaturbefehl isoliert ausgeführt: falscher Trust-Root abgewiesen, passender temporärer Schlüssel akzeptiert, manipuliertes Manifest abgewiesen | Reale Kryptografie mit Testschlüssel; Produktions-Signing-Key nicht verwendet oder geprüft. Zusätzlich offen: scripts/install.sh erwartet nicht veröffentlichte subkit-Alias-Binärdateien und prüft keine Signatur; dokumentierter Engine-Installer ist ein separater Pfad. |
 
 ## Release, Website, Store und Automation
 
@@ -114,5 +115,5 @@ Nächste drei priorisierte Aufgaben:
 2. **L05:** Kontrollierte öffentliche Publikation ohne privaten Deploy-Zwang vorbereiten.
 3. **L07:** Persistenten Quickstart und isolierte Installationsprüfung vorbereiten.
 
-Nächster Codex-Schritt: L04-Scan ohne Geheimniswerte auswerten und isolierten L07-Installations-/Restore-Nachweis vorbereiten; danach L05-Publikationsstrecke fortsetzen. L03 nicht wiederholen. Fertige Pakete mit regulären Hooks committen und pushen.
+Nächster Codex-Schritt: L04-Scan ohne Geheimniswerte auswerten und isolierten L07-Installations-/Restore-Nachweis vorbereiten; L05 mit GitHub-Installer/Signaturprüfung und lokaler Publikationsstrecke fortsetzen. L03 nicht wiederholen. Fertige Pakete mit regulären Hooks committen und pushen.
 Parallel kann der Nutzer Betreiber-/Supportangaben und Store-Kontostatus bereitstellen.
