@@ -14,7 +14,8 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { closeAllPools } from "../../connectors/drivers/postgres.ts";
+import { closeAllPools, getPoolForConnector } from "../../connectors/drivers/postgres.ts";
+import { getConnector } from "../../connectors/index.ts";
 import { connectors, executionSteps } from "../../db/schema/index.ts";
 import { runExecution } from "../engine.ts";
 import type { HeldRequest } from "../types.ts";
@@ -77,7 +78,7 @@ beforeAll(async () => {
     .returning();
   pgConnectorId = pg!.id;
   await ctx.testDb.pool.query(
-    "CREATE TABLE IF NOT EXISTS hold_widgets (id int PRIMARY KEY, name text NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS public.hold_widgets (id int PRIMARY KEY, name text NOT NULL)",
   );
 
   const [gql] = await ctx.testDb.db
@@ -781,8 +782,8 @@ describe("hold-writes · HTTP", () => {
 describe("hold-writes · postgres", () => {
   test("SELECT calling a writing function is held without touching the table", async () => {
     await ctx.testDb.pool.query(`
-      CREATE FUNCTION hold_write_via_select() RETURNS integer LANGUAGE sql AS $$
-        INSERT INTO hold_widgets (id, name) VALUES (101, 'function-effect') RETURNING id
+      CREATE FUNCTION public.hold_write_via_select() RETURNS integer LANGUAGE sql AS $$
+        INSERT INTO public.hold_widgets (id, name) VALUES (101, 'function-effect') RETURNING id
       $$
     `);
     const { workflow_id } = await createWorkflowRow(ctx, {
@@ -793,7 +794,7 @@ describe("hold-writes · postgres", () => {
           id: "select_function",
           connector_id: pgConnectorId,
           side_effects: "read",
-          sql: { query: "SELECT hold_write_via_select()" },
+          sql: { query: "SELECT public.hold_write_via_select()" },
         },
       ],
     });
@@ -806,13 +807,17 @@ describe("hold-writes · postgres", () => {
     });
     expect(result.status).toBe("succeeded");
     expect(result.steps[0]?.held).toBe(true);
-    const rows = await ctx.testDb.pool.query("SELECT id FROM hold_widgets WHERE id=101");
+    const rows = await ctx.testDb.pool.query("SELECT id FROM public.hold_widgets WHERE id=101");
     expect(rows.rows).toHaveLength(0);
-    const client = await ctx.testDb.pool.connect();
+    const connector = await getConnector(ctx.tenantId, pgConnectorId, ctx.testDb.db);
+    if (!connector) throw new Error("Postgres fixture connector missing");
+    const client = await getPoolForConnector(connector).connect();
     try {
       await client.query("BEGIN");
-      await client.query("SELECT hold_write_via_select()");
-      expect((await client.query("SELECT id FROM hold_widgets WHERE id=101")).rows).toHaveLength(1);
+      await client.query("SELECT public.hold_write_via_select()");
+      expect(
+        (await client.query("SELECT id FROM public.hold_widgets WHERE id=101")).rows,
+      ).toHaveLength(1);
     } finally {
       await client.query("ROLLBACK");
       client.release();
@@ -828,7 +833,9 @@ describe("hold-writes · postgres", () => {
           id: "insert",
           connector_id: pgConnectorId,
           side_effects: "read",
-          sql: { query: "INSERT INTO hold_widgets (id, name) VALUES (99, 'not-authorized')" },
+          sql: {
+            query: "INSERT INTO public.hold_widgets (id, name) VALUES (99, 'not-authorized')",
+          },
         },
       ],
     });
@@ -841,7 +848,7 @@ describe("hold-writes · postgres", () => {
     });
     expect(result.status).toBe("succeeded");
     expect(result.steps[0]?.held).toBe(true);
-    const rows = await ctx.testDb.pool.query("SELECT id FROM hold_widgets WHERE id=99");
+    const rows = await ctx.testDb.pool.query("SELECT id FROM public.hold_widgets WHERE id=99");
     expect(rows.rows).toHaveLength(0);
   });
 
@@ -854,7 +861,7 @@ describe("hold-writes · postgres", () => {
           id: "count",
           method: "SELECT",
           connector_id: pgConnectorId,
-          sql: { query: "SELECT count(*)::int AS n FROM hold_widgets" },
+          sql: { query: "SELECT count(*)::int AS n FROM public.hold_widgets" },
         },
         {
           kind: "request",
@@ -862,7 +869,7 @@ describe("hold-writes · postgres", () => {
           method: "INSERT",
           connector_id: pgConnectorId,
           sql: {
-            query: "INSERT INTO hold_widgets (id, name) VALUES ($1, $2)",
+            query: "INSERT INTO public.hold_widgets (id, name) VALUES ($1, $2)",
             params: [7, "held"],
           },
         },
@@ -886,10 +893,10 @@ describe("hold-writes · postgres", () => {
     const held = insStep?.held_request as HeldRequest;
     expect(held.url).toBeNull();
     expect(held.body).toEqual({
-      query: "INSERT INTO hold_widgets (id, name) VALUES ($1, $2)",
+      query: "INSERT INTO public.hold_widgets (id, name) VALUES ($1, $2)",
       params: [7, "held"],
     });
-    const rows = await ctx.testDb.pool.query("SELECT count(*)::int AS n FROM hold_widgets");
+    const rows = await ctx.testDb.pool.query("SELECT count(*)::int AS n FROM public.hold_widgets");
     expect(rows.rows[0]?.n).toBe(0);
   });
 });

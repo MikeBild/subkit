@@ -31,10 +31,10 @@ beforeAll(async () => {
     .returning();
   pgConnectorId = c!.id;
   await ctx.testDb.pool.query(
-    "CREATE TABLE IF NOT EXISTS pg_step_widgets (id int PRIMARY KEY, name text NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS public.pg_step_widgets (id int PRIMARY KEY, name text NOT NULL)",
   );
   await ctx.testDb.pool.query(
-    "INSERT INTO pg_step_widgets (id, name) VALUES (1, 'alpha'), (2, 'beta') ON CONFLICT DO NOTHING",
+    "INSERT INTO public.pg_step_widgets (id, name) VALUES (1, 'alpha'), (2, 'beta') ON CONFLICT DO NOTHING",
   );
 });
 
@@ -53,7 +53,7 @@ describe("request step · postgres connector dispatch", () => {
           kind: "request",
           method: "SELECT",
           connector_id: pgConnectorId,
-          sql: { query: "SELECT id, name FROM pg_step_widgets ORDER BY id" },
+          sql: { query: "SELECT id, name FROM public.pg_step_widgets ORDER BY id" },
         },
       ],
     });
@@ -80,7 +80,7 @@ describe("request step · postgres connector dispatch", () => {
           method: "SELECT",
           connector_id: pgConnectorId,
           sql: {
-            query: "SELECT id, name FROM pg_step_widgets WHERE name = $1",
+            query: "SELECT id, name FROM public.pg_step_widgets WHERE name = $1",
             params: ["beta"],
           },
         },
@@ -110,7 +110,7 @@ describe("request step · postgres connector dispatch", () => {
           method: "SELECT",
           connector_id: pgConnectorId,
           sql: {
-            query: "SELECT id FROM pg_step_widgets WHERE name = $1",
+            query: "SELECT id FROM public.pg_step_widgets WHERE name = $1",
             params: ["${input.wanted}"],
           },
         },
@@ -128,10 +128,10 @@ describe("request step · postgres connector dispatch", () => {
 
   test("sql.also wraps multiple statements in a transaction", async () => {
     await ctx.testDb.pool.query(
-      "CREATE TABLE IF NOT EXISTS pg_step_balances (account text PRIMARY KEY, amount int NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS public.pg_step_balances (account text PRIMARY KEY, amount int NOT NULL)",
     );
     await ctx.testDb.pool.query(
-      "INSERT INTO pg_step_balances (account, amount) VALUES ('a', 100), ('b', 0) ON CONFLICT (account) DO UPDATE SET amount = EXCLUDED.amount",
+      "INSERT INTO public.pg_step_balances (account, amount) VALUES ('a', 100), ('b', 0) ON CONFLICT (account) DO UPDATE SET amount = EXCLUDED.amount",
     );
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "pg-tx",
@@ -142,11 +142,11 @@ describe("request step · postgres connector dispatch", () => {
           method: "UPDATE",
           connector_id: pgConnectorId,
           sql: {
-            query: "UPDATE pg_step_balances SET amount = amount - 25 WHERE account = $1",
+            query: "UPDATE public.pg_step_balances SET amount = amount - 25 WHERE account = $1",
             params: ["a"],
             also: [
               {
-                query: "UPDATE pg_step_balances SET amount = amount + 25 WHERE account = $1",
+                query: "UPDATE public.pg_step_balances SET amount = amount + 25 WHERE account = $1",
                 params: ["b"],
               },
             ],
@@ -162,7 +162,7 @@ describe("request step · postgres connector dispatch", () => {
     });
     expect(result.status).toBe("succeeded");
     const final = await ctx.testDb.pool.query(
-      "SELECT account, amount FROM pg_step_balances ORDER BY account",
+      "SELECT account, amount FROM public.pg_step_balances ORDER BY account",
     );
     expect(final.rows).toEqual([
       { account: "a", amount: 75 },
@@ -172,10 +172,10 @@ describe("request step · postgres connector dispatch", () => {
 
   test("sql.also rolls back on a failing follow-up statement", async () => {
     await ctx.testDb.pool.query(
-      "CREATE TABLE IF NOT EXISTS pg_step_uniq (id int PRIMARY KEY, label text NOT NULL UNIQUE)",
+      "CREATE TABLE IF NOT EXISTS public.pg_step_uniq (id int PRIMARY KEY, label text NOT NULL UNIQUE)",
     );
     await ctx.testDb.pool.query(
-      "INSERT INTO pg_step_uniq (id, label) VALUES (1, 'taken') ON CONFLICT DO NOTHING",
+      "INSERT INTO public.pg_step_uniq (id, label) VALUES (1, 'taken') ON CONFLICT DO NOTHING",
     );
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "pg-rollback",
@@ -186,10 +186,10 @@ describe("request step · postgres connector dispatch", () => {
           method: "INSERT",
           connector_id: pgConnectorId,
           sql: {
-            query: "INSERT INTO pg_step_uniq (id, label) VALUES (2, 'newly_added')",
+            query: "INSERT INTO public.pg_step_uniq (id, label) VALUES (2, 'newly_added')",
             also: [
               {
-                query: "INSERT INTO pg_step_uniq (id, label) VALUES (3, 'taken')",
+                query: "INSERT INTO public.pg_step_uniq (id, label) VALUES (3, 'taken')",
               },
             ],
           },
@@ -204,15 +204,17 @@ describe("request step · postgres connector dispatch", () => {
     });
     expect(result.status).toBe("failed");
     const after = await ctx.testDb.pool.query(
-      "SELECT count(*)::int AS n FROM pg_step_uniq WHERE label = 'newly_added'",
+      "SELECT count(*)::int AS n FROM public.pg_step_uniq WHERE label = 'newly_added'",
     );
     expect(after.rows[0]!.n).toBe(0);
   });
 
   test("sql.cursor streams rows via server-side cursor", async () => {
-    await ctx.testDb.pool.query("CREATE TABLE IF NOT EXISTS pg_step_audit (id int PRIMARY KEY)");
     await ctx.testDb.pool.query(
-      "INSERT INTO pg_step_audit (id) SELECT i FROM generate_series(1, 25) AS i ON CONFLICT DO NOTHING",
+      "CREATE TABLE IF NOT EXISTS public.pg_step_audit (id int PRIMARY KEY)",
+    );
+    await ctx.testDb.pool.query(
+      "INSERT INTO public.pg_step_audit (id) SELECT i FROM generate_series(1, 25) AS i ON CONFLICT DO NOTHING",
     );
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "pg-cursor",
@@ -223,7 +225,7 @@ describe("request step · postgres connector dispatch", () => {
           method: "SELECT",
           connector_id: pgConnectorId,
           sql: {
-            query: "SELECT id FROM pg_step_audit ORDER BY id",
+            query: "SELECT id FROM public.pg_step_audit ORDER BY id",
             cursor: { fetch_size: 10 },
           },
         },
@@ -242,10 +244,10 @@ describe("request step · postgres connector dispatch", () => {
 
   test("expected_row_count on UPDATE asserts row_count match", async () => {
     await ctx.testDb.pool.query(
-      "CREATE TABLE IF NOT EXISTS pg_step_count (id int PRIMARY KEY, flag boolean NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS public.pg_step_count (id int PRIMARY KEY, flag boolean NOT NULL)",
     );
     await ctx.testDb.pool.query(
-      "INSERT INTO pg_step_count (id, flag) VALUES (1, false), (2, false) ON CONFLICT (id) DO UPDATE SET flag = false",
+      "INSERT INTO public.pg_step_count (id, flag) VALUES (1, false), (2, false) ON CONFLICT (id) DO UPDATE SET flag = false",
     );
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "pg-count-mismatch",
@@ -256,7 +258,7 @@ describe("request step · postgres connector dispatch", () => {
           method: "UPDATE",
           connector_id: pgConnectorId,
           sql: {
-            query: "UPDATE pg_step_count SET flag = true WHERE id = $1",
+            query: "UPDATE public.pg_step_count SET flag = true WHERE id = $1",
             params: [1],
           },
           expected_row_count: 99,
@@ -274,9 +276,11 @@ describe("request step · postgres connector dispatch", () => {
   });
 
   test("expected_row_count object form (max only) — at-most-N enforced", async () => {
-    await ctx.testDb.pool.query("CREATE TABLE IF NOT EXISTS pg_step_atmost (id int PRIMARY KEY)");
     await ctx.testDb.pool.query(
-      "INSERT INTO pg_step_atmost (id) SELECT i FROM generate_series(1, 5) AS i ON CONFLICT DO NOTHING",
+      "CREATE TABLE IF NOT EXISTS public.pg_step_atmost (id int PRIMARY KEY)",
+    );
+    await ctx.testDb.pool.query(
+      "INSERT INTO public.pg_step_atmost (id) SELECT i FROM generate_series(1, 5) AS i ON CONFLICT DO NOTHING",
     );
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "pg-atmost",
@@ -286,7 +290,7 @@ describe("request step · postgres connector dispatch", () => {
           kind: "request",
           method: "DELETE",
           connector_id: pgConnectorId,
-          sql: { query: "DELETE FROM pg_step_atmost" },
+          sql: { query: "DELETE FROM public.pg_step_atmost" },
           expected_row_count: { max: 3 },
         },
       ],
@@ -303,7 +307,9 @@ describe("request step · postgres connector dispatch", () => {
   });
 
   test("expected_row_count object form (min only) — at-least-N enforced", async () => {
-    await ctx.testDb.pool.query("CREATE TABLE IF NOT EXISTS pg_step_atleast (id int PRIMARY KEY)");
+    await ctx.testDb.pool.query(
+      "CREATE TABLE IF NOT EXISTS public.pg_step_atleast (id int PRIMARY KEY)",
+    );
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "pg-atleast",
       steps: [
@@ -312,7 +318,7 @@ describe("request step · postgres connector dispatch", () => {
           kind: "request",
           method: "SELECT",
           connector_id: pgConnectorId,
-          sql: { query: "SELECT id FROM pg_step_atleast" },
+          sql: { query: "SELECT id FROM public.pg_step_atleast" },
           expected_row_count: { min: 1 },
         },
       ],
@@ -330,10 +336,10 @@ describe("request step · postgres connector dispatch", () => {
 
   test("sql.also[i].expected_row_count violation rolls back the transaction", async () => {
     await ctx.testDb.pool.query(
-      "CREATE TABLE IF NOT EXISTS pg_step_per_stmt (id int PRIMARY KEY, val int NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS public.pg_step_per_stmt (id int PRIMARY KEY, val int NOT NULL)",
     );
     await ctx.testDb.pool.query(
-      "INSERT INTO pg_step_per_stmt (id, val) VALUES (1, 0), (2, 0) ON CONFLICT (id) DO UPDATE SET val = 0",
+      "INSERT INTO public.pg_step_per_stmt (id, val) VALUES (1, 0), (2, 0) ON CONFLICT (id) DO UPDATE SET val = 0",
     );
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "pg-per-stmt",
@@ -344,11 +350,11 @@ describe("request step · postgres connector dispatch", () => {
           method: "UPDATE",
           connector_id: pgConnectorId,
           sql: {
-            query: "UPDATE pg_step_per_stmt SET val = 7 WHERE id = $1",
+            query: "UPDATE public.pg_step_per_stmt SET val = 7 WHERE id = $1",
             params: [1],
             also: [
               {
-                query: "UPDATE pg_step_per_stmt SET val = 9 WHERE id IN (1, 2)",
+                query: "UPDATE public.pg_step_per_stmt SET val = 9 WHERE id IN (1, 2)",
                 expected_row_count: 999,
               },
             ],
@@ -365,7 +371,9 @@ describe("request step · postgres connector dispatch", () => {
     });
     expect(result.status).toBe("failed");
     expect(result.error?.code).toBe("expected_row_count_mismatch");
-    const after = await ctx.testDb.pool.query("SELECT val FROM pg_step_per_stmt WHERE id = 1");
+    const after = await ctx.testDb.pool.query(
+      "SELECT val FROM public.pg_step_per_stmt WHERE id = 1",
+    );
     expect(after.rows[0]!.val).toBe(0);
   });
 
