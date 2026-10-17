@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-17T17:22:46Z**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-17T17:33:22Z**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktcommit: **7c00b46e7832e97f9c08613ce04b1e5540841bfe**, `main`, Version **9.15.2**.
 - Checkout und origin/main waren nach `git pull --ff-only origin main` identisch; vor Dateierstellung sauber.
-- Synchronisation: **fb067a581d7e7287b23921bfbb47afb9f51da1b0 auf origin/main bestätigt**; sauberer Checkout, Divergenz 0/0 nach Push. Neuere lokale Änderungen sind erst mit ihrem eigenen Push synchronisiert. Produkt-Baseline oben bleibt für historische Nachweise erhalten.
+- Synchronisation: **431f49b369bd28600e30216307eab4ebf538541b auf origin/main bestätigt**; sauberer Checkout, Divergenz 0/0 nach Push. Neuere lokale Änderungen sind erst mit ihrem eigenen Push synchronisiert. Produkt-Baseline oben bleibt für historische Nachweise erhalten.
 - Countdown am 17.10.: **10/11 Kalendertage bis Beta**, **29 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -21,7 +21,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L02 | DONE | Drei Dateien und kurzer AGENTS-Verweis erstellt; Dokumentvalidierung E11 bestanden. Commit 01257eb8a gepusht, E15. |
 | L03 | DONE | Veraltetes generiertes ZIP mit bestehendem Generator erneuert; Bun 1.4.0 macOS/Linux identisch; 63 Tests und funktionaler Chromium-Lauf PASS, E12. Commit 61ee865d3 gepusht, E15. |
 | L04 | IN_PROGRESS | Historienscan abgeschlossen: 11 Treffer, davon 3 Dokumentationsbeispiele und 8 Vorkommen desselben historischen Firebase-Clientkeys. API-Einschränkungen/Stilllegung dieses Keys ungeprüft; Lizenz-/Publikationsprüfung offen, E19. |
-| L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17; Signatur gegen Updater-Schlüssel vor Upload geprüft, E18. GitHub-Installer mit Signaturprüfung und lokalem Alias korrigiert, E20. Lokale Publikationsstrecke noch offen. |
+| L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17; Signatur gegen Updater-Schlüssel vor Upload geprüft, E18. GitHub-Installer mit Signaturprüfung und lokalem Alias korrigiert, E20. Lokaler check/prepare/publish-Weg implementiert, 18 Prüfungen PASS, E21; echter Vorbereitungs-/Publikationslauf weiterhin UNVERIFIED. |
 | L06 | BLOCKED | Betreiber-/Supportangaben und juristische Freigabe erforderlich. |
 | L07 | IN_PROGRESS | Quickstart mit einmaliger geschützter .env, Wiederverwendung und Recovery-Grenzen korrigiert; Shell-/Compose-Prüfung E16. Commit 1c4c5d5cf gepusht. Echter Start/Restore offen; Docker hat nur 8,9 GiB frei gegenüber 12 GiB Build-Vorgabe. |
 | L08 | TODO | Launch-Security-Prüfung und Befundregister. |
@@ -81,6 +81,7 @@ Keine privaten Rohlogs oder Credentials sind Bestandteil dieses Dokuments.
 | E18 | L05 | 60 Release-/Provenance-/Updater-Tests, 113 Assertions PASS. Exakten Workflow-Signaturbefehl isoliert ausgeführt: falscher Trust-Root abgewiesen, passender temporärer Schlüssel akzeptiert, manipuliertes Manifest abgewiesen | Reale Kryptografie mit Testschlüssel; Produktions-Signing-Key nicht verwendet oder geprüft. Damals zusätzlich festgestellt, inzwischen durch E20 korrigiert: scripts/install.sh erwartete nicht veröffentlichte subkit-Alias-Binärdateien und prüfte keine Signatur; dokumentierter Engine-Installer ist ein separater Pfad. |
 | E19 | L04 | Gitleaks git --all mit Repo-Konfiguration und Redaction: Exit 1, 2291 Commits/1,39 GB/17m6s, 11 Treffer in 4 historischen Dateien. Drei kurze API-Key-Dokumentationsbeispiele mit Demo-Suffix als Beispielbefunde eingeordnet. Acht Firebase-Befunde betreffen denselben Clientkey; am geprüften HEAD nicht mehr vorhanden | Kein Nachweis eines missbrauchten Secrets. Laut [Firebase-Dokumentation](https://firebase.google.com/docs/projects/api-keys) sind passend eingeschränkte Firebase-Clientkeys nicht geheim; konkrete API-/App-Einschränkungen oder Stilllegung hier UNVERIFIED. Keine Key-Werte, privaten Projektangaben oder Rohreports im Repository; keine Historienumschreibung/Rotation vorgenommen. |
 | E20 | L05 | GitHub-Installer lädt nur veröffentlichte sk-Datei, verifiziert Ed25519-Signatur und exakten eindeutigen Hash vor Ersetzung, erstellt lokalen subkit-Link. Rotation aktualisiert beide öffentlichen Schlüssel. 71 Installer-/Release-/Updater-Tests, 171 Assertions PASS; bash -n, Generator und diff --check PASS | Echte Shell/Kryptografie mit deterministischem Testschlüssel, isolierte Download-/OS-/Codesign-Fixtures. Keine öffentliche Installation und keine echte macOS-Codesign-/Linux-Plattformabnahme; kein Produktionsschlüssel erzeugt oder rotiert. Lokale Engine weiter 9.11.2, Checkout 9.15.2. |
+| E21 | L05 | release:local prüft sauberes main, Tag-/Commit-/Gatebindung; baut Git-Snapshot und isolierten Docker-Smoke; signiert zehn Nutzartefakte samt Provenance. Publish braucht explizites Argument, öffentliches Repo, unverwendete Versionen und erneut gültige Nachweise. 18 Bundle-/Befehlsgrenzen-/Provenance-/Workflow-Tests, 78 Assertions PASS; Typecheck PASS | Echte Kryptografie und lokale Subprozesse mit isolierten Tool-Fixtures. Kein vollständiger Docker-Build/Smoke/Signierlauf, kein privater Release-Schlüssel verwendet, keine Registry-/GitHub-Publikation. Tatsächliche Route bleibt UNVERIFIED bis zum freigegebenen Kandidatenlauf. |
 
 ## Release, Website, Store und Automation
 
@@ -105,7 +106,7 @@ nach Prüfung, täglich 1–2 Stunden Mitarbeit, Launch vor Features; Implementi
 dieser Planungsdateien. Anschließend: autonome Launch-Vorbereitung als Goal einschließlich
 Commit und Push mit regulären Hooks freigegeben. Keine weitergehende Veröffentlichungsfreigabe daraus ableiten.
 
-Offen: Betreiber-/Supportangaben, juristische Prüfung, Store-Konto/Freigabe, Testzugänge und
+Offen: Betreiber-/Supportangaben, juristische Prüfung, Store-Konto/Freigabe, vorhandener Release-Signing-Key für lokale Abnahme, Testzugänge und
 Zielsysteme, Nachweis zu Einschränkungen/Stilllegung des historischen Firebase-Keys, globale Hooks/Transkript-Datenfluss, Sichtabnahme sowie gesonderte Publikationsfreigaben. Commit/Push sind für den vereinbarten Scope freigegeben.
 
 Aktiv: L04 (Befundklärung/Lizenzinventur) und L05 (signierte Distribution).
@@ -114,8 +115,8 @@ L07 wartet auf ausreichenden Docker-Buildspeicher und den Installations-/Restore
 Nächste drei priorisierte Aufgaben:
 
 1. **L04:** Historischen Firebase-Key hinsichtlich Einschränkungen/Stilllegung klären; Auslieferungslizenzen prüfen.
-2. **L05:** Kontrollierte öffentliche Publikation ohne privaten Deploy-Zwang vorbereiten.
+2. **L05:** Lokalen Release-Weg praktisch abnehmen, sobald freigegebener Kandidat und vorhandener Signing-Key verfügbar sind.
 3. **L07:** Persistenten Quickstart und isolierte Installationsprüfung vorbereiten.
 
-Nächster Codex-Schritt: L04-Befundklärung und isolierten L07-Installations-/Restore-Nachweis vorbereiten; L05 mit lokaler Publikationsstrecke fortsetzen; Installer-/Signaturkorrekturen E20 nicht wiederholen. L03 nicht wiederholen. Fertige Pakete mit regulären Hooks committen und pushen.
+Nächster Codex-Schritt: L04-Befundklärung und isolierten L07-Installations-/Restore-Nachweis vorbereiten; Docker-Speicherkapazität für L07 prüfen und isolierte Installation/Restore vorbereiten. L05-Code E21 ist vorhanden; reale Abnahme benötigt einen freigegebenen Kandidaten und vorhandenen Signing-Key außerhalb des Repos. Installer-/Signaturkorrekturen E20 nicht wiederholen. L03 nicht wiederholen. Fertige Pakete mit regulären Hooks committen und pushen.
 Parallel kann der Nutzer Betreiber-/Supportangaben und Store-Kontostatus bereitstellen.
