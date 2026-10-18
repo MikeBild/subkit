@@ -2,6 +2,22 @@
 
 Canonical repo-wide instructions for the SubKit engine and CLI. Closer AGENTS.md files override this guide.
 
+## Design ownership: Lovable
+
+- For public website work, read [WEBSITE-TODO.md](WEBSITE-TODO.md) first for
+  current user decisions, verified scope, remaining release work and handoff location.
+- Lovable exclusively creates and changes the design. Coding agents implement,
+  integrate, and test the concrete Lovable design; they do not design independently
+  or use another design generator as a substitute.
+- Use the official Lovable integration to inspect the selected project and its
+  current design before UI implementation. If the project or required state is
+  missing, request it or have Lovable produce it rather than inventing a design.
+- Preserve Lovable layouts, components, typography, colors, spacing, icons,
+  interactions, and responsive states exactly. Any required deviation needs
+  explicit user agreement before implementation.
+- Existing Cockpit patterns remain binding until a concrete Lovable design
+  replaces them. Visual acceptance remains manual under the validation rules below.
+
 ## Product boundaries
 
 - Preserve the engine, CLI, shared-package, approval, and deployment boundaries.
