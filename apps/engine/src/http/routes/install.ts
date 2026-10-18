@@ -9,7 +9,7 @@ const route = createRoute({
   tags: ["install"],
   summary: "Public sk install script",
   description:
-    "Returns a POSIX shell script that detects platform/arch, fetches the matching `sk` binary from the GitHub Release for the engine's current version, verifies SHA256, and installs to ~/.subkit/bin/sk.",
+    "Returns a POSIX shell script that detects platform/arch, fetches the matching `sk` binary and license notices from the engine bundle or an explicit mirror, verifies SHA256, and installs to ~/.subkit/bin.",
   responses: {
     200: {
       description: "Shell script (text/x-shellscript)",
@@ -59,10 +59,12 @@ BUNDLED_SUMS_URL="\${ENGINE_URL}/install/sha256sums"
 if curl -fsSI --max-time 5 -o /dev/null "$BUNDLED_ASSET_URL" 2>/dev/null; then
   ASSET_URL="$BUNDLED_ASSET_URL"
   SUMS_URL="$BUNDLED_SUMS_URL"
+  NOTICE_BASE="\${ENGINE_URL}/install"
   SOURCE="engine ($ENGINE_URL)"
 elif [ -n "$MIRROR_BASE" ]; then
   ASSET_URL="\${MIRROR_BASE%/}/\${ASSET}"
   SUMS_URL="\${MIRROR_BASE%/}/SHA256SUMS"
+  NOTICE_BASE="\${MIRROR_BASE%/}"
   SOURCE="mirror ($MIRROR_BASE)"
 else
   cat >&2 <<'NOSOURCE'
@@ -95,27 +97,42 @@ curl -fsSL -o "\${TMP}/\${ASSET}" "$ASSET_URL"
 curl -fsSL -o "\${TMP}/SHA256SUMS" "$SUMS_URL"
 
 # --- verify -----------------------------------------------------------------
-expected=$(grep " \${ASSET}$" "\${TMP}/SHA256SUMS" | awk '{print $1}')
-if [ -z "$expected" ]; then
-  echo "no SHA entry for \${ASSET} in SHA256SUMS — refusing to install" >&2
-  exit 1
-fi
-if command -v sha256sum >/dev/null; then
-  actual=$(sha256sum "\${TMP}/\${ASSET}" | awk '{print $1}')
-elif command -v shasum >/dev/null; then
-  actual=$(shasum -a 256 "\${TMP}/\${ASSET}" | awk '{print $1}')
-else
-  echo "no sha256sum / shasum on PATH — refusing to install" >&2
-  exit 1
-fi
-if [ "$actual" != "$expected" ]; then
-  echo "SHA256 mismatch — refusing to install" >&2
-  echo "  expected: $expected" >&2
-  echo "  actual:   $actual" >&2
-  exit 1
-fi
+for FILE in LICENSE THIRD_PARTY_NOTICES.txt; do
+  curl -fsSL -o "\${TMP}/$FILE" "$NOTICE_BASE/$FILE"
+done
+for FILE in "$ASSET" LICENSE THIRD_PARTY_NOTICES.txt; do
+  if [ ! -s "\${TMP}/$FILE" ]; then
+    echo "empty asset: $FILE — refusing to install" >&2
+    exit 1
+  fi
+  expected=$(awk -v asset="$FILE" '$2 == asset {print $1}' "\${TMP}/SHA256SUMS")
+  if [[ ! "$expected" =~ ^[a-fA-F0-9]{64}$ ]]; then
+    echo "missing, duplicate or invalid SHA entry for $FILE — refusing to install" >&2
+    exit 1
+  fi
+  if command -v sha256sum >/dev/null; then
+    actual=$(sha256sum "\${TMP}/$FILE" | awk '{print $1}')
+  elif command -v shasum >/dev/null; then
+    actual=$(shasum -a 256 "\${TMP}/$FILE" | awk '{print $1}')
+  else
+    echo "no sha256sum / shasum on PATH — refusing to install" >&2
+    exit 1
+  fi
+  if [ "$actual" != "$expected" ]; then
+    echo "SHA256 mismatch — refusing to install" >&2
+    exit 1
+  fi
+  if [ -d "\${INSTALL_DIR}/subkit.$FILE" ] || [ -d "\${INSTALL_DIR}/sk" ]; then
+    echo "installation target is a directory — refusing to install" >&2
+    exit 1
+  fi
+done
 
 # --- install ----------------------------------------------------------------
+for FILE in LICENSE THIRD_PARTY_NOTICES.txt; do
+  chmod 644 "\${TMP}/$FILE"
+  mv -f "\${TMP}/$FILE" "\${INSTALL_DIR}/subkit.$FILE"
+done
 chmod +x "\${TMP}/\${ASSET}"
 mv "\${TMP}/\${ASSET}" "\${INSTALL_DIR}/sk"
 

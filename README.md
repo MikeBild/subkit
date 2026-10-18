@@ -185,7 +185,10 @@ license assets before replacing an existing installation. It installs `subkit.LI
 and `subkit.THIRD_PARTY_NOTICES.txt` beside the CLI. Missing license assets, missing signatures or unsupported cryptography
 stop installation. This path requires publicly downloadable release assets; a local
 build or a private repository is not sufficient. The engine-served installer above
-is a separate download path from your own installation.
+is a separate download path from your own installation. It requires the binary,
+`LICENSE`, and `THIRD_PARTY_NOTICES.txt` from the same engine bundle or explicit
+mirror and verifies each against that source's checksum manifest. Its trust boundary
+is your selected engine/mirror; it does not imply GitHub release-signature verification.
 
 The GitHub updater also requires both signed license assets. It updates the notices
 beside the binary and retains existing notices with their checksums for rollback.

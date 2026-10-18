@@ -98,7 +98,7 @@ export interface paths {
         };
         /**
          * Public sk install script
-         * @description Returns a POSIX shell script that detects platform/arch, fetches the matching `sk` binary from the GitHub Release for the engine's current version, verifies SHA256, and installs to ~/.subkit/bin/sk.
+         * @description Returns a POSIX shell script that detects platform/arch, fetches the matching `sk` binary and license notices from the engine bundle or an explicit mirror, verifies SHA256, and installs to ~/.subkit/bin.
          */
         get: {
             parameters: {
@@ -310,15 +310,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Bundled sk binary
-         * @description Streams the sk CLI binary bundled in the engine-with-cli image variant. Returns 404 with a pointer body when the bundle is absent, the asset name is malformed, or the requested platform/arch is not built. Verifies bytes via the `x-subkit-sha256` response header.
+         * Bundled sk binary or license notice
+         * @description Streams the sk CLI binary or its LICENSE/THIRD_PARTY_NOTICES.txt bundled in the engine-with-cli image variant. Returns 404 with a pointer body when the bundle is absent, the asset name is malformed, or the requested platform/arch is not built. Verifies bytes via the `x-subkit-sha256` response header.
          */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Asset slug. Grammar: `sk-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built. */
+                    /** @description Asset slug or LICENSE / THIRD_PARTY_NOTICES.txt. Binary grammar: `sk-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built. */
                     asset: string;
                 };
                 cookie?: never;

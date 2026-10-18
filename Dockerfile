@@ -82,6 +82,13 @@ COPY LICENSE /usr/local/share/subkit/LICENSE
 COPY --from=builder /out/THIRD_PARTY_NOTICES.txt /usr/local/share/subkit/THIRD_PARTY_NOTICES.txt
 COPY deploy/docker/subkit-wrap.sh /usr/local/bin/subkit-wrap.sh
 COPY deploy/docker/entrypoint.sh /usr/local/bin/subkit-entrypoint.sh
+RUN cp /usr/local/share/subkit/LICENSE /usr/local/share/subkit/binaries/LICENSE \
+    && cp /usr/local/share/subkit/THIRD_PARTY_NOTICES.txt /usr/local/share/subkit/binaries/THIRD_PARTY_NOTICES.txt \
+    && cd /usr/local/share/subkit/binaries \
+    && awk '$2 != "LICENSE" && $2 != "THIRD_PARTY_NOTICES.txt"' SHA256SUMS > SHA256SUMS.next \
+    && sha256sum LICENSE THIRD_PARTY_NOTICES.txt >> SHA256SUMS.next \
+    && mv SHA256SUMS.next SHA256SUMS
+
 RUN chmod +x /usr/local/bin/engine.bin /usr/local/bin/sk.bin \
         /usr/local/bin/subkit-wrap.sh /usr/local/bin/subkit-entrypoint.sh \
     && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/engine \

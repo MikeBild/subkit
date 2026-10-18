@@ -76,7 +76,7 @@ const AssetParam = z.object({
       param: { name: "asset", in: "path" },
       example: "sk-darwin-arm64",
       description:
-        "Asset slug. Grammar: `sk-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built.",
+        "Asset slug or LICENSE / THIRD_PARTY_NOTICES.txt. Binary grammar: `sk-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built.",
     }),
 });
 
@@ -103,9 +103,9 @@ const assetRoute = createRoute({
   method: "get",
   path: "/install/{asset}",
   tags: ["install"],
-  summary: "Bundled sk binary",
+  summary: "Bundled sk binary or license notice",
   description:
-    "Streams the sk CLI binary bundled in the engine-with-cli image variant. Returns 404 with a pointer body when the bundle is absent, the asset name is malformed, or the requested platform/arch is not built. Verifies bytes via the `x-subkit-sha256` response header.",
+    "Streams the sk CLI binary or its LICENSE/THIRD_PARTY_NOTICES.txt bundled in the engine-with-cli image variant. Returns 404 with a pointer body when the bundle is absent, the asset name is malformed, or the requested platform/arch is not built. Verifies bytes via the `x-subkit-sha256` response header.",
   request: { params: AssetParam },
   responses: {
     200: {
@@ -142,7 +142,8 @@ export function registerInstallBinaryRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(assetRoute, async (c) => {
     const { asset } = c.req.valid("param");
     const parsed = parseAsset(asset);
-    if (!parsed) {
+    const notice = asset === "LICENSE" || asset === "THIRD_PARTY_NOTICES.txt";
+    if (!parsed && !notice) {
       return c.text(POINTER_BODY, 404, POINTER_HEADERS);
     }
     const dir = getBinariesDir();
@@ -150,7 +151,7 @@ export function registerInstallBinaryRoute(app: OpenAPIHono<AppEnv>): void {
     if (manifest === "absent") {
       return c.text(POINTER_BODY, 404, POINTER_HEADERS);
     }
-    const filename = diskFilename(parsed);
+    const filename = parsed ? diskFilename(parsed) : asset;
     const sha = manifest.sums.get(filename);
     if (!sha) {
       return c.text(POINTER_BODY, 404, POINTER_HEADERS);
