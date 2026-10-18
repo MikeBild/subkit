@@ -40,14 +40,16 @@ describe("release manifest workflow", () => {
       "sk_windows_x64.exe",
       "docker-compose.yml",
       "subkit-clipper.zip",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.txt",
     ]) {
       expect(extractStep).toContain(asset);
     }
     expect(extractStep).toContain(
-      "sha256sum engine_* sk_* docker-compose.yml subkit-clipper.zip > SHA256SUMS",
+      "sha256sum engine_* sk_* docker-compose.yml subkit-clipper.zip LICENSE THIRD_PARTY_NOTICES.txt > SHA256SUMS",
     );
     expect(WORKFLOW.slice(publish)).toContain(
-      "assets/docker-compose.yml assets/subkit-clipper.zip",
+      "assets/docker-compose.yml assets/subkit-clipper.zip assets/LICENSE assets/THIRD_PARTY_NOTICES.txt",
     );
     expect(WORKFLOW.slice(sign, publish)).toContain("-out assets/SHA256SUMS.sig");
   });
