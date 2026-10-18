@@ -170,6 +170,13 @@ export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Respons
     return envelope(c, err.code === "description_changed" ? 409 : 400, err.code, err.message);
   if (err instanceof HTTPException && err.status === 415)
     return envelope(c, 415, "unsupported_media_type", "Unsupported request Content-Type");
+  if (err instanceof HTTPException && err.status === 400)
+    return envelope(
+      c,
+      400,
+      /malformed json/i.test(err.message) ? "malformed_json" : "bad_request",
+      err.message || "Bad request",
+    );
   if (err instanceof HttpError) {
     if (err.status >= 500) captureToRing(c, err, err.status, err.code, "http");
     if (err instanceof UnauthorizedError && err.wwwAuthenticate) {

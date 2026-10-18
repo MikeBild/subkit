@@ -117,3 +117,15 @@ uucode-Haupt-/Sekundärhinweise und breite Base64-Quellsuche sind belegt (E137�
 Diese Recherchen nicht wiederholen. Vier lokale Source-Archive E144 sind vorhanden;
 E145 benennt fehlende Toolchains. Kein Wiederaufbau oder öffentliche Quellauslieferung
 behauptet. Der aktuelle Image-/Installer-Nachweis E151 ist abgeschlossen.
+
+
+### Chrome Web Store: eingereicht, Prüfung ausstehend
+
+Der Nutzer hat die Clipper-Version `9.15.2` eingereicht. Die offizielle
+Chrome-Web-Store-API bestätigt `submittedItemRevisionStatus.state = PENDING_REVIEW`.
+Es liegt noch kein Nachweis einer öffentlichen Store-Freigabe vor. Bilinguale
+Beschreibung, Icon, Screenshot, Werbekachel und Berechtigungsangaben sind gespeichert.
+Die Clipper-spezifische Datenschutzerklärung ist in Lovable DE/EN vorbereitet,
+aber noch nicht veröffentlicht; die geprüfte vorläufige öffentliche Erklärung
+beschreibt bislang nur die Website. Dieser Inhaltspunkt bleibt offen.
+Details und nächste Schritte: `WEBSITE-TODO.md`, Abschnitt Clipper-Store.
