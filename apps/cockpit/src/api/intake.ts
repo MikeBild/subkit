@@ -1,61 +1,17 @@
 import { apiRequest } from "./client";
+import type { components } from "./schema";
 
-export type IntakeState = "collected" | "reviewing" | "admitted" | "discarded";
+export type IntakeClip = components["schemas"]["IntakeItem"];
+export type IntakeClipDetail = components["schemas"]["IntakeItemDetail"];
+export type IntakeEvidence = components["schemas"]["IntakeItemEvidence"];
+export type IntakeSnapshot = components["schemas"]["IntakeItemSnapshot"];
+export type IntakeState = IntakeClip["state"];
+export type IntakeProposal = components["schemas"]["IntakeProposal"];
+export type IntakeProposalTarget = components["schemas"]["IntakeProposalTarget"];
+export type IntakeSkillTarget = components["schemas"]["IntakeSkillTarget"];
 
 export interface IntakeCategory {
   category: string;
-}
-
-export interface IntakeClip {
-  id: string;
-  category: string;
-  title: string;
-  body: string;
-  note: string;
-  original_snapshot: {
-    title: string;
-    source_url: string;
-    source_author?: string;
-    published_at?: string;
-    captured_at: string;
-    body: string;
-    origin: string;
-  };
-  state: IntakeState;
-  version: number;
-  admitted_knowledge_source_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface IntakeProposalSource {
-  id: string;
-  version: number;
-  title: string;
-  source_url: string;
-}
-
-export interface IntakeProposal {
-  id: string;
-  status: "draft" | "stale" | "confirmed" | "rejected";
-  current_revision: number;
-  confirmed_revision: number | null;
-  confirmed_knowledge_source_id: string | null;
-  rejected_at: string | null;
-  stale_reason: string | null;
-  revision: {
-    revision: number;
-    digest: string;
-    title: string;
-    body: string;
-    target:
-      | { knowledge_source_id: string; expected_version: string }
-      | { name: string; category?: string; tags?: string[] };
-    items: IntakeProposalSource[];
-    created_at: string;
-  };
-  created_at: string;
-  updated_at: string;
 }
 
 const categories = "/v1/categories";
@@ -75,7 +31,7 @@ export function setIntakeDefaultCategory(category: string): Promise<{ category: 
   return apiRequest(defaultCategory, { method: "PATCH", body: JSON.stringify({ category }) });
 }
 
-export function getIntakeClip(id: string): Promise<IntakeClip> {
+export function getIntakeClip(id: string): Promise<IntakeClipDetail> {
   return apiRequest(`${clips}/${encodeURIComponent(id)}`);
 }
 

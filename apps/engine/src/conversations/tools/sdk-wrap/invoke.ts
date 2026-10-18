@@ -79,19 +79,22 @@ import {
 
 const PRIOR_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
 
-const INTAKE_REVIEW_KNOWLEDGE_WRITES = new Set([
+export const INTAKE_REVIEW_BLOCKED_WRITES = new Set([
   "create_knowledge_source",
   "update_knowledge_source",
   "analyze_knowledge_source",
   "delete_knowledge_source",
   "save_learning",
   "approve_skill_candidate",
+  "reject_skill_candidate",
+  "update_skill",
+  "delete_skill",
 ]);
 
-export function intakeReviewBlocksKnowledgeWrite(draft: DraftDocument, tool: string): boolean {
+export function intakeReviewBlocksWrite(draft: DraftDocument, tool: string): boolean {
   return Boolean(
     (draft.session?.intake_review_active || draft.session?.intake_item_ids?.length) &&
-      INTAKE_REVIEW_KNOWLEDGE_WRITES.has(tool),
+      INTAKE_REVIEW_BLOCKED_WRITES.has(tool),
   );
 }
 
@@ -194,13 +197,13 @@ export function wrapOne(
       });
       await prevChain;
       const executeBody = async (): Promise<WrappedToolOutput> => {
-        if (intakeReviewBlocksKnowledgeWrite(ctx.getDraft(), inner.name)) {
+        if (intakeReviewBlocksWrite(ctx.getDraft(), inner.name)) {
           return {
             ok: false,
             data: {
               error: "intake_review_requires_human_confirmation",
               message:
-                "This conversation is reviewing collected clips. Create or revise an intake proposal; a person confirms the exact content, sources, and destination in the review before it becomes knowledge.",
+                "This conversation is reviewing collected material. Create or revise an intake proposal; a person confirms the exact content, sources, and destination in the review before it becomes knowledge or a skill.",
             },
           };
         }

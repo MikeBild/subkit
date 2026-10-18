@@ -114,7 +114,7 @@ export const approveDiscoveryArtifactTool: ConversationTool = {
     "After the operator has reviewed a proposed artifact via get_discovery_artifact, flip it to approved. This is a human gate — only call after `ask_user_confirm` returns confirmed=true.",
   important_notes: [
     "Artifact must be in `proposed` status; already-approved / rejected rows return `already_materialized` or `not_found`.",
-    "Approval alone does NOT create the downstream row — a follow-up call (start_connector_from_description or start_connector_from_template / propose_skill / knowledge upsert) materialises the draft.",
+    "Approval alone does NOT create the downstream row — a follow-up call (start_connector_from_description or start_connector_from_template / knowledge upsert) materialises the draft; a skill is collected with save_learning and becomes a skill only after a person confirms it in Intake.",
     "Writes an audit entry under action=discovery.artifact_approved.",
   ],
   inputSchema: ApproveInput,

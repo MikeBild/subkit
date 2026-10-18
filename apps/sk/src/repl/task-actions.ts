@@ -62,13 +62,6 @@ export const TRIAGE_STARTER_PROMPT = [
   "Act only on the issues in the digest — do not invent problems beyond it.",
 ].join("\n");
 
-export const REVIEW_LEARNINGS_STARTER_PROMPT = [
-  "Review the proposed session learnings with me.",
-  "List them via list_skill_candidates (status proposed; pattern_kind session_learning for practices that become skills, knowledge_learning for facts that join the domain's knowledge source) and walk through each one — what it captures, where it lands, and why it was proposed.",
-  "Approve a candidate via approve_skill_candidate only after I explicitly confirm it; use the reject route when I decline one.",
-  "Never approve or reject a candidate on your own initiative.",
-].join("\n");
-
 export const TASK_ACTIONS: readonly TaskAction[] = [
   {
     id: "probe-draft",
@@ -203,17 +196,6 @@ export const TASK_ACTIONS: readonly TaskAction[] = [
     requires: "conversation:write",
     noviceSafe: true,
     invoke: { kind: "prompt", prompt: TRIAGE_STARTER_PROMPT },
-  },
-  {
-    id: "review-learnings",
-    label: "Review proposed learnings",
-    detail: "curation",
-    description:
-      "Walk through proposed session learnings and approve or reject each one with explicit confirmation.",
-    category: "review",
-    aliases: ["learnings", "review learnings"],
-    requires: "skill:read",
-    invoke: { kind: "prompt", prompt: REVIEW_LEARNINGS_STARTER_PROMPT },
   },
   {
     id: "repair-failed-run",

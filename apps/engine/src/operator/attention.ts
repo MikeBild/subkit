@@ -25,6 +25,7 @@ export const ATTENTION_SOURCES = [
   "connections",
   "secret_approvals",
   "skills",
+  "intake",
   "budget",
   "risk",
 ] as const;
@@ -62,6 +63,7 @@ export const ATTENTION_REASONS = [
   "secret_unreadable",
   "secret_prepared",
   "skills_proposed",
+  "intake_collected",
   "budget_critical",
   "risk_critical",
 ] as const;
@@ -113,7 +115,7 @@ export interface AttentionItem {
     failures?: number;
     consecutive_failures?: number;
     skills?: number;
-    knowledge?: number;
+    intake?: number;
   };
   since: string | null;
   deadline: string | null;
@@ -151,6 +153,7 @@ const SOURCE_GATES: Record<AttentionSource, SourceGate> = {
   connections: { permission: "connection:read" },
   secret_approvals: { permission: "settings:read" },
   skills: { permission: "skill:read" },
+  intake: { permission: "intake:read" },
   budget: { permission: "stats:read" },
   risk: { permission: "stats:read" },
 };

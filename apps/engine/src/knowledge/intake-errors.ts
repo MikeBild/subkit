@@ -1,5 +1,8 @@
 export class IntakeNotFoundError extends Error {
-  constructor(kind: "collection" | "item" | "proposal", id: string) {
+  constructor(
+    kind: "collection" | "item" | "proposal" | "skill" | "connector" | "workflow",
+    id: string,
+  ) {
     super(`${kind} '${id}' was not found`);
     this.name = "IntakeNotFoundError";
   }

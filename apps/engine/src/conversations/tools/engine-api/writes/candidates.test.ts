@@ -12,7 +12,6 @@ import { checkToolPermission } from "../../permission-gate.ts";
 import { prepareGate } from "../../sdk-wrap/gate-subjects.ts";
 import { listSkillCandidatesTool } from "../skill-candidates.ts";
 import { approveSkillCandidateTool, rejectSkillCandidateTool } from "./candidates.ts";
-import { createSkillTool } from "./create-skill.ts";
 
 const MISSING_UUID = "00000000-0000-4000-8000-000000009999";
 
@@ -33,12 +32,22 @@ describe("skill candidate chat tools", () => {
   }
 
   async function propose(title: string): Promise<string> {
-    const result = await createSkillTool.execute(makeCtx(), {
-      scope: "global",
-      title,
-      body: `Body of ${title}`,
-    });
-    return (result.data as { candidate_id: string }).candidate_id;
+    const [row] = await testDb.db
+      .insert(skillCandidates)
+      .values({
+        tenant_id: tenantId,
+        scope: "global",
+        pattern_kind: "success_pattern",
+        title,
+        body: `Body of ${title}`,
+        examples: { examples: [], best_practices: [], pitfalls: [], doc_refs: [] },
+        evidence: [],
+        confidence: "high",
+        fingerprint: `detected:${title}`,
+      })
+      .returning({ id: skillCandidates.id });
+    if (!row) throw new Error("seed candidate failed");
+    return row.id;
   }
 
   async function statusOf(id: string): Promise<string | undefined> {
@@ -275,8 +284,10 @@ describe("skill candidate chat tools", () => {
         body_excerpt: "Body of Approve Card",
       });
       expect(prepared.args.expected_review_digest).toMatch(/^[a-f0-9]{64}$/);
+    });
 
-      const [fact] = await testDb.db
+    test("a collected learning left as a proposed candidate is never approved or rejected here", async () => {
+      const [learning] = await testDb.db
         .insert(skillCandidates)
         .values({
           tenant_id: tenantId,
@@ -290,18 +301,29 @@ describe("skill candidate chat tools", () => {
           fingerprint: "approve-card-fact",
         })
         .returning();
-      if (!fact) throw new Error("seed fact failed");
-      const factGate = await prepareGate(
+      if (!learning) throw new Error("seed learning failed");
+      const gate = await prepareGate(
         "approve_skill_candidate",
-        { candidate_id: fact.id },
+        { candidate_id: learning.id },
         tenantId,
         testDb.db,
       );
-      expect(factGate.pending_output?.target).toEqual({
-        kind: "knowledge",
-        knowledge_source_name: "Learnings · ops",
-        knowledge_source_slug: "learnings-ops",
+      expect(gate.pending_output).toEqual({
+        candidate_id: learning.id,
+        subjects: [{ id: learning.id, title: null, status: "not_found" }],
       });
+      const approvePrecheck = await approveSkillCandidateTool.precheck?.(makeCtx(), {
+        candidate_id: learning.id,
+      });
+      expect(approvePrecheck).toMatchObject({ ok: false, result: { error_code: "not_found" } });
+      expect(
+        await approveSkillCandidateTool.execute(makeCtx(), { candidate_id: learning.id }),
+      ).toMatchObject({ ok: false, error_code: "not_found" });
+      const rejectPrecheck = await rejectSkillCandidateTool.precheck?.(makeCtx(), {
+        candidate_ids: [learning.id],
+      });
+      expect(rejectPrecheck).toMatchObject({ ok: false, result: { error_code: "not_found" } });
+      expect(await statusOf(learning.id)).toBe("proposed");
     });
 
     test("a draft skill result says it needs activation", async () => {

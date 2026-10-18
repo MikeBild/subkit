@@ -1,12 +1,17 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { CategorySchema } from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import {
+  IntakeItemSnapshotSchema,
+  IntakeProposalTargetSchema,
+  IntakeTargetKindSchema,
+} from "../../api/intake-schemas.ts";
 import { actorOf } from "../../audit/index.ts";
 import * as intake from "../../knowledge/index.ts";
 import { can } from "../../rbac/index.ts";
 import { ConflictError, HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
-import { requirePermission } from "../middleware/require-permission.ts";
+import { ensurePermission, requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const SnapshotSchema = z
@@ -37,35 +42,38 @@ const ItemSchema = z
     tenant_id: z.string().uuid(),
     category: CategorySchema,
     client_request_id: z.string().uuid(),
-    original_snapshot: SnapshotSchema.extend({
-      title: z.string(),
-      source_url: z.string().url(),
-      captured_at: z.string().datetime(),
-      body: z.string(),
-      origin: z.enum(["capture", "restored_draft"]),
-    }),
+    original_snapshot: IntakeItemSnapshotSchema,
     title: z.string(),
     body: z.string(),
     note: z.string(),
     state: ItemStateSchema,
     version: z.number().int().positive(),
     collected_by: z.object({ kind: z.enum(["user", "system_account"]), id: z.string().uuid() }),
-    admitted_knowledge_source_id: z.string().uuid().nullable(),
+    admitted_target_kind: IntakeTargetKindSchema.nullable(),
+    admitted_target_id: z.string().uuid().nullable(),
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
   })
   .openapi("IntakeItem");
 
-const TargetSchema = z
-  .union([
-    z.object({ knowledge_source_id: z.string().uuid(), expected_version: z.string().min(1) }),
-    z.object({
-      name: z.string().min(1).max(200),
-      category: CategorySchema.optional(),
-      tags: z.array(z.string().min(1).max(40)).max(20).optional(),
-    }),
-  ])
-  .openapi("IntakeProposalTarget");
+const ItemEvidenceSchema = z
+  .object({
+    id: z.string().uuid(),
+    agent: z.string(),
+    session_id: z.string(),
+    repo: z.string().nullable(),
+    excerpt: z.string(),
+    captured_at: z.string().datetime(),
+    recorded_by: z.object({ kind: z.enum(["user", "system_account"]), id: z.string().uuid() }),
+  })
+  .openapi("IntakeItemEvidence");
+
+const ITEM_EVIDENCE_LIMIT = 20;
+
+const ItemDetailSchema = ItemSchema.extend({
+  evidence: z.array(ItemEvidenceSchema).max(ITEM_EVIDENCE_LIMIT),
+  evidence_total: z.number().int().nonnegative(),
+}).openapi("IntakeItemDetail");
 
 const ProposalSchema = z
   .object({
@@ -74,7 +82,8 @@ const ProposalSchema = z
     status: z.enum(["draft", "stale", "confirmed", "rejected"]),
     current_revision: z.number().int().positive(),
     confirmed_revision: z.number().int().positive().nullable(),
-    confirmed_knowledge_source_id: z.string().uuid().nullable(),
+    confirmed_target_kind: IntakeTargetKindSchema.nullable(),
+    confirmed_target_id: z.string().uuid().nullable(),
     rejected_at: z.string().datetime().nullable(),
     stale_reason: z.string().nullable(),
     created_at: z.string().datetime(),
@@ -84,13 +93,13 @@ const ProposalSchema = z
       digest: z.string().regex(/^[a-f0-9]{64}$/),
       title: z.string(),
       body: z.string(),
-      target: TargetSchema,
+      target: IntakeProposalTargetSchema,
       items: z.array(
         z.object({
           id: z.string().uuid(),
           version: z.number().int().positive(),
           title: z.string(),
-          source_url: z.string().url(),
+          source_url: z.string().url().nullable(),
         }),
       ),
       created_at: z.string().datetime(),
@@ -138,7 +147,7 @@ const CreateProposalSchema = z
     item_ids: z.array(z.string().uuid()).min(1).max(100),
     title: z.string().trim().min(1).max(1_000),
     body: z.string().min(1).max(2_000_000),
-    target: TargetSchema,
+    target: IntakeProposalTargetSchema,
   })
   .openapi("CreateIntakeProposalBody");
 
@@ -164,7 +173,7 @@ const ListItemsResponse = z.object({
 const MentionItemSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
-  source_url: z.string().url(),
+  source_url: z.string().url().nullable(),
   category: CategorySchema,
   state: ItemStateSchema,
   version: z.number().int().positive(),
@@ -258,11 +267,11 @@ const getItemRoute = createRoute({
   method: "get",
   path: "/v1/intake/items/{id}",
   tags: ["intake"],
-  summary: "Read an intake clip and its immutable provenance",
+  summary: "Read an intake clip, its immutable provenance and its latest session evidence",
   security: [{ bearerAuth: [] }],
   request: { params: IdParam },
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: ItemSchema } } },
+    200: { description: "OK", content: { "application/json": { schema: ItemDetailSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -345,7 +354,7 @@ const confirmProposalRoute = createRoute({
   method: "post",
   path: "/v1/intake/proposals/{id}/confirm",
   tags: ["intake"],
-  summary: "Confirm the exact reviewed proposal revision and publish it as knowledge",
+  summary: "Confirm the exact reviewed proposal revision and publish it as knowledge or a skill",
   security: [{ bearerAuth: [] }],
   request: {
     params: IdParam,
@@ -416,11 +425,7 @@ export function registerIntakeRoutes(app: OpenAPIHono<AppEnv>): void {
         : requirePermission("intake:write")(c, next),
   );
   app.use("/v1/intake/proposals/:id/reject", requirePermission("intake:write"));
-  app.use("/v1/intake/proposals/:id/confirm", async (c, next) => {
-    await requirePermission("intake:confirm")(c, async () => {
-      await requirePermission("knowledge:write")(c, next);
-    });
-  });
+  app.use("/v1/intake/proposals/:id/confirm", requirePermission("intake:confirm"));
 
   app.openapi(getDefaultCategoryRoute, async (c) => {
     const principal = requireAuth(c);
@@ -471,7 +476,7 @@ export function registerIntakeRoutes(app: OpenAPIHono<AppEnv>): void {
       items: filtered.map((item) => ({
         id: item.id,
         title: item.title,
-        source_url: item.original_snapshot.source_url,
+        source_url: item.original_snapshot.source_url ?? null,
         category: item.category,
         state: item.state,
         version: item.version,
@@ -499,7 +504,26 @@ export function registerIntakeRoutes(app: OpenAPIHono<AppEnv>): void {
       c.get("db"),
     );
     if (!item) throw new NotFoundError("intake_item");
-    return c.json(item, 200);
+    const { evidence, evidence_total } = await intake.readIntakeItemEvidence(
+      { tenant_id: principal.tenant_id, item_id: item.id, limit: ITEM_EVIDENCE_LIMIT },
+      c.get("db"),
+    );
+    return c.json(
+      {
+        ...item,
+        evidence: evidence.map((row) => ({
+          id: row.id,
+          agent: row.agent,
+          session_id: row.session_id,
+          repo: row.repo,
+          excerpt: row.excerpt,
+          captured_at: row.captured_at,
+          recorded_by: row.recorded_by,
+        })),
+        evidence_total,
+      },
+      200,
+    );
   });
   app.openapi(patchItemRoute, async (c) => {
     const principal = requireAuth(c);
@@ -569,13 +593,14 @@ export function registerIntakeRoutes(app: OpenAPIHono<AppEnv>): void {
   });
   app.openapi(confirmProposalRoute, async (c) => {
     const principal = requireAuth(c);
-    if (principal.kind !== "user") {
+    if (principal.kind !== "user" || principal.auth_source?.kind !== "browser_session") {
       throw new HttpError(
         403,
         "human_confirmation_required",
-        "a signed-in person must confirm knowledge admission",
+        "a signed-in person must confirm the admission in the review",
       );
     }
+    const db = c.get("db");
     try {
       const proposal = await intake.confirmIntakeProposal(
         {
@@ -583,8 +608,12 @@ export function registerIntakeRoutes(app: OpenAPIHono<AppEnv>): void {
           actor: actorOf(principal),
           id: c.req.valid("param").id,
           ...c.req.valid("json"),
+          authorize: async (requirements) => {
+            for (const requirement of requirements)
+              await ensurePermission(c, requirement.permission, requirement.resource);
+          },
         },
-        c.get("db"),
+        db,
       );
       if (!proposal) throw new NotFoundError("intake_proposal");
       return c.json(proposal, 200);

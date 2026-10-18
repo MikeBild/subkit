@@ -6,6 +6,7 @@ import {
   getSkillCandidate,
   rejectSkillCandidate,
 } from "../../../../skill-candidates/service.ts";
+import { LEARNING_PATTERN_KINDS } from "../../../../skill-candidates/types.ts";
 import type { ConversationTool, ToolContext, ToolPrecheck, ToolResult } from "../../index.ts";
 import { checkTenantPermission } from "../../permission-gate.ts";
 import {
@@ -26,13 +27,15 @@ const ApproveSkillInput = IdInput.extend({
     ),
 }).openapi("ApproveSkillCandidateInput");
 
-function unresolvedRefusal(card: GateCard): ToolResult | null {
-  const { not_found, already_decided } = unresolvedGateSubjects(card);
+function unresolvedRefusal(tool: string, card: GateCard): ToolResult | null {
+  const { not_found, already_decided } = unresolvedGateSubjects(tool, card);
   if (not_found.length === 0 && already_decided.length === 0) return null;
   const code = not_found.length > 0 ? "not_found" : "already_decided";
   const parts: string[] = [];
   if (not_found.length > 0)
-    parts.push(`These skill candidate ids do not exist in this tenant: ${not_found.join(", ")}.`);
+    parts.push(
+      `These ids are not detected skill candidates in this tenant: ${not_found.join(", ")}. Collected learnings are intake items; use the intake tools for them.`,
+    );
   if (already_decided.length > 0)
     parts.push(
       `These skill candidates are no longer proposed and were already decided: ${already_decided.join(", ")}.`,
@@ -54,40 +57,25 @@ async function refuseUnresolved(
 ): Promise<ToolPrecheck> {
   const raw = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
   const card = await resolveGateSubjects(tool, raw, ctx.tenant_id, ctx.db);
-  const refusal = card ? unresolvedRefusal(card) : null;
+  const refusal = card ? unresolvedRefusal(tool, card) : null;
   return refusal ? { ok: false, result: refusal } : { ok: true };
 }
 
 export const approveSkillCandidateTool: ConversationTool = {
   name: "approve_skill_candidate",
   description:
-    "Approve a proposed skill candidate. A practice or detected pattern becomes a draft tenant skill that stays unused until someone activates it (a separate permissioned action); a fact (`knowledge_learning`) is appended to the domain's knowledge source as a new version. The confirmation shows the target and an excerpt of the candidate; if the candidate changes before it is confirmed the call fails with changed_since_review. Unknown ids fail with not_found, decided ones with already_decided. Writes audit.",
+    "Approve a pattern the engine detected (a proposed skill candidate). It becomes a draft tenant skill that stays unused until someone activates it (a separate permissioned action). Collected learnings from sessions and conversations are intake items, not skill candidates: review them with the intake tools; a person admits them in the Cockpit. The confirmation shows the target and an excerpt of the candidate; if the candidate changes before it is confirmed the call fails with changed_since_review. Unknown ids fail with not_found, decided ones with already_decided. Writes audit.",
   inputSchema: ApproveSkillInput,
   category: "tenant_write",
   visible_when_readonly: true,
   authoring_only: true,
   precheck: (ctx, args) => refuseUnresolved("approve_skill_candidate", ctx, args),
   async execute(ctx, args: z.infer<typeof ApproveSkillInput>) {
-    const pending = await getSkillCandidate(ctx.tenant_id, args.candidate_id, ctx.db);
-    const fact = pending?.pattern_kind === "knowledge_learning";
-    if (fact) {
-      const gate = await checkTenantPermission(ctx, "knowledge:write", {
-        type: "skill_candidate",
-        id: args.candidate_id,
-      });
-      if (!gate.allow) {
-        return {
-          ok: false,
-          data: { error: "permission_denied", permission: gate.permission, reason: gate.reason },
-        };
-      }
-    }
     const out = await approveSkillCandidate(
       {
         tenant_id: ctx.tenant_id,
         candidate_id: args.candidate_id,
         actor: ctx.principal ? actorOf(ctx.principal) : null,
-        may_write_knowledge: fact,
         ...(args.expected_review_digest
           ? { expected_review_digest: args.expected_review_digest }
           : {}),
@@ -96,11 +84,12 @@ export const approveSkillCandidateTool: ConversationTool = {
     );
     if (!out) {
       const current = await getSkillCandidate(ctx.tenant_id, args.candidate_id, ctx.db);
-      const error = !current
-        ? "not_found"
-        : current.status === "proposed"
-          ? "changed_since_review"
-          : "already_decided";
+      const error =
+        !current || (LEARNING_PATTERN_KINDS as readonly string[]).includes(current.pattern_kind)
+          ? "not_found"
+          : current.status === "proposed"
+            ? "changed_since_review"
+            : "already_decided";
       const message =
         error === "changed_since_review"
           ? "The skill candidate changed after the confirmation was shown. Nothing was approved; show the current candidate and ask again."
@@ -124,20 +113,9 @@ export const approveSkillCandidateTool: ConversationTool = {
       result: "success",
       metadata: {
         conversation_id: ctx.conversation_id,
-        ...(out.skill_id ? { skill_id: out.skill_id } : {}),
-        ...(out.knowledge ? { knowledge_source_id: out.knowledge.knowledge_source_id } : {}),
+        skill_id: out.skill_id,
       },
     });
-    if (out.knowledge) {
-      return {
-        ok: true,
-        data: {
-          candidate: out.candidate,
-          knowledge: out.knowledge,
-          message: `Added "${out.candidate.title}" to the knowledge source ${out.knowledge.slug}.`,
-        },
-      };
-    }
     return {
       ok: true,
       data: {
@@ -165,7 +143,7 @@ type RejectResultOutcome = "rejected" | "not_found" | "already_decided";
 export const rejectSkillCandidateTool: ConversationTool = {
   name: "reject_skill_candidate",
   description:
-    "Reject one or more proposed skill candidates (1-100 ids, one confirmation covers the batch; the engine shows each candidate's stored title). Rejected candidates never become skills or knowledge; the proposal stays on record as decided. Unknown ids fail the whole call with not_found and candidates no longer proposed with already_decided, both before anyone is asked to confirm. Writes audit per candidate.",
+    "Reject one or more patterns the engine detected (proposed skill candidates; 1-100 ids, one confirmation covers the batch; the engine shows each candidate's stored title). Collected learnings are intake items: discard them with discard_intake_items. Rejected candidates never become skills; the proposal stays on record as decided. Unknown ids fail the whole call with not_found and candidates no longer proposed with already_decided, both before anyone is asked to confirm. Writes audit per candidate.",
   inputSchema: RejectInput,
   category: "tenant_write",
   visible_when_readonly: true,

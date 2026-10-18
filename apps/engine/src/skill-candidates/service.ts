@@ -1,6 +1,5 @@
-import { createHash } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { actorFromColumns, actorIds, auditActor } from "../audit/actor.ts";
+import { and, asc, count, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { actorIds, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -8,11 +7,6 @@ import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/executions.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
-import {
-  appendLearningToKnowledge,
-  getKnowledgeSource,
-  learningsTarget,
-} from "../knowledge/index.ts";
 import { log } from "../logging/logger.ts";
 import {
   recordLoopPatchToSkillCandidate,
@@ -43,6 +37,7 @@ import {
 } from "./types.ts";
 
 const MAX_EVIDENCE_PER_CANDIDATE = 50;
+const LEARNING_KINDS = [...LEARNING_PATTERN_KINDS];
 
 async function getEvidenceCounts(
   candidateIds: string[],
@@ -81,29 +76,6 @@ function listFilterConds(p: ListSkillCandidatesParams) {
   if (p.pattern_kind) tenantConds.push(eq(skillCandidates.pattern_kind, p.pattern_kind));
   if (p.confidence) tenantConds.push(eq(skillCandidates.confidence, p.confidence));
   return tenantConds;
-}
-
-export async function knowledgeSourceCandidateIds(
-  tenant_id: string,
-  knowledge_source_id: string,
-  exec?: Executor,
-): Promise<string[] | null> {
-  const db = exec ?? getDb();
-  const source = await getKnowledgeSource(tenant_id, knowledge_source_id, db);
-  if (!source) return null;
-  if (source.source_type !== "inline") return [];
-  const candidates = await db
-    .select({ id: skillCandidates.id, tags: skillCandidates.tags })
-    .from(skillCandidates)
-    .where(
-      and(
-        eq(skillCandidates.tenant_id, tenant_id),
-        eq(skillCandidates.pattern_kind, "knowledge_learning"),
-      ),
-    );
-  return candidates
-    .filter((candidate) => learningsTarget(candidate.tags ?? []).slug === source.slug)
-    .map((candidate) => candidate.id);
 }
 
 export async function listSkillCandidates(
@@ -262,7 +234,13 @@ export async function getSkillCandidatesForReview(
   const rows = await db
     .select()
     .from(skillCandidates)
-    .where(and(eq(skillCandidates.tenant_id, tenant_id), inArray(skillCandidates.id, [...ids])));
+    .where(
+      and(
+        eq(skillCandidates.tenant_id, tenant_id),
+        inArray(skillCandidates.id, [...ids]),
+        notInArray(skillCandidates.pattern_kind, LEARNING_KINDS),
+      ),
+    );
   return rows.map((row) => ({
     id: row.id,
     title: row.title,
@@ -301,133 +279,10 @@ export async function getSkillCandidateEvidence(
   }));
 }
 
-export interface CreateCandidateFromAuthoringParams {
-  tenant_id: string;
-  title: string;
-  body: string;
-  scope: "global" | "connector" | "workflow";
-  connector_id?: string;
-  workflow_id?: string;
-  examples?: string[];
-  best_practices?: string[];
-  pitfalls?: string[];
-  doc_refs?: string[];
-  tags?: string[];
-  evidence_summary: string;
-  db: Db;
-}
-
 export type UpsertCandidateResult = {
   action: "proposed" | "recorded" | "updated" | "skipped";
   candidate_id: string | null;
 };
-
-export async function createCandidateFromAuthoring(
-  p: CreateCandidateFromAuthoringParams,
-): Promise<UpsertCandidateResult> {
-  const normalizedTitle = p.title.toLowerCase().replace(/\s+/g, " ").trim();
-  if (p.connector_id && p.workflow_id) {
-    throw new Error("proposal cannot set both connector_id and workflow_id");
-  }
-  let entity: string;
-  if (p.scope === "connector") {
-    if (!p.connector_id) throw new Error("connector-scoped proposal requires connector_id");
-    entity = p.connector_id;
-  } else if (p.scope === "workflow") {
-    if (!p.workflow_id) throw new Error("workflow-scoped proposal requires workflow_id");
-    entity = p.workflow_id;
-  } else {
-    if (p.connector_id || p.workflow_id) {
-      throw new Error("global proposal must not set connector_id or workflow_id");
-    }
-    entity = "global";
-  }
-  const contentHash = createHash("sha256")
-    .update(
-      JSON.stringify({
-        body: p.body,
-        examples: p.examples ?? [],
-        best_practices: p.best_practices ?? [],
-        pitfalls: p.pitfalls ?? [],
-        doc_refs: p.doc_refs ?? [],
-        tags: p.tags ?? [],
-      }),
-    )
-    .digest("hex")
-    .slice(0, 16);
-  const fingerprint = createHash("sha256")
-    .update(`authoring_skill:${p.scope}:${entity}:${normalizedTitle}:${contentHash}`)
-    .digest("hex");
-  const result = await upsertFromSignal(
-    p.tenant_id,
-    {
-      pattern_kind: "session_learning",
-      scope: p.scope,
-      ...(p.connector_id ? { connector_id: p.connector_id } : {}),
-      ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
-      title: p.title,
-      body: p.body,
-      examples: p.examples ?? [],
-      best_practices: p.best_practices ?? [],
-      pitfalls: p.pitfalls ?? [],
-      doc_refs: p.doc_refs ?? [],
-      fingerprint,
-      confidence: "high",
-      ...(p.tags && p.tags.length > 0 ? { tags: p.tags } : {}),
-      evidence: [{ evidence_type: "conversation", summary: p.evidence_summary.slice(0, 2_000) }],
-    },
-    p.db,
-  );
-
-  if (result.action !== "skipped" && result.candidate_id) {
-    const staleConds = [
-      eq(skillCandidates.pattern_kind, "session_learning"),
-      eq(skillCandidates.status, "proposed"),
-      eq(skillCandidates.scope, p.scope),
-      sql`btrim(lower(regexp_replace(${skillCandidates.title}, '\\s+', ' ', 'g'))) = ${normalizedTitle}`,
-      sql`${skillCandidates.id} <> ${result.candidate_id}`,
-      sql`(${skillCandidates.updated_at}, ${skillCandidates.id}) < (SELECT sc.updated_at, sc.id FROM skill_candidates sc WHERE sc.id = ${result.candidate_id})`,
-    ];
-    if (p.connector_id) staleConds.push(eq(skillCandidates.connector_id, p.connector_id));
-    if (p.workflow_id) staleConds.push(eq(skillCandidates.workflow_id, p.workflow_id));
-    const stale = await p.db
-      .select({ id: skillCandidates.id })
-      .from(skillCandidates)
-      .where(and(eq(skillCandidates.tenant_id, p.tenant_id), ...staleConds));
-    for (const s of stale) {
-      const flipped = await p.db
-        .update(skillCandidates)
-        .set({ status: "superseded", updated_at: sql`now()` })
-        .where(
-          and(
-            eq(skillCandidates.tenant_id, p.tenant_id),
-            eq(skillCandidates.id, s.id),
-            eq(skillCandidates.status, "proposed"),
-          ),
-        )
-        .returning({ id: skillCandidates.id });
-      if (flipped.length === 0) continue;
-      await auditAwait(
-        {
-          tenant_id: p.tenant_id,
-          actor_type: "system",
-          action: AuditAction.SKILL_CANDIDATE_SUPERSEDED,
-          resource_type: "skill_candidate",
-          resource_id: s.id,
-          result: "success",
-          metadata: {
-            superseded_by_fingerprint: fingerprint,
-            scope: p.scope,
-            connector_id: p.connector_id ?? null,
-            reason: "authoring_revision",
-          },
-        },
-        p.db,
-      );
-    }
-  }
-  return result;
-}
 
 function signalDetails(signal: PatternSignal) {
   return {
@@ -462,9 +317,7 @@ export async function upsertFromSignal(
 
     if (existing[0]) {
       const row = existing[0];
-      const learning = LEARNING_PATTERN_KINDS.has(signal.pattern_kind);
-      const reviveSessionLearning = row.status === "superseded" && learning;
-      if (!reviveSessionLearning && (row.status === "rejected" || row.status === "superseded")) {
+      if (row.status === "rejected" || row.status === "superseded") {
         log.skill.candidate.dedup({
           candidate_id: row.id,
           tenant_id,
@@ -492,15 +345,6 @@ export async function upsertFromSignal(
           body: signal.body,
           examples: signalDetails(signal),
           updated_at: sql`now()`,
-          ...(learning
-            ? {
-                status: "proposed" as const,
-                title: signal.title,
-                body: signal.body,
-                examples: signalDetails(signal),
-                ...(signal.tags && signal.tags.length > 0 ? { tags: signal.tags } : {}),
-              }
-            : {}),
         })
         .where(and(eq(skillCandidates.id, row.id), eq(skillCandidates.status, row.status)))
         .returning({ id: skillCandidates.id });
@@ -553,7 +397,6 @@ export async function upsertFromSignal(
             version: row.version + 1,
             scope: signal.scope,
             connector_id: signal.connector_id ?? null,
-            ...(reviveSessionLearning ? { reason: "revived_from_superseded" } : {}),
           },
         },
         tx,
@@ -563,7 +406,7 @@ export async function upsertFromSignal(
     }
 
     let supersededCount = 0;
-    if (!signal.endpoint_key && !LEARNING_PATTERN_KINDS.has(signal.pattern_kind)) {
+    if (!signal.endpoint_key) {
       const tenantSupersedeScope = [
         eq(skillCandidates.tenant_id, tenant_id),
         inArray(skillCandidates.status, OPEN_STATUSES),
@@ -734,24 +577,9 @@ export async function runPatternAnalysis(
   };
 }
 
-export class KnowledgeWriteNotAllowedError extends Error {
-  readonly code = "knowledge_write_required";
-  constructor() {
-    super("approving a fact writes knowledge and needs knowledge:write");
-    this.name = "KnowledgeWriteNotAllowedError";
-  }
-}
-
-export interface ApprovedKnowledge {
-  knowledge_source_id: string;
-  slug: string;
-  version: number | null;
-}
-
 export interface ApproveSkillCandidateResult {
   candidate: SkillCandidateView;
-  skill_id: string | null;
-  knowledge: ApprovedKnowledge | null;
+  skill_id: string;
 }
 
 export async function approveSkillCandidate(
@@ -774,6 +602,7 @@ export async function approveSkillCandidate(
           eq(skillCandidates.tenant_id, p.tenant_id),
           eq(skillCandidates.id, p.candidate_id),
           eq(skillCandidates.status, "proposed"),
+          notInArray(skillCandidates.pattern_kind, LEARNING_KINDS),
         ),
       )
       .for("update")
@@ -784,45 +613,30 @@ export async function approveSkillCandidate(
       return null;
     const blob = (row.examples ?? {}) as Record<string, unknown>;
 
-    let skill_id: string | null = null;
-    let promoted_active = false;
-    let knowledge: (ApprovedKnowledge & { finish(db: Executor): void }) | null = null;
-    if (row.pattern_kind === "knowledge_learning") {
-      if (!p.may_write_knowledge) throw new KnowledgeWriteNotAllowedError();
-      knowledge = await appendLearningToKnowledge(tx, {
+    await lockCatalogVocabulary(tx, p.tenant_id);
+    const skill = await createSkill(
+      {
         tenant_id: p.tenant_id,
-        title: p.overrides?.title ?? row.title,
-        body: p.overrides?.body ?? row.body,
-        tags: row.tags ?? [],
-        approver: p.actor,
-        proposer: actorFromColumns(row.proposed_by_user_id, row.proposed_by_system_account_id),
-      });
-    } else {
-      await lockCatalogVocabulary(tx, p.tenant_id);
-      const skill = await createSkill(
-        {
-          tenant_id: p.tenant_id,
-          input: {
-            scope: row.scope,
-            connector_id: row.connector_id ?? undefined,
-            workflow_id: row.workflow_id ?? undefined,
-            title: p.overrides?.title ?? row.title,
-            body: p.overrides?.body ?? row.body,
-            status: p.overrides?.status ?? "draft",
-            source: "candidate",
-            ...(row.tags && row.tags.length > 0 ? { tags: row.tags } : {}),
-            examples: (blob.examples as string[]) ?? [],
-            best_practices: (blob.best_practices as string[]) ?? [],
-            pitfalls: (blob.pitfalls as string[]) ?? [],
-            doc_refs: (blob.doc_refs as string[]) ?? [],
-          },
-          ...actor,
+        input: {
+          scope: row.scope,
+          connector_id: row.connector_id ?? undefined,
+          workflow_id: row.workflow_id ?? undefined,
+          title: p.overrides?.title ?? row.title,
+          body: p.overrides?.body ?? row.body,
+          status: p.overrides?.status ?? "draft",
+          source: "candidate",
+          ...(row.tags && row.tags.length > 0 ? { tags: row.tags } : {}),
+          examples: (blob.examples as string[]) ?? [],
+          best_practices: (blob.best_practices as string[]) ?? [],
+          pitfalls: (blob.pitfalls as string[]) ?? [],
+          doc_refs: (blob.doc_refs as string[]) ?? [],
         },
-        tx,
-      );
-      skill_id = skill.id;
-      promoted_active = skill.status === "active";
-    }
+        ...actor,
+      },
+      tx,
+    );
+    const skill_id = skill.id;
+    const promoted_active = skill.status === "active";
 
     const [updated] = await tx
       .update(skillCandidates)
@@ -836,10 +650,9 @@ export async function approveSkillCandidate(
       )
       .returning();
 
-    const retired_skill_ids =
-      skill_id && promoted_active
-        ? await retireReplacedConnectorSkills(tx, p.tenant_id, skill_id, actor_id, actor.actor_type)
-        : [];
+    const retired_skill_ids = promoted_active
+      ? await retireReplacedConnectorSkills(tx, p.tenant_id, skill_id, actor_id, actor.actor_type)
+      : [];
 
     await auditAwait(
       {
@@ -851,13 +664,7 @@ export async function approveSkillCandidate(
         result: "success",
         metadata: {
           pattern_kind: row.pattern_kind,
-          ...(skill_id ? { promoted_skill_id: skill_id } : {}),
-          ...(knowledge
-            ? {
-                knowledge_source_id: knowledge.knowledge_source_id,
-                knowledge_version: knowledge.version,
-              }
-            : {}),
+          promoted_skill_id: skill_id,
           ...(retired_skill_ids.length > 0 ? { retired_skill_ids } : {}),
         },
       },
@@ -867,7 +674,6 @@ export async function approveSkillCandidate(
     log.skill.candidate.approved({
       candidate_id: p.candidate_id,
       skill_id,
-      knowledge_source_id: knowledge?.knowledge_source_id ?? null,
       pattern_kind: row.pattern_kind,
       actor_id,
     });
@@ -901,14 +707,12 @@ export async function approveSkillCandidate(
     return {
       candidate: updated ? toView(updated) : toView(row),
       skill_id,
-      knowledge,
       promotion_source: "auto-suggested" as const,
       lag_seconds,
     };
   });
 
   if (!out) return null;
-  out.knowledge?.finish(db);
   invalidateTenantState(p.tenant_id);
 
   recordLoopSkillCandidatePromoted({
@@ -917,17 +721,7 @@ export async function approveSkillCandidate(
     lag_seconds: out.lag_seconds,
   });
 
-  return {
-    candidate: out.candidate,
-    skill_id: out.skill_id,
-    knowledge: out.knowledge
-      ? {
-          knowledge_source_id: out.knowledge.knowledge_source_id,
-          slug: out.knowledge.slug,
-          version: out.knowledge.version,
-        }
-      : null,
-  };
+  return { candidate: out.candidate, skill_id: out.skill_id };
 }
 
 export type RejectSkillCandidateOutcome =
@@ -949,13 +743,17 @@ export async function rejectSkillCandidate(
       .select({ id: skillCandidates.id, status: skillCandidates.status })
       .from(skillCandidates)
       .where(
-        and(eq(skillCandidates.tenant_id, p.tenant_id), eq(skillCandidates.id, p.candidate_id)),
+        and(
+          eq(skillCandidates.tenant_id, p.tenant_id),
+          eq(skillCandidates.id, p.candidate_id),
+          notInArray(skillCandidates.pattern_kind, LEARNING_KINDS),
+        ),
       )
       .for("update")
       .limit(1);
 
     const row = rows[0];
-    if (!row) return { kind: "not_found" };
+    if (!row || row.status === "context") return { kind: "not_found" };
     if (row.status !== "proposed") return { kind: "already_decided", status: row.status };
 
     await tx

@@ -6,6 +6,7 @@ import type {
   SetupValidationResponse,
   StatusSummary,
 } from "../engine-client.ts";
+import type { PendingIntake } from "../lib/intake-review.ts";
 import type { MentionCandidate } from "../repl/mention-picker.tsx";
 import type { PaneSpec } from "../repl/slash/handler.ts";
 import type { PermissionMode, StatusLineConfig } from "../repl/status-line/render.ts";
@@ -36,7 +37,7 @@ export interface InkAppProps {
     last_error_at: number | null;
   } | null;
   digestSnapshot?: OperatorHealthDigest | null;
-  pendingLearningsCount?: number;
+  pendingIntake?: PendingIntake | null;
   permissionMode?: PermissionMode;
   engineClient?: EngineClient;
   engineMentionCandidates?: readonly MentionCandidate[];

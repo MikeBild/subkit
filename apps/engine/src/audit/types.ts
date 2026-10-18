@@ -226,6 +226,7 @@ export const AuditAction = {
   INTAKE_DEFAULT_CATEGORY_UPDATED: "intake_default_category.updated",
   INTAKE_ITEM_COLLECTED: "intake_item.collected",
   INTAKE_ITEM_UPDATED: "intake_item.updated",
+  INTAKE_ITEM_EVIDENCE_APPENDED: "intake_item.evidence_appended",
   INTAKE_PROPOSAL_CREATED: "intake_proposal.created",
   INTAKE_PROPOSAL_REVISED: "intake_proposal.revised",
   INTAKE_PROPOSAL_CONFIRMED: "intake_proposal.confirmed",

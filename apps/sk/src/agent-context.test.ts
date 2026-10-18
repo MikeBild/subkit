@@ -43,7 +43,6 @@ describe("REPL agent briefing context", () => {
           knowledge_sources: [],
           workflows: [],
           connectors: [],
-          proposed_candidates: 0,
         }),
       );
     }) as typeof fetch;

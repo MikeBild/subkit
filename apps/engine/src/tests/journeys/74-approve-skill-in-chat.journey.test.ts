@@ -55,7 +55,7 @@ afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
 }, JOURNEY_HOOK_TIMEOUT);
 
-describe("journey 74: a skill proposal is approved in the chat behind the confirm gate", () => {
+describe("journey 74: a detected skill proposal is approved in the chat behind the confirm gate", () => {
   test(
     "AC1-AC4: approve_skill_candidate is offered, pauses for the human, and yields only a draft",
     async () => {
@@ -68,22 +68,23 @@ describe("journey 74: a skill proposal is approved in the chat behind the confir
         .conversation.id;
 
       const mock = getMockProvider();
-      mock.setConversePlan(conversationId, [
-        {
-          tool: "create_skill",
-          args: { scope: "connector", connector_id: connectorId, title: TITLE, body: BODY },
-        },
-      ]);
-      const proposeRes = await journeyFetch(ctx, `/v1/conversations/${conversationId}/messages`, {
-        method: "POST",
-        body: JSON.stringify({
-          message: `Schlage für den Konnektor metabase-cards einen Skill „${TITLE}“ vor: ${BODY}`,
-        }),
-      });
-      expect([200, 202]).toContain(proposeRes.status);
-      const [candidate] = await candidateRows();
-      expect(candidate?.status).toBe("proposed");
-      const candidateId = candidate!.id;
+      const [candidate] = await ctx.db
+        .insert(skillCandidates)
+        .values({
+          tenant_id: ctx.tenantId,
+          scope: "connector",
+          connector_id: connectorId,
+          pattern_kind: "success_pattern",
+          title: TITLE,
+          body: BODY,
+          examples: { examples: [], best_practices: [], pitfalls: [], doc_refs: [] },
+          evidence: [],
+          confidence: "high",
+          fingerprint: "journey-74-detected",
+        })
+        .returning({ id: skillCandidates.id });
+      if (!candidate) throw new Error("seed detected candidate failed");
+      const candidateId = candidate.id;
 
       const paletteStart = mock.toolPalettes.length;
       mock.setConversePlan(conversationId, [

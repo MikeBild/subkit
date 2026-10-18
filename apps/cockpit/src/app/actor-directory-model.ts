@@ -1,4 +1,5 @@
 import { appUserProvider } from "@/lib/app-user";
+import type { TranslationKey } from "@/lib/i18n";
 
 export type ActorKind = "user" | "system_account";
 export type ActorKey = `${ActorKind}:${string}`;
@@ -13,6 +14,18 @@ export function actorKey(kind: ActorKind, id: string): ActorKey {
 export function actorDirectoryName(directory: ActorDirectory, kind: string, id: string | null) {
   if (!id || (kind !== "user" && kind !== "system_account")) return undefined;
   return directory.get(actorKey(kind, id));
+}
+
+export function actorLabel(
+  directory: ActorDirectory,
+  actor: { kind: string; id: string } | null | undefined,
+  t: (key: TranslationKey) => string,
+): string | null {
+  if (!actor) return null;
+  return (
+    actorDirectoryName(directory, actor.kind, actor.id) ??
+    t(actor.kind === "user" ? "audit.actor.user" : "audit.actor.systemAccount")
+  );
 }
 
 export function actorDirectory(

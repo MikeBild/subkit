@@ -4,7 +4,6 @@ import type { SortingState } from "@tanstack/react-table";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
-import { listProposedSkillCandidates } from "@/api/decisions";
 import { listIntakeClips } from "@/api/intake";
 import { loadKnowledgeChunks } from "@/api/knowledge";
 import type { components } from "@/api/schema";
@@ -71,7 +70,6 @@ import {
   sourceSections,
 } from "@/pages/knowledge-sources-model";
 import type { KnowledgeVersion } from "@/pages/knowledge-versions-model";
-import { SkillProposalSheet } from "@/pages/skill-proposal-sheet";
 
 type KnowledgeSource = components["schemas"]["KnowledgeSource"];
 
@@ -522,12 +520,6 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     queryFn: () => loadKnowledgeChunks(id),
     enabled: Boolean(query.data),
   });
-  const proposals = useQuery({
-    queryKey: [...queryKey, "proposals"],
-    queryFn: () => listProposedSkillCandidates(id),
-    enabled: canRead && permissions.includes("skill:read") && Boolean(query.data),
-    ...live,
-  });
   const history = useQuery({
     queryKey: [...queryKey, "current-version", query.data?.version],
     queryFn: () =>
@@ -542,7 +534,6 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     queryFn: () => listIntakeClips(),
     enabled: canRead && permissions.includes("intake:read") && Boolean(id),
   });
-  const [reviewing, setReviewing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [describing, setDescribing] = useState(false);
   const metadataActions = useCatalogMetadataActions({
@@ -627,7 +618,6 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
   const kind = sourceKind(source.source_type);
   const primary = canWrite ? sourcePrimaryAction(kind) : null;
   const readAt = source.last_refreshed_at ?? source.updated_at;
-  const proposal = proposals.data?.items.find((item) => item.reviewable && item.review_digest);
   const currentVersion = history.data?.items.find((version) => version.current);
   const strip =
     source.status === "error" ? (
@@ -653,26 +643,6 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
               {t("knowledge.activate")}
             </Button>
           ) : undefined
-        }
-        testId="knowledge-strip"
-      />
-    ) : proposal ? (
-      <StatusStrip
-        tone="info"
-        line={t(
-          (proposals.data?.reviewable_total ?? 0) === 1
-            ? "knowledge.strip.proposal.one"
-            : "knowledge.strip.proposal.other",
-          { count: proposals.data?.reviewable_total ?? 1 },
-        )}
-        action={
-          <Button
-            variant="outline"
-            onClick={() => setReviewing(true)}
-            data-testid="knowledge-review-proposal"
-          >
-            {t("knowledge.reviewProposal")}
-          </Button>
         }
         testId="knowledge-strip"
       />
@@ -731,7 +701,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     { label: t("knowledge.fact.created"), value: dateTime(source.created_at) },
   ];
   const originalClips = (intakeBacklinks.data?.items ?? []).filter(
-    (item) => item.admitted_knowledge_source_id === source.id,
+    (item) => item.admitted_target_kind === "knowledge" && item.admitted_target_id === source.id,
   );
   const menu = [
     ...(canWrite ? metadataActions : []),
@@ -874,17 +844,6 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
           </div>
         ) : null}
       </RecordSheet>
-      <SkillProposalSheet
-        candidate={reviewing ? (proposal ?? null) : null}
-        permissions={permissions}
-        onClose={() => setReviewing(false)}
-        onDecided={() => {
-          void client.invalidateQueries({ queryKey });
-          void client.invalidateQueries({ queryKey: ["catalog"] });
-          void client.invalidateQueries({ queryKey: ["decisions"] });
-          void client.invalidateQueries({ queryKey: ["attention"] });
-        }}
-      />
       {canWrite ? (
         <>
           <EditSourceDialog source={source} open={editing} onOpenChange={setEditing} />

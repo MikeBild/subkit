@@ -30,14 +30,10 @@ export async function verifyKnowledgeDetailEvidence(
   const events = [];
   const workflowRequests = [];
   const proposalRequests = [];
-  const proposalResponses = [];
   let withoutWorkflowRead = false;
   let address = ADDRESS;
   let source = null;
   let stripMode = "url";
-  const proposalId = "018f4b4a-6d33-7b3a-9c2d-00000000b733";
-  const proposalTitle = "Evidence retained fact";
-  const proposalBody = "Keep this verified fact traceable to its source.";
   const content = "# Escalation\n\nCall the operator and record the outcome.";
   const chunks = [
     {
@@ -92,58 +88,9 @@ export async function verifyKnowledgeDetailEvidence(
       return route.fulfill({ json: { items: chunks, total: 2 } });
     if (request.method() === "GET" && url.pathname === "/v1/skill-candidates") {
       proposalRequests.push(Object.fromEntries(url.searchParams));
-      const response =
-        stripMode === "proposal"
-          ? {
-              items: [
-                {
-                  id: proposalId,
-                  tenant_id: "018f4b4a-6d33-7b3a-9c2d-00000000b734",
-                  scope: "global",
-                  connector_id: null,
-                  endpoint_key: null,
-                  workflow_id: null,
-                  pattern_kind: "success_pattern",
-                  title: proposalTitle,
-                  body: proposalBody,
-                  examples: [],
-                  best_practices: [],
-                  pitfalls: [],
-                  doc_refs: [],
-                  facts: null,
-                  evidence_count: 1,
-                  confidence: "high",
-                  reviewable: true,
-                  review_digest: "evidence-digest",
-                  status: "proposed",
-                  promoted_skill_id: null,
-                  fingerprint: "evidence-fingerprint",
-                  version: 1,
-                  tags: [],
-                  proposed_by: null,
-                  created_at: READ_AT,
-                  updated_at: READ_AT,
-                },
-              ],
-              total: 1,
-              reviewable_total: 1,
-              next_cursor: null,
-            }
-          : { items: [], total: 0, reviewable_total: 0, next_cursor: null };
-      proposalResponses.push({
-        mode: stripMode,
-        requestedSourceId: url.searchParams.get("knowledge_source_id"),
-        total: response.total,
-        reviewable_total: response.reviewable_total,
-        items: response.items.map((item) => ({
-          id: item.id,
-          status: item.status,
-          reviewable: item.reviewable,
-          hasDigest: Boolean(item.review_digest),
-          title: item.title,
-        })),
+      return route.fulfill({
+        json: { items: [], total: 0, reviewable_total: 0, next_cursor: null },
       });
-      return route.fulfill({ json: response });
     }
     if (request.method() === "GET" && url.pathname === `${endpoint}/history`)
       return route.fulfill({
@@ -267,31 +214,10 @@ export async function verifyKnowledgeDetailEvidence(
     require(workflowRequests.length ===
       requestsBeforeRestrictedVisit, "A person without workflow:read must not trigger a workflow request");
     withoutWorkflowRead = false;
-    stripMode = "proposal";
-    await page.reload();
-    const proposalStrip = page.getByTestId("knowledge-strip");
-    const expectedProposalLine = t("knowledge.strip.proposal.one");
-    const proposalLine = proposalStrip.locator('[data-slot="status-strip-line"]');
-    await proposalLine.filter({ hasText: expectedProposalLine }).waitFor({ state: "visible" });
-    const actualProposalLine = (await proposalLine.innerText()).trim();
-    require(actualProposalLine ===
-      expectedProposalLine, `Reviewable proposal strip mismatch; got=${JSON.stringify(actualProposalLine)} expected=${JSON.stringify(expectedProposalLine)} mode=${stripMode} requests=${JSON.stringify(proposalRequests)} responses=${JSON.stringify(proposalResponses)}`);
-    const reviewAction = page.getByTestId("knowledge-review-proposal");
-    require((await reviewAction.innerText()).trim() ===
-      t(
-        "knowledge.reviewProposal",
-      ), "Reviewable proposal strip must expose the exact Review action");
-    await reviewAction.waitFor({ state: "visible" });
-    await reviewAction.click();
-    const proposalSheet = page.getByTestId("skill-proposal");
-    await proposalSheet.waitFor({ state: "visible" });
-    require((await page.getByTestId("skill-proposal-title").innerText()).trim() ===
-      proposalTitle, "Review action must open the exact fixture proposal title");
-    await page
-      .getByTestId("skill-proposal-preview")
-      .getByText(proposalBody)
-      .waitFor({ state: "visible" });
-    await capture("knowledge-proposal-status-strip");
+    require(proposalRequests.length ===
+      0, `Knowledge detail must not load skill proposals; requests=${JSON.stringify(proposalRequests)}`);
+    require((await page.getByTestId("knowledge-review-proposal").count()) ===
+      0, "Knowledge detail must not offer a learning proposal review");
     stripMode = "history";
     await page.reload();
     const changedWhen = await page.evaluate(

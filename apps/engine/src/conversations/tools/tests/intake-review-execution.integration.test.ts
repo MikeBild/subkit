@@ -5,14 +5,20 @@ import type { Db } from "../../../db/client.ts";
 import { conversations, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
-import { createIntakeItem } from "../../../knowledge/index.ts";
+import {
+  createIntakeItem,
+  createSessionIntakeItem,
+  patchIntakeItem,
+} from "../../../knowledge/index.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
+import { createSkill } from "../../../skills/service.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import { decideToolMode } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
 import { proposalReviewUrl } from "../engine-api/intake.ts";
 import { type ConversationTool, getTool, type ToolContext } from "../index.ts";
+import { prepareGate } from "../sdk-wrap/gate-subjects.ts";
 import { wrapOne } from "../sdk-wrap/invoke.ts";
 import type { TurnSignals, WrappedToolOutput } from "../sdk-wrap/state.ts";
 
@@ -91,8 +97,30 @@ async function createItem(title: string, body = `${title} source text`) {
   );
 }
 
+async function createSessionItem(title: string) {
+  return (
+    await createSessionIntakeItem(
+      {
+        tenant_id: tenantId,
+        actor: { kind: "user", id: userId },
+        title,
+        body: `${title} learning body`,
+        captured_at: "2026-10-10T07:00:00.000Z",
+        session: {
+          agent: "codex",
+          session_id: `session-${nextUuid()}`,
+          repo: "example/repo",
+          domains: [],
+          evidence_excerpt: `${title} evidence`,
+        },
+      },
+      tdb.db,
+    )
+  ).item;
+}
+
 function writeTool(
-  name: "create_knowledge_source" | "save_learning",
+  name: "create_knowledge_source" | "save_learning" | "update_skill" | "delete_skill",
   called: () => void,
 ): ConversationTool {
   return {
@@ -170,50 +198,95 @@ describe("intake review execution boundary", () => {
     }
   });
 
-  test("discard and restore require a current selected source read", async () => {
+  test("discard waits for confirmation and refuses unknown, unselected and unread items before it", async () => {
     const selected = await createItem("Selected processing source");
+    const second = await createSessionItem("Selected session learning");
     const unselected = await createItem("Unselected processing source");
     const initial = {
       ...createEmptyDraftDocument(),
-      session: { intake_item_ids: [selected.id], intake_review_locked: true },
+      session: { intake_item_ids: [selected.id, second.id], intake_review_locked: true },
     };
     const { ctx } = toolContext(await newConversation(), initial);
     const read = getTool("get_intake_item");
-    const discard = getTool("discard_intake_item");
+    const discard = getTool("discard_intake_items");
     const restore = getTool("restore_intake_item");
-    if (!read || !discard || !restore)
+    if (!read || !discard?.precheck || !restore)
       throw new Error("intake processing tools are not registered");
+    expect(getTool("discard_intake_item")).toBeUndefined();
 
-    for (const tool of [discard, restore]) {
-      expect(
-        decideToolMode({
-          tool: tool.name,
-          category: tool.category,
-          input: {},
-          overrides: {},
-          permission_mode: "auto",
-        }),
-      ).toEqual({ mode: "no_confirm", rule: "computed_from_input" });
-    }
     expect(
-      await discard.execute(ctx, { id: selected.id, expected_version: selected.version }),
-    ).toMatchObject({
+      decideToolMode({
+        tool: discard.name,
+        category: discard.category,
+        input: { item_ids: [selected.id] },
+        overrides: {},
+        permission_mode: "auto",
+      }).mode,
+    ).toBe("confirm_before_execution");
+    expect(
+      decideToolMode({
+        tool: restore.name,
+        category: restore.category,
+        input: {},
+        overrides: {},
+        permission_mode: "auto",
+      }),
+    ).toEqual({ mode: "no_confirm", rule: "computed_from_input" });
+
+    const missing = "10000000-0000-4000-8000-00000000dead";
+    expect(await discard.precheck(ctx, { item_ids: [selected.id, missing] })).toMatchObject({
       ok: false,
-      data: { error: "intake_items_must_be_read" },
+      result: { error_code: "intake_item_not_selected" },
     });
-    expect(
-      await discard.execute(ctx, { id: unselected.id, expected_version: unselected.version }),
-    ).toMatchObject({
+    expect(await discard.precheck(ctx, { item_ids: [unselected.id] })).toMatchObject({
       ok: false,
-      data: { error: "intake_item_not_selected" },
+      result: { error_code: "intake_item_not_selected" },
+    });
+    expect(await discard.precheck(ctx, { item_ids: [selected.id, second.id] })).toMatchObject({
+      ok: false,
+      result: { error_code: "intake_items_must_be_read" },
     });
     expect(await read.execute(ctx, { id: selected.id })).toMatchObject({ ok: true });
-    expect(
-      await discard.execute(ctx, { id: selected.id, expected_version: selected.version }),
-    ).toMatchObject({
+    expect(await read.execute(ctx, { id: second.id })).toMatchObject({ ok: true });
+    expect(await discard.precheck(ctx, { item_ids: [selected.id, second.id] })).toEqual({
       ok: true,
-      data: { item: { title: selected.title, state: "discarded" } },
     });
+
+    const prepared = await prepareGate(
+      "discard_intake_items",
+      { item_ids: [selected.id, second.id], titles: ["Model title"] },
+      tenantId,
+      db,
+    );
+    expect(prepared.pending_output).toEqual({
+      item_count: 2,
+      item_ids: [selected.id, second.id],
+      subjects: [
+        { id: selected.id, title: selected.title, status: "collected" },
+        { id: second.id, title: second.title, status: "collected" },
+      ],
+    });
+
+    expect(await discard.execute(ctx, { item_ids: [selected.id, second.id] })).toMatchObject({
+      ok: true,
+      data: {
+        discarded: 2,
+        results: [
+          { id: selected.id, title: selected.title, outcome: "discarded" },
+          { id: second.id, title: second.title, outcome: "discarded" },
+        ],
+      },
+    });
+    expect(await discard.precheck(ctx, { item_ids: [selected.id] })).toMatchObject({
+      ok: false,
+      result: { error_code: "intake_item_not_discardable" },
+    });
+    expect(await discard.execute(ctx, { item_ids: [selected.id] })).toMatchObject({
+      ok: false,
+      error_code: "intake_items_changed",
+      data: { not_discardable: 1, discarded: 0 },
+    });
+
     expect(
       await restore.execute(ctx, { id: selected.id, expected_version: selected.version }),
     ).toMatchObject({
@@ -228,6 +301,17 @@ describe("intake review execution boundary", () => {
     ).toMatchObject({
       ok: true,
       data: { item: { title: selected.title, state: "collected" } },
+    });
+  });
+
+  test("an unlocked review refuses unknown ids before anyone is asked", async () => {
+    const { ctx } = toolContext(await newConversation());
+    const discard = getTool("discard_intake_items");
+    if (!discard?.precheck) throw new Error("discard_intake_items declares no precheck");
+    const missing = "10000000-0000-4000-8000-00000000beef";
+    expect(await discard.precheck(ctx, { item_ids: [missing] })).toMatchObject({
+      ok: false,
+      result: { error_code: "intake_item_not_found", data: { not_found: [missing] } },
     });
   });
 
@@ -395,7 +479,7 @@ describe("intake review execution boundary", () => {
       ok: true,
       data: {
         proposal: { revision: { items: [{ id: item.id }] } },
-        next_action: expect.stringContaining("No knowledge has been published."),
+        next_action: expect.stringContaining("No knowledge or skill has been admitted."),
       },
     });
     const proposalData = proposal.data as Record<string, unknown>;
@@ -429,6 +513,175 @@ describe("intake review execution boundary", () => {
         target: { name: "Category target", category: "mission-reports", tags: ["review"] },
       }).success,
     ).toBe(true);
+  });
+
+  test("a wrapped session item read blocks skill mutations later in the same tool chain", async () => {
+    const item = await createSessionItem("Wrapped session learning");
+    const { ctx } = toolContext(await newConversation());
+    const chain = signals();
+    const read = getTool("get_intake_item");
+    if (!read) throw new Error("intake item tool is not registered");
+    expect(
+      (await executeWrapped(wrapOne(read, ctx, chain, [], db, {}, null, []), { id: item.id })).ok,
+    ).toBe(true);
+    for (const name of ["update_skill", "delete_skill"] as const) {
+      let calls = 0;
+      const result = await executeWrapped(
+        wrapOne(
+          writeTool(name, () => calls++),
+          ctx,
+          chain,
+          [],
+          db,
+          {},
+          null,
+          [],
+        ),
+        {},
+      );
+      expect(result).toMatchObject({
+        ok: false,
+        data: { error: "intake_review_requires_human_confirmation" },
+      });
+      expect(calls).toBe(0);
+    }
+  });
+
+  test("a session item proposes a skill target only at the version that was read", async () => {
+    const item = await createSessionItem("Session skill learning");
+    const { ctx } = toolContext(await newConversation());
+    const read = getTool("get_intake_item");
+    const propose = getTool("create_intake_proposal");
+    if (!read || !propose) throw new Error("intake tools are not registered");
+    const target = {
+      skill: {
+        new: { title: "Session skill", scope: "global", tags: [], category: "jira" },
+        supersedes: [],
+      },
+    };
+    expect(propose.inputSchema.safeParse({ title: "t", body: "b", target }).success).toBe(true);
+    expect(
+      propose.inputSchema.safeParse({
+        title: "t",
+        body: "b",
+        target: { skill: { supersedes: [] } },
+      }).success,
+    ).toBe(false);
+    expect(await read.execute(ctx, { id: item.id })).toMatchObject({ ok: true });
+    await patchIntakeItem(
+      {
+        tenant_id: tenantId,
+        actor: { kind: "user", id: userId },
+        id: item.id,
+        expected_version: item.version,
+        body: "Edited after the chat read it.",
+      },
+      tdb.db,
+    );
+    expect(
+      await propose.execute(ctx, { title: "Session skill", body: "Use it.", target }),
+    ).toMatchObject({ ok: false, data: { error: "intake_items_must_be_read" } });
+    expect(await read.execute(ctx, { id: item.id })).toMatchObject({ ok: true });
+    const proposal = await propose.execute(ctx, {
+      title: "Session skill",
+      body: "Use it.",
+      target,
+    });
+    expect(proposal).toMatchObject({
+      ok: true,
+      data: {
+        proposal: {
+          status: "draft",
+          revision: { items: [{ id: item.id, source_url: null }], target },
+        },
+      },
+    });
+  });
+
+  test("an item read returns bounded session evidence and its domain knowledge target", async () => {
+    const item = await createSessionItem("Domain target learning");
+    await createSkill(
+      {
+        tenant_id: tenantId,
+        input: {
+          scope: "global",
+          title: "Domain marker",
+          body: "Marks the item's category as a domain.",
+          tags: [`domain:${item.category}`],
+          status: "active",
+        },
+      },
+      tdb.db,
+    );
+    const { ctx } = toolContext(await newConversation());
+    const read = getTool("get_intake_item");
+    const propose = getTool("create_intake_proposal");
+    if (!read || !propose) throw new Error("intake tools are not registered");
+    const result = await read.execute(ctx, { id: item.id });
+    const domainTarget = {
+      name: `Knowledge · ${item.category}`,
+      category: item.category,
+      tags: [`domain:${item.category}`],
+    };
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        evidence: [
+          {
+            agent: "codex",
+            repo: "example/repo",
+            excerpt: "Domain target learning evidence",
+          },
+        ],
+        evidence_total: 1,
+        suggested_knowledge_target: domainTarget,
+      },
+    });
+    const proposal = await propose.execute(ctx, {
+      title: "Domain fact",
+      body: "Keep the domain fact.",
+      target: (result.data as { suggested_knowledge_target: unknown }).suggested_knowledge_target,
+    });
+    expect(proposal).toMatchObject({
+      ok: true,
+      data: { proposal: { revision: { target: domainTarget } } },
+    });
+  });
+
+  test("an item outside any domain gets no suggested knowledge target", async () => {
+    const item = await createIntakeItem(
+      {
+        tenant_id: tenantId,
+        actor: { kind: "user", id: userId },
+        client_request_id: nextUuid(),
+        title: "Undomained clip",
+        source_url: "https://example.test/undomained",
+        captured_at: "2026-10-10T07:00:00.000Z",
+        body: "Undomained clip source text",
+        category: "undomained-clips",
+      },
+      tdb.db,
+    );
+    const { ctx } = toolContext(await newConversation());
+    const read = getTool("get_intake_item");
+    if (!read) throw new Error("intake tools are not registered");
+    expect(await read.execute(ctx, { id: item.id })).toMatchObject({
+      ok: true,
+      data: { suggested_knowledge_target: null },
+    });
+  });
+
+  test("proposal tools describe both destinations and admit neither", () => {
+    for (const name of ["create_intake_proposal", "revise_intake_proposal"]) {
+      const tool = getTool(name);
+      if (!tool) throw new Error(`${name} is not registered`);
+      expect(tool.description).toContain("knowledge or");
+      expect(tool.description).toMatch(/admits no knowledge or skill/);
+    }
+    const create = getTool("create_intake_proposal");
+    expect(create?.description).toContain("supersedes as {skill_id, expected_version}");
+    expect(create?.description).toContain("suggested_knowledge_target");
+    expect(getTool("get_intake_item")?.description).toContain("suggested_knowledge_target");
   });
 
   test("a locked review rejects an item the person did not select", async () => {

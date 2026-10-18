@@ -4,6 +4,7 @@ import type pg from "pg";
 import { z } from "zod";
 import { errorFields, logger } from "../logging/logger.ts";
 import { resetSecretColumnDetection } from "../runtime-config/secret-columns.ts";
+import { cutOverLearningCandidates } from "../skill-candidates/learning-cutover.ts";
 import {
   createMigrationDbFromUrl,
   type Db,
@@ -288,6 +289,25 @@ async function applyMigrations(
       module: "db",
       action: "migrate.code_backfill_failed",
       msg: "context note facts backfill failed (non-fatal; retried on next boot)",
+      ...errorFields(err),
+    });
+  }
+
+  try {
+    const cutover = await cutOverLearningCandidates(db);
+    if (cutover.collected + cutover.dropped > 0)
+      logger.info({
+        module: "db",
+        action: "skill_candidate.learning_cutover.completed",
+        msg: "open learning candidates moved into intake",
+        collected: cutover.collected,
+        dropped: cutover.dropped,
+      });
+  } catch (err) {
+    logger.error({
+      module: "db",
+      action: "migrate.code_backfill_failed",
+      msg: "learning candidate cutover failed (non-fatal; retried on next boot)",
       ...errorFields(err),
     });
   }

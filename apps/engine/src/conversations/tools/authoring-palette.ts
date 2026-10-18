@@ -63,7 +63,7 @@ const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
   "update_subscription",
   "update_workflow",
   "create_intake_proposal",
-  "discard_intake_item",
+  "discard_intake_items",
   "restore_intake_item",
   "move_intake_item",
   "set_default_intake_category",

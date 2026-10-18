@@ -14,8 +14,8 @@ afterEach(() => {
   for (const mock of mocks.splice(0)) mock.mockRestore();
 });
 
-describe("source proposal pagination", () => {
-  test("retains the source filter on every page and exposes later reviewable proposals", async () => {
+describe("proposal pagination", () => {
+  test("pages through every proposal and exposes later reviewable proposals", async () => {
     const paths: URL[] = [];
     mocks.push(
       spyOn(globalThis, "fetch").mockImplementation(
@@ -36,11 +36,9 @@ describe("source proposal pagination", () => {
         }),
       ),
     );
-    const result = await listProposedSkillCandidates("source-id");
+    const result = await listProposedSkillCandidates();
     expect(paths).toHaveLength(2);
-    expect(
-      paths.every((path) => path.searchParams.get("knowledge_source_id") === "source-id"),
-    ).toBe(true);
+    expect(paths.every((path) => path.searchParams.get("status") === "proposed")).toBe(true);
     expect(paths[1]?.searchParams.get("offset")).toBe("200");
     expect(result.items).toHaveLength(201);
     expect(result.items.find((item) => item.reviewable)?.id).toBe("reviewable");

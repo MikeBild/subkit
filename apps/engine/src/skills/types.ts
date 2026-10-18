@@ -9,6 +9,22 @@ import {
 } from "../api/catalog-metadata.ts";
 
 export const SkillScopeSchema = z.enum(["global", "connector", "workflow"]);
+
+export function skillScopeViolation(input: {
+  scope: z.infer<typeof SkillScopeSchema>;
+  connector_id?: string | undefined;
+  workflow_id?: string | undefined;
+}): string | null {
+  if (input.scope === "connector" && !input.connector_id)
+    return "connector skill requires connector_id";
+  if (input.scope === "workflow" && !input.workflow_id)
+    return "workflow skill requires workflow_id";
+  if (input.scope === "global" && (input.connector_id || input.workflow_id))
+    return "global skill must not set connector_id or workflow_id";
+  if (input.connector_id && input.workflow_id)
+    return "skill cannot set both connector_id and workflow_id";
+  return null;
+}
 export const SkillLifecycleSchema = z.enum(["draft", "active", "archived"]);
 export const SkillSourceSchema = z.enum(["manual", "candidate", "template", "memory"]);
 

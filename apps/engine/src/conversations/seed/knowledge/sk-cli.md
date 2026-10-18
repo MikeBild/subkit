@@ -4,7 +4,7 @@ name: sk Platform Reference — sk CLI
 description: Exhaustive reference for the sk command-line client — every top-level command, headless mode, profiles, the sk mcp stdio proxy, settings, bootstrap flows, and the coding-agent integration commands (agent, learnings, skills sync).
 tags: [sk-platform-reference, cli, sk-cli, headless, profiles, mcp, settings, bootstrap]
 scope: global
-version: 4
+version: 5
 ---
 
 # sk CLI Overview
@@ -124,7 +124,7 @@ The CLI and MCP proxy preserve `intake_item_ids` as structured conversation inpu
 Use `sk intake default --category research`, `sk intake move --item <id> --category research`,
 `sk intake discard --item <id>`, or `sk intake restore --item <id>` for reversible organization.
 Item changes check the current version; a concurrent change is reported without overwriting it.
-These commands never confirm knowledge admission.
+These commands never confirm an admission as knowledge or a skill.
 They do not expose an intake-confirmation tool.
 
 `sk mcp` runs a stdio Model Context Protocol server that proxies the most-used conversation surfaces to the engine, so an IDE/MCP client can drive sk without the TUI. It requires a logged-in profile (else `sk mcp: not logged in` / exit 2). It authenticates with the resolved profile — i.e. `--api-key`/`--engine-url` flags, the `SUBKIT_API_KEY`/`SUBKIT_ENGINE_URL` environment variables, or the on-disk profile — not any `SK_*`-named variable. (`SK_API_KEY` appears only as a placeholder in the curl/python snippets `sk workflows invoke-snippet` generates for your own scripts; the CLI itself does not read it. The snippet always states where the call runs: `--environment prod` (the default) or `--environment dev` is printed as the `x-subkit-environment` header, because a call without that header runs in development.)
@@ -189,18 +189,18 @@ Conversation sessions are cached locally in `~/.sk/sessions/` so `-c`/`-r` and a
 
 - `sk self-healing` (`workflow:write`, admin) — trigger and review proactive drift scans: `list`, `scan`, `show`.
 - `sk patch-candidates` (`workflow:read`) — manage workflow patch candidates: `approve`, `get`, `list`, `reject`.
-- `sk skill-candidates` (`skill:read`) — manage proposed skill candidates: `approve`, `get`, `list`, `reject`.
+- `sk skill-candidates` (`skill:read`) — manage skill proposals the engine detected from recurring patterns: `approve`, `get`, `list`, `reject`. Session learnings are not candidates; they are collected in Intake (`sk intake list`).
 - `sk review` (`workflow:read`) — aggregated approval digest: pending patch candidates, proposed skill candidates, and recent failed executions.
 
-# Coding-Agent Integration: sk agent, sk learnings, sk skills sync
+# Coding-Agent Integration: sk agent, sk intake, sk skills sync
 
 These commands connect external coding agents (Claude Code, Codex) to the engine's domain knowledge. A repo can declare its domains in `.sk/agent.json` (`{"domains": ["<slug>"]}`). Without a declaration, briefing hooks match the normalized current-folder name exactly against readable catalog categories. A unique project match creates an inferred declaration with shared SubKit context when available; otherwise a shared-only inferred declaration is created when possible, and the agent asks which project area, sources, and workflows belong there when setup is relevant. Inferred declarations keep checking the folder name as catalog categories change. Domain tags `domain:<slug>` are supported on Skills and Knowledge Sources; categories can also come from workflows, connectors, and ready files. Briefings show only readable file metadata, never file contents.
 
 - `sk agent init --domains <a,b>` (`skill:read`) — merges requested domains into `.sk/agent.json` without deleting existing domains or settings, wires Claude Code and Codex briefing hooks plus SessionEnd transcript capture in both clients, then prints what stays manual for Codex (`[features] hooks = true`, trusting the hooks under `/hooks`) plus the MCP registration commands for both agents. Codex capture uses a detached process to fit the three-second hook limit. `--skip-claude` / `--skip-codex` leave the respective file alone. Hook and REPL briefings share an 1,800-token budget and 9,500-character hard limit. A domain is a catalog category or a `domain:<slug>` tag; everything in that category is briefed.
 - `sk agent briefing` — prints the domain-scoped session briefing (active domain skills, knowledge index, readable workflow, connector and file metadata, search-first grounding rule) fetched from `GET /v1/agent/briefing`. `--hook` reads hook JSON from stdin, uses `.sk/agent.json` when present or resolves the current folder name against readable catalog categories, adds shared SubKit context when available, and NEVER fails the session — errors degrade to a brief warning + exit 0 and land in `~/.sk/debug.log`. `--domains` and `--budget` override the repo declaration.
-- `sk agent capture` — posts a session transcript to `POST /v1/agent/sessions` for learning distillation. `--hook` is the SessionEnd-hook mode (transcript path from the hook payload, silent-fail); `--detach` queues capture asynchronously for clients with short hook deadlines. Manual use takes `--transcript <path>` plus optional `--agent`, `--session-id`, `--domains`. Captures only in repos with declared domains. Distillation extracts ONLY durable, human-taught rules; results are `session_learning` skill candidates — never live knowledge.
-- `sk learnings` (`skill:read`; approve/reject enforce `skill:write` server-side) — the human curation gate: `list` shows proposed session learnings, `review` walks them interactively (approve → ACTIVE domain-tagged skill that the next briefing carries; edit-then-approve; reject retires the learning's fingerprint for good; skip).
-- `sk skills sync` — materializes the repo's active domain skills as Agent-Skills-standard `SKILL.md` directories into `.claude/skills/` and `.agents/skills/`. Only directories carrying the sk managed-marker are created, updated, or pruned; hand-authored skills are never touched. Idempotent; re-run after approving learnings.
+- `sk agent capture` — posts a session transcript to `POST /v1/agent/sessions` for learning distillation. `--hook` is the SessionEnd-hook mode (transcript path from the hook payload, silent-fail); `--detach` queues capture asynchronously for clients with short hook deadlines. Manual use takes `--transcript <path>` plus optional `--agent`, `--session-id`, `--domains`. Captures only in repos with declared domains. Distillation extracts ONLY durable, human-taught practices and facts (events, status updates and anything credential-related are dropped); each lands as an Intake item with origin `session` in the domain's shared category, or the collector's default category — never as knowledge or a skill. A manual run prints where to review the collected items in the Cockpit.
+- `sk intake list` / `sk intake review` — the review path for session learnings: `list` shows collected items with their origin (`capture` or `session`), `review` starts a saved review conversation and prints the Cockpit link. A person confirms the proposal in the Cockpit, which publishes it as domain knowledge or as an ACTIVE skill that the next briefing carries; replaced skills are archived in the same step.
+- `sk skills sync` — materializes the repo's active domain skills as Agent-Skills-standard `SKILL.md` directories into `.claude/skills/` and `.agents/skills/`. Only directories carrying the sk managed-marker are created, updated, or pruned; hand-authored skills are never touched. Idempotent; re-run after confirming a skill proposal.
 
 # Files, Extract, Attach
 

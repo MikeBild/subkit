@@ -4,7 +4,7 @@ name: sk Platform Reference — MCP Tool Catalog
 description: The public MCP callable surface of sk — every tool name (underscore form) tagged with the MCP mode that can call it, plus the write approval gate, warnings envelope, OAuth scopes, resource URI schemes, and how a remote MCP server the tenant registered (a connector with driver `mcp`) relates to this catalog.
 tags: [sk-platform-reference, mcp, tools, oauth, resources]
 scope: global
-version: 5
+version: 6
 ---
 
 # MCP Tool Catalog — Overview
@@ -16,7 +16,7 @@ Review individual clips through a persisted `conversation_start` conversation;
 pass `intake_item_ids` to fix the selection. Continue with `conversation_get`
 and `conversation_append`. The returned review URL opens that conversation in
 the authenticated Cockpit. `list_intake_items`, `get_intake_item`,
-`discard_intake_item`, `restore_intake_item`, `move_intake_item`,
+`discard_intake_items`, `restore_intake_item`, `move_intake_item`,
 `set_default_intake_category`, `create_intake_proposal`, and
 `revise_intake_proposal` require the saved review
 context and are not executable as standalone MCP calls. There is no MCP tool
@@ -73,7 +73,7 @@ above your mode is rejected, and so is any tool you invent.
 working draft, and a stateless `tools/call` has no draft to mutate:
 `author_workflow`, `save_workflow_draft`, `edit_workflow_patch`, `validate_draft`,
 `dry_run_workflow`, `dry_run_step`, `restore_draft_snapshot`,
-`diagnose_latest_execution`, `request_connector_reauth`, `propose_skill`,
+`diagnose_latest_execution`, `request_connector_reauth`,
 `ask_user_*`, and every `*_connector_draft` tool. The engine runs them for you
 inside a `conversation_*` session — that is the only place they exist.
 
@@ -299,14 +299,14 @@ Proposed (not auto-applied) improvements.
   `preview_patch_candidate`, `dry_run_patch_candidate` **[product]**;
   `approve_patch_candidate` **[admin]**.
 - Skills: `list_skills`, `list_all_skills`, `find_skill`, `get_skill`
-  **[authoring]**; `create_skill` (files a PROPOSED candidate for human review —
-  never an active skill), `update_skill`, `delete_skill` **[admin]**.
-- Skill candidates / suggestions: `list_skill_candidates`, `get_skill_candidate`,
+  **[authoring]**; `update_skill`, `delete_skill` **[admin]**. A new skill comes
+  from a confirmed intake proposal with a skill destination, never from a chat
+  tool call.
+- Skill candidates / suggestions (patterns the engine detected): `list_skill_candidates`, `get_skill_candidate`,
   `list_skill_suggestions`, `approve_skill_candidate`, `reject_skill_candidate`
   (batch of 1-100 ids) **[authoring]** — `list_skill_candidates` pages with
   `limit`/`offset` and reports `total`; approval and rejection are
-  directly callable so the coding-agent capture loop closes in-session; the
-  client's native destructive-write dialog is the explicit operator approval and
+  directly callable; the client's native destructive-write dialog is the explicit operator approval and
   RBAC `skill:write` stays the hard gate.
 - Gate repairs: `diagnose_workflow` **[product]** — why the approval gate holds a
   workflow (`{ workflow_id, environment? }`): each refused step with its gate
@@ -320,12 +320,13 @@ Proposed (not auto-applied) improvements.
   a diagnosis with `is_current: false` is of the draft, whose fix is made in
   the draft.
 - Capability gaps: `list_capability_gaps` **[product]**.
-- Session learnings: `save_learning` **[product]** — explicitly capture a durable
-  rule the user taught in the current session as a PROPOSED `session_learning`
-  skill candidate (`{ title, body, domains?, pitfalls? }`; domains land as
-  `domain:<slug>` tags). Additive and confirmation-free: it only feeds the human
-  review queue (`sk learnings review`), never live knowledge. Re-saving the same
-  title in the same domains updates the existing proposal instead of duplicating.
+- Session learnings: `save_learning` **[product]** — collect a durable practice
+  or fact the user taught in the current session as an Intake item with origin
+  `session` (`{ kind?, title, body, domains?, pitfalls? }`; the item lands in the
+  shared category of the first existing domain). Additive and confirmation-free:
+  it is not knowledge and not a skill until a person confirms a proposal in the
+  Cockpit. Saving the same title in the same category again adds evidence to the
+  existing item instead of duplicating it.
 - Discovery: `list_discovery_artifacts`, `get_discovery_artifact` **[product]**;
   `approve_discovery_artifact` **[admin]**.
 

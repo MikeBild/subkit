@@ -561,7 +561,7 @@ describe("permission cost", () => {
     const forTen = queries;
     expect(ten.items).toHaveLength(10);
     expect(forTen).toBe(forOne);
-    expect(forTen).toBeLessThanOrEqual(34);
+    expect(forTen).toBeLessThanOrEqual(38);
   });
 });
 

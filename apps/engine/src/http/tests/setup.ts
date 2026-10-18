@@ -4,10 +4,15 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type ServerType, serve } from "@hono/node-server";
+import {
+  browserSessionCookie,
+  signBrowserCsrf,
+  signBrowserSession,
+} from "../../auth/browser-session.ts";
 import { _resetConfigForTests, getConfig, loadConfig } from "../../config/loader.ts";
 import type { Config } from "../../config/schema.ts";
 import type { Db } from "../../db/client.ts";
-import { apiKeys, systemAccounts, tenants, users } from "../../db/schema/index.ts";
+import { apiKeys, sessions, systemAccounts, tenants, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
@@ -61,6 +66,28 @@ export interface HttpTestServer {
   apiKeyId: string;
   apiKey: string;
   cleanup: () => Promise<void>;
+}
+
+export async function browserSessionHeaders(
+  ctx: Pick<HttpTestServer, "db" | "tenantId">,
+  userId: string,
+): Promise<Record<string, string>> {
+  const [session] = await ctx.db
+    .insert(sessions)
+    .values({
+      tenant_id: ctx.tenantId,
+      user_id: userId,
+      expires_at: new Date(Date.now() + 60 * 60_000), // allow-wall-clock: live browser fixture
+      absolute_expires_at: new Date(Date.now() + 60 * 60_000), // allow-wall-clock: live browser fixture
+    })
+    .returning();
+  if (!session) throw new Error("missing browser session fixture");
+  const payload = { tenant_id: ctx.tenantId, user_id: userId, session_id: session.id };
+  return {
+    cookie: browserSessionCookie(await signBrowserSession(payload)),
+    "x-subkit-csrf": await signBrowserCsrf(payload),
+    "content-type": "application/json",
+  };
 }
 
 export interface CreateHttpTestServerOptions {

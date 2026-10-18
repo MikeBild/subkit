@@ -24,6 +24,8 @@ const CLASS_OUTCOMES: Record<ClaimClass, readonly string[]> = {
 const NON_SUCCESS_OUTCOMES = [
   "not_found",
   "already_decided",
+  "not_discardable",
+  "changed",
   "changed_since_review",
   "failed",
   "skipped",

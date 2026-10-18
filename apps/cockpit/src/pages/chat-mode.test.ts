@@ -87,7 +87,7 @@ const PROBES: Record<GateRow, Array<{ tool: string; category: Category; input?: 
   ],
   proposals: [
     { tool: "save_learning", category: "tenant_write" },
-    { tool: "create_skill", category: "tenant_write" },
+    { tool: "propose_workflow_repair", category: "tenant_write" },
   ],
   otherChanges: [{ tool: "edit_role", category: "tenant_write" }],
   dangerous: [

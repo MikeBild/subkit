@@ -63,6 +63,7 @@ const ANSWERED: Attention["sources"] = {
   connections: "answered",
   secret_approvals: "answered",
   skills: "answered",
+  intake: "answered",
   budget: "answered",
   risk: "answered",
 };
@@ -339,20 +340,36 @@ describe("the sentence", () => {
           NOW,
         ),
       ),
-    ).toBe("4 Vorschläge aus Unterhaltungen warten auf deine Entscheidung — seit 3 Tagen.");
+    ).toBe(
+      "4 Skill-Vorschläge aus wiederkehrenden Mustern warten auf deine Entscheidung — seit 3 Tagen.",
+    );
   });
 
-  test("all proposals are one entry that says how many become knowledge", () => {
+  test("detected skill proposals and collected intake are separate entries", () => {
     const proposals = item({
       id: "skills",
       reason: "skills_proposed",
       subject: null,
-      counts: { skills: 3, knowledge: 1 },
+      counts: { skills: 3 },
     });
     expect(attentionRow(proposals, de)).toMatchObject({
-      name: "Gelerntes aus Unterhaltungen",
-      reason: "3 Vorschläge · 1 für Wissen, 2 für Skills",
+      name: "Skill-Vorschläge aus wiederkehrenden Mustern",
+      reason: "3 Vorschläge",
     });
+    const collected = item({
+      id: "intake",
+      reason: "intake_collected",
+      subject: null,
+      counts: { intake: 5 },
+    });
+    expect(attentionRow(collected, de)).toMatchObject({
+      name: "Gesammeltes Material",
+      reason: "5 Einträge zu prüfen",
+    });
+    expect(attentionRow(collected, en).name).toBe("Collected material");
+    expect(sentenceText(attentionSentence(collected, de, NOW))).toBe(
+      "5 gesammelte Einträge warten auf deine Prüfung — seit 3 Tagen.",
+    );
     expect(
       attentionRow(
         item({ id: "skills", reason: "skills_proposed", subject: null, counts: { skills: 1 } }),

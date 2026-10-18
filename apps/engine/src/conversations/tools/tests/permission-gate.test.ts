@@ -10,7 +10,6 @@ import {
   revokePortalTokenTool,
 } from "../engine-api/writes/cleanup.ts";
 import { createKnowledgeSourceTool } from "../engine-api/writes/create-knowledge-source.ts";
-import { createSkillTool } from "../engine-api/writes/create-skill.ts";
 import { deleteSkillTool } from "../engine-api/writes/delete-skill.ts";
 import { updateConnectorTool } from "../engine-api/writes/update-connector.ts";
 import { updateKnowledgeSourceTool } from "../engine-api/writes/update-knowledge-source.ts";
@@ -42,7 +41,6 @@ describe("declarative RBAC descriptors on migrated write tools", () => {
       resourceIdArg: "id",
     },
     { tool: updateSkillTool, action: "skill:write", resourceType: "skill", resourceIdArg: "id" },
-    { tool: createSkillTool, action: "skill:write", resourceType: "skill" },
     { tool: deleteSkillTool, action: "skill:delete", resourceType: "skill", resourceIdArg: "id" },
     {
       tool: updateSubscriptionTool,
@@ -178,6 +176,16 @@ describe("delete_workflow resolveResourceId — resolves the UUID before can()",
       engineClient: { workflows: { getBySlug: async () => null } },
     } as unknown as ToolContext;
     expect(await resolve?.(ctx, { slug: "ghost" })).toBeNull();
+  });
+});
+
+describe("save_learning collects into intake under skill:propose", () => {
+  it("keeps the coding-agent hook permission on the dispatcher path", async () => {
+    const { conversationToolProvider } = await import("../../../tools/providers/conversation.ts");
+    const descriptor = conversationToolProvider
+      .list({ surface: "mcp", mcpMode: "admin" })
+      .find((d) => d.name === "save_learning");
+    expect(descriptor?.rbac?.permission).toBe("skill:propose");
   });
 });
 

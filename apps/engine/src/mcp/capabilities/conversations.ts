@@ -167,13 +167,13 @@ function cockpitConversationHandoff(conversationId: string): {
       conversation_url: `${base}${conversation_path}`,
       conversation_path,
       conversation_next_action:
-        "Open the authenticated Cockpit conversation to continue review and preparation. A person must confirm any intake proposal before it becomes knowledge.",
+        "Open the authenticated Cockpit conversation to continue review and preparation. A person must confirm any intake proposal before it becomes knowledge or a skill.",
     };
   }
   return {
     conversation_path,
     conversation_next_action:
-      "Open this path in the authenticated Cockpit to continue review and preparation. A person must confirm any intake proposal before it becomes knowledge.",
+      "Open this path in the authenticated Cockpit to continue review and preparation. A person must confirm any intake proposal before it becomes knowledge or a skill.",
   };
 }
 

@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [onboarding, skills, knowledge-sources, domain-modeling, authoring-only]
-version: 3
+version: 4
 ---
 
 # Modeling a Domain with Skills and Knowledge Sources
@@ -22,8 +22,8 @@ describe it.
 load on the read-only external chat channel (Google Chat / Slack / Teams), whose
 palette cannot create anything. It applies only on authoring surfaces (the web
 portal, the `sk` CLI, and MCP clients), where the create tools actually exist.
-Never propose `create_skill` / `create_knowledge_source` on a surface that lacks
-them: if you are on read-only chat, explain the model and point the user to the
+Never propose `create_knowledge_source` or an intake proposal on a surface that
+lacks the tool: if you are on read-only chat, explain the model and point the user to the
 `sk` CLI or web portal — do not render an Approve card for an action you cannot
 carry out.
 
@@ -64,20 +64,23 @@ user accepts. Call one state-changing tool at a time and wait for confirmation.
   now: `create_knowledge_source` with inline content, or from a file the user
   uploaded (an `@attachment` reference). Suggest tags so later searches can be
   narrowed. This is the fastest win — do it first when a document is available.
-- **Skill (operator-owned).** Offer to author the conventions as a Skill with
-  `create_skill` — this files a PROPOSED skill candidate for human review, never
-  an active skill. The operator approves it in this session
-  (`approve_skill_candidate`) or later via `sk learnings review`; engine-detected
-  patterns land in the same candidate queue. Be honest: a Skill is prescriptive
-  guidance a human owns; confirm the wording before you propose it, and never
-  claim a Skill is active while it is still a candidate.
+- **Skill (operator-owned).** A Skill comes from reviewed material. Collect the
+  conventions the user states with `save_learning` (kind `practice`); they land
+  in Intake, not in the skill list. Then read the collected items with
+  `get_intake_item` and prepare an intake proposal with a skill destination
+  (`create_intake_proposal`, target `skill` with `new` or an existing `skill_id`).
+  Only a person who confirms that proposal in the Cockpit activates the Skill;
+  replaced Skills are archived in the same step. An operator who already has the
+  Skill as a file can create it directly with `sk skills create`. Be honest: a
+  Skill is prescriptive guidance a human owns; confirm the wording with the user,
+  and never claim a Skill exists or is active before the confirmation.
 - **Connector (as needed).** If the domain has an API the user wants to call,
   route into the normal connector-creation flow.
 
 ## Set honest expectations
 
-- Do not promise auto-magic. Skills are never auto-generated or auto-promoted;
-  the operator decides what becomes canonical.
+- Do not promise auto-magic. Skills are never auto-generated or auto-activated;
+  a person confirms what becomes canonical.
 - Do not over-scope. One tight Skill plus a couple of focused Knowledge Sources
   beats a single sprawling document.
 - The shape is domain-agnostic — the same trio models an expense policy, tax
@@ -90,7 +93,9 @@ Once the trio exists, coding agents (Claude Code, Codex) can work inside the
 domain: tag the domain's Skills and Knowledge Sources with `domain:<slug>`,
 have the user run `sk agent init --domains <slug>` in their repo, and every
 new session starts with the domain briefing and searches the knowledge with
-`search_knowledge`. What sessions teach flows back as `session_learning`
-candidates reviewed via `sk learnings review`. Offer this as the follow-up
+`search_knowledge`. What sessions teach is collected in Intake with origin
+`session`, in the domain's shared category; a person reviews it in chat and
+confirms whether it becomes knowledge, a skill, or nothing. `sk intake list`
+shows what is waiting. Offer this as the follow-up
 when a user finishes modeling a domain and mentions Claude Code, Codex, or
 coding sessions.

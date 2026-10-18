@@ -32,7 +32,7 @@ describe("persona-variant selection", () => {
       expect(rendered.content).toContain("original_snapshot.captured_at");
       expect(rendered.content).toContain("collected_by identifies the collecting principal");
       expect(rendered.content).toContain("never use a credential label as an author");
-      expect(rendered.content).toContain("no knowledge has been published");
+      expect(rendered.content).toContain("no knowledge or skill has been admitted yet");
       expect(rendered.content).toContain("If a tool result is marked truncated");
       expect(rendered.content).toContain(
         "Do not expose internal identifiers in user-facing text, including abbreviated identifiers",

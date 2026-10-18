@@ -95,6 +95,72 @@ describe("summarizeToolResult", () => {
   });
 });
 
+function discardIntakeOutput(discarded: number, notDiscardable: number, changed = 0): unknown {
+  const results = [
+    ...Array.from({ length: discarded }, (_, i) => ({
+      id: candidateId(100 + i),
+      title: `Item ${i}`,
+      outcome: "discarded",
+    })),
+    ...Array.from({ length: notDiscardable }, (_, i) => ({
+      id: candidateId(200 + i),
+      title: `Admitted ${i}`,
+      outcome: "not_discardable",
+    })),
+    ...Array.from({ length: changed }, (_, i) => ({
+      id: candidateId(300 + i),
+      title: `Changed ${i}`,
+      outcome: "changed",
+    })),
+  ];
+  const data = {
+    results,
+    discarded,
+    not_found: 0,
+    not_discardable: notDiscardable,
+    changed,
+  };
+  if (discarded > 0) return normalizeToolResultPayload({ ok: true, data });
+  return normalizeToolResultPayload({
+    ok: false,
+    error_code: "intake_items_changed",
+    message: "Nothing was discarded.",
+    data: { ...data, error: "intake_items_changed" },
+  });
+}
+
+describe("intake discard claims", () => {
+  it("counts discarded intake items and treats the rest as unprocessed", () => {
+    const summary = summarizeToolResult("discard_intake_items", discardIntakeOutput(2, 1, 1));
+    expect(summary.outcomes).toEqual({
+      discarded: 2,
+      not_found: 0,
+      not_discardable: 1,
+      changed: 1,
+    });
+    expect(summary.processed_ids.sort()).toEqual([candidateId(100), candidateId(101)]);
+  });
+
+  it("fails when the chat claims more discarded entries than the tool discarded", async () => {
+    const v = await runCritic({
+      artifact: { kind: "chat", payload: "Ich habe 4 Einträge verworfen." },
+      toolResults: [summarizeToolResult("discard_intake_items", discardIntakeOutput(2, 1, 1))],
+    });
+    expect(v.verdict).toBe("fail");
+    expect(v.checks?.tool_counts_match).toBe(false);
+  });
+
+  it("fails when an item that was already admitted is reported as discarded", async () => {
+    const v = await runCritic({
+      artifact: { kind: "chat", payload: `Eintrag ${candidateId(200)} wurde verworfen.` },
+      snapshot: "tenant snapshot",
+      toolResults: [summarizeToolResult("discard_intake_items", discardIntakeOutput(1, 1))],
+    });
+    expect(v.verdict).toBe("fail");
+    expect(v.checks?.processed_ids_in_results).toBe(false);
+  });
+});
+
 describe("chat critic claim check against tool results", () => {
   it("passes when the claimed rejection count equals the batch result", async () => {
     const v = await runCritic({
