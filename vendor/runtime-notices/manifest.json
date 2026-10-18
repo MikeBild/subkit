@@ -20,6 +20,27 @@
       "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94"
     },
     {
+      "component": "bun-clap",
+      "revision": "34cbb9a40b4bd1bd767d134a7065e66c2432a676",
+      "path": "bun-clap__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/src/clap/LICENSE",
+      "sha256": "88d9b4eb60579c191ec391ca04c16130572d7eedc4a86daa58bf28c6e14c9bcd"
+    },
+    {
+      "component": "bun-usockets",
+      "revision": "34cbb9a40b4bd1bd767d134a7065e66c2432a676",
+      "path": "bun-usockets__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/packages/bun-usockets/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "component": "bun-uws",
+      "revision": "34cbb9a40b4bd1bd767d134a7065e66c2432a676",
+      "path": "bun-uws__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/packages/bun-uws/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
       "component": "bun",
       "revision": "34cbb9a40b4bd1bd767d134a7065e66c2432a676",
       "path": "bun__runtime-license.txt",
