@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
+
 const IMAGE =
   "chrislusf/seaweedfs@sha256:bb05d66d2963b1cc48073190781c3dd29e2c4c88a2ae2986bf58e38c86d89c6e";
 
@@ -32,6 +35,13 @@ export async function dockerAvailable(): Promise<boolean> {
 
 export async function startObjectStore(namePrefix: string): Promise<ObjectStoreFixture> {
   const name = `${namePrefix}-${Math.random().toString(36).slice(2, 8)}`; // allow-random: unique container name per run
+  const storageRoot = process.env.SUBKIT_TEST_OBJECT_STORE_ROOT;
+  let dataDirectory: string | undefined;
+  if (storageRoot) {
+    const root = resolve(storageRoot);
+    mkdirSync(root, { recursive: true });
+    dataDirectory = mkdtempSync(join(root, "object-store-"));
+  }
   const proc = Bun.spawn(
     [
       "docker",
@@ -40,6 +50,7 @@ export async function startObjectStore(namePrefix: string): Promise<ObjectStoreF
       "-d",
       "--name",
       name,
+      ...(dataDirectory ? ["--volume", `${dataDirectory}:/data`] : []),
       "-p",
       "0:9000",
       "--entrypoint",
@@ -53,10 +64,16 @@ export async function startObjectStore(namePrefix: string): Promise<ObjectStoreF
   const containerId = (await new Response(proc.stdout).text()).trim();
   if (!containerId) {
     const errText = await new Response(proc.stderr).text();
+    if (dataDirectory) rmSync(dataDirectory, { recursive: true, force: true });
     throw new Error(`object store fixture did not start: ${errText}`);
   }
+  let stopped = false;
   const stop = async () => {
-    Bun.spawnSync(["docker", "rm", "-f", containerId]);
+    if (stopped) return;
+    const removed = Bun.spawnSync(["docker", "rm", "-f", containerId]);
+    if (removed.exitCode !== 0) throw new Error("object store fixture cleanup failed");
+    stopped = true;
+    if (dataDirectory) rmSync(dataDirectory, { recursive: true, force: true });
   };
 
   const inspect = Bun.spawnSync([
