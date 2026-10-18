@@ -31,7 +31,12 @@ describe("sk CLI user story — real backend", () => {
 
   test("turn 1 — open-meteo canned plan creates a conversation with audit entries", async () => {
     const r = await cli(
-      ["--p", "open-meteo weather forecast for Berlin tomorrow", "--output", "json"],
+      [
+        "--p",
+        "Create a connector for open-meteo weather forecast for Berlin tomorrow",
+        "--output",
+        "json",
+      ],
       { env, persona: "admin", timeout: 120_000 },
     );
     expect(r.exitCode).toBe(0);
@@ -53,7 +58,7 @@ describe("sk CLI user story — real backend", () => {
   }, 120_000);
 
   test("turn 2 — resuming the same conversation sees the prior tool chain", async () => {
-    const turn1 = await cli(["--p", "open-meteo again please", "--output", "json"], {
+    const turn1 = await cli(["--p", "Create a connector for open-meteo", "--output", "json"], {
       env,
       persona: "admin",
       timeout: 60_000,

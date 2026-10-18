@@ -171,8 +171,8 @@ async function getConversation(conversationId: string): Promise<{
 }
 
 async function runPlan(
+  message: string,
   plan: ConverseMockStep[],
-  message = "continue",
 ): Promise<{
   conversationId: string;
   outcome: { status: string; pending_elicitation_id?: string };
@@ -188,7 +188,7 @@ async function runPlan(
 
 describe("authoring regressions", () => {
   test("onboarding without a saved endpoint still asks for the missing connector details", async () => {
-    const { detail } = await runPlan([
+    const { detail } = await runPlan("Create a connector for the Quokka Ledger API", [
       {
         tool: "start_connector_from_description",
         args: {
@@ -208,7 +208,7 @@ describe("authoring regressions", () => {
   });
 
   test("onboarding with a template preserves template metadata and unresolved fields", async () => {
-    const { detail } = await runPlan([
+    const { detail } = await runPlan("Create a connector from the Shopify template", [
       {
         tool: "start_connector_from_template",
         args: {
@@ -223,7 +223,7 @@ describe("authoring regressions", () => {
   });
 
   test("resume summary surfaces pending approval after connector save pause", async () => {
-    const { outcome, detail } = await runPlan([
+    const { outcome, detail } = await runPlan("Create a connector for the pending approval API", [
       {
         tool: "start_connector_from_description",
         args: {
@@ -308,7 +308,7 @@ describe("authoring regressions", () => {
   });
 
   test("HTTP draft probes surface 401 and timeout distinctly", async () => {
-    const unauthorized = await runPlan([
+    const unauthorized = await runPlan("Create a connector for the protected HTTP API", [
       {
         tool: "start_connector_from_description",
         args: {
@@ -326,7 +326,7 @@ describe("authoring regressions", () => {
     expect(unauthorized.detail.draft?.connector?.latest_probe?.status_code).toBe(401);
     expect(unauthorized.detail.draft?.connector?.latest_probe?.summary).toContain("HTTP 401");
 
-    const timeout = await runPlan([
+    const timeout = await runPlan("Create a connector for the slow HTTP API", [
       {
         tool: "start_connector_from_description",
         args: {
@@ -346,7 +346,7 @@ describe("authoring regressions", () => {
   });
 
   test("driver-specific draft probes work for GraphQL, Postgres, and S3", async () => {
-    const graphql = await runPlan([
+    const graphql = await runPlan("Create a GraphQL connector", [
       {
         tool: "start_connector_from_description",
         args: {
@@ -363,7 +363,7 @@ describe("authoring regressions", () => {
     expect(graphql.detail.draft?.connector?.latest_probe?.ok).toBe(true);
     expect(graphql.detail.draft?.connector?.latest_probe?.summary).toContain("GraphQL");
 
-    const postgres = await runPlan([
+    const postgres = await runPlan("Create a Postgres connector", [
       {
         tool: "start_connector_from_description",
         args: {
@@ -380,7 +380,7 @@ describe("authoring regressions", () => {
     expect(postgres.detail.draft?.connector?.latest_probe?.ok).toBe(true);
     expect(postgres.detail.draft?.connector?.latest_probe?.summary).toContain("postgres");
 
-    const s3 = await runPlan([
+    const s3 = await runPlan("Create an S3 connector", [
       {
         tool: "start_connector_from_description",
         args: {
@@ -410,23 +410,26 @@ describe("authoring regressions", () => {
   });
 
   test("preview failures stay in latest_preview instead of 500ing the turn", async () => {
-    const { outcome, detail } = await runPlan([
-      {
-        tool: "build_workflow",
-        args: {
-          name: "preview-failure",
-          slug: "preview-failure",
-          steps: [
-            {
-              id: "explode",
-              kind: "transform",
-              expression: "$nonexistent_fn(input)",
-            },
-          ],
+    const { outcome, detail } = await runPlan(
+      "Create a workflow and preview its failing transform",
+      [
+        {
+          tool: "build_workflow",
+          args: {
+            name: "preview-failure",
+            slug: "preview-failure",
+            steps: [
+              {
+                id: "explode",
+                kind: "transform",
+                expression: "$nonexistent_fn(input)",
+              },
+            ],
+          },
         },
-      },
-      { tool: "dry_run_step", args: { step_id: "explode", input: { ok: true } } },
-    ]);
+        { tool: "dry_run_step", args: { step_id: "explode", input: { ok: true } } },
+      ],
+    );
     expect(outcome.status).toBe("active");
     expect(detail.draft?.latest_preview?.ok).toBe(false);
     expect(detail.draft?.latest_preview?.summary.length).toBeGreaterThan(0);
@@ -457,7 +460,7 @@ describe("authoring regressions", () => {
     const turnPromise = fetch(`${env.baseUrl}/v1/conversations/${conversationId}/messages`, {
       method: "POST",
       headers: adminHeaders(),
-      body: JSON.stringify({ message: "preview the slow request now" }),
+      body: JSON.stringify({ message: "Create a workflow and preview the slow request now" }),
     });
     const cancel = await fetch(`${env.baseUrl}/v1/conversations/${conversationId}/cancel`, {
       method: "POST",
