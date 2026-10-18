@@ -1,0 +1,136 @@
+import { z } from "@hono/zod-openapi";
+import { SkillScopeSchema, skillScopeViolation } from "../skills/types.ts";
+import { CategorySchema } from "./catalog-metadata.ts";
+
+const IntakeTagsSchema = z.array(z.string().min(1).max(40)).max(20);
+
+export const IntakeNewSkillSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    scope: SkillScopeSchema,
+    connector_id: z.string().uuid().optional(),
+    workflow_id: z.string().uuid().optional(),
+    tags: IntakeTagsSchema,
+    category: CategorySchema,
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const violation = skillScopeViolation(value);
+    if (violation) ctx.addIssue({ code: "custom", message: violation, path: ["scope"] });
+  })
+  .openapi("IntakeNewSkill");
+
+export const IntakeSkillTargetSchema = z
+  .object({
+    skill: z
+      .object({
+        skill_id: z.string().uuid().optional(),
+        expected_version: z.number().int().positive().optional(),
+        new: IntakeNewSkillSchema.optional(),
+        supersedes: z
+          .array(
+            z
+              .object({
+                skill_id: z.string().uuid(),
+                expected_version: z.number().int().positive(),
+              })
+              .strict(),
+          )
+          .max(20)
+          .default([]),
+      })
+      .strict()
+      .superRefine((value, ctx) => {
+        if ((value.skill_id === undefined) === (value.new === undefined))
+          ctx.addIssue({
+            code: "custom",
+            message: "a skill target names either skill_id or new",
+            path: ["skill_id"],
+          });
+        if (value.skill_id !== undefined && value.expected_version === undefined)
+          ctx.addIssue({
+            code: "custom",
+            message: "an existing skill target needs expected_version",
+            path: ["expected_version"],
+          });
+        if (value.skill_id === undefined && value.expected_version !== undefined)
+          ctx.addIssue({
+            code: "custom",
+            message: "expected_version applies only to an existing skill",
+            path: ["expected_version"],
+          });
+        const supersededIds = value.supersedes.map((entry) => entry.skill_id);
+        if (new Set(supersededIds).size !== supersededIds.length)
+          ctx.addIssue({
+            code: "custom",
+            message: "superseded skills must be unique",
+            path: ["supersedes"],
+          });
+        if (value.skill_id !== undefined && supersededIds.includes(value.skill_id))
+          ctx.addIssue({
+            code: "custom",
+            message: "a skill cannot supersede itself",
+            path: ["supersedes"],
+          });
+      }),
+  })
+  .strict()
+  .describe(
+    "Skill destination for a repeatable practice or convention. Name either new (a new active skill; give it the domain:<name> tag of its domain so coding-agent briefings for that domain find it) or skill_id with the expected_version you read (changes and activates that skill). supersedes lists each skill this one consolidates with the expected_version you read; they are archived on confirmation and the proposal goes stale when one of them changes.",
+  )
+  .openapi("IntakeSkillTarget");
+
+export const IntakeProposalTargetSchema = z
+  .union([
+    IntakeSkillTargetSchema,
+    z
+      .object({ knowledge_source_id: z.string().uuid(), expected_version: z.string().min(1) })
+      .describe(
+        "Knowledge destination for facts or reference material: extends an existing knowledge bundle at the version you read.",
+      ),
+    z
+      .object({
+        name: z.string().min(1).max(200),
+        category: CategorySchema.optional(),
+        tags: IntakeTagsSchema.optional(),
+      })
+      .describe(
+        "Knowledge destination for facts or reference material: creates a new knowledge bundle. For a domain, use the suggested_knowledge_target from get_intake_item unchanged instead of inventing a name.",
+      ),
+  ])
+  .openapi("IntakeProposalTarget");
+
+const SnapshotFields = {
+  title: z.string(),
+  source_author: z.string().optional(),
+  published_at: z.string().optional(),
+  captured_at: z.string().datetime(),
+  body: z.string(),
+};
+
+export const IntakeItemSnapshotSchema = z
+  .discriminatedUnion("origin", [
+    z.object({
+      ...SnapshotFields,
+      origin: z.enum(["capture", "restored_draft"]),
+      source_url: z.string().url(),
+    }),
+    z.object({
+      ...SnapshotFields,
+      origin: z.literal("session"),
+      source_url: z.string().url().optional(),
+      agent: z.string(),
+      session_id: z.string(),
+      repo: z.string().nullable(),
+      domains: z.array(z.string()),
+      evidence_excerpt: z.string(),
+      learning_kind: z.enum(["practice", "fact"]).optional(),
+      scope: SkillScopeSchema.optional(),
+      connector_id: z.string().uuid().optional(),
+      workflow_id: z.string().uuid().optional(),
+      tags: z.array(z.string()).optional(),
+    }),
+  ])
+  .openapi("IntakeItemSnapshot");
+
+export const IntakeTargetKindSchema = z.enum(["knowledge", "skill"]);

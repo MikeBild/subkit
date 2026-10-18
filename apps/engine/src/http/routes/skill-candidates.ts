@@ -1,11 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { actorOf } from "../../audit/index.ts";
-import {
-  KnowledgeSlugConflictError,
-  KnowledgeVersionConflictError,
-} from "../../knowledge/index.ts";
-import { can } from "../../rbac/index.ts";
 import * as svc from "../../skill-candidates/index.ts";
 import {
   type ApproveSkillCandidateParams,
@@ -40,7 +35,6 @@ const listRoute = createRoute({
         scope: z.enum(["global", "connector", "workflow"]).optional(),
         connector_id: z.string().uuid().optional(),
         workflow_id: z.string().uuid().optional(),
-        knowledge_source_id: z.string().uuid().optional(),
         pattern_kind: SkillCandidatePatternSchema.optional(),
         confidence: z.enum(["low", "medium", "high"]).optional(),
         limit: z.coerce.number().int().positive().max(500).optional(),
@@ -54,10 +48,6 @@ const listRoute = createRoute({
       content: { "application/json": { schema: SkillCandidateListResponse } },
     },
     403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
-    404: {
-      description: "Knowledge source not found",
-      content: { "application/json": { schema: ErrorSchema } },
-    },
   },
 });
 
@@ -105,7 +95,9 @@ const approveRoute = createRoute({
   method: "post",
   path: "/v1/skill-candidates/{id}/approve",
   tags: ["skill-candidates"],
-  summary: "Approve a skill candidate and promote to a skill",
+  summary: "Approve a detected skill candidate and promote it to a skill",
+  description:
+    "Applies to patterns the engine detected. Learnings collected from sessions and conversations are intake items; they are reviewed and admitted through intake proposals, never here.",
   security: [{ bearerAuth: [] }],
   request: {
     params: IdParam,
@@ -135,28 +127,17 @@ const approveRoute = createRoute({
           schema: z
             .object({
               candidate: SkillCandidateSchema,
-              skill_id: z
-                .string()
-                .nullable()
-                .describe("The skill a practice or pattern became; null for a fact."),
-              knowledge: z
-                .object({
-                  knowledge_source_id: z.string(),
-                  slug: z.string(),
-                  version: z.number().int().nullable(),
-                })
-                .nullable()
-                .describe("The knowledge source and version a fact was appended to."),
+              skill_id: z.string().describe("The skill the detected pattern became."),
             })
             .openapi("ApproveSkillCandidateResponse"),
         },
       },
     },
-    403: {
-      description: "A fact writes knowledge and needs knowledge:write as well",
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "The skill candidate changed or was already decided",
       content: { "application/json": { schema: ErrorSchema } },
     },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -164,7 +145,9 @@ const rejectRoute = createRoute({
   method: "post",
   path: "/v1/skill-candidates/{id}/reject",
   tags: ["skill-candidates"],
-  summary: "Reject a skill candidate",
+  summary: "Reject a detected skill candidate",
+  description:
+    "Applies to patterns the engine detected. Collected learnings are intake items and are discarded in intake.",
   security: [{ bearerAuth: [] }],
   request: {
     params: IdParam,
@@ -182,6 +165,10 @@ const rejectRoute = createRoute({
       content: { "application/json": { schema: z.object({ rejected: z.boolean() }) } },
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "The skill candidate was already decided",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -195,6 +182,10 @@ async function approveBodyRequestsActivation(c: {
   } catch {
     return false;
   }
+}
+
+function isLearning(kind: string): boolean {
+  return (svc.LEARNING_PATTERN_KINDS as readonly string[]).includes(kind);
 }
 
 export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -215,29 +206,7 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    let candidateIds: string[] | undefined;
-    if (q.knowledge_source_id) {
-      const permission = await can(db, {
-        tenant_id: principal.tenant_id,
-        principal,
-        permission: "knowledge:read",
-      });
-      if (!permission.allow)
-        throw new HttpError(
-          403,
-          "forbidden",
-          "Reading source-specific proposals needs knowledge:read",
-        );
-      const matching = await svc.knowledgeSourceCandidateIds(
-        principal.tenant_id,
-        q.knowledge_source_id,
-        db,
-      );
-      if (matching === null) throw new NotFoundError("knowledge_source");
-      candidateIds = matching;
-    }
     const params = {
-      ...(candidateIds ? { candidate_ids: candidateIds } : {}),
       tenant_id: principal.tenant_id,
       ...(q.status ? { status: q.status } : {}),
       ...(q.scope ? { scope: q.scope } : {}),
@@ -286,62 +255,23 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     if (body.title) overrides.title = body.title;
     if (body.body) overrides.body = body.body;
     if (body.status) overrides.status = body.status;
-    const pending = await svc.getSkillCandidate(principal.tenant_id, id, db);
-    const fact = pending?.pattern_kind === "knowledge_learning";
-    const mayWriteKnowledge = fact
-      ? (
-          await can(db, {
-            tenant_id: principal.tenant_id,
-            principal,
-            permission: "knowledge:write",
-          })
-        ).allow
-      : false;
-    if (fact && !mayWriteKnowledge) {
-      throw new HttpError(
-        403,
-        "forbidden",
-        "Approving a fact writes knowledge and needs knowledge:write",
-        {
-          details: { permission: "knowledge:write" },
-        },
-      );
-    }
-    const result = await svc
-      .approveSkillCandidate(
-        {
-          tenant_id: principal.tenant_id,
-          candidate_id: id,
-          actor: actorOf(principal),
-          may_write_knowledge: mayWriteKnowledge,
-          ...(body.expected_review_digest
-            ? { expected_review_digest: body.expected_review_digest }
-            : {}),
-          ...(Object.keys(overrides).length > 0
-            ? { overrides: overrides as ApproveSkillCandidateParams["overrides"] }
-            : {}),
-        },
-        db,
-      )
-      .catch((error: unknown) => {
-        if (error instanceof svc.KnowledgeWriteNotAllowedError) {
-          throw new HttpError(403, "forbidden", error.message, {
-            details: { permission: "knowledge:write" },
-          });
-        }
-        if (
-          error instanceof KnowledgeVersionConflictError ||
-          error instanceof KnowledgeSlugConflictError
-        ) {
-          throw new HttpError(409, "knowledge_target_conflict", error.message, {
-            hint: "The knowledge source this fact lands in changed or is not a text source; review again.",
-          });
-        }
-        throw error;
-      });
+    const result = await svc.approveSkillCandidate(
+      {
+        tenant_id: principal.tenant_id,
+        candidate_id: id,
+        actor: actorOf(principal),
+        ...(body.expected_review_digest
+          ? { expected_review_digest: body.expected_review_digest }
+          : {}),
+        ...(Object.keys(overrides).length > 0
+          ? { overrides: overrides as ApproveSkillCandidateParams["overrides"] }
+          : {}),
+      },
+      db,
+    );
     if (!result) {
       const candidate = await svc.getSkillCandidate(principal.tenant_id, id, db);
-      if (candidate && candidate.status !== "context")
+      if (candidate && candidate.status !== "context" && !isLearning(candidate.pattern_kind))
         throw new HttpError(
           409,
           "review_changed",
@@ -357,7 +287,7 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const rejected = await svc.rejectSkillCandidate(
+    const outcome = await svc.rejectSkillCandidate(
       {
         tenant_id: principal.tenant_id,
         candidate_id: id,
@@ -367,7 +297,11 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
-    if (!rejected) throw new NotFoundError("skill_candidate");
+    if (outcome.kind === "not_found") throw new NotFoundError("skill_candidate");
+    if (outcome.kind === "already_decided")
+      throw new HttpError(409, "already_decided", "The skill candidate was already decided", {
+        details: { status: outcome.status },
+      });
     return c.json({ rejected: true }, 200);
   });
 }

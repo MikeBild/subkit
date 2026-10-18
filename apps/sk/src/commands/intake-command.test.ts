@@ -118,7 +118,7 @@ describe("intake CLI commands", () => {
       path: "/gateway/v1/conversations",
       body: {
         initial_message:
-          "Review my new items in “inbox”. Which ones help us? For each suggestion, show the exact text, sources and knowledge destination for my confirmation.",
+          "Review my new items in “inbox”. Which ones help us? Suggest what we should retain, as knowledge or as a skill, with the exact text, sources and destination for my confirmation.",
         intake_item_ids: [ONE],
       },
     });

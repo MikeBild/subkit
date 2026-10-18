@@ -92,11 +92,11 @@ export const copy: Record<"de" | "en", Copy> = {
     details: "Details und Inhalt bearbeiten",
     review: "Im Chat prüfen",
     reviewPrompt:
-      "Schau meine neuen {collection}-Einträge durch. Welche davon helfen uns? Schlage mit Quellenbezug vor, was wir als Wissen übernehmen sollten.",
+      "Schau meine neuen {collection}-Einträge durch. Welche davon helfen uns? Schlage mit Quellenbezug vor, was wir übernehmen sollten, als Wissen oder als Skill.",
     reviewItemPrompt:
-      "Prüfe diesen gesammelten Eintrag. Bewerte seinen Nutzen und bereite einen Vorschlag mit Quelle und Wissensziel zur Bestätigung vor.",
-    journey: "Sammeln → im Chat prüfen → Übernahme bestätigen → Wissen",
-    notKnowledge: "Noch nicht als Wissen übernommen.",
+      "Prüfe diesen gesammelten Eintrag. Bewerte seinen Nutzen und bereite einen Vorschlag mit Quelle und Ziel zur Bestätigung vor, als Wissen oder als Skill.",
+    journey: "Sammeln → im Chat prüfen → Übernahme bestätigen → Wissen oder Skill",
+    notKnowledge: "Noch nicht als Wissen oder Skill übernommen.",
     savedForReview: "Gesammelt für die Prüfung",
     retryPending:
       "Die Speicherung ist noch nicht bestätigt. Versuche es erneut; dein Entwurf bleibt erhalten.",
@@ -192,11 +192,11 @@ export const copy: Record<"de" | "en", Copy> = {
     details: "Details and edit content",
     review: "Review in chat",
     reviewPrompt:
-      "Review my new {collection} entries. Which ones help us? Propose what we should retain as knowledge, with its sources.",
+      "Review my new {collection} entries. Which ones help us? Propose what we should retain, as knowledge or as a skill, with its sources.",
     reviewItemPrompt:
-      "Review this collected item. Assess its usefulness and prepare a proposal with its source and knowledge target for confirmation.",
-    journey: "Collect → review in chat → confirm admission → knowledge",
-    notKnowledge: "Not yet admitted as knowledge.",
+      "Review this collected item. Assess its usefulness and prepare a proposal with its source and destination, as knowledge or as a skill, for confirmation.",
+    journey: "Collect → review in chat → confirm admission → knowledge or skill",
+    notKnowledge: "Not yet admitted as knowledge or a skill.",
     savedForReview: "Collected for review",
     retryPending: "Saving is not confirmed yet. Retry; your draft remains available.",
     heading: "Collect for later",

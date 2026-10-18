@@ -43,6 +43,7 @@ import {
 import { renderRunOutput } from "./fast-path-render.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "./persist.ts";
 import type { ToolCallOutcome } from "./tools/result-payload.ts";
+import { prepareGate } from "./tools/sdk-wrap/gate-subjects.ts";
 import type { ConversationStatus, TurnEvent } from "./types.ts";
 
 export type FastPathStatus = "active" | "awaiting_input";
@@ -739,9 +740,10 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           );
         }
         const confirm_id = gate.approval_id;
+        const prepared = await prepareGate("run_workflow", runArgs, p.tenant_id, p.db);
         const envelope = confirmEnvelopeFor({
           tool: "run_workflow",
-          args: runArgs,
+          pending_output: prepared.pending_output,
           rule: gate.rule,
           approval_id: confirm_id,
           approval_url: gate.approval_url,

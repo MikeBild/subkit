@@ -3,8 +3,8 @@ import type { OperatorHealthDigest } from "../engine-client.ts";
 import {
   buildStarterActions,
   buildStarterTaskActions,
-  REVIEW_LEARNINGS_ACTION_ID,
-  shouldInjectLearnings,
+  REVIEW_INTAKE_ACTION_ID,
+  shouldInjectIntakeReview,
   shouldInjectTriage,
   TRIAGE_ACTION_ID,
 } from "../repl/starter-action-injection.ts";
@@ -15,7 +15,8 @@ import type { PersonaProbe } from "../slash.ts";
 const allowAll: PersonaProbe = { allows: () => true };
 const denyAll: PersonaProbe = { allows: () => false };
 const noWrite: PersonaProbe = { allows: (p) => p !== "conversation:write" };
-const noSkillRead: PersonaProbe = { allows: (p) => p !== "skill:read" };
+const noIntakeRead: PersonaProbe = { allows: (p) => p !== "intake:read" };
+const pending = (count: number, category = "Inbox") => ({ category, count });
 
 function makeDigest(counts: number[] = [3]): OperatorHealthDigest {
   return {
@@ -65,20 +66,22 @@ describe("shouldInjectTriage — RBAC + failure gate", () => {
   });
 });
 
-describe("shouldInjectLearnings — RBAC + count gate", () => {
-  test("true when learnings are pending and the persona may read skills", () => {
-    expect(shouldInjectLearnings(1, allowAll)).toBe(true);
-    expect(shouldInjectLearnings(7, allowAll)).toBe(true);
+describe("shouldInjectIntakeReview — RBAC + count gate", () => {
+  test("true when collected items wait and the persona may read intake", () => {
+    expect(shouldInjectIntakeReview(pending(1), allowAll)).toBe(true);
+    expect(shouldInjectIntakeReview(pending(7), allowAll)).toBe(true);
   });
 
-  test("false when the persona lacks skill:read", () => {
-    expect(shouldInjectLearnings(3, denyAll)).toBe(false);
-    expect(shouldInjectLearnings(3, noSkillRead)).toBe(false);
+  test("false when the persona lacks intake:read or cannot start a chat turn", () => {
+    expect(shouldInjectIntakeReview(pending(3), denyAll)).toBe(false);
+    expect(shouldInjectIntakeReview(pending(3), noIntakeRead)).toBe(false);
+    expect(shouldInjectIntakeReview(pending(3), noWrite)).toBe(false);
   });
 
-  test("false when no learnings are pending", () => {
-    expect(shouldInjectLearnings(0, allowAll)).toBe(false);
-    expect(shouldInjectLearnings(-1, allowAll)).toBe(false);
+  test("false when nothing is collected or the default category is unknown", () => {
+    expect(shouldInjectIntakeReview(pending(0), allowAll)).toBe(false);
+    expect(shouldInjectIntakeReview(null, allowAll)).toBe(false);
+    expect(shouldInjectIntakeReview(undefined, allowAll)).toBe(false);
   });
 });
 
@@ -122,71 +125,88 @@ describe("buildStarterTaskActions — injected", () => {
   });
 });
 
-describe("learnings injection — without triage", () => {
-  test("learnings entry takes key '1' when there is no digest", () => {
-    const actions = buildStarterActions("admin", allowAll, null, 2);
+describe("intake review injection — without triage", () => {
+  test("review entry takes key '1' and names the person's category", () => {
+    const actions = buildStarterActions("admin", allowAll, null, pending(2, "Research"));
     expect(actions[0]?.key).toBe("1");
-    expect(actions[0]?.actionId).toBe(REVIEW_LEARNINGS_ACTION_ID);
-    expect(actions[0]?.label).toBe("Review 2 proposed learnings");
-    expect(actions[0]?.detail).toBe("curation");
+    expect(actions[0]?.actionId).toBe(REVIEW_INTAKE_ACTION_ID);
+    expect(actions[0]?.label).toBe("Review 2 collected items in “Research”");
+    expect(actions[0]?.detail).toBe("intake review");
     expect(actions.slice(1).map((a) => a.key)).toEqual(["2", "3", "4", "5", "6"]);
   });
 
-  test("label singularises when exactly one learning is pending", () => {
-    const actions = buildStarterActions("admin", allowAll, null, 1);
-    expect(actions[0]?.label).toBe("Review 1 proposed learning");
+  test("label singularises when exactly one item is collected", () => {
+    const actions = buildStarterActions("admin", allowAll, null, pending(1));
+    expect(actions[0]?.label).toBe("Review 1 collected item in “Inbox”");
   });
 
-  test("dispatch list mirrors the render list", () => {
-    const actions = buildStarterTaskActions("admin", allowAll, null, 2);
-    expect(actions[0]?.id).toBe(REVIEW_LEARNINGS_ACTION_ID);
+  test("label never claims the items are proposed or already knowledge", () => {
+    const label = buildStarterActions("admin", allowAll, null, pending(3))[0]?.label ?? "";
+    expect(label).not.toMatch(/proposed|learning|knowledge/i);
+  });
+
+  test("dispatch submits the category-aware review prompt", () => {
+    const actions = buildStarterTaskActions("admin", allowAll, null, pending(2, "Research"));
+    expect(actions[0]?.id).toBe(REVIEW_INTAKE_ACTION_ID);
     expect(actions[0]?.key).toBe("1");
+    expect(actions[0]?.requires).toBe("intake:read");
+    expect(actions[0]?.invoke).toEqual({
+      kind: "prompt",
+      prompt:
+        "Review my new items in “Research”. Which ones help us? Suggest what we should retain, as knowledge or as a skill, with the exact text, sources and destination for my confirmation.",
+    });
     expect(actions[1]?.key).toBe("2");
   });
 
-  test("not injected when pendingLearnings is 0 (explicit and default)", () => {
+  test("terminal control sequences in the category name never reach label or prompt", () => {
+    const hostile = pending(1, "In\u001b[31mbox\u0007");
+    const [action] = buildStarterTaskActions("admin", allowAll, null, hostile);
+    expect(action?.label).not.toContain("\u001b");
+    expect(action?.invoke.kind === "prompt" ? action.invoke.prompt : "").not.toContain("\u001b");
+  });
+
+  test("not injected when nothing is collected (explicit and default)", () => {
     expect(
-      buildStarterActions("admin", allowAll, null, 0).find(
-        (a) => a.actionId === REVIEW_LEARNINGS_ACTION_ID,
+      buildStarterActions("admin", allowAll, null, pending(0)).find(
+        (a) => a.actionId === REVIEW_INTAKE_ACTION_ID,
       ),
     ).toBeUndefined();
     expect(
       buildStarterActions("admin", allowAll, null).find(
-        (a) => a.actionId === REVIEW_LEARNINGS_ACTION_ID,
+        (a) => a.actionId === REVIEW_INTAKE_ACTION_ID,
       ),
     ).toBeUndefined();
   });
 
-  test("not injected when the probe lacks skill:read", () => {
-    const actions = buildStarterActions("admin", noSkillRead, null, 3);
-    expect(actions.find((a) => a.actionId === REVIEW_LEARNINGS_ACTION_ID)).toBeUndefined();
-    expect(actions).toEqual(starterActionsForPersona("admin", noSkillRead));
+  test("not injected when the probe lacks intake:read", () => {
+    const actions = buildStarterActions("admin", noIntakeRead, null, pending(3));
+    expect(actions.find((a) => a.actionId === REVIEW_INTAKE_ACTION_ID)).toBeUndefined();
+    expect(actions).toEqual(starterActionsForPersona("admin", noIntakeRead));
   });
 });
 
-describe("learnings injection — combined with triage", () => {
-  test("triage keeps key '1', learnings takes '2', defaults renumber from '3'", () => {
-    const rendered = buildStarterActions("admin", allowAll, makeDigest([3]), 2);
+describe("intake review injection — combined with triage", () => {
+  test("triage keeps key '1', review takes '2', defaults renumber from '3'", () => {
+    const rendered = buildStarterActions("admin", allowAll, makeDigest([3]), pending(2));
     expect(rendered[0]?.key).toBe("1");
     expect(rendered[0]?.actionId).toBe(TRIAGE_ACTION_ID);
     expect(rendered[1]?.key).toBe("2");
-    expect(rendered[1]?.actionId).toBe(REVIEW_LEARNINGS_ACTION_ID);
+    expect(rendered[1]?.actionId).toBe(REVIEW_INTAKE_ACTION_ID);
     expect(rendered.slice(2).map((a) => a.key)).toEqual(["3", "4", "5", "6", "7"]);
     const keys = rendered.map((a) => a.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  test("triage-only when the probe lacks skill:read", () => {
-    const rendered = buildStarterActions("admin", noSkillRead, makeDigest([3]), 2);
+  test("triage-only when the probe lacks intake:read", () => {
+    const rendered = buildStarterActions("admin", noIntakeRead, makeDigest([3]), pending(2));
     expect(rendered[0]?.actionId).toBe(TRIAGE_ACTION_ID);
-    expect(rendered.find((a) => a.actionId === REVIEW_LEARNINGS_ACTION_ID)).toBeUndefined();
+    expect(rendered.find((a) => a.actionId === REVIEW_INTAKE_ACTION_ID)).toBeUndefined();
     expect(rendered.slice(1).map((a) => a.key)).toEqual(["2", "3", "4", "5", "6"]);
   });
 
-  test("learnings-only at key '1' when the probe lacks conversation:write", () => {
-    const rendered = buildStarterActions("admin", noWrite, makeDigest([3]), 1);
-    expect(rendered[0]?.key).toBe("1");
-    expect(rendered[0]?.actionId).toBe(REVIEW_LEARNINGS_ACTION_ID);
+  test("neither triage nor review when the probe lacks conversation:write", () => {
+    const rendered = buildStarterActions("admin", noWrite, makeDigest([3]), pending(1));
+    expect(rendered.find((a) => a.actionId === REVIEW_INTAKE_ACTION_ID)).toBeUndefined();
     expect(rendered.find((a) => a.actionId === TRIAGE_ACTION_ID)).toBeUndefined();
   });
 
@@ -195,16 +215,16 @@ describe("learnings injection — combined with triage", () => {
     const probes: Array<[string, PersonaProbe]> = [
       ["allowAll", allowAll],
       ["noWrite", noWrite],
-      ["noSkillRead", noSkillRead],
+      ["noIntakeRead", noIntakeRead],
       ["denyAll", denyAll],
     ];
     for (const [label, probe] of probes) {
-      for (const learnings of [0, 1, 4]) {
-        const rendered = buildStarterActions("admin", probe, digest, learnings);
-        const dispatch = buildStarterTaskActions("admin", probe, digest, learnings);
+      for (const count of [0, 1, 4]) {
+        const rendered = buildStarterActions("admin", probe, digest, pending(count));
+        const dispatch = buildStarterTaskActions("admin", probe, digest, pending(count));
         expect(
           rendered.map((a) => a.key),
-          `probe=${label} learnings=${learnings}`,
+          `probe=${label} collected=${count}`,
         ).toEqual(dispatch.map((a) => a.key ?? ""));
       }
     }

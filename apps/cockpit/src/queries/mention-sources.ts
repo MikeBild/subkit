@@ -54,7 +54,7 @@ interface FileItem {
 interface IntakeMentionItem {
   id: string;
   title: string;
-  source_url: string;
+  source_url: string | null;
   category: string;
   state: string;
   version: number;

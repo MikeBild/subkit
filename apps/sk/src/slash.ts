@@ -22,7 +22,6 @@ export const INK_INTERCEPTED_ENGINE_SLASHES = Object.freeze([
   "paste",
   "queue",
   "view",
-  "learnings",
 ] as const);
 
 export const SlashArgsSchemaDefault = z.array(z.string());
@@ -228,12 +227,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   {
     name: "skills",
     help: "List active skills in scope (includes pending suggestions)",
-    category: "context",
-    requires: "skill:read",
-  },
-  {
-    name: "learnings",
-    help: "Review proposed session learnings (approve or reject each in chat)",
     category: "context",
     requires: "skill:read",
   },

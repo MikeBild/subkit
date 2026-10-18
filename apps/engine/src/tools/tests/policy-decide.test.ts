@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { resolveToolMode, type ToolPolicies } from "../../conversations/tool-policies.ts";
+import {
+  buildPendingOutputForTool,
+  resolveToolMode,
+  type ToolPolicies,
+} from "../../conversations/tool-policies.ts";
 import {
   confirmEnvelopeFor,
   DRAFT_WRITE_MCP_UNAVAILABLE_REASON,
@@ -180,7 +184,7 @@ describe("tools/policy.policyDecide (active parity)", () => {
       expect(
         confirmEnvelopeFor({
           tool: "call_connector",
-          args,
+          pending_output: buildPendingOutputForTool("call_connector", args),
           rule: mcp.rule,
           approval_id: APPROVAL_ID,
           approval_url: null,
@@ -202,7 +206,7 @@ describe("tools/policy.policyDecide (active parity)", () => {
       expect(
         confirmEnvelopeFor({
           tool: "imaginary_tenant_write_tool",
-          args: {},
+          pending_output: null,
           rule: decision.rule,
           approval_id: APPROVAL_ID,
           approval_url: null,
@@ -298,7 +302,7 @@ describe("tools/policy.confirmEnvelopeFor", () => {
     const args = { workflow: "nightly", environment: "prod", input: { a: 1, b: 2 } };
     const envelope = confirmEnvelopeFor({
       tool: "run_workflow",
-      args,
+      pending_output: buildPendingOutputForTool("run_workflow", args),
       rule: "conversation_override",
       approval_id: APPROVAL_ID,
       approval_url: "https://engine.example.test/v1/tool-approvals/decide?grant=skag_x",
@@ -324,7 +328,7 @@ describe("tools/policy.confirmEnvelopeFor", () => {
   test("a chat envelope points at ask_user_confirm and keeps a missing portal link as null", () => {
     const envelope = confirmEnvelopeFor({
       tool: "imaginary_tenant_write_tool",
-      args: {},
+      pending_output: null,
       rule: "category_default",
       approval_id: APPROVAL_ID,
       approval_url: null,

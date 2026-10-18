@@ -1,4 +1,5 @@
 import type { OperatorHealthDigest } from "../engine-client.ts";
+import { intakeReviewPrompt, type PendingIntake, terminalText } from "../lib/intake-review.ts";
 import { totalFailureCount } from "../lib/operator-digest.ts";
 import type { PersonaProbe } from "../slash.ts";
 import { type StarterAction, starterActionsForPersona } from "./starter-actions.tsx";
@@ -9,7 +10,8 @@ import {
 } from "./task-actions.ts";
 
 export const TRIAGE_ACTION_ID = "triage-digest-failures";
-export const REVIEW_LEARNINGS_ACTION_ID = "review-learnings";
+export const REVIEW_INTAKE_ACTION_ID = "review-intake";
+const REVIEW_INTAKE_PERMISSION = "intake:read";
 
 const MAX_NUMBER_KEY = 9;
 
@@ -23,17 +25,31 @@ export function shouldInjectTriage(
   return !action.requires || probe.allows(action.requires);
 }
 
-export function shouldInjectLearnings(pendingLearnings: number, probe: PersonaProbe): boolean {
-  if (pendingLearnings <= 0) return false;
-  const action = findTaskActionById(REVIEW_LEARNINGS_ACTION_ID);
-  if (!action) return false;
-  return !action.requires || probe.allows(action.requires);
+export function shouldInjectIntakeReview(
+  pending: PendingIntake | null | undefined,
+  probe: PersonaProbe,
+): pending is PendingIntake {
+  if (!pending || pending.count <= 0) return false;
+  return probe.allows(REVIEW_INTAKE_PERMISSION) && probe.allows("conversation:write");
+}
+
+export function intakeReviewAction(pending: PendingIntake): TaskAction {
+  const category = terminalText(pending.category);
+  return {
+    id: REVIEW_INTAKE_ACTION_ID,
+    label: `Review ${pending.count} collected item${pending.count === 1 ? "" : "s"} in “${category}”`,
+    detail: "intake review",
+    description: `Review collected items in “${category}” and propose what to retain. Nothing becomes knowledge or a skill until you confirm the proposal in Cockpit.`,
+    category: "review",
+    requires: REVIEW_INTAKE_PERMISSION,
+    invoke: { kind: "prompt", prompt: intakeReviewPrompt(pending.category) },
+  };
 }
 
 function injectionPlan(
   digest: OperatorHealthDigest | null | undefined,
   probe: PersonaProbe,
-  pendingLearnings: number,
+  pendingIntake: PendingIntake | null | undefined,
 ): Array<{ action: TaskAction; label: string }> {
   const plan: Array<{ action: TaskAction; label: string }> = [];
   if (shouldInjectTriage(digest, probe)) {
@@ -43,14 +59,9 @@ function injectionPlan(
       plan.push({ action, label: `Fix ${failCount} failure${failCount === 1 ? "" : "s"}` });
     }
   }
-  if (shouldInjectLearnings(pendingLearnings, probe)) {
-    const action = findTaskActionById(REVIEW_LEARNINGS_ACTION_ID);
-    if (action) {
-      plan.push({
-        action,
-        label: `Review ${pendingLearnings} proposed learning${pendingLearnings === 1 ? "" : "s"}`,
-      });
-    }
+  if (shouldInjectIntakeReview(pendingIntake, probe)) {
+    const action = intakeReviewAction(pendingIntake);
+    plan.push({ action, label: action.label });
   }
   return plan;
 }
@@ -68,10 +79,10 @@ export function buildStarterActions(
   personaLabel: string,
   probe: PersonaProbe,
   digest: OperatorHealthDigest | null | undefined,
-  pendingLearnings = 0,
+  pendingIntake: PendingIntake | null = null,
 ): readonly StarterAction[] {
   const base = starterActionsForPersona(personaLabel, probe);
-  const plan = injectionPlan(digest, probe, pendingLearnings);
+  const plan = injectionPlan(digest, probe, pendingIntake);
   if (plan.length === 0) return base;
   const injected: StarterAction[] = plan.map((entry, i) => ({
     key: String(i + 1),
@@ -86,10 +97,10 @@ export function buildStarterTaskActions(
   personaLabel: string,
   probe: PersonaProbe,
   digest: OperatorHealthDigest | null | undefined,
-  pendingLearnings = 0,
+  pendingIntake: PendingIntake | null = null,
 ): readonly TaskAction[] {
   const base = starterTaskActionsForPersona(personaLabel, probe);
-  const plan = injectionPlan(digest, probe, pendingLearnings);
+  const plan = injectionPlan(digest, probe, pendingIntake);
   if (plan.length === 0) return base;
   const injected = plan.map((entry, i) => ({ ...entry.action, key: String(i + 1) }));
   return [...injected, ...renumberDefaults(base, plan.length)];

@@ -1,3 +1,9 @@
+import {
+  detectAuthoringIntent,
+  detectConnectorAuthoringIntent,
+  detectRepairIntent,
+} from "../loop/authoring-intent.ts";
+import { nextRecommendedAction } from "../onboarding-policy.ts";
 import type { DraftDocument } from "../types.ts";
 import type { ConversationTool } from "./index.ts";
 
@@ -57,7 +63,7 @@ const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
   "update_subscription",
   "update_workflow",
   "create_intake_proposal",
-  "discard_intake_item",
+  "discard_intake_items",
   "restore_intake_item",
   "move_intake_item",
   "set_default_intake_category",
@@ -132,6 +138,42 @@ export function filterByAuthoringPalette<
     (tool) =>
       allowed.has(tool.name) || tool.category === "tenant_read" || tool.inert_proposal === true,
   );
+}
+
+export interface AuthoringTurnSignals {
+  surface: string | undefined;
+  draft: DraftDocument;
+  userMessage: string | null | undefined;
+  startNewWorkflow: boolean;
+  boundConnector: boolean;
+  boundWorkflow: boolean;
+}
+
+export function authoringSkillsForTurn(signals: AuthoringTurnSignals): string[] {
+  if (signals.surface === "chat") return [];
+  const nextAction = nextRecommendedAction({ draft: signals.draft }).kind;
+  const target = signals.draft.summary?.active_target.kind;
+  const skills: string[] = [];
+  if (
+    nextAction.startsWith("connector_") ||
+    target === "connector" ||
+    detectConnectorAuthoringIntent(signals.userMessage)
+  ) {
+    skills.push(CONNECTOR_AUTHORING_SKILL);
+  }
+  if (
+    nextAction.startsWith("workflow_") ||
+    target === "workflow" ||
+    typeof signals.draft.connector?.saved_connector_id === "string" ||
+    signals.boundConnector ||
+    signals.boundWorkflow ||
+    signals.startNewWorkflow ||
+    detectAuthoringIntent(signals.userMessage) ||
+    detectRepairIntent(signals.userMessage)
+  ) {
+    skills.push(WORKFLOW_AUTHORING_SKILL);
+  }
+  return skills;
 }
 
 export const CHAT_READONLY_TOOLS: ReadonlySet<string> = new Set([

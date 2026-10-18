@@ -148,6 +148,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the user does not exist on this tenant — call find_user or list_users to discover the correct id",
   knowledge_source_not_found:
     "the knowledge source id is unknown — call list_knowledge_sources to discover the correct id",
+  sensitive_path:
+    "the learning names a key or credential file location and was not saved — restate the learning without naming key, certificate, .env or credential file paths, then call save_learning again",
   snapshot_not_found:
     "the snapshot id is stale or wrong — call list_draft_snapshots to discover the correct id",
   no_snapshot_available:

@@ -54,9 +54,11 @@ export async function processAgentSessionAnalyzeJob(
       queue: AGENT_SESSION_ANALYZE_QUEUE,
       job_id: job.id,
       learnings_found: result.learnings_found,
-      proposed: result.proposed,
-      updated: result.updated,
-      skipped: result.skipped,
+      collected: result.collected,
+      evidence_appended: result.evidence_appended,
+      replayed: result.replayed,
+      dropped: result.dropped,
+      not_collected: result.not_collected,
       duration_ms: Date.now() - started,
     });
   } catch (err) {

@@ -16,8 +16,6 @@ const value = {
 const candidate = {
   id: "proposal",
   title: "Rule",
-  tags: [],
-  pattern_kind: "session_learning" as const,
   reviewable: true,
   review_digest: "digest",
 };
@@ -48,12 +46,8 @@ describe("proposal actions in skill rows", () => {
       "skill-proposal-row-accept-proposal",
     );
   });
-  test("knowledge proposals require knowledge writing rather than skill activation", () => {
-    const fact = { ...candidate, pattern_kind: "knowledge_learning" as const };
-    expect(render(["skill:write", "skill:activate"], fact)).not.toContain(
-      "skill-proposal-row-accept-proposal",
-    );
-    expect(render(["skill:write", "knowledge:write"], fact)).toContain(
+  test("knowledge writing never stands in for skill activation", () => {
+    expect(render(["skill:write", "knowledge:write"])).not.toContain(
       "skill-proposal-row-accept-proposal",
     );
   });

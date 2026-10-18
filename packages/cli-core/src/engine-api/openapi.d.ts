@@ -10913,7 +10913,7 @@ export interface paths {
                                 id: string;
                                 title: string;
                                 /** Format: uri */
-                                source_url: string;
+                                source_url: string | null;
                                 category: components["schemas"]["CatalogCategory"];
                                 /** @enum {string} */
                                 state: "collected" | "reviewing" | "admitted" | "discarded";
@@ -10940,7 +10940,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read an intake clip and its immutable provenance */
+        /** Read an intake clip, its immutable provenance and its latest session evidence */
         get: {
             parameters: {
                 query?: never;
@@ -10958,7 +10958,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["IntakeItem"];
+                        "application/json": components["schemas"]["IntakeItemDetail"];
                     };
                 };
                 /** @description Not found */
@@ -11198,7 +11198,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Confirm the exact reviewed proposal revision and publish it as knowledge */
+        /** Confirm the exact reviewed proposal revision and publish it as knowledge or a skill */
         post: {
             parameters: {
                 query?: never;
@@ -12299,7 +12299,6 @@ export interface paths {
                     scope?: "global" | "connector" | "workflow";
                     connector_id?: string;
                     workflow_id?: string;
-                    knowledge_source_id?: string;
                     pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability" | "knowledge_learning";
                     confidence?: "low" | "medium" | "high";
                     limit?: number;
@@ -12322,15 +12321,6 @@ export interface paths {
                 };
                 /** @description Forbidden */
                 403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Knowledge source not found */
-                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -12456,7 +12446,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a skill candidate and promote to a skill */
+        /**
+         * Approve a detected skill candidate and promote it to a skill
+         * @description Applies to patterns the engine detected. Learnings collected from sessions and conversations are intake items; they are reviewed and admitted through intake proposals, never here.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -12481,8 +12474,8 @@ export interface paths {
                         "application/json": components["schemas"]["ApproveSkillCandidateResponse"];
                     };
                 };
-                /** @description A fact writes knowledge and needs knowledge:write as well */
-                403: {
+                /** @description Not found */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -12490,8 +12483,8 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Not found */
-                404: {
+                /** @description The skill candidate changed or was already decided */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -12516,7 +12509,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reject a skill candidate */
+        /**
+         * Reject a detected skill candidate
+         * @description Applies to patterns the engine detected. Collected learnings are intake items and are discarded in intake.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -12545,6 +12541,15 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The skill candidate was already decided */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -12612,7 +12617,7 @@ export interface paths {
         };
         /**
          * Domain-scoped session briefing for external coding agents
-         * @description Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), readable file metadata without file contents, and the search-first grounding rule. Intended for coding-agent hooks.
+         * @description Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), readable file metadata without file contents, counts of collected intake material in the requested domains (never its content), and the search-first grounding rule. Intended for coding-agent hooks.
          */
         get: {
             parameters: {
@@ -12665,8 +12670,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Capture a coding-agent session transcript for learning distillation
-         * @description Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` (practice) or `knowledge_learning` (fact) candidates that wait for human review — nothing goes live from this endpoint.
+         * Collect learnings from a coding-agent session transcript into intake
+         * @description Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; each extracted learning becomes an intake item with origin `session` in the shared category of the first declared domain that exists (otherwise the collector's default category). Events and anything naming credentials are not collected. Nothing is knowledge or a skill until a person reviews the item and confirms a proposal in the Cockpit. The response only acknowledges the queued analysis; list intake items to see what was collected.
          */
         post: {
             parameters: {
@@ -20463,9 +20468,9 @@ export interface components {
                 scopes: string[] | null;
             };
             /** @description Allowed UX-gating permissions for the principal. */
-            permissions: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "chat_workspace:read" | "chat_workspace:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "file:read" | "file:write" | "file:delete" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "stats:read:all")[];
+            permissions: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "chat_workspace:read" | "chat_workspace:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "file:read" | "file:write" | "file:delete" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "intake:read" | "stats:read:all")[];
             /** @description Stable list of permissions probed; reflects the engine's known UX gating set. */
-            permissions_checked: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "chat_workspace:read" | "chat_workspace:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "file:read" | "file:write" | "file:delete" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "stats:read:all")[];
+            permissions_checked: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "chat_workspace:read" | "chat_workspace:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "file:read" | "file:write" | "file:delete" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "intake:read" | "stats:read:all")[];
             tenant: {
                 /** Format: uuid */
                 id: string;
@@ -23740,10 +23745,7 @@ export interface components {
             category: components["schemas"]["CatalogCategory"];
             /** Format: uuid */
             client_request_id: string;
-            original_snapshot: components["schemas"]["IntakeOriginalSnapshot"] & {
-                title: string;
-                body: string;
-            };
+            original_snapshot: components["schemas"]["IntakeItemSnapshot"];
             title: string;
             body: string;
             note: string;
@@ -23756,24 +23758,51 @@ export interface components {
                 /** Format: uuid */
                 id: string;
             };
+            /** @enum {string|null} */
+            admitted_target_kind: "knowledge" | "skill" | null;
             /** Format: uuid */
-            admitted_knowledge_source_id: string | null;
+            admitted_target_id: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             updated_at: string;
         };
-        IntakeOriginalSnapshot: {
-            title?: string;
-            /** Format: uri */
-            source_url?: string;
+        IntakeItemSnapshot: {
+            title: string;
             source_author?: string;
             published_at?: string;
             /** Format: date-time */
-            captured_at?: string;
-            body?: string;
+            captured_at: string;
+            body: string;
             /** @enum {string} */
-            origin?: "capture" | "restored_draft";
+            origin: "capture" | "restored_draft";
+            /** Format: uri */
+            source_url: string;
+        } | {
+            title: string;
+            source_author?: string;
+            published_at?: string;
+            /** Format: date-time */
+            captured_at: string;
+            body: string;
+            /** @enum {string} */
+            origin: "session";
+            /** Format: uri */
+            source_url?: string;
+            agent: string;
+            session_id: string;
+            repo: string | null;
+            domains: string[];
+            evidence_excerpt: string;
+            /** @enum {string} */
+            learning_kind?: "practice" | "fact";
+            /** @enum {string} */
+            scope?: "global" | "connector" | "workflow";
+            /** Format: uuid */
+            connector_id?: string;
+            /** Format: uuid */
+            workflow_id?: string;
+            tags?: string[];
         };
         CreateIntakeItemBody: {
             /** Format: uuid */
@@ -23789,6 +23818,38 @@ export interface components {
             body: string;
             note?: string;
             original_snapshot?: components["schemas"]["IntakeOriginalSnapshot"];
+        };
+        IntakeOriginalSnapshot: {
+            title?: string;
+            /** Format: uri */
+            source_url?: string;
+            source_author?: string;
+            published_at?: string;
+            /** Format: date-time */
+            captured_at?: string;
+            body?: string;
+            /** @enum {string} */
+            origin?: "capture" | "restored_draft";
+        };
+        IntakeItemDetail: components["schemas"]["IntakeItem"] & {
+            evidence: components["schemas"]["IntakeItemEvidence"][];
+            evidence_total: number;
+        };
+        IntakeItemEvidence: {
+            /** Format: uuid */
+            id: string;
+            agent: string;
+            session_id: string;
+            repo: string | null;
+            excerpt: string;
+            /** Format: date-time */
+            captured_at: string;
+            recorded_by: {
+                /** @enum {string} */
+                kind: "user" | "system_account";
+                /** Format: uuid */
+                id: string;
+            };
         };
         PatchIntakeItemBody: {
             expected_version: number;
@@ -23808,8 +23869,10 @@ export interface components {
             status: "draft" | "stale" | "confirmed" | "rejected";
             current_revision: number;
             confirmed_revision: number | null;
+            /** @enum {string|null} */
+            confirmed_target_kind: "knowledge" | "skill" | null;
             /** Format: uuid */
-            confirmed_knowledge_source_id: string | null;
+            confirmed_target_id: string | null;
             /** Format: date-time */
             rejected_at: string | null;
             stale_reason: string | null;
@@ -23829,13 +23892,13 @@ export interface components {
                     version: number;
                     title: string;
                     /** Format: uri */
-                    source_url: string;
+                    source_url: string | null;
                 }[];
                 /** Format: date-time */
                 created_at: string;
             };
         };
-        IntakeProposalTarget: {
+        IntakeProposalTarget: components["schemas"]["IntakeSkillTarget"] | {
             /** Format: uuid */
             knowledge_source_id: string;
             expected_version: string;
@@ -23843,6 +23906,32 @@ export interface components {
             name: string;
             category?: components["schemas"]["CatalogCategory"];
             tags?: string[];
+        };
+        /** @description Skill destination for a repeatable practice or convention. Name either new (a new active skill; give it the domain:<name> tag of its domain so coding-agent briefings for that domain find it) or skill_id with the expected_version you read (changes and activates that skill). supersedes lists each skill this one consolidates with the expected_version you read; they are archived on confirmation and the proposal goes stale when one of them changes. */
+        IntakeSkillTarget: {
+            skill: {
+                /** Format: uuid */
+                skill_id?: string;
+                expected_version?: number;
+                new?: components["schemas"]["IntakeNewSkill"];
+                /** @default [] */
+                supersedes: {
+                    /** Format: uuid */
+                    skill_id: string;
+                    expected_version: number;
+                }[];
+            };
+        };
+        IntakeNewSkill: {
+            title: string;
+            /** @enum {string} */
+            scope: "global" | "connector" | "workflow";
+            /** Format: uuid */
+            connector_id?: string;
+            /** Format: uuid */
+            workflow_id?: string;
+            tags: string[];
+            category: components["schemas"]["CatalogCategory"];
         };
         CreateIntakeProposalBody: {
             item_ids: string[];
@@ -24140,14 +24229,8 @@ export interface components {
         };
         ApproveSkillCandidateResponse: {
             candidate: components["schemas"]["SkillCandidate"];
-            /** @description The skill a practice or pattern became; null for a fact. */
-            skill_id: string | null;
-            /** @description The knowledge source and version a fact was appended to. */
-            knowledge: {
-                knowledge_source_id: string;
-                slug: string;
-                version: number | null;
-            } | null;
+            /** @description The skill the detected pattern became. */
+            skill_id: string;
         };
         ApproveSkillCandidateBody: {
             title?: string;
@@ -24194,11 +24277,10 @@ export interface components {
             files_omitted: number;
             /** @description Slugs of the skills that teach how to work with sk, listed for every domain. */
             guides: string[];
-            proposed_candidates: number;
-            /** @description Tenant-wide intake counts; null when the caller cannot read intake. Never includes clip content. */
+            /** @description Intake items awaiting review whose shared category is one of the requested domains, split into collected clips and session learnings, plus the draft proposals that cite them; null when the caller cannot read intake. Never includes item content. */
             intake: {
-                collected: number;
-                reviewing: number;
+                clips: number;
+                sessions: number;
                 proposals: number;
             } | null;
         };
@@ -25179,6 +25261,8 @@ export interface components {
                 /** @enum {string} */
                 skills: "answered" | "failed" | "not_permitted";
                 /** @enum {string} */
+                intake: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
                 budget: "answered" | "failed" | "not_permitted";
                 /** @enum {string} */
                 risk: "answered" | "failed" | "not_permitted";
@@ -25205,7 +25289,7 @@ export interface components {
                 name: string | null;
             } | null;
             /** @enum {string} */
-            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "budget_critical" | "risk_critical";
+            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "budget_critical" | "risk_critical";
             /** @description What starts the workflow. Null unless it is held or the item is about its approval. */
             trigger: {
                 /** @enum {string} */
@@ -25241,8 +25325,8 @@ export interface components {
                 /** @description Consecutive failed terminal runs, newest completion first. Another terminal status ends the sequence. */
                 consecutive_failures?: number;
                 skills?: number;
-                /** @description Of the proposals in `skills`, how many are facts for a knowledge source. */
-                knowledge?: number;
+                /** @description Collected intake items (clips and session learnings) awaiting review. They are not knowledge or skills until a person confirms a proposal. */
+                intake?: number;
             };
             since: string | null;
             deadline: string | null;

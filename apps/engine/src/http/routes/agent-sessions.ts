@@ -3,6 +3,7 @@ import { TRANSCRIPT_MAX_CHARS } from "../../api/agent-sessions.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { DOMAIN_SLUG_RE } from "../../api/domain-slug.ts";
 import { AuditAction, actorOf, audit, auditActor } from "../../audit/index.ts";
+import { scrubString } from "../../logging/index.ts";
 import type { AgentSessionAnalyzeJob } from "../../queue/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -34,11 +35,14 @@ const captureRoute = createRoute({
   method: "post",
   path: "/v1/agent/sessions",
   tags: ["agent"],
-  summary: "Capture a coding-agent session transcript for learning distillation",
+  summary: "Collect learnings from a coding-agent session transcript into intake",
   description:
     "Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs " +
-    "asynchronously; extracted learnings become `session_learning` (practice) or `knowledge_learning` (fact) candidates that " +
-    "wait for human review — nothing goes live from this endpoint.",
+    "asynchronously; each extracted learning becomes an intake item with origin `session` in the " +
+    "shared category of the first declared domain that exists (otherwise the collector's default " +
+    "category). Events and anything naming credentials are not collected. Nothing is knowledge or " +
+    "a skill until a person reviews the item and confirms a proposal in the Cockpit. The response " +
+    "only acknowledges the queued analysis; list intake items to see what was collected.",
   security: [{ bearerAuth: [] }],
   request: {
     body: { content: { "application/json": { schema: CaptureBody } } },
@@ -61,6 +65,7 @@ export function registerAgentSessionRoutes(
   app.openapi(captureRoute, async (c) => {
     const principal = requireAuth(c);
     const body = c.req.valid("json");
+    const transcript = scrubString(body.transcript);
 
     const job: AgentSessionAnalyzeJob = {
       tenant_id: principal.tenant_id,
@@ -68,7 +73,7 @@ export function registerAgentSessionRoutes(
       ...(body.session_id ? { session_id: body.session_id } : {}),
       ...(body.repo ? { repo: body.repo } : {}),
       domains: body.domains,
-      transcript: body.transcript,
+      transcript,
       actor: actorOf(principal),
     };
     await opts.enqueue(job);
@@ -78,7 +83,7 @@ export function registerAgentSessionRoutes(
         tenant_id: principal.tenant_id,
         ...auditActor(actorOf(principal)),
         action: AuditAction.AGENT_SESSION_CAPTURED,
-        resource_type: "skill_candidate",
+        resource_type: "intake_item",
         resource_id: null,
         result: "success",
         metadata: {
@@ -86,12 +91,12 @@ export function registerAgentSessionRoutes(
           session_id: body.session_id ?? null,
           repo: body.repo ?? null,
           domains: body.domains,
-          transcript_chars: body.transcript.length,
+          transcript_chars: transcript.length,
         },
       },
       c.get("db"),
     );
 
-    return c.json({ queued: true, transcript_chars: body.transcript.length }, 202);
+    return c.json({ queued: true, transcript_chars: transcript.length }, 202);
   });
 }

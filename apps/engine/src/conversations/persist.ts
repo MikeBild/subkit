@@ -251,6 +251,15 @@ function messageText(content: unknown): string {
   return JSON.stringify(content ?? "");
 }
 
+function assistantText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content && typeof content === "object" && "text" in content) {
+    const text = (content as { text?: unknown }).text;
+    if (typeof text === "string") return text;
+  }
+  return "";
+}
+
 function truncateExcerpt(text: string, max = 140): string {
   const squashed = text.replace(/\s+/g, " ").trim();
   if (squashed.length <= max) return squashed;
@@ -628,7 +637,7 @@ export async function buildModelMessages(
           out.push({ role: "user", content: text });
         }
       } else if (role === "assistant") {
-        const text = messageText(content);
+        const text = assistantText(content);
         if (text.length > 0) out.push({ role: "assistant", content: text });
       } else if (role === "tool") {
         const obj = (content ?? {}) as Record<string, unknown>;

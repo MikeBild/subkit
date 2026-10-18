@@ -39,13 +39,8 @@ export function listPatchCandidatesByStatus(
   return apiRequest(`/v1/patch-candidates?status=${status}&order=desc&limit=25`);
 }
 
-export function listProposedSkillCandidates(
-  knowledgeSourceId?: string,
-): Promise<SkillCandidateList> {
-  const source = knowledgeSourceId
-    ? `&knowledge_source_id=${encodeURIComponent(knowledgeSourceId)}`
-    : "";
-  return allDecisionPages<SkillCandidate>(`/v1/skill-candidates?status=proposed${source}`);
+export function listProposedSkillCandidates(): Promise<SkillCandidateList> {
+  return allDecisionPages<SkillCandidate>("/v1/skill-candidates?status=proposed");
 }
 
 export function listWorkflowContextNotes(workflowId: string): Promise<SkillCandidateList> {
@@ -92,11 +87,10 @@ export function rejectPatchCandidate(id: string, reason: string): Promise<{ reje
 export function approveSkillCandidate(
   id: string,
   expected_review_digest: string,
-  activate: boolean,
 ): Promise<unknown> {
   return apiRequest(`/v1/skill-candidates/${encodeURIComponent(id)}/approve`, {
     method: "POST",
-    body: JSON.stringify({ ...(activate ? { status: "active" } : {}), expected_review_digest }),
+    body: JSON.stringify({ status: "active", expected_review_digest }),
   });
 }
 

@@ -6,7 +6,11 @@ export interface IntakeItem {
   title: string;
   state: "collected" | "reviewing" | "admitted" | "discarded";
   version: number;
-  original_snapshot: { source_url: string; captured_at: string };
+  original_snapshot: {
+    origin: "capture" | "restored_draft" | "session";
+    source_url?: string;
+    captured_at: string;
+  };
 }
 
 export const intakeMethods = {

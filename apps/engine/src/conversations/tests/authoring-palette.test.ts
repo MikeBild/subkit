@@ -210,7 +210,6 @@ describe("authoring tool palette — inert proposals", () => {
 
   test("only tools that file a review-queue proposal carry the flag", () => {
     expect(proposals.map((t) => t.name).sort()).toEqual([
-      "create_skill",
       "propose_workflow_repair",
       "save_learning",
     ]);
@@ -230,7 +229,6 @@ describe("authoring tool palette — inert proposals", () => {
       createEmptyDraftDocument(),
       NO_SKILLS,
     ).map((tool) => tool.name);
-    expect(visible).toContain("create_skill");
     expect(visible).toContain("save_learning");
   });
 

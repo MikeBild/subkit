@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  referencesKeyMaterialPath,
   SECRET_PATTERNS,
   SENSITIVE_KEY_PATTERN,
   scrubSecrets,
@@ -265,5 +266,48 @@ describe("scrub-secrets", () => {
       expect(SENSITIVE_KEY_PATTERN.test("name")).toBe(false);
       expect(SENSITIVE_KEY_PATTERN.test("status")).toBe(false);
     });
+  });
+});
+
+describe("referencesKeyMaterialPath", () => {
+  const keyMaterial = [
+    "/etc/ssl/private/server.key",
+    "`/srv/app/tls.key`",
+    "the cert lives in ./certs/ca.pem",
+    "(server.pem)",
+    "import bundle.p12 first",
+    "client.pfx",
+    "copy .env.local before starting",
+    "the .env file holds it",
+    "config/.env",
+    "see ~/.ssh/config",
+    "$HOME/.ssh",
+    "/home/me/.gnupg",
+    "id_ed25519 is the deploy key",
+    "/etc/subkit/master.key",
+    "/etc/app/secrets.json",
+    "~/.aws/credentials",
+    "/run/secrets/db",
+  ];
+  const ordinary = [
+    "process.env.FOO",
+    "import.meta.env.X",
+    "Object.keys(x)",
+    "use item.key as the React key",
+    "convert the certificate to .pem format",
+    "the key file is rotated monthly",
+    "environment variables",
+    "a/b.keys",
+    "the dotenv package",
+    "/private/tmp/build",
+    "Halbgeviertstrich als Gedankenstrich",
+  ];
+
+  test.each(keyMaterial)("flags %p", (text) => {
+    expect(referencesKeyMaterialPath(text)).toBe(true);
+  });
+
+  test.each(ordinary)("leaves %p alone", (text) => {
+    expect(referencesKeyMaterialPath(text)).toBe(false);
   });
 });

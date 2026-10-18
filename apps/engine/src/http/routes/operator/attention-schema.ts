@@ -82,11 +82,13 @@ const AttentionItem = z
           "Consecutive failed terminal runs, newest completion first. Another terminal status ends the sequence.",
       }),
       skills: z.number().int().optional(),
-      knowledge: z
+      intake: z
         .number()
         .int()
         .optional()
-        .describe("Of the proposals in `skills`, how many are facts for a knowledge source."),
+        .describe(
+          "Collected intake items (clips and session learnings) awaiting review. They are not knowledge or skills until a person confirms a proposal.",
+        ),
     }),
     since: z.string().nullable(),
     deadline: z.string().nullable(),

@@ -29,7 +29,7 @@ supports the process. Describe it as available only after the complete flow is
 implemented and verified.
 
 - Preserve the user journey: Sammeln → Inbox → im Chat prüfen und aufbereiten →
-  Übernahme bestätigen → Wissen.
+  Übernahme bestätigen → Wissen oder Skill.
 - Inbox is the initial default category, not a reserved name or a permission
   boundary. Reuse shared categories without a separate intake collection level.
   Each authenticated identity may choose its default, including an empty category.
@@ -38,9 +38,23 @@ implemented and verified.
   retrieval. Intake content is available for explicit review and preparation;
   normal knowledge retrieval excludes it until a person confirms the proposal.
 - Chat proposes what to retain, with source references and a reviewable result.
-  A person explicitly confirms the content and destination of the knowledge
-  admission. Do not confuse this content decision with an environment's standing
+  A person explicitly confirms the content and destination of the admission.
+  Facts and reference material go to knowledge in their domain; a repeatable
+  practice or convention goes to a skill. Admitting a skill activates guidance
+  that chat and coding-agent briefings apply. A proposal that changes or
+  replaces skills is bound to the skill versions the person reviewed. Both are
+  content decisions; do not confuse them with an environment's standing
   connector or execution approval.
+- Only a person in an authenticated browser session who holds the
+  destination's permissions confirms an admission. API keys, MCP OAuth, token
+  exchange, and chat channels prepare proposals and hand off to the review page;
+  they never confirm.
+- Learnings from coding-agent sessions and `save_learning` are collected
+  material with origin `session`, not skill candidates. Redact them before
+  storage, file them in the category of the repository's domain (otherwise the
+  collector's default), append evidence to an existing item with the same title
+  instead of duplicating it, and send them through the same review and
+  confirmation. Do not collect status events or secret-adjacent notes.
 - Preserve the original clip and provenance, linked to the resulting knowledge.
   Keep source author/publication time separate from collector/capture time.
   A credential label must never stand in for the original author's identity.
@@ -49,11 +63,11 @@ implemented and verified.
   where an item is in the process and its next available action.
 - Suggested user explanation: "Sammle Seiten, Ideen und Hinweise in deiner
   Kategorie. Im Chat prüfst du, was davon nützlich ist, und lässt es aufbereiten.
-  Erst wenn du die Übernahme bestätigst, wird daraus Wissen, das SubKit bei
-  passenden Fragen heranziehen kann. Die ursprüngliche Quelle bleibt erhalten."
+  Erst wenn du die Übernahme bestätigst, wird daraus Wissen oder ein Skill.
+  Die ursprüngliche Quelle bleibt erhalten."
 - Suggested chat starter: "Schau meine neuen Inbox-Einträge durch. Welche davon
-  helfen uns? Schlage vor, was wir als Wissen übernehmen sollten." Substitute
-  the chosen category name for Inbox.
+  helfen uns? Schlage vor, was wir übernehmen sollten, als Wissen oder als
+  Skill." Substitute the chosen category name for Inbox.
 - Before shipping, cover category rename/move without admission, exclusion
   before confirmation, explicit intake review, proposal confirmation, and
   preserved provenance with acceptance tests. Keep README and generated
@@ -78,7 +92,9 @@ implemented and verified.
 - Provide a short public-API smoke verification suitable for an explicitly
   selected production test scope. Keep credentials and hosts outside the
   repository, require explicit opt-in for writes, and report timing, assertions,
-  created resources, cleanup, and failures. Do not infer permission to deploy
+  created resources, cleanup, and failures. The verifier stops at the review
+  handoff; a person confirms in the browser, and a second run checks the
+  admission, provenance, and retrieval. Do not infer permission to deploy
   or modify ordinary production content from a request for this verifier.
 - During development run focused checks for the changed behavior. Run the
   broad completion gate after architecture, implementation, review, and test
@@ -134,7 +150,7 @@ action-only: do not repeat the referenced record's title or name in the prompt.
 The item editor exposes title, content, and category in the existing form dialog.
 Do not add a separate notes field. Preserve existing stored notes and the original
 source snapshot; editing the working copy requires reviewing affected proposals again.
-Show a knowledge proposal and its confirmation in the associated item's details
+Show a proposal and its confirmation in the associated item's details
 only when a proposal exists. Chat links open those details directly. Do not add
 an empty global review section to the intake list. Chat preparation and explicit
 human admission remain separate decisions.

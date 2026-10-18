@@ -28,6 +28,7 @@ export const UX_GATING_PERMISSIONS = [
   "api_key:read",
   "portal_token:read",
   "knowledge:read",
+  "intake:read",
   "stats:read:all",
 ] as const;
 

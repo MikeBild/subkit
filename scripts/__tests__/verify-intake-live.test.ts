@@ -10,7 +10,9 @@ import {
 const tenantId = "00000000-0000-4000-8000-000000000001";
 const env = { SK_INTAKE_TEST_KEY: "restricted-test-key" };
 
-function writeArgs() {
+const proposalUuid = "00000000-0000-4000-8000-0000000000aa";
+
+function writeArgs(extra: string[] = []) {
   return parseIntakeLiveArgs(
     [
       "--engine-url",
@@ -22,9 +24,14 @@ function writeArgs() {
       tenantId,
       "--json",
       "/tmp/intake-proof.json",
+      ...extra,
     ],
     env,
   );
+}
+
+function afterConfirmArgs() {
+  return writeArgs(["--after-confirm", "--proposal-id", proposalUuid]);
 }
 
 function response(value: unknown, status = 200, headers: HeadersInit = {}) {
@@ -48,13 +55,16 @@ function mockFetcher(
     duplicate?: boolean;
     unrelatedHit?: boolean;
     leakedClip?: boolean;
+    confirmed?: boolean;
+    keyConfirmStatus?: number;
+    keyConfirmCode?: string;
   } = {},
 ) {
   const posts: string[] = [];
   const redirects: Array<RequestRedirect | undefined> = [];
   const sourceId = "source-1";
   const itemId = "item-1";
-  const proposalId = "proposal-1";
+  const proposalId = opts.confirmed ? proposalUuid : "proposal-1";
   const fetcher = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = new URL(typeof input === "string" ? input : input.toString());
     const key = `${init?.method ?? "GET"} ${url.pathname}`;
@@ -81,7 +91,7 @@ function mockFetcher(
       });
     if (url.pathname === "/llms-full.txt")
       return new Response(
-        "collect → review in chat → confirm → knowledge. MCP clients start a review through conversation_start.",
+        "collect → review in chat → confirm → knowledge or skill. MCP clients start a review through conversation_start.",
         { status: 200 },
       );
     if (url.pathname === "/install/clipper.zip") return zipResponse();
@@ -92,12 +102,12 @@ function mockFetcher(
       )
         return response({
           markdown: "",
-          intake: { collected: 0, reviewing: 0, proposals: 0 },
+          intake: { clips: 0, sessions: 0, proposals: 0 },
           knowledge_sources: ["actual-source-slug"],
         });
       return response({
         markdown: "",
-        intake: { collected: 0, reviewing: 0, proposals: 0 },
+        intake: { clips: 0, sessions: 0, proposals: 0 },
         knowledge_sources: ["actual-source-slug"],
       });
     }
@@ -106,9 +116,8 @@ function mockFetcher(
     if (url.pathname === "/v1/intake/items" && init?.method === "POST")
       return response({ id: itemId, category: JSON.parse(String(init.body)).category }, 201);
     if (url.pathname === "/v1/knowledge-sources/search") {
-      const confirmed = posts.includes(`/v1/intake/proposals/${proposalId}/confirm`);
       return response({
-        hits: confirmed
+        hits: opts.confirmed
           ? [{ knowledge_source_id: sourceId }]
           : opts.leakedClip
             ? [{ source_name: "Smoke clip intake-smoke-run" }]
@@ -142,8 +151,13 @@ function mockFetcher(
       );
     if (url.pathname === `/v1/intake/proposals/${proposalId}` && (init?.method ?? "GET") === "GET")
       return response({
+        status: opts.confirmed ? "confirmed" : "draft",
         current_revision: 1,
+        confirmed_revision: opts.confirmed ? 1 : null,
+        confirmed_target_kind: opts.confirmed ? "knowledge" : null,
+        confirmed_target_id: opts.confirmed ? sourceId : null,
         revision: {
+          items: [{ id: itemId }],
           digest: "digest",
           title: "Intake smoke intake-smoke-run",
           body: "intake smoke intake-smoke-run confirmed knowledge fixture.",
@@ -155,11 +169,15 @@ function mockFetcher(
         },
       });
     if (url.pathname === `/v1/intake/proposals/${proposalId}/confirm`)
-      return response({ status: "confirmed", confirmed_knowledge_source_id: sourceId });
+      return response(
+        { code: opts.keyConfirmCode ?? "human_confirmation_required" },
+        opts.keyConfirmStatus ?? 403,
+      );
     if (url.pathname === `/v1/intake/items/${itemId}`)
       return response({
         state: "admitted",
-        admitted_knowledge_source_id: sourceId,
+        admitted_target_kind: "knowledge",
+        admitted_target_id: sourceId,
         original_snapshot: { source_url: "https://example.invalid/intake-smoke/intake-smoke-run" },
       });
     if (url.pathname === `/v1/knowledge-sources/${sourceId}`)
@@ -190,6 +208,18 @@ describe("verify intake production smoke arguments", () => {
     expect(() =>
       parseIntakeLiveArgs(["--engine-url", "https://test.example", "--api-key", "leak"], env),
     ).toThrow(IntakeLiveUsageError);
+    expect(() =>
+      parseIntakeLiveArgs(
+        ["--engine-url", "https://test.example", "--after-confirm", "--proposal-id", proposalUuid],
+        env,
+      ),
+    ).toThrow(IntakeLiveUsageError);
+    expect(() => writeArgs(["--after-confirm"])).toThrow(IntakeLiveUsageError);
+    expect(() => writeArgs(["--after-confirm", "--proposal-id", "not-a-uuid"])).toThrow(
+      IntakeLiveUsageError,
+    );
+    expect(() => writeArgs(["--proposal-id", proposalUuid])).toThrow(IntakeLiveUsageError);
+    expect(afterConfirmArgs()).toMatchObject({ afterConfirm: true, proposalId: proposalUuid });
   });
 
   test("requires a selected tenant and writes a structured report only in write mode", () => {
@@ -218,27 +248,82 @@ describe("verify intake production smoke contract checks", () => {
       }),
     ).toBe(true);
     expect(openApiHasIntakeContract({ paths: { "/v1/intake/items": {} } })).toBe(false);
-    expect(isBodyFreeIntakeSummary({ collected: 1, reviewing: 0, proposals: 0 })).toBe(true);
-    expect(isBodyFreeIntakeSummary({ collected: 1, body: "clip", reviewing: 0 })).toBe(false);
+    expect(isBodyFreeIntakeSummary({ clips: 1, sessions: 2, proposals: 0 })).toBe(true);
+    expect(isBodyFreeIntakeSummary({ clips: 1, sessions: 0, proposals: 0, body: "clip" })).toBe(
+      false,
+    );
+    expect(isBodyFreeIntakeSummary({ collected: 1, reviewing: 0, proposals: 0 })).toBe(false);
   });
 
-  test("runs the injected public write sequence without redirects and reports retained resources", async () => {
+  test("collects and proposes, proves an API key cannot confirm, and hands off to the Cockpit", async () => {
     const mock = mockFetcher();
     const report = await runIntakeLiveSmoke(writeArgs(), mock.fetcher);
     expect(report.summary.failed).toBe(0);
+    expect(report.summary.skipped).toBe(1);
     expect(mock.posts).toEqual([
       "/v1/intake/items",
       "/v1/intake/proposals",
       "/v1/intake/proposals/proposal-1/confirm",
-      "/v1/intake/proposals/proposal-1/confirm",
     ]);
+    expect(report.checks.map((check) => check.id).slice(-3)).toEqual([
+      "write.review_exact",
+      "write.confirm_refused_for_key",
+      "write.after_confirm",
+    ]);
+    expect(report.handoff).toEqual({
+      proposal_id: "proposal-1",
+      review_url: "https://test.example/cockpit/intake?proposal=proposal-1",
+    });
     expect(mock.redirects.filter((redirect) => redirect === "error").length).toBeGreaterThan(0);
-    expect(report.retained_resource_ids).toEqual(["item-1", "proposal-1", "source-1"]);
+    expect(report.retained_resource_ids).toEqual(["item-1", "proposal-1"]);
     expect(report.cleanup).toMatchObject({
       attempted: false,
       status: "not_attempted",
-      resource_ids: ["item-1", "proposal-1", "source-1"],
+      resource_ids: ["item-1", "proposal-1"],
     });
+  });
+
+  test("fails when an API key is able to confirm the admission", async () => {
+    const report = await runIntakeLiveSmoke(
+      writeArgs(),
+      mockFetcher({ keyConfirmStatus: 200 }).fetcher,
+    );
+    expect(
+      report.checks.find((check) => check.id === "write.confirm_refused_for_key")?.status,
+    ).toBe("FAIL");
+    expect(report.handoff).toBeNull();
+  });
+
+  test("fails when the key is refused only for a missing permission", async () => {
+    const report = await runIntakeLiveSmoke(
+      writeArgs(),
+      mockFetcher({ keyConfirmCode: "forbidden" }).fetcher,
+    );
+    expect(
+      report.checks.find((check) => check.id === "write.confirm_refused_for_key")?.status,
+    ).toBe("FAIL");
+    expect(report.handoff).toBeNull();
+  });
+
+  test("checks one admission, provenance, search and briefing after a person confirmed", async () => {
+    const mock = mockFetcher({ confirmed: true });
+    const report = await runIntakeLiveSmoke(afterConfirmArgs(), mock.fetcher);
+    expect(report.summary).toEqual({ passed: 12, failed: 0, skipped: 0 });
+    expect(mock.posts).toEqual([]);
+    expect(report.checks.map((check) => check.id).slice(6)).toEqual([
+      "write.identity",
+      "write.confirmed",
+      "write.single_admission",
+      "write.provenance",
+      "write.search",
+      "write.briefing",
+    ]);
+    expect(report.retained_resource_ids).toEqual(["item-1", proposalUuid, "source-1"]);
+  });
+
+  test("fails the admission checks while the proposal still awaits a person", async () => {
+    const report = await runIntakeLiveSmoke(afterConfirmArgs(), mockFetcher().fetcher);
+    expect(report.checks.find((check) => check.id === "write.confirmed")?.status).toBe("FAIL");
   });
 
   test("ignores unrelated semantic matches but rejects the unconfirmed clip", async () => {
@@ -255,12 +340,10 @@ describe("verify intake production smoke contract checks", () => {
     );
   });
 
-  test("detects duplicate sources even when repeat confirmation returns the original ID", async () => {
-    const mock = mockFetcher({ duplicate: true });
-    const report = await runIntakeLiveSmoke(writeArgs(), mock.fetcher);
-    expect(report.checks.find((check) => check.id === "write.confirm_idempotent")?.status).toBe(
-      "PASS",
-    );
+  test("detects duplicate sources after confirmation", async () => {
+    const mock = mockFetcher({ confirmed: true, duplicate: true });
+    const report = await runIntakeLiveSmoke(afterConfirmArgs(), mock.fetcher);
+    expect(report.checks.find((check) => check.id === "write.confirmed")?.status).toBe("PASS");
     expect(report.checks.find((check) => check.id === "write.single_admission")?.status).toBe(
       "FAIL",
     );

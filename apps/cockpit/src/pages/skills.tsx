@@ -7,7 +7,7 @@ import { ApiError, apiRequest } from "@/api/client";
 import { listProposedSkillCandidates, type SkillCandidate } from "@/api/decisions";
 import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
-import type { ActorDirectory } from "@/app/actor-directory-model";
+import { type ActorDirectory, actorLabel } from "@/app/actor-directory-model";
 import { absolute, chatNewHref, recordHref, routerTarget } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
@@ -19,6 +19,7 @@ import {
   useCatalogMetadataActions,
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
+import { ORIGIN_LABEL } from "@/components/cockpit/decision-card";
 import {
   ActionMenu,
   Button,
@@ -51,8 +52,9 @@ import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
+import { skillDecision } from "@/pages/decisions-model";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
-import { proposalAuthor, proposalTarget } from "@/pages/learning-proposal-model";
+import { isDetectedPattern } from "@/pages/skill-proposal-model";
 import { SkillProposalRowActions } from "@/pages/skill-proposal-row-actions";
 import { SkillProposalSheet } from "@/pages/skill-proposal-sheet";
 import {
@@ -106,9 +108,9 @@ function rowWhere(row: SkillRow): string | null {
 }
 
 function proposalLine(candidate: SkillCandidate, directory: ActorDirectory, t: Translate): string {
-  const target = proposalTarget(candidate, t);
-  const author = proposalAuthor(candidate, directory, t);
-  return author ? `${target} · ${t("proposal.by", { name: author })}` : target;
+  const reason = t(ORIGIN_LABEL[skillDecision(candidate).origin]);
+  const author = actorLabel(directory, candidate.proposed_by, t);
+  return author ? `${reason} · ${t("proposal.by", { name: author })}` : reason;
 }
 
 export function SkillsPage({ permissions }: { permissions: readonly string[] }) {
@@ -143,7 +145,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
     enabled: canRead,
     ...live,
   });
-  const open = proposals.data?.items ?? [];
+  const open = (proposals.data?.items ?? []).filter(isDetectedPattern);
   const proposal = open.find((candidate) => candidate.id === proposalId) ?? null;
   const directory = useActorDirectory(canRead && open.length > 0);
   const decided = () => {

@@ -20,7 +20,6 @@ import {
 } from "../repl/paste-store.ts";
 import type { CommandQueue } from "../repl/queue.ts";
 import type { PaneSpec } from "../repl/slash/handler.ts";
-import { findTaskActionById } from "../repl/task-actions.ts";
 import { findSlashCommand, type PersonaProbe, renderHelp } from "../slash.ts";
 import type { NotifyPrefs, PushNotifyOverride } from "./types.ts";
 
@@ -126,7 +125,6 @@ export interface SlashDispatchContext {
   respondElicitation: (elicitationId: string, output: unknown, reason?: string) => Promise<void>;
   runYoloSlash: (trimmed: string, hasPendingElicitation: boolean) => void;
   runBuiltin: (trimmed: string) => Promise<boolean>;
-  submitPrompt: (prompt: string) => void;
 }
 
 export async function dispatchSlashSubmit(
@@ -149,7 +147,6 @@ export async function dispatchSlashSubmit(
     respondElicitation,
     runYoloSlash,
     runBuiltin,
-    submitPrompt,
   } = ctx;
   if (trimmed === "/exit" || trimmed === "/quit") {
     exit();
@@ -230,11 +227,6 @@ export async function dispatchSlashSubmit(
   }
   if (cmd.name === "yolo") {
     runYoloSlash(trimmed, session.pendingElicitation !== null);
-    return true;
-  }
-  if (cmd.name === "learnings") {
-    const action = findTaskActionById("review-learnings");
-    if (action?.invoke.kind === "prompt") submitPrompt(action.invoke.prompt);
     return true;
   }
   if (onSlash) {

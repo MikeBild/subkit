@@ -4,7 +4,7 @@ name: sk Platform Reference — Coding Agents
 description: How a person connects Claude Code, Codex, Hermes or another MCP client to sk, what the session briefing is and how knowledge reaches it, how an agent runs workflows and looks things up under the person's own rights, how learnings flow back, and what to check when a briefing does not arrive.
 tags: [sk-platform-reference, coding-agents, claude-code, codex, hermes, mcp, hooks, briefing, onboarding]
 scope: global
-version: 1
+version: 2
 ---
 
 # Coding agents and sk
@@ -81,7 +81,7 @@ sk agent briefing --domains <category> --json | jq '{used_tokens, knowledge_sour
 
 # Learning loop
 
-At the end of a Claude Code session the transcript goes to the engine; the engine keeps only rules a person explicitly taught or confirmed and files them as candidates. `sk learnings list` shows them, `sk learnings review` decides them one by one, `sk skill-candidates approve|reject <id>` scripts the decision. A fact becomes part of the domain's knowledge source `learnings-<domain>` (needs `knowledge:write`); a practice becomes a draft skill that joins briefings once activated. Inside a chat, `save_learning` files the same candidates.
+At the end of a Claude Code or Codex session the transcript goes to the engine; the engine keeps only practices and facts a person explicitly taught or confirmed, drops events, status updates and anything credential-related, and collects the rest in Intake with origin `session`, in the domain's shared category. Collected learnings are not knowledge and not skills: search, briefings and authoring ignore them, and the briefing only counts them. `sk intake list` shows them and `sk intake review` opens a review conversation; a person confirms each proposal in the Cockpit. A confirmed fact goes to the domain's knowledge bundle (tag `domain:<domain>`); a confirmed practice becomes an active skill that joins the briefing, and the skills it replaces are archived. Inside a chat, `save_learning` collects the same kind of item.
 
 # When a briefing is missing or a warning appears
 

@@ -5,6 +5,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import { runConfirmGate } from "../conversations/confirmation.ts";
 import type { PermissionMode } from "../conversations/tool-policies.ts";
 import type { ToolContext, ToolPrecheck, ToolResult } from "../conversations/tools/index.ts";
+import { prepareGate } from "../conversations/tools/sdk-wrap/gate-subjects.ts";
 import { checkBeforeGate } from "../conversations/tools/sdk-wrap/pregate.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
@@ -344,6 +345,11 @@ export async function dispatchTool(
       const policyMeta = confirmed
         ? { ...(invocation.meta ?? {}), [SK_CONFIRM_META_KEY]: true }
         : invocation.meta;
+      const preparedGate =
+        claimed === null
+          ? await prepareGate(entry.descriptor.name, execArgs, deps.principal.tenant_id, deps.db)
+          : null;
+      if (preparedGate) execArgs = preparedGate.args;
       const gate = await runConfirmGate({
         tool: entry.descriptor.name,
         category: entry.descriptor.category,
@@ -397,7 +403,7 @@ export async function dispatchTool(
           status: "needs_confirm",
           confirm: confirmEnvelopeFor({
             tool: entry.descriptor.name,
-            args: execArgs,
+            pending_output: preparedGate?.pending_output ?? null,
             rule: gate.rule,
             approval_id: gate.approval_id,
             approval_url: gate.approval_url,

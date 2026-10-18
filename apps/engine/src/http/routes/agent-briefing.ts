@@ -51,16 +51,15 @@ const AgentBriefingResponse = z
     guides: z
       .array(z.string())
       .describe("Slugs of the skills that teach how to work with sk, listed for every domain."),
-    proposed_candidates: z.number().int(),
     intake: z
       .object({
-        collected: z.number().int().nonnegative(),
-        reviewing: z.number().int().nonnegative(),
+        clips: z.number().int().nonnegative(),
+        sessions: z.number().int().nonnegative(),
         proposals: z.number().int().nonnegative(),
       })
       .nullable()
       .describe(
-        "Tenant-wide intake counts; null when the caller cannot read intake. Never includes clip content.",
+        "Intake items awaiting review whose shared category is one of the requested domains, split into collected clips and session learnings, plus the draft proposals that cite them; null when the caller cannot read intake. Never includes item content.",
       ),
   })
   .openapi("AgentBriefingResponse");
@@ -120,8 +119,9 @@ const briefingRoute = createRoute({
     "Returns a budgeted markdown grounding block for the requested domains: " +
     "prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge " +
     "index, the domain's workflows and connectors (category or slug prefix equals the " +
-    "domain), readable file metadata without file contents, and the search-first grounding " +
-    "rule. Intended for coding-agent hooks.",
+    "domain), readable file metadata without file contents, counts of collected intake material " +
+    "in the requested domains (never its content), and the search-first grounding rule. Intended " +
+    "for coding-agent hooks.",
   security: [{ bearerAuth: [] }],
   request: {
     query: z

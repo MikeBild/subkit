@@ -220,10 +220,6 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     defaultMode: "no_confirm",
     neverGate: true,
   },
-  create_skill: {
-    defaultMode: "no_confirm",
-    neverGate: true,
-  },
   propose_workflow_repair: {
     defaultMode: "no_confirm",
     neverGate: true,
@@ -241,7 +237,14 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
       };
     },
   },
-  discard_intake_item: { computeModeFromInput: () => "no_confirm" },
+  discard_intake_items: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => {
+      const obj = asObj(input);
+      const ids = Array.isArray(obj.item_ids) ? obj.item_ids : [];
+      return { item_count: ids.length, item_ids: ids };
+    },
+  },
   restore_intake_item: { computeModeFromInput: () => "no_confirm" },
   move_intake_item: { computeModeFromInput: () => "no_confirm" },
   set_default_intake_category: { computeModeFromInput: () => "no_confirm" },
@@ -253,7 +256,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   },
   approve_skill_candidate: {
     defaultMode: "confirm_before_execution",
-    buildPendingOutput: (input) => pickFields(input, ["candidate_id", "title"]),
+    buildPendingOutput: (input) => pickFields(input, ["candidate_id"]),
   },
   reject_skill_candidate: {
     defaultMode: "confirm_before_execution",
@@ -263,7 +266,6 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
       return {
         candidate_count: ids.length,
         candidate_ids: ids,
-        titles: Array.isArray(obj.titles) ? obj.titles : [],
         ...(obj.reason !== undefined ? { reason: obj.reason } : {}),
       };
     },
@@ -297,7 +299,6 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     buildPendingOutput: (input) => pickFields(input, ["portal_token_id", "prefix"]),
   },
   test_rbac_expression: { defaultMode: "no_confirm" },
-  propose_skill: { defaultMode: "no_confirm" },
   suggest_connector_templates: { defaultMode: "no_confirm" },
   start_connector_from_template: { defaultMode: "no_confirm" },
   start_connector_from_description: { defaultMode: "no_confirm" },

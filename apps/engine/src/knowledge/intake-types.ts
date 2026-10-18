@@ -1,5 +1,10 @@
 import type { Actor } from "../audit/actor.ts";
-import type { IntakeProposalTarget, IntakeSnapshot } from "../db/schema/intake.ts";
+import type {
+  IntakeCaptureSnapshot,
+  IntakeProposalTarget,
+  IntakeSnapshot,
+  IntakeTargetKind,
+} from "../db/schema/intake.ts";
 
 export type IntakeItemState = "collected" | "reviewing" | "admitted" | "discarded";
 export type IntakeProposalStatus = "draft" | "stale" | "confirmed" | "rejected";
@@ -23,7 +28,8 @@ export interface IntakeItemView {
   state: IntakeItemState;
   version: number;
   collected_by: Actor;
-  admitted_knowledge_source_id: string | null;
+  admitted_target_kind: IntakeTargetKind | null;
+  admitted_target_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -32,7 +38,7 @@ export interface IntakeProposalItemView {
   id: string;
   version: number;
   title: string;
-  source_url: string;
+  source_url: string | null;
 }
 
 export interface IntakeProposalRevisionView {
@@ -51,7 +57,8 @@ export interface IntakeProposalView {
   status: IntakeProposalStatus;
   current_revision: number;
   confirmed_revision: number | null;
-  confirmed_knowledge_source_id: string | null;
+  confirmed_target_kind: IntakeTargetKind | null;
+  confirmed_target_id: string | null;
   rejected_at: string | null;
   stale_reason: string | null;
   created_at: string;
@@ -85,7 +92,7 @@ export interface CreateIntakeItemParams {
         published_at?: string | undefined;
         captured_at?: string | undefined;
         body?: string | undefined;
-        origin?: IntakeSnapshot["origin"] | undefined;
+        origin?: IntakeCaptureSnapshot["origin"] | undefined;
       }
     | undefined;
 }
@@ -117,10 +124,69 @@ export interface ReviseIntakeProposalParams extends CreateIntakeProposalParams {
   expected_revision: number;
 }
 
+export interface IntakeConfirmPermission {
+  permission: "knowledge:write" | "skill:write" | "skill:activate" | "skill:archive";
+  resource?: { type: "knowledge_source" | "skill"; id: string } | undefined;
+}
+
 export interface ConfirmIntakeProposalParams {
   tenant_id: string;
   actor: Actor;
   id: string;
   expected_revision: number;
   digest: string;
+  authorize: (
+    requirements: readonly IntakeConfirmPermission[],
+    target: IntakeProposalTarget,
+  ) => Promise<void>;
+}
+
+export interface IntakeSessionProvenance {
+  agent: string;
+  session_id: string;
+  repo?: string | null | undefined;
+  domains: readonly string[];
+  evidence_excerpt: string;
+}
+
+export interface SessionLearningContext {
+  kind?: "practice" | "fact" | undefined;
+  scope?: "global" | "connector" | "workflow" | undefined;
+  connector_id?: string | undefined;
+  workflow_id?: string | undefined;
+  tags?: readonly string[] | undefined;
+}
+
+export interface CreateSessionIntakeItemParams {
+  tenant_id: string;
+  actor: Actor | null;
+  session: IntakeSessionProvenance;
+  title: string;
+  body: string;
+  captured_at: string;
+  source_url?: string | undefined;
+  learning?: SessionLearningContext | undefined;
+  request_source?: string | undefined;
+}
+
+export interface SessionIntakeItemResult {
+  item: IntakeItemView;
+  outcome: "created" | "evidence_appended" | "replayed";
+}
+
+export interface IntakeItemEvidenceView {
+  id: string;
+  item_id: string;
+  agent: string;
+  session_id: string;
+  repo: string | null;
+  excerpt: string;
+  captured_at: string;
+  recorded_by: Actor;
+  created_at: string;
+}
+
+export interface IntakeItemEvidenceRead {
+  evidence: IntakeItemEvidenceView[];
+  evidence_total: number;
 }

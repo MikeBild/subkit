@@ -11,7 +11,7 @@ import {
 describe("intake processing palette", () => {
   test("exposes discard and restore for an interactive authoring conversation only", () => {
     const tools = [
-      { name: "discard_intake_item" },
+      { name: "discard_intake_items" },
       { name: "restore_intake_item" },
       { name: "move_intake_item" },
       { name: "set_default_intake_category" },
@@ -20,7 +20,7 @@ describe("intake processing palette", () => {
     ];
     const names = filterByAuthoringPalette(tools, {} as never, new Set()).map((tool) => tool.name);
     expect(names).toEqual([
-      "discard_intake_item",
+      "discard_intake_items",
       "restore_intake_item",
       "move_intake_item",
       "set_default_intake_category",

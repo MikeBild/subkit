@@ -3,6 +3,13 @@ import { type CountIssue, detectCountInconsistencies } from "./count-consistency
 import { chatRubric } from "./rubrics/chat.ts";
 import type { SaveWorkflowDraftArtifact } from "./rubrics/save-workflow-draft.ts";
 import { saveWorkflowDraftRubric } from "./rubrics/save-workflow-draft.ts";
+import {
+  type CriticToolResult,
+  detectToolClaimMismatches,
+  summarizeToolResult,
+  type ToolClaimIssue,
+  toolResultIds,
+} from "./tool-claims.ts";
 
 export type CriticKind = "save_workflow_draft" | "chat";
 
@@ -22,6 +29,7 @@ export interface RunCriticParams {
   artifact: CriticArtifact;
   snapshot?: string;
   runtimeContext?: { engine_url?: string; tenant_slug?: string };
+  toolResults?: ReadonlyArray<CriticToolResult>;
   llm?: SubkitLlm;
 }
 
@@ -91,10 +99,24 @@ function gradeChat(
   text: string,
   snapshot: string | undefined,
   runtimeContext: { engine_url?: string; tenant_slug?: string } | undefined,
+  toolResults: ReadonlyArray<CriticToolResult> | undefined,
 ): CriticVerdict {
   const matches = text.match(UUID_PATTERN) ?? [];
-  const ungroundedIds = snapshot ? matches.filter((m) => !snapshot.includes(m)) : [];
+  const resultIds = toolResultIds(toolResults ?? []);
+  const ungroundedIds = snapshot
+    ? matches.filter((m) => !snapshot.includes(m) && !resultIds.has(m.toLowerCase()))
+    : [];
   const countIssues: CountIssue[] = detectCountInconsistencies(text);
+  const claimIssues: ToolClaimIssue[] = toolResults
+    ? detectToolClaimMismatches(text, toolResults)
+    : [];
+  const claimChecks = toolResults
+    ? {
+        tool_counts_match: !claimIssues.some((i) => i.kind === "count_mismatch"),
+        no_success_after_failure: !claimIssues.some((i) => i.kind === "success_after_failure"),
+        processed_ids_in_results: !claimIssues.some((i) => i.kind === "unprocessed_id"),
+      }
+    : {};
   const checks = {
     ids_grounded: ungroundedIds.length === 0,
     runtime_values_consistent:
@@ -103,6 +125,7 @@ function gradeChat(
         (!runtimeContext.tenant_slug || !text.includes("your-tenant"))),
     no_placeholder_markers: !PLACEHOLDER_MARKER.test(text),
     counts_consistent: countIssues.length === 0,
+    ...claimChecks,
   };
   const failed = Object.entries(checks).filter(([, v]) => v === false);
   if (failed.length === 0) {
@@ -135,6 +158,15 @@ function gradeChat(
           "; ",
         )}. Derive counts from the items you actually list, do not pad to a claimed number`,
     );
+  if (claimIssues.length > 0)
+    hintParts.push(
+      `the reply contradicts this turn's tool results — ${claimIssues
+        .slice(0, 3)
+        .map((i) => i.detail)
+        .join(
+          "; ",
+        )}. Report exactly what the tool results say, including failures and items that were not processed`,
+    );
   return {
     verdict: "fail",
     confidence,
@@ -150,8 +182,9 @@ export async function runCritic(params: RunCriticParams): Promise<CriticVerdict>
     case "save_workflow_draft":
       return gradeSaveWorkflowDraft(artifact.payload, snapshot);
     case "chat":
-      return gradeChat(artifact.payload, snapshot, runtimeContext);
+      return gradeChat(artifact.payload, snapshot, runtimeContext, params.toolResults);
   }
 }
 
-export { chatRubric, saveWorkflowDraftRubric };
+export type { CriticToolResult };
+export { chatRubric, saveWorkflowDraftRubric, summarizeToolResult };

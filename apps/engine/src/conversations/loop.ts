@@ -45,7 +45,12 @@ import {
   supportsExtendedThinking,
 } from "../llm/core/step-router.ts";
 import { resolveThinking } from "../llm/core/thinking-policy.ts";
-import { type CriticArtifact, type CriticVerdict, runCritic } from "../llm/critic/index.ts";
+import {
+  type CriticArtifact,
+  type CriticVerdict,
+  runCritic,
+  summarizeToolResult,
+} from "../llm/critic/index.ts";
 import { LlmContextTooLarge, LlmQuotaExhausted } from "../llm/errors.ts";
 import { runOutputGuard, runOutputGuardStream } from "../llm/output-guard/index.ts";
 import { createStreamScrubber } from "../llm/output-guard/stream-scrub.ts";
@@ -136,6 +141,7 @@ import { nextSuggestion } from "./streaming.ts";
 import { elideWithinTurnToolOutputs } from "./tool-output-elision.ts";
 import {
   applyExecutionToolGate,
+  authoringSkillsForTurn,
   collectSyntheticWorkflowSlugs,
   type ExecutionToolGateDecision,
   resolveExecutionToolGate,
@@ -772,14 +778,19 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     throw err;
   }
 
-  const AUTO_LOADED_AUTHORING_SKILLS: ReadonlyArray<string> = [
-    "connector-creation-guidance",
-    "workflow-authoring",
+  const loadedSkills = [
+    ...new Set([
+      ...loadedSlugMembership,
+      ...authoringSkillsForTurn({
+        surface: p.surface,
+        draft,
+        userMessage: ingestedUserMessage,
+        startNewWorkflow: detectedIntent.startNewWorkflow === true,
+        boundConnector: activeConnectorId !== null,
+        boundWorkflow: workflowIdForTurn !== null,
+      }),
+    ]),
   ];
-  const loadedSkills =
-    p.surface === "chat"
-      ? [...loadedSlugMembership]
-      : [...new Set([...loadedSlugMembership, ...AUTO_LOADED_AUTHORING_SKILLS])];
   logger.debug({
     module: "conversation_palette",
     action: "palette.resolved",
@@ -1306,20 +1317,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                     : {}),
                 })
               : { text: "", violations: [] };
-            const assistantContent =
-              hasText || guarded.violations.length > 0
+            const assistantContent = {
+              text: hasText ? guarded.text : "",
+              ...(guarded.violations.length > 0
                 ? {
-                    ...(hasText ? { text: guarded.text } : {}),
-                    ...(guarded.violations.length > 0
-                      ? {
-                          _violations: guarded.violations.map((v) => ({
-                            kind: v.kind,
-                            message: v.message,
-                          })),
-                        }
-                      : {}),
+                    _violations: guarded.violations.map((v) => ({
+                      kind: v.kind,
+                      message: v.message,
+                    })),
                   }
-                : {};
+                : {}),
+            };
             const assistantMessageId =
               signals.assistantMessageId ??
               (await appendMessage(
@@ -1686,6 +1694,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         criticVerdict = await runCritic({
           artifact,
           snapshot: prompt.system,
+          toolResults: events.flatMap((ev) =>
+            ev.type === "tool_result" ? [summarizeToolResult(ev.tool, ev.output)] : [],
+          ),
           ...(resolvedEngineUrl || p.runtime_context?.tenant_slug
             ? {
                 runtimeContext: {

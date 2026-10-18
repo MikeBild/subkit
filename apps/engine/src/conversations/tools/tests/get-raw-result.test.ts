@@ -80,6 +80,32 @@ describe("get_raw_result", () => {
     });
   });
 
+  it("names the stored value's top-level keys when a path is not found", async () => {
+    const ref = rememberRaw({ rows: [], meta: { total: 0 }, next_cursor: null });
+
+    const result = await getRawResultTool.execute({} as never, { ref, path: ["data", "rows"] });
+
+    expect(result).toEqual({
+      ok: false,
+      data: {
+        error: "raw_result_path_not_found",
+        path: ["data", "rows"],
+        available_keys: ["rows", "meta", "next_cursor"],
+      },
+    });
+  });
+
+  it("reports the item count when the stored value is a list and a path is not found", async () => {
+    const ref = rememberRaw([{ id: 1 }, { id: 2 }]);
+
+    const result = await getRawResultTool.execute({} as never, { ref, path: ["items"] });
+
+    expect(result).toEqual({
+      ok: false,
+      data: { error: "raw_result_path_not_found", path: ["items"], total_items: 2 },
+    });
+  });
+
   it("rejects chunk offsets beyond the available string", async () => {
     const ref = rememberRaw({ item: { body: "a".repeat(20_000) } });
 
