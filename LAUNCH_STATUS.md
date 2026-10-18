@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-18T06:40:32.708615+00:00**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-18T06:45:10.341342+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktstand vor Remote-Integration: **0c61b8bc6**, Version **9.15.2**. QuickJS-Fix und korrigierte Hook-Dokumentationsassertion committed; vollständiges Gesamtgate PASS, unveränderte Quellhashes. ARM64-Image, Installation, Regression und Notice-Auslieferung bestanden (E158).
-- Letzter bestätigter Remote-Stand: **5c565610d**, main; HEAD, origin/main und GitHub main identisch, Checkout nach regulärem Push sauber. Alle acht Pre-Push-Gates PASS; Gesamtprüfung Exit 1 (E163). Diese Statusfortschreibung LOCAL_ONLY bis Push; kein Release-Go.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E163. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Letzter bestätigter Remote-Stand: **03086ce58**, main; HEAD, origin/main und GitHub main identisch, Checkout nach regulärem Push sauber. Alle acht Pre-Push-Gates PASS; Gesamtcheck auf diesem Stand Exit 1 (E164). Diese Fortschreibung LOCAL_ONLY bis Push; kein Release-Go.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E164. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -106,7 +106,7 @@ Scope-Erweiterung vom Nutzer entschieden (gegen den Freeze 17.–20.10.): Lernvo
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **Geprüfte Testkorrektur regulär pushen, danach vollständiges Gate wiederholen.**
+Nächster Codex-Schritt: **Authoring-E2E-Eingaben korrigieren, gesamte E2E-Stufe prüfen, danach vollständiges Gate wiederholen.**
 Session 19644 ist terminal, Exit 1: Katalogprüfung in Datei 696/2050 meldet fehlenden
 Recovery-Hinweis `intake_items_changed` (E161). Früherer DB-Fixture-Fehler tritt im
 seriellen Lauf nicht auf: neun MCP-Probe-Tests PASS. Remote cfdc57b82 enthält bereits
@@ -126,3 +126,6 @@ uucode-Haupt-/Sekundärhinweise und breite Base64-Quellsuche sind belegt (E137�
 Diese Recherchen nicht wiederholen. Vier lokale Source-Archive E144 sind vorhanden;
 E145 benennt fehlende Toolchains. Kein Wiederaufbau oder öffentliche Quellauslieferung
 behauptet. Der aktuelle Image-/Installer-Nachweis E151 ist abgeschlossen.
+
+Beendeter Gesamtcheck: Session **49135**, Exit 1 bei Authoring-E2E (E164), `.artifacts/launch/approval-lifecycle-full-verify.{json,log}`.
+Vorherige Sessions 73215 und 55351 sind terminal. Kein zweiter paralleler Lauf.
