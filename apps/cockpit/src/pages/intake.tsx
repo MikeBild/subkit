@@ -1016,7 +1016,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                   {evidenceRows.length ? (
                     <ul className="grid gap-3">
                       {evidenceRows.map((row) => (
-                        <li key={row.id} data-testid={`intake-session-evidence-${row.id}`}>
+                        <li key={row.id} data-testid="intake-session-evidence-row">
                           <p className="mb-1 text-sm text-muted-foreground">
                             {[
                               row.agent,
@@ -1031,7 +1031,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                             name=""
                             mimeType="text/markdown"
                             text={row.excerpt}
-                            testId={`intake-session-evidence-${row.id}-body`}
+                            testId="intake-session-evidence-row-body"
                           />
                         </li>
                       ))}
