@@ -10,7 +10,6 @@ export const cockpitDemoFingerprintInputs = [
   "scripts/start-cockpit-demo.ts",
   "scripts/verify-cockpit-local-demo.ts",
   "scripts/verify-cockpit-local.ts",
-  "scripts/verify-local-cockpit-browser.mjs",
   "scripts/lib/cockpit-demo-instance.ts",
   "scripts/lib/cockpit-demo-fingerprint.ts",
   "scripts/lib/cockpit-demo-seed.ts",

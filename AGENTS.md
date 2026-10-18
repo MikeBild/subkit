@@ -212,11 +212,10 @@ do not infer the deployed or local runtime version from the checkout alone.
 
 ## Validation
 
-Visual acceptance is performed manually by the user. Do not run automated visual
-matrices across viewports, themes, or languages during implementation, verification,
-or release preparation. `bun run verify` excludes that matrix. Run visual matrix
-tools only when the user explicitly requests them again. Functional browser tests
-for actions, navigation, permissions, persistence, and handoffs remain automated.
+Browser acceptance uses browser-use with Codex or Claude Code. Do not create,
+restore, or run Playwright test suites, screenshot tests, or visual matrices.
+Keep API, security, domain, contract, invariant, drift, and build checks automated.
+Visual acceptance remains with the user.
 
 There is no CI. The pre-push hook (lint, typecheck, invariants, drift, commit
 messages, gitleaks, build) and `bun run verify` before every release tag are the
@@ -226,15 +225,10 @@ call of the release models that has no bypass: pass the deployed route as
 `./claude-key.txt` (Anthropic) and `./openai-key.txt` (OpenAI), both gitignored. Run the narrowest relevant checks while iterating.
 Report any skipped validation.
 
-Cockpit visual acceptance is performed manually in the local demo with test data.
-Do not run automatic visual sweeps or add them to iteration, pre-push, release, or
-CI/CD commands. Keep functional, security, invariant, drift, and build checks.
-`bun run verify:functional-cockpit` runs user journeys once with no screenshots or
-visual matrix; it remains part of `bun run verify`.
-
-Before handing a changed local demo installation to the user, verify the affected
-functional journeys against the actual local services. `bun run demo:local:verify`
-covers real API and browser flows, including a real provider chat response.
-Mocked browser fixtures and configuration readback alone are not evidence that
-local chat works. Reuse valid results; run only affected journey groups again.
-Keep user data intact and let the user perform visual acceptance manually.
+Before handing a changed local demo installation to the user, verify affected
+API journeys against the actual local services with `bun run demo:local:verify`.
+This command covers APIs only. Verify browser actions, navigation, persistence,
+permissions, approval handoffs, and a real provider chat response with browser-use
+and Codex or Claude Code. Mocked fixtures or configuration readback alone do not
+prove that local chat works. Reuse valid evidence, retain explicit verification gaps,
+and keep user data intact. The user performs visual acceptance manually.

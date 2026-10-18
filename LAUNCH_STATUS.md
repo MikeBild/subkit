@@ -2,14 +2,22 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-18T12:33:55.511739+00:00**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-18T12:41:00.019549+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktstand vor Remote-Integration: **0c61b8bc6**, Version **9.15.2**. QuickJS-Fix und korrigierte Hook-Dokumentationsassertion committed; vollständiges Gesamtgate PASS, unveränderte Quellhashes. ARM64-Image, Installation, Regression und Notice-Auslieferung bestanden (E158).
-- Letzter bestätigter Remote-Stand: **e4267c7eb**, main, per Fast-forward integriert. Version **10.0.1** vorbereitet (d62b80ed0); Clipper-Versionsartefakte E202 gezielt geprüft. Nachfolgende Image-/Browser-Nachweise beziehen sich weiterhin auf 10.0.0. Gesamtgate f489823b1 PASS (E181); Image/Installation und reale Browser-Journey auf d2eeb2aaa PASS (E184/E185). Neuere HTTP-/Seed-Änderungen gezielt geprüft (E186), Image aktualisiert (E187), S3-Platzmangel eingegrenzt (E188), aktuelle Installation mit eigenem Host-Datenspeicher bestanden (E189); kein neues Gesamtgate. Diese Fortschreibung LOCAL_ONLY bis Push.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E203. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Letzter bestätigter Remote-Stand: **f5a897f84**, main, per Fast-forward integriert. Version **10.0.1** vorbereitet (d62b80ed0); Clipper-Versionsartefakte E202 gezielt geprüft. Nachfolgende Image-/Browser-Nachweise beziehen sich weiterhin auf 10.0.0. Gesamtgate f489823b1 PASS (E181); Image/Installation und reale Browser-Journey auf d2eeb2aaa PASS (E184/E185). Neuere HTTP-/Seed-Änderungen gezielt geprüft (E186), Image aktualisiert (E187), S3-Platzmangel eingegrenzt (E188), aktuelle Installation mit eigenem Host-Datenspeicher bestanden (E189); kein neues Gesamtgate. Diese Fortschreibung LOCAL_ONLY bis Push.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E204. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
+
+## Aktuelle Testentscheidung
+
+Der Nutzer hat am 18.10. alle Playwright- und Screenshot-Tests samt Hilfsprogrammen
+zur Entfernung freigegeben. Browserabnahmen erfolgen künftig mit browser-use und
+Codex oder Claude Code; API-, Domänen-, Sicherheits- und Build-Gates bleiben bestehen.
+Historische E-Nachweise bleiben gültige historische Ergebnisse. Ihre gelöschten
+Browser-Runner sind kein künftig ausführbarer Testweg (E204).
 
 ## Aufgaben
 
@@ -108,7 +116,7 @@ Scope-Erweiterung vom Nutzer entschieden (gegen den Freeze 17.–20.10.): Lernvo
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **Weitere Vollstarts bis zu ausreichend versorgter Testumgebung zurückstellen (E201). E203 schließt den zusammenhängenden Clipper-Capture-/Admission-/Discovery-Nachweis mit deterministischem API-Vorschlag. Nächste offene L12-Lücke: Review und Vorschlag über persistierten Chat statt direkter Proposal-API prüfen; Queue-Start bleibt P0 offen. E200 schließt die geprüfte Browser→CLI/MCP/Hook-Discovery; E199 schließt die Hook-Hinweisqualität. Diese Nachweise wiederverwenden.** Reale Client-Auslösung bleibt L25, vorhandenes Nutzerprofil weiterhin ungeklärt. E194/E196 bleibt offene Kandidaten-Startzuverlässigkeit: Gegenprobe auf messbar ausreichend versorgtem System oder neue gezielte Diagnosehypothese erforderlich. Keine blinden Vollstart-Wiederholungen und keine fremden Demo-Dienste stoppen. Korrigierter Kategorie-/RBAC-Gesamtlauf noch offen, Teilnachweis E195 gültig. Vollständiges Release-Gate vor Tagging bleibt Pflicht. Neue Nachweise LOCAL_ONLY bis Push.
+Nächster Codex-Schritt: **Weitere Vollstarts bis zu ausreichend versorgter Testumgebung zurückstellen (E201). E203 schließt den zusammenhängenden Clipper-Capture-/Admission-/Discovery-Nachweis mit deterministischem API-Vorschlag. Nächste offene L12-Lücke: Review und Vorschlag über persistierten Chat mit browser-use und Codex/Claude Code prüfen; keine Playwright-Harnesses wiederherstellen; Queue-Start bleibt P0 offen. E200 schließt die geprüfte Browser→CLI/MCP/Hook-Discovery; E199 schließt die Hook-Hinweisqualität. Diese Nachweise wiederverwenden.** Reale Client-Auslösung bleibt L25, vorhandenes Nutzerprofil weiterhin ungeklärt. E194/E196 bleibt offene Kandidaten-Startzuverlässigkeit: Gegenprobe auf messbar ausreichend versorgtem System oder neue gezielte Diagnosehypothese erforderlich. Keine blinden Vollstart-Wiederholungen und keine fremden Demo-Dienste stoppen. Korrigierter Kategorie-/RBAC-Gesamtlauf noch offen, Teilnachweis E195 gültig. Vollständiges Release-Gate vor Tagging bleibt Pflicht. Neue Nachweise LOCAL_ONLY bis Push.
 
 L04 bleibt begrenzt auf bekannte offene Rechte-/Plattform-/Quellauslieferungsfragen
 und menschliche Freigaben. Alle 103 Polyfill-Lockfile-Versionen haben Originaltexte;

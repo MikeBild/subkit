@@ -13,8 +13,7 @@ const base = cockpitDemoBaseUrl(
   instance,
   process.env.SUBKIT_DEMO_URL ?? process.env.SUBKIT_LOCAL_URL ?? instance.baseUrl,
 );
-for (const arg of process.argv.slice(2))
-  if (arg !== "--keep-workflow") throw new Error(`Unknown option: ${arg}`);
+if (process.argv.length > 2) throw new Error(`Unknown option: ${process.argv[2]}`);
 const directory = cockpitDemoStateDirectory(instance, process.env.SUBKIT_DEMO_STATE_DIR);
 const key = readFileSync(resolve(directory, "api-key.txt"), "utf8").trim();
 const headers = { authorization: `Bearer ${key}`, "content-type": "application/json" };
@@ -22,8 +21,6 @@ const suffix = randomUUID().slice(0, 8);
 const label = `local-journey-${suffix}`;
 const steps: Json[] = [];
 const owned: { path: string; id: string }[] = [];
-let retainedWorkflow: Json | undefined;
-const keepWorkflow = process.argv.includes("--keep-workflow");
 const output = resolve(directory, "local-functional-journey.json");
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -234,14 +231,6 @@ async function main() {
     items(await request(`/v1/workflows/${workflowId}/execution-authorities`)).length === 0,
     "Refused grant creates no authority",
   );
-  retainedWorkflow = {
-    id: workflowId,
-    versionId,
-    connectorId: connector.id,
-    boundary: "GET http://demo-api:8080/contacts",
-    preparationExecutionId: prepared.execution_id,
-    authorityPreview: preview,
-  };
 }
 
 let failure: string | undefined;
@@ -251,7 +240,6 @@ try {
   failure = error instanceof Error ? error.message : String(error);
 } finally {
   for (const resource of owned.reverse()) {
-    if (keepWorkflow && resource.path === "/v1/workflows" && retainedWorkflow) continue;
     try {
       await request(`${resource.path}/${resource.id}`, "DELETE", undefined, [200, 204]);
     } catch (error) {
@@ -269,7 +257,7 @@ try {
   }
   writeFileSync(
     output,
-    `${JSON.stringify({ checkedAt: new Date().toISOString(), base: base.origin, installation, label, passed: !failure, failure, steps, retainedWorkflow: keepWorkflow ? retainedWorkflow : undefined, exclusions: ["No chat/model generation", "No visual assertions/screenshots", "Human grant and authorized live execution require the separate browser journey"] }, null, 2)}\n`,
+    `${JSON.stringify({ checkedAt: new Date().toISOString(), base: base.origin, installation, label, passed: !failure, failure, steps, exclusions: ["No chat/model generation", "No visual assertions/screenshots", "Human grant and authorized live execution require browser-use acceptance"] }, null, 2)}\n`,
     { mode: 0o600 },
   );
   chmodSync(output, 0o600);

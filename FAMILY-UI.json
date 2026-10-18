@@ -439,20 +439,6 @@
     "mismatchMutationPolicy": "disabled",
     "rollback": "whole-family"
   },
-  "screenshots": {
-    "viewports": [
-      "desktop",
-      "mobile"
-    ],
-    "themes": [
-      "light",
-      "dark"
-    ],
-    "consecutiveRuns": 2,
-    "products": 6,
-    "attentionImagesPerAcceptedRelease": 48,
-    "updateDashboardAfterEveryAttempt": true
-  },
   "migration": {
     "from": "2.3",
     "to": "3.0",

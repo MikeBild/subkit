@@ -1,29 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="SubKit">
-  <!--
-    Das App-Icon des SubKit Cockpits: dasselbe Motiv, das die Wortmarke in der
-    Seitenleiste traegt (lucide `Workflow`, apps/cockpit/src/app/shell.tsx), damit
-    Browser-Reiter und Konsole ein Zeichen teilen. Konvention §6.
-
-    Von Hand nachgezeichnet statt exportiert: der Browser holt ein Favicon selbst
-    und kann dabei nicht ins Bundle greifen. Die Pfade sind wortgleich die
-    Knoten von lucide `workflow`, damit Reiter und Seitenleiste dieselbe
-    Zeichnung sind und nicht zwei Auslegungen desselben Wortes.
-
-    Die Farben sind das eigene primary-Paar der Konsole aus
-    contract/cockpit-ui.css, hier als Literale, weil eine eigenstaendige SVG das
-    Stylesheet nie sieht. Die Media Query dreht sie genauso wie der Dark-Block
-    dort: eine fast schwarze Flaeche verschwindet in einer dunklen Reiterleiste,
-    und genau dort ist diese Datei das einzige Mal zu sehen.
-
-    Achtung fuer alle, die diesen Kommentar anfassen: zwei aufeinanderfolgende
-    Bindestriche sind in einem XML-Kommentar verboten, und die CSS-Token bei
-    ihrem echten Namen zu nennen ist genau der Weg, wie sie hier hineinkommen.
-    Der Fehler ist auf die schlimmste Art still, der Server antwortet weiter mit
-    200 und image/svg+xml, der Reiter bleibt leer. Deshalb steht in
-    scripts/konvention-check.mjs eine dritte Bedingung: der Browser muss die
-    Datei auch dekodieren koennen. Umlaute stehen aus demselben Grund
-    ausgeschrieben.
-  -->
   <style>
     .plate { fill: #0f172a }
     .glyph { fill: none; stroke: #f8fafc; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }

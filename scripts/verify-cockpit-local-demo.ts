@@ -8,7 +8,6 @@ import {
   cockpitDemoStateDirectory,
   resolveCockpitDemoInstance,
 } from "./lib/cockpit-demo-instance.ts";
-import { localChatVerificationMode } from "./lib/cockpit-demo-verification.ts";
 
 const args = process.argv.slice(2);
 
@@ -21,12 +20,13 @@ async function readJson<T>(path: string): Promise<T | null> {
 }
 
 if (args.includes("--help") || args.includes("-h")) {
-  console.log("Usage: bun run demo:local:verify [--mock]");
-  console.log("Runs local API and browser journeys; --mock verifies chat without a provider key.");
+  console.log("Usage: bun run demo:local:verify");
+  console.log(
+    "Checks the local API installation. Use browser-use with Codex or Claude Code for browser acceptance.",
+  );
   process.exit(0);
 }
-if (args.some((arg) => arg !== "--mock") || new Set(args).size !== args.length)
-  throw new Error(`Unknown or duplicate option: ${args[0]}`);
+if (args.length > 0) throw new Error(`Unknown or duplicate option: ${args[0]}`);
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const instance = resolveCockpitDemoInstance(process.env, ROOT);
@@ -81,22 +81,16 @@ const runtimeImage = spawnSync(
 );
 if (runtimeImage.status !== 0 || runtimeImage.stdout.trim() !== build.image)
   throw new Error("Running local demo image does not match its current build receipt");
-const mockChat = localChatVerificationMode(args.includes("--mock")) === "mock";
 
-for (const command of [
-  ["scripts/verify-cockpit-local.ts", "--keep-workflow"],
-  ["scripts/verify-local-cockpit-browser.mjs", ...(mockChat ? ["--mock-chat"] : [])],
-]) {
-  const result = Bun.spawnSync(["bun", ...command], {
-    cwd: ROOT,
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-    env: {
-      ...process.env,
-      SUBKIT_DEMO_STATE_DIR: directory,
-      SUBKIT_DEMO_URL: targetBaseUrl.origin,
-    },
-  });
-  if (result.exitCode !== 0) process.exit(result.exitCode ?? 1);
-}
+const result = Bun.spawnSync(["bun", "scripts/verify-cockpit-local.ts"], {
+  cwd: ROOT,
+  stdin: "inherit",
+  stdout: "inherit",
+  stderr: "inherit",
+  env: {
+    ...process.env,
+    SUBKIT_DEMO_STATE_DIR: directory,
+    SUBKIT_DEMO_URL: targetBaseUrl.origin,
+  },
+});
+if (result.exitCode !== 0) process.exit(result.exitCode ?? 1);
