@@ -3,7 +3,7 @@
     "version": "1.4.0",
     "revision": "34cbb9a40b4bd1bd767d134a7065e66c2432a676"
   },
-  "scope": "Draft notices from pinned Bun build sources across platforms. This is not a complete native or transitive inventory. Platform-specific binary coverage, source/relink delivery, embedded models and legal approval remain UNVERIFIED. Rust crate notices include the pinned workspace lockfile inventory, potentially including test or unused dependencies; this is not proof of per-platform binary inclusion. Ten crate packages still lack packaged notice texts.",
+  "scope": "Draft notices from pinned Bun build sources across platforms. This is not a complete native or transitive inventory. Platform-specific binary coverage, source/relink delivery, embedded models and legal approval remain UNVERIFIED. Rust crate notices include the pinned workspace lockfile inventory, potentially including test or unused dependencies; this is not proof of per-platform binary inclusion. Ten crate packages lack packaged notice texts; eight have exact-source-revision supplements. r-efi and selectors still have no resolved notice text.",
   "files": [
     {
       "component": "boringssl",
@@ -93,6 +93,28 @@
       "archiveSha256": "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923",
       "archivePath": "allocator-api2-0.2.21/LICENSE-MIT",
       "runtimeLockSha256": "819a552d52819d4d33897df69e16b698d703cec4e9009c2d132791931ab40856"
+    },
+    {
+      "component": "Rust crate anes",
+      "revision": "0.1.6",
+      "path": "crate-anes__source__LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/zrzka/anes-rs/378ac7461ecac29fde9e10df7b08359d1315a9ad/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "archiveSha256": "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299",
+      "archiveSource": "https://static.crates.io/crates/anes/anes-0.1.6.crate",
+      "sourceRevision": "378ac7461ecac29fde9e10df7b08359d1315a9ad",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate anes",
+      "revision": "0.1.6",
+      "path": "crate-anes__source__LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/zrzka/anes-rs/378ac7461ecac29fde9e10df7b08359d1315a9ad/LICENSE-MIT",
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "archiveSha256": "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299",
+      "archiveSource": "https://static.crates.io/crates/anes/anes-0.1.6.crate",
+      "sourceRevision": "378ac7461ecac29fde9e10df7b08359d1315a9ad",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
     },
     {
       "component": "Rust crate anstyle",
@@ -253,6 +275,17 @@
       "archiveSha256": "46502ad458c9a52b69d4d4d32775c788b7a1b85e8bc9d482d92250fc0e3f8efe",
       "archivePath": "blake2-0.10.6/LICENSE-MIT",
       "runtimeLockSha256": "819a552d52819d4d33897df69e16b698d703cec4e9009c2d132791931ab40856"
+    },
+    {
+      "component": "Rust crate blake2b_simd",
+      "revision": "1.0.4",
+      "path": "crate-blake2b_simd__source__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oconnor663/blake2_simd/6a94ae2e18985c7c35bada8a4d438bfe9ab0d0c0/LICENSE",
+      "sha256": "27e0387973d6b8507cb15f825f6f26e0278d4d5857082c1f56b49a7b39a90183",
+      "archiveSha256": "b79834656f71332577234b50bfc009996f7449e0c056884e6a02492ded0ca2f3",
+      "archiveSource": "https://static.crates.io/crates/blake2b_simd/blake2b_simd-1.0.4.crate",
+      "sourceRevision": "6a94ae2e18985c7c35bada8a4d438bfe9ab0d0c0",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
     },
     {
       "component": "Rust crate block-buffer",
@@ -2665,6 +2698,39 @@
       "runtimeLockSha256": "819a552d52819d4d33897df69e16b698d703cec4e9009c2d132791931ab40856"
     },
     {
+      "component": "Rust crate wasip3",
+      "revision": "0.4.0+wasi-0.3.0-rc-2026-01-06",
+      "path": "crate-wasip3__source__LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasi-rs/06ce201370fcde0d1b0d47cac8ecb1b0b312c9f9/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "archiveSha256": "5428f8bf88ea5ddc08faddef2ac4a67e390b88186c703ce6dbd955e1c145aca5",
+      "archiveSource": "https://static.crates.io/crates/wasip3/wasip3-0.4.0+wasi-0.3.0-rc-2026-01-06.crate",
+      "sourceRevision": "06ce201370fcde0d1b0d47cac8ecb1b0b312c9f9",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wasip3",
+      "revision": "0.4.0+wasi-0.3.0-rc-2026-01-06",
+      "path": "crate-wasip3__source__LICENSE-Apache-2.0_WITH_LLVM-exception.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasi-rs/06ce201370fcde0d1b0d47cac8ecb1b0b312c9f9/LICENSE-Apache-2.0_WITH_LLVM-exception",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "archiveSha256": "5428f8bf88ea5ddc08faddef2ac4a67e390b88186c703ce6dbd955e1c145aca5",
+      "archiveSource": "https://static.crates.io/crates/wasip3/wasip3-0.4.0+wasi-0.3.0-rc-2026-01-06.crate",
+      "sourceRevision": "06ce201370fcde0d1b0d47cac8ecb1b0b312c9f9",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wasip3",
+      "revision": "0.4.0+wasi-0.3.0-rc-2026-01-06",
+      "path": "crate-wasip3__source__LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasi-rs/06ce201370fcde0d1b0d47cac8ecb1b0b312c9f9/LICENSE-MIT",
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "archiveSha256": "5428f8bf88ea5ddc08faddef2ac4a67e390b88186c703ce6dbd955e1c145aca5",
+      "archiveSource": "https://static.crates.io/crates/wasip3/wasip3-0.4.0+wasi-0.3.0-rc-2026-01-06.crate",
+      "sourceRevision": "06ce201370fcde0d1b0d47cac8ecb1b0b312c9f9",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
       "component": "Rust crate wasm-bindgen-macro-support",
       "revision": "0.2.121",
       "path": "crate-wasm-bindgen-macro-support__d95a9ec35c64__LICENSE-APACHE.txt",
@@ -2743,6 +2809,105 @@
       "archiveSha256": "49ace1d07c165b0864824eee619580c4689389afa9dc9ed3a4c75040d82e6790",
       "archivePath": "wasm-bindgen-0.2.121/LICENSE-MIT",
       "runtimeLockSha256": "819a552d52819d4d33897df69e16b698d703cec4e9009c2d132791931ab40856"
+    },
+    {
+      "component": "Rust crate wasm-encoder",
+      "revision": "0.244.0",
+      "path": "crate-wasm-encoder__source__LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "archiveSha256": "990065f2fe63003fe337b932cfb5e3b80e0b4d0f5ff650e6985b1048f62c8319",
+      "archiveSource": "https://static.crates.io/crates/wasm-encoder/wasm-encoder-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wasm-encoder",
+      "revision": "0.244.0",
+      "path": "crate-wasm-encoder__source__LICENSE-Apache-2.0_WITH_LLVM-exception.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-Apache-2.0_WITH_LLVM-exception",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "archiveSha256": "990065f2fe63003fe337b932cfb5e3b80e0b4d0f5ff650e6985b1048f62c8319",
+      "archiveSource": "https://static.crates.io/crates/wasm-encoder/wasm-encoder-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wasm-encoder",
+      "revision": "0.244.0",
+      "path": "crate-wasm-encoder__source__LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-MIT",
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "archiveSha256": "990065f2fe63003fe337b932cfb5e3b80e0b4d0f5ff650e6985b1048f62c8319",
+      "archiveSource": "https://static.crates.io/crates/wasm-encoder/wasm-encoder-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wasm-metadata",
+      "revision": "0.244.0",
+      "path": "crate-wasm-metadata__source__LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "archiveSha256": "bb0e353e6a2fbdc176932bbaab493762eb1255a7900fe0fea1a2f96c296cc909",
+      "archiveSource": "https://static.crates.io/crates/wasm-metadata/wasm-metadata-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wasm-metadata",
+      "revision": "0.244.0",
+      "path": "crate-wasm-metadata__source__LICENSE-Apache-2.0_WITH_LLVM-exception.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-Apache-2.0_WITH_LLVM-exception",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "archiveSha256": "bb0e353e6a2fbdc176932bbaab493762eb1255a7900fe0fea1a2f96c296cc909",
+      "archiveSource": "https://static.crates.io/crates/wasm-metadata/wasm-metadata-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wasm-metadata",
+      "revision": "0.244.0",
+      "path": "crate-wasm-metadata__source__LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-MIT",
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "archiveSha256": "bb0e353e6a2fbdc176932bbaab493762eb1255a7900fe0fea1a2f96c296cc909",
+      "archiveSource": "https://static.crates.io/crates/wasm-metadata/wasm-metadata-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wasmparser",
+      "revision": "0.244.0",
+      "path": "crate-wasmparser__source__LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "archiveSha256": "47b807c72e1bac69382b3a6fb3dbe8ea4c0ed87ff5629b8685ae6b9a611028fe",
+      "archiveSource": "https://static.crates.io/crates/wasmparser/wasmparser-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wasmparser",
+      "revision": "0.244.0",
+      "path": "crate-wasmparser__source__LICENSE-Apache-2.0_WITH_LLVM-exception.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-Apache-2.0_WITH_LLVM-exception",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "archiveSha256": "47b807c72e1bac69382b3a6fb3dbe8ea4c0ed87ff5629b8685ae6b9a611028fe",
+      "archiveSource": "https://static.crates.io/crates/wasmparser/wasmparser-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wasmparser",
+      "revision": "0.244.0",
+      "path": "crate-wasmparser__source__LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-MIT",
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "archiveSha256": "47b807c72e1bac69382b3a6fb3dbe8ea4c0ed87ff5629b8685ae6b9a611028fe",
+      "archiveSource": "https://static.crates.io/crates/wasmparser/wasmparser-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
     },
     {
       "component": "Rust crate web-sys",
@@ -3173,6 +3338,72 @@
       "archiveSha256": "d7249219f66ced02969388cf2bb044a09756a083d0fab1e566056b04d9fbcaa5",
       "archivePath": "wit-bindgen-0.51.0/LICENSE-MIT",
       "runtimeLockSha256": "819a552d52819d4d33897df69e16b698d703cec4e9009c2d132791931ab40856"
+    },
+    {
+      "component": "Rust crate wit-component",
+      "revision": "0.244.0",
+      "path": "crate-wit-component__source__LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "archiveSha256": "9d66ea20e9553b30172b5e831994e35fbde2d165325bec84fc43dbf6f4eb9cb2",
+      "archiveSource": "https://static.crates.io/crates/wit-component/wit-component-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wit-component",
+      "revision": "0.244.0",
+      "path": "crate-wit-component__source__LICENSE-Apache-2.0_WITH_LLVM-exception.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-Apache-2.0_WITH_LLVM-exception",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "archiveSha256": "9d66ea20e9553b30172b5e831994e35fbde2d165325bec84fc43dbf6f4eb9cb2",
+      "archiveSource": "https://static.crates.io/crates/wit-component/wit-component-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wit-component",
+      "revision": "0.244.0",
+      "path": "crate-wit-component__source__LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-MIT",
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "archiveSha256": "9d66ea20e9553b30172b5e831994e35fbde2d165325bec84fc43dbf6f4eb9cb2",
+      "archiveSource": "https://static.crates.io/crates/wit-component/wit-component-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wit-parser",
+      "revision": "0.244.0",
+      "path": "crate-wit-parser__source__LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "archiveSha256": "ecc8ac4bc1dc3381b7f59c34f00b67e18f910c2c0f50015669dde7def656a736",
+      "archiveSource": "https://static.crates.io/crates/wit-parser/wit-parser-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wit-parser",
+      "revision": "0.244.0",
+      "path": "crate-wit-parser__source__LICENSE-Apache-2.0_WITH_LLVM-exception.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-Apache-2.0_WITH_LLVM-exception",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "archiveSha256": "ecc8ac4bc1dc3381b7f59c34f00b67e18f910c2c0f50015669dde7def656a736",
+      "archiveSource": "https://static.crates.io/crates/wit-parser/wit-parser-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
+    },
+    {
+      "component": "Rust crate wit-parser",
+      "revision": "0.244.0",
+      "path": "crate-wit-parser__source__LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/d4e317f22c3bace76cb3205003bcc34b4929037d/LICENSE-MIT",
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "archiveSha256": "ecc8ac4bc1dc3381b7f59c34f00b67e18f910c2c0f50015669dde7def656a736",
+      "archiveSource": "https://static.crates.io/crates/wit-parser/wit-parser-0.244.0.crate",
+      "sourceRevision": "d4e317f22c3bace76cb3205003bcc34b4929037d",
+      "sourceBinding": "Published crate .cargo_vcs_info.json at the checksum-pinned archive; repository root license supplement."
     },
     {
       "component": "Rust crate xml-rs",
