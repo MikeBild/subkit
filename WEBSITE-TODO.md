@@ -209,3 +209,35 @@ Dokumentationsabschluss zu überspringen. Kein Release-Tag, Engine-Deployment od
 Website-Publishing. Historische Sicherungs-Stashes bleiben als Sicherungen bestehen;
 sie sind nicht automatisch erneut anzuwenden. Den tatsächlichen Push-/Arbeitsbaumstand
 vor neuer Arbeit mit git status prüfen.
+
+
+## Clipper-Store: bestätigter Session-Abschluss
+
+- Der Nutzer hat SubKit Clipper im Chrome Web Store eingereicht. Die offizielle
+  Status-API bestätigt `PENDING_REVIEW` für Version `9.15.2`. Das ist eine
+  eingereichte, auf Google-Prüfung wartende Version, keine öffentliche Freigabe.
+- Store-Beschreibung auf Englisch und Deutsch im gemeinsamen Feld gespeichert;
+  Symbol, echter Screenshot und kleine Werbekachel hochgeladen. Zweck,
+  Berechtigungsbegründungen, Angabe ohne Remote-Code und Datenarten gespeichert.
+- Der Nutzer hat eine bestehende persönliche Datenschutzseite als Übergang
+  freigegeben. Ihre deutsche Fassung ist erreichbar, die vorgeschlagene englische
+  Fassung lieferte 404. Der geprüfte Inhalt beschreibt die Website, noch nicht
+  die Clipper-Datenverarbeitung. Dies bleibt ein inhaltlicher Release-Punkt;
+  ein erfolgreicher Einreichungsstatus bestätigt keine Datenschutzvollständigkeit.
+- Lovable hat separate Seiten `/de/clipper-datenschutz`, `/en/clipper-privacy`
+  und den automatischen Einstieg `/clipper-privacy` implementiert. Laut Lovable
+  28 fokussierte Tests bestanden; keine Website-Analytics oder Formulare auf
+  diesen Seiten. Inhalt und Hosting-Grenzen stehen im Lovable-Projekt in
+  `CLIPPER-PRIVACY.md`, `RELEASE.md` und `VERIFICATION.md`.
+- Diese Seiten sind noch unveröffentlicht. Lovable veröffentlicht projektweit,
+  nicht einzelne Routen. Nicht deshalb die unfertige Marketing-Website starten.
+  Nächster Schritt: Clipper-Hinweise separat öffentlich bereitstellen oder in
+  die bestehende öffentliche Datenschutzseite aufnehmen, dann den Store-Link
+  kontrollieren/aktualisieren. Anschließend Googles Prüfentscheidung abfragen.
+- Konkrete Projekt-/Store-Adressen, IDs, Auftrags- und Commitstand sowie die
+  operative Übergabe liegen außerhalb des Repositorys in
+  `/Users/mikebild/Documents/SubKit-Lovable/WEBSITE-HANDOFF.md` und
+  `/Users/mikebild/Documents/SubKit-Lovable/Chrome-Web-Store/status.txt`.
+- Kein erneutes Einreichen, Zurückziehen, Website-Publishing, DNS-Wechsel oder
+  Engine-Deployment aus diesem Status ableiten. Kein öffentlicher Store-Erfolg
+  behaupten, bevor er tatsächlich bestätigt ist.

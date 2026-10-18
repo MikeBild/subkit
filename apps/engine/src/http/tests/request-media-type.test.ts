@@ -45,3 +45,19 @@ test("authentication remains required before request validation", async () => {
   });
   expect(response.status).toBe(401);
 });
+
+test("a malformed JSON body is a client error with a stable code", async () => {
+  for (const path of ["/v1/agent/domains", "/v1/workflows"]) {
+    const response = await fetch(`${ctx.baseUrl}${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
+      body: '{"domains": [',
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: "malformed_json",
+      message: "Malformed JSON in request body",
+      trace_id: expect.any(String),
+    });
+  }
+});
