@@ -24,7 +24,7 @@ Ausführungen nachvollziehen. KI-Unterstützung ersetzt keine Ausführungsfreiga
 - General Availability (GA): möglichst bis 15.11.2026; früher, sobald alle Gates erfüllt sind.
 - Veröffentlichung hat Vorrang vor neuen Features, Refactorings und Architekturarbeit.
 - Kostenloses Self-Hosting, kein SaaS, kein Checkout und kein kostenpflichtiges B2C-Angebot.
-- SubKit-Website in Framer vorbereiten; Deutsch zuerst, Englisch später. Quellrepository nach Prüfung öffentlich machen.
+- SubKit-Website in Lovable vorbereiten, vollständig Deutsch und Englisch; aktuelle Nutzerentscheidungen und Designzuständigkeit in WEBSITE-TODO.md beachten. Frühere Framer-Aufträge sind abgelöst. Quellrepository nach Prüfung öffentlich machen.
 - Clipper einschließlich späterer öffentlicher Chrome-Web-Store-Version gehört zum Launch.
 - Praktisch getestete Installation, menschliche Freigaben und Release-Gates sind zwingend.
 - Deutsche rechtliche Anforderungen anhand des tatsächlichen Angebots prüfen und freigeben.
@@ -318,14 +318,14 @@ Aktuelle Website-Entscheidungen und Übergabe: [WEBSITE-TODO.md](WEBSITE-TODO.md
 Die dort dokumentierte Lovable-Umsetzung einschließlich DE/EN ersetzt ältere
 Framer-Aufträge in diesem Plan; historische Entwürfe bleiben als Verlauf erhalten.
 
-Aktuelle Nutzerentscheidung: Die öffentliche SubKit-Website wird in Framer vorbereitet,
-auf Deutsch, Englisch später. Die frühere ContentKit-Zielzuordnung unten ist historischer
-Kontext. Das Framer-Arbeitspaket am Ende dieser Datei führt Inhalte und Übergabe weiter.
-Veröffentlichung, Betreiberangaben und menschliche Sicht-/Rechtsabnahme bleiben offen.
+Aktuelle Nutzerentscheidung: Lovable, vollständig Deutsch und Englisch. Betreiber-
+und Kontaktangaben sind laut WEBSITE-TODO.md bestätigt; Veröffentlichung und finale
+Sicht-/Rechtsabnahme bleiben offen. Die früheren ContentKit- und Framer-Zuordnungen
+sind historischer Kontext und kein aktueller Implementierungsauftrag.
 
 Historische redaktionelle Quelle: `MikeBild/mikebild-dev-content`; sie ist von diesem Repo
 getrennt. README/AGENTS dieses Repositories wurden in der Bestandsaufnahme gelesen. ContentKit
-ist dort das Publikationssystem. Für die hier beauftragte SubKit-Website ist nun Framer vorgesehen;
+ist dort das Publikationssystem. Für die SubKit-Website ist inzwischen Lovable vorgesehen;
 Inhaltsreview und ausdrückliche Publikationsfreigabe bleiben erforderlich.
 Der tatsächliche Website-Runtime-/Hosting-Code ist noch nicht vollständig verifiziert.
 Konkrete Hosts und private Infrastruktur bleiben außerhalb dieser Dateien.
@@ -778,7 +778,9 @@ Screenshots behalten ihre ursprüngliche ZIP-Provenienz; keine neue Abnahme aus 
 aktuellen Icon-Korrektur ableiten. Die Beschreibungsabsätze zur Wissensübernahme
 setzen die vollständige L12-Abnahme voraus.
 
-## Framer-Arbeitspaket
+## Historisches Framer-Arbeitspaket
+
+Abgelöst durch WEBSITE-TODO.md; die folgenden alten Aufträge nicht ausführen.
 
 ### Redaktioneller Stand und Verwendung
 
