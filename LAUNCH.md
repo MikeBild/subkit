@@ -77,7 +77,7 @@ Dokumentation, öffentliche Store-Installation, finale Produktabnahme und Suppor
 ### Nicht-Ziele
 
 Neue Connectoren, Slack-/Teams-Adapter, SaaS, Abrechnung, Marketplace, Kubernetes,
-zusätzliche Engine-Architekturen und Produkt-UI-Redesign sind P2. Framer ist durch die
+zusätzliche Engine-Architekturen und Produkt-UI-Redesign sind P2. Lovable ist durch die
 Nutzerentscheidung für die öffentliche SubKit-Website im Launch-Scope.
 Vorhandene Roadmap-Issues werden nicht automatisch Launch-Blocker. Das ältere GitHub-Issue
 #318 zur ChatGPT-Katalogauffindbarkeit wird nur anhand eines aktuellen Pflichtpfads bewertet;
