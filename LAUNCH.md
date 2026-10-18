@@ -645,7 +645,7 @@ ContentKit-Freigabe werden separat dokumentiert.
 
 ## L04: Quell-/Relink-Auslieferung konkret abnehmen
 
-Status: technische Vorbereitung, keine juristische Freigabe. Die bestehende
+Status: technischer Prüfentwurf, keine juristische Freigabe und kein zusätzlich implementiertes Release-Gate. Der notwendige Lieferumfang und geeignete Nachweis sind anhand der tatsächlich verwendeten Lizenzen freizugeben. Die bestehende
 Release-Strecke liefert Binärdateien und Notices; ein entsprechendes öffentliches
 Quell-/Relink-Paket und ein erfolgreicher Wiederaufbau sind noch nicht belegt.
 Buns eigene LICENSE.md beschreibt statisch eingebundenes WebKit/JavaScriptCore
@@ -678,3 +678,19 @@ DoD: bestätigter Lieferumfang, zum Release passende Inhalte, reproduzierbare
 Anleitung mit echtem Austausch-/Wiederaufbaunachweis, sichere Artefaktbindung und
 nach Veröffentlichung erreichbare Bezugswege. Bis dahin bleiben L04/L05 offen.
 Keine pauschale neue Architektur oder Produktfunktion dafür einführen.
+
+### Vorhandene Buildvoraussetzungen für den Prüfentwurf
+
+Lokale Prüfung E145: macOS ARM64 mit Xcode, CMake und Ninja vorhanden; ICU 78
+ist installiert, benötigt jedoch einen expliziten Suchpfad. Go und rustup fehlen.
+Bun bindet Rust `nightly-2026-07-20`; das Buildskript akzeptiert LLVM 21.1.x
+mit Referenzversion 21.1.8. Apple Clang 21.0 und Homebrew LLVM 23.1 erfüllen
+seine Versionsbedingung nicht. Keine globale Toolchain geändert.
+
+Ein lokaler Versuch braucht daher eine getrennte Toolchain-Umgebung mit
+expliziten Pfaden und begrenzten Buildressourcen. Das ist noch kein ausgeführter
+Build. Die aktuelle Source-Vorbereitung bleibt als Prüfmaterial nutzbar. Der
+juristisch geeignete Lieferweg ist zu entscheiden, bevor aus diesem Entwurf
+pauschal eine neue Freigabebedingung für jede Plattform gemacht wird. Bereits
+bestehende Release-Gates bleiben unverändert. Unabhängig davon aktuelle
+SubKit-Artefakte, Notice-Inhalte und Installationsabläufe weiter fertigstellen.
