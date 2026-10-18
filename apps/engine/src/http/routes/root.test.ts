@@ -87,6 +87,8 @@ describe("the self-description set", () => {
     expect(page).toContain(
       "Codex hooks are enabled by default; no `config.toml` edit is normally needed.",
     );
+    expect(page).toContain("Review and trust new or changed SubKit hooks in `/hooks`.");
+    expect(page).toContain("inspect the effective feature setting and administrator policy");
   });
 
   test("no served page links to a page the binary does not carry", async () => {
