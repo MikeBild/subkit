@@ -150,6 +150,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the knowledge source id is unknown — call list_knowledge_sources to discover the correct id",
   sensitive_path:
     "the learning names a key or credential file location and was not saved — restate the learning without naming key, certificate, .env or credential file paths, then call save_learning again",
+  intake_items_changed:
+    "the confirmed intake items changed or were already decided before the discard ran, so nothing was discarded — call list_intake_items and get_intake_item to read the current state, then ask the person which items to discard",
   snapshot_not_found:
     "the snapshot id is stale or wrong — call list_draft_snapshots to discover the correct id",
   no_snapshot_available:
