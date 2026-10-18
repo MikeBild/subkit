@@ -1,27 +1,27 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E211.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E212.
 
-- Letztes Update: **2026-10-18T14:04:57.124970+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **57ff2f530**, `main`, Version **10.0.1** vorbereitet.
+- Letztes Update: **2026-10-18T14:34:29.072249+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **54dc0aa9b**, `main`, Version **10.0.1** vorbereitet.
   Lokal und origin/main waren vor Diagnosestart gleich; alle acht normalen Push-Gates bestanden.
-- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Produktquellen während der Diagnose unverändert.
+- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Produktquellen der Diagnose unverändert.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: insbesondere externe Store-Freigabe offen.
 
 ## Aktive Arbeit und nächster Codex-Schritt
 
-**L13:** Diagnose der übrigen isolierten Testdateien auf 57ff2f530 läuft seit
-2026-10-18T13:52:03.527923+00:00, Tool-Prozess **86219**.
-Letzte Live-Beobachtung: Datei 329/1282 (providers.test.ts); 2358 Tests PASS, 0 FAIL.
+**L13:** Diagnosefortsetzung auf 57ff2f530 ist abgeschlossen, E212:
+1.282 Dateien, 10.506 PASS/0 FAIL/4 SKIP/5 TODO, Exit 0 und unveränderte Quellhashes.
 Receipt/Log: `.artifacts/launch/operator-post-migration-diagnostic.{json,log}`.
 Dieser `--start-after`-Lauf ist **kein vollständiges Release-Gate**.
 
-Denselben Prozess bis zum autoritativen Exit verfolgen; nicht wegen eines
-Beobachtungs-Timeouts neu starten. Weitere Fehler gezielt beheben und prüfen.
-Anschließend das vollständige `bun run verify` von Beginn an ausführen.
+Nächster Codex-Schritt: Nach normal geprüftem Evidenz-Commit/Push das vollständige
+`bun run verify` von Beginn an auf gemeinsamem main ausführen. Eigene isolierte
+PostgreSQL- und Host-Objektspeicher-Fixtures weiterverwenden. Prozess, Quellhashes,
+terminalen Exit und vorhandene Skips/TODOs getrennt dokumentieren.
 Nur eine aktive technische Prüfstrecke; keine konkurrierenden Produktänderungen.
 
 ## Aufgaben
@@ -43,7 +43,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L10 | IN_PROGRESS | ZIP 10.0.1: Versions-/Drift-/Archivprüfung bestanden, E202. Listing, Icons, historische Medien und private Übergabe vorbereitet, E147–E152/E166. Pflichtlinks, Medienabnahme und menschliche Zertifizierung offen. |
 | L11 | IN_PROGRESS | Nutzer hat 9.15.2 eingereicht; synchronisierter Store-Handoff meldet PENDING_REVIEW, E186. Öffentliche Clipper-Privacy fehlt. Keine automatische erneute Einreichung des lokalen 10.0.1-Pakets. |
 | L12 | IN_PROGRESS | Reale Browser-/Provider-Skill-Journey E185; Knowledge E193; Browser→CLI/MCP/Hook-Handler E200; Clipper→Admission E203; persistierter Chat→Proposal→Bestätigung E205 jeweils begrenzt bestanden. Aktueller Gesamt-/Kategorie-/RBAC-/Kanalnachweis und zuverlässiger Kandidatenstart offen, E194–E196/E201. |
-| L13 | IN_PROGRESS | Gesamtgate E207/E209 fehlgeschlagen; S3-Fixture und Issuer-Recovery gezielt korrigiert. E210: zehn historische Fixtures korrigiert, alle 25 Migrationsdateien/88 Tests und Typecheck bestanden. Diagnose läuft; kein aktuelles Gesamt-PASS. Referenzbenchmarks und finale Release-Route offen. |
+| L13 | IN_PROGRESS | Gesamtgate E207/E209 fehlgeschlagen; S3-Fixture und Issuer-Recovery gezielt korrigiert. E210: zehn historische Fixtures korrigiert, alle 25 Migrationsdateien/88 Tests und Typecheck bestanden. Diagnosefortsetzung E212 bestanden: 1.282 Dateien/10.506 Tests, 4 SKIP/5 TODO. Vollständiges Gate offen; kein aktuelles Gesamt-PASS. Referenzbenchmarks und finale Release-Route offen. |
 | L14 | BLOCKED | L04/L05/L13 und Freigaben für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Installation durch externen Nutzer aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -82,7 +82,7 @@ Website/Recht und Google-Review laufen unabhängig davon, soweit Zugang/Freigabe
 | Prüfung | Belegter Stand |
 | --- | --- |
 | Vollständiges lokales Gate | **E181: PASS auf f489823b1**, Exit 0, unveränderte Quellhashes; 2.051 Dateien, E2E 257 PASS/0 FAIL/20 SKIP/3 TODO. Historischer Stand, nicht aktueller Operator-Kandidat. |
-| Neuere Fehlversuche | E207: S3-HTTP-500 bei voller Docker-Platte; echte Host-Speicher-Gegenprobe 2 PASS/20.978 Assertions. E209: fehlender Issuer-Recovery-Hinweis, korrigiert mit 33 PASS. E210: historischer ORM-Insert, korrigiert mit 88 PASS. Kein zusammengesetztes Gesamt-PASS. |
+| Neuere Fehlversuche | E207: S3-HTTP-500 bei voller Docker-Platte; echte Host-Speicher-Gegenprobe 2 PASS/20.978 Assertions. E209: fehlender Issuer-Recovery-Hinweis, korrigiert mit 33 PASS. E210: historischer ORM-Insert, korrigiert mit 88 PASS. E212: weitere 1.282 Dateien/10.506 Tests bestanden, 4 SKIP/5 TODO. Kein zusammengesetztes Gesamt-PASS. |
 | Reale Modelle | E169: Live-Gate 6 PASS; E170: HTTP-/CLI-Gesprächssuite 7 PASS. E185: reale Container-/Browser-/Provider-Skill-Journey. Keine Abnahme aller Kanäle oder erneute Bestätigung der Produktionsroute. |
 | ARM64-Image/Installation | E184/E185: 10.0.0 auf d2eeb2aaa bestanden. Aktualisiertes Image beba30b7196f auf 48f07dabf gebaut, E187; elf Installationschecks mit Host-Datenspeicher bestanden, E189. Kein aktuelles 10.0.1-/Operator-Image. |
 | Sicherheit | E158: QuickJS-Worker-Regression einschließlich damaligem Gesamtgate bestanden. E190: Trivy 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories; eingebettete WASM nicht separat erfasst. Keine gesamte Sicherheitsfreigabe. |
@@ -134,8 +134,8 @@ Bei Bedarf gezielt laden oder neuen Kandidaten bauen. Keine fremden Ressourcen b
 
 ## Nächste drei Aufgaben
 
-1. **L13 P0:** laufende Diagnose abschließen, Fehler gezielt beheben, danach vollständiges
-   Gate. Quellhashes und terminalen Exit festhalten; gültige Teilnachweise wiederverwenden.
+1. **L13 P0:** nach E212 vollständiges Gate von Beginn an ausführen und gegebenenfalls neue
+   Fehler gezielt beheben. Quellhashes und terminalen Exit festhalten; gültige Teilnachweise wiederverwenden.
 2. **L12/L18 P0/P1:** auf messbar ausreichend versorgtem System aktuellen Kandidatenstart,
    Kategorie-/RBAC-Parität und Upgrade/Restore prüfen. E195 ist Teilnachweis, kein Gesamtergebnis.
    Keine blinden Vollstart-Wiederholungen oder Eingriffe in fremde Demos.
