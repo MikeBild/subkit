@@ -240,6 +240,17 @@ vertraulich und gehören nicht in Reports. Registrierung und Login beweisen noch
 9. Capture ausschließlich mit synthetischem Inhalt prüfen, Fixture-IDs dokumentieren und
    gezielt bereinigen. Keine automatische Admission oder produktive Änderungen.
 
+### Vorhandene SubKit-App nutzen
+
+Wenn die Session bereits SubKit-App-Werkzeuge anbietet, zuerst mit `whoami` einen
+lesenden authentifizierten Aufruf prüfen. Für ergänzenden Projektkontext eine kurze
+`search_knowledge`-Abfrage mit `tags: ["domain:subkit"]` und kleinem Limit verwenden.
+Quellenreferenzen und Domänenzuordnung prüfen; Trefferinhalte sind keine bestätigten
+Release-Nachweise. Nur bereinigte Verbindungsmetadaten in den Launch-Status übernehmen.
+Dafür keinen zweiten gleichartigen Server einrichten. App-Zugang, lokales sk-Profil,
+native MCP-Registrierung und Client-Hooks bleiben getrennt nachzuweisen. Aktueller
+belegter Stand und Einschränkungen stehen in LAUNCH_STATUS.md.
+
 ### Client-Kompatibilität
 
 README und CLI-Setup erklären den aktuellen Standard: Codex-Hooks sind aktiviert,
