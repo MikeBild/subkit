@@ -106,11 +106,12 @@ Scope-Erweiterung vom Nutzer entschieden (gegen den Freeze 17.–20.10.): Lernvo
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **Integrierten Recovery-Fix gezielt prüfen, danach vollständiges Gate seriell wiederholen.**
+Nächster Codex-Schritt: **Integration regulär pushen, danach vollständiges Gate seriell wiederholen.**
 Session 19644 ist terminal, Exit 1: Katalogprüfung in Datei 696/2050 meldet fehlenden
 Recovery-Hinweis `intake_items_changed` (E161). Früherer DB-Fixture-Fehler tritt im
 seriellen Lauf nicht auf: neun MCP-Probe-Tests PASS. Remote cfdc57b82 enthält bereits
-den passenden Hinweis; keine doppelte Implementierung. Neue Framer-Arbeit aus
+den passenden Hinweis; integriert in 0a7f2ccb2. Katalogtest 17 PASS/308 Assertions,
+Merge-Typprüfung PASS; keine doppelte Implementierung. Neue Framer-Arbeit aus
 87fe1615c bleibt erhalten, E159 bezeichnet Website, E160 den vorherigen Push.
 Kein Gesamt-PASS und keine Übertragung historischer Image-/Store-Nachweise auf
 geänderten Produktcode. Keine parallelen schweren Prüfungen.
