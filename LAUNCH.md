@@ -377,7 +377,9 @@ Verfügbarkeit. Google nennt wenige Tage bis mehrere Wochen; keine Termingaranti
 
 Noch erforderlich: Betreiber-/Supportangaben, juristische Freigabe, Store-Konto und Einreichung,
 Testzugänge/Zielsysteme, globale Hooks und Transkript-Datenfluss, visuelle Abnahme sowie
-gesonderte Freigaben für Commit/Push, Repository-Öffnung, Website, Beta und GA.
+gesonderte Freigaben für Repository-Öffnung, Website, Beta und GA.
+Commit/Push für die autonome Launch-Arbeit sind bereits fortlaufend autorisiert;
+reguläre Hooks und die getrennten Veröffentlichungsfreigaben bleiben verbindlich.
 
 | Risiko | Auslöser / Reaktion |
 | --- | --- |
@@ -391,21 +393,26 @@ gesonderte Freigaben für Commit/Push, Repository-Öffnung, Website, Beta und GA
 
 ### Nächste drei Tage
 
+Operativ aktualisiert am 18.10.; aktuelle Aufgabenstatus und Nachweise ausschließlich
+in LAUNCH_STATUS.md. L02, L03 und L07 sind abgeschlossen und werden nicht erneut geplant.
+
 | Tag | Technischer Hauptstrom | Menschlicher/externer Parallelstrom |
 | --- | --- | --- |
-| 18.10. | L02 abschließen, L03 unter Release-Toolchain isolieren | Betreiber-/Supportangaben, Store-Kontostatus |
-| 19.10. | L04 prüfen, L05 Publikations-/Deploygrenze konkretisieren | Rechtstexte prüfen, Website-Inhalte freigeben |
-| 20.10. | L07 Installation/Neustart/Backup-Rückweg, Prognose aktualisieren | Store-Assets und Reviewerinformationen, Freigabevorbereitung |
+| 18.10. | Bestandenes Gesamtgate E154 dokumentieren; QuickJS-Fix 0c61b8bc6 regulär pushen; anschließend verbleibende konkrete P0-Nachweise | Betreiber-/Supportangaben, Store-Kontostatus, Signing-Key und Benchmark-Zielsystem bereitstellen |
+| 19.10. | Verbleibende konkrete L04/L08-Rechte-/Security-Nachweise bearbeiten; L05/L13 signierte Vorbereitung nur bei erfüllten Voraussetzungen | Rechtstexte prüfen, Website-Inhalte und Store-Medien abnehmen |
+| 20.10. | Website-/Store-Entwürfe mit freigegebenen Pflichtlinks vervollständigen; L12 verbleibende echte Kanalprüfungen bei verfügbaren Zugängen; Terminprognose aktualisieren | Reviewerzugang, Pflichtlinks und konkrete Einreichungsfreigabe vorbereiten |
 
-### Nächster technischer Auftrag: L03
+### Nächster technischer Auftrag: verbleibende P0 abschließen
 
-Aktuellen Git-Stand prüfen, fremde Arbeiten sichern und nach AGENTS.md synchronisieren.
-Clipper-Drift unter Bun 1.4.0 mit identischem Lockfile in isolierter Umgebung reproduzieren.
-Zwei ZIP-Builds vergleichen und Ursache gegenüber eingechecktem Archiv bestimmen.
-Ausschließlich die belegte Ursache über bestehende Generatoren beheben. Driftcheck,
-betroffene Build-Verträge und Paketinstallation prüfen. Toolchain, Source/Lockfile,
-ZIP-Hashes, Exitcodes und Grenzen in LAUNCH_STATUS.md dokumentieren.
-Keine Features, Commits, Pushes, Tags, Deployments oder Store-Einreichung ohne Freigabe.
+Aktuellen Git-Stand und Remote-Synchronisation prüfen. Der QuickJS-Fix ist als
+0c61b8bc6 committed; vollständiges Gate, gezielte Regression, reproduzierbarer
+Build und frische Containerinstallation sind in E154 belegt. Keine unveränderte
+Wiederholung dieser Prüfungen starten. Falls der Commit noch nicht auf main liegt,
+den normalen Push mit Hooks abschließen. Danach die nächste ausführbare offene
+P0-Aufgabe aus LAUNCH_STATUS.md wählen; konkrete verbleibende Security-/Rechtefragen
+bearbeiten, fehlende menschliche Voraussetzungen ausdrücklich belassen.
+Keine erledigten L02/L03/L07-Aufgaben wiederholen. Keine Tags, Veröffentlichungen,
+Deployments oder Store-Einreichung aus der Commit-/Push-Freigabe ableiten.
 
 Erfolg des Gesamtplans: Ein externer Nutzer kann SubKit aus öffentlichen Kanälen installieren
 und die freigegebenen Produktpfade sicher tatsächlich verwenden.
