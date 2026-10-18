@@ -30,7 +30,6 @@ import {
   connectors,
   credentials,
   mcpOauthStates,
-  tenants,
 } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 
@@ -113,10 +112,12 @@ async function seedMcpServer(args: {
 beforeAll(async () => {
   ctx = await createTestDb("mcp_servers_to_connectors", { upToIdx: MIGRATION_IDX - 1 });
 
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-mcp-migrate", display_name: "McpMigrate" })
-    .returning();
+  const {
+    rows: [t],
+  } = await ctx.db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, display_name)
+    VALUES (${"t-mcp-migrate"}, ${"McpMigrate"}) RETURNING id
+  `);
   if (!t) throw new Error("tenant seed failed");
   tenant_id = t.id;
 

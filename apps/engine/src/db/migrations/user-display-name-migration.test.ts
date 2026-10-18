@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { runMigrations } from "../migrate.ts";
-import { tenants, users } from "../schema/index.ts";
+import { users } from "../schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
@@ -16,10 +16,12 @@ test(
     if (!migration) throw new Error("display name migration is not embedded");
     const ctx = await createTestDb("user_display_name", { upToIdx: migration.idx - 1 });
     try {
-      const [tenant] = await ctx.db
-        .insert(tenants)
-        .values({ slug: "user-display-name-migration", display_name: "User display name" })
-        .returning({ id: tenants.id });
+      const {
+        rows: [tenant],
+      } = await ctx.db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, display_name)
+    VALUES (${"user-display-name-migration"}, ${"User display name"}) RETURNING id
+  `);
       if (!tenant) throw new Error("test tenant was not created");
       const roleId = await builtinRoleId(ctx.db, "member");
       const { rows } = await ctx.pool.query(

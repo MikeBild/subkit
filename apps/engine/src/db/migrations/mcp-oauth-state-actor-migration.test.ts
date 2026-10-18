@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { runMigrations } from "../migrate.ts";
-import { connectors, tenants } from "../schema/index.ts";
+import { connectors } from "../schema/index.ts";
 import { mcpOauthStates } from "../schema/mcp_oauth_states.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
@@ -17,10 +17,12 @@ test(
       upToIdx: migration.idx - 1,
     });
     try {
-      const [tenant] = await ctx.db
-        .insert(tenants)
-        .values({ slug: "mcp-oauth-state-actor-migration", display_name: "MCP OAuth state actor" })
-        .returning({ id: tenants.id });
+      const {
+        rows: [tenant],
+      } = await ctx.db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, display_name)
+    VALUES (${"mcp-oauth-state-actor-migration"}, ${"MCP OAuth state actor"}) RETURNING id
+  `);
       if (!tenant) throw new Error("test tenant was not created");
       const [connector] = await ctx.db
         .insert(connectors)

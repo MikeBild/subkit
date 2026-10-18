@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 import { runMigrations } from "../migrate.ts";
-import { tenants } from "../schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
@@ -15,10 +15,12 @@ test(
     if (!migration) throw new Error("execution caller origin migration is not embedded");
     const ctx = await createTestDb("execution_caller_origin", { upToIdx: migration.idx - 1 });
     try {
-      const [tenant] = await ctx.db
-        .insert(tenants)
-        .values({ slug: "execution-caller-origin", display_name: "Execution caller origin" })
-        .returning({ id: tenants.id });
+      const {
+        rows: [tenant],
+      } = await ctx.db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, display_name)
+    VALUES (${"execution-caller-origin"}, ${"Execution caller origin"}) RETURNING id
+  `);
       if (!tenant) throw new Error("test tenant missing");
       const caller = {
         tenantId: tenant.id,

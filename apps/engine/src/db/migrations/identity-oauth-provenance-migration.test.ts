@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { runMigrations } from "../migrate.ts";
-import { systemAccounts, tenants } from "../schema/index.ts";
+import { systemAccounts } from "../schema/index.ts";
 import { mcpOauthGrants } from "../schema/mcp_oauth.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
@@ -23,10 +24,12 @@ test(
       upToIdx: identityMigration.idx - 1,
     });
     try {
-      const [tenant] = await ctx.db
-        .insert(tenants)
-        .values({ slug: "identity-oauth-provenance", display_name: "Identity provenance" })
-        .returning({ id: tenants.id });
+      const {
+        rows: [tenant],
+      } = await ctx.db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, display_name)
+    VALUES (${"identity-oauth-provenance"}, ${"Identity provenance"}) RETURNING id
+  `);
       if (!tenant) throw new Error("test tenant was not created");
       const roleId = await builtinRoleId(ctx.db, "member");
       const { rows: userRows } = await ctx.pool.query<{ id: string }>(

@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { runMigrations } from "../migrate.ts";
-import { systemAccounts, tenants, users } from "../schema/index.ts";
+import { systemAccounts, users } from "../schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
@@ -20,10 +20,12 @@ test(
       upToIdx: actorColumnsMigration.idx - 1,
     });
     try {
-      const [tenant] = await ctx.db
-        .insert(tenants)
-        .values({ slug: "connection-actor-contract", display_name: "Connection actor contract" })
-        .returning({ id: tenants.id });
+      const {
+        rows: [tenant],
+      } = await ctx.db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, display_name)
+    VALUES (${"connection-actor-contract"}, ${"Connection actor contract"}) RETURNING id
+  `);
       if (!tenant) throw new Error("test tenant was not created");
       const [user] = await ctx.db
         .insert(users)

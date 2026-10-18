@@ -5,7 +5,7 @@ import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import type { Db } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
-import { conversationElicitations, conversations, mcpTasks, tenants } from "../schema/index.ts";
+import { conversationElicitations, conversations, mcpTasks } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
@@ -67,10 +67,12 @@ async function seedTask(turnSeq: number, actorId: string | null): Promise<string
 beforeAll(async () => {
   if (!migration) throw new Error("migration 0089_decider_kind is not embedded");
   ctx = await createTestDb("decider_kind", { upToIdx: migration.idx - 1 });
-  const [tenant] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-decider-kind", display_name: "Decider kind" })
-    .returning({ id: tenants.id });
+  const {
+    rows: [tenant],
+  } = await ctx.db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, display_name)
+    VALUES (${"t-decider-kind"}, ${"Decider kind"}) RETURNING id
+  `);
   if (!tenant) throw new Error("seed tenant failed");
   tenantId = tenant.id;
   const userResult = await ctx.pool.query(

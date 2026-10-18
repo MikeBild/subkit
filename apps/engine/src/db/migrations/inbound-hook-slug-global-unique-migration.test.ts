@@ -4,7 +4,7 @@ import { AuditAction } from "../../audit/types.ts";
 import { bindFromWorkflow, inboundSlugCandidate } from "../../webhooks/inbound/service.ts";
 import type { Db } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
-import { auditLog, tenants, webhooksInbound, workflows } from "../schema/index.ts";
+import { auditLog, webhooksInbound, workflows } from "../schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
@@ -14,10 +14,12 @@ const LONG = `wf-${"a".repeat(61)}`;
 const UNSIGNED = { source: "generic", events: [], skip: true };
 
 async function seedTenant(db: Db, label: string): Promise<string> {
-  const [row] = await db
-    .insert(tenants)
-    .values({ slug: `slug-unique-${label}`, display_name: `Slug unique ${label}` })
-    .returning({ id: tenants.id });
+  const {
+    rows: [row],
+  } = await db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, display_name)
+    VALUES (${`slug-unique-${label}`}, ${`Slug unique ${label}`}) RETURNING id
+  `);
   if (!row) throw new Error(`seed tenant ${label} failed`);
   return row.id;
 }

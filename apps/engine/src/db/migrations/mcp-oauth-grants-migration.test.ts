@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { runMigrations } from "../migrate.ts";
-import { tenants, users } from "../schema/index.ts";
+import { users } from "../schema/index.ts";
 import {
   mcpOauthAccessTokens,
   mcpOauthClients,
@@ -23,15 +24,19 @@ test(
     if (!migration) throw new Error("OAuth unknown grant backfill is not embedded");
     const ctx = await createTestDb("mcp_oauth_grants", { upToIdx: migration.idx - 1 });
     try {
-      const [tenant] = await ctx.db
-        .insert(tenants)
-        .values({ slug: "oauth-grants-migration", display_name: "OAuth grants" })
-        .returning({ id: tenants.id });
+      const {
+        rows: [tenant],
+      } = await ctx.db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, display_name)
+    VALUES (${"oauth-grants-migration"}, ${"OAuth grants"}) RETURNING id
+  `);
       if (!tenant) throw new Error("test tenant was not created");
-      const [otherTenant] = await ctx.db
-        .insert(tenants)
-        .values({ slug: "oauth-grants-migration-other", display_name: "OAuth grants other" })
-        .returning({ id: tenants.id });
+      const {
+        rows: [otherTenant],
+      } = await ctx.db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, display_name)
+    VALUES (${"oauth-grants-migration-other"}, ${"OAuth grants other"}) RETURNING id
+  `);
       if (!otherTenant) throw new Error("second test tenant was not created");
       const [user] = await ctx.db
         .insert(users)
