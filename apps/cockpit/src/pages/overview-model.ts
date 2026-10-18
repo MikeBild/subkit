@@ -133,6 +133,7 @@ const REASON_KEYS = {
   secret_unreadable: "overview.reason.secret_unreadable",
   secret_prepared: "overview.reason.secret_prepared",
   skills_proposed: "overview.reason.skills_proposed",
+  intake_collected: "overview.reason.intake_collected",
   budget_critical: "overview.reason.budget_critical",
   risk_critical: "overview.reason.risk_critical",
 } as const satisfies Record<AttentionItem["reason"], TranslationKey>;
@@ -289,6 +290,15 @@ export function attentionSentence(
         machine: null,
         since,
       };
+    case "intake_collected":
+      return {
+        lead: t(
+          (item.counts.intake ?? 1) > 1 ? "overview.reason.intake_collectedCount" : reasonKey,
+          { count: item.counts.intake ?? 1 },
+        ),
+        machine: null,
+        since,
+      };
     case "skills_proposed":
       return {
         lead: t(
@@ -398,6 +408,7 @@ const SOURCE_KEYS = {
   connections: "overview.source.connections",
   secret_approvals: "overview.source.secret_approvals",
   skills: "overview.source.skills",
+  intake: "overview.source.intake",
   budget: "overview.source.budget",
   risk: "overview.source.risk",
 } as const satisfies Record<AttentionSource, TranslationKey>;
@@ -506,6 +517,7 @@ const COUNTED_SHORT_REASON_KEYS = {
   failing: "overview.short.failing",
   patch_proposed: "overview.short.patch_proposed",
   skills_proposed: "overview.short.skills_proposed",
+  intake_collected: "overview.short.intake_collected",
 } as const satisfies Partial<Record<AttentionItem["reason"], PluralKey>>;
 
 const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: TranslationKey }> = {
@@ -528,6 +540,7 @@ const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: T
   secret_unreadable: { state: "failed", label: "overview.state.secret" },
   secret_prepared: { state: "pending", label: "overview.state.decide" },
   skills_proposed: { state: "proposed", label: "overview.state.decide" },
+  intake_collected: { state: "pending", label: "overview.state.decide" },
   budget_critical: { state: "critical", label: "overview.state.budget" },
   risk_critical: { state: "critical", label: "overview.state.risk" },
 };
@@ -544,9 +557,11 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
     subjectName(item) ||
     (item.reason === "skills_proposed"
       ? t("overview.object.skills")
-      : item.reason === "budget_critical"
-        ? t("overview.object.budget")
-        : t("overview.unnamed"));
+      : item.reason === "intake_collected"
+        ? t("overview.object.intake")
+        : item.reason === "budget_critical"
+          ? t("overview.object.budget")
+          : t("overview.unnamed"));
   const version = item.approval ? ` v${item.approval.version}` : "";
 
   const badge = (STATE_OF_REASON as Record<string, AttentionRow["badge"]>)[item.reason] ?? {
@@ -560,7 +575,9 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
         ? (item.counts.patches ?? 1)
         : item.reason === "skills_proposed"
           ? (item.counts.skills ?? 1)
-          : (item.repair?.steps ?? 1);
+          : item.reason === "intake_collected"
+            ? (item.counts.intake ?? 1)
+            : (item.repair?.steps ?? 1);
   const counted = (COUNTED_SHORT_REASON_KEYS as Record<string, PluralKey>)[item.reason];
   const key = counted
     ? pluralKey(counted, count)
@@ -568,17 +585,9 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
   const short = key
     ? t(key, { count, step: item.repair?.step_id ?? "" })
     : t("overview.short.other");
-  const knowledge = item.reason === "skills_proposed" ? (item.counts.knowledge ?? 0) : 0;
   return {
     name: `${name}${version}`,
-    reason:
-      knowledge > 0
-        ? t("overview.short.skills_proposedSplit", {
-            proposals: short,
-            knowledge,
-            skills: count - knowledge,
-          })
-        : short,
+    reason: short,
     machine: key ? null : item.reason,
     badge,
   };

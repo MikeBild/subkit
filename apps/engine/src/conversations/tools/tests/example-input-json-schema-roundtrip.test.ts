@@ -49,7 +49,7 @@ describe("tool example_input ↔ inputSchema round-trip (post-incident guard)", 
       else incompatible.push({ name: t.name, reasons: result.errors.slice(0, 3) });
     }
 
-    expect(compatible).toContain("propose_skill");
+    expect(compatible).toContain("save_learning");
     expect(compatible).toContain("probe_connector");
     expect(incompatible).toEqual([]);
   });

@@ -18,6 +18,7 @@ import pc from "picocolors";
 import { configDir, resolveProfile } from "../config.ts";
 import { debugLog } from "../debug.ts";
 import { EngineClient, type FetchLike } from "../engine-client.ts";
+import { cockpitIntakeUrl } from "../lib/intake-review.ts";
 import { wireClaudeHooks, wireCodexHooks, writeJsonFilesAtomically } from "./agent-hook-config.ts";
 
 export { wireClaudeHooks, wireCodexHooks } from "./agent-hook-config.ts";
@@ -182,7 +183,7 @@ function briefingInstructions(
   }
   if (domains.includes("subkit")) {
     instructions.push(
-      "For SubKit questions about current work or pending items, inspect live sources independently: call `list_skill_suggestions` and `list_skill_candidates` for their separate review queues; use `list_workflows` and follow up any blocked or otherwise attention-worthy workflow with `get_workflow`; use `list_executions` and `list_schedules` for recent runs and upcoming work. Check `list_patch_candidates` when a workflow repair is relevant. Resolve workflow and schedule IDs to human-readable names before reporting. Surface specific failed or blocked work, schedules requiring input or due soon, and human decisions that unblock important work; treat recent successful runs as background unless they change what the user should do. Keep collected entries separate from confirmed knowledge and never preload their contents. If suggestion and candidate queues overlap, do not count the same proposal twice. These are read-only status checks; do not approve items or run workflows unless asked. Do not infer that nothing is pending from one empty queue, aggregate engine counts, or knowledge search. Mention a stopped conversation only when a connected source confirms it.",
+      "For SubKit questions about current work or pending items, inspect live sources independently: call `list_skill_suggestions` and `list_skill_candidates` for their separate review queues; call `list_intake_items` for collected clips and session learnings that still await a person's review, reading only their metadata; use `list_workflows` and follow up any blocked or otherwise attention-worthy workflow with `get_workflow`; use `list_executions` and `list_schedules` for recent runs and upcoming work. Check `list_patch_candidates` when a workflow repair is relevant. Resolve workflow and schedule IDs to human-readable names before reporting. Surface specific failed or blocked work, schedules requiring input or due soon, and human decisions that unblock important work; treat recent successful runs as background unless they change what the user should do. Keep collected entries separate from confirmed knowledge and never preload their contents. If suggestion and candidate queues overlap, do not count the same proposal twice. These are read-only status checks; do not approve items or run workflows unless asked. Do not infer that nothing is pending from one empty queue, aggregate engine counts, or knowledge search. Mention a stopped conversation only when a connected source confirms it.",
     );
   }
   return `${markdown}\n\n${instructions.join("\n\n")}`;
@@ -621,10 +622,17 @@ const briefingCommand = defineCommand({
   },
 });
 
+export function captureQueuedMessage(
+  client: Pick<EngineClient, "base">,
+  transcriptChars: number,
+): string {
+  return `queued (${transcriptChars} chars) — learnings worth keeping are collected for review in Cockpit: ${cockpitIntakeUrl(client)}`;
+}
+
 const captureCommand = defineCommand({
   meta: {
     name: "capture",
-    description: "Send a session transcript to the engine for learning distillation",
+    description: "Send a session transcript to the engine to collect learnings for review",
   },
   args: {
     transcript: { type: "string", description: "Path to the transcript file (JSONL or text)" },
@@ -699,7 +707,7 @@ const captureCommand = defineCommand({
         return;
       }
       process.stdout.write(
-        `${pc.green("✓")} queued (${result.transcript_chars} chars) — review with \`sk learnings review\`\n`,
+        `${pc.green("✓")} ${captureQueuedMessage(client, result.transcript_chars)}\n`,
       );
     } catch (err) {
       if (args.hook) {

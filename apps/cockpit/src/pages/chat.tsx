@@ -393,8 +393,9 @@ function actionLabel(
   workflowNameFor: (slug: string) => string | null = () => null,
   run: WorkflowRunKind | null = null,
   unfinished = false,
+  output?: unknown,
 ): string {
-  const label = toolLabel(toolName);
+  const label = toolLabel(toolName, output);
   if (label.kind === "literal") return label.text;
   if (label.kind === "background") return t(label.words.past);
   const runTitle = workflowRunTitleKey(label, notRun, run);
@@ -1179,7 +1180,15 @@ function ChatMessage({
                   type={tool.type}
                   state={tool.state}
                   toolName={tool.toolName}
-                  title={actionLabel(t, tool.toolName, notRun, workflowNameFor, runKind, stale)}
+                  title={actionLabel(
+                    t,
+                    tool.toolName,
+                    notRun,
+                    workflowNameFor,
+                    runKind,
+                    stale,
+                    tool.output,
+                  )}
                   outcomeKey={headerOutcomeKey}
                   data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
                 />
@@ -1194,6 +1203,7 @@ function ChatMessage({
                     workflowNameFor,
                     runKind,
                     stale,
+                    tool.output,
                   )}
                   outcomeKey={headerOutcomeKey}
                   data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}

@@ -4,8 +4,8 @@ Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
 - Letzte Aktualisierung: **2026-10-18T05:14:11.929384+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
-- Geprüfter Produktstand: **0c61b8bc6**, Version **9.15.2**. QuickJS-Fix und korrigierte Hook-Dokumentationsassertion committed; vollständiges Gesamtgate PASS, unveränderte Quellhashes. ARM64-Image, Installation, Regression und Notice-Auslieferung bestanden (E154).
-- Letzter bestätigter Remote-Stand: **06353d31e**, main, 0/0 Divergenz; `git pull --ff-only origin main` ohne Änderungen. Diese Statusaktualisierung bis zum Push LOCAL_ONLY. Commit/Push sind autorisiert; Veröffentlichung bleibt separat freizugeben.
+- Geprüfter Produktstand vor Remote-Integration: **0c61b8bc6**, Version **9.15.2**. QuickJS-Fix und korrigierte Hook-Dokumentationsassertion committed; vollständiges Gesamtgate PASS, unveränderte Quellhashes. ARM64-Image, Installation, Regression und Notice-Auslieferung bestanden (E154).
+- Letzter bestätigter Remote-Stand: **b6f6df211**, main. Während der lokalen Verifikation sieben neue Remote-Commits; Integration erhält die freigegebene Intake-Erweiterung. Kombinierter Stand noch UNVERIFIED. Diese Statusaktualisierung bis zum Push LOCAL_ONLY. Commit/Push sind autorisiert; Veröffentlichung bleibt separat freizugeben.
 - Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E155. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
@@ -28,8 +28,8 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L09 | IN_PROGRESS | Claim Map, Gliederung, deutscher Produktseitenentwurf und getrennte Kritik in LAUNCH.md vorbereitet; E29. Bestehender redaktioneller Kanal bestätigt, kein SubKit-Projekttext im gelesenen main-Baum. Öffentliche Links, Rechtsangaben, Preview und Abnahme offen. ENTWURF, nicht veröffentlicht. |
 | L10 | IN_PROGRESS | Zweisprachige Listing-Texte, Berechtigungsbegründungen, Datenfluss-/Privacy-Arbeitsblatt und Reviewer-Ablauf als Entwurf in LAUNCH.md vorbereitet. Vier PNG-Icons werden aus bestehendem Cockpit-Logo generiert und mit Lucide-Lizenz im Manifest/ZIP ausgeliefert, E53. Paket-/Browser-/Binärprüfungen und macOS/Linux-Reproduzierbarkeit bestanden. Zwei echte Screenshot-Entwürfe mit isolierten Beispieldaten vorbereitet (E147); Kleine Promografik als lokaler Entwurf ergänzt; 128px-Store-Icon auf 96px-Motiv plus 16px transparenten Rand korrigiert und im ZIP geprüft (E148). Linux-amd64/macOS-ZIP byte-identisch; aktuelle kompilierte Engine/CLI liefern/installieren dasselbe Paket, E149. Lokale Einreichungsübergabe mit Listing-Texten, Medien, unverändertem ZIP und Prüfsummen erstellt; Integritäts-/Secret-Scan PASS, acht Freigabevoraussetzungen offen (E152). Visuelle Abnahme aller Medien, Pflichtlinks und menschliche Zertifizierung offen. ENTWURF, nicht veröffentlicht. |
 | L11 | BLOCKED | L10, öffentliche Pflichtlinks, Publisherstatus und explizite Einreichungsfreigabe fehlen. |
-| L12 | IN_PROGRESS | Isolierter aktueller Kandidat: API-/Browser-/Intake-Prüfungen PASS, E37–E39; MCP-Cockpit-Handoff und echter Clipper gegen Engine PASS, E42/E43. Mock-Läufe und begrenzter echter Provider-Chat E45 getrennt belegt; vollständige Cross-Surface-Abnahme weiterhin offen. Manuelle Demo unverändert. |
-| L13 | IN_PROGRESS | Aktuelles vollständiges bun run verify für QuickJS-Patch und korrigierte Dokumentationsassertion PASS, Quellhashes unverändert (E154). Live-Modellmatrix E73 PASS; aktuelle gepaarte Referenz-Benchmarks fehlen (E75/E80). |
+| L12 | IN_PROGRESS | Isolierter aktueller Kandidat: API-/Browser-/Intake-Prüfungen PASS, E37–E39; MCP-Cockpit-Handoff und echter Clipper gegen Engine PASS, E42/E43. Mock-Läufe und begrenzter echter Provider-Chat E45 getrennt belegt; vollständige Cross-Surface-Abnahme weiterhin offen. Manuelle Demo unverändert. **Neuabnahme erforderlich:** Die Scope-Erweiterung „Sitzungs-Lernvorschläge über Intake“ (Ziel Wissen oder Skill, Bestätigung nur per Browser-Sitzung) ändert die geprüften Abläufe; E37–E46 gelten nur für den Stand davor. Lokale Demo mit echtem Provider einschließlich neuer Journey „session learnings review“ (deterministisch und reales Modell getrennt) PASS. L12 läuft nach dem Deploy komplett neu: Clipper, sk, MCP, HTTP, Cockpit, Google Chat, Coding-Agent-Hooks; simuliert und live getrennt. |
+| L13 | IN_PROGRESS | Aktuelles vollständiges bun run verify für QuickJS-Patch und korrigierte Dokumentationsassertion PASS, Quellhashes unverändert (E154). Kombination mit neuer Intake-Erweiterung b6f6df211 noch UNVERIFIED. Live-Modellmatrix E73 PASS; aktuelle gepaarte Referenz-Benchmarks fehlen (E75/E80). |
 | L14 | BLOCKED | L04/L05/L13 und Freigabe für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Externer Installationstest aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -98,18 +98,20 @@ Bestätigt: kostenloses Self-Hosting, bestehender Website-Kanal, Repository nach
 
 Offen: Betreiber-/Supportangaben, juristische Abnahme, Store-Publisherstatus und Einreichungsfreigabe; vorhandener passender Signing-Key, Referenzbenchmark-System und echte Channel-Testzugänge; Einschränkung/Stilllegung des historischen Firebase-Keys; globale Hooks/Transkript-Datenfluss; manuelle Sichtabnahme und gesonderte Publikations-/Deploymentfreigaben. Keine produktiven Daten oder globale Konfigurationen verändert.
 
+Scope-Erweiterung vom Nutzer entschieden (gegen den Freeze 17.–20.10.): Lernvorschläge aus Coding-Agent-Sitzungen und `save_learning` laufen vor der Beta als Sammelgut mit Origin `session` über Intake. Ziel eines bestätigten Vorschlags ist Wissen oder ein Skill; Bestätigung nur durch eine Person in einer Browser-Sitzung mit den Rechten des Ziels. Der Umbau entfernt die Learning-Skill-Kandidaten, `create_skill`/`propose_skill` und `sk learnings`; die AGENTS.md-Ergänzung ist vom Nutzer freigegeben. Die vorbereitende PROD-Datenbereinigung (Archivieren erfundener Konsolidate und Testreste, Verwerfen titelbasierter Konsolidate) ist mit Einzelbestätigung erfolgt; die Wiederherstellung fälschlich verworfener Vorschläge folgt nach dem Deploy. Release/Deploy (Major) bleiben gesondert freizugeben.
+
 ## Nächste drei Aufgaben
 
 1. **L08 P0:** Verbleibende konkrete Security-Nachweise abschließen; QuickJS-Fix 0c61b8bc6 ist lokal vollständig geprüft (E154). Bestandene Regression/Containerprüfungen wiederverwenden. Lizenzfreigaben L04 bleiben separat offen.
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **Synchronisation für 0c61b8bc6 prüfen**, dann nächste
-ausführbare offene P0 auswählen. Gesamtcheck abgeschlossen (Session 63013 terminal,
-Exit 0); nicht erneut pollen oder unverändert neu starten. Falls noch nicht gepusht,
-normalen Push mit Hooks abschließen und Remote-Stand verifizieren.
-Quell-/Toolchain-/Patch-Provenienz in `vendor/quickjs-runtime/manifest.json`.
-Die dortige Build-Statusangabe ist historisch; aktueller Verifikationsstand E154.
+Nächster Codex-Schritt: **Kombinierten Stand nach Remote-Integration prüfen**.
+E154 gilt für 0c61b8bc6 vor der Intake-Erweiterung, nicht für den Merge.
+Zuerst gezielte QuickJS-/Selbstbeschreibungsprüfungen, danach vollständiges Gate
+für die Kombination; regulären Push mit Hooks abschließen. Alte Session 63013
+ist terminal (Exit 0) und darf nicht erneut gepollt werden. Keine Übertragung
+historischer Container-/Store-Paket-Nachweise auf das geänderte Intake-/Clipper-Paket.
 
 L04 bleibt begrenzt auf bekannte offene Rechte-/Plattform-/Quellauslieferungsfragen
 und menschliche Freigaben. Alle 103 Polyfill-Lockfile-Versionen haben Originaltexte;

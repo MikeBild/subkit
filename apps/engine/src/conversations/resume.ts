@@ -367,15 +367,41 @@ function externalToolSubject(value: unknown): ExternalToolSubject | undefined {
   };
 }
 
+const PENDING_SUBJECTS_MAX = 100;
+
+function clip(text: string, max: number): string {
+  return text.trim().slice(0, max);
+}
+
+function subjectLabel(subject: unknown): string | null {
+  if (!subject || typeof subject !== "object" || Array.isArray(subject)) return null;
+  const { id, title, status } = subject as Record<string, unknown>;
+  if (typeof title === "string" && title.trim()) return clip(title, 200);
+  if (typeof id !== "string" || !id.trim()) return null;
+  return status === "not_found" ? `${clip(id, 64)} (not found)` : clip(id, 64);
+}
+
+function targetLabel(target: unknown): string | null {
+  if (!target || typeof target !== "object" || Array.isArray(target)) return null;
+  const { kind } = target as Record<string, unknown>;
+  return kind === "skill_draft" ? "Target: new draft skill (needs activation)" : null;
+}
+
 function pendingSubjects(value: unknown): string[] | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const titles = (value as Record<string, unknown>).titles;
-  if (!Array.isArray(titles)) return undefined;
-  const subjects = titles
-    .filter((title): title is string => typeof title === "string" && title.trim().length > 0)
-    .slice(0, 20)
-    .map((title) => title.trim().slice(0, 200));
-  return subjects.length > 0 ? subjects : undefined;
+  const pending = value as Record<string, unknown>;
+  if (!Array.isArray(pending.subjects)) return undefined;
+  const subjects = pending.subjects
+    .slice(0, PENDING_SUBJECTS_MAX)
+    .map(subjectLabel)
+    .filter((label): label is string => label !== null);
+  if (subjects.length === 0) return undefined;
+  const target = targetLabel(pending.target);
+  const excerpt =
+    typeof pending.body_excerpt === "string" && pending.body_excerpt.trim()
+      ? clip(pending.body_excerpt, 300)
+      : null;
+  return [...subjects, ...(target ? [target] : []), ...(excerpt ? [excerpt] : [])];
 }
 
 export function pendingPrompt(input: unknown): {

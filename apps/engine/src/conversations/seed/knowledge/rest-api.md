@@ -4,7 +4,7 @@ name: sk Platform Reference — REST API
 description: The /v1 REST surface of the sk engine — auth, OpenAPI/Scalar, every resource group's CRUD endpoints and shapes, the five connector drivers including the MCP driver's own routes, pagination/filter conventions, and POST /v1/executions for saved/draft/step runs.
 tags: [sk-platform-reference, rest-api, http, openapi, executions]
 scope: global
-version: 3
+version: 4
 ---
 
 # REST API Overview
@@ -233,8 +233,8 @@ Retrievable corpus chunks that feed LLM context.
 
 The grounding + capture surface for external coding agents (Claude Code, Codex). Domains are the tag convention `domain:<slug>` on skills and knowledge sources; a repo declares its domains in `.sk/agent.json`.
 
-- `GET /v1/agent/briefing` — budgeted, domain-scoped grounding markdown for session start. Query: `domains` (comma-separated slugs, required), `budget_tokens` (500–16000, default 4000). Returns `{ markdown, domains, budget_tokens, used_tokens, skills_full, skills_title_only, knowledge_sources, knowledge_sources_omitted, proposed_candidates }`. Gated `skill:read`; the knowledge-index section additionally requires `knowledge:read`. Deterministic budget trim: index entries drop first, then skill bodies collapse to pointer lines.
-- `POST /v1/agent/sessions` — capture a finished session's transcript for learning distillation. Body: `{ agent, session_id?, repo?, domains?, transcript }` (transcript ≤ 1,000,000 chars, JSONL or plain text). Returns `202 { queued: true, transcript_chars }`; analysis runs asynchronously and extracted learnings land as `session_learning` skill candidates with `status: "proposed"` — nothing goes live without human approval via the skill-candidates approve route. Gated `skill:propose` (proposing never implies approving). Audited as `agent_session.captured`.
+- `GET /v1/agent/briefing` — budgeted, domain-scoped grounding markdown for session start. Query: `domains` (comma-separated slugs, required), `budget_tokens` (500–16000, default 4000). Returns `{ markdown, domains, budget_tokens, used_tokens, skills_full, skills_title_only, knowledge_sources, knowledge_sources_omitted, intake }`; `intake` is `{ clips, sessions, proposals }` for the requested domains (counts only, never item content) or `null` without `intake:read`. Gated `skill:read`; the knowledge-index section additionally requires `knowledge:read`. Deterministic budget trim: index entries drop first, then skill bodies collapse to pointer lines.
+- `POST /v1/agent/sessions` — capture a finished session's transcript for learning distillation. Body: `{ agent, session_id?, repo?, domains?, transcript }` (transcript ≤ 1,000,000 chars, JSONL or plain text). Returns `202 { queued: true, transcript_chars }`; analysis runs asynchronously and extracted practices and facts are collected as Intake items with origin `session` (events, status updates and credential-related lines are dropped) — nothing becomes knowledge or a skill until a person confirms an intake proposal in the Cockpit. Gated `skill:propose` (collecting never implies confirming). Audited as `agent_session.captured`.
 
 # Identity
 
@@ -262,7 +262,7 @@ Authorization model: roles, permissions, grants, groups. (These routes are regis
 
 # Operator
 
-- `GET /v1/attention` — what needs the caller now: one item per thing to act on (own waiting conversations, held schedules, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, skill proposals, a critical budget or risk signal), filtered per item by the caller's permissions. Read-only. The MCP tool `get_attention` returns the same list.
+- `GET /v1/attention` — what needs the caller now: one item per thing to act on (own waiting conversations, held schedules, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, collected intake items to review, skill proposals detected from recurring patterns, a critical budget or risk signal), filtered per item by the caller's permissions. Read-only. The MCP tool `get_attention` returns the same list.
 - `GET /v1/operator/health-digest` — operator health digest (seeds the sk REPL startup view; aggregates failures, pending candidates and risk signals; its headline and `all_clear` come from the attention list).
 - Diagnostics: `GET /v1/diagnostics/errors`, `/v1/diagnostics/drift`, `/v1/diagnostics/integrations`, `/v1/diagnostics/llm`, `/v1/diagnostics/logs`, `/v1/diagnostics/runtime`, `/v1/diagnostics/setup`, `/v1/diagnostics/version`.
 - Self-healing: `GET /v1/self-healing/scans`, `GET /v1/self-healing/scans/{id}`.

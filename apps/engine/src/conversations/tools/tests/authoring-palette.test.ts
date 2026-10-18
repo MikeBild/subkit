@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import {
+  createEmptyDraftDocument,
+  withConnectorDraft,
+  withWorkflowDraft,
+} from "../../authoring-state.ts";
 import type { AuthoringSummary, DraftDocument } from "../../types.ts";
 import {
+  authoringSkillsForTurn,
   CHAT_READONLY_TOOLS,
   CONNECTOR_AUTHORING_SKILL,
   filterByAuthoringPalette,
@@ -354,5 +359,161 @@ describe("filterByChatReadOnlyPalette — read-only channel invariants", () => {
     );
     expect(visible).toContain("create_intake_proposal");
     expect(visible).toContain("revise_intake_proposal");
+  });
+});
+
+describe("authoringSkillsForTurn — authoring palette only on intent or an active draft", () => {
+  const AUTHORING_TOOLS = [
+    { name: "author_workflow" },
+    { name: "edit_workflow_patch" },
+    { name: "dry_run_workflow" },
+    { name: "save_workflow_draft" },
+    { name: "start_connector_from_description" },
+    { name: "probe_connector_draft" },
+    { name: "save_connector_draft" },
+  ] as const;
+
+  function paletteFor(
+    draft: DraftDocument,
+    userMessage: string,
+    surface = "web",
+    bound: { boundConnector?: boolean; boundWorkflow?: boolean } = {},
+  ): string[] {
+    const skills = authoringSkillsForTurn({
+      surface,
+      draft,
+      userMessage,
+      startNewWorkflow: false,
+      boundConnector: bound.boundConnector ?? false,
+      boundWorkflow: bound.boundWorkflow ?? false,
+    });
+    return filterByAuthoringPalette(AUTHORING_TOOLS, draft, new Set(skills)).map((t) => t.name);
+  }
+
+  function workflowDraft(): DraftDocument {
+    return withWorkflowDraft(createEmptyDraftDocument(), {
+      name: "daily-report",
+      slug: "daily-report",
+      steps: [{ id: "shape", kind: "transform", language: "javascript", expression: "return 1;" }],
+    } as never);
+  }
+
+  function connectorDraft(): DraftDocument {
+    return withConnectorDraft(createEmptyDraftDocument(), {
+      name: "Acme API",
+      slug: "acme-api",
+      driver: "http",
+      environment: "dev",
+      base_url: "https://api.example.com",
+      auth_type: "none",
+      config: {},
+      docs: [],
+      latest_probe: null,
+      saved_connector_id: null,
+    } as never);
+  }
+
+  test("a neutral question without a draft loads no authoring skill", () => {
+    expect(paletteFor(createEmptyDraftDocument(), "what failed last night?")).toEqual([]);
+  });
+
+  test("an in-progress workflow draft keeps workflow authoring tools on a continuation", () => {
+    const names = paletteFor(workflowDraft(), "yes");
+    expect(names).toContain("author_workflow");
+    expect(names).toContain("edit_workflow_patch");
+    expect(names).toContain("dry_run_workflow");
+    expect(names).toContain("save_workflow_draft");
+    expect(names).not.toContain("start_connector_from_description");
+  });
+
+  test("an unsaved connector draft keeps connector authoring tools on a continuation", () => {
+    const names = paletteFor(connectorDraft(), "ok");
+    expect(names).toContain("probe_connector_draft");
+    expect(names).toContain("save_connector_draft");
+    expect(names).not.toContain("author_workflow");
+  });
+
+  test("a connector saved in this conversation hands over to workflow authoring", () => {
+    const saved = withConnectorDraft(createEmptyDraftDocument(), {
+      name: "Acme API",
+      slug: "acme-api",
+      driver: "http",
+      environment: "dev",
+      base_url: "https://api.example.com",
+      auth_type: "none",
+      config: {},
+      docs: [],
+      latest_probe: null,
+      saved_connector_id: "00000000-0000-4000-8000-000000000001",
+    } as never);
+    expect(paletteFor(saved, "continue")).toContain("author_workflow");
+  });
+
+  test("workflow-authoring intent without a draft exposes workflow authoring tools", () => {
+    expect(
+      paletteFor(createEmptyDraftDocument(), "erstelle einen workflow für den Bericht"),
+    ).toContain("author_workflow");
+  });
+
+  test("connector-creation intent without a draft exposes connector authoring tools", () => {
+    for (const message of [
+      "create a connector for the Stripe API",
+      "Erstelle einen Connector für unser CRM",
+      "add an integration for HubSpot",
+      "Connect our Metabase MCP server for reporting",
+      "subkit engine onboarding",
+    ]) {
+      expect(paletteFor(createEmptyDraftDocument(), message)).toContain(
+        "start_connector_from_description",
+      );
+    }
+    expect(paletteFor(createEmptyDraftDocument(), "list my connectors")).toEqual([]);
+  });
+
+  test("a requested new workflow loads workflow authoring", () => {
+    expect(
+      authoringSkillsForTurn({
+        surface: "sk_interactive",
+        draft: createEmptyDraftDocument(),
+        userMessage: "noch einer",
+        startNewWorkflow: true,
+        boundConnector: false,
+        boundWorkflow: false,
+      }),
+    ).toEqual([WORKFLOW_AUTHORING_SKILL]);
+  });
+
+  test("a conversation bound to a connector or a saved workflow loads workflow authoring", () => {
+    for (const bound of [{ boundConnector: true }, { boundWorkflow: true }]) {
+      const names = paletteFor(
+        createEmptyDraftDocument(),
+        "please list users from the api",
+        "mcp",
+        bound,
+      );
+      expect(names).toContain("edit_workflow_patch");
+      expect(names).toContain("save_workflow_draft");
+    }
+  });
+
+  test("repair and diagnosis wording without a draft exposes the repair tools", () => {
+    for (const message of [
+      "repair workflow ga4-daily-report",
+      "fix the failing workflow",
+      "Bitte reparier den Workflow",
+      "diagnose the latest execution of ga4-daily-report",
+      "Warum ist mein letzter Lauf von ga4-daily-report fehlgeschlagen?",
+    ]) {
+      const names = paletteFor(createEmptyDraftDocument(), message);
+      expect(names).toContain("edit_workflow_patch");
+      expect(names).toContain("dry_run_workflow");
+      expect(names).toContain("save_workflow_draft");
+    }
+    expect(paletteFor(createEmptyDraftDocument(), "fix the typo in my message")).toEqual([]);
+    expect(paletteFor(createEmptyDraftDocument(), "do not fix the workflow")).toEqual([]);
+  });
+
+  test("the read-only chat surface never loads authoring skills, even with a draft", () => {
+    expect(paletteFor(workflowDraft(), "create a workflow", "chat")).toEqual([]);
   });
 });

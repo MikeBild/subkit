@@ -7,6 +7,10 @@ const assets = join(root, "assets", "cockpit");
 const id = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
 const proposalId = "018f4b4a-6d33-7b3a-9c2d-123456789abf";
 const focusedId = "018f4b4a-6d33-7b3a-9c2d-123456789abd";
+const skillProposalId = "018f4b4a-6d33-7b3a-9c2d-123456789ac1";
+const supersededSkillId = "018f4b4a-6d33-7b3a-9c2d-123456789ac2";
+const createdSkillId = "018f4b4a-6d33-7b3a-9c2d-123456789ac3";
+let skillConfirmed = false;
 let defaultCategory = "inbox";
 let itemState = "collected";
 let itemNote = "Anregung für unser Angebot";
@@ -45,6 +49,10 @@ const server = Bun.serve({
           "intake:write",
           "intake:confirm",
           "knowledge:write",
+          "skill:read",
+          "skill:write",
+          "skill:activate",
+          "skill:archive",
           "conversation:read",
           "conversation:write",
           "stats:read",
@@ -137,7 +145,8 @@ const server = Bun.serve({
                   body: "# Vier Spuren",
                   origin: "capture",
                 },
-                admitted_knowledge_source_id: confirmed ? "knowledge-1" : null,
+                admitted_target_kind: confirmed ? "knowledge" : null,
+                admitted_target_id: confirmed ? "knowledge-1" : null,
                 created_at: "2026-01-02T00:00:00.000Z",
                 updated_at: "2026-01-02T00:00:00.000Z",
               },
@@ -158,12 +167,18 @@ const server = Bun.serve({
         version: 1,
         original_snapshot: {
           title: "Anderer Eintrag",
-          source_url: "https://example.test/other",
           captured_at: "2026-01-02T00:00:00.000Z",
           body: "# Anderer Eintrag",
-          origin: "capture",
+          origin: "session",
+          agent: "claude-code",
+          session_id: "session-fixture",
+          repo: "operations-handbook",
+          domains: ["operations"],
+          evidence_excerpt: "Ordne Störungen zuerst nach Wirkung ein.",
+          learning_kind: "practice",
         },
-        admitted_knowledge_source_id: null,
+        admitted_target_kind: null,
+        admitted_target_id: null,
         created_at: "2026-01-02T00:00:00.000Z",
         updated_at: "2026-01-02T00:00:00.000Z",
       });
@@ -184,7 +199,8 @@ const server = Bun.serve({
           body: "# Vier Spuren",
           origin: "capture",
         },
-        admitted_knowledge_source_id: confirmed ? "knowledge-1" : null,
+        admitted_target_kind: confirmed ? "knowledge" : null,
+        admitted_target_id: confirmed ? "knowledge-1" : null,
         created_at: "2026-01-02T00:00:00.000Z",
         updated_at: "2026-01-02T00:00:00.000Z",
       });
@@ -229,7 +245,8 @@ const server = Bun.serve({
           body: "# Vier Spuren",
           origin: "capture",
         },
-        admitted_knowledge_source_id: confirmed ? "knowledge-1" : null,
+        admitted_target_kind: confirmed ? "knowledge" : null,
+        admitted_target_id: confirmed ? "knowledge-1" : null,
         created_at: "2026-01-02T00:00:00.000Z",
         updated_at: "2026-01-02T00:00:00.000Z",
       });
@@ -242,7 +259,8 @@ const server = Bun.serve({
             status: confirmed ? "confirmed" : "draft",
             current_revision: 1,
             confirmed_revision: confirmed ? 1 : null,
-            confirmed_knowledge_source_id: confirmed ? "knowledge-1" : null,
+            confirmed_target_kind: confirmed ? "knowledge" : null,
+            confirmed_target_id: confirmed ? "knowledge-1" : null,
             rejected_at: null,
             created_at: "2026-01-02T00:00:00.000Z",
             updated_at: "2026-01-02T00:00:00.000Z",
@@ -267,9 +285,60 @@ const server = Bun.serve({
               created_at: "2026-01-02T00:00:00.000Z",
             },
           },
+          {
+            id: skillProposalId,
+            status: skillConfirmed ? "confirmed" : "draft",
+            current_revision: 1,
+            confirmed_revision: skillConfirmed ? 1 : null,
+            confirmed_target_kind: skillConfirmed ? "skill" : null,
+            confirmed_target_id: skillConfirmed ? createdSkillId : null,
+            rejected_at: null,
+            created_at: "2026-01-02T00:00:00.000Z",
+            updated_at: "2026-01-02T00:00:00.000Z",
+            revision: {
+              revision: 1,
+              digest: "skill-digest",
+              title: "Störungen zuerst einordnen",
+              body: "Ordne jede Störung zuerst nach Wirkung ein.",
+              target: {
+                skill: {
+                  new: {
+                    title: "Störungen zuerst einordnen",
+                    scope: "global",
+                    tags: ["domain:operations"],
+                    category: "operations",
+                  },
+                  supersedes: [{ skill_id: supersededSkillId, expected_version: 3 }],
+                },
+              },
+              items: [
+                {
+                  id: focusedId,
+                  version: 1,
+                  title: "Anderer Eintrag",
+                  source_url: null,
+                },
+              ],
+              created_at: "2026-01-02T00:00:00.000Z",
+            },
+          },
         ],
-        total: 1,
+        total: 2,
       });
+    if (url.pathname === `/v1/skills/${supersededSkillId}`)
+      return response({
+        id: supersededSkillId,
+        title: "Alte Störungsregel",
+        body: "Melde jede Störung sofort.",
+        version: 3,
+        status: "active",
+        scope: "global",
+      });
+    if (url.pathname === `/v1/intake/proposals/${skillProposalId}/confirm`) {
+      requests.push({ path: url.pathname, body: await request.json() });
+      skillConfirmed = true;
+      return response({});
+    }
     if (url.pathname === `/v1/intake/proposals/${proposalId}/confirm`) {
       requests.push({ path: url.pathname, body: await request.json() });
       if (confirmationConflict) return response({ message: "proposal changed" }, { status: 409 });
@@ -463,7 +532,7 @@ try {
   assert.equal(reviewUrl.searchParams.get("references"), `intake_item:${id}`);
   assert.equal(
     reviewUrl.searchParams.get("prompt"),
-    "Prüfe diesen Eintrag und schlage vor, was wir als Wissen übernehmen sollten.",
+    "Prüfe diesen Eintrag und schlage vor, was wir übernehmen sollten, als Wissen oder als Skill.",
   );
   assert.doesNotMatch(reviewUrl.searchParams.get("prompt") ?? "", /neuen Einträge/);
   await page.getByTestId(`intake-proposal-${proposalId}-confirm`).click();
@@ -496,6 +565,36 @@ try {
     .getByTestId("intake-detail")
     .getByRole("heading", { name: "Anderer Eintrag", level: 2 })
     .waitFor();
+  await page.goto(`http://127.0.0.1:${server.port}/cockpit/intake?proposal=${skillProposalId}`);
+  const skillProposal = page.getByTestId(`intake-proposal-${skillProposalId}`);
+  const skillTargetDetails = skillProposal.getByTestId(
+    `intake-proposal-${skillProposalId}-target-details`,
+  );
+  await skillTargetDetails
+    .getByText("Neuer Skill „Störungen zuerst einordnen“ · operations · gilt überall")
+    .waitFor();
+  await skillTargetDetails.getByText(/Ersetzt Alte Störungsregel/).waitFor();
+  const skillConfirm = page.getByTestId(`intake-proposal-${skillProposalId}-confirm`);
+  await skillConfirm.waitFor();
+  assert.equal(await skillConfirm.innerText(), "Als Skill bestätigen");
+  await skillConfirm.click();
+  const skillConsequence = await page
+    .getByTestId(`intake-proposal-${skillProposalId}-confirm-dialog-consequence`)
+    .innerText();
+  assert.match(skillConsequence, /aktiven Skill „Störungen zuerst einordnen“/);
+  assert.match(skillConsequence, /gilt überall/);
+  assert.match(skillConsequence, /archiviert: Alte Störungsregel/);
+  await page.getByTestId(`intake-proposal-${skillProposalId}-confirm-dialog-confirm`).click();
+  await page.getByTestId(`intake-proposal-${skillProposalId}-skill`).waitFor();
+  assert.deepEqual(
+    requests.filter((entry) => entry.path === `/v1/intake/proposals/${skillProposalId}/confirm`),
+    [
+      {
+        path: `/v1/intake/proposals/${skillProposalId}/confirm`,
+        body: { expected_revision: 1, digest: "skill-digest" },
+      },
+    ],
+  );
   await page.goto(`http://127.0.0.1:${server.port}/cockpit/intake?proposal=${proposalId}`);
   await page.getByTestId("intake-detail").waitFor();
   await page

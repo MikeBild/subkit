@@ -16,8 +16,7 @@ export interface AgentBriefing {
   files: { name: string; slug: string | null; category: string; description: string | null }[];
   files_omitted: number;
   guides: string[];
-  proposed_candidates: number;
-  intake?: { collected: number; reviewing: number; proposals: number } | null;
+  intake?: { clips: number; sessions: number; proposals: number } | null;
 }
 
 export interface AgentDomains {

@@ -4762,6 +4762,7 @@
                 "api_key:read",
                 "portal_token:read",
                 "knowledge:read",
+                "intake:read",
                 "stats:read:all"
               ]
             },
@@ -4801,6 +4802,7 @@
                 "api_key:read",
                 "portal_token:read",
                 "knowledge:read",
+                "intake:read",
                 "stats:read:all"
               ]
             },
@@ -17572,29 +17574,7 @@
             "format": "uuid"
           },
           "original_snapshot": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/IntakeOriginalSnapshot"
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "title": {
-                    "type": "string"
-                  },
-                  "body": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "title",
-                  "source_url",
-                  "captured_at",
-                  "body",
-                  "origin"
-                ]
-              }
-            ]
+            "$ref": "#/components/schemas/IntakeItemSnapshot"
           },
           "title": {
             "type": "string"
@@ -17638,7 +17618,18 @@
               "id"
             ]
           },
-          "admitted_knowledge_source_id": {
+          "admitted_target_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "knowledge",
+              "skill",
+              null
+            ]
+          },
+          "admitted_target_id": {
             "type": [
               "string",
               "null"
@@ -17666,50 +17657,146 @@
           "state",
           "version",
           "collected_by",
-          "admitted_knowledge_source_id",
+          "admitted_target_kind",
+          "admitted_target_id",
           "created_at",
           "updated_at"
         ]
       },
-      "IntakeOriginalSnapshot": {
-        "type": "object",
-        "properties": {
-          "title": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1000
+      "IntakeItemSnapshot": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "source_author": {
+                "type": "string"
+              },
+              "published_at": {
+                "type": "string"
+              },
+              "captured_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "body": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "capture",
+                  "restored_draft"
+                ]
+              },
+              "source_url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "required": [
+              "title",
+              "captured_at",
+              "body",
+              "origin",
+              "source_url"
+            ]
           },
-          "source_url": {
-            "type": "string",
-            "format": "uri"
-          },
-          "source_author": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1000
-          },
-          "published_at": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1000
-          },
-          "captured_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "body": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 2000000
-          },
-          "origin": {
-            "type": "string",
-            "enum": [
-              "capture",
-              "restored_draft"
+          {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "source_author": {
+                "type": "string"
+              },
+              "published_at": {
+                "type": "string"
+              },
+              "captured_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "body": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "session"
+                ]
+              },
+              "source_url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "agent": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "repo": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "domains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "evidence_excerpt": {
+                "type": "string"
+              },
+              "learning_kind": {
+                "type": "string",
+                "enum": [
+                  "practice",
+                  "fact"
+                ]
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "connector",
+                  "workflow"
+                ]
+              },
+              "connector_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "workflow_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "title",
+              "captured_at",
+              "body",
+              "origin",
+              "agent",
+              "session_id",
+              "repo",
+              "domains",
+              "evidence_excerpt"
             ]
           }
-        }
+        ]
       },
       "CreateIntakeItemBody": {
         "type": "object",
@@ -17763,6 +17850,130 @@
           "source_url",
           "captured_at",
           "body"
+        ]
+      },
+      "IntakeOriginalSnapshot": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "source_author": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "published_at": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "captured_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000000
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "capture",
+              "restored_draft"
+            ]
+          }
+        }
+      },
+      "IntakeItemDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/IntakeItem"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/IntakeItemEvidence"
+                },
+                "maxItems": 20
+              },
+              "evidence_total": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "evidence",
+              "evidence_total"
+            ]
+          }
+        ]
+      },
+      "IntakeItemEvidence": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "repo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "excerpt": {
+            "type": "string"
+          },
+          "captured_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recorded_by": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "system_account"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "agent",
+          "session_id",
+          "repo",
+          "excerpt",
+          "captured_at",
+          "recorded_by"
         ]
       },
       "PatchIntakeItemBody": {
@@ -17833,7 +18044,18 @@
             ],
             "exclusiveMinimum": 0
           },
-          "confirmed_knowledge_source_id": {
+          "confirmed_target_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "knowledge",
+              "skill",
+              null
+            ]
+          },
+          "confirmed_target_id": {
             "type": [
               "string",
               "null"
@@ -17898,7 +18120,10 @@
                       "type": "string"
                     },
                     "source_url": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "uri"
                     }
                   },
@@ -17932,7 +18157,8 @@
           "status",
           "current_revision",
           "confirmed_revision",
-          "confirmed_knowledge_source_id",
+          "confirmed_target_kind",
+          "confirmed_target_id",
           "rejected_at",
           "stale_reason",
           "created_at",
@@ -17942,6 +18168,9 @@
       },
       "IntakeProposalTarget": {
         "anyOf": [
+          {
+            "$ref": "#/components/schemas/IntakeSkillTarget"
+          },
           {
             "type": "object",
             "properties": {
@@ -17957,7 +18186,8 @@
             "required": [
               "knowledge_source_id",
               "expected_version"
-            ]
+            ],
+            "description": "Knowledge destination for facts or reference material: extends an existing knowledge bundle at the version you read."
           },
           {
             "type": "object",
@@ -17982,9 +18212,105 @@
             },
             "required": [
               "name"
-            ]
+            ],
+            "description": "Knowledge destination for facts or reference material: creates a new knowledge bundle. For a domain, use the suggested_knowledge_target from get_intake_item unchanged instead of inventing a name."
           }
         ]
+      },
+      "IntakeSkillTarget": {
+        "type": "object",
+        "properties": {
+          "skill": {
+            "type": "object",
+            "properties": {
+              "skill_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "expected_version": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "new": {
+                "$ref": "#/components/schemas/IntakeNewSkill"
+              },
+              "supersedes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "skill_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "expected_version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "skill_id",
+                    "expected_version"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 20,
+                "default": []
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "skill"
+        ],
+        "additionalProperties": false,
+        "description": "Skill destination for a repeatable practice or convention. Name either new (a new active skill; give it the domain:<name> tag of its domain so coding-agent briefings for that domain find it) or skill_id with the expected_version you read (changes and activates that skill). supersedes lists each skill this one consolidates with the expected_version you read; they are archived on confirmation and the proposal goes stale when one of them changes."
+      },
+      "IntakeNewSkill": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "connector",
+              "workflow"
+            ]
+          },
+          "connector_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "maxItems": 20
+          },
+          "category": {
+            "$ref": "#/components/schemas/CatalogCategory"
+          }
+        },
+        "required": [
+          "title",
+          "scope",
+          "tags",
+          "category"
+        ],
+        "additionalProperties": false
       },
       "CreateIntakeProposalBody": {
         "type": "object",
@@ -19319,43 +19645,13 @@
             "$ref": "#/components/schemas/SkillCandidate"
           },
           "skill_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The skill a practice or pattern became; null for a fact."
-          },
-          "knowledge": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "properties": {
-              "knowledge_source_id": {
-                "type": "string"
-              },
-              "slug": {
-                "type": "string"
-              },
-              "version": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              }
-            },
-            "required": [
-              "knowledge_source_id",
-              "slug",
-              "version"
-            ],
-            "description": "The knowledge source and version a fact was appended to."
+            "type": "string",
+            "description": "The skill the detected pattern became."
           }
         },
         "required": [
           "candidate",
-          "skill_id",
-          "knowledge"
+          "skill_id"
         ]
       },
       "ApproveSkillCandidateBody": {
@@ -19541,20 +19837,17 @@
             },
             "description": "Slugs of the skills that teach how to work with sk, listed for every domain."
           },
-          "proposed_candidates": {
-            "type": "integer"
-          },
           "intake": {
             "type": [
               "object",
               "null"
             ],
             "properties": {
-              "collected": {
+              "clips": {
                 "type": "integer",
                 "minimum": 0
               },
-              "reviewing": {
+              "sessions": {
                 "type": "integer",
                 "minimum": 0
               },
@@ -19564,11 +19857,11 @@
               }
             },
             "required": [
-              "collected",
-              "reviewing",
+              "clips",
+              "sessions",
               "proposals"
             ],
-            "description": "Tenant-wide intake counts; null when the caller cannot read intake. Never includes clip content."
+            "description": "Intake items awaiting review whose shared category is one of the requested domains, split into collected clips and session learnings, plus the draft proposals that cite them; null when the caller cannot read intake. Never includes item content."
           }
         },
         "required": [
@@ -19587,7 +19880,6 @@
           "files",
           "files_omitted",
           "guides",
-          "proposed_candidates",
           "intake"
         ]
       },
@@ -23864,6 +24156,14 @@
                   "not_permitted"
                 ]
               },
+              "intake": {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "failed",
+                  "not_permitted"
+                ]
+              },
               "budget": {
                 "type": "string",
                 "enum": [
@@ -23891,6 +24191,7 @@
               "connections",
               "secret_approvals",
               "skills",
+              "intake",
               "budget",
               "risk"
             ]
@@ -24017,6 +24318,7 @@
               "secret_unreadable",
               "secret_prepared",
               "skills_proposed",
+              "intake_collected",
               "budget_critical",
               "risk_critical"
             ]
@@ -24169,9 +24471,9 @@
               "skills": {
                 "type": "integer"
               },
-              "knowledge": {
+              "intake": {
                 "type": "integer",
-                "description": "Of the proposals in `skills`, how many are facts for a knowledge source."
+                "description": "Collected intake items (clips and session learnings) awaiting review. They are not knowledge or skills until a person confirms a proposal."
               }
             }
           },
@@ -42100,7 +42402,10 @@
                             "type": "string"
                           },
                           "source_url": {
-                            "type": "string",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
                             "format": "uri"
                           },
                           "category": {
@@ -42151,7 +42456,7 @@
         "tags": [
           "intake"
         ],
-        "summary": "Read an intake clip and its immutable provenance",
+        "summary": "Read an intake clip, its immutable provenance and its latest session evidence",
         "security": [
           {
             "bearerAuth": []
@@ -42174,7 +42479,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IntakeItem"
+                  "$ref": "#/components/schemas/IntakeItemDetail"
                 }
               }
             }
@@ -42468,7 +42773,7 @@
         "tags": [
           "intake"
         ],
-        "summary": "Confirm the exact reviewed proposal revision and publish it as knowledge",
+        "summary": "Confirm the exact reviewed proposal revision and publish it as knowledge or a skill",
         "security": [
           {
             "bearerAuth": []
@@ -43884,15 +44189,6 @@
           {
             "schema": {
               "type": "string",
-              "format": "uuid"
-            },
-            "required": false,
-            "name": "knowledge_source_id",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "string",
               "enum": [
                 "repair_pattern",
                 "failure_pattern",
@@ -43957,16 +44253,6 @@
           },
           "403": {
             "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Knowledge source not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -44087,7 +44373,8 @@
         "tags": [
           "skill-candidates"
         ],
-        "summary": "Approve a skill candidate and promote to a skill",
+        "summary": "Approve a detected skill candidate and promote it to a skill",
+        "description": "Applies to patterns the engine detected. Learnings collected from sessions and conversations are intake items; they are reviewed and admitted through intake proposals, never here.",
         "security": [
           {
             "bearerAuth": []
@@ -44124,8 +44411,8 @@
               }
             }
           },
-          "403": {
-            "description": "A fact writes knowledge and needs knowledge:write as well",
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -44134,8 +44421,8 @@
               }
             }
           },
-          "404": {
-            "description": "Not found",
+          "409": {
+            "description": "The skill candidate changed or was already decided",
             "content": {
               "application/json": {
                 "schema": {
@@ -44152,7 +44439,8 @@
         "tags": [
           "skill-candidates"
         ],
-        "summary": "Reject a skill candidate",
+        "summary": "Reject a detected skill candidate",
+        "description": "Applies to patterns the engine detected. Collected learnings are intake items and are discarded in intake.",
         "security": [
           {
             "bearerAuth": []
@@ -44206,6 +44494,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The skill candidate was already decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -44251,7 +44549,7 @@
           "agent"
         ],
         "summary": "Domain-scoped session briefing for external coding agents",
-        "description": "Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), readable file metadata without file contents, and the search-first grounding rule. Intended for coding-agent hooks.",
+        "description": "Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), readable file metadata without file contents, counts of collected intake material in the requested domains (never its content), and the search-first grounding rule. Intended for coding-agent hooks.",
         "security": [
           {
             "bearerAuth": []
@@ -44310,8 +44608,8 @@
         "tags": [
           "agent"
         ],
-        "summary": "Capture a coding-agent session transcript for learning distillation",
-        "description": "Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` (practice) or `knowledge_learning` (fact) candidates that wait for human review — nothing goes live from this endpoint.",
+        "summary": "Collect learnings from a coding-agent session transcript into intake",
+        "description": "Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; each extracted learning becomes an intake item with origin `session` in the shared category of the first declared domain that exists (otherwise the collector's default category). Events and anything naming credentials are not collected. Nothing is knowledge or a skill until a person reviews the item and confirms a proposal in the Cockpit. The response only acknowledges the queued analysis; list intake items to see what was collected.",
         "security": [
           {
             "bearerAuth": []

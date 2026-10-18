@@ -36,7 +36,6 @@ import {
 } from "../../skill-autoload.ts";
 import { computeLineDiff } from "../../text-line-diff.ts";
 import {
-  buildPendingOutputForTool,
   type PermissionMode,
   prerequisitesForTool,
   type ToolPolicies,
@@ -54,7 +53,7 @@ import {
 import { normalizeToolResultPayload, toolCallOutcome } from "../result-payload.ts";
 import { truncateForLlm } from "../truncate.ts";
 import { buildCapAlternatives } from "./error-recovery-hints.ts";
-import { resolveGateSubjects } from "./gate-subjects.ts";
+import { prepareGate } from "./gate-subjects.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import {
   buildConfirmedToolCallIntent,
@@ -80,19 +79,22 @@ import {
 
 const PRIOR_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
 
-const INTAKE_REVIEW_KNOWLEDGE_WRITES = new Set([
+export const INTAKE_REVIEW_BLOCKED_WRITES = new Set([
   "create_knowledge_source",
   "update_knowledge_source",
   "analyze_knowledge_source",
   "delete_knowledge_source",
   "save_learning",
   "approve_skill_candidate",
+  "reject_skill_candidate",
+  "update_skill",
+  "delete_skill",
 ]);
 
-export function intakeReviewBlocksKnowledgeWrite(draft: DraftDocument, tool: string): boolean {
+export function intakeReviewBlocksWrite(draft: DraftDocument, tool: string): boolean {
   return Boolean(
     (draft.session?.intake_review_active || draft.session?.intake_item_ids?.length) &&
-      INTAKE_REVIEW_KNOWLEDGE_WRITES.has(tool),
+      INTAKE_REVIEW_BLOCKED_WRITES.has(tool),
   );
 }
 
@@ -195,13 +197,13 @@ export function wrapOne(
       });
       await prevChain;
       const executeBody = async (): Promise<WrappedToolOutput> => {
-        if (intakeReviewBlocksKnowledgeWrite(ctx.getDraft(), inner.name)) {
+        if (intakeReviewBlocksWrite(ctx.getDraft(), inner.name)) {
           return {
             ok: false,
             data: {
               error: "intake_review_requires_human_confirmation",
               message:
-                "This conversation is reviewing collected clips. Create or revise an intake proposal; a person confirms the exact content, sources, and destination in the review before it becomes knowledge.",
+                "This conversation is reviewing collected material. Create or revise an intake proposal; a person confirms the exact content, sources, and destination in the review before it becomes knowledge or a skill.",
             },
           };
         }
@@ -583,11 +585,17 @@ export function wrapOne(
         }
         const principal = ctx.principal ?? (await resolveConversationPrincipal(perCallCtx));
         const pendingElicitationBeforeGate = signals.pendingElicitation;
+        const preparedGate = await prepareGate(
+          inner.name,
+          stripConfirmMarkers(rawArgs),
+          ctx.tenant_id,
+          db,
+        );
         const gate = await runConfirmGate({
           tool: inner.name,
           category: inner.category,
           surface: "chat",
-          args: stripConfirmMarkers(rawArgs),
+          args: preparedGate.args,
           overrides: toolPolicies,
           permission_mode: permissionMode,
           prior_approval: priorApproval,
@@ -697,11 +705,7 @@ export function wrapOne(
         }
 
         if (gate.kind === "needs_confirm") {
-          const basePendingOutput = buildPendingOutputForTool(inner.name, rawArgs);
-          const gateSubjects = await resolveGateSubjects(inner.name, rawArgs, ctx.tenant_id, db);
-          const pendingOutput = gateSubjects
-            ? { ...(basePendingOutput ?? {}), ...gateSubjects }
-            : basePendingOutput;
+          const pendingOutput = preparedGate.pending_output;
           const buildPolicyGateSummary = (): string => {
             if (inner.name === "run_workflow") {
               const draft = ctx.getDraft();
@@ -1277,7 +1281,8 @@ export function wrapOne(
               ? (inputPayload as { pending_output?: Record<string, unknown> })
               : undefined;
           const pausePending =
-            pauseInputRecord?.pending_output ?? buildPendingOutputForTool(inner.name, rawArgs);
+            pauseInputRecord?.pending_output ??
+            (await prepareGate(inner.name, rawArgs, ctx.tenant_id, db)).pending_output;
           events.push({
             type: "elicit_request",
             elicitation_id: result.pause.elicitation_id,

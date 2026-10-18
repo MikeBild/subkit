@@ -151,11 +151,11 @@ The command prints the current local user API key and stores it with owner-only 
 | `bun run demo:local:verify` | Run local API and browser journeys, including one provider chat response and workflow approval/execution; no screenshots. |
 | `bun run demo:local:verify -- --mock` | Run the same journeys and verify chat through the mock provider without an external model call. |
 
-The fixtures cover all main Cockpit areas: six connectors, twelve demo workflows plus three installation starters, twenty-four recorded runs with successful/failed/cancelled outcomes and usage, seven conversations including a pending question and hidden chat, six knowledge sources with twelve sections, eight skills, six learning proposals, five downloadable files, and four people with roles/groups. Long names, Unicode, categories and multiple statuses support manual review. Historical runs and costs are clearly synthetic; recorded fixtures are not claims of real execution. A local API service provides contacts, orders, reports, echo writes and a deliberate failure endpoint for new real workflow runs. Workflows retain normal approval gates. External OAuth/MCP accounts and external delivery services require their own credentials; the three installation starter workflows use public demo endpoints when run.
+The fixtures cover all main Cockpit areas: six connectors, twelve demo workflows plus three installation starters, twenty-four recorded runs with successful/failed/cancelled outcomes and usage, seven conversations including a pending question and hidden chat, six knowledge sources with twelve sections, eight skills, six skill proposals from recurring patterns, five downloadable files, and four people with roles/groups. Long names, Unicode, categories and multiple statuses support manual review. Historical runs and costs are clearly synthetic; recorded fixtures are not claims of real execution. A local API service provides contacts, orders, reports, echo writes and a deliberate failure endpoint for new real workflow runs. Workflows retain normal approval gates. External OAuth/MCP accounts and external delivery services require their own credentials; the three installation starter workflows use public demo endpoints when run.
 
 The fixed Compose project is `subkit-cockpit-demo`; PostgreSQL and object storage have dedicated named volumes. The existing development/production installations are independent. The demo publishes its database on loopback port `55439` by default so it can run beside the regular local database; `SUBKIT_DEMO_DB_PORT` changes that port. `SUBKIT_TEST_PORT` changes the Cockpit loopback host port; use the same values for subsequent commands. The local receipt is `.artifacts/cockpit-demo/receipt.json`.
 
-Run `bun run demo:local:verify` after a provider-backed setup when you want to verify the running installation before manual review. It uses disposable resources and the real local services, checks API-key login, catalog navigation, file/source/skill changes, workflow permission boundaries and browser approval/execution, and requests one real AI response. For a provider-free journey, first run `bun run demo:local -- --mock`, then `bun run demo:local:verify -- --mock`; the verifier confirms the configured provider is `mock` before sending chat and checks the deterministic mock response, with no external model call. Verification does not reset your data. Evidence is saved under `.artifacts/cockpit-demo/`; failed checks exit nonzero. `verify:cockpit-local` runs only the API portion; `verify:cockpit-local-browser -- --read-only` checks browser login/navigation without chat or workflow changes. `SUBKIT_DEMO_URL` may override only the selected instance's `127.0.0.1` API port. The wrapper checks the checkout fingerprint and running container image before starting the journeys. These live installation journeys are separate from the isolated functional fixtures in the normal release gate.
+Run `bun run demo:local:verify` after a provider-backed setup when you want to verify the running installation before manual review. It uses disposable resources and the real local services, checks API-key login, catalog navigation, file/source/skill changes, workflow permission boundaries and browser approval/execution, and requests one real AI response. The session learnings review group collects synthetic items in its own `journey-…` category, never your default category, proves that an API key cannot confirm, confirms a skill proposal in the Cockpit and checks for exactly one active skill with the replaced skill archived; with a provider it also asks the real model to consolidate two items and checks that its proposal cites only them. The receipt reports the deterministic and the real-model part separately. Intake has no deletion route, so cleanup deletes the created skills and conversation, rejects open proposals and discards collected items; admitted items stay listed as retained. For a provider-free journey, first run `bun run demo:local -- --mock`, then `bun run demo:local:verify -- --mock`; the verifier confirms the configured provider is `mock` before sending chat and checks the deterministic mock response, with no external model call. Verification does not reset your data. Evidence is saved under `.artifacts/cockpit-demo/`; failed checks exit nonzero. `verify:cockpit-local` runs only the API portion; `verify:cockpit-local-browser -- --read-only` checks browser login/navigation without chat or workflow changes. `SUBKIT_DEMO_URL` may override only the selected instance's `127.0.0.1` API port. The wrapper checks the checkout fingerprint and running container image before starting the journeys. These live installation journeys are separate from the isolated functional fixtures in the normal release gate.
 
 Catalog categories share a name, purpose and alternate search words across workflows, connectors, sources, skills and files. The category editor searches all three fields. Saving a displayed AI purpose makes it human-owned; leaving it blank requests a new suggestion. Merging keeps the target purpose and combines alternate words. Concurrent edits require reloading before saving. The local fixtures include three categories with human-written purposes and alternate words; normal starts preserve later edits.
 
@@ -210,11 +210,13 @@ beside the binary and retains existing notices with their checksums for rollback
 Older retained versions without notice metadata cannot reconstruct missing historical
 license files; their existing rollback behavior remains available.
 
-## Collect ideas and turn them into knowledge
+## Collect ideas and turn them into knowledge or skills
 
-Collect pages and ideas now; decide later what becomes knowledge. Use the shared categories to organize clips, with Inbox as your personal starting default.
+Collect pages and ideas now; decide later what becomes knowledge or a skill. Use the shared categories to organize clips, with Inbox as your personal starting default.
 You can choose another default category at any time.
-The process stays the same: **collect → review in chat → confirm → knowledge**.
+The process stays the same: **collect → review in chat → confirm → knowledge or skill**.
+Learnings from coding-agent sessions enter the same process as collected items with origin
+`session`; Intake shows the origin as a filter and badge.
 
 Run `sk clipper install` to unpack the Chrome extension shipped inside the CLI.
 In Chrome, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
@@ -243,13 +245,20 @@ together. An item's chat action instead reviews only that selected item, using a
 `@` reference. Chat actions for existing workflows, connectors, runs, sources and skills
 also carry a reference to the selected record. You can also ask:
 "Look through my new Research entries. Which are
-useful to us? Suggest what we should retain as knowledge." The chat prepares a proposal
+useful to us? Suggest what we should retain, as knowledge or as a skill." The chat prepares a proposal
 with the exact content, original sources, and destination. You review it and explicitly
-confirm **Admit as knowledge**. Only then can ordinary knowledge retrieval use the result.
+confirm **Confirm as knowledge** or **Confirm as skill**. Only then can ordinary knowledge
+retrieval use the result, or agent briefings carry the skill. A skill destination creates or
+updates an active skill and archives the skills it replaces in the same step; the proposal
+shows each change. Confirming needs a signed-in browser session and the rights of the
+destination: `knowledge:write` for knowledge, `skill:write` and `skill:activate` for a skill,
+plus `skill:archive` for every replaced skill. API keys and MCP clients cannot confirm.
+Admitting a skill is a content decision, separate from an environment's connector or
+execution approval.
 You can discard an unneeded clip during review and restore it later; discarding
-preserves its original source and never turns it into knowledge.
+preserves its original source and never turns it into knowledge or a skill.
 Changing the proposal or its sources requires another review. The original clip remains
-linked to the resulting knowledge. Moving clips or renaming a category never admits its clips. Category changes affecting
+linked to the resulting knowledge or skill. Moving clips or renaming a category never admits its clips. Category changes affecting
 a proposal require reviewing it again.
 
 The clipper keeps separate local drafts for each page and engine, including unsent notes.
@@ -557,7 +566,7 @@ MCP registration is a one-time machine setup. In each repository, run `sk agent 
 
 Run `sk status`, then `sk agent briefing --json` from the repository to verify the declaration, credentials, engine connection and returned briefing. Use the JSON fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens` to inspect the result. Empty `knowledge_sources` or `skills_full` means the briefing works but those items are not assigned to the declared domain. Put knowledge and skills in the domain's catalog category or tag them `domain:<slug>`.
 
-Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation; suggestions remain pending until a person reviews them. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex hooks are enabled by default; no `config.toml` edit is normally needed. Review and trust new or changed SubKit hooks in `/hooks`. If hooks are disabled, inspect the effective feature setting and administrator policy before changing settings; see the [official Codex hook guide](https://learn.chatgpt.com/docs/hooks). Both clients send a transcript for candidate learning at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. Captured learnings remain candidates until a person reviews them.
+Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation. The briefing only counts collected clips and session learnings in the project's categories and never includes their content. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex hooks are enabled by default; no `config.toml` edit is normally needed. Review and trust new or changed SubKit hooks in `/hooks`. If hooks are disabled, inspect the effective feature setting and administrator policy before changing settings; see the [official Codex hook guide](https://learn.chatgpt.com/docs/hooks). Both clients send a transcript at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. The engine keeps only practices and facts a person taught or confirmed, drops events, status updates and anything credential-related, and collects the rest in Intake with origin `session`, in the project's shared category or your default category. The same learning from a later session adds evidence to the existing item instead of a duplicate. Collected learnings are not knowledge and not skills until a person confirms a proposal in the Cockpit; `sk intake list` shows what is waiting.
 
 For open-ended check-ins, the briefing uses the current project's matched domain together with shared SubKit context, plus connected sources that best answer the question. It distinguishes live service state from repository changes and static knowledge, prioritizes blocked or failing work and imminent deadlines, and gives up to three specific next steps in the user's language. Maintenance suggestions must be grounded in repository instructions, explicit plans or TODOs, and observed issues such as failing checks or generated-file drift. Relevant knowledge sources and workflows from the folder's domain are recommended by name when they help with a concrete task. It reports when a relevant source is unavailable.
 
@@ -610,8 +619,11 @@ It is separate from the local `bun run verify` gate.
 For a synthetic write check, use a dedicated test tenant and its user key:
 add `--allow-writes --test-tenant-id <uuid> --run-id <unique-run-name>
 --json <report-path>`. The tenant must match the authenticated identity. The
-check collects in its own category, tests exclusion before confirmation,
-exact confirmation and retry, provenance, search and the domain briefing.
+check collects in its own category, tests exclusion before confirmation and the
+exact proposal, and verifies that the API key cannot confirm it. The report's
+`handoff.review_url` opens the proposal in the Cockpit, where a person of that
+tenant confirms it. Then run the same command with `--after-confirm --proposal-id <id>`
+to check the single admission, provenance, search and the domain briefing.
 It reports timings and retained resource IDs. Intake has no deletion API, so
 test records remain for inspection. This API check does not measure model
 judgment or replace a real browser/chat verification. It never deploys code.
@@ -728,7 +740,7 @@ MCP registration is a one-time machine setup. In each repository, run `sk agent 
 
 Run `sk status`, then `sk agent briefing --json` from the repository to verify the declaration, credentials, engine connection and returned briefing. Use the JSON fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens` to inspect the result. Empty `knowledge_sources` or `skills_full` means the briefing works but those items are not assigned to the declared domain. Put knowledge and skills in the domain's catalog category or tag them `domain:<slug>`.
 
-Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation; suggestions remain pending until a person reviews them. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex hooks are enabled by default; no `config.toml` edit is normally needed. Review and trust new or changed SubKit hooks in `/hooks`. If hooks are disabled, inspect the effective feature setting and administrator policy before changing settings; see the [official Codex hook guide](https://learn.chatgpt.com/docs/hooks). Both clients send a transcript for candidate learning at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. Captured learnings remain candidates until a person reviews them.
+Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation. The briefing only counts collected clips and session learnings in the project's categories and never includes their content. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex hooks are enabled by default; no `config.toml` edit is normally needed. Review and trust new or changed SubKit hooks in `/hooks`. If hooks are disabled, inspect the effective feature setting and administrator policy before changing settings; see the [official Codex hook guide](https://learn.chatgpt.com/docs/hooks). Both clients send a transcript at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. The engine keeps only practices and facts a person taught or confirmed, drops events, status updates and anything credential-related, and collects the rest in Intake with origin `session`, in the project's shared category or your default category. The same learning from a later session adds evidence to the existing item instead of a duplicate. Collected learnings are not knowledge and not skills until a person confirms a proposal in the Cockpit; `sk intake list` shows what is waiting.
 
 For open-ended check-ins, the briefing uses the current project's matched domain together with shared SubKit context, plus connected sources that best answer the question. It distinguishes live service state from repository changes and static knowledge, prioritizes blocked or failing work and imminent deadlines, and gives up to three specific next steps in the user's language. Maintenance suggestions must be grounded in repository instructions, explicit plans or TODOs, and observed issues such as failing checks or generated-file drift. Relevant knowledge sources and workflows from the folder's domain are recommended by name when they help with a concrete task. It reports when a relevant source is unavailable.
 
@@ -781,8 +793,11 @@ It is separate from the local `bun run verify` gate.
 For a synthetic write check, use a dedicated test tenant and its user key:
 add `--allow-writes --test-tenant-id <uuid> --run-id <unique-run-name>
 --json <report-path>`. The tenant must match the authenticated identity. The
-check collects in its own category, tests exclusion before confirmation,
-exact confirmation and retry, provenance, search and the domain briefing.
+check collects in its own category, tests exclusion before confirmation and the
+exact proposal, and verifies that the API key cannot confirm it. The report's
+`handoff.review_url` opens the proposal in the Cockpit, where a person of that
+tenant confirms it. Then run the same command with `--after-confirm --proposal-id <id>`
+to check the single admission, provenance, search and the domain briefing.
 It reports timings and retained resource IDs. Intake has no deletion API, so
 test records remain for inspection. This API check does not measure model
 judgment or replace a real browser/chat verification. It never deploys code.
@@ -835,7 +850,6 @@ every API call.
 | `sk invites` | `identity:read` | Manage user-provisioning invites | `list`, `revoke` |
 | `sk join` | — | Redeem an invite to provision your personal API key (no login required) | — |
 | `sk knowledge-sources` | `knowledge:read` | Manage knowledge sources | `analyze`, `create`, `delete`, `get`, `history`, `import`, `list`, `patch`, `restore`, `search` |
-| `sk learnings` | `skill:read` | Review learnings captured from coding-agent sessions | `list`, `review` |
 | `sk login` | — | Authenticate against a subkit engine | — |
 | `sk logout` | — | Drop the active profile | — |
 | `sk logs` | `audit:read` | Tail the engine's runtime log ring. --follow streams via SSE; --since accepts 5m / 2h / 1d / ISO-8601. | — |
@@ -885,7 +899,7 @@ Print or verify the domain-scoped session briefing for coding agents
 
 #### `sk agent capture`
 
-Send a session transcript to the engine for learning distillation
+Send a session transcript to the engine to collect learnings for review
 
 - `--transcript` (string) — Path to the transcript file (JSONL or text)
 - `--domains` (string) — Comma-separated domain slugs (default: .sk/agent.json of the repo)
@@ -1859,23 +1873,6 @@ Semantic search across knowledge sources
 - `--tags` (string) — Comma-separated tags to narrow results
 - `--limit` (string, default: 10) — Max results
 - `--json` (default: false) — JSON output
-
-
-### `sk learnings`
-
-Review learnings captured from coding-agent sessions
-
-#### `sk learnings list`
-
-List proposed session learnings
-
-- `--json` (default: false) — JSON output
-
-#### `sk learnings review`
-
-Review proposed session learnings interactively
-
-_No arguments._
 
 
 ### `sk login`

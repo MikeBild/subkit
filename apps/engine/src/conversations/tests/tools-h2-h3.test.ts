@@ -34,7 +34,6 @@ describe("conversation tools — registration", () => {
     "preview_attachment",
     "probe_connector",
     "probe_connector_draft",
-    "propose_skill",
     "save_connector_draft",
     "search_docs",
     "save_learning",
@@ -110,7 +109,7 @@ describe("conversation tools — registration", () => {
     "list_intake_categories",
     "list_intake_items",
     "get_intake_item",
-    "discard_intake_item",
+    "discard_intake_items",
     "restore_intake_item",
     "move_intake_item",
     "set_default_intake_category",
@@ -131,7 +130,6 @@ describe("conversation tools — registration", () => {
     "create_api_key",
     "create_knowledge_source",
     "analyze_knowledge_source",
-    "create_skill",
     "promote_connector",
     "update_skill",
     "delete_skill",
@@ -172,11 +170,10 @@ describe("conversation tools — registration", () => {
     expect(tool!.description).toContain("skill");
   });
 
-  test("propose_skill tool is registered", () => {
-    const tool = getTool("propose_skill");
-    expect(tool).toBeDefined();
-    expect(tool!.name).toBe("propose_skill");
-    expect(tool!.description).toContain("Skill");
+  test("learnings are collected into intake, never filed as skill proposals by the chat", () => {
+    expect(getTool("propose_skill")).toBeUndefined();
+    expect(getTool("create_skill")).toBeUndefined();
+    expect(getTool("save_learning")?.description).toContain("Intake");
   });
 
   test("intake proposal confirmation is never a conversation tool", () => {

@@ -9,7 +9,6 @@ import {
 import { cleanupWriteTools } from "./cleanup.ts";
 import { createApiKeyTool } from "./create-api-key.ts";
 import { createKnowledgeSourceTool } from "./create-knowledge-source.ts";
-import { createSkillTool } from "./create-skill.ts";
 import { deleteSkillTool } from "./delete-skill.ts";
 import { promoteConnectorTool } from "./promote-connector.ts";
 import { rerunExecutionTool } from "./rerun-execution.ts";
@@ -37,7 +36,6 @@ export {
 } from "./cleanup.ts";
 export { createApiKeyTool } from "./create-api-key.ts";
 export { createKnowledgeSourceTool } from "./create-knowledge-source.ts";
-export { createSkillTool } from "./create-skill.ts";
 export { deleteSkillTool } from "./delete-skill.ts";
 export { promoteConnectorTool } from "./promote-connector.ts";
 export { rerunExecutionTool } from "./rerun-execution.ts";
@@ -64,7 +62,6 @@ export const ALL_ENGINE_API_WRITE_TOOLS: ConversationTool[] = [
   createApiKeyTool,
   createKnowledgeSourceTool,
   analyzeKnowledgeSourceTool,
-  createSkillTool,
   updateSkillTool,
   deleteSkillTool,
   updateWorkflowTool,

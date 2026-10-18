@@ -33,6 +33,18 @@ describe("toolLabel", () => {
     expect(toolLabel("run_workflow")).toEqual({ kind: "key", key: "tool.name.runWorkflow" });
   });
 
+  test("labels a skill write by its outcome, so a queued proposal never reads as created", () => {
+    expect(
+      toolLabel("create_skill", { ok: true, data: { created: false, action: "proposed" } }),
+    ).toEqual({ kind: "key", key: "tool.name.proposeSkill" });
+    expect(
+      toolLabel("create_skill", { ok: true, data: { created: false, action: "updated" } }),
+    ).toEqual({ kind: "key", key: "tool.name.proposeSkill" });
+    expect(translate("de", "tool.name.proposeSkill")).toBe("Skill vorgeschlagen");
+    expect(translate("en", "tool.name.proposeSkill")).toBe("Proposed a skill");
+    expect(toolLabel("create_skill")).toEqual({ kind: "key", key: "tool.name.createSkill" });
+  });
+
   test("falls back to a readable literal for a name nobody registered", () => {
     expect(toolLabel("some_future_tool")).toEqual({
       kind: "literal",

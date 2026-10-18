@@ -18,6 +18,8 @@ export interface IntakeLiveArgs {
   runId: string | null;
   testTenantId: string | null;
   jsonPath: string | null;
+  afterConfirm: boolean;
+  proposalId: string | null;
 }
 
 export interface IntakeLiveCheck {
@@ -37,6 +39,7 @@ export interface IntakeLiveReport {
   host_origin: string;
   checks: IntakeLiveCheck[];
   retained_resource_ids: string[];
+  handoff: { proposal_id: string; review_url: string } | null;
   cleanup: {
     attempted: false;
     status: "not_attempted";
@@ -64,6 +67,8 @@ export function parseIntakeLiveArgs(
   let runId: string | null = null;
   let testTenantId: string | null = null;
   let jsonPath: string | null = null;
+  let afterConfirm = false;
+  let proposalId: string | null = null;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     switch (arg) {
@@ -84,6 +89,13 @@ export function parseIntakeLiveArgs(
         break;
       case "--json":
         jsonPath = requiredValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--after-confirm":
+        afterConfirm = true;
+        break;
+      case "--proposal-id":
+        proposalId = requiredValue(argv, index, arg);
         index += 1;
         break;
       default:
@@ -117,6 +129,14 @@ export function parseIntakeLiveArgs(
   } else if (runId || testTenantId) {
     throw new IntakeLiveUsageError("--run-id and --test-tenant-id require --allow-writes");
   }
+  if (afterConfirm) {
+    if (!allowWrites)
+      throw new IntakeLiveUsageError("--after-confirm requires the --allow-writes guards");
+    if (!proposalId || !TEST_TENANT_ID_RE.test(proposalId))
+      throw new IntakeLiveUsageError("--after-confirm requires --proposal-id (UUID)");
+  } else if (proposalId) {
+    throw new IntakeLiveUsageError("--proposal-id requires --after-confirm");
+  }
   return {
     engineUrl: origin.origin,
     apiKey,
@@ -124,6 +144,8 @@ export function parseIntakeLiveArgs(
     runId,
     testTenantId,
     jsonPath,
+    afterConfirm,
+    proposalId,
   };
 }
 
@@ -161,7 +183,7 @@ export function isBodyFreeIntakeSummary(value: unknown): boolean {
   if (value === null) return true;
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
-  const expected = ["collected", "reviewing", "proposals"];
+  const expected = ["clips", "sessions", "proposals"];
   return (
     Object.keys(record).length === expected.length &&
     expected.every(
@@ -177,6 +199,7 @@ class IntakeLiveRunner {
   readonly checks: IntakeLiveCheck[] = [];
   readonly retained = new Set<string>();
   readonly started = performance.now();
+  handoff: IntakeLiveReport["handoff"] = null;
 
   constructor(
     readonly args: IntakeLiveArgs,
@@ -291,7 +314,7 @@ class IntakeLiveRunner {
     );
     await this.check(
       "llms.intake_contract",
-      "llms-full.txt documents the collection, review, confirmation, and MCP handoff process",
+      "llms-full.txt documents the collection, review, confirmation to knowledge or a skill, and MCP handoff process",
       async () => {
         const response = await this.fetcher(endpoint(this.args.engineUrl, "/llms-full.txt"), {
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -299,7 +322,7 @@ class IntakeLiveRunner {
         const text = await response.text();
         if (
           !response.ok ||
-          !/collect\s*→\s*review in chat\s*→\s*confirm\s*→\s*knowledge/i.test(text) ||
+          !/collect\s*→\s*review in chat\s*→\s*confirm\s*→\s*knowledge or skill/i.test(text) ||
           !/MCP clients start[\s\S]{0,200}conversation_start/i.test(text)
         )
           throw new Error("llms-full intake and MCP handoff contract mismatch");
@@ -361,17 +384,26 @@ class IntakeLiveRunner {
       },
     );
     if (!identityVerified) return;
+    if (this.args.afterConfirm && this.args.proposalId)
+      await this.runAfterConfirm(this.args.runId, this.args.proposalId);
+    else await this.runCollectAndPropose(this.args.runId);
+  }
 
-    const run = this.args.runId;
-    const category = `smoke-${createHash("sha256").update(run).digest("hex").slice(0, 20)}`;
+  fixture(run: string) {
+    return {
+      category: `smoke-${createHash("sha256").update(run).digest("hex").slice(0, 20)}`,
+      sourceName: `Intake smoke ${run}`,
+      marker: `intake smoke ${run}`,
+      sourceUrl: `https://example.invalid/intake-smoke/${encodeURIComponent(run)}`,
+    };
+  }
+
+  async runCollectAndPropose(run: string): Promise<void> {
+    const { category, sourceName, marker, sourceUrl } = this.fixture(run);
     let itemId = "";
     let proposalId = "";
     let digest = "";
     let revision = 0;
-    let sourceId = "";
-    let sourceSlug = "";
-    const sourceName = `Intake smoke ${run}`;
-    const marker = `intake smoke ${run}`;
 
     if (
       !(await this.check(
@@ -384,7 +416,7 @@ class IntakeLiveRunner {
               client_request_id: requestId(run),
               category,
               title: `Smoke clip ${run}`,
-              source_url: `https://example.invalid/intake-smoke/${encodeURIComponent(run)}`,
+              source_url: sourceUrl,
               captured_at: new Date().toISOString(),
               body: marker,
               note: "Production smoke fixture retained for audit.",
@@ -415,7 +447,7 @@ class IntakeLiveRunner {
     if (
       !(await this.check(
         "write.propose",
-        "creates the exact run-labelled proposal and reviewed destination",
+        "creates the exact run-labelled proposal and reviewed knowledge destination",
         async () => {
           const body = (await this.json("/v1/intake/proposals", {
             method: "POST",
@@ -425,27 +457,10 @@ class IntakeLiveRunner {
               body: `${marker} confirmed knowledge fixture.`,
               target: { name: sourceName, category: "intake-smoke", tags: ["domain:intake-smoke"] },
             }),
-          })) as {
-            id?: string;
-            current_revision?: number;
-            revision?: {
-              digest?: string;
-              title?: string;
-              body?: string;
-              target?: { name?: string; category?: string; tags?: string[] };
-            };
-          };
-          if (
-            !body.id ||
-            !body.current_revision ||
-            !body.revision?.digest ||
-            body.revision.title !== sourceName ||
-            body.revision.body !== `${marker} confirmed knowledge fixture.` ||
-            body.revision.target?.name !== sourceName ||
-            body.revision.target.category !== "intake-smoke" ||
-            body.revision.target.tags?.join(",") !== "domain:intake-smoke"
-          )
+          })) as ProposalBody;
+          if (!body.id || !body.current_revision || !body.revision?.digest)
             throw new Error("proposal response mismatch");
+          assertReviewedProposal(body, sourceName, marker);
           proposalId = body.id;
           revision = body.current_revision;
           digest = body.revision.digest;
@@ -459,62 +474,84 @@ class IntakeLiveRunner {
         "write.review_exact",
         "retrieved proposal still matches the reviewed revision and digest",
         async () => {
-          const body = (await this.json(`/v1/intake/proposals/${proposalId}`)) as {
-            current_revision?: number;
-            revision?: {
-              digest?: string;
-              title?: string;
-              body?: string;
-              target?: { name?: string; category?: string; tags?: string[] };
-            };
-          };
-          if (
-            body.current_revision !== revision ||
-            body.revision?.digest !== digest ||
-            body.revision.title !== sourceName ||
-            body.revision.body !== `${marker} confirmed knowledge fixture.` ||
-            body.revision.target?.name !== sourceName ||
-            body.revision.target.category !== "intake-smoke" ||
-            body.revision.target.tags?.join(",") !== "domain:intake-smoke"
-          )
+          const body = (await this.json(`/v1/intake/proposals/${proposalId}`)) as ProposalBody;
+          if (body.current_revision !== revision || body.revision?.digest !== digest)
             throw new Error("proposal changed before confirmation");
+          assertReviewedProposal(body, sourceName, marker);
         },
       ))
     )
       return;
     if (
       !(await this.check(
-        "write.confirm",
-        "human-scoped confirmation admits the reviewed proposal once",
+        "write.confirm_refused_for_key",
+        "an API key is refused as a non-human confirmation and the proposal stays an unconfirmed draft",
         async () => {
-          const body = (await this.json(`/v1/intake/proposals/${proposalId}/confirm`, {
+          const response = await this.request(`/v1/intake/proposals/${proposalId}/confirm`, {
             method: "POST",
             body: JSON.stringify({ expected_revision: revision, digest }),
-          })) as { status?: string; confirmed_knowledge_source_id?: string };
-          if (body.status !== "confirmed" || !body.confirmed_knowledge_source_id)
-            throw new Error("confirmation response mismatch");
-          sourceId = body.confirmed_knowledge_source_id;
-          return [sourceId];
+          });
+          const refusal = (await response.json().catch(() => ({}))) as { code?: string };
+          if (response.status !== 403 || refusal.code !== "human_confirmation_required")
+            throw new Error(
+              `API-key confirmation returned HTTP ${response.status} (${refusal.code ?? "no code"})`,
+            );
+          const body = (await this.json(`/v1/intake/proposals/${proposalId}`)) as ProposalBody;
+          if (body.status !== "draft" || body.confirmed_target_id)
+            throw new Error("proposal changed after refused confirmation");
+          return [proposalId];
+        },
+      ))
+    )
+      return;
+    this.handoff = {
+      proposal_id: proposalId,
+      review_url: endpoint(
+        this.args.engineUrl,
+        `/cockpit/intake?proposal=${encodeURIComponent(proposalId)}`,
+      ),
+    };
+    this.checks.push({
+      id: "write.after_confirm",
+      status: "SKIP",
+      ms: 0,
+      assertion:
+        "admission checks run with --after-confirm --proposal-id after a person confirms in the Cockpit",
+    });
+  }
+
+  async runAfterConfirm(run: string, proposalId: string): Promise<void> {
+    const { sourceName, marker, sourceUrl } = this.fixture(run);
+    let itemId = "";
+    let sourceId = "";
+    let sourceSlug = "";
+    if (
+      !(await this.check(
+        "write.confirmed",
+        "a person confirmed the exact run-labelled proposal as one knowledge admission",
+        async () => {
+          const body = (await this.json(`/v1/intake/proposals/${proposalId}`)) as ProposalBody;
+          assertReviewedProposal(body, sourceName, marker);
+          if (
+            body.status !== "confirmed" ||
+            body.confirmed_revision !== body.current_revision ||
+            body.confirmed_target_kind !== "knowledge" ||
+            !body.confirmed_target_id
+          )
+            throw new Error("proposal is not confirmed as knowledge");
+          const item = body.revision?.items?.[0]?.id;
+          if (!item || body.revision?.items?.length !== 1)
+            throw new Error("confirmed proposal does not cite exactly one smoke clip");
+          itemId = item;
+          sourceId = body.confirmed_target_id;
+          return [itemId, proposalId, sourceId];
         },
       ))
     )
       return;
     await this.check(
-      "write.confirm_idempotent",
-      "repeating the exact confirmation returns the same single admission",
-      async () => {
-        const body = (await this.json(`/v1/intake/proposals/${proposalId}/confirm`, {
-          method: "POST",
-          body: JSON.stringify({ expected_revision: revision, digest }),
-        })) as { status?: string; confirmed_knowledge_source_id?: string };
-        if (body.status !== "confirmed" || body.confirmed_knowledge_source_id !== sourceId)
-          throw new Error("repeat confirmation did not return the original admission");
-        return [sourceId];
-      },
-    );
-    await this.check(
       "write.single_admission",
-      "the run-labelled knowledge source exists exactly once after repeated confirmation",
+      "the run-labelled knowledge source exists exactly once after confirmation",
       async () => {
         const body = (await this.json(
           `/v1/knowledge-sources?q=${encodeURIComponent(sourceName)}&limit=500`,
@@ -523,7 +560,7 @@ class IntakeLiveRunner {
           throw new Error("source listing is incomplete; cannot prove a single admission");
         const matches = body.items.filter((source) => source.name === sourceName);
         if (matches.length !== 1 || matches[0]?.id !== sourceId)
-          throw new Error("repeated confirmation did not yield exactly one source");
+          throw new Error("confirmation did not yield exactly one source");
         return [sourceId];
       },
     );
@@ -533,14 +570,15 @@ class IntakeLiveRunner {
       async () => {
         const item = (await this.json(`/v1/intake/items/${itemId}`)) as {
           state?: string;
-          admitted_knowledge_source_id?: string;
+          admitted_target_kind?: string;
+          admitted_target_id?: string;
           original_snapshot?: { source_url?: string };
         };
         if (
           item.state !== "admitted" ||
-          item.admitted_knowledge_source_id !== sourceId ||
-          item.original_snapshot?.source_url !==
-            `https://example.invalid/intake-smoke/${encodeURIComponent(run)}`
+          item.admitted_target_kind !== "knowledge" ||
+          item.admitted_target_id !== sourceId ||
+          item.original_snapshot?.source_url !== sourceUrl
         )
           throw new Error("admitted clip provenance mismatch");
         const source = (await this.json(`/v1/knowledge-sources/${sourceId}`)) as { slug?: string };
@@ -575,6 +613,33 @@ class IntakeLiveRunner {
       },
     );
   }
+}
+
+interface ProposalBody {
+  id?: string;
+  status?: string;
+  current_revision?: number;
+  confirmed_revision?: number | null;
+  confirmed_target_kind?: string | null;
+  confirmed_target_id?: string | null;
+  revision?: {
+    digest?: string;
+    title?: string;
+    body?: string;
+    target?: { name?: string; category?: string; tags?: string[] };
+    items?: Array<{ id?: string }>;
+  };
+}
+
+function assertReviewedProposal(body: ProposalBody, sourceName: string, marker: string): void {
+  if (
+    body.revision?.title !== sourceName ||
+    body.revision.body !== `${marker} confirmed knowledge fixture.` ||
+    body.revision.target?.name !== sourceName ||
+    body.revision.target.category !== "intake-smoke" ||
+    body.revision.target.tags?.join(",") !== "domain:intake-smoke"
+  )
+    throw new Error("proposal does not match the reviewed smoke fixture");
 }
 
 export async function runIntakeLiveSmoke(
@@ -613,6 +678,7 @@ export async function runIntakeLiveSmoke(
     host_origin: new URL(args.engineUrl).origin,
     checks: runner.checks,
     retained_resource_ids: [...runner.retained],
+    handoff: runner.handoff,
     cleanup: {
       attempted: false,
       status: "not_attempted",
@@ -625,7 +691,7 @@ export async function runIntakeLiveSmoke(
 }
 
 function usage(error: unknown): string {
-  return `${errorText(error)}\nusage: SK_INTAKE_TEST_KEY=… bun run verify:intake-live -- --engine-url <selected-test-tenant-origin> [--allow-writes --test-tenant-id <uuid> --run-id <unique-id> --json <report-path>]`;
+  return `${errorText(error)}\nusage: SK_INTAKE_TEST_KEY=… bun run verify:intake-live -- --engine-url <selected-test-tenant-origin> [--allow-writes --test-tenant-id <uuid> --run-id <unique-id> --json <report-path> [--after-confirm --proposal-id <uuid>]]`;
 }
 
 if (import.meta.main) {

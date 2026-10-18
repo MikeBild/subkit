@@ -103,9 +103,6 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
       return typeof id === "string" && id.length > 0 ? { type: "knowledge", id } : null;
     },
   },
-  create_skill: {
-    permission: "skill:write",
-  },
   update_skill: {
     permission: "skill:write",
     resource: (args) => {

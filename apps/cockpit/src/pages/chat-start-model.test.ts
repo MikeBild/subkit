@@ -117,9 +117,9 @@ describe("chat start: example cards drawn from the installation", () => {
       expect.objectContaining({
         id: "intake-inbox",
         title: "Eingang prüfen",
-        line: "Gesammelte Ideen prüfen und Wissen vorschlagen.",
+        line: "Gesammelte Einträge prüfen und Wissen oder Skills vorschlagen.",
         prompt:
-          "Schau meine neuen Einträge in „inbox“ durch. Welche davon helfen uns? Zeige zu jedem Vorschlag den genauen Text, Quellen und das Wissensziel zur Bestätigung.",
+          "Schau meine neuen Einträge in „inbox“ durch. Welche davon helfen uns? Schlage vor, was wir übernehmen sollten, als Wissen oder als Skill, mit genauem Text, Quellen und Ziel zur Bestätigung.",
       }),
     );
     expect(catalog?.line).toBe("billing · 4 Workflows");

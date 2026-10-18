@@ -1,21 +1,55 @@
 import { describe, expect, test } from "bun:test";
+import type { IntakeProposalTarget } from "@/api/intake";
+import { routerTarget } from "@/app/links";
 import { translate } from "@/lib/i18n";
 import {
+  changedSkillLine,
   INTAKE_CHAT_PROMPTS,
+  intakeCategoryFromSearch,
   intakeChatPrompt,
+  intakeConfirmPermissions,
   intakeNextAction,
+  intakeOrigin,
   intakeStateLabelKey,
   intakeTargetDetails,
   intakeTargetTopic,
   isIntakeCategory,
+  mayConfirmIntakeProposal,
+  newSkillLine,
   proposalMatchesVisibleItems,
   publishedDate,
+  sessionLabel,
+  sessionPlace,
+  sessionSnapshot,
+  skillBodyChange,
+  skillTargetIds,
 } from "./intake-model";
+
+const de = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+  translate("de", key, values);
+const en = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+  translate("en", key, values);
+const SKILL = "11111111-1111-4111-8111-111111111111";
+const OLD = "22222222-2222-4222-8222-222222222222";
+const knowledgeTarget: IntakeProposalTarget = { name: "Betrieb", category: "betrieb" };
+const newSkill: IntakeProposalTarget = {
+  skill: {
+    new: { title: "Rollbacks", scope: "global", tags: [], category: "betrieb" },
+    supersedes: [],
+  },
+};
+const replacingSkill: IntakeProposalTarget = {
+  skill: {
+    skill_id: SKILL,
+    expected_version: 3,
+    supersedes: [{ skill_id: OLD, expected_version: 2 }],
+  },
+};
 
 describe("intake model", () => {
   test("keeps the category name in the human-facing chat start", () => {
     expect(intakeChatPrompt("Recherche", (key, values) => translate("de", key, values))).toBe(
-      "Schau meine neuen Einträge in „Recherche“ durch. Welche davon helfen uns? Zeige zu jedem Vorschlag den genauen Text, Quellen und das Wissensziel zur Bestätigung.",
+      "Schau meine neuen Einträge in „Recherche“ durch. Welche davon helfen uns? Schlage vor, was wir übernehmen sollten, als Wissen oder als Skill, mit genauem Text, Quellen und Ziel zur Bestätigung.",
     );
   });
 
@@ -29,6 +63,21 @@ describe("intake model", () => {
       expect(prompt).toContain("Recherche");
       expect(prompt).not.toMatch(/\b[0-9a-f]{8}-[0-9a-f-]{27}\b/i);
     }
+  });
+
+  test("the collected-material attention link opens the view it counts", () => {
+    const target = routerTarget("/cockpit/intake?category=all");
+    expect(target).toEqual({ to: "/intake", search: { category: "all" } });
+    expect(intakeCategoryFromSearch(target.search ?? {})).toBe("all");
+    expect(en("overview.object.intake")).toBe("Collected material");
+    expect(de("overview.object.intake")).not.toMatch(/Eingang|Inbox/);
+  });
+
+  test("reads the requested category view from the address", () => {
+    expect(intakeCategoryFromSearch("?category=all")).toBe("all");
+    expect(intakeCategoryFromSearch({ category: "betrieb" })).toBe("betrieb");
+    expect(intakeCategoryFromSearch("?category=Not%20Valid")).toBeNull();
+    expect(intakeCategoryFromSearch("?item=x")).toBeNull();
   });
 
   test("accepts only explicit shared-category input", () => {
@@ -88,4 +137,115 @@ test("referenced record instructions do not repeat record labels", () => {
       expect(prompt).not.toContain("{title}");
     }
   }
+});
+
+describe("collected sessions and confirmation targets", () => {
+  test("origin separates sessions from clips without becoming a category", () => {
+    expect(intakeOrigin({ origin: "session" })).toBe("session");
+    expect(intakeOrigin({ origin: "capture" })).toBe("clip");
+    expect(intakeOrigin({ origin: "restored_draft" })).toBe("clip");
+  });
+
+  test("session details name repository and domains but never a clip address", () => {
+    const session = sessionSnapshot({
+      title: "Rollbacks",
+      captured_at: "2026-01-02T00:00:00.000Z",
+      body: "Rollback first.",
+      origin: "session",
+      agent: "claude-code",
+      session_id: "s-1",
+      repo: "subkit",
+      domains: ["betrieb"],
+      evidence_excerpt: "we rolled back",
+    });
+    expect(session?.agent).toBe("claude-code");
+    expect(session ? sessionPlace(session) : null).toBe("subkit · betrieb");
+    expect(sessionPlace({ repo: null, domains: [] })).toBeNull();
+    expect(
+      sessionSnapshot({
+        title: "Clip",
+        captured_at: "2026-01-02T00:00:00.000Z",
+        body: "x",
+        origin: "capture",
+        source_url: "https://example.test/clip",
+      }),
+    ).toBeNull();
+  });
+
+  test("a knowledge target needs knowledge:write, a skill target never does", () => {
+    expect(intakeConfirmPermissions(knowledgeTarget)).toEqual([
+      "intake:confirm",
+      "knowledge:write",
+    ]);
+    expect(mayConfirmIntakeProposal(knowledgeTarget, ["intake:confirm", "knowledge:write"])).toBe(
+      true,
+    );
+    expect(mayConfirmIntakeProposal(knowledgeTarget, ["intake:confirm", "skill:write"])).toBe(
+      false,
+    );
+    expect(
+      mayConfirmIntakeProposal(newSkill, ["intake:confirm", "skill:write", "skill:activate"]),
+    ).toBe(true);
+    expect(mayConfirmIntakeProposal(newSkill, ["intake:confirm", "knowledge:write"])).toBe(false);
+    expect(mayConfirmIntakeProposal(newSkill, ["skill:write", "skill:activate"])).toBe(false);
+  });
+
+  test("replacing a skill also needs archive rights", () => {
+    const writer = ["intake:confirm", "skill:write", "skill:activate"];
+    expect(mayConfirmIntakeProposal(replacingSkill, writer)).toBe(false);
+    expect(mayConfirmIntakeProposal(replacingSkill, [...writer, "skill:archive"])).toBe(true);
+    expect(mayConfirmIntakeProposal(replacingSkill, [...writer.slice(0, 2), "skill:archive"])).toBe(
+      false,
+    );
+  });
+
+  test("the target line names a new skill's domain or the replaced skill and version", () => {
+    if (!("skill" in newSkill) || !("skill" in replacingSkill)) throw new Error("skill target");
+    expect(newSkillLine(newSkill, de)).toBe("Neuer Skill „Rollbacks“ · betrieb · gilt überall");
+    expect(newSkillLine(newSkill, en)).toBe(
+      "New skill “Rollbacks” · betrieb · applies in every context",
+    );
+    expect(
+      newSkillLine(
+        {
+          skill: {
+            new: {
+              title: "Paging",
+              scope: "connector",
+              connector_id: SKILL,
+              tags: [],
+              category: "betrieb",
+            },
+            supersedes: [],
+          },
+        },
+        de,
+        "Orders API",
+      ),
+    ).toBe("Neuer Skill „Paging“ · betrieb · nur für Konnektor Orders API");
+    expect(newSkillLine(replacingSkill, de)).toBeNull();
+    expect(changedSkillLine("replace", { title: "Alte Regel", version: 2 }, undefined, de)).toBe(
+      "Ersetzt Alte Regel (v2)",
+    );
+    expect(changedSkillLine("update", { title: "Regel", version: 5 }, 3, de)).toBe(
+      "Ändert Regel (v3)",
+    );
+    expect(skillTargetIds(replacingSkill)).toEqual([SKILL, OLD]);
+  });
+
+  test("a transcript-derived session id is shortened to a readable label", () => {
+    expect(sessionLabel(`transcript-${"ab12cd34"}${"0".repeat(24)}`, de)).toBe(
+      "Transkript ab12cd34",
+    );
+    expect(sessionLabel("sess-1", de)).toBe("sess-1");
+  });
+
+  test("the change to a replaced skill is a focused line diff", () => {
+    expect(skillBodyChange("a\nb", "a\nb")).toEqual([]);
+    expect(skillBodyChange("a\nold", "a\nnew")).toEqual([
+      { type: "context", text: "a" },
+      { type: "removed", text: "old" },
+      { type: "added", text: "new" },
+    ]);
+  });
 });

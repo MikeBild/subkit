@@ -8,6 +8,7 @@ import type {
   SetupValidationResponse,
   StatusSummary,
 } from "../engine-client.ts";
+import type { PendingIntake } from "../lib/intake-review.ts";
 import { ResumeSummaryCard } from "../repl/authoring-cards.tsx";
 import { NeedsAttentionPanel } from "../repl/needs-attention-panel.tsx";
 import { buildStarterActions } from "../repl/starter-action-injection.ts";
@@ -74,7 +75,7 @@ export interface WelcomeRowProps {
   statusSnapshot: StatusSummary | null | undefined;
   setupSnapshot: SetupValidationResponse | null | undefined;
   digestSnapshot: OperatorHealthDigest | null | undefined;
-  pendingLearningsCount?: number | undefined;
+  pendingIntake?: PendingIntake | null | undefined;
   tip: string;
 }
 
@@ -88,7 +89,7 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
   statusSnapshot,
   setupSnapshot,
   digestSnapshot,
-  pendingLearningsCount = 0,
+  pendingIntake = null,
   tip,
 }) => {
   const setupBannerShownRef = useRef(false);
@@ -110,8 +111,8 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
     hasDigest && digestSnapshot ? <NeedsAttentionPanel digest={digestSnapshot} /> : null;
 
   const starterActions = useMemo(
-    () => buildStarterActions(persona.label, persona.probe, digestSnapshot, pendingLearningsCount),
-    [persona.label, persona.probe, digestSnapshot, pendingLearningsCount],
+    () => buildStarterActions(persona.label, persona.probe, digestSnapshot, pendingIntake),
+    [persona.label, persona.probe, digestSnapshot, pendingIntake],
   );
 
   const canShowSetupBanner =

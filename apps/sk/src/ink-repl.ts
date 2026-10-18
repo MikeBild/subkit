@@ -43,12 +43,12 @@ export interface InkReplOptions {
   noMemory?: boolean;
 }
 
+import { fetchPendingIntake, type PendingIntake } from "./lib/intake-review.ts";
 import { digestAsContext, fetchOperatorDigest } from "./lib/operator-digest.ts";
-import { fetchPendingLearningsCount } from "./lib/pending-learnings.ts";
 
 interface OperatorBootSnapshot {
   digest: OperatorHealthDigest | null;
-  pendingLearnings: number;
+  pendingIntake: PendingIntake | null;
   mentions: MentionCandidate[];
 }
 export async function runInkRepl(opts: InkReplOptions): Promise<number> {
@@ -72,7 +72,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   });
 
   let pendingDigestContext: string | null = null;
-  let bootSnapshot: OperatorBootSnapshot = { digest: null, pendingLearnings: 0, mentions: [] };
+  let bootSnapshot: OperatorBootSnapshot = { digest: null, pendingIntake: null, mentions: [] };
 
   const client = new EngineClient({
     engine_url: opts.profile.engine_url,
@@ -86,7 +86,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     persona.allowed.has("audit:read") || persona.allowed.has("identity:read");
 
   const statusPromise = client.statusSummary().catch(() => null);
-  const learningsPromise = fetchPendingLearningsCount(client);
+  const pendingIntakePromise = fetchPendingIntake(client);
   let currentPersona = await resolvePersona(client, opts.profile);
   const mentionCandidatesPromise = loadMentionCandidates(client, currentPersona.allowed);
   const setupPromise: Promise<SetupValidationResponse | null> = canReadSetup(currentPersona)
@@ -169,7 +169,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   const setupListeners = new Set<(snap: SetupValidationResponse | null) => void>();
   bootSnapshot = {
     ...bootSnapshot,
-    pendingLearnings: await learningsPromise,
+    pendingIntake: await pendingIntakePromise,
     mentions: await mentionCandidatesPromise,
   };
   const bootSnapshotListeners = new Set<(snap: OperatorBootSnapshot) => void>();
@@ -735,13 +735,13 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       return `switch to "${name}" superseded by a newer /profile switch`;
     }
     pendingDigestContext = null;
-    const [nextStatus, nextSetup, nextDigest, nextLearnings, nextMentions] = await Promise.all([
+    const [nextStatus, nextSetup, nextDigest, nextPendingIntake, nextMentions] = await Promise.all([
       newClient.statusSummary().catch(() => null),
       canReadSetup(nextPersona)
         ? newClient.setupValidation().catch(() => null)
         : Promise.resolve(null),
       fetchOperatorDigest(newClient),
-      fetchPendingLearningsCount(newClient),
+      fetchPendingIntake(newClient),
       loadMentionCandidates(newClient, nextPersona.allowed),
     ]);
     if (currentClient !== newClient) {
@@ -750,7 +750,11 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     currentPersona = nextPersona;
     statusSnapshot = nextStatus;
     setupSnapshot = nextSetup;
-    bootSnapshot = { digest: nextDigest, pendingLearnings: nextLearnings, mentions: nextMentions };
+    bootSnapshot = {
+      digest: nextDigest,
+      pendingIntake: nextPendingIntake,
+      mentions: nextMentions,
+    };
     pendingDigestContext = nextDigest ? digestAsContext(nextDigest) : null;
     profileVersion += 1;
     for (const listener of personaListeners) {
@@ -935,7 +939,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       setupSnapshot: setup,
       connectionSnapshot: conn,
       digestSnapshot: boot.digest,
-      pendingLearningsCount: boot.pendingLearnings,
+      pendingIntake: boot.pendingIntake,
       onPrompt,
       onElicitResponse,
       onSlash,
