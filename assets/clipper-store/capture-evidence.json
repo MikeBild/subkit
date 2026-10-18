@@ -1,0 +1,48 @@
+{
+  "status": "DRAFT_REQUIRES_MANUAL_APPROVAL",
+  "sourceCommit": "de4752eca6d7a93eeee97535d1de90eb714c356d",
+  "imageId": "sha256:2446f78ebf3ec39ee87e03b31d3401156244a65e32fa94255c738fe2af977a64",
+  "extensionZipSha256": "34e8cc834dad3591728bc0f87e4f1b88aa4bc549da58e1934ff2aa4bf0854cb4",
+  "capture": "Unmodified Playwright screenshots of the unpacked real extension against a fresh isolated engine; no UI reconstruction or screenshot matrix",
+  "fixture": "Synthetic German article served on loopback; no user or production data",
+  "setup": "Settings and host permissions provisioned by the harness; not manual Chrome installation evidence",
+  "checks": [
+    "settings-save",
+    "fixture-source-permission",
+    "source-tab-selected",
+    "real-source-captured",
+    "real-engine-collection",
+    "collection-success-visible",
+    "captured-body-persisted",
+    "source-author-preserved",
+    "source-snapshot-preserved",
+    "not-admitted",
+    "raw-marker-excluded",
+    "review-page-opened"
+  ],
+  "cleanup": "Temporary browser profile, extension and isolated Compose volumes removed",
+  "remainingReview": [
+    "Visual approval and store suitability",
+    "Local example URL and wide tab presentation",
+    "Required promotional image and public listing links"
+  ],
+  "policySource": "https://developer.chrome.com/docs/webstore/images",
+  "files": [
+    {
+      "file": "capture.jpg",
+      "sha256": "0d2f9f43f1967cec4da0f34c37764252b68dd1bab12afdc40594943e7a282df1",
+      "width": 1280,
+      "height": 800,
+      "format": "JPEG",
+      "status": "DRAFT_REQUIRES_MANUAL_APPROVAL"
+    },
+    {
+      "file": "collected.jpg",
+      "sha256": "404c885dacf1abcebed2f279d7df5857fc07c57a665ed1009067e53363cc5da4",
+      "width": 1280,
+      "height": 800,
+      "format": "JPEG",
+      "status": "DRAFT_REQUIRES_MANUAL_APPROVAL"
+    }
+  ]
+}
