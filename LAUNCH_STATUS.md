@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-18T11:59:43.333667+00:00**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-18T12:03:04.444902+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktstand vor Remote-Integration: **0c61b8bc6**, Version **9.15.2**. QuickJS-Fix und korrigierte Hook-Dokumentationsassertion committed; vollständiges Gesamtgate PASS, unveränderte Quellhashes. ARM64-Image, Installation, Regression und Notice-Auslieferung bestanden (E158).
-- Letzter bestätigter Remote-Stand: **3572f9820**, main, per Fast-forward integriert. Version **10.0.0** vorbereitet. Gesamtgate f489823b1 PASS (E181); Image/Installation und reale Browser-Journey auf d2eeb2aaa PASS (E184/E185). Neuere HTTP-/Seed-Änderungen gezielt geprüft (E186), Image aktualisiert (E187), S3-Platzmangel eingegrenzt (E188), aktuelle Installation mit eigenem Host-Datenspeicher bestanden (E189); kein neues Gesamtgate. Diese Fortschreibung LOCAL_ONLY bis Push.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E198. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Letzter bestätigter Remote-Stand: **ae85eca54**, main, per Fast-forward integriert. Version **10.0.0** vorbereitet. Gesamtgate f489823b1 PASS (E181); Image/Installation und reale Browser-Journey auf d2eeb2aaa PASS (E184/E185). Neuere HTTP-/Seed-Änderungen gezielt geprüft (E186), Image aktualisiert (E187), S3-Platzmangel eingegrenzt (E188), aktuelle Installation mit eigenem Host-Datenspeicher bestanden (E189); kein neues Gesamtgate. Diese Fortschreibung LOCAL_ONLY bis Push.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E199. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -41,7 +41,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L22 | TODO | Finale GA-Gates und menschliche Abnahme. |
 | L23 | TODO | Öffentliche GA, Kommunikation und Supportübernahme. |
 | L24 | TODO | P2-Roadmap bleibt bis nach Launch zurückgestellt. |
-| L25 | BLOCKED | Bestehendes Nutzerprofil weiterhin unauthorized, E32. Mit isolierter Fixture-Identität: echtes CLI-Briefing und gemeinsamer Codex-/Claude-Hook-Handler gegen aktuelle Engine PASS, E38. Hook-Setup-Anleitung an aktuelle offizielle Defaults/Trust/Policy angepasst; 44 Agent-Tests, 4.590 Unit-Tests und CLI-Build PASS, E150. Tatsächlicher Client-Hook-Dispatch, Nutzerzugang und Daily-/Weekly-Läufe fehlen. Lesende Pages-/Space-Suche liefert kein zuordenbares Briefing (E180); kein vollständiger Zugriff auf ChatGPT-Projekte oder Automationen behauptet. Keine globalen Änderungen. |
+| L25 | BLOCKED | E199: Qualität und Berechtigungsgrenze des gemeinsamen Hook-Review-Hinweises über echtes HTTP mit acht Checks bestanden; kein tatsächlicher Client-Dispatch. Bestehendes Nutzerprofil weiterhin unauthorized, E32. Mit isolierter Fixture-Identität: echtes CLI-Briefing und gemeinsamer Codex-/Claude-Hook-Handler gegen aktuelle Engine PASS, E38. Hook-Setup-Anleitung an aktuelle offizielle Defaults/Trust/Policy angepasst; 44 Agent-Tests, 4.590 Unit-Tests und CLI-Build PASS, E150. Tatsächlicher Client-Hook-Dispatch, Nutzerzugang und Daily-/Weekly-Läufe fehlen. Lesende Pages-/Space-Suche liefert kein zuordenbares Briefing (E180); kein vollständiger Zugriff auf ChatGPT-Projekte oder Automationen behauptet. Keine globalen Änderungen. |
 
 ## Fünf dominante Blocker
 
@@ -108,7 +108,7 @@ Scope-Erweiterung vom Nutzer entschieden (gegen den Freeze 17.–20.10.): Lernvo
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **Aktuelle L12-Nachweise für CLI/MCP und Coding-Agent-Briefing auf verbleibende konkrete Lücken prüfen und diese in isolierten Fixtures schließen.** Queue-Isolation und zwei instrumentierte Vollstarts bestanden (E197/E198); weitere blinde Wiederholungen vermeiden. E194/E196 bleibt offene Kandidaten-Startzuverlässigkeit: Gegenprobe auf messbar ausreichend versorgtem System oder neue gezielte Diagnosehypothese erforderlich. Fremde Demo-Dienste nicht stoppen. Korrigierter Kategorie-/RBAC-Gesamtlauf noch offen, Teilnachweis E195 gültig. Vollständiges Release-Gate vor Tagging bleibt Pflicht. Neue Nachweise LOCAL_ONLY bis Push.
+Nächster Codex-Schritt: **Verbleibende CLI/MCP-Nachweise nach bestätigter Knowledge-Admission gezielt prüfen; E199 schließt die Hook-Hinweisqualität und darf nicht erneut als offene Aufgabe behandelt werden.** Reale Client-Auslösung bleibt L25, vorhandenes Nutzerprofil weiterhin ungeklärt. E194/E196 bleibt offene Kandidaten-Startzuverlässigkeit: Gegenprobe auf messbar ausreichend versorgtem System oder neue gezielte Diagnosehypothese erforderlich. Keine blinden Vollstart-Wiederholungen und keine fremden Demo-Dienste stoppen. Korrigierter Kategorie-/RBAC-Gesamtlauf noch offen, Teilnachweis E195 gültig. Vollständiges Release-Gate vor Tagging bleibt Pflicht. Neue Nachweise LOCAL_ONLY bis Push.
 
 L04 bleibt begrenzt auf bekannte offene Rechte-/Plattform-/Quellauslieferungsfragen
 und menschliche Freigaben. Alle 103 Polyfill-Lockfile-Versionen haben Originaltexte;
