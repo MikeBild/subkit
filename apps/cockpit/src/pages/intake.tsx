@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { MessageSquare } from "lucide-react";
@@ -18,18 +18,21 @@ import {
   setIntakeDefaultCategory,
   updateIntakeClip,
 } from "@/api/intake";
+import type { components } from "@/api/schema";
+import { useActorDirectory } from "@/app/actor-directory";
+import { actorLabel } from "@/app/actor-directory-model";
 import { absolute, chatNewHref, recordHref } from "@/app/links";
 import { CatalogCategories } from "@/components/cockpit/catalog-categories";
 import {
   categoryChoices,
   normalizeCategoryInput,
 } from "@/components/cockpit/catalog-metadata-model";
+import { FocusedDiff } from "@/components/cockpit/diff-card";
 import { SelectField, TextAreaField, TextField } from "@/components/cockpit/form-field";
 import {
   ActionMenu,
   Button,
   type CockpitColumn,
-  CodeBlock,
   CollapsibleSection,
   ConfirmDialog,
   DataState,
@@ -42,6 +45,7 @@ import {
   Page,
   PageHeader,
   RecordSheet,
+  Section,
   StatusBadge,
   SummaryLine,
 } from "@/components/cockpit/patterns";
@@ -50,10 +54,26 @@ import { ForbiddenState } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import {
+  changedSkillLine,
+  INTAKE_ORIGINS,
   INTAKE_STATES,
+  type IntakeOrigin,
+  intakeCategoryFromSearch,
+  intakeConfirmPermissions,
   intakeItemChatPrompt,
+  intakeOrigin,
+  intakeOriginLabelKey,
   intakeStateLabelKey,
+  isSkillTarget,
+  mayConfirmIntakeProposal,
+  newSkillLine,
   publishedDate,
+  type ReferencedSkill,
+  sessionLabel,
+  sessionPlace,
+  sessionSnapshot,
+  skillBodyChange,
+  skillTargetIds,
 } from "./intake-model";
 
 const CATEGORIES_KEY = ["intake", "categories"] as const;
@@ -261,40 +281,160 @@ function IntakeDefaultCategoryDialog({
   );
 }
 
-function ProposalCard({
+type Skill = components["schemas"]["Skill"];
+
+function SkillChange({
+  proposalId,
+  skillId,
+  line,
+  skill,
+  body,
+}: {
+  proposalId: string;
+  skillId: string;
+  line: string;
+  skill: ReferencedSkill | undefined;
+  body: string;
+}) {
+  const { t } = useI18n();
+  if (!skill) return null;
+  const rows = skillBodyChange(skill.body, body);
+  return (
+    <Section
+      label={t("intake.proposal.changeTo", { skill: skill.title })}
+      testId={`intake-proposal-${proposalId}-change-${skillId}`}
+    >
+      <p className="mb-2 text-sm text-muted-foreground">{line}</p>
+      {rows.length ? (
+        <FocusedDiff rows={rows} testId={`intake-proposal-${proposalId}-diff-${skillId}`} />
+      ) : (
+        <p className="text-sm">{t("intake.proposal.unchanged")}</p>
+      )}
+    </Section>
+  );
+}
+
+export function ProposalCard({
   proposal,
-  canConfirm,
+  permissions,
   onConfirm,
   focused = false,
 }: {
   proposal: IntakeProposal;
-  canConfirm: boolean;
+  permissions: readonly string[];
   onConfirm(): void;
   focused?: boolean;
 }) {
   const { t } = useI18n();
   const [confirming, setConfirming] = useState(false);
-  const targetId =
-    "knowledge_source_id" in proposal.revision.target
-      ? proposal.revision.target.knowledge_source_id
-      : null;
-  const target = useQuery({
-    queryKey: ["knowledge-source", "intake-target", targetId],
+  const proposed = proposal.revision.target;
+  const skillTarget = isSkillTarget(proposed) ? proposed : null;
+  const knowledgeId = "knowledge_source_id" in proposed ? proposed.knowledge_source_id : null;
+  const knowledge = useQuery({
+    queryKey: ["knowledge-source", "intake-target", knowledgeId],
     queryFn: () =>
       apiRequest<{ name: string; category: string; tags: string[] }>(
-        `/v1/knowledge-sources/${encodeURIComponent(targetId ?? "")}`,
+        `/v1/knowledge-sources/${encodeURIComponent(knowledgeId ?? "")}`,
       ),
-    enabled: Boolean(targetId),
+    enabled: Boolean(knowledgeId),
   });
-  const destination = "name" in proposal.revision.target ? proposal.revision.target : target.data;
-  const targetName = destination?.name ?? t("intake.proposal.loadingTarget");
+  const skillIds = skillTarget ? skillTargetIds(skillTarget) : [];
+  const skillQueries = useQueries({
+    queries: skillIds.map((id) => ({
+      queryKey: ["skill", "intake-target", id],
+      queryFn: () => apiRequest<Skill>(`/v1/skills/${encodeURIComponent(id)}`),
+    })),
+  });
+  const skills = new Map<string, ReferencedSkill | undefined>(
+    skillIds.map((id, index) => [id, skillQueries[index]?.data]),
+  );
+  const created = skillTarget?.skill.new;
+  const bindingId = created?.connector_id ?? created?.workflow_id ?? null;
+  const bindingPath = created?.connector_id
+    ? `/v1/connectors/${encodeURIComponent(created.connector_id)}`
+    : created?.workflow_id
+      ? `/v1/workflows/${encodeURIComponent(created.workflow_id)}`
+      : null;
+  const binding = useQuery({
+    queryKey: ["intake-target-binding", bindingPath],
+    queryFn: () => apiRequest<{ name: string }>(bindingPath ?? ""),
+    enabled: Boolean(bindingPath) && proposal.status === "draft",
+    retry: false,
+    retryOnMount: false,
+  });
+  const bindingSettled = !bindingPath || binding.isSuccess || binding.isError;
+  const bindingName =
+    binding.data?.name ?? (bindingSettled || proposal.status !== "draft" ? bindingId : null);
+  const bindingMissing = binding.error instanceof ApiError && binding.error.status === 404;
+  const targetMissing = skillQueries.some((query) => query.isError) || bindingMissing;
+  const targetsLoaded = knowledgeId
+    ? Boolean(knowledge.data)
+    : skillQueries.every((query) => Boolean(query.data)) && bindingSettled;
+  const canConfirm = mayConfirmIntakeProposal(proposed, permissions);
+  const existingSkillId = skillTarget?.skill.skill_id ?? null;
+  const existingSkill = existingSkillId ? skills.get(existingSkillId) : undefined;
+  const skillMoved =
+    existingSkill !== undefined &&
+    skillTarget?.skill.expected_version !== undefined &&
+    existingSkill.version !== skillTarget.skill.expected_version;
+  const destination =
+    "name" in proposed
+      ? proposed
+      : skillTarget
+        ? skillTarget.skill.new
+          ? { name: skillTarget.skill.new.title, ...skillTarget.skill.new }
+          : existingSkill
+            ? { name: existingSkill.title, category: undefined, tags: undefined }
+            : undefined
+        : knowledge.data;
+  const knownTargetName = destination?.name ?? null;
+  const targetName =
+    knownTargetName ??
+    t(skillTarget ? "intake.target.selectedSkillName" : "intake.proposal.loadingTarget");
+  const existingInactive = existingSkill?.status !== undefined && existingSkill.status !== "active";
   const targetCategory = destination?.category;
   const targetTags = destination?.tags?.join(", ");
+  const skillLines = skillTarget
+    ? [
+        ...(skillTarget.skill.new
+          ? [{ id: "new", line: newSkillLine(skillTarget, t, bindingName) ?? "" }]
+          : []),
+        ...(existingSkillId
+          ? [
+              {
+                id: existingSkillId,
+                line: `${changedSkillLine(
+                  "update",
+                  existingSkill,
+                  skillTarget.skill.expected_version,
+                  t,
+                )}${existingInactive ? ` · ${t("intake.target.activates")}` : ""}`,
+              },
+            ]
+          : []),
+        ...skillTarget.skill.supersedes.map((entry) => ({
+          id: entry.skill_id,
+          line: changedSkillLine("replace", skills.get(entry.skill_id), entry.expected_version, t),
+        })),
+      ]
+    : [];
+  const archived = skillTarget
+    ? skillTarget.skill.supersedes.map(
+        (entry) => skills.get(entry.skill_id)?.title ?? t("intake.target.selectedSkillName"),
+      )
+    : [];
   const confirmationDetails = [
-    t("intake.proposal.confirmHelp", { target: targetName }),
+    skillTarget
+      ? knownTargetName
+        ? t("intake.proposal.confirmSkillHelp", { target: knownTargetName })
+        : t("intake.proposal.confirmSkillHelpUnnamed")
+      : t("intake.proposal.confirmHelp", { target: targetName }),
+    ...(skillLines.length ? [`${skillLines.map((entry) => entry.line).join(". ")}.`] : []),
+    ...(archived.length ? [t("intake.proposal.archives", { skills: archived.join(", ") })] : []),
     ...(targetCategory ? [`${t("intake.proposal.category")}: ${targetCategory}`] : []),
     ...(targetTags ? [`${t("intake.proposal.tags")}: ${targetTags}`] : []),
   ].join(" ");
+  const confirmLabel = t(skillTarget ? "intake.proposal.confirmSkill" : "intake.proposal.confirm");
   return (
     <article
       className="py-3"
@@ -306,28 +446,48 @@ function ProposalCard({
         className="text-sm text-muted-foreground"
         data-testid={`intake-proposal-${proposal.id}-target-details`}
       >
-        {targetName}
-        {targetCategory && targetCategory !== targetName ? ` · ${targetCategory}` : ""}
+        {skillTarget
+          ? skillLines.map((entry) => (
+              <span key={entry.id} className="block">
+                {entry.line}
+              </span>
+            ))
+          : `${targetName}${targetCategory && targetCategory !== targetName ? ` · ${targetCategory}` : ""}`}
       </p>
       <CollapsibleSection
         label={t("intake.proposal.review")}
         defaultOpen={focused}
         testId={`intake-proposal-${proposal.id}-review`}
       >
-        <CodeBlock code={proposal.revision.body} lang="markdown" />
+        <FilePreview
+          name=""
+          mimeType="text/markdown"
+          text={proposal.revision.body}
+          testId={`intake-proposal-${proposal.id}-body`}
+        />
         {targetTags ? (
           <p className="mt-2 text-sm" data-testid={`intake-proposal-${proposal.id}-target-tags`}>
             {t("intake.proposal.tags")}: {targetTags}
           </p>
         ) : null}
+        {skillLines
+          .filter((entry) => entry.id !== "new")
+          .map((entry) => (
+            <SkillChange
+              key={entry.id}
+              proposalId={proposal.id}
+              skillId={entry.id}
+              line={entry.line}
+              skill={skills.get(entry.id)}
+              body={proposal.revision.body}
+            />
+          ))}
         <ul className="mt-3 grid gap-1 text-sm">
           {proposal.revision.items.map((item) => (
             <li key={item.id}>
               <a
                 className="text-accent underline-offset-4 hover:underline"
-                href={item.source_url}
-                target="_blank"
-                rel="noreferrer"
+                href={absolute(`/intake?item=${encodeURIComponent(item.id)}`)}
                 data-testid={`intake-proposal-${proposal.id}-source-${item.id}`}
               >
                 {item.title}
@@ -336,33 +496,73 @@ function ProposalCard({
           ))}
         </ul>
       </CollapsibleSection>
+      {proposal.status === "draft" && skillMoved ? (
+        <p
+          className="mt-3 text-sm text-muted-foreground"
+          data-testid={`intake-proposal-${proposal.id}-skill-moved`}
+        >
+          {t("intake.proposal.stale")}
+        </p>
+      ) : null}
+      {proposal.status === "draft" && targetMissing ? (
+        <p
+          className="mt-3 text-sm text-muted-foreground"
+          data-testid={`intake-proposal-${proposal.id}-target-missing`}
+        >
+          {t("intake.proposal.targetMissing")}
+        </p>
+      ) : null}
+      {proposal.status === "draft" && !canConfirm ? (
+        <p
+          className="mt-3 text-sm text-muted-foreground"
+          data-testid={`intake-proposal-${proposal.id}-needs-rights`}
+        >
+          {t("intake.proposal.needsRights", {
+            permissions: intakeConfirmPermissions(proposed)
+              .filter((permission) => !permissions.includes(permission))
+              .join(", "),
+          })}
+        </p>
+      ) : null}
       {proposal.status === "draft" && canConfirm ? (
         <Button
           className="mt-3"
           size="sm"
-          disabled={Boolean(targetId) && !target.data}
+          disabled={!targetsLoaded || skillMoved || targetMissing}
           onClick={() => setConfirming(true)}
           data-testid={`intake-proposal-${proposal.id}-confirm`}
         >
-          {t("intake.proposal.confirm")}
+          {confirmLabel}
         </Button>
       ) : (
         <StatusBadge state={proposal.status} label={t(`intake.proposal.${proposal.status}`)} />
       )}
-      {proposal.status === "confirmed" && proposal.confirmed_knowledge_source_id ? (
-        <a
-          className="mt-2 block text-sm text-accent"
-          href={absolute(recordHref("knowledge", proposal.confirmed_knowledge_source_id))}
-          data-testid={`intake-proposal-${proposal.id}-knowledge`}
-        >
-          {t("intake.openKnowledge", { name: targetName })}
-        </a>
+      {proposal.status === "confirmed" && proposal.confirmed_target_id ? (
+        proposal.confirmed_target_kind === "skill" ? (
+          <a
+            className="mt-2 block text-sm text-accent"
+            href={absolute(recordHref("skills", proposal.confirmed_target_id))}
+            data-testid={`intake-proposal-${proposal.id}-skill`}
+          >
+            {knownTargetName
+              ? t("intake.openSkill", { name: knownTargetName })
+              : t("intake.openSkillUnnamed")}
+          </a>
+        ) : proposal.confirmed_target_kind === "knowledge" ? (
+          <a
+            className="mt-2 block text-sm text-accent"
+            href={absolute(recordHref("knowledge", proposal.confirmed_target_id))}
+            data-testid={`intake-proposal-${proposal.id}-knowledge`}
+          >
+            {t("intake.openKnowledge", { name: targetName })}
+          </a>
+        ) : null
       ) : null}
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
         object={proposal.revision.title}
-        verb={t("intake.proposal.confirm")}
+        verb={confirmLabel}
         consequence={confirmationDetails}
         onConfirm={onConfirm}
         testId={`intake-proposal-${proposal.id}-confirm-dialog`}
@@ -377,17 +577,21 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
   const intakeSearch = useRouterState({ select: (router) => router.location.search });
   const focusItemId = new URLSearchParams(intakeSearch).get("item");
   const focusProposalId = new URLSearchParams(intakeSearch).get("proposal");
+  const requestedCategory = intakeCategoryFromSearch(intakeSearch);
   const canRead = permissions.includes("intake:read");
   const canWrite = permissions.includes("intake:write");
-  const canConfirm =
-    permissions.includes("intake:confirm") && permissions.includes("knowledge:write");
   const canChat = permissions.includes("conversation:write");
-  const [category, setCategory] = useState<string | "all" | null>(null);
+  const [category, setCategory] = useState<string | "all" | null>(requestedCategory);
+  useEffect(() => {
+    if (requestedCategory !== null) setCategory(requestedCategory);
+  }, [requestedCategory]);
   const [editingClip, setEditingClip] = useState<IntakeClip | null>(null);
   const [detailClip, setDetailClip] = useState<IntakeClip | null>(null);
   const [sorting, setSorting] = useState<SortingState>([{ id: "captured_at", desc: true }]);
   const [settingDefaultCategory, setSettingDefaultCategory] = useState(false);
   const [state, setState] = useState<"all" | (typeof INTAKE_STATES)[number]>("all");
+  const [origin, setOrigin] = useState<"all" | IntakeOrigin>("all");
+  const directory = useActorDirectory(canRead && detailClip !== null);
   const categories = useQuery({
     queryKey: CATEGORIES_KEY,
     queryFn: listIntakeCategories,
@@ -445,12 +649,22 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
     ],
     [categories.data, defaultCategory.data],
   );
-  const clipItems = clips.data?.items ?? [];
+  const clipItems = (clips.data?.items ?? []).filter(
+    (clip) => origin === "all" || intakeOrigin(clip.original_snapshot) === origin,
+  );
   const detailProposals = detailClip
     ? (proposals.data?.items ?? []).filter((proposal) =>
         proposal.revision.items.some((item) => item.id === detailClip.id),
       )
     : [];
+  const detailSession = detailClip ? sessionSnapshot(detailClip.original_snapshot) : null;
+  const detailEvidence = useQuery({
+    queryKey: [...CLIPS_KEY, "evidence", detailClip?.id, detailClip?.version],
+    queryFn: () => getIntakeClip(detailClip?.id ?? ""),
+    enabled: canRead && detailSession !== null,
+  });
+  const evidenceRows = detailEvidence.data?.evidence ?? [];
+  const evidenceHidden = (detailEvidence.data?.evidence_total ?? 0) - evidenceRows.length;
   const visibleClips =
     focusedClip.data && !clipItems.some((clip) => clip.id === focusedClip.data?.id)
       ? [...clipItems, focusedClip.data]
@@ -513,21 +727,37 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
         (clip) => clip.title,
         t("knowledge.column.name"),
         (clip) => <span className="truncate font-medium">{clip.title}</span>,
-        { sortable: true, width: "w-[36%]" },
+        { sortable: true, width: "w-[30%]" },
+      ),
+      column.custom(
+        "origin",
+        (clip) => intakeOrigin(clip.original_snapshot),
+        t("intake.origin"),
+        (clip) => {
+          const value = intakeOrigin(clip.original_snapshot);
+          return (
+            <StatusBadge
+              state={value}
+              label={t(intakeOriginLabelKey(value))}
+              testId={`intake-origin-${clip.id}`}
+            />
+          );
+        },
+        { width: "w-[12%]" },
       ),
       column.custom(
         "category",
         (clip) => clip.category,
         t("intake.category"),
         (clip) => humanizeCategory(clip.category, t("catalog.categoryOther")),
-        { sortable: true, width: "w-[18%]" },
+        { sortable: true, width: "w-[15%]" },
       ),
       column.custom(
         "state",
         (clip) => clip.state,
         t("resource.field.status"),
         (clip) => <StatusBadge state={clip.state} label={t(intakeStateLabelKey(clip.state))} />,
-        { width: "w-[18%]" },
+        { width: "w-[15%]" },
       ),
       column.date(
         "captured_at",
@@ -708,15 +938,37 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                 ) : undefined}
               </div>
               <FactList
+                testId="intake-detail-facts"
                 items={[
                   {
                     label: t("intake.category"),
                     value: humanizeCategory(detailClip.category, t("catalog.categoryOther")),
                   },
                   {
+                    label: t("intake.origin"),
+                    value: t(intakeOriginLabelKey(intakeOrigin(detailClip.original_snapshot))),
+                  },
+                  {
                     label: t("resource.field.createdAt"),
                     value: dateTime(detailClip.original_snapshot.captured_at),
                   },
+                  ...(detailSession
+                    ? [
+                        { label: t("intake.session.agent"), value: detailSession.agent },
+                        {
+                          label: t("intake.session.id"),
+                          value: sessionLabel(detailSession.session_id, t),
+                        },
+                        ...(sessionPlace(detailSession)
+                          ? [
+                              {
+                                label: t("intake.session.place"),
+                                value: sessionPlace(detailSession),
+                              },
+                            ]
+                          : []),
+                      ]
+                    : []),
                   ...(detailClip.original_snapshot.source_author
                     ? [
                         {
@@ -733,23 +985,72 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                         },
                       ]
                     : []),
+                  {
+                    label: t("intake.collector"),
+                    value: actorLabel(directory, detailClip.collected_by, t),
+                  },
                 ]}
               />
-              <a
-                className="break-words text-sm text-accent underline-offset-4 hover:underline"
-                href={detailClip.original_snapshot.source_url}
-                data-testid="intake-original-source-link"
-                target="_blank"
-                rel="noreferrer"
-              >
-                {detailClip.original_snapshot.source_url}
-              </a>
+              {!detailSession && detailClip.original_snapshot.source_url ? (
+                <a
+                  className="break-words text-sm text-accent underline-offset-4 hover:underline"
+                  href={detailClip.original_snapshot.source_url}
+                  data-testid="intake-original-source-link"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {detailClip.original_snapshot.source_url}
+                </a>
+              ) : null}
               <FilePreview
                 name=""
                 mimeType="text/markdown"
                 text={detailClip.body}
                 testId="intake-current-body"
               />
+              {detailSession && (evidenceRows.length || detailSession.evidence_excerpt.trim()) ? (
+                <CollapsibleSection
+                  label={t("intake.session.evidence")}
+                  testId="intake-session-evidence"
+                >
+                  {evidenceRows.length ? (
+                    <ul className="grid gap-3">
+                      {evidenceRows.map((row) => (
+                        <li key={row.id} data-testid={`intake-session-evidence-${row.id}`}>
+                          <p className="mb-1 text-sm text-muted-foreground">
+                            {[
+                              row.agent,
+                              sessionLabel(row.session_id, t),
+                              row.repo,
+                              dateTime(row.captured_at),
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                          <FilePreview
+                            name=""
+                            mimeType="text/markdown"
+                            text={row.excerpt}
+                            testId={`intake-session-evidence-${row.id}-body`}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <FilePreview
+                      name=""
+                      mimeType="text/markdown"
+                      text={detailSession.evidence_excerpt}
+                      testId="intake-session-evidence-body"
+                    />
+                  )}
+                  {evidenceHidden > 0 ? (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {t("intake.session.evidenceMore", { count: evidenceHidden })}
+                    </p>
+                  ) : null}
+                </CollapsibleSection>
+              ) : null}
               {detailClip.body !== detailClip.original_snapshot.body ? (
                 <CollapsibleSection label={t("intake.originalSource")} testId="intake-original">
                   <FilePreview
@@ -778,7 +1079,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                       <ProposalCard
                         key={proposal.id}
                         proposal={proposal}
-                        canConfirm={canConfirm}
+                        permissions={permissions}
                         focused={proposal.id === focusProposalId}
                         onConfirm={() =>
                           write.mutate(() =>
@@ -852,6 +1153,19 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                           })),
                         ],
                       },
+                      {
+                        value: origin,
+                        onChange: (value) => setOrigin(value as typeof origin),
+                        label: t("intake.originFilter"),
+                        testId: "intake-origin",
+                        options: [
+                          { value: "all", label: t("intake.origin.all") },
+                          ...INTAKE_ORIGINS.map((item) => ({
+                            value: item,
+                            label: t(intakeOriginLabelKey(item)),
+                          })),
+                        ],
+                      },
                     ] satisfies FilterSelect[]
                   }
                 />
@@ -866,10 +1180,11 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                   onReset: () => {
                     setCategory(null);
                     setState("all");
+                    setOrigin("all");
                   },
                 },
               }}
-              hasActiveFilters={category !== null || state !== "all"}
+              hasActiveFilters={category !== null || state !== "all" || origin !== "all"}
               sorting={sorting}
               onSortingChange={setSorting}
               onOpen={setDetailClip}

@@ -272,6 +272,48 @@ export async function createSystemAccount(input: CreateSystemAccountInput, exec?
   });
 }
 
+export async function ensureNamedSystemAccount(
+  input: { tenant_id: string; name: string; description: string },
+  exec?: Executor,
+): Promise<{ id: string }> {
+  const db = exec ?? getDb();
+  return db.transaction(async (tx) => {
+    const lookup = () =>
+      tx
+        .select({ id: systemAccounts.id })
+        .from(systemAccounts)
+        .where(
+          and(eq(systemAccounts.tenant_id, input.tenant_id), eq(systemAccounts.name, input.name)),
+        )
+        .limit(1);
+    const existing = await lookup();
+    if (existing[0]) return existing[0];
+    const [row] = await tx
+      .insert(systemAccounts)
+      .values({ tenant_id: input.tenant_id, name: input.name, description: input.description })
+      .onConflictDoNothing()
+      .returning({ id: systemAccounts.id });
+    if (!row) {
+      const raced = await lookup();
+      if (!raced[0]) throw new Error(`system account '${input.name}' could not be resolved`);
+      return raced[0];
+    }
+    await auditAwait(
+      {
+        tenant_id: input.tenant_id,
+        ...resolveActor({ actor_type: "system", actor_id: null }),
+        action: AuditAction.SYSTEM_ACCOUNT_CREATED,
+        resource_type: "system_account",
+        resource_id: row.id,
+        result: "success",
+        metadata: { name: input.name },
+      },
+      tx,
+    );
+    return row;
+  });
+}
+
 export interface DeleteSystemAccountInput {
   tenant_id: string;
   id: string;

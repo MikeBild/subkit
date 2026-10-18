@@ -130,6 +130,7 @@ import sql0109ApiKeyCreatorIdentityNulls from "./0109_api_key_creator_identity_n
 import sql0110CarelessWiccan from "./0110_careless_wiccan.sql" with { type: "text" };
 import sql0111MarvelousEnderWiggin from "./0111_marvelous_ender_wiggin.sql" with { type: "text" };
 import sql0112CallerBudget from "./0112_caller_budget.sql" with { type: "text" };
+import sql0113IntakeSessionTargets from "./0113_intake_session_targets.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -267,6 +268,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0110_careless_wiccan": sql0110CarelessWiccan,
   "0111_marvelous_ender_wiggin": sql0111MarvelousEnderWiggin,
   "0112_caller_budget": sql0112CallerBudget,
+  "0113_intake_session_targets": sql0113IntakeSessionTargets,
 };
 
 const journal = journalMeta as unknown as Journal;

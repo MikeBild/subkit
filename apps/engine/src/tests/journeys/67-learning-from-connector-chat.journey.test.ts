@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { createConnector } from "../../connectors/service.ts";
+import { intakeItems } from "../../db/schema/intake.ts";
 import { skillCandidates, skills } from "../../db/schema/skills.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
@@ -16,7 +17,7 @@ interface TurnBody {
 }
 
 beforeAll(async () => {
-  ctx = await createJourneyCtx("skill-proposal-from-connector-chat");
+  ctx = await createJourneyCtx("learning-from-connector-chat");
   const connector = await createConnector(
     {
       tenant_id: ctx.tenantId,
@@ -39,9 +40,9 @@ afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
 }, JOURNEY_HOOK_TIMEOUT);
 
-describe("journey 67: a skill proposal is reachable from a connector-targeted chat", () => {
+describe("journey 67: a learning from a connector-targeted chat is collected for review", () => {
   test(
-    "AC1+AC2: create_skill is offered on step 0 and files an inert connector-scoped proposal",
+    "AC1+AC2: save_learning is offered on step 0 and collects a connector-scoped intake item",
     async () => {
       const created = await journeyFetch(ctx, "/v1/conversations", {
         method: "POST",
@@ -59,8 +60,8 @@ describe("journey 67: a skill proposal is reachable from a connector-targeted ch
       const paletteStart = mock.toolPalettes.length;
       mock.setConversePlan(conversation.id, [
         {
-          tool: "create_skill",
-          args: { scope: "connector", connector_id: connectorId, title: TITLE, body: BODY },
+          tool: "save_learning",
+          args: { kind: "practice", title: TITLE, body: BODY },
         },
       ]);
       const res = await journeyFetch(ctx, `/v1/conversations/${conversation.id}/messages`, {
@@ -73,18 +74,32 @@ describe("journey 67: a skill proposal is reachable from a connector-targeted ch
       const turn = (await res.json()) as TurnBody;
 
       const firstStep = mock.toolPalettes[paletteStart] ?? [];
-      expect(firstStep.map((t) => t.name)).toContain("create_skill");
+      const offered = firstStep.map((t) => t.name);
+      expect(offered).toContain("save_learning");
+      expect(offered).not.toContain("create_skill");
 
-      const result = turn.events.find((e) => e.type === "tool_result" && e.tool === "create_skill");
-      expect(result?.output?.action).toBe("proposed");
+      const result = turn.events.find(
+        (e) => e.type === "tool_result" && e.tool === "save_learning",
+      );
+      expect(result?.output?.outcome).toBe("collected");
       const rows = await ctx.db
         .select()
+        .from(intakeItems)
+        .where(and(eq(intakeItems.tenant_id, ctx.tenantId), eq(intakeItems.title, TITLE)));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.state).toBe("collected");
+      expect(rows[0]?.original_snapshot).toMatchObject({
+        origin: "session",
+        agent: "save_learning",
+        session_id: conversation.id,
+        scope: "connector",
+        connector_id: connectorId,
+      });
+      const candidates = await ctx.db
+        .select({ id: skillCandidates.id })
         .from(skillCandidates)
         .where(and(eq(skillCandidates.tenant_id, ctx.tenantId), eq(skillCandidates.title, TITLE)));
-      expect(rows).toHaveLength(1);
-      expect(rows[0]?.status).toBe("proposed");
-      expect(rows[0]?.scope).toBe("connector");
-      expect(rows[0]?.connector_id).toBe(connectorId);
+      expect(candidates).toHaveLength(0);
       const created_skills = await ctx.db
         .select({ id: skills.id })
         .from(skills)

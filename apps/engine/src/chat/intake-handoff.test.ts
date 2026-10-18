@@ -20,7 +20,7 @@ describe("intakeReviewHandoff", () => {
         "https://subkit.example/",
       ),
     ).toBe(
-      `Continue this review in SubKit: https://subkit.example/cockpit/chat/${conversationId}\nReview the exact proposal and confirm it before it becomes knowledge.`,
+      `Continue this review in SubKit: https://subkit.example/cockpit/chat/${conversationId}\nReview the exact proposal and confirm it before it becomes knowledge or a skill.`,
     );
   });
 

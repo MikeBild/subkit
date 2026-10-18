@@ -2,16 +2,15 @@ import { createHash } from "node:crypto";
 import type { z } from "@hono/zod-openapi";
 import {
   DistillationSchema,
+  LEARNING_EVIDENCE_MAX_CHARS,
   type LearningKind,
   TRANSCRIPT_MAX_CHARS,
 } from "../api/agent-sessions.ts";
 import type { Actor } from "../audit/actor.ts";
 import type { Db } from "../db/client.ts";
-import { DOMAIN_TAG_PREFIX } from "../knowledge/tags.ts";
+import { createSessionIntakeItem, DOMAIN_TAG_PREFIX } from "../knowledge/index.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { referencesKeyMaterialPath, scrubString } from "../logging/scrub-secrets.ts";
-import { upsertFromSignal } from "../skill-candidates/service.ts";
-import type { PatternSignal, SkillCandidateConfidence } from "../skill-candidates/types.ts";
 
 const SAMPLE_HEAD_CHARS = 4_000;
 const SAMPLE_TAIL_CHARS = 24_000;
@@ -22,33 +21,31 @@ export interface AgentSessionMeta {
   domains: string[];
 }
 
-export interface ProposeLearningParams {
+export interface CollectSessionLearningParams {
   tenant_id: string;
   title: string;
   body: string;
   pitfalls?: string[];
-  domains: string[];
   kind: LearningKind;
   actor: Actor | null;
-  confidence: SkillCandidateConfidence;
-  evidence_summary: string;
+  session: { agent: string; session_id: string; repo?: string | undefined; domains: string[] };
+  evidence_excerpt: string;
+  target?: LearningTarget | undefined;
   db: Db;
 }
 
-export function learningFingerprint(domains: string[], title: string, kind: LearningKind): string {
-  const normalizedTitle = title.toLowerCase().replace(/\s+/g, " ").trim();
-  const domainKey = [...domains].sort().join(",");
-  return createHash("sha256")
-    .update(`${learningPattern(kind)}:${domainKey}:${normalizedTitle}`)
-    .digest("hex");
-}
+export type LearningTarget =
+  | { scope: "global" }
+  | { scope: "connector"; connector_id: string }
+  | { scope: "workflow"; workflow_id: string };
 
-export function learningPattern(kind: LearningKind): "session_learning" | "knowledge_learning" {
-  return kind === "fact" ? "knowledge_learning" : "session_learning";
-}
-
-function domainTags(domains: string[]): string[] {
-  return domains.map((d) => `${DOMAIN_TAG_PREFIX}${d}`);
+export function learningTargetOf(context: {
+  connector_id: string | null;
+  workflow_id: string | null;
+}): LearningTarget {
+  if (context.workflow_id) return { scope: "workflow", workflow_id: context.workflow_id };
+  if (context.connector_id) return { scope: "connector", connector_id: context.connector_id };
+  return { scope: "global" };
 }
 
 export interface LearningText {
@@ -70,34 +67,59 @@ export function redactLearning(learning: LearningText): RedactedLearning {
   };
 }
 
-export type ProposeLearningAction = "proposed" | "updated" | "skipped" | "dropped";
+export function learningBody(learning: Pick<LearningText, "body" | "pitfalls">): string {
+  if (learning.pitfalls.length === 0) return learning.body;
+  return [learning.body.trimEnd(), "", "Pitfalls:", ...learning.pitfalls.map((p) => `- ${p}`)].join(
+    "\n",
+  );
+}
 
-export async function proposeLearning(
-  p: ProposeLearningParams,
-): Promise<{ action: ProposeLearningAction; candidate_id: string | null }> {
+export type CollectSessionLearningOutcome =
+  | "collected"
+  | "evidence_appended"
+  | "replayed"
+  | "dropped";
+
+export interface CollectSessionLearningResult {
+  outcome: CollectSessionLearningOutcome;
+  intake_item_id: string | null;
+}
+
+const COLLECT_OUTCOME = {
+  created: "collected",
+  evidence_appended: "evidence_appended",
+  replayed: "replayed",
+} as const;
+
+export async function collectSessionLearning(
+  p: CollectSessionLearningParams,
+): Promise<CollectSessionLearningResult> {
   const redacted = redactLearning({ title: p.title, body: p.body, pitfalls: p.pitfalls ?? [] });
-  if (redacted.kind === "dropped") return { action: "dropped", candidate_id: null };
-  const signal: PatternSignal = {
-    pattern_kind: learningPattern(p.kind),
-    scope: "global",
-    title: redacted.title,
-    body: redacted.body,
-    examples: [],
-    best_practices: [],
-    pitfalls: redacted.pitfalls,
-    doc_refs: [],
-    fingerprint: learningFingerprint(p.domains, redacted.title, p.kind),
-    confidence: p.confidence,
-    tags: domainTags(p.domains),
-    proposer: p.actor,
-    evidence: [
-      { evidence_type: "agent_session", summary: scrubString(p.evidence_summary).slice(0, 2_000) },
-    ],
-  };
-  const result = await upsertFromSignal(p.tenant_id, signal, p.db);
-  if (result.action === "recorded")
-    throw new Error("a session learning is a proposal, never drafting context");
-  return { action: result.action, candidate_id: result.candidate_id };
+  if (redacted.kind === "dropped" || referencesKeyMaterialPath(p.evidence_excerpt))
+    return { outcome: "dropped", intake_item_id: null };
+  const result = await createSessionIntakeItem(
+    {
+      tenant_id: p.tenant_id,
+      actor: p.actor,
+      session: {
+        agent: p.session.agent,
+        session_id: p.session.session_id,
+        repo: p.session.repo ?? null,
+        domains: p.session.domains,
+        evidence_excerpt: scrubString(p.evidence_excerpt).slice(0, 2_000),
+      },
+      title: redacted.title,
+      body: learningBody(redacted),
+      captured_at: new Date().toISOString(),
+      learning: {
+        kind: p.kind,
+        ...(p.target ?? { scope: "global" }),
+        tags: p.session.domains.map((domain) => `${DOMAIN_TAG_PREFIX}${domain}`),
+      },
+    },
+    p.db,
+  );
+  return { outcome: COLLECT_OUTCOME[result.outcome], intake_item_id: result.item.id };
 }
 
 export function transcriptLineText(line: string): string | null {
@@ -155,25 +177,35 @@ export interface AnalyzeAgentSessionParams {
 
 export interface AnalyzeAgentSessionResult {
   learnings_found: number;
-  proposed: number;
-  updated: number;
-  skipped: number;
+  collected: number;
+  evidence_appended: number;
+  replayed: number;
   dropped: number;
+  not_collected: number;
+}
+
+export function transcriptSessionId(transcript: string): string {
+  return `transcript-${createHash("sha256").update(transcript).digest("hex").slice(0, 32)}`;
 }
 
 export async function analyzeAgentSession(
   p: AnalyzeAgentSessionParams,
 ): Promise<AnalyzeAgentSessionResult> {
-  const sample = scrubString(
-    sampleTranscript(scrubString(p.transcript.slice(0, TRANSCRIPT_MAX_CHARS))),
-  );
-  if (sample.trim().length === 0) {
-    return { learnings_found: 0, proposed: 0, updated: 0, skipped: 0, dropped: 0 };
-  }
+  const counts: AnalyzeAgentSessionResult = {
+    learnings_found: 0,
+    collected: 0,
+    evidence_appended: 0,
+    replayed: 0,
+    dropped: 0,
+    not_collected: 0,
+  };
+  const scrubbed = scrubString(p.transcript.slice(0, TRANSCRIPT_MAX_CHARS));
+  const sample = scrubString(sampleTranscript(scrubbed));
+  if (sample.trim().length === 0) return counts;
 
   const domainLabel = p.meta.domains.length > 0 ? p.meta.domains.join(", ") : "(none declared)";
   const prompt = [
-    `You are curating durable knowledge for the business domain(s): ${domainLabel}.`,
+    `You are collecting candidate knowledge for the business domain(s): ${domainLabel}.`,
     `Below is a transcript sample of a coding-agent session (${p.meta.agent}).`,
     "Extract ONLY durable, reusable learnings that a HUMAN explicitly taught, corrected,",
     "or confirmed during the session — rules, conventions, gotchas, or facts that future",
@@ -182,8 +214,12 @@ export async function analyzeAgentSession(
     "the agent already knew, or anything the human did not sanction. When in doubt, leave",
     "it out — an empty list is the correct answer for a routine session.",
     "Classify each learning: kind=practice when it says HOW to work (a rule, convention,",
-    "gotcha) and kind=fact when it says WHAT is true in the domain (a name, number, owner,",
-    "address, policy). Practices become skills; facts become part of the domain knowledge.",
+    "gotcha); kind=fact when it says WHAT is true in the domain (a name, number, owner,",
+    "address, policy); kind=event when it reports a status or something that happened",
+    "(a release, a deployment, a run result, a removal); kind=secret when it names",
+    "credentials, keys, tokens or where they are stored. Events and secrets are discarded.",
+    "Everything else is collected for a person to review; nothing becomes a skill or",
+    "knowledge until that person confirms it. Quote what the human said as evidence.",
     "",
     "Transcript sample:",
     sample,
@@ -200,30 +236,41 @@ export async function analyzeAgentSession(
   );
 
   const learnings = result.object?.learnings ?? [];
-  const evidence_summary = [
+  counts.learnings_found = learnings.length;
+  const session = {
+    agent: p.meta.agent,
+    session_id: p.meta.session_id ?? transcriptSessionId(scrubbed),
+    ...(p.meta.repo ? { repo: p.meta.repo } : {}),
+    domains: p.meta.domains,
+  };
+  const provenance = [
     `agent=${p.meta.agent}`,
-    p.meta.session_id ? `session=${p.meta.session_id}` : null,
+    `session=${session.session_id}`,
     p.meta.repo ? `repo=${p.meta.repo}` : null,
     `domains=${domainLabel}`,
   ]
     .filter(Boolean)
     .join(" ");
 
-  const counts = { proposed: 0, updated: 0, skipped: 0, dropped: 0 };
   for (const learning of learnings) {
-    const { action } = await proposeLearning({
+    if (learning.kind === "event" || learning.kind === "secret") {
+      counts.not_collected += 1;
+      continue;
+    }
+    const { outcome } = await collectSessionLearning({
       tenant_id: p.tenant_id,
       title: learning.title,
       body: learning.body,
       pitfalls: learning.pitfalls,
-      domains: p.meta.domains,
       kind: learning.kind,
       actor: p.actor,
-      confidence: learning.confidence,
-      evidence_summary,
+      session,
+      evidence_excerpt: learning.evidence
+        ? learning.evidence.slice(0, LEARNING_EVIDENCE_MAX_CHARS)
+        : provenance,
       db: p.db,
     });
-    counts[action] += 1;
+    counts[outcome] += 1;
   }
-  return { learnings_found: learnings.length, ...counts };
+  return counts;
 }

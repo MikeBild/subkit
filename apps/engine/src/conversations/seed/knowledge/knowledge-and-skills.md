@@ -4,7 +4,7 @@ name: sk Platform Reference — Knowledge Sources & Skills
 description: How Skills and Knowledge Sources differ, when to use which, how the engine processes and searches knowledge, and how to model a whole business domain with a connector plus skills plus knowledge sources.
 tags: [sk-platform-reference, skills, knowledge-sources, domain-modeling, concepts]
 scope: global
-version: 3
+version: 4
 ---
 
 # Knowledge Sources & Skills
@@ -106,11 +106,14 @@ a repo declares which domains it works in via `.sk/agent.json` (written by
   instead of preloading. `sk skills sync` additionally materializes the Skills
   as SKILL.md files for offline use.
 - **Back:** session transcripts (`POST /v1/agent/sessions`, wired by the
-  SessionEnd hook) and explicit `save_learning` calls produce
-  `session_learning` Skill Candidates. They coexist in the review queue,
-  dedup by normalized title + domains, and become active domain-tagged Skills
-  only through `sk learnings review` — the same human gate every other
-  candidate passes.
+  SessionEnd hook) and explicit `save_learning` calls collect Intake items with
+  origin `session` in the domain's shared category, deduplicated by category
+  and normalized title (a repeat adds evidence). They are collected material,
+  not knowledge or skills. A person reviews them in chat and confirms a
+  proposal in the Cockpit: a fact goes to the domain's knowledge bundle, a
+  practice becomes an active domain Skill, and replaced Skills are archived.
+  Skill admission is a content decision, separate from an environment's
+  connector or execution approval.
 
 ## Creating each
 

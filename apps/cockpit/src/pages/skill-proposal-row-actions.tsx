@@ -4,43 +4,23 @@ import { toast } from "sonner";
 import { approveSkillCandidate, rejectSkillCandidate, type SkillCandidate } from "@/api/decisions";
 import { Button, ConfirmDialog } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
-import {
-  approvalActivatesSkill,
-  isKnowledgeFact,
-  mayApproveProposal,
-  proposalTarget,
-} from "@/pages/learning-proposal-model";
+import { mayApproveProposal } from "@/pages/skill-proposal-model";
 
 export function SkillProposalRowActions({
   candidate,
   permissions,
   onDecided,
 }: {
-  candidate: Pick<
-    SkillCandidate,
-    "id" | "title" | "pattern_kind" | "reviewable" | "review_digest" | "tags"
-  >;
+  candidate: Pick<SkillCandidate, "id" | "title" | "reviewable" | "review_digest">;
   permissions: readonly string[];
   onDecided(): void;
 }) {
   const { t } = useI18n();
   const [rejecting, setRejecting] = useState(false);
   const accept = useMutation({
-    mutationFn: () =>
-      approveSkillCandidate(
-        candidate.id,
-        candidate.review_digest ?? "",
-        approvalActivatesSkill(candidate),
-      ),
+    mutationFn: () => approveSkillCandidate(candidate.id, candidate.review_digest ?? ""),
     onSuccess: () => {
-      toast.success(
-        isKnowledgeFact(candidate)
-          ? t("proposal.acceptedFact", {
-              name: candidate.title,
-              target: proposalTarget(candidate, t),
-            })
-          : t("skills.accepted", { name: candidate.title }),
-      );
+      toast.success(t("skills.accepted", { name: candidate.title }));
       onDecided();
     },
     onError: () => toast.error(t("common.actionFailed")),
@@ -58,7 +38,7 @@ export function SkillProposalRowActions({
     return null;
   return (
     <>
-      {mayApproveProposal(candidate, permissions) ? (
+      {mayApproveProposal(permissions) ? (
         <Button
           variant="outline"
           size="sm"

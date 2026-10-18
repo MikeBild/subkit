@@ -24,6 +24,7 @@ import {
   type SkillScope,
   type SkillSource,
   skillOfferedTo,
+  skillScopeViolation,
   type UpdateSkillInput,
 } from "./types.ts";
 
@@ -88,23 +89,9 @@ function rowToSkill(row: SkillRow): Skill {
   };
 }
 
-function validateScope(input: {
-  scope: SkillScope;
-  connector_id?: string | undefined;
-  workflow_id?: string | undefined;
-}): void {
-  if (input.scope === "connector" && !input.connector_id) {
-    throw new Error("connector skill requires connector_id");
-  }
-  if (input.scope === "workflow" && !input.workflow_id) {
-    throw new Error("workflow skill requires workflow_id");
-  }
-  if (input.scope === "global" && (input.connector_id || input.workflow_id)) {
-    throw new Error("global skill must not set connector_id or workflow_id");
-  }
-  if (input.connector_id && input.workflow_id) {
-    throw new Error("skill cannot set both connector_id and workflow_id");
-  }
+function validateScope(input: Parameters<typeof skillScopeViolation>[0]): void {
+  const violation = skillScopeViolation(input);
+  if (violation) throw new Error(violation);
 }
 
 export interface CreateSkillParams {

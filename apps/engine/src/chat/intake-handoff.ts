@@ -25,5 +25,5 @@ export function intakeReviewHandoff(
   if (!reviewed) return null;
   const path = `/cockpit/chat/${encodeURIComponent(conversationId)}`;
   const url = publicBaseUrl ? `${publicBaseUrl.replace(/\/+$/, "")}${path}` : path;
-  return `Continue this review in SubKit: ${url}\nReview the exact proposal and confirm it before it becomes knowledge.`;
+  return `Continue this review in SubKit: ${url}\nReview the exact proposal and confirm it before it becomes knowledge or a skill.`;
 }

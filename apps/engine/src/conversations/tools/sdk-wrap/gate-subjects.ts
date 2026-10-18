@@ -1,9 +1,6 @@
 import type { Executor } from "../../../db/client.ts";
-import { learningsTarget } from "../../../knowledge/index.ts";
-import {
-  getSkillCandidatesForReview,
-  type SkillCandidateStatus,
-} from "../../../skill-candidates/index.ts";
+import { getIntakeItemsForReview } from "../../../knowledge/index.ts";
+import { getSkillCandidatesForReview } from "../../../skill-candidates/index.ts";
 import { buildPendingOutputForTool } from "../../tool-policies.ts";
 
 export const GATE_BODY_EXCERPT_CHARS = 280;
@@ -13,12 +10,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export interface GateSubject {
   id: string;
   title: string | null;
-  status: SkillCandidateStatus | "not_found";
+  status: string;
 }
 
-export type GateTarget =
-  | { kind: "skill_draft" }
-  | { kind: "knowledge"; knowledge_source_name: string; knowledge_source_slug: string };
+export type GateTarget = { kind: "skill_draft" };
 
 export interface GateCard {
   subjects: GateSubject[];
@@ -27,16 +22,70 @@ export interface GateCard {
   review_digest?: string;
 }
 
-function requestedIds(tool: string, args: Record<string, unknown>): string[] | null {
-  if (tool === "approve_skill_candidate") {
-    return typeof args.candidate_id === "string" ? [args.candidate_id] : [];
-  }
-  if (tool === "reject_skill_candidate") {
-    const ids = Array.isArray(args.candidate_ids) ? args.candidate_ids : [];
-    return [...new Set(ids.filter((id): id is string => typeof id === "string"))];
-  }
-  return null;
+interface GateRecord {
+  id: string;
+  title: string;
+  status: string;
+  body?: string;
+  review_digest?: string;
 }
+
+interface GateSubjectSource {
+  ids(args: Record<string, unknown>): string[];
+  load(tenantId: string, ids: string[], db: Executor): Promise<GateRecord[]>;
+  actionable(status: string): boolean;
+  single?: true;
+}
+
+function uniqueIds(value: unknown): string[] {
+  const ids = Array.isArray(value) ? value : [];
+  return [...new Set(ids.filter((id): id is string => typeof id === "string"))];
+}
+
+async function loadCandidates(
+  tenantId: string,
+  ids: string[],
+  db: Executor,
+): Promise<GateRecord[]> {
+  return (await getSkillCandidatesForReview(tenantId, ids, db)).map((row) => ({
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    body: row.body,
+    review_digest: row.review_digest,
+  }));
+}
+
+async function loadIntakeItems(
+  tenantId: string,
+  ids: string[],
+  db: Executor,
+): Promise<GateRecord[]> {
+  return (await getIntakeItemsForReview(tenantId, ids, db)).map((row) => ({
+    id: row.id,
+    title: row.title,
+    status: row.state,
+  }));
+}
+
+const SOURCES: Record<string, GateSubjectSource> = {
+  approve_skill_candidate: {
+    ids: (args) => (typeof args.candidate_id === "string" ? [args.candidate_id] : []),
+    load: loadCandidates,
+    actionable: (status) => status === "proposed",
+    single: true,
+  },
+  reject_skill_candidate: {
+    ids: (args) => uniqueIds(args.candidate_ids),
+    load: loadCandidates,
+    actionable: (status) => status === "proposed",
+  },
+  discard_intake_items: {
+    ids: (args) => uniqueIds(args.item_ids),
+    load: loadIntakeItems,
+    actionable: (status) => status === "collected" || status === "reviewing",
+  },
+};
 
 function excerpt(body: string): string {
   const flat = body.replace(/\s+/g, " ").trim();
@@ -51,10 +100,14 @@ export async function resolveGateSubjects(
   tenantId: string,
   db: Executor,
 ): Promise<GateCard | null> {
-  const ids = requestedIds(tool, args);
-  if (ids === null) return null;
-  const lookup = ids.filter((id) => UUID_RE.test(id));
-  const rows = await getSkillCandidatesForReview(tenantId, lookup, db);
+  const source = SOURCES[tool];
+  if (!source) return null;
+  const ids = source.ids(args);
+  const rows = await source.load(
+    tenantId,
+    ids.filter((id) => UUID_RE.test(id)),
+    db,
+  );
   const byId = new Map(rows.map((row) => [row.id.toLowerCase(), row]));
   const subjects: GateSubject[] = ids.map((id) => {
     const row = byId.get(id.toLowerCase());
@@ -62,32 +115,29 @@ export async function resolveGateSubjects(
       ? { id, title: row.title, status: row.status }
       : { id, title: null, status: "not_found" };
   });
-  if (tool !== "approve_skill_candidate") return { subjects };
+  if (!source.single) return { subjects };
   const row = ids[0] ? byId.get(ids[0].toLowerCase()) : undefined;
   if (!row) return { subjects };
-  const knowledge = row.pattern_kind === "knowledge_learning" ? learningsTarget(row.tags) : null;
   return {
     subjects,
-    target: knowledge
-      ? {
-          kind: "knowledge",
-          knowledge_source_name: knowledge.name,
-          knowledge_source_slug: knowledge.slug,
-        }
-      : { kind: "skill_draft" },
-    body_excerpt: excerpt(row.body),
-    review_digest: row.review_digest,
+    target: { kind: "skill_draft" },
+    ...(row.body !== undefined ? { body_excerpt: excerpt(row.body) } : {}),
+    ...(row.review_digest !== undefined ? { review_digest: row.review_digest } : {}),
   };
 }
 
-export function unresolvedGateSubjects(card: GateCard): {
+export function unresolvedGateSubjects(
+  tool: string,
+  card: GateCard,
+): {
   not_found: string[];
   already_decided: string[];
 } {
+  const actionable = SOURCES[tool]?.actionable ?? (() => false);
   return {
     not_found: card.subjects.filter((s) => s.status === "not_found").map((s) => s.id),
     already_decided: card.subjects
-      .filter((s) => s.status !== "not_found" && s.status !== "proposed")
+      .filter((s) => s.status !== "not_found" && !actionable(s.status))
       .map((s) => s.id),
   };
 }

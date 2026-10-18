@@ -35,6 +35,6 @@ describe("save_learning sensitive paths", () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected a refusal");
     expect(result.error_code).toBe("sensitive_path");
-    expect(result.data).toEqual({ action: "dropped", candidate_id: null, kind: "fact" });
+    expect(result.data).toEqual({ outcome: "dropped", intake_item_id: null, kind: "fact" });
   });
 });

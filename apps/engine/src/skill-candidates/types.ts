@@ -26,10 +26,12 @@ export type SkillCandidateStatus = z.infer<typeof SkillCandidateStatusSchema>;
 export type SkillCandidateConfidence = z.infer<typeof SkillCandidateConfidenceSchema>;
 export type SkillCandidatePattern = z.infer<typeof SkillCandidatePatternSchema>;
 
-export const LEARNING_PATTERN_KINDS: ReadonlySet<SkillCandidatePattern> = new Set([
-  "session_learning",
-  "knowledge_learning",
-]);
+export const LEARNING_PATTERN_KINDS = ["session_learning", "knowledge_learning"] as const;
+
+export type DetectorPatternKind = Exclude<
+  SkillCandidatePattern,
+  (typeof LEARNING_PATTERN_KINDS)[number]
+>;
 
 export const WorkflowCapabilityFactsSchema = z
   .object({
@@ -120,7 +122,7 @@ export const SkillCandidateEvidenceSchema = z
 export type SkillCandidateEvidenceView = z.infer<typeof SkillCandidateEvidenceSchema>;
 
 export interface PatternSignal {
-  pattern_kind: SkillCandidatePattern;
+  pattern_kind: DetectorPatternKind;
   scope: "global" | "connector" | "workflow";
   connector_id?: string;
   endpoint_key?: string;
@@ -172,7 +174,6 @@ export interface ApproveSkillCandidateParams {
   tenant_id: string;
   candidate_id: string;
   actor: Actor | null;
-  may_write_knowledge: boolean;
   overrides?:
     | {
         title?: string | undefined;

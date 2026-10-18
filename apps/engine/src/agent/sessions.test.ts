@@ -1,16 +1,15 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { LearningSchema } from "../api/agent-sessions.ts";
 import type { Db } from "../db/client.ts";
 import * as invokeModule from "../llm/core/invoke.ts";
 import {
   analyzeAgentSession,
-  learningFingerprint,
-  learningPattern,
-  proposeLearning,
+  collectSessionLearning,
+  learningBody,
   redactLearning,
   sampleTranscript,
   transcriptLineText,
+  transcriptSessionId,
 } from "./sessions.ts";
 
 const FAKE_PAT = ["ghp", "abcdefghijklmnopqrstuvwxyz0123456789"].join("_");
@@ -34,52 +33,30 @@ afterEach(() => {
   (invokeModule.invoke as unknown as { mockRestore?: () => void }).mockRestore?.();
 });
 
-describe("learningFingerprint", () => {
-  test("normalizes whitespace and case in the title", () => {
-    const a = learningFingerprint(
-      ["blog-de"],
-      "Halbgeviertstrich  als   Gedankenstrich",
-      "practice",
-    );
-    const b = learningFingerprint(["blog-de"], "halbgeviertstrich als gedankenstrich ", "practice");
-    expect(a).toBe(b);
-  });
-
-  test("is domain-order independent", () => {
-    const a = learningFingerprint(["blog-de", "infra"], "Regel", "practice");
-    const b = learningFingerprint(["infra", "blog-de"], "Regel", "practice");
-    expect(a).toBe(b);
-  });
-
-  test("different domains yield different fingerprints", () => {
-    expect(learningFingerprint(["blog-de"], "Regel", "practice")).not.toBe(
-      learningFingerprint(["infra"], "Regel", "practice"),
-    );
-  });
-
-  test("a practice keeps the fingerprint earlier decisions were recorded under", () => {
-    const legacy = createHash("sha256").update("session_learning:blog-de:regel").digest("hex");
-    expect(learningFingerprint(["blog-de"], "Regel", "practice")).toBe(legacy);
-  });
-
-  test("a fact and a practice with the same title are different proposals", () => {
-    expect(learningFingerprint(["blog-de"], "Regel", "fact")).not.toBe(
-      learningFingerprint(["blog-de"], "Regel", "practice"),
-    );
+describe("learning kind", () => {
+  test("the extraction schema classifies events and secrets so they are not collected", () => {
+    const base = { title: "t", body: "b", confidence: "high" as const };
+    expect(LearningSchema.safeParse(base).success).toBe(false);
+    for (const kind of ["practice", "fact", "event", "secret"])
+      expect(LearningSchema.safeParse({ ...base, kind }).success).toBe(true);
+    expect(LearningSchema.safeParse({ ...base, kind: "opinion" }).success).toBe(false);
   });
 });
 
-describe("learning kind", () => {
-  test("a fact becomes knowledge, a practice stays a skill", () => {
-    expect(learningPattern("fact")).toBe("knowledge_learning");
-    expect(learningPattern("practice")).toBe("session_learning");
+describe("learningBody", () => {
+  test("keeps pitfalls in the collected text", () => {
+    expect(learningBody({ body: "Rule.  ", pitfalls: ["first", "second"] })).toBe(
+      "Rule.\n\nPitfalls:\n- first\n- second",
+    );
+    expect(learningBody({ body: "Rule.", pitfalls: [] })).toBe("Rule.");
   });
+});
 
-  test("the extraction schema requires a kind and accepts only the two", () => {
-    const base = { title: "t", body: "b", confidence: "high" as const };
-    expect(LearningSchema.safeParse(base).success).toBe(false);
-    expect(LearningSchema.safeParse({ ...base, kind: "fact" }).success).toBe(true);
-    expect(LearningSchema.safeParse({ ...base, kind: "opinion" }).success).toBe(false);
+describe("transcriptSessionId", () => {
+  test("a session without an id gets a stable id from its transcript", () => {
+    expect(transcriptSessionId("user: a")).toBe(transcriptSessionId("user: a"));
+    expect(transcriptSessionId("user: a")).not.toBe(transcriptSessionId("user: b"));
+    expect(transcriptSessionId("user: a")).toMatch(/^transcript-[a-f0-9]{32}$/);
   });
 });
 
@@ -169,20 +146,33 @@ describe("redactLearning", () => {
   });
 });
 
-describe("proposeLearning redaction", () => {
+describe("collectSessionLearning redaction", () => {
   test("a key-path learning is dropped before anything is persisted", async () => {
-    const result = await proposeLearning({
+    const result = await collectSessionLearning({
       tenant_id: "00000000-0000-4000-8000-000000000001",
       title: "TLS key",
       body: "The private key is /etc/ssl/private/server.key",
-      domains: ["infra"],
       kind: "fact",
       actor: null,
-      confidence: "high",
-      evidence_summary: "agent=claude-code",
+      session: { agent: "claude-code", session_id: "s-1", domains: ["infra"] },
+      evidence_excerpt: "agent=claude-code",
       db: untouchableDb,
     });
-    expect(result).toEqual({ action: "dropped", candidate_id: null });
+    expect(result).toEqual({ outcome: "dropped", intake_item_id: null });
+  });
+
+  test("evidence naming a key location drops the learning too", async () => {
+    const result = await collectSessionLearning({
+      tenant_id: "00000000-0000-4000-8000-000000000001",
+      title: "Deploy",
+      body: "Deploy through the release script.",
+      kind: "practice",
+      actor: null,
+      session: { agent: "codex", session_id: "s-2", domains: ["infra"] },
+      evidence_excerpt: "user: the key is in ~/.ssh/id_ed25519",
+      db: untouchableDb,
+    });
+    expect(result).toEqual({ outcome: "dropped", intake_item_id: null });
   });
 });
 
@@ -200,7 +190,14 @@ describe("analyzeAgentSession redaction", () => {
       actor: null,
       db: untouchableDb,
     });
-    expect(result).toEqual({ learnings_found: 0, proposed: 0, updated: 0, skipped: 0, dropped: 0 });
+    expect(result).toEqual({
+      learnings_found: 0,
+      collected: 0,
+      evidence_appended: 0,
+      replayed: 0,
+      dropped: 0,
+      not_collected: 0,
+    });
     expect(spy).toHaveBeenCalledTimes(1);
     const prompt = JSON.stringify(spy.mock.calls[0]?.[0]);
     expect(prompt).not.toContain(FAKE_PAT);
@@ -223,6 +220,44 @@ describe("analyzeAgentSession redaction", () => {
       actor: null,
       db: untouchableDb,
     });
-    expect(result).toEqual({ learnings_found: 1, proposed: 0, updated: 0, skipped: 0, dropped: 1 });
+    expect(result).toEqual({
+      learnings_found: 1,
+      collected: 0,
+      evidence_appended: 0,
+      replayed: 0,
+      dropped: 1,
+      not_collected: 0,
+    });
+  });
+
+  test("events and secrets are classified out and never collected", async () => {
+    const spy = invokeReturning([
+      {
+        title: "Release pushed",
+        body: "9.9.9 is pushed and green.",
+        kind: "event",
+        confidence: "high",
+      },
+      { title: "Fallback key", body: "A fallback key exists.", kind: "secret", confidence: "high" },
+    ]);
+    const result = await analyzeAgentSession({
+      tenant_id: "00000000-0000-4000-8000-000000000001",
+      transcript: "user: release is out",
+      meta: { agent: "codex", domains: ["infra"] },
+      actor: null,
+      db: untouchableDb,
+    });
+    expect(result).toEqual({
+      learnings_found: 2,
+      collected: 0,
+      evidence_appended: 0,
+      replayed: 0,
+      dropped: 0,
+      not_collected: 2,
+    });
+    const prompt = JSON.stringify(spy.mock.calls[0]?.[0]);
+    expect(prompt).toContain("kind=event");
+    expect(prompt).toContain("kind=secret");
+    expect(prompt).not.toContain("Practices become skills");
   });
 });

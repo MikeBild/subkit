@@ -90,7 +90,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   setupSnapshot,
   connectionSnapshot,
   digestSnapshot,
-  pendingLearningsCount = 0,
+  pendingIntake = null,
   permissionMode = "ask",
   historyPath,
   onPrompt,
@@ -151,9 +151,8 @@ export const InkApp: React.FC<InkAppProps> = ({
   );
 
   const starterTaskActions = useMemo(
-    () =>
-      buildStarterTaskActions(persona.label, persona.probe, digestSnapshot, pendingLearningsCount),
-    [persona.label, persona.probe, digestSnapshot, pendingLearningsCount],
+    () => buildStarterTaskActions(persona.label, persona.probe, digestSnapshot, pendingIntake),
+    [persona.label, persona.probe, digestSnapshot, pendingIntake],
   );
   const availableTaskActions = useMemo(
     () =>
@@ -368,9 +367,6 @@ export const InkApp: React.FC<InkAppProps> = ({
           respondElicitation: submitElicitationResponse,
           runYoloSlash,
           runBuiltin: handleBuiltinSlash,
-          submitPrompt: (prompt) => {
-            void handleSubmit(prompt);
-          },
         })
       ) {
         return;
@@ -583,7 +579,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       statusSnapshot={statusSnapshot}
       setupSnapshot={setupSnapshot}
       digestSnapshot={digestSnapshot}
-      pendingLearningsCount={pendingLearningsCount}
+      pendingIntake={pendingIntake}
       tip={tip.current}
     />
   );

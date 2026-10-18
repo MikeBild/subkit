@@ -104,7 +104,7 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
 
   it("never-gate pins survive permission_mode=ask/plan", () => {
     for (const permission_mode of ["ask", "plan"] as const) {
-      for (const tool of ["load_skill", "save_learning", "create_skill"]) {
+      for (const tool of ["load_skill", "save_learning"]) {
         const decision = decideToolMode({
           tool,
           category: "tenant_write",

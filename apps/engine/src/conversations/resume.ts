@@ -383,11 +383,8 @@ function subjectLabel(subject: unknown): string | null {
 
 function targetLabel(target: unknown): string | null {
   if (!target || typeof target !== "object" || Array.isArray(target)) return null;
-  const { kind, knowledge_source_name } = target as Record<string, unknown>;
-  if (kind === "skill_draft") return "Target: new draft skill (needs activation)";
-  if (kind === "knowledge" && typeof knowledge_source_name === "string")
-    return `Target: knowledge source ${clip(knowledge_source_name, 200)}`;
-  return null;
+  const { kind } = target as Record<string, unknown>;
+  return kind === "skill_draft" ? "Target: new draft skill (needs activation)" : null;
 }
 
 function pendingSubjects(value: unknown): string[] | undefined {

@@ -3,21 +3,14 @@ import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
 import { EngineClient, type IntakeItem } from "../engine-client.ts";
+import { cockpitUrl, intakeReviewPrompt, terminalText } from "../lib/intake-review.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_REVIEW_ITEMS = 100;
-const ESCAPE = String.fromCharCode(27);
-const OSC_ESCAPE = new RegExp(`${ESCAPE}\\][\\s\\S]*?(?:\\x07|${ESCAPE}\\\\)`, "g");
-const CSI_ESCAPE = new RegExp(`${ESCAPE}\\[[0-?]*[ -/]*[@-~]`, "g");
-const CONTROL_CHARACTER = new RegExp(`[${String.raw`\u0000-\u001F\u007F`}]`, "g");
 
 function makeClient(): EngineClient {
   const { engine_url, api_key, active_tenant_id } = resolveProfile();
   return new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-}
-
-function terminalText(value: string): string {
-  return value.replace(OSC_ESCAPE, "").replace(CSI_ESCAPE, "").replace(CONTROL_CHARACTER, " ");
 }
 
 export function intakeCategory(value: string): string {
@@ -42,17 +35,8 @@ export function intakeItemIds(value: string): string[] {
   return parts;
 }
 
-function reviewPrompt(category: string): string {
-  return `Review my new items in “${terminalText(category)}”. Which ones help us? For each suggestion, show the exact text, sources and knowledge destination for my confirmation.`;
-}
-
 function cockpitConversationUrl(client: EngineClient, conversationId: string): string {
-  const url = new URL(client.base);
-  const prefix = url.pathname.replace(/\/+$/, "");
-  url.pathname = `${prefix}/cockpit/chat/${encodeURIComponent(conversationId)}`;
-  url.search = "";
-  url.hash = "";
-  return url.toString();
+  return cockpitUrl(client, `chat/${encodeURIComponent(conversationId)}`);
 }
 
 function clipMetadata(item: IntakeItem): Record<string, unknown> {
@@ -60,7 +44,8 @@ function clipMetadata(item: IntakeItem): Record<string, unknown> {
     id: item.id,
     category: item.category,
     title: item.title,
-    source_url: item.original_snapshot.source_url,
+    origin: item.original_snapshot.origin,
+    source_url: item.original_snapshot.source_url ?? null,
     captured_at: item.original_snapshot.captured_at,
     state: item.state,
   };
@@ -97,10 +82,11 @@ const listCommand = defineCommand({
       }
       emitList(
         false,
-        ["title", "source_url", "captured_at"],
+        ["title", "origin", "source_url", "captured_at"],
         items.map((item) => ({
           title: terminalText(item.title),
-          source_url: terminalText(item.original_snapshot.source_url),
+          origin: item.original_snapshot.origin,
+          source_url: terminalText(item.original_snapshot.source_url ?? ""),
           captured_at: item.original_snapshot.captured_at,
         })),
       );
@@ -129,7 +115,7 @@ const reviewCommand = defineCommand({
       if (args.items !== undefined) {
         const selectedIds = intakeItemIds(args.items);
         const outcome = await client.createConversation({
-          initial_message: reviewPrompt("these selected items"),
+          initial_message: intakeReviewPrompt("these selected items"),
           intake_item_ids: selectedIds,
         });
         const url = cockpitConversationUrl(client, outcome.conversation.id);
@@ -157,7 +143,7 @@ const reviewCommand = defineCommand({
       if (selectedIds.length === 0)
         throw new Error(`category “${terminalText(category)}” has no collected items to review`);
       const outcome = await client.createConversation({
-        initial_message: reviewPrompt(category),
+        initial_message: intakeReviewPrompt(category),
         intake_item_ids: selectedIds,
       });
       const url = cockpitConversationUrl(client, outcome.conversation.id);

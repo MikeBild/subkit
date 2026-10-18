@@ -110,13 +110,23 @@ describe("POST /v1/agent/sessions — happy path", () => {
     expect(job?.transcript).toContain("***REDACTED:pat***");
   });
 
-  test("the candidate list accepts the session_learning filter (curation path)", async () => {
-    const res = await fetch(
-      `${ctx.baseUrl}/v1/skill-candidates?status=proposed&pattern_kind=session_learning`,
-      { headers: { authorization: `Bearer ${ctx.apiKey}` } },
-    );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { items: unknown[] };
-    expect(Array.isArray(body.items)).toBe(true);
+  test("collecting keeps the hook permission: skill:propose alone may submit, intake:write alone may not", async () => {
+    const issue = async (name: string, scopes: string[]) => {
+      const res = await fetch(`${ctx.baseUrl}/v1/identity/api-keys`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ owner_kind: "user", owner_id: ctx.userId, name, scopes }),
+      });
+      expect(res.status).toBe(201);
+      return ((await res.json()) as { plaintext_key: string }).plaintext_key;
+    };
+    const hookKey = await issue("session-hook", ["skill:propose"]);
+    const intakeKey = await issue("intake-writer", ["intake:write"]);
+    const body = { agent: "codex", transcript: "user: merk dir das" };
+    const before = enqueued.length;
+    expect((await post(body, hookKey)).status).toBe(202);
+    expect(enqueued.length).toBe(before + 1);
+    expect((await post(body, intakeKey)).status).toBe(403);
+    expect(enqueued.length).toBe(before + 1);
   });
 });

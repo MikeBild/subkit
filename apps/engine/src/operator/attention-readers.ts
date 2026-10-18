@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, notExists, notInArray, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { connectorCountsAgainstHealth } from "../connectors/health-ratio.ts";
 import { listConnections } from "../credentials/connections/index.ts";
@@ -8,6 +8,7 @@ import {
   conversationElicitations,
   conversationHidden,
   conversations,
+  intakeItems,
   skillCandidates,
   webhooksInbound,
   workflows,
@@ -18,6 +19,7 @@ import { listPendingSecretVersions } from "../runtime-config/pending-secrets.ts"
 import { nextScheduleFire } from "../scheduler/next-fire.ts";
 import { scheduleBindingState } from "../scheduler/trigger-bindings.ts";
 import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
+import { LEARNING_PATTERN_KINDS } from "../skill-candidates/types.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
 import { diagnoseWorkflow, type GateDiagnosis } from "../workflows/gate-diagnosis.ts";
 import { type ApprovalFact, readApprovalFacts } from "./approval-readers.ts";
@@ -56,6 +58,7 @@ export const attentionHref = {
   failedRuns: (workflowId: string) => cockpitRunsHref({ workflowId, status: "failed" }),
   operations: "/cockpit/audit?scope=operations",
   settings: "/cockpit/settings",
+  intake: "/cockpit/intake?category=all",
   usage: "/cockpit/usage",
 } as const;
 
@@ -569,13 +572,17 @@ const readSkills: TenantReader = async (db, tenantId) => {
   const [row] = await db
     .select({
       count: sql<number>`count(*)::int`,
-      knowledge: sql<number>`(count(*) filter (where ${skillCandidates.pattern_kind} = 'knowledge_learning'))::int`,
       oldest: sql<Date | null>`min(${skillCandidates.created_at})`,
     })
     .from(skillCandidates)
-    .where(and(eq(skillCandidates.tenant_id, tenantId), eq(skillCandidates.status, "proposed")));
+    .where(
+      and(
+        eq(skillCandidates.tenant_id, tenantId),
+        eq(skillCandidates.status, "proposed"),
+        notInArray(skillCandidates.pattern_kind, [...LEARNING_PATTERN_KINDS]),
+      ),
+    );
   const count = Number(row?.count ?? 0);
-  const knowledge = Number(row?.knowledge ?? 0);
   if (count === 0) return [];
   const oldest = row?.oldest ? new Date(row.oldest) : null;
   return [
@@ -590,7 +597,7 @@ const readSkills: TenantReader = async (db, tenantId) => {
         reason: "skills_proposed",
         trigger: null,
         cause_class: null,
-        counts: { skills: count, ...(knowledge > 0 ? { knowledge } : {}) },
+        counts: { skills: count },
         since: oldest?.toISOString() ?? null,
         deadline: null,
         detail: null,
@@ -600,6 +607,51 @@ const readSkills: TenantReader = async (db, tenantId) => {
             href: attentionHref.review("skills"),
             primary: true,
             permission: "skill:write",
+          },
+        ],
+      },
+    },
+  ];
+};
+
+const readIntake: TenantReader = async (db, tenantId) => {
+  const [row] = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+      oldest: sql<Date | null>`min(${intakeItems.created_at})`,
+    })
+    .from(intakeItems)
+    .where(
+      and(
+        eq(intakeItems.tenant_id, tenantId),
+        inArray(intakeItems.state, ["collected", "reviewing"]),
+      ),
+    );
+  const count = Number(row?.count ?? 0);
+  if (count === 0) return [];
+  const oldest = row?.oldest ? new Date(row.oldest) : null;
+  return [
+    {
+      source: "intake",
+      item: {
+        id: "intake",
+        class: "decide",
+        severity: "notice",
+        kind: "intake_items",
+        subject: null,
+        reason: "intake_collected",
+        trigger: null,
+        cause_class: null,
+        counts: { intake: count },
+        since: oldest?.toISOString() ?? null,
+        deadline: null,
+        detail: null,
+        actions: [
+          {
+            verb: "review",
+            href: attentionHref.intake,
+            primary: true,
+            permission: "intake:read",
           },
         ],
       },
@@ -717,7 +769,7 @@ async function readNextRun(db: Db, tenantId: string, now: Date): Promise<string 
 
 export type AttentionReaderOverrides = Partial<
   Record<
-    "connectors" | "connections" | "secret_approvals" | "skills" | "budget" | "risk",
+    "connectors" | "connections" | "secret_approvals" | "skills" | "intake" | "budget" | "risk",
     TenantReader
   >
 >;
@@ -727,6 +779,7 @@ const TENANT_READERS: Required<AttentionReaderOverrides> = {
   connections: readConnections,
   secret_approvals: readSecretApprovals,
   skills: readSkills,
+  intake: readIntake,
   budget: readBudget,
   risk: readRisk,
 };

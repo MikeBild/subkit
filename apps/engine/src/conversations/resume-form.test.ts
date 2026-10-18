@@ -166,12 +166,12 @@ test("resume shows the approval target and the body excerpt after the subject", 
     "Target: new draft skill (needs activation)",
     "Retry twice, then stop.",
   ]);
-  const fact = pendingPrompt({
+  const unknownTarget = pendingPrompt({
     question: "Proceed?",
     pending_output: {
-      subjects: [{ id: "a", title: "Rota", status: "proposed" }],
+      subjects: [{ id: "a", title: "Rota", status: "collected" }],
       target: { kind: "knowledge", knowledge_source_name: "Learnings · ops" },
     },
   });
-  expect(fact.prompt?.subjects).toEqual(["Rota", "Target: knowledge source Learnings · ops"]);
+  expect(unknownTarget.prompt?.subjects).toEqual(["Rota"]);
 });

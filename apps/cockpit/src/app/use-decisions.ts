@@ -26,7 +26,6 @@ import {
   patchTitle,
   skillDecision,
 } from "@/pages/decisions-model";
-import { isKnowledgeFact, proposalTarget } from "@/pages/learning-proposal-model";
 import { type ReviewAccess, type ReviewTarget, reviewAccess } from "@/pages/overview-model";
 import { useLiveQueryOptions } from "./live-events";
 
@@ -123,12 +122,7 @@ export function useReviewDecisions(
       return patchDecision(candidate, t(title.key, title.params));
     }),
     ...(query.data?.skills ?? []).map((candidate) =>
-      skillDecision(
-        candidate,
-        isKnowledgeFact(candidate)
-          ? proposalTarget(candidate, t)
-          : skillTargetName(names, candidate),
-      ),
+      skillDecision(candidate, skillTargetName(names, candidate)),
     ),
   ];
   const decisions = [...new Map(items.map((item) => [decisionKey(item), item])).values()].filter(

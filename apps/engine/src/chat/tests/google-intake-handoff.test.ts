@@ -130,7 +130,7 @@ test("Google Chat intake reads hand off the persisted review without admission c
   expect(result.approval_sent).toBe(false);
   expect(result.reply_text).toContain("Continue this review in SubKit: /cockpit/chat/");
   expect(result.reply_text).toContain(
-    "Review the exact proposal and confirm it before it becomes knowledge.",
+    "Review the exact proposal and confirm it before it becomes knowledge or a skill.",
   );
   const calls = await ctx.testDb.db
     .select({ tool: conversationToolCalls.tool, output: conversationToolCalls.output })

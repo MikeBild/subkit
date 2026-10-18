@@ -30,7 +30,6 @@ import { intakeCommand } from "./commands/intake.ts";
 import { invitesCommand } from "./commands/invites.ts";
 import { joinCommand } from "./commands/join.ts";
 import { knowledgeSourcesCommand } from "./commands/knowledge-sources.ts";
-import { learningsCommand } from "./commands/learnings.ts";
 import { logsCommand } from "./commands/logs.ts";
 import { notificationsCommand } from "./commands/notifications.ts";
 import { patchCandidatesCommand } from "./commands/patch-candidates.ts";
@@ -421,7 +420,6 @@ const mainCommand = defineCommand({
     attach: attachCommand,
     auth: authCommand,
     agent: agentCommand,
-    learnings: learningsCommand,
     workflows: workflowsCommand,
     connectors: connectorsCommand,
     categories: categoriesCommand,
@@ -590,7 +588,6 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   attach: { command: attachCommand, requires: "file:write" },
   auth: { command: authCommand, requires: "connector:write" },
   agent: { command: agentCommand, requires: "skill:read" },
-  learnings: { command: learningsCommand, requires: "skill:read" },
   workflows: { command: workflowsCommand, requires: "workflow:read" },
   connectors: { command: connectorsCommand, requires: "connector:read" },
   categories: { command: categoriesCommand, requires: "workflow:read" },

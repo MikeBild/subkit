@@ -1,9 +1,23 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { count, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
+import { generateAccessToken } from "../../auth/oauth/tokens.ts";
 import { loadDraft } from "../../conversations/draft.ts";
-import { apiKeys, intakeItems, knowledgeSources } from "../../db/schema/index.ts";
-import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
+import {
+  apiKeys,
+  intakeItems,
+  knowledgeSources,
+  mcpOauthAccessTokens,
+  mcpOauthClients,
+  skills,
+  users,
+} from "../../db/schema/index.ts";
+import { generateKey } from "../../identity/api-key.ts";
+import { createSessionIntakeItem } from "../../knowledge/index.ts";
+import { builtinRoleId, createRole, grantPermissionToRole } from "../../rbac/roles.ts";
+import { createSkill } from "../../skills/service.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { browserSessionHeaders, createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
 
@@ -38,6 +52,42 @@ function testKey(value: string): { plaintext: string; prefix: string; token_sha2
     prefix: value.slice(0, 12),
     token_sha256: createHash("sha256").update(value).digest("hex"),
   };
+}
+
+function browserHeaders(userId: string): Promise<HeadersInit> {
+  return browserSessionHeaders(ctx, userId);
+}
+
+async function browserRequest(
+  path: string,
+  body: unknown,
+  browser: HeadersInit,
+): Promise<Response> {
+  return fetch(`${ctx.baseUrl}${path}`, {
+    method: "POST",
+    headers: browser,
+    body: JSON.stringify(body),
+  });
+}
+
+let roleCounter = 0;
+
+async function browserPersona(permissions: string[]): Promise<HeadersInit> {
+  roleCounter += 1;
+  const role = await createRole(ctx.db, ctx.tenantId, `intake-confirm-${roleCounter}`);
+  for (const permission of permissions)
+    await grantPermissionToRole(ctx.db, ctx.tenantId, role.id, permission);
+  const [user] = await ctx.db
+    .insert(users)
+    .values({
+      tenant_id: ctx.tenantId,
+      email: `intake-confirm-${roleCounter}@test.local`,
+      role_id: await builtinRoleId(ctx.db, "member"),
+    })
+    .returning();
+  if (!user) throw new Error("missing persona user");
+  await ctx.db.update(users).set({ role_id: role.id }).where(eq(users.id, user.id));
+  return browserHeaders(user.id);
 }
 
 async function issueUserKey(name: string, scopes: string[]): Promise<string> {
@@ -141,7 +191,11 @@ describe("intake HTTP flow", () => {
     const knowledgeWriteOnly = await issueUserKey("knowledge-write-without-confirm", [
       "knowledge:write",
     ]);
-    for (const key of [collectorKey, intakeConfirmationOnly, knowledgeWriteOnly]) {
+    const admissionKey = await issueUserKey("intake-admission", [
+      "intake:confirm",
+      "knowledge:write",
+    ]);
+    for (const key of [collectorKey, intakeConfirmationOnly, knowledgeWriteOnly, admissionKey]) {
       const denied = await request(
         `/v1/intake/proposals/${proposal.id}/confirm`,
         "POST",
@@ -150,16 +204,20 @@ describe("intake HTTP flow", () => {
       );
       expect(denied.status).toBe(403);
     }
-
-    const admissionKey = await issueUserKey("intake-admission", [
-      "intake:confirm",
-      "knowledge:write",
-    ]);
-    const confirmed = await request(
+    const keyAdmission = await request(
       `/v1/intake/proposals/${proposal.id}/confirm`,
       "POST",
       confirmation,
       admissionKey,
+    );
+    expect((await keyAdmission.json()) as { code: string }).toMatchObject({
+      code: "human_confirmation_required",
+    });
+
+    const confirmed = await browserRequest(
+      `/v1/intake/proposals/${proposal.id}/confirm`,
+      confirmation,
+      await browserPersona(["intake:confirm", "knowledge:write"]),
     );
     expect(confirmed.status).toBe(200);
     expect((await confirmed.json()) as { status: string }).toMatchObject({ status: "confirmed" });
@@ -212,10 +270,11 @@ describe("intake HTTP flow", () => {
       tags: ["tape", "workflow"],
     });
 
-    const confirmed = await request(`/v1/intake/proposals/${proposal.id}/confirm`, "POST", {
-      expected_revision: proposal.current_revision,
-      digest: proposal.revision.digest,
-    });
+    const confirmed = await browserRequest(
+      `/v1/intake/proposals/${proposal.id}/confirm`,
+      { expected_revision: proposal.current_revision, digest: proposal.revision.digest },
+      await browserHeaders(ctx.userId),
+    );
     expect(confirmed.status).toBe(200);
     expect((await confirmed.json()) as { status: string }).toMatchObject({ status: "confirmed" });
 
@@ -372,6 +431,151 @@ describe("intake HTTP flow", () => {
     expect(limited.status).toBe(403);
   });
 
+  test("rejects confirmation over MCP OAuth and token exchange", async () => {
+    const collected = await request("/v1/intake/items", "POST", {
+      client_request_id: "10000000-0000-4000-8000-000000000031",
+      category: "recording",
+      title: "Delegated confirmation clip",
+      source_url: "https://example.test/delegated",
+      captured_at: "2026-10-10T07:00:00.000Z",
+      body: "A delegated credential must not admit this.",
+    });
+    const item = (await collected.json()) as { id: string };
+    const proposed = await request("/v1/intake/proposals", "POST", {
+      item_ids: [item.id],
+      title: "Delegated guidance",
+      body: "Only a signed-in person admits this.",
+      target: { name: "Delegated recording knowledge" },
+    });
+    const proposal = (await proposed.json()) as {
+      id: string;
+      current_revision: number;
+      revision: { digest: string };
+    };
+    const body = { expected_revision: proposal.current_revision, digest: proposal.revision.digest };
+
+    const clientId = "intake-confirm-delegated-client";
+    await ctx.db.insert(mcpOauthClients).values({ client_id: clientId, scope: "*" });
+    const oauthToken = generateAccessToken();
+    await ctx.db.insert(mcpOauthAccessTokens).values({
+      tenant_id: ctx.tenantId,
+      client_id: clientId,
+      user_id: ctx.userId,
+      prefix: oauthToken.prefix,
+      token_sha256: oauthToken.hash,
+      scope: "*",
+      resource: `${ctx.baseUrl}/mcp`,
+      expires_at: new Date(getTestNow() + 60_000),
+    });
+    const overMcp = await request(
+      `/v1/intake/proposals/${proposal.id}/confirm`,
+      "POST",
+      body,
+      oauthToken.plaintext,
+    );
+    expect(overMcp.status).toBe(403);
+
+    const exchangeKey = generateKey();
+    await ctx.db.insert(apiKeys).values({
+      tenant_id: ctx.tenantId,
+      user_id: ctx.userId,
+      prefix: exchangeKey.prefix,
+      token_sha256: exchangeKey.hash,
+      scopes: ["*"],
+    });
+    const exchanged = await fetch(`${ctx.baseUrl}/v1/oauth/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        subject_token: exchangeKey.plaintext,
+        subject_token_type: "urn:subkit:params:oauth:token-type:api-key",
+      }).toString(),
+    });
+    expect(exchanged.status).toBe(200);
+    const { access_token } = (await exchanged.json()) as { access_token: string };
+    const overExchange = await request(
+      `/v1/intake/proposals/${proposal.id}/confirm`,
+      "POST",
+      body,
+      access_token,
+    );
+    expect(overExchange.status).toBe(403);
+    expect((await overExchange.json()) as { code: string }).toMatchObject({
+      code: "human_confirmation_required",
+    });
+
+    const stored = await request(`/v1/intake/proposals/${proposal.id}`, "GET");
+    expect(((await stored.json()) as { status: string }).status).toBe("draft");
+  });
+
+  test("an item read returns its latest session evidence, bounded and newest first", async () => {
+    const first = await createSessionIntakeItem(
+      {
+        tenant_id: ctx.tenantId,
+        actor: { kind: "user", id: ctx.userId },
+        session: {
+          agent: "claude-code",
+          session_id: "evidence-read-1",
+          repo: "example/repo",
+          domains: [],
+          evidence_excerpt: "user: first mention",
+        },
+        title: "Evidence read learning",
+        body: "Repeated sessions add evidence.",
+        captured_at: "2026-10-10T07:00:00.000Z",
+      },
+      ctx.db,
+    );
+    await createSessionIntakeItem(
+      {
+        tenant_id: ctx.tenantId,
+        actor: { kind: "user", id: ctx.userId },
+        session: {
+          agent: "codex",
+          session_id: "evidence-read-2",
+          repo: null,
+          domains: [],
+          evidence_excerpt: "user: second mention",
+        },
+        title: "Evidence read learning",
+        body: "Repeated sessions add evidence.",
+        captured_at: "2026-10-11T07:00:00.000Z",
+      },
+      ctx.db,
+    );
+    const read = await request(`/v1/intake/items/${first.item.id}`, "GET");
+    expect(read.status).toBe(200);
+    const detail = (await read.json()) as {
+      version: number;
+      evidence_total: number;
+      evidence: Array<{ agent: string; session_id: string; repo: string | null; excerpt: string }>;
+    };
+    expect(detail.version).toBe(1);
+    expect(detail.evidence_total).toBe(2);
+    expect(
+      detail.evidence.map(({ agent, session_id, repo, excerpt }) => ({
+        agent,
+        session_id,
+        repo,
+        excerpt,
+      })),
+    ).toEqual([
+      {
+        agent: "codex",
+        session_id: "evidence-read-2",
+        repo: null,
+        excerpt: "user: second mention",
+      },
+      {
+        agent: "claude-code",
+        session_id: "evidence-read-1",
+        repo: "example/repo",
+        excerpt: "user: first mention",
+      },
+    ]);
+  });
+
   test("keeps existing knowledge routes available", async () => {
     const response = await request("/v1/knowledge-sources", "GET");
     expect(response.status).toBe(200);
@@ -460,5 +664,122 @@ describe("intake HTTP flow", () => {
       limitedKey.plaintext,
     );
     expect(affected.status).toBe(403);
+  });
+
+  test("requires the target-specific permissions from a browser session for each confirmation", async () => {
+    const sessionItem = async (title: string) =>
+      (
+        await createSessionIntakeItem(
+          {
+            tenant_id: ctx.tenantId,
+            actor: { kind: "user", id: ctx.userId },
+            title,
+            body: `${title} body`,
+            captured_at: "2026-10-10T07:00:00.000Z",
+            session: {
+              agent: "claude-code",
+              session_id: `http-session-${title}`,
+              repo: null,
+              domains: [],
+              evidence_excerpt: `${title} evidence`,
+            },
+          },
+          ctx.db,
+        )
+      ).item;
+    const propose = async (title: string, target: unknown) => {
+      const item = await sessionItem(title);
+      const response = await request("/v1/intake/proposals", "POST", {
+        item_ids: [item.id],
+        title,
+        body: `${title} proposal body`,
+        target,
+      });
+      expect(response.status).toBe(201);
+      const proposal = (await response.json()) as {
+        id: string;
+        current_revision: number;
+        revision: { digest: string };
+      };
+      return {
+        path: `/v1/intake/proposals/${proposal.id}/confirm`,
+        body: { expected_revision: proposal.current_revision, digest: proposal.revision.digest },
+      };
+    };
+    const superseded = await createSkill(
+      {
+        tenant_id: ctx.tenantId,
+        input: { scope: "global", title: "Superseded http skill", body: "Old guidance." },
+      },
+      ctx.db,
+    );
+    const newSkill = (
+      title: string,
+      supersedes: { skill_id: string; expected_version: number }[] = [],
+    ) => ({
+      skill: {
+        new: { title, scope: "global", tags: [], category: "jira" },
+        supersedes,
+      },
+    });
+
+    const confirmOnly = await browserPersona(["intake:confirm"]);
+    const knowledgeWriter = await browserPersona(["intake:confirm", "knowledge:write"]);
+    const skillWriter = await browserPersona(["intake:confirm", "skill:write", "skill:activate"]);
+    const skillArchiver = await browserPersona([
+      "intake:confirm",
+      "skill:write",
+      "skill:activate",
+      "skill:archive",
+    ]);
+
+    const knowledge = await propose("Http knowledge target", { name: "Http knowledge target" });
+    for (const persona of [confirmOnly, skillWriter])
+      expect((await browserRequest(knowledge.path, knowledge.body, persona)).status).toBe(403);
+    expect((await browserRequest(knowledge.path, knowledge.body, knowledgeWriter)).status).toBe(
+      200,
+    );
+
+    const skill = await propose("Http skill target", newSkill("Http skill target"));
+    for (const persona of [confirmOnly, knowledgeWriter])
+      expect((await browserRequest(skill.path, skill.body, persona)).status).toBe(403);
+    const admitted = await browserRequest(skill.path, skill.body, skillWriter);
+    expect(admitted.status).toBe(200);
+    const admittedBody = (await admitted.json()) as {
+      confirmed_target_kind: string;
+      confirmed_target_id: string;
+    };
+    expect(admittedBody.confirmed_target_kind).toBe("skill");
+    const repeated = await browserRequest(skill.path, skill.body, skillWriter);
+    expect(repeated.status).toBe(200);
+    expect(((await repeated.json()) as { confirmed_target_id: string }).confirmed_target_id).toBe(
+      admittedBody.confirmed_target_id,
+    );
+    expect(
+      await ctx.db
+        .select({ id: skills.id })
+        .from(skills)
+        .where(and(eq(skills.tenant_id, ctx.tenantId), eq(skills.title, "Http skill target"))),
+    ).toHaveLength(1);
+
+    const replacing = await propose(
+      "Http replacing skill",
+      newSkill("Http replacing skill", [
+        { skill_id: superseded.id, expected_version: superseded.version },
+      ]),
+    );
+    expect((await browserRequest(replacing.path, replacing.body, skillWriter)).status).toBe(403);
+    expect((await browserRequest(replacing.path, replacing.body, skillArchiver)).status).toBe(200);
+
+    const stale = await propose("Http stale skill", newSkill("Http stale skill"));
+    expect(
+      (
+        await browserRequest(
+          stale.path,
+          { ...stale.body, expected_revision: stale.body.expected_revision + 1 },
+          skillArchiver,
+        )
+      ).status,
+    ).toBe(409);
   });
 });

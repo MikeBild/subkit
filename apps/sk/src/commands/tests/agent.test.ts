@@ -17,6 +17,7 @@ import {
   agentCommand,
   agentEngineClient,
   boundedFetch,
+  captureQueuedMessage,
   codexHookSnippet,
   findAgentFile,
   forgetBriefed,
@@ -571,6 +572,14 @@ describe("hook clients", () => {
   });
 });
 
+describe("capture acknowledgement", () => {
+  test("points to the Cockpit intake review instead of a CLI review queue", () => {
+    expect(captureQueuedMessage({ base: "https://sk.example.test/engine" }, 1200)).toBe(
+      "queued (1200 chars) — learnings worth keeping are collected for review in Cockpit: https://sk.example.test/engine/cockpit/intake",
+    );
+  });
+});
+
 describe("briefing hook output", () => {
   let savedDebugFile: string | undefined;
 
@@ -630,7 +639,6 @@ describe("briefing hook output", () => {
             knowledge_sources: ["ops-handbook", "blog-guide"],
             workflows: ["publish-post"],
             connectors: [],
-            proposed_candidates: 3,
           }),
         );
       }) as typeof fetch;
@@ -689,8 +697,7 @@ describe("briefing hook output", () => {
           knowledge_sources: [],
           workflows: [],
           connectors: [],
-          proposed_candidates: 0,
-          intake: { collected: 3, reviewing: 1, proposals: 2 },
+          intake: { clips: 3, sessions: 1, proposals: 2 },
         });
       }) as typeof fetch;
       const result = await getBriefingHookOutput(payload(root, event), {
@@ -699,9 +706,12 @@ describe("briefing hook output", () => {
         sessionDirectory: join(root, "sessions"),
       });
       expect(result?.systemMessage).toBe("✓ SubKit");
-      expect(result?.systemMessage).not.toContain("sk learnings review");
       expect(result?.hookSpecificOutput?.hookEventName).toBe(event);
-      expect(result?.hookSpecificOutput?.additionalContext).not.toContain("sk learnings review");
+      const context = result?.hookSpecificOutput?.additionalContext ?? "";
+      expect(context).toContain("Collected material is awaiting review.");
+      expect(`${result?.systemMessage}\n${context}`).not.toMatch(
+        /sk learnings|create_skill|propose_skill|skill candidate/i,
+      );
     }
   });
 
@@ -734,7 +744,6 @@ describe("briefing hook output", () => {
         knowledge_sources: [],
         workflows: [],
         connectors: [],
-        proposed_candidates: 0,
       });
     }) as typeof fetch;
     const result = await getBriefingHookOutput(
@@ -773,7 +782,6 @@ describe("briefing hook output", () => {
               knowledge_sources: [],
               workflows: [],
               connectors: [],
-              proposed_candidates: 0,
             }),
           )) as typeof fetch;
     const result = await getBriefingHookOutput(payload(root), {
@@ -783,6 +791,9 @@ describe("briefing hook output", () => {
     });
     expect(result?.hookSpecificOutput?.additionalContext).toContain(
       "call `list_skill_suggestions` and `list_skill_candidates` for their separate review queues",
+    );
+    expect(result?.hookSpecificOutput?.additionalContext).toContain(
+      "call `list_intake_items` for collected clips and session learnings that still await a person's review, reading only their metadata",
     );
     expect(result?.hookSpecificOutput?.additionalContext).toContain(
       "use `list_workflows` and follow up any blocked or otherwise attention-worthy workflow with `get_workflow`",

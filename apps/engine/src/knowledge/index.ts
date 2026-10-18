@@ -6,9 +6,14 @@ export * from "./content.ts";
 export * from "./errors.ts";
 export * from "./intake.ts";
 export * from "./intake-errors.ts";
+export * from "./intake-session.ts";
 export * from "./intake-summary.ts";
+export {
+  intakeConfirmRequirements,
+  intakeTargetKind,
+  resolveDomainKnowledgeTarget,
+} from "./intake-targets.ts";
 export * from "./intake-types.ts";
-export * from "./learnings.ts";
 export * from "./service.ts";
 export * from "./tags.ts";
 export * from "./types.ts";

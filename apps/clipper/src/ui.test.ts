@@ -41,19 +41,19 @@ test("clipper uses the Cockpit light and dark color tokens", () => {
 
 test("review prompt names the selected category without internal identifiers", () => {
   expect(intakeReviewPrompt(copy.de, "Recherche")).toBe(
-    "Schau meine neuen Recherche-Einträge durch. Welche davon helfen uns? Schlage mit Quellenbezug vor, was wir als Wissen übernehmen sollten.",
+    "Schau meine neuen Recherche-Einträge durch. Welche davon helfen uns? Schlage mit Quellenbezug vor, was wir übernehmen sollten, als Wissen oder als Skill.",
   );
   expect(intakeReviewPrompt(copy.en, "Ideas")).toBe(
-    "Review my new Ideas entries. Which ones help us? Propose what we should retain as knowledge, with its sources.",
+    "Review my new Ideas entries. Which ones help us? Propose what we should retain, as knowledge or as a skill, with its sources.",
   );
 });
 
 test("single-item review prompt leaves the referenced title to the mention", () => {
   expect(intakeItemReviewPrompt(copy.de)).toBe(
-    "Prüfe diesen gesammelten Eintrag. Bewerte seinen Nutzen und bereite einen Vorschlag mit Quelle und Wissensziel zur Bestätigung vor.",
+    "Prüfe diesen gesammelten Eintrag. Bewerte seinen Nutzen und bereite einen Vorschlag mit Quelle und Ziel zur Bestätigung vor, als Wissen oder als Skill.",
   );
   expect(intakeItemReviewPrompt(copy.en)).toBe(
-    "Review this collected item. Assess its usefulness and prepare a proposal with its source and knowledge target for confirmation.",
+    "Review this collected item. Assess its usefulness and prepare a proposal with its source and destination, as knowledge or as a skill, for confirmation.",
   );
   expect(intakeItemReviewParams(copy.de, "clip-id")).toEqual({
     intake_item_ids: "clip-id",

@@ -91,7 +91,7 @@ describe.skipIf(skip)("drafting context notes", () => {
       const id = result.candidate_id!;
       expect(
         await approveSkillCandidate(
-          { tenant_id: tenantId, candidate_id: id, actor: null, may_write_knowledge: false },
+          { tenant_id: tenantId, candidate_id: id, actor: null },
           testDb.db,
         ),
       ).toBeNull();
@@ -100,7 +100,7 @@ describe.skipIf(skip)("drafting context notes", () => {
           { tenant_id: tenantId, candidate_id: id, actor_id: null },
           testDb.db,
         ),
-      ).toEqual({ kind: "already_decided", status: "context" });
+      ).toEqual({ kind: "not_found" });
       const [after] = await testDb.db
         .select({ status: skillCandidates.status })
         .from(skillCandidates)

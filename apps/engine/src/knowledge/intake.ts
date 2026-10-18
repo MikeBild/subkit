@@ -1,27 +1,30 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
-import { CategorySchema } from "../api/catalog-metadata.ts";
-import { type Actor, auditActor } from "../audit/actor.ts";
-import { auditAwait } from "../audit/audit.ts";
+import type { Actor } from "../audit/actor.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import {
-  type IntakeProposalTarget,
-  type IntakeSnapshot,
+  type IntakeCaptureSnapshot,
   intakeCategoryDefaults,
   intakeItems,
   intakeProposalItems,
   intakeProposalRevisions,
   intakeProposals,
 } from "../db/schema/intake.ts";
-import { parseBundle } from "./bundle.ts";
-import { getKnowledgeSource } from "./catalog.ts";
-import { getKnowledgeSourceContent } from "./content.ts";
 import { proposalDigest, requestDigest } from "./intake-digest.ts";
+import { IntakeConflictError, IntakeProposalConflictError } from "./intake-errors.ts";
 import {
-  IntakeConflictError,
-  IntakeNotFoundError,
-  IntakeProposalConflictError,
-} from "./intake-errors.ts";
+  DEFAULT_INTAKE_CATEGORY,
+  defaultIntakeCategory,
+  intakeItemView,
+  parseIntakeCategory,
+  recordIntakeAudit,
+} from "./intake-rows.ts";
+import {
+  intakeConfirmRequirements,
+  type PublishedIntakeTarget,
+  publishIntakeRevision,
+  validateIntakeTarget,
+} from "./intake-targets.ts";
 import type {
   ConfirmIntakeProposalParams,
   CreateIntakeItemParams,
@@ -35,45 +38,9 @@ import type {
   ReviseIntakeProposalParams,
   SetIntakeDefaultCategoryParams,
 } from "./intake-types.ts";
-import {
-  applyKnowledgeCreate,
-  applyKnowledgeIngest,
-  finishKnowledgeWrite,
-  prepareKnowledgeCreate,
-  prepareKnowledgeIngest,
-} from "./service.ts";
-import type { CreateKnowledgeSourceParams, IngestKnowledgeSourceParams } from "./types.ts";
+import { finishKnowledgeWrite } from "./service.ts";
 
-const DEFAULT_CATEGORY = "inbox";
-
-function category(value: string): string {
-  return CategorySchema.parse(value);
-}
-
-function actorFromColumns(kind: string, id: string): Actor {
-  return { kind: kind === "user" ? "user" : "system_account", id };
-}
-
-function itemView(row: typeof intakeItems.$inferSelect): IntakeItemView {
-  return {
-    id: row.id,
-    tenant_id: row.tenant_id,
-    category: row.category,
-    client_request_id: row.client_request_id,
-    original_snapshot: row.original_snapshot,
-    title: row.title,
-    body: row.body,
-    note: row.note,
-    state: row.state,
-    version: row.version,
-    collected_by: actorFromColumns(row.collected_by_type, row.collected_by_id),
-    admitted_knowledge_source_id: row.admitted_knowledge_source_id,
-    created_at: row.created_at.toISOString(),
-    updated_at: row.updated_at.toISOString(),
-  };
-}
-
-function snapshot(p: CreateIntakeItemParams): IntakeSnapshot {
+function snapshot(p: CreateIntakeItemParams): IntakeCaptureSnapshot {
   const source = p.original_snapshot;
   return {
     title: source?.title ?? p.title,
@@ -105,67 +72,6 @@ function itemRequestDigest(p: CreateIntakeItemParams, intakeCategory: string): s
   });
 }
 
-async function audit(
-  tx: Executor,
-  tenant_id: string,
-  actor: Actor,
-  action: (typeof AuditAction)[keyof typeof AuditAction],
-  resource_type: string,
-  resource_id: string,
-  metadata: Record<string, unknown> = {},
-) {
-  await auditAwait(
-    {
-      tenant_id,
-      ...auditActor(actor),
-      action,
-      resource_type,
-      resource_id,
-      result: "success",
-      metadata,
-    },
-    tx,
-  );
-}
-
-async function defaultCategory(tx: Executor, tenant_id: string, actor: Actor): Promise<string> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext(${`${tenant_id}:${actor.kind}:${actor.id}`}))`,
-  );
-  const rows = await tx
-    .select()
-    .from(intakeCategoryDefaults)
-    .where(
-      and(
-        eq(intakeCategoryDefaults.tenant_id, tenant_id),
-        eq(intakeCategoryDefaults.actor_type, actor.kind),
-        eq(intakeCategoryDefaults.actor_id, actor.id),
-      ),
-    )
-    .limit(1)
-    .for("update");
-  if (rows[0]) return rows[0].category;
-  await tx
-    .insert(intakeCategoryDefaults)
-    .values({ tenant_id, actor_type: actor.kind, actor_id: actor.id, category: DEFAULT_CATEGORY })
-    .onConflictDoNothing();
-  return (
-    (
-      await tx
-        .select({ category: intakeCategoryDefaults.category })
-        .from(intakeCategoryDefaults)
-        .where(
-          and(
-            eq(intakeCategoryDefaults.tenant_id, tenant_id),
-            eq(intakeCategoryDefaults.actor_type, actor.kind),
-            eq(intakeCategoryDefaults.actor_id, actor.id),
-          ),
-        )
-        .limit(1)
-    )[0]?.category ?? DEFAULT_CATEGORY
-  );
-}
-
 export async function listIntakeCategories(
   p: { tenant_id: string; actor: Actor },
   exec?: Executor,
@@ -182,7 +88,7 @@ export async function listIntakeCategories(
       ),
     )
     .limit(1);
-  const default_category = defaults[0]?.category ?? DEFAULT_CATEGORY;
+  const default_category = defaults[0]?.category ?? DEFAULT_INTAKE_CATEGORY;
   const rows = await db
     .select({
       category: intakeItems.category,
@@ -204,7 +110,7 @@ export async function setIntakeDefaultCategory(
   exec?: Executor,
 ): Promise<{ category: string }> {
   const db = exec ?? getDb();
-  const intakeCategory = category(p.category);
+  const intakeCategory = parseIntakeCategory(p.category);
   return (db as Db).transaction(async (tx) => {
     await tx
       .insert(intakeCategoryDefaults)
@@ -223,7 +129,7 @@ export async function setIntakeDefaultCategory(
         ],
         set: { category: intakeCategory, updated_at: new Date() },
       });
-    await audit(
+    await recordIntakeAudit(
       tx,
       p.tenant_id,
       p.actor,
@@ -243,8 +149,8 @@ export async function createIntakeItem(
   const db = exec ?? getDb();
   return (db as Db).transaction(async (tx) => {
     const intakeCategory = p.category
-      ? category(p.category)
-      : await defaultCategory(tx, p.tenant_id, p.actor);
+      ? parseIntakeCategory(p.category)
+      : await defaultIntakeCategory(tx, p.tenant_id, p.actor);
     const digest = itemRequestDigest(p, intakeCategory);
     const previous = await tx
       .select()
@@ -259,7 +165,7 @@ export async function createIntakeItem(
     if (previous[0]) {
       if (previous[0].creation_request_digest !== digest)
         throw new IntakeConflictError("item request id was already used with different content");
-      return itemView(previous[0]);
+      return intakeItemView(previous[0]);
     }
     const inserted = await tx
       .insert(intakeItems)
@@ -295,9 +201,9 @@ export async function createIntakeItem(
     if (!inserted[0]) {
       if (row.creation_request_digest !== digest)
         throw new IntakeConflictError("item request id was already used with different content");
-      return itemView(row);
+      return intakeItemView(row);
     }
-    await audit(
+    await recordIntakeAudit(
       tx,
       p.tenant_id,
       p.actor,
@@ -306,7 +212,7 @@ export async function createIntakeItem(
       row.id,
       { category: intakeCategory, source_url: row.original_snapshot.source_url },
     );
-    return itemView(row);
+    return intakeItemView(row);
   });
 }
 
@@ -320,7 +226,7 @@ export async function listIntakeItems(
 ): Promise<IntakeItemView[]> {
   const db = exec ?? getDb();
   const tenantConds = [eq(intakeItems.tenant_id, p.tenant_id)];
-  if (p.category) tenantConds.push(eq(intakeItems.category, category(p.category)));
+  if (p.category) tenantConds.push(eq(intakeItems.category, parseIntakeCategory(p.category)));
   if (p.state) tenantConds.push(eq(intakeItems.state, p.state));
   return (
     await db
@@ -328,7 +234,7 @@ export async function listIntakeItems(
       .from(intakeItems)
       .where(and(...tenantConds))
       .orderBy(desc(intakeItems.updated_at))
-  ).map(itemView);
+  ).map(intakeItemView);
 }
 
 export async function getIntakeItem(
@@ -342,7 +248,32 @@ export async function getIntakeItem(
     .from(intakeItems)
     .where(and(eq(intakeItems.tenant_id, tenant_id), eq(intakeItems.id, id)))
     .limit(1);
-  return rows[0] ? itemView(rows[0]) : null;
+  return rows[0] ? intakeItemView(rows[0]) : null;
+}
+
+export interface IntakeItemReviewSubject {
+  id: string;
+  title: string;
+  state: IntakeItemView["state"];
+  version: number;
+}
+
+export async function getIntakeItemsForReview(
+  tenant_id: string,
+  ids: readonly string[],
+  exec?: Executor,
+): Promise<IntakeItemReviewSubject[]> {
+  if (ids.length === 0) return [];
+  const db = exec ?? getDb();
+  return db
+    .select({
+      id: intakeItems.id,
+      title: intakeItems.title,
+      state: intakeItems.state,
+      version: intakeItems.version,
+    })
+    .from(intakeItems)
+    .where(and(eq(intakeItems.tenant_id, tenant_id), inArray(intakeItems.id, [...ids])));
 }
 
 async function staleDraftProposalsForItems(
@@ -408,7 +339,7 @@ export async function patchIntakeItem(
     const [row] = await tx
       .update(intakeItems)
       .set({
-        ...(p.category !== undefined ? { category: category(p.category) } : {}),
+        ...(p.category !== undefined ? { category: parseIntakeCategory(p.category) } : {}),
         ...(p.title !== undefined ? { title: p.title } : {}),
         ...(p.body !== undefined ? { body: p.body } : {}),
         ...(p.note !== undefined ? { note: p.note } : {}),
@@ -429,11 +360,19 @@ export async function patchIntakeItem(
           ? "intake_item_changed"
           : null;
     if (staleReason) await staleDraftProposalsForItems(tx, p.tenant_id, [p.id], staleReason);
-    await audit(tx, p.tenant_id, p.actor, AuditAction.INTAKE_ITEM_UPDATED, "intake_item", p.id, {
-      version: row.version,
-      ...(p.category !== undefined ? { category: row.category } : {}),
-    });
-    return itemView(row);
+    await recordIntakeAudit(
+      tx,
+      p.tenant_id,
+      p.actor,
+      AuditAction.INTAKE_ITEM_UPDATED,
+      "intake_item",
+      p.id,
+      {
+        version: row.version,
+        ...(p.category !== undefined ? { category: row.category } : {}),
+      },
+    );
+    return intakeItemView(row);
   });
 }
 
@@ -464,7 +403,7 @@ async function itemsForProposal(
     id: row.id,
     version: row.version,
     title: row.title,
-    source_url: row.original_snapshot.source_url,
+    source_url: row.original_snapshot.source_url ?? null,
   }));
 }
 
@@ -537,29 +476,14 @@ async function proposalView(
     status: row.status,
     current_revision: row.current_revision,
     confirmed_revision: row.confirmed_revision,
-    confirmed_knowledge_source_id: row.confirmed_knowledge_source_id,
+    confirmed_target_kind: row.confirmed_target_kind,
+    confirmed_target_id: row.confirmed_target_id,
     rejected_at: row.rejected_at?.toISOString() ?? null,
     stale_reason: row.stale_reason,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
     revision,
   };
-}
-
-async function validateTarget(
-  tx: Executor,
-  tenant_id: string,
-  target: IntakeProposalTarget,
-): Promise<void> {
-  if ("knowledge_source_id" in target) {
-    const source = await getKnowledgeSource(tenant_id, target.knowledge_source_id, tx);
-    if (!source) throw new IntakeNotFoundError("proposal", target.knowledge_source_id);
-    if (source.source_type !== "bundle")
-      throw new IntakeConflictError("an intake proposal target must be a knowledge bundle");
-    if (source.version !== target.expected_version)
-      throw new IntakeConflictError("knowledge target has changed");
-  } else if (!target.name.trim())
-    throw new IntakeConflictError("a new knowledge bundle needs a name");
 }
 
 async function insertProposalRevision(
@@ -569,7 +493,7 @@ async function insertProposalRevision(
   revision: number,
 ): Promise<IntakeProposalRevisionView> {
   const items = await itemsForProposal(tx, p.tenant_id, p.item_ids, p.expected_item_versions);
-  await validateTarget(tx, p.tenant_id, p.target);
+  await validateIntakeTarget(tx, p.tenant_id, p.target);
   const digest = proposalDigest({ title: p.title, body: p.body, target: p.target, items });
   const [row] = await tx
     .insert(intakeProposalRevisions)
@@ -631,7 +555,7 @@ export async function createIntakeProposal(
       .returning();
     if (!proposal) throw new Error("intake proposal insertion failed");
     await insertProposalRevision(tx, p, proposal.id, 1);
-    await audit(
+    await recordIntakeAudit(
       tx,
       p.tenant_id,
       p.actor,
@@ -698,7 +622,7 @@ export async function reviseIntakeProposal(
         updated_at: new Date(),
       })
       .where(and(eq(intakeProposals.tenant_id, p.tenant_id), eq(intakeProposals.id, p.id)));
-    await audit(
+    await recordIntakeAudit(
       tx,
       p.tenant_id,
       p.actor,
@@ -711,83 +635,12 @@ export async function reviseIntakeProposal(
   });
 }
 
-function proposalMarkdown(revision: IntakeProposalRevisionView): string {
-  return `# ${revision.title.trim()}\n\n${revision.body.trim()}\n`;
-}
-
-async function publishRevision(
-  tx: Executor,
-  tenant_id: string,
-  actor: Actor,
-  proposal_id: string,
-  revision: IntakeProposalRevisionView,
-): Promise<string> {
-  const content = proposalMarkdown(revision);
-  let sourceId: string;
-  if ("knowledge_source_id" in revision.target) {
-    const source = await getKnowledgeSource(tenant_id, revision.target.knowledge_source_id, tx);
-    if (!source || source.version !== revision.target.expected_version)
-      throw new IntakeProposalConflictError("knowledge target has changed");
-    const current = await getKnowledgeSourceContent(tenant_id, source.id, tx);
-    if (!current || source.source_type !== "bundle")
-      throw new IntakeProposalConflictError("knowledge target is not an editable bundle");
-    const path = `/intake/${proposal_id}.md`;
-    if (current.documents.some((document) => document.path === path))
-      throw new IntakeProposalConflictError("knowledge target already contains this proposal");
-    const files = [...current.documents, { path, content }];
-    const params: IngestKnowledgeSourceParams = {
-      tenant_id,
-      knowledge_source_id: source.id,
-      expected_version: revision.target.expected_version,
-      actor,
-      note: `confirmed intake proposal ${proposal_id}`,
-      upload: {
-        buffer: Buffer.from(JSON.stringify(files), "utf8"),
-        filename: `${source.slug}.bundle.json`,
-        mime: "application/json",
-      },
-      parsed_chunks: parseBundle(files).chunks,
-    };
-    await applyKnowledgeIngest(tx, params, await prepareKnowledgeIngest(params, tx));
-    sourceId = source.id;
-  } else {
-    const path = `/intake/${proposal_id}.md`;
-    const files = [{ path, content }];
-    const params: CreateKnowledgeSourceParams = {
-      tenant_id,
-      actor,
-      input: {
-        name: revision.target.name,
-        scope: "global",
-        ...(revision.target.category ? { category: revision.target.category } : {}),
-        ...(revision.target.tags ? { tags: revision.target.tags } : {}),
-      },
-      upload: {
-        buffer: Buffer.from(JSON.stringify(files), "utf8"),
-        filename: "intake.bundle.json",
-        mime: "application/json",
-      },
-      source_type_override: "bundle",
-      source_uri_override: `intake:${proposal_id}`,
-      parsed_chunks: parseBundle(files).chunks,
-      note: `confirmed intake proposal ${proposal_id}`,
-    };
-    const created = await applyKnowledgeCreate(
-      tx,
-      params,
-      await prepareKnowledgeCreate(params, tx),
-    );
-    sourceId = created.id;
-  }
-  return sourceId;
-}
-
 export async function confirmIntakeProposal(
   p: ConfirmIntakeProposalParams,
   exec?: Executor,
 ): Promise<IntakeProposalView | null> {
   const db = exec ?? getDb();
-  let published: string | null = null;
+  let published: PublishedIntakeTarget | null = null;
   const view = await (db as Db).transaction(async (tx) => {
     const rows = await tx
       .select()
@@ -807,6 +660,10 @@ export async function confirmIntakeProposal(
         throw new IntakeProposalConflictError(
           "proposal was already confirmed with another revision",
         );
+      await p.authorize(
+        intakeConfirmRequirements(current.revision.target),
+        current.revision.target,
+      );
       return current;
     }
     if (proposal.status === "stale")
@@ -818,6 +675,7 @@ export async function confirmIntakeProposal(
       throw new IntakeProposalConflictError(
         "proposal confirmation does not match the reviewed content",
       );
+    await p.authorize(intakeConfirmRequirements(revision.target), revision.target);
     const currentItems = await itemsForProposal(
       tx,
       p.tenant_id,
@@ -830,19 +688,26 @@ export async function confirmIntakeProposal(
       )
     )
       throw new IntakeProposalConflictError("an intake item changed after review");
-    published = await publishRevision(tx, p.tenant_id, p.actor, p.id, revision);
+    const target = await publishIntakeRevision(tx, p.tenant_id, p.actor, p.id, revision);
+    published = target;
     await tx
       .update(intakeProposals)
       .set({
         status: "confirmed",
         confirmed_revision: p.expected_revision,
-        confirmed_knowledge_source_id: published,
+        confirmed_target_kind: target.kind,
+        confirmed_target_id: target.id,
         updated_at: new Date(),
       })
       .where(and(eq(intakeProposals.tenant_id, p.tenant_id), eq(intakeProposals.id, p.id)));
     await tx
       .update(intakeItems)
-      .set({ state: "admitted", admitted_knowledge_source_id: published, updated_at: new Date() })
+      .set({
+        state: "admitted",
+        admitted_target_kind: target.kind,
+        admitted_target_id: target.id,
+        updated_at: new Date(),
+      })
       .where(
         and(
           eq(intakeItems.tenant_id, p.tenant_id),
@@ -852,18 +717,25 @@ export async function confirmIntakeProposal(
           ),
         ),
       );
-    await audit(
+    await recordIntakeAudit(
       tx,
       p.tenant_id,
       p.actor,
       AuditAction.INTAKE_PROPOSAL_CONFIRMED,
       "intake_proposal",
       p.id,
-      { revision: p.expected_revision, knowledge_source_id: published },
+      {
+        revision: p.expected_revision,
+        target_kind: target.kind,
+        target_id: target.id,
+        ...(target.kind === "knowledge" ? { knowledge_source_id: target.id } : {}),
+        ...(target.kind === "skill" ? { superseded_skill_ids: target.superseded_skill_ids } : {}),
+      },
     );
     return await proposalView(tx, p.tenant_id, p.id);
   });
-  if (published) finishKnowledgeWrite(p.tenant_id, published, db);
+  const done = published as PublishedIntakeTarget | null;
+  if (done?.kind === "knowledge") finishKnowledgeWrite(p.tenant_id, done.id, db);
   return view;
 }
 
@@ -887,7 +759,7 @@ export async function rejectIntakeProposal(
       .update(intakeProposals)
       .set({ status: "rejected", rejected_at: new Date(), updated_at: new Date() })
       .where(and(eq(intakeProposals.tenant_id, p.tenant_id), eq(intakeProposals.id, p.id)));
-    await audit(
+    await recordIntakeAudit(
       tx,
       p.tenant_id,
       p.actor,

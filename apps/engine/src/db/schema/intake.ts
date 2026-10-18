@@ -28,19 +28,61 @@ export const intakeProposalStatusEnum = subkit.enum("intake_proposal_status", [
   "rejected",
 ]);
 
-export type IntakeSnapshot = {
+interface IntakeSnapshotFields {
   title: string;
-  source_url: string;
   source_author?: string | undefined;
   published_at?: string | undefined;
   captured_at: string;
   body: string;
-  origin: "capture" | "restored_draft";
-};
+}
 
-export type IntakeProposalTarget =
+export interface IntakeCaptureSnapshot extends IntakeSnapshotFields {
+  origin: "capture" | "restored_draft";
+  source_url: string;
+}
+
+export interface IntakeSessionSnapshot extends IntakeSnapshotFields {
+  origin: "session";
+  source_url?: string | undefined;
+  agent: string;
+  session_id: string;
+  repo: string | null;
+  domains: string[];
+  evidence_excerpt: string;
+  learning_kind?: "practice" | "fact" | undefined;
+  scope?: "global" | "connector" | "workflow" | undefined;
+  connector_id?: string | undefined;
+  workflow_id?: string | undefined;
+  tags?: string[] | undefined;
+}
+
+export type IntakeSnapshot = IntakeCaptureSnapshot | IntakeSessionSnapshot;
+
+export type IntakeTargetKind = "knowledge" | "skill";
+
+export interface IntakeNewSkill {
+  title: string;
+  scope: "global" | "connector" | "workflow";
+  connector_id?: string | undefined;
+  workflow_id?: string | undefined;
+  tags: string[];
+  category: string;
+}
+
+export interface IntakeSkillTarget {
+  skill: {
+    skill_id?: string | undefined;
+    expected_version?: number | undefined;
+    new?: IntakeNewSkill | undefined;
+    supersedes: { skill_id: string; expected_version: number }[];
+  };
+}
+
+export type IntakeKnowledgeTarget =
   | { knowledge_source_id: string; expected_version: string }
   | { name: string; category?: string | undefined; tags?: string[] | undefined };
+
+export type IntakeProposalTarget = IntakeKnowledgeTarget | IntakeSkillTarget;
 
 export const intakeCategoryDefaults = subkit.table(
   "intake_category_defaults",
@@ -77,7 +119,8 @@ export const intakeItems = subkit.table(
     version: integer("version").notNull().default(1),
     collected_by_type: text("collected_by_type").notNull(),
     collected_by_id: uuid("collected_by_id").notNull(),
-    admitted_knowledge_source_id: uuid("admitted_knowledge_source_id"),
+    admitted_target_kind: text("admitted_target_kind").$type<IntakeTargetKind>(),
+    admitted_target_id: uuid("admitted_target_id"),
     ...timestamps,
   },
   (t) => [
@@ -87,6 +130,37 @@ export const intakeItems = subkit.table(
     check(
       "intake_items_collected_by_type_check",
       sql`${t.collected_by_type} IN ('user', 'system_account')`,
+    ),
+    check(
+      "intake_items_admitted_target_check",
+      sql`(${t.admitted_target_kind} IS NULL AND ${t.admitted_target_id} IS NULL) OR (${t.admitted_target_kind} IN ('knowledge', 'skill') AND ${t.admitted_target_id} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const intakeItemEvidence = subkit.table(
+  "intake_item_evidence",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId(),
+    item_id: uuid("item_id")
+      .notNull()
+      .references(() => intakeItems.id, { onDelete: "cascade" }),
+    agent: text("agent").notNull(),
+    session_id: text("session_id").notNull(),
+    repo: text("repo"),
+    excerpt: text("excerpt").notNull(),
+    captured_at: timestamp("captured_at", { withTimezone: true }).notNull(),
+    recorded_by_type: text("recorded_by_type").notNull(),
+    recorded_by_id: uuid("recorded_by_id").notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("intake_item_evidence_item_session_key").on(t.tenant_id, t.item_id, t.session_id),
+    index("intake_item_evidence_tenant_item_created_idx").on(t.tenant_id, t.item_id, t.created_at),
+    check(
+      "intake_item_evidence_recorded_by_type_check",
+      sql`${t.recorded_by_type} IN ('user', 'system_account')`,
     ),
   ],
 );
@@ -99,13 +173,18 @@ export const intakeProposals = subkit.table(
     status: intakeProposalStatusEnum("status").notNull().default("draft"),
     current_revision: integer("current_revision").notNull().default(1),
     confirmed_revision: integer("confirmed_revision"),
-    confirmed_knowledge_source_id: uuid("confirmed_knowledge_source_id"),
+    confirmed_target_kind: text("confirmed_target_kind").$type<IntakeTargetKind>(),
+    confirmed_target_id: uuid("confirmed_target_id"),
     rejected_at: timestamp("rejected_at", { withTimezone: true }),
     stale_reason: text("stale_reason"),
     ...timestamps,
   },
   (t) => [
     index("intake_proposals_tenant_status_updated_idx").on(t.tenant_id, t.status, t.updated_at),
+    check(
+      "intake_proposals_confirmed_target_check",
+      sql`(${t.confirmed_target_kind} IS NULL AND ${t.confirmed_target_id} IS NULL) OR (${t.confirmed_target_kind} IN ('knowledge', 'skill') AND ${t.confirmed_target_id} IS NOT NULL)`,
+    ),
   ],
 );
 
@@ -149,7 +228,7 @@ export const intakeProposalItems = subkit.table(
       .references(() => intakeItems.id, { onDelete: "restrict" }),
     item_version: integer("item_version").notNull(),
     source_title: text("source_title").notNull(),
-    source_url: text("source_url").notNull(),
+    source_url: text("source_url"),
   },
   (t) => [
     uniqueIndex("intake_proposal_items_revision_item_key").on(t.proposal_revision_id, t.item_id),

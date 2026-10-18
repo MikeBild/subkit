@@ -383,6 +383,9 @@ export function attentionLine(item: AttentionItem): string {
     item.counts.failures ? plural(item.counts.failures, "failure", "failures") : null,
     item.counts.patches ? plural(item.counts.patches, "fix", "fixes") : null,
     item.counts.skills ? plural(item.counts.skills, "skill proposal", "skill proposals") : null,
+    item.counts.intake
+      ? plural(item.counts.intake, "collected item to review", "collected items to review")
+      : null,
     item.approval ? `v${item.approval.version}` : null,
     item.approval ? item.approval.environment : null,
     item.repair?.step_id

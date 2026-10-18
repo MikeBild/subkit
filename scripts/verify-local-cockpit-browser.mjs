@@ -29,6 +29,7 @@ import {
   finalizeLocalVerification,
   redactLocalVerificationError,
 } from "./lib/cockpit-demo-verification.ts";
+import { verifySessionLearningReview } from "./lib/cockpit-session-learning-journey.mjs";
 import { shouldLoadBrowserWorkflowCleanup } from "./lib/cockpit-workflow-cleanup-scope.mjs";
 import { verifyLocalChatWorkspace } from "./lib/cockpit-workspace-journey.mjs";
 
@@ -41,6 +42,7 @@ const chatOnly = flags.has("--chat-only");
 const mockChat = flags.has("--mock-chat");
 const workflowOnly = flags.has("--workflow-only");
 const cleanupOnly = flags.has("--cleanup-only");
+const sessionLearningsOnly = flags.has("--session-learnings-only");
 if (
   [...flags].some(
     (arg) =>
@@ -51,12 +53,13 @@ if (
         "--workflow-only",
         "--cleanup-only",
         "--workspace-only",
+        "--session-learnings-only",
       ].includes(arg),
   ) ||
-  (flags.size > 1 && !(flags.size === 2 && chatOnly && mockChat))
+  (flags.size > 1 && !(flags.size === 2 && (chatOnly || sessionLearningsOnly) && mockChat))
 )
   throw new Error(
-    "Usage: bun scripts/verify-local-cockpit-browser.mjs [--read-only|--chat-only|--workflow-only|--cleanup-only|--workspace-only] [--mock-chat] (mock chat may be combined with --chat-only)",
+    "Usage: bun scripts/verify-local-cockpit-browser.mjs [--read-only|--chat-only|--workflow-only|--cleanup-only|--workspace-only|--session-learnings-only] [--mock-chat] (mock chat may be combined with --chat-only or --session-learnings-only)",
   );
 const directory = cockpitDemoStateDirectory(instance, process.env.SUBKIT_DEMO_STATE_DIR);
 const key = (await readFile(resolve(directory, "api-key.txt"), "utf8")).trim();
@@ -216,7 +219,7 @@ try {
   console.log("PASS browser-api-key-login");
   const shouldLoadWorkflowCleanup = shouldLoadBrowserWorkflowCleanup({
     readOnly,
-    chatOnly,
+    chatOnly: chatOnly || sessionLearningsOnly,
     workspaceOnly,
     cleanupOnly,
     apiReceiptPresent: existsSync(resolve(directory, "local-functional-journey.json")),
@@ -294,7 +297,11 @@ try {
     ["api-access", "admin-api-access"],
     ["settings", "admin-settings"],
   ];
-  for (const [route, marker] of chatOnly || workflowOnly || cleanupOnly || workspaceOnly
+  for (const [route, marker] of chatOnly ||
+  workflowOnly ||
+  cleanupOnly ||
+  workspaceOnly ||
+  sessionLearningsOnly
     ? []
     : pages) {
     if (route) {
@@ -324,7 +331,7 @@ try {
     receipt.checks.push(...(await verifyLocalChatWorkspace(page, base.origin)));
     console.log("PASS live chat workspace draft and context retention");
   }
-  if (!readOnly && !workflowOnly && !cleanupOnly && !workspaceOnly) {
+  if (!readOnly && !workflowOnly && !cleanupOnly && !workspaceOnly && !sessionLearningsOnly) {
     if (mockChat) {
       const settings = await Promise.all(
         ["llm.provider", "llm.fallback_provider", "llm.fallback_model"].map((path) =>
@@ -402,6 +409,26 @@ try {
       mockChat ? "mock-provider-chat-send-and-response" : "real-provider-chat-send-and-response",
     );
     console.log(`PASS ${mockChat ? "mock-provider" : "real-provider"}-chat-send-and-response`);
+  }
+  if (!readOnly && !chatOnly && !workflowOnly && !cleanupOnly && !workspaceOnly) {
+    const review = await verifySessionLearningReview({
+      page,
+      request: context.request,
+      origin: base.origin,
+      sessionHeaders,
+      writeHeaders,
+      apiKey: key,
+      mockChat,
+    });
+    receipt.sessionLearningReview = review.result;
+    if (review.errors.length) throw new Error(review.errors.join("; "));
+    receipt.checks.push(
+      "session-learnings-review-deterministic",
+      ...(mockChat ? [] : ["session-learnings-review-real-model"]),
+    );
+    console.log(
+      `PASS session learnings review (deterministic${mockChat ? "; real model skipped in mock mode" : " and real model"})`,
+    );
   }
   if (ownedWorkflow && !cleanupOnly) {
     const { owned, path, getJson } = ownedWorkflow;
@@ -566,7 +593,9 @@ try {
             ? "browser-workflow-functional.json"
             : readOnly
               ? "browser-navigation-functional.json"
-              : "browser-functional.json",
+              : sessionLearningsOnly
+                ? "browser-session-learnings-functional.json"
+                : "browser-functional.json",
   );
   const finalizationErrors = await finalizeLocalVerification({
     saveReceipt: async (cleanupFailures) => {
