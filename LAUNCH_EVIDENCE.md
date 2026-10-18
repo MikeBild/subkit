@@ -225,6 +225,8 @@ Append-only Nachweisarchiv zu [LAUNCH_STATUS.md](LAUNCH_STATUS.md). Nur dort ste
 
 
 
+| E171 | L12 | Aktuelles Image 585eb0b314bd, Checkout f4607e780: isolierte frische Compose-Installation. Erster Browserlogin mit Bootstrap-Systemschlüssel erwartungsgemäß HTTP 401; Code verlangt persönliche Identität. Testeinrichtung über reguläre Identity-API um persönlichen Schlüssel ergänzt. Echter Browserlogin und acht deterministische Journey-Assertions PASS: getrennte Kategorie, kein Wissen/Skill/Briefing vor Bestätigung, Quellenbindung, API-Key-Bestätigung abgelehnt, Browser-Bestätigung erzeugt Skill, genau ein aktiver Skill und Vorgänger archiviert, Domänenbriefing ohne Rohclip, erhaltene Provenienz. Modellteil scheitert beim Gesprächs-POST mit HTTP 400; Gesamtresultat FAIL. Receipt `.artifacts/launch/personal-intake-{acceptance,browser}.json`, 18.10. 08:58–08:59 UTC. | Kein vollständiges L12-PASS. Nachfolgender Diagnoselauf durch Browser-Timeout/Socket-Abbruch unterbrochen, kein Beleg für die Ursache des HTTP 400; `.artifacts/launch/diagnostic-intake-{acceptance,browser}.json`. Beide eigenen Compose-Projekte einschließlich Volumes bereinigt. Keine manuelle Demo verändert. Flüchtige Sitzungswerte aus Diagnosereceipt/-log redigiert; künftige Ausgabe bereinigt. Keine Produktlogik geändert. |
+
 ## Historisches Security-Befundregister
 
 
