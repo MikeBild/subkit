@@ -218,7 +218,7 @@ Bestehende Gates umfassen Lint, Typecheck, Invarianten, Determinismus, Contracts
 Cockpit, Clipper/Intake, E2E und generierte Assets einschließlich OpenAPI und Release Notes.
 Docker-Journeys zusätzlich passend zur Distributionsänderung verwenden. `verify:release`
 ersetzt keine Produktjourneys; übersprungene authentifizierte Checks bleiben UNVERIFIED.
-Keine automatischen visuellen Matrizen. Funktionale Browserprüfungen bleiben automatisiert.
+Browser-Abnahme erfolgt mit browser-use und Codex oder Claude Code. Keine Playwright-Testprogramme, Screenshot-Tests oder visuellen Matrizen. API-, Security-, Vertrags-, Domänen-, Drift- und Build-Gates bleiben automatisiert.
 
 Lokal bestanden, Release-Workflow bestanden, Deployment bestanden und produktiver Smoke
 bestanden werden getrennt geführt. Kein neues allgemeines CI-Projekt als Launch-Voraussetzung.
@@ -1230,3 +1230,14 @@ nach dem Seitenaufbau geprüft. Automatische visuelle Matrizen werden nicht ausg
 
 Die aktuelle L09-Einordnung und nächsten Schritte stehen ausschließlich in LAUNCH_STATUS.md.
 Die allgemeinen Launch-Prioritäten bleiben bestehen.
+
+### Nutzerentscheidung: Browser-Testweg
+
+Am 18.10.2026 beauftragt der Nutzer die vollständige Entfernung aller Playwright-
+und Screenshot-Tests einschließlich Hilfsprogramme und Gate-Verweise. Künftige
+Browserprüfungen erfolgen ausschließlich mit browser-use und Codex oder Claude Code.
+Die Produktabnahme für Login, Chat, Intake, menschliche Bestätigung, Provenienz,
+Retrieval und Berechtigungen bleibt erforderlich und wird mit konkreter Evidenz
+dokumentiert. Historische Nachweise bleiben erhalten; gelöschte Runner dürfen
+nicht als weiterhin ausführbar beschrieben werden. Die produktive optionale
+Connector-Erkennung ist davon getrennt.

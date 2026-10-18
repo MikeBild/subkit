@@ -279,3 +279,13 @@ die reale isolierte Engine geprüft. Bestätigte Quellen sind auffindbar; rohe
 Clips werden nicht als Kontext ausgegeben. Dies ersetzt weder den tatsächlichen
 Hook-Dispatch durch die Agent-Clients noch die Reparatur des bestehenden
 Nutzerprofils (E32: unauthorized). Globale Hooks bleiben unverändert.
+
+## Browser-Abnahme
+
+Nutzerentscheidung vom 18.10.2026: Browser-Journeys werden mit browser-use und
+Codex oder Claude Code geprüft. Keine Playwright- oder Screenshot-Testprogramme
+erstellen, wiederherstellen oder ausführen. API-/Security-/Domänen-/Build-Prüfungen
+bleiben automatisiert. Für Browserprüfungen Quellstand, tatsächliche lokale
+Installation, Aktionen, Ergebnisse, Modellmodus und Cleanup dokumentieren.
+Ein API-PASS ersetzt keine Browser-Abnahme. Historische Playwright-Nachweise
+bleiben historische Evidenz; die entfernten Skripte sind kein künftiger Testweg.

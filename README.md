@@ -133,18 +133,19 @@ The command prints the current local user API key and stores it with owner-only 
 | `bun run demo:local:status` | Show local service health and authenticated readiness. |
 | `bun run demo:local:key` | Print the current local login key. |
 | `bun run demo:local:lifecycle` | Start, stop, restart, reset and reseed a disposable isolated demo instance; verify its fixtures and cleanup without touching the default demo. |
-| `bun run demo:local:verify` | Run local API and browser journeys, including one provider chat response and workflow approval/execution; no screenshots. |
-| `bun run demo:local:verify -- --mock` | Run the same journeys and verify chat through the mock provider without an external model call. |
+| `bun run demo:local:verify` | Verify the local API installation against its checkout and running image. |
 
 The fixtures cover all main Cockpit areas: six connectors, twelve demo workflows plus three installation starters, twenty-four recorded runs with successful/failed/cancelled outcomes and usage, seven conversations including a pending question and hidden chat, six knowledge sources with twelve sections, eight skills, six skill proposals from recurring patterns, five downloadable files, and four people with roles/groups. Long names, Unicode, categories and multiple statuses support manual review. Historical runs and costs are clearly synthetic; recorded fixtures are not claims of real execution. A local API service provides contacts, orders, reports, echo writes and a deliberate failure endpoint for new real workflow runs. Workflows retain normal approval gates. External OAuth/MCP accounts and external delivery services require their own credentials; the three installation starter workflows use public demo endpoints when run.
 
 The fixed Compose project is `subkit-cockpit-demo`; PostgreSQL and object storage have dedicated named volumes. The existing development/production installations are independent. The demo publishes its database on loopback port `55439` by default so it can run beside the regular local database; `SUBKIT_DEMO_DB_PORT` changes that port. `SUBKIT_TEST_PORT` changes the Cockpit loopback host port; use the same values for subsequent commands. The local receipt is `.artifacts/cockpit-demo/receipt.json`.
 
-Run `bun run demo:local:verify` after a provider-backed setup when you want to verify the running installation before manual review. It uses disposable resources and the real local services, checks API-key login, catalog navigation, file/source/skill changes, workflow permission boundaries and browser approval/execution, and requests one real AI response. The session learnings review group collects synthetic items in its own `journey-…` category, never your default category, proves that an API key cannot confirm, confirms a skill proposal in the Cockpit and checks for exactly one active skill with the replaced skill archived; with a provider it also asks the real model to consolidate two items and checks that its proposal cites only them. The receipt reports the deterministic and the real-model part separately. Intake has no deletion route, so cleanup deletes the created skills and conversation, rejects open proposals and discards collected items; admitted items stay listed as retained. For a provider-free journey, first run `bun run demo:local -- --mock`, then `bun run demo:local:verify -- --mock`; the verifier confirms the configured provider is `mock` before sending chat and checks the deterministic mock response, with no external model call. Verification does not reset your data. Evidence is saved under `.artifacts/cockpit-demo/`; failed checks exit nonzero. `verify:cockpit-local` runs only the API portion; `verify:cockpit-local-browser -- --read-only` checks browser login/navigation without chat or workflow changes. `SUBKIT_DEMO_URL` may override only the selected instance's `127.0.0.1` API port. The wrapper checks the checkout fingerprint and running container image before starting the journeys. These live installation journeys are separate from the isolated functional fixtures in the normal release gate.
+Run `bun run demo:local:verify` to check the running local API installation before browser acceptance. The wrapper verifies the checkout fingerprint and running image, runs API checks against the selected demo, and cleans up its synthetic workflow. Evidence is saved under `.artifacts/cockpit-demo/`; failed checks exit nonzero. `verify:cockpit-local` runs the API checks directly. `SUBKIT_DEMO_URL` may override only the selected instance's `127.0.0.1` API port.
+
+Use browser-use with Codex or Claude Code to verify login, navigation, chat with a real provider, intake review and confirmation, knowledge retrieval, permissions, and workflow approval/execution against the actual local services. Keep synthetic data isolated and clean up only resources created for the check. Record the tested source/image, actions, results, provider mode, and cleanup. API-only or mocked results do not establish a successful browser journey.
 
 Catalog categories share a name, purpose and alternate search words across workflows, connectors, sources, skills and files. The category editor searches all three fields. Saving a displayed AI purpose makes it human-owned; leaving it blank requests a new suggestion. Merging keeps the target purpose and combines alternate words. Concurrent edits require reloading before saving. The local fixtures include three categories with human-written purposes and alternate words; normal starts preserve later edits.
 
-Visual acceptance is manual. Automated functional browser journeys, API/security tests, migrations, builds, type checks and release checks remain enabled; automated screenshot matrices and visual layout sweeps are removed from the verification pipeline.
+Browser acceptance uses browser-use with Codex or Claude Code. Playwright suites, screenshot tests, and visual matrices are removed. API/security tests, migrations, builds, type checks, and release checks remain automated. Visual acceptance is manual.
 
 ## First-run setup
 
@@ -592,9 +593,9 @@ clip remains linked. A new session loads the updated briefing.
 ### Verify an installed intake API
 
 During intake development, `bun run verify:intake` runs the focused type,
-domain, HTTP, briefing, MCP, CLI and browser checks, including a real local
-PostgreSQL/API smoke flow. It avoids the repository-wide test suite. Visual acceptance is performed manually;
-automated verification retains functional browser checks without a visual matrix.
+domain, HTTP, briefing, MCP, and CLI checks, including a real local
+PostgreSQL/API smoke flow. It avoids the repository-wide test suite. Use browser-use
+with Codex or Claude Code for browser journeys; visual acceptance is performed manually.
 
 `bun run verify:intake-live` checks a selected server through its public API.
 Set `SK_ENGINE_URL` and `SK_INTAKE_TEST_KEY` outside the repository. The default
