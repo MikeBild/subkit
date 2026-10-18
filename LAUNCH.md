@@ -534,8 +534,9 @@ acceptance remains open. Google requires a 128x128 extension icon, a 440x280 sma
 image and at least one screenshot. Create screenshots from the real isolated accepted
 installation, without personal data or credentials. No automatic visual matrix.
 
-Open: manual icon acceptance and listing imagery, actual screenshots, public privacy/support URLs,
-publisher identity/account access, current real end-to-end acceptance, authorized
+Prepared media: two real screenshot drafts and a small promotional graphic are linked below.
+Open: manual approval of icons/screenshots/promotional image, public privacy/support URLs,
+publisher identity/account access, final reviewer end-to-end acceptance, authorized
 privacy certification and explicit submission approval. Review timing is external.
 Submission is not publication.
 
@@ -716,3 +717,25 @@ Der ZIP-Generator erzeugt das 128px-Store-Icon mit 96px-Motiv und 16px
 transparentem Rand; die Pixelgrenzen sind automatisiert geprüft (E148).
 Menschliche Medienabnahme und Google-Freigabe bleiben offen. Grundlage:
 [offizielle Google-Bildvorgaben](https://developer.chrome.com/docs/webstore/images).
+
+## L10: Konkrete lokale Einreichungsübergabe
+
+Das lokale Arbeitsarchiv `.artifacts/launch/store-handover.zip` bündelt die
+vorbereiteten Texte, Medien, Reviewer-/Privacy-Arbeitsblätter und das unveränderte
+Extension-ZIP. Es ist **nicht einreichungsbereit** und selbst keine installierbare
+Erweiterung. Nur die darin enthaltene `subkit-clipper.zip` gehört später in den
+Extension-Upload. `READ-FIRST.md` erklärt den Ablauf; `SHA256SUMS` und
+`handover-manifest.json` erlauben den Integritätsabgleich.
+
+Der bereinigte gemeinsame Nachweis mit Dateihashes und acht offenen Voraussetzungen
+steht in [handover-evidence.json](assets/clipper-store/handover-evidence.json).
+Das Arbeitsarchiv bleibt lokal; es ist kein veröffentlichter Download und wird
+nicht durch den Git-Push ausgeliefert. Die Listing-Quelle bleibt dieser Masterplan,
+die Medienquelle `assets/clipper-store/`; bei Änderungen muss die Übergabe neu
+zusammengestellt und erneut geprüft werden. Keine zweite Aufgabenliste pflegen.
+
+Offen bleiben Publisher-/Versionsprüfung, Pflichtlinks, Recht/Zertifizierung,
+Medienabnahme, Reviewer-Zugang, finale Journey-Abnahme und Einreichungsfreigabe.
+Screenshots behalten ihre ursprüngliche ZIP-Provenienz; keine neue Abnahme aus der
+aktuellen Icon-Korrektur ableiten. Die Beschreibungsabsätze zur Wissensübernahme
+setzen die vollständige L12-Abnahme voraus.
