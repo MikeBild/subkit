@@ -3716,6 +3716,24 @@
       "path": "zstd__LICENSE.txt",
       "source": "https://raw.githubusercontent.com/facebook/zstd/f8745da6ff1ad1e7bab384bd1f9d742439278e99/LICENSE",
       "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+    },
+    {
+      "component": "llvm-libcxxabi",
+      "revision": "a4bf6cd7cfb1a1421ba92bca9d017b49936c55e4",
+      "source": "https://raw.githubusercontent.com/llvm/llvm-project/a4bf6cd7cfb1a1421ba92bca9d017b49936c55e4/libcxxabi/LICENSE.TXT",
+      "sha256": "e2b35be49f7284a45b7baca8fc7b3ab7440e7902392b2528a457816b5bb2a15c",
+      "path": "llvm-libcxxabi__LICENSE.txt",
+      "runtimeAttributionSource": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/LICENSE.md",
+      "coverage": "Named in pinned Bun attribution; per-platform binary inclusion unverified"
+    },
+    {
+      "component": "tigerbeetle-io",
+      "revision": "532c8b70b9142c17e07737ab6d3da68d7500cbca",
+      "source": "https://raw.githubusercontent.com/tigerbeetle/tigerbeetle/532c8b70b9142c17e07737ab6d3da68d7500cbca/LICENSE",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "path": "tigerbeetle-io__LICENSE.txt",
+      "runtimeAttributionSource": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/LICENSE.md",
+      "coverage": "Named in pinned Bun attribution; per-platform binary inclusion unverified"
     }
   ]
 }
