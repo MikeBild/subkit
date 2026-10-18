@@ -520,15 +520,14 @@ export async function performUpdate(
 }
 
 export function parseChecksum(sumsText: string, assetName: string): string | null {
+  let checksum: string | null = null;
   for (const line of sumsText.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const match = trimmed.match(/^([a-f0-9]{64})\s+(.+)$/);
-    if (match && match[2] === assetName) {
-      return match[1]!;
-    }
+    const match = line.trim().match(/^(\S+)\s+(.+)$/);
+    if (!match || match[2] !== assetName) continue;
+    if (checksum !== null || !/^[a-f0-9]{64}$/.test(match[1]!)) return null;
+    checksum = match[1]!;
   }
-  return null;
+  return checksum;
 }
 
 export function formatUpdateBanner(info: UpdateInfo, binaryName: string): string {

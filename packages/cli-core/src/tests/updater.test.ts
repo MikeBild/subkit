@@ -187,6 +187,15 @@ describe("platformArch", () => {
 });
 
 describe("parseChecksum", () => {
+  test("rejects repeated or malformed entries for the requested asset", () => {
+    const hash = "a".repeat(64);
+    const other = "b".repeat(64);
+    for (const second of [hash, other, "invalid"])
+      expect(parseChecksum(`${hash}  LICENSE\n${second}  LICENSE\n`, "LICENSE")).toBeNull();
+    expect(parseChecksum(`invalid  LICENSE\n${hash}  LICENSE\n`, "LICENSE")).toBeNull();
+    expect(parseChecksum(`invalid  other\n${hash}  LICENSE\n`, "LICENSE")).toBe(hash);
+  });
+
   const hash64 = "a".repeat(64);
   const hash64b = "b".repeat(64);
 
@@ -467,6 +476,26 @@ describe("verifySignature", () => {
 });
 
 describe("performUpdate signature gating", () => {
+  test("rejects a correctly signed duplicate manifest before downloading the binary", async () => {
+    const cfg = makeConfig();
+    const release = buildSignedRelease({
+      binaryName: cfg.binaryName,
+      binaryBytes: Buffer.from("candidate"),
+      tag: "v2.0.0",
+    });
+    const sums = release.sumsText + release.sumsText;
+    let binaryRequested = false;
+    const fetchImpl = makeFetchImpl((url) => {
+      if (url.endsWith("/SHA256SUMS")) return new Response(sums);
+      if (url.endsWith("/SHA256SUMS.sig")) return new Response(new Uint8Array(signSums(sums)));
+      binaryRequested = true;
+      return new Response("candidate");
+    });
+    await expect(performUpdate(cfg, release.info, fetchImpl)).rejects.toThrow("no checksum");
+    expect(binaryRequested).toBe(false);
+    expect(listRetainedVersions(cfg)).toEqual([]);
+  });
+
   test("throws when SHA256SUMS.sig asset is missing", async () => {
     const pa = platformArch()!;
     const cfg = makeConfig();
