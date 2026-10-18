@@ -162,6 +162,13 @@ Catalog categories share a name, purpose and alternate search words across workf
 
 Browser acceptance uses browser-use with Codex or Claude Code. Playwright suites, screenshot tests, and visual matrices are removed. API/security tests, migrations, builds, type checks, and release checks remain automated. Visual acceptance is manual.
 
+For local verification when Docker's VM disk is constrained, set
+`SUBKIT_TEST_OBJECT_STORE_ROOT` to an absolute host directory shared with the local
+Docker engine before running `bun run verify`. Object-store fixtures then use a
+fresh subdirectory per container and remove that subdirectory after successful
+container cleanup. Existing files in the parent directory are preserved. This
+changes test storage placement; the same real S3 assertions still run.
+
 ## First-run setup
 
 ```bash
