@@ -128,6 +128,7 @@ describe("API key creator provenance", () => {
       .where(eq(systemAccounts.id, ctx.systemAccountId));
     const callerKey = await issueApiKey(
       {
+        issuer: { kind: "system" },
         tenant_id: ctx.tenantId,
         owner_kind: "system_account",
         owner_id: ctx.systemAccountId,

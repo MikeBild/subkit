@@ -7,6 +7,7 @@ export const AuditAction = {
   TENANT_CREATED: "tenant.created",
   TENANT_UPDATED: "tenant.updated",
   TENANT_DELETED: "tenant.deleted",
+  TENANT_OPERATOR_ASSIGNED: "tenant.operator_assigned",
 
   USER_CREATED: "user.created",
   USER_INVITED: "user.invited",

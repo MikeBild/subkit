@@ -26,7 +26,13 @@ export interface SettingEntry {
   };
 }
 
+export type SettingsView =
+  | { kind: "engine"; tenantId?: string }
+  | { kind: "tenant"; tenantId: string };
+
 export interface SettingsList {
+  view: "engine" | "tenant";
+  tenant_id: string | null;
   saved_revision: number | null;
   active_revision: number | null;
   activation_status: "saved" | "preparing" | "active" | "failed" | "restart_required" | null;
@@ -56,20 +62,25 @@ function shownValue(leaf: ConfigLeaf, value: unknown): unknown {
 
 function sourceForLeaf(
   leaf: ConfigLeaf,
-  tenantId: string | undefined,
+  view: SettingsView,
   globalSourceMap: Record<string, SettingSource>,
 ): SettingSource {
   const dotted = dottedPath(leaf);
-  if (!tenantId) return globalSourceMap[dotted] ?? "default";
-  const tenantOverlay = getConfig().tenants?.[tenantId];
-  return readDeep(tenantOverlay, leaf.path) !== undefined
-    ? "tenant"
-    : (globalSourceMap[dotted] ?? "default");
+  const globalSource = globalSourceMap[dotted] ?? "default";
+  const engineSource =
+    view.kind === "tenant" && globalSource === "override" ? "global" : globalSource;
+  if (!view.tenantId) return engineSource;
+  const tenantOverlay = getConfig().tenants?.[view.tenantId];
+  return readDeep(tenantOverlay, leaf.path) !== undefined ? "tenant" : engineSource;
+}
+
+function visibleInView(leaf: ConfigLeaf, view: SettingsView): boolean {
+  return view.kind === "engine" || leaf.meta.scope === "tenant";
 }
 
 function entryFor(
   leaf: ConfigLeaf,
-  tenantId: string | undefined,
+  view: SettingsView,
   config: unknown,
   sourceMap: Record<string, SettingSource>,
 ): SettingEntry {
@@ -77,7 +88,7 @@ function entryFor(
     path: dottedPath(leaf),
     value: shownValue(leaf, readDeep(config, leaf.path)),
     meta: {
-      source: sourceForLeaf(leaf, tenantId, sourceMap),
+      source: sourceForLeaf(leaf, view, sourceMap),
       scope: leaf.meta.scope ?? "global",
       sensitive: !!leaf.meta.secret,
       requiresRestart: !!leaf.meta.requiresRestart,
@@ -88,23 +99,37 @@ function entryFor(
   };
 }
 
-export function readSettingEntry(path: string, tenantId?: string): SettingEntry | null {
+export function readSettingEntry(path: string, view: SettingsView): SettingEntry | null {
   const leaf = findLeafByPath(path);
-  if (!leaf) return null;
-  return entryFor(leaf, tenantId, getConfig(tenantId), getDiagnostics().source_map);
+  if (!leaf || !visibleInView(leaf, view)) return null;
+  return entryFor(leaf, view, getConfig(view.tenantId), getDiagnostics().source_map);
 }
 
-export function readSettingEntries(tenantId?: string): SettingEntry[] {
-  const config = getConfig(tenantId);
+export function readSettingEntries(view: SettingsView): SettingEntry[] {
+  const config = getConfig(view.tenantId);
   const sourceMap = getDiagnostics().source_map;
-  return listConfigLeaves().map((leaf) => entryFor(leaf, tenantId, config, sourceMap));
+  return listConfigLeaves()
+    .filter((leaf) => visibleInView(leaf, view))
+    .map((leaf) => entryFor(leaf, view, config, sourceMap));
 }
 
 export async function readSettingsList(
   db: Executor,
-  tenantId?: string,
-  items: SettingEntry[] = readSettingEntries(tenantId),
+  view: SettingsView,
+  items: SettingEntry[] = readSettingEntries(view),
 ): Promise<SettingsList> {
+  if (view.kind === "tenant") {
+    return {
+      view: "tenant",
+      tenant_id: view.tenantId,
+      saved_revision: null,
+      active_revision: null,
+      activation_status: null,
+      pending_restart_fields: [],
+      items,
+      diagnostics: { pending_restart_keys: [], override_keys: [] },
+    };
+  }
   const diagnostics = getDiagnostics();
   let state: Awaited<ReturnType<typeof getRuntimeConfigState>> | null = null;
   try {
@@ -113,6 +138,8 @@ export async function readSettingsList(
     if (!(error instanceof RuntimeConfigNotFoundError)) throw error;
   }
   return {
+    view: "engine",
+    tenant_id: view.tenantId ?? null,
     saved_revision: state?.saved_revision ?? null,
     active_revision: state?.active_revision ?? null,
     activation_status: state?.activation_status ?? null,

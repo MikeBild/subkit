@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { and, desc, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/index.ts";
 import { auditLog } from "../../db/schema/audit.ts";
+import { createSecondaryTenant, type SecondaryTenant } from "../../http/tests/setup.ts";
+import { grantApproval } from "../../tools/approval.ts";
+import { handleSubkitUpdateSetting } from "../tools/settings.ts";
 import { replayHumanGrantedMcpCall } from "./approved-call-fixture.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
@@ -90,7 +94,13 @@ describe("mcp settings tools", () => {
   });
 
   test("MCP and REST share the hot OIDC provider setting", async () => {
-    const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read", "settings:write"]);
+    const { plaintext } = await suite.issueApiKey([
+      "mcp:admin",
+      "settings:read",
+      "settings:write",
+      "settings:read:global",
+      "settings:write:global",
+    ]);
     const client = await suite.connectWithApiKey(plaintext);
     const providers = [
       { protocol: "api_key", id: "api-key", label: "SubKit API key" },
@@ -132,7 +142,11 @@ describe("mcp settings tools", () => {
   });
 
   test("read tool reports restart semantics without changing the setting", async () => {
-    const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read"]);
+    const { plaintext } = await suite.issueApiKey([
+      "mcp:admin",
+      "settings:read",
+      "settings:read:global",
+    ]);
     const client = await suite.connectWithApiKey(plaintext);
     const result = await client.callTool({
       name: "subkit_settings",
@@ -151,7 +165,11 @@ describe("mcp settings tools", () => {
   });
 
   test("read tool reports the same default and enum members as REST", async () => {
-    const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read"]);
+    const { plaintext } = await suite.issueApiKey([
+      "mcp:admin",
+      "settings:read",
+      "settings:read:global",
+    ]);
     const client = await suite.connectWithApiKey(plaintext);
     const result = await client.callTool({
       name: "subkit_settings",
@@ -170,5 +188,93 @@ describe("mcp settings tools", () => {
     };
     expect(mcpMeta).toMatchObject(expected);
     expect(restMeta).toMatchObject(expected);
+  });
+});
+
+describe("mcp settings tools outside the operator workspace", () => {
+  let secondary: SecondaryTenant;
+
+  beforeAll(async () => {
+    secondary = await createSecondaryTenant(suite.http, "mcp-settings");
+  });
+
+  async function grantedCall(
+    client: Client,
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const pending = textBody(await client.callTool({ name, arguments: args }));
+    expect(pending.status).toBe("needs_confirm");
+    const granted = await grantApproval({
+      db: suite.http.db,
+      tenant_id: secondary.tenantId,
+      approval_id: pending.tool_call_id as string,
+      granted_by_user_id: secondary.admin.userId,
+      via: "portal",
+    });
+    if (!granted.ok) throw new Error(`grant failed: ${granted.code}`);
+    return textBody(
+      await client.callTool({
+        name: "confirm_tool_call",
+        arguments: { tool: name, confirm_id: pending.tool_call_id },
+      }),
+    );
+  }
+
+  test("an admin over API key and MCP OAuth cannot change or read the engine", async () => {
+    const adminModeKey = await suite.issueApiKeyForTenant(
+      secondary.tenantId,
+      secondary.admin.userId,
+      ["mcp:admin"],
+    );
+    for (const token of [adminModeKey.plaintext, secondary.admin.oauthToken]) {
+      const client = await suite.connectWithApiKey(token);
+
+      const own = textBody(await client.callTool({ name: "subkit_settings", arguments: {} }));
+      expect(own.view).toBe("tenant");
+      expect(JSON.stringify(own)).not.toContain(suite.http.tenantId);
+
+      const foreign = textBody(
+        await client.callTool({
+          name: "subkit_settings",
+          arguments: { tenant_id: suite.http.tenantId },
+        }),
+      );
+      expect(foreign.error_code).toBe("scope_violation");
+
+      const global = await grantedCall(client, "subkit_update_setting", {
+        path: "log.level",
+        value: "debug",
+      });
+      expect(global.error_code).toBe("operator_required");
+
+      const otherTenant = await grantedCall(client, "subkit_update_setting", {
+        path: "llm.model",
+        value: "cross-tenant",
+        tenant_id: suite.http.tenantId,
+      });
+      expect(otherTenant.error_code).toBe("scope_violation");
+    }
+  });
+
+  test("a member never sees the write tool and the handler refuses engine-wide writes", async () => {
+    const client = await suite.connectWithApiKey(secondary.member.apiKey);
+    const names = (await client.listTools()).tools.map((tool) => tool.name);
+    expect(names).not.toContain("subkit_update_setting");
+    const result = await handleSubkitUpdateSetting(
+      {
+        db: suite.http.db,
+        principal: {
+          provider: "api_key",
+          kind: "user",
+          id: secondary.member.userId,
+          tenant_id: secondary.tenantId,
+          roles: ["member"],
+          scopes: ["*"],
+        },
+      },
+      { path: "llm.model", value: "member-global" },
+    );
+    expect(result).toMatchObject({ ok: false, data: { error_code: "operator_required" } });
   });
 });

@@ -91,8 +91,8 @@ const rejectRoute = createRoute({
 });
 
 export function registerSecretApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.use("/v1/secret-approvals", requirePermission("settings:read"));
-  app.use("/v1/secret-approvals/*", requirePermission("settings:write"));
+  app.use("/v1/secret-approvals", requirePermission("settings:read:global"));
+  app.use("/v1/secret-approvals/*", requirePermission("settings:write:global"));
 
   app.openapi(listRoute, async (c) => {
     requireAuth(c);

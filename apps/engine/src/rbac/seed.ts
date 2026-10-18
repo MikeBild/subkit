@@ -6,7 +6,7 @@ import {
   roles as rolesTable,
   systemAccounts,
 } from "../db/schema/index.ts";
-import { loadPermissionCatalog } from "./catalog.ts";
+import { isOperatorPermission, loadPermissionCatalog } from "./catalog.ts";
 
 export const BUILTIN_ROLE_NAMES = {
   ADMIN: "admin",
@@ -17,6 +17,7 @@ export const BUILTIN_ROLE_NAMES = {
 } as const;
 
 function memberPermissionFilter(name: string): boolean {
+  if (isOperatorPermission(name)) return false;
   if (name.startsWith("rbac:")) return false;
   if (name === "audit:read") return false;
   if (name === "identity:write") return false;
@@ -104,6 +105,22 @@ async function upsertBuiltinRole(db: Db, name: string, description: string): Pro
   return row.id;
 }
 
+async function removeRolePermissions(
+  db: Db,
+  roleId: string,
+  permissionIds: string[],
+): Promise<void> {
+  if (permissionIds.length === 0) return;
+  await db
+    .delete(rolePermissions)
+    .where(
+      and(
+        eq(rolePermissions.role_id, roleId),
+        inArray(rolePermissions.permission_id, permissionIds),
+      ),
+    );
+}
+
 async function setRolePermissions(db: Db, roleId: string, permissionIds: string[]): Promise<void> {
   for (const pid of permissionIds) {
     await db
@@ -144,8 +161,10 @@ export async function seedBuiltinRolesAndPermissions(db: Db): Promise<SeededRole
   );
 
   const memberPermIds: string[] = [];
+  const memberExcludedOperatorIds: string[] = [];
   for (const [name, pid] of permIds) {
     if (memberPermissionFilter(name)) memberPermIds.push(pid);
+    else if (isOperatorPermission(name)) memberExcludedOperatorIds.push(pid);
   }
   const enduserPermIds: string[] = [];
   const metricsScraperPermIds: string[] = [];
@@ -158,6 +177,7 @@ export async function seedBuiltinRolesAndPermissions(db: Db): Promise<SeededRole
 
   await setRolePermissions(db, adminId, allPermIds);
   await setRolePermissions(db, memberId, memberPermIds);
+  await removeRolePermissions(db, memberId, memberExcludedOperatorIds);
   await setRolePermissions(db, enduserId, enduserPermIds);
   await setRolePermissions(db, metricsScraperId, metricsScraperPermIds);
   await setRolePermissions(db, portalTokenUserId, portalTokenUserPermIds);

@@ -238,6 +238,17 @@ describe("app visibility", () => {
     );
     expect(ids).toEqual(["flowkit", "orphan", "testapp", "userkit"]);
   });
+
+  test("a workspace without its own facts sees none of the engine-wide app configuration", () => {
+    const ids = visibleAppIds(
+      {
+        auth: { providers } as never,
+        products: { testapp: product },
+      },
+      { workflows: [], users: new Map(), signIn: tenantSignIn(providers, "other-workspace") },
+    );
+    expect(ids).toEqual([]);
+  });
 });
 
 describe("stored product id", () => {

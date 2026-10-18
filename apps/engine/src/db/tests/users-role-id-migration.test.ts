@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { runMigrations } from "../migrate.ts";
-import { roles, tenants, users } from "../schema/index.ts";
+import { roles, users } from "../schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "./setup.ts";
 
 test(
@@ -9,10 +9,12 @@ test(
   async () => {
     const ctx = await createTestDb("users_role_id_upgrade", { upToIdx: 77 });
     try {
-      const [tenant] = await ctx.db
-        .insert(tenants)
-        .values({ slug: "role-id-upgrade", display_name: "Role id upgrade" })
-        .returning();
+      const inserted = (await ctx.db.execute(sql`
+        INSERT INTO "tenants" ("slug", "display_name")
+        VALUES ('role-id-upgrade', 'Role id upgrade')
+        RETURNING "id"
+      `)) as unknown as { rows: Array<{ id: string }> };
+      const tenant = inserted.rows[0];
       if (!tenant) throw new Error("missing tenant");
       await ctx.db.execute(sql`
         INSERT INTO "users" ("tenant_id", "email", "role", "role_id")

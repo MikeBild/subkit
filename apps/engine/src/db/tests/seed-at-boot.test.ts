@@ -36,6 +36,7 @@ describe("seedAtBoot (development)", () => {
 
     const tenantsAfter = await ctx.db.select().from(tenants).where(eq(tenants.slug, "default"));
     expect(tenantsAfter.length).toBe(1);
+    expect(tenantsAfter[0]?.is_operator).toBe(true);
 
     const r2 = await seedAtBoot(ctx.db);
     expect(r2.status).toBe("already_seeded");

@@ -151,7 +151,7 @@ const SOURCE_GATES: Record<AttentionSource, SourceGate> = {
   patches: { permission: "workflow:read", resource_type: "workflow" },
   connectors: { permission: "connector:read", resource_type: "connector" },
   connections: { permission: "connection:read" },
-  secret_approvals: { permission: "settings:read" },
+  secret_approvals: { permission: "settings:read:global" },
   skills: { permission: "skill:read" },
   intake: { permission: "intake:read" },
   budget: { permission: "stats:read" },

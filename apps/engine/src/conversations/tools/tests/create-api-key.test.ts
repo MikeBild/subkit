@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { apiKeys, auditLog } from "../../../db/schema/index.ts";
+import type { ResolvedPrincipal } from "../../../auth/types.ts";
+import { apiKeys, auditLog, tenants } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
@@ -18,12 +19,27 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-function makeToolContext(actorId: string | null = ctx.user_id): ToolContext {
+function adminPrincipal(scopes: string[] = ["*"]): ResolvedPrincipal {
+  return {
+    provider: "api_key",
+    kind: "user",
+    id: ctx.user_id,
+    tenant_id: ctx.tenant_id,
+    roles: ["admin"],
+    scopes,
+  };
+}
+
+function makeToolContext(
+  actorId: string | null = ctx.user_id,
+  principal: ResolvedPrincipal | null = actorId ? adminPrincipal() : null,
+): ToolContext {
   return {
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
     conversation_id: nextConvoId(),
     actor_id: actorId,
+    principal,
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({
@@ -127,5 +143,74 @@ describe("create_api_key", () => {
   test("seals input schema at registration — rejects unknown fields", async () => {
     const sealed = (await import("../index.ts")).getTool("create_api_key")!.inputSchema;
     expect(sealed.safeParse({ name: "ok", not_a_real_field: 1 }).success).toBe(false);
+  });
+
+  test("refuses an engine-wide scope for a workspace that is not the engine operator", async () => {
+    const result = await createApiKeyTool.execute(makeToolContext(), {
+      name: "global",
+      scopes: ["settings:write:global"],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected refusal");
+    expect(result.error_code).toBe("scope_exceeds_issuer");
+    expect(result.message).toContain("only the engine operator can grant it");
+  });
+
+  test("grants an engine-wide scope when the workspace is the engine operator", async () => {
+    await ctx.testDb.db
+      .update(tenants)
+      .set({ is_operator: true })
+      .where(eq(tenants.id, ctx.tenant_id));
+    try {
+      const result = await createApiKeyTool.execute(makeToolContext(), {
+        name: "operator-global",
+        scopes: ["settings:write:global"],
+      });
+      expect(result.ok).toBe(true);
+      expect((result.data as { api_key: { scopes: string[] } }).api_key.scopes).toEqual([
+        "settings:write:global",
+      ]);
+    } finally {
+      await ctx.testDb.db
+        .update(tenants)
+        .set({ is_operator: false })
+        .where(eq(tenants.id, ctx.tenant_id));
+    }
+  });
+
+  test("refuses '*' from a scope-limited credential", async () => {
+    const tc = makeToolContext(ctx.user_id, adminPrincipal(["workflow:read"]));
+    const result = await createApiKeyTool.execute(tc, { name: "wild", scopes: ["*"] });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected refusal");
+    expect(result.error_code).toBe("scope_exceeds_issuer");
+  });
+
+  test("omitted scopes inherit a scope-limited credential's own ceiling", async () => {
+    const tc = makeToolContext(ctx.user_id, adminPrincipal(["workflow:read"]));
+    const result = await createApiKeyTool.execute(tc, { name: "inherit" });
+    expect(result.ok).toBe(true);
+    expect((result.data as { api_key: { scopes: string[] } }).api_key.scopes).toEqual([
+      "workflow:read",
+    ]);
+  });
+
+  test("refuses an unknown scope", async () => {
+    const result = await createApiKeyTool.execute(makeToolContext(), {
+      name: "unknown",
+      scopes: ["nope"],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected refusal");
+    expect(result.error_code).toBe("unknown_scope");
+  });
+
+  test("fails closed when the conversation has no signed-in person", async () => {
+    const result = await createApiKeyTool.execute(makeToolContext(ctx.user_id, null), {
+      name: "no-principal",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected refusal");
+    expect(result.error_code).toBe("api_key_issuer_unknown");
   });
 });

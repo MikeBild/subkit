@@ -6,9 +6,15 @@ import { withContext } from "../../logging/context.ts";
 import { logger } from "../../logging/logger.ts";
 import { logRing } from "../../observability/log-ring.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
-import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
+import {
+  createHttpTestServer,
+  createSecondaryTenant,
+  type HttpTestServer,
+  type SecondaryTenant,
+} from "./setup.ts";
 
 let srv: HttpTestServer;
+let secondary: SecondaryTenant;
 let memberKey = "";
 
 function sha256Hex(v: string): string {
@@ -42,6 +48,7 @@ beforeAll(async () => {
     scopes: ["*"],
   });
   memberKey = key.plaintext;
+  secondary = await createSecondaryTenant(srv, "diagnostics-logs");
 });
 
 afterAll(async () => {
@@ -52,6 +59,13 @@ afterAll(async () => {
 function adminHeaders() {
   return {
     authorization: `Bearer ${srv.apiKey}`,
+    "content-type": "application/json",
+  } as const;
+}
+
+function tenantAdminHeaders() {
+  return {
+    authorization: `Bearer ${secondary.admin.apiKey}`,
     "content-type": "application/json",
   } as const;
 }
@@ -140,7 +154,7 @@ describe("/v1/diagnostics/logs", () => {
     expect(res.status).toBe(400);
   });
 
-  test("tail filters foreign-tenant entries before serving", async () => {
+  test("tail filters foreign-tenant entries before serving a non-operator workspace", async () => {
     const FOREIGN_TENANT = "00000000-0000-0000-0000-000000000fee";
     const before = Date.now(); // allow-wall-clock: ring window bound
     await withContext(
@@ -155,7 +169,7 @@ describe("/v1/diagnostics/logs", () => {
     );
     const foreignRes = await fetch(
       `${srv.baseUrl}/v1/diagnostics/logs?since=${before - 100}&module=test_tenant_leak`,
-      { headers: adminHeaders() },
+      { headers: tenantAdminHeaders() },
     );
     expect(foreignRes.status).toBe(200);
     const foreignBody = (await foreignRes.json()) as {
@@ -165,7 +179,7 @@ describe("/v1/diagnostics/logs", () => {
     expect(foreignActions).not.toContain("foreign_emitted");
 
     await withContext(
-      { trace_id: "same-tenant-test", tenant_id: srv.tenantId, request_source: "api" },
+      { trace_id: "same-tenant-test", tenant_id: secondary.tenantId, request_source: "api" },
       async () => {
         logger.info({
           module: "test_tenant_leak",
@@ -176,7 +190,7 @@ describe("/v1/diagnostics/logs", () => {
     );
     const sameRes = await fetch(
       `${srv.baseUrl}/v1/diagnostics/logs?since=${before - 100}&module=test_tenant_leak`,
-      { headers: adminHeaders() },
+      { headers: tenantAdminHeaders() },
     );
     const sameBody = (await sameRes.json()) as {
       entries: Array<{ action?: string }>;
@@ -184,7 +198,7 @@ describe("/v1/diagnostics/logs", () => {
     expect(sameBody.entries.map((e) => e.action)).toContain("same_emitted");
   });
 
-  test("system-scope entries (no tenant_id) remain visible to tenant admins", async () => {
+  test("engine entries (no tenant_id) are visible to the engine operator only", async () => {
     const before = Date.now(); // allow-wall-clock: ring window bound
     logger.info({
       module: "test_system_scope",
@@ -197,6 +211,12 @@ describe("/v1/diagnostics/logs", () => {
     );
     const body = (await res.json()) as { entries: Array<{ action?: string }> };
     expect(body.entries.map((e) => e.action)).toContain("boot_like");
+    const tenantRes = await fetch(
+      `${srv.baseUrl}/v1/diagnostics/logs?since=${before - 100}&module=test_system_scope`,
+      { headers: tenantAdminHeaders() },
+    );
+    const tenantBody = (await tenantRes.json()) as { entries: Array<{ action?: string }> };
+    expect(tenantBody.entries.map((e) => e.action)).not.toContain("boot_like");
   });
 
   test("SSE stream replays buffered entries then emits live ones", async () => {

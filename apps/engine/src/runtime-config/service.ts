@@ -21,13 +21,28 @@ import {
   type RevisionStatus,
   RuntimeConfigConflictError,
   RuntimeConfigNotFoundError,
+  RuntimeConfigPendingError,
   type RuntimeConfigStateView,
   RuntimeConfigValidationError,
   type RuntimeRevision,
   RuntimeSecretInUseError,
 } from "./contracts.ts";
-import { clone, configDigest, getDeep, restartFieldsDiffering, setDeep } from "./document.ts";
+import {
+  clone,
+  configDigest,
+  getDeep,
+  restartFieldsDiffering,
+  revisionChangesOnlyTenant,
+  setDeep,
+} from "./document.ts";
 import { hasPendingSecretColumns, secretVersionProjection } from "./secret-columns.ts";
+import {
+  assertSecretName,
+  containsSecretReference,
+  ownsTenantSettingSecret,
+  parseSecretReference,
+  secretReference,
+} from "./secret-reference.ts";
 
 export {
   ACTIVATION_TIMEOUT_MS,
@@ -37,33 +52,21 @@ export {
   type RevisionStatus,
   RuntimeConfigConflictError,
   RuntimeConfigNotFoundError,
+  RuntimeConfigPendingError,
   type RuntimeConfigStateView,
   RuntimeConfigValidationError,
   type RuntimeRevision,
   RuntimeSecretInUseError,
 } from "./contracts.ts";
+export { revisionChangesOnlyTenant } from "./document.ts";
+export { assertNoPendingEngineChange } from "./pending-engine-change.ts";
+export {
+  parseSecretReference,
+  secretReference,
+  settingSecretName,
+} from "./secret-reference.ts";
 
-const SECRET_REF = /^secret:\/\/([A-Za-z0-9][A-Za-z0-9._-]{0,254})\/([1-9][0-9]*)$/;
-const SECRET_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
 export const DATABASE_URL_BOOTSTRAP_SENTINEL = "bootstrap://DATABASE_URL";
-
-export function parseSecretReference(value: string): { name: string; version: number } | null {
-  const match = SECRET_REF.exec(value);
-  if (!match) return null;
-  return { name: match[1]!, version: Number(match[2]) };
-}
-
-export function secretReference(name: string, version: number): string {
-  return `secret://${name}/${version}`;
-}
-
-function assertSecretName(name: string): void {
-  if (!SECRET_NAME.test(name)) {
-    throw new RuntimeConfigValidationError(
-      "secret name must match [A-Za-z0-9][A-Za-z0-9._-]{0,254}",
-    );
-  }
-}
 
 export interface PendingSecretVersionInput {
   prepared_by: string;
@@ -527,13 +530,6 @@ function normalizeChanges(changes: Record<string, unknown>): Array<[string, unkn
   return entries;
 }
 
-function containsSecretReference(value: unknown): boolean {
-  if (typeof value === "string") return parseSecretReference(value) !== null;
-  if (Array.isArray(value)) return value.some(containsSecretReference);
-  if (value === null || typeof value !== "object") return false;
-  return Object.values(value as Record<string, unknown>).some(containsSecretReference);
-}
-
 export async function saveRuntimeConfigPatch(
   db: Db,
   args: {
@@ -542,10 +538,19 @@ export async function saveRuntimeConfigPatch(
     scope: "global" | "tenant";
     tenant_id?: string;
     created_by: string | null;
+    restrict_to_tenant?: string;
   },
 ): Promise<RuntimeConfigStateView> {
   if (args.scope === "tenant" && !args.tenant_id) {
     throw new RuntimeConfigValidationError("tenant_id is required when scope=tenant");
+  }
+  if (
+    args.restrict_to_tenant !== undefined &&
+    (args.scope !== "tenant" || args.tenant_id !== args.restrict_to_tenant)
+  ) {
+    throw new RuntimeConfigValidationError(
+      "a tenant-restricted change may only write that tenant's own settings",
+    );
   }
   if (args.scope === "global" && args.tenant_id) {
     throw new RuntimeConfigValidationError("tenant_id is only valid when scope=tenant");
@@ -563,6 +568,9 @@ export async function saveRuntimeConfigPatch(
       throw new RuntimeConfigNotFoundError("runtime config is not initialized");
     }
     const baseRevision = state.desired_revision ?? state.active_revision;
+    if (args.restrict_to_tenant !== undefined && baseRevision !== state.active_revision) {
+      throw new RuntimeConfigPendingError();
+    }
     if (baseRevision !== args.expected_revision) {
       throw new RuntimeConfigConflictError(
         `expected revision ${args.expected_revision}, current saved revision is ${baseRevision}`,
@@ -588,6 +596,15 @@ export async function saveRuntimeConfigPatch(
       if (leaf.meta.secret && (typeof value !== "string" || !parseSecretReference(value))) {
         throw new RuntimeConfigValidationError(
           `${path} is secret; create a secret version and pass its immutable secret:// reference`,
+        );
+      }
+      if (
+        leaf.meta.secret &&
+        args.restrict_to_tenant !== undefined &&
+        !ownsTenantSettingSecret(value, args.restrict_to_tenant, leaf.path)
+      ) {
+        throw new RuntimeConfigValidationError(
+          `${path} is secret; send the plaintext value so the engine stores it as this workspace's own secret`,
         );
       }
       if (!leaf.meta.secret && containsSecretReference(value)) {
@@ -738,10 +755,15 @@ export interface RevisionActivationActor extends AppBoundaryActor {
   source: string;
 }
 
+export interface RevisionActivationOptions {
+  restrict_to_tenant?: string;
+}
+
 export async function activateRuntimeRevision(
   db: Db,
   revisionNumber: number,
   actor: RevisionActivationActor,
+  options: RevisionActivationOptions = {},
 ): Promise<{
   saved_revision: number;
   active_revision: number;
@@ -769,6 +791,12 @@ export async function activateRuntimeRevision(
     );
   }
   const previous = await requireRevision(db, state.active_revision);
+  if (
+    options.restrict_to_tenant &&
+    !revisionChangesOnlyTenant(previous.document, revision.document, options.restrict_to_tenant)
+  ) {
+    throw new RuntimeConfigPendingError();
+  }
   if (revision.pending_restart_fields.length > 0) {
     await db
       .update(runtimeConfigRevisions)

@@ -1,7 +1,7 @@
 import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { isCeilingScope, WILDCARD_SCOPE } from "../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import {
   groupMembers,
   groupRoleAssignments,
@@ -14,6 +14,8 @@ import {
 import { log } from "../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { now } from "../utils/clock.ts";
+import { isOperatorPermission } from "./catalog.ts";
+import { isOperatorPrincipal } from "./operator.ts";
 
 export type DecisionSource =
   | "builtin_admin"
@@ -21,7 +23,8 @@ export type DecisionSource =
   | "group"
   | "role"
   | "portal_token_allowlist"
-  | "credential_ceiling";
+  | "credential_ceiling"
+  | "operator_boundary";
 
 export type ConnectorAccessLevel = "none" | "read-only" | "read-write";
 
@@ -52,7 +55,7 @@ function recordMetric(result: "allow" | "deny", permission: string, source: stri
   } catch {}
 }
 
-async function lookupPermissionId(db: Db, name: string): Promise<string | null> {
+async function lookupPermissionId(db: Executor, name: string): Promise<string | null> {
   // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db
     .select({ id: permissionsTable.id })
@@ -62,7 +65,7 @@ async function lookupPermissionId(db: Db, name: string): Promise<string | null> 
   return rows[0]?.id ?? null;
 }
 
-async function lookupBuiltinRoleIdByName(db: Db, name: string): Promise<string | null> {
+async function lookupBuiltinRoleIdByName(db: Executor, name: string): Promise<string | null> {
   const rows = await db
     .select({ id: rolesTable.id })
     .from(rolesTable)
@@ -71,7 +74,7 @@ async function lookupBuiltinRoleIdByName(db: Db, name: string): Promise<string |
   return rows[0]?.id ?? null;
 }
 
-async function principalRoleId(db: Db, principal: ResolvedPrincipal): Promise<string | null> {
+async function principalRoleId(db: Executor, principal: ResolvedPrincipal): Promise<string | null> {
   if (principal.kind === "user") {
     // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
     const rows = await db
@@ -101,7 +104,11 @@ async function principalRoleId(db: Db, principal: ResolvedPrincipal): Promise<st
   return null;
 }
 
-async function roleHasPermission(db: Db, roleId: string, permissionId: string): Promise<boolean> {
+async function roleHasPermission(
+  db: Executor,
+  roleId: string,
+  permissionId: string,
+): Promise<boolean> {
   // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db
     .select({ role_id: rolePermissions.role_id })
@@ -114,7 +121,7 @@ async function roleHasPermission(db: Db, roleId: string, permissionId: string): 
 }
 
 async function groupGrantsPermission(
-  db: Db,
+  db: Executor,
   userId: string,
   permissionId: string,
 ): Promise<boolean> {
@@ -129,7 +136,7 @@ async function groupGrantsPermission(
   return rows.length > 0;
 }
 
-async function userGroupIds(db: Db, userId: string): Promise<string[]> {
+async function userGroupIds(db: Executor, userId: string): Promise<string[]> {
   // tenant-filter:exempt — group_members has no tenant_id column; a user's
   // group memberships are tenant-scoped transitively (group_members.group_id
   // → groups.tenant_id, and a user only joins groups in its own tenant). The
@@ -142,7 +149,7 @@ async function userGroupIds(db: Db, userId: string): Promise<string[]> {
 }
 
 async function hasResourceGrant(
-  db: Db,
+  db: Executor,
   check: PermissionCheck,
   permissionId: string,
 ): Promise<boolean> {
@@ -273,9 +280,31 @@ function credentialCeiling(check: PermissionCheck): Decision | null {
   return null;
 }
 
-export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
+export const OPERATOR_ONLY_CAUSE = "operator_only";
+
+function operatorDeny(check: PermissionCheck): Decision {
+  const reason = `operator_boundary:${OPERATOR_ONLY_CAUSE}`;
+  recordMetric("deny", check.permission, "operator_boundary");
+  emitDeny(check, reason, "operator_boundary");
+  return {
+    allow: false,
+    reason,
+    source: "operator_boundary",
+    detail: {
+      required: check.permission,
+      ...(check.resource ? { resource: check.resource } : {}),
+      cause: OPERATOR_ONLY_CAUSE,
+    },
+  };
+}
+
+export async function can(db: Executor, check: PermissionCheck): Promise<Decision> {
   const ceiling = credentialCeiling(check);
   if (ceiling) return ceiling;
+
+  if (isOperatorPermission(check.permission) && !(await isOperatorPrincipal(db, check.principal))) {
+    return operatorDeny(check);
+  }
 
   if (hasBuiltinAdminRole(check.principal)) {
     recordMetric("allow", check.permission, "builtin_admin");
@@ -355,7 +384,7 @@ export interface ResourceAccess {
 }
 
 export async function resourceAccess(
-  db: Db,
+  db: Executor,
   check: {
     tenant_id: string;
     principal: ResolvedPrincipal;
@@ -371,7 +400,7 @@ export async function resourceAccess(
     permission,
     ...(check.quiet ? { quiet: true } : {}),
   });
-  if (tenantWide.source === "credential_ceiling") {
+  if (tenantWide.source === "credential_ceiling" || tenantWide.source === "operator_boundary") {
     return { tenantWide, allows: () => false, any: false };
   }
   const isPortalToken = principal.provider === "portal_token";
@@ -443,7 +472,7 @@ export async function resourceAccess(
 }
 
 export async function catalogVisibility(
-  db: Db,
+  db: Executor,
   principal: ResolvedPrincipal,
   permission: "workflow:read" | "connector:read",
   resource_type: "workflow" | "connector",
@@ -466,7 +495,21 @@ function emitDeny(check: PermissionCheck, reason: string, source: string): void 
   log.rbac.denied({ source, reason, ...rbacCtx(check) });
 }
 
-export async function assertCan(db: Db, check: PermissionCheck): Promise<Decision> {
+export async function principalHolds(
+  db: Executor,
+  principal: ResolvedPrincipal,
+  permission: string,
+): Promise<boolean> {
+  const decision = await can(db, {
+    tenant_id: principal.tenant_id,
+    principal,
+    permission,
+    quiet: true,
+  });
+  return decision.allow;
+}
+
+export async function assertCan(db: Executor, check: PermissionCheck): Promise<Decision> {
   const d = await can(db, check);
   if (!d.allow) {
     const err = new Error(d.reason ?? "permission_denied");
@@ -477,7 +520,7 @@ export async function assertCan(db: Db, check: PermissionCheck): Promise<Decisio
 }
 
 export async function connectorAccessLevel(
-  db: Db,
+  db: Executor,
   principal: ResolvedPrincipal,
   connectorId: string,
   tenantId: string,

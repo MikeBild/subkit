@@ -25,11 +25,14 @@ export function entryTenantId(entry: CapturedLog): string | null {
   return v;
 }
 
-export function isEntryVisibleToTenant(entry: CapturedLog, principal_tenant_id: string): boolean {
+export function isEntryVisibleToTenant(
+  entry: CapturedLog,
+  principal_tenant_id: string,
+  includeEngine: boolean,
+): boolean {
   const t = entryTenantId(entry);
-  if (t === null) return true;
-  if (SYSTEM_TENANT_TOKENS.has(t)) return true;
-  return t === principal_tenant_id;
+  if (t === null || SYSTEM_TENANT_TOKENS.has(t)) return includeEngine;
+  return includeEngine || t === principal_tenant_id;
 }
 
 export interface LogRing {
@@ -41,6 +44,7 @@ export interface LogRing {
     action?: string;
     min_level?: string;
     visible_to_tenant?: string;
+    include_engine?: boolean;
   }): CapturedLog[];
   size(): number;
   capacity(): number;
@@ -65,7 +69,10 @@ export function createLogRing(capacity = DEFAULT_CAPACITY_FROM_ENV()): LogRing {
     if (opts.module && e.module !== opts.module) return false;
     if (opts.action && e.action !== opts.action) return false;
     if (opts.min_level && weight(e.level) < weight(opts.min_level)) return false;
-    if (opts.visible_to_tenant !== undefined && !isEntryVisibleToTenant(e, opts.visible_to_tenant))
+    if (
+      opts.visible_to_tenant !== undefined &&
+      !isEntryVisibleToTenant(e, opts.visible_to_tenant, opts.include_engine === true)
+    )
       return false;
     return true;
   };

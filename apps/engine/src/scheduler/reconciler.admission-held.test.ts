@@ -302,7 +302,13 @@ test("deactivating a person revokes their key while an approved schedule still r
     .returning();
   if (!person) throw new Error("fixture user missing");
   const key = await issueApiKey(
-    { tenant_id: ctx.tenantId, owner_kind: "user", owner_id: person.id, actor_id: null },
+    {
+      issuer: { kind: "system" },
+      tenant_id: ctx.tenantId,
+      owner_kind: "user",
+      owner_id: person.id,
+      actor_id: null,
+    },
     ctx.testDb.db,
   );
   const { workflow_id } = await createWorkflowRow(ctx, {

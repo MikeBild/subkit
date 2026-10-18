@@ -2502,6 +2502,20 @@
       "SettingsListResponse": {
         "type": "object",
         "properties": {
+          "view": {
+            "type": "string",
+            "enum": [
+              "engine",
+              "tenant"
+            ]
+          },
+          "tenant_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "saved_revision": {
             "type": [
               "integer",
@@ -2565,6 +2579,8 @@
           }
         },
         "required": [
+          "view",
+          "tenant_id",
           "saved_revision",
           "active_revision",
           "activation_status",
@@ -2666,6 +2682,24 @@
           "message"
         ]
       },
+      "SettingOperatorRequired": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "operator_required"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
       "SettingRestartRequired": {
         "type": "object",
         "properties": {
@@ -2689,6 +2723,24 @@
           "code",
           "message",
           "requiresRestart"
+        ]
+      },
+      "SettingOperatorChangePending": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "operator_change_pending"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
         ]
       },
       "SettingValidationFailed": {
@@ -3565,8 +3617,11 @@
           "scopes": {
             "type": "array",
             "items": {
-              "type": "string"
-            }
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 64,
+            "description": "Permission names from GET /v1/rbac/permissions, '*', or mcp:read, mcp:authoring, mcp:admin. Each must be held by the issuing credential; '*' only from a credential without scope limits. Omitted: the issuer's own ceiling."
           },
           "allowed_workflows": {
             "type": "array",
@@ -3944,8 +3999,11 @@
           "scopes": {
             "type": "array",
             "items": {
-              "type": "string"
-            }
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 64,
+            "description": "Permission names from GET /v1/rbac/permissions, '*', or mcp:read, mcp:authoring, mcp:admin. Each must be held by the issuing credential; '*' only from a credential without scope limits. Omitted: the issuer's own ceiling."
           },
           "allowed_workflows": {
             "type": "array",
@@ -4268,12 +4326,17 @@
               },
               "display_name": {
                 "type": "string"
+              },
+              "engine_operator": {
+                "type": "boolean",
+                "description": "True when this workspace is the engine operator and may change the whole engine"
               }
             },
             "required": [
               "id",
               "slug",
-              "display_name"
+              "display_name",
+              "engine_operator"
             ]
           },
           "session": {
@@ -4509,6 +4572,25 @@
           "last_used_at"
         ]
       },
+      "OAuthClientRevokeResult": {
+        "type": "object",
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "client_disabled",
+              "tenant_access_revoked"
+            ]
+          }
+        },
+        "required": [
+          "client_id",
+          "effect"
+        ]
+      },
       "Whoami": {
         "type": "object",
         "properties": {
@@ -4567,6 +4649,10 @@
               "null"
             ],
             "description": "App the caller signed in to through an oidc_bearer provider, or null"
+          },
+          "engine_operator": {
+            "type": "boolean",
+            "description": "True when the caller belongs to the engine operator workspace"
           }
         },
         "required": [
@@ -4579,7 +4665,8 @@
           "provider",
           "base_url",
           "scopes",
-          "product_id"
+          "product_id",
+          "engine_operator"
         ]
       },
       "EffectivePermissions": {
@@ -27405,12 +27492,17 @@
           },
           "resource_type": {
             "type": "string"
+          },
+          "operator": {
+            "type": "boolean",
+            "description": "True when only the engine operator workspace can exercise this permission"
           }
         },
         "required": [
           "name",
           "description",
-          "resource_type"
+          "resource_type",
+          "operator"
         ]
       },
       "RbacRoleListResponse": {
@@ -31850,7 +31942,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Another workspace's settings, an engine-wide setting that only the engine operator can read, or insufficient permissions",
             "content": {
               "application/json": {
                 "schema": {
@@ -31943,11 +32035,18 @@
             }
           },
           "403": {
-            "description": "Scope violation or insufficient permissions",
+            "description": "Scope violation, a write that needs the engine operator, or insufficient permissions",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SettingScopeViolation"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SettingScopeViolation"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SettingOperatorRequired"
+                    }
+                  ]
                 }
               }
             }
@@ -31963,13 +32062,16 @@
             }
           },
           "409": {
-            "description": "Setting requires a restart in production; pass force=true to apply",
+            "description": "Setting requires a restart in production (pass force=true to apply), or a tenant write waits for the engine operator to activate saved engine-wide settings",
             "content": {
               "application/json": {
                 "schema": {
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/SettingRestartRequired"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SettingOperatorChangePending"
                     },
                     {
                       "$ref": "#/components/schemas/Error"
@@ -33250,7 +33352,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Forbidden, or scope_exceeds_issuer when a requested scope is not held by you",
             "content": {
               "application/json": {
                 "schema": {
@@ -33261,6 +33363,16 @@
           },
           "404": {
             "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "unknown_scope: a requested scope is not a permission name",
             "content": {
               "application/json": {
                 "schema": {
@@ -33727,7 +33839,27 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Forbidden, or scope_exceeds_issuer when a requested scope is not held by you",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The owner is not a user or system account of your workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "unknown_scope: a requested scope is not a permission name",
             "content": {
               "application/json": {
                 "schema": {
@@ -33792,7 +33924,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Forbidden, or scope_exceeds_issuer when the key carries scopes your credential does not hold",
             "content": {
               "application/json": {
                 "schema": {
@@ -33802,7 +33934,7 @@
             }
           },
           "404": {
-            "description": "Not found",
+            "description": "The key, or its owner in your workspace, was not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -34900,7 +35032,7 @@
         "tags": [
           "oauth"
         ],
-        "summary": "Disable a registered MCP OAuth client and revoke its outstanding tokens",
+        "summary": "Revoke a registered MCP OAuth client: the engine operator disables it for every tenant, everyone else revokes its grants and tokens in their own tenant",
         "security": [
           {
             "bearerAuth": []
@@ -34918,8 +35050,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Disabled"
+          "200": {
+            "description": "Client disabled engine-wide, or its access in the caller's tenant revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthClientRevokeResult"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized",

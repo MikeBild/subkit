@@ -4,6 +4,7 @@ export interface Permission {
   name: string;
   description: string;
   resource_type: string;
+  operator?: boolean;
 }
 
 const frozen = Object.freeze(
@@ -22,3 +23,11 @@ export function getPermissionByName(name: string): Permission | undefined {
 }
 
 export const ALL_PERMISSION_NAMES: readonly string[] = Object.freeze(frozen.map((p) => p.name));
+
+export const OPERATOR_PERMISSIONS: ReadonlySet<string> = new Set(
+  frozen.filter((p) => p.operator === true).map((p) => p.name),
+);
+
+export function isOperatorPermission(name: string): boolean {
+  return OPERATOR_PERMISSIONS.has(name);
+}

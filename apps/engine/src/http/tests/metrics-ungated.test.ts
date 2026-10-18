@@ -28,6 +28,7 @@ beforeAll(async () => {
       tenant_id: srv.tenantId,
       name: "metrics-scraper",
       description: "Scoped Prometheus scraper",
+      role_id: await builtinRoleId(srv.db, "metrics_scraper"),
     })
     .returning();
   const skey = newKeyPlaintext();

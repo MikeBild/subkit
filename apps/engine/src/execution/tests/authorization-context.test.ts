@@ -329,7 +329,12 @@ test("permission evidence is bound to the real caller and workflow and cannot re
     resource: { type: "workflow", id: workflow_id },
   });
   expect(decision.allow).toBe(true);
-  if (!decision.allow || !decision.source || decision.source === "credential_ceiling") {
+  if (
+    !decision.allow ||
+    !decision.source ||
+    decision.source === "credential_ceiling" ||
+    decision.source === "operator_boundary"
+  ) {
     throw new Error("Expected an allowed workflow permission decision with a granting source");
   }
   const proof = await captureWorkflowPermission(ctx.testDb.db, owner, workflow_id, decision);

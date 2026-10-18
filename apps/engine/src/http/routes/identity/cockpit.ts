@@ -9,7 +9,7 @@ import {
 import { buildOAuthRedirectUri } from "../../../credentials/index.ts";
 import { conversations } from "../../../db/schema/conversations.ts";
 import { roles, sessions, tenants, users } from "../../../db/schema/index.ts";
-import { ALL_PERMISSION_NAMES, can } from "../../../rbac/index.ts";
+import { ALL_PERMISSION_NAMES, can, isOperatorPrincipal } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../../openapi.ts";
 import {
@@ -37,6 +37,11 @@ const CockpitBootstrapResponse = z
       id: z.string().uuid(),
       slug: z.string(),
       display_name: z.string(),
+      engine_operator: z
+        .boolean()
+        .describe(
+          "True when this workspace is the engine operator and may change the whole engine",
+        ),
     }),
     session: z.object({
       expires_at: z.string().datetime(),
@@ -229,6 +234,7 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
           id: identityRow.tenant_id,
           slug: identityRow.tenant_slug,
           display_name: identityRow.tenant_display_name,
+          engine_operator: await isOperatorPrincipal(db, principal),
         },
         session: {
           expires_at: sessionRow.expires_at.toISOString(),

@@ -64,7 +64,13 @@ beforeAll(async () => {
   anotherOwner = second.id;
   memberKey = (
     await issueApiKey(
-      { tenant_id: ctx.tenantId, owner_kind: "user", owner_id: owner, actor_id: ctx.userId },
+      {
+        issuer: { kind: "system" },
+        tenant_id: ctx.tenantId,
+        owner_kind: "user",
+        owner_id: owner,
+        actor_id: ctx.userId,
+      },
       ctx.db,
     )
   ).plaintext;

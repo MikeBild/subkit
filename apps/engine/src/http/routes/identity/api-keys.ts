@@ -21,7 +21,13 @@ const IssueApiKeyBody = z
       .describe(
         'Operator-facing label, e.g. "claude-code". Useful when running one key per channel — a read-and-execute key for a browser client, an mcp:authoring key for a coding agent.',
       ),
-    scopes: z.array(z.string()).optional(),
+    scopes: z
+      .array(z.string().min(1))
+      .max(64)
+      .optional()
+      .describe(
+        "Permission names from GET /v1/rbac/permissions, '*', or mcp:read, mcp:authoring, mcp:admin. Each must be held by the issuing credential; '*' only from a credential without scope limits. Omitted: the issuer's own ceiling.",
+      ),
     allowed_workflows: z.array(z.string()).optional(),
     allowed_connectors: z.array(z.string()).optional(),
     expires_at: z.string().datetime().optional(),
@@ -75,7 +81,18 @@ const issueRoute = createRoute({
     },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
+    403: {
+      description: "Forbidden, or scope_exceeds_issuer when a requested scope is not held by you",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    404: {
+      description: "The owner is not a user or system account of your workspace",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    422: {
+      description: "unknown_scope: a requested scope is not a permission name",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -95,8 +112,15 @@ const rotateRoute = createRoute({
       content: { "application/json": { schema: RotateApiKeyResponse } },
     },
     401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    403: {
+      description:
+        "Forbidden, or scope_exceeds_issuer when the key carries scopes your credential does not hold",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    404: {
+      description: "The key, or its owner in your workspace, was not found",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -188,6 +212,7 @@ export function registerApiKeyRoutes(app: OpenAPIHono<AppEnv>): void {
     }
     const result = await identity.issueApiKey(
       {
+        issuer: { kind: "principal", principal },
         tenant_id: principal.tenant_id,
         owner_kind: body.owner_kind,
         owner_id: body.owner_id,
@@ -231,6 +256,7 @@ export function registerApiKeyRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const result = await identity.rotateApiKey(
       {
+        issuer: { kind: "principal", principal },
         tenant_id: principal.tenant_id,
         id,
         ...(body.overlap_minutes !== undefined ? { overlap_minutes: body.overlap_minutes } : {}),

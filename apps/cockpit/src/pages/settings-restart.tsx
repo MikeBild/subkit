@@ -28,7 +28,7 @@ export function useRestartOffer(): { offer: RestartOffer; status: RestartStatus 
   const query = useQuery({
     queryKey: RESTART_STATUS_QUERY_KEY,
     queryFn: () => apiRequest<RestartStatus>(RESTART_STATUS_PATH),
-    enabled: session.permissions.includes("settings:read"),
+    enabled: session.permissions.includes("settings:read:global"),
     retry: false,
   });
   return {

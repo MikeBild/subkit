@@ -1,6 +1,6 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
+import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
   getConfig,
@@ -14,14 +14,22 @@ import { findLeafByPath } from "../../config/walk.ts";
 import type { Db } from "../../db/client.ts";
 import {
   activateRuntimeRevision,
+  assertNoPendingEngineChange,
   createSecretVersion,
   getRuntimeConfigState,
   parseSecretReference,
   RuntimeConfigConflictError,
   RuntimeConfigNotFoundError,
+  RuntimeConfigPendingError,
   RuntimeConfigValidationError,
   saveRuntimeConfigPatch,
+  settingSecretName,
 } from "../../runtime-config/service.ts";
+import {
+  engineOnlyReadDenial,
+  resolveSettingsReadView,
+  resolveSettingWriteTarget,
+} from "../../runtime-config/settings-access.ts";
 import {
   maskedSettingValue,
   readSettingEntry,
@@ -62,7 +70,8 @@ export const subkitSettingsMcpTool: Tool = {
       tenant_id: {
         type: "string",
         format: "uuid",
-        description: "Optional tenant overlay. Cross-tenant access requires system authority.",
+        description:
+          "Optional tenant overlay. Only the engine operator reads the engine view or another tenant; everyone else sees their own workspace's tenant settings.",
       },
     },
     additionalProperties: false,
@@ -86,7 +95,8 @@ export const subkitUpdateSettingMcpTool: Tool = {
       tenant_id: {
         type: "string",
         format: "uuid",
-        description: "Optional tenant overlay. The setting must support tenant scope.",
+        description:
+          "Tenant overlay. The setting must support tenant scope. Required unless you are the engine operator: a change without it applies to the whole engine.",
       },
       force: {
         type: "boolean",
@@ -99,11 +109,6 @@ export const subkitUpdateSettingMcpTool: Tool = {
     additionalProperties: false,
   },
 };
-
-function canManageOtherTenants(principal: ResolvedPrincipal): boolean {
-  if (principal.tenant_id === SYSTEM_TENANT_ID && principal.roles.includes("admin")) return true;
-  return principal.scopes?.includes("settings:write:global") ?? false;
-}
 
 function readDeep(source: unknown, path: readonly string[]): unknown {
   let cursor = source;
@@ -139,18 +144,17 @@ export async function handleSubkitSettings(
   const parsed = ReadSettingsArgsSchema.safeParse(rawArgs);
   if (!parsed.success) return invalidArguments(parsed.error);
   const { path, tenant_id } = parsed.data;
-  if (tenant_id && tenant_id !== ctx.principal.tenant_id && !canManageOtherTenants(ctx.principal)) {
-    return {
-      ok: false,
-      data: {
-        error_code: "scope_violation",
-        message: `cannot read settings for tenant ${tenant_id}`,
-      },
-    };
+  const access = await resolveSettingsReadView(ctx.db, ctx.principal, tenant_id);
+  if (!access.ok) {
+    return { ok: false, data: { error_code: access.code, message: access.message } };
   }
 
   if (path) {
-    const item = readSettingEntry(path, tenant_id);
+    const item = readSettingEntry(path, access.view);
+    const engineOnly = item ? null : engineOnlyReadDenial(path, access.view);
+    if (engineOnly) {
+      return { ok: false, data: { error_code: engineOnly.code, message: engineOnly.message } };
+    }
     if (!item) {
       return {
         ok: false,
@@ -160,9 +164,9 @@ export async function handleSubkitSettings(
         },
       };
     }
-    return { ok: true, data: await readSettingsList(ctx.db, tenant_id, [item]) };
+    return { ok: true, data: await readSettingsList(ctx.db, access.view, [item]) };
   }
-  return { ok: true, data: await readSettingsList(ctx.db, tenant_id) };
+  return { ok: true, data: await readSettingsList(ctx.db, access.view) };
 }
 
 export async function handleSubkitUpdateSetting(
@@ -192,7 +196,7 @@ export async function handleSubkitUpdateSetting(
 > {
   const parsed = UpdateSettingArgsSchema.safeParse(rawArgs);
   if (!parsed.success) return invalidArguments(parsed.error);
-  const { path, value, tenant_id, force } = parsed.data;
+  const { path, value, tenant_id: requestedTenant, force } = parsed.data;
   const leaf = findLeafByPath(path);
   if (!leaf) {
     return {
@@ -212,24 +216,18 @@ export async function handleSubkitUpdateSetting(
       },
     };
   }
-  if (tenant_id && leaf.meta.scope !== "tenant") {
-    return {
-      ok: false,
-      data: {
-        error_code: "scope_violation",
-        message: `${path} is global and cannot be set for one tenant`,
-      },
-    };
+  const access = await resolveSettingWriteTarget(
+    ctx.db,
+    ctx.principal,
+    leaf,
+    path,
+    requestedTenant,
+  );
+  if (!access.ok) {
+    return { ok: false, data: { error_code: access.code, message: access.message } };
   }
-  if (tenant_id && tenant_id !== ctx.principal.tenant_id && !canManageOtherTenants(ctx.principal)) {
-    return {
-      ok: false,
-      data: {
-        error_code: "scope_violation",
-        message: `cannot mutate settings for tenant ${tenant_id}`,
-      },
-    };
-  }
+  const tenant_id = access.target.kind === "tenant" ? access.target.tenantId : undefined;
+  const restricted = access.target.kind === "tenant" && access.target.restricted;
 
   try {
     let result: Awaited<ReturnType<typeof setConfigKey>>;
@@ -237,6 +235,7 @@ export async function handleSubkitUpdateSetting(
     if (process.env.NODE_ENV === "production") {
       try {
         const state = await getRuntimeConfigState(ctx.db);
+        if (restricted) await assertNoPendingEngineChange(ctx.db);
         const before = readDeep(getConfig(tenant_id), leaf.path);
         let storedValue = value;
         if (
@@ -245,9 +244,7 @@ export async function handleSubkitUpdateSetting(
           value.length > 0 &&
           !parseSecretReference(value)
         ) {
-          const secretName = tenant_id
-            ? `tenants.${tenant_id}.settings.${leaf.path.join(".")}`
-            : `settings.${leaf.path.join(".")}`;
+          const secretName = settingSecretName(tenant_id, leaf.path);
           const secret = await createSecretVersion(ctx.db, {
             name: secretName,
             value,
@@ -277,6 +274,7 @@ export async function handleSubkitUpdateSetting(
           scope: tenant_id ? "tenant" : "global",
           ...(tenant_id ? { tenant_id } : {}),
           created_by: ctx.principal.id,
+          ...(restricted && tenant_id ? { restrict_to_tenant: tenant_id } : {}),
         });
         await auditAwait(
           {
@@ -295,12 +293,17 @@ export async function handleSubkitUpdateSetting(
           },
           ctx.db,
         );
-        const activation = await activateRuntimeRevision(ctx.db, saved.saved_revision, {
-          tenant_id: tenant_id ?? ctx.principal.tenant_id,
-          actor_type: ctx.principal.kind === "user" ? "user" : "system_account",
-          actor_id: ctx.principal.id,
-          source: "mcp",
-        });
+        const activation = await activateRuntimeRevision(
+          ctx.db,
+          saved.saved_revision,
+          {
+            tenant_id: tenant_id ?? ctx.principal.tenant_id,
+            actor_type: ctx.principal.kind === "user" ? "user" : "system_account",
+            actor_id: ctx.principal.id,
+            source: "mcp",
+          },
+          restricted && tenant_id ? { restrict_to_tenant: tenant_id } : {},
+        );
         if (saved.pending_restart_fields.length === 0) {
           if (activation.activation_status !== "active") {
             throw new Error(
@@ -403,7 +406,8 @@ export async function handleSubkitUpdateSetting(
     }
     if (
       error instanceof RuntimeConfigValidationError ||
-      error instanceof RuntimeConfigConflictError
+      error instanceof RuntimeConfigConflictError ||
+      error instanceof RuntimeConfigPendingError
     ) {
       return {
         ok: false,

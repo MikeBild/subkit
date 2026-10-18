@@ -560,7 +560,7 @@ const readSecretApprovals: TenantReader = async (db) => {
             verb: "open",
             href: attentionHref.settings,
             primary: true,
-            permission: "settings:write",
+            permission: "settings:write:global",
           },
         ],
       },

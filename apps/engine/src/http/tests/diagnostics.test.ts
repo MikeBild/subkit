@@ -208,14 +208,14 @@ describe("/v1/diagnostics/setup", () => {
     }
   });
 
-  test("member access works through identity:read", async () => {
+  test("engine setup is operator-only — a member of the operator workspace gets 403", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
       headers: { authorization: `Bearer ${memberKey}` },
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
   });
 
-  test("identity:read or audit:read is required — enduser gets 403", async () => {
+  test("settings:read:global is required — enduser gets 403", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
       headers: { authorization: `Bearer ${enduserKey}` },
     });
@@ -324,7 +324,7 @@ describe("/v1/diagnostics/setup", () => {
     });
     try {
       const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
-        headers: { authorization: `Bearer ${memberKey}` },
+        headers: { authorization: `Bearer ${srv.apiKey}` },
       });
       expect(res.status).toBe(200);
       const raw = await res.text();
@@ -339,7 +339,7 @@ describe("/v1/diagnostics/setup", () => {
       }
       const body = (await (
         await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
-          headers: { authorization: `Bearer ${memberKey}` },
+          headers: { authorization: `Bearer ${srv.apiKey}` },
         })
       ).json()) as {
         sections: {

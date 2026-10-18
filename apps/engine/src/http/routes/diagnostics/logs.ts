@@ -6,8 +6,10 @@ import {
   auditAwait,
   DiagnosticsLogsTailedMetadataSchema,
 } from "../../../audit/index.ts";
-import { getDb } from "../../../db/client.ts";
+import type { ResolvedPrincipal } from "../../../auth/index.ts";
+import { type Db, getDb } from "../../../db/client.ts";
 import { isEntryVisibleToTenant, levelWeight, logRing } from "../../../observability/index.ts";
+import { principalHolds } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
@@ -74,10 +76,12 @@ interface FilterOpts {
 function buildTailOpts(
   q: z.infer<typeof LogTailQuery>,
   principal_tenant_id: string,
+  include_engine: boolean,
   defaults: { limit?: number } = {},
-): FilterOpts & { visible_to_tenant: string } {
-  const opts: FilterOpts & { visible_to_tenant: string } = {
+): FilterOpts & { visible_to_tenant: string; include_engine: boolean } {
+  const opts: FilterOpts & { visible_to_tenant: string; include_engine: boolean } = {
     visible_to_tenant: principal_tenant_id,
+    include_engine,
   };
   if (q.since !== undefined) opts.since_ms = q.since;
   if (q.limit !== undefined) opts.limit = q.limit;
@@ -88,12 +92,16 @@ function buildTailOpts(
   return opts;
 }
 
+function seesEngineLogs(db: Db, principal: ResolvedPrincipal): Promise<boolean> {
+  return principalHolds(db, principal, "settings:read:global");
+}
+
 export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(tailRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db") ?? getDb();
     const q = c.req.valid("query");
-    const opts = buildTailOpts(q, principal.tenant_id);
+    const opts = buildTailOpts(q, principal.tenant_id, await seesEngineLogs(db, principal));
     const entries = logRing.tail(opts);
     const lastTs = entries.length > 0 ? entries[entries.length - 1]!.ts : (q.since ?? 0);
 
@@ -163,7 +171,8 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
     const q = parsed.data;
-    const tailOpts = buildTailOpts(q, principal.tenant_id, { limit: 1000 });
+    const includeEngine = await seesEngineLogs(db, principal);
+    const tailOpts = buildTailOpts(q, principal.tenant_id, includeEngine, { limit: 1000 });
     const minLevelWeight = q.level ? levelWeight(q.level) : 0;
 
     const metadata = DiagnosticsLogsTailedMetadataSchema.parse({
@@ -203,7 +212,7 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
           if (q.module && entry.module !== q.module) return;
           if (q.action && entry.action !== q.action) return;
           if (minLevelWeight > 0 && levelWeight(entry.level) < minLevelWeight) return;
-          if (!isEntryVisibleToTenant(entry, principal.tenant_id)) return;
+          if (!isEntryVisibleToTenant(entry, principal.tenant_id, includeEngine)) return;
           try {
             send("log", entry);
           } catch {}

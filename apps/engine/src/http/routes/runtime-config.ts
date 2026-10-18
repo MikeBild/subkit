@@ -1,7 +1,7 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
+import { AuditAction, auditAwait } from "../../audit/index.ts";
 import {
   activateRuntimeRevision,
   createSecretVersion,
@@ -92,17 +92,6 @@ function revisionWire(revision: Awaited<ReturnType<typeof getRuntimeRevision>>) 
     created_at: revision.created_at.toISOString(),
     activated_at: revision.activated_at?.toISOString() ?? null,
   };
-}
-
-function mayManageTenant(
-  principal: ReturnType<typeof requireAuth>,
-  tenantId: string | undefined,
-): boolean {
-  if (!tenantId || tenantId === principal.tenant_id) return true;
-  return (
-    (principal.tenant_id === SYSTEM_TENANT_ID && principal.roles.includes("admin")) ||
-    (principal.scopes?.includes("settings:write:global") ?? false)
-  );
 }
 
 function mapRuntimeConfigError(
@@ -376,21 +365,21 @@ export function registerRuntimeConfigRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/settings", (c, next) =>
     c.req.method === "GET"
       ? requirePermission("settings:read")(c, next)
-      : requirePermission("settings:write")(c, next),
+      : requirePermission("settings:write:global")(c, next),
   );
-  app.use("/v1/settings/runtime", requirePermission("settings:read"));
-  app.use("/v1/settings/revisions", requirePermission("settings:read"));
+  app.use("/v1/settings/runtime", requirePermission("settings:read:global"));
+  app.use("/v1/settings/revisions", requirePermission("settings:read:global"));
   app.use("/v1/settings/revisions/*", (c, next) =>
     c.req.method === "GET"
-      ? requirePermission("settings:read")(c, next)
-      : requirePermission("settings:write")(c, next),
+      ? requirePermission("settings:read:global")(c, next)
+      : requirePermission("settings:write:global")(c, next),
   );
-  app.use("/v1/settings/activations/*", requirePermission("settings:read"));
-  app.use("/v1/secrets", requirePermission("settings:read"));
+  app.use("/v1/settings/activations/*", requirePermission("settings:read:global"));
+  app.use("/v1/secrets", requirePermission("settings:read:global"));
   app.use("/v1/secrets/*", (c, next) =>
     c.req.method === "GET"
-      ? requirePermission("settings:read")(c, next)
-      : requirePermission("settings:write")(c, next),
+      ? requirePermission("settings:read:global")(c, next)
+      : requirePermission("settings:write:global")(c, next),
   );
 
   app.openapi(getSettingsRoute, async (c) => {
@@ -403,9 +392,6 @@ export function registerRuntimeConfigRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(patchSettingsRoute, async (c) => {
     const principal = requireAuth(c);
     const body = c.req.valid("json");
-    if (!mayManageTenant(principal, body.tenant_id)) {
-      return c.json({ code: "forbidden", message: "cross-tenant settings write denied" }, 403);
-    }
     try {
       const patchArgs = {
         expected_revision: body.expected_revision,

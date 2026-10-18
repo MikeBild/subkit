@@ -2,7 +2,7 @@
 //
 // `GET /metrics` now requires the `metrics:read` scope from every credential
 // that carries a scope list; the owner's role no longer widens a scope grant
-// (`http/middleware/scope.ts`). Before that change a scope-bearing key reached
+// (`http/routes/metrics.ts`). Before that change a scope-bearing key reached
 // `/metrics` iff its owner held the `admin` role — the scope list was ignored.
 //
 // Exactly those rows are what this backfill repairs: a live `api_keys` row

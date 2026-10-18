@@ -128,7 +128,11 @@ const inviteCmd = defineCommand({
   },
   args: {
     id: { type: "positional", required: true, description: "User id to invite" },
-    scopes: { type: "string", description: 'Comma-separated scope strings (default ["*"])' },
+    scopes: {
+      type: "string",
+      description:
+        'Comma-separated scope strings (default: your own credential\'s scopes; ["*"] only when your credential has no scope limits)',
+    },
     "allowed-workflows": { type: "string", description: "Comma-separated workflow ids/slugs" },
     "allowed-connectors": { type: "string", description: "Comma-separated connector ids/slugs" },
     ttl: { type: "string", description: "Invite lifetime in minutes" },

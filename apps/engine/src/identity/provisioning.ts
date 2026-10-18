@@ -7,6 +7,7 @@ import { type Executor, getDb } from "../db/client.ts";
 import { apiKeys, sessions, userInvites, users } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
+import { authorizeRequestedScopes, type ScopeIssuer } from "../rbac/scope-issuance.ts";
 import { now } from "../utils/clock.ts";
 import { constantTimeHexEquals } from "./api-key.ts";
 import { generateInviteToken, parseInviteToken } from "./invite.ts";
@@ -289,6 +290,7 @@ function toInviteView(row: typeof userInvites.$inferSelect): InviteView {
 }
 
 export interface CreateInviteInput {
+  issuer: ScopeIssuer;
   tenant_id: string;
   user_id: string;
   scopes?: string[];
@@ -310,6 +312,7 @@ export async function createInvite(
 ): Promise<CreateInviteResult> {
   const db = exec ?? getDb();
   const ttlMs = (input.ttl_minutes ?? INVITE_DEFAULT_TTL_MINUTES) * 60_000;
+  const scopes = await authorizeRequestedScopes(db, input.issuer, input.scopes);
   return db.transaction(async (tx) => {
     const token = generateInviteToken();
     const expiresAt = new Date(now() + ttlMs);
@@ -320,7 +323,7 @@ export async function createInvite(
         user_id: input.user_id,
         prefix: token.prefix,
         token_sha256: token.hash,
-        scopes: input.scopes ?? ["*"],
+        scopes,
         allowed_workflows: input.allowed_workflows ?? null,
         allowed_connectors: input.allowed_connectors ?? null,
         expires_at: expiresAt,
@@ -499,6 +502,7 @@ export async function redeemInvite(
 
     const apiKey = await issueApiKey(
       {
+        issuer: { kind: "system" },
         tenant_id: claimed.tenant_id,
         owner_kind: "user",
         owner_id: claimed.user_id,

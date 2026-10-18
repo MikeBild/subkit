@@ -13,6 +13,7 @@ import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { logger } from "../../logging/logger.ts";
 import { createBoss, disposeBoss, startBoss, stopBoss } from "../../queue/boss.ts";
 import { registerAllHandlers } from "../../queue/handlers/index.ts";
+import { claimOperatorTenantIfUnassigned } from "../../rbac/operator.ts";
 import {
   backfillSystemAccountRoleIds,
   type SeededRoleIds,
@@ -132,6 +133,7 @@ export async function createJourneyCtx(
       .values({ slug: `j-${safeLabel}`.slice(0, 32), display_name: `Journey ${label}` })
       .returning();
     if (!tenant) throw new Error("seed tenant failed");
+    await claimOperatorTenantIfUnassigned(testDb.db, tenant.id);
 
     const [user] = await testDb.db
       .insert(users)

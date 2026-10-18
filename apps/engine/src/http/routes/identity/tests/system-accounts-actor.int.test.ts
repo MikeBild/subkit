@@ -48,6 +48,7 @@ describe("system-account administration actor provenance", () => {
 
     const key = await issueApiKey(
       {
+        issuer: { kind: "system" },
         tenant_id: ctx.tenantId,
         owner_kind: "system_account",
         owner_id: ctx.systemAccountId,

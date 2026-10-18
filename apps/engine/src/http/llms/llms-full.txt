@@ -179,6 +179,44 @@ the setup, nothing is stored, and the same token works for the next try.
 
 Open the Cockpit at `http://localhost:3000/cockpit`.
 
+## Engine operator
+
+One workspace is the engine operator: the workspace that completed first-run setup (on a
+local development seed, `default`). Only its admins can change or read the whole engine:
+engine-wide settings and their revisions, runtime secrets and prepared secret approvals,
+engine restarts, engine diagnostics and logs, `/metrics`, and disabling an MCP OAuth client
+for every workspace. These permissions are marked `operator: true` in
+`GET /v1/rbac/permissions` (`settings:read:global`, `settings:write:global`, `system:restart`,
+`metrics:read`, `mcp_oauth_client:disable`). No role, grant or key scope outside the operator
+workspace can unlock them; such a request answers `403` with `details.cause: "operator_only"`.
+`GET /v1/identity/whoami` reports `engine_operator`.
+
+Every other workspace keeps its own settings. `GET /v1/settings` returns the tenant view: only
+settings that support a tenant overlay, with their effective value. A change applies to your
+workspace only when you name it:
+
+```bash
+sk settings set llm.model '"<model>"' --tenant <your-tenant-id>
+```
+
+Without `--tenant` the engine refuses the change instead of applying it to everyone. While the
+operator has saved engine-wide settings that are not active yet, a workspace change answers
+`409 operator_change_pending` and is not saved. Revoking an MCP OAuth client outside the
+operator workspace removes its access in your workspace only.
+
+The operator workspace is chosen once and moved only on the host:
+
+```bash
+engine --set-operator-tenant <slug>
+```
+
+API keys and invites carry scopes from the permission catalog, `*`, or the MCP mode markers
+`mcp:read`, `mcp:authoring` and `mcp:admin`. Each scope must be held by the credential that
+issues it; only a credential without scope limits can issue `*`, and a key that leaves scopes
+out inherits the issuer's own limits. Rotating a key applies the same check to the scopes it
+already carries. Unknown scopes answer `422 unknown_scope`, scopes beyond the issuer answer
+`403 scope_exceeds_issuer`.
+
 ## Use the sk CLI on your machine
 
 The engine serves the CLI itself. There is no npm package.
@@ -930,7 +968,7 @@ Issue a new API key (shown once)
 
 - `--name` (string) — Friendly key name (label)
 - `--expires` (string) — Expiry — ISO-8601 timestamp
-- `--scopes` (string) — Comma-separated scope strings (e.g. "workflow:read,workflow:invoke"). Defaults to ["*"] — full role-derived access, and read-and-execute over MCP. Add "mcp:authoring" for a key that may also author definitions over MCP (a coding agent); leave it off for a key going into a browser client.
+- `--scopes` (string) — Comma-separated scope strings (e.g. "workflow:read,workflow:run"). Defaults to your own credential's scopes; ["*"] (full role-derived access, and read-and-execute over MCP) only when your credential has no scope limits. Add "mcp:authoring" for a key that may also author definitions over MCP (a coding agent); leave it off for a key going into a browser client.
 - `--allowed-workflows` (string) — Comma-separated workflow ids/slugs. Use "*" for explicit "all".
 - `--allowed-connectors` (string) — Comma-separated connector ids/slugs. Use "*" for explicit "all".
 
@@ -2731,7 +2769,7 @@ Fetch a user by id
 Issue a single-use provisioning invite for a user (token shown once)
 
 - `<id>` (positional, required) — User id to invite
-- `--scopes` (string) — Comma-separated scope strings (default ["*"])
+- `--scopes` (string) — Comma-separated scope strings (default: your own credential's scopes; ["*"] only when your credential has no scope limits)
 - `--allowed-workflows` (string) — Comma-separated workflow ids/slugs
 - `--allowed-connectors` (string) — Comma-separated connector ids/slugs
 - `--ttl` (string) — Invite lifetime in minutes

@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { _drainAuditWritesForTests } from "../../audit/audit.ts";
 import { apiKeys, auditLog, systemAccounts } from "../../db/schema/index.ts";
 import { generateKey } from "../../identity/api-key.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const GRANT = "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -194,7 +195,12 @@ describe("the token is accepted exactly like the key", () => {
   test("GET /metrics accepts a token exchanged from a metrics:read key", async () => {
     const [scraper] = await ctx.db
       .insert(systemAccounts)
-      .values({ tenant_id: ctx.tenantId, name: "tx-scraper", description: "scoped scraper" })
+      .values({
+        tenant_id: ctx.tenantId,
+        name: "tx-scraper",
+        description: "scoped scraper",
+        role_id: await builtinRoleId(ctx.db, "metrics_scraper"),
+      })
       .returning();
     const key = generateKey();
     await ctx.db.insert(apiKeys).values({
@@ -282,7 +288,7 @@ describe("the token is accepted exactly like the key", () => {
       body: JSON.stringify({
         owner_kind: "system_account",
         owner_id: ctx.systemAccountId,
-        scopes: ["workflows:read"],
+        scopes: ["workflow:read"],
         name: "minted-with-token",
       }),
     });

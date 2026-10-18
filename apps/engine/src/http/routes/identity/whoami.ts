@@ -2,6 +2,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
+import { isOperatorPrincipal } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
@@ -20,6 +21,9 @@ const WhoamiSchema = z
       .string()
       .nullable()
       .describe("App the caller signed in to through an oidc_bearer provider, or null"),
+    engine_operator: z
+      .boolean()
+      .describe("True when the caller belongs to the engine operator workspace"),
   })
   .openapi("Whoami");
 
@@ -92,6 +96,7 @@ export function registerWhoamiRoute(app: OpenAPIHono<AppEnv>): void {
         base_url: resolveEngineUrl(c.req.raw) ?? null,
         scopes: Array.isArray(principal.scopes) ? principal.scopes : null,
         product_id: principal.product_id ?? null,
+        engine_operator: await isOperatorPrincipal(db, principal),
       },
       200,
     );
