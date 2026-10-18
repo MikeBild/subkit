@@ -1,11 +1,11 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E222.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E223.
 
-- Letztes Update: **2026-10-18T16:43:53.990270+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **22cc1c3e3**, `main`, Version **10.0.1** vorbereitet.
-  Queue-Adapter und Listener-Nachweis E220/E221 normal geprüft gepusht; alle acht Hooks bestanden, sauberer Checkout und 0/0-Divergenz bestätigt. Historischer Gesamtgate-Nachweis E215 auf 1c898dce4.
+- Letztes Update: **2026-10-18T16:52:51.995829+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **6a23d8740**, `main`, Version **10.0.1** vorbereitet.
+  Queue-Adapter, Listener- und Live-E2E-Nachweise E220–E222 normal geprüft gepusht; alle acht Hooks bestanden, sauberer Checkout und 0/0-Divergenz bestätigt. Historischer Gesamtgate-Nachweis E215 auf 1c898dce4.
 - Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Begrenzte Queue-Fehlernormalisierung geändert; aktuelles Gesamtgate läuft separat.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
@@ -94,7 +94,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L08 | IN_PROGRESS | QuickJS-Worker-/Container-Fix geprüft, E158. Operator-/Tenant-Grenzen: 142 Tests und browser-use bestanden, E206. Imageaudit E190 ohne HIGH/CRITICAL; Native/WASM-/Artefaktabdeckung, übrige Befunde und finale Security-Freigabe offen. |
 | L09 | IN_PROGRESS | Lovable-Entwurf, acht Seiten DE/EN, Systemtheme/-sprache, Social/Consent vorbereitet; Build und 41 Tests laut E176 bestanden. Texte, Produktbilder, tatsächlicher Formularversand, Pflichttexte, öffentliche Downloads, Domain und Abnahmen offen. WEBSITE-TODO.md ist maßgeblich. |
 | L10 | IN_PROGRESS | ZIP 10.0.1: Versions-/Drift-/Archivprüfung bestanden, E202. Listing, Icons, historische Medien und private Übergabe vorbereitet, E147–E152/E166. Pflichtlinks, Medienabnahme und menschliche Zertifizierung offen. |
-| L11 | IN_PROGRESS | Nutzer hat 9.15.2 eingereicht; synchronisierter Store-Handoff meldet PENDING_REVIEW, E186. Öffentliche Clipper-Privacy fehlt. Keine automatische erneute Einreichung des lokalen 10.0.1-Pakets. |
+| L11 | IN_PROGRESS | Nutzer hat 9.15.2 eingereicht; letzter Store-Handoff PENDING_REVIEW, E186. E223: konkrete Listing-ID im anonymen Browser zeigt Item not available; aktueller Dashboard-Status UNVERIFIED. Öffentliche Clipper-Privacy fehlt. Keine automatische erneute Einreichung des lokalen 10.0.1-Pakets. |
 | L12 | IN_PROGRESS | **E219: echtes Modell → Knowledge-Vorschlag → Browserbestätigung → Suche/MCP/CLI/Hook-Discovery funktional bestanden; fünf opake Queue-Fehler bleiben unaufgeklärt.** Reale Browser-/Provider-Skill-Journey E185; Knowledge E193; Browser→CLI/MCP/Hook-Handler E200; Clipper→Admission E203; persistierter Chat→Proposal→Bestätigung E205 jeweils begrenzt bestanden. Aktueller Gesamt-/Kategorie-/RBAC-/Kanalnachweis und zuverlässiger Kandidatenstart offen, E194–E196/E201. |
 | L13 | IN_PROGRESS | Gesamtgate E207/E209 fehlgeschlagen; S3-Fixture und Issuer-Recovery gezielt korrigiert. E210: zehn historische Fixtures korrigiert, alle 25 Migrationsdateien/88 Tests und Typecheck bestanden. Diagnosefortsetzung E212 bestanden: 1.282 Dateien/10.506 Tests, 4 SKIP/5 TODO. E215: vollständiges Gate auf 1c898dce4 PASS, Exit 0, Quellen unverändert; 2.050 Dateien/19.687 Tests und E2E 257 PASS. E216/E217/E222 schließen acht Modell-, zehn PTY- und sechs Real-LLM-Skips separat. Übrige Skips/TODOs, Referenzbenchmark und finale Release-Route bleiben offen. |
 | L14 | BLOCKED | L04/L05/L13 und Freigaben für Repository-Öffnung/Artefaktpublikation fehlen. |
@@ -104,7 +104,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L18 | IN_PROGRESS | Begrenztes Upgrade 9.9.0→lokaler 9.15.2-Kandidat und Restore bestanden, E72. Aktuelle Beta→GA-/Migrations-/Provenienzstrecke offen. |
 | L19 | BLOCKED | Erfolgreiche öffentliche Release-Strecke fehlt; bekannte Actions-Verfügbarkeit extern, keine Billing-Aufgabe. |
 | L20 | TODO | Beta-Befunde/Security und Betriebsdokumentation. |
-| L21 | BLOCKED | Eingereichte 9.15.2 wartet auf Google-Freigabe; öffentliche Store-Installation und vollständige Clipper-Privacy fehlen. |
+| L21 | BLOCKED | Öffentliche Store-Installation und vollständige Clipper-Privacy fehlen. E223: konkretes Listing anonym nicht verfügbar; aktueller interner Reviewstatus nicht verifiziert. |
 | L22 | TODO | Finale GA-Gates und menschliche Abnahme. |
 | L23 | TODO | Öffentliche GA, Kommunikation und Supportübernahme. |
 | L24 | TODO | P2-Roadmap bis nach Launch zurückgestellt. |
@@ -182,7 +182,8 @@ Bei Bedarf gezielt laden oder neuen Kandidaten bauen. Keine fremden Ressourcen b
   Keine automatische Verbindung zum gesamten ChatGPT-Projekt behaupten.
 - Offizielle Lovable-Werkzeuge aktuell nicht verfügbar. Website-Entscheidungen und
   privater Handoff in WEBSITE-TODO.md; kein neuer Projekt-/Deploymentstatus behauptet.
-- Store 9.15.2 laut synchronisiertem Handoff PENDING_REVIEW, E186. DE/EN-Clipper-Privacy
+- Store 9.15.2 zuletzt laut Handoff PENDING_REVIEW, E186; E223 bestätigt anonym
+  nicht abrufbares Listing, kein aktueller interner Reviewstatus. DE/EN-Clipper-Privacy
   in Lovable vorbereitet, unveröffentlicht; geprüfte vorläufige öffentliche Privacy deckt
   bislang nur die Website ab. Keine erneute Einreichung ohne gesonderte Freigabe.
 
