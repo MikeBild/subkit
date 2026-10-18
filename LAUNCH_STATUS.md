@@ -1,11 +1,11 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E212.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E218.
 
-- Letztes Update: **2026-10-18T14:34:29.072249+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **54dc0aa9b**, `main`, Version **10.0.1** vorbereitet.
-  Lokal und origin/main waren vor Diagnosestart gleich; alle acht normalen Push-Gates bestanden.
+- Letztes Update: **2026-10-18T15:47:34.018298+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **dcb930f55**, `main`, Version **10.0.1** vorbereitet.
+  Remote dcb930f55 ergänzt ausschließlich TODO.md; Produktcode unverändert zum vollständig geprüften 1c898dce4. E218.
 - Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Produktquellen der Diagnose unverändert.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
@@ -13,16 +13,34 @@ Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E212.
 
 ## Aktive Arbeit und nächster Codex-Schritt
 
-**L13:** Diagnosefortsetzung auf 57ff2f530 ist abgeschlossen, E212:
-1.282 Dateien, 10.506 PASS/0 FAIL/4 SKIP/5 TODO, Exit 0 und unveränderte Quellhashes.
-Receipt/Log: `.artifacts/launch/operator-post-migration-diagnostic.{json,log}`.
-Dieser `--start-after`-Lauf ist **kein vollständiges Release-Gate**.
+**L13: vollständiges Gate PASS**, E215, auf 1c898dce4 am 18.10. 14:35–15:39 UTC:
+2.050 isolierte Dateien, 19.687 PASS/0 FAIL/37 SKIP/5 TODO; danach AI-Eval,
+Host-Build, Clipper-Binärprüfung und E2E (257 PASS/0 FAIL/20 SKIP/3 TODO) bestanden.
+Exit 0 und unveränderte Produktquellhashes belegt. Receipt/Log:
+`.artifacts/launch/operator-final-full-verify.{json,log}`.
+Keine gesamte Release-/Security-/Launch-Freigabe und kein Referenzbenchmark.
 
-Nächster Codex-Schritt: Nach normal geprüftem Evidenz-Commit/Push das vollständige
-`bun run verify` von Beginn an auf gemeinsamem main ausführen. Eigene isolierte
-PostgreSQL- und Host-Objektspeicher-Fixtures weiterverwenden. Prozess, Quellhashes,
-terminalen Exit und vorhandene Skips/TODOs getrennt dokumentieren.
-Nur eine aktive technische Prüfstrecke; keine konkurrierenden Produktänderungen.
+**E216:** zehn vorhandene Modelltests PASS/0 FAIL/0 SKIP, Quellhashes unverändert.
+Tatsächlicher lokaler Embedding-Backfill, mehrsprachige Knowledge-Suche und
+Conversation-Routing einschließlich fremder Nutzergrenze geprüft. Damit sind acht
+Modell-Skips aus E215 separat geschlossen; 29 optionale Connector-URL-Skips bleiben.
+
+**E217:** zwölf native CLI-PTY-Tests PASS/0 FAIL/0 SKIP; Quellhashes unverändert.
+MCP-Katalog (Admin/Member), Profilwechsel, Startup, Starter-Aktionen und persistierte
+Tool-Elicitation geprüft. Zehn PTY-Skips aus E215 sind damit separat geschlossen.
+Kein nativer Codex-/Claude-Dispatch und keine Knowledge-Admission daraus abgeleitet.
+
+**Aktiv:** kohärenten Nachweisstand E213–E218 mit normalen Hooks committen/pushen;
+anschließend Remote-/Checkoutstand abgleichen. Produktquellen unverändert.
+Verbleibende Skips: 29 optionale Connector-URL-Checks; vier private AppSync-/Cognito-
+Fälle und sechs Real-LLM-E2E-Fälle. Ältere Realmodell-Nachweise E169/E170/E185 bleiben
+begrenzt gültig; keine aktuelle Abnahme aller Kanäle oder Live-Modellroute behaupten.
+Vorhandene fünf isolierte und drei E2E-TODOs bleiben offen; weder gelöscht noch DONE.
+
+Nächster Codex-Schritt nach Synchronisation: nächste tatsächlich ausführbare P0-
+Verifikation auswählen; Docker-Kandidatenstarts erst mit ausreichender Kapazität,
+Websitearbeit nur über verfügbare offizielle Lovable-Integration. E215 nicht ohne
+neue Produktänderung/Fehler wiederholen; E216/E217 wiederverwenden.
 
 ## Aufgaben
 
@@ -43,7 +61,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L10 | IN_PROGRESS | ZIP 10.0.1: Versions-/Drift-/Archivprüfung bestanden, E202. Listing, Icons, historische Medien und private Übergabe vorbereitet, E147–E152/E166. Pflichtlinks, Medienabnahme und menschliche Zertifizierung offen. |
 | L11 | IN_PROGRESS | Nutzer hat 9.15.2 eingereicht; synchronisierter Store-Handoff meldet PENDING_REVIEW, E186. Öffentliche Clipper-Privacy fehlt. Keine automatische erneute Einreichung des lokalen 10.0.1-Pakets. |
 | L12 | IN_PROGRESS | Reale Browser-/Provider-Skill-Journey E185; Knowledge E193; Browser→CLI/MCP/Hook-Handler E200; Clipper→Admission E203; persistierter Chat→Proposal→Bestätigung E205 jeweils begrenzt bestanden. Aktueller Gesamt-/Kategorie-/RBAC-/Kanalnachweis und zuverlässiger Kandidatenstart offen, E194–E196/E201. |
-| L13 | IN_PROGRESS | Gesamtgate E207/E209 fehlgeschlagen; S3-Fixture und Issuer-Recovery gezielt korrigiert. E210: zehn historische Fixtures korrigiert, alle 25 Migrationsdateien/88 Tests und Typecheck bestanden. Diagnosefortsetzung E212 bestanden: 1.282 Dateien/10.506 Tests, 4 SKIP/5 TODO. Vollständiges Gate offen; kein aktuelles Gesamt-PASS. Referenzbenchmarks und finale Release-Route offen. |
+| L13 | IN_PROGRESS | Gesamtgate E207/E209 fehlgeschlagen; S3-Fixture und Issuer-Recovery gezielt korrigiert. E210: zehn historische Fixtures korrigiert, alle 25 Migrationsdateien/88 Tests und Typecheck bestanden. Diagnosefortsetzung E212 bestanden: 1.282 Dateien/10.506 Tests, 4 SKIP/5 TODO. E215: vollständiges Gate auf 1c898dce4 PASS, Exit 0, Quellen unverändert; 2.050 Dateien/19.687 Tests und E2E 257 PASS. E216/E217 schließen acht Modell- und zehn PTY-Skips separat. Übrige Skips/TODOs, Referenzbenchmark und finale Release-Route bleiben offen. |
 | L14 | BLOCKED | L04/L05/L13 und Freigaben für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Installation durch externen Nutzer aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -55,7 +73,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L22 | TODO | Finale GA-Gates und menschliche Abnahme. |
 | L23 | TODO | Öffentliche GA, Kommunikation und Supportübernahme. |
 | L24 | TODO | P2-Roadmap bis nach Launch zurückgestellt. |
-| L25 | BLOCKED | Isoliertes CLI-/Hook-Handler-Briefing und permission-scoped Reminder bestanden, E38/E199/E200. Nutzerprofil zuletzt unauthorized, E32. Tatsächlicher Clientdispatch, freigegebener Datenfluss und Daily-/Weekly-Lesezugriff fehlen; E150/E180. Keine globale Konfiguration geändert. |
+| L25 | BLOCKED | Isoliertes CLI-/Hook-Handler-Briefing und permission-scoped Reminder bestanden, E38/E199/E200. Nutzerprofil am 18.10. 14:45 UTC erneut lesend geprüft: Exit 2/unauthorized, E213 (früher E32). Tatsächlicher Clientdispatch, freigegebener Datenfluss und Daily-/Weekly-Lesezugriff fehlen; E150/E180. Keine globale Konfiguration geändert. |
 
 ## Fünf dominante Blocker / kritischer Pfad
 
@@ -81,7 +99,7 @@ Website/Recht und Google-Review laufen unabhängig davon, soweit Zugang/Freigabe
 
 | Prüfung | Belegter Stand |
 | --- | --- |
-| Vollständiges lokales Gate | **E181: PASS auf f489823b1**, Exit 0, unveränderte Quellhashes; 2.051 Dateien, E2E 257 PASS/0 FAIL/20 SKIP/3 TODO. Historischer Stand, nicht aktueller Operator-Kandidat. |
+| Vollständiges lokales Gate | **E215: PASS auf 1c898dce4**, Exit 0, unveränderte Produktquellhashes. 2.050 isolierte Dateien: 19.687 PASS/0 FAIL/37 SKIP/5 TODO; E2E 257 PASS/0 FAIL/20 SKIP/3 TODO. Historischer Vorgänger E181 bleibt archiviert. |
 | Neuere Fehlversuche | E207: S3-HTTP-500 bei voller Docker-Platte; echte Host-Speicher-Gegenprobe 2 PASS/20.978 Assertions. E209: fehlender Issuer-Recovery-Hinweis, korrigiert mit 33 PASS. E210: historischer ORM-Insert, korrigiert mit 88 PASS. E212: weitere 1.282 Dateien/10.506 Tests bestanden, 4 SKIP/5 TODO. Kein zusammengesetztes Gesamt-PASS. |
 | Reale Modelle | E169: Live-Gate 6 PASS; E170: HTTP-/CLI-Gesprächssuite 7 PASS. E185: reale Container-/Browser-/Provider-Skill-Journey. Keine Abnahme aller Kanäle oder erneute Bestätigung der Produktionsroute. |
 | ARM64-Image/Installation | E184/E185: 10.0.0 auf d2eeb2aaa bestanden. Aktualisiertes Image beba30b7196f auf 48f07dabf gebaut, E187; elf Installationschecks mit Host-Datenspeicher bestanden, E189. Kein aktuelles 10.0.1-/Operator-Image. |
@@ -134,11 +152,14 @@ Bei Bedarf gezielt laden oder neuen Kandidaten bauen. Keine fremden Ressourcen b
 
 ## Nächste drei Aufgaben
 
-1. **L13 P0:** nach E212 vollständiges Gate von Beginn an ausführen und gegebenenfalls neue
-   Fehler gezielt beheben. Quellhashes und terminalen Exit festhalten; gültige Teilnachweise wiederverwenden.
+1. **L13 P0:** E215 ist abgeschlossen. E215–E217 wiederverwenden; Evidenzstand normal geprüft synchronisieren.
+   Übrige Skips/TODOs getrennt beurteilen, ohne optionale Connectoren automatisch zu Launch-Blockern zu machen.
 2. **L12/L18 P0/P1:** auf messbar ausreichend versorgtem System aktuellen Kandidatenstart,
    Kategorie-/RBAC-Parität und Upgrade/Restore prüfen. E195 ist Teilnachweis, kein Gesamtergebnis.
    Keine blinden Vollstart-Wiederholungen oder Eingriffe in fremde Demos.
+   E214: Docker-VM am 18.10. 15:18 UTC nur rund 268 MiB MemAvailable, Swap praktisch
+   voll, Platte 98 % belegt. Vor weiteren Docker-Kandidatenstarts ausreichend
+   versorgte Umgebung bereitstellen; keine gesicherte Queue-Root-Cause behauptet.
 3. **L04/L05/L06/L09/L10:** vorhandene technische Vorbereitungen mit fehlenden Schlüsseln,
    Systemzugängen, Rechte-/Website-/Privacy-Angaben und menschlichen Freigaben abschließen.
    Websitearbeit nur über Lovable; keinerlei automatische Veröffentlichung.
