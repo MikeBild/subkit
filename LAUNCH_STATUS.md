@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-18T10:28:34.827974+00:00**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-18T11:09:52.637402+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktstand vor Remote-Integration: **0c61b8bc6**, Version **9.15.2**. QuickJS-Fix und korrigierte Hook-Dokumentationsassertion committed; vollständiges Gesamtgate PASS, unveränderte Quellhashes. ARM64-Image, Installation, Regression und Notice-Auslieferung bestanden (E158).
-- Letzter bestätigter Remote-Stand: **f7e57030a**, main, nach Fast-forward synchronisiert. Enthält vorbereitete Version **10.0.0** und Website-Entscheidungen. Vollständiges Gate auf Vorgänger f489823b1 PASS (E181); neuer Image-/Versionsnachweis offen. Diese Fortschreibung LOCAL_ONLY bis Push.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E182. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Letzter bestätigter Remote-Stand: **fae216c38**, main, per Fast-forward integriert. Version **10.0.0** vorbereitet. Gesamtgate f489823b1 PASS (E181); Image/Installation und reale Browser-Journey auf d2eeb2aaa PASS (E184/E185). Neuere HTTP-/Seed-Änderungen gezielt geprüft (E186), noch ohne aktualisiertes Image/Gesamtgate. Diese Fortschreibung LOCAL_ONLY bis Push.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E186. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -27,9 +27,9 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L08 | IN_PROGRESS | **P0 E153: im echten Sandbox-Worker reproduziert; offizieller Fix als lokal reproduzierter Bun-Patch umgesetzt. 185 Sandbox-Tests und frische Linux-Patchinstallation PASS. Kompilierter Worker und finaler Container bestehen die Regression; frische Compose-Installation inklusive Neustart/Persistenz und Cleanup PASS (E158). Erster Gesamtcheck scheiterte an veralteter Hook-Dokumentationsassertion; Test korrigiert, 9 Tests PASS. Vollständige Wiederholung PASS: Exit 0, Quellen unverändert (E158). Commit 0c61b8bc6 über Merge 0f25ede2c gepusht (E162).**  Konkrete SDK/Issuer-, Hono-, Parser-, Transport-, Sharp- und Containerbefunde korrigiert und gezielt geprüft (E25/E30/E54–E60/E68/E78). Aktueller lokaler ARM64-Imageaudit E168: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW. ONNX-Modelleingang statisch eingegrenzt; echte Provider-Inferenz ohne Netzwerk liefert 384 endliche Werte (E155), keine Gesamtfreigabe. Native/WASM-/Artefaktabdeckung, übrige Befunde und finale Sicherheitsfreigabe offen. Kein Schluss auf Gesamtfreigabe aus Paketcounts. |
 | L09 | IN_PROGRESS | Aktuelle Website in Lovable, acht Seiten DE/EN, automatische Sprache/Systemtheme ohne Schalter, Social-Metadaten und einwilligungsgebundene GA4-Vorbereitung. Betreiber/Kontakt/Zieldomain bestätigt. Lovable: Build und 41 fokussierte Tests bestanden; keine reale Zustellung/Analytics oder Veröffentlichung (E176). Frühere Website-Entscheidungen erhalten (E173–E175). Verbleibende Textkorrekturen, Produktbilder, Formularversand, öffentliche Installation, vollständige Pflichttexte, Domainanbindung und finale Abnahme offen. Fortsetzung über WEBSITE-TODO.md. |
 | L10 | IN_PROGRESS | Zweisprachige Listing-Texte, Berechtigungsbegründungen, Datenfluss-/Privacy-Arbeitsblatt und Reviewer-Ablauf als Entwurf in LAUNCH.md vorbereitet. Vier PNG-Icons werden aus bestehendem Cockpit-Logo generiert und mit Lucide-Lizenz im Manifest/ZIP ausgeliefert, E53. Paket-/Browser-/Binärprüfungen und macOS/Linux-Reproduzierbarkeit bestanden. Zwei echte Screenshot-Entwürfe mit isolierten Beispieldaten vorbereitet (E147); Kleine Promografik als lokaler Entwurf ergänzt; 128px-Store-Icon auf 96px-Motiv plus 16px transparenten Rand korrigiert und im ZIP geprüft (E148). Linux-amd64/macOS-ZIP byte-identisch; aktuelle kompilierte Engine/CLI liefern/installieren dasselbe Paket, E149. Lokale Einreichungsübergabe mit Listing-Texten, Medien, unverändertem ZIP und Prüfsummen erstellt; Integritäts-/Secret-Scan PASS, acht Freigabevoraussetzungen offen (E152). Übergabe lokal mit aktuellem ZIP erneuert, Integrität/Secret-Scan PASS; historische Medien ausdrücklich begrenzt (E166). Visuelle Abnahme aller Medien, Pflichtlinks und menschliche Zertifizierung offen. ENTWURF, nicht veröffentlicht. |
-| L11 | BLOCKED | L10, öffentliche Pflichtlinks, Publisherstatus und explizite Einreichungsfreigabe fehlen. |
-| L12 | IN_PROGRESS | Isolierter aktueller Kandidat: API-/Browser-/Intake-Prüfungen PASS, E37–E39; MCP-Cockpit-Handoff und echter Clipper gegen Engine PASS, E42/E43. Mock-Läufe und begrenzter echter Provider-Chat E45 getrennt belegt; vollständige Cross-Surface-Abnahme weiterhin offen. E172: HTTP-400-Ursache bei mandantenspezifischer LLM-Konfiguration reproduziert und lokal korrigiert; 126 Konfigurations-/19 Modellinitialisierungstests sowie PostgreSQL-Runtime-Integration (1 Test/14 Assertions) und Typecheck PASS. E177: echte lokale Browser-/Modell-Journey auf f489823b1 PASS (8 deterministische und 4 Modellprüfungen), isolierte Quellen-Engine/MemoryObjectStore. E178: 11 aktuelle CLI-/MCP-/gemeinsame Hook-Handler-Checks PASS; Mock-Modell und tatsächlicher Transport getrennt ausgewiesen. Vollständiges Gate E181 PASS; neues Image nach Versionsvorbereitung offen. E171: aktuelle persönliche Browser-Anmeldung und acht deterministische Intake→Skill-Prüfungen PASS; Modell-Gesprächsstart HTTP 400, Gesamtjourney FAIL. Diagnoselauf mit Timeout/Verbindungsabbruch historisch; Modellkonfigurationsursache durch E172 korrigiert und E177 gegengeprüft. Aktueller separater echter HTTP-/CLI-Gesprächslauf einschließlich Authoring/Audit/Ablehnung: 7 PASS (E170), keine vollständige Intake-/Google-Chat-Abnahme. Manuelle Demo unverändert. **Neuabnahme erforderlich:** Die Scope-Erweiterung „Sitzungs-Lernvorschläge über Intake“ (Ziel Wissen oder Skill, Bestätigung nur per Browser-Sitzung) ändert die geprüften Abläufe; E37–E46 gelten nur für den Stand davor. Lokale Demo mit echtem Provider einschließlich neuer Journey „session learnings review“ (deterministisch und reales Modell getrennt) PASS. L12 läuft nach dem Deploy komplett neu: Clipper, sk, MCP, HTTP, Cockpit, Google Chat, Coding-Agent-Hooks; simuliert und live getrennt. |
-| L13 | IN_PROGRESS | Vollständiges `bun run verify` auf f489823b1 PASS, Exit 0 und Quellen unverändert (E181): 2.051 isolierte Dateien, E2E 257 PASS/0 FAIL, 20 SKIP/3 TODO. Reale Modelle separat E169/E170/E177. Neu integrierte Versionsvorbereitung 10.0.0 noch ohne finalen Image-/Versionsnachweis. Referenzbenchmarks und endgültige Release-Route offen. |
+| L11 | IN_PROGRESS | Nutzer hat Version 9.15.2 eingereicht; synchronisierter Handoff berichtet offizielle API PENDING_REVIEW (E186, WEBSITE-TODO.md). Einreichung ist keine Veröffentlichung. Öffentliche Clipper-Datenschutzerklärung vervollständigen; keine automatische erneute Einreichung des lokal vorbereiteten 10.0.0-Pakets. |
+| L12 | IN_PROGRESS | E185: echte isolierte 10.0.0-Container-/Browser-/Provider-Journey auf d2eeb2aaa PASS, persönliche Anmeldung plus acht deterministische/vier Modellprüfungen, Cleanup PASS. Skill-Admission, Ausschluss vor Bestätigung, Idempotenz, Domain-Briefing und Provenienz belegt. E178 ergänzt CLI/MCP/Hook-Handler; vollständige aktuelle Knowledge-/Clipper-/Google-Chat-/Client-Hook-Abnahme weiterhin offen. Neuere HTTP-/Seed-Änderungen fae216c38: 14 fokussierte HTTP-Tests PASS (E186), aktualisiertes Image ausstehend. Manuelle Demo unverändert. |
+| L13 | IN_PROGRESS | Vollständiges `bun run verify` auf f489823b1 PASS, Exit 0 und Quellen unverändert (E181): 2.051 isolierte Dateien, E2E 257 PASS/0 FAIL, 20 SKIP/3 TODO. Reale Modelle separat E169/E170/E177. 10.0.0-Image auf d2eeb2aaa bestanden (E184/E185); neuere HTTP-/Seed-Änderungen gezielt geprüft (E186), noch ohne aktualisiertes Image/Gesamtgate. Referenzbenchmarks und endgültige Release-Route offen. |
 | L14 | BLOCKED | L04/L05/L13 und Freigabe für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Externer Installationstest aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -37,7 +37,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L18 | IN_PROGRESS | Isoliertes Upgrade vom öffentlichen 9.9.0-Image auf lokalen 9.15.2-Kandidaten und Restore auf alten Stand mit Daten/Schlüsseln/Rollen/Audit PASS, E72. Finale Beta→GA-Strecke und vollständige Provenienzabnahme bleiben offen. |
 | L19 | BLOCKED | Öffentliche Pipeline nicht erfolgreich belegt; bekannte Actions-Verfügbarkeit extern, keine Billing-Aufgabe. |
 | L20 | TODO | Beta-Befunde/Security und Betriebsdokumentation. |
-| L21 | BLOCKED | Einreichung/Google-Freigabe und öffentliche Store-Installation fehlen. |
+| L21 | BLOCKED | Version 9.15.2 laut synchronisiertem Store-Handoff PENDING_REVIEW; Google-Freigabe und öffentliche Store-Installation fehlen. Clipper-Datenschutzerklärung noch zu vervollständigen. |
 | L22 | TODO | Finale GA-Gates und menschliche Abnahme. |
 | L23 | TODO | Öffentliche GA, Kommunikation und Supportübernahme. |
 | L24 | TODO | P2-Roadmap bleibt bis nach Launch zurückgestellt. |
@@ -49,11 +49,11 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 und vollständiges Gate bestanden; Fix in 0c61b8bc6 committed.
 Der Container-Scanner erfasst diese eingebettete WASM-Komponente nicht separat.
 
-1. Aktuelle Distribution nicht konsistent öffentlich nachgewiesen: Compose erwartet 9.15.2;
-   Docker-Hub-API liefert dafür anonym 404, älteres Image vorhanden.
+1. Aktuelle Distribution nicht konsistent öffentlich nachgewiesen: Compose erwartet 10.0.0;
+   öffentlich installierbare signierte 10.0.0-Artefakte noch nicht belegt.
 2. Öffentliche Historien-/Lizenzfreigabe fehlt. Clipper-Drift ist durch E12 behoben;
    für Builds muss die in .bun-version festgelegte Toolchain einschließlich Kindprozessen aktiv sein.
-3. Vollständige aktuelle Produktabnahme fehlt. Isolierter Kandidat 9.15.2 besteht API-/Browser-/Intake-Prüfungen mit Mock-Provider, E37; die bestehende manuelle Demo ist davon getrennt.
+3. Vollständige aktuelle Produktabnahme fehlt. E184/E185 belegen echte Installation und Browser-/Provider-Journey auf d2eeb2aaa; verbleibende Cross-Surface-Prüfungen und neuer HTTP-/Seed-Stand sind getrennt offen.
 4. Website, Pflichttexte und Support sind noch nicht gemeinsam freigegeben.
 5. GA braucht öffentliche Store-Version und erfolgreiche Release-Strecke. Begrenztes Versionsupgrade/Restore bestanden (E72), finale Beta→GA-Abnahme offen.
 
@@ -68,19 +68,14 @@ kein neuer vollständiger Nachweis für diesen integrierten Stand behauptet.
 
 ## Letzter abgeschlossener Image-Nachweis
 
-**E168: ARM64-Image 585eb0b314bd auf f225cdfba, Build PASS,
-5.339 Quellhashes unverändert.** Frische isolierte Compose-Installation,
-Installer einschließlich Lizenzdateien, Bootstrap, Clipper-Download,
-Neustart/Persistenz, Runtime-Smoke und Cleanup PASS. QuickJS-Regression im
-echten Worker sowie 495 Notice-Texte/Prüfsummen PASS.
-Trivy: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW; keine gesamte Sicherheitsfreigabe.
-
-Erster Build wegen Docker-Speicherreserve abgebrochen. Eigenes altes Image
-archiviert/geprüft und gezielt eigene Cache-Einträge bereinigt; Wiederholung
-bestanden. Nutzer-Demos und fremde Images/Volumes erhalten. Frühere
-Last-Timeouts aus E157 bleiben historische Nachweise, damaliger serieller Lauf PASS.
-E168 liegt vor der Produktkorrektur f489823b1. Das Image wurde geprüft archiviert;
-der neue Container-Nachweis nach dieser Korrektur steht aus.
+**E184/E185: 10.0.0-Image 933277a500aa auf d2eeb2aaa PASS.**
+Sauberer unveränderter Quellstand; vollständiger Build, Archivhash/19 Blobhashes,
+Import mit RootFS-Abgleich, frische Compose-Installation und zehn technische
+Abnahmechecks bestanden. Separate echte Browser-/Provider-Journey ebenfalls
+bestanden, beide Testprojekte bereinigt. Nachweise und Grenzen in E184/E185.
+Der aktuelle HTTP-/Seed-Stand fae216c38 ist noch nicht in diesem Image enthalten.
+E168 bleibt letzter vollständiger Image-Security-/Notice-Audit; keine automatische
+Übertragung dieser Freigabe auf das neue Image.
 
 ## Aktuelle Nachweise und Grenzen
 
@@ -88,7 +83,7 @@ der neue Container-Nachweis nach dieser Korrektur steht aus.
 | --- | --- |
 | Vollständiges lokales Gate | E181: PASS auf f489823b1, Exit 0, Quellen unverändert. Isolierte DB/Mockprovider; E2E-SKIP/TODOs und neue Versionsartefakte gesondert offen. |
 | Reale Modelle | E170: echte HTTP-/CLI-Gesprächssuite 7 PASS; E169: aktuelles Live-Gate, beide dokumentierten Modelle, 6 PASS/Exit 0, unveränderte Quellen. Keine erneute Bestätigung der Produktionsroute oder aller Chatkanäle. |
-| Aktuelles ARM64-Image | E168: Image 585eb0b314bd auf f225cdfba; Build, Installer, frische Installation, Neustart/Persistenz, Smoke und Cleanup PASS. |
+| Aktuelles ARM64-Image | E184: lokales 10.0.0-Image auf d2eeb2aaa, Build/Archiv/Import/Installation/Persistenz PASS. E185 reale Browser-Journey PASS. Neuere HTTP-/Seed-Änderungen noch nicht enthalten. |
 | Sicherheit | **E158: QuickJS-Fix einschließlich Gesamtgate lokal geprüft.** E168: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories. Frühere Triage E123 bleibt relevant; keine gesamte Sicherheitsfreigabe. |
 | Lizenz-Auslieferung | E168: alle 495 erfassten Texte und Produktlizenz im finalen Image/Installer bestätigt. Drei bekannte JS-Zuordnungen, Modellrechte, vollständige Build-/Plattformzuordnung, Quell-/Relink-Auslieferung und juristische Freigabe offen. |
 | Upgrade/Restore | E72: begrenzte Strecke 9.9.0 → lokaler 9.15.2-Kandidat und Restore bestanden. Finale Beta→GA-/Provenienzabnahme offen. |
@@ -109,7 +104,7 @@ Scope-Erweiterung vom Nutzer entschieden (gegen den Freeze 17.–20.10.): Lernvo
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **Nachweise E177–E181 sind als ba73d20a9 regulär gepusht, alle Pre-Push-Gates PASS. E182: neuer Image-Build erneut durch Speicherreserve gestoppt. Eigene frühere Build-Caches anhand vorhandener Receipts gezielt zuordnen; keine fremden Images/Volumes entfernen. Regenerierte 10.0.0-Clipper-Artefakte nach Binärprüfung committen/pushen, dann ausreichend dimensionierten Image-Build und Abnahme abschließen.** Vorbereitete Skripte: `.artifacts/launch/run-tenant-runtime-container-build-capacity.py`, `verify-tenant-runtime-candidate.py` und `run-tenant-runtime-intake-browser.py`. Beide Abnahmen verlangen erfolgreichen Build, unveränderte Quellen und exakt passende Image-/Commitbindung. Build ausgeführt und abgebrochen, beide Image-Abnahmen noch nicht ausgeführt. Docker-Platzreserve wird bewacht; fremde Images/Volumes bleiben erhalten. E181 nicht ohne neue relevante Änderung wiederholen. Website-Entscheidungen aus f7e57030a und WEBSITE-TODO.md haben Vorrang vor früheren Framer-Entwürfen. Neue Nachweise sind LOCAL_ONLY bis regulärem Push.
+Nächster Codex-Schritt: **E183–E186 regulär committen/pushen. Dann den integrierten HTTP-/Seed-Stand mit dem geprüften ext4-Builder als Image aktualisieren und gezielt abnehmen; anschließend verbleibende konkrete Security-/Lizenz-/Release-Nachweise abschließen.** Der vollständige Build E184 und die echte Browser-Journey E185 sind bestanden; keine unveränderte Wiederholung als neue Arbeit zählen. Build-Rezept: `.artifacts/launch/run-ext4-backed-candidate-build.py`; für einen neuen Lauf neue Receipt-/Archivnamen verwenden. Aktuelle Abnahmeskripte binden Image, Build und Quellcommit. E181 gilt weiterhin nur für seinen geprüften Stand; vollständiges Release-Gate vor Tagging bleibt Pflicht. Website-/Store-Handoff und ungemergte fremde Worktrees erhalten. Neue Nachweise LOCAL_ONLY bis Push.
 
 L04 bleibt begrenzt auf bekannte offene Rechte-/Plattform-/Quellauslieferungsfragen
 und menschliche Freigaben. Alle 103 Polyfill-Lockfile-Versionen haben Originaltexte;
