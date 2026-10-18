@@ -2,6 +2,7 @@ import type { ConstructorOptions, QueueResult } from "pg-boss";
 import { PgBoss } from "pg-boss";
 import { errorFields, logger } from "../logging/logger.ts";
 import { setDlqJobCount, setQueueDepth, setQueueLag } from "../observability/instrumentation.ts";
+import { queueErrorFields } from "./error-fields.ts";
 import { QUEUE_DEFINITIONS, QUEUE_NAMES, type QueueName } from "./queues.ts";
 
 let _boss: PgBoss | null = null;
@@ -65,12 +66,12 @@ export async function createBoss(opts: StartBossOptions): Promise<PgBoss> {
   };
   const boss = new PgBoss(bossOptions);
 
-  boss.on("error", (err: Error) => {
+  boss.on("error", (err: unknown) => {
     logger.error({
       module: "queue",
       action: "boss.error",
       msg: "pg-boss emitted error",
-      ...errorFields(err),
+      ...queueErrorFields(err),
     });
   });
 
