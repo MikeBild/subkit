@@ -58,6 +58,28 @@ Known smaller findings to fold into the increments above: a failed tenant activa
 blocks other tenants' settings writes until the operator activates; the operator
 backfill in a multi-tenant installation picks silently and should log its choice.
 
+## Open verification after the operator separation
+
+- Run `bun run verify`, the contract and end-to-end suites, `verify:functional-cockpit`
+  and `demo:local:verify` before the next release tag; none ran for this change.
+- `query-fragment.test.ts` fails in batch runs and passes alone; find the shared state.
+- The sandbox helper drift check fails with a Bun version other than the pinned one;
+  make the pre-push hook or `verify` fail early with a clear message about the pinned version.
+- Not reviewed in depth: inbound hooks, read tools of the chat, the apps listing.
+- Optional hardening left out: composite foreign keys and tenant filters in API-key row
+  and role lookups, a deterministic test for a token refresh racing a client revoke,
+  a drift test that every example scope is a known permission.
+
+## Decisions needed before the hosted offering
+
+- One tenant per person, or several memberships with a tenant switch.
+- Budget unit and limits per tenant (amount per month, global monthly ceiling, model allowlist).
+- Replica count at launch; more than one requires the limits to live in PostgreSQL first.
+- Erasure grace period, retention of old config revisions and audit metadata, behaviour
+  when an invited member is deleted.
+- Legal texts (imprint, privacy policy, data-processing agreement, terms) and who signs them off.
+- Whether the tagged release images kept for local demos stay on the development machine.
+
 ## Row-Level Security as a second line of tenant isolation
 
 Deferred for the hosted self-service offering. Tenant isolation currently relies on
