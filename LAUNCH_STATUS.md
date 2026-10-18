@@ -1,11 +1,11 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E220.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E221.
 
-- Letztes Update: **2026-10-18T16:32:34.866748+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **52bd51127**, `main`, Version **10.0.1** vorbereitet.
-  E219 normal geprüft gepusht; alle acht Hooks bestanden. Vollständiger historischer Gate-Nachweis E215 auf 1c898dce4.
+- Letztes Update: **2026-10-18T16:37:08.015419+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **09024fdd3**, `main`, Version **10.0.1** vorbereitet.
+  Queue-Adapter E220 normal geprüft gepusht; alle acht Hooks bestanden, sauberer Checkout und 0/0-Divergenz bestätigt. Historischer Gesamtgate-Nachweis E215 auf 1c898dce4.
 - Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Begrenzte Queue-Fehlernormalisierung geändert; aktuelles Gesamtgate läuft separat.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
@@ -53,6 +53,9 @@ Erster Gesamtgate-Vorlauf fand einen optionalen TypeScript-Stack-Typfehler;
 korrigiert und gezielt erneut geprüft. Aktueller vollständiger Lauf **IN_PROGRESS**:
 `.artifacts/launch/queue-error-fields-full-verify.{json,log}`.
 Kein neuer Gesamt-PASS und keine behobene Queue-Ursache behauptet.
+E221 bestätigt zusätzlich den tatsächlichen Queue-Listener gegen isoliertes PostgreSQL:
+gezielt injizierte Timeout-/SQL-Ereignisse korrekt klassifiziert und redigiert;
+Fixtures bereinigt. Kein spontan reproduzierter Runtime-Fehler.
 
 **Nächster Codex-Schritt:** laufendes Gesamtgate bis Exit auswerten, Quellhashes
 und Nachweise prüfen und Status normal geprüft synchronisieren. Bei erneutem
