@@ -705,5 +705,14 @@ Die Bilder zeigen echte unveränderte Oberflächen mit isolierten Beispieldaten,
 je 1280×800 JPEG. Sie sind ausdrücklich Entwürfe. Breite Tabdarstellung,
 Freiraum und lokale Beispieladresse müssen vor finaler Verwendung visuell
 abgenommen werden. Keine Google-Freigabe behaupten. Die erforderliche kleine
-Promografik (440×280) bleibt offen. Grundlage:
+Promografik (440×280) liegt ebenfalls als Entwurf vor: [PNG](assets/clipper-store/promo.png),
+[editierbare eigenständige HTML-Quelle](assets/clipper-store/promo.html) und
+[Herkunft/Prüfsummen](assets/clipper-store/promo-evidence.json). Das vorhandene Logo
+ist eingebettet; [Lucide-Lizenz](assets/clipper-store/lucide.txt) liegt bei.
+Zur erneuten Ausgabe die HTML-Datei mit Chromium bei 440×280 CSS-Pixeln,
+Device Scale Factor 1 und hellem Farbschema öffnen und als PNG ohne Transparenz
+exportieren. Keine externen Ressourcen erforderlich.
+Der ZIP-Generator erzeugt das 128px-Store-Icon mit 96px-Motiv und 16px
+transparentem Rand; die Pixelgrenzen sind automatisiert geprüft (E148).
+Menschliche Medienabnahme und Google-Freigabe bleiben offen. Grundlage:
 [offizielle Google-Bildvorgaben](https://developer.chrome.com/docs/webstore/images).

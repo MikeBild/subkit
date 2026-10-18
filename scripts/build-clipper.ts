@@ -98,7 +98,14 @@ export async function buildClipper(check = false): Promise<string> {
     files.set(
       `icons/icon-${size}.png`,
       await sharp(icon, { density: 384 })
-        .resize(size, size)
+        .resize(size === 128 ? 96 : size, size === 128 ? 96 : size)
+        .extend({
+          top: size === 128 ? 16 : 0,
+          bottom: size === 128 ? 16 : 0,
+          left: size === 128 ? 16 : 0,
+          right: size === 128 ? 16 : 0,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        })
         .png({ compressionLevel: 9, adaptiveFiltering: false })
         .toBuffer(),
     );
