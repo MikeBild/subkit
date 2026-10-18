@@ -642,3 +642,39 @@ und alle Linkplätze durch geprüfte öffentliche Ziele ersetzen. Bis dahin blei
 auch dieser Entwurf unveröffentlicht. Keine Tracking-Pixel oder zusätzlichen externen
 Badges aufnehmen. Finaler Fakten-/Stimmenreview, konkrete Preview-Revision und die
 ContentKit-Freigabe werden separat dokumentiert.
+
+## L04: Quell-/Relink-Auslieferung konkret abnehmen
+
+Status: technische Vorbereitung, keine juristische Freigabe. Die bestehende
+Release-Strecke liefert Binärdateien und Notices; ein entsprechendes öffentliches
+Quell-/Relink-Paket und ein erfolgreicher Wiederaufbau sind noch nicht belegt.
+Buns eigene LICENSE.md beschreibt statisch eingebundenes WebKit/JavaScriptCore
+und einen Wiederaufbau mit ausgetauschter Bibliothek. TinyCC wird aus einem
+gebundenen Fork einschließlich Bun-Patch gebaut. Die konkrete rechtliche
+Anwendbarkeit und Auslieferungsform muss der Betreiber freigeben lassen.
+
+Der nächste technische Auftrag bleibt innerhalb L04/L05:
+
+1. Den tatsächlichen Release-Commit und die Binär-/Image-Hashes an ein
+   Quellmanifest binden. SubKit, Bun, WebKit und TinyCC samt angewendeten Patches,
+   Generatoren und Buildkonfiguration erfassen; weitere relevante Abhängigkeiten
+   anhand des Builds ergänzen. Ein Snapshot allein beweist keine Vollständigkeit.
+2. Vorhandene Quellen wiederverwenden und deren vollständige Archive mit Hashes
+   lokal bereitstellen. Keine Secrets oder ungetrackten Nutzerdateien aufnehmen.
+   Externe Downloadlinks allein nicht als bereits ausgelieferte Quellen melden.
+3. Auf einer isolierten, geeigneten Buildmaschine den dokumentierten Wiederaufbau
+   mit geänderter relevanter Bibliothek tatsächlich durchführen. Engine-Start,
+   CLI und einen synthetischen Workflow prüfen. Abweichende Toolchain-Provenienz
+   ehrlich ausweisen; normale Release-Gates nicht für den Versuch umgehen.
+4. Der juristischen Prüfung ein konkretes Paket vorlegen: Inventar, Originaltexte,
+   Änderungen, Buildanleitung, Testnachweis und vorgesehene öffentliche Bezugswege.
+   Keine freie Umverteilbarkeit unbekannter Modelle oder Pakete unterstellen.
+5. Erst nach Abnahme den gewählten Lieferumfang in Checksummen, Signatur,
+   Release-Assets und Downloads aufnehmen und anonymen Abruf prüfen. Veröffentlichung
+   bleibt separat freizugeben. Ein lokales Paket oder ein GitHub-Push erfüllt diesen
+   öffentlichen Auslieferungsnachweis nicht.
+
+DoD: bestätigter Lieferumfang, zum Release passende Inhalte, reproduzierbare
+Anleitung mit echtem Austausch-/Wiederaufbaunachweis, sichere Artefaktbindung und
+nach Veröffentlichung erreichbare Bezugswege. Bis dahin bleiben L04/L05 offen.
+Keine pauschale neue Architektur oder Produktfunktion dafür einführen.
