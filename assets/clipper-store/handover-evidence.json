@@ -1,10 +1,10 @@
 {
   "status": "DRAFT_NOT_READY_FOR_SUBMISSION",
-  "source_commit": "a13a00d8c703fd12db04ec262f0e60822e85004a",
-  "plan_sha256": "a6eabb6132bdad24193e89b017069674a846c45a2ef6e948d9da9e7e5a766e09",
-  "created_at": "2026-10-18T03:50:38.024455+00:00",
+  "source_commit": "32abc4b37fc186afc6344fa8eec637eb2bc62c2e",
+  "plan_sha256": "4ef82fa1b4a5a5006b48780a9323ac95e3ddd4e8ec2a979b9b318884b032d0a9",
+  "created_at": "2026-10-18T07:43:26.344132+00:00",
   "extension_version": "9.15.2",
-  "extension_sha256": "e05af6a6336dfb2deb325fc03e007f5afc13c3487611f5734ef748c3942f13f7",
+  "extension_sha256": "b2c3c0e77aa00e233dd422f80f915814b20d571b15576b1d8febb01b4dd1f815",
   "permissions": ["activeTab", "scripting", "contextMenus", "storage"],
   "optional_host_permissions": [
     "https://*/*",
@@ -74,8 +74,8 @@
   "files": [
     {
       "path": "READ-FIRST.md",
-      "bytes": 1836,
-      "sha256": "382e60588ddee2d0030f2524dd41d0386f8f87ed2b66ffa417fcc79c0a923c17"
+      "bytes": 1956,
+      "sha256": "43e9d5d5b0668b45819e8cc0b3b51563c4494b0b700307d653f6a91258fc8c60"
     },
     {
       "path": "capture-evidence.json",
@@ -129,8 +129,8 @@
     },
     {
       "path": "subkit-clipper.zip",
-      "bytes": 255543,
-      "sha256": "e05af6a6336dfb2deb325fc03e007f5afc13c3487611f5734ef748c3942f13f7"
+      "bytes": 255617,
+      "sha256": "b2c3c0e77aa00e233dd422f80f915814b20d571b15576b1d8febb01b4dd1f815"
     }
   ],
   "limits": [
@@ -141,9 +141,9 @@
     "Human legal and visual approvals remain open"
   ],
   "local_handover_archive": {
-    "path": ".artifacts/launch/store-handover.zip",
-    "sha256": "5c1e8728c199bc84532bbf4b5e168a41d2437b233c2c1e9df5ec4dca91f2aa43",
-    "bytes": 345011,
+    "path": ".artifacts/launch/store-handover-current.zip",
+    "sha256": "b4221ec990cbecf7fefe79154b3f0e291d7d058f6e1927ee7bae1d4b77523e2c",
+    "bytes": 345129,
     "integrity": "PASS"
   },
   "secret_scan": {
