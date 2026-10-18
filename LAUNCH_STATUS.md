@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-18T03:42:07.822361+00:00**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-18T03:47:45.716470+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
-- Geprüfter Buildcommit: **454cbe8e4**, Version **9.15.2**. Aktuelles vollständiges ARM64-Image, Notice-Inhalte, echte Installation und Scan bestanden (E146). Letztes Gesamtgate E131 auf 0eb49bf4c; danach Notice-Inventar und Dokumentation ergänzt, gezielt geprüft.
-- Letzter bestätigter Remote-Stand: **31723f8a9**, main, 0/0 Divergenz; `git pull --ff-only origin main` ohne Änderungen. Diese Statusaktualisierung bis zum Push LOCAL_ONLY. Commit/Push sind autorisiert; Veröffentlichung bleibt separat freizugeben.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E150. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Geprüfter Buildcommit: **0ced46a72**, Version **9.15.2**. Aktuelles vollständiges ARM64-Image, korrigiertes Clipper-ZIP/Hook-Anleitung, Notice-Inhalte, echte Installation und Scan bestanden (E151). Letztes Gesamtgate E131 auf 0eb49bf4c; danach Notice-Inventar, Clipper-Icon und Setup-Anleitung ergänzt; gezielte Tests und aktueller Image-Nachweis bestanden.
+- Letzter bestätigter Remote-Stand: **0ced46a72**, main, 0/0 Divergenz; `git pull --ff-only origin main` ohne Änderungen. Diese Statusaktualisierung bis zum Push LOCAL_ONLY. Commit/Push sind autorisiert; Veröffentlichung bleibt separat freizugeben.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E151. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -24,7 +24,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17; Signatur gegen Updater-Schlüssel vor Upload geprüft, E18. GitHub-Installer mit Signaturprüfung und lokalem Alias korrigiert, E20; signierte Lizenzdateien werden nun mitinstalliert, E127. Updater-Manifestparser weist Mehrdeutigkeiten ab, E128; signierter Lizenzdownload und Retention/Rollback ergänzt, E129. Engine-Installer einschließlich beider Notice-Dateien gegen finales Image real bestanden, E130/E133. Lokaler check/prepare/publish-Weg implementiert, 18 Prüfungen PASS, E21; echter Vorbereitungs-/Publikationslauf weiterhin UNVERIFIED. Modell-/Runtime-Assetbindung korrigiert und als a6d8b758d gepusht, E51. |
 | L06 | BLOCKED | Betreiber-/Supportangaben und juristische Freigabe erforderlich. |
 | L07 | DONE | Persistenter Quickstart und Backup-/Recovery-Anleitung; Linux-amd64-Build, frische Installation, Engine-Neustart und Restore in getrennte leere Volumes mit verschlüsselten Testdaten PASS, E22. Commit 765a2fe26 gepusht, alle acht Pre-Push-Gates bestanden. Öffentliche Installation bleibt L15, Versionsupgrade L18. |
-| L08 | IN_PROGRESS | Konkrete SDK/Issuer-, Hono-, Parser-, Transport-, Sharp- und Containerbefunde korrigiert und gezielt geprüft (E25/E30/E54–E60/E68/E78). Aktueller lokaler ARM64-Imageaudit E146: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW. Native/WASM-/Artefaktabdeckung, übrige Befunde und finale Sicherheitsfreigabe offen. Kein Schluss auf Gesamtfreigabe aus Paketcounts. |
+| L08 | IN_PROGRESS | Konkrete SDK/Issuer-, Hono-, Parser-, Transport-, Sharp- und Containerbefunde korrigiert und gezielt geprüft (E25/E30/E54–E60/E68/E78). Aktueller lokaler ARM64-Imageaudit E151: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW. Native/WASM-/Artefaktabdeckung, übrige Befunde und finale Sicherheitsfreigabe offen. Kein Schluss auf Gesamtfreigabe aus Paketcounts. |
 | L09 | IN_PROGRESS | Claim Map, Gliederung, deutscher Produktseitenentwurf und getrennte Kritik in LAUNCH.md vorbereitet; E29. Bestehender redaktioneller Kanal bestätigt, kein SubKit-Projekttext im gelesenen main-Baum. Öffentliche Links, Rechtsangaben, Preview und Abnahme offen. ENTWURF, nicht veröffentlicht. |
 | L10 | IN_PROGRESS | Zweisprachige Listing-Texte, Berechtigungsbegründungen, Datenfluss-/Privacy-Arbeitsblatt und Reviewer-Ablauf als Entwurf in LAUNCH.md vorbereitet. Vier PNG-Icons werden aus bestehendem Cockpit-Logo generiert und mit Lucide-Lizenz im Manifest/ZIP ausgeliefert, E53. Paket-/Browser-/Binärprüfungen und macOS/Linux-Reproduzierbarkeit bestanden. Zwei echte Screenshot-Entwürfe mit isolierten Beispieldaten vorbereitet (E147); Kleine Promografik als lokaler Entwurf ergänzt; 128px-Store-Icon auf 96px-Motiv plus 16px transparenten Rand korrigiert und im ZIP geprüft (E148). Linux-amd64/macOS-ZIP byte-identisch; aktuelle kompilierte Engine/CLI liefern/installieren dasselbe Paket, E149. Visuelle Abnahme aller Medien, Pflichtlinks und menschliche Zertifizierung offen. ENTWURF, nicht veröffentlicht. |
 | L11 | BLOCKED | L10, öffentliche Pflichtlinks, Publisherstatus und explizite Einreichungsfreigabe fehlen. |
@@ -55,26 +55,26 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 
 ## Letzter Verifikationsabschluss
 
-`bun run verify` auf **0eb49bf4c6a9bddde2f38ebc974294e25c6bff31** abgeschlossen: **Exit 0**, Quellen unverändert, keine Produktdiffs (E131). Bun 1.4.0, isolierte PostgreSQL-Fixture und Mockprovider. Receipt/Log: `.artifacts/launch/installer-notices-full-verify.{json,log}`. Kein erneuter Gesamtcheck für diese reine Statusaktualisierung erforderlich. Aktueller vollständiger Image-Build und realer Engine-Installationsablauf anschließend bestanden (E146).
+`bun run verify` auf **0eb49bf4c6a9bddde2f38ebc974294e25c6bff31** abgeschlossen: **Exit 0**, Quellen unverändert, keine Produktdiffs (E131). Bun 1.4.0, isolierte PostgreSQL-Fixture und Mockprovider. Receipt/Log: `.artifacts/launch/installer-notices-full-verify.{json,log}`. Kein erneuter Gesamtcheck für diese reine Statusaktualisierung erforderlich. Aktueller vollständiger Image-Build und realer Engine-Installationsablauf anschließend bestanden (E151).
 
 ## Aktueller Image-Nachweis
 
-E146: vollständiger ARM64-Build auf **454cbe8e4**, 5.318 Quellhashes unverändert,
-Image **2446f78ebf3e**. Alle 495 erfassten nativen/Polyfill-Texte und Produktlizenz
-im Image sowie im Installer-Bundle bestätigt; eindeutige korrekte Hashes.
-Echte Engine-Installation vor Bootstrap, ausführbare CLI, wiederholte Installation,
-Bootstrap/Auth, Workflow-/Dateipersistenz nach Engine-Neuerstellung und Runtime-Smoke
-PASS. Eigene Testvolumes bereinigt. Scan: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW,
+E151: vollständiger ARM64-Build auf **0ced46a72**, 5.325 Quellhashes unverändert,
+Image **fb72ee91339b**. Engine liefert exakt das aktuelle Clipper-ZIP
+`e05af6a6336dfb2deb325fc03e007f5afc13c3487611f5734ef748c3942f13f7`;
+Container-CLI installiert das korrigierte Store-Icon, eingebettete Selbstbeschreibung
+enthält die aktuelle Hook-Anleitung. Alle 495 erfassten Texte und Produktlizenz
+im Image/Installer bestätigt; eindeutige korrekte Hashes.
+Echte Installation vor Bootstrap, wiederholte Installation, Bootstrap/Auth,
+Workflow-/Dateipersistenz nach Engine-Neuerstellung und Runtime-Smoke PASS.
+Eigene Testvolumes bereinigt. Scan: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW,
 176 Advisories. Keine gesamte Sicherheits-, Rechts- oder öffentliche Freigabe.
 
-E149: Nach der Store-Icon-Korrektur ist das neue ZIP auf Linux-amd64 und macOS
-byte-identisch; frisch kompilierte Engine/CLI liefern/installieren es real.
-Das vollständige Image E146 enthält weiterhin das vorherige ZIP; vor finaler
-Release-Abnahme Image/ZIP/Signaturen auf denselben Kandidaten binden.
-
-Vorherigen eigenen Kandidaten archiviert und geprüft; neun eigene Cache-Einträge
-gezielt entfernt (3,739 GB). Nutzer-Demos/Volumes unverändert. Nach Build etwa
-2,8 Millionen KiB Docker-Speicher frei; große Builds vorher kapazitiv prüfen.
+Vorheriges eigenes Image E146 archiviert, Archivstruktur geprüft; keine Container
+referenzierten es beim Entfernen. Nur eigene belegte Build-Caches bereinigt,
+zuletzt 4,902 GB freigegeben; rund 5,6 GiB Docker-Speicher frei.
+Nutzer-Demos und deren Volumes unverändert. Screenshot-Fixture E147 bleibt
+historisch an das damalige ZIP gebunden; Store-Medien noch nicht manuell abgenommen.
 
 ## Aktuelle Nachweise und Grenzen
 
@@ -82,9 +82,9 @@ gezielt entfernt (3,739 GB). Nutzer-Demos/Volumes unverändert. Nach Build etwa
 | --- | --- |
 | Vollständiges lokales Gate | E131: Exit 0 auf 0eb49bf4c, Quellen unverändert; vollständige Verify-Kette einschließlich Cockpit, isolierter Tests, Build/Binär-/Browser-/E2E-Prüfungen bestanden. Mockprovider. |
 | Reale Modelle | E73: getrennte Live-Modellmatrix bestanden; kein Nachweis aller Chatkanäle. |
-| Aktuelles ARM64-Image | E146: vollständiger Build, echter Engine-Installer, frische Compose-Installation und Persistenz nach Neustart PASS; Testressourcen bereinigt. |
-| Sicherheit | E146: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories. Frühere Triage E123 bleibt relevant; keine gesamte Sicherheitsfreigabe. |
-| Lizenz-Auslieferung | E146: alle 495 erfassten Texte und Produktlizenz im finalen Image/Installer bestätigt. Drei bekannte JS-Zuordnungen, Modellrechte, vollständige Build-/Plattformzuordnung, Quell-/Relink-Auslieferung und juristische Freigabe offen. |
+| Aktuelles ARM64-Image | E151: vollständiger Build, echter Engine-Installer, frische Compose-Installation und Persistenz nach Neustart PASS; Testressourcen bereinigt. |
+| Sicherheit | E151: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories. Frühere Triage E123 bleibt relevant; keine gesamte Sicherheitsfreigabe. |
+| Lizenz-Auslieferung | E151: alle 495 erfassten Texte und Produktlizenz im finalen Image/Installer bestätigt. Drei bekannte JS-Zuordnungen, Modellrechte, vollständige Build-/Plattformzuordnung, Quell-/Relink-Auslieferung und juristische Freigabe offen. |
 | Upgrade/Restore | E72: begrenzte Strecke 9.9.0 → lokaler 9.15.2-Kandidat und Restore bestanden. Finale Beta→GA-/Provenienzabnahme offen. |
 | Öffentlich | Aktuelle Beta/GA, Produktwebsite und Store-Veröffentlichung nicht belegt/freigegeben. Ein lokales PASS oder Push ersetzt keinen dieser Nachweise. |
 | Daily/Weekly und Hooks | Zeitpläne laut Nutzer vorhanden; tatsächliche Läufe/Lesezugriff UNVERIFIED. Nutzerprofil unauthorized; isolierte Briefing-/Hookprüfungen bestanden, tatsächlicher Clientdispatch offen (E32/E38). |
@@ -101,14 +101,14 @@ Offen: Betreiber-/Supportangaben, juristische Abnahme, Store-Publisherstatus und
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **L05** – aktuellen Containerkandidaten nach
-Clipper-Icon- und Hook-Anleitungsänderung erneuern; eingebettetes ZIP und
-Selbstbeschreibung sowie frische Installation gezielt prüfen. Vor großem Build
-Docker-Kapazität prüfen und bestehende Nutzer-Demos erhalten.
+Nächster Codex-Schritt: **L10** – vorhandene Store-Texte, Medien und das
+geprüfte ZIP zu einer konkreten lokalen Einreichungsübergabe bündeln. Fehlende
+Pflichtlinks, Publisherangaben und menschliche Freigaben ausdrücklich offen
+lassen; keine Store-Einreichung oder Veröffentlichung.
 
 L04 bleibt begrenzt auf bekannte offene Rechte-/Plattform-/Quellauslieferungsfragen
 und menschliche Freigaben. Alle 103 Polyfill-Lockfile-Versionen haben Originaltexte;
 uucode-Haupt-/Sekundärhinweise und breite Base64-Quellsuche sind belegt (E137–E143).
 Diese Recherchen nicht wiederholen. Vier lokale Source-Archive E144 sind vorhanden;
 E145 benennt fehlende Toolchains. Kein Wiederaufbau oder öffentliche Quellauslieferung
-behauptet. Der aktuelle Image-/Installer-Nachweis E146 ist abgeschlossen.
+behauptet. Der aktuelle Image-/Installer-Nachweis E151 ist abgeschlossen.
