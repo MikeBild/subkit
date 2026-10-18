@@ -7,6 +7,7 @@ import {
   _enableReadSamplingForTests,
   _resetConfigForTests,
   getConfig,
+  installRuntimeConfig,
   loadConfig,
   setConfigKey,
 } from "../loader.ts";
@@ -116,6 +117,54 @@ describe("consumer read-back per subsystem", () => {
     expect(getConfig("tenant-a").llm.api_key).toBe("fresh-tenant-key");
     expect(getConfig("tenant-a").llm.providers.anthropic.api_key).toBe("fresh-tenant-key");
     expect(getConfig().llm.providers.anthropic.api_key).toBe("");
+  });
+
+  test("installed tenant runtime credentials reach only their selected provider", async () => {
+    const { initializeModel } = await import("../../llm/core/model-init.ts");
+    installRuntimeConfig({
+      ...getConfig(),
+      tenants: {
+        "tenant-a": {
+          llm: { provider: "anthropic", api_key: "tenant-a-key", model: "tenant-a-model" },
+        },
+        "tenant-b": { llm: { provider: "anthropic", api_key: "tenant-b-key" } },
+      },
+    });
+    expect(getConfig("tenant-a").llm.providers.anthropic.api_key).toBe("tenant-a-key");
+    expect(getConfig("tenant-a").llm.providers.anthropic.model).toBe("tenant-a-model");
+    expect(getConfig("tenant-b").llm.providers.anthropic.api_key).toBe("tenant-b-key");
+    expect(getConfig().llm.providers.anthropic.api_key).toBe("");
+    expect(getConfig("tenant-a").llm.providers.openai.api_key).toBe("");
+    expect((await initializeModel({ tenantId: "tenant-a" })).provider).toBe("anthropic");
+  });
+
+  test("tenant provider credentials override inherited defaults without replacing explicit leaves", () => {
+    const global = getConfig();
+    installRuntimeConfig({
+      ...global,
+      llm: {
+        ...global.llm,
+        provider: "anthropic",
+        providers: {
+          ...global.llm.providers,
+          anthropic: { ...global.llm.providers.anthropic, api_key: "global-key" },
+        },
+      },
+      tenants: {
+        "tenant-generic": { llm: { api_key: "tenant-key" } },
+        "tenant-explicit": {
+          llm: { api_key: "generic-key", providers: { anthropic: { api_key: "explicit-key" } } },
+        },
+        "tenant-cleared": { llm: { api_key: "" } },
+        "tenant-switched": { llm: { provider: "openai" } },
+      },
+    });
+    expect(getConfig("tenant-generic").llm.providers.anthropic.api_key).toBe("tenant-key");
+    expect(getConfig("tenant-explicit").llm.providers.anthropic.api_key).toBe("explicit-key");
+    expect(getConfig("tenant-cleared").llm.providers.anthropic.api_key).toBe("");
+    expect(getConfig("tenant-switched").llm.providers.openai.api_key).toBe("");
+    expect(getConfig("tenant-unconfigured").llm.providers.anthropic.api_key).toBe("global-key");
+    expect(getConfig().llm.providers.anthropic.api_key).toBe("global-key");
   });
 
   test("tenant provider switch does not leak the previous provider key", async () => {
