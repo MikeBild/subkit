@@ -1,0 +1,46 @@
+{
+  "status": "patched main-entry build; validation in progress",
+  "package": "@jitl/quickjs-singlefile-cjs-release-sync",
+  "packageVersion": "0.32.0",
+  "source": {
+    "revision": "df4efb9ef2cb25c417ecb57986da462d11b244ed",
+    "url": "https://codeload.github.com/justjake/quickjs-emscripten/tar.gz/df4efb9ef2cb25c417ecb57986da462d11b244ed",
+    "sha256": "b6f342ad8e18bcff29ab4e78467d6e33c53c9e1a47986e58b91a1462beb31a8e"
+  },
+  "upstreamFix": {
+    "revision": "841dd034c2fac02f9ee3c605d8b96a8f8b49c945",
+    "url": "https://github.com/bellard/quickjs/commit/841dd034c2fac02f9ee3c605d8b96a8f8b49c945",
+    "patch": "typed-array.patch",
+    "sha256": "73ffcfdf77f71d6a554bd6dc05aa3e3061926fb96d1e4c6096c068b67ef9cf52"
+  },
+  "toolchain": {
+    "emsdkImage": "emscripten/emsdk@sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198",
+    "emsdkVersion": "5.0.1",
+    "bun": "1.4.0",
+    "esbuild": "0.19.9",
+    "fs-extra": "10.1.0",
+    "prettier": "3.1.1"
+  },
+  "recipe": [
+    "Extract the verified source archive in an isolated directory. Apply typed-array.patch with patch -p1 in vendor/quickjs.",
+    "Install the exact fs-extra, prettier and esbuild tool versions in a separate tool directory; link its node_modules to the source root. Link @jitl/tsconfig in that tool directory to packages/internal-tsconfig.",
+    "In packages/variant-quickjs-singlefile-cjs-release-sync, run make -j2 dist/emscripten-module.cjs with GENERATE_TS=bun ../../scripts/generate.ts and EMSDK_DOCKER_IMAGE set to the pinned digest. The original emcc.sh runs the compiler container.",
+    "Bundle src/index.ts with esbuild using the package as absWorkingDir: bundle=true, platform=node, format=cjs, target=node16, sourcemap=true, minifySyntax=true, minifyWhitespace=true; outfile=dist/index.js.",
+    "Use bun patch on the installed package. Replace dist/index.js and dist/index.js.map with the generated files, then bun patch --commit. Preserve the original license. Verify the patched main entry through the actual SubKit worker regression."
+  ],
+  "scope": [
+    "SubKit imports only the package main entry. Its bundled WASM implementation is replaced.",
+    "The separate upstream emscripten-module export is unchanged and must not be introduced as an alternative runtime loader.",
+    "No runtime polyfill, disabled feature, host-eval fallback or alternate engine was introduced.",
+    "This upstream fix does not establish absence of other QuickJS or Emscripten vulnerabilities."
+  ],
+  "outputs": {
+    "emscripten-module.cjs": "d74fb5a3f514174e44cb3dd4f9a29d6f525d67d5583b29a79ce92a57802215eb",
+    "index.js": "671ae12974fa027120a78c95fa967538b528fbd7767c8b4ecea4493717376efc",
+    "index.js.map": "7b7db18efa22a38b253435377e93cd4be821956f82f1009de61c4023ad962978"
+  },
+  "dependencyPatch": {
+    "path": "patches/@jitl%2Fquickjs-singlefile-cjs-release-sync@0.32.0.patch",
+    "sha256": "a05bf861f33e598aa363cfedaa94f0bb3ca89352277b36ac9e8794ae80596037"
+  }
+}
