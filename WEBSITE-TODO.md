@@ -241,3 +241,15 @@ vor neuer Arbeit mit git status prüfen.
 - Kein erneutes Einreichen, Zurückziehen, Website-Publishing, DNS-Wechsel oder
   Engine-Deployment aus diesem Status ableiten. Kein öffentlicher Store-Erfolg
   behaupten, bevor er tatsächlich bestätigt ist.
+
+### Validierungsgrenze beim Git-Abschluss
+
+Alle zu diesem Zeitpunkt vorhandenen Änderungen auf main wurden auf ausdrücklichen
+Nutzerwunsch mit `--no-verify` committed und gepusht, einschließlich vorhandener
+Hook-Hinweis- und HTTP-400-Korrekturen. `git diff --check` bestand. Der gezielte
+Test `apps/engine/src/http/tests/request-media-type.test.ts` brach beim Aufbau
+der Testdatenbank während der Migrationen mit einem PostgreSQL-Verbindungsfehler
+ab (0 bestandene Tests); die HTTP-Assertions wurden nicht verifiziert.
+Vollständige Hooks und Release-Gate wurden nicht ausgeführt. Vor einem Release
+diese Prüflücke schließen. Der separate Tenant-Authority-Worktree enthält
+weiterhin uncommittete Entwicklungsarbeit und wurde weder gemergt noch entfernt.
