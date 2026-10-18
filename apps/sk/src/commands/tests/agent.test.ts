@@ -451,7 +451,7 @@ describe("sk agent init", () => {
       "wired SessionStart + UserPromptSubmit briefing and SessionEnd learning hooks",
     );
     expect(output).toContain("Codex (finish by hand):");
-    expect(output).toContain("hooks = true");
+    expect(output).toContain("hooks are enabled by default");
     expect(output).toContain("/hooks");
     expect(output).toContain("agent receives the relevant briefing");
     expect(output).toContain("folder name matches exactly one SubKit project area");
@@ -555,9 +555,12 @@ describe("hook clients", () => {
     expect(signals[0]).toBeInstanceOf(AbortSignal);
   });
 
-  test("the Codex snippet names the manual rest: feature flag, trust, and session capture", () => {
+  test("the Codex snippet explains defaults, policy, trust, and session capture", () => {
     const snippet = codexHookSnippet();
-    expect(snippet).toContain("hooks = true");
+    expect(snippet).toContain("hooks are enabled by default");
+    expect(snippet).toContain("administrator policy");
+    expect(snippet).toContain("including changed hooks");
+    expect(snippet).not.toContain("hooks = true");
     expect(snippet).toContain("/hooks");
     expect(snippet).toContain("additionalContextLimit 0");
     expect(snippet).toContain("SessionEnd capture is installed by sk agent init");

@@ -726,11 +726,9 @@ function readJsonFile(path: string): Record<string, unknown> {
 
 export function codexHookSnippet(): string {
   return [
-    "# ~/.codex/config.toml — hooks run only with the feature enabled:",
-    "[features]",
-    "hooks = true",
-    "",
-    "# Then open `codex`, run /hooks and trust the sk entries; Codex skips edited hooks until trusted.",
+    "# Codex hooks are enabled by default; no config.toml edit is normally needed.",
+    "# Open `codex`, run /hooks and review and trust the sk entries, including changed hooks.",
+    "# If disabled, inspect the effective hooks feature and administrator policy before changing settings.",
     "# The briefing hooks pass their full text to the model (additionalContextLimit 0),",
     "# because Codex otherwise spills anything above its default limit into a file.",
     "# SessionEnd capture is installed by sk agent init and runs asynchronously within Codex's three-second limit.",
@@ -902,7 +900,7 @@ const initCommand = defineCommand({
       );
       out("Verify setup: `sk status`, then `sk agent briefing --json`.");
       out(
-        "If no status appears, inspect `/hooks` in the client; Codex also needs hooks enabled and trusted.",
+        "If no status appears, inspect `/hooks` in the client; Codex hooks must be allowed by policy and their current definitions trusted.",
       );
       out("Optionally run `sk skills sync` to materialize domain skills as SKILL.md.");
     } catch (err) {

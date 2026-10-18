@@ -237,13 +237,14 @@ vertraulich und gehören nicht in Reports. Registrierung und Login beweisen noch
 
 ### Client-Kompatibilität
 
-Die README verlangt derzeit ausdrücklich `[features] hooks = true`. Die am 17.10.2026 gelesene
-offizielle OpenAI-Dokumentation beschreibt Hooks dagegen als standardmäßig aktiviert.
-Ein fehlender Eintrag beweist deshalb keine Deaktivierung. Installierte Clientversion,
-effektive Policy, `/hooks` und echten Lifecycle prüfen. Dokumentationsdrift in L25 eng korrigieren,
-keine globale Einstellung vorsorglich verändern. Lokale Shell-Hooks sind nicht in jeder
-Cloud-Ausführungsform verfügbar. SessionEnd unterliegt einer kurzen Clientfrist; lokale
-Funktionsnachweise nicht auf Cloud-Sessions übertragen.
+README und CLI-Setup erklären den aktuellen Standard: Codex-Hooks sind aktiviert,
+ohne dass ein zusätzlicher config.toml-Eintrag nötig ist. Neue oder geänderte Hooks
+müssen in `/hooks` geprüft und freigegeben werden. Bei deaktivierten Hooks zuerst
+die effektive Einstellung und Administratorrichtlinien prüfen. Keine globale
+Einstellung vorsorglich verändern. Die Anleitung ist korrigiert; ein tatsächlicher
+Client-Lifecycle ist damit noch nicht nachgewiesen. Lokale Shell-Hooks sind nicht
+in jeder Cloud-Ausführungsform verfügbar. SessionEnd unterliegt einer kurzen
+Clientfrist; lokale Funktionsnachweise nicht auf Cloud-Sessions übertragen.
 
 - [Offizielle Hooks-Dokumentation](https://learn.chatgpt.com/docs/hooks)
 - [Offizielle MCP-Dokumentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
