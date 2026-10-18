@@ -433,7 +433,7 @@ Aktuellen Git-Stand und Remote-Synchronisation prüfen. Der QuickJS-Fix ist als
 0c61b8bc6 committed; vollständiges Gate, gezielte Regression, reproduzierbarer
 Build und frische Containerinstallation sind in E158 belegt, jeweils vor Integration
 der neuen Intake-Erweiterung. Der integrierte Stand 0f25ede2c ist mit allen normalen
-Push-Hooks synchronisiert (E160). Der serielle Gesamtcheck ist mit fehlendem Intake-Recovery-Hinweis beendet (E161).
+Push-Hooks synchronisiert (E162). Der serielle Gesamtcheck ist mit fehlendem Intake-Recovery-Hinweis beendet (E161).
 Vorhandenen Remote-Fix integrieren und gezielt prüfen, danach vollständig seriell verifizieren. Danach die nächste ausführbare offene
 P0-Aufgabe aus LAUNCH_STATUS.md wählen; konkrete verbleibende Security-/Rechtefragen
 bearbeiten, fehlende menschliche Voraussetzungen ausdrücklich belassen.
