@@ -5200,6 +5200,24 @@
       "removalCommit": "49c97de6b38192db015d26619e5acd26332c80b6",
       "derivationPortCommit": "1c6597b8c46b5bf6694a35fb4b5478a98e90c9e8",
       "coverage": "Original vendored attribution retained for derived implementation; referenced secondary licenses and platform coverage remain subject to review"
+    },
+    {
+      "component": "uucode referenced LICENSE_unicode",
+      "revision": "90a5dfa34a1da9d59b96417d73843c3c658f4816",
+      "path": "uucode-LICENSE_unicode__NOTICE.txt",
+      "source": "https://raw.githubusercontent.com/jacobsandlund/uucode/90a5dfa34a1da9d59b96417d73843c3c658f4816/licenses/LICENSE_unicode",
+      "sha256": "1eda5a3b026870c737b22e8bcd4954338612c790db688242e003f41a4fa95175",
+      "attributionBasis": "Historical main notice matches Bun vendored notice except Markdown bullet markers",
+      "coverage": "Referenced historical secondary text; exact per-platform code inclusion remains unverified"
+    },
+    {
+      "component": "uucode referenced LICENSE_Bjoern_Hoehrmann",
+      "revision": "90a5dfa34a1da9d59b96417d73843c3c658f4816",
+      "path": "uucode-LICENSE_Bjoern_Hoehrmann__NOTICE.txt",
+      "source": "https://raw.githubusercontent.com/jacobsandlund/uucode/90a5dfa34a1da9d59b96417d73843c3c658f4816/licenses/LICENSE_Bjoern_Hoehrmann",
+      "sha256": "de219cece932aad5a817bf763393d8d149d378a15d2ad5320e3331eac07626dd",
+      "attributionBasis": "Historical main notice matches Bun vendored notice except Markdown bullet markers",
+      "coverage": "Referenced historical secondary text; exact per-platform code inclusion remains unverified"
     }
   ]
 }
