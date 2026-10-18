@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
+import { renderRuntimeNotices } from "./runtime-notices.ts";
 import {
   collectNotices,
   noticeInputs,
@@ -69,7 +70,9 @@ const packages = await supplementNotices(
   join(root, "vendor/notices/manifest.json"),
 );
 if (!packages.length) throw new Error("Notice inventory is empty");
-const draft = renderNoticeDraft(packages);
+const runtimeManifest = join(root, "vendor/runtime-notices/manifest.json");
+const runtime = await renderRuntimeNotices(runtimeManifest, Bun.version, Bun.revision);
+const draft = renderNoticeDraft(packages) + runtime;
 const missing = packages
   .filter((item) => !item.texts.length)
   .map((item) => `${item.name}@${item.version}`);
@@ -99,6 +102,7 @@ await writeFile(
       evidence,
       lockSha256: hash(await readFile(join(root, "bun.lock"))),
       manifestSha256: hash(await readFile(join(root, "vendor/notices/manifest.json"))),
+      runtimeManifestSha256: hash(await readFile(runtimeManifest)),
       draftSha256: hash(draft),
       packages: packages.map((item) => ({
         name: item.name,
