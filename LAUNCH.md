@@ -793,11 +793,32 @@ Die vom Nutzer gelieferte Gemini-Analyse ist strategischer Input. Daraus werden
 Käuferfragen abgeleitet, keine bestätigten Wettbewerberfakten oder Überlegenheitsclaims.
 Die Framer-Texte sind ebenfalls keine automatisch bestätigte Knowledge-Quelle.
 
+### Freigegebene Umsetzung und Abnahmen
+
+Der Nutzer hat den Aufbau bis zur veröffentlichten deutschen Vorabwebsite beauftragt.
+Heller Hintergrund, dunkle Schrift, zurückhaltender blauer Akzent, großzügige Abstände
+und eine einfache Ablaufgrafik bilden die gestalterische Richtung. Gemeinsame Navigation,
+Footer, Buttons und Textstile bleiben in Framer bearbeitbar. Zuerst die Startseite
+einschließlich mobiler Darstellung zur menschlichen Sichtabnahme vorlegen, anschließend
+die bestätigte Gestaltung auf die übrigen drei Seiten übertragen. Der Claude Artifact
+ist eine inhaltliche Vorlage; sein vollständiger Abgleich bleibt vor Veröffentlichung
+erforderlich. Eine Vorabwebsite darf den Produktstand ehrlich als in Vorbereitung
+beschreiben, ohne den Produktrelease abzuwarten. Veröffentlichung erfordert echte
+Betreiber-/Pflichtangaben, geprüfte Zieladressen und eine separate Freigabe der fertigen
+Vorschau. Keine automatische visuelle Matrix. Englisch, Formulare und zusätzliche
+Tracking-Funktionen sind in diesem Durchlauf nicht vorgesehen.
+
+Ein Hauptagent schreibt in Framer und in die Launch-Unterlagen. Ein Inhaltsprüfer und
+ein Funktions-/Veröffentlichungsprüfer prüfen unabhängig und lesend. Die Goal-Abnahme
+setzt öffentliche Erreichbarkeit, geprüfte Funktionen und die Bearbeitungshilfe voraus.
+
 ### Positionierung für Interessenten
 
-Zielgruppe bleiben Fachbereiche, Teamleitungen, IT und Entwickler in kleinen Unternehmen.
-Der gemeinsame Anlass: Eine wiederkehrende Aufgabe soll für das Team verlässlich
-betrieben werden, ohne für jeden Ablauf Berechtigungen, Freigaben und Verlauf neu zu bauen.
+Zielgruppen sind Einzelpersonen, Soloselbstständige, kleine Unternehmen mit 1–10
+Mitarbeitern und Abteilungen. Zusammenarbeit ist ein zusätzlicher Nutzen. Der gemeinsame
+Anlass: wiederkehrende Arbeit mit weniger Handarbeit als nachvollziehbaren Ablauf
+einrichten und nutzen. Berechtigungen, Freigaben und Verlauf erklären, wie das möglich
+wird; Betriebsaufwand und Grenzen gehören zur Entscheidung dazu.
 
 | Käuferfrage | SubKit-Antwort | Grenze der Aussage |
 | --- | --- | --- |
@@ -817,8 +838,8 @@ Bereite die deutsche SubKit-Website als bearbeitbaren Entwurf mit vier Seiten vo
 Start (/), Anwendungsfälle (/anwendungsfaelle), Loslegen (/loslegen) und Vergleiche
 (/vergleiche). Englisch folgt später.
 
-SubKit ist eine selbst hostbare Engine für KI-gestützte Workflows. Zielgruppe sind
-Fachbereiche, Teamleitungen, IT-Verantwortliche und Entwickler in kleinen Unternehmen.
+SubKit ist eine selbst hostbare Engine für KI-gestützte Workflows. Zielgruppen sind
+Einzelpersonen, Soloselbstständige, kleine Unternehmen mit 1–10 Mitarbeitern und Abteilungen.
 Erkläre zuerst die konkrete Arbeit und den Nutzen. Erkläre Technik dort, wo sie hilft,
 eine Entscheidung zu treffen. Schreibe in der Du-Form, ruhig, präzise und ohne Superlative.
 
@@ -861,78 +882,77 @@ END FRAMER AUFTRAG
 BEGIN FRAMER START
 
 Pfad: /
-Seitentitel: SubKit – Arbeitsabläufe für dein Team
-Suchbeschreibung: Mit SubKit bereitest du KI-gestützte Arbeitsabläufe vor, prüfst ihre Wirkung und betreibst sie mit nachvollziehbarem Verlauf. Selbst gehostet.
+Seitentitel: SubKit – weniger Handarbeit im Alltag
+Suchbeschreibung: KI-gestützte Workflows vorbereiten, ihre Wirkung prüfen und Ausführungen nachvollziehen. Für Einzelpersonen, kleine Unternehmen und Abteilungen.
 
-# Wiederkehrende Arbeit gemeinsam betreiben
+FÜR DICH. FÜR DEIN TEAM.
 
-Du beschreibst, was erledigt werden soll. SubKit hilft dir, daraus einen Workflow
-vorzubereiten. Eine Person prüft, welche Systeme und Daten er erreichen darf.
-Danach kann dein Team den freigegebenen Ablauf nutzen und seine Ausführung nachvollziehen.
+# Weniger Handarbeit im Alltag.
+
+SubKit hilft dir, wiederkehrende Aufgaben als nachvollziehbare Abläufe einzurichten. Du beschreibst die Arbeit, prüfst den vorgeschlagenen Ablauf und legst fest, was er tun darf. Für dich selbst oder gemeinsam im Team.
 
 Einstieg ansehen → /loslegen
 Anwendungsfälle ansehen → /anwendungsfaelle
 
 Die öffentliche Beta wird vorbereitet. Installationspakete und Anleitung folgen nach der Freigabe.
 
-## Wenn aus einer einzelnen Aufgabe ein gemeinsamer Ablauf wird
+## Aus einer Aufgabe wird ein Ablauf.
 
-Ein Bericht ist schnell einmal zusammengestellt. Soll er regelmäßig entstehen, braucht
-es mehr: verlässliche Zugänge, eindeutige Zuständigkeiten und einen Umgang mit Fehlern.
-SubKit bündelt diese Aufgaben rund um wiederkehrende Workflows.
+Einzelne Aufgaben erledigst du heute vielleicht jedes Mal neu. SubKit hilft dir, die Schritte vorzubereiten und wiederzuverwenden. Die beteiligten Systeme und die erlaubte Wirkung bleiben dabei überprüfbar.
 
-Bestehende Anwendungen bleiben Teil des Ablaufs. Welche Verbindungen möglich sind,
-hängt von ihren Schnittstellen und den eingerichteten Berechtigungen ab.
+01
 
-## Von der Beschreibung zum laufenden Workflow
+### Beschreiben
 
-**Beschreiben.** Erkläre die Aufgabe, die beteiligten Systeme und das gewünschte Ergebnis.
+Erkläre die Aufgabe, die beteiligten Werkzeuge und das gewünschte Ergebnis.
 
-**Prüfen.** Schau dir den Entwurf an. Stimmen die Daten, die vorgesehenen Änderungen
-und die Bedingungen, unter denen etwas passieren soll?
+02
 
-**Freigeben.** Eine berechtigte Person erlaubt die geprüfte Wirkung für eine Umgebung.
-Wird diese Reichweite später erweitert, ist eine neue Freigabe nötig.
+### Prüfen
 
-**Betreiben.** Starte den Ablauf oder nutze einen eingerichteten Auslöser. Im Verlauf
-siehst du, welche Fassung lief und wie die Ausführung ausging.
+Schau dir den Entwurf an: Stimmen Daten, Schritte und vorgesehene Änderungen?
 
-## Ein gemeinsamer Ablauf, unterschiedliche Verantwortung
+03
 
-**Für den Fachbereich:** Du bringst die Aufgabe und die fachlichen Regeln ein.
-Ein verständlicher Entwurf hilft dir zu prüfen, ob das Ergebnis zur Arbeit passt.
+### Freigeben
 
-**Für die Teamleitung:** Abläufe und ihre Ergebnisse bleiben nachvollziehbar.
-Du kannst erkennen, wo ein Prozess funktioniert und wo er Aufmerksamkeit braucht.
+Eine berechtigte Person legt fest, welche Systeme der Ablauf erreichen und was er verändern darf.
 
-**Für die IT:** Rechte, Systemzugänge und Ausführungsfreigaben bleiben getrennte
-Kontrollen. Der Betrieb liegt bei euch, einschließlich Updates und Datensicherung.
+04
 
-**Für Entwickler:** Cockpit, Kommandozeile und angebundene KI-Werkzeuge greifen auf
-dieselben Produktfunktionen zu. Die Rechte der jeweiligen Identität gelten dabei weiter.
+### Ausführen
 
-## Die erlaubte Wirkung bleibt überprüfbar
+Nutze den freigegebenen Ablauf und sieh im Verlauf, welche Fassung lief und wie sie ausging.
 
-Ein Workflow darf nicht allein deshalb Änderungen ausführen, weil ein Zugang gespeichert
-ist. Die Freigabe legt fest, welche Systeme und Adressen er in einer Umgebung erreichen
-und ob er dort lesen oder schreiben darf. Sie kann widerrufen werden. Eine neue Fassung
-kann eine bestehende Freigabe übernehmen, wenn ihre Reichweite nicht wächst.
+## Für deine Arbeit. In deiner Größe.
 
-## Selbst hosten heißt auch selbst betreiben
+### Für dich selbst
 
-SubKit läuft in deiner eigenen Installation. Du entscheidest, welche Dienste und
-Modellanbieter du verbindest. Daten können bei freigegebenen Aufrufen an diese Anbieter
-gesendet werden. Betrieb, Backups und die Prüfung dieser Datenflüsse gehören dazu.
+Als Einzelperson oder Soloselbstständiger kannst du wiederkehrende Arbeit vorbereiten und Abläufe wiederverwenden. Du behältst den Überblick darüber, was ausgeführt wurde und wo du nachsehen musst.
 
-Das Self-Hosting-Angebot ist kostenlos. Infrastruktur und die Nutzung externer Anbieter
-können Kosten verursachen.
+### Für kleine Teams und Abteilungen
 
-## Mit einer überschaubaren Aufgabe anfangen
+Nutzt gemeinsam eingerichtete Abläufe mit den jeweiligen Berechtigungen. Fachliche Regeln, Zugänge und Freigaben werden bewusst eingerichtet; Ergebnisse und Fehler bleiben nachvollziehbar.
 
-Wähle einen Ablauf mit klarem Ergebnis und wenigen beteiligten Systemen.
-Prüfe ihn gemeinsam mit den Menschen, die ihn später nutzen und betreiben.
+## Mit einer überschaubaren Aufgabe anfangen.
 
-Einstieg ansehen → /loslegen
+Mögliche Abläufe, die du für deine Werkzeuge und Regeln einrichtest. Keine fertigen Vorlagen oder Kundenberichte.
+
+Informationen für einen regelmäßigen Bericht zusammentragen. Eingehende Anfragen nach festgelegten Regeln zuordnen. Dokumente aus einer unterstützten Quelle übernehmen und strukturiert ablegen.
+
+Welche Verbindungen möglich sind, hängt von den Schnittstellen deiner Anwendungen und den eingerichteten Berechtigungen ab.
+
+## Du legst fest, was passieren darf.
+
+Ein gespeicherter Zugang allein erlaubt noch keine Änderungen. Die Freigabe bestimmt für eine Umgebung, welche Systeme und Adressen ein Workflow erreichen und ob er dort lesen oder schreiben darf. Wächst diese Reichweite, braucht es eine neue Freigabe. Eine Freigabe lässt sich widerrufen.
+
+## Deine Installation. Auch deine Verantwortung.
+
+SubKit ist selbst hostbar. Du entscheidest, welche Dienste und Modellanbieter du verbindest. Bei freigegebenen Aufrufen können Daten an diese Anbieter gesendet werden. Einrichtung, Updates und Datensicherung gehören zum Betrieb dazu.
+
+Das Self-Hosting-Angebot ist kostenlos. Infrastruktur und externe Anbieter können Kosten verursachen. Für den Einstieg lohnt sich eine Aufgabe mit klarem Ergebnis und wenigen beteiligten Systemen.
+
+Die öffentliche Beta wird vorbereitet. Die geprüfte Installationsanleitung und die freigegebenen Pakete folgen.
 
 END FRAMER START
 
