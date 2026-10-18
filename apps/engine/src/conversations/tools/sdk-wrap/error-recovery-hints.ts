@@ -8,6 +8,8 @@ import {
 } from "../error-codes.ts";
 
 export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
+  api_key_issuer_unknown:
+    "no API key was issued because this conversation has no authenticated issuer. Continue from Cockpit's API access page with the person's signed-in session. Do not retry in this conversation, fabricate an issuer, or use owner_id as a substitute for the issuer.",
   caller_saved_workflow_required:
     "this product identity may run only a saved workflow matching its product. Select an authorized saved workflow; do not submit a draft or standalone step, self-declare a product, or switch tools to bypass the restriction.",
   draft_write_held:
