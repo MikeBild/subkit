@@ -46,6 +46,10 @@ und sicheren Verweis. Rohlogs dürfen privat bleiben; die bereinigte Zusammenfas
 für ChatGPT verständlich sein. Private Logpfade allein sind kein gemeinsamer Nachweis.
 
 Nach jeder erledigten Aufgabe Status, Evidenz und nächste drei Aufgaben aktualisieren.
+LAUNCH_STATUS.md bleibt die kompakte aktuelle Übersicht. Vollständige bereinigte
+Prüfnachweise mit stabilen E-IDs stehen in [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md);
+das Archiv enthält keine zweite aktuelle Aufgabenliste. Historische Einträge erhalten,
+neue Ergebnisse ergänzen und die betroffene Statuszeile auf den neuesten Nachweis beziehen.
 Nicht gepushte Ergebnisse mit `LOCAL_ONLY` kennzeichnen. Das ist ein Synchronisationsmerkmal,
 kein sechster Aufgabenstatus. Eine nachgewiesene lokale Aufgabe kann DONE und LOCAL_ONLY sein.
 Beim nächsten lesenden Refresh tatsächlichen Remote-Commit prüfen, statt allein eine alte
