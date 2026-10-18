@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-18T03:33:01.736975+00:00**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-18T03:36:33.781098+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Buildcommit: **454cbe8e4**, Version **9.15.2**. Aktuelles vollständiges ARM64-Image, Notice-Inhalte, echte Installation und Scan bestanden (E146). Letztes Gesamtgate E131 auf 0eb49bf4c; danach Notice-Inventar und Dokumentation ergänzt, gezielt geprüft.
-- Letzter bestätigter Remote-Stand: **6b3930886**, main, 0/0 Divergenz; `git pull --ff-only origin main` ohne Änderungen. Diese Statusaktualisierung bis zum Push LOCAL_ONLY. Commit/Push sind autorisiert; Veröffentlichung bleibt separat freizugeben.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E148. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Letzter bestätigter Remote-Stand: **993f48492**, main, 0/0 Divergenz; `git pull --ff-only origin main` ohne Änderungen. Diese Statusaktualisierung bis zum Push LOCAL_ONLY. Commit/Push sind autorisiert; Veröffentlichung bleibt separat freizugeben.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E149. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -26,7 +26,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L07 | DONE | Persistenter Quickstart und Backup-/Recovery-Anleitung; Linux-amd64-Build, frische Installation, Engine-Neustart und Restore in getrennte leere Volumes mit verschlüsselten Testdaten PASS, E22. Commit 765a2fe26 gepusht, alle acht Pre-Push-Gates bestanden. Öffentliche Installation bleibt L15, Versionsupgrade L18. |
 | L08 | IN_PROGRESS | Konkrete SDK/Issuer-, Hono-, Parser-, Transport-, Sharp- und Containerbefunde korrigiert und gezielt geprüft (E25/E30/E54–E60/E68/E78). Aktueller lokaler ARM64-Imageaudit E146: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW. Native/WASM-/Artefaktabdeckung, übrige Befunde und finale Sicherheitsfreigabe offen. Kein Schluss auf Gesamtfreigabe aus Paketcounts. |
 | L09 | IN_PROGRESS | Claim Map, Gliederung, deutscher Produktseitenentwurf und getrennte Kritik in LAUNCH.md vorbereitet; E29. Bestehender redaktioneller Kanal bestätigt, kein SubKit-Projekttext im gelesenen main-Baum. Öffentliche Links, Rechtsangaben, Preview und Abnahme offen. ENTWURF, nicht veröffentlicht. |
-| L10 | IN_PROGRESS | Zweisprachige Listing-Texte, Berechtigungsbegründungen, Datenfluss-/Privacy-Arbeitsblatt und Reviewer-Ablauf als Entwurf in LAUNCH.md vorbereitet. Vier PNG-Icons werden aus bestehendem Cockpit-Logo generiert und mit Lucide-Lizenz im Manifest/ZIP ausgeliefert, E53. Paket-/Browser-/Binärprüfungen und macOS/Linux-Reproduzierbarkeit bestanden. Zwei echte Screenshot-Entwürfe mit isolierten Beispieldaten vorbereitet (E147); Kleine Promografik als lokaler Entwurf ergänzt; 128px-Store-Icon auf 96px-Motiv plus 16px transparenten Rand korrigiert und im ZIP geprüft (E148). Visuelle Abnahme aller Medien, Pflichtlinks und menschliche Zertifizierung offen. ENTWURF, nicht veröffentlicht. |
+| L10 | IN_PROGRESS | Zweisprachige Listing-Texte, Berechtigungsbegründungen, Datenfluss-/Privacy-Arbeitsblatt und Reviewer-Ablauf als Entwurf in LAUNCH.md vorbereitet. Vier PNG-Icons werden aus bestehendem Cockpit-Logo generiert und mit Lucide-Lizenz im Manifest/ZIP ausgeliefert, E53. Paket-/Browser-/Binärprüfungen und macOS/Linux-Reproduzierbarkeit bestanden. Zwei echte Screenshot-Entwürfe mit isolierten Beispieldaten vorbereitet (E147); Kleine Promografik als lokaler Entwurf ergänzt; 128px-Store-Icon auf 96px-Motiv plus 16px transparenten Rand korrigiert und im ZIP geprüft (E148). Linux-amd64/macOS-ZIP byte-identisch; aktuelle kompilierte Engine/CLI liefern/installieren dasselbe Paket, E149. Visuelle Abnahme aller Medien, Pflichtlinks und menschliche Zertifizierung offen. ENTWURF, nicht veröffentlicht. |
 | L11 | BLOCKED | L10, öffentliche Pflichtlinks, Publisherstatus und explizite Einreichungsfreigabe fehlen. |
 | L12 | IN_PROGRESS | Isolierter aktueller Kandidat: API-/Browser-/Intake-Prüfungen PASS, E37–E39; MCP-Cockpit-Handoff und echter Clipper gegen Engine PASS, E42/E43. Mock-Läufe und begrenzter echter Provider-Chat E45 getrennt belegt; vollständige Cross-Surface-Abnahme weiterhin offen. Manuelle Demo unverändert. |
 | L13 | IN_PROGRESS | Aktuelles vollständiges bun run verify für 0eb49bf4c PASS, Quellhashes unverändert (E131); einschließlich Installer-, Updater-/Rollback- und Notice-Änderungen. Live-Modellmatrix E73 PASS; aktuelle gepaarte Referenz-Benchmarks fehlen (E75/E80). |
@@ -67,6 +67,11 @@ Bootstrap/Auth, Workflow-/Dateipersistenz nach Engine-Neuerstellung und Runtime-
 PASS. Eigene Testvolumes bereinigt. Scan: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW,
 176 Advisories. Keine gesamte Sicherheits-, Rechts- oder öffentliche Freigabe.
 
+E149: Nach der Store-Icon-Korrektur ist das neue ZIP auf Linux-amd64 und macOS
+byte-identisch; frisch kompilierte Engine/CLI liefern/installieren es real.
+Das vollständige Image E146 enthält weiterhin das vorherige ZIP; vor finaler
+Release-Abnahme Image/ZIP/Signaturen auf denselben Kandidaten binden.
+
 Vorherigen eigenen Kandidaten archiviert und geprüft; neun eigene Cache-Einträge
 gezielt entfernt (3,739 GB). Nutzer-Demos/Volumes unverändert. Nach Build etwa
 2,8 Millionen KiB Docker-Speicher frei; große Builds vorher kapazitiv prüfen.
@@ -96,10 +101,10 @@ Offen: Betreiber-/Supportangaben, juristische Abnahme, Store-Publisherstatus und
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **L10/L05** – korrigiertes Clipper-Paket unter Linux
-reproduzieren und Bindung in den Distributionsartefakten prüfen. Die lokale
-Promografik und Screenshot-Entwürfe stehen unter `assets/clipper-store/` zur
-manuellen Abnahme bereit. Keine Store-Einreichung oder Veröffentlichung.
+Nächster Codex-Schritt: **L25** – dokumentierte Codex-Hook-Voraussetzungen
+gegen aktuellen CLI-Code und offizielle Client-Dokumentation abgleichen; die
+bereits in LAUNCH_SYNC.md benannte Setup-Drift eng korrigieren. Keine globalen
+Konfigurationen ändern. Store-Medien bleiben zur manuellen Abnahme bereit.
 
 L04 bleibt begrenzt auf bekannte offene Rechte-/Plattform-/Quellauslieferungsfragen
 und menschliche Freigaben. Alle 103 Polyfill-Lockfile-Versionen haben Originaltexte;
