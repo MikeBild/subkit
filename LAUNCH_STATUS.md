@@ -2,7 +2,7 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-18T05:58:47.897773+00:00**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-18T06:40:32.708615+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktstand vor Remote-Integration: **0c61b8bc6**, Version **9.15.2**. QuickJS-Fix und korrigierte Hook-Dokumentationsassertion committed; vollständiges Gesamtgate PASS, unveränderte Quellhashes. ARM64-Image, Installation, Regression und Notice-Auslieferung bestanden (E158).
 - Letzter bestätigter Remote-Stand: **5c565610d**, main; HEAD, origin/main und GitHub main identisch, Checkout nach regulärem Push sauber. Alle acht Pre-Push-Gates PASS; Gesamtprüfung Exit 1 (E163). Diese Statusfortschreibung LOCAL_ONLY bis Push; kein Release-Go.
@@ -29,7 +29,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L10 | IN_PROGRESS | Zweisprachige Listing-Texte, Berechtigungsbegründungen, Datenfluss-/Privacy-Arbeitsblatt und Reviewer-Ablauf als Entwurf in LAUNCH.md vorbereitet. Vier PNG-Icons werden aus bestehendem Cockpit-Logo generiert und mit Lucide-Lizenz im Manifest/ZIP ausgeliefert, E53. Paket-/Browser-/Binärprüfungen und macOS/Linux-Reproduzierbarkeit bestanden. Zwei echte Screenshot-Entwürfe mit isolierten Beispieldaten vorbereitet (E147); Kleine Promografik als lokaler Entwurf ergänzt; 128px-Store-Icon auf 96px-Motiv plus 16px transparenten Rand korrigiert und im ZIP geprüft (E148). Linux-amd64/macOS-ZIP byte-identisch; aktuelle kompilierte Engine/CLI liefern/installieren dasselbe Paket, E149. Lokale Einreichungsübergabe mit Listing-Texten, Medien, unverändertem ZIP und Prüfsummen erstellt; Integritäts-/Secret-Scan PASS, acht Freigabevoraussetzungen offen (E152). Visuelle Abnahme aller Medien, Pflichtlinks und menschliche Zertifizierung offen. ENTWURF, nicht veröffentlicht. |
 | L11 | BLOCKED | L10, öffentliche Pflichtlinks, Publisherstatus und explizite Einreichungsfreigabe fehlen. |
 | L12 | IN_PROGRESS | Isolierter aktueller Kandidat: API-/Browser-/Intake-Prüfungen PASS, E37–E39; MCP-Cockpit-Handoff und echter Clipper gegen Engine PASS, E42/E43. Mock-Läufe und begrenzter echter Provider-Chat E45 getrennt belegt; vollständige Cross-Surface-Abnahme weiterhin offen. Manuelle Demo unverändert. **Neuabnahme erforderlich:** Die Scope-Erweiterung „Sitzungs-Lernvorschläge über Intake“ (Ziel Wissen oder Skill, Bestätigung nur per Browser-Sitzung) ändert die geprüften Abläufe; E37–E46 gelten nur für den Stand davor. Lokale Demo mit echtem Provider einschließlich neuer Journey „session learnings review“ (deterministisch und reales Modell getrennt) PASS. L12 läuft nach dem Deploy komplett neu: Clipper, sk, MCP, HTTP, Cockpit, Google Chat, Coding-Agent-Hooks; simuliert und live getrennt. |
-| L13 | IN_PROGRESS | Aktuelles vollständiges bun run verify für QuickJS-Patch und korrigierte Dokumentationsassertion PASS, Quellhashes unverändert (E158). Integrierter Stand 0f25ede2c gepusht (E162); erstes Gesamtgate mit DB-Fixture-Timeout fehlgeschlagen (E156), unveränderter Einzeltest PASS. Serielle Wiederholung scheitert am fehlenden Recovery-Hinweis intake_items_changed (E161); Remote-Fix cfdc57b82 übernommen. Aktueller Gesamtstand UNVERIFIED. Live-Modellmatrix E73 PASS; aktuelle gepaarte Referenz-Benchmarks fehlen (E75/E80). |
+| L13 | IN_PROGRESS | Aktuelles vollständiges bun run verify für QuickJS-Patch und korrigierte Dokumentationsassertion PASS, Quellhashes unverändert (E158). Integrierter Stand 0f25ede2c gepusht (E162); erstes Gesamtgate mit DB-Fixture-Timeout fehlgeschlagen (E156), unveränderter Einzeltest PASS. Serielle Wiederholung scheitert am fehlenden Recovery-Hinweis intake_items_changed (E161); Remote-Fix cfdc57b82 übernommen. Wiederholung auf 5c565610d scheitert an veralteter CLI-Approval-Testeingabe (E163); gezielte Korrektur 62 Tests PASS. Aktueller Gesamtstand UNVERIFIED. Live-Modellmatrix E73 PASS; aktuelle gepaarte Referenz-Benchmarks fehlen (E75/E80). |
 | L14 | BLOCKED | L04/L05/L13 und Freigabe für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Externer Installationstest aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -106,7 +106,7 @@ Scope-Erweiterung vom Nutzer entschieden (gegen den Freeze 17.–20.10.): Lernvo
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **CLI-Approval-Test an explizite Authoring-Absicht anpassen und gezielt prüfen.**
+Nächster Codex-Schritt: **Geprüfte Testkorrektur regulär pushen, danach vollständiges Gate wiederholen.**
 Session 19644 ist terminal, Exit 1: Katalogprüfung in Datei 696/2050 meldet fehlenden
 Recovery-Hinweis `intake_items_changed` (E161). Früherer DB-Fixture-Fehler tritt im
 seriellen Lauf nicht auf: neun MCP-Probe-Tests PASS. Remote cfdc57b82 enthält bereits
@@ -114,7 +114,10 @@ den passenden Hinweis; integriert in 0a7f2ccb2. Katalogtest 17 PASS/308 Assertio
 Merge-Typprüfung PASS; keine doppelte Implementierung. Neue Framer-Arbeit aus
 87fe1615c bleibt erhalten, E159 bezeichnet Website, E162 den vorherigen Push.
 Push von 5c565610d erfolgreich. Gesamtcheck Session 73215 terminal, Exit 1 bei CLI-Approval-Lifecycle (E163),
-Receipt/Log `.artifacts/launch/intake-recovery-full-verify.{json,log}`. Zunächst reproduzierten Fehler korrigieren. Kein Gesamt-PASS und keine Übertragung historischer Image-/Store-Nachweise auf
+Receipt/Log `.artifacts/launch/intake-recovery-full-verify.{json,log}`. Testeingabe explizit auf Workflow-Erstellung korrigiert, Workflow-ID-Prüfung verschärft.
+62 Tests/226 Assertions PASS (E163). Restlauf Session 55351 terminal, Exit 0, alle 425 Dateien bestanden:
+`.artifacts/launch/approval-lifecycle-remaining-diagnostic.log`; nur Diagnose, kein Ersatz
+für vollständiges Verify. Kein Gesamt-PASS und keine Übertragung historischer Image-/Store-Nachweise auf
 geänderten Produktcode. Keine parallelen schweren Prüfungen.
 
 L04 bleibt begrenzt auf bekannte offene Rechte-/Plattform-/Quellauslieferungsfragen
