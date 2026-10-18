@@ -198,10 +198,15 @@ Quellen: [README](README.md#use-sk-from-a-coding-agent),
 UserPromptSubmit kann Prompttext zur Domain-Auflösung an die Engine senden. SessionEnd liest
 das lokale Transkript und überträgt begrenzten Text sowie Session-/Repository-/Domain-Metadaten
 zur Engine. Die Learning-Analyse verwendet einen konfigurierten Modellanbieter. Extrahierte
-Learnings bleiben Kandidaten bis zur menschlichen Prüfung, keine bestätigten Releaseergebnisse.
+Learnings werden als Intake-Sammelgut mit Origin `session` in der passenden gemeinsamen
+Projektkategorie oder der Standardkategorie gesammelt. Erst eine Person bestätigt einen
+Vorschlag im Cockpit als Wissen oder Skill; Sammelgut ist kein bestätigter Releasefortschritt.
 
-Im untersuchten Capture-Pfad ist Trunkierung vorhanden; eine vollständige Geheimnisbereinigung
-ist nicht nachgewiesen. Globale Hooks gelten auch in anderen Repositories und können dort
+Die CLI begrenzt das Transkript vor der Übertragung. Die Engine wendet vor dem
+Einreihen des Analysejobs `scrubString` an; die dokumentierte Sammlung schließt
+Statusereignisse und credential-bezogene Learnings aus. Das ist keine Garantie,
+dass beliebige Geheimnisse vollständig erkannt werden; die serverseitige Bereinigung
+verhindert auch nicht die vorherige Übertragung an die Engine. Globale Hooks gelten auch in anderen Repositories und können dort
 Domänen inferieren. Deshalb vor Aktivierung Auswirkungen, Empfänger, Retention und erlaubte
 Repository-Inhalte prüfen. Keine produktiven Transkripte als Einrichtungsprobe übertragen.
 Bis zur Freigabe manuelles Briefing verwenden. Kein neuer Capture-Opt-out-Schalter wird behauptet.
