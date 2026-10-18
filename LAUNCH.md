@@ -35,6 +35,20 @@ Ausführungen nachvollziehen. KI-Unterstützung ersetzt keine Ausführungsfreiga
 - Actions-Verfügbarkeit gilt laut Nutzer bis zum erwarteten 01.11.2026 als externer Blocker.
   Keine Billing-Analyse und keine tägliche Wiederholung dieses bekannten Sachverhalts.
 
+### Übernommene freigegebene Scopeänderung
+
+Der Remote-Stand b6f6df211 dokumentiert die Nutzerentscheidung, Sitzungs-Lernvorschläge
+und `save_learning` vor der Beta über Intake zu führen. Sammelgut mit Origin `session`
+ist noch kein Wissen und kein aktiver Skill. Fakten/Referenzen werden Wissen in ihrer
+Domäne; wiederverwendbare Praktiken werden Skills. Bestätigen darf ausschließlich eine
+Person in einer authentifizierten Browser-Sitzung mit den Rechten des Ziels. API-Key,
+MCP OAuth, Token Exchange und Chatkanäle bereiten vor und verweisen auf diese Reviewseite.
+Skill-Änderungen sind an die überprüften Versionen gebunden. Lernvorschläge werden vor
+Speicherung redigiert und kategorisiert; Statusereignisse und geheimnisnahe Notizen sind
+kein Sammelgut. Diese freigegebene Ausnahme vom Scope-Freeze erfordert eine neue L12-Abnahme
+und Prüfung des gemeinsamen Kandidaten. Historische E37–E46 und E158 decken den neuen
+Gesamtstand nicht ab. Major-Release und Deployment bleiben separat freizugeben.
+
 ## Scope und Abnahme
 
 ### Public Beta
@@ -264,12 +278,16 @@ bleiben eigene Freigabenachweise nach der Publikation.
 - Bestehende akzeptierte Sicherheitsgrenzen wie fehlende aktive AV-Prüfung dokumentieren und anhand
   des Launch-Threat-Models bewerten; keine neue Infrastruktur ohne konkreten Blocker.
 
-### Clipper-/Knowledge-Abnahme
+### Clipper-/Intake-Abnahme
 
 - Installation, Login, Capture einschließlich unterstütztem YouTube-Pfad, Drafts und Fehlerzustände.
 - Kategorien wählen/umbenennen/wechseln, ohne Wissen aufzunehmen.
 - Unbestätigter Clip: **null normale Knowledge-Suchtreffer**.
-- Review, Discard/Restore, Vorschlag, authentifizierter Bestätigungshandoff.
+- Review, Discard/Restore, Vorschlag für Wissen oder Skill, authentifizierter Browser-Handoff.
+- Bestätigung nur in einer menschlichen Browser-Sitzung mit Zielberechtigung; API-Key,
+  MCP OAuth und Token Exchange werden abgewiesen. Skill-Proposals an geprüfte Versionen binden.
+- Sitzungs-Lernvorschläge vor Speicherung redigieren, nach Domäne kategorisieren und bei
+  gleichem Titel Belege ergänzen; Statusereignisse/geheimnisnahe Notizen nicht sammeln.
 - Identische wiederholte Bestätigung: **genau eine Admission**.
 - Veraltete Vorschläge und eingeschränkte Berechtigungen negativ prüfen.
 - Jede vorgeschlagene Quelle nachvollziehbar; Original und Provenienz erhalten.
@@ -384,7 +402,9 @@ Verfügbarkeit. Google nennt wenige Tage bis mehrere Wochen; keine Termingaranti
 
 Noch erforderlich: Betreiber-/Supportangaben, juristische Freigabe, Store-Konto und Einreichung,
 Testzugänge/Zielsysteme, globale Hooks und Transkript-Datenfluss, visuelle Abnahme sowie
-gesonderte Freigaben für Commit/Push, Repository-Öffnung, Website, Beta und GA.
+gesonderte Freigaben für Repository-Öffnung, Website, Beta und GA.
+Commit/Push für die autonome Launch-Arbeit sind bereits fortlaufend autorisiert;
+reguläre Hooks und die getrennten Veröffentlichungsfreigaben bleiben verbindlich.
 
 | Risiko | Auslöser / Reaktion |
 | --- | --- |
@@ -398,21 +418,26 @@ gesonderte Freigaben für Commit/Push, Repository-Öffnung, Website, Beta und GA
 
 ### Nächste drei Tage
 
+Operativ aktualisiert am 18.10.; aktuelle Aufgabenstatus und Nachweise ausschließlich
+in LAUNCH_STATUS.md. L02, L03 und L07 sind abgeschlossen und werden nicht erneut geplant.
+
 | Tag | Technischer Hauptstrom | Menschlicher/externer Parallelstrom |
 | --- | --- | --- |
-| 18.10. | L02 abschließen, L03 unter Release-Toolchain isolieren | Betreiber-/Supportangaben, Store-Kontostatus |
-| 19.10. | L04 prüfen, L05 Publikations-/Deploygrenze konkretisieren | Rechtstexte prüfen, Website-Inhalte freigeben |
-| 20.10. | L07 Installation/Neustart/Backup-Rückweg, Prognose aktualisieren | Store-Assets und Reviewerinformationen, Freigabevorbereitung |
+| 18.10. | Bestandenes Gesamtgate E158 dokumentieren; QuickJS-Fix 0c61b8bc6 regulär pushen; anschließend verbleibende konkrete P0-Nachweise | Betreiber-/Supportangaben, Store-Kontostatus, Signing-Key und Benchmark-Zielsystem bereitstellen |
+| 19.10. | Verbleibende konkrete L04/L08-Rechte-/Security-Nachweise bearbeiten; L05/L13 signierte Vorbereitung nur bei erfüllten Voraussetzungen | Rechtstexte prüfen, Website-Inhalte und Store-Medien abnehmen |
+| 20.10. | Website-/Store-Entwürfe mit freigegebenen Pflichtlinks vervollständigen; L12 verbleibende echte Kanalprüfungen bei verfügbaren Zugängen; Terminprognose aktualisieren | Reviewerzugang, Pflichtlinks und konkrete Einreichungsfreigabe vorbereiten |
 
-### Nächster technischer Auftrag: L03
+### Nächster technischer Auftrag: verbleibende P0 abschließen
 
-Aktuellen Git-Stand prüfen, fremde Arbeiten sichern und nach AGENTS.md synchronisieren.
-Clipper-Drift unter Bun 1.4.0 mit identischem Lockfile in isolierter Umgebung reproduzieren.
-Zwei ZIP-Builds vergleichen und Ursache gegenüber eingechecktem Archiv bestimmen.
-Ausschließlich die belegte Ursache über bestehende Generatoren beheben. Driftcheck,
-betroffene Build-Verträge und Paketinstallation prüfen. Toolchain, Source/Lockfile,
-ZIP-Hashes, Exitcodes und Grenzen in LAUNCH_STATUS.md dokumentieren.
-Keine Features, Commits, Pushes, Tags, Deployments oder Store-Einreichung ohne Freigabe.
+Aktuellen Git-Stand und Remote-Synchronisation prüfen. Der QuickJS-Fix ist als
+0c61b8bc6 committed; vollständiges Gate, gezielte Regression, reproduzierbarer
+Build und frische Containerinstallation sind in E158 belegt, jeweils vor Integration
+der neuen Intake-Erweiterung. Den bereits gestarteten Gesamtcheck für dbe8d7012
+auswerten; nicht parallel neu starten. Erst danach den normalen Push mit Hooks abschließen. Danach die nächste ausführbare offene
+P0-Aufgabe aus LAUNCH_STATUS.md wählen; konkrete verbleibende Security-/Rechtefragen
+bearbeiten, fehlende menschliche Voraussetzungen ausdrücklich belassen.
+Keine erledigten L02/L03/L07-Aufgaben wiederholen. Keine Tags, Veröffentlichungen,
+Deployments oder Store-Einreichung aus der Commit-/Push-Freigabe ableiten.
 
 Erfolg des Gesamtplans: Ein externer Nutzer kann SubKit aus öffentlichen Kanälen installieren
 und die freigegebenen Produktpfade sicher tatsächlich verwenden.
