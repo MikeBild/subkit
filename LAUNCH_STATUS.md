@@ -1,12 +1,12 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E228.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E229.
 
-- Letztes Update: **2026-10-18T18:00:45.506463+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **c86717fd6**, `main`, Version **10.0.1** vorbereitet.
-  E220–E227 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
-- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Native Worker-Regression und Patch-Provenienz E228 dokumentiert; Produktquellen unverändert zu E224.
+- Letztes Update: **2026-10-18T18:11:29.746209+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **80a9f9063**, `main`, Version **10.0.1** vorbereitet.
+  E220–E228 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
+- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Interne Cross-Builds und Linux-Payload-Identität E229 dokumentiert; Produktquellen unverändert zu E224.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: insbesondere externe Store-Freigabe offen.
@@ -63,15 +63,15 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L02 | DONE | Launch-Dateien/AGENTS-Verweis erstellt und geprüft, E11; 01257eb8a gepusht, E15. |
 | L03 | DONE | Clipper-Generator korrigiert, macOS/Linux identisch; 63 Tests bestanden, E12; 61ee865d3 gepusht, E15. Aktuelle Versionsartefakte separat E202. |
 | L04 | IN_PROGRESS | Notice-Auslieferung geprüft, E106/E168. Drei JS-Zuordnungen, Modellrechte, Plattform-/Quell-/Relink-Abdeckung und juristische Freigabe offen. Historischer Firebase-Clientkey: Einschränkung/Stilllegung menschlich belegen, E19/E27. |
-| L05 | IN_PROGRESS | Lokaler Release-Weg, Signaturprüfung, Installer, Lizenzdownload und Retention/Rollback implementiert/geprüft, E13–E21/E51/E127–E133. Echter signierter Kandidatenlauf und öffentliche Distribution offen; passender privater Schlüssel fehlt. |
+| L05 | IN_PROGRESS | Lokaler Release-Weg, Signaturprüfung, Installer, Lizenzdownload und Retention/Rollback implementiert/geprüft, E13–E21/E51/E127–E133. E229: aktuelle Linux-x64-Engine und fünf CLI-Plattformbinaries intern gebaut, zweimal im gleichen Checkout hashidentisch. Echter signierter Kandidatenlauf und öffentliche Distribution offen; passender privater Schlüssel fehlt. |
 | L06 | BLOCKED | Betreiber/Kontakt bestätigt, E176. Tatsächliche Hosting-/Versandverarbeitung, vollständige Pflichttexte und juristische Freigabe fehlen. |
 | L07 | DONE | Quickstart/Backup/Recovery mit frischer Linux-amd64-Installation, Neustart und Restore geprüft, E22; 765a2fe26 gepusht. Öffentlicher Test L15 und aktuelles Upgrade L18 bleiben separat. |
-| L08 | IN_PROGRESS | QuickJS-Worker-/Container-Fix geprüft, E158. Operator-/Tenant-Grenzen: 142 Tests und browser-use bestanden, E206. Imageaudit E190 ohne HIGH/CRITICAL. E227: QuickJS-WASM und sieben Embedding-/ONNX-Assets bytegenau an lokale native Engine gebunden. E228: zugehöriger gepatchter Build und echte kompilierte Worker-Regression PASS. Linux-/Docker-/übrige Native-Abdeckung, Befunde und finale Security-Freigabe offen. |
+| L08 | IN_PROGRESS | QuickJS-Worker-/Container-Fix geprüft, E158. Operator-/Tenant-Grenzen: 142 Tests und browser-use bestanden, E206. Imageaudit E190 ohne HIGH/CRITICAL. E227/E229: QuickJS-WASM und sieben Embedding-/ONNX-Assets in nativer sowie cross-kompilierter Linux-x64-Engine bytegenau identifiziert. E228: Patch-Provenienz und echte native Worker-Regression PASS. Linux-Ausführung, Docker-/übrige Native-Abdeckung und finale Security-Freigabe offen. |
 | L09 | IN_PROGRESS | Lovable-Entwurf, acht Seiten DE/EN, Systemtheme/-sprache, Social/Consent vorbereitet; Build und 41 Tests laut E176 bestanden. Texte, Produktbilder, tatsächlicher Formularversand, Pflichttexte, öffentliche Downloads, Domain und Abnahmen offen. WEBSITE-TODO.md ist maßgeblich. |
 | L10 | IN_PROGRESS | ZIP 10.0.1: Versions-/Drift-/Archivprüfung bestanden, E202. Listing, Icons, historische Medien und private Übergabe vorbereitet, E147–E152/E166. Pflichtlinks, Medienabnahme und menschliche Zertifizierung offen. |
 | L11 | IN_PROGRESS | Nutzer hat 9.15.2 eingereicht; letzter Store-Handoff PENDING_REVIEW, E186. E223: konkrete Listing-ID im anonymen Browser zeigt Item not available; aktueller Dashboard-Status UNVERIFIED. Öffentliche Clipper-Privacy fehlt. Keine automatische erneute Einreichung des lokalen 10.0.1-Pakets. |
 | L12 | IN_PROGRESS | **E219: echtes Modell → Knowledge-Vorschlag → Browserbestätigung → Suche/MCP/CLI/Hook-Discovery funktional bestanden; fünf opake Queue-Fehler bleiben unaufgeklärt.** Reale Browser-/Provider-Skill-Journey E185; Knowledge E193; Browser→CLI/MCP/Hook-Handler E200; Clipper→Admission E203; persistierter Chat→Proposal→Bestätigung E205 jeweils begrenzt bestanden. Aktueller Gesamt-/Kategorie-/RBAC-/Kanalnachweis und zuverlässiger Kandidatenstart offen, E194–E196/E201. |
-| L13 | IN_PROGRESS | **Aktuelles vollständiges Gate E224 PASS:** 2.051 isolierte Dateien/19.692 Tests, AI-Eval, nativer Build, Clipper-Binärprüfung und 42 E2E-Dateien/257 Tests; Exit 0, Produktquellhashes unverändert. E216/E217/E222 schließen acht Modell-, zehn PTY- und sechs Real-LLM-Skips separat. Historische Läufe E207–E215 bleiben in der Prüfhistorie. Referenzbenchmark, signierter Kandidat und finale Release-Route offen. |
+| L13 | IN_PROGRESS | **Aktuelles vollständiges Gate E224 PASS:** 2.051 isolierte Dateien/19.692 Tests, AI-Eval, nativer Build, Clipper-Binärprüfung und 42 E2E-Dateien/257 Tests; Exit 0, Produktquellhashes unverändert. E216/E217/E222 schließen acht Modell-, zehn PTY- und sechs Real-LLM-Skips separat. Historische Läufe E207–E215 bleiben in der Prüfhistorie. E229: interne Plattform-Builds lokal zweimal identisch. Referenzbenchmark, signierter Kandidat und finale Release-Route offen. |
 | L14 | BLOCKED | L04/L05/L13 und Freigaben für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Installation durch externen Nutzer aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -113,8 +113,9 @@ Website/Recht und Google-Review laufen unabhängig davon, soweit Zugang/Freigabe
 | Vollständiges lokales Gate | **E224: aktuelles PASS**, Exit 0, Produktquellhashes unverändert und identisch zu main. 2.051 isolierte Dateien: 19.692 PASS/0 FAIL/37 SKIP/5 TODO; AI-Eval, nativer Build, Clipper-Binärprüfung und 42 E2E-Dateien: 257 PASS/0 FAIL/20 SKIP/3 TODO. E215 und E181 sind historische Vorgänger. |
 | Historische Gate-Fehler | E207: S3-Fixture bei voller Docker-Platte; E209: Issuer-Recovery; E210: historischer ORM-Insert. Jeweils gezielt korrigiert und anschließend im vollständigen E224 bestanden. E212 bleibt eine historische Diagnosefortsetzung. Frühere Logs erhalten; E224 ist der spätere eigenständige Gesamt-PASS. |
 | Reale Modelle | **E222: aktuelle HTTP-/CLI-Gesprächssuite 7 PASS/0 FAIL**, Workflow/Audit und Ablehnung geprüft. E216: zehn lokale Embedding-/Retrieval-/Routingtests PASS. E219: reale Browser-Knowledge-Journey funktional bestanden, Queue-Ursache offen. E169/E170/E185 historisch; keine Abnahme aller Kanäle oder erneute Bestätigung der Produktions-Fallbackroute. |
+| Interne Cross-Builds | **E229:** Linux-x64-Engine und fünf CLI-Binaries für macOS ARM64/x64, Linux ARM64/x64, Windows x64 auf 80a9f9063 gebaut. Zwei Durchläufe im selben Checkout/Cache hashidentisch, sechs Dateiheader und CLI-Prüfsummen korrekt. Native macOS-CLI nach bestehendem lokalen Ad-hoc-Schritt: --version 10.0.1. Kein signierter Release oder Fremdplattform-Lauf. |
 | ARM64-Image/Installation | E184/E185: 10.0.0 auf d2eeb2aaa bestanden. Aktualisiertes Image beba30b7196f auf 48f07dabf gebaut, E187; elf Installationschecks mit Host-Datenspeicher bestanden, E189. Kein aktuelles 10.0.1-/Operator-Image. |
-| Sicherheit | E158: QuickJS-Worker-Regression einschließlich damaligem Gesamtgate bestanden. E190: historisches Image mit Trivy 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories; WASM nicht separat gescannt. E227/E228: lokale native Asset-Identität, gepatchte Build-Ausgaben und bekannte QuickJS-Regression im echten kompilierten Worker geprüft; Cleanup/Exit 0. Keine vollständige Schwachstellenbewertung oder aktuelle Linux-/Docker-Abnahme. |
+| Sicherheit | E158: QuickJS-Worker-Regression einschließlich damaligem Gesamtgate bestanden. E190: historisches Image mit Trivy 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories; WASM nicht separat gescannt. E227/E228: native Asset-Identität, gepatchter Build und echte native Worker-Regression PASS/Cleanup. E229 ergänzt vollständige QuickJS-/Embedding-Payload-Identität im cross-kompilierten Linux-x64-ELF. Keine vollständige Schwachstellenbewertung oder aktuelle Linux-/Docker-Abnahme. |
 | Lizenzen | E168: 495 erfasste Texte plus Produktlizenz im Image/Installer bestätigt. Rechte-/Zuordnungs-/Plattformfragen bleiben separat offen. |
 | Upgrade/Restore | E72: begrenzte Strecke 9.9.0→9.15.2 und Restore bestanden; keine finale Beta→GA-Abnahme. |
 | Öffentlich | Aktuelle Beta/GA und Produktwebsite nicht nachgewiesen/freigegeben. Eingereicht ist nicht Store-veröffentlicht. Lokales PASS und Push ersetzen keine Veröffentlichung. |
@@ -155,7 +156,8 @@ Bei Bedarf gezielt laden oder neuen Kandidaten bauen. Keine fremden Ressourcen b
   neue Codex-Hooks benötigen [Prüfung und Vertrauen](https://learn.chatgpt.com/docs/hooks).
 - Daily/Weekly laut Nutzer vorhanden; tatsächliche Läufe/Lesezugriff UNVERIFIED, E180.
   Keine automatische Verbindung zum gesamten ChatGPT-Projekt behaupten.
-- Offizielle Lovable-Werkzeuge aktuell nicht verfügbar. Website-Entscheidungen und
+- Offizielles Lovable-Plugin gefunden, aber nicht verbunden; Tools nicht verfügbar.
+  Bereits bestehende Verbindungsaufforderung nicht erneut gestellt. Website-Entscheidungen und
   privater Handoff in WEBSITE-TODO.md; kein neuer Projekt-/Deploymentstatus behauptet.
 - Store 9.15.2 zuletzt laut Handoff PENDING_REVIEW, E186; E223 bestätigt anonym
   nicht abrufbares Listing, kein aktueller interner Reviewstatus. DE/EN-Clipper-Privacy
