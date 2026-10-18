@@ -314,6 +314,10 @@ wiederherstellen. Wiederherstellungsdauer und möglicher Datenverlust werden gem
 
 ## Website und Recht
 
+Aktuelle Website-Entscheidungen und Übergabe: [WEBSITE-TODO.md](WEBSITE-TODO.md).
+Die dort dokumentierte Lovable-Umsetzung einschließlich DE/EN ersetzt ältere
+Framer-Aufträge in diesem Plan; historische Entwürfe bleiben als Verlauf erhalten.
+
 Aktuelle Nutzerentscheidung: Die öffentliche SubKit-Website wird in Framer vorbereitet,
 auf Deutsch, Englisch später. Die frühere ContentKit-Zielzuordnung unten ist historischer
 Kontext. Das Framer-Arbeitspaket am Ende dieser Datei führt Inhalte und Übergabe weiter.
@@ -797,6 +801,19 @@ Die vom Nutzer gelieferte Gemini-Analyse ist strategischer Input. Daraus werden
 Käuferfragen abgeleitet, keine bestätigten Wettbewerberfakten oder Überlegenheitsclaims.
 Die Framer-Texte sind ebenfalls keine automatisch bestätigte Knowledge-Quelle.
 
+### Gestaltung und Inhalte
+
+Die automatisierten Design-Briefings und Startaufträge sind auf Nutzerwunsch entfernt.
+Website, fachliche Inhalte und Zielgruppenentscheidung bleiben erhalten. Die Entfernung
+ist keine Freigabe für einen neuen Entwurf oder eine Veröffentlichung.
+
+Gestalterische Leitplanken: hell, skandinavisch, feine Akzente, eigenständige Typografie,
+niemals Grün. TE-Kit dient als Inspiration. Bevorzugt bleiben die konkreten Beispiele
+Kontaktanfragen, Morgenbericht, Produktkatalog und Kontaktdubletten sowie
+„Entwerfen. Prüfen. Freigeben. Läuft.“. Die Formulierungen „Weniger Handarbeit“ und
+„Deine Installation, deine Verantwortung“ bleiben verworfen. Keine unbelegten
+Enterprise-/AI-Act- oder Zertifizierungsbehauptungen veröffentlichen.
+
 ### Freigegebene Umsetzung und Abnahmen
 
 Der Nutzer hat den Aufbau bis zur veröffentlichten deutschen Vorabwebsite beauftragt.
@@ -818,11 +835,42 @@ setzt öffentliche Erreichbarkeit, geprüfte Funktionen und die Bearbeitungshilf
 
 ### Positionierung für Interessenten
 
-Zielgruppen sind Einzelpersonen, Soloselbstständige, kleine Unternehmen mit 1–10
-Mitarbeitern und Abteilungen. Zusammenarbeit ist ein zusätzlicher Nutzen. Der gemeinsame
-Anlass: wiederkehrende Arbeit mit weniger Handarbeit als nachvollziehbaren Ablauf
-einrichten und nutzen. Berechtigungen, Freigaben und Verlauf erklären, wie das möglich
-wird; Betriebsaufwand und Grenzen gehören zur Entscheidung dazu.
+SUBKIT ZIELGRUPPE UND POSITIONIERUNG
+
+Verbindliche redaktionelle Nutzerentscheidung. Sie präzisiert frühere Zielgruppenbeschreibungen; sie ist kein zusätzlicher Funktions- oder Release-Nachweis.
+
+ZIELSEGMENT
+Solounternehmer und kleine, hochprofessionelle Teams. Dazu gehören kleine Unternehmen und spezialisierte Teams oder Abteilungen großer Unternehmen. Entscheidend sind ihre Arbeitsweise, ihr Fachwissen und wiederkehrende Aufgaben, nicht die Größe des gesamten Unternehmens. Zusammenarbeit und gemeinsamer Kontext gehören zum Kernnutzen; bei Solounternehmern entsteht derselbe Nutzen durch die Wiederverwendung des eigenen Wissens und der eigenen Abläufe.
+
+AUSGANGSLAGE
+Manche haben keinen persönlichen KI-Arbeitsplatz für jeden Mitarbeiter. Andere nutzen bereits KI, müssen Kontext und Regeln aber wiederholt erklären, stoßen an ihre verfügbaren Kontingente oder können bestimmte Daten aus internen Vorgaben nicht mit einem externen Dienst verarbeiten. Das sind mögliche Ausgangslagen der Zielgruppe, keine pauschalen Behauptungen über einzelne Anbieter oder deren Teamfunktionen.
+
+KERN
+SubKit soll den gemeinsamen Betrieb klar umrissener Arbeit ermöglichen: interne und externe Systeme über Konnektoren anbinden, wiederkehrende Abläufe darauf aufbauen und kategorisiertes Fachwissen sowie wiederverwendbare Regeln zentral bereitstellen. Berechtigte Personen arbeiten auf derselben gepflegten Grundlage. Nicht jeder muss einen eigenen Coding-Agent auf seinem Rechner installieren und für diese Abläufe einrichten. Bestehende KI-Werkzeuge können weiterhin ergänzen.
+
+FESTGELEGTE ARBEIT WIEDERVERWENDEN
+Eine bekannte Aufgabe muss nicht bei jeder Ausführung neu von einem frei planenden Agenten gelöst werden. Der geprüfte Ablauf legt Schritte und erlaubte Wirkung fest und kann bei Bedarf, durch einen Auslöser oder zeitgesteuert laufen. KI wird gezielt eingesetzt, etwa zum Entwerfen, Aufbereiten oder in einem vorgesehenen Modellschritt. Deterministischer Ablauf bedeutet nicht, dass Modellantworten oder Ergebnisse externer Systeme immer identisch sind.
+
+GEMEINSAMES WISSEN UND REGELN
+Fachwissen nach Kategorien pflegen, Quellen erhalten und für die Vorbereitung passender Abläufe und die Arbeit mit verbundenen Systemen nutzen. Zentral bedeutet gemeinsam auffindbar und wiederverwendbar im jeweiligen Berechtigungsumfang; nicht jeder sieht automatisch alles und nicht jedes Modell erhält den gesamten Wissensbestand. Gesammeltes Material wird erst nach menschlicher Prüfung und Bestätigung zu übernommenem Wissen oder einem Skill. Verfügbarkeit des vollständigen Prozesses am ausgelieferten Stand prüfen.
+
+KONTROLLE UND NACHVOLLZIEHBARKEIT
+Zugänge, Berechtigungen und Freigaben werden zentral verwaltet. Fachliche Hinweise und Skills sind von technisch erzwungenen Rechten und Ausführungsgrenzen zu unterscheiden. Versionen, protokollierte Änderungen und Ausführungsnachweise helfen nachzuvollziehen, was eingerichtet und ausgeführt wurde. Kein lückenloses Personenprotokoll, keine Revisionssicherheit oder Zertifizierung ohne Nachweis behaupten.
+
+DATEN UND KOSTEN
+Die Auswahl von Anbietern, Konnektoren und übermittelten Daten ist Teil der Einrichtung. Eigenbetrieb allein verhindert keine Datenübertragung an eingerichtete externe Dienste. Keine automatische Datenfilterung, vollständige Offline-Fähigkeit oder garantierte Geheimhaltung aller Daten versprechen. Keine gemeinsam nutzbaren persönlichen Abos, unbegrenzten Tokens oder pauschalen Einsparungen versprechen. Modellnutzung, Infrastruktur und Betrieb können Kosten verursachen.
+
+INHALTLICHE RICHTUNG FÜR DIE WEBSITE
+„Entwerfen. Prüfen. Freigeben. Läuft.“ bleibt erhalten. Konkrete Beispiele: Kontaktanfragen ins Team-Postfach weiterleiten; jeden Morgen den Bericht aus fünf Systemen senden; den Produktkatalog nach festen Regeln pflegen; doppelte und veraltete Kontakte bereinigen.
+
+Möglicher ergänzender Nutzenabsatz:
+„Eure Abläufe sind klar. Euer Wissen ist da. Mit SubKit bringt ihr beides zusammen: Verbindet eure Systeme, hinterlegt euer Fachwissen und richtet wiederkehrende Aufgaben einmal ein. Danach könnt ihr die geprüften Abläufe gemeinsam nutzen – bei Bedarf oder nach Zeitplan, mit festgelegten Zugriffsrechten und nachvollziehbaren Ausführungen.“
+
+Für Solo gezielt ergänzen: „Auch allein musst du dein Wissen und deine Arbeitsweise nicht bei jeder Aufgabe neu erklären.“
+
+AKTUELLER GESTALTUNGSSTAND
+Der Nutzer bewertet die aktuelle Website als deutlich besser. Bestehende Gestaltung und manuelle Änderungen erhalten. Jetzt Inhalte präzisieren, keinen erneuten Komplettentwurf anstoßen. Gestalterische Leitplanken: hell, skandinavisch, feine Akzente, eigenständige Typografie, niemals Grün. Keine Veröffentlichung.
+
 
 | Käuferfrage | SubKit-Antwort | Grenze der Aussage |
 | --- | --- | --- |
