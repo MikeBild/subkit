@@ -1,11 +1,11 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E218.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E219.
 
-- Letztes Update: **2026-10-18T15:47:34.018298+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **dcb930f55**, `main`, Version **10.0.1** vorbereitet.
-  Remote dcb930f55 ergänzt ausschließlich TODO.md; Produktcode unverändert zum vollständig geprüften 1c898dce4. E218.
+- Letztes Update: **2026-10-18T16:11:38.494603+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **0cd5bca18**, `main`, Version **10.0.1** vorbereitet.
+  E213–E218 normal geprüft gepusht; alle acht Hooks bestanden. Produktcode unverändert zum vollständig geprüften 1c898dce4.
 - Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Produktquellen der Diagnose unverändert.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
@@ -30,17 +30,29 @@ MCP-Katalog (Admin/Member), Profilwechsel, Startup, Starter-Aktionen und persist
 Tool-Elicitation geprüft. Zehn PTY-Skips aus E215 sind damit separat geschlossen.
 Kein nativer Codex-/Claude-Dispatch und keine Knowledge-Admission daraus abgeleitet.
 
-**Aktiv:** kohärenten Nachweisstand E213–E218 mit normalen Hooks committen/pushen;
-anschließend Remote-/Checkoutstand abgleichen. Produktquellen unverändert.
-Verbleibende Skips: 29 optionale Connector-URL-Checks; vier private AppSync-/Cognito-
-Fälle und sechs Real-LLM-E2E-Fälle. Ältere Realmodell-Nachweise E169/E170/E185 bleiben
-begrenzt gültig; keine aktuelle Abnahme aller Kanäle oder Live-Modellroute behaupten.
-Vorhandene fünf isolierte und drei E2E-TODOs bleiben offen; weder gelöscht noch DONE.
+**E219: funktionaler Realmodell-/Browser-Nachweis, Laufzeit nur PARTIAL.**
+Ein tatsächliches Anthropic-Modell erstellt einen Knowledge-Vorschlag; vor Übernahme
+kein normaler Suchtreffer. Exakter Inhalt/Quelle/Ziel im Browser geprüft und dort
+explizit bestätigt; Original/Provenienz, persistierter Chat und anschließende
+MCP-/CLI-/gemeinsame Hook-Discovery mit 21 Nachweisprüfungen bestanden.
+Eigene Quelle-HTTP-/PostgreSQL-/MemoryObjectStore-Fixture und Browser bereinigt;
+Nutzerprofil unverändert, keine produktiven Inhalte oder Providerkeys in Reports.
 
-Nächster Codex-Schritt nach Synchronisation: nächste tatsächlich ausführbare P0-
-Verifikation auswählen; Docker-Kandidatenstarts erst mit ausreichender Kapazität,
-Websitearbeit nur über verfügbare offizielle Lovable-Integration. E215 nicht ohne
-neue Produktänderung/Fehler wiederholen; E216/E217 wiederverwenden.
+Offen: fünf nichtfatale `boss.error`-Ereignisse mit `[object Object]` statt Ursache.
+Keine Runtime-Gesamtfreigabe aus dem funktionierenden Ablauf ableiten. Tatsächlich
+geprüftes Source-Runtime meldet 0.0.0-dev; kompilierte CLI separat 10.0.1.
+Kein aktueller Docker-/Kanal-/nativer Codex-/Claude-Dispatch-Nachweis.
+
+**Nächster Codex-Schritt:** E219 normal geprüft synchronisieren; anschließend
+PgBoss-Error-Event-Payload und bestehendes `errorFields` am Queue-Listener prüfen.
+Fehlerdaten in einer eigenen begrenzten Diagnose sicher erfassen und Queue-/Pool-
+Ursache untersuchen, ohne Fehlerdetails/Secrets ungefiltert zu loggen oder fremde
+Demos zu verändern. Keine blinden Docker-Vollstarts. E215–E217 wiederverwenden.
+
+Verbleibende Gate-Skips: 29 optionale Connector-URL-Checks; vier private AppSync-/
+Cognito-Fälle und sechs Real-LLM-E2E-Fälle. E219 ist ein zusätzlicher gezielter echter
+Modelllauf, keine Abnahme aller sechs Fälle/Kanäle oder der Live-Fallbackroute.
+Vorhandene fünf isolierte und drei E2E-TODOs bleiben offen; weder gelöscht noch DONE.
 
 ## Aufgaben
 
@@ -60,7 +72,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L09 | IN_PROGRESS | Lovable-Entwurf, acht Seiten DE/EN, Systemtheme/-sprache, Social/Consent vorbereitet; Build und 41 Tests laut E176 bestanden. Texte, Produktbilder, tatsächlicher Formularversand, Pflichttexte, öffentliche Downloads, Domain und Abnahmen offen. WEBSITE-TODO.md ist maßgeblich. |
 | L10 | IN_PROGRESS | ZIP 10.0.1: Versions-/Drift-/Archivprüfung bestanden, E202. Listing, Icons, historische Medien und private Übergabe vorbereitet, E147–E152/E166. Pflichtlinks, Medienabnahme und menschliche Zertifizierung offen. |
 | L11 | IN_PROGRESS | Nutzer hat 9.15.2 eingereicht; synchronisierter Store-Handoff meldet PENDING_REVIEW, E186. Öffentliche Clipper-Privacy fehlt. Keine automatische erneute Einreichung des lokalen 10.0.1-Pakets. |
-| L12 | IN_PROGRESS | Reale Browser-/Provider-Skill-Journey E185; Knowledge E193; Browser→CLI/MCP/Hook-Handler E200; Clipper→Admission E203; persistierter Chat→Proposal→Bestätigung E205 jeweils begrenzt bestanden. Aktueller Gesamt-/Kategorie-/RBAC-/Kanalnachweis und zuverlässiger Kandidatenstart offen, E194–E196/E201. |
+| L12 | IN_PROGRESS | **E219: echtes Modell → Knowledge-Vorschlag → Browserbestätigung → Suche/MCP/CLI/Hook-Discovery funktional bestanden; fünf opake Queue-Fehler bleiben unaufgeklärt.** Reale Browser-/Provider-Skill-Journey E185; Knowledge E193; Browser→CLI/MCP/Hook-Handler E200; Clipper→Admission E203; persistierter Chat→Proposal→Bestätigung E205 jeweils begrenzt bestanden. Aktueller Gesamt-/Kategorie-/RBAC-/Kanalnachweis und zuverlässiger Kandidatenstart offen, E194–E196/E201. |
 | L13 | IN_PROGRESS | Gesamtgate E207/E209 fehlgeschlagen; S3-Fixture und Issuer-Recovery gezielt korrigiert. E210: zehn historische Fixtures korrigiert, alle 25 Migrationsdateien/88 Tests und Typecheck bestanden. Diagnosefortsetzung E212 bestanden: 1.282 Dateien/10.506 Tests, 4 SKIP/5 TODO. E215: vollständiges Gate auf 1c898dce4 PASS, Exit 0, Quellen unverändert; 2.050 Dateien/19.687 Tests und E2E 257 PASS. E216/E217 schließen acht Modell- und zehn PTY-Skips separat. Übrige Skips/TODOs, Referenzbenchmark und finale Release-Route bleiben offen. |
 | L14 | BLOCKED | L04/L05/L13 und Freigaben für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Installation durch externen Nutzer aus öffentlichen Kandidatenartefakten. |
@@ -73,14 +85,15 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L22 | TODO | Finale GA-Gates und menschliche Abnahme. |
 | L23 | TODO | Öffentliche GA, Kommunikation und Supportübernahme. |
 | L24 | TODO | P2-Roadmap bis nach Launch zurückgestellt. |
-| L25 | BLOCKED | Isoliertes CLI-/Hook-Handler-Briefing und permission-scoped Reminder bestanden, E38/E199/E200. Nutzerprofil am 18.10. 14:45 UTC erneut lesend geprüft: Exit 2/unauthorized, E213 (früher E32). Tatsächlicher Clientdispatch, freigegebener Datenfluss und Daily-/Weekly-Lesezugriff fehlen; E150/E180. Keine globale Konfiguration geändert. |
+| L25 | BLOCKED | Isoliertes CLI-/Hook-Handler-Briefing und permission-scoped Reminder bestanden, E38/E199/E200. E219 ergänzt Discovery der realmodellgestützt aufgenommenen Quelle über gemeinsame Hook-Handler, weiterhin kein nativer Clientdispatch. Nutzerprofil am 18.10. 14:45 UTC erneut lesend geprüft: Exit 2/unauthorized, E213 (früher E32). Tatsächlicher Clientdispatch, freigegebener Datenfluss und Daily-/Weekly-Lesezugriff fehlen; E150/E180. Keine globale Konfiguration geändert. |
 
 ## Fünf dominante Blocker / kritischer Pfad
 
 1. **Zuverlässiger aktueller Kandidat:** intermittierende DB-Timeouts in `queue_start`,
    E194/E196. Weitere Gegenprobe E201 scheitert bereits bei Migrationen unter hoher
-   Memory-PSI. Ursache nicht abschließend bewiesen. Neues vollständiges Gate und
-   aktuelles kompiliertes Image einschließlich Operator-Migration fehlen.
+   Memory-PSI. Ursache nicht abschließend bewiesen. E219 zeigt zusätzlich fünf opake Queue-Fehler
+   in der Source-Fixture bei funktionierendem Realmodell-Review. Vollständiges
+   Host-Gate E215 bestanden; aktuelles Image samt Operator-Migration fehlt.
 2. **Öffentliche Distribution:** signierte 10.0.1-Artefakte, passende Schlüssel,
    Referenzbenchmark und extern installierbare Kandidaten nicht vollständig belegt.
 3. **Sicherheit/Rechte:** öffentliche Historien-/Lizenzfreigabe, drei bekannte
@@ -152,8 +165,9 @@ Bei Bedarf gezielt laden oder neuen Kandidaten bauen. Keine fremden Ressourcen b
 
 ## Nächste drei Aufgaben
 
-1. **L13 P0:** E215 ist abgeschlossen. E215–E217 wiederverwenden; Evidenzstand normal geprüft synchronisieren.
-   Übrige Skips/TODOs getrennt beurteilen, ohne optionale Connectoren automatisch zu Launch-Blockern zu machen.
+1. **L12/L13 P0:** E219 synchronisieren und die fünf Queue-Fehler gezielt diagnostizieren.
+   Bestehende Error-Normalisierung/PG-Boss-Eventform prüfen; Ursachen sicher erfassen.
+   E215–E217 wiederverwenden, keine optionale Connector-Roadmap zum Blocker machen.
 2. **L12/L18 P0/P1:** auf messbar ausreichend versorgtem System aktuellen Kandidatenstart,
    Kategorie-/RBAC-Parität und Upgrade/Restore prüfen. E195 ist Teilnachweis, kein Gesamtergebnis.
    Keine blinden Vollstart-Wiederholungen oder Eingriffe in fremde Demos.
