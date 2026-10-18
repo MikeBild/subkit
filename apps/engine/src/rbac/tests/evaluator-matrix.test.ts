@@ -15,7 +15,13 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { emptyRoleId } from "../../test-helpers/roles.ts";
-import { ALL_PERMISSION_NAMES, getPermissionByName, loadPermissionCatalog } from "../catalog.ts";
+import {
+  ALL_PERMISSION_NAMES,
+  getPermissionByName,
+  isOperatorPermission,
+  loadPermissionCatalog,
+  OPERATOR_PERMISSIONS,
+} from "../catalog.ts";
 import { assertCan, can } from "../evaluator.ts";
 import * as grantsSvc from "../grants.ts";
 import { BUILTIN_ROLE_NAMES } from "../seed.ts";
@@ -42,6 +48,7 @@ const PORTAL_TOKEN_USER_PERMISSIONS = new Set<string>([
 ]);
 
 function memberAllows(name: string): boolean {
+  if (isOperatorPermission(name)) return false;
   if (name.startsWith("rbac:")) return false;
   if (name === "audit:read") return false;
   if (name === "identity:write") return false;
@@ -99,7 +106,7 @@ describe("rbac matrix", () => {
 
     const [a] = await db
       .insert(tenants)
-      .values({ slug: "rbac-mx-a", display_name: "rbac-mx-a" })
+      .values({ slug: "rbac-mx-a", display_name: "rbac-mx-a", is_operator: true })
       .returning();
     const [b] = await db
       .insert(tenants)
@@ -264,12 +271,49 @@ describe("rbac matrix", () => {
               expect(decision.source).toBeDefined();
             } else {
               expect(decision.reason).toBeDefined();
-              expect(decision.reason).toContain("permission_denied");
+              expect(decision.reason).toContain(
+                isOperatorPermission(permission) && principal.provider === "portal_token"
+                  ? "operator_boundary"
+                  : "permission_denied",
+              );
             }
           }
         });
       });
     }
+  });
+
+  describe("operator boundary", () => {
+    test("an admin of a non-operator tenant is denied every operator permission and nothing else", async () => {
+      const principal: ResolvedPrincipal = {
+        provider: "api_key",
+        kind: "user",
+        id: "00000000-0000-4000-8000-0000000b0a0d",
+        tenant_id: tenantB,
+        roles: [BUILTIN_ROLE_NAMES.ADMIN],
+      };
+      for (const permission of ALL_PERMISSION_NAMES) {
+        const decision = await can(db, { tenant_id: tenantB, principal, permission });
+        expect({ permission, allow: decision.allow }).toEqual({
+          permission,
+          allow: !isOperatorPermission(permission),
+        });
+        if (!decision.allow) {
+          expect(decision.source).toBe("operator_boundary");
+          expect(decision.detail?.cause).toBe("operator_only");
+        }
+      }
+    });
+
+    test("the operator permissions are exactly the engine-wide ones", () => {
+      expect([...OPERATOR_PERMISSIONS].sort()).toEqual([
+        "mcp_oauth_client:disable",
+        "metrics:read",
+        "settings:read:global",
+        "settings:write:global",
+        "system:restart",
+      ]);
+    });
   });
 
   describe("scoped-key persona", () => {

@@ -16,6 +16,8 @@ export function engineHelp(version: string): string {
     "    --to=<version>            roll back to a specific retained version\n" +
     "  --issue-admin-key  issue an admin API key and exit\n" +
     "    --tenant <slug>           tenant to mint the key against\n" +
+    "  --set-operator-tenant <slug>\n" +
+    "                     make this workspace the engine operator (moves the flag) and exit\n" +
     "  --token-exchange   swap an API key for a short-lived Bearer token and exit\n" +
     "    --key-file <path>         file holding the key (never pass the key as an argument)\n" +
     "    --scope <scopes>          narrow to a subset of the key's scopes (space-separated;\n" +

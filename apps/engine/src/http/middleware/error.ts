@@ -7,11 +7,13 @@ import {
   timeoutPhaseOf,
   turnFailureFramePayload,
 } from "../../conversations/turn-failure.ts";
+import { ApiKeyOwnerNotFoundError } from "../../identity/api-key-owner.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
 import { toLlmProviderError } from "../../llm/provider-errors.ts";
 import { logger } from "../../logging/logger.ts";
 import type { CapturedError } from "../../observability/error-ring.ts";
 import { errorRing } from "../../observability/error-ring.ts";
+import { ScopeExceedsIssuerError, UnknownScopeError } from "../../rbac/scope-issuance.ts";
 import { HttpError, UnauthorizedError } from "../errors.ts";
 import type { AppEnv } from "../openapi.ts";
 
@@ -168,6 +170,13 @@ export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Respons
   }
   if (err instanceof DescriptionAcceptanceError)
     return envelope(c, err.code === "description_changed" ? 409 : 400, err.code, err.message);
+  if (err instanceof ApiKeyOwnerNotFoundError) return envelope(c, 404, err.code, err.message);
+  if (err instanceof UnknownScopeError)
+    return envelope(c, 422, err.code, err.message, { details: { scopes: err.scopes } });
+  if (err instanceof ScopeExceedsIssuerError)
+    return envelope(c, 403, err.code, err.message, {
+      details: { scopes: err.scopes, operator_only: err.operator_only },
+    });
   if (err instanceof HTTPException && err.status === 415)
     return envelope(c, 415, "unsupported_media_type", "Unsupported request Content-Type");
   if (err instanceof HTTPException && err.status === 400)

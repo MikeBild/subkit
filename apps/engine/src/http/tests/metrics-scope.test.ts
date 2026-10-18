@@ -9,6 +9,7 @@ import {
 } from "../../auth/oauth/mcp-oauth-test-helpers.ts";
 import { apiKeys, systemAccounts, users } from "../../db/schema/index.ts";
 import { generateKey } from "../../identity/api-key.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
 import type { HttpTestServer } from "./setup.ts";
 
@@ -52,7 +53,12 @@ async function mintUserKey(scopes: string[]): Promise<string> {
 async function mintScraperKey(name: string, scopes: string[]): Promise<string> {
   const [account] = await ctx.db
     .insert(systemAccounts)
-    .values({ tenant_id: ctx.tenantId, name, description: "scoped scraper" })
+    .values({
+      tenant_id: ctx.tenantId,
+      name,
+      description: "scoped scraper",
+      role_id: await builtinRoleId(ctx.db, "metrics_scraper"),
+    })
     .returning();
   const key = generateKey();
   await ctx.db.insert(apiKeys).values({

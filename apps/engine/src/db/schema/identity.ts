@@ -43,10 +43,14 @@ export const tenants = pgTable(
     last_endpoint_contract_scan_at: timestamp("last_endpoint_contract_scan_at", {
       withTimezone: true,
     }),
+    is_operator: boolean("is_operator").default(false).notNull(),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [uniqueIndex("tenants_slug_key").on(t.slug)],
+  (t) => [
+    uniqueIndex("tenants_slug_key").on(t.slug),
+    uniqueIndex("tenants_operator_key").on(t.is_operator).where(sql`${t.is_operator}`),
+  ],
 );
 
 export const engineSettings = pgTable("engine_settings", {

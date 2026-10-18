@@ -203,8 +203,9 @@
 
   {
     "name": "metrics:read",
-    "description": "Scrape Prometheus metrics",
-    "resource_type": "metrics"
+    "description": "Scrape the engine-wide Prometheus metrics (engine operator only)",
+    "resource_type": "metrics",
+    "operator": true
   },
 
   { "name": "audit:read", "description": "Read the audit log", "resource_type": "audit" },
@@ -349,18 +350,31 @@
 
   {
     "name": "settings:read",
-    "description": "Read engine + tenant settings (secrets are masked in the response)",
+    "description": "Read your own tenant's settings (secrets are masked in the response)",
     "resource_type": "settings"
   },
   {
     "name": "settings:write",
-    "description": "Update engine-global or tenant-scoped settings",
+    "description": "Change your own tenant's settings",
     "resource_type": "settings"
   },
   {
+    "name": "settings:read:global",
+    "description": "Read engine-wide settings, revisions, secrets, diagnostics and every tenant's settings (engine operator only)",
+    "resource_type": "settings",
+    "operator": true
+  },
+  {
+    "name": "settings:write:global",
+    "description": "Change and activate engine-wide settings, secrets and any tenant's settings (engine operator only)",
+    "resource_type": "settings",
+    "operator": true
+  },
+  {
     "name": "system:restart",
-    "description": "Restart the engine so a saved restart-sensitive setting takes effect (admin only; needs a supervisor)",
-    "resource_type": "system"
+    "description": "Restart the engine so a saved restart-sensitive setting takes effect (engine operator only; needs a supervisor)",
+    "resource_type": "system",
+    "operator": true
   },
 
   {
@@ -397,8 +411,14 @@
   },
   {
     "name": "mcp_oauth_client:revoke",
-    "description": "Disable a registered MCP OAuth client",
+    "description": "Revoke a registered MCP OAuth client's grants and tokens in your own tenant",
     "resource_type": "mcp_oauth_client"
+  },
+  {
+    "name": "mcp_oauth_client:disable",
+    "description": "Disable a registered MCP OAuth client for the whole engine and revoke its tokens in every tenant (engine operator only)",
+    "resource_type": "mcp_oauth_client",
+    "operator": true
   },
 
   {

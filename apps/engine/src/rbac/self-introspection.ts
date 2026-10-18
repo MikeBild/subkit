@@ -8,7 +8,6 @@ export const SELF_INTROSPECTION_ROUTES = Object.freeze([
   "identity-cli-session",
   "identity-providers",
   "health",
-  "metrics",
 ] as const);
 
 export type SelfIntrospectionRoute = (typeof SELF_INTROSPECTION_ROUTES)[number];

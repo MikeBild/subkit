@@ -6,13 +6,27 @@ import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 
-type CheckStatus = "ok" | "warn" | "blocked";
+export type CheckStatus = "ok" | "warn" | "blocked";
 
-interface CheckResult {
+export interface CheckResult {
   name: string;
   status: CheckStatus;
   detail: string;
   hint?: string;
+}
+
+export function engineCheckDenial(name: string, err: unknown): CheckResult | null {
+  if (!isEngineError(err) || err.status !== 403) return null;
+  const details = err.details as { cause?: unknown } | null;
+  const operatorOnly = details?.cause === "operator_only";
+  return {
+    name,
+    status: "warn",
+    detail: operatorOnly
+      ? "not checked — engine checks are visible to the engine operator only"
+      : "not checked — this credential cannot read engine checks",
+    hint: "ask the engine operator to run `sk doctor` for this check",
+  };
 }
 
 function statusGlyph(s: CheckStatus): string {
@@ -138,7 +152,15 @@ export const doctorCommand = defineCommand({
             : {}),
         });
       } catch (err) {
-        if (isEngineError(err) && err.status === 401) {
+        const denial = engineCheckDenial("setup", err);
+        if (denial) {
+          results.push({
+            name: "authn",
+            status: "ok",
+            detail: "api_key resolved; principal authenticated",
+          });
+          results.push(denial);
+        } else if (isEngineError(err) && err.status === 401) {
           results.push({
             name: "authn",
             status: "blocked",
@@ -208,13 +230,9 @@ export const doctorCommand = defineCommand({
           });
         }
       } catch (err) {
-        if (isEngineError(err) && err.status === 403) {
-          results.push({
-            name: "schema_drift",
-            status: "warn",
-            detail: "audit:read permission required to read drift report",
-            hint: "use a key with audit:read scope (admin role) to see drift detail",
-          });
+        const denial = engineCheckDenial("schema_drift", err);
+        if (denial) {
+          results.push(denial);
         } else {
           const detail = err instanceof Error ? err.message : String(err);
           results.push({

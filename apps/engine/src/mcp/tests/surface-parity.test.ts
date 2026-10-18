@@ -351,7 +351,11 @@ describe("settings", () => {
   }
 
   test("subkit_settings returns the list GET /v1/settings returns", async () => {
-    const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read"]);
+    const { plaintext } = await suite.issueApiKey([
+      "mcp:admin",
+      "settings:read",
+      "settings:read:global",
+    ]);
     const http = await rest<SettingsList>("/v1/settings");
     const tool = await mcp<SettingsList>("subkit_settings", {}, plaintext);
     expect(tool).toEqual(http);
@@ -362,7 +366,11 @@ describe("settings", () => {
   });
 
   test("one setting reads the same over both, restart semantics included", async () => {
-    const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read"]);
+    const { plaintext } = await suite.issueApiKey([
+      "mcp:admin",
+      "settings:read",
+      "settings:read:global",
+    ]);
     const http = await rest<SettingsList["items"][number]>("/v1/settings/server.port");
     const tool = await mcp<SettingsList>("subkit_settings", { path: "server.port" }, plaintext);
     expect(tool.items).toEqual([http]);

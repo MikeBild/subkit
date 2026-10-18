@@ -34,6 +34,16 @@ export function registerPermissionsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(listPermissionsRoute, async (c) => {
     requireAuth(c);
     const catalog = loadPermissionCatalog();
-    return c.json({ items: catalog.map((p) => ({ ...p })) }, 200);
+    return c.json(
+      {
+        items: catalog.map((p) => ({
+          name: p.name,
+          description: p.description,
+          resource_type: p.resource_type,
+          operator: p.operator === true,
+        })),
+      },
+      200,
+    );
   });
 }

@@ -19,7 +19,6 @@ const FILE_TO_SLUG: Record<string, string> = {
 
 const TOP_LEVEL_FILE_TO_SLUG: Record<string, string> = {
   "health.ts": "health",
-  "metrics.ts": "metrics",
 };
 
 const NON_ROUTE_FILES = new Set<string>(["schemas.ts"]);
@@ -51,7 +50,7 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
     expect(violations).toEqual([]);
   });
 
-  test("health.ts and metrics.ts at the route root are on the carve-out list (not gated)", () => {
+  test("health.ts at the route root is on the carve-out list (not gated)", () => {
     const violations: string[] = [];
     for (const [file, slug] of Object.entries(TOP_LEVEL_FILE_TO_SLUG)) {
       const src = readFileSync(join(ROUTES_DIR, file), "utf8");
@@ -83,7 +82,6 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
       "identity-permissions",
       "identity-providers",
       "identity-sessions",
-      "metrics",
       "sk-bootstrap",
       "whoami",
     ]);

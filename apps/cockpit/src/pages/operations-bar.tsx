@@ -130,7 +130,7 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
       connectors: canConnectors,
       audit: can("audit:read"),
       usage: allowed,
-      budgetSetting: can("settings:write"),
+      budgetSetting: can("settings:write:global"),
     },
   });
   const pending = counts.isPending || spend.isPending || status.isPending || monthSpend.isPending;

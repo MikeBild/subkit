@@ -8,7 +8,6 @@ import {
   actorType,
   auditAwait,
   DeployVersionSchema,
-  SYSTEM_TENANT_ID,
 } from "../../audit/index.ts";
 import {
   getConfig,
@@ -21,14 +20,22 @@ import { type ConfigLeaf, findLeafByPath } from "../../config/walk.ts";
 import { logger } from "../../logging/index.ts";
 import {
   activateRuntimeRevision,
+  assertNoPendingEngineChange,
   createSecretVersion,
   getRuntimeConfigState,
   parseSecretReference,
   RuntimeConfigConflictError,
   RuntimeConfigNotFoundError,
+  RuntimeConfigPendingError,
   RuntimeConfigValidationError,
   saveRuntimeConfigPatch,
+  settingSecretName,
 } from "../../runtime-config/service.ts";
+import {
+  engineOnlyReadDenial,
+  resolveSettingsReadView,
+  resolveSettingWriteTarget,
+} from "../../runtime-config/settings-access.ts";
 import {
   maskedSettingValue,
   readSettingEntry,
@@ -37,13 +44,6 @@ import {
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-
-function canManageOtherTenants(principal: ReturnType<typeof requireAuth>): boolean {
-  if (principal.tenant_id === SYSTEM_TENANT_ID && principal.roles.includes("admin")) {
-    return true;
-  }
-  return principal.scopes?.includes("settings:write:global") ?? false;
-}
 
 const LeafMetaSchema = z
   .object({
@@ -68,6 +68,8 @@ const LeafEntrySchema = z
 
 const SettingsListResponse = z
   .object({
+    view: z.enum(["engine", "tenant"]),
+    tenant_id: z.string().uuid().nullable(),
     saved_revision: z.number().int().positive().nullable(),
     active_revision: z.number().int().positive().nullable(),
     activation_status: z
@@ -123,6 +125,20 @@ const ScopeViolationSchema = z
     message: z.string(),
   })
   .openapi("SettingScopeViolation");
+
+const OperatorRequiredSchema = z
+  .object({
+    code: z.literal("operator_required"),
+    message: z.string(),
+  })
+  .openapi("SettingOperatorRequired");
+
+const OperatorChangePendingSchema = z
+  .object({
+    code: z.literal("operator_change_pending"),
+    message: z.string(),
+  })
+  .openapi("SettingOperatorChangePending");
 
 const RestartRequiredSchema = z
   .object({
@@ -194,7 +210,8 @@ const getRoute = createRoute({
       content: { "application/json": { schema: ErrorSchema } },
     },
     403: {
-      description: "Forbidden",
+      description:
+        "Another workspace's settings, an engine-wide setting that only the engine operator can read, or insufficient permissions",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -221,14 +238,20 @@ const putRoute = createRoute({
       content: { "application/json": { schema: ValidationFailedSchema } },
     },
     409: {
-      description: "Setting requires a restart in production; pass force=true to apply",
+      description:
+        "Setting requires a restart in production (pass force=true to apply), or a tenant write waits for the engine operator to activate saved engine-wide settings",
       content: {
-        "application/json": { schema: z.union([RestartRequiredSchema, ErrorSchema]) },
+        "application/json": {
+          schema: z.union([RestartRequiredSchema, OperatorChangePendingSchema, ErrorSchema]),
+        },
       },
     },
     403: {
-      description: "Scope violation or insufficient permissions",
-      content: { "application/json": { schema: ScopeViolationSchema } },
+      description:
+        "Scope violation, a write that needs the engine operator, or insufficient permissions",
+      content: {
+        "application/json": { schema: z.union([ScopeViolationSchema, OperatorRequiredSchema]) },
+      },
     },
     404: {
       description: "Unknown leaf path",
@@ -251,33 +274,20 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
     const { tenant } = c.req.valid("query");
-    const targetTenant = tenant ?? undefined;
-    if (targetTenant && targetTenant !== principal.tenant_id && !canManageOtherTenants(principal)) {
-      return c.json(
-        {
-          code: "scope_violation" as const,
-          message: `cannot read settings for tenant ${targetTenant} (system-tenant operator required for cross-tenant reads)`,
-        },
-        403,
-      );
-    }
-    return c.json(await readSettingsList(c.get("db"), targetTenant), 200);
+    const access = await resolveSettingsReadView(c.get("db"), principal, tenant);
+    if (!access.ok) return c.json({ code: access.code, message: access.message }, 403);
+    return c.json(await readSettingsList(c.get("db"), access.view), 200);
   });
 
   app.openapi(getRoute, async (c) => {
     const principal = requireAuth(c);
     const { path } = c.req.valid("param");
     const { tenant } = c.req.valid("query");
-    if (tenant && tenant !== principal.tenant_id && !canManageOtherTenants(principal)) {
-      return c.json(
-        {
-          code: "scope_violation" as const,
-          message: `cannot read settings for tenant ${tenant} (system-tenant operator required for cross-tenant reads)`,
-        },
-        403,
-      );
-    }
-    const entry = readSettingEntry(path, tenant);
+    const access = await resolveSettingsReadView(c.get("db"), principal, tenant);
+    if (!access.ok) return c.json({ code: access.code, message: access.message }, 403);
+    const entry = readSettingEntry(path, access.view);
+    const engineOnly = entry ? null : engineOnlyReadDenial(path, access.view);
+    if (engineOnly) return c.json({ code: engineOnly.code, message: engineOnly.message }, 403);
     if (!entry) {
       return c.json({ code: "not_found", message: `unknown setting path: ${path}` }, 404);
     }
@@ -287,7 +297,7 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(putRoute, async (c) => {
     const principal = requireAuth(c);
     const { path } = c.req.valid("param");
-    const { tenant } = c.req.valid("query");
+    const { tenant: requestedTenant } = c.req.valid("query");
     const body = c.req.valid("json") as { value: unknown; force?: boolean };
 
     const leaf = findLeafByPath(path);
@@ -307,25 +317,20 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    if (tenant && leaf.meta.scope !== "tenant") {
-      return c.json(
-        {
-          code: "scope_violation" as const,
-          message: `${path} is scope="global"; cannot be set per-tenant`,
-        },
-        403,
-      );
+    const access = await resolveSettingWriteTarget(
+      c.get("db"),
+      principal,
+      leaf,
+      path,
+      requestedTenant,
+    );
+    if (!access.ok) {
+      return access.code === "operator_required"
+        ? c.json({ code: "operator_required" as const, message: access.message }, 403)
+        : c.json({ code: "scope_violation" as const, message: access.message }, 403);
     }
-
-    if (tenant && tenant !== principal.tenant_id && !canManageOtherTenants(principal)) {
-      return c.json(
-        {
-          code: "scope_violation" as const,
-          message: `cannot mutate settings for tenant ${tenant} (system-tenant operator required for cross-tenant writes)`,
-        },
-        403,
-      );
-    }
+    const tenant = access.target.kind === "tenant" ? access.target.tenantId : undefined;
+    const restricted = access.target.kind === "tenant" && access.target.restricted;
 
     const setOpts: { tenantId?: string; force?: boolean } = {};
     if (tenant !== undefined) setOpts.tenantId = tenant;
@@ -342,6 +347,7 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
         const db = c.get("db");
         try {
           const state = await getRuntimeConfigState(db);
+          if (restricted) await assertNoPendingEngineChange(db);
           const before = readDeep(getConfig(tenant), leaf.path);
           let storedValue = body.value;
           if (
@@ -350,9 +356,7 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
             body.value.length > 0 &&
             !parseSecretReference(body.value)
           ) {
-            const secretName = tenant
-              ? `tenants.${tenant}.settings.${leaf.path.join(".")}`
-              : `settings.${leaf.path.join(".")}`;
+            const secretName = settingSecretName(tenant, leaf.path);
             const secret = await createSecretVersion(db, {
               name: secretName,
               value: body.value,
@@ -382,6 +386,7 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
             scope: tenant ? "tenant" : "global",
             created_by: principal.id,
             ...(tenant ? { tenant_id: tenant } : {}),
+            ...(restricted && tenant ? { restrict_to_tenant: tenant } : {}),
           });
           await auditAwait(
             {
@@ -402,12 +407,17 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
             db,
           );
           const restartRequired = saved.pending_restart_fields.length > 0;
-          const activated = await activateRuntimeRevision(db, saved.saved_revision, {
-            tenant_id: tenant ?? principal.tenant_id,
-            actor_type: principal.kind === "system_account" ? "system_account" : "user",
-            actor_id: principal.id,
-            source: "api",
-          });
+          const activated = await activateRuntimeRevision(
+            db,
+            saved.saved_revision,
+            {
+              tenant_id: tenant ?? principal.tenant_id,
+              actor_type: principal.kind === "system_account" ? "system_account" : "user",
+              actor_id: principal.id,
+              source: "api",
+            },
+            restricted && tenant ? { restrict_to_tenant: tenant } : {},
+          );
           await auditAwait(
             {
               tenant_id: tenant ?? principal.tenant_id,
@@ -521,6 +531,9 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
           },
           422,
         );
+      }
+      if (err instanceof RuntimeConfigPendingError) {
+        return c.json({ code: err.code, message: err.message }, 409);
       }
       if (err instanceof RuntimeConfigConflictError) {
         return c.json({ code: err.code, message: err.message }, 409);

@@ -46,7 +46,7 @@ describe("/v1/identity/api-keys", () => {
       body: JSON.stringify({
         owner_kind: "system_account",
         owner_id: ctx.systemAccountId,
-        scopes: ["workflows:read"],
+        scopes: ["workflow:read"],
       }),
     });
     expect(issueRes.status).toBe(201);

@@ -39,6 +39,7 @@ import {
 } from "../llm/accounting/index.ts";
 import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
 import * as rbacRoles from "../rbac/roles.ts";
+import type { ScopeIssuer } from "../rbac/scope-issuance.ts";
 import { loadTriggerBindings } from "../scheduler/trigger-bindings.ts";
 import * as selfHealingSvc from "../self-healing/index.ts";
 import * as skillCandidatesSvc from "../skill-candidates/service.ts";
@@ -449,6 +450,7 @@ export class EngineClient {
     listApiKeys: () => identitySvc.listApiKeys(this.tenant_id, this.db),
     getApiKey: (id: string) => identitySvc.getApiKey(this.tenant_id, id, this.db),
     issueApiKey: (input: {
+      issuer: ScopeIssuer;
       owner_kind: "user" | "system_account";
       owner_id: string;
       scopes?: string[];
@@ -458,6 +460,7 @@ export class EngineClient {
     }) =>
       identitySvc.issueApiKey(
         {
+          issuer: input.issuer,
           tenant_id: this.tenant_id,
           owner_kind: input.owner_kind,
           owner_id: input.owner_id,

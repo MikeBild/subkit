@@ -22,7 +22,13 @@ beforeAll(async () => {
     .returning();
   if (!member) throw new Error("seed member failed");
   const issued = await issueApiKey(
-    { tenant_id: ctx.tenantId, owner_kind: "user", owner_id: member.id, actor_id: null },
+    {
+      issuer: { kind: "system" },
+      tenant_id: ctx.tenantId,
+      owner_kind: "user",
+      owner_id: member.id,
+      actor_id: null,
+    },
     ctx.db,
   );
   memberKey = issued.plaintext;

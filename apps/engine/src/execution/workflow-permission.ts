@@ -28,7 +28,13 @@ export async function captureWorkflowPermission(
   decision: Decision,
   phase: "admission" | "start" = "admission",
 ): Promise<WorkflowPermission | null> {
-  if (!decision.allow || !decision.source || decision.source === "credential_ceiling") return null;
+  if (
+    !decision.allow ||
+    !decision.source ||
+    decision.source === "credential_ceiling" ||
+    decision.source === "operator_boundary"
+  )
+    return null;
   const clock = await db.execute<{ checked_at: Date }>(sql`SELECT clock_timestamp() AS checked_at`);
   const at = clock.rows[0]?.checked_at;
   if (!at) return null;

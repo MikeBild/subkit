@@ -4,6 +4,7 @@ import pc from "picocolors";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { logger } from "../logging/logger.ts";
+import { claimOperatorTenantIfUnassigned } from "../rbac/operator.ts";
 import {
   backfillSystemAccountRoleIds,
   type SeededRoleIds,
@@ -137,6 +138,7 @@ export async function seedTenantBootstrap(
       );
     }
 
+    await claimOperatorTenantIfUnassigned(tx, tenant.id);
     await lockCatalogVocabulary(tx, tenant.id);
     let [user] = await tx
       .select()
@@ -380,6 +382,7 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       })
       .returning();
     if (!tenant) throw new Error("seed: tenant insert returned no row");
+    await claimOperatorTenantIfUnassigned(tx, tenant.id);
     await lockCatalogVocabulary(tx, tenant.id);
     await auditAwait(
       {

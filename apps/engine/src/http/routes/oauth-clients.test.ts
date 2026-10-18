@@ -403,7 +403,7 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
     expect(res.status).toBe(404);
   });
 
-  test("soft-disables a known client and returns 204", async () => {
+  test("the engine operator soft-disables a known client engine-wide", async () => {
     const clientId = "disable-test-client-ccc333";
     await seedClient(clientId);
 
@@ -411,7 +411,8 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
       method: "DELETE",
       headers: authHeader(),
     });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { effect: string }).effect).toBe("client_disabled");
 
     const rows = await ctx.db
       .select({ disabled_at: mcpOauthClients.disabled_at })
@@ -470,7 +471,8 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
       method: "DELETE",
       headers: authHeader(),
     });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { effect: string }).effect).toBe("client_disabled");
     const revokedGrants = await ctx.db
       .select({ tenant_id: mcpOauthGrants.tenant_id, revoked_at: mcpOauthGrants.revoked_at })
       .from(mcpOauthGrants)
@@ -488,7 +490,7 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
     expect(revokedTokens.every((token) => token.revoked_at !== null)).toBe(true);
   });
 
-  test("is idempotent — second DELETE still returns 204", async () => {
+  test("is idempotent — second DELETE still reports the client disabled", async () => {
     const clientId = "idempotent-disable-ddd444";
     await seedClient(clientId);
 
@@ -496,13 +498,14 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
       method: "DELETE",
       headers: authHeader(),
     });
-    expect(res1.status).toBe(204);
+    expect(res1.status).toBe(200);
 
     const res2 = await fetch(`${ctx.baseUrl}/v1/oauth/clients/${clientId}`, {
       method: "DELETE",
       headers: authHeader(),
     });
-    expect(res2.status).toBe(204);
+    expect(res2.status).toBe(200);
+    expect(((await res2.json()) as { effect: string }).effect).toBe("client_disabled");
   });
 
   test("disabled client is rejected by GET /v1/oauth/authorize", async () => {
@@ -513,7 +516,7 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
       method: "DELETE",
       headers: authHeader(),
     });
-    expect(del.status).toBe(204);
+    expect(del.status).toBe(200);
 
     const res = await fetch(
       `${ctx.baseUrl}/v1/oauth/authorize?client_id=${clientId}&redirect_uri=https://example.com/callback&response_type=code&code_challenge=abc&code_challenge_method=S256`,

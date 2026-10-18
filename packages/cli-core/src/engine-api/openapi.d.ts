@@ -2098,7 +2098,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Forbidden */
+                /** @description Another workspace's settings, an engine-wide setting that only the engine operator can read, or insufficient permissions */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2157,13 +2157,13 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Scope violation or insufficient permissions */
+                /** @description Scope violation, a write that needs the engine operator, or insufficient permissions */
                 403: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["SettingScopeViolation"];
+                        "application/json": components["schemas"]["SettingScopeViolation"] | components["schemas"]["SettingOperatorRequired"];
                     };
                 };
                 /** @description Unknown leaf path */
@@ -2175,13 +2175,13 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Setting requires a restart in production; pass force=true to apply */
+                /** @description Setting requires a restart in production (pass force=true to apply), or a tenant write waits for the engine operator to activate saved engine-wide settings */
                 409: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["SettingRestartRequired"] | components["schemas"]["Error"];
+                        "application/json": components["schemas"]["SettingRestartRequired"] | components["schemas"]["SettingOperatorChangePending"] | components["schemas"]["Error"];
                     };
                 };
                 /** @description Validation failed against the leaf's Zod schema */
@@ -3462,7 +3462,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Forbidden */
+                /** @description Forbidden, or scope_exceeds_issuer when a requested scope is not held by you */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -3473,6 +3473,15 @@ export interface paths {
                 };
                 /** @description User not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description unknown_scope: a requested scope is not a permission name */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3927,8 +3936,26 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Forbidden */
+                /** @description Forbidden, or scope_exceeds_issuer when a requested scope is not held by you */
                 403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The owner is not a user or system account of your workspace */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description unknown_scope: a requested scope is not a permission name */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3987,7 +4014,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Forbidden */
+                /** @description Forbidden, or scope_exceeds_issuer when the key carries scopes your credential does not hold */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -3996,7 +4023,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Not found */
+                /** @description The key, or its owner in your workspace, was not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -4718,7 +4745,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Disable a registered MCP OAuth client and revoke its outstanding tokens */
+        /** Revoke a registered MCP OAuth client: the engine operator disables it for every tenant, everyone else revokes its grants and tokens in their own tenant */
         delete: {
             parameters: {
                 query?: never;
@@ -4730,12 +4757,14 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Disabled */
-                204: {
+                /** @description Client disabled engine-wide, or its access in the caller's tenant revoked */
+                200: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["OAuthClientRevokeResult"];
+                    };
                 };
                 /** @description Unauthorized */
                 401: {
@@ -19966,6 +19995,10 @@ export interface components {
             expected_revision: number;
         };
         SettingsListResponse: {
+            /** @enum {string} */
+            view: "engine" | "tenant";
+            /** Format: uuid */
+            tenant_id: string | null;
             saved_revision: number | null;
             active_revision: number | null;
             /** @enum {string|null} */
@@ -20003,12 +20036,22 @@ export interface components {
             code: "scope_violation";
             message: string;
         };
+        SettingOperatorRequired: {
+            /** @enum {string} */
+            code: "operator_required";
+            message: string;
+        };
         SettingRestartRequired: {
             /** @enum {string} */
             code: "restart_required";
             message: string;
             /** @enum {boolean} */
             requiresRestart: true;
+        };
+        SettingOperatorChangePending: {
+            /** @enum {string} */
+            code: "operator_change_pending";
+            message: string;
         };
         SettingValidationFailed: {
             /** @enum {string} */
@@ -20200,6 +20243,7 @@ export interface components {
             created_at: string;
         };
         CreateInviteBody: {
+            /** @description Permission names from GET /v1/rbac/permissions, '*', or mcp:read, mcp:authoring, mcp:admin. Each must be held by the issuing credential; '*' only from a credential without scope limits. Omitted: the issuer's own ceiling. */
             scopes?: string[];
             allowed_workflows?: string[];
             allowed_connectors?: string[];
@@ -20291,6 +20335,7 @@ export interface components {
             owner_id: string;
             /** @description Operator-facing label, e.g. "claude-code". Useful when running one key per channel — a read-and-execute key for a browser client, an mcp:authoring key for a coding agent. */
             name?: string;
+            /** @description Permission names from GET /v1/rbac/permissions, '*', or mcp:read, mcp:authoring, mcp:admin. Each must be held by the issuing credential; '*' only from a credential without scope limits. Omitted: the issuer's own ceiling. */
             scopes?: string[];
             allowed_workflows?: string[];
             allowed_connectors?: string[];
@@ -20370,6 +20415,8 @@ export interface components {
                 id: string;
                 slug: string;
                 display_name: string;
+                /** @description True when this workspace is the engine operator and may change the whole engine */
+                engine_operator: boolean;
             };
             session: {
                 /** Format: date-time */
@@ -20424,6 +20471,11 @@ export interface components {
             created_at: string;
             last_used_at: string | null;
         };
+        OAuthClientRevokeResult: {
+            client_id: string;
+            /** @enum {string} */
+            effect: "client_disabled" | "tenant_access_revoked";
+        };
         Whoami: {
             id: string;
             /** @enum {string} */
@@ -20437,6 +20489,8 @@ export interface components {
             scopes: string[] | null;
             /** @description App the caller signed in to through an oidc_bearer provider, or null */
             product_id: string | null;
+            /** @description True when the caller belongs to the engine operator workspace */
+            engine_operator: boolean;
         };
         EffectivePermissions: {
             /** @enum {string} */
@@ -25986,6 +26040,8 @@ export interface components {
             name: string;
             description: string;
             resource_type: string;
+            /** @description True when only the engine operator workspace can exercise this permission */
+            operator: boolean;
         };
         RbacRoleListResponse: {
             items: components["schemas"]["RbacRoleDetail"][];

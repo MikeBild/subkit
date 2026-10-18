@@ -136,6 +136,7 @@ beforeAll(async () => {
       slug: "t-attention",
       display_name: "Attention",
       last_connector_reauth_scan_at: new Date(now),
+      is_operator: true,
     })
     .returning();
   tenant_id = tenant!.id;
@@ -548,16 +549,19 @@ describe("permission cost", () => {
         permission: "workflow:read",
       });
 
-    await buildAttention(testDb.db, adminPrincipal(costTenant));
+    const outsideOperator = await buildAttention(testDb.db, adminPrincipal(costTenant));
+    expect(outsideOperator.items.some((item) => item.id.startsWith("secret-approval:"))).toBe(
+      false,
+    );
     await grant(ids[0] as string);
     queries = 0;
-    const one = await buildAttention(countingDb, reader);
+    const one = await buildAttention(countingDb, { ...reader });
     const forOne = queries;
     expect(one.items).toHaveLength(1);
 
     for (const id of ids.slice(1)) await grant(id);
     queries = 0;
-    const ten = await buildAttention(countingDb, reader);
+    const ten = await buildAttention(countingDb, { ...reader });
     const forTen = queries;
     expect(ten.items).toHaveLength(10);
     expect(forTen).toBe(forOne);

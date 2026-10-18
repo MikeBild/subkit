@@ -46,6 +46,7 @@ const CHECK_UPDATE_FLAG = "--check-update";
 const MIGRATE_FLAG = "--migrate";
 const SEED_FLAG = "--seed";
 const ISSUE_ADMIN_KEY_FLAG = "--issue-admin-key";
+const SET_OPERATOR_TENANT_FLAG = "--set-operator-tenant";
 const TOKEN_EXCHANGE_FLAG = "--token-exchange";
 const VERSION_FLAG = "--version";
 const HELP_FLAG = "--help";
@@ -303,6 +304,23 @@ async function runServer(): Promise<void> {
       status: seedResult.status,
       new_keys_issued: seedResult.issued_keys.length,
     });
+    const { operatorTenant } = await import("./rbac/operator.ts");
+    const operator = await operatorTenant(db);
+    if (operator) {
+      logger.info({
+        module: "rbac",
+        action: "operator.resolved",
+        msg: "engine operator workspace resolved",
+        tenant_id: operator.id,
+        tenant_slug: operator.slug,
+      });
+    } else {
+      logger.warn({
+        module: "rbac",
+        action: "operator.missing",
+        msg: "no engine operator workspace is assigned; engine-wide settings stay locked until setup completes or engine --set-operator-tenant <slug> runs",
+      });
+    }
   } catch (err) {
     logger.error({
       module: "engine",
@@ -636,6 +654,41 @@ async function main(): Promise<void> {
             module: "engine",
             action: "issue_admin_key.cli_failed",
             msg: "engine --issue-admin-key failed",
+            ...errorFields(err),
+          });
+          process.exit(1);
+        }
+      },
+    );
+    return;
+  }
+
+  if (process.argv.includes(SET_OPERATOR_TENANT_FLAG)) {
+    await withContext(
+      {
+        trace_id: newTraceId(),
+        tenant_id: SYSTEM_TENANT_ID,
+        request_source: "cli",
+        actor_id: "set-operator-tenant",
+      },
+      async () => {
+        try {
+          const { parseSetOperatorTenantArgs, setOperatorTenantFromUrl } = await import(
+            "./db/set-operator-tenant.ts"
+          );
+          const cfg = await loadConfigAndReconfigureLogger();
+          const { tenantSlug } = parseSetOperatorTenantArgs(process.argv.slice(2));
+          const assigned = await setOperatorTenantFromUrl(cfg.database.url, tenantSlug);
+          process.stdout.write(
+            `engine operator workspace: ${assigned.tenant_slug} (${assigned.tenant_id})\n`,
+          );
+          await closeDb();
+          process.exit(0);
+        } catch (err) {
+          logger.fatal({
+            module: "engine",
+            action: "set_operator_tenant.cli_failed",
+            msg: "engine --set-operator-tenant failed",
             ...errorFields(err),
           });
           process.exit(1);

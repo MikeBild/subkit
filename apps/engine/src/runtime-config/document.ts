@@ -68,3 +68,28 @@ export function restartFieldsDiffering(
   }
   return [...differing].sort();
 }
+
+function withoutTenantOverlay(
+  document: Record<string, unknown>,
+  tenantId: string,
+): Record<string, unknown> {
+  const { tenants: overlays, ...rest } = clone(document);
+  if (!overlays || typeof overlays !== "object" || Array.isArray(overlays)) {
+    return overlays === undefined ? rest : { ...rest, tenants: overlays };
+  }
+  const remaining = Object.fromEntries(
+    Object.entries(overlays as Record<string, unknown>).filter(([id]) => id !== tenantId),
+  );
+  return Object.keys(remaining).length === 0 ? rest : { ...rest, tenants: remaining };
+}
+
+export function revisionChangesOnlyTenant(
+  active: Record<string, unknown>,
+  candidate: Record<string, unknown>,
+  tenantId: string,
+): boolean {
+  return (
+    configDigest(withoutTenantOverlay(active, tenantId)) ===
+    configDigest(withoutTenantOverlay(candidate, tenantId))
+  );
+}

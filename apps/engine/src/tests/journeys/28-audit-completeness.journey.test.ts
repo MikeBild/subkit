@@ -265,7 +265,7 @@ describe("journey: audit completeness over mutation routes", () => {
       body: JSON.stringify({
         owner_kind: "system_account",
         owner_id: ctx.systemAccountId,
-        scopes: ["workflows:read"],
+        scopes: ["workflow:read"],
       }),
     });
     expect(res.status).toBe(201);

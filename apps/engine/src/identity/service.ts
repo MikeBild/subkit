@@ -17,8 +17,14 @@ import {
 } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
+import {
+  authorizeRequestedScopes,
+  authorizeRetainedScopes,
+  type ScopeIssuer,
+} from "../rbac/scope-issuance.ts";
 import { now } from "../utils/clock.ts";
 import { generateKey, hashKey } from "./api-key.ts";
+import { ApiKeyOwnerNotFoundError, assertApiKeyOwnerInTenant } from "./api-key-owner.ts";
 import { assertAdminRemains } from "./last-admin.ts";
 import { generatePortalToken } from "./portal-token.ts";
 
@@ -445,6 +451,7 @@ export async function getApiKey(
 }
 
 export interface IssueApiKeyInput {
+  issuer: ScopeIssuer;
   tenant_id: string;
   owner_kind: "user" | "system_account";
   owner_id: string;
@@ -470,8 +477,10 @@ export async function issueApiKey(
   const db = exec ?? getDb();
   const actor = resolveApiKeyCreator(input.actor, input.actor_id);
   const actorId = apiKeyActorId(input.actor);
+  const scopes = await authorizeRequestedScopes(db, input.issuer, input.scopes);
   const key = generateKey();
   return db.transaction(async (tx) => {
+    await assertApiKeyOwnerInTenant(tx, input.tenant_id, input.owner_kind, input.owner_id);
     const [row] = await tx
       .insert(apiKeys)
       .values({
@@ -483,7 +492,7 @@ export async function issueApiKey(
         prefix: key.prefix,
         token_sha256: key.hash,
         name: input.name ?? null,
-        scopes: input.scopes ?? ["*"],
+        scopes,
         allowed_workflows: input.allowed_workflows ?? null,
         allowed_connectors: input.allowed_connectors ?? null,
         expires_at: input.expires_at ?? null,
@@ -523,6 +532,7 @@ export async function issueApiKey(
 }
 
 export interface RotateApiKeyInput {
+  issuer: ScopeIssuer;
   tenant_id: string;
   id: string;
   overlap_minutes?: number;
@@ -552,6 +562,11 @@ export async function rotateApiKey(
       .limit(1);
     const existing = existingRows[0];
     if (!existing) return null;
+    await authorizeRetainedScopes(tx, input.issuer, existing.scopes, existing.tenant_id);
+    const ownerKind = existing.user_id ? "user" : "system_account";
+    const ownerId = existing.user_id ?? existing.system_account_id;
+    if (!ownerId) throw new ApiKeyOwnerNotFoundError(ownerKind);
+    await assertApiKeyOwnerInTenant(tx, existing.tenant_id, ownerKind, ownerId);
 
     const key = generateKey();
     const [created] = await tx

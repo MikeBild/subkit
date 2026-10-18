@@ -62,6 +62,7 @@ const PERMISSION_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   commit: "permission.action.commit",
   confirm: "permission.action.confirm",
   delete: "permission.action.delete",
+  disable: "permission.action.disable",
   export: "permission.action.export",
   import: "permission.action.import",
   invoke: "permission.action.invoke",
@@ -91,6 +92,7 @@ export function permissionLabel(permission: string, t: Translate): CatalogLabel 
   const values = { resource: t(resourceKey), action: t(actionKey) };
   if (reach === undefined) return { text: t("permission.label", values), machine: false };
   if (reach === "all") return { text: t("permission.labelAll", values), machine: false };
+  if (reach === "global") return { text: t("permission.labelGlobal", values), machine: false };
   return { text: permission, machine: true };
 }
 
@@ -103,13 +105,20 @@ export interface PermissionGroup {
 function permissionActionLabel(permission: string, t: Translate): CatalogLabel {
   const [, action, reach, ...rest] = permission.split(":");
   const actionKey = action ? PERMISSION_ACTION_KEYS[action] : undefined;
-  if (!actionKey || rest.length > 0 || (reach !== undefined && reach !== "all"))
+  if (
+    !actionKey ||
+    rest.length > 0 ||
+    (reach !== undefined && reach !== "all" && reach !== "global")
+  )
     return { text: permission, machine: true };
   const text = t(actionKey);
-  return {
-    text: reach === "all" ? t("permission.actionAll", { action: text }) : text,
-    machine: false,
-  };
+  const reachText =
+    reach === "all"
+      ? t("permission.actionAll", { action: text })
+      : reach === "global"
+        ? t("permission.actionGlobal", { action: text })
+        : text;
+  return { text: reachText, machine: false };
 }
 
 export function permissionGroups(permissions: readonly string[], t: Translate): PermissionGroup[] {

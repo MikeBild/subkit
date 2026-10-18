@@ -1086,7 +1086,8 @@ function SystemSettings() {
   const { t } = useI18n();
   const session = useSession();
   const client = useQueryClient();
-  const canWrite = session.permissions.includes("settings:write");
+  const canWrite = session.permissions.includes("settings:write:global");
+  const canReadEngine = session.permissions.includes("settings:read:global");
   const [linked] = useState(() => settingsViewFromUrl(window.location.search));
   const [leaf, setLeaf] = useState(linked.leaf);
   const [filter, setFilter] = useState<SettingsFilter>(linked.leaf ? "all" : linked.filter);
@@ -1368,7 +1369,7 @@ function SystemSettings() {
           }}
         />
       ) : null}
-      <PreparedChanges canDecide={canWrite} />
+      {canReadEngine ? <PreparedChanges canDecide={canWrite} /> : null}
       {settingsView === "loading" ? (
         <DataState state="loading" testId="settings-loading" />
       ) : settingsView === "error" ? (

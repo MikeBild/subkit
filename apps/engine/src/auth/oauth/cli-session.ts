@@ -108,6 +108,7 @@ export async function consumeCliLoginToken(input: {
 
       const issued = await issueApiKey(
         {
+          issuer: { kind: "login" },
           tenant_id: tokenRow.tenant_id,
           owner_kind: "user",
           owner_id: user.id,

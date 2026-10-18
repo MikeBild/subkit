@@ -2251,7 +2251,7 @@ function AppUsers({ app }: { app: AppView }) {
 function AppSheet({ appId, onClose }: { appId: string | null; onClose(): void }) {
   const { t, dateTime } = useI18n();
   const session = useSession();
-  const canWrite = session.permissions.includes("settings:write");
+  const canWrite = session.permissions.includes("settings:write:global");
   const canPeople = session.permissions.includes("identity:read");
   const detail = useQuery({
     queryKey: appKey(appId ?? ""),

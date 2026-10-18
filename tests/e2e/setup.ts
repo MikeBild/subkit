@@ -265,7 +265,11 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
 
   const [tenant] = await testDb.db
     .insert(tenants)
-    .values({ slug: `e2e-${safeLabel}`.slice(0, 32), display_name: `E2E ${label}` })
+    .values({
+      slug: `e2e-${safeLabel}`.slice(0, 32),
+      display_name: `E2E ${label}`,
+      is_operator: true,
+    })
     .returning();
   if (!tenant) throw new Error("seed tenant failed");
 

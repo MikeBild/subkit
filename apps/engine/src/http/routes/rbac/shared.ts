@@ -67,6 +67,9 @@ export const PermissionCatalogEntrySchema = z
     name: z.string(),
     description: z.string(),
     resource_type: z.string(),
+    operator: z
+      .boolean()
+      .describe("True when only the engine operator workspace can exercise this permission"),
   })
   .openapi("PermissionCatalogEntry");
 

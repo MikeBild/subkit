@@ -141,6 +141,7 @@ test("person reads expose only that person's tenant groups and preserve foreign-
 test("identity-only credentials receive unknown group membership without RBAC disclosure", async () => {
   const issued = await issueApiKey(
     {
+      issuer: { kind: "system" },
       tenant_id: server.tenantId,
       owner_kind: "user",
       owner_id: server.userId,

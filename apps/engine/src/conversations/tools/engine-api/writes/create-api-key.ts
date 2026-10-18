@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { ScopeExceedsIssuerError, UnknownScopeError } from "../../../../rbac/scope-issuance.ts";
 import type { ConversationTool, ToolResult } from "../../index.ts";
 
 export const CreateApiKeyInput = z
@@ -24,9 +25,10 @@ export const CreateApiKeyInput = z
       .describe("Defaults to the calling actor id. Admin-only override otherwise."),
     scopes: z
       .array(z.string().min(1))
+      .max(64)
       .optional()
       .describe(
-        'Scope strings the key carries. Defaults to ["*"] (full access) when omitted. Use the smallest set that lets the integration succeed.',
+        "Permission names from GET /v1/rbac/permissions, '*', or mcp:read, mcp:authoring, mcp:admin. Each must be held by the signed-in person's credential. Defaults to that credential's own limits when omitted. Use the smallest set that lets the integration succeed.",
       ),
     allowed_workflows: z
       .array(z.string().min(1))
@@ -56,12 +58,12 @@ export const createApiKeyTool: ConversationTool = {
     "Use AFTER the user explicitly confirms they want a new API key minted (for an MCP-client integration, an SDK quickstart, or a one-off script). Pair with `revoke_api_key` for rotation.",
   important_notes: [
     "The plaintext key is returned ONCE. Surface it verbatim in the same turn; the user has no way to retrieve it later.",
-    "Default scope is ['*']. Prefer narrower scopes (e.g. ['workflow:read']) for production integrations.",
+    "Omitted scopes inherit the signed-in person's own credential limits. A key can never carry a permission the person does not hold. Prefer narrower scopes (e.g. ['workflow:read']) for production integrations.",
     "When the caller is not admin, owner_kind/owner_id are forced to the calling user — admin-only flags are ignored gracefully.",
   ],
   example_input: {
     name: "MCP client",
-    scopes: ["workflow:read", "workflow:invoke"],
+    scopes: ["workflow:read", "workflow:run"],
   },
   async execute(ctx, args: z.infer<typeof CreateApiKeyInput>): Promise<ToolResult> {
     const callerId = ctx.engineClient.context.actor_id;
@@ -70,6 +72,15 @@ export const createApiKeyTool: ConversationTool = {
       return {
         ok: false,
         data: { error: "missing_actor", reason: "create_api_key requires an authenticated actor" },
+      };
+    }
+    if (!ctx.principal) {
+      return {
+        ok: false,
+        error_code: "api_key_issuer_unknown",
+        message:
+          "This conversation has no signed-in person, so no key can be issued. Create the key in Cockpit or with sk.",
+        data: { error: "api_key_issuer_unknown" },
       };
     }
     const owner_kind: "user" | "system_account" =
@@ -87,6 +98,7 @@ export const createApiKeyTool: ConversationTool = {
     let issued: { view: { id: string; prefix: string; scopes: string[] }; plaintext: string };
     try {
       issued = await ctx.engineClient.identity.issueApiKey({
+        issuer: { kind: "principal", principal: ctx.principal },
         owner_kind,
         owner_id,
         ...(args.scopes ? { scopes: args.scopes } : {}),
@@ -95,6 +107,14 @@ export const createApiKeyTool: ConversationTool = {
         ...(expiresAt ? { expires_at: expiresAt } : {}),
       });
     } catch (err) {
+      if (err instanceof UnknownScopeError || err instanceof ScopeExceedsIssuerError) {
+        return {
+          ok: false,
+          error_code: err.code,
+          message: err.message,
+          data: { error: err.code, reason: err.message, scopes: err.scopes },
+        };
+      }
       const reason = err instanceof Error ? err.message : String(err);
       return { ok: false, data: { error: "api_key_issue_failed", reason } };
     }

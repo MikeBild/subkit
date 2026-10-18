@@ -51,7 +51,13 @@ function clientIp(headers: Headers): string {
 
 const CreateInviteBody = z
   .object({
-    scopes: z.array(z.string()).optional(),
+    scopes: z
+      .array(z.string().min(1))
+      .max(64)
+      .optional()
+      .describe(
+        "Permission names from GET /v1/rbac/permissions, '*', or mcp:read, mcp:authoring, mcp:admin. Each must be held by the issuing credential; '*' only from a credential without scope limits. Omitted: the issuer's own ceiling.",
+      ),
     allowed_workflows: z.array(z.string()).optional(),
     allowed_connectors: z.array(z.string()).optional(),
     ttl_minutes: z
@@ -89,9 +95,16 @@ const createInviteRoute = createRoute({
       content: { "application/json": { schema: UserInviteIssuedSchema } },
     },
     401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
+    403: {
+      description: "Forbidden, or scope_exceeds_issuer when a requested scope is not held by you",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     404: {
       description: "User not found",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    422: {
+      description: "unknown_scope: a requested scope is not a permission name",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -204,6 +217,7 @@ export function registerInviteRoutes(app: OpenAPIHono<AppEnv>): void {
     const body = c.req.valid("json");
     const result = await identity.createInvite(
       {
+        issuer: { kind: "principal", principal },
         tenant_id: principal.tenant_id,
         user_id: id,
         ...(body.scopes ? { scopes: body.scopes } : {}),

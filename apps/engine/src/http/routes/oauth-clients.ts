@@ -13,7 +13,10 @@ import {
   listClientApprovals,
   listClientConnectedBy,
   listClientLastUsage,
+  listTenantClientIds,
+  revokeClientAccessForTenant,
 } from "../../identity/index.ts";
+import { principalHolds } from "../../rbac/index.ts";
 import { now } from "../../utils/clock.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -56,6 +59,20 @@ const OAuthClientListResponse = z
 
 const ClientIdParam = z.object({ client_id: z.string().min(1) });
 
+const OAuthClientRevokeResponse = z
+  .object({
+    client_id: z.string(),
+    effect: z.enum(["client_disabled", "tenant_access_revoked"]),
+  })
+  .openapi("OAuthClientRevokeResult");
+
+function disablesEngineWide(
+  db: AppEnv["Variables"]["db"],
+  principal: ReturnType<typeof requireAuth>,
+): Promise<boolean> {
+  return principalHolds(db, principal, "mcp_oauth_client:disable");
+}
+
 const listRoute = createRoute({
   method: "get",
   path: "/v1/oauth/clients",
@@ -76,11 +93,15 @@ const revokeRoute = createRoute({
   method: "delete",
   path: "/v1/oauth/clients/{client_id}",
   tags: ["oauth"],
-  summary: "Disable a registered MCP OAuth client and revoke its outstanding tokens",
+  summary:
+    "Revoke a registered MCP OAuth client: the engine operator disables it for every tenant, everyone else revokes its grants and tokens in their own tenant",
   request: { params: ClientIdParam },
   security: [{ bearerAuth: [] }],
   responses: {
-    204: { description: "Disabled" },
+    200: {
+      description: "Client disabled engine-wide, or its access in the caller's tenant revoked",
+      content: { "application/json": { schema: OAuthClientRevokeResponse } },
+    },
     401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
@@ -117,13 +138,16 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
       })
       .from(mcpOauthClients);
 
-    const [approvals, connectedBy, lastUsage] = await Promise.all([
+    const [approvals, connectedBy, lastUsage, engineWide, tenantClients] = await Promise.all([
       listClientApprovals(db, principal.tenant_id, new Date(now())),
       listClientConnectedBy(db, principal.tenant_id),
       listClientLastUsage(db, principal.tenant_id),
+      disablesEngineWide(db, principal),
+      listTenantClientIds(db, principal.tenant_id),
     ]);
 
-    const items = rows.map((r) => {
+    const visible = engineWide ? rows : rows.filter((r) => tenantClients.has(r.client_id));
+    const items = visible.map((r) => {
       const approval = approvals.get(r.client_id);
       return {
         id: r.id,
@@ -181,6 +205,40 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
       .limit(1);
     const row = rows[0];
     if (!row) throw new NotFoundError("mcp_oauth_client");
+
+    if (!(await disablesEngineWide(db, principal))) {
+      if (!(await listTenantClientIds(db, principal.tenant_id)).has(client_id)) {
+        throw new NotFoundError("mcp_oauth_client");
+      }
+      await db.transaction(async (tx) => {
+        const revoked = await revokeClientAccessForTenant(
+          tx,
+          principal.tenant_id,
+          client_id,
+          new Date(now()),
+        );
+        await auditAwait(
+          {
+            tenant_id: principal.tenant_id,
+            actor_type: principal.kind,
+            actor_id: principal.id,
+            action: AuditAction.MCP_OAUTH_TOKEN_REVOKED,
+            resource_type: "mcp_oauth_token",
+            resource_id: row.id,
+            result: "success",
+            metadata: {
+              request_source: readRequestSource(c),
+              reason: "tenant_access_revoked",
+              client_id,
+              access_tokens_revoked: revoked.access_tokens,
+              refresh_tokens_revoked: revoked.refresh_tokens,
+            },
+          },
+          tx,
+        );
+      });
+      return c.json({ client_id, effect: "tenant_access_revoked" as const }, 200);
+    }
 
     await db.transaction(async (tx) => {
       // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
@@ -286,6 +344,6 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     });
 
-    return c.body(null, 204);
+    return c.json({ client_id, effect: "client_disabled" as const }, 200);
   });
 }

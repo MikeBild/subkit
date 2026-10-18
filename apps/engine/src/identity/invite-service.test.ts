@@ -54,6 +54,7 @@ describe("createInvite", () => {
     );
     const created = await createInvite(
       {
+        issuer: { kind: "system" },
         tenant_id: tenantId,
         user_id: user.id,
         actor_kind: "system_account",
@@ -86,7 +87,7 @@ describe("createInvite", () => {
     expect(revokedAudit).toEqual({ actor_type: "system_account", actor_id: actor.id });
 
     const legacy = await createInvite(
-      { tenant_id: tenantId, user_id: user.id, actor_id: actor.id },
+      { issuer: { kind: "system" }, tenant_id: tenantId, user_id: user.id, actor_id: actor.id },
       testDb.db,
     );
     const [legacyAudit] = await testDb.db
@@ -97,6 +98,7 @@ describe("createInvite", () => {
 
     const missingId = await createInvite(
       {
+        issuer: { kind: "system" },
         tenant_id: tenantId,
         user_id: user.id,
         actor_kind: "system_account",
@@ -115,6 +117,7 @@ describe("createInvite", () => {
     const user = await seedInvitedUser("inv-create@test.local");
     const { view, plaintext } = await createInvite(
       {
+        issuer: { kind: "system" },
         tenant_id: tenantId,
         user_id: user.id,
         scopes: ["workflow:read", "workflow:run"],
@@ -138,7 +141,13 @@ describe("redeemInvite", () => {
   test("happy path mints a user-owned key with the invite's scopes + activates the user", async () => {
     const user = await seedInvitedUser("inv-happy@test.local");
     const { plaintext } = await createInvite(
-      { tenant_id: tenantId, user_id: user.id, scopes: ["workflow:read"], actor_id: null },
+      {
+        issuer: { kind: "system" },
+        tenant_id: tenantId,
+        user_id: user.id,
+        scopes: ["workflow:read"],
+        actor_id: null,
+      },
       testDb.db,
     );
 
@@ -166,7 +175,7 @@ describe("redeemInvite", () => {
   test("second redeem of the same token returns invite_already_redeemed", async () => {
     const user = await seedInvitedUser("inv-double@test.local");
     const { plaintext } = await createInvite(
-      { tenant_id: tenantId, user_id: user.id, actor_id: null },
+      { issuer: { kind: "system" }, tenant_id: tenantId, user_id: user.id, actor_id: null },
       testDb.db,
     );
 
@@ -185,7 +194,7 @@ describe("redeemInvite", () => {
   test("expired invite returns invite_expired", async () => {
     const user = await seedInvitedUser("inv-expired@test.local");
     const { view, plaintext } = await createInvite(
-      { tenant_id: tenantId, user_id: user.id, actor_id: null },
+      { issuer: { kind: "system" }, tenant_id: tenantId, user_id: user.id, actor_id: null },
       testDb.db,
     );
     await testDb.db
@@ -202,7 +211,7 @@ describe("redeemInvite", () => {
   test("revoked invite returns invite_revoked", async () => {
     const user = await seedInvitedUser("inv-revoked@test.local");
     const { view, plaintext } = await createInvite(
-      { tenant_id: tenantId, user_id: user.id, actor_id: null },
+      { issuer: { kind: "system" }, tenant_id: tenantId, user_id: user.id, actor_id: null },
       testDb.db,
     );
     const revoked = await revokeInvite(
@@ -229,7 +238,7 @@ describe("revokeInvite — tenant isolation", () => {
   test("wrong tenant cannot revoke another tenant's invite", async () => {
     const user = await seedInvitedUser("inv-iso@test.local");
     const { view } = await createInvite(
-      { tenant_id: tenantId, user_id: user.id, actor_id: null },
+      { issuer: { kind: "system" }, tenant_id: tenantId, user_id: user.id, actor_id: null },
       testDb.db,
     );
     const cross = await revokeInvite(
@@ -266,7 +275,7 @@ describe("deactivateUser", () => {
   test("soft-deletes the user, sets status=disabled, and revokes their keys", async () => {
     const user = await seedInvitedUser("inv-deact@test.local");
     const { plaintext } = await createInvite(
-      { tenant_id: tenantId, user_id: user.id, actor_id: null },
+      { issuer: { kind: "system" }, tenant_id: tenantId, user_id: user.id, actor_id: null },
       testDb.db,
     );
     const redeemed = await redeemInvite({ token: plaintext }, testDb.db);
@@ -296,7 +305,7 @@ describe("redeemInvite — concurrent serialization (H1)", () => {
   test("two concurrent redeems: exactly one mints a key, the other returns invite_already_redeemed", async () => {
     const user = await seedInvitedUser("inv-concurrent@test.local");
     const { view: inviteView, plaintext } = await createInvite(
-      { tenant_id: tenantId, user_id: user.id, actor_id: null },
+      { issuer: { kind: "system" }, tenant_id: tenantId, user_id: user.id, actor_id: null },
       testDb.db,
     );
 
@@ -332,7 +341,7 @@ describe("revokeInvite — INVITE_REVOKED audit row (H2)", () => {
   test("revokeInvite writes an INVITE_REVOKED audit row carrying tenant_id and actor_id", async () => {
     const user = await seedInvitedUser("inv-revoke-audit@test.local");
     const { view } = await createInvite(
-      { tenant_id: tenantId, user_id: user.id, actor_id: null },
+      { issuer: { kind: "system" }, tenant_id: tenantId, user_id: user.id, actor_id: null },
       testDb.db,
     );
 
@@ -356,7 +365,7 @@ describe("deactivateUser — severs pending invite (H3)", () => {
   test("deactivateUser stamps revoked_at on a pending invite, writes an INVITE_REVOKED audit row, and blocks subsequent redemption with invite_revoked", async () => {
     const user = await seedInvitedUser("inv-deact-pending@test.local");
     const { view: inviteView, plaintext } = await createInvite(
-      { tenant_id: tenantId, user_id: user.id, actor_id: null },
+      { issuer: { kind: "system" }, tenant_id: tenantId, user_id: user.id, actor_id: null },
       testDb.db,
     );
 
@@ -403,7 +412,7 @@ describe("redeemInvite — rejects invite for soft-deleted user (H4)", () => {
   test("redeemInvite returns invite_invalid and mints no key when the target user is already soft-deleted", async () => {
     const user = await seedInvitedUser("inv-deleted-user@test.local");
     const { plaintext } = await createInvite(
-      { tenant_id: tenantId, user_id: user.id, actor_id: null },
+      { issuer: { kind: "system" }, tenant_id: tenantId, user_id: user.id, actor_id: null },
       testDb.db,
     );
 

@@ -162,6 +162,7 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
     expect(tenantRows).toHaveLength(1);
     expect(tenantRows[0]!.display_name).toBe("Acme Corp");
     expect(tenantRows[0]!.slug).toBe("acme-corp");
+    expect(tenantRows[0]!.is_operator).toBe(true);
 
     const sentinel = await _internal.readSetting<boolean>(tdb.db, BOOTSTRAP_COMPLETED_KEY);
     expect(sentinel).toBe(true);

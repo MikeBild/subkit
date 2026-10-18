@@ -353,7 +353,7 @@ describe("a retired registration comes back when a person authorizes it", () => 
       method: "DELETE",
       headers: { authorization: `Bearer ${srv.apiKey}` },
     });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
     const row = await clientRow(clientId);
     expect(row.disabled_at).not.toBeNull();
     expect(row.retired_at).toBeNull();

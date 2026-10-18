@@ -80,7 +80,7 @@ const restartStatusRoute = createRoute({
 
 export function registerSystemRestartRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/system/restart", requirePermission("system:restart"));
-  app.use("/v1/system/restart-status", requirePermission("settings:read"));
+  app.use("/v1/system/restart-status", requirePermission("settings:read:global"));
 
   app.openapi(restartStatusRoute, async (c) => c.json(await getRestartStatus(c.get("db")), 200));
 

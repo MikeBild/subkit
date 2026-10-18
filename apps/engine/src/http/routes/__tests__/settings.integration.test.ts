@@ -552,8 +552,22 @@ describe("PUT /v1/settings/{path}", () => {
     expect(body.code).toBe("scope_violation");
   });
 
-  test("a system-tenant operator can mutate another tenant's overlay", async () => {
+  test("the engine operator can mutate another tenant's overlay; the system tenant cannot", async () => {
     const seqTag = nextSeq();
+    const [otherTenant] = await server.db
+      .insert(tenants)
+      .values({ slug: `operated-${seqTag}`, display_name: "Operated Tenant" })
+      .returning();
+    const res = await fetch(`${server.baseUrl}/v1/settings/llm.api_key?tenant=${otherTenant!.id}`, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${server.apiKey}`,
+      },
+      body: JSON.stringify({ value: "set-by-engine-operator" }),
+    });
+    expect(res.status).toBe(200);
+
     await server.db
       .insert(tenants)
       .values({
@@ -578,16 +592,19 @@ describe("PUT /v1/settings/{path}", () => {
       token_sha256: createHash("sha256").update(plaintext).digest("hex"),
       scopes: ["*"],
     });
-
-    const res = await fetch(`${server.baseUrl}/v1/settings/llm.api_key?tenant=${server.tenantId}`, {
-      method: "PUT",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${plaintext}`,
+    const system = await fetch(
+      `${server.baseUrl}/v1/settings/llm.api_key?tenant=${server.tenantId}`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${plaintext}`,
+        },
+        body: JSON.stringify({ value: "set-by-system-tenant" }),
       },
-      body: JSON.stringify({ value: "set-by-system-operator" }),
-    });
-    expect(res.status).toBe(200);
+    );
+    expect(system.status).toBe(403);
+    expect(((await system.json()) as { code: string }).code).toBe("scope_violation");
   });
 
   test("cross-tenant guard rejects writes to repl/ui/notifications overlays", async () => {

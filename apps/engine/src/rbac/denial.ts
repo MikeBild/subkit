@@ -1,4 +1,4 @@
-import type { ConnectorAccessLevel, DenyDetail } from "./evaluator.ts";
+import { type ConnectorAccessLevel, type DenyDetail, OPERATOR_ONLY_CAUSE } from "./evaluator.ts";
 
 function levelLabel(level: ConnectorAccessLevel): string {
   if (level === "read-write") return "read-write access";
@@ -17,6 +17,9 @@ export function denialHint(detail: DenyDetail | undefined, level?: ConnectorAcce
   const { required, resource, cause } = detail;
   if (resource?.type === "connector" && level) {
     return `you have ${levelLabel(level)} to connector ${resource.id}; this needs ${needsLabel(required)} — request a grant or a key with that access`;
+  }
+  if (cause === OPERATOR_ONLY_CAUSE) {
+    return "This changes or reveals the whole engine, not only your workspace. Only the engine operator (an admin of the operator workspace) can do this. Ask your engine operator.";
   }
   const on = resource ? ` on ${resource.type} ${resource.id}` : "";
   if (cause.startsWith("credential_ceiling:")) {

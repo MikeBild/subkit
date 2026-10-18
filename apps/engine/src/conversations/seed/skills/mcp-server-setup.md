@@ -39,7 +39,7 @@ sk exposes MCP at two transports:
 
 ## Key minting is a separate turn
 
-The base-prompt TURN-ONE DISCIPLINE rule applies in full: do not call `create_api_key` in the same turn you first answer the user's "how do I connect?" question. Emit the config with `${plaintext_key}` as a placeholder, end with a plain-language offer ("Reply `yes` to mint a key with scopes `workflow:read, workflow:invoke`"), and only call `create_api_key` after explicit confirmation.
+The base-prompt TURN-ONE DISCIPLINE rule applies in full: do not call `create_api_key` in the same turn you first answer the user's "how do I connect?" question. Emit the config with `${plaintext_key}` as a placeholder, end with a plain-language offer ("Reply `yes` to mint a key with scopes `workflow:read, workflow:run`"), and only call `create_api_key` after explicit confirmation.
 
 ## Refusals
 

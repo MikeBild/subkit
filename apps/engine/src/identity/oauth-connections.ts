@@ -338,3 +338,103 @@ export async function revokeConnectionsForUser(
     connections: clients.size,
   };
 }
+
+export async function revokeClientAccessForTenant(
+  exec: Executor,
+  tenantId: string,
+  clientId: string,
+  at: Date,
+): Promise<{ access_tokens: number; refresh_tokens: number }> {
+  // tenant-filter:exempt — clients are global; the lock serializes with refresh rotation.
+  await exec
+    .select({ client_id: mcpOauthClients.client_id })
+    .from(mcpOauthClients)
+    .where(eq(mcpOauthClients.client_id, clientId))
+    .for("update");
+  await exec
+    .select({ id: mcpOauthGrants.id })
+    .from(mcpOauthGrants)
+    .where(and(eq(mcpOauthGrants.tenant_id, tenantId), eq(mcpOauthGrants.client_id, clientId)))
+    .orderBy(mcpOauthGrants.id)
+    .for("update");
+  await exec
+    .select({ id: mcpOauthRefreshTokens.id })
+    .from(mcpOauthRefreshTokens)
+    .where(
+      and(
+        eq(mcpOauthRefreshTokens.tenant_id, tenantId),
+        eq(mcpOauthRefreshTokens.client_id, clientId),
+      ),
+    )
+    .orderBy(mcpOauthRefreshTokens.id)
+    .for("update");
+  await exec
+    .select({ id: mcpOauthAccessTokens.id })
+    .from(mcpOauthAccessTokens)
+    .where(
+      and(
+        eq(mcpOauthAccessTokens.tenant_id, tenantId),
+        eq(mcpOauthAccessTokens.client_id, clientId),
+      ),
+    )
+    .orderBy(mcpOauthAccessTokens.id)
+    .for("update");
+
+  const access = await exec
+    .update(mcpOauthAccessTokens)
+    .set({ revoked_at: at })
+    .where(
+      and(
+        eq(mcpOauthAccessTokens.tenant_id, tenantId),
+        eq(mcpOauthAccessTokens.client_id, clientId),
+        isNull(mcpOauthAccessTokens.revoked_at),
+      ),
+    )
+    .returning({ grant_id: mcpOauthAccessTokens.grant_id });
+  const refresh = await exec
+    .update(mcpOauthRefreshTokens)
+    .set({ revoked_at: at })
+    .where(
+      and(
+        eq(mcpOauthRefreshTokens.tenant_id, tenantId),
+        eq(mcpOauthRefreshTokens.client_id, clientId),
+        isNull(mcpOauthRefreshTokens.revoked_at),
+      ),
+    )
+    .returning({ grant_id: mcpOauthRefreshTokens.grant_id });
+  if ([...access, ...refresh].some((token) => token.grant_id === null)) {
+    await exec
+      .insert(mcpOauthUnknownGrants)
+      .values({ tenant_id: tenantId, client_id: clientId })
+      .onConflictDoNothing();
+  }
+  await exec
+    .update(mcpOauthGrants)
+    .set({ revoked_at: at })
+    .where(
+      and(
+        eq(mcpOauthGrants.tenant_id, tenantId),
+        eq(mcpOauthGrants.client_id, clientId),
+        isNull(mcpOauthGrants.revoked_at),
+      ),
+    );
+  return { access_tokens: access.length, refresh_tokens: refresh.length };
+}
+
+export async function listTenantClientIds(exec: Executor, tenantId: string): Promise<Set<string>> {
+  const [grants, access, refresh] = await Promise.all([
+    exec
+      .selectDistinct({ client_id: mcpOauthGrants.client_id })
+      .from(mcpOauthGrants)
+      .where(eq(mcpOauthGrants.tenant_id, tenantId)),
+    exec
+      .selectDistinct({ client_id: mcpOauthAccessTokens.client_id })
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.tenant_id, tenantId)),
+    exec
+      .selectDistinct({ client_id: mcpOauthRefreshTokens.client_id })
+      .from(mcpOauthRefreshTokens)
+      .where(eq(mcpOauthRefreshTokens.tenant_id, tenantId)),
+  ]);
+  return new Set([...grants, ...access, ...refresh].map((row) => row.client_id));
+}

@@ -12,10 +12,10 @@ import { registerVersionRoute } from "./version.ts";
 
 export function registerDiagnosticsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/diagnostics/errors", requirePermission("audit:read"));
-  app.use("/v1/diagnostics/llm", requirePermission("audit:read"));
-  app.use("/v1/diagnostics/runtime", requirePermission("audit:read"));
-  app.use("/v1/diagnostics/setup", requireAnyPermission(["audit:read", "identity:read"]));
-  app.use("/v1/diagnostics/drift", requirePermission("audit:read"));
+  app.use("/v1/diagnostics/llm", requirePermission("settings:read:global"));
+  app.use("/v1/diagnostics/runtime", requirePermission("settings:read:global"));
+  app.use("/v1/diagnostics/setup", requirePermission("settings:read:global"));
+  app.use("/v1/diagnostics/drift", requirePermission("settings:read:global"));
   app.use("/v1/diagnostics/version", requirePermission("audit:read"));
   app.use("/v1/diagnostics/integrations", requireAnyPermission(["connector:read", "audit:read"]));
   app.use("/v1/diagnostics/logs", requirePermission("audit:read"));

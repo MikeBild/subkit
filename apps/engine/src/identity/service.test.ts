@@ -181,7 +181,13 @@ describe("service — system accounts", () => {
 describe("service — api keys", () => {
   test("issueApiKey returns plaintext + writes audit entry", async () => {
     const result = await issueApiKey(
-      { tenant_id: tenantId, owner_kind: "user", owner_id: userId, actor_id: userId },
+      {
+        issuer: { kind: "system" },
+        tenant_id: tenantId,
+        owner_kind: "user",
+        owner_id: userId,
+        actor_id: userId,
+      },
       testDb.db,
     );
     expect(result.plaintext).toMatch(/^wf_live_/);
@@ -201,6 +207,7 @@ describe("service — api keys", () => {
     );
     const issued = await issueApiKey(
       {
+        issuer: { kind: "system" },
         tenant_id: tenantId,
         owner_kind: "user",
         owner_id: userId,
@@ -229,6 +236,7 @@ describe("service — api keys", () => {
   test("system rows and untyped legacy calls retain distinct provenance semantics", async () => {
     const systemCreated = await issueApiKey(
       {
+        issuer: { kind: "system" },
         tenant_id: tenantId,
         owner_kind: "user",
         owner_id: userId,
@@ -237,7 +245,13 @@ describe("service — api keys", () => {
       testDb.db,
     );
     const legacy = await issueApiKey(
-      { tenant_id: tenantId, owner_kind: "user", owner_id: userId, actor_id: userId },
+      {
+        issuer: { kind: "system" },
+        tenant_id: tenantId,
+        owner_kind: "user",
+        owner_id: userId,
+        actor_id: userId,
+      },
       testDb.db,
     );
     const legacyIssueAudit = await testDb.db
@@ -251,12 +265,23 @@ describe("service — api keys", () => {
         ),
       );
     const nullActor = await issueApiKey(
-      { tenant_id: tenantId, owner_kind: "user", owner_id: userId, actor: null },
+      {
+        issuer: { kind: "system" },
+        tenant_id: tenantId,
+        owner_kind: "user",
+        owner_id: userId,
+        actor: null,
+      },
       testDb.db,
     );
     expect(systemCreated.view.creator).toEqual({ kind: "system", id: null });
     const rotated = await rotateApiKey(
-      { tenant_id: tenantId, id: systemCreated.view.id, actor: { kind: "system", id: null } },
+      {
+        issuer: { kind: "system" },
+        tenant_id: tenantId,
+        id: systemCreated.view.id,
+        actor: { kind: "system", id: null },
+      },
       testDb.db,
     );
     expect(rotated?.new.creator).toEqual({ kind: "system", id: null });
@@ -284,7 +309,7 @@ describe("service — api keys", () => {
     expect(systemRotationAudit).toEqual([{ actor_type: "system", actor_id: null }]);
     expect(legacy.view.creator).toBeNull();
     const legacyRotated = await rotateApiKey(
-      { tenant_id: tenantId, id: legacy.view.id, actor_id: userId },
+      { issuer: { kind: "system" }, tenant_id: tenantId, id: legacy.view.id, actor_id: userId },
       testDb.db,
     );
     expect(legacyRotated?.new.creator).toBeNull();
@@ -355,7 +380,13 @@ describe("service — api keys", () => {
 
   test("API key creator identity requires a valid kind and matching id", async () => {
     const issued = await issueApiKey(
-      { tenant_id: tenantId, owner_kind: "user", owner_id: userId, actor: null },
+      {
+        issuer: { kind: "system" },
+        tenant_id: tenantId,
+        owner_kind: "user",
+        owner_id: userId,
+        actor: null,
+      },
       testDb.db,
     );
     await expect(
@@ -375,6 +406,7 @@ describe("service — api keys", () => {
     await expect(
       issueApiKey(
         {
+          issuer: { kind: "system" },
           tenant_id: tenantId,
           owner_kind: "user",
           owner_id: userId,
@@ -387,6 +419,7 @@ describe("service — api keys", () => {
 
     const original = await issueApiKey(
       {
+        issuer: { kind: "system" },
         tenant_id: tenantId,
         owner_kind: "user",
         owner_id: userId,
@@ -397,6 +430,7 @@ describe("service — api keys", () => {
     await expect(
       rotateApiKey(
         {
+          issuer: { kind: "system" },
           tenant_id: tenantId,
           id: original.view.id,
           actor: { kind: "system_account", id: account.id },
@@ -419,6 +453,7 @@ describe("service — api keys", () => {
     );
     const untyped = new EngineClient({ tenant_id: tenantId, actor_id: account.id, db: testDb.db });
     const unknown = await untyped.identity.issueApiKey({
+      issuer: { kind: "system" },
       owner_kind: "user",
       owner_id: userId,
     });
@@ -476,7 +511,11 @@ describe("service — api keys", () => {
       actor_type: "unknown",
       actor_id: null,
     });
-    const known = await typed.identity.issueApiKey({ owner_kind: "user", owner_id: userId });
+    const known = await typed.identity.issueApiKey({
+      issuer: { kind: "system" },
+      owner_kind: "user",
+      owner_id: userId,
+    });
     expect(unknown.view.creator).toBeNull();
     expect(known.view.creator).toEqual({ kind: "system_account", id: account.id });
     await typed.identity.revokeApiKey(known.view.id);
@@ -583,6 +622,7 @@ describe("service — api keys", () => {
     );
     const original = await issueApiKey(
       {
+        issuer: { kind: "system" },
         tenant_id: tenantId,
         owner_kind: "user",
         owner_id: userId,
@@ -592,6 +632,7 @@ describe("service — api keys", () => {
     );
     const rotated = await rotateApiKey(
       {
+        issuer: { kind: "system" },
         tenant_id: tenantId,
         id: original.view.id,
         actor: { kind: "system_account", id: actor.id },
@@ -630,7 +671,13 @@ describe("service — api keys", () => {
 
   test("revokeApiKey flips revoked_at + audit", async () => {
     const { view } = await issueApiKey(
-      { tenant_id: tenantId, owner_kind: "user", owner_id: userId, actor_id: userId },
+      {
+        issuer: { kind: "system" },
+        tenant_id: tenantId,
+        owner_kind: "user",
+        owner_id: userId,
+        actor_id: userId,
+      },
       testDb.db,
     );
     const revoked = await revokeApiKey(
@@ -653,6 +700,7 @@ describe("service — api keys", () => {
     );
     const typed = await issueApiKey(
       {
+        issuer: { kind: "system" },
         tenant_id: tenantId,
         owner_kind: "user",
         owner_id: userId,
@@ -672,6 +720,7 @@ describe("service — api keys", () => {
 
     const legacy = await issueApiKey(
       {
+        issuer: { kind: "system" },
         tenant_id: tenantId,
         owner_kind: "user",
         owner_id: userId,
@@ -688,6 +737,7 @@ describe("service — api keys", () => {
 
     const missingId = await issueApiKey(
       {
+        issuer: { kind: "system" },
         tenant_id: tenantId,
         owner_kind: "user",
         owner_id: userId,
@@ -725,6 +775,7 @@ describe("service — api keys", () => {
     );
     const foreignKey = await issueApiKey(
       {
+        issuer: { kind: "system" },
         tenant_id: otherTenantId,
         owner_kind: "system_account",
         owner_id: foreignAccount.id,

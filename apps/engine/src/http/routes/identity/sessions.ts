@@ -216,6 +216,7 @@ export function registerIdentitySessionsRoute(app: OpenAPIHono<AppEnv>): void {
     const principal = resolved.principal;
     const issued = await identity.issueApiKey(
       {
+        issuer: { kind: "login" },
         tenant_id: principal.tenant_id,
         owner_kind: "user",
         owner_id: principal.id,

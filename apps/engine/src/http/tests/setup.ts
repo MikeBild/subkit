@@ -9,11 +9,21 @@ import {
   signBrowserCsrf,
   signBrowserSession,
 } from "../../auth/browser-session.ts";
+import { generateAccessToken } from "../../auth/oauth/tokens.ts";
 import { _resetConfigForTests, getConfig, loadConfig } from "../../config/loader.ts";
 import type { Config } from "../../config/schema.ts";
 import type { Db } from "../../db/client.ts";
-import { apiKeys, sessions, systemAccounts, tenants, users } from "../../db/schema/index.ts";
+import {
+  apiKeys,
+  mcpOauthAccessTokens,
+  mcpOauthClients,
+  sessions,
+  systemAccounts,
+  tenants,
+  users,
+} from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { claimOperatorTenantIfUnassigned } from "../../rbac/operator.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 
@@ -92,6 +102,7 @@ export async function browserSessionHeaders(
 
 export interface CreateHttpTestServerOptions {
   appOptions?: Partial<Parameters<typeof createApp>[0]>;
+  operator?: boolean;
 }
 
 export async function createHttpTestServer(
@@ -106,6 +117,7 @@ export async function createHttpTestServer(
     .values({ slug: `t-${label}`, display_name: `Test ${label}` })
     .returning();
   if (!tenant) throw new Error("seed tenant failed");
+  if (opts?.operator ?? true) await claimOperatorTenantIfUnassigned(testDb.db, tenant.id);
 
   const [user] = await testDb.db
     .insert(users)
@@ -180,5 +192,83 @@ export async function createHttpTestServer(
     apiKeyId: apiKey.id,
     apiKey: key.plaintext,
     cleanup,
+  };
+}
+
+export interface SecondaryTenantPrincipal {
+  userId: string;
+  apiKey: string;
+  oauthToken: string;
+  sessionHeaders: () => Promise<Record<string, string>>;
+}
+
+export interface SecondaryTenant {
+  tenantId: string;
+  admin: SecondaryTenantPrincipal;
+  member: SecondaryTenantPrincipal;
+}
+
+let secondaryTenantSeq = 0;
+
+async function seedSecondaryPrincipal(
+  ctx: Pick<HttpTestServer, "db" | "baseUrl">,
+  tenantId: string,
+  label: string,
+  role: "admin" | "member",
+): Promise<SecondaryTenantPrincipal> {
+  const [user] = await ctx.db
+    .insert(users)
+    .values({
+      tenant_id: tenantId,
+      email: `${role}-${label}@secondary.test.local`,
+      role_id: await builtinRoleId(ctx.db, role),
+    })
+    .returning();
+  if (!user) throw new Error("seed secondary user failed");
+  const key = generateApiKey();
+  await ctx.db.insert(apiKeys).values({
+    tenant_id: tenantId,
+    user_id: user.id,
+    prefix: key.prefix,
+    token_sha256: key.hash,
+    scopes: ["*"],
+  });
+  const clientId = `secondary-${label}-${role}`;
+  await ctx.db
+    .insert(mcpOauthClients)
+    .values({ client_id: clientId, scope: role === "admin" ? "mcp:admin" : "mcp:read" });
+  const token = generateAccessToken();
+  await ctx.db.insert(mcpOauthAccessTokens).values({
+    tenant_id: tenantId,
+    client_id: clientId,
+    user_id: user.id,
+    prefix: token.prefix,
+    token_sha256: token.hash,
+    scope: role === "admin" ? "mcp:admin" : "mcp:read",
+    resource: `${ctx.baseUrl}/mcp`,
+    expires_at: new Date(Date.now() + 60 * 60_000), // allow-wall-clock: live token fixture
+  });
+  return {
+    userId: user.id,
+    apiKey: key.plaintext,
+    oauthToken: token.plaintext,
+    sessionHeaders: () => browserSessionHeaders({ db: ctx.db, tenantId }, user.id),
+  };
+}
+
+export async function createSecondaryTenant(
+  ctx: Pick<HttpTestServer, "db" | "baseUrl">,
+  label = "secondary",
+): Promise<SecondaryTenant> {
+  const tag = `${label}-${++secondaryTenantSeq}`;
+  const [tenant] = await ctx.db
+    .insert(tenants)
+    .values({ slug: `t-${tag}`, display_name: `Secondary ${tag}`, is_operator: false })
+    .returning();
+  if (!tenant) throw new Error("seed secondary tenant failed");
+  return {
+    tenantId: tenant.id,
+    admin: await seedSecondaryPrincipal(ctx, tenant.id, tag, "admin"),
+    member: await seedSecondaryPrincipal(ctx, tenant.id, tag, "member"),
   };
 }
