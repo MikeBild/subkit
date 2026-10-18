@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-18T11:51:53.850239+00:00**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-18T11:59:43.333667+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktstand vor Remote-Integration: **0c61b8bc6**, Version **9.15.2**. QuickJS-Fix und korrigierte Hook-Dokumentationsassertion committed; vollständiges Gesamtgate PASS, unveränderte Quellhashes. ARM64-Image, Installation, Regression und Notice-Auslieferung bestanden (E158).
-- Letzter bestätigter Remote-Stand: **5e7dbc192**, main, per Fast-forward integriert. Version **10.0.0** vorbereitet. Gesamtgate f489823b1 PASS (E181); Image/Installation und reale Browser-Journey auf d2eeb2aaa PASS (E184/E185). Neuere HTTP-/Seed-Änderungen gezielt geprüft (E186), Image aktualisiert (E187), S3-Platzmangel eingegrenzt (E188), aktuelle Installation mit eigenem Host-Datenspeicher bestanden (E189); kein neues Gesamtgate. Diese Fortschreibung LOCAL_ONLY bis Push.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E196. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Letzter bestätigter Remote-Stand: **3572f9820**, main, per Fast-forward integriert. Version **10.0.0** vorbereitet. Gesamtgate f489823b1 PASS (E181); Image/Installation und reale Browser-Journey auf d2eeb2aaa PASS (E184/E185). Neuere HTTP-/Seed-Änderungen gezielt geprüft (E186), Image aktualisiert (E187), S3-Platzmangel eingegrenzt (E188), aktuelle Installation mit eigenem Host-Datenspeicher bestanden (E189); kein neues Gesamtgate. Diese Fortschreibung LOCAL_ONLY bis Push.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E198. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -108,7 +108,7 @@ Scope-Erweiterung vom Nutzer entschieden (gegen den Freeze 17.–20.10.): Lernvo
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **P0 E194/E196 mit begrenzter pg-boss-/pg-Verbindungsreproduktion eingrenzen, Queue-Statements und Verbindungsstatus erfassen.** Nicht erneut blind den gesamten Browserlauf starten. Ein Diagnoselauf startete und bestand Kategorie-/RBAC-Teilprüfungen (E195); ein weiterer scheiterte mit Queue-Verbindungstimeouts. ClientRead-Stichproben beweisen keine Ursache. Der korrigierte vollständige Browserlauf liegt unter `.artifacts/launch/run-queue-start-canonical.py`. Keine Timeout-Erhöhung, keine fremden Dienste stoppen. Vollständiges Release-Gate vor Tagging bleibt Pflicht. Neue Nachweise LOCAL_ONLY bis Push.
+Nächster Codex-Schritt: **Aktuelle L12-Nachweise für CLI/MCP und Coding-Agent-Briefing auf verbleibende konkrete Lücken prüfen und diese in isolierten Fixtures schließen.** Queue-Isolation und zwei instrumentierte Vollstarts bestanden (E197/E198); weitere blinde Wiederholungen vermeiden. E194/E196 bleibt offene Kandidaten-Startzuverlässigkeit: Gegenprobe auf messbar ausreichend versorgtem System oder neue gezielte Diagnosehypothese erforderlich. Fremde Demo-Dienste nicht stoppen. Korrigierter Kategorie-/RBAC-Gesamtlauf noch offen, Teilnachweis E195 gültig. Vollständiges Release-Gate vor Tagging bleibt Pflicht. Neue Nachweise LOCAL_ONLY bis Push.
 
 L04 bleibt begrenzt auf bekannte offene Rechte-/Plattform-/Quellauslieferungsfragen
 und menschliche Freigaben. Alle 103 Polyfill-Lockfile-Versionen haben Originaltexte;
