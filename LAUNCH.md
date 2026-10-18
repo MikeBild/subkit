@@ -423,7 +423,7 @@ in LAUNCH_STATUS.md. L02, L03 und L07 sind abgeschlossen und werden nicht erneut
 
 | Tag | Technischer Hauptstrom | Menschlicher/externer Parallelstrom |
 | --- | --- | --- |
-| 18.10. | Bestandenes Gesamtgate E158 dokumentieren; QuickJS-Fix 0c61b8bc6 regulär pushen; anschließend verbleibende konkrete P0-Nachweise | Betreiber-/Supportangaben, Store-Kontostatus, Signing-Key und Benchmark-Zielsystem bereitstellen |
+| 18.10. | Gepushten integrierten Stand 0f25ede2c vollständig seriell prüfen; anschließend verbleibende konkrete P0-Nachweise | Betreiber-/Supportangaben, Store-Kontostatus, Signing-Key und Benchmark-Zielsystem bereitstellen |
 | 19.10. | Verbleibende konkrete L04/L08-Rechte-/Security-Nachweise bearbeiten; L05/L13 signierte Vorbereitung nur bei erfüllten Voraussetzungen | Rechtstexte prüfen, Website-Inhalte und Store-Medien abnehmen |
 | 20.10. | Website-/Store-Entwürfe mit freigegebenen Pflichtlinks vervollständigen; L12 verbleibende echte Kanalprüfungen bei verfügbaren Zugängen; Terminprognose aktualisieren | Reviewerzugang, Pflichtlinks und konkrete Einreichungsfreigabe vorbereiten |
 
@@ -432,8 +432,9 @@ in LAUNCH_STATUS.md. L02, L03 und L07 sind abgeschlossen und werden nicht erneut
 Aktuellen Git-Stand und Remote-Synchronisation prüfen. Der QuickJS-Fix ist als
 0c61b8bc6 committed; vollständiges Gate, gezielte Regression, reproduzierbarer
 Build und frische Containerinstallation sind in E158 belegt, jeweils vor Integration
-der neuen Intake-Erweiterung. Den bereits gestarteten Gesamtcheck für dbe8d7012
-auswerten; nicht parallel neu starten. Erst danach den normalen Push mit Hooks abschließen. Danach die nächste ausführbare offene
+der neuen Intake-Erweiterung. Der integrierte Stand 0f25ede2c ist mit allen normalen
+Push-Hooks synchronisiert (E159). Den seriellen Gesamtcheck für diesen Stand
+auswerten; nicht parallel neu starten. Danach die nächste ausführbare offene
 P0-Aufgabe aus LAUNCH_STATUS.md wählen; konkrete verbleibende Security-/Rechtefragen
 bearbeiten, fehlende menschliche Voraussetzungen ausdrücklich belassen.
 Keine erledigten L02/L03/L07-Aufgaben wiederholen. Keine Tags, Veröffentlichungen,
