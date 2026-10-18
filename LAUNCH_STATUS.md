@@ -1,15 +1,22 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E230.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E231.
 
-- Letztes Update: **2026-10-18T18:17:03.885613+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **9cbd12cc8**, `main`, Version **10.0.1** vorbereitet.
-  E220–E229 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
-- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Lesender SubKit-App-Zugang E230 dokumentiert; Produktquellen unverändert zu E224.
+- Letztes Update: **2026-10-18T18:24:54.713651+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **0a2b4312a**, `main`, Version **10.0.1** vorbereitet.
+  E220–E230 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
+- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Übergabe wegen unverändert fehlender externer Voraussetzungen E231; Produktquellen unverändert zu E224.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: insbesondere externe Store-Freigabe offen.
+
+**Autonomer Weiterlauf wartet auf Eingaben, E231:** Drei aufeinanderfolgende
+Prüfungen ohne neue Voraussetzungen. Geeignete Linux-x64-Testumgebung, passender
+Signing-Key-Pfad und Lovable-Verbindung fehlen; Rechts-/Verarbeitungsangaben sowie
+menschliche Abnahmen bleiben offen. Lokales CLI-Profil um 18:23 UTC erneut mit
+Exit 2/unauthorized geprüft. Keine neuen Tests gestartet oder Fachaufgaben auf DONE
+gesetzt; nächste Schritte und benötigte Eingaben stehen unten.
 
 ## Aktive Arbeit und nächster Codex-Schritt
 
@@ -83,7 +90,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L22 | TODO | Finale GA-Gates und menschliche Abnahme. |
 | L23 | TODO | Öffentliche GA, Kommunikation und Supportübernahme. |
 | L24 | TODO | P2-Roadmap bis nach Launch zurückgestellt. |
-| L25 | BLOCKED | **E230: SubKit-App in dieser Session authentifiziert, domänenbegrenzte Knowledge-Suche mit drei quellreferenzierten Treffern.** Kein nativer Clientdispatch daraus abgeleitet. Isoliertes CLI-/Hook-Handler-Briefing und permission-scoped Reminder bestanden, E38/E199/E200. E219 ergänzt Discovery der realmodellgestützt aufgenommenen Quelle über gemeinsame Hook-Handler, weiterhin kein nativer Clientdispatch. Nutzerprofil am 18.10. 14:45 UTC erneut lesend geprüft: Exit 2/unauthorized, E213 (früher E32). Tatsächlicher Clientdispatch, freigegebener Datenfluss und Daily-/Weekly-Lesezugriff fehlen; E150/E180. Keine globale Konfiguration geändert. |
+| L25 | BLOCKED | **E230: SubKit-App in dieser Session authentifiziert, domänenbegrenzte Knowledge-Suche mit drei quellreferenzierten Treffern.** Kein nativer Clientdispatch daraus abgeleitet. Isoliertes CLI-/Hook-Handler-Briefing und permission-scoped Reminder bestanden, E38/E199/E200. E219 ergänzt Discovery der realmodellgestützt aufgenommenen Quelle über gemeinsame Hook-Handler, weiterhin kein nativer Clientdispatch. Nutzerprofil am 18.10. 18:23 UTC erneut lesend geprüft: Exit 2/unauthorized, E231 (vorher E213/E32). Tatsächlicher Clientdispatch, freigegebener Datenfluss und Daily-/Weekly-Lesezugriff fehlen; E150/E180. Keine globale Konfiguration geändert. |
 
 ## Fünf dominante Blocker / kritischer Pfad
 
