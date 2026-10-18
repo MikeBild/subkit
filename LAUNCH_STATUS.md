@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-18T02:32:55.721683+00:00**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-18T02:40:08.195021+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
-- Geprüfter Produktcommit: **0eb49bf4c**, Version **9.15.2**. Vollständiges lokales Gate E131 bestanden, Quellen unverändert. Letztes finales ARM64-Image E121/E122 ist älter; neues Image samt Engine-Installation noch offen.
-- Letzter bestätigter Remote-Stand: **0eb49bf4c**, main, 0/0 Divergenz; `git pull --ff-only origin main` ohne Änderungen. Diese Statusaktualisierung bis zum Push LOCAL_ONLY. Commit/Push sind autorisiert; Veröffentlichung bleibt separat freizugeben.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E131. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Geprüfter Produktcommit: **0eb49bf4c**, Version **9.15.2**. Vollständiges lokales Gate E131 bestanden, Quellen unverändert. Aktuelles finales ARM64-Image auf 31ed0a343 und echter Engine-Installationsablauf bestanden (E132/E133).
+- Letzter bestätigter Remote-Stand: **31ed0a343**, main, 0/0 Divergenz; `git pull --ff-only origin main` ohne Änderungen. Diese Statusaktualisierung bis zum Push LOCAL_ONLY. Commit/Push sind autorisiert; Veröffentlichung bleibt separat freizugeben.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E133. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -21,7 +21,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L02 | DONE | Drei Dateien und kurzer AGENTS-Verweis erstellt; Dokumentvalidierung E11 bestanden. Commit 01257eb8a gepusht, E15. |
 | L03 | DONE | Veraltetes generiertes ZIP mit bestehendem Generator erneuert; Bun 1.4.0 macOS/Linux identisch; 63 Tests und funktionaler Chromium-Lauf PASS, E12. Commit 61ee865d3 gepusht, E15. |
 | L04 | IN_PROGRESS | Historienscan E19/E27: derselbe historische Firebase-Clientkey in acht Vorkommen; Einschränkung/Stilllegung menschlich nachzuweisen. Notice-Entwurf für 465 Paketversionen vorhanden, drei Zuordnungen offen (E108). Auslieferungspfad implementiert und gezielt geprüft (E106); juristische Freigabe und vollständige Artefaktabdeckung fehlen. |
-| L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17; Signatur gegen Updater-Schlüssel vor Upload geprüft, E18. GitHub-Installer mit Signaturprüfung und lokalem Alias korrigiert, E20; signierte Lizenzdateien werden nun mitinstalliert, E127. Updater-Manifestparser weist Mehrdeutigkeiten ab, E128; signierter Lizenzdownload und Retention/Rollback ergänzt, E129. Lokaler check/prepare/publish-Weg implementiert, 18 Prüfungen PASS, E21; echter Vorbereitungs-/Publikationslauf weiterhin UNVERIFIED. Modell-/Runtime-Assetbindung korrigiert und als a6d8b758d gepusht, E51. |
+| L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17; Signatur gegen Updater-Schlüssel vor Upload geprüft, E18. GitHub-Installer mit Signaturprüfung und lokalem Alias korrigiert, E20; signierte Lizenzdateien werden nun mitinstalliert, E127. Updater-Manifestparser weist Mehrdeutigkeiten ab, E128; signierter Lizenzdownload und Retention/Rollback ergänzt, E129. Engine-Installer einschließlich beider Notice-Dateien gegen finales Image real bestanden, E130/E133. Lokaler check/prepare/publish-Weg implementiert, 18 Prüfungen PASS, E21; echter Vorbereitungs-/Publikationslauf weiterhin UNVERIFIED. Modell-/Runtime-Assetbindung korrigiert und als a6d8b758d gepusht, E51. |
 | L06 | BLOCKED | Betreiber-/Supportangaben und juristische Freigabe erforderlich. |
 | L07 | DONE | Persistenter Quickstart und Backup-/Recovery-Anleitung; Linux-amd64-Build, frische Installation, Engine-Neustart und Restore in getrennte leere Volumes mit verschlüsselten Testdaten PASS, E22. Commit 765a2fe26 gepusht, alle acht Pre-Push-Gates bestanden. Öffentliche Installation bleibt L15, Versionsupgrade L18. |
 | L08 | IN_PROGRESS | Konkrete SDK/Issuer-, Hono-, Parser-, Transport-, Sharp- und Containerbefunde korrigiert und gezielt geprüft (E25/E30/E54–E60/E68/E78). Aktueller lokaler ARM64-Imageaudit E122: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW. Native/WASM-/Artefaktabdeckung, übrige Befunde und finale Sicherheitsfreigabe offen. Kein Schluss auf Gesamtfreigabe aus Paketcounts. |
@@ -55,7 +55,13 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 
 ## Letzter Verifikationsabschluss
 
-`bun run verify` auf **0eb49bf4c6a9bddde2f38ebc974294e25c6bff31** abgeschlossen: **Exit 0**, Quellen unverändert, keine Produktdiffs (E131). Bun 1.4.0, isolierte PostgreSQL-Fixture und Mockprovider. Receipt/Log: `.artifacts/launch/installer-notices-full-verify.{json,log}`. Kein erneuter Gesamtcheck für diese reine Statusaktualisierung erforderlich. Neues finales Image und realer Engine-Installationsablauf bleiben offen; vor Build ausreichende Speicherreserve schaffen, keine fremden Container/Volumes entfernen.
+`bun run verify` auf **0eb49bf4c6a9bddde2f38ebc974294e25c6bff31** abgeschlossen: **Exit 0**, Quellen unverändert, keine Produktdiffs (E131). Bun 1.4.0, isolierte PostgreSQL-Fixture und Mockprovider. Receipt/Log: `.artifacts/launch/installer-notices-full-verify.{json,log}`. Kein erneuter Gesamtcheck für diese reine Statusaktualisierung erforderlich. Aktueller vollständiger Image-Build und realer Engine-Installationsablauf anschließend bestanden (E132/E133).
+
+## Aktueller Image-Nachweis
+
+E132/E133: vollständiger ARM64-Build auf **31ed0a343**, Quellhashes unverändert, Image **525c651a79cd**. Frische Compose-Installation, echter öffentlicher Engine-Installer im isolierten Netz vor Bootstrap, ausführbare CLI, identische Notices mit korrekten Dateirechten und wiederholte Installation PASS. Bootstrap, Workflow-/Dateipersistenz nach Neuerstellung der Engine und Runtime-Smoke PASS; eigene Testvolumes bereinigt. Alle 379 erfassten nativen Lizenztexte im Image bestätigt. Keine öffentliche Veröffentlichung oder juristische Freigabe.
+
+Erster Build wegen Speicherreserve beendet (Exit 130); nach Archivierung des früheren eigenen Kandidaten und gezielter Bereinigung seines Cache erfolgreiche Wiederaufnahme. Alle Fehler-/Bereinigungsnachweise erhalten. Nutzer-Demos/Volumes unverändert. Nach Abschluss rund 2,9 Millionen KiB Docker-Speicher frei; neue große Builds vorher kapazitiv prüfen.
 
 ## Aktuelle Nachweise und Grenzen
 
@@ -63,9 +69,9 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | --- | --- |
 | Vollständiges lokales Gate | E131: Exit 0 auf 0eb49bf4c, Quellen unverändert; vollständige Verify-Kette einschließlich Cockpit, isolierter Tests, Build/Binär-/Browser-/E2E-Prüfungen bestanden. Mockprovider. |
 | Reale Modelle | E73: getrennte Live-Modellmatrix bestanden; kein Nachweis aller Chatkanäle. |
-| Aktuelles ARM64-Image | E121/E122: vollständiger Build, frische Compose-Installation, Bootstrap/Auth und Workflow-/Dateipersistenz nach Engine-Neuerstellung PASS; Testressourcen bereinigt. |
+| Aktuelles ARM64-Image | E132/E133: vollständiger Build, echter Engine-Installer, frische Compose-Installation, Bootstrap/Auth und Workflow-/Dateipersistenz nach Engine-Neuerstellung PASS; Testressourcen bereinigt. |
 | Sicherheit | E122/E123: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW; 176 Advisories, keine Fixversion im Scannerreport. Keine gesamte Sicherheitsfreigabe. |
-| Lizenz-Auslieferung | E120/E121: 33 native Texte samt Hashes und Produktlizenz im finalen Image bestätigt. Danach Rust-Pakettexte und acht revisionsgebundene Ergänzungen gezielt geprüft (E124/E125); aktuelle Gesamtzahl 379 noch nicht im finalen Image geprüft. Rust-Resttexte über AUTHORS/Quellhinweis aufgelöst (E126); Quellbereitstellung und Binary-Zuordnung offen. Drei JS-Zuordnungen sowie vollständige native/transitive/Modellabdeckung und juristische Abnahme offen. |
+| Lizenz-Auslieferung | E132/E133: alle 379 erfassten nativen Texte samt Hashes und Produktlizenz im finalen Image bestätigt; echte Installer-Auslieferung und wiederholte Installation bestanden. Rust-Resttexte über AUTHORS/Quellhinweis aufgelöst (E126); Quellbereitstellung und Binary-Zuordnung offen. Drei JS-Zuordnungen sowie vollständige native/transitive/Modellabdeckung und juristische Abnahme offen. |
 | Upgrade/Restore | E72: begrenzte Strecke 9.9.0 → lokaler 9.15.2-Kandidat und Restore bestanden. Finale Beta→GA-/Provenienzabnahme offen. |
 | Öffentlich | Aktuelle Beta/GA, Produktwebsite und Store-Veröffentlichung nicht belegt/freigegeben. Ein lokales PASS oder Push ersetzt keinen dieser Nachweise. |
 | Daily/Weekly und Hooks | Zeitpläne laut Nutzer vorhanden; tatsächliche Läufe/Lesezugriff UNVERIFIED. Nutzerprofil unauthorized; isolierte Briefing-/Hookprüfungen bestanden, tatsächlicher Clientdispatch offen (E32/E38). |
@@ -82,4 +88,4 @@ Offen: Betreiber-/Supportangaben, juristische Abnahme, Store-Publisherstatus und
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: E127/E129/E130 implementieren Notice-Auslieferung für GitHub-Installer, Updater/Rollback und Engine-Installer. Gesamtgate E131 bestanden. Nach normalem Commit/Push Speicherreserve schaffen, dann aktuelles Image samt realem Engine-Installationsablauf prüfen. E130 bleibt bis dahin IN_PROGRESS. Rechtliche Freigabe und offene Lizenz-/Plattformnachweise bleiben separat.
+Nächster Codex-Schritt: E127/E129/E130 implementieren Notice-Auslieferung für GitHub-Installer, Updater/Rollback und Engine-Installer. Gesamtgate E131 bestanden. Aktuelles Image und echter Engine-Installer E132/E133 ebenfalls bestanden; E130 technisch abgeschlossen. Nächster Schritt: verbleibende native/transitive Lizenzabdeckung und Quellbereitstellungsanforderungen anhand der gebundenen Buildquellen eingrenzen, ohne bereits bestätigte Texte erneut zu recherchieren. Rechtliche Freigabe und offene Lizenz-/Plattformnachweise bleiben separat.
