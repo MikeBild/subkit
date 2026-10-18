@@ -1,12 +1,12 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E225.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E226.
 
-- Letztes Update: **2026-10-18T17:45:35.469200+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **21e764626**, `main`, Version **10.0.1** vorbereitet.
-  E220–E224 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
-- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Frischer Ressourcenbefund E225 wird dokumentiert; Produktquellen unverändert zu E224.
+- Letztes Update: **2026-10-18T17:49:09.156283+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **d0f2cefc6**, `main`, Version **10.0.1** vorbereitet.
+  E220–E225 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
+- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Zusammenfassende Nachweistabelle mit E224/E222 abgeglichen; Produktquellen unverändert.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: insbesondere externe Store-Freigabe offen.
@@ -110,9 +110,9 @@ Website/Recht und Google-Review laufen unabhängig davon, soweit Zugang/Freigabe
 
 | Prüfung | Belegter Stand |
 | --- | --- |
-| Vollständiges lokales Gate | **E215: PASS auf 1c898dce4**, Exit 0, unveränderte Produktquellhashes. 2.050 isolierte Dateien: 19.687 PASS/0 FAIL/37 SKIP/5 TODO; E2E 257 PASS/0 FAIL/20 SKIP/3 TODO. Historischer Vorgänger E181 bleibt archiviert. |
-| Neuere Fehlversuche | E207: S3-HTTP-500 bei voller Docker-Platte; echte Host-Speicher-Gegenprobe 2 PASS/20.978 Assertions. E209: fehlender Issuer-Recovery-Hinweis, korrigiert mit 33 PASS. E210: historischer ORM-Insert, korrigiert mit 88 PASS. E212: weitere 1.282 Dateien/10.506 Tests bestanden, 4 SKIP/5 TODO. Kein zusammengesetztes Gesamt-PASS. |
-| Reale Modelle | E169: Live-Gate 6 PASS; E170: HTTP-/CLI-Gesprächssuite 7 PASS. E185: reale Container-/Browser-/Provider-Skill-Journey. Keine Abnahme aller Kanäle oder erneute Bestätigung der Produktionsroute. |
+| Vollständiges lokales Gate | **E224: aktuelles PASS**, Exit 0, Produktquellhashes unverändert und identisch zu main. 2.051 isolierte Dateien: 19.692 PASS/0 FAIL/37 SKIP/5 TODO; AI-Eval, nativer Build, Clipper-Binärprüfung und 42 E2E-Dateien: 257 PASS/0 FAIL/20 SKIP/3 TODO. E215 und E181 sind historische Vorgänger. |
+| Historische Gate-Fehler | E207: S3-Fixture bei voller Docker-Platte; E209: Issuer-Recovery; E210: historischer ORM-Insert. Jeweils gezielt korrigiert und anschließend im vollständigen E224 bestanden. E212 bleibt eine historische Diagnosefortsetzung. Frühere Logs erhalten; E224 ist der spätere eigenständige Gesamt-PASS. |
+| Reale Modelle | **E222: aktuelle HTTP-/CLI-Gesprächssuite 7 PASS/0 FAIL**, Workflow/Audit und Ablehnung geprüft. E216: zehn lokale Embedding-/Retrieval-/Routingtests PASS. E219: reale Browser-Knowledge-Journey funktional bestanden, Queue-Ursache offen. E169/E170/E185 historisch; keine Abnahme aller Kanäle oder erneute Bestätigung der Produktions-Fallbackroute. |
 | ARM64-Image/Installation | E184/E185: 10.0.0 auf d2eeb2aaa bestanden. Aktualisiertes Image beba30b7196f auf 48f07dabf gebaut, E187; elf Installationschecks mit Host-Datenspeicher bestanden, E189. Kein aktuelles 10.0.1-/Operator-Image. |
 | Sicherheit | E158: QuickJS-Worker-Regression einschließlich damaligem Gesamtgate bestanden. E190: Trivy 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories; eingebettete WASM nicht separat erfasst. Keine gesamte Sicherheitsfreigabe. |
 | Lizenzen | E168: 495 erfasste Texte plus Produktlizenz im Image/Installer bestätigt. Rechte-/Zuordnungs-/Plattformfragen bleiben separat offen. |
