@@ -1,12 +1,12 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E219.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E220.
 
-- Letztes Update: **2026-10-18T16:11:38.494603+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **0cd5bca18**, `main`, Version **10.0.1** vorbereitet.
-  E213–E218 normal geprüft gepusht; alle acht Hooks bestanden. Produktcode unverändert zum vollständig geprüften 1c898dce4.
-- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Produktquellen der Diagnose unverändert.
+- Letztes Update: **2026-10-18T16:32:34.866748+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **52bd51127**, `main`, Version **10.0.1** vorbereitet.
+  E219 normal geprüft gepusht; alle acht Hooks bestanden. Vollständiger historischer Gate-Nachweis E215 auf 1c898dce4.
+- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Begrenzte Queue-Fehlernormalisierung geändert; aktuelles Gesamtgate läuft separat.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: insbesondere externe Store-Freigabe offen.
@@ -43,11 +43,21 @@ Keine Runtime-Gesamtfreigabe aus dem funktionierenden Ablauf ableiten. Tatsächl
 geprüftes Source-Runtime meldet 0.0.0-dev; kompilierte CLI separat 10.0.1.
 Kein aktueller Docker-/Kanal-/nativer Codex-/Claude-Dispatch-Nachweis.
 
-**Nächster Codex-Schritt:** E219 normal geprüft synchronisieren; anschließend
-PgBoss-Error-Event-Payload und bestehendes `errorFields` am Queue-Listener prüfen.
-Fehlerdaten in einer eigenen begrenzten Diagnose sicher erfassen und Queue-/Pool-
-Ursache untersuchen, ohne Fehlerdetails/Secrets ungefiltert zu loggen oder fremde
-Demos zu verändern. Keine blinden Docker-Vollstarts. E215–E217 wiederverwenden.
+**E220: Diagnose und Queue-Protokollierungsgrenze.** Zwei isolierte Wiederholungen
+(Mock/echtes lokales Embedding; tatsächlicher Anthropic-Chat per browser-use)
+reproduzieren die fünf Fehler nicht; Fixtures bereinigt, Vorschlag unbestätigt.
+Ursache bleibt UNKNOWN. Plain-Record-Fehler von pg-boss werden jetzt am Listener
+validiert und über die vorhandene Redaktion/Klassifikation protokolliert;
+SQL-/Parameter-/Jobdaten werden nicht übernommen. 101 gezielte Tests PASS.
+Erster Gesamtgate-Vorlauf fand einen optionalen TypeScript-Stack-Typfehler;
+korrigiert und gezielt erneut geprüft. Aktueller vollständiger Lauf **IN_PROGRESS**:
+`.artifacts/launch/queue-error-fields-full-verify.{json,log}`.
+Kein neuer Gesamt-PASS und keine behobene Queue-Ursache behauptet.
+
+**Nächster Codex-Schritt:** laufendes Gesamtgate bis Exit auswerten, Quellhashes
+und Nachweise prüfen und Status normal geprüft synchronisieren. Bei erneutem
+Queue-Ereignis die nun erhaltene, bereinigte Ursache gezielt untersuchen.
+Keine blinden Docker-Vollstarts und keine fremden Demos verändern.
 
 Verbleibende Gate-Skips: 29 optionale Connector-URL-Checks; vier private AppSync-/
 Cognito-Fälle und sechs Real-LLM-E2E-Fälle. E219 ist ein zusätzlicher gezielter echter
@@ -165,8 +175,8 @@ Bei Bedarf gezielt laden oder neuen Kandidaten bauen. Keine fremden Ressourcen b
 
 ## Nächste drei Aufgaben
 
-1. **L12/L13 P0:** E219 synchronisieren und die fünf Queue-Fehler gezielt diagnostizieren.
-   Bestehende Error-Normalisierung/PG-Boss-Eventform prüfen; Ursachen sicher erfassen.
+1. **L12/L13 P0:** E220-Gesamtgate bis Exit auswerten und normal synchronisieren.
+   Zwei Wiederholungen ohne Reproduktion; Error-Normalisierung gezielt abgesichert, Ursache offen.
    E215–E217 wiederverwenden, keine optionale Connector-Roadmap zum Blocker machen.
 2. **L12/L18 P0/P1:** auf messbar ausreichend versorgtem System aktuellen Kandidatenstart,
    Kategorie-/RBAC-Parität und Upgrade/Restore prüfen. E195 ist Teilnachweis, kein Gesamtergebnis.
