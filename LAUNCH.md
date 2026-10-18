@@ -694,3 +694,16 @@ juristisch geeignete Lieferweg ist zu entscheiden, bevor aus diesem Entwurf
 pauschal eine neue Freigabebedingung für jede Plattform gemacht wird. Bereits
 bestehende Release-Gates bleiben unverändert. Unabhängig davon aktuelle
 SubKit-Artefakte, Notice-Inhalte und Installationsabläufe weiter fertigstellen.
+
+## L10: Vorbereitete Store-Screenshot-Entwürfe
+
+- [Vor dem Sammeln](assets/clipper-store/capture.jpg)
+- [Gesammelt, noch nicht als Wissen übernommen](assets/clipper-store/collected.jpg)
+- [Herkunft, Prüfsummen und Grenzen](assets/clipper-store/capture-evidence.json)
+
+Die Bilder zeigen echte unveränderte Oberflächen mit isolierten Beispieldaten,
+je 1280×800 JPEG. Sie sind ausdrücklich Entwürfe. Breite Tabdarstellung,
+Freiraum und lokale Beispieladresse müssen vor finaler Verwendung visuell
+abgenommen werden. Keine Google-Freigabe behaupten. Die erforderliche kleine
+Promografik (440×280) bleibt offen. Grundlage:
+[offizielle Google-Bildvorgaben](https://developer.chrome.com/docs/webstore/images).
