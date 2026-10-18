@@ -1,12 +1,12 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E226.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E227.
 
-- Letztes Update: **2026-10-18T17:49:09.156283+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **d0f2cefc6**, `main`, Version **10.0.1** vorbereitet.
-  E220–E225 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
-- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Zusammenfassende Nachweistabelle mit E224/E222 abgeglichen; Produktquellen unverändert.
+- Letztes Update: **2026-10-18T17:55:08.220994+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **06c4c2033**, `main`, Version **10.0.1** vorbereitet.
+  E220–E226 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
+- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Lokale native Asset-Identität E227 dokumentiert; Produktquellen unverändert zu E224.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: insbesondere externe Store-Freigabe offen.
@@ -66,7 +66,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L05 | IN_PROGRESS | Lokaler Release-Weg, Signaturprüfung, Installer, Lizenzdownload und Retention/Rollback implementiert/geprüft, E13–E21/E51/E127–E133. Echter signierter Kandidatenlauf und öffentliche Distribution offen; passender privater Schlüssel fehlt. |
 | L06 | BLOCKED | Betreiber/Kontakt bestätigt, E176. Tatsächliche Hosting-/Versandverarbeitung, vollständige Pflichttexte und juristische Freigabe fehlen. |
 | L07 | DONE | Quickstart/Backup/Recovery mit frischer Linux-amd64-Installation, Neustart und Restore geprüft, E22; 765a2fe26 gepusht. Öffentlicher Test L15 und aktuelles Upgrade L18 bleiben separat. |
-| L08 | IN_PROGRESS | QuickJS-Worker-/Container-Fix geprüft, E158. Operator-/Tenant-Grenzen: 142 Tests und browser-use bestanden, E206. Imageaudit E190 ohne HIGH/CRITICAL; Native/WASM-/Artefaktabdeckung, übrige Befunde und finale Security-Freigabe offen. |
+| L08 | IN_PROGRESS | QuickJS-Worker-/Container-Fix geprüft, E158. Operator-/Tenant-Grenzen: 142 Tests und browser-use bestanden, E206. Imageaudit E190 ohne HIGH/CRITICAL. E227: lokaler nativer QuickJS-WASM und sieben explizite Embedding-/ONNX-Assets bytegenau an geprüfte Engine gebunden. Linux-/Docker-/übrige Native-Abdeckung, Befunde und finale Security-Freigabe offen. |
 | L09 | IN_PROGRESS | Lovable-Entwurf, acht Seiten DE/EN, Systemtheme/-sprache, Social/Consent vorbereitet; Build und 41 Tests laut E176 bestanden. Texte, Produktbilder, tatsächlicher Formularversand, Pflichttexte, öffentliche Downloads, Domain und Abnahmen offen. WEBSITE-TODO.md ist maßgeblich. |
 | L10 | IN_PROGRESS | ZIP 10.0.1: Versions-/Drift-/Archivprüfung bestanden, E202. Listing, Icons, historische Medien und private Übergabe vorbereitet, E147–E152/E166. Pflichtlinks, Medienabnahme und menschliche Zertifizierung offen. |
 | L11 | IN_PROGRESS | Nutzer hat 9.15.2 eingereicht; letzter Store-Handoff PENDING_REVIEW, E186. E223: konkrete Listing-ID im anonymen Browser zeigt Item not available; aktueller Dashboard-Status UNVERIFIED. Öffentliche Clipper-Privacy fehlt. Keine automatische erneute Einreichung des lokalen 10.0.1-Pakets. |
@@ -114,7 +114,7 @@ Website/Recht und Google-Review laufen unabhängig davon, soweit Zugang/Freigabe
 | Historische Gate-Fehler | E207: S3-Fixture bei voller Docker-Platte; E209: Issuer-Recovery; E210: historischer ORM-Insert. Jeweils gezielt korrigiert und anschließend im vollständigen E224 bestanden. E212 bleibt eine historische Diagnosefortsetzung. Frühere Logs erhalten; E224 ist der spätere eigenständige Gesamt-PASS. |
 | Reale Modelle | **E222: aktuelle HTTP-/CLI-Gesprächssuite 7 PASS/0 FAIL**, Workflow/Audit und Ablehnung geprüft. E216: zehn lokale Embedding-/Retrieval-/Routingtests PASS. E219: reale Browser-Knowledge-Journey funktional bestanden, Queue-Ursache offen. E169/E170/E185 historisch; keine Abnahme aller Kanäle oder erneute Bestätigung der Produktions-Fallbackroute. |
 | ARM64-Image/Installation | E184/E185: 10.0.0 auf d2eeb2aaa bestanden. Aktualisiertes Image beba30b7196f auf 48f07dabf gebaut, E187; elf Installationschecks mit Host-Datenspeicher bestanden, E189. Kein aktuelles 10.0.1-/Operator-Image. |
-| Sicherheit | E158: QuickJS-Worker-Regression einschließlich damaligem Gesamtgate bestanden. E190: Trivy 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories; eingebettete WASM nicht separat erfasst. Keine gesamte Sicherheitsfreigabe. |
+| Sicherheit | E158: QuickJS-Worker-Regression einschließlich damaligem Gesamtgate bestanden. E190: historisches Image mit Trivy 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories; WASM nicht separat gescannt. E227: QuickJS-WASM und sieben explizite Modell-/ONNX-Assets in lokaler nativer Engine vollständig identifiziert; keine neue Schwachstellenbewertung oder Linux-/Docker-Abnahme. |
 | Lizenzen | E168: 495 erfasste Texte plus Produktlizenz im Image/Installer bestätigt. Rechte-/Zuordnungs-/Plattformfragen bleiben separat offen. |
 | Upgrade/Restore | E72: begrenzte Strecke 9.9.0→9.15.2 und Restore bestanden; keine finale Beta→GA-Abnahme. |
 | Öffentlich | Aktuelle Beta/GA und Produktwebsite nicht nachgewiesen/freigegeben. Eingereicht ist nicht Store-veröffentlicht. Lokales PASS und Push ersetzen keine Veröffentlichung. |
