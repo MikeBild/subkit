@@ -3,7 +3,7 @@
     "version": "1.4.0",
     "revision": "34cbb9a40b4bd1bd767d134a7065e66c2432a676"
   },
-  "scope": "Draft notices from pinned Bun build sources across platforms. This is not a complete native or transitive inventory. Platform-specific binary coverage, source/relink delivery, embedded models and legal approval remain UNVERIFIED. Rust crate notices include the pinned workspace lockfile inventory, potentially including test or unused dependencies; this is not proof of per-platform binary inclusion. Ten crate packages lack packaged notice texts; eight have exact-source-revision supplements. r-efi and selectors still have no resolved notice text.",
+  "scope": "Draft notices from pinned Bun build sources across platforms. This is not a complete native or transitive inventory. Platform-specific binary coverage, source/relink delivery, embedded models and legal approval remain UNVERIFIED. Rust crate notices include the pinned workspace lockfile inventory, potentially including test or unused dependencies; this is not proof of per-platform binary inclusion. The initial filename scan missed ten crate notices: eight now have exact-source-revision supplements, r-efi uses its packaged AUTHORS permission text, and selectors uses its original source notice plus the referenced canonical MPL text. Source availability and legal acceptance remain unverified.",
   "files": [
     {
       "component": "boringssl",
@@ -1958,6 +1958,16 @@
       "runtimeLockSha256": "819a552d52819d4d33897df69e16b698d703cec4e9009c2d132791931ab40856"
     },
     {
+      "component": "Rust crate r-efi",
+      "revision": "6.0.0",
+      "path": "crate-r-efi__AUTHORS.txt",
+      "source": "https://static.crates.io/crates/r-efi/r-efi-6.0.0.crate",
+      "sha256": "d027e91dbc9cdbb2f1190068e498bd6b61cff022b6a032b191021ba658d96111",
+      "archiveSha256": "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf",
+      "archivePath": "r-efi-6.0.0/AUTHORS",
+      "sourceBinding": "Original packaged AUTHORS contains permission and copyright notices."
+    },
+    {
       "component": "Rust crate rayon-core",
       "revision": "1.13.0",
       "path": "crate-rayon-core__22e18b0f0062__LICENSE-APACHE.txt",
@@ -2216,6 +2226,26 @@
       "archiveSha256": "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49",
       "archivePath": "scopeguard-1.2.0/LICENSE-MIT",
       "runtimeLockSha256": "819a552d52819d4d33897df69e16b698d703cec4e9009c2d132791931ab40856"
+    },
+    {
+      "component": "Rust crate selectors",
+      "revision": "0.33.0",
+      "path": "crate-selectors__MPL.txt",
+      "source": "https://www.mozilla.org/media/MPL/2.0/index.f75d2927d3c1.txt",
+      "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04",
+      "archiveSha256": "feef350c36147532e1b79ea5c1f3791373e61cbd9a6a2615413b3807bb164fb7",
+      "sourceBinding": "Canonical license version expressly referenced by the pinned source header; source availability obligations remain subject to release review."
+    },
+    {
+      "component": "Rust crate selectors",
+      "revision": "0.33.0",
+      "path": "crate-selectors__source-notice.txt",
+      "source": "https://static.crates.io/crates/selectors/selectors-0.33.0.crate",
+      "sha256": "766674381e88a468d55e07de3596987391cf0e8beebe51baf4fddf11078785b3",
+      "archiveSha256": "feef350c36147532e1b79ea5c1f3791373e61cbd9a6a2615413b3807bb164fb7",
+      "archivePath": "selectors-0.33.0/attr.rs",
+      "sourceFileSha256": "cfb9ba3ae47538a05b218ed63cc1360ebcf7ba448cb910f2af638f66244c1ae6",
+      "sourceBinding": "Original leading MPL notice, extracted without implementation code."
     },
     {
       "component": "Rust crate semver",
