@@ -3734,6 +3734,66 @@
       "path": "tigerbeetle-io__LICENSE.txt",
       "runtimeAttributionSource": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/LICENSE.md",
       "coverage": "Named in pinned Bun attribution; per-platform binary inclusion unverified"
+    },
+    {
+      "component": "webkit-icu-source",
+      "revision": "0f966e81b78c84bb23213e391bc679c4ef83e56b",
+      "path": "webkit-icu-source__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/WebKit/0f966e81b78c84bb23213e391bc679c4ef83e56b/Source/WTF/icu/LICENSE",
+      "sha256": "de596f6e3482bab99d2425af16add38f959ebc17a5883c6302970355853b6539",
+      "runtimeBuildSource": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/scripts/build/deps/webkit.ts",
+      "upstreamPath": "Source/WTF/icu/LICENSE",
+      "coverage": "Pinned WebKit source notice; platform inclusion and external ICU binary coverage unverified"
+    },
+    {
+      "component": "webkit-simdutf",
+      "revision": "0f966e81b78c84bb23213e391bc679c4ef83e56b",
+      "path": "webkit-simdutf__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/WebKit/0f966e81b78c84bb23213e391bc679c4ef83e56b/Source/WTF/wtf/simdutf/LICENSE-simdutf.txt",
+      "sha256": "fc8dbc04e03ad4efc08a647ffe7f995b811a95bc04c0e85a56d5277c6593fa5f",
+      "runtimeBuildSource": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/scripts/build/deps/webkit.ts",
+      "upstreamPath": "Source/WTF/wtf/simdutf/LICENSE-simdutf.txt",
+      "coverage": "Pinned WebKit source notice; platform inclusion and external ICU binary coverage unverified"
+    },
+    {
+      "component": "webkit-wtf-llvm",
+      "revision": "0f966e81b78c84bb23213e391bc679c4ef83e56b",
+      "path": "webkit-wtf-llvm__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/WebKit/0f966e81b78c84bb23213e391bc679c4ef83e56b/Source/WTF/LICENSE-LLVM.txt",
+      "sha256": "f72b120d1385408e9e380acc020756eb6ba1b461d66c328ea67327ba08d7dcfd",
+      "runtimeBuildSource": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/scripts/build/deps/webkit.ts",
+      "upstreamPath": "Source/WTF/LICENSE-LLVM.txt",
+      "coverage": "Pinned WebKit source notice; platform inclusion and external ICU binary coverage unverified"
+    },
+    {
+      "component": "webkit-dragonbox",
+      "revision": "0f966e81b78c84bb23213e391bc679c4ef83e56b",
+      "path": "webkit-dragonbox__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/WebKit/0f966e81b78c84bb23213e391bc679c4ef83e56b/Source/WTF/LICENSE-dragonbox.txt",
+      "sha256": "9bb1036ef8dcb42c59e2a23c9e465f43e75003e06898faf0edd18de662f3ecb8",
+      "runtimeBuildSource": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/scripts/build/deps/webkit.ts",
+      "upstreamPath": "Source/WTF/LICENSE-dragonbox.txt",
+      "coverage": "Pinned WebKit source notice; platform inclusion and external ICU binary coverage unverified"
+    },
+    {
+      "component": "webkit-libcxx",
+      "revision": "0f966e81b78c84bb23213e391bc679c4ef83e56b",
+      "path": "webkit-libcxx__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/WebKit/0f966e81b78c84bb23213e391bc679c4ef83e56b/Source/WTF/LICENSE-libc++.txt",
+      "sha256": "c1938c0e9e90639d1e8f5a7f6bebaab83a3642e0ee44295a4c69934686d0bda8",
+      "runtimeBuildSource": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/scripts/build/deps/webkit.ts",
+      "upstreamPath": "Source/WTF/LICENSE-libc++.txt",
+      "coverage": "Pinned WebKit source notice; platform inclusion and external ICU binary coverage unverified"
+    },
+    {
+      "component": "webkit-simde",
+      "revision": "0f966e81b78c84bb23213e391bc679c4ef83e56b",
+      "path": "webkit-simde__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/WebKit/0f966e81b78c84bb23213e391bc679c4ef83e56b/Source/WTF/LICENSE-simde.txt",
+      "sha256": "75ce0a8c5a7bff42fbd6f8f3b469b518132132c4f4948fb8d02b1ccb5d0df9d8",
+      "runtimeBuildSource": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/scripts/build/deps/webkit.ts",
+      "upstreamPath": "Source/WTF/LICENSE-simde.txt",
+      "coverage": "Pinned WebKit source notice; platform inclusion and external ICU binary coverage unverified"
     }
   ]
 }
