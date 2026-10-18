@@ -6,7 +6,7 @@ Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktcommit: **95965695b**, Version **9.15.2**. Vollgate E118 für aea27f714 bestanden; danach ausschließlich native Lizenztexte/Manifest ergänzt, gezielt geprüft. Aktuelles finales ARM64-Image gebaut und praktisch geprüft (E120–E122).
 - Letzter bestätigter Remote-Stand: **52e4b05a4**, main, 0/0 Divergenz und sauberer Checkout vor dieser Dokumentänderung. Diese Aktualisierung bis zum Push LOCAL_ONLY. Commit/Push sind autorisiert; Veröffentlichung bleibt separat freizugeben.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E123. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E124. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -61,7 +61,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | Reale Modelle | E73: getrennte Live-Modellmatrix bestanden; kein Nachweis aller Chatkanäle. |
 | Aktuelles ARM64-Image | E121/E122: vollständiger Build, frische Compose-Installation, Bootstrap/Auth und Workflow-/Dateipersistenz nach Engine-Neuerstellung PASS; Testressourcen bereinigt. |
 | Sicherheit | E122/E123: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW; 176 Advisories, keine Fixversion im Scannerreport. Keine gesamte Sicherheitsfreigabe. |
-| Lizenz-Auslieferung | E120/E121: 33 native Texte samt Hashes und Produktlizenz im finalen Image bestätigt. Drei JS-Zuordnungen sowie vollständige native/transitive/Modellabdeckung und juristische Abnahme offen. |
+| Lizenz-Auslieferung | E120/E121: 33 native Texte samt Hashes und Produktlizenz im finalen Image bestätigt. Danach 322 Rust-Pakettexte ergänzt und Renderer gezielt geprüft (E124); aktuelle Gesamtzahl 355 noch nicht im finalen Image geprüft. Drei JS-Zuordnungen sowie vollständige native/transitive/Modellabdeckung und juristische Abnahme offen. |
 | Upgrade/Restore | E72: begrenzte Strecke 9.9.0 → lokaler 9.15.2-Kandidat und Restore bestanden. Finale Beta→GA-/Provenienzabnahme offen. |
 | Öffentlich | Aktuelle Beta/GA, Produktwebsite und Store-Veröffentlichung nicht belegt/freigegeben. Ein lokales PASS oder Push ersetzt keinen dieser Nachweise. |
 | Daily/Weekly und Hooks | Zeitpläne laut Nutzer vorhanden; tatsächliche Läufe/Lesezugriff UNVERIFIED. Nutzerprofil unauthorized; isolierte Briefing-/Hookprüfungen bestanden, tatsächlicher Clientdispatch offen (E32/E38). |
