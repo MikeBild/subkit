@@ -40,7 +40,7 @@ describe("journey: sk-cli elicitation lifecycle", () => {
         permission_mode: "ask",
         tenant_id: ctx.tenantId,
         actor_id: ctx.userId,
-        initial_message: "list users from jsonplaceholder",
+        initial_message: "Create a workflow to list users from jsonplaceholder",
       },
       ctx.db,
     );
@@ -67,7 +67,7 @@ describe("journey: sk-cli elicitation lifecycle", () => {
     const detail = await conversationsSvc.getConversation(ctx.tenantId, conversationId, ctx.db);
     expect(detail?.conversation.status).toBe("active");
     const workflowId = detail?.conversation.target_workflow_id;
-    expect(workflowId).toBeDefined();
+    expect(workflowId).toBeTruthy();
 
     const [row] = await ctx.db
       .select({
