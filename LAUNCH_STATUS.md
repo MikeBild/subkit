@@ -1,12 +1,12 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E229.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E230.
 
-- Letztes Update: **2026-10-18T18:11:29.746209+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **80a9f9063**, `main`, Version **10.0.1** vorbereitet.
-  E220–E228 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
-- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Interne Cross-Builds und Linux-Payload-Identität E229 dokumentiert; Produktquellen unverändert zu E224.
+- Letztes Update: **2026-10-18T18:17:03.885613+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **9cbd12cc8**, `main`, Version **10.0.1** vorbereitet.
+  E220–E229 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
+- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Lesender SubKit-App-Zugang E230 dokumentiert; Produktquellen unverändert zu E224.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: insbesondere externe Store-Freigabe offen.
@@ -83,7 +83,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L22 | TODO | Finale GA-Gates und menschliche Abnahme. |
 | L23 | TODO | Öffentliche GA, Kommunikation und Supportübernahme. |
 | L24 | TODO | P2-Roadmap bis nach Launch zurückgestellt. |
-| L25 | BLOCKED | Isoliertes CLI-/Hook-Handler-Briefing und permission-scoped Reminder bestanden, E38/E199/E200. E219 ergänzt Discovery der realmodellgestützt aufgenommenen Quelle über gemeinsame Hook-Handler, weiterhin kein nativer Clientdispatch. Nutzerprofil am 18.10. 14:45 UTC erneut lesend geprüft: Exit 2/unauthorized, E213 (früher E32). Tatsächlicher Clientdispatch, freigegebener Datenfluss und Daily-/Weekly-Lesezugriff fehlen; E150/E180. Keine globale Konfiguration geändert. |
+| L25 | BLOCKED | **E230: SubKit-App in dieser Session authentifiziert, domänenbegrenzte Knowledge-Suche mit drei quellreferenzierten Treffern.** Kein nativer Clientdispatch daraus abgeleitet. Isoliertes CLI-/Hook-Handler-Briefing und permission-scoped Reminder bestanden, E38/E199/E200. E219 ergänzt Discovery der realmodellgestützt aufgenommenen Quelle über gemeinsame Hook-Handler, weiterhin kein nativer Clientdispatch. Nutzerprofil am 18.10. 14:45 UTC erneut lesend geprüft: Exit 2/unauthorized, E213 (früher E32). Tatsächlicher Clientdispatch, freigegebener Datenfluss und Daily-/Weekly-Lesezugriff fehlen; E150/E180. Keine globale Konfiguration geändert. |
 
 ## Fünf dominante Blocker / kritischer Pfad
 
@@ -118,6 +118,7 @@ Website/Recht und Google-Review laufen unabhängig davon, soweit Zugang/Freigabe
 | Sicherheit | E158: QuickJS-Worker-Regression einschließlich damaligem Gesamtgate bestanden. E190: historisches Image mit Trivy 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories; WASM nicht separat gescannt. E227/E228: native Asset-Identität, gepatchter Build und echte native Worker-Regression PASS/Cleanup. E229 ergänzt vollständige QuickJS-/Embedding-Payload-Identität im cross-kompilierten Linux-x64-ELF. Keine vollständige Schwachstellenbewertung oder aktuelle Linux-/Docker-Abnahme. |
 | Lizenzen | E168: 495 erfasste Texte plus Produktlizenz im Image/Installer bestätigt. Rechte-/Zuordnungs-/Plattformfragen bleiben separat offen. |
 | Upgrade/Restore | E72: begrenzte Strecke 9.9.0→9.15.2 und Restore bestanden; keine finale Beta→GA-Abnahme. |
+| SubKit-App-Zugang | **E230:** lesendes whoami und Knowledge-Suche mit domain:subkit erfolgreich; drei Treffer, alle Domänen-Tags und Quellenreferenzen korrekt. Kein Schreibaufruf; im Nachweis keine Inhalte/Identifikatoren gespeichert. Lokales CLI-Profil, native Hooks, Daily/Weekly und vollständiger ChatGPT-Kontext bleiben separat unbestätigt. |
 | Öffentlich | Aktuelle Beta/GA und Produktwebsite nicht nachgewiesen/freigegeben. Eingereicht ist nicht Store-veröffentlicht. Lokales PASS und Push ersetzen keine Veröffentlichung. |
 
 Image E187 wurde nur aus dem Docker-Cache entfernt, E208. Geprüftes Archiv und
@@ -151,6 +152,7 @@ Bei Bedarf gezielt laden oder neuen Kandidaten bauen. Keine fremden Ressourcen b
 - Hosting-/Formular-/Retention-Datenfluss und juristische Freigabe der Pflichttexte.
 - Manuelle Produkt-/Website-/Store-Medienabnahme; gesonderte Publikationsfreigaben.
 - Authentifiziertes CLI-Profil, echte Kanalzugänge und Freigabe des Hook-/Transkript-Datenflusses.
+  Der separate SubKit-App-Lesezugang ist mit E230 geprüft und muss nicht neu eingerichtet werden.
   Codex CLI 0.163.0 und Claude Code 2.1.296 installiert; lesender Refresh in
   `.artifacts/launch/native-client-readiness.json`. Nativer Lifecycle weiterhin UNVERIFIED;
   neue Codex-Hooks benötigen [Prüfung und Vertrauen](https://learn.chatgpt.com/docs/hooks).
