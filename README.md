@@ -180,8 +180,9 @@ For a published public GitHub release, `bash scripts/install.sh` from a reviewed
 checkout installs the matching CLI for Linux or macOS and creates the local
 `subkit` compatibility link. It requires Bash, curl, and OpenSSL with Ed25519 support
 (for example OpenSSL 3 on your PATH). It verifies the signed checksum manifest
-against the pinned release public key, then verifies the selected binary before
-replacing an existing installation. Missing signatures or unsupported cryptography
+against the pinned release public key, then verifies the selected binary and both
+license assets before replacing an existing installation. It installs `subkit.LICENSE`
+and `subkit.THIRD_PARTY_NOTICES.txt` beside the CLI. Missing license assets, missing signatures or unsupported cryptography
 stop installation. This path requires publicly downloadable release assets; a local
 build or a private repository is not sufficient. The engine-served installer above
 is a separate download path from your own installation.
