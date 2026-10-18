@@ -38,7 +38,12 @@ describe("deep-surface E2E", () => {
 
   test("weather canned plan produces full tool call chain with confirmation_state", async () => {
     const r = await cli(
-      ["--p", "open-meteo weather forecast for Berlin tomorrow", "--output", "json"],
+      [
+        "--p",
+        "Create a connector for open-meteo weather forecast for Berlin tomorrow",
+        "--output",
+        "json",
+      ],
       { env, persona: "admin", timeout: 120_000 },
     );
     expectSuccess(r, "weather canned plan");

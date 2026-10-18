@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-18T06:45:10.341342+00:00**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-18T07:39:26.392958+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktstand vor Remote-Integration: **0c61b8bc6**, Version **9.15.2**. QuickJS-Fix und korrigierte Hook-Dokumentationsassertion committed; vollständiges Gesamtgate PASS, unveränderte Quellhashes. ARM64-Image, Installation, Regression und Notice-Auslieferung bestanden (E158).
 - Letzter bestätigter Remote-Stand: **03086ce58**, main; HEAD, origin/main und GitHub main identisch, Checkout nach regulärem Push sauber. Alle acht Pre-Push-Gates PASS; Gesamtcheck auf diesem Stand Exit 1 (E164). Diese Fortschreibung LOCAL_ONLY bis Push; kein Release-Go.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E164. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E165. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -29,7 +29,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L10 | IN_PROGRESS | Zweisprachige Listing-Texte, Berechtigungsbegründungen, Datenfluss-/Privacy-Arbeitsblatt und Reviewer-Ablauf als Entwurf in LAUNCH.md vorbereitet. Vier PNG-Icons werden aus bestehendem Cockpit-Logo generiert und mit Lucide-Lizenz im Manifest/ZIP ausgeliefert, E53. Paket-/Browser-/Binärprüfungen und macOS/Linux-Reproduzierbarkeit bestanden. Zwei echte Screenshot-Entwürfe mit isolierten Beispieldaten vorbereitet (E147); Kleine Promografik als lokaler Entwurf ergänzt; 128px-Store-Icon auf 96px-Motiv plus 16px transparenten Rand korrigiert und im ZIP geprüft (E148). Linux-amd64/macOS-ZIP byte-identisch; aktuelle kompilierte Engine/CLI liefern/installieren dasselbe Paket, E149. Lokale Einreichungsübergabe mit Listing-Texten, Medien, unverändertem ZIP und Prüfsummen erstellt; Integritäts-/Secret-Scan PASS, acht Freigabevoraussetzungen offen (E152). Visuelle Abnahme aller Medien, Pflichtlinks und menschliche Zertifizierung offen. ENTWURF, nicht veröffentlicht. |
 | L11 | BLOCKED | L10, öffentliche Pflichtlinks, Publisherstatus und explizite Einreichungsfreigabe fehlen. |
 | L12 | IN_PROGRESS | Isolierter aktueller Kandidat: API-/Browser-/Intake-Prüfungen PASS, E37–E39; MCP-Cockpit-Handoff und echter Clipper gegen Engine PASS, E42/E43. Mock-Läufe und begrenzter echter Provider-Chat E45 getrennt belegt; vollständige Cross-Surface-Abnahme weiterhin offen. Manuelle Demo unverändert. **Neuabnahme erforderlich:** Die Scope-Erweiterung „Sitzungs-Lernvorschläge über Intake“ (Ziel Wissen oder Skill, Bestätigung nur per Browser-Sitzung) ändert die geprüften Abläufe; E37–E46 gelten nur für den Stand davor. Lokale Demo mit echtem Provider einschließlich neuer Journey „session learnings review“ (deterministisch und reales Modell getrennt) PASS. L12 läuft nach dem Deploy komplett neu: Clipper, sk, MCP, HTTP, Cockpit, Google Chat, Coding-Agent-Hooks; simuliert und live getrennt. |
-| L13 | IN_PROGRESS | Aktuelles vollständiges bun run verify für QuickJS-Patch und korrigierte Dokumentationsassertion PASS, Quellhashes unverändert (E158). Integrierter Stand 0f25ede2c gepusht (E162); erstes Gesamtgate mit DB-Fixture-Timeout fehlgeschlagen (E156), unveränderter Einzeltest PASS. Serielle Wiederholung scheitert am fehlenden Recovery-Hinweis intake_items_changed (E161); Remote-Fix cfdc57b82 übernommen. Wiederholung auf 5c565610d scheitert an veralteter CLI-Approval-Testeingabe (E163); gezielte Korrektur 62 Tests PASS. Aktueller Gesamtstand UNVERIFIED. Live-Modellmatrix E73 PASS; aktuelle gepaarte Referenz-Benchmarks fehlen (E75/E80). |
+| L13 | IN_PROGRESS | Historisches vollständiges Gate vor Intake-Integration PASS (E158). Letztes Gesamtgate auf 03086ce58: alle 2.050 isolierten Dateien bestanden, danach veraltete Authoring-E2E-Eingaben fehlgeschlagen (E164). Drei Testdateien korrigiert; gesamte E2E-Stufe 257 PASS/0 FAIL, 20 SKIP/3 TODO (E165). Vollständige Wiederholung auf korrigiertem Stand noch offen. Live-Modellmatrix E73 historisch PASS; aktuelle Referenzbenchmarks fehlen. |
 | L14 | BLOCKED | L04/L05/L13 und Freigabe für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Externer Installationstest aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -59,13 +59,15 @@ Der Container-Scanner erfasst diese eingebettete WASM-Komponente nicht separat.
 
 ## Letzter Verifikationsabschluss
 
-E158: `bun run verify` auf Basis **06353d31e plus QuickJS-Patch und korrigierter
-Dokumentationsassertion** abgeschlossen: **Exit 0**, Quellhashes unverändert.
-Bun 1.4.0, isolierte PostgreSQL-Fixture, Mockprovider; 2.046 isolierte Testdateien
-und nachfolgende Evaluation/Build-/E2E-Prüfungen durchlaufen. Receipt/Log:
-`.artifacts/launch/quickjs-patched-full-verify-retry.{json,log}`.
-Erster Lauf mit veralteter Hook-Testassertion als Fehlnachweis erhalten.
-Keine gesamte Security-/Rechtsfreigabe oder öffentliche Veröffentlichung.
+E165: `bun run test:e2e` Exit 0, **257 PASS / 0 FAIL**, 1.024 Assertions
+über 42 Dateien. 20 SKIP und 3 TODO bleiben offen; isolierte DB/Mockprovider.
+Drei Authoring-Testeingaben an die verlangte ausdrückliche Erstellungsabsicht
+angepasst, Produktlogik und Assertions erhalten. Log und Hash in E165.
+
+Das letzte vollständige Gate auf 03086ce58 bestand alle 2.050 isolierten
+Dateien, scheiterte aber anschließend an diesen E2E-Eingaben (E164).
+Historisches Gesamt-PASS E158 gilt nur vor der Intake-Integration.
+**Aktueller vollständiger Gesamtstand weiterhin UNVERIFIED.**
 
 ## Aktueller Image-Nachweis
 
@@ -83,7 +85,7 @@ Timeout unverändert. Ressourcen-Konkurrenz plausibel, nicht endgültig bewiesen
 
 | Prüfung | Belegter Stand |
 | --- | --- |
-| Vollständiges lokales Gate | E158: Exit 0, Quellen unverändert; vollständige Verify-Kette einschließlich korrigierter Hook-Assertion und neuer QuickJS-Regression bestanden. Isolierte DB, Mockprovider. |
+| Vollständiges lokales Gate | Aktuell UNVERIFIED: E164 endet nach 2.050 bestandenen Dateien im E2E-Fehler. Korrigierte E2E-Stufe bestanden (E165); vollständige Wiederholung ausstehend. Historisches PASS E158 nicht auf neuen Stand übertragen. |
 | Reale Modelle | E73: getrennte Live-Modellmatrix bestanden; kein Nachweis aller Chatkanäle. |
 | Aktuelles ARM64-Image | E157: Build/Installer/Installation und serieller Neustart/Persistenz PASS. Zwei Timeouts unter paralleler Last erhalten; Ursache nicht abschließend bewiesen. |
 | Sicherheit | **E158: QuickJS-Fix einschließlich Gesamtgate lokal geprüft.** E157: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories. Frühere Triage E123 bleibt relevant; keine gesamte Sicherheitsfreigabe. |
@@ -106,19 +108,9 @@ Scope-Erweiterung vom Nutzer entschieden (gegen den Freeze 17.–20.10.): Lernvo
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **Authoring-E2E-Eingaben korrigieren, gesamte E2E-Stufe prüfen, danach vollständiges Gate wiederholen.**
-Session 19644 ist terminal, Exit 1: Katalogprüfung in Datei 696/2050 meldet fehlenden
-Recovery-Hinweis `intake_items_changed` (E161). Früherer DB-Fixture-Fehler tritt im
-seriellen Lauf nicht auf: neun MCP-Probe-Tests PASS. Remote cfdc57b82 enthält bereits
-den passenden Hinweis; integriert in 0a7f2ccb2. Katalogtest 17 PASS/308 Assertions,
-Merge-Typprüfung PASS; keine doppelte Implementierung. Neue Framer-Arbeit aus
-87fe1615c bleibt erhalten, E159 bezeichnet Website, E162 den vorherigen Push.
-Push von 5c565610d erfolgreich. Gesamtcheck Session 73215 terminal, Exit 1 bei CLI-Approval-Lifecycle (E163),
-Receipt/Log `.artifacts/launch/intake-recovery-full-verify.{json,log}`. Testeingabe explizit auf Workflow-Erstellung korrigiert, Workflow-ID-Prüfung verschärft.
-62 Tests/226 Assertions PASS (E163). Restlauf Session 55351 terminal, Exit 0, alle 425 Dateien bestanden:
-`.artifacts/launch/approval-lifecycle-remaining-diagnostic.log`; nur Diagnose, kein Ersatz
-für vollständiges Verify. Kein Gesamt-PASS und keine Übertragung historischer Image-/Store-Nachweise auf
-geänderten Produktcode. Keine parallelen schweren Prüfungen.
+Nächster Codex-Schritt: **Geprüfte E2E-Testkorrekturen mit regulären Hooks committen/pushen, danach vollständiges `bun run verify` auf dem synchronisierten Stand.**
+E2E-Session 32805 terminal, Exit 0 (E165). Frühere Gesamtchecks sind terminal;
+keine parallelen schweren Prüfungen. Öffentliche Freigaben bleiben separat offen.
 
 L04 bleibt begrenzt auf bekannte offene Rechte-/Plattform-/Quellauslieferungsfragen
 und menschliche Freigaben. Alle 103 Polyfill-Lockfile-Versionen haben Originaltexte;
@@ -126,6 +118,3 @@ uucode-Haupt-/Sekundärhinweise und breite Base64-Quellsuche sind belegt (E137�
 Diese Recherchen nicht wiederholen. Vier lokale Source-Archive E144 sind vorhanden;
 E145 benennt fehlende Toolchains. Kein Wiederaufbau oder öffentliche Quellauslieferung
 behauptet. Der aktuelle Image-/Installer-Nachweis E151 ist abgeschlossen.
-
-Beendeter Gesamtcheck: Session **49135**, Exit 1 bei Authoring-E2E (E164), `.artifacts/launch/approval-lifecycle-full-verify.{json,log}`.
-Vorherige Sessions 73215 und 55351 sind terminal. Kein zweiter paralleler Lauf.

@@ -207,6 +207,9 @@ Append-only Nachweisarchiv zu [LAUNCH_STATUS.md](LAUNCH_STATUS.md). Nur dort ste
 
 | E164 | L12/L13 | Gesamtgate auf 03086ce58: Exit 1, Quellhashes unverändert. Alle 2.050 isolierten Dateien durchlaufen; korrigierter CLI-Approval-Lifecycle 3 PASS/13 Assertions. Nachfolgend E2E authoring-regressions: 3 PASS/6 FAIL; generische Erstnachricht continue aktiviert keine Authoring-Werkzeuge, erwartete Connector-/Preview-Ergebnisse fehlen. | `.artifacts/launch/approval-lifecycle-full-verify.json` und `.log`, Log-SHA256 `066a69accc57440db7a69f26f0962a5a0b3a9ada3830cac31d2337e58f017543`. Kein Gesamt-PASS. E2E-Eingaben auf explizite Szenarioabsicht korrigieren; bestehende Ergebnis-/Approval-/Isolationserwartungen erhalten. |
 
+| E165 | L13 | Auf Basis 03086ce58 plus drei E2E-Testkorrekturen: `bun run test:e2e` Exit 0, 42 Dateien, 257 PASS, 0 FAIL, 1.024 Assertions. Authoring-Szenarien verlangen jetzt ausdrücklich Connector-/Workflow-Erstellung; alle bestehenden Ergebnis-, Approval-, Fehler- und Isolationsassertionen erhalten. Keine Produktlogik geändert. Gezielte Authoring-Regression 9 PASS/72 Assertions und CLI-User-Story 6 PASS/19 Assertions. Log `.artifacts/launch/authoring-intent-e2e-suite-final.log`, SHA-256 29f5a2149b80a502dd1de66fc6e22c4349c2ae942be81ab0341292b3ce8e4fd6. Danach ausschließlich Biome-Formatierung in zwei Testdateien. | Isolierte PostgreSQL-Fixture, Bun 1.4.0, Mockprovider. 20 SKIP (4 AppSync/Cognito, 10 Terminal-Szenarien, 6 echte Modellfälle) und 3 bestehende CLI-Harness-TODOs; keine Live-/Produktionsabnahme. Vorherige fehlgeschlagene E2E-Logs erhalten. Vollständiges aktuelles Verify bleibt erforderlich. LOCAL_ONLY bis Push. |
+
+
 ## Historisches Security-Befundregister
 
 
