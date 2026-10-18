@@ -60,8 +60,12 @@ backfill in a multi-tenant installation picks silently and should log its choice
 
 ## Open verification after the operator separation
 
-- Run `bun run verify`, the contract and end-to-end suites, `verify:functional-cockpit`
-  and `demo:local:verify` before the next release tag; none ran for this change.
+- Before the next release tag, retain `bun run verify` with its contract/end-to-end
+  gates and the applicable `demo:local:verify` API checks. Cockpit browser acceptance
+  uses browser-use with Codex or Claude Code; visual acceptance remains manual.
+  The operator separation has since passed focused checks and the complete local
+  gate on the product source recorded in LAUNCH_STATUS.md (E206/E215). Local-demo,
+  live-channel and publication evidence remain separate.
 - `query-fragment.test.ts` fails in batch runs and passes alone; find the shared state.
 - The sandbox helper drift check fails with a Bun version other than the pinned one;
   make the pre-push hook or `verify` fail early with a clear message about the pinned version.
