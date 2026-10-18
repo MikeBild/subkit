@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { runMigrations } from "../migrate.ts";
-import { outboundConnectionStarts, systemAccounts, tenants, users } from "../schema/index.ts";
+import { outboundConnectionStarts, systemAccounts, users } from "../schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
@@ -20,18 +20,19 @@ test(
       throw new Error("outbound connection actor migrations are not embedded");
     const ctx = await createTestDb("connection_actor_migration", { upToIdx: migration.idx - 1 });
     try {
-      const [tenant] = await ctx.db
-        .insert(tenants)
-        .values({ slug: "connection-actor-migration", display_name: "Connection actor migration" })
-        .returning({ id: tenants.id });
+      const {
+        rows: [tenant],
+      } = await ctx.db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, display_name)
+    VALUES (${"connection-actor-migration"}, ${"Connection actor migration"}) RETURNING id
+  `);
       if (!tenant) throw new Error("test tenant was not created");
-      const [otherTenant] = await ctx.db
-        .insert(tenants)
-        .values({
-          slug: "connection-actor-migration-other",
-          display_name: "Connection actor migration other",
-        })
-        .returning({ id: tenants.id });
+      const {
+        rows: [otherTenant],
+      } = await ctx.db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, display_name)
+    VALUES (${"connection-actor-migration-other"}, ${"Connection actor migration other"}) RETURNING id
+  `);
       if (!otherTenant) throw new Error("second test tenant was not created");
       const [user] = await ctx.db
         .insert(users)
