@@ -36,7 +36,7 @@ main() (
 
   local ASSET="sk_${OS}_${ARCH}"
   local FILE
-  for FILE in "$ASSET" SHA256SUMS SHA256SUMS.sig; do
+  for FILE in "$ASSET" LICENSE THIRD_PARTY_NOTICES.txt SHA256SUMS SHA256SUMS.sig; do
     echo "  downloading $FILE..."
     curl --proto '=https' --proto-redir '=https' --retry 3 --retry-delay 2 -fsSL \
       -o "$TMP_DIR/$FILE" "https://github.com/$REPO/releases/download/$LATEST/$FILE"
@@ -57,20 +57,22 @@ PUBLIC_KEY
   fi
 
   local EXPECTED ACTUAL
-  EXPECTED=$(awk -v asset="$ASSET" '$2 == asset { print $1 }' "$TMP_DIR/SHA256SUMS")
-  if [[ ! "$EXPECTED" =~ ^[a-fA-F0-9]{64}$ ]]; then
-    echo "error: missing, duplicate or invalid checksum for $ASSET" >&2
-    exit 1
-  fi
-  if command -v sha256sum >/dev/null 2>&1; then
-    ACTUAL=$(sha256sum "$TMP_DIR/$ASSET" | awk '{print $1}')
-  else
-    ACTUAL=$(shasum -a 256 "$TMP_DIR/$ASSET" | awk '{print $1}')
-  fi
-  if [ "$EXPECTED" != "$ACTUAL" ]; then
-    echo "error: checksum mismatch for $ASSET" >&2
-    exit 1
-  fi
+  for FILE in "$ASSET" LICENSE THIRD_PARTY_NOTICES.txt; do
+    EXPECTED=$(awk -v asset="$FILE" '$2 == asset { print $1 }' "$TMP_DIR/SHA256SUMS")
+    if [[ ! "$EXPECTED" =~ ^[a-fA-F0-9]{64}$ ]]; then
+      echo "error: missing, duplicate or invalid checksum for $FILE" >&2
+      exit 1
+    fi
+    if command -v sha256sum >/dev/null 2>&1; then
+      ACTUAL=$(sha256sum "$TMP_DIR/$FILE" | awk '{print $1}')
+    else
+      ACTUAL=$(shasum -a 256 "$TMP_DIR/$FILE" | awk '{print $1}')
+    fi
+    if [ "$EXPECTED" != "$ACTUAL" ]; then
+      echo "error: checksum mismatch for $FILE" >&2
+      exit 1
+    fi
+  done
   echo "Signature and checksum verified."
 
   chmod 755 "$TMP_DIR/$ASSET"
@@ -80,7 +82,8 @@ PUBLIC_KEY
     codesign --sign - --force "$TMP_DIR/$ASSET"
   fi
 
-  if [ -d "$INSTALL_DIR/sk" ] || [ -d "$INSTALL_DIR/subkit" ]; then
+  if [ -d "$INSTALL_DIR/sk" ] || [ -d "$INSTALL_DIR/subkit" ] || \
+    [ -d "$INSTALL_DIR/subkit.LICENSE" ] || [ -d "$INSTALL_DIR/subkit.THIRD_PARTY_NOTICES.txt" ]; then
     echo "error: installation targets must not be directories" >&2
     exit 1
   fi
@@ -88,6 +91,12 @@ PUBLIC_KEY
   local STAGED
   STAGED=$(mktemp "$INSTALL_DIR/.sk.XXXXXXXX")
   trap 'rm -rf "$TMP_DIR"; rm -f "$STAGED"' EXIT
+  for FILE in LICENSE THIRD_PARTY_NOTICES.txt; do
+    cp "$TMP_DIR/$FILE" "$STAGED"
+    chmod 644 "$STAGED"
+    mv -f "$STAGED" "$INSTALL_DIR/subkit.$FILE"
+    STAGED=$(mktemp "$INSTALL_DIR/.sk.XXXXXXXX")
+  done
   cp "$TMP_DIR/$ASSET" "$STAGED"
   chmod 755 "$STAGED"
   mv -f "$STAGED" "$INSTALL_DIR/sk"
@@ -95,6 +104,7 @@ PUBLIC_KEY
 
   echo ""
   echo "Installed sk and compatibility alias subkit to $INSTALL_DIR"
+  echo "License notices: $INSTALL_DIR/subkit.LICENSE and $INSTALL_DIR/subkit.THIRD_PARTY_NOTICES.txt"
 
   if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     local SHELL_NAME RC

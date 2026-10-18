@@ -45,6 +45,14 @@ function fixture(mode = "valid", os = "Linux", arch = "x86_64") {
   let manifest = `${hash}  ${asset}\n`;
   if (mode === "duplicate") manifest += manifest;
   if (mode === "missing") manifest = `${hash}  prefix_${asset}\n`;
+  for (const file of ["LICENSE", "THIRD_PARTY_NOTICES.txt"]) {
+    const text = `Signed ${file} fixture\n`;
+    const checksum = createHash("sha256").update(text).digest("hex");
+    if (mode !== `missing-checksum-${file}`) manifest += `${checksum}  ${file}\n`;
+    if (mode === `duplicate-checksum-${file}`) manifest += `${checksum}  ${file}\n`;
+    if (mode !== `missing-${file}`)
+      writeFileSync(join(downloads, file), mode === `tamper-${file}` ? "tampered" : text);
+  }
   writeFileSync(join(downloads, asset), mode === "binary-tamper" ? "tampered" : bytes);
   writeFileSync(
     join(downloads, "SHA256SUMS"),
@@ -60,6 +68,8 @@ function fixture(mode = "valid", os = "Linux", arch = "x86_64") {
   }
   writeFileSync(join(downloads, "latest.json"), JSON.stringify({ tag_name: "v1.2.3" }));
   writeFileSync(join(installed, "sk"), "previous binary");
+  for (const file of ["LICENSE", "THIRD_PARTY_NOTICES.txt"])
+    writeFileSync(join(installed, `subkit.${file}`), `previous ${file}`);
   if (mode === "directory") mkdirSync(join(installed, "subkit"));
   else writeFileSync(join(installed, "subkit"), "previous alias");
   if (mode === "fresh") rmSync(installed, { recursive: true });
@@ -133,7 +143,16 @@ describe("signed GitHub installer", () => {
       expect(readFileSync(join(f.installed, "sk"))).toEqual(f.bytes);
       expect(readlinkSync(join(f.installed, "subkit"))).toBe("sk");
       expect(readdirSync(f.temporary)).toEqual([]);
-      expect(readdirSync(f.installed).sort()).toEqual(["sk", "subkit"]);
+      expect(readdirSync(f.installed).sort()).toEqual([
+        "sk",
+        "subkit",
+        "subkit.LICENSE",
+        "subkit.THIRD_PARTY_NOTICES.txt",
+      ]);
+      for (const file of ["LICENSE", "THIRD_PARTY_NOTICES.txt"])
+        expect(readFileSync(join(f.installed, `subkit.${file}`), "utf8")).toBe(
+          `Signed ${file} fixture\n`,
+        );
       const requests = readFileSync(join(f.root, "requests"), "utf8");
       expect(requests).toContain(f.asset);
       expect(requests).not.toMatch(/\/subkit_(linux|darwin)/);
@@ -141,6 +160,12 @@ describe("signed GitHub installer", () => {
   }
 
   for (const mode of [
+    ...["LICENSE", "THIRD_PARTY_NOTICES.txt"].flatMap((file) => [
+      `missing-${file}`,
+      `tamper-${file}`,
+      `missing-checksum-${file}`,
+      `duplicate-checksum-${file}`,
+    ]),
     "wrong-key",
     "signature-missing",
     "signature-tamper",
@@ -155,6 +180,8 @@ describe("signed GitHub installer", () => {
       const f = fixture(mode, mode === "codesign-failure" ? "Darwin" : "Linux");
       expect(f.result.status).not.toBe(0);
       expect(readFileSync(join(f.installed, "sk"), "utf8")).toBe("previous binary");
+      for (const file of ["LICENSE", "THIRD_PARTY_NOTICES.txt"])
+        expect(readFileSync(join(f.installed, `subkit.${file}`), "utf8")).toBe(`previous ${file}`);
       if (mode !== "directory")
         expect(readFileSync(join(f.installed, "subkit"), "utf8")).toBe("previous alias");
       expect(readdirSync(f.temporary)).toEqual([]);
