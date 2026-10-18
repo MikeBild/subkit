@@ -199,7 +199,19 @@ function deepMergeReplaceArrays<T>(base: T, overlay: unknown): T {
 function applyTenantOverlay(global: Config, tenantId: string): Config {
   const overlay = global.tenants?.[tenantId];
   if (!overlay) return global;
-  return deepMergeReplaceArrays(global, overlay) as Config;
+  const merged = deepMergeReplaceArrays(global, overlay) as Config;
+  const provider = merged.llm.provider;
+  const target = getDeep(merged, ["llm", "providers", provider]);
+  if (!target || typeof target !== "object") return merged;
+  const fields: Record<string, unknown> = {};
+  for (const field of ["api_key", "model"]) {
+    const generic = getDeep(overlay, ["llm", field]);
+    const specific = getDeep(overlay, ["llm", "providers", provider, field]);
+    if (generic !== undefined && specific === undefined && field in target) {
+      fields[field] = generic;
+    }
+  }
+  return deepMergeReplaceArrays(merged, { llm: { providers: { [provider]: fields } } });
 }
 
 function serialize(config: Config): string {
