@@ -1,81 +1,55 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E223.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E224.
 
-- Letztes Update: **2026-10-18T16:52:51.995829+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **6a23d8740**, `main`, Version **10.0.1** vorbereitet.
-  Queue-Adapter, Listener- und Live-E2E-Nachweise E220–E222 normal geprüft gepusht; alle acht Hooks bestanden, sauberer Checkout und 0/0-Divergenz bestätigt. Historischer Gesamtgate-Nachweis E215 auf 1c898dce4.
-- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Begrenzte Queue-Fehlernormalisierung geändert; aktuelles Gesamtgate läuft separat.
+- Letztes Update: **2026-10-18T17:43:20.276247+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **45e58f53d**, `main`, Version **10.0.1** vorbereitet.
+  E220–E223 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
+- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Abgeschlossener vollständiger Lauf E224 wird dokumentiert; keine weitere Produktänderung.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: insbesondere externe Store-Freigabe offen.
 
 ## Aktive Arbeit und nächster Codex-Schritt
 
-**L13: vollständiges Gate PASS**, E215, auf 1c898dce4 am 18.10. 14:35–15:39 UTC:
-2.050 isolierte Dateien, 19.687 PASS/0 FAIL/37 SKIP/5 TODO; danach AI-Eval,
-Host-Build, Clipper-Binärprüfung und E2E (257 PASS/0 FAIL/20 SKIP/3 TODO) bestanden.
-Exit 0 und unveränderte Produktquellhashes belegt. Receipt/Log:
-`.artifacts/launch/operator-final-full-verify.{json,log}`.
-Keine gesamte Release-/Security-/Launch-Freigabe und kein Referenzbenchmark.
+**L13: aktuelles vollständiges Gate PASS, E224.** `bun run verify` am 18.10.
+16:32–17:41 UTC mit Exit 0 abgeschlossen: **2.051 isolierte Dateien, 19.692 PASS/
+0 FAIL/37 SKIP/5 TODO**; danach AI-Eval, nativer Build, Clipper-Binärprüfung und
+**42 E2E-Dateien, 257 PASS/0 FAIL/20 SKIP/3 TODO** bestanden.
+Quellhashes während des gesamten Laufs unverändert und nach Abschluss mit aktuellem
+main abgeglichen. Basis 52bd51127 plus Queue-Patch, inzwischen als 09024fdd3 gepusht;
+45e58f53d enthält dieselben Produktquellen. Receipt/Log und kompakte Zusammenfassung:
+`.artifacts/launch/queue-error-fields-full-verify.{json,log}` und `-summary.json`.
+Keine gesamte Release-/Security-/Launch-Freigabe und kein Linux-x64-Referenzbenchmark.
 
-**E216:** zehn vorhandene Modelltests PASS/0 FAIL/0 SKIP, Quellhashes unverändert.
-Tatsächlicher lokaler Embedding-Backfill, mehrsprachige Knowledge-Suche und
-Conversation-Routing einschließlich fremder Nutzergrenze geprüft. Damit sind acht
-Modell-Skips aus E215 separat geschlossen; 29 optionale Connector-URL-Skips bleiben.
+**Separate Opt-in-Nachweise:** E216 zehn echte lokale Modelltests, E217 zwölf
+native CLI-PTY-Tests und E222 sieben echte Gesprächs-E2E-Tests jeweils PASS/0 FAIL/
+0 SKIP. E222 prüft Connector-/Workflow-Erstellung samt Audit, Mehrfachdialog,
+kompilierte CLI-Wiederaufnahme und Ablehnung. Fixtures bereinigt; Providerkey nicht
+im Log. Damit sind acht Modell-, zehn PTY- und sechs Real-LLM-Skips separat geschlossen.
+Verbleibend: 29 optionale Connector-URL-Checks, vier private AppSync-/Cognito-Fälle,
+fünf isolierte und drei E2E-TODOs. Keine neue pauschale Releasefreigabe daraus ableiten.
 
-**E217:** zwölf native CLI-PTY-Tests PASS/0 FAIL/0 SKIP; Quellhashes unverändert.
-MCP-Katalog (Admin/Member), Profilwechsel, Startup, Starter-Aktionen und persistierte
-Tool-Elicitation geprüft. Zehn PTY-Skips aus E215 sind damit separat geschlossen.
-Kein nativer Codex-/Claude-Dispatch und keine Knowledge-Admission daraus abgeleitet.
+**Knowledge-Journey E219 funktional bestanden, Laufzeit nur PARTIAL:** echtes
+Modell → Vorschlag → explizite Browserbestätigung → Suche/MCP/CLI/gemeinsame
+Hook-Discovery, 21 Nachweisprüfungen. Vor Bestätigung kein normaler Suchtreffer;
+Inhalt, Ziel und Provenienz geprüft. Source-Runtime 0.0.0-dev, CLI separat 10.0.1;
+kein aktueller Docker-/Kanal-/nativer Codex-/Claude-Dispatch-Nachweis.
 
-**E219: funktionaler Realmodell-/Browser-Nachweis, Laufzeit nur PARTIAL.**
-Ein tatsächliches Anthropic-Modell erstellt einen Knowledge-Vorschlag; vor Übernahme
-kein normaler Suchtreffer. Exakter Inhalt/Quelle/Ziel im Browser geprüft und dort
-explizit bestätigt; Original/Provenienz, persistierter Chat und anschließende
-MCP-/CLI-/gemeinsame Hook-Discovery mit 21 Nachweisprüfungen bestanden.
-Eigene Quelle-HTTP-/PostgreSQL-/MemoryObjectStore-Fixture und Browser bereinigt;
-Nutzerprofil unverändert, keine produktiven Inhalte oder Providerkeys in Reports.
+**Queue-Ursache UNKNOWN:** fünf nichtfatale opake Fehler aus E219 in zwei isolierten
+Wiederholungen und E222 nicht reproduziert. E220/E221 sichern den tatsächlichen
+Listener ab: Plain-Record-Meldungen bleiben klassifiziert; SQL-/Parameter-/Jobdaten
+und Token werden redigiert. 101 gezielte Tests sowie injizierte Listener-Proben
+bestanden. Keine Queue-/Timeout-/Execution-Semantik geändert und keine behobene
+Ursache behauptet. Der JSON-Parse-Text im Gesamtlog stammt aus einem bestandenen
+Negativtest für ungültige globale Hook-Konfiguration.
 
-Offen: fünf nichtfatale `boss.error`-Ereignisse mit `[object Object]` statt Ursache.
-Keine Runtime-Gesamtfreigabe aus dem funktionierenden Ablauf ableiten. Tatsächlich
-geprüftes Source-Runtime meldet 0.0.0-dev; kompilierte CLI separat 10.0.1.
-Kein aktueller Docker-/Kanal-/nativer Codex-/Claude-Dispatch-Nachweis.
-
-**E220: Diagnose und Queue-Protokollierungsgrenze.** Zwei isolierte Wiederholungen
-(Mock/echtes lokales Embedding; tatsächlicher Anthropic-Chat per browser-use)
-reproduzieren die fünf Fehler nicht; Fixtures bereinigt, Vorschlag unbestätigt.
-Ursache bleibt UNKNOWN. Plain-Record-Fehler von pg-boss werden jetzt am Listener
-validiert und über die vorhandene Redaktion/Klassifikation protokolliert;
-SQL-/Parameter-/Jobdaten werden nicht übernommen. 101 gezielte Tests PASS.
-Erster Gesamtgate-Vorlauf fand einen optionalen TypeScript-Stack-Typfehler;
-korrigiert und gezielt erneut geprüft. Aktueller vollständiger Lauf **IN_PROGRESS**:
-`.artifacts/launch/queue-error-fields-full-verify.{json,log}`.
-Kein neuer Gesamt-PASS und keine behobene Queue-Ursache behauptet.
-E221 bestätigt zusätzlich den tatsächlichen Queue-Listener gegen isoliertes PostgreSQL:
-gezielt injizierte Timeout-/SQL-Ereignisse korrekt klassifiziert und redigiert;
-Fixtures bereinigt. Kein spontan reproduzierter Runtime-Fehler.
-
-**E222: aktuelle echte Gesprächs-E2E-Suite PASS.** Auf 22cc1c3e3 unveränderte
-Suite gegen isoliertes PostgreSQL und Anthropic ausgeführt: 7 PASS/0 FAIL,
-21 Assertions, Exit 0. Begrüßung, Mehrfachdialog, Connector-Erstellung,
-Workflow-Speicherung samt Audit, kompilierte CLI-Wiederaufnahme und ausdrückliche
-Ablehnung geprüft. Keine Queue-Fehler; null verbliebene Fixture-Datenbanken,
-private temporäre Konfiguration entfernt, Providerkey nicht im Log.
-`.artifacts/launch/operator-live-lifecycle.{json,log}` und `-cleanup.json`.
-Sechs Real-LLM-Skips aus E215 damit separat geschlossen; kein Browser-/Docker-/
-Kanal-/nativer Coding-Agent-Nachweis und kein Gesamtergebnis daraus abgeleitet.
-
-**Nächster Codex-Schritt:** laufendes Gesamtgate bis Exit auswerten, Quellhashes
-und Nachweise prüfen und Status normal geprüft synchronisieren. Bei erneutem
-Queue-Ereignis die nun erhaltene, bereinigte Ursache gezielt untersuchen.
-Keine blinden Docker-Vollstarts und keine fremden Demos verändern.
-
-Verbleibende Gate-Skips nach separaten Opt-in-Nachweisen: 29 optionale
-Connector-URL-Checks und vier private AppSync-/Cognito-Fälle. E219 ist ein zusätzlicher gezielter echter
-Modelllauf, keine Abnahme aller sechs Fälle/Kanäle oder der Live-Fallbackroute.
-Vorhandene fünf isolierte und drei E2E-TODOs bleiben offen; weder gelöscht noch DONE.
+**Nächster Codex-Schritt:** ausreichend versorgte isolierte Linux-x64-Umgebung
+prüfen, aktuellen Kandidatenstart sowie Installation/Upgrade/Restore und Kategorie-/
+RBAC-Parität nachweisen. Geeigneter Host und lokaler Pfad zum passenden bestehenden
+Signing-Key angefragt, Antwort ausstehend. E224 wiederverwenden; keine blinden
+Docker-Vollstarts, fremden Demoänderungen oder Veröffentlichungen.
 
 ## Aufgaben
 
@@ -96,7 +70,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L10 | IN_PROGRESS | ZIP 10.0.1: Versions-/Drift-/Archivprüfung bestanden, E202. Listing, Icons, historische Medien und private Übergabe vorbereitet, E147–E152/E166. Pflichtlinks, Medienabnahme und menschliche Zertifizierung offen. |
 | L11 | IN_PROGRESS | Nutzer hat 9.15.2 eingereicht; letzter Store-Handoff PENDING_REVIEW, E186. E223: konkrete Listing-ID im anonymen Browser zeigt Item not available; aktueller Dashboard-Status UNVERIFIED. Öffentliche Clipper-Privacy fehlt. Keine automatische erneute Einreichung des lokalen 10.0.1-Pakets. |
 | L12 | IN_PROGRESS | **E219: echtes Modell → Knowledge-Vorschlag → Browserbestätigung → Suche/MCP/CLI/Hook-Discovery funktional bestanden; fünf opake Queue-Fehler bleiben unaufgeklärt.** Reale Browser-/Provider-Skill-Journey E185; Knowledge E193; Browser→CLI/MCP/Hook-Handler E200; Clipper→Admission E203; persistierter Chat→Proposal→Bestätigung E205 jeweils begrenzt bestanden. Aktueller Gesamt-/Kategorie-/RBAC-/Kanalnachweis und zuverlässiger Kandidatenstart offen, E194–E196/E201. |
-| L13 | IN_PROGRESS | Gesamtgate E207/E209 fehlgeschlagen; S3-Fixture und Issuer-Recovery gezielt korrigiert. E210: zehn historische Fixtures korrigiert, alle 25 Migrationsdateien/88 Tests und Typecheck bestanden. Diagnosefortsetzung E212 bestanden: 1.282 Dateien/10.506 Tests, 4 SKIP/5 TODO. E215: vollständiges Gate auf 1c898dce4 PASS, Exit 0, Quellen unverändert; 2.050 Dateien/19.687 Tests und E2E 257 PASS. E216/E217/E222 schließen acht Modell-, zehn PTY- und sechs Real-LLM-Skips separat. Übrige Skips/TODOs, Referenzbenchmark und finale Release-Route bleiben offen. |
+| L13 | IN_PROGRESS | **Aktuelles vollständiges Gate E224 PASS:** 2.051 isolierte Dateien/19.692 Tests, AI-Eval, nativer Build, Clipper-Binärprüfung und 42 E2E-Dateien/257 Tests; Exit 0, Produktquellhashes unverändert. E216/E217/E222 schließen acht Modell-, zehn PTY- und sechs Real-LLM-Skips separat. Historische Läufe E207–E215 bleiben in der Prüfhistorie. Referenzbenchmark, signierter Kandidat und finale Release-Route offen. |
 | L14 | BLOCKED | L04/L05/L13 und Freigaben für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Installation durch externen Nutzer aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -116,7 +90,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
    E194/E196. Weitere Gegenprobe E201 scheitert bereits bei Migrationen unter hoher
    Memory-PSI. Ursache nicht abschließend bewiesen. E219 zeigt zusätzlich fünf opake Queue-Fehler
    in der Source-Fixture bei funktionierendem Realmodell-Review. Vollständiges
-   Host-Gate E215 bestanden; aktuelles Image samt Operator-Migration fehlt.
+   Host-Gate E224 bestanden; aktuelles Image samt Operator-Migration fehlt.
 2. **Öffentliche Distribution:** signierte 10.0.1-Artefakte, passende Schlüssel,
    Referenzbenchmark und extern installierbare Kandidaten nicht vollständig belegt.
 3. **Sicherheit/Rechte:** öffentliche Historien-/Lizenzfreigabe, drei bekannte
@@ -189,18 +163,19 @@ Bei Bedarf gezielt laden oder neuen Kandidaten bauen. Keine fremden Ressourcen b
 
 ## Nächste drei Aufgaben
 
-1. **L12/L13 P0:** E220-Gesamtgate bis Exit auswerten und normal synchronisieren.
-   Zwei Wiederholungen ohne Reproduktion; Error-Normalisierung gezielt abgesichert, Ursache offen.
-   E215–E217 wiederverwenden, keine optionale Connector-Roadmap zum Blocker machen.
-2. **L12/L18 P0/P1:** auf messbar ausreichend versorgtem System aktuellen Kandidatenstart,
-   Kategorie-/RBAC-Parität und Upgrade/Restore prüfen. E195 ist Teilnachweis, kein Gesamtergebnis.
-   Keine blinden Vollstart-Wiederholungen oder Eingriffe in fremde Demos.
-   E214: Docker-VM am 18.10. 15:18 UTC nur rund 268 MiB MemAvailable, Swap praktisch
-   voll, Platte 98 % belegt. Vor weiteren Docker-Kandidatenstarts ausreichend
-   versorgte Umgebung bereitstellen; keine gesicherte Queue-Root-Cause behauptet.
-3. **L04/L05/L06/L09/L10:** vorhandene technische Vorbereitungen mit fehlenden Schlüsseln,
-   Systemzugängen, Rechte-/Website-/Privacy-Angaben und menschlichen Freigaben abschließen.
-   Websitearbeit nur über Lovable; keinerlei automatische Veröffentlichung.
+1. **L12/L18 P0/P1:** auf ausreichend versorgtem isoliertem System aktuellen
+   Kandidatenstart, Installation/Upgrade/Restore und Kategorie-/RBAC-Parität prüfen.
+   E195 ist Teilnachweis; ursprüngliche Queue-Ursache offen. E214 zeigt die letzte
+   Docker-VM-Grenze: etwa 268 MiB MemAvailable, Swap praktisch voll, Platte 98 %.
+   Keine blinden Vollstarts und keine Eingriffe in fremde Demos; Host angefragt.
+2. **L05/L13 P0:** passenden bestehenden Signing-Key und Linux-x64-Referenzsystem
+   (4 CPU, mindestens 8 GiB) bereitstellen; danach fehlende signierte Kandidaten-
+   und Benchmarknachweise innerhalb der bestehenden Release-Grenzen erbringen.
+   E224 und gültige Modell-/PTY-/Live-Nachweise wiederverwenden; keine Tags als Abkürzung.
+3. **L04/L06/L09/L10/L25:** fehlende Rechte-/Hosting-/Formular-/Privacy-Angaben,
+   offizielle Lovable-Verbindung, authentifiziertes Nutzerprofil und menschliche
+   Abnahmen ergänzen. L11/L21: konkretes Store-Listing anonym nicht verfügbar, E223;
+   aktueller interner Reviewstatus UNVERIFIED. Keine automatische Veröffentlichung.
 
 Bekannte Lizenzrecherchen E137–E143 nicht wiederholen: alle 103 Polyfill-Versionen
 haben Originaltexte. Vier lokale Source-Archive E144 vorhanden; fehlende Toolchains
