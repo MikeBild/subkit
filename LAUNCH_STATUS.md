@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-18T05:38:46.896019+00:00**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-18T05:55:36.802007+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktstand vor Remote-Integration: **0c61b8bc6**, Version **9.15.2**. QuickJS-Fix und korrigierte Hook-Dokumentationsassertion committed; vollständiges Gesamtgate PASS, unveränderte Quellhashes. ARM64-Image, Installation, Regression und Notice-Auslieferung bestanden (E158).
-- Letzter bestätigter Remote-Stand: **0f25ede2c**, main; HEAD, origin/main und GitHub main identisch, sauberer Checkout nach erfolgreichem Push mit allen acht Hooks (E160). Diese nachfolgende Statusaktualisierung LOCAL_ONLY bis Push. Kombinierter Gesamtcheck läuft; keine Release-Freigabe.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E160. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Letzter bestätigter Remote-Stand: **87fe1615c**, main. Remote enthält Intake-Recovery-Fix und Framer-Fortschritt; lokal integriert. Vorheriger Push E160 bestätigt. Diese Aktualisierung LOCAL_ONLY bis Push; kein Release-Go.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E161. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -25,11 +25,11 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L06 | BLOCKED | Betreiber-/Supportangaben und juristische Freigabe erforderlich. |
 | L07 | DONE | Persistenter Quickstart und Backup-/Recovery-Anleitung; Linux-amd64-Build, frische Installation, Engine-Neustart und Restore in getrennte leere Volumes mit verschlüsselten Testdaten PASS, E22. Commit 765a2fe26 gepusht, alle acht Pre-Push-Gates bestanden. Öffentliche Installation bleibt L15, Versionsupgrade L18. |
 | L08 | IN_PROGRESS | **P0 E153: im echten Sandbox-Worker reproduziert; offizieller Fix als lokal reproduzierter Bun-Patch umgesetzt. 185 Sandbox-Tests und frische Linux-Patchinstallation PASS. Kompilierter Worker und finaler Container bestehen die Regression; frische Compose-Installation inklusive Neustart/Persistenz und Cleanup PASS (E158). Erster Gesamtcheck scheiterte an veralteter Hook-Dokumentationsassertion; Test korrigiert, 9 Tests PASS. Vollständige Wiederholung PASS: Exit 0, Quellen unverändert (E158). Commit 0c61b8bc6 über Merge 0f25ede2c gepusht (E160).**  Konkrete SDK/Issuer-, Hono-, Parser-, Transport-, Sharp- und Containerbefunde korrigiert und gezielt geprüft (E25/E30/E54–E60/E68/E78). Aktueller lokaler ARM64-Imageaudit E151: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW. ONNX-Modelleingang statisch eingegrenzt; echte Provider-Inferenz ohne Netzwerk liefert 384 endliche Werte (E155), keine Gesamtfreigabe. Native/WASM-/Artefaktabdeckung, übrige Befunde und finale Sicherheitsfreigabe offen. Kein Schluss auf Gesamtfreigabe aus Paketcounts. |
-| L09 | IN_PROGRESS | Framer als Website-Kanal vom Nutzer gewählt, Deutsch zuerst. Vier deutsche Seitenentwürfe, Framer-Gesamtauftrag, Positionierung und Link-/Abnahmeregister in LAUNCH.md. Neues Framer-Projekt verbunden; allgemeine Redaktionsanweisung und vier Seiten-Skills gespeichert und vollständig zurückgelesen, E154. Gestaltete Seiten, vollständiger Claude-Artifact-Abgleich, Pflichtlinks und menschliche Abnahmen offen. Nicht veröffentlicht; Trackeränderung LOCAL_ONLY bis Push. |
+| L09 | IN_PROGRESS | Deutsche Framer-Vorabwebsite für Einzelpersonen, Soloselbstständige, Unternehmen mit 1–10 Mitarbeitern und Abteilungen freigegeben. Erste Startseite mit gemeinsamem Layout-Template, Button, Farben/Textstilen und Desktop-/Tablet-/Phone-Breakpoints aufgebaut; Inhalte/Anker unabhängig im Live-Tree geprüft, gezielte Desktop-/Phone-Ansichten manuell vom Agenten geprüft, technische Framer-Bereitschaft ohne Fehler/Warnungen, E159. Menschliche Sichtabnahme der Startseite steht aus; danach drei übrige Seiten und echte Routen. Vollständiger Artifact-Abgleich, Pflichtangaben, finale Funktions-/Sichtabnahme und separate Veröffentlichungsgenehmigung offen. Nicht veröffentlicht; dieser Fortschritt LOCAL_ONLY bis Push. |
 | L10 | IN_PROGRESS | Zweisprachige Listing-Texte, Berechtigungsbegründungen, Datenfluss-/Privacy-Arbeitsblatt und Reviewer-Ablauf als Entwurf in LAUNCH.md vorbereitet. Vier PNG-Icons werden aus bestehendem Cockpit-Logo generiert und mit Lucide-Lizenz im Manifest/ZIP ausgeliefert, E53. Paket-/Browser-/Binärprüfungen und macOS/Linux-Reproduzierbarkeit bestanden. Zwei echte Screenshot-Entwürfe mit isolierten Beispieldaten vorbereitet (E147); Kleine Promografik als lokaler Entwurf ergänzt; 128px-Store-Icon auf 96px-Motiv plus 16px transparenten Rand korrigiert und im ZIP geprüft (E148). Linux-amd64/macOS-ZIP byte-identisch; aktuelle kompilierte Engine/CLI liefern/installieren dasselbe Paket, E149. Lokale Einreichungsübergabe mit Listing-Texten, Medien, unverändertem ZIP und Prüfsummen erstellt; Integritäts-/Secret-Scan PASS, acht Freigabevoraussetzungen offen (E152). Visuelle Abnahme aller Medien, Pflichtlinks und menschliche Zertifizierung offen. ENTWURF, nicht veröffentlicht. |
 | L11 | BLOCKED | L10, öffentliche Pflichtlinks, Publisherstatus und explizite Einreichungsfreigabe fehlen. |
 | L12 | IN_PROGRESS | Isolierter aktueller Kandidat: API-/Browser-/Intake-Prüfungen PASS, E37–E39; MCP-Cockpit-Handoff und echter Clipper gegen Engine PASS, E42/E43. Mock-Läufe und begrenzter echter Provider-Chat E45 getrennt belegt; vollständige Cross-Surface-Abnahme weiterhin offen. Manuelle Demo unverändert. **Neuabnahme erforderlich:** Die Scope-Erweiterung „Sitzungs-Lernvorschläge über Intake“ (Ziel Wissen oder Skill, Bestätigung nur per Browser-Sitzung) ändert die geprüften Abläufe; E37–E46 gelten nur für den Stand davor. Lokale Demo mit echtem Provider einschließlich neuer Journey „session learnings review“ (deterministisch und reales Modell getrennt) PASS. L12 läuft nach dem Deploy komplett neu: Clipper, sk, MCP, HTTP, Cockpit, Google Chat, Coding-Agent-Hooks; simuliert und live getrennt. |
-| L13 | IN_PROGRESS | Aktuelles vollständiges bun run verify für QuickJS-Patch und korrigierte Dokumentationsassertion PASS, Quellhashes unverändert (E158). Integrierter Stand 0f25ede2c gepusht (E160); erstes Gesamtgate mit DB-Fixture-Timeout fehlgeschlagen (E156), unveränderter Einzeltest PASS. Serielle vollständige Wiederholung läuft; Ergebnis UNVERIFIED. Live-Modellmatrix E73 PASS; aktuelle gepaarte Referenz-Benchmarks fehlen (E75/E80). |
+| L13 | IN_PROGRESS | Aktuelles vollständiges bun run verify für QuickJS-Patch und korrigierte Dokumentationsassertion PASS, Quellhashes unverändert (E158). Integrierter Stand 0f25ede2c gepusht (E160); erstes Gesamtgate mit DB-Fixture-Timeout fehlgeschlagen (E156), unveränderter Einzeltest PASS. Serielle Wiederholung scheitert am fehlenden Recovery-Hinweis intake_items_changed (E161); Remote-Fix cfdc57b82 übernommen. Aktueller Gesamtstand UNVERIFIED. Live-Modellmatrix E73 PASS; aktuelle gepaarte Referenz-Benchmarks fehlen (E75/E80). |
 | L14 | BLOCKED | L04/L05/L13 und Freigabe für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Externer Installationstest aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -106,16 +106,14 @@ Scope-Erweiterung vom Nutzer entschieden (gegen den Freeze 17.–20.10.): Lernvo
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **Kombinierten Stand nach Remote-Integration prüfen**.
-E158 gilt für 0c61b8bc6 vor der Intake-Erweiterung, nicht für den Merge.
-Zehn gezielte QuickJS-/Selbstbeschreibungsprüfungen PASS (E156). Gesamtcheck
-für dbe8d7012 ist mit DB-Fixture-Timeout beendet (Session 39574 terminal, Exit 1).
-Der betroffene MCP-Test besteht allein unverändert; Ressourcen-Konkurrenz prüfen.
-Serieller Containerlauf Session 49697 terminal PASS. Push mit allen acht Hooks bestanden (E160).
-Serieller Gesamtcheck für 0f25ede2c läuft in Session 19644; Receipt/Log:
-`.artifacts/launch/launch-integrated-serial-full-verify.{json,log}`. Nicht parallel neu starten; kein Release-Go. `.artifacts/launch/quickjs-integrated-full-verify.{json,log}` erhalten. Alte Session 63013
-ist terminal (Exit 0) und darf nicht erneut gepollt werden. Keine Übertragung
-historischer Container-/Store-Paket-Nachweise auf das geänderte Intake-/Clipper-Paket.
+Nächster Codex-Schritt: **Integrierten Recovery-Fix gezielt prüfen, danach vollständiges Gate seriell wiederholen.**
+Session 19644 ist terminal, Exit 1: Katalogprüfung in Datei 696/2050 meldet fehlenden
+Recovery-Hinweis `intake_items_changed` (E161). Früherer DB-Fixture-Fehler tritt im
+seriellen Lauf nicht auf: neun MCP-Probe-Tests PASS. Remote cfdc57b82 enthält bereits
+den passenden Hinweis; keine doppelte Implementierung. Neue Framer-Arbeit aus
+87fe1615c bleibt erhalten, E159 bezeichnet Website, E160 den vorherigen Push.
+Kein Gesamt-PASS und keine Übertragung historischer Image-/Store-Nachweise auf
+geänderten Produktcode. Keine parallelen schweren Prüfungen.
 
 L04 bleibt begrenzt auf bekannte offene Rechte-/Plattform-/Quellauslieferungsfragen
 und menschliche Freigaben. Alle 103 Polyfill-Lockfile-Versionen haben Originaltexte;
