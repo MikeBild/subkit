@@ -24,7 +24,7 @@ Ausführungen nachvollziehen. KI-Unterstützung ersetzt keine Ausführungsfreiga
 - General Availability (GA): möglichst bis 15.11.2026; früher, sobald alle Gates erfüllt sind.
 - Veröffentlichung hat Vorrang vor neuen Features, Refactorings und Architekturarbeit.
 - Kostenloses Self-Hosting, kein SaaS, kein Checkout und kein kostenpflichtiges B2C-Angebot.
-- Bestehende Website verwenden; Quellrepository nach Prüfung öffentlich machen.
+- SubKit-Website in Framer vorbereiten; Deutsch zuerst, Englisch später. Quellrepository nach Prüfung öffentlich machen.
 - Clipper einschließlich späterer öffentlicher Chrome-Web-Store-Version gehört zum Launch.
 - Praktisch getestete Installation, menschliche Freigaben und Release-Gates sind zwingend.
 - Deutsche rechtliche Anforderungen anhand des tatsächlichen Angebots prüfen und freigeben.
@@ -63,7 +63,8 @@ Dokumentation, öffentliche Store-Installation, finale Produktabnahme und Suppor
 ### Nicht-Ziele
 
 Neue Connectoren, Slack-/Teams-Adapter, SaaS, Abrechnung, Marketplace, Kubernetes,
-zusätzliche Engine-Architekturen, neue Website-Plattform und UI-Redesign sind P2.
+zusätzliche Engine-Architekturen und Produkt-UI-Redesign sind P2. Framer ist durch die
+Nutzerentscheidung für die öffentliche SubKit-Website im Launch-Scope.
 Vorhandene Roadmap-Issues werden nicht automatisch Launch-Blocker. Das ältere GitHub-Issue
 #318 zur ChatGPT-Katalogauffindbarkeit wird nur anhand eines aktuellen Pflichtpfads bewertet;
 kein vorsorglicher Katalog- oder Architekturumbau. Issues #305, #278 und #264–#272 bleiben
@@ -295,9 +296,15 @@ wiederherstellen. Wiederherstellungsdauer und möglicher Datenverlust werden gem
 
 ## Website und Recht
 
-Vorhandene redaktionelle Quelle: `MikeBild/mikebild-dev-content`; sie ist von diesem Repo
+Aktuelle Nutzerentscheidung: Die öffentliche SubKit-Website wird in Framer vorbereitet,
+auf Deutsch, Englisch später. Die frühere ContentKit-Zielzuordnung unten ist historischer
+Kontext. Das Framer-Arbeitspaket am Ende dieser Datei führt Inhalte und Übergabe weiter.
+Veröffentlichung, Betreiberangaben und menschliche Sicht-/Rechtsabnahme bleiben offen.
+
+Historische redaktionelle Quelle: `MikeBild/mikebild-dev-content`; sie ist von diesem Repo
 getrennt. README/AGENTS dieses Repositories wurden in der Bestandsaufnahme gelesen. ContentKit
-ist dort das Publikationssystem; dessen Inhaltsreview und Publikationsfreigaben bleiben bestehen.
+ist dort das Publikationssystem. Für die hier beauftragte SubKit-Website ist nun Framer vorgesehen;
+Inhaltsreview und ausdrückliche Publikationsfreigabe bleiben erforderlich.
 Der tatsächliche Website-Runtime-/Hosting-Code ist noch nicht vollständig verifiziert.
 Konkrete Hosts und private Infrastruktur bleiben außerhalb dieser Dateien.
 
@@ -550,7 +557,8 @@ Status: redaktioneller Entwurf, nicht veröffentlicht. Zielquelle nach Review:
 `MikeBild/mikebild-dev-content`, `content/site/projects/subkit.md`.
 Der gelesene main-Baum enthält noch keine SubKit-Projektseite. Keine vorhandene Seite
 wurde ersetzt. Editorial voice, anti-slop und maintenance-policy wurden berücksichtigt.
-ContentKit bleibt Publikationssystem; dessen Approval Gate bleibt bestehen.
+Dieser frühere Entwurf wird durch das Framer-Arbeitspaket am Ende dieser Datei fortgeführt.
+Die bisherige ContentKit-Zielzuordnung ist durch die Nutzerentscheidung ersetzt.
 
 ### Claim Map vor der Prosa
 
@@ -642,7 +650,7 @@ bestätigen, die Verfügbarkeit auf den tatsächlich freigegebenen Meilenstein s
 und alle Linkplätze durch geprüfte öffentliche Ziele ersetzen. Bis dahin bleibt
 auch dieser Entwurf unveröffentlicht. Keine Tracking-Pixel oder zusätzlichen externen
 Badges aufnehmen. Finaler Fakten-/Stimmenreview, konkrete Preview-Revision und die
-ContentKit-Freigabe werden separat dokumentiert.
+Veröffentlichungsfreigabe werden separat dokumentiert.
 
 ## L04: Quell-/Relink-Auslieferung konkret abnehmen
 
@@ -739,3 +747,417 @@ Medienabnahme, Reviewer-Zugang, finale Journey-Abnahme und Einreichungsfreigabe.
 Screenshots behalten ihre ursprüngliche ZIP-Provenienz; keine neue Abnahme aus der
 aktuellen Icon-Korrektur ableiten. Die Beschreibungsabsätze zur Wissensübernahme
 setzen die vollständige L12-Abnahme voraus.
+
+## Framer-Arbeitspaket
+
+### Redaktioneller Stand und Verwendung
+
+Nutzerentscheidung: Framer für die SubKit-Website; Deutsch zuerst, Englisch später.
+Ton: zurückhaltend, erwachsen, ehrlich und direkt. Die Website erklärt konkrete Arbeit,
+Zuständigkeiten und Grenzen. Sie verwendet keine unbelegten Leistungszahlen, Kundenlogos,
+Kundenstimmen, Sicherheitsversprechen oder Vergleiche mit benannten Wettbewerbern.
+
+Inhaltsreferenz: https://claude.ai/artifact/7u5YLz56h152Q4xUHwiGCo.
+Die bestätigte Wissensquelle „SubKit: Zielgruppen, Positionierung, Nutzen“ nennt dafür
+Start, Anwendungsfälle, Loslegen und Vergleiche sowie deren Gliederung. Der vollständige
+Artifact-Inhalt war nicht abrufbar. Die folgenden Texte sind ein neuer Arbeitsentwurf
+auf Basis dieser Gliederung, der README und der vorhandenen Launch-Claim-Map. Sie sind
+keine behauptete Übernahme oder Abnahme des vollständigen Artifacts.
+
+Die vom Nutzer gelieferte Gemini-Analyse ist strategischer Input. Daraus werden
+Käuferfragen abgeleitet, keine bestätigten Wettbewerberfakten oder Überlegenheitsclaims.
+Die Framer-Texte sind ebenfalls keine automatisch bestätigte Knowledge-Quelle.
+
+### Positionierung für Interessenten
+
+Zielgruppe bleiben Fachbereiche, Teamleitungen, IT und Entwickler in kleinen Unternehmen.
+Der gemeinsame Anlass: Eine wiederkehrende Aufgabe soll für das Team verlässlich
+betrieben werden, ohne für jeden Ablauf Berechtigungen, Freigaben und Verlauf neu zu bauen.
+
+| Käuferfrage | SubKit-Antwort | Grenze der Aussage |
+| --- | --- | --- |
+| Welche Arbeit fällt im Alltag weg? | Konkrete, wiederkehrende Übergaben zwischen bestehenden Systemen beschreiben und prüfen. | Keine Zeitersparnis oder Produktivitätsquote ohne Vorher-/Nachher-Messung. |
+| Können Fachbereiche mitarbeiten? | Fachwissen in normalen Sätzen beschreiben, Entwurf und Wirkung gemeinsam prüfen. | Komplexe Datenmodelle, Rechte und Integrationen brauchen technische Arbeit. |
+| Behält die IT die Übersicht? | Benutzerrechte, Connector-Zugänge, erlaubte Wirkung und Ausführungsverlauf getrennt erklären. | Keine pauschale Compliance- oder Sicherheitsgarantie. |
+| Können wir vorhandene Systeme weiter nutzen? | Dokumentierte Schnittstellen und unterstützte Verbindungen verwenden. | Keine vollständige Abdeckung aller Unternehmenssysteme behaupten. |
+| Können wir Wissen berücksichtigen? | Bestätigte Quellen und Regeln mit Herkunft in die Vorbereitung einbeziehen. | Keine allgemeine Unternehmenssuche behaupten; Intake-Verfügbarkeit bleibt an L12 gebunden. |
+| Können mehrere Personen denselben Ablauf nutzen? | Gemeinsame Abläufe mit den jeweiligen Rechten starten und Ergebnisse nachvollziehen. | Keine unbelegte Unternehmensskalierung oder Verfügbarkeitszusage. |
+| Lohnt sich der Betrieb? | Prozessaufwand, Nacharbeit, Infrastruktur und Anbietergebühren am eigenen Fall messen. | Modellkosten sind nicht die vollständigen Prozesskosten; kein garantierter ROI. |
+
+### Framer-Gesamtauftrag
+
+BEGIN FRAMER AUFTRAG
+
+Bereite die deutsche SubKit-Website als bearbeitbaren Entwurf mit vier Seiten vor:
+Start (/), Anwendungsfälle (/anwendungsfaelle), Loslegen (/loslegen) und Vergleiche
+(/vergleiche). Englisch folgt später.
+
+SubKit ist eine selbst hostbare Engine für KI-gestützte Workflows. Zielgruppe sind
+Fachbereiche, Teamleitungen, IT-Verantwortliche und Entwickler in kleinen Unternehmen.
+Erkläre zuerst die konkrete Arbeit und den Nutzen. Erkläre Technik dort, wo sie hilft,
+eine Entscheidung zu treffen. Schreibe in der Du-Form, ruhig, präzise und ohne Superlative.
+
+Verwende die nachfolgenden Seitentexte. Ergänze keine Produkteigenschaften, Zahlen,
+Kundenstimmen, Markenlogos, Marktführerschaft oder Rechtsversprechen. Die im Auftrag
+enthaltenen Beispiele sind entworfene Abläufe, keine veröffentlichten Kundenberichte.
+Kennzeichne sie entsprechend. Stelle SubKit nicht als völlig autonome Agentenplattform dar.
+
+Inhaltsreferenz ist https://claude.ai/artifact/7u5YLz56h152Q4xUHwiGCo.
+Die vierseitige Gliederung ist bekannt; der vollständige Inhalt muss noch abgeglichen
+werden. Behaupte keinen erfolgten Import dieses Artifacts. Die hier gelieferten Texte
+sind ein eigenständiger Arbeitsentwurf. Wenn die Referenz zugänglich ist, prüfe die
+Unterschiede vor einer Übernahme. Widersprüche zu aktuellen Produktnachweisen offenlegen.
+
+Prüfe eine vorhandene konkrete Design-Vorlage einschließlich Komponenten und Zuständen
+vor Gestaltungsänderungen und übernimm sie originalgetreu. Das Artifact ist ausdrücklich
+als Inhaltsvorlage gewählt. Bei einem leeren Framer-Projekt zunächst einen ruhigen,
+gut lesbaren Gestaltungsvorschlag zur Sichtabnahme erstellen. Unterstütze die Inhalte
+mit echten freigegebenen Produktaufnahmen, sobald sie vorliegen. Verwende keine
+erfundenen Cockpit-Screenshots oder dekorativen Zahlen.
+
+Halte Texte, Navigation und wiederkehrende Elemente in Framer editierbar. Die Navigation
+verlinkt die vier vorhandenen Seiten. Der Hauptlink lautet „Einstieg ansehen“ und führt
+zu /loslegen; der ergänzende Link „Anwendungsfälle ansehen“ führt zu /anwendungsfaelle.
+Keine Anmelde-, Kauf- oder Demo-Buchungsschaltfläche ohne funktionierendes Ziel einbauen.
+
+Der sichtbare Verfügbarkeitstext lautet zunächst: „Die öffentliche Beta wird vorbereitet.
+Installationspakete und Anleitung folgen nach der Freigabe.“ Die Website wird erst nach
+Prüfung auf den tatsächlich veröffentlichten Stand umgestellt. Unbekannte Download-,
+Support-, Impressums- und Datenschutzadressen sind offene redaktionelle Aufgaben;
+keine erfundenen Links und keine scheinbar funktionierenden Formulare einsetzen.
+
+Interne Quellenhinweise, Freigabeaufgaben und die unten stehende Linkliste gehören in
+die Arbeitsunterlagen, nicht in die Besuchertexte. Veröffentliche das Projekt nicht.
+
+END FRAMER AUFTRAG
+
+### Startseite
+
+BEGIN FRAMER START
+
+Pfad: /
+Seitentitel: SubKit – Arbeitsabläufe für dein Team
+Suchbeschreibung: Mit SubKit bereitest du KI-gestützte Arbeitsabläufe vor, prüfst ihre Wirkung und betreibst sie mit nachvollziehbarem Verlauf. Selbst gehostet.
+
+# Wiederkehrende Arbeit gemeinsam betreiben
+
+Du beschreibst, was erledigt werden soll. SubKit hilft dir, daraus einen Workflow
+vorzubereiten. Eine Person prüft, welche Systeme und Daten er erreichen darf.
+Danach kann dein Team den freigegebenen Ablauf nutzen und seine Ausführung nachvollziehen.
+
+Einstieg ansehen → /loslegen
+Anwendungsfälle ansehen → /anwendungsfaelle
+
+Die öffentliche Beta wird vorbereitet. Installationspakete und Anleitung folgen nach der Freigabe.
+
+## Wenn aus einer einzelnen Aufgabe ein gemeinsamer Ablauf wird
+
+Ein Bericht ist schnell einmal zusammengestellt. Soll er regelmäßig entstehen, braucht
+es mehr: verlässliche Zugänge, eindeutige Zuständigkeiten und einen Umgang mit Fehlern.
+SubKit bündelt diese Aufgaben rund um wiederkehrende Workflows.
+
+Bestehende Anwendungen bleiben Teil des Ablaufs. Welche Verbindungen möglich sind,
+hängt von ihren Schnittstellen und den eingerichteten Berechtigungen ab.
+
+## Von der Beschreibung zum laufenden Workflow
+
+**Beschreiben.** Erkläre die Aufgabe, die beteiligten Systeme und das gewünschte Ergebnis.
+
+**Prüfen.** Schau dir den Entwurf an. Stimmen die Daten, die vorgesehenen Änderungen
+und die Bedingungen, unter denen etwas passieren soll?
+
+**Freigeben.** Eine berechtigte Person erlaubt die geprüfte Wirkung für eine Umgebung.
+Wird diese Reichweite später erweitert, ist eine neue Freigabe nötig.
+
+**Betreiben.** Starte den Ablauf oder nutze einen eingerichteten Auslöser. Im Verlauf
+siehst du, welche Fassung lief und wie die Ausführung ausging.
+
+## Ein gemeinsamer Ablauf, unterschiedliche Verantwortung
+
+**Für den Fachbereich:** Du bringst die Aufgabe und die fachlichen Regeln ein.
+Ein verständlicher Entwurf hilft dir zu prüfen, ob das Ergebnis zur Arbeit passt.
+
+**Für die Teamleitung:** Abläufe und ihre Ergebnisse bleiben nachvollziehbar.
+Du kannst erkennen, wo ein Prozess funktioniert und wo er Aufmerksamkeit braucht.
+
+**Für die IT:** Rechte, Systemzugänge und Ausführungsfreigaben bleiben getrennte
+Kontrollen. Der Betrieb liegt bei euch, einschließlich Updates und Datensicherung.
+
+**Für Entwickler:** Cockpit, Kommandozeile und angebundene KI-Werkzeuge greifen auf
+dieselben Produktfunktionen zu. Die Rechte der jeweiligen Identität gelten dabei weiter.
+
+## Die erlaubte Wirkung bleibt überprüfbar
+
+Ein Workflow darf nicht allein deshalb Änderungen ausführen, weil ein Zugang gespeichert
+ist. Die Freigabe legt fest, welche Systeme und Adressen er in einer Umgebung erreichen
+und ob er dort lesen oder schreiben darf. Sie kann widerrufen werden. Eine neue Fassung
+kann eine bestehende Freigabe übernehmen, wenn ihre Reichweite nicht wächst.
+
+## Selbst hosten heißt auch selbst betreiben
+
+SubKit läuft in deiner eigenen Installation. Du entscheidest, welche Dienste und
+Modellanbieter du verbindest. Daten können bei freigegebenen Aufrufen an diese Anbieter
+gesendet werden. Betrieb, Backups und die Prüfung dieser Datenflüsse gehören dazu.
+
+Das Self-Hosting-Angebot ist kostenlos. Infrastruktur und die Nutzung externer Anbieter
+können Kosten verursachen.
+
+## Mit einer überschaubaren Aufgabe anfangen
+
+Wähle einen Ablauf mit klarem Ergebnis und wenigen beteiligten Systemen.
+Prüfe ihn gemeinsam mit den Menschen, die ihn später nutzen und betreiben.
+
+Einstieg ansehen → /loslegen
+
+END FRAMER START
+
+### Anwendungsfälle
+
+BEGIN FRAMER ANWENDUNGSFAELLE
+
+Pfad: /anwendungsfaelle
+Seitentitel: Anwendungsfälle – SubKit
+Suchbeschreibung: Berichte, Anfragen und Dokumente: Beispiele für wiederkehrende Abläufe, die ein Team mit SubKit vorbereiten und prüfen kann.
+
+# Mit einer konkreten Aufgabe beginnen
+
+Gute Einstiegsfälle haben ein klares Ergebnis, wenige beteiligte Systeme und jemanden,
+der beurteilen kann, ob der Ablauf stimmt. Die folgenden Beispiele zeigen mögliche
+Entwürfe. Welche Teile eine veröffentlichte Fassung bereits mitbringt, wird im
+jeweiligen Installationsangebot ausgewiesen.
+
+## Einen regelmäßigen Bericht vorbereiten
+
+„Stelle jeden Montag die vereinbarten Kennzahlen der vergangenen Woche zusammen.“
+
+Der Ablauf liest die vorgesehenen Quellen und bereitet die Übersicht auf. Vor der
+Freigabe klärt das Team, welche Kennzahlen gelten, wie fehlende Werte behandelt werden
+und wer das Ergebnis erhalten darf.
+
+Der Nutzen: Die Zusammenstellung muss nicht jedes Mal neu organisiert werden.
+Ob tatsächlich Zeit gespart wird, lässt sich am eigenen Bericht messen.
+
+Herkunft: Beispiel für einen zu entwerfenden Ablauf.
+
+## Eingehende Anfragen zuordnen
+
+„Prüfe neue Anfragen auf vorhandene Kontakte und bereite die Übergabe an den Vertrieb vor.“
+
+Der Entwurf macht sichtbar, woher die Anfrage kommt, wie ein vorhandener Kontakt erkannt
+wird und welche Informationen weitergegeben werden. Schreiben ins Kundensystem und
+Benachrichtigungen brauchen passende Rechte und eine geprüfte Freigabe.
+
+Der Nutzen: Die Übergabe folgt einer vereinbarten Regel und bleibt nachvollziehbar.
+
+Herkunft: Beispiel für einen zu entwerfenden Ablauf.
+
+## Dokumente nach einer festen Regel ablegen
+
+„Lege passende Anhänge aus dem vereinbarten Postfach im vorgesehenen Ordner ab.“
+
+Vor dem ersten Lauf wird geklärt, welche Anhänge dazugehören, wer Zugriff auf den Ordner
+hat und wie mit mehrfach eingegangenen Dateien umgegangen wird. Eine automatische
+Ablage ersetzt keine Prüfung auf Vollständigkeit oder eine rechtliche Archivlösung.
+
+Der Nutzen: Die wiederkehrende Ablage wird als überprüfbarer Prozess beschrieben.
+
+Herkunft: Beispiel für einen zu entwerfenden Ablauf.
+
+## Änderungen vor der Übernahme sichtbar machen
+
+„Vergleiche die neue Lieferantenliste mit unseren Daten und zeige die Unterschiede.“
+
+Ein lesender Abgleich kann der erste Schritt sein. Wenn später Daten übernommen werden
+sollen, wird diese zusätzliche Schreibwirkung gesondert geprüft. Fachliche Regeln und
+Sonderfälle müssen aus dem eigenen Betrieb kommen.
+
+Der Nutzen: Das Team kann die vorgeschlagenen Änderungen beurteilen, bevor es eine
+weitergehende Automatisierung freigibt.
+
+Herkunft: Beispiel für einen zu entwerfenden Ablauf.
+
+## Den Zustand gemeinsamer Abläufe zusammenstellen
+
+„Zeige uns regelmäßig, welche Abläufe liefen und welche Aufmerksamkeit brauchen.“
+
+Eine Übersicht kann erfolgreiche und fehlgeschlagene Ausführungen zusammenführen.
+Das Team legt fest, wer auf welche Befunde reagiert. Eine Meldung allein behebt keinen
+Fehler; sie macht ihn für die zuständige Person sichtbar.
+
+Der Nutzen: Die Verantwortung für wiederkehrende Arbeit lässt sich konkret zuordnen.
+
+Herkunft: Beispiel für einen zu entwerfenden Ablauf.
+
+## Woran sich ein erster Versuch messen lässt
+
+Vergleiche den bisherigen Aufwand mit Vorbereitung, Betrieb und Nacharbeit des neuen
+Ablaufs. Berücksichtige Fehler, Ausnahmen, Infrastruktur und Anbietergebühren.
+Erst diese Beobachtung zeigt, ob sich die Automatisierung für euch lohnt.
+
+Einstieg ansehen → /loslegen
+
+END FRAMER ANWENDUNGSFAELLE
+
+### Loslegen
+
+BEGIN FRAMER LOSLEGEN
+
+Pfad: /loslegen
+Seitentitel: Loslegen – SubKit selbst hosten
+Suchbeschreibung: Bereite deinen Einstieg mit SubKit vor: Betrieb klären, eine Aufgabe auswählen und den ersten Workflow gemeinsam prüfen.
+
+# Den ersten Ablauf überschaubar halten
+
+SubKit wird selbst gehostet. Für den Einstieg brauchst du eine Installation, passende
+Zugänge zu den beteiligten Diensten und eine Person, die die Aufgabe fachlich prüfen kann.
+
+Die öffentliche Beta wird vorbereitet. Installationspakete und Anleitung folgen nach der Freigabe.
+
+## Drei Wege zur ersten Aufgabe
+
+**Du kennst den Arbeitsablauf.** Beschreibe, was heute von Hand passiert, welche Daten
+verwendet werden und woran du ein richtiges Ergebnis erkennst. Beziehe die IT früh ein,
+wenn Zugänge oder der Betrieb eingerichtet werden müssen.
+
+**Du betreust die Systeme.** Kläre Installation, Backups, Updates und den Zugriff auf
+verbundene Dienste. Beginne mit einer getrennten Testumgebung und überschaubaren Rechten.
+
+**Du entwickelst mit KI-Werkzeugen.** Nutze die dokumentierten Zugänge von SubKit, um
+Workflows vorzubereiten und Ergebnisse zu prüfen. Ein Coding-Agent arbeitet dabei mit
+den Rechten seiner Identität. Seine Anbindung ersetzt keine Ausführungsfreigabe.
+
+## Fünf Schritte für den Einstieg
+
+1. **Aufgabe auswählen:** ein klares Ergebnis, wenige Systeme, eine zuständige Person.
+2. **Betrieb vorbereiten:** Installation, Sicherung, Zugänge und Anbieter klären.
+3. **Entwurf prüfen:** Daten, Bedingungen, Ausnahmen und erlaubte Wirkung durchgehen.
+4. **Kontrolliert erproben:** mit geeigneten Testdaten prüfen, ob Ergebnis und Verlauf stimmen.
+5. **Verantwortung festlegen:** erst dann den vereinbarten Einsatz freigeben und festhalten,
+   wer Läufe beobachtet, Fehler bearbeitet und Änderungen prüft.
+
+Das ist eine sinnvolle Reihenfolge, kein Versprechen einer bestimmten Einführungsdauer.
+
+## Installation und Downloads
+
+Mit der freigegebenen Beta werden hier die passende Installationsanleitung,
+Downloadpakete, unterstützten Plattformen und Prüfsummen verlinkt. Verwende Anleitung
+und Artefakte derselben freigegebenen Fassung.
+
+Die technische Anleitung bleibt mit der Produktdokumentation abgestimmt. Zu einer
+Installation gehören auch dauerhaft gesicherte Schlüssel und ein geprüfter
+Wiederherstellungsweg.
+
+## Quellen sammeln und prüfen
+
+Für den Clipper ist ein Weg von der Sammlung über die Prüfung im Chat zur ausdrücklich
+bestätigten Übernahme als Wissen oder Regel vorgesehen. Die ursprüngliche Quelle bleibt
+Teil des Zusammenhangs. Der konkrete Lieferumfang und die Installationsmöglichkeiten
+werden mit der freigegebenen Fassung beschrieben.
+
+## Kosten und Betrieb
+
+Das kostenlose Self-Hosting umfasst die Software, nicht deine Infrastruktur oder
+Gebühren externer Anbieter. Du verantwortest die Installation, ihre Updates und Backups.
+Prüfe außerdem, welche Daten ein freigegebener Ablauf an verbundene Dienste übermittelt.
+
+## Kontakt und Unterstützung
+
+Mit dem öffentlichen Start werden der Kontaktweg und die Zuständigkeit für Fragen,
+Fehlerberichte und Sicherheitsmeldungen ausgewiesen.
+
+END FRAMER LOSLEGEN
+
+### Vergleiche
+
+BEGIN FRAMER VERGLEICHE
+
+Pfad: /vergleiche
+Seitentitel: Wann SubKit passt – und welche Arbeit andere Werkzeuge übernehmen
+Suchbeschreibung: Ordne SubKit ein: persönliche Assistenten, visuelle Automatisierung, autonome Agenten und der Betrieb geprüfter Workflows.
+
+# Welches Werkzeug passt zur Aufgabe?
+
+Die entscheidende Frage ist, wie die Arbeit später laufen soll. Musst du eine einmalige
+Aufgabe lösen, jede Verzweigung selbst gestalten oder einen vereinbarten Ablauf für dein
+Team betreiben? Die Grenzen sind nicht bei jedem Produkt gleich. Prüfe die konkrete
+Lösung anhand deiner Anforderungen.
+
+## Ein persönlicher Assistent
+
+Er hilft bei Recherche, Entwürfen und einzelnen Aufgaben. Das passt, wenn du mitarbeitest
+und das Ergebnis direkt beurteilst. Prüfe für wiederkehrende Teamarbeit zusätzlich,
+wie Zuständigkeiten, Ausführungsrechte und Verlauf geregelt sind.
+
+## Ein visuelles Automatisierungswerkzeug
+
+Es passt, wenn du Schritte und Verzweigungen selbst zusammensetzen möchtest.
+Wie gut der Betrieb funktioniert, hängt auch davon ab, wie Fehlerbehandlung,
+Berechtigungen und Wartung für deinen Ablauf eingerichtet werden.
+
+## Eine Plattform für autonome Agenten
+
+Sie kann passen, wenn ein System innerhalb vereinbarter Grenzen selbst weitere Schritte
+planen soll. Prüfe, wie Entscheidungen, Zugriffe und mögliche Änderungen nachvollzogen
+und begrenzt werden. Die Fähigkeiten unterscheiden sich zwischen den Angeboten.
+
+## SubKit
+
+SubKit konzentriert sich auf den Betrieb vorbereiteter Workflows. KI unterstützt die
+Vorbereitung. Eine Person prüft die erlaubte Wirkung. Ausgeführt wird die aktivierte
+Workflow-Fassung innerhalb ihrer Rechte und Freigaben.
+
+Auch ein festgelegter Workflow kann einen Modellaufruf enthalten. Dessen Antwort kann
+variieren. Ein geprüfter Ausführungsweg garantiert deshalb nicht automatisch die
+fachliche Richtigkeit jedes erzeugten Inhalts.
+
+## Acht Fragen vor der Entscheidung
+
+- Wer beschreibt den Ablauf und wer prüft ihn?
+- Was ist beim nächsten Lauf festgelegt und was kann sich ändern?
+- Welche Systeme und Daten darf der Ablauf erreichen?
+- Kann eine Kollegin ihn starten, ohne ihn verändern zu dürfen?
+- Wer bemerkt Fehler und wer bearbeitet sie?
+- Welche Kosten entstehen für Einrichtung, Läufe und Betrieb?
+- Wo liegen Daten und Zugänge, und wohin werden Daten übertragen?
+- Können wir hinterher nachvollziehen, was passiert ist?
+
+Lass dir diese Fragen an einer eigenen Aufgabe beantworten. Ein allgemeiner
+Funktionsvergleich ersetzt diese Prüfung nicht.
+
+## Mit einem Coding-Agent arbeiten
+
+Ein Coding-Agent kann Software entwickeln und bei der Vorbereitung eines Workflows
+helfen. SubKit stellt den gemeinsamen Betrieb mit Rechten, Freigaben und Verlauf bereit.
+Eigene Skripte können ebenfalls sinnvoll sein; dann muss das Team deren Betrieb,
+Zugänge, Änderungen und Fehlerbehandlung selbst gestalten.
+
+## Wann SubKit weniger gut passt
+
+Für eine einzelne lokale Aufgabe kann der zusätzliche Betrieb zu aufwendig sein.
+Wenn du freies Arbeiten am Dateisystem, beliebige Shell-Aufrufe oder eine umfangreiche
+Datenmigration brauchst, prüfe dafür geeignete Entwicklungs- und Datenwerkzeuge.
+SubKit bietet kein gehostetes SaaS-Angebot.
+
+Anwendungsfälle ansehen → /anwendungsfaelle
+
+END FRAMER VERGLEICHE
+
+### Link- und Abnahmeregister
+
+| Bereich | Ziel vor Veröffentlichung | Aktueller Umgang im Entwurf |
+| --- | --- | --- |
+| Hauptnavigation | /, /anwendungsfaelle, /loslegen, /vergleiche | Erst nach Anlage der Zielseiten verlinken. |
+| Quickstart | Anleitung der öffentlich geprüften Release-Fassung | Noch kein externer Button; Verfügbarkeit erklären. |
+| Downloads und Quellcode | Freigegebene öffentliche Artefakte und Repository | Keine private Adresse und keinen ungeprüften latest-Link einsetzen. |
+| Clipper | Freigegebenes ZIP und Installationsanleitung | Store-Badge erst nach öffentlicher Store-Verfügbarkeit. |
+| Impressum und Datenschutz | Betreiberbestätigte, rechtlich geprüfte Seiten | Pflichtinhalt offen; Veröffentlichung bleibt gesperrt. |
+| Support und Sicherheitsmeldungen | Bestätigte, funktionierende Kontaktwege | Keine erfundene E-Mail-Adresse oder Reaktionszeit. |
+| Produktabbildungen | Freigegebene Aufnahmen mit isolierten Beispieldaten | Keine erfundenen Produktzustände zeigen. |
+
+Der vollständige Artifact-Abgleich bleibt offen. Das Inhaltspaket ist bereits für
+redaktionelle Arbeit nutzbar; es ersetzt weder diesen Abgleich noch Produkt-, Rechts-
+oder Sichtabnahmen. Framer-Vorschau, Links und tatsächliche Website-Funktionen werden
+nach dem Seitenaufbau geprüft. Automatische visuelle Matrizen werden nicht ausgeführt.
+
+Die aktuelle L09-Einordnung und nächsten Schritte stehen ausschließlich in LAUNCH_STATUS.md.
+Die allgemeinen Launch-Prioritäten bleiben bestehen.
