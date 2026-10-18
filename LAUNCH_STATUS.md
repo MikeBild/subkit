@@ -2,11 +2,11 @@
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 
-- Letzte Aktualisierung: **2026-10-18T08:28:04.517916+00:00**; Planung in Europe/Berlin.
+- Letzte Aktualisierung: **2026-10-18T08:35:27.641426+00:00**; Planung in Europe/Berlin.
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktstand vor Remote-Integration: **0c61b8bc6**, Version **9.15.2**. QuickJS-Fix und korrigierte Hook-Dokumentationsassertion committed; vollständiges Gesamtgate PASS, unveränderte Quellhashes. ARM64-Image, Installation, Regression und Notice-Auslieferung bestanden (E158).
-- Letzter bestätigter Remote-Stand: **32abc4b37**, main; HEAD, origin/main und GitHub main identisch, Checkout nach regulärem Push sauber. Alle Pre-Push-Gates PASS. Vollständiger Gesamtcheck auf diesem Stand PASS, Exit 0 und Quellen unverändert (E167); kein Release-Go. Diese Fortschreibung LOCAL_ONLY bis Push.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E167. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Letzter bestätigter Remote-Stand: **f225cdfba**, main; HEAD, origin/main und GitHub main identisch, Checkout nach regulärem Push sauber. Alle Pre-Push-Gates PASS. Vollständiger Gesamtcheck auf Produktstand 32abc4b37 PASS, Exit 0 und Quellen unverändert (E167); kein Release-Go. Diese Fortschreibung LOCAL_ONLY bis Push.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E168. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -24,7 +24,7 @@ Nur diese Tabelle führt den aktuellen Status. Definitionen, Rollen, Fristen und
 | L05 | IN_PROGRESS | Privaten Deployment-Dispatch entfernt; Commit e6f6b68bf, 6 Release-/Provenance-Tests PASS, E13. Compose und Clipper als signierte Release-Artefakte ergänzt, E17; Signatur gegen Updater-Schlüssel vor Upload geprüft, E18. GitHub-Installer mit Signaturprüfung und lokalem Alias korrigiert, E20; signierte Lizenzdateien werden nun mitinstalliert, E127. Updater-Manifestparser weist Mehrdeutigkeiten ab, E128; signierter Lizenzdownload und Retention/Rollback ergänzt, E129. Engine-Installer einschließlich beider Notice-Dateien gegen finales Image real bestanden, E130/E133. Lokaler check/prepare/publish-Weg implementiert, 18 Prüfungen PASS, E21; echter Vorbereitungs-/Publikationslauf weiterhin UNVERIFIED. Modell-/Runtime-Assetbindung korrigiert und als a6d8b758d gepusht, E51. |
 | L06 | BLOCKED | Betreiber-/Supportangaben und juristische Freigabe erforderlich. |
 | L07 | DONE | Persistenter Quickstart und Backup-/Recovery-Anleitung; Linux-amd64-Build, frische Installation, Engine-Neustart und Restore in getrennte leere Volumes mit verschlüsselten Testdaten PASS, E22. Commit 765a2fe26 gepusht, alle acht Pre-Push-Gates bestanden. Öffentliche Installation bleibt L15, Versionsupgrade L18. |
-| L08 | IN_PROGRESS | **P0 E153: im echten Sandbox-Worker reproduziert; offizieller Fix als lokal reproduzierter Bun-Patch umgesetzt. 185 Sandbox-Tests und frische Linux-Patchinstallation PASS. Kompilierter Worker und finaler Container bestehen die Regression; frische Compose-Installation inklusive Neustart/Persistenz und Cleanup PASS (E158). Erster Gesamtcheck scheiterte an veralteter Hook-Dokumentationsassertion; Test korrigiert, 9 Tests PASS. Vollständige Wiederholung PASS: Exit 0, Quellen unverändert (E158). Commit 0c61b8bc6 über Merge 0f25ede2c gepusht (E162).**  Konkrete SDK/Issuer-, Hono-, Parser-, Transport-, Sharp- und Containerbefunde korrigiert und gezielt geprüft (E25/E30/E54–E60/E68/E78). Aktueller lokaler ARM64-Imageaudit E151: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW. ONNX-Modelleingang statisch eingegrenzt; echte Provider-Inferenz ohne Netzwerk liefert 384 endliche Werte (E155), keine Gesamtfreigabe. Native/WASM-/Artefaktabdeckung, übrige Befunde und finale Sicherheitsfreigabe offen. Kein Schluss auf Gesamtfreigabe aus Paketcounts. |
+| L08 | IN_PROGRESS | **P0 E153: im echten Sandbox-Worker reproduziert; offizieller Fix als lokal reproduzierter Bun-Patch umgesetzt. 185 Sandbox-Tests und frische Linux-Patchinstallation PASS. Kompilierter Worker und finaler Container bestehen die Regression; frische Compose-Installation inklusive Neustart/Persistenz und Cleanup PASS (E158). Erster Gesamtcheck scheiterte an veralteter Hook-Dokumentationsassertion; Test korrigiert, 9 Tests PASS. Vollständige Wiederholung PASS: Exit 0, Quellen unverändert (E158). Commit 0c61b8bc6 über Merge 0f25ede2c gepusht (E162).**  Konkrete SDK/Issuer-, Hono-, Parser-, Transport-, Sharp- und Containerbefunde korrigiert und gezielt geprüft (E25/E30/E54–E60/E68/E78). Aktueller lokaler ARM64-Imageaudit E168: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW. ONNX-Modelleingang statisch eingegrenzt; echte Provider-Inferenz ohne Netzwerk liefert 384 endliche Werte (E155), keine Gesamtfreigabe. Native/WASM-/Artefaktabdeckung, übrige Befunde und finale Sicherheitsfreigabe offen. Kein Schluss auf Gesamtfreigabe aus Paketcounts. |
 | L09 | IN_PROGRESS | Deutsche Framer-Vorabwebsite für Einzelpersonen, Soloselbstständige, Unternehmen mit 1–10 Mitarbeitern und Abteilungen freigegeben. Erste Startseite mit gemeinsamen Komponenten und Desktop-/Tablet-/Phone-Breakpoints steht zur menschlichen Sichtabnahme; Live-Tree-/Ankerprüfung und gezielte Agentenansichten E159. Vollständiger Originalexport nun vorhanden: vier HTML-Seiten, 18 Dateihashes bestätigt, vollständiger unabhängiger Inhaltsreview; übrige drei Seitentexte um Solo-Nutzung, eigene Quellen und drei Einstiegswege überarbeitet und unabhängig gegengelesen; alle fünf Framer-Anweisungen gespeichert und identisch zurückgelesen, E160. Drei weitere Seiten und finale Routen nach Designfreigabe. Originalbilder nicht freigegeben; öffentliche GitHub-Ziele nicht erreichbar. Betreiber-/Rechtsbestätigung der Linkkandidaten, finale Browser-/Sichtabnahme und separate Veröffentlichungsgenehmigung offen. Nicht veröffentlicht; neuer Fortschritt LOCAL_ONLY bis Push. |
 | L10 | IN_PROGRESS | Zweisprachige Listing-Texte, Berechtigungsbegründungen, Datenfluss-/Privacy-Arbeitsblatt und Reviewer-Ablauf als Entwurf in LAUNCH.md vorbereitet. Vier PNG-Icons werden aus bestehendem Cockpit-Logo generiert und mit Lucide-Lizenz im Manifest/ZIP ausgeliefert, E53. Paket-/Browser-/Binärprüfungen und macOS/Linux-Reproduzierbarkeit bestanden. Zwei echte Screenshot-Entwürfe mit isolierten Beispieldaten vorbereitet (E147); Kleine Promografik als lokaler Entwurf ergänzt; 128px-Store-Icon auf 96px-Motiv plus 16px transparenten Rand korrigiert und im ZIP geprüft (E148). Linux-amd64/macOS-ZIP byte-identisch; aktuelle kompilierte Engine/CLI liefern/installieren dasselbe Paket, E149. Lokale Einreichungsübergabe mit Listing-Texten, Medien, unverändertem ZIP und Prüfsummen erstellt; Integritäts-/Secret-Scan PASS, acht Freigabevoraussetzungen offen (E152). Übergabe lokal mit aktuellem ZIP erneuert, Integrität/Secret-Scan PASS; historische Medien ausdrücklich begrenzt (E166). Visuelle Abnahme aller Medien, Pflichtlinks und menschliche Zertifizierung offen. ENTWURF, nicht veröffentlicht. |
 | L11 | BLOCKED | L10, öffentliche Pflichtlinks, Publisherstatus und explizite Einreichungsfreigabe fehlen. |
@@ -71,15 +71,17 @@ Benchmark-, Rechts-, öffentliche Release- oder Produktionsfreigabe.
 
 ## Aktueller Image-Nachweis
 
-E157: integrierter ARM64-Build **dbe8d7012**, Image **14a2497304e9**,
-5.339 Quellhashes unverändert. QuickJS-Regression und 495 erfasste Lizenztexte
-im finalen Image/Installer PASS. Scan 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW.
-Frische Installation, Bootstrap, Installer und initiale Persistenz PASS.
-**Neustartprüfung FAIL:** Workflow-GET nach Neuerstellung überschreitet 60 Sekunden;
-Ursache offen, Cleanup PASS. Wiederholung ohne parallelen Scanner scheitert ebenso;
-Container laufen, kein OOM-Abbruch. Profiling-Diagnose PASS, Ursache weiter offen. Serieller regulärer Lauf ohne
-Gesamtcheck/Scanner PASS einschließlich Neustart/Persistenz, Runtime-Smoke und Cleanup,
-Timeout unverändert. Ressourcen-Konkurrenz plausibel, nicht endgültig bewiesen. E158 beschreibt das archivierte vorherige Image, nicht diesen Stand.
+**E168: ARM64-Image 585eb0b314bd auf f225cdfba, Build PASS,
+5.339 Quellhashes unverändert.** Frische isolierte Compose-Installation,
+Installer einschließlich Lizenzdateien, Bootstrap, Clipper-Download,
+Neustart/Persistenz, Runtime-Smoke und Cleanup PASS. QuickJS-Regression im
+echten Worker sowie 495 Notice-Texte/Prüfsummen PASS.
+Trivy: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW; keine gesamte Sicherheitsfreigabe.
+
+Erster Build wegen Docker-Speicherreserve abgebrochen. Eigenes altes Image
+archiviert/geprüft und gezielt eigene Cache-Einträge bereinigt; Wiederholung
+bestanden. Nutzer-Demos und fremde Images/Volumes erhalten. Frühere
+Last-Timeouts aus E157 bleiben historische Nachweise, aktueller serieller Lauf PASS.
 
 ## Aktuelle Nachweise und Grenzen
 
@@ -87,9 +89,9 @@ Timeout unverändert. Ressourcen-Konkurrenz plausibel, nicht endgültig bewiesen
 | --- | --- |
 | Vollständiges lokales Gate | E167: PASS auf 32abc4b37, Exit 0, Quellen unverändert. Isolierte DB/Mockprovider; E2E-SKIP/TODOs gesondert offen. |
 | Reale Modelle | E73: getrennte Live-Modellmatrix bestanden; kein Nachweis aller Chatkanäle. |
-| Aktuelles ARM64-Image | E157: Build/Installer/Installation und serieller Neustart/Persistenz PASS. Zwei Timeouts unter paralleler Last erhalten; Ursache nicht abschließend bewiesen. |
-| Sicherheit | **E158: QuickJS-Fix einschließlich Gesamtgate lokal geprüft.** E157: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories. Frühere Triage E123 bleibt relevant; keine gesamte Sicherheitsfreigabe. |
-| Lizenz-Auslieferung | E151: alle 495 erfassten Texte und Produktlizenz im finalen Image/Installer bestätigt. Drei bekannte JS-Zuordnungen, Modellrechte, vollständige Build-/Plattformzuordnung, Quell-/Relink-Auslieferung und juristische Freigabe offen. |
+| Aktuelles ARM64-Image | E168: Image 585eb0b314bd auf f225cdfba; Build, Installer, frische Installation, Neustart/Persistenz, Smoke und Cleanup PASS. |
+| Sicherheit | **E158: QuickJS-Fix einschließlich Gesamtgate lokal geprüft.** E168: 0 CRITICAL/0 HIGH, 558 MEDIUM/74 LOW, 176 Advisories. Frühere Triage E123 bleibt relevant; keine gesamte Sicherheitsfreigabe. |
+| Lizenz-Auslieferung | E168: alle 495 erfassten Texte und Produktlizenz im finalen Image/Installer bestätigt. Drei bekannte JS-Zuordnungen, Modellrechte, vollständige Build-/Plattformzuordnung, Quell-/Relink-Auslieferung und juristische Freigabe offen. |
 | Upgrade/Restore | E72: begrenzte Strecke 9.9.0 → lokaler 9.15.2-Kandidat und Restore bestanden. Finale Beta→GA-/Provenienzabnahme offen. |
 | Öffentlich | Aktuelle Beta/GA, Produktwebsite und Store-Veröffentlichung nicht belegt/freigegeben. Ein lokales PASS oder Push ersetzt keinen dieser Nachweise. |
 | Daily/Weekly und Hooks | Zeitpläne laut Nutzer vorhanden; tatsächliche Läufe/Lesezugriff UNVERIFIED. Nutzerprofil unauthorized; isolierte Briefing-/Hookprüfungen bestanden, tatsächlicher Clientdispatch offen (E32/E38). |
@@ -108,12 +110,11 @@ Scope-Erweiterung vom Nutzer entschieden (gegen den Freeze 17.–20.10.): Lernvo
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: **Aktuellen Container-/Installationsnachweis an den geprüften Produktstand binden.**
-Das bisherige Image E157 stammt von dbe8d7012 und enthält noch nicht den späteren
-Recovery-Hinweis. Gesamtcheck Session 48125 ist terminal, Exit 0 (E167).
-Store-Übergabe mit aktuellem ZIP lokal geprüft, gemeinsames Receipt nach Gate
-übernommen (E166); Medien-/Reviewer-/Rechtsabnahmen bleiben offen.
-Nachweisänderungen sind LOCAL_ONLY bis regulärem Commit/Push.
+Nächster Codex-Schritt: **Verbleibende Kandidaten-/Live-Nachweise gegen die L13-DoD prüfen und den nächsten ausführbaren Nachweis bearbeiten.**
+Gesamtcheck E167 und aktuelle Image-/Installationsabnahme E168 sind abgeschlossen;
+keine unveränderten bestandenen Checks erneut starten. Store-Übergabe enthält das
+aktuelle ZIP (E166); Medien-/Reviewer-/Rechtsabnahmen bleiben offen.
+Neue Nachweise sind LOCAL_ONLY bis regulärem Commit/Push.
 
 L04 bleibt begrenzt auf bekannte offene Rechte-/Plattform-/Quellauslieferungsfragen
 und menschliche Freigaben. Alle 103 Polyfill-Lockfile-Versionen haben Originaltexte;
