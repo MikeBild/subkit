@@ -6,7 +6,7 @@ Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md)
 - Produkt-/Remote-Nachweis-Refresh: **2026-10-17T15:56:46Z**; Dokumentprüfung siehe E11.
 - Geprüfter Produktcommit: **95965695b**, Version **9.15.2**. Vollgate E118 für aea27f714 bestanden; danach ausschließlich native Lizenztexte/Manifest ergänzt, gezielt geprüft. Aktuelles finales ARM64-Image gebaut und praktisch geprüft (E120–E122).
 - Letzter bestätigter Remote-Stand: **52e4b05a4**, main, 0/0 Divergenz und sauberer Checkout vor dieser Dokumentänderung. Diese Aktualisierung bis zum Push LOCAL_ONLY. Commit/Push sind autorisiert; Veröffentlichung bleibt separat freizugeben.
-- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E129. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
+- Vollständige Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E130. IDs in dieser Datei verweisen dorthin. Keine bereits bestandenen unveränderten Prüfungen wiederholen.
 - Countdown am 18.10.: **9/10 Kalendertage bis Beta**, **28 bis GA**; bei jedem Refresh neu berechnen.
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: 27./28.10. bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: Ziel 15.11.; externe Store-Freigabe offen.
@@ -78,4 +78,4 @@ Offen: Betreiber-/Supportangaben, juristische Abnahme, Store-Publisherstatus und
 2. **L05/L13:** Signierte reale Release-Vorbereitung und Referenzbenchmarks, sobald passender Schlüssel und Zielsystem verfügbar sind. Erfolgreiche Gates wiederverwenden.
 3. **L06/L09/L10:** Betreiberangaben und öffentliche Pflichtlinks in Website-/Store-Entwürfe übernehmen, anschließend menschliche Abnahmen. Keine Veröffentlichung ohne gesonderte Freigabe.
 
-Nächster Codex-Schritt: Lizenzbeigaben im Engine-Installer untersuchen und fehlende Auslieferung mit unveränderter Trustgrenze schließen. GitHub-Installer E127 und CLI-Updater E129 sind gezielt geprüft; Gesamtgate nach Abschluss dieser Änderungen erneut erforderlich. E118 und E121–E123 nicht unverändert wiederholen. Vor weiteren großen Docker-Builds Speicherreserve herstellen.
+Nächster Codex-Schritt: E127/E129/E130 implementieren Notice-Auslieferung für GitHub-Installer, Updater/Rollback und Engine-Installer. Nach normalem Commit/Push Speicherreserve prüfen, dann vollständiges Gesamtgate auf festem Quellstand und aktuelles Image samt realem Engine-Installationsablauf prüfen. E130 bleibt bis dahin IN_PROGRESS. Rechtliche Freigabe und offene Lizenz-/Plattformnachweise bleiben separat.

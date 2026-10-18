@@ -103,6 +103,24 @@ describe("diskFilename", () => {
 });
 
 describe("GET /install/{asset} — bundled image", () => {
+  for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.txt"]) {
+    test(`serves only manifest-listed ${name}`, async () => {
+      const bytes = new TextEncoder().encode("license fixture");
+      const fixture = await mkBundle({ [name]: bytes });
+      activeDir = fixture.dir;
+      process.env.SUBKIT_BINARIES_DIR = fixture.dir;
+      const response = await buildApp().request(`/install/${name}`);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("license fixture");
+      expect(response.headers.get("x-subkit-sha256")).toBe(
+        createHash("sha256").update(bytes).digest("hex"),
+      );
+      await fs.writeFile(path.join(fixture.dir, "SHA256SUMS"), "");
+      _internal.clearCache();
+      expect((await buildApp().request(`/install/${name}`)).status).toBe(404);
+    });
+  }
+
   test("streams sk binary with sha header + correct length", async () => {
     const bytes = new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01]);
     const fixture = await mkBundle({ sk_linux_x64: bytes });
