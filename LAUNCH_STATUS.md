@@ -1,12 +1,12 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E224.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E225.
 
-- Letztes Update: **2026-10-18T17:43:20.276247+00:00**; Planung in Europe/Berlin.
-- Zuletzt bestätigter gemeinsamer Stand: **45e58f53d**, `main`, Version **10.0.1** vorbereitet.
-  E220–E223 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
-- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Abgeschlossener vollständiger Lauf E224 wird dokumentiert; keine weitere Produktänderung.
+- Letztes Update: **2026-10-18T17:45:35.469200+00:00**; Planung in Europe/Berlin.
+- Zuletzt bestätigter gemeinsamer Stand: **21e764626**, `main`, Version **10.0.1** vorbereitet.
+  E220–E224 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
+- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Frischer Ressourcenbefund E225 wird dokumentiert; Produktquellen unverändert zu E224.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: insbesondere externe Store-Freigabe offen.
@@ -47,8 +47,9 @@ Negativtest für ungültige globale Hook-Konfiguration.
 
 **Nächster Codex-Schritt:** ausreichend versorgte isolierte Linux-x64-Umgebung
 prüfen, aktuellen Kandidatenstart sowie Installation/Upgrade/Restore und Kategorie-/
-RBAC-Parität nachweisen. Geeigneter Host und lokaler Pfad zum passenden bestehenden
-Signing-Key angefragt, Antwort ausstehend. E224 wiederverwenden; keine blinden
+RBAC-Parität nachweisen. E225: Docker-VM nach Gate-Ende erneut ohne ausreichende
+Reserve. Geeigneter Host und lokaler Pfad zum passenden bestehenden Signing-Key
+angefragt, Antwort ausstehend. E224 wiederverwenden; keine blinden
 Docker-Vollstarts, fremden Demoänderungen oder Veröffentlichungen.
 
 ## Aufgaben
@@ -165,8 +166,8 @@ Bei Bedarf gezielt laden oder neuen Kandidaten bauen. Keine fremden Ressourcen b
 
 1. **L12/L18 P0/P1:** auf ausreichend versorgtem isoliertem System aktuellen
    Kandidatenstart, Installation/Upgrade/Restore und Kategorie-/RBAC-Parität prüfen.
-   E195 ist Teilnachweis; ursprüngliche Queue-Ursache offen. E214 zeigt die letzte
-   Docker-VM-Grenze: etwa 268 MiB MemAvailable, Swap praktisch voll, Platte 98 %.
+   E195 ist Teilnachweis; ursprüngliche Queue-Ursache offen. E225 bestätigt am 18.10. 17:44 UTC erneut die
+   Docker-VM-Grenze: etwa 353 MiB MemAvailable, 176 KiB SwapFree, Platte 98 %.
    Keine blinden Vollstarts und keine Eingriffe in fremde Demos; Host angefragt.
 2. **L05/L13 P0:** passenden bestehenden Signing-Key und Linux-x64-Referenzsystem
    (4 CPU, mindestens 8 GiB) bereitstellen; danach fehlende signierte Kandidaten-
