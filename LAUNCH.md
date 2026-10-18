@@ -784,11 +784,14 @@ Zuständigkeiten und Grenzen. Sie verwendet keine unbelegten Leistungszahlen, Ku
 Kundenstimmen, Sicherheitsversprechen oder Vergleiche mit benannten Wettbewerbern.
 
 Inhaltsreferenz: https://claude.ai/artifact/7u5YLz56h152Q4xUHwiGCo.
-Die bestätigte Wissensquelle „SubKit: Zielgruppen, Positionierung, Nutzen“ nennt dafür
-Start, Anwendungsfälle, Loslegen und Vergleiche sowie deren Gliederung. Der vollständige
-Artifact-Inhalt war nicht abrufbar. Die folgenden Texte sind ein neuer Arbeitsentwurf
-auf Basis dieser Gliederung, der README und der vorhandenen Launch-Claim-Map. Sie sind
-keine behauptete Übernahme oder Abnahme des vollständigen Artifacts.
+Der ursprünglich nicht abrufbare Volltext liegt inzwischen als vom Nutzer bereitgestellter
+Claude-Code-Export vor: vier HTML-Seiten, Quelleninventar und unveränderter Originaltext.
+Alle 18 protokollierten Dateiprüfsummen wurden lokal bestätigt. Ein Inhaltsprüfer hat
+alle vier Seiten vollständig gegen README und Launch-Claim-Map gelesen. Die folgenden
+Texte übernehmen die inhaltliche Struktur und geeignete Beispiele, korrigieren
+überzogene Aussagen und berücksichtigen die erweiterte Solo-/Team-Zielgruppe. Original
+und Abgleich bleiben als lokale Übergabe erhalten; private Laufzeitbilder und interne
+Betriebsnamen werden nicht in das Repository oder Framer übernommen.
 
 Die vom Nutzer gelieferte Gemini-Analyse ist strategischer Input. Daraus werden
 Käuferfragen abgeleitet, keine bestätigten Wettbewerberfakten oder Überlegenheitsclaims.
@@ -802,8 +805,8 @@ und eine einfache Ablaufgrafik bilden die gestalterische Richtung. Gemeinsame Na
 Footer, Buttons und Textstile bleiben in Framer bearbeitbar. Zuerst die Startseite
 einschließlich mobiler Darstellung zur menschlichen Sichtabnahme vorlegen, anschließend
 die bestätigte Gestaltung auf die übrigen drei Seiten übertragen. Der Claude Artifact
-ist eine inhaltliche Vorlage; sein vollständiger Abgleich bleibt vor Veröffentlichung
-erforderlich. Eine Vorabwebsite darf den Produktstand ehrlich als in Vorbereitung
+ist eine inhaltliche Vorlage; der vollständige redaktionelle Abgleich ist erfolgt.
+Die finalen Framer-Seiten müssen gegen diese geprüften Texte zurückgelesen werden. Eine Vorabwebsite darf den Produktstand ehrlich als in Vorbereitung
 beschreiben, ohne den Produktrelease abzuwarten. Veröffentlichung erfordert echte
 Betreiber-/Pflichtangaben, geprüfte Zieladressen und eine separate Freigabe der fertigen
 Vorschau. Keine automatische visuelle Matrix. Englisch, Formulare und zusätzliche
@@ -831,6 +834,22 @@ wird; Betriebsaufwand und Grenzen gehören zur Entscheidung dazu.
 | Können mehrere Personen denselben Ablauf nutzen? | Gemeinsame Abläufe mit den jeweiligen Rechten starten und Ergebnisse nachvollziehen. | Keine unbelegte Unternehmensskalierung oder Verfügbarkeitszusage. |
 | Lohnt sich der Betrieb? | Prozessaufwand, Nacharbeit, Infrastruktur und Anbietergebühren am eigenen Fall messen. | Modellkosten sind nicht die vollständigen Prozesskosten; kein garantierter ROI. |
 
+### Entscheidungen aus dem vollständigen Artifact-Abgleich
+
+| Originalinhalt | Entscheidung für die Vorabwebsite |
+| --- | --- |
+| Konkrete wiederkehrende Arbeit, vier Schritte, Solo-/Team-Fälle, drei Einstiegswege | Als Informationsstruktur und ehrlich gekennzeichnete Beispiele übernehmen; keine Lieferzusage daraus ableiten. |
+| Konnektoren, Quellen, Skills und KI-Werkzeuge | In den Anwendungsfällen und beim Einstieg erklären. Gesammelte Inhalte nicht als bestätigtes Wissen darstellen; Lieferumfang bleibt an reale L12-Abnahme gebunden. |
+| Enterprise-/EU-AI-Act-Ready, feste Einsparungen und Einführungsdauer | Ohne entsprechende Abnahme/Messung nicht verwenden. |
+| Konkrete Vorlagen-/Systemzahlen, Eigenbetrieb als Referenz, fertige Lösungen | Ohne aktuellen Release-/Betriebsnachweis nicht als verfügbar oder Referenz bewerben. |
+| KI sei bei der Ausführung immer außen vor; jeder Lauf liefere dasselbe Ergebnis | Korrigieren: aktivierte Fassung und Freigabe begrenzen den Ausführungsweg; Modellantworten können variieren. |
+| Vorschau ohne jede Außenwirkung; erneute Bestätigung vor jedem Schreiben | Korrigieren: tatsächliche Testwirkung prüfen; eine Freigabe der Reichweite kann bestehen bleiben, bis sie widerrufen wird oder ihre Grenzen erreicht sind. |
+| PostgreSQL als einzige Betriebsabhängigkeit, alte Start-/Schlüsselbefehle | Nicht übernehmen; aktuelle passende Release-Anleitung verwenden, einschließlich dauerhaft gesicherter Schlüssel und aller Stack-Dienste. |
+| Pauschale Aussagen über Grenzen anderer Werkzeugklassen | Durch konkrete Entscheidungsfragen ersetzen; keine unbelegte Überlegenheit oder Abwertung eigener Skripte. |
+| Originalaufnahmen mit laufenden Installationsdaten | Nicht übernehmen; später ausschließlich freigegebene Aufnahmen mit isolierten Beispieldaten verwenden. |
+| Öffentliche Quellcode-/Release-/Doku-/Security-Ziele | Unauthentifiziert derzeit nicht erreichbar; vor öffentlicher Verlinkung erneut prüfen. |
+| Vorhandene Kontakt-/Impressums-/Datenschutzziele des Betreibers | Erreichbare Kandidaten; Zuordnung zur Framer-Seite und ihre Rechts-/Datenflussabdeckung müssen bestätigt werden. |
+
 ### Framer-Gesamtauftrag
 
 BEGIN FRAMER AUFTRAG
@@ -850,10 +869,12 @@ enthaltenen Beispiele sind entworfene Abläufe, keine veröffentlichten Kundenbe
 Kennzeichne sie entsprechend. Stelle SubKit nicht als völlig autonome Agentenplattform dar.
 
 Inhaltsreferenz ist https://claude.ai/artifact/7u5YLz56h152Q4xUHwiGCo.
-Die vierseitige Gliederung ist bekannt; der vollständige Inhalt muss noch abgeglichen
-werden. Behaupte keinen erfolgten Import dieses Artifacts. Die hier gelieferten Texte
-sind ein eigenständiger Arbeitsentwurf. Wenn die Referenz zugänglich ist, prüfe die
-Unterschiede vor einer Übernahme. Widersprüche zu aktuellen Produktnachweisen offenlegen.
+Der vollständige Originalexport wurde redaktionell abgeglichen. Verwende die geprüften
+Seitentexte statt ungeprüfter Originalbehauptungen. Die Struktur und geeignete Beispiele
+sind übernommen; Mengenangaben, fertige Vorlagen, Einführungszeiten, pauschale
+Sicherheits-/Rechtsversprechen und alte Installationsbefehle sind nicht freigegeben.
+Originalbilder zeigen laufende Installationen und sind nicht für die Website freigegeben.
+Es gibt keine automatische technische Übernahme des Artifacts in Framer.
 
 Prüfe eine vorhandene konkrete Design-Vorlage einschließlich Komponenten und Zuständen
 vor Gestaltungsänderungen und übernimm sie originalgetreu. Das Artifact ist ausdrücklich
@@ -963,82 +984,61 @@ BEGIN FRAMER ANWENDUNGSFAELLE
 
 Pfad: /anwendungsfaelle
 Seitentitel: Anwendungsfälle – SubKit
-Suchbeschreibung: Berichte, Anfragen und Dokumente: Beispiele für wiederkehrende Abläufe, die ein Team mit SubKit vorbereiten und prüfen kann.
+Suchbeschreibung: Persönliche Routinen, Berichte, Anfragen und eigene Wissensquellen: mögliche Arbeitsabläufe für dich, dein kleines Unternehmen oder deine Abteilung.
 
-# Mit einer konkreten Aufgabe beginnen
+# Welche Arbeit möchtest du nicht jedes Mal neu organisieren?
 
-Gute Einstiegsfälle haben ein klares Ergebnis, wenige beteiligte Systeme und jemanden,
-der beurteilen kann, ob der Ablauf stimmt. Die folgenden Beispiele zeigen mögliche
-Entwürfe. Welche Teile eine veröffentlichte Fassung bereits mitbringt, wird im
-jeweiligen Installationsangebot ausgewiesen.
+Ein sinnvoller Einstieg hat ein klares Ergebnis, wenige beteiligte Systeme und jemanden, der das Ergebnis beurteilen kann. Das kannst du selbst sein. Im Team klärt ihr zusätzlich, wer den Ablauf nutzt und betreut.
 
-## Einen regelmäßigen Bericht vorbereiten
+Die folgenden Fälle beschreiben mögliche, einzurichtende Abläufe. Sie sind keine Kundenberichte und keine Zusage mitgelieferter Vorlagen. Schnittstellen, Zugänge und fachliche Regeln müssen zu deiner Installation passen.
+
+## Persönliche Routinen überschaubar halten
+
+„Stelle mir freitags zusammen, welche meiner Abläufe erfolgreich waren und wo ich nachsehen muss.“
+
+Ein regelmäßiger Überblick kann dir helfen, Arbeit im Blick zu behalten, die sonst über mehrere Werkzeuge verteilt ist. Du legst fest, welche Daten dazugehören und wohin die Übersicht geht. Auch bei alleiniger Nutzung bleiben Zugriffsrechte und Freigaben wirksam.
+
+Ein weiterer möglicher Einstieg ist die Dokumentablage: passende Anhänge aus einem eingerichteten Postfach übernehmen und in einem vorgesehenen Ordner ablegen. Vorher klärst du Dateiauswahl, Dubletten und Zugriffsrechte. Das ersetzt keine rechtliche Archivlösung.
+
+## Informationen für einen Bericht zusammentragen
 
 „Stelle jeden Montag die vereinbarten Kennzahlen der vergangenen Woche zusammen.“
 
-Der Ablauf liest die vorgesehenen Quellen und bereitet die Übersicht auf. Vor der
-Freigabe klärt das Team, welche Kennzahlen gelten, wie fehlende Werte behandelt werden
-und wer das Ergebnis erhalten darf.
+Der Entwurf beschreibt, welche Quellen gelesen und wie ihre Werte zusammengeführt werden. Du prüfst die Definitionen, den Umgang mit fehlenden Werten und die Empfänger. So muss die Zusammenstellung nicht jedes Mal neu organisiert werden. Ob sie tatsächlich Zeit spart, misst du am eigenen Bericht.
 
-Der Nutzen: Die Zusammenstellung muss nicht jedes Mal neu organisiert werden.
-Ob tatsächlich Zeit gespart wird, lässt sich am eigenen Bericht messen.
+## Übergaben zwischen Werkzeugen einrichten
 
-Herkunft: Beispiel für einen zu entwerfenden Ablauf.
+„Prüfe neue Anfragen auf vorhandene Kontakte und bereite die Übergabe vor.“
 
-## Eingehende Anfragen zuordnen
+Der Ablauf braucht eine eindeutige Quelle, eine Regel zum Erkennen vorhandener Kontakte und ein festgelegtes Ziel. Ein Eintrag im Kundensystem und eine Benachrichtigung sind unterschiedliche Wirkungen, die passende Rechte und eine Freigabe benötigen.
 
-„Prüfe neue Anfragen auf vorhandene Kontakte und bereite die Übergabe an den Vertrieb vor.“
+Das kann einer einzelnen Person helfen, Kundenanfragen zu bearbeiten. Im Team sorgt die vereinbarte Übergabe dafür, dass die nächste zuständige Person die benötigten Informationen erhält.
 
-Der Entwurf macht sichtbar, woher die Anfrage kommt, wie ein vorhandener Kontakt erkannt
-wird und welche Informationen weitergegeben werden. Schreiben ins Kundensystem und
-Benachrichtigungen brauchen passende Rechte und eine geprüfte Freigabe.
+## Änderungen vor der Übernahme beurteilen
 
-Der Nutzen: Die Übergabe folgt einer vereinbarten Regel und bleibt nachvollziehbar.
+„Vergleiche die neue Lieferantenliste mit meinen Daten und zeige die Unterschiede.“
 
-Herkunft: Beispiel für einen zu entwerfenden Ablauf.
+Ein lesender Abgleich kann der erste Schritt sein. Welche Unterschiede relevant sind und welche Ausnahmen gelten, bestimmst du. Soll der Ablauf später Daten übernehmen, wird diese zusätzliche Schreibwirkung gesondert geprüft und freigegeben.
 
-## Dokumente nach einer festen Regel ablegen
+Ein festgelegter Ablauf ersetzt keine fachliche Prüfung der Regeln oder der vorgeschlagenen Änderungen.
 
-„Lege passende Anhänge aus dem vereinbarten Postfach im vorgesehenen Ordner ab.“
+## Eigene Quellen und Regeln einbeziehen
 
-Vor dem ersten Lauf wird geklärt, welche Anhänge dazugehören, wer Zugriff auf den Ordner
-hat und wie mit mehrfach eingegangenen Dateien umgegangen wird. Eine automatische
-Ablage ersetzt keine Prüfung auf Vollständigkeit oder eine rechtliche Archivlösung.
+Deine Begriffsdefinitionen, Ablageregeln oder ein redaktioneller Hausstil können bei der Vorbereitung eines Ablaufs helfen. Dabei haben die Teile unterschiedliche Aufgaben: Ein Konnektor verbindet ein System, eine Quelle liefert Referenzmaterial und ein Skill beschreibt eine wiederverwendbare Praxis.
 
-Der Nutzen: Die wiederkehrende Ablage wird als überprüfbarer Prozess beschrieben.
+Zum Beispiel: Die Quelle erläutert, welche Kennzahlen in einen Bericht gehören. Eine Regel beschreibt, wie fehlende Werte dargestellt werden sollen. Die Verbindung zum jeweiligen Werkzeug stellt die Daten bereit. Das Fachwissen bringst du selbst mit.
 
-Herkunft: Beispiel für einen zu entwerfenden Ablauf.
+Für neue gesammelte Inhalte ist der Weg über Prüfung und ausdrücklich bestätigte Übernahme vorgesehen. Welche Teile dieser Strecke in der öffentlichen Fassung verfügbar sind, wird mit deren Freigabe beschrieben. Gesammelt bedeutet nicht automatisch als Wissen übernommen.
 
-## Änderungen vor der Übernahme sichtbar machen
+## Mit vorhandenen KI-Werkzeugen arbeiten
 
-„Vergleiche die neue Lieferantenliste mit unseren Daten und zeige die Unterschiede.“
+Wenn du einen angebundenen KI-Client verwendest, kann er über die dokumentierten SubKit-Zugänge vorhandene Abläufe finden und Ergebnisse prüfen. Welche Aktionen möglich sind, bestimmen die Rechte des angeschlossenen Zugangs und die jeweiligen Freigaben.
 
-Ein lesender Abgleich kann der erste Schritt sein. Wenn später Daten übernommen werden
-sollen, wird diese zusätzliche Schreibwirkung gesondert geprüft. Fachliche Regeln und
-Sonderfälle müssen aus dem eigenen Betrieb kommen.
+Der Nutzen liegt darin, vorbereitete Abläufe und bestätigte Quellen aus deinen Arbeitswerkzeugen heraus zu verwenden. Die Anbindung allein macht einen Ablauf weder freigegeben noch fachlich richtig.
 
-Der Nutzen: Das Team kann die vorgeschlagenen Änderungen beurteilen, bevor es eine
-weitergehende Automatisierung freigibt.
+## Woran du den ersten Versuch misst
 
-Herkunft: Beispiel für einen zu entwerfenden Ablauf.
-
-## Den Zustand gemeinsamer Abläufe zusammenstellen
-
-„Zeige uns regelmäßig, welche Abläufe liefen und welche Aufmerksamkeit brauchen.“
-
-Eine Übersicht kann erfolgreiche und fehlgeschlagene Ausführungen zusammenführen.
-Das Team legt fest, wer auf welche Befunde reagiert. Eine Meldung allein behebt keinen
-Fehler; sie macht ihn für die zuständige Person sichtbar.
-
-Der Nutzen: Die Verantwortung für wiederkehrende Arbeit lässt sich konkret zuordnen.
-
-Herkunft: Beispiel für einen zu entwerfenden Ablauf.
-
-## Woran sich ein erster Versuch messen lässt
-
-Vergleiche den bisherigen Aufwand mit Vorbereitung, Betrieb und Nacharbeit des neuen
-Ablaufs. Berücksichtige Fehler, Ausnahmen, Infrastruktur und Anbietergebühren.
-Erst diese Beobachtung zeigt, ob sich die Automatisierung für euch lohnt.
+Vergleiche den bisherigen Aufwand mit Vorbereitung, Betrieb und Nacharbeit des neuen Ablaufs. Berücksichtige Fehler, Ausnahmen, Infrastruktur und Anbietergebühren. Erst diese Beobachtung zeigt, ob sich der Einsatz für dich oder dein Team lohnt.
 
 Einstieg ansehen → /loslegen
 
@@ -1049,67 +1049,54 @@ END FRAMER ANWENDUNGSFAELLE
 BEGIN FRAMER LOSLEGEN
 
 Pfad: /loslegen
-Seitentitel: Loslegen – SubKit selbst hosten
-Suchbeschreibung: Bereite deinen Einstieg mit SubKit vor: Betrieb klären, eine Aufgabe auswählen und den ersten Workflow gemeinsam prüfen.
+Seitentitel: Loslegen – SubKit selbst hosten und nutzen
+Suchbeschreibung: Drei Einstiege zu SubKit: selbst betreiben, eine vorhandene Installation nutzen oder deine KI-Werkzeuge anbinden. Voraussetzungen und nächste Schritte.
 
-# Den ersten Ablauf überschaubar halten
+# Dein Einstieg hängt davon ab, was schon vorhanden ist.
 
-SubKit wird selbst gehostet. Für den Einstieg brauchst du eine Installation, passende
-Zugänge zu den beteiligten Diensten und eine Person, die die Aufgabe fachlich prüfen kann.
+Du möchtest SubKit selbst betreiben, eine vorhandene Installation nutzen oder aus einem KI-Werkzeug heraus damit arbeiten. Für alle drei Wege gilt: Beginne mit einer kleinen Aufgabe und prüfe, was sie erreichen und verändern darf.
 
 Die öffentliche Beta wird vorbereitet. Installationspakete und Anleitung folgen nach der Freigabe.
 
-## Drei Wege zur ersten Aufgabe
+## Du möchtest SubKit selbst betreiben
 
-**Du kennst den Arbeitsablauf.** Beschreibe, was heute von Hand passiert, welche Daten
-verwendet werden und woran du ein richtiges Ergebnis erkennst. Beziehe die IT früh ein,
-wenn Zugänge oder der Betrieb eingerichtet werden müssen.
+Zum Betrieb gehören die Installation, passende Zugänge, Updates, Datensicherung und ein Wiederherstellungsweg. Für den bereitgestellten Container-Stack brauchst du Docker mit Compose. Die freigegebene Anleitung beschreibt die weiteren Voraussetzungen und die zusammengehörenden Artefakte.
 
-**Du betreust die Systeme.** Kläre Installation, Backups, Updates und den Zugriff auf
-verbundene Dienste. Beginne mit einer getrennten Testumgebung und überschaubaren Rechten.
+Bewahre die Installationsschlüssel dauerhaft gesichert auf. Plane vor dem produktiven Einsatz, wer den Betrieb übernimmt und welche Daten an verbundene Dienste oder Modellanbieter gesendet werden dürfen. Wenn du allein arbeitest, kannst du diese Aufgaben selbst übernehmen; der Aufwand bleibt Teil deiner Entscheidung.
 
-**Du entwickelst mit KI-Werkzeugen.** Nutze die dokumentierten Zugänge von SubKit, um
-Workflows vorzubereiten und Ergebnisse zu prüfen. Ein Coding-Agent arbeitet dabei mit
-den Rechten seiner Identität. Seine Anbindung ersetzt keine Ausführungsfreigabe.
+## Jemand betreibt SubKit bereits für dich
 
-## Fünf Schritte für den Einstieg
+Dann brauchst du einen Zugang zu dieser Installation und die passenden Rechte. Wähle eine Aufgabe aus, deren Ergebnis du fachlich beurteilen kannst. Beschreibe die verwendeten Daten, die beteiligten Werkzeuge und die Ausnahmen.
+
+Kläre mit der betreibenden Person, welche Systemverbindungen eingerichtet sind, wer Änderungen prüft und wer die Ausführung freigeben darf. Du brauchst keine eigene Installation, wenn du eine vorhandene berechtigt nutzen kannst.
+
+## Du möchtest deine KI-Werkzeuge anbinden
+
+SubKit stellt dokumentierte Zugänge für angebundene KI-Clients bereit, unter anderem über MCP. Der Client arbeitet mit den Rechten des angeschlossenen Zugangs. Eine Anbindung ersetzt weder die Einrichtung der Systemverbindungen noch die Ausführungsfreigabe.
+
+Die zur freigegebenen Fassung gehörende Anleitung beschreibt die Einrichtung. Übernimm Zugangsdaten ausschließlich in die dafür vorgesehenen Einstellungen. Für Coding-Agent-Briefings und gesammelte Sitzungslernpunkte wird der tatsächlich geprüfte Lieferumfang gesondert beschrieben; gesammelte Inhalte werden erst nach menschlicher Bestätigung Wissen oder Skills.
+
+## Fünf Schritte für die erste Aufgabe
 
 1. **Aufgabe auswählen:** ein klares Ergebnis, wenige Systeme, eine zuständige Person.
-2. **Betrieb vorbereiten:** Installation, Sicherung, Zugänge und Anbieter klären.
+2. **Betrieb und Zugänge klären:** Installation, Sicherung, verbundene Dienste und Anbieter festlegen.
 3. **Entwurf prüfen:** Daten, Bedingungen, Ausnahmen und erlaubte Wirkung durchgehen.
-4. **Kontrolliert erproben:** mit geeigneten Testdaten prüfen, ob Ergebnis und Verlauf stimmen.
-5. **Verantwortung festlegen:** erst dann den vereinbarten Einsatz freigeben und festhalten,
-   wer Läufe beobachtet, Fehler bearbeitet und Änderungen prüft.
+4. **Kontrolliert erproben:** geeignete Testdaten und Testziele wählen; Ergebnis und Verlauf prüfen. Prüfe vor dem Test, welche Aufrufe tatsächlich stattfinden. Wähle Testziele und Vorgehen so, dass keine unbeabsichtigte Schreibwirkung entsteht.
+5. **Einsatz freigeben:** festhalten, wer Läufe beobachtet, Fehler bearbeitet und spätere Änderungen prüft. Das kann bei alleiniger Nutzung dieselbe Person sein.
 
-Das ist eine sinnvolle Reihenfolge, kein Versprechen einer bestimmten Einführungsdauer.
+Das ist eine Reihenfolge für den Einstieg, kein Versprechen einer bestimmten Einführungsdauer. Eine erweiterte Reichweite braucht eine neue Freigabe; bestehende Freigaben lassen sich widerrufen.
 
 ## Installation und Downloads
 
-Mit der freigegebenen Beta werden hier die passende Installationsanleitung,
-Downloadpakete, unterstützten Plattformen und Prüfsummen verlinkt. Verwende Anleitung
-und Artefakte derselben freigegebenen Fassung.
+Mit der freigegebenen Beta werden hier die passende Installationsanleitung, Downloadpakete, unterstützten Plattformen und Prüfsummen verlinkt. Verwende Anleitung und Artefakte derselben freigegebenen Fassung. Technische Befehle bleiben in der aktuellen Produktdokumentation, damit keine veraltete zweite Installationsanleitung entsteht.
 
-Die technische Anleitung bleibt mit der Produktdokumentation abgestimmt. Zu einer
-Installation gehören auch dauerhaft gesicherte Schlüssel und ein geprüfter
-Wiederherstellungsweg.
+## Kosten und Unterstützung
 
-## Quellen sammeln und prüfen
+Das kostenlose Self-Hosting umfasst die Software. Infrastruktur, externe Dienste und Modellanbieter können Kosten verursachen. Einrichtung, Wartung und Nacharbeit gehören ebenfalls zum Aufwand.
 
-Für den Clipper ist ein Weg von der Sammlung über die Prüfung im Chat zur ausdrücklich
-bestätigten Übernahme als Wissen oder Regel vorgesehen. Die ursprüngliche Quelle bleibt
-Teil des Zusammenhangs. Der konkrete Lieferumfang und die Installationsmöglichkeiten
-werden mit der freigegebenen Fassung beschrieben.
+Mit dem öffentlichen Start werden Kontaktmöglichkeiten für Fragen, Fehlerberichte und Sicherheitsmeldungen ausgewiesen.
 
-## Kosten und Betrieb
-
-Das kostenlose Self-Hosting umfasst die Software, nicht deine Infrastruktur oder
-Gebühren externer Anbieter. Du verantwortest die Installation, ihre Updates und Backups.
-Prüfe außerdem, welche Daten ein freigegebener Ablauf an verbundene Dienste übermittelt.
-
-## Kontakt und Unterstützung
-
-Mit dem öffentlichen Start werden der Kontaktweg und die Zuständigkeit für Fragen,
-Fehlerberichte und Sicherheitsmeldungen ausgewiesen.
+Anwendungsfälle ansehen → /anwendungsfaelle
 
 END FRAMER LOSLEGEN
 
@@ -1118,71 +1105,57 @@ END FRAMER LOSLEGEN
 BEGIN FRAMER VERGLEICHE
 
 Pfad: /vergleiche
-Seitentitel: Wann SubKit passt – und welche Arbeit andere Werkzeuge übernehmen
-Suchbeschreibung: Ordne SubKit ein: persönliche Assistenten, visuelle Automatisierung, autonome Agenten und der Betrieb geprüfter Workflows.
+Seitentitel: Wann SubKit zu deiner Aufgabe passt
+Suchbeschreibung: Persönliche Assistenten, visuelle Automatisierung, autonome Agenten und SubKit: Fragen zur Entscheidung für Einzelpersonen, kleine Unternehmen und Abteilungen.
 
-# Welches Werkzeug passt zur Aufgabe?
+# Welches Werkzeug passt zu deiner Arbeit?
 
-Die entscheidende Frage ist, wie die Arbeit später laufen soll. Musst du eine einmalige
-Aufgabe lösen, jede Verzweigung selbst gestalten oder einen vereinbarten Ablauf für dein
-Team betreiben? Die Grenzen sind nicht bei jedem Produkt gleich. Prüfe die konkrete
-Lösung anhand deiner Anforderungen.
+Die entscheidende Frage ist, wie die Arbeit später laufen soll. Geht es um eine einzelne Aufgabe, möchtest du Schritte selbst zusammensetzen oder einen vorbereiteten Ablauf wiederholt nutzen? Das gilt für dich allein genauso wie für ein Team.
+
+Die folgenden Werkzeugklassen helfen bei der Einordnung. Funktionen und Grenzen unterscheiden sich zwischen konkreten Angeboten. Prüfe sie an deiner eigenen Aufgabe.
 
 ## Ein persönlicher Assistent
 
-Er hilft bei Recherche, Entwürfen und einzelnen Aufgaben. Das passt, wenn du mitarbeitest
-und das Ergebnis direkt beurteilst. Prüfe für wiederkehrende Teamarbeit zusätzlich,
-wie Zuständigkeiten, Ausführungsrechte und Verlauf geregelt sind.
+Er hilft bei Recherche, Entwürfen und einzelnen Aufgaben. Das passt, wenn du während der Arbeit mitentscheidest und das Ergebnis direkt beurteilst. Für wiederkehrende Abläufe prüfst du zusätzlich, wie Zugriffe, Wiederholung und Fehlerbehandlung geregelt sind.
 
 ## Ein visuelles Automatisierungswerkzeug
 
-Es passt, wenn du Schritte und Verzweigungen selbst zusammensetzen möchtest.
-Wie gut der Betrieb funktioniert, hängt auch davon ab, wie Fehlerbehandlung,
-Berechtigungen und Wartung für deinen Ablauf eingerichtet werden.
+Es passt, wenn du Schritte und Verzweigungen selbst zusammensetzen möchtest. Wie gut der Betrieb funktioniert, hängt auch von der eingerichteten Fehlerbehandlung, den Berechtigungen und der Wartung ab. Auch diese Werkzeuge können Rollen und Freigaben anbieten; entscheidend ist die konkrete Umsetzung.
 
 ## Eine Plattform für autonome Agenten
 
-Sie kann passen, wenn ein System innerhalb vereinbarter Grenzen selbst weitere Schritte
-planen soll. Prüfe, wie Entscheidungen, Zugriffe und mögliche Änderungen nachvollzogen
-und begrenzt werden. Die Fähigkeiten unterscheiden sich zwischen den Angeboten.
+Sie kann passen, wenn ein System innerhalb vereinbarter Grenzen selbst weitere Schritte planen soll. Prüfe, wie Entscheidungen, Zugriffe, Kosten und mögliche Änderungen nachvollzogen und begrenzt werden. Der Grad der Autonomie hängt vom gewählten Angebot und seiner Einrichtung ab.
 
 ## SubKit
 
-SubKit konzentriert sich auf den Betrieb vorbereiteter Workflows. KI unterstützt die
-Vorbereitung. Eine Person prüft die erlaubte Wirkung. Ausgeführt wird die aktivierte
-Workflow-Fassung innerhalb ihrer Rechte und Freigaben.
+SubKit konzentriert sich auf vorbereitete Workflows. KI unterstützt die Vorbereitung. Eine berechtigte Person prüft die erlaubte Wirkung. Ausgeführt wird die aktivierte Fassung innerhalb ihrer Rechte und Freigaben. Du kannst solche Abläufe allein oder gemeinsam nutzen.
 
-Auch ein festgelegter Workflow kann einen Modellaufruf enthalten. Dessen Antwort kann
-variieren. Ein geprüfter Ausführungsweg garantiert deshalb nicht automatisch die
-fachliche Richtigkeit jedes erzeugten Inhalts.
+Ein festgelegter Workflow kann einen Modellaufruf enthalten. Dessen Antwort kann variieren. Ein geprüfter Ausführungsweg garantiert deshalb nicht automatisch die fachliche Richtigkeit jedes erzeugten Inhalts.
 
 ## Acht Fragen vor der Entscheidung
 
 - Wer beschreibt den Ablauf und wer prüft ihn?
 - Was ist beim nächsten Lauf festgelegt und was kann sich ändern?
 - Welche Systeme und Daten darf der Ablauf erreichen?
-- Kann eine Kollegin ihn starten, ohne ihn verändern zu dürfen?
-- Wer bemerkt Fehler und wer bearbeitet sie?
+- Lassen sich Nutzung, Bearbeitung und Freigabe mit passenden Rechten trennen?
+- Wer bemerkt Fehler oder geänderte Schnittstellen und wer bearbeitet sie?
 - Welche Kosten entstehen für Einrichtung, Läufe und Betrieb?
 - Wo liegen Daten und Zugänge, und wohin werden Daten übertragen?
-- Können wir hinterher nachvollziehen, was passiert ist?
+- Kannst du später nachvollziehen, welche Fassung ausgeführt wurde und wie sie ausging?
 
-Lass dir diese Fragen an einer eigenen Aufgabe beantworten. Ein allgemeiner
-Funktionsvergleich ersetzt diese Prüfung nicht.
+Lass dir diese Fragen an deiner eigenen Aufgabe beantworten. Eine allgemeine Vergleichstabelle belegt keine Überlegenheit eines Produkts.
 
 ## Mit einem Coding-Agent arbeiten
 
-Ein Coding-Agent kann Software entwickeln und bei der Vorbereitung eines Workflows
-helfen. SubKit stellt den gemeinsamen Betrieb mit Rechten, Freigaben und Verlauf bereit.
-Eigene Skripte können ebenfalls sinnvoll sein; dann muss das Team deren Betrieb,
-Zugänge, Änderungen und Fehlerbehandlung selbst gestalten.
+Ein Coding-Agent kann Software entwickeln und bei der Vorbereitung eines Workflows helfen. Für den dauerhaften Betrieb eines eigenen Skripts musst du außerdem Laufumgebung, Zugänge, Änderungen und Fehlerbehandlung einrichten oder vorhandene Lösungen dafür verwenden.
 
-## Wann SubKit weniger gut passt
+SubKit bündelt diese Aufgaben rund um Workflows mit Rechten, Freigaben und Ausführungsverlauf. Dokumentierte Zugänge ermöglichen die Anbindung deiner KI-Werkzeuge. Welche Funktionen der Client aufrufen darf, richtet sich nach dem angeschlossenen Zugang. Ein Skript kann ebenfalls wiederverwendbar und gut betrieben sein; die Entscheidung hängt vom Aufwand und deinen Anforderungen ab.
 
-Für eine einzelne lokale Aufgabe kann der zusätzliche Betrieb zu aufwendig sein.
-Wenn du freies Arbeiten am Dateisystem, beliebige Shell-Aufrufe oder eine umfangreiche
-Datenmigration brauchst, prüfe dafür geeignete Entwicklungs- und Datenwerkzeuge.
-SubKit bietet kein gehostetes SaaS-Angebot.
+## Wann der Betrieb zu viel Aufwand sein kann
+
+Für eine einzelne lokale Aufgabe kann eine zusätzliche Installation aufwendiger sein als die Aufgabe selbst. Wenn du freien Zugriff auf Shell und Dateisystem, offene Langläufe oder eine umfangreiche Datenmigration brauchst, prüfe dafür geeignete Entwicklungs- und Datenwerkzeuge.
+
+SubKit wird selbst gehostet. Du brauchst eigene Betriebskompetenz oder jemanden, der die Installation für dich betreut.
 
 Anwendungsfälle ansehen → /anwendungsfaelle
 
@@ -1200,9 +1173,9 @@ END FRAMER VERGLEICHE
 | Support und Sicherheitsmeldungen | Bestätigte, funktionierende Kontaktwege | Keine erfundene E-Mail-Adresse oder Reaktionszeit. |
 | Produktabbildungen | Freigegebene Aufnahmen mit isolierten Beispieldaten | Keine erfundenen Produktzustände zeigen. |
 
-Der vollständige Artifact-Abgleich bleibt offen. Das Inhaltspaket ist bereits für
-redaktionelle Arbeit nutzbar; es ersetzt weder diesen Abgleich noch Produkt-, Rechts-
-oder Sichtabnahmen. Framer-Vorschau, Links und tatsächliche Website-Funktionen werden
+Der vollständige Originalexport ist redaktionell abgeglichen, siehe Nachweis E160.
+Die Framer-Seiten müssen nach Übernahme gegen die geprüften Texte zurückgelesen werden.
+Der Inhaltsabgleich ersetzt keine Produkt-, Rechts- oder Sichtabnahme. Framer-Vorschau, Links und tatsächliche Website-Funktionen werden
 nach dem Seitenaufbau geprüft. Automatische visuelle Matrizen werden nicht ausgeführt.
 
 Die aktuelle L09-Einordnung und nächsten Schritte stehen ausschließlich in LAUNCH_STATUS.md.
