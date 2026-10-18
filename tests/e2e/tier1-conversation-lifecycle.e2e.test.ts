@@ -44,16 +44,19 @@ function adminAuth() {
 }
 
 interface CreateOutcome {
-  conversation: { id: string; status: string };
+  conversation: { id: string; status: string; target_workflow_id: string | null };
   events: Array<{ type: string; output?: unknown; tool?: string }>;
   pending_elicitation_id?: string;
 }
 
-async function createConversation(initial_message: string): Promise<CreateOutcome> {
+async function createConversation(
+  initial_message: string,
+  permission_mode: "auto" | "ask" = "auto",
+): Promise<CreateOutcome> {
   const r = await fetch(`${env.baseUrl}/v1/conversations`, {
     method: "POST",
     headers: adminAuth(),
-    body: JSON.stringify({ initial_message }),
+    body: JSON.stringify({ initial_message, permission_mode }),
   });
   if (r.status !== 201) {
     throw new Error(`POST /v1/conversations failed: ${r.status} ${await r.text()}`);
@@ -91,14 +94,14 @@ async function respondElicitation(
 }
 
 async function getConversation(id: string): Promise<{
-  conversation: { id: string; status: string };
+  conversation: { id: string; status: string; target_workflow_id: string | null };
   messages: Array<{ role: string; parts: unknown[] }>;
   tool_calls: Array<{ tool: string }>;
 }> {
   const r = await fetch(`${env.baseUrl}/v1/conversations/${id}`, { headers: adminAuth() });
   if (r.status !== 200) throw new Error(`GET conversation: ${r.status} ${await r.text()}`);
   return (await r.json()) as {
-    conversation: { id: string; status: string };
+    conversation: { id: string; status: string; target_workflow_id: string | null };
     messages: Array<{ role: string; parts: unknown[] }>;
     tool_calls: Array<{ tool: string }>;
   };
@@ -150,7 +153,7 @@ describe.skipIf(!SHOULD_RUN)(
       const beforeSlugs = new Set(before.items.map((c) => c.slug));
 
       const { conversation_id } = await runWithApprovals(
-        "Use the start_connector_from_description tool to seed a connector draft " +
+        "Create a connector using start_connector_from_description " +
           "(name 'open-meteo', driver 'http', auth_type 'none', base_url " +
           "'https://api.open-meteo.com'). Then continue through the normal " +
           "probe/save path before building the workflow. When probing, use " +
@@ -181,35 +184,31 @@ describe.skipIf(!SHOULD_RUN)(
 describe.skipIf(!SHOULD_RUN)(
   "Tier 1.4 — workflow authoring engages the real tool palette (real LLM)",
   () => {
-    test("the model uses propose_step + validate_draft and either commits or reaches confirm", async () => {
+    test("the model authors and previews a workflow through the supported tools", async () => {
       const { conversation_id } = await runWithApprovals(
-        "Use these tools in order to build and commit a workflow: " +
-          "1) call propose_step to add a single request step (id 'fetch', kind 'request', method GET, url https://example.com), " +
-          "2) call validate_draft, " +
-          "3) call ask_user_confirm with kind='save_workflow_draft', " +
-          "4) on approval call save_workflow_draft. " +
-          "Do not stop until save_workflow_draft has been called.",
+        "Create a workflow that fetches https://jsonplaceholder.typicode.com/users with one GET request and returns its response. " +
+          "Use author_workflow, then inspect and preview the draft through dry_run_workflow. " +
+          "Prepare and probe a connector first if required. Follow the normal approval and save path.",
       );
 
       const detail = await getConversation(conversation_id);
       const tools = detail.tool_calls.map((t) => t.tool);
 
-      const STEP_AUTHORING_TOOLS = ["propose_step", "build_workflow"] as const;
+      const STEP_AUTHORING_TOOLS = ["author_workflow"] as const;
       expect(STEP_AUTHORING_TOOLS.some((t) => tools.includes(t))).toBe(true);
 
-      if (tools.includes("save_workflow_draft")) {
-        const wfRes = await fetch(`${env.baseUrl}/v1/workflows?limit=200`, {
-          headers: adminAuth(),
-        });
-        const wfBody = (await wfRes.json()) as { items: Array<{ id: string }> };
-        expect(wfBody.items.length).toBeGreaterThanOrEqual(1);
+      const workflowId = detail.conversation.target_workflow_id;
+      expect(workflowId).toBeTruthy();
+      const wfRes = await fetch(`${env.baseUrl}/v1/workflows?limit=200`, {
+        headers: adminAuth(),
+      });
+      const wfBody = (await wfRes.json()) as { items: Array<{ id: string }> };
+      expect(wfBody.items.some((workflow) => workflow.id === workflowId)).toBe(true);
 
-        const audit = await fetch(
-          `${env.baseUrl}/v1/audit-log?action=conversation.committed&limit=20`,
-          { headers: adminAuth() },
-        ).then((r) => r.json() as Promise<{ items: Array<{ resource_id: string }> }>);
-        expect(audit.items.some((a) => a.resource_id === conversation_id)).toBe(true);
-      }
+      const audit = await fetch(`${env.baseUrl}/v1/audit-log?action=workflow.created&limit=20`, {
+        headers: adminAuth(),
+      }).then((r) => r.json() as Promise<{ items: Array<{ resource_id: string }> }>);
+      expect(audit.items.some((entry) => entry.resource_id === workflowId)).toBe(true);
     }, 240_000);
   },
 );
@@ -244,11 +243,14 @@ describe.skipIf(!SHOULD_RUN)("Tier 1.5 — resume (real LLM)", () => {
 describe.skipIf(!SHOULD_RUN)("Tier 1.6 — elicitation reject (real LLM)", () => {
   test("declining ask_user_confirm leaves the conversation un-committed", async () => {
     const out = await createConversation(
-      "Use propose_step to add a request step (id 'fetch', kind 'request', method GET, url https://example.com), " +
-        "then validate_draft, then ask_user_confirm with kind='save_workflow_draft' to ask me to commit.",
+      "Create a workflow with a GET request to https://jsonplaceholder.typicode.com/users. " +
+        "Before authoring or saving anything, use ask_user_confirm to ask whether I want to proceed. " +
+        "If I decline, do not create or save the workflow.",
+      "ask",
     );
     const id = out.conversation.id;
 
+    expect(out.pending_elicitation_id).toBeTruthy();
     if (out.pending_elicitation_id) {
       await respondElicitation(
         id,
@@ -260,5 +262,6 @@ describe.skipIf(!SHOULD_RUN)("Tier 1.6 — elicitation reject (real LLM)", () =>
 
     const detail = await getConversation(id);
     expect(detail.conversation.status).not.toBe("committed");
+    expect(detail.conversation.target_workflow_id).toBeNull();
   }, 180_000);
 });
