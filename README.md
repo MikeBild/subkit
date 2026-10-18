@@ -184,6 +184,9 @@ workspace only when you name it:
 sk settings set llm.model '"<model>"' --tenant <your-tenant-id>
 ```
 
+In the Cockpit, workspaces outside the engine operator currently view settings read-only.
+Use the CLI command above to change your own workspace settings.
+
 Without `--tenant` the engine refuses the change instead of applying it to everyone. While the
 operator has saved engine-wide settings that are not active yet, a workspace change answers
 `409 operator_change_pending` and is not saved. Revoking an MCP OAuth client outside the
