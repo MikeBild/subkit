@@ -5154,6 +5154,40 @@
       "sourceByteRange": [555, 1675],
       "runtimeLockSha256": "f2694f1fbc8689075bf005d90cecaeb393967cf96b735a8315198144278ea11d",
       "coverage": "Original README license section; final module and platform binary inclusion unverified"
+    },
+    {
+      "component": "Bun vendored Node fallbacks",
+      "revision": "34cbb9a40b4bd1bd767d134a7065e66c2432a676",
+      "path": "bun-node-fallbacks__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/src/node-fallbacks/net.js",
+      "sha256": "2196d3c9a86bd2fb76fa4fa0f2d1df4aa8412143ab258b177c496bd458c8bf75",
+      "sourceFiles": [
+        {
+          "path": "src/node-fallbacks/net.js",
+          "source": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/src/node-fallbacks/net.js",
+          "sha256": "e16a9c55052478574b3fcfbbfc6db467288f1fefce0314a13b4ead5f40da636d",
+          "sourceByteRange": [0, 1132]
+        },
+        {
+          "path": "src/node-fallbacks/path.js",
+          "source": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/src/node-fallbacks/path.js",
+          "sha256": "9c7af702fe76adad5a6309a0323fd81d9640780e9f0e0197960d0d8d15b28c0a",
+          "sourceByteRange": [97, 1229]
+        },
+        {
+          "path": "src/node-fallbacks/url.js",
+          "source": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/src/node-fallbacks/url.js",
+          "sha256": "0d8d4b09bbee3d11c9af7775ae3a1dabcce909d463539cc41e580ca2d3c9e303",
+          "sourceByteRange": [0, 1132]
+        },
+        {
+          "path": "src/node-fallbacks/util.js",
+          "source": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/src/node-fallbacks/util.js",
+          "sha256": "bc9d062a2d2d7dbebb29664bc569e4819cb9af4946f873a76bd4f12279d6daa9",
+          "sourceByteRange": [207, 1339]
+        }
+      ],
+      "coverage": "Identical complete original notice from net/path/url/util sources; other vendored components not covered"
     }
   ]
 }
