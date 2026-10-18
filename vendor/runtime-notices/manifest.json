@@ -3794,6 +3794,18 @@
       "runtimeBuildSource": "https://raw.githubusercontent.com/oven-sh/bun/34cbb9a40b4bd1bd767d134a7065e66c2432a676/scripts/build/deps/webkit.ts",
       "upstreamPath": "Source/WTF/LICENSE-simde.txt",
       "coverage": "Pinned WebKit source notice; platform inclusion and external ICU binary coverage unverified"
+    },
+    {
+      "component": "WebKit ICU build",
+      "revision": "21d1eb0f306e1141c10931e914dfc038c06121da",
+      "path": "webkit-icu-build__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/unicode-org/icu/21d1eb0f306e1141c10931e914dfc038c06121da/LICENSE",
+      "sha256": "e55522d81edc687a341a4411e0776e54ca654e90147f354a90458aaced4116af",
+      "archiveSource": "https://github.com/unicode-org/icu/releases/download/release-78.3/icu4c-78.3-sources.tgz",
+      "archiveSha256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+      "archivePath": "icu/LICENSE",
+      "runtimeBuildSource": "https://raw.githubusercontent.com/oven-sh/WebKit/0f966e81b78c84bb23213e391bc679c4ef83e56b/Dockerfile",
+      "coverage": "ICU archive checksum bound to pinned Linux WebKit build; other platform binaries and modifications remain unverified"
     }
   ]
 }
