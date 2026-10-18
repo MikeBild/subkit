@@ -70,6 +70,20 @@ describe("clipper release archive", () => {
       const decoded = await sharp(png).raw().toBuffer({ resolveWithObject: true });
       expect(decoded.info.width).toBe(Number(size));
       expect(decoded.info.height).toBe(Number(size));
+      if (size === "128") {
+        expect(decoded.info.channels).toBe(4);
+        const opaqueBounds = { left: 128, top: 128, right: -1, bottom: -1 };
+        for (let y = 0; y < 128; y++) {
+          for (let x = 0; x < 128; x++) {
+            if (decoded.data[(y * 128 + x) * 4 + 3] === 0) continue;
+            opaqueBounds.left = Math.min(opaqueBounds.left, x);
+            opaqueBounds.top = Math.min(opaqueBounds.top, y);
+            opaqueBounds.right = Math.max(opaqueBounds.right, x);
+            opaqueBounds.bottom = Math.max(opaqueBounds.bottom, y);
+          }
+        }
+        expect(opaqueBounds).toEqual({ left: 16, top: 16, right: 111, bottom: 111 });
+      }
     }
     expect(files.get("licenses/lucide.txt")).toEqual(
       await readFile(join(root, "node_modules/lucide-react/LICENSE")),

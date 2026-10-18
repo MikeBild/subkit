@@ -1,0 +1,34 @@
+{
+  "status": "DRAFT_REQUIRES_MANUAL_APPROVAL",
+  "source_commit": "6b39308865e24b46d20d94779852d43e6fe9e2cd",
+  "created_at": "2026-10-18T03:32:02.612Z",
+  "design_draft": "d4cd1990-336d-481d-9ca9-0c5405cdde12",
+  "design_version": 1,
+  "original_html_sha256": "681b9ae3c464e12d24231fa7f1355a2a978e98796aa3abd8fe0d7e36d12b7ee7",
+  "logo_source": "apps/cockpit/public/favicon.svg",
+  "logo_sha256": "80eeae71cf47643216f048a4ca723c425d6511020546c25e1f216e5e7564e94b",
+  "method": "Superdesign composition; equivalent local CSS and embedded unchanged logo replace external Tailwind/font/image requests; Chromium single fixed-canvas export",
+  "source": {
+    "file": "promo.html",
+    "sha256": "0ad0e648532305552219a129bddf647c3d945c3c1b13a288d5f012b2d7b254b8"
+  },
+  "image": {
+    "file": "promo.png",
+    "sha256": "6f33ba3f307c3eaac0e4f0ad531ec882acd0ccbdd8174c658f48cad18cf94af0",
+    "width": 440,
+    "height": 280,
+    "format": "png",
+    "has_alpha": false
+  },
+  "checks": {
+    "no_external_requests": true,
+    "fixed_canvas": true,
+    "embedded_logo_decoded": true
+  },
+  "boundaries": [
+    "Marketing graphic, not a product screenshot",
+    "Manual visual acceptance pending",
+    "Not submitted to Google",
+    "Existing Lucide-derived logo; original license accompanies this artwork in lucide.txt"
+  ]
+}
