@@ -14,9 +14,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import {
+  downloadReleaseNotices,
+  readRetainedNotices,
+  replaceWithNotices,
+  retainReleaseNotices,
+} from "./release-notices.ts";
 import { RELEASE_PUBLIC_KEY } from "./release-public-key.ts";
 
 export const GITHUB_REPO = "mikebild/subkit";
@@ -248,6 +254,7 @@ export interface RetainedVersion {
 }
 
 interface RetainedManifest {
+  notices?: Record<string, string>;
   version: string;
   installed_at: number;
   sha256: string;
@@ -311,7 +318,9 @@ function retainCurrentBinary(config: UpdaterConfig, fromVersion: string, execPat
   const dest = join(dir, config.binaryName + (process.platform === "win32" ? ".exe" : ""));
   copyFileSync(execPath, dest);
   if (process.platform !== "win32") chmodSync(dest, 0o755);
+  const notices = retainReleaseNotices(execPath, dir);
   writeManifest(dir, {
+    notices,
     version: fromVersion,
     installed_at: Date.now(),
     sha256: hashFile(dest),
@@ -347,22 +356,28 @@ export function rollbackTo(config: UpdaterConfig, target: string | "previous"): 
   const fromVersion = config.currentVersion;
   const execPath = process.execPath;
 
+  const notices = readRetainedNotices(
+    dirname(picked.path),
+    readManifest(dirname(picked.path))?.notices,
+  );
   retainCurrentBinary(config, fromVersion, execPath);
 
-  const isWindows = process.platform === "win32";
-  if (isWindows) {
-    const oldPath = `${execPath}.old`;
-    try {
-      unlinkSync(oldPath);
-    } catch {}
-    renameSync(execPath, oldPath);
-    copyFileSync(picked.path, execPath);
-  } else {
-    const tmpPath = `${execPath}.rollback.${process.pid}`;
-    copyFileSync(picked.path, tmpPath);
-    chmodSync(tmpPath, 0o755);
-    renameSync(tmpPath, execPath);
-  }
+  replaceWithNotices(execPath, notices, () => {
+    const isWindows = process.platform === "win32";
+    if (isWindows) {
+      const oldPath = `${execPath}.old`;
+      try {
+        unlinkSync(oldPath);
+      } catch {}
+      renameSync(execPath, oldPath);
+      copyFileSync(picked.path, execPath);
+    } else {
+      const tmpPath = `${execPath}.rollback.${process.pid}`;
+      copyFileSync(picked.path, tmpPath);
+      chmodSync(tmpPath, 0o755);
+      renameSync(tmpPath, execPath);
+    }
+  });
 
   return {
     from_version: fromVersion,
@@ -418,6 +433,12 @@ export async function performUpdate(
   if (!expectedHash) {
     throw new Error(`no checksum found for '${assetName}' in SHA256SUMS`);
   }
+
+  const notices = await downloadReleaseNotices(
+    info.assets,
+    (name) => parseChecksum(sumsText, name),
+    fetchImpl,
+  );
 
   const tmpDir = join(config.cacheDir, "tmp");
   mkdirSync(tmpDir, { recursive: true });
@@ -487,16 +508,18 @@ export async function performUpdate(
 
     retainCurrentBinary(config, fromVersion, execPath);
 
-    if (isWindows) {
-      const oldPath = `${execPath}.old`;
-      try {
-        unlinkSync(oldPath);
-      } catch {}
-      renameSync(execPath, oldPath);
-      renameSync(tmpPath, execPath);
-    } else {
-      renameSync(tmpPath, execPath);
-    }
+    replaceWithNotices(execPath, notices, () => {
+      if (isWindows) {
+        const oldPath = `${execPath}.old`;
+        try {
+          unlinkSync(oldPath);
+        } catch {}
+        renameSync(execPath, oldPath);
+        renameSync(tmpPath, execPath);
+      } else {
+        renameSync(tmpPath, execPath);
+      }
+    });
 
     writeCache(config.cacheDir, {
       last_check: Date.now(),

@@ -187,6 +187,11 @@ stop installation. This path requires publicly downloadable release assets; a lo
 build or a private repository is not sufficient. The engine-served installer above
 is a separate download path from your own installation.
 
+The GitHub updater also requires both signed license assets. It updates the notices
+beside the binary and retains existing notices with their checksums for rollback.
+Older retained versions without notice metadata cannot reconstruct missing historical
+license files; their existing rollback behavior remains available.
+
 ## Collect ideas and turn them into knowledge
 
 Collect pages and ideas now; decide later what becomes knowledge. Use the shared categories to organize clips, with Inbox as your personal starting default.

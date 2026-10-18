@@ -139,6 +139,8 @@ Append-only Nachweisarchiv zu [LAUNCH_STATUS.md](LAUNCH_STATUS.md). Nur dort ste
 
 | E128 | L05 | Gemeinsamer CLI-Updater akzeptierte den ersten passenden Prüfsummeneintrag trotz Duplikat. Neuer Test zunächst FAIL; Parser weist nun identische/widersprüchliche Duplikate und ungültige Hashes für das angeforderte Asset ab. Zusätzlicher Ablaufnachweis: auch korrekt signiertes doppeldeutiges Manifest wird vor Binärdownload/Retention abgewiesen. Gesamte Updater-/Rollback-Suite: 56 PASS, 79 Assertions. .artifacts/launch/updater-checksum-before.log und updater-checksum-after.log. | Korrektur der eindeutigen Manifestbindung, keine behauptete Umgehung gültiger Signaturen. Lizenzdownload im Updater und Engine-Installer bleibt offen. Tests verwenden isolierte Dateien und Fixture-Schlüssel; kein reales Update/Release. |
 
+| E129 | L04/L05/L18 | CLI-Updater verlangt LICENSE und THIRD_PARTY_NOTICES.txt als eindeutige Assets mit gültigen Hashes im bereits signaturgeprüften Manifest. Downloads vor Binärtausch geprüft; Beigaben neben CLI aktualisiert. Vorhandene Beigaben mit Hashes zur alten Binärversion zurückbehalten; Rollback prüft und restauriert diese. Bei Fehler im Binärtausch werden vorherige Beigaben wiederhergestellt. 66 gezielte Updater-/Rollback-/Notice-Tests, 108 Assertions PASS; fehlende/doppelte/leere/manipulierte Assets und beschädigte Retention abgedeckt. .artifacts/launch/updater-notices-tests.log. README und generierte Selbstbeschreibung angepasst. | Isolierte Dateisystem-/Download-Fixtures, kein reales öffentliches Update, keine native Windows-/macOS-Abnahme. Historische Retention ohne Notice-Metadaten rekonstruiert keine fehlenden Dateien. Engine-Installer und erneutes Gesamtgate bleiben offen. |
+
 ## Historisches Security-Befundregister
 
 

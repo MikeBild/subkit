@@ -91,12 +91,21 @@ function buildSignedRelease(opts: { binaryName: string; binaryBytes: Buffer; tag
   const pa = platformArch()!;
   const assetName = `${opts.binaryName}_${pa.os}_${pa.arch}${pa.ext}`;
   const expectedHash = createHash("sha256").update(opts.binaryBytes).digest("hex");
-  const sumsText = `${expectedHash}  ${assetName}\n`;
+  const noticeFiles = { LICENSE: "Fixture license", "THIRD_PARTY_NOTICES.txt": "Fixture notices" };
+  const sumsText =
+    `${expectedHash}  ${assetName}\n` +
+    Object.entries(noticeFiles)
+      .map(([name, text]) => `${createHash("sha256").update(text).digest("hex")}  ${name}\n`)
+      .join("");
   const sig = signSums(sumsText);
   const info: UpdateInfo = {
     version: opts.tag.replace(/^v/, ""),
     tag: opts.tag,
     assets: [
+      ...Object.keys(noticeFiles).map((name) => ({
+        name,
+        url: `https://example.com/${opts.tag}/${name}`,
+      })),
       { name: assetName, url: `https://example.com/${opts.tag}/${assetName}` },
       { name: "SHA256SUMS", url: `https://example.com/${opts.tag}/SHA256SUMS` },
       { name: "SHA256SUMS.sig", url: `https://example.com/${opts.tag}/SHA256SUMS.sig` },
@@ -104,6 +113,8 @@ function buildSignedRelease(opts: { binaryName: string; binaryBytes: Buffer; tag
     body: "",
   };
   const fetchImpl = makeFetchImpl((url) => {
+    for (const [name, text] of Object.entries(noticeFiles))
+      if (url.endsWith(`/${name}`)) return new Response(text);
     if (url.endsWith("/SHA256SUMS.sig")) {
       return new Response(new Uint8Array(sig));
     }
@@ -549,10 +560,52 @@ describe("performUpdate signature gating", () => {
 });
 
 describe("performUpdate retention", () => {
+  for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.txt"]) {
+    for (const mode of ["missing", "duplicate", "empty"]) {
+      test(`rejects ${mode} ${name} before binary retention`, async () => {
+        const cfg = makeConfig();
+        const release = buildSignedRelease({
+          binaryName: cfg.binaryName,
+          binaryBytes: Buffer.from("NEW"),
+          tag: "v2.0.0",
+        });
+        if (mode === "missing")
+          release.info.assets = release.info.assets.filter((asset) => asset.name !== name);
+        if (mode === "duplicate")
+          release.info.assets.push(release.info.assets.find((asset) => asset.name === name)!);
+        const fetchImpl = makeFetchImpl((url) =>
+          mode === "empty" && url.endsWith(`/${name}`) ? new Response("") : release.fetchImpl(url),
+        );
+        await expect(performUpdate(cfg, release.info, fetchImpl)).rejects.toThrow(/notice/i);
+        expect(listRetainedVersions(cfg)).toEqual([]);
+      });
+    }
+  }
+
+  for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.txt"]) {
+    test(`rejects tampered ${name} before retaining or replacing any binary`, async () => {
+      const cfg = makeConfig();
+      const release = buildSignedRelease({
+        binaryName: cfg.binaryName,
+        binaryBytes: Buffer.from("NEW"),
+        tag: "v2.0.0",
+      });
+      const fetchImpl = makeFetchImpl((url) =>
+        url.endsWith(`/${name}`) ? new Response("tampered") : release.fetchImpl(url),
+      );
+      await expect(performUpdate(cfg, release.info, fetchImpl)).rejects.toThrow(
+        "Notice checksum mismatch",
+      );
+      expect(listRetainedVersions(cfg)).toEqual([]);
+    });
+  }
+
   test("happy path returns from/to/sha256 and retains the prior binary", async () => {
     const cfg = makeConfig();
     const fakeBinary = join(makeCacheDir(), "test-bin");
     writeFileSync(fakeBinary, Buffer.from("OLD-BINARY"));
+    writeFileSync(join(fakeBinary, "..", "subkit.LICENSE"), "OLD-LICENSE");
+    writeFileSync(join(fakeBinary, "..", "subkit.THIRD_PARTY_NOTICES.txt"), "OLD-NOTICES");
     const realExecPath = process.execPath;
     Object.defineProperty(process, "execPath", { value: fakeBinary, configurable: true });
     try {
@@ -570,6 +623,18 @@ describe("performUpdate retention", () => {
       expect(retained.length).toBe(1);
       expect(retained[0]!.version).toBe("1.0.0");
       expect(readFileSync(retained[0]!.path).toString()).toBe("OLD-BINARY");
+      expect(readFileSync(join(fakeBinary, "..", "subkit.LICENSE"), "utf8")).toBe(
+        "Fixture license",
+      );
+      expect(readFileSync(join(fakeBinary, "..", "subkit.THIRD_PARTY_NOTICES.txt"), "utf8")).toBe(
+        "Fixture notices",
+      );
+      rollbackTo({ ...cfg, currentVersion: "2.0.0" }, "1.0.0");
+      expect(readFileSync(fakeBinary, "utf8")).toBe("OLD-BINARY");
+      expect(readFileSync(join(fakeBinary, "..", "subkit.LICENSE"), "utf8")).toBe("OLD-LICENSE");
+      expect(readFileSync(join(fakeBinary, "..", "subkit.THIRD_PARTY_NOTICES.txt"), "utf8")).toBe(
+        "OLD-NOTICES",
+      );
     } finally {
       Object.defineProperty(process, "execPath", { value: realExecPath, configurable: true });
     }
