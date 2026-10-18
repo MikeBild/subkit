@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { renderRuntimeNotices } from "./runtime-notices.ts";
 
 export interface NoticePackage {
   name: string;
@@ -158,7 +159,12 @@ if (import.meta.main) {
     join(import.meta.dir, "../vendor/notices/manifest.json"),
   );
   if (!packages.length) throw new Error("No third-party packages found");
-  process.stdout.write(renderNoticeDraft(packages));
+  const runtime = await renderRuntimeNotices(
+    join(import.meta.dir, "../vendor/runtime-notices/manifest.json"),
+    Bun.version,
+    Bun.revision,
+  );
+  process.stdout.write(renderNoticeDraft(packages) + runtime);
   process.stderr.write(
     `${packages.length} packages; ${packages.filter((item) => !item.texts.length).length} missing notices. Draft only.\n`,
   );

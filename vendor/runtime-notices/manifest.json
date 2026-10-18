@@ -1,0 +1,219 @@
+{
+  "runtime": {
+    "version": "1.4.0",
+    "revision": "34cbb9a40b4bd1bd767d134a7065e66c2432a676"
+  },
+  "scope": "Draft notices from pinned Bun build sources across platforms. This is not a complete native or transitive inventory. Platform-specific binary coverage, source/relink delivery, embedded models and legal approval remain UNVERIFIED.",
+  "files": [
+    {
+      "component": "boringssl",
+      "revision": "2288897e2e716330490893d226b4f079f9da9e0c",
+      "path": "boringssl__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/boringssl/2288897e2e716330490893d226b4f079f9da9e0c/LICENSE",
+      "sha256": "827c8d8fc207c2392794eef9e00fe246f9f61fdcc132556c275be3dd8c3cd97f"
+    },
+    {
+      "component": "brotli",
+      "revision": "v1.1.0",
+      "path": "brotli__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/google/brotli/v1.1.0/LICENSE",
+      "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94"
+    },
+    {
+      "component": "bun",
+      "revision": "34cbb9a40b4bd1bd767d134a7065e66c2432a676",
+      "path": "bun__runtime-license.txt",
+      "source": "https://github.com/oven-sh/bun/blob/34cbb9a40b4bd1bd767d134a7065e66c2432a676/LICENSE.md",
+      "sha256": "b9caf52728691b4057e371232c221a132883198be2f3d2ddf92c90404c984b1a"
+    },
+    {
+      "component": "cares",
+      "revision": "c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab",
+      "path": "cares__LICENSE.md.txt",
+      "source": "https://raw.githubusercontent.com/c-ares/c-ares/c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab/LICENSE.md",
+      "sha256": "460f5e768fda3752ca2169a95df062578a10fb126bfd65f3b9b1a1bed2f84807"
+    },
+    {
+      "component": "hdrhistogram",
+      "revision": "be60a9987ee48d0abf0d7b6a175bad8d6c1585d1",
+      "path": "hdrhistogram__COPYING.txt",
+      "source": "https://raw.githubusercontent.com/HdrHistogram/HdrHistogram_c/be60a9987ee48d0abf0d7b6a175bad8d6c1585d1/COPYING.txt",
+      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+    },
+    {
+      "component": "hdrhistogram",
+      "revision": "be60a9987ee48d0abf0d7b6a175bad8d6c1585d1",
+      "path": "hdrhistogram__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/HdrHistogram/HdrHistogram_c/be60a9987ee48d0abf0d7b6a175bad8d6c1585d1/LICENSE.txt",
+      "sha256": "93a583ec58cd981232ec6fab797ff6f17f350c97b83ae0700b2d9350c91028af"
+    },
+    {
+      "component": "highway",
+      "revision": "2607d3b5b0113992fe84d3848859eae13b3b52c1",
+      "path": "highway__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/google/highway/2607d3b5b0113992fe84d3848859eae13b3b52c1/LICENSE",
+      "sha256": "e340270d4f64384569a91d546acb5b094d69ce47f0c015db77abb74dc6f815af"
+    },
+    {
+      "component": "libarchive",
+      "revision": "ded82291ab41d5e355831b96b0e1ff49e24d8939",
+      "path": "libarchive__COPYING.txt",
+      "source": "https://raw.githubusercontent.com/libarchive/libarchive/ded82291ab41d5e355831b96b0e1ff49e24d8939/COPYING",
+      "sha256": "30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229"
+    },
+    {
+      "component": "libdeflate",
+      "revision": "c8c56a20f8f621e6a966b716b31f1dedab6a41e3",
+      "path": "libdeflate__COPYING.txt",
+      "source": "https://raw.githubusercontent.com/ebiggers/libdeflate/c8c56a20f8f621e6a966b716b31f1dedab6a41e3/COPYING",
+      "sha256": "4ad69099cb4374836fd27583d9991e2838cd86b6e4666ab26b2d32582c91e73a"
+    },
+    {
+      "component": "libjpeg-turbo",
+      "revision": "e352b02f794f701407b39af08576035ba3360d60",
+      "path": "libjpeg-turbo__LICENSE.md.txt",
+      "source": "https://raw.githubusercontent.com/libjpeg-turbo/libjpeg-turbo/e352b02f794f701407b39af08576035ba3360d60/LICENSE.md",
+      "sha256": "e10114e6e40f3d0311c401ca25245ac5ef459a43c20f976fd63f03e816f5741f"
+    },
+    {
+      "component": "libspng",
+      "revision": "fb768002d4288590083a476af628e51c3f1d47cd",
+      "path": "libspng__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/randy408/libspng/fb768002d4288590083a476af628e51c3f1d47cd/LICENSE",
+      "sha256": "0622b0794d0fecde47d743f1bb70a03e6fdf082be8e71f39de672ed995d96ff9"
+    },
+    {
+      "component": "libuv",
+      "revision": "8023581113b276e7c1aee3f82da57ca0893faab1",
+      "path": "libuv__LICENSE-docs.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/libuv/8023581113b276e7c1aee3f82da57ca0893faab1/LICENSE-docs",
+      "sha256": "cce5d01fa4a83b794271bd2c28cffdf99afd43c803e6ddefddae39b591ea7448"
+    },
+    {
+      "component": "libuv",
+      "revision": "8023581113b276e7c1aee3f82da57ca0893faab1",
+      "path": "libuv__LICENSE-extra.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/libuv/8023581113b276e7c1aee3f82da57ca0893faab1/LICENSE-extra",
+      "sha256": "262c44bd2cdba037e6d2a82fba15f5800d292bc993a6f5d6b6ea487744d02836"
+    },
+    {
+      "component": "libuv",
+      "revision": "8023581113b276e7c1aee3f82da57ca0893faab1",
+      "path": "libuv__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/libuv/8023581113b276e7c1aee3f82da57ca0893faab1/LICENSE",
+      "sha256": "16de0c32b265cb7d46a6d3bd614f259dd4d693a5e26b3407b04aae8d73041f0c"
+    },
+    {
+      "component": "libwebp",
+      "revision": "b7e29b9d75bd31422b00c2a446d49d7af06c328d",
+      "path": "libwebp__COPYING.txt",
+      "source": "https://chromium.googlesource.com/webm/libwebp/+/b7e29b9d75bd31422b00c2a446d49d7af06c328d/COPYING?format=TEXT",
+      "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf"
+    },
+    {
+      "component": "libwebp",
+      "revision": "b7e29b9d75bd31422b00c2a446d49d7af06c328d",
+      "path": "libwebp__PATENTS.txt",
+      "source": "https://chromium.googlesource.com/webm/libwebp/+/b7e29b9d75bd31422b00c2a446d49d7af06c328d/PATENTS?format=TEXT",
+      "sha256": "cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c"
+    },
+    {
+      "component": "lolhtml",
+      "revision": "725ce499aa9b71e38b7a2d0a9fbb6d7294a4079e",
+      "path": "lolhtml__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/lol-html/725ce499aa9b71e38b7a2d0a9fbb6d7294a4079e/LICENSE",
+      "sha256": "e4ddaa9d7391bb9536fcb8c59b570a8b85a0bf6da54df5b3b26f098f6f99c9cc"
+    },
+    {
+      "component": "lshpack",
+      "revision": "8905c024b6d052f083a3d11d0a169b3c2735c8a1",
+      "path": "lshpack__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/litespeedtech/ls-hpack/8905c024b6d052f083a3d11d0a169b3c2735c8a1/LICENSE",
+      "sha256": "0490f9666828ad1b6b5503102e7ebbe491451b7174511f3b6255caa967caf955"
+    },
+    {
+      "component": "lsqpack",
+      "revision": "1e9c5b8e59f8161c54f168a570c8bfdc59ded0c3",
+      "path": "lsqpack__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/litespeedtech/ls-qpack/1e9c5b8e59f8161c54f168a570c8bfdc59ded0c3/LICENSE",
+      "sha256": "6b1aded50331e34502c8d2b00238c6146b1a54314ce94a5c5feb5d340a6d00d6"
+    },
+    {
+      "component": "lsquic",
+      "revision": "3181911301b1aa4f54c1ed690901abc674ee08fb",
+      "path": "lsquic__LICENSE.chrome.txt",
+      "source": "https://raw.githubusercontent.com/litespeedtech/lsquic/3181911301b1aa4f54c1ed690901abc674ee08fb/LICENSE.chrome",
+      "sha256": "85d5dcb0d30ea89fa5922451957ff2a1a2c3c24f1ad2bb9ab23b5d6080763fc9"
+    },
+    {
+      "component": "lsquic",
+      "revision": "3181911301b1aa4f54c1ed690901abc674ee08fb",
+      "path": "lsquic__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/litespeedtech/lsquic/3181911301b1aa4f54c1ed690901abc674ee08fb/LICENSE",
+      "sha256": "9bc22643b3ea2b55c547c83e332253d04ba3df4f26696091e6fa9f7a1ccc65ef"
+    },
+    {
+      "component": "mimalloc",
+      "revision": "6a14aee24315e503fa295a1fa90fe8b24ad91774",
+      "path": "mimalloc__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/mimalloc/6a14aee24315e503fa295a1fa90fe8b24ad91774/LICENSE",
+      "sha256": "82ade5d7d9b029044b5fbbc326207fc47c2d44ee4dd71e8a559c36d728217de9"
+    },
+    {
+      "component": "picohttpparser",
+      "revision": "066d2b1e9ab820703db0837a7255d92d30f0c9f5",
+      "path": "picohttpparser__source-header.txt",
+      "source": "https://github.com/h2o/picohttpparser/blob/066d2b1e9ab820703db0837a7255d92d30f0c9f5/picohttpparser.c",
+      "sha256": "38a1881166cfd8b7e727bb1ad96996f7e96ce726ae4cea1dddf5d531503341d0"
+    },
+    {
+      "component": "rust-argon2",
+      "revision": "ed81866f163f0c7026aa6fd8388adf37242eb32a",
+      "path": "rust-argon2__LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/sru-systems/rust-argon2/ed81866f163f0c7026aa6fd8388adf37242eb32a/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+    },
+    {
+      "component": "rust-argon2",
+      "revision": "ed81866f163f0c7026aa6fd8388adf37242eb32a",
+      "path": "rust-argon2__LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/sru-systems/rust-argon2/ed81866f163f0c7026aa6fd8388adf37242eb32a/LICENSE-MIT",
+      "sha256": "26b997d1a1496df49cb1ad2cbe024714cd9126543c18e1bc6c7bbca1b3dc42b6"
+    },
+    {
+      "component": "tinycc",
+      "revision": "05f0fafaa3be31e31d7b4b5c17dc60f62c991171",
+      "path": "tinycc__COPYING.txt",
+      "source": "https://raw.githubusercontent.com/oven-sh/tinycc/05f0fafaa3be31e31d7b4b5c17dc60f62c991171/COPYING",
+      "sha256": "512d2d21b6b3384ba64781abb0208a1b87740bc31e2df48e2b206ddb7e4d5779"
+    },
+    {
+      "component": "webkit",
+      "revision": "0f966e81b78c84bb23213e391bc679c4ef83e56b",
+      "path": "webkit__runtime-license.txt",
+      "source": "https://github.com/oven-sh/WebKit/blob/0f966e81b78c84bb23213e391bc679c4ef83e56b/Source/JavaScriptCore/COPYING.LIB",
+      "sha256": "5094ecb9c9dcd0eadc34f3c11511d9b5535063032bc150164ecd1a5d5a445547"
+    },
+    {
+      "component": "zlib",
+      "revision": "12731092979c6d07f42da27da673a9f6c7b13586",
+      "path": "zlib__LICENSE.md.txt",
+      "source": "https://raw.githubusercontent.com/zlib-ng/zlib-ng/12731092979c6d07f42da27da673a9f6c7b13586/LICENSE.md",
+      "sha256": "6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee"
+    },
+    {
+      "component": "zstd",
+      "revision": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+      "path": "zstd__COPYING.txt",
+      "source": "https://raw.githubusercontent.com/facebook/zstd/f8745da6ff1ad1e7bab384bd1f9d742439278e99/COPYING",
+      "sha256": "f9c375a1be4a41f7b70301dd83c91cb89e41567478859b77eef375a52d782505"
+    },
+    {
+      "component": "zstd",
+      "revision": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+      "path": "zstd__LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/facebook/zstd/f8745da6ff1ad1e7bab384bd1f9d742439278e99/LICENSE",
+      "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+    }
+  ]
+}
