@@ -12,6 +12,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { runWithTestEnv } from "../../test-helpers/determinism/env.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import {
   createJourneyCtx,
@@ -70,20 +71,22 @@ afterAll(async () => {
 }, JOURNEY_HOOK_TIMEOUT);
 
 describe("MCP tools/list — wf_<slug> catalog (T22)", () => {
-  test("an unprefixed conversation tool advertised by tools/list reaches its handler", async () => {
-    const client = await connect();
-    try {
-      const listed = await client.listTools();
-      expect(listed.tools.map((tool) => tool.name)).toContain("suggest_related_conversations");
-      const result = await client.callTool({
-        name: "suggest_related_conversations",
-        arguments: { message: "a topic with no prior conversation" },
-      });
-      expect(result.isError).toBe(false);
-      expect(JSON.stringify(result)).not.toContain("unknown tool");
-    } finally {
-      await client.close();
-    }
+  test("an advertised unprefixed conversation tool reaches its handler in authoring mode", async () => {
+    await runWithTestEnv({ SK_MCP_MODE: "authoring" }, async () => {
+      const client = await connect();
+      try {
+        const listed = await client.listTools();
+        expect(listed.tools.map((tool) => tool.name)).toContain("suggest_related_conversations");
+        const result = await client.callTool({
+          name: "suggest_related_conversations",
+          arguments: { message: "a topic with no prior conversation" },
+        });
+        expect(result.isError).toBe(false);
+        expect(JSON.stringify(result)).not.toContain("unknown tool");
+      } finally {
+        await client.close();
+      }
+    });
   });
 
   test("tools/list over MCP returns the seeded wf_<slug> tool", async () => {
