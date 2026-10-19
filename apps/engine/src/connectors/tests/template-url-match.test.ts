@@ -20,6 +20,16 @@ describe("matchTemplateByUrl", () => {
     expect(result!.template.slug).toMatch(/github/);
   });
 
+  test("App Store Connect matches only its exact API host", () => {
+    expect(matchTemplateByUrl("https://api.appstoreconnect.apple.com/v1/apps")?.template.slug).toBe(
+      "app-store-connect",
+    );
+    expect(matchTemplateByUrl("https://appstoreconnect.apple.com/v1/apps")).toBeNull();
+    expect(
+      matchTemplateByUrl("https://api.appstoreconnect.apple.com.evil.example/v1/apps"),
+    ).toBeNull();
+  });
+
   test("GitHub GraphQL URL matches github-graphql or github template", () => {
     const result = matchTemplateByUrl("https://api.github.com/graphql");
     expect(result).not.toBeNull();

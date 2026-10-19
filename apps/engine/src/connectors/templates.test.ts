@@ -10,7 +10,19 @@ describe("connector-template catalog — structural", () => {
   });
 
   test("ships the expected number of templates", () => {
-    expect(templates.length).toBe(60);
+    expect(templates.length).toBe(61);
+  });
+
+  test("App Store Connect is a direct signed-JWT HTTP template with a fixed host", () => {
+    const template = templates.find((entry) => entry.slug === "app-store-connect");
+    expect(template?.base_url).toBe("https://api.appstoreconnect.apple.com");
+    expect(template?.auth_type).toBe("signed_jwt");
+    expect(template?.signed_jwt).toMatchObject({
+      algorithm: "ES256",
+      audience: "appstoreconnect-v1",
+      ttl_seconds: 300,
+    });
+    expect(template?.oauth).toBeNull();
   });
 
   test("supabase-graphql url_pattern matches a real host, not the literal [^/]+", () => {

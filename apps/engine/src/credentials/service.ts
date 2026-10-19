@@ -29,6 +29,7 @@ import {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 import { type CredentialPlaintext, deserializePlain, serializePlain } from "./credential-value.ts";
+import { parseSignedJwtConfig, validateSignedJwtPrivateKey } from "./signed-jwt.ts";
 import type { CredentialMode, DecryptedCredential } from "./types.ts";
 
 export type { CredentialPlaintext } from "./credential-value.ts";
@@ -83,6 +84,47 @@ export async function upsertCredential(
   const db = exec ?? getDb();
   const ownerPredicate = eq(credentials.connector_id, input.connector_id);
   const row = await db.transaction(async (tx) => {
+    if (input.mode === "signed_jwt") {
+      if (input.value.mode !== "signed_jwt") {
+        throw Object.assign(new Error("signed_jwt mode requires a signed_jwt credential value"), {
+          code: "signed_jwt_credential_invalid",
+        });
+      }
+      const [connector] = await tx
+        .select({
+          driver: connectors.driver,
+          config: connectors.config,
+          environment: connectors.environment,
+        })
+        .from(connectors)
+        .where(
+          and(eq(connectors.tenant_id, input.tenant_id), eq(connectors.id, input.connector_id)),
+        )
+        .limit(1);
+      if (!connector) {
+        throw Object.assign(new Error("connector not found for signed_jwt credential"), {
+          code: "signed_jwt_connector_not_found",
+        });
+      }
+      if (connector.driver !== "http" && connector.driver !== "graphql") {
+        throw Object.assign(
+          new Error("signed_jwt credentials require an HTTP or GraphQL connector"),
+          {
+            code: "signed_jwt_driver_invalid",
+          },
+        );
+      }
+      if (connector.environment !== input.environment) {
+        throw Object.assign(
+          new Error("signed_jwt credential environment must match the connector"),
+          {
+            code: "signed_jwt_environment_invalid",
+          },
+        );
+      }
+      const config = parseSignedJwtConfig(connector.config);
+      await validateSignedJwtPrivateKey(input.value.private_key, config.algorithm);
+    }
     const isClientSlot = input.mode === "oauth2_client";
     const slotPredicate = isClientSlot
       ? eq(credentials.mode, "oauth2_client")

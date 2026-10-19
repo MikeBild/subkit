@@ -60,6 +60,28 @@ describe("http keeps its strictness", () => {
   });
 });
 
+describe("signed_jwt", () => {
+  const config = {
+    signed_jwt: { algorithm: "ES256", audience: "provider-api", issuer: "issuer-id" },
+  };
+
+  test("is valid for HTTP and GraphQL connectors", () => {
+    expect(validateConnectorAuthType("http", "signed_jwt")).toEqual([]);
+    expect(validateConnectorAuthType("graphql", "signed_jwt")).toEqual([]);
+    expect(validateConnectorConfig("http", config)).toEqual([]);
+    expect(validateConnectorConfig("graphql", config)).toEqual([]);
+  });
+
+  test("rejects an unsupported driver and reserved static claims", () => {
+    expect(validateConnectorAuthType("postgres", "signed_jwt")).not.toEqual([]);
+    expect(
+      validateConnectorConfig("http", {
+        signed_jwt: { ...config.signed_jwt, claims: { exp: 1 } },
+      }),
+    ).not.toEqual([]);
+  });
+});
+
 describe("an absent config is valid everywhere", () => {
   for (const driver of DriverEnum.options) {
     test(`${driver} accepts undefined and null`, () => {
@@ -198,7 +220,11 @@ describe("auth kinds are scoped to the driver that can honour them", () => {
   test("every other auth kind stays valid on non-MCP drivers", () => {
     for (const driver of DriverEnum.options.filter((candidate) => candidate !== "mcp")) {
       for (const auth_type of AuthTypeEnum.options) {
-        if (MCP_ONLY_AUTH_TYPES.includes(auth_type)) continue;
+        if (
+          MCP_ONLY_AUTH_TYPES.includes(auth_type) ||
+          (auth_type === "signed_jwt" && driver !== "http" && driver !== "graphql")
+        )
+          continue;
         expect(validateConnectorAuthType(driver, auth_type)).toEqual([]);
       }
     }

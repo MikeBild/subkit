@@ -151,7 +151,16 @@ export const ProbeResultSchema = z
 
 export const CredentialBody = z
   .object({
-    mode: z.enum(["none", "header", "query", "bearer", "basic", "aws_sigv4", "connection"]),
+    mode: z.enum([
+      "none",
+      "header",
+      "query",
+      "bearer",
+      "basic",
+      "aws_sigv4",
+      "signed_jwt",
+      "connection",
+    ]),
     connection_id: z.string().uuid().optional(),
     headers: z.record(z.string(), z.string()).optional(),
     query: z.record(z.string(), z.string()).optional(),
@@ -161,6 +170,12 @@ export const CredentialBody = z
     access_key_id: z.string().optional(),
     secret_access_key: z.string().optional(),
     session_token: z.string().optional(),
+    private_key: z
+      .string()
+      .min(1)
+      .max(16384)
+      .optional()
+      .describe("PKCS#8 PEM private key for signed_jwt. Secret; never returned."),
   })
   .openapi("CredentialBody");
 

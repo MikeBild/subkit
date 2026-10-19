@@ -46,6 +46,7 @@ const AUTH_KEYS: Record<string, TranslationKey> = {
   oauth2: "connectorLabel.auth.oauth2",
   oauth2_client: "connectorLabel.auth.oauth2_client",
   oauth2_private_key: "connectorLabel.auth.oauth2_private_key",
+  signed_jwt: "connectorLabel.auth.signed_jwt",
   aws_sigv4: "connectorLabel.auth.aws_sigv4",
 };
 
@@ -201,6 +202,7 @@ export function credentialBody(
     const name = headerName.trim();
     return name ? { mode: "header", headers: { [name]: value } } : null;
   }
+  if (authType === "signed_jwt") return { mode: "signed_jwt", private_key: value };
   return { mode: "bearer", token: value };
 }
 
@@ -209,7 +211,7 @@ export function offersConnectionChoice(authType: string | null, credentialMode: 
 }
 
 export function offersKeyReplacement(authType: string | null): boolean {
-  return authType === "header" || authType === "bearer";
+  return authType === "header" || authType === "bearer" || authType === "signed_jwt";
 }
 
 export const SECRET_MASK = "***redacted***";

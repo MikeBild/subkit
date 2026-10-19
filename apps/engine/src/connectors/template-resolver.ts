@@ -39,6 +39,7 @@ export function materializeConnectorTemplateRow(
     base_url: row.base_url,
     auth_type: row.auth_type,
     oauth: row.oauth ?? null,
+    signed_jwt: (raw.signed_jwt as ConnectorTemplate["signed_jwt"] | undefined) ?? null,
     default_skill: row.default_skill ?? null,
     ingestion_source: row.ingestion_source,
     ingestion_url: row.ingestion_url ?? null,

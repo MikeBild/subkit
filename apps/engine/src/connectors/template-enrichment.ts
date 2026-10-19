@@ -130,6 +130,14 @@ export function enrichConnectorFromTemplate(
     cfg.oauth = oauth;
   }
 
+  if (template.signed_jwt && (draft.auth_type ?? template.auth_type) === "signed_jwt") {
+    const existing = (cfg.signed_jwt as Record<string, unknown> | undefined) ?? {};
+    cfg.signed_jwt = {
+      ...existing,
+      ...template.signed_jwt,
+    };
+  }
+
   if (cfg.probe_endpoint === undefined && template.probe_endpoint != null) {
     cfg.probe_endpoint = template.probe_endpoint;
   }

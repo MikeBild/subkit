@@ -88,6 +88,10 @@ export function extractCredentialFromFormOutput(
       if (!token) return null;
       return { mode: "bearer", token };
     }
+    case "signed_jwt": {
+      const private_key = seedString("private_key") ?? pick(["private_key"]);
+      return private_key ? { mode: "signed_jwt", private_key } : null;
+    }
     case "basic": {
       const username = seedString("username") ?? pick(["username", "user", "email", "login"]);
       const password =

@@ -32,6 +32,7 @@ const ConnectorPromotionResponseSchema = z
           "basic",
           "oauth2",
           "aws_sigv4",
+          "signed_jwt",
           "token_mint",
           "oauth2_client",
           "oauth2_private_key",

@@ -1,0 +1,1 @@
+ALTER TYPE "subkit"."credential_mode" ADD VALUE 'signed_jwt';

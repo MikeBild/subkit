@@ -3,14 +3,23 @@ import { BadRequestError } from "../../errors.ts";
 
 export type StaticCredentialValue = Extract<
   CredentialPlaintext & DecryptedCredential,
-  { mode: "none" | "header" | "query" | "bearer" | "basic" | "aws_sigv4" }
+  { mode: "none" | "header" | "query" | "bearer" | "basic" | "aws_sigv4" | "signed_jwt" }
 >;
 
 export interface CredentialBodyInput {
-  mode: "none" | "header" | "query" | "bearer" | "basic" | "aws_sigv4" | "connection";
+  mode:
+    | "none"
+    | "header"
+    | "query"
+    | "bearer"
+    | "basic"
+    | "aws_sigv4"
+    | "signed_jwt"
+    | "connection";
   headers?: Record<string, string> | undefined;
   query?: Record<string, string> | undefined;
   token?: string | undefined;
+  private_key?: string | undefined;
   username?: string | undefined;
   password?: string | undefined;
   access_key_id?: string | undefined;
@@ -33,6 +42,9 @@ export function credentialBodyToValue(body: CredentialBodyInput): StaticCredenti
     case "bearer":
       if (!body.token) throw new BadRequestError("bearer mode requires token");
       return { mode: "bearer", token: body.token };
+    case "signed_jwt":
+      if (!body.private_key) throw new BadRequestError("signed_jwt requires private_key");
+      return { mode: "signed_jwt", private_key: body.private_key };
     case "basic":
       if (!body.username || body.password === undefined) {
         throw new BadRequestError("basic mode requires username and password");

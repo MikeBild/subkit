@@ -193,6 +193,7 @@ async function fetchOnce(
   multipartBody?: FormData,
   captureBinary?: boolean,
   beforeDispatch?: (request: MaterializedRequest) => Promise<RequestDispatchPolicy | undefined>,
+  signedJwt?: Parameters<typeof executePlannedHttpRequest>[0]["signed_jwt"],
 ): Promise<FetchAttemptResult> {
   let parsedUrl: URL;
   try {
@@ -213,6 +214,7 @@ async function fetchOnce(
     ...(multipartBody !== undefined ? { multipartBody } : {}),
     ...(captureBinary ? { capture_binary: true } : {}),
     ...(beforeDispatch ? { before_dispatch: beforeDispatch } : {}),
+    ...(signedJwt ? { signed_jwt: signedJwt } : {}),
   });
   return {
     status: execution.status,
@@ -243,6 +245,7 @@ async function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 interface DoOnePageParams {
+  signed_jwt?: Parameters<typeof executePlannedHttpRequest>[0]["signed_jwt"];
   before_dispatch?: (request: MaterializedRequest) => Promise<RequestDispatchPolicy | undefined>;
   url: string;
   method: string;
@@ -348,6 +351,7 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         p.multipartBody,
         p.capture_binary,
         p.before_dispatch,
+        p.signed_jwt,
       );
       if (res.status >= 400 && p.accepted_statuses?.has(res.status)) {
         return res;
@@ -929,6 +933,7 @@ async function dispatchRequestStep(
   let baseUrl: URL;
   let activeConnector: Awaited<ReturnType<typeof getConnectorForEnvironment>> = null;
   let activeCredentialId: string | null = null;
+  let signedJwt: Parameters<typeof executePlannedHttpRequest>[0]["signed_jwt"];
   let storedCredentialUsed = false;
   let connectorResolution: ConnectorResolutionSummary | null = null;
   try {
@@ -1777,6 +1782,8 @@ async function dispatchRequestStep(
           },
         };
       }
+      if (plan.credential?.mode === "signed_jwt")
+        signedJwt = { connector, credential: plan.credential };
       baseUrl = plan.url;
       storedCredentialUsed = plan.stored_credential_used;
       activeCredentialId = plan.credential_id;
@@ -2073,6 +2080,7 @@ async function dispatchRequestStep(
       const callDoOnePage = () =>
         doOnePage({
           before_dispatch: beforeHttpDispatch,
+          ...(signedJwt ? { signed_jwt: signedJwt } : {}),
           url: baseUrl.toString(),
           method: p.step.method,
           headers,
@@ -2398,6 +2406,7 @@ async function dispatchRequestStep(
       const callPage = () =>
         doOnePage({
           before_dispatch: beforeHttpDispatch,
+          ...(signedJwt ? { signed_jwt: signedJwt } : {}),
           url: next.url,
           method: p.step.method,
           headers,

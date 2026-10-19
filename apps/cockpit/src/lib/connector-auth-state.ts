@@ -32,6 +32,7 @@ const STORED_AUTH_TYPES = new Set([
   "basic",
   "oauth2",
   "oauth2_private_key",
+  "signed_jwt",
   "aws_sigv4",
 ]);
 

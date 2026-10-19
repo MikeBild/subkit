@@ -89,6 +89,20 @@ export async function persistCredential(p: {
       .where(eq(connectorsTable.id, p.connector_id));
     return;
   }
+  if (cred.mode === "signed_jwt") {
+    await upsertCredential(
+      {
+        tenant_id: p.tenant_id,
+        connector_id: p.connector_id,
+        environment: p.environment,
+        mode: "signed_jwt",
+        value: cred,
+        actor_id: p.actor_id,
+      },
+      p.db,
+    );
+    return;
+  }
   if (cred.mode === "aws_sigv4") {
     await upsertCredential(
       {

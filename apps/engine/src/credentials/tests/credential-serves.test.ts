@@ -24,5 +24,9 @@ describe("credentialServesAuthType", () => {
   test("a minted token keeps serving the connector it was set up for", () => {
     expect(credentialServesAuthType("bearer", "token_mint")).toBe(true);
     expect(credentialServesAuthType("oauth2_private_key", "oauth2_private_key")).toBe(true);
+    expect(credentialServesAuthType("signed_jwt", "signed_jwt")).toBe(true);
+    expect(credentialServesAuthType("signed_jwt", "bearer")).toBe(false);
+    expect(credentialServesAuthType("signed_jwt", "oauth2")).toBe(false);
+    expect(credentialServesAuthType("signed_jwt", "token_mint")).toBe(false);
   });
 });

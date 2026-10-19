@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { exportPKCS8, generateKeyPair } from "jose";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { getCredentialForConnector, upsertCredential } from "../service.ts";
@@ -238,5 +240,31 @@ describe("credentials/service — mode round trips", () => {
       expect(fetched!.value.expires_at_path).toBeUndefined();
       expect(fetched!.value.header_template).toBeUndefined();
     }
+  });
+
+  test("signed_jwt: validates and encrypts a PKCS#8 private key", async () => {
+    const { tenant_id, connector_id } = await seedTenantAndConnector();
+    const pair = await generateKeyPair("ES256", { extractable: true });
+    const private_key = await exportPKCS8(pair.privateKey);
+    await ctx.db
+      .update(connectors)
+      .set({
+        auth_type: "signed_jwt",
+        config: { signed_jwt: { algorithm: "ES256", audience: "provider-api" } },
+      })
+      .where(eq(connectors.id, connector_id));
+    await upsertCredential(
+      {
+        tenant_id,
+        connector_id,
+        environment: "dev",
+        mode: "signed_jwt",
+        value: { mode: "signed_jwt", private_key },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    const fetched = await getCredentialForConnector(tenant_id, connector_id, "dev", ctx.db);
+    expect(fetched?.value).toEqual({ mode: "signed_jwt", private_key });
   });
 });

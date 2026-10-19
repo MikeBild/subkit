@@ -10,7 +10,7 @@ type CreateConnectorBody = components["schemas"]["CreateConnectorBody"];
 
 export const SOLUTIONS_VERTICAL = "solutions";
 
-export type TemplateSignIn = ConnectorSignIn | "elsewhere";
+export type TemplateSignIn = ConnectorSignIn | "machine" | "elsewhere";
 
 export interface SolutionStep {
   id: string;
@@ -247,9 +247,10 @@ export function solutionAddressProblem(
     : "create.connector.addressInvalid";
 }
 
-export function templateSignIn(template: Pick<ConnectorTemplate, "auth_type">): TemplateSignIn {
+export function templateSignIn(template: { auth_type: string }): TemplateSignIn {
   if (template.auth_type === "oauth2") return "account";
   if (template.auth_type === "bearer" || template.auth_type === "header") return "key";
+  if (template.auth_type === "signed_jwt") return "machine";
   if (template.auth_type === "none") return "none";
   return "elsewhere";
 }
@@ -258,6 +259,7 @@ export const SIGN_IN_LABEL: Record<TemplateSignIn, TranslationKey> = {
   account: "create.template.signIn.account",
   key: "create.template.signIn.key",
   none: "create.template.signIn.none",
+  machine: "create.template.signIn.machine",
   elsewhere: "create.template.signIn.elsewhere",
 };
 

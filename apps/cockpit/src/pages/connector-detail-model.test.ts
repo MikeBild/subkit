@@ -173,9 +173,17 @@ describe("replacing a key", () => {
     expect(credentialBody("bearer", "  ", "")).toBeNull();
   });
 
+  test("a signed JWT connector posts only its private key", () => {
+    expect(credentialBody("signed_jwt", " private-key ", "")).toEqual({
+      mode: "signed_jwt",
+      private_key: "private-key",
+    });
+  });
+
   test("the card offers the ways that fit the sign-in", () => {
     expect(offersKeyReplacement("header")).toBe(true);
     expect(offersKeyReplacement("bearer")).toBe(true);
+    expect(offersKeyReplacement("signed_jwt")).toBe(true);
     expect(offersKeyReplacement("oauth2")).toBe(false);
     expect(offersKeyReplacement("basic")).toBe(false);
     expect(offersConnectionChoice("oauth2", null)).toBe(true);

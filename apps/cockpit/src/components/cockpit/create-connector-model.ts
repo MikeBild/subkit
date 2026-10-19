@@ -16,6 +16,18 @@ export interface OAuthClientFields {
   scopes: string;
 }
 
+export interface SignedJwtFields {
+  issuer: string;
+  keyId: string;
+  subject: string;
+}
+
+export const EMPTY_SIGNED_JWT: SignedJwtFields = {
+  issuer: "",
+  keyId: "",
+  subject: "",
+};
+
 export const EMPTY_OAUTH_CLIENT: OAuthClientFields = {
   issuer: "",
   clientId: "",
@@ -134,6 +146,44 @@ export function oauthClientOf(config: unknown): OAuthClientFields {
   };
 }
 
+function signedJwtOfConfig(config: unknown): Record<string, unknown> {
+  return isRecord(config) && isRecord(config.signed_jwt) ? config.signed_jwt : {};
+}
+
+export function signedJwtFieldsOf(config: unknown): SignedJwtFields {
+  const signedJwt = signedJwtOfConfig(config);
+  return {
+    issuer: textOf(signedJwt, "issuer"),
+    keyId: textOf(signedJwt, "key_id"),
+    subject: textOf(signedJwt, "subject"),
+  };
+}
+
+function signedJwtChanged(prior: SignedJwtFields, draft: SignedJwtFields): boolean {
+  return (
+    prior.issuer.trim() !== draft.issuer.trim() ||
+    prior.keyId.trim() !== draft.keyId.trim() ||
+    prior.subject.trim() !== draft.subject.trim()
+  );
+}
+
+function editedSignedJwtConfig(
+  config: unknown,
+  signedJwt: SignedJwtFields,
+): Record<string, unknown> {
+  const prior = signedJwtOfConfig(config);
+  const { issuer: _issuer, key_id: _keyId, subject: _subject, ...rest } = prior;
+  return {
+    ...(isRecord(config) ? config : {}),
+    signed_jwt: {
+      ...rest,
+      ...(signedJwt.issuer.trim() ? { issuer: signedJwt.issuer.trim() } : {}),
+      ...(signedJwt.keyId.trim() ? { key_id: signedJwt.keyId.trim() } : {}),
+      ...(signedJwt.subject.trim() ? { subject: signedJwt.subject.trim() } : {}),
+    },
+  };
+}
+
 export interface ConnectorEditPrior {
   driver: string | null;
   authType: string | null;
@@ -151,6 +201,7 @@ export interface ConnectorEditDraft {
   header: string;
   headerValues: Readonly<Record<string, string>>;
   oauth: OAuthClientFields;
+  signedJwt: SignedJwtFields;
 }
 
 export function replacesEveryHeader(prior: ConnectorEditPrior): boolean {
@@ -217,6 +268,11 @@ export function connectorEditPlan(
       needsOAuthClient(target, to) &&
       oauthChanged(oauthClientOf(prior.config), draft.oauth);
     if (editsClient) patch.config = editedOAuthConfig(prior.config, draft.oauth);
+    if (
+      prior.authType === "signed_jwt" &&
+      signedJwtChanged(signedJwtFieldsOf(prior.config), draft.signedJwt)
+    )
+      patch.config = editedSignedJwtConfig(prior.config, draft.signedJwt);
     return {
       patch,
       credential: replacesEveryHeader(prior)

@@ -806,6 +806,29 @@
       "https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin"
     ]
   },
+  "app-store-connect-basics": {
+    "title": "App Store Connect API Basics",
+    "body": "Use the app-store-connect connector for the App Store Connect REST API at https://api.appstoreconnect.apple.com. Authentication is a direct, short-lived ES256 signed bearer JWT with audience appstoreconnect-v1. It is not OAuth: do not call a token endpoint and do not configure private_key_jwt. The connector creates the JWT per request and keeps neither it nor the private key in workflow data. A team API key uses its Issuer ID as iss. An individual API key omits iss and uses sub=user.",
+    "examples": [
+      "GET /v1/apps — list apps the configured key can access",
+      "GET /v1/betaGroups — list TestFlight beta groups",
+      "GET /v1/betaTesters — list TestFlight testers"
+    ],
+    "best_practices": [
+      "Use GET /v1/apps as the first connectivity check after saving the credential.",
+      "Use a least-privilege App Store Connect API key and rotate the stored private key when Apple revokes or replaces it.",
+      "Treat invitations and tester changes as write effects that need the workflow's normal approval boundary."
+    ],
+    "pitfalls": [
+      "A 401 usually means the Key ID, issuer/subject form, key, or JWT audience is wrong; it is not repaired by an OAuth flow.",
+      "Team-key and individual-key claims differ: do not send both iss and sub=user unless Apple's documentation for that key type explicitly requires it.",
+      "Do not put the .p8 private key in a workflow, prompt, template config, or log."
+    ],
+    "doc_refs": [
+      "https://developer.apple.com/documentation/appstoreconnectapi/generating-tokens-for-api-requests",
+      "https://developer.apple.com/documentation/appstoreconnectapi"
+    ]
+  },
   "anthropic-basics": {
     "title": "Anthropic Claude API Basics",
     "body": "Authenticate with the API key in the x-api-key header (not a bearer token) and send anthropic-version: 2023-06-01 on every request. All requests go to https://api.anthropic.com/v1. POST /messages takes model, max_tokens and a messages array; the answer is in content[] as blocks, read the text blocks. Set max_llm_tokens_per_run on every workflow that calls Claude: SubKit counts each call against that per-run budget and stops the run before it is exceeded.",

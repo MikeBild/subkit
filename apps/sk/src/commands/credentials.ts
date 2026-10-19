@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { reportCommandError } from "@cli-core/errors";
 import { emitList } from "@cli-core/format";
 import { defineCommand } from "citty";
@@ -55,14 +56,19 @@ const setCommand = defineCommand({
   meta: {
     name: "set",
     description:
-      "Attach a credential to a connector (scriptable; no conversation needed). Modes: bearer | header | query | basic | aws_sigv4 | none.",
+      "Attach a credential to a connector (scriptable; no conversation needed). Modes: bearer | header | query | basic | aws_sigv4 | signed_jwt | none.",
   },
   args: {
     "connector-id": { type: "positional", required: true, description: "Connector id" },
     mode: {
       type: "string",
       required: true,
-      description: "bearer | header | query | basic | aws_sigv4 | none",
+      description: "bearer | header | query | basic | aws_sigv4 | signed_jwt | none",
+    },
+    "private-key-file": {
+      type: "string",
+      description:
+        "signed_jwt: local PKCS#8 PEM file; contents are sent only to the credential endpoint",
     },
     token: { type: "string", description: "Secret token (bearer mode)" },
     header: { type: "string", description: 'header mode: "Name=Value" (comma-separate multiple)' },
@@ -85,6 +91,9 @@ const setCommand = defineCommand({
       if (mode === "bearer") {
         if (!args.token) throw new Error("bearer mode requires --token");
         body.token = args.token;
+      } else if (mode === "signed_jwt") {
+        if (!args["private-key-file"]) throw new Error("signed_jwt requires --private-key-file");
+        body.private_key = await readFile(String(args["private-key-file"]), "utf8");
       } else if (mode === "header") {
         if (!args.header) throw new Error('header mode requires --header "Name=Value"');
         body.headers = parsePairs(String(args.header));
@@ -103,24 +112,28 @@ const setCommand = defineCommand({
         body.secret_access_key = args["secret-access-key"];
         if (args["session-token"]) body.session_token = args["session-token"];
       } else if (mode !== "none") {
-        throw new Error(`unknown --mode '${mode}' (bearer|header|query|basic|aws_sigv4|none)`);
+        throw new Error(
+          `unknown --mode '${mode}' (bearer|header|query|basic|aws_sigv4|signed_jwt|none)`,
+        );
       }
 
       const created = (await client.createCredential(connectorId, body)) as { id?: string };
-      if (jsonMode) {
-        process.stdout.write(`${JSON.stringify(created)}\n`);
-        return;
-      }
-      process.stdout.write(`✓ credential attached to ${connectorId}\n`);
-
+      let probe: { ok: boolean; error?: string } | undefined;
       if (!args["skip-checks"]) {
         try {
-          const probe = (await client.testConnector(connectorId)) as { ok?: boolean };
-          process.stdout.write(probe.ok ? "✓ probe ok\n" : "⚠ probe did not succeed\n");
+          const result = (await client.testConnector(connectorId)) as { ok?: boolean };
+          probe = { ok: result.ok === true };
         } catch {
-          process.stdout.write("⚠ probe could not run\n");
+          probe = { ok: false, error: "probe_failed" };
         }
       }
+      if (jsonMode) {
+        process.stdout.write(`${JSON.stringify({ ...created, ...(probe ? { probe } : {}) })}\n`);
+      } else {
+        process.stdout.write(`✓ credential attached to ${connectorId}\n`);
+        if (probe) process.stdout.write(probe.ok ? "✓ probe ok\n" : "⚠ probe did not succeed\n");
+      }
+      if (probe && !probe.ok) process.exitCode = 1;
     } catch (err) {
       reportCommandError(err, { json: jsonMode });
     }

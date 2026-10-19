@@ -69,6 +69,7 @@ const FORCE_SAVE_COOLDOWN_MS = 60_000;
 
 export type AtomicCredentialInput =
   | { mode: "bearer"; token: string }
+  | { mode: "signed_jwt"; private_key: string }
   | { mode: "basic"; username: string; password: string }
   | { mode: "header"; header_name: string; header_value: string }
   | { mode: "query"; param: string; value: string }

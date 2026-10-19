@@ -68,6 +68,11 @@ const PROSE_KEY_PATTERN: RegExp = /prompt|messages|instructions/i;
 const BODY_KEY_PATTERN: RegExp = /(?:^|_)body$/i;
 
 export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
+  {
+    kind: "generic",
+    regex:
+      /-----BEGIN (?:RSA |EC |ENCRYPTED )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |ENCRYPTED )?PRIVATE KEY-----/g,
+  },
   { kind: "pat", regex: /\bdop_v1_[A-Za-z0-9]{32,}/g },
   { kind: "pat", regex: /\bghp_[A-Za-z0-9]{30,}/g },
   { kind: "pat", regex: /\bgho_[A-Za-z0-9]{30,}/g },

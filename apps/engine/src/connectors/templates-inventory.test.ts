@@ -5,6 +5,10 @@ import { loadBuiltinTemplates, type TemplateCapabilities } from "./templates.ts"
 const templates = loadBuiltinTemplates();
 
 const EXPECTED_INVENTORY = {
+  "app-store-connect": {
+    version: 1,
+    capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
+  },
   airtable: {
     version: 1,
     capabilities: {

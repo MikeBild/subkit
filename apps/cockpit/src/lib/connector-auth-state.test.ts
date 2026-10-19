@@ -53,7 +53,15 @@ describe("connector auth state", () => {
       "credentials_missing",
     );
     expect(connectorAuthState({ auth_type: "bearer", health_state: "degraded" })).toBe("unproven");
-    for (const auth_type of ["bearer", "header", "query", "basic", "oauth2", "aws_sigv4"]) {
+    for (const auth_type of [
+      "bearer",
+      "header",
+      "query",
+      "basic",
+      "oauth2",
+      "signed_jwt",
+      "aws_sigv4",
+    ]) {
       expect(connectorAuthState({ auth_type, health_state: "ok" }, null, null)).toBe(
         "credentials_missing",
       );

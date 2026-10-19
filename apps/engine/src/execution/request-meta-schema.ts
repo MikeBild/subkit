@@ -35,6 +35,7 @@ const ConnectorResolutionSummarySchema = z
       "aws_sigv4",
       "token_mint_static",
       "token_mint_refreshed",
+      "signed_jwt",
       "oauth2_client",
       "oauth2_private_key",
     ]),

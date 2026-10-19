@@ -32,7 +32,8 @@ export function deriveAuthMethodFromAuthType(
     | "oauth2_private_key"
     | "header"
     | "query"
-    | "aws_sigv4",
+    | "aws_sigv4"
+    | "signed_jwt",
 ):
   | "none"
   | "bearer"
@@ -43,7 +44,8 @@ export function deriveAuthMethodFromAuthType(
   | "oauth2_refreshed"
   | "oauth2_client"
   | "oauth2_private_key"
-  | "aws_sigv4" {
+  | "aws_sigv4"
+  | "signed_jwt" {
   if (authType === "oauth2") return "oauth2_static";
   return authType;
 }
