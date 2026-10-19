@@ -1,7 +1,7 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E308.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E309.
 
 Operative L-Aufgaben, Prioritäten und aktueller Issue-Status stehen in den
 [GitHub Issues](https://github.com/MikeBild/subkit/issues) und im
@@ -47,7 +47,10 @@ der letzten 14 Backups sind eingerichtet. Der erste Export wurde isoliert mit
 PostgreSQL 18.6 erfolgreich wiederhergestellt; produktiver Restore und
 Wiederanlaufzeit bleiben ungeprüft. Die allgemeine Upraft-Einladung führt nach
 der Passwortsetzung zur Upraft-Kontoseite; der MCP bietet keine app-spezifische
-Rücksprungoption. Vollständige Cloud-Abnahme und persönliche visuelle Freigabe
+Rücksprungoption. Ein zusätzlicher Cockpit-Link für Einladungs-Mails liegt als
+inaktive Workflow-Version 13 vor; die Wirkungsprüfung blockiert ihre Freigabe,
+während Version 12 den bisherigen Versand weiterführt. E309 hält den Fehler
+und den begrenzten Entwurf fest. Vollständige Cloud-Abnahme und persönliche visuelle Freigabe
 bleiben offen.
 
 Die technische Verifikation ist segmentiert vollständig abgedeckt: 2.168 Dateien,
