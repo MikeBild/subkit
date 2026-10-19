@@ -276,7 +276,8 @@
   "patchedDependencies": {
     "css-tree@3.2.1": "patches/css-tree@3.2.1.patch",
     "jsdom@29.1.1": "patches/jsdom@29.1.1.patch",
-    "@jitl/quickjs-singlefile-cjs-release-sync@0.32.0": "patches/@jitl%2Fquickjs-singlefile-cjs-release-sync@0.32.0.patch"
+    "@jitl/quickjs-singlefile-cjs-release-sync@0.32.0": "patches/@jitl%2Fquickjs-singlefile-cjs-release-sync@0.32.0.patch",
+    "pg-boss@12.37.1": "patches/pg-boss@12.37.1.patch"
   },
   "trustedDependencies": [
     "onnxruntime-node"
