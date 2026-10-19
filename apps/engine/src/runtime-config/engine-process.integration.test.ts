@@ -321,7 +321,55 @@ test(
         llm: { provider: "mock" },
         operations: { update_check_enabled: false },
       });
-      child.child.kill("SIGTERM");
+      const blocker = await fixture.db.pool.connect();
+      let response: Response;
+      try {
+        await blocker.query("BEGIN");
+        await blocker.query('LOCK TABLE "subkit"."api_keys" IN ACCESS EXCLUSIVE MODE');
+        const request = fetch(`http://127.0.0.1:${fixture.port}/v1/workflows`, {
+          headers: { authorization: `Bearer wf_live_${hex(24)}` },
+          signal: AbortSignal.timeout(15000),
+        }).then(
+          (response) => ({ response }),
+          (error: unknown) => ({ error }),
+        );
+        await waitFor(
+          async () => {
+            const waiting = await fixture.db.pool.query<{ waiting: boolean }>(
+              `SELECT EXISTS (
+              SELECT 1 FROM pg_stat_activity
+              WHERE datname = current_database() AND pid <> pg_backend_pid()
+                AND wait_event_type = 'Lock' AND query LIKE '%"api_keys"%'
+            ) AS waiting`,
+            );
+            return waiting.rows[0]?.waiting === true;
+          },
+          { tries: 250, sleepMs: 20, label: "engine HTTP authentication admitted under lock" },
+        );
+        child.child.kill("SIGTERM");
+        await waitFor(() => child.logs().includes('"action":"shutdown.begin"'), {
+          tries: 250,
+          sleepMs: 20,
+          label: "engine shutdown begins with HTTP handler pending",
+        });
+        expect(child.isRunning()).toBe(true);
+        expect(child.logs()).not.toContain('"action":"shutdown.complete"');
+        expect(
+          await fixture.db.db
+            .select()
+            .from(runtimeConfigReplicas)
+            .where(eq(runtimeConfigReplicas.instance_id, child.replicaId)),
+        ).toHaveLength(1);
+        await blocker.query("ROLLBACK");
+        const result = await request;
+        if ("error" in result) throw result.error;
+        response = result.response;
+      } finally {
+        await blocker.query("ROLLBACK");
+        blocker.release();
+      }
+      expect(response.status).toBe(401);
+      await response.arrayBuffer();
       const code = await child.exited();
       expect(code).toBe(0);
       expect(child.logs()).toContain('"action":"shutdown.complete"');
@@ -348,6 +396,8 @@ test(
         version: fixture.target.version,
         startup_ms: Math.round(startupMs),
         normal_exit: code,
+        admitted_http_authentication_drained: true,
+        registry_retained_until_http_release: true,
         mismatch_exit: 1,
         source_bun: fixture.target.kind === "source-bun",
         ...artifactReceipt(fixture.target),

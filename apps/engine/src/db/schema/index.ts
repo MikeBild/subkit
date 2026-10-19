@@ -36,6 +36,7 @@ export * from "./notifications.ts";
 export * from "./rbac.ts";
 export * from "./request_hooks.ts";
 export * from "./runtime_config.ts";
+export * from "./scheduler.ts";
 export * from "./self_healing_scans.ts";
 export * from "./skills.ts";
 export * from "./tenant-erasure.ts";

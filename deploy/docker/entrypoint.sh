@@ -31,12 +31,6 @@ fi
 if [ -z "${DATABASE_URL:-}" ] && [ -n "${UPRAFT_DB_PRIMARY_URL:-}" ]; then
   export DATABASE_URL="$UPRAFT_DB_PRIMARY_URL"
 fi
-if [ -n "${UPRAFT_DB_PRIMARY_URL:-}" ] && [ "${DATABASE_URL:-}" = "$UPRAFT_DB_PRIMARY_URL" ]; then
-  case "$DATABASE_URL" in
-    *sslmode=require*uselibpqcompat=*) ;;
-    *sslmode=require*) export DATABASE_URL="${DATABASE_URL}&uselibpqcompat=true" ;;
-  esac
-fi
 [ -n "${DATABASE_URL:-}" ] || {
   log "DATABASE_URL or DATABASE_URL_FILE is required; PostgreSQL is not bundled in this image"
   exit 64

@@ -105,7 +105,7 @@ export async function hasPendingCatalogDescriptions(
     if (row) return true;
   }
   const [pendingCategory] = await db
-    .select({ name: catalogCategories.name })
+    .select({ present: sql<number>`1` })
     .from(catalogCategories)
     .where(
       and(

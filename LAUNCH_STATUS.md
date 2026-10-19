@@ -1,23 +1,24 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E275.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E290.
 
 ## Aktueller Checkout-Abgleich
 
-Fast-forward auf `1c450cc93` abgeschlossen; Checkoutversion **10.1.3**.
+Integrierter Hosted-Stand `175901a0f` normal gepusht; Checkoutversion **10.1.3**.
 Bestehende lokale Engine auf Loopback antwortet separat **9.11.2**, HTTP 200;
 sie wurde nicht ersetzt. Lokaler Hosted-Arbeitsstand gesichert und wiederhergestellt;
 Migrationskonflikt gelöst: veröffentlichte Historie unverändert, 49 fokussierte
 Tests PASS (E262). Native Engine/CLI gebaut, native Prozessabnahme zwei PASS/27 Assertions (E272); Typecheck und 22 Invarianten PASS. Vollständiger Gesamtgate und weitere Scheduler-Grenzen offen.
-Kein neuer Commit/Push, Release, Deploy oder Signup-Go aus dieser Integration.
+Alle acht Pre-Push-Gates bestanden für den gepushten Stand (E276). Neuer lokaler nativer Lifecycle-Zwischenstand zwei PASS/31 Assertions (E288); Container-URI-Korrektur acht PASS/24 Assertions (E289). Vier aktuelle PostgreSQL-Dateien 30 PASS/140 Assertions (E290); abschließender Engine-/Cockpit-Typecheck Exit 0. Begrenzte Scheduler- und Datei-Referenzarbeit lokal implementiert;
+kein Release, Deploy oder Signup-Go aus dieser Integration.
 
 ## Historischer Release- und Planungsstand
 
 - Letztes Update: **2026-10-19T05:27:39+00:00**; Planung in Europe/Berlin.
 - Zuletzt bestätigter gemeinsamer Stand: **0a2b4312a**, `main`, Version **10.0.1** vorbereitet.
   E220–E230 normal geprüft gepusht; alle acht Hooks bestanden. Historisches Gesamtgate E224 einschließlich Queue-Adapter bestanden; die damaligen Produktquellen waren identisch zum gepushten Stand.
-- Aktueller Hosted-Arbeitsstand: **LOCAL_ONLY bis Push**. Neue Produktänderungen in Arbeit; E224 ist ein historischer Nachweis des vorherigen Quellstands und kein Gesamt-PASS für diese Änderungen.
+- Hosted-Integration bis **175901a0f gepusht**, neue Scheduler-Änderungen **LOCAL_ONLY**; E224 ist ein historischer Nachweis des vorherigen Quellstands und kein Gesamt-PASS für diese Änderungen.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: insbesondere externe Store-Freigabe offen.

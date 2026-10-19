@@ -10,11 +10,5 @@ fi
 if [ -z "${DATABASE_URL:-}" ] && [ -n "${UPRAFT_DB_PRIMARY_URL:-}" ]; then
   export DATABASE_URL="$UPRAFT_DB_PRIMARY_URL"
 fi
-if [ -n "${UPRAFT_DB_PRIMARY_URL:-}" ] && [ "${DATABASE_URL:-}" = "$UPRAFT_DB_PRIMARY_URL" ]; then
-  case "$DATABASE_URL" in
-    *sslmode=require*uselibpqcompat=*) ;;
-    *sslmode=require*) export DATABASE_URL="${DATABASE_URL}&uselibpqcompat=true" ;;
-  esac
-fi
 
 exec "/usr/local/bin/$(basename "$0").bin" "$@"

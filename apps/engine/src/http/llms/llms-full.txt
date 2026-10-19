@@ -58,6 +58,15 @@ resource accounting is implemented and undergoing integrated acceptance; live
 cloud verification remains pending. It includes retained knowledge and conversation
 copies as well as reserved non-file object offloads.
 
+File-retention safeguards are under validation. Automatic unlinked-file cleanup
+conservatively preserves UUID and `@attachment:` references in retained workflow
+versions, schedules and conversation intent. Any queued or running execution
+defers this cleanup for its tenant, including when file references are computed
+at runtime. Retained text can keep otherwise unused files, so physical reclamation
+may be delayed. This does not establish complete reference accuracy for arbitrary
+dynamic expressions or protect every active reader; those acceptance checks remain
+open. An incomplete queue-reference scan continues to prevent unlinked cleanup.
+
 Hosted connector traffic requires public destinations. Strict HTTP transports pin
 the validated destination address while preserving the original Host and TLS name;
 proxy environment variables are unsupported and cause refusal. Strict PostgreSQL

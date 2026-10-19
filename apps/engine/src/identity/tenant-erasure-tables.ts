@@ -131,5 +131,6 @@ export const PLATFORM_TABLES = [
   "runtime_config_replicas",
   "runtime_config_revisions",
   "runtime_config_state",
+  "scheduler_sweep_cursors",
   "tenants",
 ] as const;

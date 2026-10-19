@@ -2,12 +2,13 @@ import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import type { Actor } from "../../audit/actor.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
-import type { Db } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import { knowledgeSources } from "../../db/schema/index.ts";
 import { ingestKnowledgeSource, knowledgeSourceChanged } from "../../knowledge/service.ts";
 import { refreshKnowledgeSource } from "../../knowledge/url-source.ts";
 import { log } from "../../logging/logger.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";
+import { queuedSendTransaction } from "../transaction-adapter.ts";
 
 export const INGEST_KNOWLEDGE_QUEUE = "knowledge.ingest" as const;
 
@@ -159,6 +160,9 @@ export async function registerIngestKnowledgeHandler(
 export async function enqueueKnowledgeIngest(
   boss: PgBoss,
   payload: IngestKnowledgeJob,
+  exec?: Executor,
 ): Promise<string | null> {
+  if (exec)
+    return await boss.send(INGEST_KNOWLEDGE_QUEUE, payload, { db: queuedSendTransaction(exec) });
   return await boss.send(INGEST_KNOWLEDGE_QUEUE, payload);
 }

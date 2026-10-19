@@ -187,7 +187,7 @@ describe("retiring dead dynamic registrations", () => {
     expect(row.retired_at).toBeNull();
   });
 
-  test("each sweep that retires writes one audit row with the count and the row ids", async () => {
+  test("each sweep that retires writes one atomic audit with a bounded count", async () => {
     const a = await seedClient();
     const b = await seedClient();
     const before = new Date(); // allow-wall-clock
@@ -198,16 +198,14 @@ describe("retiring dead dynamic registrations", () => {
       await srv.db.select().from(auditLog).where(eq(auditLog.action, "mcp_oauth.client_retired"))
     ).filter((row) => row.ts >= before);
     expect(rows).toHaveLength(1);
-    const meta = rows[0]?.metadata as { count: number; ids: string[]; request_source: string };
+    const meta = rows[0]?.metadata;
     const ids = (
       await srv.db
         .select({ id: mcpOauthClients.id })
         .from(mcpOauthClients)
         .where(inArray(mcpOauthClients.client_id, [a, b]))
     ).map((row) => row.id);
-    expect(meta.request_source).toBe("scheduler");
-    expect(meta.count).toBe(meta.ids.length);
-    for (const id of ids) expect(meta.ids).toContain(id);
+    expect(meta).toEqual({ request_source: "scheduler", count: ids.length });
   });
 
   test("a sweep that retires nothing writes no retirement row", async () => {

@@ -147,6 +147,7 @@ import sql0126HostedResourceQuota from "./0126_hosted_resource_quota.sql" with {
 import sql0127RbacTenantBoundary from "./0127_rbac_tenant_boundary.sql" with { type: "text" };
 import sql0128RuntimeSecretOwnership from "./0128_runtime_secret_ownership.sql" with { type: "text" };
 import sql0129VaultMaintenance from "./0129_vault_maintenance.sql" with { type: "text" };
+import sql0130SchedulerSweepCursors from "./0130_scheduler_sweep_cursors.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -301,6 +302,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0127_rbac_tenant_boundary": sql0127RbacTenantBoundary,
   "0128_runtime_secret_ownership": sql0128RuntimeSecretOwnership,
   "0129_vault_maintenance": sql0129VaultMaintenance,
+  "0130_scheduler_sweep_cursors": sql0130SchedulerSweepCursors,
 };
 
 const journal = journalMeta as unknown as Journal;

@@ -911,6 +911,13 @@
       "when": 1792388186953,
       "tag": "0129_vault_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1792394206218,
+      "tag": "0130_scheduler_sweep_cursors",
+      "breakpoints": true
     }
   ]
 }
