@@ -1,7 +1,7 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E309.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E310.
 
 Operative L-Aufgaben, Prioritäten und aktueller Issue-Status stehen in den
 [GitHub Issues](https://github.com/MikeBild/subkit/issues) und im
@@ -52,6 +52,13 @@ inaktive Workflow-Version 13 vor; die Wirkungsprüfung blockiert ihre Freigabe,
 während Version 12 den bisherigen Versand weiterführt. E309 hält den Fehler
 und den begrenzten Entwurf fest. Vollständige Cloud-Abnahme und persönliche visuelle Freigabe
 bleiben offen.
+
+E310: Die vollständige Workflow-Definition und ihre Sicherheitsfelder werden beim
+Bearbeiten von Schritten erhalten. Der Fix ist auf dem getrennten API-Host
+deployed und im Browser zurückgelesen; das passende Cloud-Image ist bei Upraft
+bereit. Die Cloud-App verwendet noch die vorherige Revision, bis der bestehende
+Laufzeit-Masterkey über Uprafts sichere Eingabe an die neue Revision gebunden ist.
+Die Auth-Mail-Entwurfsreparatur und ihre Wirkungsfreigabe stehen separat aus.
 
 Die technische Verifikation ist segmentiert vollständig abgedeckt: 2.168 Dateien,
 20.448 PASS/0 ungelöste FAIL/38 SKIP/5 TODO; Eval 40/40 und kompilierte

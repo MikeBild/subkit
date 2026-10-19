@@ -164,7 +164,11 @@ der erste Export wurde isoliert als PostgreSQL-Schema wiederhergestellt.
 Ressourcenisolation an tatsächlich vorhandenem Fremdobjekt, Grenzverweigerungen,
 Lifecycle, vollständiger semantischer Wiederanlauf und breite Cloud-Journey
 bleiben offen. Die folgenden H-Zeilen enthalten auch historische Technikstände;
-E303–E309 und [LAUNCH_STATUS](../LAUNCH_STATUS.md) führen den aktuellen Betrieb.
+E303–E310 und [LAUNCH_STATUS](../LAUNCH_STATUS.md) führen den aktuellen Betrieb.
+Der Workflow-Detail-/Cockpit-Fix ist auf dem getrennten API-Host aktiv; das
+gleichstämmige Cloud-Image ist importiert, aber noch nicht als App-Revision
+aktiviert, E310. Der sichere Masterkey-Handoff und die Auth-Mail-Freigabe stehen
+aus; die bisherige Cloud-Revision bedient weiter.
 
 Freigegebene Free-Betriebswerte: 5 USD Modellkosten pro Tenant/Monat,
 50 USD Modellkosten insgesamt/Monat, 50 MB (50.000.000 Bytes) gemeinsamer logischer
