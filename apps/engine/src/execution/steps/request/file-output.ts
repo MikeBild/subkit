@@ -4,12 +4,12 @@ import {
   auditAwait,
   bucketSize,
   FileCreatedMetadataSchema,
-  FileLinkAddedMetadataSchema,
 } from "../../../audit/index.ts";
 import type { Db } from "../../../db/client.ts";
-import { fileLinks } from "../../../db/schema/files.ts";
 import { recordFilesDedupSeen } from "../../../files/dedup-counter.ts";
+import { linkStoredFile } from "../../../files/links.ts";
 import { persistInlineUpload } from "../../../files/persist-inline-upload.ts";
+import { getContext } from "../../../logging/context.ts";
 import { logger } from "../../../logging/logger.ts";
 
 export interface WorkflowFileOutputEnvelope {
@@ -63,37 +63,23 @@ export async function promoteResponseToFile(args: {
     );
   }
 
-  await args.db
-    .insert(fileLinks)
-    .values({
+  await linkStoredFile(
+    args.db,
+    {
       tenant_id: args.tenant_id,
       file_id: row.id,
       resource_type: "workflow_run",
       resource_id: args.execution_id,
       slug: null,
       role: "output",
-    })
-    .onConflictDoNothing();
-
-  await auditAwait(
+    },
     {
-      tenant_id: args.tenant_id,
       actor_type: "system",
       actor_id: null,
-      action: AuditAction.FILE_LINK_ADDED,
-      resource_type: "file",
-      resource_id: row.id,
-      result: "success",
-      metadata: FileLinkAddedMetadataSchema.parse({
-        file_id: row.id,
-        resource_type: "workflow_run",
-        resource_id: args.execution_id,
-        slug: null,
-        role: "output",
-        source: "workflow_output",
-      }),
+      request_source: getContext().request_source ?? "tool-chain",
+      source: "workflow_output",
+      allowed_statuses: ["pending", "uploading", "scanning", "ready", "failed", "expired"],
     },
-    args.db,
   );
 
   logger.info({

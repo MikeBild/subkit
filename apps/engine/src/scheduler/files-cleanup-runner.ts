@@ -1,4 +1,16 @@
-import { and, count, eq, inArray, isNull, lt, notExists, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  notExists,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import type pg from "pg";
 import type { PgBoss } from "pg-boss";
 import { AuditAction, auditAwait, FileScanCompletedMetadataSchema } from "../audit/index.ts";
@@ -12,6 +24,7 @@ import {
   workflows,
   workflowsSchedules,
 } from "../db/schema/index.ts";
+import { hasNoRetainedFileReference } from "../files/reference-protection.ts";
 import { removeStoredFile } from "../files/remove-stored-file.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import {
@@ -31,18 +44,40 @@ const PENDING_EXPIRY_GRACE = sql`interval '1 hour'`;
 
 const STUCK_SCAN_GRACE = sql`interval '1 hour'`;
 
+export const FILES_CLEANUP_BATCH_SIZE = 256;
+type CleanupPass = "pending" | "soft" | "hard";
+const cleanupPositions = new WeakMap<Db, Partial<Record<CleanupPass, string>>>();
+
+async function cleanupCandidates(db: Db, pass: CleanupPass, eligible: SQL | undefined) {
+  const positions = cleanupPositions.get(db) ?? {};
+  cleanupPositions.set(db, positions);
+  // tenant-filter:exempt — bounded global cleanup keys retain tenant ownership for exact mutation-time rechecks.
+  const select = (after?: string) =>
+    db
+      .select({ id: files.id, tenant_id: files.tenant_id })
+      .from(files)
+      .where(and(eligible, after ? gt(files.id, after) : undefined))
+      .orderBy(asc(files.id))
+      .limit(FILES_CLEANUP_BATCH_SIZE)
+      .for("update", { skipLocked: true });
+  let rows = await select(positions[pass]);
+  if (rows.length === 0 && positions[pass]) {
+    delete positions[pass];
+    rows = await select();
+  }
+  const last = rows.at(-1);
+  if (last) positions[pass] = last.id;
+  return rows;
+}
+
 async function sweepPendingOrphans(db: Db): Promise<{ pending: number; stuck_scanning: number }> {
   // tenant-filter:exempt — global cron sweep; per-row audit carries tenant_id
   const eligible = and(
     eq(files.status, "pending"),
     lt(files.upload_url_expires_at, sql`now() - ${PENDING_EXPIRY_GRACE}`),
   );
-  // tenant-filter:exempt — global cleanup candidates are rechecked under an exact tenant and row lock before removal.
-  const candidates = await db
-    .select({ id: files.id, tenant_id: files.tenant_id })
-    .from(files)
-    .where(eligible);
-  const deleted = [];
+  const candidates = await cleanupCandidates(db, "pending", eligible);
+  let deleted = 0;
   for (const candidate of candidates) {
     try {
       const row = await removeStoredFile(
@@ -52,7 +87,7 @@ async function sweepPendingOrphans(db: Db): Promise<{ pending: number; stuck_sca
         eligible,
         "pending_expired",
       );
-      if (row) deleted.push(row);
+      if (row) deleted++;
     } catch (err) {
       logger.warn({
         module: "scheduler",
@@ -65,44 +100,51 @@ async function sweepPendingOrphans(db: Db): Promise<{ pending: number; stuck_sca
     }
   }
 
-  // tenant-filter:exempt — global cron sweep
-  const stuckScanning = await db
-    .update(files)
-    .set({ status: "failed", scan_result: "timeout" })
-    .where(
-      and(eq(files.status, "scanning"), lt(files.created_at, sql`now() - ${STUCK_SCAN_GRACE}`)),
-    )
-    .returning({ id: files.id, tenant_id: files.tenant_id });
-
-  for (const row of stuckScanning) {
-    logger.warn({
-      module: "scheduler",
-      action: "files_cleanup.stuck_scanning_flipped",
-      msg: "row stuck in scanning state past grace — flipped to failed",
-      file_id: row.id,
-      tenant_id: row.tenant_id,
-    });
-    await auditAwait(
-      {
-        tenant_id: row.tenant_id,
-        actor_type: "system",
-        actor_id: null,
-        action: AuditAction.FILE_SCAN_COMPLETED,
-        resource_type: "file",
-        resource_id: row.id,
-        result: "error",
-        metadata: FileScanCompletedMetadataSchema.parse({
-          file_id: row.id,
-          verdict: "timeout",
-          engine: "scheduler.stuck_scan_timeout",
-          request_source: "scheduler",
-        }),
-      },
-      db,
+  const stuckScanning = await db.transaction(async (tx) => {
+    const expired = and(
+      eq(files.status, "scanning"),
+      lt(files.created_at, sql`now() - ${STUCK_SCAN_GRACE}`),
     );
-  }
+    // tenant-filter:exempt — bounded global scan-timeout keys retain tenant ownership for atomic guarded updates and audits.
+    const candidates = await tx
+      .select({ id: files.id, tenant_id: files.tenant_id })
+      .from(files)
+      .where(expired)
+      .orderBy(asc(files.id))
+      .limit(FILES_CLEANUP_BATCH_SIZE)
+      .for("update", { skipLocked: true });
+    let changed = 0;
+    for (const row of candidates) {
+      const updated = await tx
+        .update(files)
+        .set({ status: "failed", scan_result: "timeout" })
+        .where(and(eq(files.id, row.id), eq(files.tenant_id, row.tenant_id), expired))
+        .returning({ id: files.id });
+      if (!updated[0]) continue;
+      await auditAwait(
+        {
+          tenant_id: row.tenant_id,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.FILE_SCAN_COMPLETED,
+          resource_type: "file",
+          resource_id: row.id,
+          result: "error",
+          metadata: FileScanCompletedMetadataSchema.parse({
+            file_id: row.id,
+            verdict: "timeout",
+            engine: "scheduler.stuck_scan_timeout",
+            request_source: "scheduler",
+          }),
+        },
+        tx,
+      );
+      changed++;
+    }
+    return changed;
+  });
 
-  return { pending: deleted.length, stuck_scanning: stuckScanning.length };
+  return { pending: deleted, stuck_scanning: stuckScanning };
 }
 
 interface InFlightFidScan {
@@ -236,43 +278,29 @@ function hasNoFileLink() {
   );
 }
 
-function hasNoProductReference() {
-  return sql`not exists (
-    select 1 from ${executions} e where e.tenant_id=${files.tenant_id} and e.status in ('queued','running') and (
-      strpos(coalesce(e.source_ref::text,''),${files.id}::text)>0 or strpos(coalesce(e.input::text,''),${files.id}::text)>0
-      or coalesce(e.input->>'$sensitive','false')='true' or coalesce(e.source_ref->>'$sensitive','false')='true'
-    )
-  ) and not exists (
-    select 1 from ${executionSteps} s join ${executions} e on e.id=s.execution_id and e.tenant_id=s.tenant_id
-    where s.tenant_id=${files.tenant_id} and e.status='running' and strpos(coalesce(s.input_preview::text,''),${files.id}::text)>0
-  ) and not exists (
-    select 1 from ${workflowsSchedules} s join ${workflows} w on w.id=s.workflow_id and w.tenant_id=s.tenant_id
-    where s.tenant_id=${files.tenant_id} and strpos(coalesce(s.input::text,''),${files.id}::text)>0
-  )`;
-}
-
 async function sweepUnlinkedTtl(
   db: Db,
   boss: PgBoss,
   pool: pg.Pool,
   budget: CleanupQueueBudget,
 ): Promise<{ soft: number; hard: number }> {
-  // tenant-filter:exempt — global sweep
-  const candidates = await db
-    .select({ id: files.id, tenant_id: files.tenant_id })
-    .from(files)
-    .where(and(eq(files.status, "ready"), isNull(files.deleted_at), hasNoFileLink()));
+  const candidates = await cleanupCandidates(
+    db,
+    "soft",
+    and(
+      eq(files.status, "ready"),
+      isNull(files.deleted_at),
+      hasNoFileLink(),
+      hasNoRetainedFileReference(),
+    ),
+  );
 
   const eligible = and(
     lt(files.deleted_at, sql`now() - ${UNLINKED_HARD_DELETE_AFTER}`),
     hasNoFileLink(),
-    hasNoProductReference(),
+    hasNoRetainedFileReference(),
   );
-  // tenant-filter:exempt — global cleanup retains tenant and rechecks eligibility under a row lock.
-  const hardCandidates = await db
-    .select({ id: files.id, tenant_id: files.tenant_id })
-    .from(files)
-    .where(eligible);
+  const hardCandidates = await cleanupCandidates(db, "hard", eligible);
   if (candidates.length === 0 && hardCandidates.length === 0) return { soft: 0, hard: 0 };
   const scan = await loadInFlightFidStrings(db, boss, pool, budget);
   if (scan.pgboss_scan_failed) {
@@ -302,8 +330,6 @@ async function sweepUnlinkedTtl(
             eq(files.id, candidate.id),
             eq(files.status, "ready"),
             isNull(files.deleted_at),
-            hasNoFileLink(),
-            hasNoProductReference(),
           ),
         )
         .for("update")
@@ -319,7 +345,7 @@ async function sweepUnlinkedTtl(
             eq(files.status, "ready"),
             isNull(files.deleted_at),
             hasNoFileLink(),
-            hasNoProductReference(),
+            hasNoRetainedFileReference(),
           ),
         )
         .returning({ id: files.id });
@@ -342,7 +368,7 @@ async function sweepUnlinkedTtl(
     });
   }
 
-  const hardDeleted = [];
+  let hardDeleted = 0;
   for (const candidate of hardCandidates) {
     if (isReferenced(candidate)) continue;
     try {
@@ -353,7 +379,7 @@ async function sweepUnlinkedTtl(
         eligible,
         "unlinked_ttl",
       );
-      if (row) hardDeleted.push(row);
+      if (row) hardDeleted++;
     } catch (err) {
       logger.warn({
         module: "scheduler",
@@ -366,7 +392,7 @@ async function sweepUnlinkedTtl(
     }
   }
 
-  return { soft: softDeleted, hard: hardDeleted.length };
+  return { soft: softDeleted, hard: hardDeleted };
 }
 
 async function refreshFilesGauges(db: Db): Promise<void> {

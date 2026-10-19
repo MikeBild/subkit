@@ -6162,6 +6162,71 @@
     "tenant": true
   },
   {
+    "table": "scheduler_sweep_cursors",
+    "columns": [
+      {
+        "name": "producer",
+        "type": "scheduler_sweep_producer",
+        "enum": [
+          "catalog",
+          "docs",
+          "workflow-cron",
+          "drift",
+          "reauth",
+          "endpoint-contract",
+          "knowledge",
+          "skill"
+        ]
+      },
+      {
+        "name": "epoch",
+        "type": "bigint",
+        "enum": null
+      },
+      {
+        "name": "revision",
+        "type": "bigint",
+        "enum": null
+      },
+      {
+        "name": "after_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "epoch_upper_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "epoch_cutoff_at",
+        "type": "timestamp (3) with time zone",
+        "enum": null
+      },
+      {
+        "name": "lease_owner_boot_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "lease_token",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "lease_until",
+        "type": "timestamp (3) with time zone",
+        "enum": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp (3) with time zone",
+        "enum": null
+      }
+    ],
+    "tenant": false
+  },
+  {
     "table": "schema_versions",
     "columns": [
       {

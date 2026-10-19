@@ -1,5 +1,15 @@
 import { errorFields, logger } from "../logging/logger.ts";
 
+export function isScheduleAdmissionHeldError(error: unknown): error is Error & { code: string } {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error.code === "execution_authority_required" ||
+      error.code === "execution_authority_unavailable" ||
+      error.code === "input_required")
+  );
+}
+
 export function logScheduleFireFailure(
   error: unknown,
   context: {
@@ -10,13 +20,7 @@ export function logScheduleFireFailure(
   },
   action: "schedule.fanout_failed" | "schedule.fire_failed",
 ): void {
-  if (
-    error instanceof Error &&
-    "code" in error &&
-    (error.code === "execution_authority_required" ||
-      error.code === "execution_authority_unavailable" ||
-      error.code === "input_required")
-  ) {
+  if (isScheduleAdmissionHeldError(error)) {
     logger.warn({
       module: "scheduler",
       action: "schedule.admission_held",

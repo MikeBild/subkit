@@ -1,5 +1,5 @@
 {
-  "id": "a022f79a-cf83-4211-97b3-e09097941bbc",
+  "id": "524c7240-041c-425a-9832-a0cc56b0bf22",
   "prevId": "5ff2a244-709b-4c55-8ed2-218c018fbad8",
   "version": "7",
   "dialect": "postgresql",
@@ -4520,145 +4520,6 @@
           "columnsFrom": ["parent_message_id"],
           "columnsTo": ["id"],
           "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.conversation_turns": {
-      "name": "conversation_turns",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attempt_id": {
-          "name": "attempt_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "task_id": {
-          "name": "task_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "worker_id": {
-          "name": "worker_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "conversation_turns_active_idx": {
-          "name": "conversation_turns_active_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"conversation_turns\".\"state\" IN ('queued', 'running', 'parked')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "conversation_turns_conversation_idx": {
-          "name": "conversation_turns_conversation_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "conversation_turns_tenant_id_tenants_id_fk": {
-          "name": "conversation_turns_tenant_id_tenants_id_fk",
-          "tableFrom": "conversation_turns",
-          "tableTo": "tenants",
-          "columnsFrom": ["tenant_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "conversation_turns_conversation_id_conversations_id_fk": {
-          "name": "conversation_turns_conversation_id_conversations_id_fk",
-          "tableFrom": "conversation_turns",
-          "tableTo": "conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -14831,6 +14692,104 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.scheduler_sweep_cursors": {
+      "name": "scheduler_sweep_cursors",
+      "schema": "",
+      "columns": {
+        "producer": {
+          "name": "producer",
+          "type": "scheduler_sweep_producer",
+          "typeSchema": "public",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "epoch": {
+          "name": "epoch",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "revision": {
+          "name": "revision",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "after_id": {
+          "name": "after_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "epoch_upper_id": {
+          "name": "epoch_upper_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "epoch_cutoff_at": {
+          "name": "epoch_cutoff_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_owner_boot_id": {
+          "name": "lease_owner_boot_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', clock_timestamp())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "scheduler_sweep_epoch_safe": {
+          "name": "scheduler_sweep_epoch_safe",
+          "value": "\"scheduler_sweep_cursors\".\"epoch\" BETWEEN 0 AND 9007199254740991"
+        },
+        "scheduler_sweep_revision_safe": {
+          "name": "scheduler_sweep_revision_safe",
+          "value": "\"scheduler_sweep_cursors\".\"revision\" BETWEEN 0 AND 9007199254740991"
+        },
+        "scheduler_sweep_position_shape": {
+          "name": "scheduler_sweep_position_shape",
+          "value": "(\"scheduler_sweep_cursors\".\"after_id\" IS NULL AND \"scheduler_sweep_cursors\".\"epoch_upper_id\" IS NULL AND \"scheduler_sweep_cursors\".\"epoch_cutoff_at\" IS NULL AND \"scheduler_sweep_cursors\".\"lease_owner_boot_id\" IS NULL AND \"scheduler_sweep_cursors\".\"lease_token\" IS NULL AND \"scheduler_sweep_cursors\".\"lease_until\" IS NULL) OR (\"scheduler_sweep_cursors\".\"epoch\" > 0 AND \"scheduler_sweep_cursors\".\"epoch_upper_id\" IS NOT NULL AND \"scheduler_sweep_cursors\".\"epoch_cutoff_at\" IS NOT NULL AND (\"scheduler_sweep_cursors\".\"after_id\" IS NULL OR \"scheduler_sweep_cursors\".\"after_id\" <= \"scheduler_sweep_cursors\".\"epoch_upper_id\"))"
+        },
+        "scheduler_sweep_lease_shape": {
+          "name": "scheduler_sweep_lease_shape",
+          "value": "(\"scheduler_sweep_cursors\".\"lease_owner_boot_id\" IS NULL AND \"scheduler_sweep_cursors\".\"lease_token\" IS NULL AND \"scheduler_sweep_cursors\".\"lease_until\" IS NULL) OR (\"scheduler_sweep_cursors\".\"lease_owner_boot_id\" IS NOT NULL AND \"scheduler_sweep_cursors\".\"lease_token\" IS NOT NULL AND \"scheduler_sweep_cursors\".\"lease_until\" IS NOT NULL)"
+        },
+        "scheduler_sweep_lease_bound": {
+          "name": "scheduler_sweep_lease_bound",
+          "value": "\"scheduler_sweep_cursors\".\"lease_until\" IS NULL OR (\"scheduler_sweep_cursors\".\"lease_until\" > \"scheduler_sweep_cursors\".\"updated_at\" AND \"scheduler_sweep_cursors\".\"lease_until\" <= \"scheduler_sweep_cursors\".\"updated_at\" + interval '60 seconds')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.self_healing_scans": {
       "name": "self_healing_scans",
       "schema": "",
@@ -18745,6 +18704,20 @@
       "name": "runtime_config_revision_status",
       "schema": "public",
       "values": ["saved", "preparing", "active", "failed", "restart_required"]
+    },
+    "public.scheduler_sweep_producer": {
+      "name": "scheduler_sweep_producer",
+      "schema": "public",
+      "values": [
+        "catalog",
+        "docs",
+        "workflow-cron",
+        "drift",
+        "reauth",
+        "endpoint-contract",
+        "knowledge",
+        "skill"
+      ]
     },
     "public.skill_candidate_confidence": {
       "name": "skill_candidate_confidence",

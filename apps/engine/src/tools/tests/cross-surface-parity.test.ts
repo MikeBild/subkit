@@ -4,7 +4,7 @@ import { callToolViaDispatcher } from "../../mcp/adapter.ts";
 import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../policy.ts";
 import { makeStubCtx, makeStubDb, makeTestPrincipal, usePolicyFixture } from "./_helpers.ts";
 
-usePolicyFixture();
+usePolicyFixture(["00000000-0000-0000-0000-aaaaaaaaaaaa", "00000000-0000-0000-0000-cccccccccccc"]);
 
 const PRINCIPAL = makeTestPrincipal();
 const { db: DB_STUB } = makeStubDb();

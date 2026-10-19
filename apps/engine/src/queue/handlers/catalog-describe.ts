@@ -1,8 +1,9 @@
 import type { Job, PgBoss } from "pg-boss";
-import type { Db } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { describePendingCatalog } from "../../workflows/catalog-describe.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";
+import { queuedSendTransaction } from "../transaction-adapter.ts";
 
 export const CATALOG_DESCRIBE_QUEUE = "catalog.describe" as const;
 
@@ -72,8 +73,11 @@ export async function registerCatalogDescribeHandler(
 export async function enqueueCatalogDescribe(
   boss: PgBoss,
   payload: CatalogDescribeJob,
+  exec?: Executor,
 ): Promise<string | null> {
-  return await boss.send(CATALOG_DESCRIBE_QUEUE, payload, {
+  const admission = await boss.upsert(CATALOG_DESCRIBE_QUEUE, payload, {
     singletonKey: `catalog-describe:${payload.tenant_id}`,
+    ...(exec ? { db: queuedSendTransaction(exec) } : {}),
   });
+  return admission.inserted > 0 ? (admission.jobs[0] ?? null) : null;
 }

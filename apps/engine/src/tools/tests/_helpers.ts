@@ -7,14 +7,16 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 
 let policyFixture: TestDb;
 
-export function usePolicyFixture(): void {
+export function usePolicyFixture(additionalTenants: readonly string[] = []): void {
   beforeAll(async () => {
     policyFixture = await createTestDb("tool-policy-fixture");
-    await policyFixture.db.insert(tenants).values({
-      id: makeTestPrincipal().tenant_id,
-      slug: "tool-policy-fixture",
-      display_name: "Tool Policy Fixture",
-    });
+    await policyFixture.db.insert(tenants).values(
+      [makeTestPrincipal().tenant_id, ...additionalTenants].map((id, index) => ({
+        id,
+        slug: `tool-policy-fixture-${index}`,
+        display_name: "Tool Policy Fixture",
+      })),
+    );
   }, 120_000);
 
   afterAll(async () => {

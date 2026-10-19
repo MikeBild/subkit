@@ -118,7 +118,7 @@ describe("abort", () => {
       expect(result.status).toBe("aborted");
       expect(result.steps[0]?.status).toBe("aborted");
     } finally {
-      monitor.stop();
+      await monitor.stop();
     }
   }, 15_000);
 });

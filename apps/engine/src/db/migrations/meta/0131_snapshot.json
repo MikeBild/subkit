@@ -1,6 +1,6 @@
 {
-  "id": "7602b4ad-58ec-4e11-b2fa-1e8ffd411fa3",
-  "prevId": "a022f79a-cf83-4211-97b3-e09097941bbc",
+  "id": "1ea2a8c6-3c15-4793-b53f-ae7acac611d2",
+  "prevId": "524c7240-041c-425a-9832-a0cc56b0bf22",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -14838,6 +14838,104 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.scheduler_sweep_cursors": {
+      "name": "scheduler_sweep_cursors",
+      "schema": "",
+      "columns": {
+        "producer": {
+          "name": "producer",
+          "type": "scheduler_sweep_producer",
+          "typeSchema": "public",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "epoch": {
+          "name": "epoch",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "revision": {
+          "name": "revision",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "after_id": {
+          "name": "after_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "epoch_upper_id": {
+          "name": "epoch_upper_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "epoch_cutoff_at": {
+          "name": "epoch_cutoff_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_owner_boot_id": {
+          "name": "lease_owner_boot_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "date_trunc('milliseconds', clock_timestamp())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "scheduler_sweep_epoch_safe": {
+          "name": "scheduler_sweep_epoch_safe",
+          "value": "\"scheduler_sweep_cursors\".\"epoch\" BETWEEN 0 AND 9007199254740991"
+        },
+        "scheduler_sweep_revision_safe": {
+          "name": "scheduler_sweep_revision_safe",
+          "value": "\"scheduler_sweep_cursors\".\"revision\" BETWEEN 0 AND 9007199254740991"
+        },
+        "scheduler_sweep_position_shape": {
+          "name": "scheduler_sweep_position_shape",
+          "value": "(\"scheduler_sweep_cursors\".\"after_id\" IS NULL AND \"scheduler_sweep_cursors\".\"epoch_upper_id\" IS NULL AND \"scheduler_sweep_cursors\".\"epoch_cutoff_at\" IS NULL AND \"scheduler_sweep_cursors\".\"lease_owner_boot_id\" IS NULL AND \"scheduler_sweep_cursors\".\"lease_token\" IS NULL AND \"scheduler_sweep_cursors\".\"lease_until\" IS NULL) OR (\"scheduler_sweep_cursors\".\"epoch\" > 0 AND \"scheduler_sweep_cursors\".\"epoch_upper_id\" IS NOT NULL AND \"scheduler_sweep_cursors\".\"epoch_cutoff_at\" IS NOT NULL AND (\"scheduler_sweep_cursors\".\"after_id\" IS NULL OR \"scheduler_sweep_cursors\".\"after_id\" <= \"scheduler_sweep_cursors\".\"epoch_upper_id\"))"
+        },
+        "scheduler_sweep_lease_shape": {
+          "name": "scheduler_sweep_lease_shape",
+          "value": "(\"scheduler_sweep_cursors\".\"lease_owner_boot_id\" IS NULL AND \"scheduler_sweep_cursors\".\"lease_token\" IS NULL AND \"scheduler_sweep_cursors\".\"lease_until\" IS NULL) OR (\"scheduler_sweep_cursors\".\"lease_owner_boot_id\" IS NOT NULL AND \"scheduler_sweep_cursors\".\"lease_token\" IS NOT NULL AND \"scheduler_sweep_cursors\".\"lease_until\" IS NOT NULL)"
+        },
+        "scheduler_sweep_lease_bound": {
+          "name": "scheduler_sweep_lease_bound",
+          "value": "\"scheduler_sweep_cursors\".\"lease_until\" IS NULL OR (\"scheduler_sweep_cursors\".\"lease_until\" > \"scheduler_sweep_cursors\".\"updated_at\" AND \"scheduler_sweep_cursors\".\"lease_until\" <= \"scheduler_sweep_cursors\".\"updated_at\" + interval '60 seconds')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.self_healing_scans": {
       "name": "self_healing_scans",
       "schema": "",
@@ -16237,6 +16335,93 @@
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.transactional_mail_receipts": {
+      "name": "transactional_mail_receipts",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "execution_id": {
+          "name": "execution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "step_id": {
+          "name": "step_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transactional_mail_receipts_tenant_id_tenants_id_fk": {
+          "name": "transactional_mail_receipts_tenant_id_tenants_id_fk",
+          "tableFrom": "transactional_mail_receipts",
+          "tableTo": "tenants",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "transactional_mail_receipts_workflow_id_workflows_id_fk": {
+          "name": "transactional_mail_receipts_workflow_id_workflows_id_fk",
+          "tableFrom": "transactional_mail_receipts",
+          "tableTo": "workflows",
+          "columnsFrom": ["workflow_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "transactional_mail_receipts_tenant_id_workflow_id_request_id_pk": {
+          "name": "transactional_mail_receipts_tenant_id_workflow_id_request_id_pk",
+          "columns": ["tenant_id", "workflow_id", "request_id"]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -18752,6 +18937,20 @@
       "name": "runtime_config_revision_status",
       "schema": "public",
       "values": ["saved", "preparing", "active", "failed", "restart_required"]
+    },
+    "public.scheduler_sweep_producer": {
+      "name": "scheduler_sweep_producer",
+      "schema": "public",
+      "values": [
+        "catalog",
+        "docs",
+        "workflow-cron",
+        "drift",
+        "reauth",
+        "endpoint-contract",
+        "knowledge",
+        "skill"
+      ]
     },
     "public.skill_candidate_confidence": {
       "name": "skill_candidate_confidence",

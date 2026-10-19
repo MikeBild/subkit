@@ -1,14 +1,11 @@
 import { and, asc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import type { AuditActorType } from "../../audit/types.ts";
-import {
-  AuditAction,
-  ConversationForkedMetadataSchema,
-  FileLinkAddedMetadataSchema,
-} from "../../audit/types.ts";
+import { AuditAction, ConversationForkedMetadataSchema } from "../../audit/types.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations, fileLinks } from "../../db/schema/index.ts";
+import { linkStoredFile } from "../../files/links.ts";
 import { log } from "../../logging/logger.ts";
 import type { ConversationRecord } from "../types.ts";
 import { rowToRecord } from "./shared.ts";
@@ -113,44 +110,25 @@ export async function forkConversation(
         eq(fileLinks.resource_id, p.source_conversation_id),
       ),
     );
-  if (sourceLinks.length > 0) {
-    await exec
-      .insert(fileLinks)
-      .values(
-        sourceLinks.map((l) => ({
-          tenant_id: p.tenant_id,
-          file_id: l.file_id,
-          resource_type: "conversation" as const,
-          resource_id: row.id,
-          slug: l.slug,
-          role: l.role,
-        })),
-      )
-      .onConflictDoNothing();
-
-    for (const l of sourceLinks) {
-      await auditAwait(
-        {
-          tenant_id: p.tenant_id,
-          actor_type: p.actor_type,
-          actor_id: p.actor_id,
-          action: AuditAction.FILE_LINK_ADDED,
-          resource_type: "file",
-          resource_id: l.file_id,
-          result: "success",
-          metadata: FileLinkAddedMetadataSchema.parse({
-            file_id: l.file_id,
-            resource_type: "conversation",
-            resource_id: row.id,
-            slug: l.slug,
-            role: l.role,
-            source: "fork",
-            request_source: p.request_source,
-          }),
-        },
-        exec,
-      );
-    }
+  for (const link of sourceLinks) {
+    await linkStoredFile(
+      exec,
+      {
+        tenant_id: p.tenant_id,
+        file_id: link.file_id,
+        resource_type: "conversation",
+        resource_id: row.id,
+        slug: link.slug,
+        role: link.role,
+      },
+      {
+        actor_type: p.actor_type,
+        actor_id: p.actor_id,
+        request_source: p.request_source,
+        source: "fork",
+        allowed_statuses: ["pending", "uploading", "scanning", "ready", "failed", "expired"],
+      },
+    );
   }
 
   log.conversation.forked({

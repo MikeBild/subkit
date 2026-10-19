@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   statSync,
   symlinkSync,
   writeFileSync,
@@ -33,12 +34,12 @@ import {
 } from "../agent.ts";
 
 const fileExists = fs.existsSync;
-const fixtureDirectory = `${resolve(tmpdir())}${sep}`;
+const fixtureDirectories = [resolve(tmpdir()), realpathSync(tmpdir())].map((dir) => `${dir}${sep}`);
 const inheritedDeclarations = spyOn(fs, "existsSync").mockImplementation((path) => {
   if (
     typeof path === "string" &&
     path.endsWith(AGENT_FILE_RELPATH) &&
-    !resolve(path).startsWith(fixtureDirectory)
+    !fixtureDirectories.some((directory) => resolve(path).startsWith(directory))
   )
     return false;
   return fileExists(path);

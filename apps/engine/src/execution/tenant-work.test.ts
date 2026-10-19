@@ -4,6 +4,7 @@ import {
   beginTenantWork,
   tenantWorkInFlight,
   tenantWorkSnapshot,
+  waitForTenantWorkDrain,
   withTenantWork,
 } from "./tenant-work.ts";
 
@@ -51,4 +52,45 @@ test("shutdown count includes unsettled work in every tenant", () => {
     second();
   }
   expect(tenantWorkInFlight()).toBe(before);
+});
+
+test("drain observers wait for actual work across tenants and newly nested work", async () => {
+  const first = beginTenantWork(uuid());
+  const second = beginTenantWork(uuid());
+  let drained = 0;
+  const firstObserver = waitForTenantWorkDrain().then(() => {
+    drained++;
+  });
+  const secondObserver = waitForTenantWorkDrain().then(() => {
+    drained++;
+  });
+  const nested = beginTenantWork(uuid());
+  try {
+    first();
+    second();
+    await Promise.resolve();
+    expect(drained).toBe(0);
+    expect(tenantWorkInFlight()).toBe(1);
+    nested();
+    await firstObserver;
+    await secondObserver;
+    expect(drained).toBe(2);
+    await waitForTenantWorkDrain();
+    const later = beginTenantWork(uuid());
+    let laterDrained = false;
+    const laterObserver = waitForTenantWorkDrain().then(() => {
+      laterDrained = true;
+    });
+    await Promise.resolve();
+    expect(laterDrained).toBe(false);
+    later();
+    await laterObserver;
+    expect(laterDrained).toBe(true);
+  } finally {
+    first();
+    second();
+    nested();
+    await firstObserver;
+    await secondObserver;
+  }
 });
