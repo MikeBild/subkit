@@ -1,7 +1,7 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E306.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E307.
 
 Operative L-Aufgaben, Prioritäten und aktueller Issue-Status stehen in den
 [GitHub Issues](https://github.com/MikeBild/subkit/issues) und im
@@ -28,11 +28,13 @@ Hosted-Registrierung ist geöffnet. Zwei verschiedene Upraft-Auth-Identitäten
 haben sich im echten Browser angemeldet und je einen eigenen Workspace erhalten.
 Die zweite Identität sah nur ihre eigene Mitgliedschaft und Person; ein Request
 mit fremdem Tenant-Kontext wurde HTTP 409 abgewiesen, während der eigene Kontext
-bis zur Ressourcenprüfung gelangte. Die aktive Replica blieb gesund; das letzte
-geprüfte 100-Log-Fenster enthielt nur Info-Einträge. Auth-Mail wurde über den
+bis zur Ressourcenprüfung gelangte. Ein echter Cockpit-Chat im zweiten Tenant
+lieferte eine OpenAI-Antwort; die exakte Test-Unterhaltung wurde nach persönlicher
+Freigabe gelöscht. Die aktive Replica blieb gesund; die geprüften App-Logfenster
+enthielten keinen parsebaren Warn- oder Fehlerlog. Auth-Mail wurde über den
 signierten Webhook-Workflow versandt und die zweite Einladung von der Person
 angenommen. Die Browser-Fehlerseite des OIDC-Callbacks ist im SubKit-Stil
-deployed. E303–E306 enthalten die aktuellen Auth-, Deployment- und
+deployed. E303–E307 enthalten die aktuellen Auth-, Deployment- und
 Isolationsergebnisse.
 
 Ein privates Upraft-Backupziel, tägliche vollständige Exporte und Aufbewahrung
