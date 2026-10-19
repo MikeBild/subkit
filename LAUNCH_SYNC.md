@@ -13,6 +13,7 @@ Dies ist keine neue Synchronisationsplattform.
 | Rolle/System | Verantwortung |
 | --- | --- |
 | GitHub main | Gemeinsamer freigegebener Code-, Plan-, Aufgaben- und Nachweisstand |
+| GitHub Issues und SubKit Product Project | Operative Aufgaben, Priorität, Status und getrennte Ansichten für Self-hosted Beta, GA und Hosted Beta |
 | Codex | Tatsächlichen Checkout prüfen, vereinbarte Aufgaben umsetzen, testen, Status lokal aktualisieren |
 | ChatGPT Daily | Tagesprioritäten, Countdown, Risiken und ausführbaren Arbeitsauftrag aus aktuellem main ableiten |
 | ChatGPT Weekly | Wochenmeilensteine, kritischen Pfad und Terminprognose bewerten |
@@ -62,8 +63,11 @@ Datei nennt den geprüften Produktcommit; der lesende Client protokolliert den g
 
 Gültige Ergebnisse wiederverwenden. Bei Source-/Runtimeänderung Geltungsbereich neu prüfen;
 alte Ergebnisse nicht löschen oder als frisch ausgeben. Neue Nutzerentscheidungen mit Datum,
-Umfang und betroffenen Tasks dokumentieren. LAUNCH.md enthält Plan/DoD, LAUNCH_STATUS.md als
-einzige Stelle die aktuellen L-Aufgabenstatus; Cloud-C-Aufgabenstatus in docs/TODO.md; nicht zwei vollständige Statuslisten pflegen.
+Umfang und betroffenen Tasks dokumentieren. LAUNCH.md enthält Plan/DoD;
+GitHub Issues und das Project führen den operativen Status. LAUNCH_STATUS.md
+und docs/TODO.md bewahren datierte Nachweise und fachliche Grenzen. Status
+und Evidenz beim Abschluss miteinander abgleichen, keine zweite vollständige
+operative Aufgabenliste pflegen.
 
 Keine Secrets, Produktionshosts, privaten Deploymentkennungen oder personenbezogenen
 Entwurfsangaben speichern. Berichte enthalten nur notwendige bereinigte Daten.
@@ -105,13 +109,23 @@ Eine Freigabe für Dateierstellung ist keine Freigabe für diese weiteren Wirkun
 
 ## Daily und Weekly
 
-Die beiden Automationen bestehen laut Nutzer bereits. In dieser Session wurden sie weder
-neu erstellt noch verändert. Aktivierung, tatsächlicher Zeitplan und GitHub-Zugriff sind erst
-nach einem beobachteten Lauf verifiziert. Keine zusätzlichen redundanten Automationen erstellen.
+Für SubKit und Harmoniqs bestehen je ein Daily- und ein Weekly-Briefing. Am
+19.10.2026 wurden die vier Aufgaben und ihre Zeitpläne im ChatGPT-Client geprüft;
+die alten chatgebundenen Duplikate wurden pausiert. Die zwei privaten,
+rein lesenden GitHub-Workflows sind aktiv und haben je einen erfolgreichen
+Daily- und Weekly-PROD-Lauf über autorisierte Browser-Sitzungen. ChatGPT kann
+die sensiblen Ergebnisse aktuell nicht zuverlässig direkt dispatchen
+(`sensitive_execution_unsupported`); die Aufgaben benennen diese Grenze und
+verwenden dann autorisierte GitHub-GET-Abfragen. Das ist kein Nachweis einer
+vollständigen Workflow-zu-ChatGPT-Datenübergabe oder eines neuen geplanten Laufs
+nach der Prompt-Aktualisierung; [Issue B01](https://github.com/MikeBild/subkit/issues/410)
+führt die Lücke. Keine weiteren redundanten Automationen erstellen.
 
 ### Daily: täglich 06:00 Europe/Berlin
 
-Liest GitHub main und alle drei Launchdateien. Liefert:
+Liest GitHub main, [Issues](https://github.com/MikeBild/subkit/issues),
+[Project](https://github.com/users/MikeBild/projects/4), Milestones und die
+zuständigen Launch-/Hosted-/Website-Dateien. Liefert:
 
 1. Launch-Lage und gelesenen Commit/Prüfzeitpunkt.
 2. Kalendertage bis Beta und GA, bezogen auf Europe/Berlin.
@@ -126,7 +140,7 @@ UNVERIFIED, letzten bekannten Stand nennen, keine neuen Fortschritte erfinden.
 
 ### Weekly: montags ungefähr 08:00 Europe/Berlin
 
-Liest denselben Stand und liefert Gesamtstatus, belegten Wochenfortschritt, unerledigte Tasks,
+Liest denselben Stand und liefert Gesamtstatus, belegten Wochenfortschritt, unerledigte Issues,
 drei bis fünf Wochenmeilensteine mit DoD, kritischen Pfad, Terminprognose, drei Risiken,
 menschliche Entscheidungen und nächsten ausführbaren Codex-Prompt. Strategische Priorisierung
 vorschlagen; verbindliche Scopeänderungen entscheidet der Nutzer. Bestätigte Änderungen werden
@@ -146,22 +160,25 @@ Bis dahin bleibt die Automation UNVERIFIED. Kein Testeintrag in produktivem Know
 
 ```text
 Arbeite im Repository MikeBild/subkit. Prüfe zuerst Branch und Git-Status;
-erhalte vorhandene Änderungen. Lies AGENTS.md, LAUNCH.md, LAUNCH_STATUS.md
-und LAUNCH_SYNC.md. Der aktuelle Checkout hat Vorrang vor diesem Briefing.
+erhalte vorhandene Änderungen. Lies AGENTS.md, README.md, LAUNCH.md,
+LAUNCH_STATUS.md, LAUNCH_SYNC.md und docs/roadmap-issues.json. Prüfe
+GitHub Issues, das SubKit Product Project und Milestones als operative
+Aufgabenquelle. Der aktuelle Checkout hat Vorrang vor diesem Briefing.
 
 Briefing-Basis: <gelesener GitHub-Commit und Prüfzeit>
 Tagesziel: <Meilenstein>
-Aufgaben: <bis zu drei offene Task-IDs mit Ergebnis und DoD>
+Aufgaben: <bis zu drei offene Issue-Links mit Ergebnis und DoD>
 Dominanter nächster Schritt: <konkrete Aktion>
 
 Überspringe nachweislich erledigte Aufgaben. Prüfe vor Implementierungen
 die Synchronisationsregel aus AGENTS.md. Setze den vereinbarten Umfang um,
-führe passende Tests aus und aktualisiere LAUNCH_STATUS.md lokal mit
-Nachweisen, Grenzen und nächsten drei Aufgaben.
+führe passende Tests aus und aktualisiere das betroffene Issue sowie
+LAUNCH_STATUS.md mit Nachweisen, Grenzen und nächsten Schritten.
 
-Keine Features ohne unmittelbaren Launch-Nutzen. Keine Commits, Pushes,
-Tags, Releases, Deployments, globalen Konfigurationsänderungen oder
-Store-Einreichungen ohne die jeweils erforderliche Freigabe.
+Keine Features ohne unmittelbaren Launch-Nutzen. Beachte die bestehenden
+Freigaben für normale geprüfte Commits und Pushes; Tags, Releases,
+Deployments, globale Konfigurationsänderungen und Store-Einreichungen
+bleiben gesondert freizugeben.
 Am Ende: Ergebnis, Tests, verbleibende Blocker und nächster Schritt.
 ```
 

@@ -6,9 +6,23 @@ Canonical repo-wide instructions for the SubKit engine and CLI. Closer AGENTS.md
 
 - Read [docs/PRODUCT-ROADMAP.md](docs/PRODUCT-ROADMAP.md) for the accepted hosted
   self-service direction, assumptions, opening criteria and source boundaries.
-- [docs/TODO.md](docs/TODO.md) owns hosted-product tasks; root TODO.md is a pointer.
-  LAUNCH_STATUS.md owns existing L-task status; WEBSITE-TODO.md owns website tasks.
-  Do not duplicate these status lists or transfer self-hosting dates to cloud.
+- [GitHub Issues](https://github.com/MikeBild/subkit/issues) and the private
+  [SubKit Product Project](https://github.com/users/MikeBild/projects/4) own the
+  operational task queue, priority and current issue state. Keep their stable
+  links in [docs/roadmap-issues.json](docs/roadmap-issues.json) and run
+  `node scripts/check-roadmap-links.mjs` after changing task IDs or links.
+  [docs/TODO.md](docs/TODO.md) holds hosted acceptance details and evidence;
+  LAUNCH_STATUS.md holds L-task evidence snapshots; WEBSITE-TODO.md holds website
+  handoff details. Root TODO.md points to these sources and may contain separate
+  operator reminders. Reconcile significant status changes across the issue and
+  its source file; do not duplicate full status lists or transfer self-hosting
+  dates to cloud.
+- Daily and weekly ChatGPT briefings must read current GitHub main, Issues,
+  Milestones and the SubKit Project before using repository evidence snapshots.
+  The active private GitHub briefing workflows are preferred when their sensitive
+  results are actually available to that client. If ChatGPT cannot dispatch a
+  sensitive workflow, use authorized read-only GitHub access and name that limit;
+  never infer a workflow run from a task prompt or an older snapshot.
 - [docs/lovable-website-briefing.md](docs/lovable-website-briefing.md) owns current
   product/design copy; [docs/lovable-setup.md](docs/lovable-setup.md) owns access and
   handoff. Keep concrete private project/deployment metadata outside the repository.
