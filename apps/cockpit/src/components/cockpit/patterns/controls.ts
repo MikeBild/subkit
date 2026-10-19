@@ -1,3 +1,4 @@
+export { Alert, AlertDescription } from "@/components/ui/alert";
 export { buttonVariants } from "@/components/ui/button";
 export { Checkbox } from "@/components/ui/checkbox";
 export {
@@ -27,6 +28,7 @@ export {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+export { Separator } from "@/components/ui/separator";
 export { Spinner } from "@/components/ui/spinner";
 export { Switch } from "@/components/ui/switch";
 export { Textarea } from "@/components/ui/textarea";

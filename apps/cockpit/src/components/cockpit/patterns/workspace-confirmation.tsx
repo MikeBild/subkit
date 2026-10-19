@@ -1,15 +1,6 @@
 import { Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { useI18n } from "@/lib/i18n-context";
+import { FormDialog } from "@/components/cockpit/patterns/form-dialog";
 
 export function WorkspaceConfirmation({
   open,
@@ -36,48 +27,33 @@ export function WorkspaceConfirmation({
   onConfirm(): void;
   children?: ReactNode;
 }) {
-  const { t } = useI18n();
   return (
-    <Dialog
+    <FormDialog
       open={open}
       onOpenChange={(value) => {
         if (!pending) onOpenChange(value);
       }}
-    >
-      <DialogContent
-        className="max-w-md rounded-xl border p-6"
-        onEscapeKeyDown={(event) => {
-          if (pending) event.preventDefault();
-        }}
-        onInteractOutside={(event) => {
-          if (pending) event.preventDefault();
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle className="text-base">{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        {children}
-        <DialogFooter>
-          <Button
-            data-testid="workspace-confirm-cancel"
-            variant="ghost"
-            disabled={pending}
-            onClick={() => onOpenChange(false)}
-          >
-            {t("common.cancel")}
-          </Button>
-          <Button
-            data-testid="workspace-confirm-submit"
-            variant={destructive ? "destructive" : "default"}
-            disabled={pending || disabled}
-            onClick={onConfirm}
-          >
+      title={title}
+      description={description}
+      testId="workspace-confirmation"
+      cancelTestId="workspace-confirm-cancel"
+      submit={{
+        label: (
+          <>
             {pending ? <Loader2 className="size-4 animate-spin" /> : null}
             {pending ? pendingLabel : confirmLabel}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </>
+        ),
+        testId: "workspace-confirm-submit",
+        pending,
+        disabled,
+        destructive,
+      }}
+      onSubmit={() => {
+        if (!pending && !disabled) onConfirm();
+      }}
+    >
+      {children}
+    </FormDialog>
   );
 }
