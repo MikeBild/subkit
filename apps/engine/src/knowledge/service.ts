@@ -224,7 +224,6 @@ export async function applyKnowledgeCreate(
       tenant_id: p.tenant_id,
       actor: p.actor ?? null,
       knowledge_source_id: row.id,
-      slug,
       filename: p.upload.filename,
       mime: p.upload.mime ?? null,
       persisted: prepared.persisted,
@@ -596,7 +595,6 @@ export interface PreparedKnowledgeIngest {
   skipped: number;
   total_bytes: number;
   persisted: PersistInlineUploadResult | null;
-  source_slug: string;
   content: KnowledgeVersionContent;
 }
 
@@ -633,7 +631,7 @@ export async function prepareKnowledgeIngest(
     : dedupChunks(fingerprinted);
 
   const sourceRows = await db
-    .select({ source_type: knowledgeSources.source_type, slug: knowledgeSources.slug })
+    .select({ source_type: knowledgeSources.source_type })
     .from(knowledgeSources)
     .where(
       and(
@@ -652,7 +650,6 @@ export async function prepareKnowledgeIngest(
     skipped,
     total_bytes: accepted.reduce((s, c) => s + c.byte_size, 0),
     persisted: keepsFile ? await persistKnowledgeFile(db, p) : null,
-    source_slug: keepsFile ? sourceRow.slug : p.upload.filename,
     content: knowledgeVersionContent({
       source_type: sourceRow?.source_type ?? "file_upload",
       upload: p.upload,
@@ -749,7 +746,6 @@ export async function applyKnowledgeIngest(
       tenant_id: p.tenant_id,
       actor: p.actor ?? null,
       knowledge_source_id: p.knowledge_source_id,
-      slug: prepared.source_slug,
       filename: p.upload.filename,
       mime: p.upload.mime ?? null,
       persisted: prepared.persisted,

@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { bucketSize } from "../audit/buckets.ts";
@@ -7,6 +8,7 @@ import {
   FileScanCompletedMetadataSchema,
 } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
+import { fileLinks } from "../db/schema/files.ts";
 import { recordFilesDedupSeen } from "../files/dedup-counter.ts";
 import { linkStoredFile } from "../files/links.ts";
 import {
@@ -51,7 +53,6 @@ export async function linkKnowledgeFile(
     tenant_id: string;
     actor: Actor | null;
     knowledge_source_id: string;
-    slug: string;
     filename: string;
     mime: string | null;
     persisted: PersistInlineUploadResult;
@@ -59,6 +60,19 @@ export async function linkKnowledgeFile(
 ): Promise<void> {
   const { row, dedup, scan } = p.persisted;
   const actorFields = auditActor(p.actor);
+  const [existing] = await tx
+    .select({ slug: fileLinks.slug })
+    .from(fileLinks)
+    .where(
+      and(
+        eq(fileLinks.tenant_id, p.tenant_id),
+        eq(fileLinks.resource_type, "knowledge_source"),
+        eq(fileLinks.resource_id, p.knowledge_source_id),
+        eq(fileLinks.file_id, row.id),
+      ),
+    )
+    .limit(1);
+  const snapshotSlot = existing?.slug ?? `source-file-${row.id}`;
   await linkStoredFile(
     tx,
     {
@@ -66,7 +80,7 @@ export async function linkKnowledgeFile(
       file_id: row.id,
       resource_type: "knowledge_source",
       resource_id: p.knowledge_source_id,
-      slug: p.slug,
+      slug: snapshotSlot,
       role: "source",
     },
     {
