@@ -1,5 +1,6 @@
 import { load as loadYaml } from "js-yaml";
 import { log } from "../../logging/logger.ts";
+import { walkZipEntries } from "../../utils/zip-walk.ts";
 import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
@@ -156,10 +157,35 @@ async function fetchSpec(
         `spec at ${scrubUrl(url)} exceeds ${MAX_SIZE_BYTES} bytes`,
       );
     }
-    const text = new TextDecoder().decode(buf);
+    let text: string;
+    let contentType = res.headers.get("content-type");
+    const bytes = Buffer.from(buf);
+    if (bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))) {
+      const archive = await walkZipEntries(bytes, {
+        maxEntries: 32,
+        maxPerEntryBytes: MAX_SIZE_BYTES,
+        maxTotalBytes: MAX_SIZE_BYTES,
+        shouldSkip: (path) =>
+          path.startsWith("__MACOSX/") || !/\.(json|ya?ml)$/i.test(path) ? "not_spec" : null,
+      });
+      if (archive.truncated || archive.skipped_reasons.too_large) {
+        throw new DiscoveryError("spec_too_large", "OpenAPI archive exceeds extraction limits");
+      }
+      const entry = archive.entries[0];
+      if (!entry || archive.entries.length !== 1 || archive.skipped_reasons.read_error) {
+        throw new DiscoveryError(
+          "parse_failed",
+          "OpenAPI archive must contain exactly one readable JSON or YAML specification",
+        );
+      }
+      text = entry.buffer.toString("utf8");
+      contentType = /\.ya?ml$/i.test(entry.path) ? "application/yaml" : "application/json";
+    } else {
+      text = new TextDecoder().decode(buf);
+    }
     return {
       text,
-      contentType: res.headers.get("content-type"),
+      contentType,
       linkHeader: res.headers.get("link"),
     };
   } finally {

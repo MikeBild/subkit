@@ -17217,8 +17217,8 @@
       "ttl_seconds": 300
     },
     "default_skill": "app-store-connect-basics",
-    "ingestion_source": "markdown",
-    "ingestion_url": "https://developer.apple.com/documentation/appstoreconnectapi.md",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://developer.apple.com/sample-code/app-store-connect/app-store-connect-openapi-specification.zip",
     "icon": "",
     "description": "App Store Connect REST API for app metadata, TestFlight builds, beta groups, testers, and public links.",
     "category": "devops",

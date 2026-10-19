@@ -607,6 +607,13 @@ Connect Issuer ID as `issuer`; for an individual key omit `issuer` and set
 `subject` to `user`. The first probe is `GET /v1/apps`. Do not configure OAuth,
 a token endpoint, or an OAuth client assertion for this connector.
 
+The template discovers endpoints from Apple's official OpenAPI ZIP download.
+Discovery accepts a single JSON or YAML specification in an archive, limits
+compressed and extracted content to 16 MiB, and rejects ambiguous archives.
+The resulting endpoint catalog is available to agents; connector documentation
+can also be imported with `POST /v1/connectors/{id}/docs/ingest` using
+`source_type: "openapi"` and the extracted specification as `content`.
+
 ### Set up a signed-JWT connector
 
 In Cockpit, choose **Create → Connector → App Store Connect**, then open the
