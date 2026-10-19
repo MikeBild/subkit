@@ -252,6 +252,30 @@ describe("detectPlaceholderDestinations · tier tokens (always invalid)", () => 
     });
   }
 
+  test("repository documentation paths are not placeholder destinations", () => {
+    const def = parse({
+      name: "repository-briefing",
+      steps: [
+        {
+          id: "todo_doc",
+          kind: "request",
+          method: "GET",
+          connector_id: CONNECTOR_ID,
+          path: "/repos/MikeBild/subkit/contents/docs/TODO.md",
+        },
+        {
+          id: "snapshot",
+          kind: "transform",
+          language: "javascript",
+          expression: 'return { todo_path: "docs/TODO.md", content: input.scope.todo_doc.data };',
+        },
+      ],
+    });
+
+    expect(detect(def, "tokens")).toEqual([]);
+    expect(detect(def, "all")).toEqual([]);
+  });
+
   test("embedded tokens are found inside longer strings", () => {
     const def = requestWith({
       body: { to: "ops-REPLACE_ME@acme.com", note: "send to <recipient> on {{channel}}" },

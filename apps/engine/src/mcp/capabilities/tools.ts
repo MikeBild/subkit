@@ -31,7 +31,7 @@ import { MCP_CORE_TOOL_NAMES, modeFlags, resolveMcpMode } from "../mode-resolver
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import { assembleCatalog, DEFAULT_PALETTE_LIMIT, TOOL_PREFIX } from "./catalog-budget.ts";
 import { ELICITATION_FORM_TIMEOUT_MS } from "./conversation-native-elicitation.ts";
-import { CONVERSATION_TOOL_PREFIX, handleConversationTool } from "./conversations.ts";
+import { handleConversationTool, isConversationToolName } from "./conversations.ts";
 import { buildResultEnvelope } from "./held-preview.ts";
 import { raceInlineRun } from "./inline-timeout.ts";
 import { paginate } from "./pagination.ts";
@@ -250,7 +250,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         return response;
       }
 
-      if (name.startsWith(CONVERSATION_TOOL_PREFIX)) {
+      if (isConversationToolName(name)) {
         if (!modeFlags(resolveMcpMode(principal), readOnly).showConversationTools) {
           logger.info({
             module: "mcp",
