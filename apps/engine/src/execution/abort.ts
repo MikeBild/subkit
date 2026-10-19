@@ -33,7 +33,7 @@ export function cancel(executionId: string, reason = "cancelled"): boolean {
 }
 
 export interface AbortMonitor {
-  stop(): void;
+  stop(): Promise<void>;
   checkNow(): Promise<number>;
 }
 
@@ -48,6 +48,7 @@ export function startAbortMonitor(
   const intervalMs = options.intervalMs ?? (() => getConfig().queue.abort_poll_interval_ms);
 
   const checkNow = async (): Promise<number> => {
+    if (stopped) throw new Error("abort_monitor_stopped");
     if (activeCheck) return activeCheck;
     activeCheck = (async () => {
       const byTenant = new Map<string, string[]>();
@@ -86,6 +87,7 @@ export function startAbortMonitor(
   const schedule = (): void => {
     if (stopped) return;
     timer = setTimeout(() => {
+      if (stopped) return;
       void checkNow()
         .catch((err) => {
           logger.error({
@@ -102,10 +104,11 @@ export function startAbortMonitor(
   schedule();
   return {
     checkNow,
-    stop(): void {
+    async stop(): Promise<void> {
       stopped = true;
       if (timer) clearTimeout(timer);
       timer = null;
+      await activeCheck;
     },
   };
 }

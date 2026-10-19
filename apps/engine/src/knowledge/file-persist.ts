@@ -4,17 +4,17 @@ import { bucketSize } from "../audit/buckets.ts";
 import {
   AuditAction,
   FileCreatedMetadataSchema,
-  FileLinkAddedMetadataSchema,
   FileScanCompletedMetadataSchema,
 } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
-import { fileLinks } from "../db/schema/files.ts";
 import { recordFilesDedupSeen } from "../files/dedup-counter.ts";
+import { linkStoredFile } from "../files/links.ts";
 import {
   type PersistInlineUploadResult,
   persistInlineUpload,
 } from "../files/persist-inline-upload.ts";
 import { removeStoredFile } from "../files/remove-stored-file.ts";
+import { getContext } from "../logging/context.ts";
 
 export async function persistKnowledgeFile(
   db: Executor,
@@ -59,17 +59,23 @@ export async function linkKnowledgeFile(
 ): Promise<void> {
   const { row, dedup, scan } = p.persisted;
   const actorFields = auditActor(p.actor);
-  await tx
-    .insert(fileLinks)
-    .values({
+  await linkStoredFile(
+    tx,
+    {
       tenant_id: p.tenant_id,
       file_id: row.id,
       resource_type: "knowledge_source",
       resource_id: p.knowledge_source_id,
       slug: p.slug,
       role: "source",
-    })
-    .onConflictDoNothing();
+    },
+    {
+      ...actorFields,
+      request_source: getContext().request_source ?? "tool-chain",
+      source: "knowledge_source",
+      allowed_statuses: ["pending", "uploading", "scanning", "ready", "failed", "expired"],
+    },
+  );
   await auditAwait(
     {
       tenant_id: p.tenant_id,
@@ -110,23 +116,4 @@ export async function linkKnowledgeFile(
       tx,
     );
   }
-  await auditAwait(
-    {
-      tenant_id: p.tenant_id,
-      ...actorFields,
-      action: AuditAction.FILE_LINK_ADDED,
-      resource_type: "file",
-      resource_id: row.id,
-      result: "success",
-      metadata: FileLinkAddedMetadataSchema.parse({
-        file_id: row.id,
-        resource_type: "knowledge_source",
-        resource_id: p.knowledge_source_id,
-        slug: p.slug,
-        role: "source",
-        source: "knowledge_source",
-      }),
-    },
-    tx,
-  );
 }

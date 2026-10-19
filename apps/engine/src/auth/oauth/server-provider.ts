@@ -114,7 +114,20 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
 
     await db.transaction(async (tx) => {
       await assertOAuthTenantActive(input.tenantId, tx);
-      // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
+      // tenant-filter:exempt — exact global client authority locked before code issuance
+      const [client] = await tx
+        .select({
+          id: mcpOauthClients.id,
+          disabled_at: mcpOauthClients.disabled_at,
+          retired_at: mcpOauthClients.retired_at,
+        })
+        .from(mcpOauthClients)
+        .where(eq(mcpOauthClients.client_id, input.clientId))
+        .for("update");
+      if (!client || (client.disabled_at && !client.retired_at))
+        throw Object.assign(new Error("invalid_client: OAuth client is unavailable"), {
+          oauth_error: "invalid_client",
+        });
       const reactivated = await tx
         .update(mcpOauthClients)
         .set({ disabled_at: null, retired_at: null })
@@ -298,7 +311,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         .from(mcpOauthClients)
         .where(eq(mcpOauthClients.client_id, codeRow.client_id))
         .for("update");
-      if (client?.disabled_at && !client.retired_at) return "client_revoked" as const;
+      if (!client || (client.disabled_at && !client.retired_at)) return "client_revoked" as const;
       if (client?.retired_at) {
         await tx
           .update(mcpOauthClients)

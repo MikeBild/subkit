@@ -6,6 +6,8 @@ export {
   type AgentSessionAnalyzeJob,
 } from "./handlers/agent-session-analyze.ts";
 export { registerAllHandlers } from "./handlers/index.ts";
+export { enqueueIngest, type IngestDocsJob } from "./handlers/ingest-docs.ts";
+export { enqueueKnowledgeIngest, type IngestKnowledgeJob } from "./handlers/ingest-knowledge.ts";
 export { enqueueHostedWork, HostedWorkQuotaError, listUnsettledHostedWork } from "./hosted-work.ts";
 export {
   HostedWorkReviewError,

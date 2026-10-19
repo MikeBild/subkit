@@ -34,7 +34,6 @@ import {
   FileDeletedMetadataSchema,
   FileDownloadedMetadataSchema,
   FileFinalizedMetadataSchema,
-  FileLinkAddedMetadataSchema,
   FileScanCompletedMetadataSchema,
   FileUploadReceivedMetadataSchema,
   readRequestSource,
@@ -43,6 +42,7 @@ import {
 import { writeEvent } from "../../db/events.ts";
 import { fileLinks, files, filesDedupSeen } from "../../db/schema/index.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
+import { FileLinkError, linkStoredFile } from "../../files/links.ts";
 import { buildObjectKey, composeStorageUri } from "../../files/object-key.ts";
 import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
 import { removeStoredFile } from "../../files/remove-stored-file.ts";
@@ -1242,58 +1242,30 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         409,
       );
     }
-    const inserted = await db
-      .insert(fileLinks)
-      .values({
+    const linkResult = await linkStoredFile(
+      db,
+      {
         tenant_id: principal.tenant_id,
         file_id: row.id,
         resource_type: body.resource_type,
         resource_id: body.resource_id,
         slug: body.slug ?? null,
         role: body.role ?? null,
-      })
-      .onConflictDoNothing()
-      .returning();
-    let linkRow = inserted[0];
-    if (!linkRow) {
-      const existing = await db
-        .select()
-        .from(fileLinks)
-        .where(
-          and(
-            eq(fileLinks.tenant_id, principal.tenant_id),
-            eq(fileLinks.file_id, row.id),
-            eq(fileLinks.resource_type, body.resource_type),
-            eq(fileLinks.resource_id, body.resource_id),
-          ),
-        )
-        .limit(1);
-      linkRow = existing[0];
-    }
-    if (!linkRow) {
-      return c.json({ code: "conflict", message: "link conflict" }, 409);
-    }
-
-    await auditAwait(
+      },
       {
-        tenant_id: principal.tenant_id,
         actor_type: actorType(principal),
         actor_id: principal.id,
-        action: AuditAction.FILE_LINK_ADDED,
-        resource_type: "file",
-        resource_id: row.id,
-        result: "success",
-        metadata: FileLinkAddedMetadataSchema.parse({
-          file_id: row.id,
-          resource_type: body.resource_type,
-          resource_id: body.resource_id,
-          slug: body.slug ?? null,
-          role: body.role ?? null,
-          request_source: readRequestSource(c),
-        }),
+        request_source: readRequestSource(c) ?? "api",
+        allowed_statuses: ["ready"],
       },
-      db,
-    );
+    ).catch((error: unknown) => {
+      if (error instanceof FileLinkError)
+        return c.json({ code: error.code, message: "File link changed; reload and retry." }, 409);
+      throw error;
+    });
+
+    if (linkResult instanceof Response) return linkResult;
+    const linkRow = linkResult;
 
     const wire: FileLinkWire = {
       id: linkRow.id,

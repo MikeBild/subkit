@@ -60,8 +60,10 @@ Stand. Der unabhängige Ausnahme-Delta-Review fand keinen neuen belegten Bypass;
 Die historischen 34 Annotationen betreffen reguläre Schedulerjobs; der aktuelle
 Abgleich fand 25 noch unbegrenzte SQL-Arbeitseinheiten. Titelpfad und
 Notification-Mutationsbatch sind inzwischen fokussiert begrenzt (E265);
-23 weitere Einheiten aus diesem historischen Inventar bleiben offen. Zusätzlich
-ist außerhalb des Inventars ein unbegrenzter Chat-Dedup-Lauf gefunden; ebenso
+Nach zusätzlich begrenzten beiden Approval-Mutationen (E280) bleiben
+nach acht begrenzten OAuth-Einheiten (E283) und vier Kadenz-Producern (E282)
+noch neun Einheiten aus diesem historischen Inventar offen. Der zusätzliche
+Chat-Dedup-Lauf ist ebenfalls fokussiert begrenzt; ebenso
 bleibt die Gesamtzahl residenter Timer offen. Kein Cloud-, Release-
 oder aktueller Gesamtgate-PASS wird daraus abgeleitet.
 
@@ -70,18 +72,21 @@ und vorgelagerte Egress-Prüfungen verwenden den vorgegebenen DB-/TX-Kontext.
 21 Tests PASS/39 Assertions einschließlich tatsächlicher PostgreSQL-Transport-
 Gegenproben (E263); kein gesamter SSRF- oder Cloud-Nachweis.
 
-Integrierter Kandidatenlauf über 151 vorhandene geänderte Testdateien stoppte
-regulär bei Datei 27: 209 PASS/acht FAIL (E266). Fehlender expliziter Fixture-DB-
-Kontext isoliert reproduziert; Korrektur/Gegenprobe aktiv. Die HTTP-Korrektur besteht 30 gezielte Tests. Die Fortsetzung fand vier
-Scrape-Analysefehler; Analyse und tatsächlicher Robots-Abrufpfad sind inzwischen
-mit 35 Tests geprüft (E267). Eine weitere Fortsetzung stoppte im Seed-Setup vor
-Assertions; unveränderte Einzelgegenprobe und verbleibende Dateien offen. Kein
-gemeinsamer PASS vor vollständigem Abgleich. Architektur für acht Producer-Fanouts ist ausgearbeitet:
-explizite operative Cursor-Tabelle, endliche Epochen, kurze CAS-/Lease-Transaktionen
-und je Reconciler vollständige Timer-Generationen; Plan lokal unter
-`.artifacts/launch/hosted-scheduler-fanout-plan-reviewed.md`, unabhängig geprüft
-und korrigiert (Created-at-Cutoff, aktuelle Kadenzen, Admission-Fencing,
-Queue-Mehrdeutigkeit und Timer-Grenzen); noch keine Umsetzung.
+Integrierte Regression über alle 151 ursprünglich ausgewählten vorhandenen
+geänderten Testdateien besucht. Fail-fast-Befunde und Korrekturen stehen getrennt
+in E266–E271; wegen zwischenzeitlicher Quellenänderungen kein einzelner grüner
+Gesamtlauf. HTTP-Fixture, Scrape-/Robots-Policy, Body-Caps, historische Erasure-
+Fixtures und Importzyklus sind gezielt korrigiert und geprüft.
+
+Architektur für acht Producer-Fanouts unabhängig geprüft: operative Cursor-Tabelle,
+endliche Epochen mit Created-at-Cutoff, kurze CAS-/Lease-Transaktionen und
+Admission-Fencing. Cursor-Schema mit fünf PostgreSQL-Tests geprüft (E279); Lease-/Walker-Helper
+und Producer-Integration in Umsetzung. Docs-/Knowledge-
+Post-Send-Verhalten und Timer-Grenzen bleiben ausdrücklich getrennte Arbeit.
+Der lokale Reconciler-Dispatch einschließlich wiederkehrender Startup-Ticks
+besteht Kontrollfluss-/Drain-Proben (E278); reale
+Producer-/PostgreSQL-Abnahme folgt. Es wird keine Schließung der acht Abfragen
+allein aus diesem Kontrollflusscheck abgeleitet.
 
 Weitere negative Abrufpfade geschlossen: Antwortgrößen/Body-Fristen und native
 Abbruchgegenprobe sowie CPU-sichere begrenzte Sitemap-Erkennung (E268).
@@ -97,8 +102,19 @@ besucht (E271). Wegen zwischenzeitlicher Korrekturen kein einzelner grüner Gesa
 Native Engine und CLI 10.1.3 regulär gebaut; zwei tatsächliche native Prozesstests
 bestehen mit 27 Assertions (E272), einschließlich Start, Key-Pin, SIGTERM/SIGKILL.
 Eigene Fixtures bereinigt, Nutzerdemo unverändert. Typecheck und 22 Invarianten
-aktuell PASS (E273). Nach Indexaufnahme bestehen alle 30 Vertragstests (E274). Nächster Schritt: geprüften integrierten Stand normal
-committen/pushen, danach den geprüften Cursor-/Producer-Plan umsetzen.
+aktuell PASS (E273). Nach Indexaufnahme bestehen alle 30 Vertragstests (E274). Der integrierte Stand
+175901a0f ist normal mit allen acht Pre-Push-Gates gepusht (E276); native Prüfsumme
+bleibt identisch. Aktiv: Cursor-/Producer-Plan sowie begrenzte Approval-/Chat-
+Dedup-Bereinigung integrieren und weitere OAuth-/Datei-Mutationen begrenzen.
+Die Approval-/Dedup-Komponente besteht sieben PostgreSQL-Tests (E280).
+Lease-/Walker-Helper und vier Kadenz-Caller sind fokussiert geprüft (E281/E282),
+OAuth-Retention mit 38 Tests (E283). Catalog ist lokal implementiert, aktueller
+Abschlusslauf wegen Fixture-Infrastruktur vor Assertions abgebrochen. Die bisher
+vermutete Singleton-Wirkung besteht unter tatsächlicher Standard-Queue-Policy
+nicht; als eigene Fairness-/Queue-Vertragslücke offen. Docs-/Knowledge-Refresh
+und frühe Boot-/Shutdown-Eigentümerschaft nach unabhängigem Review in Umsetzung.
+Neue PostgreSQL-Läufe pausieren bis die bestehende Testumgebung wieder reagiert;
+keine Fristenlockerung und kein Neustart fremder Dienste (E284).
 
 ### Aktives Hosted-Goal
 
@@ -127,15 +143,15 @@ Eine vollständige integrierte und echte Cloud-Abnahme steht aus.
 
 | ID | Status | Nachweis und nächstes Ergebnis |
 | --- | --- | --- |
-| H01 Bestand/Herkunft | IN_PROGRESS | Historisches Deployment durch private Deployment-Git-Historie belegt. Aktuelle Browser-/MCP-Sicht und physische Datenbank-Kompatibilitätsprüfung finden keine Produktressourcen. Aktueller Katalog später initialisiert; Ersatz oder Reset nicht bewiesen. Recovery-Metadaten mit vorhandenem Token nicht lesbar. Zuordnung bleibt vor Cloudmutation offen. |
+| H01 Bestand/Herkunft | IN_PROGRESS | Historisches Deployment durch private Deployment-Git-Historie belegt; Ersatz oder Reset nicht bewiesen. Der Nutzer hat die Einrichtung der aktuellen Zielumgebung ausdrücklich beauftragt. GitHub-Provider verbunden, Git-Quelle, separate leere Produktdatenbank, privater Objekt-Bucket und Image-Verwaltung angelegt. Noch keine laufende App. Historische Recovery-Metadaten bleiben mit diesem Token nicht lesbar. |
 | H02 DB/Runtime | IN_PROGRESS | Gepinnter Bun isoliert verfügbar; früher Versionscheck in Verify/Pre-Push implementiert und positiv/negativ geprüft. Gemeinsame Pool-/Listener-Initialisierung mit Keepalive, Deadlines, Poolgrenze und Session-Search-Path implementiert. 41 fokussierte DB-/Konfigurationstests bestanden; Listener-Lifecycle und Reconnect zusätzlich gezielt geprüft. Fünf Tenant-Statusfälle und Queue-/Scheduler-/Webhook-Regressionen zusammen 24 PASS. Integrierte Kandidatenprüfung ausstehend. Nach main-Fast-forward Checkout 10.1.3, bestehende lokale Demo aktuell separat 9.11.2; Demo unverändert. |
 | H03 Identität/Mitgliedschaften | IN_PROGRESS | Globale Identität, ein eigener Tenant, eingeladene Mitgliedschaften, Browser-Sitzungsrotation und Tenant-Kontextprüfung implementiert. Registrierung getrennt vom laufenden Hosted-Betrieb; acht zusätzliche HTTP/OIDC/PG-Fälle zu geschlossener Registrierung und sicherem Invite-Login bestanden. Frische browsergebundene OIDC-Recovery und zehn zusätzliche HTTP/OIDC/PG-Transportfälle bestanden. CLI-/OAuth-Membership-Handoff implementiert und fokussiert mit HTTP/PG sowie CLI-Tests geprüft; Gruppen-/Rollenisolation mit eigener Vorwärtsmigration nachgeschärft, 73 Tests PASS; Portal-E-Mail tenantgebunden, elf Tests PASS (E248). Native verbundene Browser-/CLI- und echte Cloud-Journey offen. |
 | H04 Geldbudgets/Fairness | IN_PROGRESS | Atomare monatliche Tenant-/Gesamtgeldreservierung mit sieben DB-Tests bestanden. Gemeinsame Modell-Middleware reserviert vor Provideraufrufen, hält unbekannten Verbrauch und verhindert Doppelaufrufe; 42 gezielte Middleware-/Modell-/Labeltests bestanden. Persistente Peer-/Principal-/Tenant-/Global-Requestlimits sowie monatliches Tenant-Kontingent implementiert; acht atomare DB- und sieben echte HTTP-Tests sowie 18 Policy-/Labeltests für den Monatsdeckel bestanden. Unabhängiges Review schloss Pfadfreistellung und Denial-Rollback. Speicherquoten und atomare Queue-/Direct-Chat-Fairness implementiert; 14 Queue-/Ledger-/Reviewtests PASS. Betreiber-Reconciliation zusätzlich drei echte HTTP/PG-Tests PASS, E236. Persistente Signup-/DCR-Admisson und gemeinsames Byte-/Ressourcenledger implementiert und fokussiert geprüft, E242. Neue Queue-Integration 14 PASS; Dokumentimport mit Stream-/Fehlergrenzen E241. Vollquoten-Workerabschluss E245, Chat-Fehlergrenze E246 und Tokenhistorien-Eigentümerschaft E251 fokussiert bestanden. Vollständiges Transportinventar und integrierte Abnahme offen; einzelne Transportchecks ergeben keine gesamte SSRF-Freigabe. |
 | H05 Lifecycle/Auth-Mail | IN_PROGRESS | Tenant-Status sperrt HTTP/MCP, Ausführung und tenantgebundene Jobs. Löschauftrag mit sieben Tagen Frist, atomarem Credential-Widerruf und frischer einmaliger Browser-Recovery implementiert; sieben DB-Tests bestanden. Erasure-Domain isoliert mit Objekt-/Retry-/Nachbartenant-/Drainfällen geprüft; Sweep in bestehende Cleanup-Kadenz integriert und verweigert unaufgelöste Arbeit, fremde Prozessbesitzer oder fehlenden Drainnachweis. Objektledger und Erasure erneut fokussiert geprüft, einschließlich physischem Tombstone bei Budget null, E243. Öffentliche Objekt-Reconciliation E247 und Refresh-Lifecycle E250 fokussiert bestanden. Settings-only-Keywartung einschließlich inaktiver Registry-Owner ist fokussiert geprüft (E259); produktive Rollenfähigkeit und externe Stillstandsattestierung unbewiesen. Vollständiger Produkt-/Objektspeicher-/Cloudnachweis fehlt. Auth-Aktionszustellung per Webhook vorbereitet; Ziel-URL und echter Zustellnachweis offen. |
 | H06 Cockpit/Client-Verträge | IN_PROGRESS | Lovable-Entwurf inspiziert und Workspace-Menü, Löschdialog sowie Recovery-Seite integriert. 33 Cockpit-Session-/Kontexttests bestanden. Browser prüfte Wechsel, Stale-Tab-Sperre sowie HTTP-200-Löschung/Wiederherstellung gegen isolierte PostgreSQL-Fixture; Browser-Identitätsnachweis dabei simuliert. Bootstrap-Refetchloop korrigiert; Zwei-Tab-Gegenprobe blieb bei drei Bootstrap-Aufrufen. Engine- und Cockpit-Typecheck bestanden. Clientparität, finale generierte Assets und Sichtabnahme offen; E232. Zusätzlicher Lovable-Entwurf für Betreiber-Reconciliation meldet Buildfehler, Korrektur wegen fehlender Workspace-Credits abgelehnt; diese neue Oberfläche ist noch nicht integriert, E236. |
-| H07 Vollständige Abnahme | IN_PROGRESS | Gezielte Checks während Entwicklung; Architektur-/Implementierungs-/Review-/Testabgleich vor neuem Gesamtgate. E224 bleibt historischer Nachweis, kein PASS für neue Hosted-Quellen. |
+| H07 Vollständige Abnahme | IN_PROGRESS | Boot-/Shutdown-Abhängigkeiten 30 fokussierte Tests PASS/98 Assertions (E287). Neuer nativer Lifecycle-Zwischenstand zwei PASS/31 Assertions (E288); Container-URI-Korrektur acht PASS/24 Assertions (E289). Vier aktuelle Catalog-/Admission-/Datei-Cleanup-/Referenzdateien 30 PASS/140 Assertions (E290); Engine-/Cockpit-Typecheck Exit 0. Vollständiges integriertes Gate und echte Cloud-Abnahme bleiben offen; E224 bleibt historisch. |
 | H08 Privater Deployment-Vertrag | IN_PROGRESS | SubKit-only Vertrag und rein lesender Kandidatenguard im privaten Deployment-Repo vorbereitet; 29 Tests bestanden, einschließlich bestätigter 1.000 Datensätze je Ressourcentyp samt Soft-Delete, E242. Gemeinsame 50-MB-Quote, Ressourcenanzahl und nachgewiesen unversionierter, nicht gesperrter Objekt-Bucket sind explizite Kandidatengrenzen. Herkunft, finaler Releasepin und Deploymentautorität bleiben gesperrte Pflichteingaben. Historischen Sechsproduktvertrag erhalten. |
-| H09 Release/Cloud/Signup | TODO | Signierte Distribution, autorisiertes Deployment, echte Upraft-Journeys, Backup/Restore, Rechts-/Sichtabnahmen und separate Signup-Freigabe fehlen. |
+| H09 Release/Cloud/Signup | IN_PROGRESS | Deployment durch den Nutzer ausdrücklich beauftragt; aktuelle Zielressourcen werden eingerichtet. Docker-Image aus dem geprüften Git-Stand, laufende App, echte Upraft-Journeys und Backup/Restore fehlen weiterhin. Signierte öffentliche Distribution, Rechts-/Sichtabnahmen und separate Signup-Freigabe bleiben eigenständige Gates. |
 
 `query-fragment.test.ts` aktuell allein 4/4 und gemeinsam mit Server-Registry 8/8
 bestanden; alter Batchfehler nicht reproduziert, daher kein spekulativer Fix.

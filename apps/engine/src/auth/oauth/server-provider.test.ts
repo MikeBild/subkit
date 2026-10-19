@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import type { Config } from "../../config/schema.ts";
+import { type Config, ConfigSchema } from "../../config/schema.ts";
 import type { Db } from "../../db/client.ts";
 import {
   auditLog,
@@ -19,7 +19,8 @@ import { createMcpOAuthProvider, type McpOAuthProvider } from "./server-provider
 import { sha256Hex } from "./tokens.ts";
 
 function makeConfig(): Config {
-  return {
+  return ConfigSchema.parse({
+    database: { url: testDb.url },
     server: {
       public_base_url: "https://test.example.com",
       port: 3000,
@@ -35,7 +36,7 @@ function makeConfig(): Config {
         scopes_supported: ["mcp:read", "mcp:authoring", "mcp:admin"],
       },
     },
-  } as unknown as Config;
+  });
 }
 
 let testDb: TestDb;

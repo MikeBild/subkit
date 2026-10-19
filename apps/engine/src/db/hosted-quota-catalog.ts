@@ -43,6 +43,7 @@ export const HOSTED_PLATFORM_TABLES = new Set([
   "runtime_config_replicas",
   "runtime_config_revisions",
   "runtime_config_state",
+  "scheduler_sweep_cursors",
 ]);
 
 export const HOSTED_INDIRECT_RESOURCES: Record<string, { parent: string; key: string }> = {
