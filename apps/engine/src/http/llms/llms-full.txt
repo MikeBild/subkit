@@ -33,12 +33,12 @@ the hosted deployment implementation stays outside this repository.
 
 | Document | Purpose |
 | --- | --- |
-| [Product roadmap](docs/PRODUCT-ROADMAP.md) | Cloud requirements, dependencies, opening criteria and pending decisions |
-| [Product tasks](docs/TODO.md) | Ordered implementation increments and outstanding verification |
-| [Launch status](LAUNCH_STATUS.md) | Existing self-hosting launch status and evidence boundaries |
-| [Website tasks](WEBSITE-TODO.md) | Website work and operational handoff |
-| [Lovable briefing](docs/lovable-website-briefing.md) / [setup](docs/lovable-setup.md) | Binding product/design decisions and existing project workflow |
-| [BrowserStack](docs/browserstack.md) / [test strategy](docs/browserstack-teststrategie.md) | Planned supplementary browser coverage, prerequisites and acceptance scenarios |
+| Product roadmap (`docs/PRODUCT-ROADMAP.md` in the source repository) | Cloud requirements, dependencies, opening criteria and pending decisions |
+| Product tasks (`docs/TODO.md` in the source repository) | Ordered implementation increments and outstanding verification |
+| Launch status (`LAUNCH_STATUS.md` in the source repository) | Existing self-hosting launch status and evidence boundaries |
+| Website tasks (`WEBSITE-TODO.md` in the source repository) | Website work and operational handoff |
+| Lovable briefing (`docs/lovable-website-briefing.md` in the source repository) / setup (`docs/lovable-setup.md` in the source repository) | Binding product/design decisions and existing project workflow |
+| BrowserStack (`docs/browserstack.md` in the source repository) / test strategy (`docs/browserstack-teststrategie.md` in the source repository) | Planned supplementary browser coverage, prerequisites and acceptance scenarios |
 
 These planning documents do not replace the generated API, CLI or settings
 references. The installation instructions below describe self-hosting; they do not
@@ -834,6 +834,10 @@ Engine builds fetch the embedding model from the immutable revision in
 recorded byte length and SHA-256 checksum, including files already cached locally.
 Downloads replace an existing file only after verification; unexpected runtime
 package contents fail the build. Valid cached assets do not require a network fetch.
+
+Embedding inputs are limited to 8,192 characters before tokenization so large
+API catalogs cannot monopolize the engine's event loop. Full documents remain
+stored and available to text search; this limit applies only to vector generation.
 
 When intentionally updating the model or runtime dependency, verify the upstream
 revision, license and asset provenance before updating this manifest. Do not accept

@@ -3,6 +3,7 @@ import { logger } from "../logging/logger.ts";
 export const EMBEDDING_MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
 export const EMBEDDING_DIM = 384;
 const EMBEDDING_DTYPE = "q8";
+const MAX_EMBEDDING_INPUT_CHARS = 8192;
 
 type Extractor = (
   texts: string[],
@@ -108,7 +109,10 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   if (!extractorPromise) extractorPromise = loadExtractor();
   const extractor = await extractorPromise;
   if (!extractor) return [];
-  const out = await extractor(texts, { pooling: "mean", normalize: true });
+  const out = await extractor(
+    texts.map((text) => text.slice(0, MAX_EMBEDDING_INPUT_CHARS)),
+    { pooling: "mean", normalize: true },
+  );
   return out.tolist();
 }
 

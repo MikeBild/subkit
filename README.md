@@ -820,6 +820,10 @@ recorded byte length and SHA-256 checksum, including files already cached locall
 Downloads replace an existing file only after verification; unexpected runtime
 package contents fail the build. Valid cached assets do not require a network fetch.
 
+Embedding inputs are limited to 8,192 characters before tokenization so large
+API catalogs cannot monopolize the engine's event loop. Full documents remain
+stored and available to text search; this limit applies only to vector generation.
+
 When intentionally updating the model or runtime dependency, verify the upstream
 revision, license and asset provenance before updating this manifest. Do not accept
 a newly downloaded checksum merely to clear a failed build. Asset-manifest changes

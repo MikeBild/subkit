@@ -17,7 +17,12 @@ function codingAgentsReference(): string {
 }
 
 const SOURCES: Record<string, () => string> = {
-  "setup.md": () => readFileSync("README.md", "utf8"),
+  "setup.md": () =>
+    readFileSync("README.md", "utf8").replace(
+      /\[([^\]]+)\]\(((?:\.\.\/|\.\/)?[A-Za-z0-9_./-]+\.md)(#[^)]*)?\)/g,
+      (link, label: string, path: string) =>
+        LLMS_PAGE_PATHS.includes(path) ? link : `${label} (\`${path}\` in the source repository)`,
+    ),
   "coding-agents.md": codingAgentsReference,
   "cli.md": () => run("scripts/gen-cli-reference.ts"),
   "settings.md": () => run("apps/engine/scripts/gen-settings-doc.ts"),
