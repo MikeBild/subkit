@@ -10,6 +10,7 @@ const baseTemplate: ConnectorTemplate = {
   base_url: "https://api.example.com",
   auth_type: "bearer",
   oauth: null,
+  signed_jwt: null,
   default_skill: null,
   ingestion_source: null,
   ingestion_url: null,
@@ -116,5 +117,41 @@ describe("enrichConnectorFromTemplate — credential_hints follow the chosen aut
     );
     const hints = (out.config?.credential_hints ?? []) as Array<{ field: string }>;
     expect(hints.map((h) => h.field)).toEqual(["custom"]);
+  });
+});
+
+describe("enrichConnectorFromTemplate — signed JWT policy", () => {
+  test("template policy is copied and cannot be changed by the creation draft", () => {
+    const template: ConnectorTemplate = {
+      ...baseTemplate,
+      auth_type: "signed_jwt",
+      signed_jwt: {
+        algorithm: "ES256",
+        audience: "appstoreconnect-v1",
+        claims: {},
+        ttl_seconds: 300,
+      },
+    };
+    const out = enrichConnectorFromTemplate(
+      {
+        auth_type: "signed_jwt",
+        config: {
+          signed_jwt: {
+            algorithm: "RS256",
+            audience: "wrong",
+            ttl_seconds: 3600,
+            issuer: "team-id",
+          },
+        },
+      },
+      template,
+    );
+    expect(out.config?.signed_jwt).toEqual({
+      algorithm: "ES256",
+      audience: "appstoreconnect-v1",
+      claims: {},
+      ttl_seconds: 300,
+      issuer: "team-id",
+    });
   });
 });

@@ -3,6 +3,7 @@ import type { ConnectionAuthorityIdentity } from "../../credentials/authority-me
 import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import { refreshIfStale } from "../../credentials/oauth2/refresh-worker.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
+import { parseSignedJwtConfig, signJwtBearer } from "../../credentials/signed-jwt.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
@@ -243,6 +244,8 @@ export function applyAuthMaterial(
       throw new Error(
         "oauth2_private_key credentials are not directly applied to HTTP requests — they are consumed by the MCP client pool's PrivateKeyJwtProvider.",
       );
+    case "signed_jwt":
+      return;
   }
   const _exhaustive: never = credential;
   void _exhaustive;
@@ -270,7 +273,8 @@ export type AppliedAuthMethod =
   | "oauth2_refreshed"
   | "aws_sigv4"
   | "token_mint_static"
-  | "token_mint_refreshed";
+  | "token_mint_refreshed"
+  | "signed_jwt";
 
 export interface ResolvedConnectorCredential {
   credential_snapshot?: CredentialUseSnapshot;
@@ -407,7 +411,69 @@ export function deriveAppliedAuthMethod(
       return "none";
     case "oauth2_private_key":
       return "none";
+    case "signed_jwt":
+      return "signed_jwt";
   }
+}
+
+export async function applySignedJwtAuth(
+  connector: ConnectorView,
+  credential: DecryptedCredential | null,
+  url: URL,
+  headers: Record<string, string>,
+): Promise<string | null> {
+  if (credential?.mode !== "signed_jwt") return null;
+  const base = connector.base_url ? new URL(connector.base_url) : null;
+  if (!base || base.origin !== url.origin) {
+    throw Object.assign(new Error("signed_jwt requests must stay on the connector origin"), {
+      code: "signed_jwt_origin_invalid",
+    });
+  }
+  const token = await signJwtBearer({
+    private_key: credential.private_key,
+    config: parseSignedJwtConfig(connector.config ?? {}),
+  });
+  headers.Authorization = `Bearer ${token}`;
+  return token;
+}
+
+export function redactSignedJwtValue(value: unknown, token: string): unknown {
+  if (typeof value === "string") return value.replaceAll(token, "[REDACTED]");
+  if (Buffer.isBuffer(value)) {
+    const source = Buffer.from(token, "utf8");
+    const out = Buffer.from(value);
+    let index = out.indexOf(source);
+    while (index >= 0) {
+      out.fill(0x2a, index, index + source.length);
+      index = out.indexOf(source, index + source.length);
+    }
+    return out;
+  }
+  if (Array.isArray(value)) return value.map((entry) => redactSignedJwtValue(entry, token));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key.replaceAll(token, "[REDACTED]"),
+        redactSignedJwtValue(entry, token),
+      ]),
+    );
+  }
+  return value;
+}
+
+function redactSignedJwtResponse(
+  result: HttpExecutionResult,
+  token: string | null,
+): HttpExecutionResult {
+  if (!token) return result;
+  return {
+    ...result,
+    headers: redactSignedJwtValue(result.headers, token) as Record<string, string>,
+    body: redactSignedJwtValue(result.body, token),
+    ...(result.body_raw
+      ? { body_raw: redactSignedJwtValue(result.body_raw, token) as Buffer }
+      : {}),
+  };
 }
 
 export interface ResolvedRequestPlan {
@@ -712,6 +778,10 @@ export async function executePlannedHttpRequest(params: {
     service: string;
     credential: import("../../credentials/types.ts").AwsSigV4CredentialValue;
   };
+  signed_jwt?: {
+    connector: ConnectorView;
+    credential: Extract<DecryptedCredential, { mode: "signed_jwt" }>;
+  };
   capture_binary?: boolean;
 }): Promise<HttpExecutionResult> {
   validateOutboundHeaders(params.headers);
@@ -756,7 +826,20 @@ export async function executePlannedHttpRequest(params: {
     body: params.body ?? null,
     ...(params.multipartBody ? { unsupported_body: true } : {}),
   });
-  if (dispatchPolicy) init.redirect = dispatchPolicy.redirect;
+  const effectiveDispatchPolicy =
+    dispatchPolicy ??
+    (params.signed_jwt ? ({ redirect: "manual" } satisfies RequestDispatchPolicy) : undefined);
+  if (effectiveDispatchPolicy) init.redirect = effectiveDispatchPolicy.redirect;
+  let signedJwtToken: string | null = null;
+  if (params.signed_jwt) {
+    await assertEgressAllowedResolved(params.url, { tenant_id: params.tenant_id });
+    signedJwtToken = await applySignedJwtAuth(
+      params.signed_jwt.connector,
+      params.signed_jwt.credential,
+      params.url,
+      headers,
+    );
+  }
   const res = await instrument({
     module: "connector",
     action: "driver.http.request",
@@ -766,7 +849,7 @@ export async function executePlannedHttpRequest(params: {
     fn: () => settleOnAbort(getDriverFetch()(params.url, init), params.signal),
   });
   const maxResponseBytes = resolveMaxResponseBytes(params.tenant_id);
-  await checkAuthorityRedirect(res, dispatchPolicy);
+  await checkAuthorityRedirect(res, effectiveDispatchPolicy);
   const buf = await readBodyBytesCapped(
     res,
     maxResponseBytes,
@@ -789,23 +872,29 @@ export async function executePlannedHttpRequest(params: {
       bytes: buf,
     })
   ) {
-    return {
-      status: res.status,
-      headers: headerObj,
-      body: undefined,
-      body_raw: buf,
-      bytes_in: buf.byteLength,
-      url: params.url.toString(),
-    };
+    return redactSignedJwtResponse(
+      {
+        status: res.status,
+        headers: headerObj,
+        body: undefined,
+        body_raw: buf,
+        bytes_in: buf.byteLength,
+        url: params.url.toString(),
+      },
+      signedJwtToken,
+    );
   }
   const text = buf.toString("utf8");
-  return {
-    status: res.status,
-    headers: headerObj,
-    body: parseResponseBody(text, contentType),
-    bytes_in: buf.byteLength,
-    url: params.url.toString(),
-  };
+  return redactSignedJwtResponse(
+    {
+      status: res.status,
+      headers: headerObj,
+      body: parseResponseBody(text, contentType),
+      bytes_in: buf.byteLength,
+      url: params.url.toString(),
+    },
+    signedJwtToken,
+  );
 }
 
 export async function executeConnectorHttpRequest(params: {
@@ -870,6 +959,7 @@ export async function executeConnectorHttpRequest(params: {
   }
 
   const beforeDispatch = params.before_dispatch;
+  const signedJwt = plan.credential?.mode === "signed_jwt";
   const result = await executePlannedHttpRequest({
     tenant_id: params.tenant_id,
     method: params.method,
@@ -878,17 +968,24 @@ export async function executeConnectorHttpRequest(params: {
     body: params.body,
     signal,
     ...(sigv4Args ? { sigv4: sigv4Args } : {}),
-    ...(beforeDispatch
+    ...(plan.credential?.mode === "signed_jwt"
+      ? { signed_jwt: { connector: params.connector, credential: plan.credential } }
+      : {}),
+    ...(beforeDispatch || signedJwt
       ? {
-          before_dispatch: () =>
-            beforeDispatch({
-              ...(plan.credential_snapshot
-                ? { credential_snapshot: plan.credential_snapshot }
-                : {}),
-              credential_id: plan.credential_id,
-              credential_revision: plan.credential_revision,
-              connection_authority: plan.connection_authority ?? null,
-            }),
+          before_dispatch: async () => {
+            const policy = beforeDispatch
+              ? await beforeDispatch({
+                  ...(plan.credential_snapshot
+                    ? { credential_snapshot: plan.credential_snapshot }
+                    : {}),
+                  credential_id: plan.credential_id,
+                  credential_revision: plan.credential_revision,
+                  connection_authority: plan.connection_authority ?? null,
+                })
+              : undefined;
+            return signedJwt ? { redirect: "manual" } : policy;
+          },
         }
       : {}),
   });

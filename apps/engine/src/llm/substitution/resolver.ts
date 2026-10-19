@@ -645,6 +645,7 @@ export function flattenCredential(
       const d = decrypted as { client_id: string };
       return { client_id: d.client_id };
     }
+    case "signed_jwt":
     case "none":
       return {};
   }

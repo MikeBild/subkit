@@ -75,6 +75,10 @@ const credentialSetupSubmitRoute = createRoute({
             properties: {
               grant: { type: "string", description: "Single-use setup grant token (sksg_…)" },
               token: { type: "string", description: "Bearer token (auth_type: bearer)" },
+              private_key: {
+                type: "string",
+                description: "Secret PKCS#8 PEM key (auth_type: signed_jwt)",
+              },
               username: { type: "string", description: "Username (auth_type: basic)" },
               password: { type: "string", description: "Password (auth_type: basic)" },
               header_name: { type: "string", description: "Header name (auth_type: header)" },
@@ -137,6 +141,7 @@ const draftCredentialSetupSubmitRoute = createRoute({
             properties: {
               grant: { type: "string" },
               token: { type: "string" },
+              private_key: { type: "string", description: "Secret PKCS#8 PEM private key" },
               username: { type: "string" },
               password: { type: "string" },
               header_name: { type: "string" },
@@ -194,6 +199,7 @@ const FORM_COPY: Record<AuthLocale, FormCopy> = {
       `Paste the credential issued by ${n} below — the secret from that service, not a sign-in for this page. No login is needed here: opening this single-use link from your chat already authorized it. The secret is stored encrypted and never shared with the assistant.`,
     submit: "Save credential",
     fields: {
+      signed_jwt: [field("private_key", true, () => "PKCS#8 PEM private key")],
       bearer: [field("token", true, (n) => `API token / bearer token issued by ${n}`)],
       basic: [
         field("username", false, (n) => `Username for ${n}`),
@@ -221,6 +227,7 @@ const FORM_COPY: Record<AuthLocale, FormCopy> = {
       `Füge unten die Zugangsdaten ein, die ${n} ausgestellt hat – das Geheimnis dieses Dienstes, keine Anmeldung für diese Seite. Hier ist keine Anmeldung nötig: Dieser einmalige Link aus deiner Unterhaltung berechtigt bereits dazu. Das Geheimnis wird verschlüsselt gespeichert und nie an den Assistenten weitergegeben.`,
     submit: "Zugangsdaten speichern",
     fields: {
+      signed_jwt: [field("private_key", true, () => "Privater Schlüssel (PKCS#8 PEM)")],
       bearer: [field("token", true, (n) => `API-Token / Bearer-Token von ${n}`)],
       basic: [
         field("username", false, (n) => `Benutzername für ${n}`),
@@ -324,6 +331,14 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
     try {
       let credential: Parameters<typeof setDraftCredential>[1];
       switch (validated.auth_type) {
+        case "signed_jwt": {
+          const private_key = (form.get("private_key") ?? "").trim();
+          if (!private_key) throw new MissingFieldError("private_key");
+          const config = credsvc.parseSignedJwtConfig(validated.connector_config);
+          await credsvc.validateSignedJwtPrivateKey(private_key, config.algorithm);
+          credential = { mode: "signed_jwt", private_key };
+          break;
+        }
         case "bearer": {
           const token = (form.get("token") ?? "").trim();
           if (!token) throw new MissingFieldError("token");
@@ -501,6 +516,12 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
 
       let value: Parameters<typeof credsvc.upsertCredential>[0]["value"];
       switch (connector.auth_type) {
+        case "signed_jwt": {
+          const private_key = (form.get("private_key") ?? "").trim();
+          if (!private_key) throw new MissingFieldError("private_key");
+          value = { mode: "signed_jwt", private_key };
+          break;
+        }
         case "bearer": {
           const token = (form.get("token") ?? "").trim();
           if (!token) throw new MissingFieldError("token");
@@ -538,7 +559,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
           tenant_id,
           connector_id,
           environment: connector.environment,
-          mode: connector.auth_type as "bearer" | "basic" | "header" | "query",
+          mode: connector.auth_type as "bearer" | "basic" | "header" | "query" | "signed_jwt",
           value,
           actor_id: null,
           source: "credential_setup_grant",

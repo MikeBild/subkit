@@ -21,12 +21,14 @@ import {
   validateConnectorAuthType,
   validateConnectorConfigOrThrow,
   validateMcpAuthConsistency,
+  validateSignedJwtAuthConfig,
   withMcpConfigDefaults,
 } from "./config-schemas.ts";
 import { closePoolForConnector } from "./drivers/postgres.ts";
 import { connectorCountsAgainstHealth } from "./health-ratio.ts";
 import { carryMcpTrustList } from "./mcp-tool-trust.ts";
 import { restoreMaskedConnectorSecrets, toPublicConnector } from "./public-view.ts";
+import { validateTemplateSignedJwtPolicy } from "./template-binding.ts";
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
 import { buildTemplateBindingFields, resolveConnectorTemplate } from "./template-resolver.ts";
 import type {
@@ -57,6 +59,15 @@ function assertMcpAuthConfigConsistent(
   const first = validateMcpAuthConsistency(driver, auth_type, config)[0];
   if (!first) return;
   throw new BadRequestError(first.message, { field: first.path, driver });
+}
+
+function assertSignedJwtAuthConfig(
+  auth_type: ConnectorView["auth_type"],
+  config: Record<string, unknown> | undefined,
+): void {
+  const first = validateSignedJwtAuthConfig(auth_type, config)[0];
+  if (!first) return;
+  throw new BadRequestError(first.message, { field: first.path });
 }
 
 function slugify(name: string): string {
@@ -224,6 +235,7 @@ export async function createConnector(
     assertAuthTypeAllowedForDriver(effective.driver, auth_type);
     validateConnectorConfigOrThrow(effective.driver, effective.config);
     assertMcpAuthConfigConsistent(effective.driver, auth_type, effective.config);
+    assertSignedJwtAuthConfig(auth_type, effective.config);
     const existingRows = await tx
       .select()
       .from(connectors)
@@ -734,6 +746,18 @@ export async function updateConnector(
       (set.auth_type ?? prior.auth_type) as ConnectorView["auth_type"],
       (set.config ?? prior.config ?? {}) as Record<string, unknown>,
     );
+    assertSignedJwtAuthConfig(
+      (set.auth_type ?? prior.auth_type) as ConnectorView["auth_type"],
+      (set.config ?? prior.config ?? {}) as Record<string, unknown>,
+    );
+    const policyIssue = validateTemplateSignedJwtPolicy({
+      auth_type: (set.auth_type ?? prior.auth_type) as ConnectorView["auth_type"],
+      config: (set.config ?? prior.config ?? {}) as Record<string, unknown>,
+      template_snapshot: Object.hasOwn(set, "template_snapshot")
+        ? ((set.template_snapshot as Record<string, unknown> | null) ?? null)
+        : ((prior.template_snapshot as Record<string, unknown> | null) ?? null),
+    });
+    if (policyIssue) throw new BadRequestError(policyIssue.message, { field: policyIssue.field });
     if (set.config !== undefined) {
       set.config = carryMcpTrustList(
         prior.driver,

@@ -280,6 +280,7 @@ const AppliedAuthMethodEnum = z.enum([
   "oauth2_static",
   "oauth2_refreshed",
   "aws_sigv4",
+  "signed_jwt",
   "token_mint_static",
   "token_mint_refreshed",
   "oauth2_client",

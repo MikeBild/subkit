@@ -276,6 +276,115 @@ describe("connectors/service", () => {
     expect(created.template_snapshot?.slug).toBe("stripe");
   });
 
+  test("a bound signed-JWT template fixes its static policy until the binding is cleared", async () => {
+    const tenant_id = await seedTenant();
+    const created = await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "App Store Connect",
+          driver: "http",
+          environment: "dev",
+          auth_type: "signed_jwt",
+          template_slug: "app-store-connect",
+        },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    const signed = (created.config.signed_jwt ?? {}) as Record<string, unknown>;
+    await expect(
+      updateConnector(
+        tenant_id,
+        created.id,
+        { config: { ...created.config, signed_jwt: { ...signed, ttl_seconds: 600 } } },
+        null,
+        ctx.db,
+      ),
+    ).rejects.toMatchObject({ code: "bad_request" });
+
+    const changed = await updateConnector(
+      tenant_id,
+      created.id,
+      {
+        clear_template_binding: true,
+        config: { ...created.config, signed_jwt: { ...signed, ttl_seconds: 600 } },
+      },
+      null,
+      ctx.db,
+    );
+    expect(changed?.config.signed_jwt).toMatchObject({ ttl_seconds: 600 });
+    expect(changed?.template_snapshot).toBeNull();
+  });
+
+  test("signed-JWT authentication requires its policy on create and update", async () => {
+    const tenant_id = await seedTenant();
+    const ordinary = await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "Generic API",
+          driver: "http",
+          environment: "dev",
+          auth_type: "bearer",
+          config: {},
+        },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    await expect(
+      updateConnector(tenant_id, ordinary.id, { auth_type: "signed_jwt" }, null, ctx.db),
+    ).rejects.toMatchObject({ code: "bad_request" });
+
+    const signed = await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "Signed API",
+          driver: "http",
+          environment: "dev",
+          auth_type: "signed_jwt",
+          config: { signed_jwt: { algorithm: "ES256", audience: "provider-api" } },
+        },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    await expect(
+      updateConnector(tenant_id, signed.id, { config: {} }, null, ctx.db),
+    ).rejects.toMatchObject({
+      code: "bad_request",
+    });
+  });
+
+  test("signed-JWT authentication rejects OAuth token exchange configuration", async () => {
+    const tenant_id = await seedTenant();
+    await expect(
+      createConnector(
+        {
+          tenant_id,
+          input: {
+            name: "Mixed auth API",
+            driver: "http",
+            environment: "dev",
+            auth_type: "signed_jwt",
+            config: {
+              signed_jwt: { algorithm: "ES256", audience: "provider-api" },
+              oauth: {
+                issuer_url: "https://issuer.example.test",
+                grant_type: "client_credentials",
+                client_id: null,
+              },
+            },
+          },
+          actor_id: null,
+        },
+        ctx.db,
+      ),
+    ).rejects.toMatchObject({ code: "bad_request" });
+  });
+
   test("a person's description and category survive the template enrichment", async () => {
     const tenant_id = await seedTenant();
     const created = await createConnector(

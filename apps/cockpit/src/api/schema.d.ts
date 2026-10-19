@@ -9341,6 +9341,8 @@ export interface paths {
                     "application/x-www-form-urlencoded": {
                         grant?: string;
                         token?: string;
+                        /** @description Secret PKCS#8 PEM private key */
+                        private_key?: string;
                         username?: string;
                         password?: string;
                         header_name?: string;
@@ -9440,6 +9442,8 @@ export interface paths {
                         grant?: string;
                         /** @description Bearer token (auth_type: bearer) */
                         token?: string;
+                        /** @description Secret PKCS#8 PEM key (auth_type: signed_jwt) */
+                        private_key?: string;
                         /** @description Username (auth_type: basic) */
                         username?: string;
                         /** @description Password (auth_type: basic) */
@@ -21980,7 +21984,7 @@ export interface components {
             /** @enum {string} */
             resolved_environment: "dev" | "prod";
             /** @enum {string} */
-            auth_method: "none" | "bearer" | "header" | "query" | "basic" | "oauth2_static" | "oauth2_refreshed" | "aws_sigv4" | "token_mint_static" | "token_mint_refreshed" | "oauth2_client" | "oauth2_private_key";
+            auth_method: "none" | "bearer" | "header" | "query" | "basic" | "oauth2_static" | "oauth2_refreshed" | "aws_sigv4" | "token_mint_static" | "token_mint_refreshed" | "signed_jwt" | "oauth2_client" | "oauth2_private_key";
             base_url?: string | null;
         };
         RequestDigest: {
@@ -22598,8 +22602,9 @@ export interface components {
                 driver: "http" | "postgres" | "s3" | "graphql" | "mcp";
                 base_url: string | null;
                 /** @enum {string} */
-                auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
+                auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "signed_jwt" | "aws_sigv4";
                 oauth: components["schemas"]["ConnectorTemplateOAuth"];
+                signed_jwt?: components["schemas"]["ConnectorTemplateSignedJwt"];
                 default_skill: string | null;
                 /** @enum {string|null} */
                 ingestion_source: "openapi" | "google_discovery" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
@@ -22669,12 +22674,28 @@ export interface components {
             token_response_format?: "raw" | "json";
             token_response_ttl_ms?: number;
         } | null;
+        /** @default null */
+        ConnectorTemplateSignedJwt: {
+            /** @enum {string} */
+            algorithm: "ES256" | "RS256";
+            audience: string | string[];
+            issuer?: string;
+            subject?: string;
+            key_id?: string;
+            /** @default {} */
+            claims: {
+                [key: string]: string | number | boolean | (string | number | boolean)[];
+            };
+            /** @default 300 */
+            ttl_seconds: number;
+        } | null;
         ConnectorTemplateAuthOption: {
             /** @enum {string} */
-            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
+            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "signed_jwt" | "aws_sigv4";
             label: string;
             description: string;
             oauth?: components["schemas"]["ConnectorTemplateOAuth"];
+            signed_jwt?: components["schemas"]["ConnectorTemplateSignedJwt"];
         };
         ConnectorTemplateInlineSchema: {
             /** @enum {string} */
@@ -22800,8 +22821,9 @@ export interface components {
             driver: "http" | "postgres" | "s3" | "graphql" | "mcp";
             base_url: string | null;
             /** @enum {string} */
-            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
+            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "signed_jwt" | "aws_sigv4";
             oauth: components["schemas"]["ConnectorTemplateOAuth"];
+            signed_jwt?: components["schemas"]["ConnectorTemplateSignedJwt"];
             default_skill: string | null;
             /** @enum {string|null} */
             ingestion_source: "openapi" | "google_discovery" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
@@ -22855,8 +22877,9 @@ export interface components {
             driver: "http" | "postgres" | "s3" | "graphql" | "mcp";
             base_url: string | null;
             /** @enum {string} */
-            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
+            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "signed_jwt" | "aws_sigv4";
             oauth: components["schemas"]["ConnectorTemplateOAuth"];
+            signed_jwt?: components["schemas"]["ConnectorTemplateSignedJwt"];
             default_skill: string | null;
             /** @enum {string|null} */
             ingestion_source: "openapi" | "google_discovery" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
@@ -22999,11 +23022,11 @@ export interface components {
             base_url?: string;
             dsn?: string;
             /**
-             * @description How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp` — declaring either on any other driver is a 400.
+             * @description How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp`; `signed_jwt` is accepted only for HTTP and GraphQL connectors.
              * @default none
              * @enum {string}
              */
-            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "oauth2_client" | "oauth2_private_key" | "aws_sigv4";
+            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "oauth2_client" | "oauth2_private_key" | "signed_jwt" | "aws_sigv4";
             config?: {
                 [key: string]: unknown;
             };
@@ -23031,7 +23054,7 @@ export interface components {
         /** @description Credential to sign the probe with. Used for this request only and never stored. Required when the definition sets an auth_type other than 'none'. */
         CredentialBody: {
             /** @enum {string} */
-            mode: "none" | "header" | "query" | "bearer" | "basic" | "aws_sigv4" | "connection";
+            mode: "none" | "header" | "query" | "bearer" | "basic" | "aws_sigv4" | "signed_jwt" | "connection";
             /** Format: uuid */
             connection_id?: string;
             headers?: {
@@ -23046,6 +23069,8 @@ export interface components {
             access_key_id?: string;
             secret_access_key?: string;
             session_token?: string;
+            /** @description PKCS#8 PEM private key for signed_jwt. Secret; never returned. */
+            private_key?: string;
         };
         ImportConnectorResponse: {
             draft?: {
@@ -23174,10 +23199,10 @@ export interface components {
             base_url?: string;
             dsn?: string;
             /**
-             * @description How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp` — declaring either on any other driver is a 400.
+             * @description How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp`; `signed_jwt` is accepted only for HTTP and GraphQL connectors.
              * @enum {string}
              */
-            auth_type?: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "oauth2_client" | "oauth2_private_key" | "aws_sigv4";
+            auth_type?: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "oauth2_client" | "oauth2_private_key" | "signed_jwt" | "aws_sigv4";
             config?: {
                 [key: string]: unknown;
             };
@@ -23226,7 +23251,7 @@ export interface components {
             source_retained: boolean;
             credential_mappings: {
                 /** @enum {string} */
-                mode: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4" | "token_mint" | "oauth2_client" | "oauth2_private_key";
+                mode: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4" | "signed_jwt" | "token_mint" | "oauth2_client" | "oauth2_private_key";
                 /** Format: uuid */
                 source_credential_id: string;
                 /** Format: uuid */

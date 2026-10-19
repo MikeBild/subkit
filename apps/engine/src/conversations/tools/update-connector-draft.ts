@@ -77,7 +77,7 @@ const inputSchema = z
     base_url: z.string().optional(),
     dsn: z.string().optional(),
     auth_type: z
-      .enum(["none", "header", "query", "bearer", "basic", "oauth2", "aws_sigv4"])
+      .enum(["none", "header", "query", "bearer", "basic", "oauth2", "aws_sigv4", "signed_jwt"])
       .optional(),
     template_slug: z.string().min(1).nullable().optional(),
     template_name: z.string().min(1).nullable().optional(),
@@ -86,7 +86,7 @@ const inputSchema = z
       .record(z.string(), z.unknown())
       .optional()
       .describe(
-        "Driver options only (pagination, base_url overrides, static_headers, query_defaults, etc.). The template-derived `config.oauth` block is IMMUTABLE here EXCEPT for the public `client_id` field — write `{ config: { oauth: { client_id } } }` when a template (e.g. cognito_user_password, GitHub App) doesn't seed a default and the operator must supply one. Every other oauth key (token_endpoint, scopes, grant_type, client_secret, ...) is rejected — those are template-owned. For aws_sigv4 connectors, `config.aws_region` and `config.aws_service` are top-level config keys (template-seeded; writeable by the operator only when the template doesn't ship a default). To change auth shape, call `start_connector_from_description` with a different `auth_type`. To run an authorization-code flow on an already-saved oauth2 connector, call `authenticate_oauth`. Never put credentials in `config` (token, password, api_key, client_secret, ...) — collect them via `ask_user_form(sensitive: true)` and pass them through `save_connector_draft({credential})`.",
+        "Public signed_jwt settings belong in config.signed_jwt (algorithm, audience, issuer, subject, key_id, claims, ttl_seconds); never put private_key there. Driver options only (pagination, base_url overrides, static_headers, query_defaults, etc.). The template-derived `config.oauth` block is IMMUTABLE here EXCEPT for the public `client_id` field — write `{ config: { oauth: { client_id } } }` when a template (e.g. cognito_user_password, GitHub App) doesn't seed a default and the operator must supply one. Every other oauth key (token_endpoint, scopes, grant_type, client_secret, ...) is rejected — those are template-owned. For aws_sigv4 connectors, `config.aws_region` and `config.aws_service` are top-level config keys (template-seeded; writeable by the operator only when the template doesn't ship a default). To change auth shape, call `start_connector_from_description` with a different `auth_type`. To run an authorization-code flow on an already-saved oauth2 connector, call `authenticate_oauth`. Never put credentials in `config` (token, password, api_key, client_secret, ...) — collect them via `ask_user_form(sensitive: true)` and pass them through `save_connector_draft({credential})`.",
       ),
     docs: z.array(z.string()).optional(),
   })

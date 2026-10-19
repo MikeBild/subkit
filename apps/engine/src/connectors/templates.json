@@ -17201,5 +17201,97 @@
     "aws_service": null,
     "aws_region": null,
     "verified_at": null
+  },
+  {
+    "version": 1,
+    "slug": "app-store-connect",
+    "name": "App Store Connect",
+    "driver": "http",
+    "base_url": "https://api.appstoreconnect.apple.com",
+    "auth_type": "signed_jwt",
+    "oauth": null,
+    "signed_jwt": {
+      "algorithm": "ES256",
+      "audience": "appstoreconnect-v1",
+      "claims": {},
+      "ttl_seconds": 300
+    },
+    "default_skill": "app-store-connect-basics",
+    "ingestion_source": "markdown",
+    "ingestion_url": "https://developer.apple.com/documentation/appstoreconnectapi.md",
+    "icon": "",
+    "description": "App Store Connect REST API for app metadata, TestFlight builds, beta groups, testers, and public links.",
+    "category": "devops",
+    "tags": ["apple", "app-store-connect", "testflight", "ios", "macos"],
+    "aliases": ["testflight", "apple app store connect"],
+    "setup_instructions": "Create an App Store Connect API key and save its private key as this connector's signed-JWT credential. Set the Key ID as key_id. For a team key, set issuer to the Issuer ID shown in App Store Connect. For an individual key, leave issuer empty and set subject to user. The template always signs ES256 JWTs for audience appstoreconnect-v1 with a five-minute lifetime; it does not use OAuth or a token endpoint.",
+    "auth_options": [
+      {
+        "auth_type": "signed_jwt",
+        "label": "App Store Connect API key",
+        "description": "Direct ES256 bearer JWT signed with an App Store Connect private key; no OAuth exchange.",
+        "signed_jwt": {
+          "algorithm": "ES256",
+          "audience": "appstoreconnect-v1",
+          "claims": {},
+          "ttl_seconds": 300
+        }
+      }
+    ],
+    "url_pattern": "^https://api\\.appstoreconnect\\.apple\\.com(?:/|$)",
+    "keywords": ["testflight", "beta tester", "beta group", "app store", "build review"],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/v1/apps",
+      "expected_status": [200, 200],
+      "description": "List apps visible to the App Store Connect API key"
+    },
+    "credential_hints": [
+      {
+        "field": "private_key",
+        "label": "App Store Connect private key (.p8 contents)",
+        "placeholder": "",
+        "doc_url": "https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api",
+        "secret": true
+      },
+      {
+        "field": "key_id",
+        "label": "Key ID",
+        "placeholder": "ABC123DEFG",
+        "doc_url": "https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api",
+        "secret": false
+      },
+      {
+        "field": "issuer",
+        "label": "Issuer ID (team key)",
+        "placeholder": "",
+        "doc_url": "https://developer.apple.com/documentation/appstoreconnectapi/generating-tokens-for-api-requests",
+        "secret": false
+      },
+      {
+        "field": "subject",
+        "label": "Subject (individual key)",
+        "placeholder": "user",
+        "doc_url": "https://developer.apple.com/documentation/appstoreconnectapi/generating-tokens-for-api-requests",
+        "secret": false
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    },
+    "example_paths": ["/v1/apps", "/v1/betaGroups", "/v1/betaTesters"],
+    "operator_quirks": {
+      "auth": "App Store Connect sends a direct signed bearer JWT to the resource API. Do not use OAuth, a token endpoint, or private_key_jwt client assertions. Team keys use the Issuer ID as iss. Individual keys use sub=user and omit iss. The private key must remain encrypted in the connector credential."
+    },
+    "recipes": [],
+    "aws_service": null,
+    "aws_region": null,
+    "verified_at": null,
+    "respects_robots": false
   }
 ]

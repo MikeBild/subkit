@@ -53,6 +53,8 @@ export function _resetDraftCredentialCacheForTests(): void {
 
 export function toDecryptedCredential(input: AtomicCredentialInput): DecryptedCredential {
   switch (input.mode) {
+    case "signed_jwt":
+      return { mode: "signed_jwt", private_key: input.private_key };
     case "bearer":
       return { mode: "bearer", token: input.token };
     case "basic":

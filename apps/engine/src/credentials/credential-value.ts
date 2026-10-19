@@ -10,6 +10,7 @@ import type {
   OAuth2CredentialValue,
   OAuth2PrivateKeyCredentialValue,
   QueryCredentialValue,
+  SignedJwtCredentialValue,
   TokenMintCredentialValue,
   TokenMintShape,
 } from "./types.ts";
@@ -41,7 +42,8 @@ export type CredentialPlaintext =
       header_template?: string;
     }
   | ({ mode: "oauth2_client" } & OAuth2ClientCredentialValue)
-  | ({ mode: "oauth2_private_key" } & OAuth2PrivateKeyCredentialValue);
+  | ({ mode: "oauth2_private_key" } & OAuth2PrivateKeyCredentialValue)
+  | ({ mode: "signed_jwt" } & SignedJwtCredentialValue);
 
 export function serializePlain(value: CredentialPlaintext): string {
   switch (value.mode) {
@@ -92,6 +94,8 @@ export function serializePlain(value: CredentialPlaintext): string {
         private_key: value.private_key,
         algorithm: value.algorithm,
       });
+    case "signed_jwt":
+      return JSON.stringify({ private_key: value.private_key });
   }
 }
 
@@ -172,6 +176,8 @@ export function deserializePlain(mode: CredentialMode, raw: string): DecryptedCr
         private_key: String(parsed.private_key ?? ""),
         algorithm: String(parsed.algorithm ?? ""),
       };
+    case "signed_jwt":
+      return { mode: "signed_jwt", private_key: String(parsed.private_key ?? "") };
     default: {
       const exhaustive: never = mode;
       void exhaustive;

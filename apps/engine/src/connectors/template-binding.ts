@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { OAuth2ClientConfig } from "../credentials/oauth2/types.ts";
 import { getOAuth2ClientCredential } from "../credentials/service.ts";
 import type { Db } from "../db/client.ts";
@@ -18,6 +19,47 @@ function connectorConfig(connector: Pick<ConnectorView, "config">): ConnectorCon
 
 export function getConnectorTemplateSnapshot(connector: Pick<ConnectorView, "template_snapshot">) {
   return parseTemplateSnapshot(connector.template_snapshot);
+}
+
+export interface TemplateSignedJwtPolicyIssue {
+  field: "config.signed_jwt";
+  message: string;
+}
+
+function signedJwtBlock(config: ConnectorConfig): Record<string, unknown> | null {
+  const value = config.signed_jwt;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  return isDeepStrictEqual(left, right);
+}
+
+export function validateTemplateSignedJwtPolicy(
+  connector: Pick<ConnectorView, "auth_type" | "config" | "template_snapshot">,
+): TemplateSignedJwtPolicyIssue | null {
+  if (connector.auth_type !== "signed_jwt") return null;
+  const template = getConnectorTemplateSnapshot(connector);
+  const policy = template?.signed_jwt;
+  if (!policy) return null;
+  const config = signedJwtBlock(connectorConfig(connector));
+  if (!config) {
+    return {
+      field: "config.signed_jwt",
+      message: "the bound connector template requires a signed_jwt policy",
+    };
+  }
+  for (const key of ["algorithm", "audience", "claims", "ttl_seconds"] as const) {
+    if (!sameJson(config[key], policy[key])) {
+      return {
+        field: "config.signed_jwt",
+        message: `the bound connector template fixes signed_jwt.${key}; clear or replace the template binding before changing it`,
+      };
+    }
+  }
+  return null;
 }
 
 export function getConnectorProbeEndpoint(

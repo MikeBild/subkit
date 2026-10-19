@@ -308,6 +308,7 @@ describe("connector templates: list, detail, connect", () => {
     expect(templateSignIn({ auth_type: "oauth2" })).toBe("account");
     expect(templateSignIn({ auth_type: "bearer" })).toBe("key");
     expect(templateSignIn({ auth_type: "header" })).toBe("key");
+    expect(templateSignIn({ auth_type: "signed_jwt" })).toBe("machine");
     expect(templateSignIn({ auth_type: "none" })).toBe("none");
     for (const auth_type of ["basic", "query", "aws_sigv4"] as const)
       expect(templateSignIn({ auth_type })).toBe("elsewhere");

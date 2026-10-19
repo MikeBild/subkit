@@ -3,6 +3,7 @@ import {
   getConnectorCapabilities,
   getConnectorProbeEndpoint,
   getConnectorTemplateSnapshot,
+  validateTemplateSignedJwtPolicy,
 } from "./template-binding.ts";
 import { loadBuiltinTemplates } from "./templates.ts";
 
@@ -27,6 +28,59 @@ describe("getConnectorTemplateSnapshot", () => {
   test("returns null when the snapshot is missing", () => {
     const out = getConnectorTemplateSnapshot({ template_snapshot: null });
     expect(out).toBeNull();
+  });
+});
+
+describe("validateTemplateSignedJwtPolicy", () => {
+  const template = loadBuiltinTemplates().find((entry) => entry.slug === "app-store-connect");
+  if (!template) throw new Error("expected app-store-connect template");
+
+  test("allows identity fields while retaining the template's static policy", () => {
+    expect(
+      validateTemplateSignedJwtPolicy({
+        auth_type: "signed_jwt",
+        config: {
+          signed_jwt: {
+            ...template.signed_jwt,
+            issuer: "issuer-id",
+            key_id: "key-id",
+          },
+        },
+        template_snapshot: template,
+      }),
+    ).toBeNull();
+  });
+
+  test("rejects a changed template policy until the binding is cleared", () => {
+    const issue = validateTemplateSignedJwtPolicy({
+      auth_type: "signed_jwt",
+      config: {
+        signed_jwt: {
+          ...template.signed_jwt,
+          ttl_seconds: 600,
+        },
+      },
+      template_snapshot: template,
+    });
+    expect(issue?.field).toBe("config.signed_jwt");
+    expect(issue?.message).toContain("ttl_seconds");
+  });
+
+  test("does not apply a policy after the template binding is cleared", () => {
+    expect(
+      validateTemplateSignedJwtPolicy({
+        auth_type: "signed_jwt",
+        config: {
+          signed_jwt: {
+            algorithm: "ES256",
+            audience: "other-resource",
+            claims: {},
+            ttl_seconds: 600,
+          },
+        },
+        template_snapshot: null,
+      }),
+    ).toBeNull();
   });
 });
 

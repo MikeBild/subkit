@@ -17,6 +17,7 @@ import {
   type OAuthClientFields,
   oauthClientOf,
   replacesEveryHeader,
+  signedJwtFieldsOf,
   signInOf,
 } from "@/components/cockpit/create-connector-model";
 import { TextField } from "@/components/cockpit/form-field";
@@ -63,6 +64,7 @@ export function ConnectorEditDialog({
   const [signIn, setSignIn] = useState<ConnectorSignIn | null>(priorSignIn);
   const [secret, setSecret] = useState("");
   const [oauth, setOAuth] = useState<OAuthClientFields>(() => oauthClientOf(prior.config));
+  const [signedJwt, setSignedJwt] = useState(() => signedJwtFieldsOf(prior.config));
   const [typedHeader, setHeader] = useState<string | null>(null);
   const header = typedHeader ?? headerNames[0] ?? "";
   const [headerValues, setHeaderValues] = useState<Record<string, string>>({});
@@ -77,6 +79,7 @@ export function ConnectorEditDialog({
     header,
     headerValues,
     oauth,
+    signedJwt,
   };
   const unchangedKind = signIn === priorSignIn;
   const save = useMutation({
@@ -209,11 +212,40 @@ export function ConnectorEditDialog({
           mono
         />
       ) : null}
+      {prior.authType === "signed_jwt" ? (
+        <>
+          <TextField
+            id="connector-edit-signed-jwt-issuer"
+            label={t("connectorEdit.signedJwtIssuer")}
+            value={signedJwt.issuer}
+            onChange={(issuer) => setSignedJwt((current) => ({ ...current, issuer }))}
+            mono
+          />
+          <TextField
+            id="connector-edit-signed-jwt-key-id"
+            label={t("connectorEdit.signedJwtKeyId")}
+            value={signedJwt.keyId}
+            onChange={(keyId) => setSignedJwt((current) => ({ ...current, keyId }))}
+            mono
+          />
+          <TextField
+            id="connector-edit-signed-jwt-subject"
+            label={t("connectorEdit.signedJwtSubject")}
+            value={signedJwt.subject}
+            onChange={(subject) => setSignedJwt((current) => ({ ...current, subject }))}
+            mono
+          />
+        </>
+      ) : null}
       {(!target || signIn === null) && offersKeyReplacement(prior.authType) && !everyHeader ? (
         <TextField
           id="connector-edit-secret"
           type="password"
-          label={t("connectorEdit.secret")}
+          label={t(
+            prior.authType === "signed_jwt"
+              ? "connectorEdit.signedJwtPrivateKey"
+              : "connectorEdit.secret",
+          )}
           placeholder={t("connectorEdit.secretPlaceholder")}
           help={t("connectorEdit.secretHelp")}
           value={secret}

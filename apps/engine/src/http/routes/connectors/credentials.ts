@@ -123,6 +123,16 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     const value = credentialBodyToValue(body);
+    if (value.mode === "signed_jwt") {
+      try {
+        const config = credsvc.parseSignedJwtConfig(connector.config ?? {});
+        await credsvc.validateSignedJwtPrivateKey(value.private_key, config.algorithm);
+      } catch (error) {
+        throw new BadRequestError(
+          error instanceof Error ? error.message : "Invalid signed JWT credential",
+        );
+      }
+    }
 
     if (connector.auth_type !== body.mode) {
       await connectorSvc.updateConnector(
@@ -142,6 +152,8 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
         mode: body.mode,
         value,
         actor_id: principal.id,
+        actor: actorOf(principal),
+        source: "http_route",
       },
       db,
     );

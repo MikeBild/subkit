@@ -11,14 +11,16 @@ export const CredentialMode = z.enum([
   "token_mint",
   "oauth2_client",
   "oauth2_private_key",
+  "signed_jwt",
 ]);
 export type CredentialMode = z.infer<typeof CredentialMode>;
 
-const SECRET_MODES = new Set(["header", "query", "bearer", "basic", "aws_sigv4"]);
+const SECRET_MODES = new Set(["header", "query", "bearer", "basic", "aws_sigv4", "signed_jwt"]);
 const TOKEN_AUTH_TYPES = new Set(["oauth2", "oauth2_client", "oauth2_private_key"]);
 
 export function credentialServesAuthType(auth_type: string, mode: string): boolean {
   if (auth_type === "none") return false;
+  if (auth_type === "signed_jwt") return mode === "signed_jwt";
   if (SECRET_MODES.has(mode)) return mode === auth_type;
   if (mode === "oauth2" || mode === "connection") return TOKEN_AUTH_TYPES.has(auth_type);
   return true;
@@ -96,6 +98,11 @@ export const OAuth2PrivateKeyCredentialValue = z.object({
 });
 export type OAuth2PrivateKeyCredentialValue = z.infer<typeof OAuth2PrivateKeyCredentialValue>;
 
+export const SignedJwtCredentialValue = z.object({
+  private_key: z.string().min(1),
+});
+export type SignedJwtCredentialValue = z.infer<typeof SignedJwtCredentialValue>;
+
 export type DecryptedCredential =
   | { mode: "none" }
   | ({ mode: "header" } & HeaderCredentialValue)
@@ -115,4 +122,5 @@ export type DecryptedCredential =
       expires_at: Date | null;
     } & TokenMintCredentialValue)
   | ({ mode: "oauth2_client" } & OAuth2ClientCredentialValue)
-  | ({ mode: "oauth2_private_key" } & OAuth2PrivateKeyCredentialValue);
+  | ({ mode: "oauth2_private_key" } & OAuth2PrivateKeyCredentialValue)
+  | ({ mode: "signed_jwt" } & SignedJwtCredentialValue);

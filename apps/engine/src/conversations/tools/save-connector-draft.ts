@@ -66,6 +66,7 @@ const oauth2CredentialInput = z.object({
 
 const credentialUnion = z.discriminatedUnion("mode", [
   bearerCredentialInput,
+  z.object({ mode: z.literal("signed_jwt"), private_key: z.string().min(1).max(16384) }),
   basicCredentialInput,
   headerCredentialInput,
   queryCredentialInput,
@@ -396,6 +397,9 @@ async function existingCredentialMatches(p: {
   if (supplied.mode === "query" && stored.mode === "query") {
     const query = (stored.query as Record<string, string> | undefined) ?? {};
     return query[supplied.param] === supplied.value;
+  }
+  if (supplied.mode === "signed_jwt" && stored.mode === "signed_jwt") {
+    return supplied.private_key === stored.private_key;
   }
   if (supplied.mode === "aws_sigv4" && stored.mode === "aws_sigv4") {
     return (

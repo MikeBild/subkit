@@ -8,7 +8,7 @@ const UpdateConnectorInput = z
     name: z.string().min(1).optional(),
     base_url: z.string().url().optional(),
     dsn: z.string().min(1).optional(),
-    auth_type: z.enum(["none", "bearer", "basic", "oauth2", "header"]).optional(),
+    auth_type: z.enum(["none", "bearer", "basic", "oauth2", "header", "signed_jwt"]).optional(),
     config: z.record(z.string(), z.unknown()).optional(),
     template_slug: z.string().min(1).optional(),
     clear_template_binding: z.boolean().optional(),

@@ -6,6 +6,7 @@ import {
   DescriptionSchema,
   descriptionAcceptanceValid,
 } from "../api/catalog-metadata.ts";
+import { SignedJwtConfigSchema } from "../credentials/signed-jwt.ts";
 
 export const DriverEnum = z.enum(["http", "postgres", "s3", "graphql", "mcp"]);
 export type DriverName = z.infer<typeof DriverEnum>;
@@ -34,11 +35,12 @@ export const AuthTypeEnum = z
     "oauth2",
     "oauth2_client",
     "oauth2_private_key",
+    "signed_jwt",
     "aws_sigv4",
   ])
   .openapi({
     description:
-      "How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp` — declaring either on any other driver is a 400.",
+      "How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp`; `signed_jwt` is accepted only for HTTP and GraphQL connectors.",
   });
 export type AuthType = z.infer<typeof AuthTypeEnum>;
 
@@ -121,6 +123,13 @@ export const AwsSigV4AuthConfigSchema = z
   })
   .openapi("AwsSigV4AuthConfig");
 
+export const SignedJwtAuthConfigSchema = z
+  .object({
+    auth_type: z.literal("signed_jwt"),
+    signed_jwt: SignedJwtConfigSchema,
+  })
+  .openapi("SignedJwtAuthConfig");
+
 export const NoneAuthConfigSchema = z
   .object({ auth_type: z.literal("none") })
   .openapi("NoneAuthConfig");
@@ -134,6 +143,7 @@ export const AuthConfigSchema = z
     BasicAuthConfigSchema,
     OAuth2AuthConfigSchema,
     AwsSigV4AuthConfigSchema,
+    SignedJwtAuthConfigSchema,
   ])
   .openapi("AuthConfig");
 
@@ -184,6 +194,7 @@ export const HttpConnectorConfig = z
     imported_sample_endpoints: z.array(z.record(z.string(), z.unknown())).optional(),
     imported_source: z.string().optional(),
     oauth: OAuthEnrichmentSchema.optional(),
+    signed_jwt: SignedJwtConfigSchema.optional(),
   })
   .strict();
 
@@ -213,6 +224,18 @@ export const CreateConnectorSchema = z
         path: ["base_url"],
         message: "mcp connectors require base_url — the remote server's streamable-HTTP endpoint",
       });
+    }
+    if (v.auth_type === "signed_jwt") {
+      const parsed = SignedJwtConfigSchema.safeParse(v.config?.signed_jwt);
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["config", "signed_jwt", ...issue.path],
+            message: issue.message,
+          });
+        }
+      }
     }
   })
   .openapi("CreateConnectorBody");

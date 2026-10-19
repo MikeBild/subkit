@@ -132,6 +132,7 @@ import sql0111MarvelousEnderWiggin from "./0111_marvelous_ender_wiggin.sql" with
 import sql0112CallerBudget from "./0112_caller_budget.sql" with { type: "text" };
 import sql0113IntakeSessionTargets from "./0113_intake_session_targets.sql" with { type: "text" };
 import sql0114OperatorTenant from "./0114_operator_tenant.sql" with { type: "text" };
+import sql0115ConcernedRafaelVega from "./0115_concerned_rafael_vega.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -271,6 +272,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0112_caller_budget": sql0112CallerBudget,
   "0113_intake_session_targets": sql0113IntakeSessionTargets,
   "0114_operator_tenant": sql0114OperatorTenant,
+  "0115_concerned_rafael_vega": sql0115ConcernedRafaelVega,
 };
 
 const journal = journalMeta as unknown as Journal;

@@ -4,6 +4,7 @@ import type { Db } from "../../db/client.ts";
 export const CREDENTIAL_FORM_FIELDS: Readonly<
   Record<string, { required: readonly string[]; optional: readonly string[] }>
 > = {
+  signed_jwt: { required: ["private_key"], optional: [] },
   bearer: { required: ["token"], optional: [] },
   basic: { required: ["username", "password"], optional: [] },
   header: { required: ["header_name", "header_value"], optional: [] },
@@ -72,6 +73,7 @@ export async function resolveDraftCredentialSeedMode(p: {
   const grantType = draftOauthCfg.grant_type ?? templateOauth?.grant_type ?? null;
   let seedMode: string | null = null;
   if (
+    authType === "signed_jwt" ||
     authType === "bearer" ||
     authType === "basic" ||
     authType === "header" ||

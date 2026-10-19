@@ -12,6 +12,7 @@ export const TemplateAuthTypeEnum = z.enum([
   "bearer",
   "basic",
   "oauth2",
+  "signed_jwt",
   "aws_sigv4",
 ]);
 
@@ -185,12 +186,43 @@ export const TemplateOAuthSchema = z
   })
   .openapi("ConnectorTemplateOAuth");
 
+const JwtClaimValueSchema = z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.array(z.union([z.string(), z.number().finite(), z.boolean()])),
+]);
+
+export const TemplateSignedJwtSchema = z
+  .object({
+    algorithm: z.enum(["ES256", "RS256"]),
+    audience: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]),
+    issuer: z.string().min(1).optional(),
+    subject: z.string().min(1).optional(),
+    key_id: z.string().min(1).optional(),
+    claims: z.record(z.string().min(1), JwtClaimValueSchema).default({}),
+    ttl_seconds: z.number().int().min(60).max(3600).default(300),
+  })
+  .superRefine((value, ctx) => {
+    for (const name of Object.keys(value.claims)) {
+      if (["aud", "exp", "iat", "iss", "nbf", "sub"].includes(name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["claims", name],
+          message: `claims.${name} is reserved for signed JWT authentication`,
+        });
+      }
+    }
+  })
+  .openapi("ConnectorTemplateSignedJwt");
+
 export const TemplateAuthOptionSchema = z
   .object({
     auth_type: TemplateAuthTypeEnum,
     label: z.string(),
     description: z.string(),
     oauth: TemplateOAuthSchema.nullable().optional(),
+    signed_jwt: TemplateSignedJwtSchema.nullable().optional(),
   })
   .openapi("ConnectorTemplateAuthOption");
 
@@ -280,6 +312,7 @@ export const ConnectorTemplateSchema = z
     base_url: z.string().nullable(),
     auth_type: TemplateAuthTypeEnum,
     oauth: TemplateOAuthSchema.nullable(),
+    signed_jwt: TemplateSignedJwtSchema.nullable().default(null),
     default_skill: z.string().nullable(),
     ingestion_source: TemplateIngestionSourceEnum.nullable(),
     ingestion_url: z.string().nullable(),
@@ -376,6 +409,20 @@ export const ConnectorTemplateSchema = z
         code: z.ZodIssueCode.custom,
         path: ["aws_service"],
         message: `template "${t.slug}" has auth_type=aws_sigv4 but no aws_service`,
+      });
+    }
+    if (t.auth_type === "signed_jwt" && t.signed_jwt === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["signed_jwt"],
+        message: `template "${t.slug}" has auth_type=signed_jwt but no signed_jwt policy`,
+      });
+    }
+    if (t.auth_type === "signed_jwt" && t.oauth !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["oauth"],
+        message: `template "${t.slug}" must not mix direct signed JWT authentication with OAuth`,
       });
     }
   })

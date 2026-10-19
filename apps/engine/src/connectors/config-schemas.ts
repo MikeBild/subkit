@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { SignedJwtConfigSchema } from "../credentials/signed-jwt.ts";
 import { type McpAuthConfig, McpAuthConfigSchema } from "../mcp/client/registry.ts";
 import { type AuthType, type DriverName, HttpConnectorConfig } from "./types.ts";
 
 export const GraphQLConnectorConfigSchema = z.object({
   default_headers: z.record(z.string(), z.string()).optional(),
+  signed_jwt: SignedJwtConfigSchema.optional(),
 });
 
 export const S3ConnectorConfigSchema = z.object({
@@ -97,6 +99,15 @@ export function validateConnectorAuthType(
       },
     ];
   }
+  if (auth_type === "signed_jwt") {
+    if (driver === "http" || driver === "graphql") return [];
+    return [
+      {
+        path: "auth_type",
+        message: "auth_type 'signed_jwt' is supported only by http and graphql connectors",
+      },
+    ];
+  }
   if (!MCP_ONLY_AUTH_TYPES.includes(auth_type)) return [];
   return [
     {
@@ -104,6 +115,30 @@ export function validateConnectorAuthType(
       message: `auth_type '${auth_type}' is only declarable by an mcp connector — it identifies an OAuth2 client to a token endpoint and is never applied to a ${driver} request`,
     },
   ];
+}
+
+export function validateSignedJwtAuthConfig(
+  auth_type: AuthType | undefined | null,
+  config: Record<string, unknown> | undefined | null,
+): ConnectorConfigIssue[] {
+  if (auth_type !== "signed_jwt") return [];
+  const issues: ConnectorConfigIssue[] = [];
+  const signed = SignedJwtConfigSchema.safeParse(config?.signed_jwt);
+  if (!signed.success) {
+    for (const issue of signed.error.issues) {
+      issues.push({
+        path: `config.signed_jwt${issue.path.length > 0 ? `.${issue.path.join(".")}` : ""}`,
+        message: issue.message,
+      });
+    }
+  }
+  if (config?.oauth !== undefined) {
+    issues.push({
+      path: "config.oauth",
+      message: "signed_jwt authentication does not use OAuth token exchange configuration",
+    });
+  }
+  return issues;
 }
 
 export function validateMcpAuthConsistency(

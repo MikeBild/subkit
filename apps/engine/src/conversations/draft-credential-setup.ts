@@ -10,7 +10,13 @@ import { loadDraft } from "./draft.ts";
 export const DRAFT_CREDENTIAL_SETUP_KIND = "connector_draft_credential_setup";
 export const DRAFT_CREDENTIAL_SETUP_TTL_MS = 10 * 60_000;
 
-export type DraftCredentialSetupAuthType = "bearer" | "basic" | "header" | "query" | "aws_sigv4";
+export type DraftCredentialSetupAuthType =
+  | "bearer"
+  | "basic"
+  | "header"
+  | "query"
+  | "aws_sigv4"
+  | "signed_jwt";
 
 export function isDraftCredentialSetupAuthType(
   value: string,
@@ -20,6 +26,7 @@ export function isDraftCredentialSetupAuthType(
     value === "basic" ||
     value === "header" ||
     value === "query" ||
+    value === "signed_jwt" ||
     value === "aws_sigv4"
   );
 }
@@ -51,6 +58,7 @@ export interface ValidatedDraftCredentialSetup {
   elicitation_id: string;
   auth_type: DraftCredentialSetupAuthType;
   connector_label: string;
+  connector_config: Record<string, unknown>;
 }
 
 export async function validateDraftCredentialSetup(
@@ -105,6 +113,7 @@ export async function validateDraftCredentialSetup(
       elicitation_id: row.id,
       auth_type: authType,
       connector_label: connector.name ?? connector.slug ?? "connector",
+      connector_config: connector.config ?? {},
     };
   }
   return null;

@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
+const pinnedBun = (await Bun.file(resolve(root, ".bun-version")).text()).trim();
+if (Bun.version !== pinnedBun)
+  throw new Error(`Sandbox helpers require Bun ${pinnedBun}; current runtime is ${Bun.version}`);
 const names = ["money", "csv", "date", "schema", "assert", "url", "xml", "template", "diff"];
 const sources: Record<string, string> = {};
 const notices = new Set<string>();

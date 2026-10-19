@@ -10479,6 +10479,7 @@
               "aws_sigv4",
               "token_mint_static",
               "token_mint_refreshed",
+              "signed_jwt",
               "oauth2_client",
               "oauth2_private_key"
             ]
@@ -12906,11 +12907,15 @@
                     "bearer",
                     "basic",
                     "oauth2",
+                    "signed_jwt",
                     "aws_sigv4"
                   ]
                 },
                 "oauth": {
                   "$ref": "#/components/schemas/ConnectorTemplateOAuth"
+                },
+                "signed_jwt": {
+                  "$ref": "#/components/schemas/ConnectorTemplateSignedJwt"
                 },
                 "default_skill": {
                   "type": [
@@ -13192,6 +13197,93 @@
           "client_id"
         ]
       },
+      "ConnectorTemplateSignedJwt": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "algorithm": {
+            "type": "string",
+            "enum": [
+              "ES256",
+              "RS256"
+            ]
+          },
+          "audience": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1
+              }
+            ]
+          },
+          "issuer": {
+            "type": "string",
+            "minLength": 1
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1
+          },
+          "key_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "claims": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "default": {}
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 3600,
+            "default": 300
+          }
+        },
+        "default": null,
+        "required": [
+          "algorithm",
+          "audience"
+        ]
+      },
       "ConnectorTemplateAuthOption": {
         "type": "object",
         "properties": {
@@ -13204,6 +13296,7 @@
               "bearer",
               "basic",
               "oauth2",
+              "signed_jwt",
               "aws_sigv4"
             ]
           },
@@ -13215,6 +13308,9 @@
           },
           "oauth": {
             "$ref": "#/components/schemas/ConnectorTemplateOAuth"
+          },
+          "signed_jwt": {
+            "$ref": "#/components/schemas/ConnectorTemplateSignedJwt"
           }
         },
         "required": [
@@ -13676,11 +13772,15 @@
               "bearer",
               "basic",
               "oauth2",
+              "signed_jwt",
               "aws_sigv4"
             ]
           },
           "oauth": {
             "$ref": "#/components/schemas/ConnectorTemplateOAuth"
+          },
+          "signed_jwt": {
+            "$ref": "#/components/schemas/ConnectorTemplateSignedJwt"
           },
           "default_skill": {
             "type": [
@@ -13910,11 +14010,15 @@
               "bearer",
               "basic",
               "oauth2",
+              "signed_jwt",
               "aws_sigv4"
             ]
           },
           "oauth": {
             "$ref": "#/components/schemas/ConnectorTemplateOAuth"
+          },
+          "signed_jwt": {
+            "$ref": "#/components/schemas/ConnectorTemplateSignedJwt"
           },
           "default_skill": {
             "type": [
@@ -14495,10 +14599,11 @@
               "oauth2",
               "oauth2_client",
               "oauth2_private_key",
+              "signed_jwt",
               "aws_sigv4"
             ],
             "default": "none",
-            "description": "How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp` — declaring either on any other driver is a 400."
+            "description": "How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp`; `signed_jwt` is accepted only for HTTP and GraphQL connectors."
           },
           "config": {
             "type": "object",
@@ -14617,6 +14722,7 @@
               "bearer",
               "basic",
               "aws_sigv4",
+              "signed_jwt",
               "connection"
             ]
           },
@@ -14653,6 +14759,12 @@
           },
           "session_token": {
             "type": "string"
+          },
+          "private_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384,
+            "description": "PKCS#8 PEM private key for signed_jwt. Secret; never returned."
           }
         },
         "required": [
@@ -15160,9 +15272,10 @@
               "oauth2",
               "oauth2_client",
               "oauth2_private_key",
+              "signed_jwt",
               "aws_sigv4"
             ],
-            "description": "How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp` — declaring either on any other driver is a 400."
+            "description": "How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp`; `signed_jwt` is accepted only for HTTP and GraphQL connectors."
           },
           "config": {
             "type": "object",
@@ -15365,6 +15478,7 @@
                     "basic",
                     "oauth2",
                     "aws_sigv4",
+                    "signed_jwt",
                     "token_mint",
                     "oauth2_client",
                     "oauth2_private_key"
@@ -40624,6 +40738,10 @@
                   "token": {
                     "type": "string"
                   },
+                  "private_key": {
+                    "type": "string",
+                    "description": "Secret PKCS#8 PEM private key"
+                  },
                   "username": {
                     "type": "string"
                   },
@@ -40759,6 +40877,10 @@
                   "token": {
                     "type": "string",
                     "description": "Bearer token (auth_type: bearer)"
+                  },
+                  "private_key": {
+                    "type": "string",
+                    "description": "Secret PKCS#8 PEM key (auth_type: signed_jwt)"
                   },
                   "username": {
                     "type": "string",

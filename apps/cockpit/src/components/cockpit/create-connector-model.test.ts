@@ -12,11 +12,13 @@ import {
   connectorTargetOf,
   DEFAULT_SIGN_IN,
   EMPTY_OAUTH_CLIENT,
+  EMPTY_SIGNED_JWT,
   manualConnectorProblem,
   missingHeaderValues,
   needsOAuthClient,
   needsSecret,
   oauthClientOf,
+  signedJwtFieldsOf,
   signInOf,
 } from "./create-connector-model";
 
@@ -191,6 +193,7 @@ function draftOf(overrides: Partial<ConnectorEditDraft> = {}): ConnectorEditDraf
     header: "",
     headerValues: {},
     oauth: EMPTY_OAUTH_CLIENT,
+    signedJwt: EMPTY_SIGNED_JWT,
     ...overrides,
   };
 }
@@ -228,6 +231,59 @@ describe("editing a connector's sign-in", () => {
     );
     expect(plan.patch.auth_type).toBeUndefined();
     expect(plan.credential).toEqual({ mode: "header", headers: { "X-Api-Key": "v" } });
+  });
+
+  test("a signed JWT connector keeps its public signing configuration and replaces only its key", () => {
+    const prior = {
+      ...PRIOR,
+      authType: "signed_jwt",
+      config: {
+        signed_jwt: {
+          algorithm: "ES256",
+          audience: "https://api.example.com",
+          issuer: "issuer-1",
+          key_id: "key-1",
+        },
+      },
+    };
+    const draft = draftOf({
+      signIn: null,
+      secret: " private-key ",
+      signedJwt: { issuer: "issuer-2", keyId: "key-2", subject: "user-2" },
+    });
+    expect(signedJwtFieldsOf(prior.config)).toEqual({
+      issuer: "issuer-1",
+      keyId: "key-1",
+      subject: "",
+    });
+    expect(connectorEditProblem(prior, draft, null)).toBeNull();
+    expect(connectorEditPlan(prior, draft)).toEqual({
+      patch: {
+        name: "Billing",
+        config: {
+          signed_jwt: {
+            algorithm: "ES256",
+            audience: "https://api.example.com",
+            issuer: "issuer-2",
+            key_id: "key-2",
+            subject: "user-2",
+          },
+        },
+      },
+      credential: { mode: "signed_jwt", private_key: "private-key" },
+      startSignIn: false,
+    });
+  });
+
+  test("a signed JWT connector lets its template decide which public claims are required", () => {
+    const prior = {
+      ...PRIOR,
+      authType: "signed_jwt",
+      config: { signed_jwt: { algorithm: "ES256", audience: "https://api.example.com" } },
+    };
+    const draft = draftOf({ signIn: null });
+    expect(connectorEditProblem(prior, draft, null)).toBeNull();
+    expect(connectorEditPlan(prior, draft).patch).toEqual({ name: "Billing" });
   });
 
   test("a header connector with one header keeps the single-header body", () => {

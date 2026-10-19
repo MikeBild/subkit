@@ -31,7 +31,7 @@ const inputSchema = z
     base_url: z.string().optional(),
     dsn: z.string().optional(),
     auth_type: z
-      .enum(["none", "header", "query", "bearer", "basic", "oauth2", "aws_sigv4"])
+      .enum(["none", "header", "query", "bearer", "basic", "oauth2", "aws_sigv4", "signed_jwt"])
       .optional(),
     force_new: z
       .boolean()

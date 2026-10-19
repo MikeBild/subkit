@@ -10,6 +10,7 @@ import type { ConnectorView } from "../types.ts";
 import {
   type AppliedAuthMethod,
   applyAuthMaterial,
+  applySignedJwtAuth,
   checkAuthorityRedirect,
   deriveAppliedAuthMethod,
   FETCH_DEADLINE_MS,
@@ -17,6 +18,7 @@ import {
   type RequestDispatchPolicy,
   type ResolvedConnectorCredential,
   readBodyCapped,
+  redactSignedJwtValue,
   resolveConnectorCredential,
   resolveMaxResponseBytes,
   validateOutboundHeaders,
@@ -166,7 +168,6 @@ export async function executeGraphQLRequest(p: {
   for (const [k, v] of Object.entries(query)) {
     url.searchParams.set(k, String(v));
   }
-
   await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id });
 
   logger.debug({
@@ -184,12 +185,21 @@ export async function executeGraphQLRequest(p: {
   const fetchImpl = p.fetchImpl ?? fetch;
   injectTraceContext(headers);
   validateOutboundHeaders(headers);
-  const dispatchPolicy = await p.before_dispatch?.({
+  const requestedDispatchPolicy = await p.before_dispatch?.({
     credential_id,
     credential_revision,
     connection_authority: connection_authority ?? null,
     ...(credential_snapshot ? { credential_snapshot } : {}),
   });
+  const dispatchPolicy =
+    credential?.mode === "signed_jwt"
+      ? ({ redirect: "manual" } satisfies RequestDispatchPolicy)
+      : requestedDispatchPolicy;
+  let signedJwtToken: string | null = null;
+  if (credential?.mode === "signed_jwt") {
+    await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id });
+    signedJwtToken = await applySignedJwtAuth(p.connector, credential, url, headers);
+  }
   const res = await instrument({
     module: "connector",
     action: "driver.graphql.request",
@@ -238,8 +248,13 @@ export async function executeGraphQLRequest(p: {
   }
   return {
     status: res.status,
-    headers: headerObj,
-    body: parsed as { data?: unknown; errors?: unknown },
+    headers: signedJwtToken
+      ? (redactSignedJwtValue(headerObj, signedJwtToken) as Record<string, string>)
+      : headerObj,
+    body: (signedJwtToken ? redactSignedJwtValue(parsed, signedJwtToken) : parsed) as {
+      data?: unknown;
+      errors?: unknown;
+    },
     bytes_in: Buffer.byteLength(text, "utf8"),
     duration_ms: Date.now() - start,
     operation_name: operationName,

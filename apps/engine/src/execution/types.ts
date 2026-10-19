@@ -269,7 +269,8 @@ export type AppliedAuthMethod =
   | "token_mint_static"
   | "token_mint_refreshed"
   | "oauth2_client"
-  | "oauth2_private_key";
+  | "oauth2_private_key"
+  | "signed_jwt";
 
 export interface ConnectorResolutionSummary {
   step_key: string;
