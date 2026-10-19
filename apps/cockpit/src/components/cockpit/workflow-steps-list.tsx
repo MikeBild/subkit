@@ -152,17 +152,38 @@ export function WorkflowTestRun({
   definition: Record<string, unknown>;
 }) {
   const { t } = useI18n();
+  const schema = definition.input_schema;
+  const properties =
+    schema && typeof schema === "object"
+      ? (schema as { properties?: Record<string, unknown> }).properties
+      : undefined;
+  const mode = properties?.mode;
+  const options = mode && typeof mode === "object" ? (mode as { enum?: unknown }).enum : undefined;
+  const modes =
+    Array.isArray(options) &&
+    options.length === 2 &&
+    options.includes("daily") &&
+    options.includes("weekly")
+      ? (["daily", "weekly"] as const)
+      : null;
   return (
     <span className="flex items-center gap-1">
       <ActionMenu
-        items={[
-          {
-            label: t(steps.running === "__workflow" ? "workflow.testing" : "workflow.testRun"),
-            disabled: steps.running !== null,
-            onSelect: () => void steps.runOne("__workflow", { source: "draft", definition }),
-            testId: "workflow-test-run",
-          },
-        ]}
+        label={t("workflow.testRun")}
+        testId="workflow-test-run"
+        items={(modes ?? [null]).map((selectedMode) => ({
+          label: selectedMode
+            ? `${t("workflow.testRun")} · ${t(selectedMode === "daily" ? "schedule.daily" : "schedule.weekly")}`
+            : t(steps.running === "__workflow" ? "workflow.testing" : "workflow.testRun"),
+          disabled: steps.running !== null,
+          onSelect: () =>
+            void steps.runOne("__workflow", {
+              source: "draft",
+              definition,
+              ...(selectedMode ? { input: { mode: selectedMode } } : {}),
+            }),
+          testId: selectedMode ? `workflow-test-run-${selectedMode}` : "workflow-test-run",
+        }))}
       />
       <ContextHelp label={t("workflow.testRun")} testId="workflow-test-run-help">
         {t("workflow.testRunSecondary")}
