@@ -50,7 +50,7 @@ export function FormDialog({
   title: string;
   description?: string;
   submit?: {
-    label: string;
+    label: ReactNode;
     pending?: boolean;
     disabled?: boolean;
     destructive?: boolean;

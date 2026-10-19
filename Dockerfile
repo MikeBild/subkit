@@ -1,6 +1,6 @@
 ARG CLI_BINARIES_SOURCE=generated-cli
 
-FROM oven/bun:1.4.0-debian@sha256:5bb0f9be3a1a36a03e27c9a9dd894a3b1ad26657155c7df4dda771e17bf872ef AS builder
+FROM docker.io/oven/bun:1.4.0-debian@sha256:5bb0f9be3a1a36a03e27c9a9dd894a3b1ad26657155c7df4dda771e17bf872ef AS builder
 
 WORKDIR /app
 
