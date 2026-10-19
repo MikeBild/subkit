@@ -3,7 +3,14 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { issueBrowserSession } from "../../auth/browser-session.ts";
 import { auditLog } from "../../db/schema/audit.ts";
-import { apiKeys, files, tenants, users } from "../../db/schema/index.ts";
+import {
+  apiKeys,
+  fileLinks,
+  files,
+  knowledgeSources,
+  tenants,
+  users,
+} from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -221,6 +228,64 @@ describe("POST /v1/knowledge-sources/{id}/documents", () => {
         ),
       );
     expect(audits).toHaveLength(1);
+    const [source] = await srv.db
+      .select({ file_id: knowledgeSources.file_id })
+      .from(knowledgeSources)
+      .where(
+        and(
+          eq(knowledgeSources.tenant_id, srv.tenantId),
+          eq(knowledgeSources.id, created.knowledge_source.id),
+        ),
+      );
+    const links = await srv.db
+      .select()
+      .from(fileLinks)
+      .where(
+        and(
+          eq(fileLinks.tenant_id, srv.tenantId),
+          eq(fileLinks.resource_type, "knowledge_source"),
+          eq(fileLinks.resource_id, created.knowledge_source.id),
+        ),
+      );
+    expect(links).toHaveLength(1);
+    expect(source?.file_id).toBe(links[0]?.file_id);
+  });
+
+  test("replaces a historical stale file link when the source is edited again", async () => {
+    const created = await createBundle("Historical links", [
+      { path: "historical/seed.md", content: "# Historical source" },
+    ]);
+    const sourceId = created.knowledge_source.id;
+    const linkScope = and(
+      eq(fileLinks.tenant_id, srv.tenantId),
+      eq(fileLinks.resource_type, "knowledge_source"),
+      eq(fileLinks.resource_id, sourceId),
+    );
+    const [original] = await srv.db.select().from(fileLinks).where(linkScope);
+    expect(original).toBeDefined();
+    const first = await call("POST", `/v1/knowledge-sources/${sourceId}/documents`, {
+      expected_version: created.knowledge_source.version,
+      path: "historical/retained.md",
+      content: "# Retained history",
+    });
+    expect(first.status).toBe(201);
+    const firstVersion = (await first.json()) as { version: string };
+    await srv.db.update(fileLinks).set({ file_id: original!.file_id }).where(linkScope);
+    const second = await call("POST", `/v1/knowledge-sources/${sourceId}/documents`, {
+      expected_version: firstVersion.version,
+      path: "historical/repaired.md",
+      content: "# Repaired current link",
+    });
+    expect(second.status).toBe(201);
+    const [source] = await srv.db
+      .select({ file_id: knowledgeSources.file_id })
+      .from(knowledgeSources)
+      .where(and(eq(knowledgeSources.tenant_id, srv.tenantId), eq(knowledgeSources.id, sourceId)));
+    const links = await srv.db.select().from(fileLinks).where(linkScope);
+    expect(links).toHaveLength(1);
+    expect(source?.file_id).toBe(links[0]?.file_id);
+    expect(links[0]?.file_id).not.toBe(original?.file_id);
+    expect((await readContent(sourceId)).documents).toHaveLength(3);
   });
 
   test("rejects stale versions and an existing document path with explicit conflicts", async () => {
