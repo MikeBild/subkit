@@ -1,11 +1,31 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { LLMS_PAGE_PATHS } from "@shared/llms-index.ts";
+import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import type { AppEnv } from "../openapi.ts";
 import { COMPOSE_YAML, registerComposeRoute } from "./compose.ts";
 import { registerInstallSkillRoute } from "./install-skill.ts";
 import { registerLlmsTxtRoutes } from "./llms-txt.ts";
 import { ROOT_ENTRY_PATHS, registerRootRoute } from "./root.ts";
+
+let configDirectory: string;
+
+beforeAll(async () => {
+  configDirectory = mkdtempSync(join(tmpdir(), "root-route-"));
+  _resetConfigForTests();
+  await loadConfig({
+    configPathOverride: join(configDirectory, "subkit.config.json"),
+    env: { DATABASE_URL: "postgres://localhost/root_fixture", NODE_ENV: "test" },
+  });
+});
+
+afterAll(() => {
+  _resetConfigForTests();
+  rmSync(configDirectory, { recursive: true, force: true });
+});
 
 async function get(path: string, headers: Record<string, string> = {}): Promise<Response> {
   const app = new OpenAPIHono<AppEnv>();
@@ -17,6 +37,27 @@ async function get(path: string, headers: Record<string, string> = {}): Promise<
 }
 
 describe("GET /", () => {
+  test("an operator can enable a temporary same-origin Cockpit redirect and disable it again", async () => {
+    await setConfigKey("server.root_redirect_to_cockpit", true, { force: true });
+    try {
+      for (const accept of ["text/html", "text/markdown"]) {
+        const response = await get("/?next=https://external.example.test", {
+          accept,
+          "x-forwarded-host": "external.example.test",
+          "x-forwarded-proto": "https",
+        });
+        expect(response.status).toBe(302);
+        expect(response.headers.get("location")).toBe("/cockpit");
+        expect(response.headers.get("cache-control")).toBe("no-store");
+      }
+      expect((await get("/llms.txt")).status).toBe(200);
+    } finally {
+      await setConfigKey("server.root_redirect_to_cockpit", false, { force: true });
+    }
+    expect((await get("/")).status).toBe(200);
+    expect((await get("/", { accept: "text/html" })).status).toBe(200);
+  });
+
   test("answers a machine with Markdown", async () => {
     const res = await get("/");
     expect(res.status).toBe(200);

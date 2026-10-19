@@ -1,6 +1,7 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
+import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import type { AppEnv } from "../openapi.ts";
 import { OPENAPI_INFO } from "../openapi.ts";
 import { resolveOrigin } from "./llms-txt.ts";
@@ -95,8 +96,12 @@ const route = createRoute({
   tags: ["docs"],
   summary: "What this engine hands out",
   description:
-    "An entry point for someone holding only this URL: the artefacts this engine serves from its own binary — Compose file, installer, documentation, API surface, web interface and health. Returns HTML to a browser and Markdown to everything else.",
+    "An entry point for someone holding only this URL: the artefacts this engine serves from its own binary — Compose file, installer, documentation, API surface, web interface and health. Returns HTML to a browser and Markdown to everything else. When server.root_redirect_to_cockpit is enabled, returns a temporary redirect to /cockpit instead.",
   responses: {
+    302: {
+      description: "Temporary redirect to /cockpit when server.root_redirect_to_cockpit is enabled",
+      headers: z.object({ location: z.literal("/cockpit") }),
+    },
     200: {
       description: "Entry point (HTML for browsers, Markdown otherwise)",
       content: {
@@ -113,6 +118,10 @@ function wantsHtml(c: Context<AppEnv>): boolean {
 
 export function registerRootRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, (c) => {
+    if (isConfigLoaded() && getConfig().server.root_redirect_to_cockpit) {
+      c.header("cache-control", "no-store");
+      return c.redirect("/cockpit", 302);
+    }
     const origin = resolveOrigin(c);
     return wantsHtml(c)
       ? c.html(renderHtml(origin), 200, { "cache-control": "public, max-age=300" })

@@ -3144,7 +3144,7 @@ export interface paths {
         };
         /**
          * What this engine hands out
-         * @description An entry point for someone holding only this URL: the artefacts this engine serves from its own binary — Compose file, installer, documentation, API surface, web interface and health. Returns HTML to a browser and Markdown to everything else.
+         * @description An entry point for someone holding only this URL: the artefacts this engine serves from its own binary — Compose file, installer, documentation, API surface, web interface and health. Returns HTML to a browser and Markdown to everything else. When server.root_redirect_to_cockpit is enabled, returns a temporary redirect to /cockpit instead.
          */
         get: {
             parameters: {
@@ -3164,6 +3164,14 @@ export interface paths {
                         "text/html": string;
                         "text/markdown": string;
                     };
+                };
+                /** @description Temporary redirect to /cockpit when server.root_redirect_to_cockpit is enabled */
+                302: {
+                    headers: {
+                        location: "/cockpit";
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
             };
         };

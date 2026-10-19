@@ -3,6 +3,24 @@ import { ConfigSchema } from "../schema.ts";
 import { dottedPath, findLeafByPath, listConfigLeaves } from "../walk.ts";
 
 describe("ConfigSchema", () => {
+  test("Cockpit root redirection is an opt-in global boolean", () => {
+    const defaults = ConfigSchema.parse({ database: { url: "postgres://x" } });
+    expect(defaults.server.root_redirect_to_cockpit).toBe(false);
+    expect(findLeafByPath("server.root_redirect_to_cockpit")?.meta.scope).toBe("global");
+    expect(
+      ConfigSchema.parse({
+        database: { url: "postgres://x" },
+        server: { root_redirect_to_cockpit: true },
+      }).server.root_redirect_to_cockpit,
+    ).toBe(true);
+    expect(
+      ConfigSchema.safeParse({
+        database: { url: "postgres://x" },
+        server: { root_redirect_to_cockpit: "https://external.example.test" },
+      }).success,
+    ).toBe(false);
+  });
+
   test("database connection limits are positive, bounded, global and restart-required", () => {
     const database = ConfigSchema.parse({ database: { url: "postgres://x" } }).database;
     expect(database.pool_max).toBe(10);
