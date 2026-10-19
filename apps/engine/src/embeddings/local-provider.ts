@@ -130,7 +130,7 @@ export async function embedChunkTexts(texts: string[]): Promise<(number[] | null
   return texts.map(() => null);
 }
 
-export const EMBED_SUBBATCH = 4;
+export const EMBED_SUBBATCH = 1;
 
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));

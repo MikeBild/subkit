@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { EMBED_SUBBATCH, embedChunkTextsPaced } from "../local-provider.ts";
+import { embedChunkTextsPaced } from "../local-provider.ts";
 
 const vec = (i: number): number[] => [i];
 
@@ -91,7 +91,17 @@ describe("embedChunkTextsPaced", () => {
     expect(out.length).toBe(3);
   });
 
-  test("default subBatch is EMBED_SUBBATCH (4)", () => {
-    expect(EMBED_SUBBATCH).toBe(4);
+  test("default pacing yields between every text so requests can run between embeddings", async () => {
+    const order: string[] = [];
+    await embedChunkTextsPaced(["first", "second", "third"], {
+      embed: async (texts) => {
+        order.push(...texts);
+        return texts.map(() => [1]);
+      },
+      yield: async () => {
+        order.push("yield");
+      },
+    });
+    expect(order).toEqual(["first", "yield", "second", "yield", "third"]);
   });
 });
