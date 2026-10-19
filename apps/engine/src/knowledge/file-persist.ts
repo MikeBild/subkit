@@ -8,7 +8,7 @@ import {
 } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { recordFilesDedupSeen } from "../files/dedup-counter.ts";
-import { linkStoredFile } from "../files/links.ts";
+import { replaceStoredFileLink } from "../files/links.ts";
 import {
   type PersistInlineUploadResult,
   persistInlineUpload,
@@ -59,7 +59,7 @@ export async function linkKnowledgeFile(
 ): Promise<void> {
   const { row, dedup, scan } = p.persisted;
   const actorFields = auditActor(p.actor);
-  await linkStoredFile(
+  await replaceStoredFileLink(
     tx,
     {
       tenant_id: p.tenant_id,
