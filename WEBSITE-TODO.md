@@ -32,7 +32,11 @@ Lovable-Konfigurationseinträge sind vorhanden. Die Kontrolle nach Aktivierung
 hat jedoch einen Engine-Fehler nachgewiesen: Der separat verwaltete signierte
 Eingang wurde entfernt. Versand bleibt deaktiviert, keine echte Testmail oder
 Veröffentlichung. Die allgemeine Korrektur und Regressionstests liegen im
-Repository; vollständige Prüfung und produktiver Release stehen noch aus.
+Repository. Automatischer Prüfungsumfang abgeschlossen; produktiver Release und
+echte Zustellprüfung stehen weiterhin aus. Vorgesehene Opt-in-Prüfungen für
+Live-Dienste/Modelle, mehrsprachige Suche und interaktive PTY-Sitzungen wurden
+übersprungen; die einzelnen Fälle stehen im privaten Nachweis und zählen nicht
+als ausgeführt.
 Aktuelle Dialoge, Laufzeitstand und private Zugangsdaten siehe externe Übergabe.
 
 ## Maßgebliche Quellen
@@ -115,6 +119,15 @@ starten; manuelle Sichtabnahme bleibt beim Nutzer. Safari/Firefox und tatsächli
   neu anlegen, tatsächliche neue Kennung im Workflow referenzieren, neue Fassung
   normal prüfen/freigeben und Erhalt des Eingangs nach Aktivierung nachweisen.
   Erst dann Website-Übergabe aktivieren; keine unsignierte Ausweichlösung.
+
+  Quellprüfung: zehn PostgreSQL-Regressionstests für die Bindung bestanden;
+  sämtliche 2.176 Testdateien über den Gesamtlauf und dokumentierte Fortsetzungen
+  geprüft. Ein Dokumentationslink im Generator und ein falscher MCP-Testmodus
+  wurden korrigiert. Fehlender lokaler Abhängigkeitspatch über das gesperrte
+  Lockfile nachinstalliert; auffällige Queue-/Scheduler-Fälle isoliert bestanden.
+  KI-Verträge, kompilierte Programme und CLI-End-to-End bestanden. Nach Übernahme
+  paralleler Root-/Konfigurationsänderungen weitere 37 Tests bestanden. Dies ist
+  ausdrücklich kein Nachweis produktiver Gmail-Zustellung oder Veröffentlichung.
 - [ ] Tatsächliche Zustellung, Fehlerfälle und Schutz vor Massenanfragen prüfen.
   Keine Simulation als echten Zustellnachweis ausgeben. Kontrollierte Tests an
   das eigene bestätigte Postfach gehören zum Auftrag; bisher kein Versand.

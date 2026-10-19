@@ -111,6 +111,17 @@ alle Eingänge des Workflows. Regressionstests prüfen Anfrage-/Zeitplanwechsel,
 unveränderte Signaturkonfiguration und Mandantentrennung. Die Korrektur ist noch
 nicht als ausgeliefert nachgewiesen. Kein Engine-Deployment durch Website-Arbeit.
 
+Automatischer Nachweis: zehn gezielte PostgreSQL-Regressionstests bestanden;
+2.176 Testdateien über initialen Gesamtlauf und dokumentierte Fortsetzung mit
+unterstützter Shard-/Start-after-Funktion abgedeckt. Aufgefallene Fälle wurden
+behoben beziehungsweise nach aktualisierter gesperrter Abhängigkeitsinstallation
+isoliert erfolgreich wiederholt. Vorgesehene Opt-in-Prüfungen für Live-Dienste,
+reale Modelle, mehrsprachige Suche und interaktive PTY-Sitzungen bleiben
+übersprungen und sind einzeln im privaten Nachweis aufgeführt. Deterministische
+KI-Verträge, kompilierte Programme und regulärer CLI-End-to-End-Umfang bestanden;
+37 zusätzliche Root-/Konfigurationsprüfungen nach Übernahme paralleler Änderungen
+bestanden. Die privaten Prüfartefakte führen Umfang, Fortsetzung und Grenzen.
+
 Übergabe bleibt deaktiviert; reale Zustellprüfung und Veröffentlichung stehen
 aus. Nach korrigiertem Release den entfernten Eingang über öffentliche Verwaltung
 neu anlegen und die tatsächliche neue Kennung in einer normal gespeicherten und
