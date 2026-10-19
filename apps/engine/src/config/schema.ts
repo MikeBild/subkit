@@ -213,6 +213,13 @@ const ServerSection = z
         "External-facing URL the engine resolves at. Used by /install, chat link replies, and OAuth2 redirect-URI synthesis. Required for any OAuth2 connector.",
       )
       .meta(global()),
+    root_redirect_to_cockpit: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Redirect GET / to /cockpit with a non-cacheable temporary redirect. Disabled by default to preserve the HTML and Markdown engine entry point.",
+      )
+      .meta(global()),
     restart_supervised: z
       .boolean()
       .default(false)

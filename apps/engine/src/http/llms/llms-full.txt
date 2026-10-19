@@ -3261,6 +3261,7 @@ HTTP server
 | `server.port` | number | `3000` | global | no | yes | HTTP port to bind (1..65535) |
 | `server.public_base_url` | string | `""` | global | no | no | External-facing URL the engine resolves at. Used by /install, chat link replies, and OAuth2 redirect-URI synthesis. Required for any OAuth2 connector. |
 | `server.restart_supervised` | boolean | `false` | global | no | no | A supervisor (systemd with Restart=on-failure, Docker with a restart policy) starts the engine again after it ends. Enables POST /v1/system/restart (exit code 75). |
+| `server.root_redirect_to_cockpit` | boolean | `false` | global | no | no | Redirect GET / to /cockpit with a non-cacheable temporary redirect. Disabled by default to preserve the HTML and Markdown engine entry point. |
 | `server.trusted_proxy_hops` | number | `0` | global | no | no | Trusted reverse-proxy hops counted from the right of X-Forwarded-For; zero ignores forwarding headers. |
 | `server.trusted_proxy_ips` | array | `[]` | global | no | no | Exact trusted reverse-proxy socket peer IPs. Every configured forwarding hop must match; X-Real-IP is never trusted. |
 
