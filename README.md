@@ -109,6 +109,12 @@ A production claim additionally needs the released engine, migrated receipt tabl
 signed binding, reviewed active workflow, server secret provisioning and an actual
 controlled end-to-end delivery. Website publication is a separate final step.
 
+The public website integration is being prepared in the existing Lovable project.
+Its current implementation, personal approval handoffs and outstanding live
+delivery evidence are tracked in [Website tasks](WEBSITE-TODO.md) and
+[Lovable setup](docs/lovable-setup.md); offline checks do not imply production mail
+delivery or website publication.
+
 ## Availability and product planning
 
 Self-hosting is the current operating model described below. A hosted self-service

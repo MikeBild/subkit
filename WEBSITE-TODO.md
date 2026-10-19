@@ -19,6 +19,15 @@ Diese Angaben nicht erneut vom Nutzer erfragen.
 Die Website ist unveröffentlicht. Weder vollständige Releasefähigkeit noch
 tatsächliche Formularzustellung oder öffentliche Installierbarkeit behaupten.
 
+Aktueller Formularauftrag (19.10.2026): Veröffentlichung auf der bestätigten
+Lovable-Subdomain ist nach kontrollierter Prüfung beauftragt. Kontakt- und
+Beta-Anfrage sollen jeweils eine Betreiberbenachrichtigung und eine lokalisierte
+Eingangsbestätigung über den bestehenden Gmail-Konnektor erhalten. Die erste
+Workflowfassung ist persönlich inaktiv gespeichert; die vollständige Fassung
+mit beiden Versandpfaden hat 34 unabhängige Offline-Prüfungen bestanden und
+wartet auf persönliche Speicherung. Noch keine Aktivierung, echte Testmail oder
+Veröffentlichung. Aktuelle Dialoge und private Zugangsdaten siehe externe Übergabe.
+
 ## Maßgebliche Quellen
 
 - [Produkt-/Website-Briefing](docs/lovable-website-briefing.md): verbindliche Texte,
@@ -87,11 +96,16 @@ starten; manuelle Sichtabnahme bleibt beim Nutzer. Safari/Firefox und tatsächli
 
 ### 2. Einstiege vollständig funktionsfähig machen
 
-- [ ] Formular-Versanddienst und serverseitigen Endpoint anschließen. Empfänger
-  beider Formulare ist bereits bestätigt; nicht erneut erfragen.
+- [x] Website-Endpunkte, dauerhafte Annahme, strikte Validierung, signierte
+  SubKit-Übergabe und Schutz vor parallelem Mehrfachversand implementieren.
+  Lovable meldet 150 Tests, Build/Typprüfung und isolierten Migrations-Replay
+  bestanden; das ist noch kein Nachweis der produktiven Zustellung.
+- [ ] Vollständige inaktive Workflowfassung persönlich speichern, ihre beiden
+  Gmail-Effekte prüfen und persönlich freigeben. Gemeinsamen Signaturschlüssel
+  über den sicheren Lovable-Dialog provisionieren, erst danach Übergabe aktivieren.
 - [ ] Tatsächliche Zustellung, Fehlerfälle und Schutz vor Massenanfragen prüfen.
-  Keine Simulation als echten Zustellnachweis ausgeben. Reale Tests gesondert
-  abstimmen, bisher wurden keine E-Mails versendet.
+  Keine Simulation als echten Zustellnachweis ausgeben. Kontrollierte Tests an
+  das eigene bestätigte Postfach gehören zum Auftrag; bisher kein Versand.
 - [ ] Beta-Anfrage erklärt konkret, was nach Absenden passiert; keine erfundene
   Reaktionszeit, automatische Aufnahme oder Newsletter-Anmeldung.
 - [ ] Öffentlich freigegebenes Self-Hosting-Paket mit exakter Version,

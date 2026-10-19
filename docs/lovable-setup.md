@@ -56,10 +56,12 @@ Keine Playwright-Suite oder Screenshot-Testprogramme erstellen oder ausführen.
 ## Veröffentlichung und Backend-Grenze
 
 Noch offen: echte Formularzustellung, tatsächliches Hosting, finale Texte/Bilder,
-Rechts-/Sichtabnahme, öffentliche Downloads und Veröffentlichungsfreigabe.
+Rechts-/Sichtabnahme und öffentliche Downloads. Die Veröffentlichung auf der
+bestätigten Lovable-Subdomain ist im aktuellen Formularauftrag autorisiert;
+sie folgt nach kontrollierter Prüfung. Das öffnet keine Cloud-Registrierung.
 Vorhandene Betreiberangaben und serverseitiger Empfänger beweisen keinen Versand.
 Analytics ist optional und kein Startblocker; ohne freigegebene echte Konfiguration
-keine Aktivierung. DNS und Veröffentlichung benötigen eigene Freigaben.
+keine Aktivierung. Ein zusätzlicher DNS-Wechsel ist nicht Teil dieses Auftrags.
 
 Laut gelesenem RELEASE.md veröffentlicht Lovable das Projekt insgesamt; einzelne
 Clipper-Rechtsseiten wurden nicht separat veröffentlicht. Die unfertige Website
@@ -70,3 +72,32 @@ Lovable gestaltet und integriert die Oberfläche. Mandanten, Credentials, Budget
 Workflows und Freigaben bleiben in den zuständigen SubKit-Domänenoperationen.
 Keine zweite Produktdatenbank oder private Deploymentsteuerung im Websiteprojekt
 als Abkürzung einführen. Cloud-Anforderungen stehen im [Briefing](lovable-website-briefing.md).
+
+## Formularintegration: Übergabe und Nachweisgrenzen
+
+Der aktuelle Auftrag verbindet beide vorhandenen Anfrageformulare mit einem
+separaten signierten SubKit-Workflow. Je gültiger Anfrage sind eine feste interne
+Gmail-Benachrichtigung und eine lokalisierte Bestätigung an die Originaladresse
+vorgesehen. Die Bestätigung wiederholt keinen eingereichten Freitext und verspricht
+weder Zugang noch eine Antwortfrist. Das bestehende Design bleibt verbindlich.
+
+Die Website besitzt ausschließlich ihren eigenen Annahmespeicher. Reservierung,
+Inhaltsabgleich und Versandanspruch sind dauerhaft und atomar; unklare Übergaben
+werden nicht automatisch erneut versendet. Ein Annahmebeleg beweist die Aufnahme
+des Workflows, nicht die Zustellung beider Mails. Erst beide nichtleeren
+Gmail-Nachrichtenkennungen erlauben dem Workflow den Ergebnisstatus „sent“.
+
+Der öffentlich dokumentierte Standard-Webhooks-Vertrag und das echte
+Annahmeformat wurden gegen den ausgelieferten Dienst geprüft und im
+Websiteprojekt korrigiert. Konkrete Eingangsdaten und Identitäten bleiben in der
+externen Übergabe. Entwurfsänderungen über die öffentliche Draft-Patch-Funktion
+ersetzen keine persönliche Speicherung oder Versandfreigabe. Zugangsschlüssel
+werden im sicheren Lovable-Dialog persönlich eingegeben, niemals im Chat.
+
+Stand 19.10.2026: erste Version persönlich inaktiv gespeichert; vollständiger
+Sechs-Schritt-Entwurf mit 34 unabhängigen Offline-Prüfungen bestanden, persönliche
+Speicherung angefordert. Lovable meldet 150 Tests, Build/Typprüfung und isolierten
+Migrations-Replay bestanden. Die zusätzliche genaue Vorschau-Adresse nach
+Subdomainwechsel ist ergänzt; 62 fokussierte Prüfungen bestanden. Übergabe bleibt
+deaktiviert; reale Zustellprüfung und Veröffentlichung stehen aus. Fortsetzung ohne Neuanlage über
+die extern dokumentierten bestehenden Dialoge.
