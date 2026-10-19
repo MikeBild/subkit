@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { SandboxTimeoutError } from "../../sandboxes/index.ts";
 import {
   _resetCacheForTests,
   compile,
@@ -7,9 +8,11 @@ import {
   findUnboundFunctionCalls,
   flattenBindings,
   formatError,
+  isJSONataSandboxTimeout,
   JSONataError,
   parseDeps,
 } from "../jsonata-engine.ts";
+import { sensitiveFailure } from "../sensitive-payload.ts";
 
 afterEach(() => {
   _resetCacheForTests();
@@ -39,6 +42,29 @@ describe("compile cache", () => {
 });
 
 describe("structured errors", () => {
+  test("preserves a typed sandbox timeout without disclosing its contents in a sensitive result", () => {
+    const original = new SandboxTimeoutError("PRIVATE_TIMEOUT_CANARY");
+    const wrapped = formatError(original, "$input.PRIVATE_EXPRESSION_CANARY");
+    expect(wrapped.cause).toBe(original);
+    expect(isJSONataSandboxTimeout(wrapped)).toBe(true);
+    const result = sensitiveFailure(
+      isJSONataSandboxTimeout(wrapped) ? "timed_out" : "branch_error",
+    );
+    expect(result).toEqual({ code: "timed_out", message: "Sensitive execution failed." });
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_");
+  });
+
+  test("does not classify payload text or a forged timeout shape as a sandbox timeout", () => {
+    for (const original of [
+      new Error("sandbox worker exceeded wall-clock budget"),
+      { name: "SandboxTimeoutError", cause_kind: "timeout", message: "PRIVATE_TIMEOUT_CANARY" },
+    ]) {
+      const wrapped = formatError(original, "$input");
+      expect(isJSONataSandboxTimeout(wrapped)).toBe(false);
+      expect(sensitiveFailure("branch_error").code).toBe("sensitive_execution_failure");
+    }
+  });
+
   test("throws JSONataError with caret-pointed source on parse failure", () => {
     let caught: unknown;
     try {

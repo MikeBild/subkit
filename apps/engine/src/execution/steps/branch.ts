@@ -2,7 +2,7 @@ import { logger } from "../../logging/logger.ts";
 import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { BranchStep } from "../../workflows/types.ts";
 import { buildJsonataBindings, resolveScopeForJsonata } from "../jsonata-bindings.ts";
-import { evaluate as evaluateJsonata } from "../jsonata-engine.ts";
+import { evaluate as evaluateJsonata, isJSONataSandboxTimeout } from "../jsonata-engine.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
 
@@ -76,7 +76,10 @@ export async function runBranchStep(p: {
       status: "failed",
       retry_count: 0,
       duration_ms: Date.now() - start,
-      error: buildStepErrorDetail({ code: "branch_error", err }),
+      error: buildStepErrorDetail({
+        code: isJSONataSandboxTimeout(err) ? "timed_out" : "branch_error",
+        err,
+      }),
     };
   }
 }
