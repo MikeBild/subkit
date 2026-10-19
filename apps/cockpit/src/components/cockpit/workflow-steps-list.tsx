@@ -86,6 +86,7 @@ export function useWorkflowSteps({
 }) {
   const [results, setResults] = useState<Record<string, PreviewResult>>({});
   const [running, setRunning] = useState<string | null>(null);
+  useEffect(() => setResults({}), [versionId]);
   const lastExecution = useQuery({
     queryKey: ["workflow", workflowId, versionId, "last-execution"],
     queryFn: () =>
@@ -170,13 +171,13 @@ export function WorkflowTestRun({
   );
 }
 
-export function WorkflowTestResult({ steps, dirty }: { steps: WorkflowSteps; dirty: boolean }) {
+export function WorkflowTestResult({ steps, visible }: { steps: WorkflowSteps; visible: boolean }) {
   const whole = steps.results.__workflow;
   const { clear } = steps;
   useEffect(() => {
-    if (!dirty) clear("__workflow");
-  }, [dirty, clear]);
-  if (!whole || !dirty) return null;
+    if (!visible) clear("__workflow");
+  }, [visible, clear]);
+  if (!whole || !visible) return null;
   return <PreviewCard result={whole} total={steps.views.length} testId="workflow-test-result" />;
 }
 

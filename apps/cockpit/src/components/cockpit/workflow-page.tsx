@@ -416,16 +416,27 @@ export function WorkflowPage({
             <SummaryLine
               text={buildSummary}
               aside={
-                canWrite && !legacy && editor.steps.length > 0 ? (
-                  <ActionButton size="sm" onClick={() => setAdding(true)} testId="step-add">
-                    {t("stepEditor.addTitle")}
-                  </ActionButton>
-                ) : undefined
+                <span className="flex items-center gap-2">
+                  {canRun && previewDefinition && (build.saved || editor.dirty) ? (
+                    <WorkflowTestRun
+                      steps={steps}
+                      definition={workflowPreviewDefinition(
+                        previewDefinition,
+                        editor.steps as RecordValue[],
+                      )}
+                    />
+                  ) : null}
+                  {canWrite && !legacy && editor.steps.length > 0 ? (
+                    <ActionButton size="sm" onClick={() => setAdding(true)} testId="step-add">
+                      {t("stepEditor.addTitle")}
+                    </ActionButton>
+                  ) : null}
+                </span>
               }
               testId="workflow-build-summary"
             />
           ) : null}
-          <WorkflowTestResult steps={steps} dirty={editor.dirty} />
+          <WorkflowTestResult steps={steps} visible={build.saved || editor.dirty} />
           <WorkflowStepsList
             key={`${id}:${build.versionId ?? "none"}`}
             steps={steps}
@@ -446,24 +457,7 @@ export function WorkflowPage({
                 }
               : {})}
           />
-          {canWrite ? (
-            <StepSaveBar
-              workflowId={id}
-              record={record}
-              draft={editor}
-              preview={
-                canRun && previewDefinition && steps.views.length > 0 ? (
-                  <WorkflowTestRun
-                    steps={steps}
-                    definition={workflowPreviewDefinition(
-                      previewDefinition,
-                      editor.steps as RecordValue[],
-                    )}
-                  />
-                ) : undefined
-              }
-            />
-          ) : null}
+          {canWrite ? <StepSaveBar workflowId={id} record={record} draft={editor} /> : null}
           <div className="flex flex-col gap-2">
             <WorkflowVersions
               workflowId={id}
