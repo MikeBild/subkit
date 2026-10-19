@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 41
+version: 42
 ---
 
 # Authoring Workflows In A Conversation
@@ -1400,6 +1400,12 @@ evidence. Fresh inspection and successful schema validation allow saving only an
 inactive immutable draft under the normal save approval policy. This does not
 activate the workflow or grant runs; runtime verification remains outstanding
 and uses the permitted execution/result API separately.
+
+Separately managed signed bindings are independent of the workflow definition's
+request, schedule or webhook trigger. After activation, inspect the actual binding
+again before enabling a form. A missing binding stops commissioning. Recreate it
+through normal binding management and prepare a new reviewed version referencing
+the actual new ID; never fabricate the removed ID or bypass signature checks.
 
 A persistent per-workflow/request receipt reserves one dispatch attempt before
 network access. An uncertain result or crash after reservation must not be retried

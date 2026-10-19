@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, webhooksInbound } from "../../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
+import { applyTriggerBindings } from "../../../workflows/trigger-bindings.ts";
 import { bindFromWorkflow, unbindFromWorkflow } from "../service.ts";
 import { createInboundCtx, type InboundTestCtx } from "./setup.ts";
 
@@ -25,6 +26,125 @@ const triggerStripe = {
 };
 
 describe("inbound trigger bind/unbind helpers", () => {
+  test("request activation preserves separately managed signed bindings", async () => {
+    const binding = await ctx.createBinding({
+      slug: "signed-contact",
+      verifier: "standard",
+      secret: "controlled-test-signing-secret",
+      native_verifier_config: { events: ["contact.submitted"] },
+    });
+    const before = await ctx.db
+      .select()
+      .from(webhooksInbound)
+      .where(and(eq(webhooksInbound.tenant_id, ctx.tenantId), eq(webhooksInbound.id, binding.id)));
+    await applyTriggerBindings(
+      ctx.db,
+      ctx.tenantId,
+      ctx.workflowId,
+      "wf-test",
+      {
+        name: "Contact",
+        steps: [],
+        trigger: { kind: "request" },
+      },
+      null,
+    );
+    const after = await ctx.db
+      .select()
+      .from(webhooksInbound)
+      .where(and(eq(webhooksInbound.tenant_id, ctx.tenantId), eq(webhooksInbound.id, binding.id)));
+    expect(after).toEqual(before);
+    const audits = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.resource_id, binding.id),
+          eq(auditLog.action, "webhook.trigger.unbound"),
+        ),
+      );
+    expect(audits).toHaveLength(0);
+  });
+
+  test("trigger changes preserve independent bindings and remove only the managed trigger", async () => {
+    const independent = await ctx.createBinding({
+      slug: "wf-test",
+      verifier: "standard",
+      secret: "controlled-test-signing-secret",
+      native_verifier_config: { events: ["contact.submitted"] },
+    });
+    const managed = await bindFromWorkflow(
+      {
+        tenant_id: ctx.tenantId,
+        workflow_id: ctx.workflowId,
+        workflow_slug: "wf-test",
+        trigger: triggerStripe,
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    expect(managed.row.id).not.toBe(independent.id);
+    expect(
+      await unbindFromWorkflow(deterministicUuid(), ctx.workflowId, null, ctx.db, "trigger"),
+    ).toBe(0);
+    await applyTriggerBindings(
+      ctx.db,
+      ctx.tenantId,
+      ctx.workflowId,
+      "wf-test",
+      {
+        name: "Contact",
+        steps: [],
+        trigger: { kind: "request" },
+      },
+      null,
+    );
+    const remaining = await ctx.db
+      .select()
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, ctx.tenantId),
+          eq(webhooksInbound.workflow_id, ctx.workflowId),
+        ),
+      );
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]).toMatchObject({
+      id: independent.id,
+      origin: "crud",
+      verifier: "standard",
+    });
+    expect(remaining[0]?.native_verifier_config).toEqual({ events: ["contact.submitted"] });
+    expect(await unbindFromWorkflow(ctx.tenantId, ctx.workflowId, null, ctx.db)).toBe(1);
+  });
+
+  test("schedule activation preserves separately managed signed bindings", async () => {
+    const binding = await ctx.createBinding({
+      slug: "scheduled-contact",
+      verifier: "standard",
+      secret: "controlled-test-signing-secret",
+    });
+    await applyTriggerBindings(
+      ctx.db,
+      ctx.tenantId,
+      ctx.workflowId,
+      "wf-test",
+      {
+        name: "Contact",
+        steps: [],
+        trigger: { kind: "schedule", cron: "0 9 * * *", tz: "Europe/Berlin" },
+      },
+      null,
+    );
+    const rows = await ctx.db
+      .select()
+      .from(webhooksInbound)
+      .where(and(eq(webhooksInbound.tenant_id, ctx.tenantId), eq(webhooksInbound.id, binding.id)));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ origin: "crud", verifier: "standard" });
+  });
+
   test("trigger audit preserves explicit actor types and leaves background actor empty", async () => {
     const userId = deterministicUuid();
     const accountId = deterministicUuid();
