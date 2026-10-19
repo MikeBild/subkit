@@ -2,7 +2,11 @@
 
 [LAUNCH.md](LAUNCH.md) enthält den freigegebenen Plan, [LAUNCH_STATUS.md](LAUNCH_STATUS.md)
 den belegten Fortschritt. [AGENTS.md](AGENTS.md) und nähere Guides bleiben maßgeblich.
-Diese Dateien sind die gemeinsame Informationsbasis, keine neue Synchronisationsplattform.
+Diese Dateien bleiben die Informationsbasis für die bestehenden L-Aufgaben.
+Cloud-Zielbild und zusätzliche Produktaufgaben führen
+[docs/PRODUCT-ROADMAP.md](docs/PRODUCT-ROADMAP.md) und [docs/TODO.md](docs/TODO.md).
+Website-Arbeit bleibt in WEBSITE-TODO.md, ihr Briefing und Setup unter docs/.
+Dies ist keine neue Synchronisationsplattform.
 
 ## Rollen und Quellen
 
@@ -22,7 +26,7 @@ nach einem freigegebenen Push sichtbar. Keine unbelegte automatische Synchronisi
 
 ### Drei Wege der Kontextübergabe
 
-1. **Repository, bevorzugt:** dauerhafte Entscheidungen und Status einmal in den drei Dateien pflegen.
+1. **Repository, bevorzugt:** dauerhafte Entscheidungen und Status einmal in der jeweils zuständigen Datei pflegen.
 2. **Manuell:** neue ChatGPT-Entscheidungen als Prompt/Markdown an Codex übergeben und nach
    Abgleich übernehmen. Chatlinks nur verwenden, wenn tatsächlich zugänglich; vertrauliche
    Inhalte nicht ungeprüft über öffentliche Links teilen.
@@ -59,7 +63,7 @@ Datei nennt den geprüften Produktcommit; der lesende Client protokolliert den g
 Gültige Ergebnisse wiederverwenden. Bei Source-/Runtimeänderung Geltungsbereich neu prüfen;
 alte Ergebnisse nicht löschen oder als frisch ausgeben. Neue Nutzerentscheidungen mit Datum,
 Umfang und betroffenen Tasks dokumentieren. LAUNCH.md enthält Plan/DoD, LAUNCH_STATUS.md als
-einzige Stelle die aktuellen Aufgabenstatus; nicht zwei vollständige Statuslisten pflegen.
+einzige Stelle die aktuellen L-Aufgabenstatus; Cloud-C-Aufgabenstatus in docs/TODO.md; nicht zwei vollständige Statuslisten pflegen.
 
 Keine Secrets, Produktionshosts, privaten Deploymentkennungen oder personenbezogenen
 Entwurfsangaben speichern. Berichte enthalten nur notwendige bereinigte Daten.

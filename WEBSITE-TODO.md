@@ -2,11 +2,11 @@
 
 ## Einstieg für die nächste Session
 
-Diese Datei vor weiterer Website-Arbeit lesen. Sie hält Nutzerentscheidungen,
-Umsetzungsstand und offene Aufgaben fest; sie ist keine Release-Freigabe.
+Diese Datei vor weiterer Website-Arbeit lesen. Sie verlinkt Nutzerentscheidungen
+und hält Umsetzungsstand und offene Website-Aufgaben fest; sie ist keine Release-Freigabe.
 Zusätzlich AGENTS.md, LAUNCH.md, LAUNCH_STATUS.md und LAUNCH_SYNC.md beachten.
-Ältere Framer-Aufträge und widersprechende Schreibregeln sind durch die hier
-festgehaltenen Entscheidungen ersetzt.
+Ältere Framer-Aufträge und widersprechende Schreibregeln sind durch das
+verlinkte aktuelle Briefing ersetzt.
 
 Die Website liegt in Mike’s Lovable. Ausschließlich die offizielle
 Lovable-Integration für Designänderungen verwenden. Aktuellen Projektstand und
@@ -19,96 +19,18 @@ Diese Angaben nicht erneut vom Nutzer erfragen.
 Die Website ist unveröffentlicht. Weder vollständige Releasefähigkeit noch
 tatsächliche Formularzustellung oder öffentliche Installierbarkeit behaupten.
 
-## Verbindliche Entscheidungen
+## Maßgebliche Quellen
 
-### Produkt und Sprache
+- [Produkt-/Website-Briefing](docs/lovable-website-briefing.md): verbindliche Texte,
+  verworfene Formulierungen, Design, Sprachen, Theme und Analytics.
+- [Lovable-Setup](docs/lovable-setup.md): Projektzugang, aktueller MCP-Abgleich und
+  Prüfgrenzen; konkrete private Angaben verbleiben in der externen Übergabe.
+- [Produktroadmap](docs/PRODUCT-ROADMAP.md) und [Produktaufgaben](docs/TODO.md):
+  Cloud-Zielbild und technische Voraussetzungen. Diese Datei führt ausschließlich
+  Website-Aufgaben; Launch-Aufgabenstatus bleiben in LAUNCH_STATUS.md.
 
-- Ein KI-Assistent hilft im Gespräch und in natürlicher Sprache, Workflows und
-  Konnektoren zu erstellen. Nutzer müssen sich dafür nicht selbst durch die
-  API-Dokumentationen der angebundenen Systeme arbeiten.
-- Nach Prüfung und Freigabe führt SubKit die festgelegten Schritte wiederholbar
-  aus und protokolliert jeden Lauf. Wiederholbarkeit betrifft den Prozess;
-  wechselnde Daten und ausdrücklich vorgesehene KI-Schritte können andere
-  Ergebnisse liefern. Keine pauschale Garantie identischer Ergebnisse.
-- Keine erneute KI-Planung bei jedem Lauf. Zusätzliche Modellkosten entstehen,
-  wenn der Workflow selbst KI nutzt. Infrastruktur und externe Dienste können
-  eigene Kosten verursachen; nicht pauschal kostenlosen Betrieb versprechen.
-- Konnektoren werden mit festgelegten Berechtigungen wiederverwendet.
-  Fachliche Skills sind keine technisch erzwungenen Zugriffsrechte.
-- Zielgruppe: Solounternehmer und kleine professionelle Teams, einschließlich
-  spezialisierter Abteilungen größerer Unternehmen. Gemeinsames Wissen,
-  wiederverwendbare Regeln und gemeinsam nutzbare Workflows sind Kernnutzen.
-- Kurze, konkrete, praxisnahe Texte. Nutzen anhand echter Tätigkeiten erklären,
-  Interesse am Ausprobieren wecken. Keine Textwände, Angstrhetorik, Belehrungen
-  oder pauschale Abwertung anderer Werkzeuge.
-- Keine fremde Firma, fremden Kundenreferenzen, Zertifikate, Partnerlogos,
-  Erfolgszahlen oder ERP-Migrationsversprechen aus den Textbeispielen übernehmen.
-  Insbesondere keine Zuordnung zu index commerce GmbH.
-- Das alte zentrale Briefing enthält noch widersprechende Aussagen. Aktuelle
-  Nutzerentscheidungen haben Vorrang; zentrale Schreibregeln separat korrigieren.
-
-### Verworfene Formulierungen
-
-Nicht wiederverwenden:
-
-- „Dein/Der Assistent probiert. SubKit betreibt.“
-- „Jede Organisation hat Arbeit, die jedes Mal gleich abläuft.“
-- „Du beschreibst, was passieren soll. In normalen Sätzen.“
-- „Ein Werkzeug, das in deine echten Systeme greift, ist kein Spielzeug.“
-- „Die KI hilft beim Bauen. Beim Ausführen gilt der freigegebene Ablauf.“
-- „Aus einer Aufgabe wird ein Ablauf.“
-
-Aktuell verwendete Erklärungen:
-
-- „Aus deiner Aufgabe wird ein wiederholbarer Workflow. Jeder Lauf folgt den
-  festgelegten Schritten und wird protokolliert.“
-- „Mit dem KI-Assistenten erstellst du deinen Workflow im Gespräch. Nach deiner
-  Prüfung und Freigabe führt SubKit die festgelegten Schritte bei jedem Lauf aus.“
-- „Du bestimmst, was dein Workflow darf.“ Berechtigungen und Protokollierung
-  konkret erklären, statt Vertrauen durch Warnungen zu untergraben.
-
-### Design und Umfang
-
-- Bestehende, vom Nutzer bevorzugte Hero-Gestaltung erhalten:
-  „ENTWERFEN. PRÜFEN. FREIGEBEN. LÄUFT.“ plus konkrete wechselnde Aufgaben.
-  Eine zwischenzeitliche umfassende Umgestaltung wurde auf Wunsch zurückgesetzt.
-- TE-Kit als gestalterische Referenz, eigenständige SubKit-Interpretation,
-  ausdrücklich keine 1:1-Kopie. Maßgeblich ist der aktuelle Lovable-Entwurf.
-- Scharfkantige Formensprache, keine runden Pills, keine verspielten Schatten.
-  Barlow Condensed für prägende Überschriften, Share Tech Mono sparsam für Labels,
-  gut lesbarer Fließtext. Blau als Akzent, kein Grün.
-- Acht Seiten: Start, Anwendungsfälle, Loslegen, Vergleiche, Beta-Anfrage,
-  Kontakt, Impressum, Datenschutz; zusätzlich passende Fehler-/404-Zustände.
-- Beide primären Einstiege: „Beta-Einladung anfragen“ und „Self-Hosting starten“.
-  Einladung bedeutet Anfrage, kein versprochener sofortiger Zugang.
-- Keine erneute Komplettgestaltung. Weitere Maßnahmen als gezielte Änderungen
-  im vorhandenen Layout durch Lovable ausführen.
-
-### Sprache, Theme, Analytics und Social
-
-- Vollständiges Deutsch und Englisch einschließlich Formulare, Fehler,
-  Installationsassistent, Datenschutzdialoge und Metadaten.
-- KEINE manuellen Sprach- oder Theme-Schalter, KEINE gespeicherten Overrides.
-- Theme ausschließlich aus prefers-color-scheme, inklusive Live-Systemwechsel.
-- Sprache aus priorisierten Browserpräferenzen/Accept-Language. Erste unterstützte
-  Sprache Deutsch oder Englisch, sonst Englisch. Keine IP-basierte Erkennung.
-- Umgesetzt: unpräfixierte Einstiegsadressen verhandeln per temporärer Weiterleitung
-  die Sprache; explizite /de- und /en-Adressen bleiben in ihrer Sprache.
-  Keine Redirect-Schleifen, korrekte Cache-/Vary-Regeln, Anker erhalten.
-- Cookie-Einwilligung bleibt manuell: gleichwertiges Akzeptieren/Ablehnen,
-  Einstellungen und jederzeitiger Widerruf im Footer. Ohne verfügbare Analytics
-  keinen unnötigen Pflichtbanner anzeigen; Einstellungen bleiben erreichbar.
-- GA4 vorbereitet, Kennung liefert Nutzer später. Ohne Kennung, in der Vorschau
-  und vor Einwilligung keine Google-Scripts, Pings oder Messungen.
-- Basic Consent Mode, keine Werbefunktionen, keine Formularinhalte, E-Mails,
-  Namen, Tokens, vertraulichen Referrer oder vollständigen Querystrings senden.
-  Formularerfolg erst nach tatsächlicher Serverannahme messen. Self-Hosting-Klick
-  nicht als erfolgreiche Installation erfassen.
-- Statische Social-Linkvorschauen auf Deutsch/Englisch in 1200 × 630 sowie
-  Open-Graph-/Twitter-Metadaten, Canonical, hreflang und vorbereitete Sitemap.
-  Keine Social-Profile, Beiträge oder fremden Tracking-Pixel beauftragt/angelegt.
-- Vorschau bleibt noindex/disallow. Veröffentlichung, DNS-Änderungen und
-  Aktivierung der Produktionskonfiguration benötigen separate Freigabe.
+Die Cloud-Beta ist geplant, noch nicht offen. Bestehende Anfrage- und
+Self-Hosting-Einstiege erst nach nachgewiesener Cloud-Öffnung ändern.
 
 ## Umgesetzt und überprüft
 
@@ -195,6 +117,18 @@ starten; manuelle Sichtabnahme bleibt beim Nutzer. Safari/Firefox und tatsächli
 - [ ] Website-Publikation und Produkt-/Beta-Go getrennt behandeln. Öffentliche
   Pakete, Repository-Öffnung oder Engine-Deployment sind nicht durch Website-Arbeit
   automatisch autorisiert.
+
+### 4. Cloud-Einstieg vorbereiten
+
+- [ ] Neue Cloud-Zustände nach dem [Briefing](docs/lovable-website-briefing.md)
+  gezielt durch Lovable entwerfen lassen; bestehenden Hero und Design erhalten.
+- [ ] Self-Hosting und geplante kostenlose begrenzte Cloud-Beta in DE/EN klar
+  unterscheiden; sofortigen Zugang erst nach dem Cloud-Go anbieten.
+- [ ] Website- und Clipper-Datenschutz anhand der tatsächlichen Cloud-Datenflüsse
+  ergänzen; Rechtsprüfung mit C08 in docs/TODO.md abstimmen.
+- [ ] Historische Browser-Skripte in Lovable VERIFICATION.md vor weiterer Nutzung
+  gegen die heutige browser-use-Regel prüfen und Übergabe korrigieren; keine
+  Playwright-/Screenshot-Testprogramme wiederherstellen oder ausführen.
 
 ## Arbeitsstand der Übergabe
 

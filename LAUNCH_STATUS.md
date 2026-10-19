@@ -1,7 +1,51 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E231.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E232.
+
+## Cloud-Dokumentation und Quellenabgleich
+
+Aktuelle Dokumentfortschreibung vom **19.10.2026**, **LOCAL_ONLY**. Neuer Auftrag:
+zusätzliche kostenlose begrenzte Cloud-Self-Service-Beta planen, Dokumentation
+konsolidieren und per passenden MCPs gegenprüfen. [Roadmap](docs/PRODUCT-ROADMAP.md)
+führt Zielbild und Quellen; [Produktaufgaben](docs/TODO.md) führt C01–C09.
+Bestehende L-Status und E01–E231 bleiben historische Nachweise mit ihrem Geltungsbereich.
+
+- Main vor Bearbeitung sauber; `git pull --ff-only origin main` erfolgreich,
+  Basis b5d8c6a5e. Checkoutversion **10.1.1**, lokale Engine /health **9.15.2**.
+  Keine Änderung oder Abnahme der lokalen Installation und kein Cloud-Runtime-Nachweis.
+- Offizieller Lovable-MCP erneut lesend: bestehendes Projekt bereit/unveröffentlicht,
+  gleicher Commit wie beim Planungsabgleich der Projektdateien. Damit ist der
+  historische Blocker „Lovable-Verbindung fehlt“ für diese Session aufgehoben;
+  Rechts-/Sichtabnahme, Mailzustellung und öffentliches Hosting bleiben offen.
+- SubKit-Domänensuche liefert bisherige Positionierung, keinen belastbaren SaaS-
+  Betriebsplan. BrowserStack-Werkzeuge nicht verfügbar; Plugin-Suche im
+  Planungsabgleich ohne Treffer. Kein BrowserStack-Konto, Tarif oder Lauf verifiziert.
+- Roadmap, vollständige bisherige Root-TODO, BrowserStack-Strategie und Lovable-
+  Briefing/Setup konsolidiert; README/AGENTS/Launch-Quellen zugeordnet. Die frühere
+  SaaS-Ausschlussentscheidung ist abgelöst, Self-Hosting-Launchtermine bleiben getrennt.
+- E232: 90 lokale Markdown-Verweise einschließlich Ankern in 13 Dokumenten geprüft;
+  `git diff --check` bestanden. `bun run gen:llms-txt` erfolgreich; erneute Generierung
+  über beide Assets byte-identisch, aktueller README-Inhalt eingebettet.
+- `bun test packages/shared/src/tests/llms-index.test.ts apps/engine/src/http/routes/llms-txt.test.ts`:
+  **9 PASS, 0 FAIL, 26 Assertions**. `bun run lint`: Exit 0, 4.467 Dateien,
+  58 bestehende Warnungen und 17 Hinweise in unverändertem Code; keine Fixes angewandt.
+- Toolchain dieser gezielten Prüfungen: Bun **1.3.13**, abweichend von .bun-version
+  **1.4.0**. Kein Release-Nachweis. Vollständiges verify, Build, lokale Demo-/Browser-
+  und Cloud-Live-Gates wegen reinem Dokumentationsumfang nicht ausgeführt. Das normale
+  Git-basierte Driftgate vergleicht gegen HEAD; für die noch uncommitteten beabsichtigten
+  Assetänderungen stattdessen identische Wiederholung des Generators geprüft.
+  Kein Release, kein Deploy oder Publishing.
+
+Nächste Schritte: offene Entscheidungen der Roadmap festlegen, danach C01–C03
+als fokussierte technische Inkremente beauftragen; C04–C09 vor Registrierungseröffnung
+abschließen. Website-Änderungen erst anhand konkreter Lovable-Zustände umsetzen.
+
+## Historischer Self-Hosting-Launch-Snapshot vom 18.10.2026
+
+Die folgenden Versions-/Countdown-/Gate- und Verbindungsaussagen gelten für den
+jeweils dokumentierten damaligen Stand. Sie wurden in diesem Dokumentationsauftrag
+nicht vollständig neu verifiziert und sind kein aktueller Cloud-Nachweis.
 
 - Letztes Update: **2026-10-18T18:24:54.713651+00:00**; Planung in Europe/Berlin.
 - Zuletzt bestätigter gemeinsamer Stand: **0a2b4312a**, `main`, Version **10.0.1** vorbereitet.
@@ -61,7 +105,7 @@ Docker-Vollstarts, fremden Demoänderungen oder Veröffentlichungen.
 
 ## Aufgaben
 
-Nur diese Tabelle führt den aktuellen Aufgabenstatus. Rollen, Fristen und DoD: LAUNCH.md.
+Nur diese Tabelle führt die L-Aufgabenstatus; der Snapshotstand ist oben datiert. Rollen, Fristen und DoD: LAUNCH.md.
 DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiederverwenden.
 
 | ID | Status | Belegter Fortschritt und verbleibendes Ergebnis |
@@ -134,7 +178,8 @@ Bei Bedarf gezielt laden oder neuen Kandidaten bauen. Keine fremden Ressourcen b
 
 ## Produkt-, Test- und Nutzerentscheidungen
 
-- Launch vor neuen Features; kostenloses Self-Hosting; Website ausschließlich in
+- Self-Hosting-Launch vor neuen Features in seinem Scope; zusätzliche Cloud-Planung
+  nach docs/PRODUCT-ROADMAP.md. Kostenloses Self-Hosting; Website ausschließlich in
   Lovable, vollständig DE/EN. Bestätigte Betreiber-/Kontakt-/Domainangaben nicht erneut erfragen.
   Der Nutzer stellt täglich 1–2 Stunden für Entscheidungen und Abnahmen bereit.
 - Autonome Launch-Umsetzung und Commit/Push mit normalen Hooks sind freigegeben.

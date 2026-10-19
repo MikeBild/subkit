@@ -2,6 +2,22 @@
 
 Canonical repo-wide instructions for the SubKit engine and CLI. Closer AGENTS.md files override this guide.
 
+## Product planning and documentation ownership
+
+- Read [docs/PRODUCT-ROADMAP.md](docs/PRODUCT-ROADMAP.md) for the accepted hosted
+  self-service direction, assumptions, opening criteria and source boundaries.
+- [docs/TODO.md](docs/TODO.md) owns hosted-product tasks; root TODO.md is a pointer.
+  LAUNCH_STATUS.md owns existing L-task status; WEBSITE-TODO.md owns website tasks.
+  Do not duplicate these status lists or transfer self-hosting dates to cloud.
+- [docs/lovable-website-briefing.md](docs/lovable-website-briefing.md) owns current
+  product/design copy; [docs/lovable-setup.md](docs/lovable-setup.md) owns access and
+  handoff. Keep concrete private project/deployment metadata outside the repository.
+- [docs/browserstack.md](docs/browserstack.md) and its linked test strategy describe
+  planned supplementary cloud-browser checks, not an installed or verified service.
+  Existing browser-use and manual visual-acceptance rules remain binding.
+- Planning documents under docs/ are intentionally hand-maintained. API, CLI,
+  settings and llms technical references remain generated from code and README.
+
 ## Design ownership: Lovable
 
 - For public website work, read [WEBSITE-TODO.md](WEBSITE-TODO.md) first for
@@ -27,8 +43,8 @@ Canonical repo-wide instructions for the SubKit engine and CLI. Closer AGENTS.md
   database objects, files, queues, or runtime internals.
 - Keep migrations, `llms*.txt`, OpenAPI, and comparable self-description assets
   embedded in every shipped binary/image and covered by drift tests. `llms*.txt`
-  is generated from code and README.md (`bun run gen:llms-txt`); there is no
-  hand-written documentation tree.
+  is generated from code and README.md (`bun run gen:llms-txt`). Hand-written
+  docs/ files cover product planning and handoff, not duplicate technical references.
 - Do not record concrete production hosts, credentials, deployment identifiers,
   or private infrastructure anywhere in the repository. Examples use placeholders.
 - Preserve human approval semantics and deterministic execution. A person
