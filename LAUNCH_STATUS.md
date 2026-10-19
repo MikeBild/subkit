@@ -1,17 +1,31 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E292.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E296.
 
 ## Aktueller Checkout-Abgleich
 
-Integrierter Hosted-Stand `175901a0f` normal gepusht; Checkoutversion **10.1.3**.
-Bestehende lokale Engine auf Loopback antwortet separat **9.11.2**, HTTP 200;
-sie wurde nicht ersetzt. Lokaler Hosted-Arbeitsstand gesichert und wiederhergestellt;
-Migrationskonflikt gelöst: veröffentlichte Historie unverändert, 49 fokussierte
-Tests PASS (E262). Native Engine/CLI gebaut, native Prozessabnahme zwei PASS/27 Assertions (E272); Typecheck und 22 Invarianten PASS. Vollständiger Gesamtgate und weitere Scheduler-Grenzen offen.
-Alle acht Pre-Push-Gates bestanden für den gepushten Stand (E276). Neuer lokaler nativer Lifecycle-Zwischenstand zwei PASS/31 Assertions (E288); Container-URI-Korrektur acht PASS/24 Assertions (E289). Vier aktuelle PostgreSQL-Dateien 30 PASS/140 Assertions (E290); abschließender Engine-/Cockpit-Typecheck Exit 0. Begrenzte Scheduler- und Datei-Referenzarbeit lokal implementiert;
-kein Release, Deploy oder Signup-Go aus dieser Integration.
+Hosted-Korrekturen `ef1cfca6b` normal gepusht; Checkoutversion **10.1.4**.
+Alle acht Pre-Push-Gates bestanden. Nachfolgende generierte Clipper-Artefakte
+separat korrigiert; keine weitere Laufzeitlogikänderung. Die bestehende lokale
+Demo wurde nicht ersetzt.
+
+Cloud-Image aus exaktem Git-Archiv gebaut, veröffentlichter Digest und Linux/AMD64
+geprüft, Import in die bestehende Image-Reihe **ready/ready**. Die vorherige App
+scheiterte an einer inzwischen korrigierten Regression des verwalteten TLS-Vertrags
+und wurde kontrolliert gestoppt. Neue Revision noch nicht gestartet: Die Plattform
+verlangt geschützte Secret-Eingabe; die Steuerverbindung zum vorhandenen Browser-Tab
+antwortet nicht. Der Dialog ist inzwischen geschlossen, manuelles Neuladen angefragt. Kein gesunder Cloudstart,
+angewandte Betreiberpolicy oder echtes Cloud-Browser-E2E behauptet.
+
+Die technische Verifikation ist segmentiert vollständig abgedeckt: 2.168 Dateien,
+20.448 PASS/0 ungelöste FAIL/38 SKIP/5 TODO; Eval 40/40 und kompilierte
+Clipper-Parität PASS. Abschließende HTTP-/CLI-E2Es: 42 Dateien, 257 PASS/0 FAIL/
+20 SKIP/3 TODO. E296 benennt gültige Teilnachweise, Korrekturen und vollständigen
+Dateiabgleich; kein frischer einzelner Vollkommando-PASS wird behauptet.
+Cloudstart und echte Cloud-Abnahme bleiben offen. E289 ist hinsichtlich
+verwalteter Upraft-Kompatibilität abgelöst. Operativer Cloud-Aufgabenstand:
+[docs/TODO.md](docs/TODO.md#aktueller-implementierungsstand-und-nachweise).
 
 ## Historischer Release- und Planungsstand
 
