@@ -319,6 +319,7 @@ export async function bindFromWorkflow(
         and(
           eq(webhooksInbound.tenant_id, input.tenant_id),
           eq(webhooksInbound.workflow_id, input.workflow_id),
+          eq(webhooksInbound.origin, "trigger"),
         ),
       )
       .limit(1);
@@ -467,13 +468,18 @@ export async function unbindFromWorkflow(
   workflow_id: string,
   actor_input: string | Actor | { actor_id: string | null; actor_type?: AuditActorType } | null,
   exec?: Executor,
+  origin?: InboundOrigin,
 ): Promise<number> {
   const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     const rows = await tx
       .delete(webhooksInbound)
       .where(
-        and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.workflow_id, workflow_id)),
+        and(
+          eq(webhooksInbound.tenant_id, tenant_id),
+          eq(webhooksInbound.workflow_id, workflow_id),
+          origin === undefined ? undefined : eq(webhooksInbound.origin, origin),
+        ),
       )
       .returning({ id: webhooksInbound.id, slug: webhooksInbound.slug });
     for (const row of rows) {

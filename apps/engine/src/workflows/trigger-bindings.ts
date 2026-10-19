@@ -56,6 +56,7 @@ export async function applyTriggerBindings(
       workflow_id,
       { actor_id, ...(actor_type !== undefined ? { actor_type } : {}) },
       exec,
+      "trigger",
     );
     return;
   }
@@ -64,6 +65,7 @@ export async function applyTriggerBindings(
     workflow_id,
     { actor_id, ...(actor_type !== undefined ? { actor_type } : {}) },
     exec,
+    "trigger",
   );
   await scheduleRepo.unbindFromWorkflow(exec, tenant_id, workflow_id, actor_id, actor_type);
   const [row] = await exec

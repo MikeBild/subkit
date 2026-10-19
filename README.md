@@ -57,6 +57,16 @@ value. The ceiling measures serialized UTF-8 Gmail JSON, including base64 overhe
    review. Confirm behavior with a controlled recipient, then connect the public
    form and verify the same request twice produces one message.
 
+Separately managed inbound bindings remain independent of the definition's
+trigger. Request or schedule activation removes only reverse-bound webhook
+triggers; webhook activation updates only its own reverse-bound binding. It
+never rewrites or removes CRUD bindings, their signing secrets or event filters.
+Archiving or deleting a workflow still removes all its inbound bindings. After
+activation, verify that the reviewed signed source is still present before
+enabling a public form. A removed source requires a new binding and a normally
+reviewed workflow version referencing its actual ID; never reuse a stale ID or
+weaken signature verification.
+
 At dispatch the engine rechecks authority, source provenance, active binding,
 original input identity, actual MIME recipient/sender/type and request size. A
 payload field pretending to be provenance is ignored. On-demand calls, child

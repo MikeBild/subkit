@@ -94,10 +94,26 @@ externen Übergabe. Entwurfsänderungen über die öffentliche Draft-Patch-Funkt
 ersetzen keine persönliche Speicherung oder Versandfreigabe. Zugangsschlüssel
 werden im sicheren Lovable-Dialog persönlich eingegeben, niemals im Chat.
 
-Stand 19.10.2026: erste Version persönlich inaktiv gespeichert; vollständiger
-Sechs-Schritt-Entwurf mit 34 unabhängigen Offline-Prüfungen bestanden, persönliche
-Speicherung angefordert. Lovable meldet 150 Tests, Build/Typprüfung und isolierten
-Migrations-Replay bestanden. Die zusätzliche genaue Vorschau-Adresse nach
-Subdomainwechsel ist ergänzt; 62 fokussierte Prüfungen bestanden. Übergabe bleibt
-deaktiviert; reale Zustellprüfung und Veröffentlichung stehen aus. Fortsetzung ohne Neuanlage über
-die extern dokumentierten bestehenden Dialoge.
+Stand 19.10.2026: vollständige zweite Version persönlich gespeichert und die
+Freigabe für Produktion/30 Tage bestätigt. Die Version wurde aktiv, die
+abschließende Effektfreigabe scheiterte jedoch am entfernten Eingang.
+Beide Konfigurationseinträge sind in Lovable
+vorhanden, ohne Schlüsselauslesung. 34 unabhängige Offline-Prüfungen bestanden.
+Lovable meldet 150 Tests, Build/Typprüfung und isolierten Migrations-Replay sowie
+62 fokussierte Prüfungen zur zusätzlichen genauen Vorschau-Adresse bestanden.
+
+Die Kontrolle nach Aktivierung zeigte einen entfernten signierten Eingang.
+Ursache: Die bisherige Engine-Reconciliation löschte bei Anfrage-Auslösern auch
+separat verwaltete CRUD-Eingänge. Die allgemeine Korrektur trennt deren Herkunft
+von umgekehrten Workflow-Bindungen; auch ein Webhook-Auslöser darf unabhängige
+Eingänge nicht umschreiben. Vollständiges Archivieren/Löschen entfernt weiterhin
+alle Eingänge des Workflows. Regressionstests prüfen Anfrage-/Zeitplanwechsel,
+unveränderte Signaturkonfiguration und Mandantentrennung. Die Korrektur ist noch
+nicht als ausgeliefert nachgewiesen. Kein Engine-Deployment durch Website-Arbeit.
+
+Übergabe bleibt deaktiviert; reale Zustellprüfung und Veröffentlichung stehen
+aus. Nach korrigiertem Release den entfernten Eingang über öffentliche Verwaltung
+neu anlegen und die tatsächliche neue Kennung in einer normal gespeicherten und
+persönlich geprüften Workflowfassung verwenden. Danach erneut den Eingang prüfen;
+keine Wiederverwendung der entfernten Kennung oder unsignierte Ausnahme. Bestehende
+Website und Unterhaltung anhand der externen Übergabe fortsetzen, nicht duplizieren.

@@ -4,7 +4,7 @@ name: sk Platform Reference — Webhooks & Triggers
 description: How sk receives inbound webhooks (public signed ingress, replay dedup, CRUD bindings) and how workflow triggers (request | webhook | schedule) start executions.
 tags: [sk-platform-reference, webhooks, triggers, schedule, cron, inbound, signature-verification]
 scope: global
-version: 2
+version: 3
 ---
 
 # Webhooks & Triggers — overview
@@ -19,7 +19,20 @@ Two surfaces exist for inbound webhooks:
 - Public, unauthenticated ingestion: `POST /v1/hooks/:slug` — the signature IS the gate, no bearer token.
 - Authenticated CRUD over slug→workflow bindings: `POST | GET | DELETE /v1/webhooks/inbound` — RBAC-gated.
 
-A workflow with a `webhook` or `schedule` trigger is "reverse-bound": saving it upserts the matching `webhooks_inbound` / `workflows_schedules` row keyed on `(tenant_id, workflow_id)`; deleting or version-rotating it removes the row and emits a `*.trigger.unbound` audit entry.
+A workflow with a `webhook` or `schedule` trigger is "reverse-bound": activating
+the definition reconciles its matching trigger binding. An inactive save does not
+activate triggers. Webhook reconciliation selects only `origin: trigger` rows;
+request and schedule activation remove only those reverse-bound inbound rows.
+Separately managed `origin: crud` bindings retain their identity, verifier, event
+filter, encrypted signing secret and active state through definition changes.
+Archiving or deleting the workflow removes all its inbound bindings and records
+the corresponding unbind audit entries.
+
+Always inspect a transactional workflow's actual signed binding after activation
+and before enabling its sender. If the binding disappeared, stop commissioning.
+Recovery uses ordinary binding creation and a new normally reviewed workflow
+version referencing its actual new ID. Never invent an old ID, bypass signature
+verification or treat an existing execution authority as approval of a new source.
 
 # Public inbound ingestion — POST /v1/hooks/:slug
 

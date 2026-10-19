@@ -23,10 +23,17 @@ Aktueller Formularauftrag (19.10.2026): Veröffentlichung auf der bestätigten
 Lovable-Subdomain ist nach kontrollierter Prüfung beauftragt. Kontakt- und
 Beta-Anfrage sollen jeweils eine Betreiberbenachrichtigung und eine lokalisierte
 Eingangsbestätigung über den bestehenden Gmail-Konnektor erhalten. Die erste
-Workflowfassung ist persönlich inaktiv gespeichert; die vollständige Fassung
-mit beiden Versandpfaden hat 34 unabhängige Offline-Prüfungen bestanden und
-wartet auf persönliche Speicherung. Noch keine Aktivierung, echte Testmail oder
-Veröffentlichung. Aktuelle Dialoge und private Zugangsdaten siehe externe Übergabe.
+Workflowfassung und anschließend die vollständige Fassung wurden persönlich
+gespeichert. Die vollständige Fassung hat 34 unabhängige Offline-Prüfungen
+bestanden. Die persönliche Freigabe für Produktion und 30 Tage wurde bestätigt;
+die Version ist aktiv, die abschließende Effektfreigabe wurde jedoch wegen des
+entfernten Eingangs nicht erfolgreich abgeschlossen. Beide
+Lovable-Konfigurationseinträge sind vorhanden. Die Kontrolle nach Aktivierung
+hat jedoch einen Engine-Fehler nachgewiesen: Der separat verwaltete signierte
+Eingang wurde entfernt. Versand bleibt deaktiviert, keine echte Testmail oder
+Veröffentlichung. Die allgemeine Korrektur und Regressionstests liegen im
+Repository; vollständige Prüfung und produktiver Release stehen noch aus.
+Aktuelle Dialoge, Laufzeitstand und private Zugangsdaten siehe externe Übergabe.
 
 ## Maßgebliche Quellen
 
@@ -100,9 +107,14 @@ starten; manuelle Sichtabnahme bleibt beim Nutzer. Safari/Firefox und tatsächli
   SubKit-Übergabe und Schutz vor parallelem Mehrfachversand implementieren.
   Lovable meldet 150 Tests, Build/Typprüfung und isolierten Migrations-Replay
   bestanden; das ist noch kein Nachweis der produktiven Zustellung.
-- [ ] Vollständige inaktive Workflowfassung persönlich speichern, ihre beiden
+- [x] Vollständige inaktive Workflowfassung persönlich speichern, ihre beiden
   Gmail-Effekte prüfen und persönlich freigeben. Gemeinsamen Signaturschlüssel
-  über den sicheren Lovable-Dialog provisionieren, erst danach Übergabe aktivieren.
+  über den sicheren Lovable-Dialog provisionieren.
+- [ ] Allgemeine Engine-Korrektur für unabhängige signierte Eingänge prüfen und
+  im zuständigen Release ausliefern. Danach Eingang über öffentliche Verwaltung
+  neu anlegen, tatsächliche neue Kennung im Workflow referenzieren, neue Fassung
+  normal prüfen/freigeben und Erhalt des Eingangs nach Aktivierung nachweisen.
+  Erst dann Website-Übergabe aktivieren; keine unsignierte Ausweichlösung.
 - [ ] Tatsächliche Zustellung, Fehlerfälle und Schutz vor Massenanfragen prüfen.
   Keine Simulation als echten Zustellnachweis ausgeben. Kontrollierte Tests an
   das eigene bestätigte Postfach gehören zum Auftrag; bisher kein Versand.

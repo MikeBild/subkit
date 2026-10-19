@@ -8,14 +8,14 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [sk-platform-reference, webhooks, triggers, schedule, cron]
-version: 2
+version: 3
 ---
 
 # Webhooks & Triggers
 
 ## Mental model
 
-Every workflow has one optional `trigger` block that decides how its execution starts. Omit it and the workflow is `request`-triggered — the historical default. A `webhook` or `schedule` trigger is **reverse-bound**: saving the workflow upserts the matching ingress/schedule row keyed on `(tenant_id, workflow_id)`; deleting or version-rotating it removes the row.
+Every workflow has one optional `trigger` block that decides how its execution starts. Omit it and the workflow is `request`-triggered. Activating a `webhook` or `schedule` definition reconciles its reverse-bound trigger; an inactive save does not activate it. Separately managed inbound CRUD bindings are independent: changing the definition's trigger must preserve their IDs, secrets, verifier and event filters. Archiving or deleting the workflow removes all of its inbound bindings.
 
 ## Key facts
 
@@ -39,6 +39,11 @@ sensitive execution, one dispatch attempt and the real same-workflow Standard We
 binding; never substitute unsigned ingress or a fake fixed report recipient. Inspect
 mail receipts with `get_workflow` before suggesting any resend. SubKit uses the stored
 secret verbatim as UTF-8 HMAC key, with no `whsec_` prefix decoding.
+
+After activation, inspect the actual active binding again before enabling the
+sender. If it was removed, stop commissioning; recreate it through normal binding
+management and prepare a new reviewed workflow version with the actual new ID.
+Never fake the old ID, use unsigned ingress, or retry ambiguous mail to compensate.
 
 ## Get the full reference
 
