@@ -46,6 +46,7 @@ function sseResponse(text = "ok"): Response {
         controller.enqueue(
           encoder.encode('event: message\ndata: {"type":"completed","status":"active"}\n\n'),
         );
+        controller.enqueue(encoder.encode('event: outcome\ndata: {"status":"completed"}\n\n'));
         controller.close();
       },
     }),
@@ -80,6 +81,7 @@ function createSseResponse(text = "ok"): Response {
         controller.enqueue(
           encoder.encode('event: message\ndata: {"type":"completed","status":"active"}\n\n'),
         );
+        controller.enqueue(encoder.encode('event: outcome\ndata: {"status":"completed"}\n\n'));
       },
     }),
     {
@@ -186,6 +188,7 @@ describe("runHeadless debug tracing", () => {
             controller.enqueue(
               encoder.encode('event: message\ndata: {"type":"completed","status":"active"}\n\n'),
             );
+            controller.enqueue(encoder.encode('event: outcome\ndata: {"status":"completed"}\n\n'));
           },
           cancel() {
             cancelled = true;

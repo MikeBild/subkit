@@ -14,6 +14,7 @@ import { getOperationalOverview } from "../../../operator/operational-overview.t
 import { registerExecutionRunHandler } from "../../../queue/handlers/execution-run.ts";
 import { EXECUTION_RUN_QUEUE } from "../../../queue/queues.ts";
 import { inboundHookAutomationView } from "../../../scheduler/workflow-automation-view.ts";
+import { retryCatalogConflict } from "../../../test-helpers/catalog-retry.ts";
 import { databaseNow } from "../../../test-helpers/database-clock.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../../test-helpers/determinism/wait.ts";
@@ -241,7 +242,10 @@ describe("webhook execution authority admission", () => {
 
   test("concurrent distinct events cannot exceed the final available run", async () => {
     const authority = await ctx.grantAuthority("prod", 1);
-    const outcomes = await Promise.all([receive(delivery("last-a")), receive(delivery("last-b"))]);
+    const outcomes = await Promise.all([
+      retryCatalogConflict(() => receive(delivery("last-a"))),
+      retryCatalogConflict(() => receive(delivery("last-b"))),
+    ]);
     expect(outcomes.filter((result) => result.status === "ok")).toHaveLength(1);
     expect(outcomes.filter((result) => result.status === "denied")).toHaveLength(1);
     expect(await rows()).toHaveLength(1);
