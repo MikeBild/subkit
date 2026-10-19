@@ -5,7 +5,7 @@ import { BadRequestError, HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { serializeOne, WorkflowSchema } from "./workflow-representation.ts";
+import { serializeOne, WorkflowDetailSchema } from "./workflow-representation.ts";
 
 const VersionSchema = z
   .object({
@@ -66,7 +66,7 @@ const restoreRoute = createRoute({
   security: [{ bearerAuth: [] }],
   request: { params: IdVersionParam },
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: WorkflowSchema } } },
+    200: { description: "OK", content: { "application/json": { schema: WorkflowDetailSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
     422: {
       description: "The version no longer validates against the current workflow schema",

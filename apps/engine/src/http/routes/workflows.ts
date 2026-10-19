@@ -40,8 +40,8 @@ import { registerWorkflowInvocationRoutes } from "./workflow-invocation.ts";
 import {
   serializeOne,
   serializeWorkflow,
+  WorkflowDetailSchema,
   WorkflowListResponse,
-  WorkflowSchema,
 } from "./workflow-representation.ts";
 import { ScheduleEntry } from "./workflow-schedule-schemas.ts";
 import { registerTransactionalMailRoutes } from "./workflow-transactional-mail.ts";
@@ -125,7 +125,10 @@ const createRouteSpec = createRoute({
   security: [{ bearerAuth: [] }],
   request: { body: { content: { "application/json": { schema: CreateRequestBody } } } },
   responses: {
-    201: { description: "Created", content: { "application/json": { schema: WorkflowSchema } } },
+    201: {
+      description: "Created",
+      content: { "application/json": { schema: WorkflowDetailSchema } },
+    },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
     422: {
       description:
@@ -143,7 +146,7 @@ const getRoute = createRoute({
   security: [{ bearerAuth: [] }],
   request: { params: IdParam },
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: WorkflowSchema } } },
+    200: { description: "OK", content: { "application/json": { schema: WorkflowDetailSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -159,7 +162,7 @@ const updateRoute = createRoute({
     body: { content: { "application/json": { schema: CreateBody } } },
   },
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: WorkflowSchema } } },
+    200: { description: "OK", content: { "application/json": { schema: WorkflowDetailSchema } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -192,7 +195,7 @@ const metadataRoute = createRoute({
     body: { content: { "application/json": { schema: WorkflowMetadataPatchBody } } },
   },
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: WorkflowSchema } } },
+    200: { description: "OK", content: { "application/json": { schema: WorkflowDetailSchema } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
     409: {
