@@ -89,7 +89,7 @@ RUN cp /usr/local/share/subkit/LICENSE /usr/local/share/subkit/binaries/LICENSE 
     && sha256sum LICENSE THIRD_PARTY_NOTICES.txt >> SHA256SUMS.next \
     && mv SHA256SUMS.next SHA256SUMS
 
-RUN chmod +x /usr/local/bin/engine.bin /usr/local/bin/sk.bin \
+RUN chmod 755 /usr/local/bin/engine.bin /usr/local/bin/sk.bin \
         /usr/local/bin/subkit-wrap.sh /usr/local/bin/subkit-entrypoint.sh \
     && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/engine \
     && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/sk \
