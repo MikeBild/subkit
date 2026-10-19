@@ -362,6 +362,7 @@ async function reached(promise: Promise<void>): Promise<void> {
     await Promise.race([
       promise,
       new Promise<never>((_, reject) => {
+        // allow-wall-clock: bounded watchdog for an actual PostgreSQL barrier
         timer = setTimeout(() => reject(new Error("fixture_barrier_not_reached")), 2_000);
       }),
     ]);
@@ -650,6 +651,7 @@ test("stop drains the actual refresh promise and preserves the unvisited source 
     expect(stopped).toBe(false);
     expect(tenantWorkSnapshot(tenantId).in_flight).toBe(1);
     expect(await boss.findJobs(INGEST_DOCS_QUEUE)).toHaveLength(0);
+    // allow-wall-clock: hold actual queue work across a scheduler interval during shutdown
     await new Promise((resolve) => setTimeout(resolve, 5_100));
   } finally {
     release.resolve();
