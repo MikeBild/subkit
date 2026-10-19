@@ -71,6 +71,10 @@ export const WorkflowSchema = z
   })
   .openapi("Workflow");
 
+export const WorkflowDetailSchema = WorkflowSchema.extend({
+  definition: z.object({ name: z.string(), steps: z.array(z.unknown()) }).passthrough(),
+}).openapi("WorkflowDetail");
+
 const WorkflowListItemSchema = WorkflowSchema.extend({
   connectors: z.array(z.string()),
 }).openapi("WorkflowListItem");
@@ -123,7 +127,14 @@ export function serializeWorkflow(w: svc.WorkflowView, binding: TriggerBinding) 
   };
 }
 
+export function serializeWorkflowDetail(w: svc.WorkflowView, binding: TriggerBinding) {
+  return {
+    ...serializeWorkflow(w, binding),
+    definition: w.definition as unknown as z.infer<typeof WorkflowDetailSchema>["definition"],
+  };
+}
+
 export async function serializeOne(w: svc.WorkflowView, tenantId: string, db: Executor) {
   const bindings = await loadTriggerBindings(tenantId, [w.id], db);
-  return serializeWorkflow(w, bindingFor(bindings, w.id));
+  return serializeWorkflowDetail(w, bindingFor(bindings, w.id));
 }

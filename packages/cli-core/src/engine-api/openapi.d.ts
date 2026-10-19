@@ -7350,7 +7350,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Workflow"];
+                        "application/json": components["schemas"]["WorkflowDetail"];
                     };
                 };
                 /** @description Not found */
@@ -7442,7 +7442,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Workflow"];
+                        "application/json": components["schemas"]["WorkflowDetail"];
                     };
                 };
                 /** @description Bad request */
@@ -7725,7 +7725,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Workflow"];
+                        "application/json": components["schemas"]["WorkflowDetail"];
                     };
                 };
                 /** @description Not found */
@@ -7761,7 +7761,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Workflow"];
+                        "application/json": components["schemas"]["WorkflowDetail"];
                     };
                 };
                 /** @description Bad request */
@@ -7905,7 +7905,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Workflow"];
+                        "application/json": components["schemas"]["WorkflowDetail"];
                     };
                 };
                 /** @description Bad request */
@@ -22776,6 +22776,41 @@ export interface components {
             } | null;
             checksum: string;
         };
+        WorkflowDetail: components["schemas"]["Workflow"] & {
+            definition: {
+                name: string;
+                steps: unknown[];
+            } & {
+                [key: string]: unknown;
+            };
+        };
+        /** @enum {string} */
+        CatalogMetadataSource: "human" | "llm";
+        WorkflowScheduleBinding: {
+            id: string;
+            cron: string;
+            timezone: string;
+            paused: boolean;
+            /** @enum {string} */
+            execution_mode: "dev" | "prod";
+            admission_hold: {
+                /** @enum {string} */
+                reason_code: "execution_authority_required" | "execution_authority_unavailable" | "input_required";
+                observed_at: string;
+            } | null;
+            /** @enum {string} */
+            state: "active" | "paused" | "held" | "activation_required";
+            next_fire_at: string | null;
+            last_enqueued_at: string | null;
+        } | null;
+        EffectiveTrigger: {
+            /** @enum {string} */
+            kind: "schedule" | "webhook" | "request";
+            /** @enum {string} */
+            source: "binding" | "definition" | "default";
+            /** @enum {string} */
+            state: "active" | "paused" | "held" | "activation_required" | "declared_unbound";
+        };
         Workflow: {
             id: string;
             /** @enum {string} */
@@ -22832,33 +22867,6 @@ export interface components {
             schedule: components["schemas"]["WorkflowScheduleBinding"];
             webhooks_active: number;
             effective_trigger: components["schemas"]["EffectiveTrigger"];
-        };
-        /** @enum {string} */
-        CatalogMetadataSource: "human" | "llm";
-        WorkflowScheduleBinding: {
-            id: string;
-            cron: string;
-            timezone: string;
-            paused: boolean;
-            /** @enum {string} */
-            execution_mode: "dev" | "prod";
-            admission_hold: {
-                /** @enum {string} */
-                reason_code: "execution_authority_required" | "execution_authority_unavailable" | "input_required";
-                observed_at: string;
-            } | null;
-            /** @enum {string} */
-            state: "active" | "paused" | "held" | "activation_required";
-            next_fire_at: string | null;
-            last_enqueued_at: string | null;
-        } | null;
-        EffectiveTrigger: {
-            /** @enum {string} */
-            kind: "schedule" | "webhook" | "request";
-            /** @enum {string} */
-            source: "binding" | "definition" | "default";
-            /** @enum {string} */
-            state: "active" | "paused" | "held" | "activation_required" | "declared_unbound";
         };
         WorkflowListResponse: {
             items: components["schemas"]["WorkflowListItem"][];

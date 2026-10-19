@@ -34,35 +34,29 @@ import { workflowStepChanges } from "@/lib/workflow-step-changes";
 type WorkflowDraft = components["schemas"]["WorkflowDraft"];
 type RecordValue = Record<string, unknown>;
 
-const DEFINITION_FIELDS = [
-  "name",
-  "slug",
-  "description",
-  "execution_privacy",
-  "input_schema",
-  "output_schema",
-  "output_transform",
-  "output_transform_function",
-  "response_filters",
-  "validation_expression",
-  "validation_function",
-  "timeout_ms",
-  "max_llm_tokens_per_run",
-  "trigger",
-] as const;
-
 export function definitionFromRecord(record: RecordValue, steps: readonly unknown[]): RecordValue {
-  const definition: RecordValue = {
-    ...(record.definition && typeof record.definition === "object"
-      ? (record.definition as RecordValue)
-      : {}),
-    steps: [...steps],
-  };
-  for (const field of DEFINITION_FIELDS) {
+  if (
+    !record.definition ||
+    typeof record.definition !== "object" ||
+    Array.isArray(record.definition)
+  ) {
+    throw new Error("workflow definition is unavailable");
+  }
+  const definition: RecordValue = { ...(record.definition as RecordValue), steps: [...steps] };
+  for (const field of ["name", "slug", "description"] as const) {
     const value = record[field];
     if (value !== null && value !== undefined) definition[field] = value;
+    if (field === "description" && value === null) delete definition.description;
   }
   return definition;
+}
+
+export function definitionForStepSave(
+  record: RecordValue,
+  steps: readonly unknown[],
+  waitingDefinition?: RecordValue,
+): RecordValue {
+  return waitingDefinition ? { ...waitingDefinition } : definitionFromRecord(record, steps);
 }
 
 export function stepId(step: unknown): string {
@@ -410,16 +404,18 @@ export function StepSaveBar({
   const save = useMutation({
     mutationFn: async () => {
       const expected = typeof record.draft_version_id === "string" ? record.draft_version_id : null;
-      let base: RecordValue = definitionFromRecord(
-        record,
-        Array.isArray(record.steps) ? record.steps : [],
-      );
+      let waitingDefinition: RecordValue | undefined;
       if (expected && expected !== record.current_version_id) {
         const waiting = await apiRequest<WorkflowDraft>(
           `/v1/workflows/${encodeURIComponent(workflowId)}/draft`,
         );
-        base = { ...(waiting.definition as unknown as RecordValue) };
+        waitingDefinition = waiting.definition as unknown as RecordValue;
       }
+      const base = definitionForStepSave(
+        record,
+        Array.isArray(record.steps) ? record.steps : [],
+        waitingDefinition,
+      );
       const saved = await apiRequest<WorkflowDraft>(
         `/v1/workflows/${encodeURIComponent(workflowId)}/draft`,
         {

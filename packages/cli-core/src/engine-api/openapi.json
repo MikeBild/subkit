@@ -9475,6 +9475,163 @@
           "checksum"
         ]
       },
+      "WorkflowDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Workflow"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "definition": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {}
+                  }
+                },
+                "required": [
+                  "name",
+                  "steps"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "definition"
+            ]
+          }
+        ]
+      },
+      "CatalogMetadataSource": {
+        "type": "string",
+        "enum": [
+          "human",
+          "llm"
+        ]
+      },
+      "WorkflowScheduleBinding": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "cron": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "admission_hold": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "reason_code": {
+                "type": "string",
+                "enum": [
+                  "execution_authority_required",
+                  "execution_authority_unavailable",
+                  "input_required"
+                ]
+              },
+              "observed_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason_code",
+              "observed_at"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "held",
+              "activation_required"
+            ]
+          },
+          "next_fire_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_enqueued_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "cron",
+          "timezone",
+          "paused",
+          "execution_mode",
+          "admission_hold",
+          "state",
+          "next_fire_at",
+          "last_enqueued_at"
+        ]
+      },
+      "EffectiveTrigger": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "webhook",
+              "request"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "binding",
+              "definition",
+              "default"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "held",
+              "activation_required",
+              "declared_unbound"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "source",
+          "state"
+        ]
+      },
       "Workflow": {
         "type": "object",
         "properties": {
@@ -9756,131 +9913,6 @@
           "schedule",
           "webhooks_active",
           "effective_trigger"
-        ]
-      },
-      "CatalogMetadataSource": {
-        "type": "string",
-        "enum": [
-          "human",
-          "llm"
-        ]
-      },
-      "WorkflowScheduleBinding": {
-        "type": [
-          "object",
-          "null"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "cron": {
-            "type": "string"
-          },
-          "timezone": {
-            "type": "string"
-          },
-          "paused": {
-            "type": "boolean"
-          },
-          "execution_mode": {
-            "type": "string",
-            "enum": [
-              "dev",
-              "prod"
-            ]
-          },
-          "admission_hold": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "properties": {
-              "reason_code": {
-                "type": "string",
-                "enum": [
-                  "execution_authority_required",
-                  "execution_authority_unavailable",
-                  "input_required"
-                ]
-              },
-              "observed_at": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "reason_code",
-              "observed_at"
-            ]
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "active",
-              "paused",
-              "held",
-              "activation_required"
-            ]
-          },
-          "next_fire_at": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "last_enqueued_at": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "cron",
-          "timezone",
-          "paused",
-          "execution_mode",
-          "admission_hold",
-          "state",
-          "next_fire_at",
-          "last_enqueued_at"
-        ]
-      },
-      "EffectiveTrigger": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "schedule",
-              "webhook",
-              "request"
-            ]
-          },
-          "source": {
-            "type": "string",
-            "enum": [
-              "binding",
-              "definition",
-              "default"
-            ]
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "active",
-              "paused",
-              "held",
-              "activation_required",
-              "declared_unbound"
-            ]
-          }
-        },
-        "required": [
-          "kind",
-          "source",
-          "state"
         ]
       },
       "WorkflowListResponse": {
@@ -38926,7 +38958,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Workflow"
+                  "$ref": "#/components/schemas/WorkflowDetail"
                 }
               }
             }
@@ -39135,7 +39167,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Workflow"
+                  "$ref": "#/components/schemas/WorkflowDetail"
                 }
               }
             }
@@ -39442,7 +39474,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Workflow"
+                  "$ref": "#/components/schemas/WorkflowDetail"
                 }
               }
             }
@@ -39495,7 +39527,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Workflow"
+                  "$ref": "#/components/schemas/WorkflowDetail"
                 }
               }
             }
@@ -39644,7 +39676,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Workflow"
+                  "$ref": "#/components/schemas/WorkflowDetail"
                 }
               }
             }
