@@ -37,4 +37,11 @@ describe("cockpit workflow previews", () => {
       hold_writes: true,
     });
   });
+
+  test("selected preview input travels with the sensitive draft", () => {
+    const definition = { name: "Briefing", execution_privacy: "sensitive", steps: [{ id: "get" }] };
+    expect(
+      workflowPreviewRequest({ source: "draft", definition, input: { mode: "weekly" } }),
+    ).toEqual({ source: "draft", definition, input: { mode: "weekly" }, hold_writes: true });
+  });
 });
