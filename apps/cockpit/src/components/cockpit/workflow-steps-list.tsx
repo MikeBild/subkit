@@ -48,6 +48,7 @@ export function useBuildVersion(
     current_version: number | null;
     draft_version_id: string | null;
     steps: readonly unknown[];
+    definition?: Record<string, unknown> | null;
   },
 ): BuildVersion {
   const waiting =

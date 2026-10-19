@@ -60,9 +60,10 @@ const SNIPPET_LANG: Record<SnippetLanguage, string> = {
   python: "python",
 };
 
-export function useWorkflowInvocation(workflowId: string) {
+export function useWorkflowInvocation(workflowId: string, enabled = true) {
   return useQuery({
     queryKey: ["workflow-invocation", workflowId],
+    enabled,
     queryFn: async (): Promise<Invocation> => {
       const answer = await apiRequest<unknown>(
         `/v1/workflows/${encodeURIComponent(workflowId)}/invocation`,

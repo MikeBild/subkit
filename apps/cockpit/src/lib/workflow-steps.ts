@@ -446,16 +446,18 @@ export interface BuildWorkflow {
   current_version: number | null;
   draft_version_id: string | null;
   steps: readonly unknown[];
+  definition?: Record<string, unknown> | null;
 }
 
 export interface SavedDraft {
   version_id: string;
   version: number;
-  definition: { steps: readonly unknown[] };
+  definition: Record<string, unknown> & { steps: readonly unknown[] };
 }
 
 export interface BuildVersion {
   steps: readonly unknown[];
+  definition: Record<string, unknown> | null;
   versionId: string | null;
   version: number | null;
   saved: boolean;
@@ -468,6 +470,7 @@ export function buildVersion(
 ): BuildVersion {
   const active: BuildVersion = {
     steps: workflow.steps,
+    definition: workflow.definition ?? null,
     versionId: workflow.current_version_id,
     version: workflow.current_version,
     saved: false,
@@ -482,6 +485,7 @@ export function buildVersion(
   if (loaded)
     return {
       steps: loaded.definition.steps,
+      definition: loaded.definition,
       versionId: loaded.version_id,
       version: loaded.version,
       saved: true,

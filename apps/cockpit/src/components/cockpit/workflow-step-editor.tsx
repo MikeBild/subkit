@@ -38,6 +38,7 @@ const DEFINITION_FIELDS = [
   "name",
   "slug",
   "description",
+  "execution_privacy",
   "input_schema",
   "output_schema",
   "output_transform",
@@ -51,7 +52,12 @@ const DEFINITION_FIELDS = [
 ] as const;
 
 export function definitionFromRecord(record: RecordValue, steps: readonly unknown[]): RecordValue {
-  const definition: RecordValue = { steps: [...steps] };
+  const definition: RecordValue = {
+    ...(record.definition && typeof record.definition === "object"
+      ? (record.definition as RecordValue)
+      : {}),
+    steps: [...steps],
+  };
   for (const field of DEFINITION_FIELDS) {
     const value = record[field];
     if (value !== null && value !== undefined) definition[field] = value;
