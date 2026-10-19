@@ -3,7 +3,9 @@ import { toFileId } from "../api/files-schemas.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { fileLinks, files } from "../db/schema/index.ts";
+import { linkStoredFile } from "../files/links.ts";
 import { parseFileReference } from "../files/slug.ts";
+import { getContext } from "../logging/context.ts";
 import { can } from "../rbac/index.ts";
 
 export type { FileRow, ResolvedFile, ResolverContext } from "../files/resolver.ts";
@@ -123,17 +125,29 @@ async function slugsToFileIds(slugs: string[], ctx: SlugLookupCtx): Promise<Map<
       );
     for (const file of tenantFiles) {
       if (!file.slug) continue;
-      await ctx.db
-        .insert(fileLinks)
-        .values({
+      await linkStoredFile(
+        ctx.db,
+        {
           tenant_id: ctx.tenant_id,
           file_id: file.id,
           resource_type: "conversation",
           resource_id: ctx.conversation_id,
           slug: file.slug,
           role: "attachment",
-        })
-        .onConflictDoNothing();
+        },
+        {
+          actor_type:
+            ctx.principal?.kind === "user"
+              ? "user"
+              : ctx.principal?.kind === "system_account"
+                ? "system_account"
+                : "system",
+          actor_id: ctx.principal?.id ?? null,
+          request_source: getContext().request_source ?? "tool-chain",
+          source: "attachment_reference",
+          allowed_statuses: ["pending", "uploading", "scanning", "ready", "failed", "expired"],
+        },
+      );
       map.set(file.slug, toFileId(file.id));
     }
   }

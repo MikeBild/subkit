@@ -340,7 +340,7 @@ export async function recoverCrashedExecutions(
 }
 
 export interface CrashRecoveryMonitor {
-  stop(): void;
+  stop(): Promise<void>;
   checkNow(): Promise<RecoverCrashedExecutionsResult>;
 }
 
@@ -368,6 +368,7 @@ export function startCrashRecoveryMonitor(
     });
 
   const checkNow = async (): Promise<RecoverCrashedExecutionsResult> => {
+    if (stopped) throw new Error("crash_recovery_monitor_stopped");
     if (activeCheck) return activeCheck;
     activeCheck = recover();
     try {
@@ -380,6 +381,7 @@ export function startCrashRecoveryMonitor(
   const schedule = (): void => {
     if (stopped) return;
     timer = setTimeout(() => {
+      if (stopped) return;
       void checkNow()
         .then(({ recovered, reconciled_steps }) => {
           if (recovered > 0 || reconciled_steps > 0) {
@@ -408,10 +410,11 @@ export function startCrashRecoveryMonitor(
   schedule();
   return {
     checkNow,
-    stop(): void {
+    async stop(): Promise<void> {
       stopped = true;
       if (timer) clearTimeout(timer);
       timer = null;
+      await activeCheck;
     },
   };
 }

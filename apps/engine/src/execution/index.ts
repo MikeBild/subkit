@@ -36,8 +36,10 @@ export {
 export * from "./state.ts";
 export {
   beginTenantWork,
+  tenantWorkBootId,
   tenantWorkInFlight,
   tenantWorkSnapshot,
+  waitForTenantWorkDrain,
   withTenantWork,
 } from "./tenant-work.ts";
 export {

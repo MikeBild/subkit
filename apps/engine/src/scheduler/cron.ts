@@ -46,3 +46,16 @@ export function nextCronOccurrence(cron: string, after: Date, tz?: string): Date
     return null;
   }
 }
+
+export function isCronDue(cron: string, lastFiredAt: Date | null, now: Date, tz?: string): boolean {
+  const trimmed = cron.trim();
+  if (trimmed.startsWith("every:")) {
+    const seconds = Number.parseFloat(trimmed.slice("every:".length));
+    if (!Number.isFinite(seconds) || seconds <= 0) return false;
+    if (!lastFiredAt) return true;
+    return now.getTime() - lastFiredAt.getTime() >= seconds * 1000;
+  }
+  if (!lastFiredAt) return true;
+  const next = nextCronOccurrence(trimmed, lastFiredAt, tz);
+  return next !== null && now.getTime() >= next.getTime();
+}

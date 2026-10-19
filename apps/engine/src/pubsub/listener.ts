@@ -184,7 +184,7 @@ export class PubSubListener {
         await client.query(`LISTEN "${channel}"`);
       }
       await this.catchUpAll();
-      while (this.pendingDuringCatchup.size > 0) {
+      while (!this.stopped && this.pendingDuringCatchup.size > 0) {
         const pending = this.pendingDuringCatchup;
         this.pendingDuringCatchup = new Map();
         for (const [channel, ids] of pending) {
@@ -211,7 +211,7 @@ export class PubSubListener {
   }
 
   private async onNotification(msg: pg.Notification): Promise<void> {
-    if (!msg.channel) return;
+    if (this.stopped || !msg.channel) return;
     const channel = msg.channel as OutboxChannel;
     if (!this.channels.includes(channel)) return;
     const payload = msg.payload ?? "";
@@ -242,8 +242,10 @@ export class PubSubListener {
   }
 
   private async catchUpChannel(channel: OutboxChannel, untilId?: number): Promise<void> {
+    if (this.stopped) return;
     const db = this.opts.db;
     const cursor = await this.loadCursor(channel);
+    if (this.stopped) return;
     const maxBatch = this.opts.catchUpBatchSize ?? DEFAULT_CATCH_UP_BATCH;
     // tenant-filter:exempt — outbox/listener sweeps every tenant; row carries tenant_id forward
     const rows = await db
@@ -252,8 +254,10 @@ export class PubSubListener {
       .where(and(eq(eventsTable.channel, channel), gt(eventsTable.id, cursor)))
       .orderBy(asc(eventsTable.id))
       .limit(maxBatch);
-    if (rows.length === 0) return;
+    if (rows.length === 0 || this.stopped) return;
+    let lastId = cursor;
     for (const row of rows) {
+      if (this.stopped) break;
       const envelope: EventEnvelope = {
         id: row.id,
         tenant_id: row.tenant_id,
@@ -270,17 +274,18 @@ export class PubSubListener {
         fields: { channel, event_type: envelope.type, event_id: envelope.id },
         fn: () => this.emitter.dispatch(envelope),
       });
+      lastId = row.id;
     }
-    const lastId = rows[rows.length - 1]?.id ?? cursor;
-    await this.saveCursor(channel, lastId);
+    if (lastId > cursor) await this.saveCursor(channel, lastId);
     const needMore = rows.length === maxBatch || (untilId !== undefined && lastId < untilId);
-    if (needMore) {
+    if (!this.stopped && needMore) {
       await this.catchUpChannel(channel, untilId);
     }
   }
 
   private async catchUpAll(): Promise<void> {
     for (const channel of this.channels) {
+      if (this.stopped) break;
       await this.catchUpChannel(channel);
     }
   }
@@ -313,6 +318,7 @@ export class PubSubListener {
       ON CONFLICT ("listener_id", "channel")
       DO UPDATE SET "last_seen_id" = EXCLUDED."last_seen_id", "updated_at" = NOW()
     `);
+    if (this.stopped) return;
     try {
       // tenant-filter:exempt — outbox/listener sweeps every tenant; row carries tenant_id forward
       const headRows = await db

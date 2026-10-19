@@ -18,6 +18,25 @@ import { classifyPgProbeError } from "./probe-classify.ts";
 const { Pool } = pg;
 
 const pools = new Map<string, pg.Pool>();
+const closingPools = new Map<pg.Pool, { key: string; task: Promise<void> }>();
+
+function endPool(key: string, pool: pg.Pool): Promise<void> {
+  const existing = closingPools.get(pool);
+  if (existing) return existing.task;
+  const task = Promise.resolve().then(() => pool.end());
+  closingPools.set(pool, { key, task });
+  void task.then(
+    () => closingPools.delete(pool),
+    () => {},
+  );
+  return task;
+}
+
+async function awaitPoolClosures(tasks: Promise<void>[]): Promise<void> {
+  const results = await Promise.allSettled(tasks);
+  if (results.some((result) => result.status === "rejected"))
+    throw new Error("connector_pool_close_failed");
+}
 
 function poolKey(connector: ConnectorView): string {
   return `${connector.id}:${connector.environment}`;
@@ -57,7 +76,7 @@ export async function getPoolForConnector(
   for (const [previousKey, previousPool] of pools) {
     if (!previousKey.startsWith(prefix)) continue;
     pools.delete(previousKey);
-    void previousPool.end().catch(() => {});
+    void endPool(previousKey, previousPool);
   }
   const pool = new Pool(prepared.options);
   pool.on("error", (err) => {
@@ -265,12 +284,21 @@ export async function pgQueryCursor<T = unknown>(p: {
 export async function closePoolForConnector(connector: ConnectorView): Promise<void> {
   const prefix = `${poolKey(connector)}:${connector.tenant_id}:`;
   const closing = [...pools].filter(([key]) => key.startsWith(prefix));
-  for (const [key] of closing) pools.delete(key);
-  await Promise.all(closing.map(([, pool]) => pool.end().catch(() => {})));
+  for (const [key, pool] of closing) {
+    pools.delete(key);
+    endPool(key, pool);
+  }
+  await awaitPoolClosures(
+    [...closingPools.values()]
+      .filter((item) => item.key.startsWith(prefix))
+      .map((item) => item.task),
+  );
 }
 
 export async function closeAllPools(): Promise<void> {
-  const all = Array.from(pools.values());
-  pools.clear();
-  await Promise.all(all.map((p) => p.end().catch(() => {})));
+  for (const [key, pool] of pools) {
+    pools.delete(key);
+    endPool(key, pool);
+  }
+  await awaitPoolClosures([...closingPools.values()].map((item) => item.task));
 }

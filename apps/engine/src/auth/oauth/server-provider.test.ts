@@ -20,7 +20,7 @@ import { sha256Hex } from "./tokens.ts";
 
 function makeConfig(): Config {
   return ConfigSchema.parse({
-    database: { url: "postgres://placeholder/oauth-provider-test" },
+    database: { url: testDb.url },
     server: {
       public_base_url: "https://test.example.com",
       port: 3000,

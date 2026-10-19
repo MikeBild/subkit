@@ -17,8 +17,16 @@ export async function removeStoredFile(
   return retryTransient(() =>
     db.transaction(async (tx) => {
       await lockCatalogVocabulary(tx, tenantId);
-      const tenantWhere = and(eq(files.tenant_id, tenantId), eq(files.id, fileId), eligible);
-      const [row] = await tx.select().from(files).where(tenantWhere).for("update").limit(1);
+      const ownerTenantWhere = and(eq(files.tenant_id, tenantId), eq(files.id, fileId));
+      const [locked] = await tx
+        .select({ id: files.id })
+        .from(files)
+        .where(ownerTenantWhere)
+        .for("update")
+        .limit(1);
+      if (!locked) return undefined;
+      const tenantWhere = and(ownerTenantWhere, eligible);
+      const [row] = await tx.select().from(files).where(tenantWhere).limit(1);
       if (!row) return undefined;
       const store = getObjectStore();
       const key = storageKey(row.storage_uri);

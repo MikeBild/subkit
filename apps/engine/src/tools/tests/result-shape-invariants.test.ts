@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { dispatchTool } from "../dispatcher.ts";
 import { buildRegistry, type ToolProvider } from "../registry.ts";
 import type { ToolDescriptor, ToolEnvelope } from "../types.ts";
+
+import { makeStubDb, makeTestPrincipal, usePolicyFixture } from "./_helpers.ts";
+
+usePolicyFixture();
 
 const ToolEnvelopeSchema = z.discriminatedUnion("status", [
   z.object({
@@ -40,31 +43,8 @@ const ToolEnvelopeSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
-const PRINCIPAL: ResolvedPrincipal = {
-  kind: "user",
-  provider: "test",
-  id: "00000000-0000-4000-8000-000000000001",
-  tenant_id: "00000000-0000-4000-8000-000000000002",
-  authoring_role_id: null,
-  scopes: new Set(),
-  permission_grants: [],
-  role_ids: [],
-  api_key_id: null,
-  // biome-ignore lint/suspicious/noExplicitAny: test stub
-} as any;
-
-// biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
-const UPDATE_STUB: any = {
-  set: () => UPDATE_STUB,
-  where: () => UPDATE_STUB,
-  returning: () => Promise.resolve([]),
-};
-// biome-ignore lint/suspicious/noExplicitAny: drizzle Db shape
-const DB_STUB: any = {
-  transaction: async (fn: (db: unknown) => unknown) => fn(DB_STUB),
-  insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
-  update: () => UPDATE_STUB,
-};
+const PRINCIPAL = makeTestPrincipal();
+const DB_STUB = makeStubDb().db;
 
 function descriptorWithExecute(
   name: string,

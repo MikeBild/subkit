@@ -36,7 +36,55 @@ describe("startCrashRecoveryMonitor", () => {
       });
       expect(intervalReads).toBeGreaterThanOrEqual(2);
     } finally {
-      monitor.stop();
+      await monitor.stop();
     }
   });
+});
+
+test("recovery shutdown holds the active check and refuses later admission", async () => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let calls = 0;
+  const monitor = startCrashRecoveryMonitor({} as never, {
+    intervalMs: () => 60_000,
+    recover: async () => {
+      calls++;
+      entered.resolve();
+      await release.promise;
+      return { recovered: 0, reconciled_steps: 0 };
+    },
+  });
+  const checking = monitor.checkNow();
+  await entered.promise;
+  const stopping = monitor.stop();
+  let stopped = false;
+  void stopping.then(() => {
+    stopped = true;
+  });
+  await Promise.resolve();
+  expect(stopped).toBe(false);
+  await expect(monitor.checkNow()).rejects.toThrow("crash_recovery_monitor_stopped");
+  release.resolve();
+  await checking;
+  await stopping;
+  await monitor.stop();
+  expect(stopped).toBe(true);
+  expect(calls).toBe(1);
+});
+
+test("recovery shutdown propagates actual check failure", async () => {
+  const release = Promise.withResolvers<void>();
+  const monitor = startCrashRecoveryMonitor({} as never, {
+    intervalMs: () => 60_000,
+    recover: () =>
+      release.promise.then(() => {
+        throw new Error("recovery_check_failed");
+      }),
+  });
+  const checking = monitor.checkNow();
+  const observed = checking.catch((error: unknown) => error);
+  const stopping = monitor.stop();
+  release.resolve();
+  await expect(stopping).rejects.toThrow("recovery_check_failed");
+  expect(await observed).toBeInstanceOf(Error);
 });

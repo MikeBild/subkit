@@ -5,6 +5,7 @@ import { auditLog, executions, tenants, workflowsSchedules } from "../../db/sche
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createWorkflowRow, type EngineTestCtx } from "../../execution/tests/setup.ts";
 import { SchedulerReconciler } from "../reconciler.ts";
+import { readEveryScheduleDefinition } from "../workflow-schedule-sweep.ts";
 import { grantScheduleAuthorityFixture } from "./authority-fixture.ts";
 
 let testDb: TestDb;
@@ -257,24 +258,21 @@ test("every timers exclude persisted schedules belonging to another workflow ten
     .returning({ id: workflowsSchedules.id });
   if (schedules.length !== 2) throw new Error("schedule fixtures missing");
   try {
-    const reconciler = new SchedulerReconciler({ boss: createStubBoss([]), db: testDb.db });
-    const desired = await (
-      reconciler as unknown as {
-        computeDesired(): Promise<
-          Map<string, { schedule_id: string; payload: { tenant_id: string; workflow_id: string } }>
-        >;
-      }
-    ).computeDesired();
-    const installed = [...desired.values()];
+    const own = schedules[0];
+    const foreign = schedules[1];
+    if (!own || !foreign) throw new Error("schedule fixtures missing");
     expect(
-      installed.some(
-        (entry) =>
-          entry.schedule_id === schedules[0]?.id &&
-          entry.payload.tenant_id === ctxA.tenantId &&
-          entry.payload.workflow_id === everyWorkflow,
-      ),
-    ).toBe(true);
-    expect(installed.some((entry) => entry.schedule_id === schedules[1]?.id)).toBe(false);
+      await readEveryScheduleDefinition(testDb.db, {
+        schedule_id: own.id,
+        tenant_id: ctxA.tenantId,
+      }),
+    ).toMatchObject({ schedule_id: own.id, tenant_id: ctxA.tenantId, workflow_id: everyWorkflow });
+    expect(
+      await readEveryScheduleDefinition(testDb.db, {
+        schedule_id: foreign.id,
+        tenant_id: ctxB.tenantId,
+      }),
+    ).toBeNull();
   } finally {
     for (const schedule of schedules)
       await testDb.db

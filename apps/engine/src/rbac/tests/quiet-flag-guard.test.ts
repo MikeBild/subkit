@@ -47,6 +47,7 @@ const ALLOWED = new Set<string>([
   "apps/engine/src/http/routes/intake.ts",
   "apps/engine/src/rbac/evaluator.ts",
   "apps/engine/src/rbac/tests/evaluator.test.ts",
+  "apps/engine/src/http/routes/rbac/group-history-tenant-boundary.integration.test.ts",
   "apps/engine/src/rbac/tests/resource-access.test.ts",
   "apps/engine/src/rbac/tests/quiet-flag-guard.test.ts",
 ]);

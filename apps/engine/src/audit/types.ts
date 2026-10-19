@@ -100,6 +100,13 @@ export const AuditAction = {
   WAIT_COMPLETED: "wait.completed",
   WAIT_ABANDONED: "wait.abandoned",
 
+  SCHEDULER_SWEEP_CLAIMED: "scheduler.sweep_claimed",
+  SCHEDULER_SWEEP_RENEWED: "scheduler.sweep_renewed",
+  SCHEDULER_SWEEP_PROGRESSED: "scheduler.sweep_progressed",
+  SCHEDULER_SWEEP_RELEASED: "scheduler.sweep_released",
+  SCHEDULER_SWEEP_COMPLETED: "scheduler.sweep_completed",
+  SCHEDULER_SWEEP_CADENCE_CLAIMED: "scheduler.sweep_cadence_claimed",
+  SCHEDULER_SWEEP_QUEUE_ADMITTED: "scheduler.sweep_queue_admitted",
   SCHEDULE_CREATED: "schedule.created",
   SCHEDULE_UPDATED: "schedule.updated",
   SCHEDULE_PAUSED: "schedule.paused",
@@ -326,6 +333,8 @@ export const AuditAction = {
   WEBHOOK_TRIGGER_UNBOUND: "webhook.trigger.unbound",
   SCHEDULE_TRIGGER_BOUND: "schedule.trigger.bound",
   SCHEDULE_ADMISSION_CHANGED: "schedule.admission.changed",
+  SCHEDULE_OCCURRENCE_CLAIMED: "schedule.occurrence_claimed",
+  SCHEDULE_OCCURRENCE_RESTORED: "schedule.occurrence_restored",
   SCHEDULE_TRIGGER_FIRED: "schedule.trigger.fired",
   SCHEDULE_TRIGGER_UNBOUND: "schedule.trigger.unbound",
 

@@ -6,8 +6,9 @@ import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { discoveryArtifacts, discoveryFiles, discoveryRuns } from "../db/schema/discovery.ts";
-import { fileLinks } from "../db/schema/files.ts";
+import { linkStoredFile } from "../files/links.ts";
 import { detectFormat, parseFileToChunks } from "../knowledge/parsers.ts";
+import { getContext } from "../logging/context.ts";
 import { logger } from "../logging/logger.ts";
 import type {
   CreateDiscoveryRunParams,
@@ -151,16 +152,22 @@ export async function createDiscoveryRun(
     assertInsertRow(run, "discovery_runs");
 
     if (p.archive_file_id) {
-      await tx
-        .insert(fileLinks)
-        .values({
+      await linkStoredFile(
+        tx,
+        {
           tenant_id: p.tenant_id,
           file_id: p.archive_file_id,
           resource_type: "discovery_run",
           resource_id: run.id,
           role: "archive",
-        })
-        .onConflictDoNothing();
+        },
+        {
+          ...discoveryAuditActor(p.actor, p.actor_id),
+          request_source: getContext().request_source ?? "tool-chain",
+          source: "discovery_archive",
+          allowed_statuses: ["pending", "uploading", "scanning", "ready", "failed", "expired"],
+        },
+      );
     }
 
     for (const pf of parsedFiles) {

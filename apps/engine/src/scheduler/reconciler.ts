@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -7,34 +7,18 @@ import { runDiscoveryCached } from "../connectors/discovery/service.ts";
 import { attachConnectorSelfDescriptionLinks } from "../connectors/service.ts";
 import { refreshDueConnections } from "../credentials/index.ts";
 import type { Db } from "../db/client.ts";
-import {
-  connectors,
-  knowledgeSources,
-  tenants,
-  workflows,
-  workflowsSchedules,
-} from "../db/schema/index.ts";
+import { connectors, tenants } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
 import { backfillEmbeddings } from "../embeddings/backfill.ts";
 import { admitSystemWorkflowExecution } from "../execution/authority-admission.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { enqueueApprovalElicitationResume } from "../queue/approval-resume.ts";
-import { enqueueIngest, INGEST_DOCS_QUEUE } from "../queue/handlers/ingest-docs.ts";
-import {
-  enqueueKnowledgeIngest,
-  INGEST_KNOWLEDGE_QUEUE,
-} from "../queue/handlers/ingest-knowledge.ts";
 import { enqueueGateDiagnosis } from "../queue/handlers/workflow-repair.ts";
 import { enqueueHostedWork } from "../queue/hosted-work.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import { getObjectStore } from "../storage/object-store.ts";
-import {
-  calendarGateSkipReason,
-  localDateInTz,
-  readCalendarGates,
-  stripCalendarGates,
-} from "./calendar-gates.ts";
+import { runTenantCadenceSweep } from "./cadence-sweep.ts";
 import { runCatalogDescribeSweep } from "./catalog-describe-runner.ts";
 import { runChatDedupCleanup } from "./chat-dedup-cleanup-runner.ts";
 import {
@@ -42,28 +26,21 @@ import {
   runOAuth2RefreshKeepAliveForTenant,
 } from "./connector-reauth-scan-runner.ts";
 import { runConversationTitleSweepSafely } from "./conversation-title-runner.ts";
-import { nextCronOccurrence, parseCronExpression } from "./cron.ts";
 import { runElicitationExpiry } from "./elicitation-expiry-runner.ts";
 import { runEndpointContractScanForTenant } from "./endpoint-contract-scan-runner.ts";
+import { EveryScheduleSweep } from "./every-schedule-sweep.ts";
 import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
 import { runNotificationInboxRetention } from "./notification-inbox-retention-runner.ts";
 import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
-import { validateScheduleInput } from "./repo.ts";
+import { runDocsRefreshSweep, runKnowledgeRefreshSweep } from "./refresh-producer-runner.ts";
 import { runRiskSignalEdges } from "./risk-signal-edges-runner.ts";
-import {
-  recordScheduleAdmission,
-  recordScheduleInputRequired,
-} from "./schedule-admission-state.ts";
+import { recordScheduleAdmission } from "./schedule-admission-state.ts";
 import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
 import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
 import { runTenantErasureSweep } from "./tenant-erasure-runner.ts";
 import { runToolApprovalsCleanup } from "./tool-approvals-cleanup-runner.ts";
-
-const PROACTIVE_DRIFT_SCAN_CADENCE_MS = 60 * 60 * 1000;
-
-const CONNECTOR_REAUTH_SCAN_CADENCE_MS = 60 * 60 * 1000;
-const ENDPOINT_CONTRACT_SCAN_CADENCE_MS = 6 * 60 * 60 * 1000;
+import { fireEverySchedule, runWorkflowCronSweep } from "./workflow-schedule-sweep.ts";
 
 const FILES_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
 
@@ -96,34 +73,30 @@ export interface ReconcilerOptions {
   probeRunner?: typeof probeAllSelfDescriptionLinks;
 }
 
-type EveryDesiredState = Map<
-  string,
-  { schedule_id: string; seconds: number; payload: ExecutionRunJob }
->;
-
-function scheduleKeyForRow(row: { id: string }): string {
-  return `wf-schedule.${row.id}`;
-}
-
-export function isCronDue(cron: string, lastFiredAt: Date | null, now: Date, tz?: string): boolean {
-  const trimmed = cron.trim();
-  if (trimmed.startsWith("every:")) {
-    const seconds = Number.parseFloat(trimmed.slice("every:".length));
-    if (!Number.isFinite(seconds) || seconds <= 0) return false;
-    if (!lastFiredAt) return true;
-    return now.getTime() - lastFiredAt.getTime() >= seconds * 1000;
-  }
-  if (!lastFiredAt) return true;
-  const next = nextCronOccurrence(trimmed, lastFiredAt, tz);
-  return next !== null && now.getTime() >= next.getTime();
-}
+export { isCronDue } from "./cron.ts";
 
 export class SchedulerReconciler {
   private timer: NodeJS.Timeout | null = null;
-  private everyTimers: Map<string, NodeJS.Timeout> = new Map();
-  private installed: Map<string, string> = new Map();
+  private readonly everySweep: EveryScheduleSweep;
   private stopped = false;
+  private installation: { installed: true; firstPass: Promise<void> } | null = null;
   private inFlight = new Set<Promise<unknown>>();
+  private producerPasses = new Map<string, Promise<void>>();
+
+  private runProducerPass(producer: string, operation: () => Promise<void>): Promise<void> {
+    if (this.stopped || this.producerPasses.has(producer)) return Promise.resolve();
+    const task = Promise.resolve().then(() => {
+      if (this.stopped) return;
+      return operation();
+    });
+    this.producerPasses.set(producer, task);
+    this.track(task);
+    const finished = () => {
+      if (this.producerPasses.get(producer) === task) this.producerPasses.delete(producer);
+    };
+    void task.then(finished, finished);
+    return task;
+  }
 
   private track<T>(task: Promise<T>): Promise<T> {
     this.inFlight.add(task);
@@ -160,14 +133,51 @@ export class SchedulerReconciler {
   constructor(private readonly opts: ReconcilerOptions) {
     this.discoveryRunner = opts.discoveryRunner ?? runDiscoveryCached;
     this.probeRunner = opts.probeRunner ?? probeAllSelfDescriptionLinks;
+    this.everySweep = new EveryScheduleSweep(opts.db, (definition) => {
+      const key = `wf-schedule.${definition.schedule_id}`;
+      let pending = false;
+      const timer = setInterval(() => {
+        if (this.stopped || pending) return;
+        pending = true;
+        void this.track(
+          fireEverySchedule(this.opts.db, definition, (scheduleKey, payload, audit) =>
+            this.fireWorkflowSchedule(scheduleKey, payload, audit),
+          ),
+        )
+          .catch((error) => {
+            logScheduleFireFailure(
+              error,
+              {
+                tenant_id: definition.tenant_id,
+                workflow_id: definition.workflow_id,
+                schedule_id: definition.schedule_id,
+                schedule_key: key,
+              },
+              "schedule.fire_failed",
+            );
+          })
+          .finally(() => {
+            pending = false;
+          });
+      }, definition.seconds * 1000);
+      timer.unref?.();
+      return () => clearInterval(timer);
+    });
   }
 
   async start(): Promise<void> {
+    await this.install().firstPass;
+  }
+
+  install(): { installed: true; firstPass: Promise<void> } {
+    if (this.installation) {
+      if (this.stopped) throw new Error("scheduler_stopping");
+      return this.installation;
+    }
     this.stopped = false;
-    await this.track(this.reconcileOnce());
-    if (this.stopped) return;
+    this.everySweep.resume();
     const period = this.opts.intervalMs ?? 60_000;
-    this.timer = setInterval(() => {
+    const timer = setInterval(() => {
       if (this.stopped) return;
       this.track(this.reconcileOnce()).catch((err) => {
         logger.error({
@@ -178,7 +188,19 @@ export class SchedulerReconciler {
         });
       });
     }, period);
-    (this.timer as unknown as { unref?: () => void }).unref?.();
+    this.timer = timer;
+    (timer as unknown as { unref?: () => void }).unref?.();
+    const firstPass = this.track(Promise.resolve().then(() => this.reconcileOnce())).catch(
+      (error) => {
+        if (this.timer === timer) {
+          clearInterval(timer);
+          this.timer = null;
+        }
+        throw error;
+      },
+    );
+    this.installation = { installed: true, firstPass };
+    return this.installation;
   }
 
   async stop(): Promise<void> {
@@ -187,260 +209,233 @@ export class SchedulerReconciler {
       clearInterval(this.timer);
       this.timer = null;
     }
-    for (const [key, t] of this.everyTimers) {
-      clearInterval(t);
-      this.everyTimers.delete(key);
-    }
+    this.everySweep.stop();
     await Promise.allSettled([...this.inFlight]);
-    for (const timer of this.everyTimers.values()) clearInterval(timer);
-    this.everyTimers.clear();
-    this.installed.clear();
+    this.installation = null;
   }
 
   async reconcileOnce(): Promise<void> {
     if (this.stopped) return;
-    await retryTransient(() => this.reconcileDocsAutoRefresh(), {
-      label: "docs_auto_refresh",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "docs_refresh_failed",
-        msg: "scheduler docs auto-refresh pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileKnowledgeAutoRefresh(), {
-      label: "knowledge_auto_refresh",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "knowledge_refresh_failed",
-        msg: "scheduler knowledge auto-refresh pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileConnectorSelfDescription(), {
-      label: "connector_self_description",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "connector_self_description_failed",
-        msg: "scheduler connector self-description enrichment pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileWorkflowSchedules(), {
-      label: "workflow_schedules",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "schedule_fanout_failed",
-        msg: "scheduler workflow schedule fan-out pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileProactiveDriftScans(), {
-      label: "drift_scan",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "drift_scan_failed",
-        msg: "scheduler proactive drift scan pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileConnectorReauthScans(), {
-      label: "connector_reauth_scan",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "connector_reauth_scan_failed",
-        msg: "scheduler connector re-auth scan pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileEndpointContractScans(), {
-      label: "endpoint_contract_scan",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "endpoint_contract_scan_failed",
-        msg: "scheduler endpoint-contract scan pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileSkillCandidateAnalysis(), {
-      label: "skill_candidate_analyze",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "skill_candidate_analyze_failed",
-        msg: "scheduler skill-candidate analysis pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileCatalogDescribe(), {
-      label: "catalog_describe",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "catalog_describe_failed",
-        msg: "scheduler catalog description pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileFilesCleanup(), {
-      label: "files_cleanup",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "files_cleanup_failed",
-        msg: "scheduler files cleanup pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileMcpOAuthCleanup(), {
-      label: "mcp_oauth_cleanup",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "mcp_oauth_cleanup_failed",
-        msg: "scheduler MCP OAuth cleanup pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileConnectionRefresh(), {
-      label: "connection_refresh",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "connection_refresh_failed",
-        msg: "scheduler outbound-connection refresh pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileConversationTitleSweep(), {
-      label: "conversation_title_sweep",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "conversation_title_sweep_failed",
-        msg: "scheduler dormant-conversation titling pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileChatDedupCleanup(), {
-      label: "chat_dedup_cleanup",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "chat_dedup_cleanup_failed",
-        msg: "scheduler chat-dedup cleanup pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileNotificationInboxRetention(), {
-      label: "notification_inbox_retention",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "notification_inbox_retention_failed",
-        msg: "scheduler notification-inbox retention pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileToolApprovalsCleanup(), {
-      label: "tool_approvals_cleanup",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "tool_approvals_cleanup_failed",
-        msg: "scheduler tool-approvals cleanup pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileElicitationExpiry(), {
-      label: "elicitation_expiry",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "elicitation_expiry_failed",
-        msg: "scheduler elicitation expiry pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileRiskSignalEdges(), {
-      label: "risk_signal_edges",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "risk_signal_edges_failed",
-        msg: "scheduler risk-signal edge pass failed",
-        ...errorFields(err),
-      });
-    });
-    await retryTransient(() => this.reconcileEmbeddingBackfill(), {
-      label: "embedding_backfill",
-    }).catch((err) => {
-      logger.error({
-        module: "scheduler",
-        action: "embedding_backfill_failed",
-        msg: "scheduler embedding backfill pass failed",
-        ...errorFields(err),
-      });
-    });
-    const desired = await retryTransient(() => this.computeDesired(), {
-      label: "compute_desired",
-    });
-
-    for (const [key, def] of desired) {
-      const sig = `every|${def.seconds}|${JSON.stringify(def.payload)}`;
-      if (this.installed.get(key) === sig) continue;
-      const prior = this.everyTimers.get(key);
-      if (prior) clearInterval(prior);
-      const timer = setInterval(() => {
-        if (this.stopped) return;
-        void this.track(this.fireEvery(key, def)).catch((err) => {
-          logScheduleFireFailure(
-            err,
-            {
-              tenant_id: def.payload.tenant_id,
-              workflow_id: def.payload.workflow_id,
-              schedule_id: def.schedule_id,
-              schedule_key: key,
-            },
-            "schedule.fire_failed",
-          );
+    const producerTasks = [
+      this.runProducerPass("docs", () =>
+        retryTransient(() => this.reconcileDocsAutoRefresh(), {
+          label: "docs_auto_refresh",
+        }).catch((err) => {
+          logger.error({
+            module: "scheduler",
+            action: "docs_refresh_failed",
+            msg: "scheduler docs auto-refresh pass failed",
+            ...errorFields(err),
+          });
+        }),
+      ),
+      this.runProducerPass("knowledge", () =>
+        retryTransient(() => this.reconcileKnowledgeAutoRefresh(), {
+          label: "knowledge_auto_refresh",
+        }).catch((err) => {
+          logger.error({
+            module: "scheduler",
+            action: "knowledge_refresh_failed",
+            msg: "scheduler knowledge auto-refresh pass failed",
+            ...errorFields(err),
+          });
+        }),
+      ),
+      this.runProducerPass("workflow-cron", () =>
+        retryTransient(() => this.reconcileWorkflowSchedules(), {
+          label: "workflow_schedules",
+        }).catch((err) => {
+          logger.error({
+            module: "scheduler",
+            action: "schedule_fanout_failed",
+            msg: "scheduler workflow schedule fan-out pass failed",
+            ...errorFields(err),
+          });
+        }),
+      ),
+      this.runProducerPass("drift", () =>
+        retryTransient(() => this.reconcileProactiveDriftScans(), {
+          label: "drift_scan",
+        }).catch((err) => {
+          logger.error({
+            module: "scheduler",
+            action: "drift_scan_failed",
+            msg: "scheduler proactive drift scan pass failed",
+            ...errorFields(err),
+          });
+        }),
+      ),
+      this.runProducerPass("reauth", () =>
+        retryTransient(() => this.reconcileConnectorReauthScans(), {
+          label: "connector_reauth_scan",
+        }).catch((err) => {
+          logger.error({
+            module: "scheduler",
+            action: "connector_reauth_scan_failed",
+            msg: "scheduler connector re-auth scan pass failed",
+            ...errorFields(err),
+          });
+        }),
+      ),
+      this.runProducerPass("endpoint-contract", () =>
+        retryTransient(() => this.reconcileEndpointContractScans(), {
+          label: "endpoint_contract_scan",
+        }).catch((err) => {
+          logger.error({
+            module: "scheduler",
+            action: "endpoint_contract_scan_failed",
+            msg: "scheduler endpoint-contract scan pass failed",
+            ...errorFields(err),
+          });
+        }),
+      ),
+      this.runProducerPass("skill", () =>
+        retryTransient(() => this.reconcileSkillCandidateAnalysis(), {
+          label: "skill_candidate_analyze",
+        }).catch((err) => {
+          logger.error({
+            module: "scheduler",
+            action: "skill_candidate_analyze_failed",
+            msg: "scheduler skill-candidate analysis pass failed",
+            ...errorFields(err),
+          });
+        }),
+      ),
+      this.runProducerPass("catalog", () =>
+        retryTransient(() => this.reconcileCatalogDescribe(), {
+          label: "catalog_describe",
+        }).catch((err) => {
+          logger.error({
+            module: "scheduler",
+            action: "catalog_describe_failed",
+            msg: "scheduler catalog description pass failed",
+            ...errorFields(err),
+          });
+        }),
+      ),
+    ];
+    try {
+      await retryTransient(() => this.reconcileConnectorSelfDescription(), {
+        label: "connector_self_description",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "connector_self_description_failed",
+          msg: "scheduler connector self-description enrichment pass failed",
+          ...errorFields(err),
         });
-      }, def.seconds * 1000);
-      (timer as unknown as { unref?: () => void }).unref?.();
-      this.everyTimers.set(key, timer);
-      this.installed.set(key, sig);
-      logger.info({
-        module: "scheduler",
-        action: "schedule.upserted",
-        msg: "installed every-schedule",
-        schedule_key: key,
-        every_seconds: def.seconds,
       });
-    }
 
-    const desiredKeys = new Set(desired.keys());
-    for (const key of [...this.installed.keys()]) {
-      if (desiredKeys.has(key)) continue;
-      const timer = this.everyTimers.get(key);
-      if (timer) {
-        clearInterval(timer);
-        this.everyTimers.delete(key);
-      }
-      this.installed.delete(key);
-      logger.info({
-        module: "scheduler",
-        action: "schedule.removed",
-        msg: "removed schedule",
-        schedule_key: key,
+      await retryTransient(() => this.reconcileFilesCleanup(), {
+        label: "files_cleanup",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "files_cleanup_failed",
+          msg: "scheduler files cleanup pass failed",
+          ...errorFields(err),
+        });
       });
+      await retryTransient(() => this.reconcileMcpOAuthCleanup(), {
+        label: "mcp_oauth_cleanup",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "mcp_oauth_cleanup_failed",
+          msg: "scheduler MCP OAuth cleanup pass failed",
+          ...errorFields(err),
+        });
+      });
+      await retryTransient(() => this.reconcileConnectionRefresh(), {
+        label: "connection_refresh",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "connection_refresh_failed",
+          msg: "scheduler outbound-connection refresh pass failed",
+          ...errorFields(err),
+        });
+      });
+      await retryTransient(() => this.reconcileConversationTitleSweep(), {
+        label: "conversation_title_sweep",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "conversation_title_sweep_failed",
+          msg: "scheduler dormant-conversation titling pass failed",
+          ...errorFields(err),
+        });
+      });
+      await retryTransient(() => this.reconcileChatDedupCleanup(), {
+        label: "chat_dedup_cleanup",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "chat_dedup_cleanup_failed",
+          msg: "scheduler chat-dedup cleanup pass failed",
+          ...errorFields(err),
+        });
+      });
+      await retryTransient(() => this.reconcileNotificationInboxRetention(), {
+        label: "notification_inbox_retention",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "notification_inbox_retention_failed",
+          msg: "scheduler notification-inbox retention pass failed",
+          ...errorFields(err),
+        });
+      });
+      await retryTransient(() => this.reconcileToolApprovalsCleanup(), {
+        label: "tool_approvals_cleanup",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "tool_approvals_cleanup_failed",
+          msg: "scheduler tool-approvals cleanup pass failed",
+          ...errorFields(err),
+        });
+      });
+      await retryTransient(() => this.reconcileElicitationExpiry(), {
+        label: "elicitation_expiry",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "elicitation_expiry_failed",
+          msg: "scheduler elicitation expiry pass failed",
+          ...errorFields(err),
+        });
+      });
+      await retryTransient(() => this.reconcileRiskSignalEdges(), {
+        label: "risk_signal_edges",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "risk_signal_edges_failed",
+          msg: "scheduler risk-signal edge pass failed",
+          ...errorFields(err),
+        });
+      });
+      await retryTransient(() => this.reconcileEmbeddingBackfill(), {
+        label: "embedding_backfill",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "embedding_backfill_failed",
+          msg: "scheduler embedding backfill pass failed",
+          ...errorFields(err),
+        });
+      });
+      await retryTransient(() => this.reconcileEverySchedules(), {
+        label: "every_schedule_discovery",
+      });
+    } finally {
+      await Promise.all(producerTasks);
     }
+  }
+
+  async reconcileEverySchedules(): Promise<void> {
+    await this.everySweep.reconcile();
   }
 
   async reconcileDocsAutoRefresh(): Promise<void> {
@@ -452,64 +447,7 @@ export class SchedulerReconciler {
   }
 
   private async reconcileDocsAutoRefreshPass(): Promise<void> {
-    // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
-    const rows = await this.opts.db
-      .select()
-      .from(connectors)
-      .where(
-        and(
-          isNotNull(connectors.auto_refresh_cron),
-          isNull(connectors.deleted_at),
-          sql`EXISTS (SELECT 1 FROM ${tenants} WHERE ${tenants.id} = ${connectors.tenant_id} AND ${tenants.status} = 'active' AND ${tenants.deleted_at} IS NULL)`,
-        ),
-      );
-    for (const row of rows) {
-      const cron = row.auto_refresh_cron;
-      if (!cron) continue;
-      const due = isCronDue(cron, row.last_ingested_at ?? null, new Date());
-      if (!due) continue;
-      const cfg = (row.config as Record<string, unknown>) ?? {};
-      const sourceType = typeof cfg.docs_source_type === "string" ? cfg.docs_source_type : null;
-      const sourceUrl = typeof cfg.docs_source_url === "string" ? cfg.docs_source_url : null;
-      if (!sourceType || !sourceUrl) {
-        logger.debug({
-          module: "scheduler",
-          action: "docs_refresh_skip",
-          msg: "connector auto_refresh_cron set but config.docs_source_* missing",
-          connector_id: row.id,
-        });
-        continue;
-      }
-      try {
-        await enqueueIngest(this.opts.boss, {
-          tenant_id: row.tenant_id,
-          connector_id: row.id,
-          source_type: sourceType as "openapi",
-          url: sourceUrl,
-          actor_id: null,
-        });
-        await this.opts.db
-          .update(connectors)
-          .set({ last_ingested_at: new Date() })
-          .where(eq(connectors.id, row.id));
-        logger.info({
-          module: "scheduler",
-          action: "docs_refresh_enqueued",
-          msg: "auto-refresh enqueued ingest job",
-          queue: INGEST_DOCS_QUEUE,
-          connector_id: row.id,
-          cron,
-        });
-      } catch (err) {
-        logger.error({
-          module: "scheduler",
-          action: "docs_refresh_enqueue_failed",
-          msg: "failed to enqueue auto-refresh ingest",
-          connector_id: row.id,
-          ...errorFields(err),
-        });
-      }
-    }
+    await runDocsRefreshSweep(this.opts.db, this.opts.boss);
   }
 
   async reconcileWorkflowSchedules(now: Date = new Date()): Promise<void> {
@@ -521,237 +459,68 @@ export class SchedulerReconciler {
   }
 
   private async reconcileWorkflowSchedulesPass(now: Date): Promise<void> {
-    // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
-    const rows = await this.opts.db
-      .select({
-        schedule: workflowsSchedules,
-        wf: workflows,
-      })
-      .from(workflowsSchedules)
-      .innerJoin(workflows, eq(workflows.id, workflowsSchedules.workflow_id))
-      .where(
-        and(
-          eq(workflowsSchedules.paused, false),
-          isNull(workflows.deleted_at),
-          ne(workflows.lifecycle, "archived"),
-        ),
-      );
-
-    for (const { schedule, wf } of rows) {
-      if (schedule.tenant_id !== wf.tenant_id) {
-        logger.warn({
-          module: "scheduler",
-          action: "schedule.tenant_mismatch",
-          msg: "schedule tenant_id does not match workflow tenant_id — skipping",
-          schedule_id: schedule.id,
-          schedule_tenant_id: schedule.tenant_id,
-          workflow_id: wf.id,
-          workflow_tenant_id: wf.tenant_id,
-        });
-        continue;
-      }
-      const parsed = parseCronExpression(schedule.cron);
-      if (!parsed.ok) continue;
-      if (parsed.mode === "every") continue;
-      const tz = schedule.timezone || "UTC";
-      const last = schedule.last_enqueued_at ?? null;
-      const dueBaseline = last ?? schedule.created_at;
-      if (!isCronDue(schedule.cron, dueBaseline, now, tz)) continue;
-      const inputError = await validateScheduleInput(
-        this.opts.db,
-        schedule.tenant_id,
-        schedule.workflow_id,
-        schedule.input,
-      );
-      if (inputError) {
-        await recordScheduleInputRequired(
-          this.opts.db,
-          { tenant_id: schedule.tenant_id, schedule_id: schedule.id, observed_at: now },
-          inputError,
-        );
-        continue;
-      }
-      const gates = readCalendarGates(schedule.input);
-      const skipReason = calendarGateSkipReason(now, tz, gates);
-      if (skipReason !== null) {
-        logger.info({
-          module: "scheduler",
-          action: "schedule.skipped",
-          msg: "calendar gate suppressed schedule firing",
-          schedule_id: schedule.id,
-          workflow_id: wf.id,
-          tz,
-          reason: skipReason,
-          local_date: localDateInTz(now, tz),
-        });
-        continue;
-      }
-      try {
-        const payload: ExecutionRunJob = {
-          tenant_id: wf.tenant_id,
-          workflow_id: wf.id,
-          input: stripCalendarGates(schedule.input),
-          request_source: "scheduler",
-          execution_mode: schedule.execution_mode,
-        };
-        const priorWhere =
-          last === null
-            ? isNull(workflowsSchedules.last_enqueued_at)
-            : sql`date_trunc('milliseconds', ${workflowsSchedules.last_enqueued_at}) = ${last}`;
-        const stamped = await this.opts.db
-          .update(workflowsSchedules)
-          .set({ last_enqueued_at: now })
-          .where(and(eq(workflowsSchedules.id, schedule.id), priorWhere))
-          .returning({ id: workflowsSchedules.id });
-        if (stamped.length === 0) continue;
-        await this.fireWorkflowSchedule(scheduleKeyForRow(schedule), payload, {
-          tenant_id: wf.tenant_id,
-          schedule_id: schedule.id,
-          tz,
-          occurrence_after: dueBaseline,
-          claimed_at: now,
-        });
-      } catch (err) {
-        logScheduleFireFailure(
-          err,
-          {
-            tenant_id: wf.tenant_id,
-            workflow_id: wf.id,
-            schedule_id: schedule.id,
-          },
-          "schedule.fanout_failed",
-        );
-        try {
-          await this.opts.db
-            .update(workflowsSchedules)
-            .set({ last_enqueued_at: last })
-            .where(
-              and(
-                eq(workflowsSchedules.id, schedule.id),
-                sql`date_trunc('milliseconds', ${workflowsSchedules.last_enqueued_at}) = ${now}`,
-              ),
-            );
-        } catch (compErr) {
-          logger.error({
-            module: "scheduler",
-            action: "schedule.fanout_compensate_failed",
-            msg: "failed to restore last_enqueued_at after a failed fire",
-            schedule_id: schedule.id,
-            ...errorFields(compErr),
-          });
-        }
-      }
-    }
+    await runWorkflowCronSweep(this.opts.db, now, (key, payload, audit) =>
+      this.fireWorkflowSchedule(key, payload, audit),
+    );
   }
 
   async reconcileProactiveDriftScans(now: Date = new Date()): Promise<void> {
-    // tenant-filter:exempt — proactive drift scan sweeps every tenant; row carries tenant_id forward
-    const cadenceCutoff = new Date(now.getTime() - PROACTIVE_DRIFT_SCAN_CADENCE_MS);
-    const claimed = await this.opts.db
-      .update(tenants)
-      .set({ last_proactive_scan_at: now })
-      .where(
-        and(
-          isNull(tenants.deleted_at),
-          eq(tenants.status, "active"),
-          or(
-            isNull(tenants.last_proactive_scan_at),
-            lt(tenants.last_proactive_scan_at, cadenceCutoff),
-          ),
-        ),
-      )
-      .returning({ id: tenants.id });
-
-    for (const tenant of claimed) {
+    await runTenantCadenceSweep("drift", now, this.opts.db, async (tenantId) => {
       try {
-        await runProactiveDriftScanForTenant(tenant.id, now, this.opts.db);
+        await runProactiveDriftScanForTenant(tenantId, now, this.opts.db);
       } catch (err) {
         logger.error({
           module: "scheduler",
           action: "drift_scan_failed",
           msg: "proactive drift scan threw for tenant — continuing with the rest",
-          tenant_id: tenant.id,
+          tenant_id: tenantId,
           ...errorFields(err),
         });
       }
-    }
+    });
   }
 
   async reconcileConnectorReauthScans(now: Date = new Date()): Promise<void> {
-    // tenant-filter:exempt — connector re-auth scan sweeps every tenant; row carries tenant_id forward
-    const cadenceCutoff = new Date(now.getTime() - CONNECTOR_REAUTH_SCAN_CADENCE_MS);
-    const claimed = await this.opts.db
-      .update(tenants)
-      .set({ last_connector_reauth_scan_at: now })
-      .where(
-        and(
-          isNull(tenants.deleted_at),
-          eq(tenants.status, "active"),
-          or(
-            isNull(tenants.last_connector_reauth_scan_at),
-            lt(tenants.last_connector_reauth_scan_at, cadenceCutoff),
-          ),
-        ),
-      )
-      .returning({ id: tenants.id });
-
-    for (const tenant of claimed) {
+    await runTenantCadenceSweep("reauth", now, this.opts.db, async (tenantId) => {
       try {
-        await runConnectorReauthScanForTenant(tenant.id, now, this.opts.db);
+        await runConnectorReauthScanForTenant(tenantId, now, this.opts.db);
       } catch (err) {
         logger.error({
           module: "scheduler",
           action: "connector_reauth_scan_failed",
           msg: "connector re-auth scan threw for tenant — continuing with the rest",
-          tenant_id: tenant.id,
+          tenant_id: tenantId,
           ...errorFields(err),
         });
       }
       try {
-        await runOAuth2RefreshKeepAliveForTenant(tenant.id, now, this.opts.db, this.opts.boss);
+        await runOAuth2RefreshKeepAliveForTenant(tenantId, now, this.opts.db, this.opts.boss);
       } catch (err) {
         logger.error({
           module: "scheduler",
           action: "oauth2_keepalive_failed",
           msg: "oauth2 refresh keep-alive sweep threw for tenant — continuing with the rest",
-          tenant_id: tenant.id,
+          tenant_id: tenantId,
           ...errorFields(err),
         });
       }
-    }
+    });
   }
 
   async reconcileEndpointContractScans(now: Date = new Date()): Promise<void> {
-    // tenant-filter:exempt — contract scan sweeps every tenant; row carries tenant_id forward
-    const cadenceCutoff = new Date(now.getTime() - ENDPOINT_CONTRACT_SCAN_CADENCE_MS);
-    const claimed = await this.opts.db
-      .update(tenants)
-      .set({ last_endpoint_contract_scan_at: now })
-      .where(
-        and(
-          isNull(tenants.deleted_at),
-          eq(tenants.status, "active"),
-          or(
-            isNull(tenants.last_endpoint_contract_scan_at),
-            lt(tenants.last_endpoint_contract_scan_at, cadenceCutoff),
-          ),
-        ),
-      )
-      .returning({ id: tenants.id });
-
-    for (const tenant of claimed) {
+    await runTenantCadenceSweep("endpoint-contract", now, this.opts.db, async (tenantId) => {
       try {
-        await runEndpointContractScanForTenant(tenant.id, now, this.opts.db);
+        await runEndpointContractScanForTenant(tenantId, now, this.opts.db);
       } catch (err) {
         logger.error({
           module: "scheduler",
           action: "endpoint_contract_scan_failed",
           msg: "endpoint-contract scan threw for tenant — continuing with the rest",
-          tenant_id: tenant.id,
+          tenant_id: tenantId,
           ...errorFields(err),
         });
       }
-    }
+    });
   }
 
   async reconcileSkillCandidateAnalysis(now: Date = new Date()): Promise<void> {
@@ -1045,139 +814,6 @@ export class SchedulerReconciler {
     });
   }
 
-  private async fireEvery(
-    key: string,
-    def: { schedule_id: string; seconds: number; payload: ExecutionRunJob },
-  ): Promise<void> {
-    const { schedule_id, seconds, payload } = def;
-    const [schedule] = await this.opts.db
-      .select()
-      .from(workflowsSchedules)
-      .where(
-        and(
-          eq(workflowsSchedules.id, schedule_id),
-          eq(workflowsSchedules.tenant_id, payload.tenant_id),
-          eq(workflowsSchedules.workflow_id, payload.workflow_id),
-          eq(workflowsSchedules.paused, false),
-        ),
-      )
-      .limit(1);
-    if (!schedule) return;
-    const now = new Date();
-    const inputError = await validateScheduleInput(
-      this.opts.db,
-      schedule.tenant_id,
-      schedule.workflow_id,
-      schedule.input,
-    );
-    if (inputError) {
-      await recordScheduleInputRequired(
-        this.opts.db,
-        { tenant_id: schedule.tenant_id, schedule_id, observed_at: now },
-        inputError,
-      );
-      return;
-    }
-    const minGapMs = Math.max(1000, seconds * 1000 * 0.5);
-    const threshold = new Date(now.getTime() - minGapMs);
-    const claimed = await this.opts.db
-      .update(workflowsSchedules)
-      .set({ last_enqueued_at: now })
-      .where(
-        and(
-          eq(workflowsSchedules.id, schedule_id),
-          schedule.last_enqueued_at === null
-            ? isNull(workflowsSchedules.last_enqueued_at)
-            : sql`date_trunc('milliseconds', ${workflowsSchedules.last_enqueued_at}) = ${schedule.last_enqueued_at}`,
-          or(
-            isNull(workflowsSchedules.last_enqueued_at),
-            lt(workflowsSchedules.last_enqueued_at, threshold),
-          ),
-        ),
-      )
-      .returning({ id: workflowsSchedules.id });
-    if (claimed.length === 0) return;
-    try {
-      await this.fireWorkflowSchedule(key, payload, {
-        tenant_id: payload.tenant_id,
-        schedule_id,
-        tz: schedule.timezone || "UTC",
-        occurrence_after: schedule.last_enqueued_at ?? schedule.created_at,
-        claimed_at: now,
-      });
-    } catch (error) {
-      await this.opts.db
-        .update(workflowsSchedules)
-        .set({ last_enqueued_at: schedule.last_enqueued_at })
-        .where(
-          and(
-            eq(workflowsSchedules.id, schedule_id),
-            eq(workflowsSchedules.tenant_id, payload.tenant_id),
-            sql`date_trunc('milliseconds', ${workflowsSchedules.last_enqueued_at}) = ${now}`,
-          ),
-        );
-      throw error;
-    }
-  }
-
-  private async computeDesired(): Promise<EveryDesiredState> {
-    // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
-    const rows = await this.opts.db
-      .select({
-        schedule: workflowsSchedules,
-        wf: workflows,
-      })
-      .from(workflowsSchedules)
-      .innerJoin(workflows, eq(workflows.id, workflowsSchedules.workflow_id))
-      .where(
-        and(
-          eq(workflowsSchedules.paused, false),
-          isNull(workflows.deleted_at),
-          ne(workflows.lifecycle, "archived"),
-        ),
-      );
-
-    const every: EveryDesiredState = new Map();
-    for (const { schedule, wf } of rows) {
-      if (schedule.tenant_id !== wf.tenant_id) {
-        logger.warn({
-          module: "scheduler",
-          action: "schedule.tenant_mismatch",
-          msg: "schedule tenant_id does not match workflow tenant_id — skipping",
-          schedule_id: schedule.id,
-          schedule_tenant_id: schedule.tenant_id,
-          workflow_id: wf.id,
-          workflow_tenant_id: wf.tenant_id,
-        });
-        continue;
-      }
-      const parsed = parseCronExpression(schedule.cron);
-      if (!parsed.ok) {
-        logger.warn({
-          module: "scheduler",
-          action: "schedule.invalid_cron",
-          msg: "skipping schedule with invalid cron",
-          schedule_id: schedule.id,
-          cron: schedule.cron,
-          reason: parsed.reason,
-        });
-        continue;
-      }
-      const key = scheduleKeyForRow(schedule);
-      const payload: ExecutionRunJob = {
-        tenant_id: wf.tenant_id,
-        workflow_id: wf.id,
-        input: stripCalendarGates(schedule.input ?? null),
-        request_source: "scheduler",
-        execution_mode: schedule.execution_mode,
-      };
-      if (parsed.mode === "every" && parsed.everySeconds !== undefined) {
-        every.set(key, { schedule_id: schedule.id, seconds: parsed.everySeconds, payload });
-      }
-    }
-    return every;
-  }
-
   async reconcileKnowledgeAutoRefresh(): Promise<void> {
     await instrument({
       module: "scheduler",
@@ -1187,54 +823,6 @@ export class SchedulerReconciler {
   }
 
   private async reconcileKnowledgeAutoRefreshPass(): Promise<void> {
-    // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
-    const rows = await this.opts.db
-      .select()
-      .from(knowledgeSources)
-      .where(
-        and(
-          eq(knowledgeSources.refresh_strategy, "scheduled"),
-          eq(knowledgeSources.source_type, "url"),
-          inArray(knowledgeSources.status, ["active", "error"]),
-          isNull(knowledgeSources.deleted_at),
-          isNotNull(knowledgeSources.refresh_cron),
-        ),
-      );
-    for (const row of rows) {
-      const cron = row.refresh_cron;
-      if (!cron) continue;
-      const due = isCronDue(cron, row.last_refreshed_at ?? null, new Date());
-      if (!due) continue;
-      try {
-        await enqueueKnowledgeIngest(this.opts.boss, {
-          tenant_id: row.tenant_id,
-          knowledge_source_id: row.id,
-          filename: row.source_uri,
-          content: "",
-          actor: null,
-          read_address_again: true,
-        });
-        await this.opts.db
-          .update(knowledgeSources)
-          .set({ last_refreshed_at: new Date() })
-          .where(eq(knowledgeSources.id, row.id));
-        logger.info({
-          module: "scheduler",
-          action: "knowledge_refresh_enqueued",
-          msg: "knowledge auto-refresh enqueued ingest job",
-          queue: INGEST_KNOWLEDGE_QUEUE,
-          knowledge_source_id: row.id,
-          cron,
-        });
-      } catch (err) {
-        logger.error({
-          module: "scheduler",
-          action: "knowledge_refresh_enqueue_failed",
-          msg: "failed to enqueue knowledge auto-refresh ingest",
-          knowledge_source_id: row.id,
-          ...errorFields(err),
-        });
-      }
-    }
+    await runKnowledgeRefreshSweep(this.opts.db, this.opts.boss);
   }
 }

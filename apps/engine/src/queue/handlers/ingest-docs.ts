@@ -1,9 +1,10 @@
 import type { Job, PgBoss } from "pg-boss";
-import type { Db } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import * as docs from "../../docs-ingestion/service.ts";
 import type { DocSourceType } from "../../docs-ingestion/types.ts";
 import { log } from "../../logging/logger.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";
+import { queuedSendTransaction } from "../transaction-adapter.ts";
 
 export const INGEST_DOCS_QUEUE = "connector.ingest-docs" as const;
 
@@ -86,6 +87,11 @@ export async function registerIngestDocsHandler(opts: RegisterIngestDocsOptions)
   return workerId;
 }
 
-export async function enqueueIngest(boss: PgBoss, payload: IngestDocsJob): Promise<string | null> {
+export async function enqueueIngest(
+  boss: PgBoss,
+  payload: IngestDocsJob,
+  exec?: Executor,
+): Promise<string | null> {
+  if (exec) return await boss.send(INGEST_DOCS_QUEUE, payload, { db: queuedSendTransaction(exec) });
   return await boss.send(INGEST_DOCS_QUEUE, payload);
 }

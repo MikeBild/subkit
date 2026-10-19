@@ -31,6 +31,7 @@ docker/binaries/
 .agent-prime.json
 claude-key.txt
 openai-key.txt
+upraft-key.txt
 creds.txt
 subkit.config.json
 .superdesign/

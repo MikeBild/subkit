@@ -63,7 +63,68 @@ interface TracingState {
 
 const state: TracingState = { started: false, active: false };
 
-export async function startTracing(): Promise<() => Promise<void>> {
+let tracingOperations: Promise<void> = Promise.resolve();
+let tracingClosing = false;
+let tracingClosed: Promise<void> | null = null;
+const pendingShutdowns = new Set<Promise<void>>();
+const shutdownOperations = new WeakMap<() => Promise<void>, Promise<void>>();
+const shutdownFailures: unknown[] = [];
+
+function serializeTracing<T>(operation: () => Promise<T>): Promise<T> {
+  const result = tracingOperations.then(operation);
+  tracingOperations = result.then(
+    () => {},
+    () => {},
+  );
+  return result;
+}
+
+function trackTracingShutdown(operation: () => Promise<void>): Promise<void> {
+  const existing = shutdownOperations.get(operation);
+  if (existing) return existing;
+  const task = Promise.resolve().then(operation);
+  shutdownOperations.set(operation, task);
+  pendingShutdowns.add(task);
+  void task.then(
+    () => pendingShutdowns.delete(task),
+    (error: unknown) => {
+      pendingShutdowns.delete(task);
+      shutdownFailures.push(error);
+    },
+  );
+  return task;
+}
+
+export function startTracing(): Promise<() => Promise<void>> {
+  return serializeTracing(async () => {
+    if (tracingClosing) throw new Error("tracing_stopping");
+    await startTracingNow();
+    return shutdownTracing;
+  });
+}
+
+export function reconfigureTracing(): Promise<void> {
+  return serializeTracing(async () => {
+    if (tracingClosing) throw new Error("tracing_stopping");
+    await reconfigureTracingNow();
+  });
+}
+
+export function shutdownTracing(): Promise<void> {
+  if (tracingClosed) return tracingClosed;
+  tracingClosing = true;
+  tracingClosed = serializeTracing(async () => {
+    if (state.shutdown) trackTracingShutdown(state.shutdown);
+    state.started = false;
+    state.active = false;
+    delete state.shutdown;
+    while (pendingShutdowns.size > 0) await Promise.allSettled([...pendingShutdowns]);
+    if (shutdownFailures.length > 0) throw new Error("tracing_shutdown_failed");
+  });
+  return tracingClosed;
+}
+
+async function startTracingNow(): Promise<() => Promise<void>> {
   if (state.started) {
     return state.shutdown ?? (async () => {});
   }
@@ -170,6 +231,7 @@ export async function startTracing(): Promise<() => Promise<void>> {
         msg: "OpenTelemetry tracer shutdown failed",
         error: err instanceof Error ? err.message : String(err),
       });
+      throw err;
     }
   };
   state.shutdown = shutdown;
@@ -211,7 +273,7 @@ async function awaitWithTimeout(
   }
 }
 
-export async function reconfigureTracing(): Promise<void> {
+async function reconfigureTracingNow(): Promise<void> {
   if (_throwOnNextReconfigureForTests) {
     _throwOnNextReconfigureForTests = false;
     throw new Error("forced reconfigure failure (test seam)");
@@ -222,16 +284,14 @@ export async function reconfigureTracing(): Promise<void> {
   delete state.shutdown;
   if (prev) {
     await awaitWithTimeout(
-      Promise.resolve()
-        .then(() => prev())
-        .catch((err) => {
-          logger.warn({
-            module: "observability",
-            action: "tracing.reconfigure_shutdown_failed",
-            msg: "tracing shutdown during reconfigure failed (continuing)",
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }),
+      trackTracingShutdown(prev).catch((err) => {
+        logger.warn({
+          module: "observability",
+          action: "tracing.reconfigure_shutdown_failed",
+          msg: "tracing shutdown during reconfigure failed (continuing)",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }),
       RECONFIGURE_SHUTDOWN_TIMEOUT_MS,
       () => {
         logger.warn({
@@ -242,7 +302,7 @@ export async function reconfigureTracing(): Promise<void> {
       },
     );
   }
-  await startTracing();
+  await startTracingNow();
   logger.info({
     module: "observability",
     action: "tracing.reconfigured",

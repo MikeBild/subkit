@@ -1,9 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type ServerType, serve } from "@hono/node-server";
 import { and, eq } from "drizzle-orm";
 import { ChatAdapterRegistry } from "../../chat/registry.ts";
 import { SlackAdapter } from "../../chat/slack/adapter.ts";
+import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
 import { connectors, conversations, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { buildDefaultRegistry, createApp } from "../../http/server.ts";
@@ -28,12 +32,18 @@ interface LocalCtx {
 }
 
 let ctx: LocalCtx;
+let configDirectory: string;
 
 beforeAll(async () => {
   process.env.LLM_PROVIDER = "mock";
   resetMockProvider();
 
   const testDb = await createTestDb("j-chat-ai");
+  configDirectory = mkdtempSync(join(tmpdir(), "sk-chat-journey-"));
+  await loadConfig({
+    env: { DATABASE_URL: testDb.url, NODE_ENV: "test", LLM_PROVIDER: "mock" },
+    configPathOverride: join(configDirectory, "subkit.config.json"),
+  });
   const { apiKeys, systemAccounts, tenants, users } = await import("../../db/schema/index.ts");
   const { createHash, randomBytes } = await import("node:crypto");
 
@@ -126,6 +136,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
+  _resetConfigForTests();
+  rmSync(configDirectory, { recursive: true, force: true });
 }, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: AI chat authoring", () => {

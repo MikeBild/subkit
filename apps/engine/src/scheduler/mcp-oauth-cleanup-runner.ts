@@ -1,366 +1,229 @@
-import { and, eq, gt, isNull, lt, notExists, or, sql } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
+import { z } from "zod";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../audit/index.ts";
-import type { Db } from "../db/client.ts";
-import {
-  connectorOauthStartGrants,
-  connectorOauthStates,
-  mcpOauthAccessTokens,
-  mcpOauthAuthorizationCodes,
-  mcpOauthClients,
-  mcpOauthRefreshTokens,
-  mcpOauthStates,
-} from "../db/schema/index.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 
-const TOKEN_GRACE = sql`interval '7 days'`;
+export const MCP_OAUTH_CLEANUP_BATCH_SIZE = 256;
 
-const CODE_GRACE = sql`interval '1 day'`;
+const returnedKeys = z
+  .array(z.object({ id: z.string().uuid() }).strict())
+  .max(MCP_OAUTH_CLEANUP_BATCH_SIZE);
+const units = [
+  "access_tokens_deleted",
+  "refresh_tokens_deleted",
+  "codes_deleted",
+  "clients_deleted",
+  "clients_retired",
+  "states_deleted",
+  "connector_oauth_start_grants_deleted",
+  "connector_oauth_states_deleted",
+] as const;
+type Unit = (typeof units)[number];
 
-const CLIENT_GRACE = sql`interval '30 days'`;
+const expiredToken = sql`(r.expires_at < now()-interval '7 days' OR r.revoked_at < now()-interval '7 days')`;
+const unusedClient = sql`r.created_at < now()-interval '30 days'
+  AND NOT EXISTS(SELECT 1 FROM subkit.mcp_oauth_refresh_tokens p WHERE p.client_id=r.client_id)
+  AND NOT EXISTS(SELECT 1 FROM subkit.mcp_oauth_access_tokens p WHERE p.client_id=r.client_id)
+  AND NOT EXISTS(SELECT 1 FROM subkit.mcp_oauth_authorization_codes p WHERE p.client_id=r.client_id)`;
+const deadRegistration = sql`r.registration_source='dcr' AND r.disabled_at IS NULL AND r.created_at < now()-interval '7 days'
+  AND NOT EXISTS(SELECT 1 FROM subkit.mcp_oauth_access_tokens p WHERE p.client_id=r.client_id AND ((p.revoked_at IS NULL AND p.expires_at>now()) OR p.last_used_at>now()-interval '7 days'))
+  AND NOT EXISTS(SELECT 1 FROM subkit.mcp_oauth_refresh_tokens p WHERE p.client_id=r.client_id AND ((p.revoked_at IS NULL AND p.expires_at>now()) OR p.created_at>now()-interval '7 days'))
+  AND NOT EXISTS(SELECT 1 FROM subkit.mcp_oauth_authorization_codes p WHERE p.client_id=r.client_id AND p.created_at>now()-interval '7 days')`;
 
-const RETIRE_AFTER = sql`interval '7 days'`;
+const definitions: ReadonlyArray<{
+  unit: Unit;
+  table: string;
+  predicate: SQL;
+  global?: true;
+  retire?: true;
+}> = [
+  { unit: "access_tokens_deleted", table: "mcp_oauth_access_tokens", predicate: expiredToken },
+  { unit: "refresh_tokens_deleted", table: "mcp_oauth_refresh_tokens", predicate: expiredToken },
+  {
+    unit: "codes_deleted",
+    table: "mcp_oauth_authorization_codes",
+    predicate: sql`r.expires_at < now()-interval '1 day'`,
+  },
+  { unit: "clients_deleted", table: "mcp_oauth_clients", predicate: unusedClient, global: true },
+  {
+    unit: "clients_retired",
+    table: "mcp_oauth_clients",
+    predicate: deadRegistration,
+    global: true,
+    retire: true,
+  },
+  { unit: "states_deleted", table: "mcp_oauth_states", predicate: sql`r.expires_at < now()` },
+  {
+    unit: "connector_oauth_start_grants_deleted",
+    table: "connector_oauth_start_grants",
+    predicate: sql`r.expires_at < now()`,
+  },
+  {
+    unit: "connector_oauth_states_deleted",
+    table: "connector_oauth_states",
+    predicate: sql`r.expires_at < now()`,
+  },
+];
+
+const refreshKeys = z
+  .array(z.object({ id: z.string().uuid(), tenant_id: z.string().uuid() }).strict())
+  .max(64);
+
+function keyRelation(keys: z.infer<typeof refreshKeys>): SQL {
+  return sql.join(
+    keys.map((key) => sql`(${key.id}::uuid,${key.tenant_id}::uuid)`),
+    sql`,`,
+  );
+}
+
+async function pruneClients(tx: Executor, predicate: SQL, retire: boolean): Promise<number> {
+  const keys = z
+    .array(z.object({ id: z.string().uuid(), client_id: z.string() }).strict())
+    .max(MCP_OAUTH_CLEANUP_BATCH_SIZE)
+    .parse(
+      (
+        await tx.execute(sql`WITH candidates AS MATERIALIZED (
+    SELECT r.id,r.client_id FROM subkit.mcp_oauth_clients r WHERE ${predicate} ORDER BY r.id LIMIT ${MCP_OAUTH_CLEANUP_BATCH_SIZE} FOR UPDATE OF r SKIP LOCKED
+  ) SELECT id,client_id FROM candidates`)
+      ).rows,
+    );
+  if (keys.length === 0) return 0;
+  const values = sql.join(
+    keys.map((key) => sql`(${key.id}::uuid,${key.client_id}::text)`),
+    sql`,`,
+  );
+  const mutation = retire
+    ? sql`UPDATE subkit.mcp_oauth_clients r SET disabled_at=now(),retired_at=now() FROM candidates`
+    : sql`DELETE FROM subkit.mcp_oauth_clients r USING candidates`;
+  const result =
+    await tx.execute(sql`WITH candidates(id,client_id) AS (VALUES ${values}) ${mutation}
+    WHERE r.id=candidates.id AND r.client_id=candidates.client_id AND ${predicate} RETURNING r.id`);
+  return returnedKeys.parse(result.rows).length;
+}
+
+async function pruneRefreshTokens(tx: Executor): Promise<{ deleted: number; detached: number }> {
+  let deleted = 0;
+  let detached = 0;
+  for (let round = 0; round < 2; round++) {
+    const parents = refreshKeys.parse(
+      (
+        await tx.execute(sql`SELECT r.id,r.tenant_id FROM subkit.mcp_oauth_refresh_tokens r
+      WHERE ${expiredToken} AND EXISTS(SELECT 1 FROM subkit.mcp_oauth_access_tokens a WHERE a.refresh_token_id=r.id)
+      ORDER BY r.id LIMIT 64 FOR UPDATE OF r SKIP LOCKED`)
+      ).rows,
+    );
+    if (parents.length > 0) {
+      const result =
+        await tx.execute(sql`WITH parents(id,tenant_id) AS (VALUES ${keyRelation(parents)}), candidates AS MATERIALIZED (
+        SELECT a.id,a.tenant_id,a.refresh_token_id FROM subkit.mcp_oauth_access_tokens a JOIN parents p ON p.id=a.refresh_token_id
+        JOIN subkit.mcp_oauth_refresh_tokens r ON r.id=p.id AND r.tenant_id=p.tenant_id
+        WHERE ${expiredToken} ORDER BY a.id LIMIT 64 FOR UPDATE OF a SKIP LOCKED
+      ) UPDATE subkit.mcp_oauth_access_tokens a SET refresh_token_id=NULL FROM candidates c
+      WHERE a.id=c.id AND a.tenant_id=c.tenant_id AND a.refresh_token_id=c.refresh_token_id
+      AND EXISTS(SELECT 1 FROM subkit.mcp_oauth_refresh_tokens r WHERE r.id=c.refresh_token_id AND ${expiredToken}) RETURNING a.id`);
+      detached += returnedKeys.parse(result.rows).length;
+    }
+    const keys = refreshKeys.parse(
+      (
+        await tx.execute(sql`SELECT r.id,r.tenant_id FROM subkit.mcp_oauth_refresh_tokens r WHERE ${expiredToken}
+      AND NOT EXISTS(SELECT 1 FROM subkit.mcp_oauth_access_tokens a WHERE a.refresh_token_id=r.id)
+      AND NOT EXISTS(SELECT 1 FROM subkit.mcp_oauth_refresh_tokens p WHERE p.rotated_to_id=r.id)
+      ORDER BY r.id LIMIT 64 FOR UPDATE OF r SKIP LOCKED`)
+      ).rows,
+    );
+    if (keys.length > 0) {
+      const result =
+        await tx.execute(sql`WITH candidates(id,tenant_id) AS (VALUES ${keyRelation(keys)})
+        DELETE FROM subkit.mcp_oauth_refresh_tokens r USING candidates c WHERE r.id=c.id AND r.tenant_id=c.tenant_id AND ${expiredToken}
+        AND NOT EXISTS(SELECT 1 FROM subkit.mcp_oauth_access_tokens a WHERE a.refresh_token_id=r.id)
+        AND NOT EXISTS(SELECT 1 FROM subkit.mcp_oauth_refresh_tokens p WHERE p.rotated_to_id=r.id) RETURNING r.id`);
+      deleted += returnedKeys.parse(result.rows).length;
+    }
+  }
+  if (deleted + detached > MCP_OAUTH_CLEANUP_BATCH_SIZE)
+    throw new Error("oauth_cleanup_bound_exceeded");
+  return { deleted, detached };
+}
 
 export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
-  const tickId = started.toISOString();
-  let access_tokens_deleted = 0;
-  let refresh_tokens_deleted = 0;
-  let codes_deleted = 0;
-  let clients_deleted = 0;
-  let retired: Array<{ id: string; client_id: string; client_name: string | null }> = [];
-  let states_deleted = 0;
-  let connector_oauth_start_grants_deleted = 0;
-  let connector_oauth_states_deleted = 0;
-
-  // tenant-filter:exempt — cross-tenant retention sweep
-  try {
-    const deleted = await db
-      .delete(mcpOauthAccessTokens)
-      .where(
-        and(
-          sql`(
-            ${mcpOauthAccessTokens.expires_at} < now() - ${TOKEN_GRACE}
-            OR (${mcpOauthAccessTokens.revoked_at} IS NOT NULL AND ${mcpOauthAccessTokens.revoked_at} < now() - ${TOKEN_GRACE})
-          )`,
-        ),
-      )
-      .returning({ id: mcpOauthAccessTokens.id });
-    access_tokens_deleted = deleted.length;
-  } catch (err) {
-    logger.error({
-      module: "scheduler",
-      action: "mcp_oauth_cleanup.access_tokens_failed",
-      msg: "MCP OAuth access-token sweep failed",
-      tick_id: tickId,
-      ...errorFields(err),
-    });
-  }
-
-  // tenant-filter:exempt — cross-tenant retention sweep
-  // Runs after access token sweep to avoid FK violations (access tokens
-  // hold an optional refresh_token_id FK pointing here).
-  try {
-    const deleted = await db
-      .delete(mcpOauthRefreshTokens)
-      .where(
-        sql`(
-          ${mcpOauthRefreshTokens.expires_at} < now() - ${TOKEN_GRACE}
-          OR (${mcpOauthRefreshTokens.revoked_at} IS NOT NULL AND ${mcpOauthRefreshTokens.revoked_at} < now() - ${TOKEN_GRACE})
-        )`,
-      )
-      .returning({ id: mcpOauthRefreshTokens.id });
-    refresh_tokens_deleted = deleted.length;
-  } catch (err) {
-    logger.error({
-      module: "scheduler",
-      action: "mcp_oauth_cleanup.refresh_tokens_failed",
-      msg: "MCP OAuth refresh-token sweep failed",
-      tick_id: tickId,
-      ...errorFields(err),
-    });
-  }
-
-  // tenant-filter:exempt — cross-tenant retention sweep
-  try {
-    const deleted = await db
-      .delete(mcpOauthAuthorizationCodes)
-      .where(lt(mcpOauthAuthorizationCodes.expires_at, sql`now() - ${CODE_GRACE}`))
-      .returning({ id: mcpOauthAuthorizationCodes.id });
-    codes_deleted = deleted.length;
-  } catch (err) {
-    logger.error({
-      module: "scheduler",
-      action: "mcp_oauth_cleanup.codes_failed",
-      msg: "MCP OAuth authorization-code sweep failed",
-      tick_id: tickId,
-      ...errorFields(err),
-    });
-  }
-
-  // tenant-filter:exempt — cross-tenant retention sweep
-  // Only removes clients with NO durable proof-of-use: no refresh tokens, no
-  // access tokens, and no authorization codes. Authorization codes alone are
-  // not a durable signal — sweep 3 purges them ~1 day past expiry, so an aged
-  // client that was actively used still trips a codes-only NOT EXISTS and would
-  // be wrongly deleted while its live refresh tokens keep authenticating. The
-  // refresh/access NOT EXISTS guards key on the persistent tokens instead;
-  // sweeps 1–2 only remove expired/revoked tokens, so a live client always has
-  // a row here and is protected. A genuinely abandoned DCR registration has no
-  // tokens and no codes and is still GC'd after the 30-day grace, as intended.
-  try {
-    const deleted = await db
-      .delete(mcpOauthClients)
-      .where(
-        and(
-          lt(mcpOauthClients.created_at, sql`now() - ${CLIENT_GRACE}`),
-          notExists(
-            db
-              .select({ id: mcpOauthRefreshTokens.id })
-              .from(mcpOauthRefreshTokens) // tenant-filter:exempt — cross-tenant retention sweep; subquery is a NOT EXISTS guard only
-              .where(sql`${mcpOauthRefreshTokens.client_id} = ${mcpOauthClients.client_id}`),
-          ),
-          notExists(
-            db
-              .select({ id: mcpOauthAccessTokens.id })
-              .from(mcpOauthAccessTokens) // tenant-filter:exempt — cross-tenant retention sweep; subquery is a NOT EXISTS guard only
-              .where(sql`${mcpOauthAccessTokens.client_id} = ${mcpOauthClients.client_id}`),
-          ),
-          notExists(
-            db
-              .select({ id: mcpOauthAuthorizationCodes.id })
-              .from(mcpOauthAuthorizationCodes) // tenant-filter:exempt — cross-tenant retention sweep; subquery is a NOT EXISTS guard only
-              .where(sql`${mcpOauthAuthorizationCodes.client_id} = ${mcpOauthClients.client_id}`),
-          ),
-        ),
-      )
-      .returning({ id: mcpOauthClients.id });
-    clients_deleted = deleted.length;
-  } catch (err) {
-    logger.error({
-      module: "scheduler",
-      action: "mcp_oauth_cleanup.clients_failed",
-      msg: "MCP OAuth unused-client sweep failed",
-      tick_id: tickId,
-      ...errorFields(err),
-    });
-  }
-
-  // tenant-filter:exempt — mcp_oauth_clients has no tenant_id; the NOT EXISTS
-  // subqueries guard over the client's own token rows, across tenants. One
-  // statement, so a token minted between "is it dead?" and "retire it" cannot
-  // slip past a separate read.
-  try {
-    const at = new Date();
-    retired = await db
-      .update(mcpOauthClients)
-      .set({ disabled_at: at, retired_at: at })
-      .where(
-        and(
-          eq(mcpOauthClients.registration_source, "dcr"),
-          isNull(mcpOauthClients.disabled_at),
-          lt(mcpOauthClients.created_at, sql`now() - ${RETIRE_AFTER}`),
-          notExists(
-            db
-              .select({ id: mcpOauthAccessTokens.id })
-              .from(mcpOauthAccessTokens) // tenant-filter:exempt — cross-tenant retention sweep; subquery is a NOT EXISTS guard only
-              .where(
-                and(
-                  sql`${mcpOauthAccessTokens.client_id} = ${mcpOauthClients.client_id}`,
-                  or(
-                    and(
-                      isNull(mcpOauthAccessTokens.revoked_at),
-                      gt(mcpOauthAccessTokens.expires_at, sql`now()`),
-                    ),
-                    gt(mcpOauthAccessTokens.last_used_at, sql`now() - ${RETIRE_AFTER}`),
-                  ),
-                ),
-              ),
-          ),
-          notExists(
-            db
-              .select({ id: mcpOauthRefreshTokens.id })
-              .from(mcpOauthRefreshTokens) // tenant-filter:exempt — cross-tenant retention sweep; subquery is a NOT EXISTS guard only
-              .where(
-                and(
-                  sql`${mcpOauthRefreshTokens.client_id} = ${mcpOauthClients.client_id}`,
-                  or(
-                    and(
-                      isNull(mcpOauthRefreshTokens.revoked_at),
-                      gt(mcpOauthRefreshTokens.expires_at, sql`now()`),
-                    ),
-                    gt(mcpOauthRefreshTokens.created_at, sql`now() - ${RETIRE_AFTER}`),
-                  ),
-                ),
-              ),
-          ),
-          notExists(
-            db
-              .select({ id: mcpOauthAuthorizationCodes.id })
-              .from(mcpOauthAuthorizationCodes) // tenant-filter:exempt — cross-tenant retention sweep; subquery is a NOT EXISTS guard only
-              .where(
-                and(
-                  sql`${mcpOauthAuthorizationCodes.client_id} = ${mcpOauthClients.client_id}`,
-                  gt(mcpOauthAuthorizationCodes.created_at, sql`now() - ${RETIRE_AFTER}`),
-                ),
-              ),
-          ),
-        ),
-      )
-      .returning({
-        id: mcpOauthClients.id,
-        client_id: mcpOauthClients.client_id,
-        client_name: mcpOauthClients.client_name,
-      });
-  } catch (err) {
-    logger.error({
-      module: "scheduler",
-      action: "mcp_oauth_cleanup.clients_retire_failed",
-      msg: "MCP OAuth dead-registration retirement failed",
-      tick_id: tickId,
-      ...errorFields(err),
-    });
-  }
-
-  if (retired.length > 0) {
+  const counts = Object.fromEntries(units.map((unit) => [unit, 0]));
+  for (const definition of definitions) {
     try {
-      await auditAwait(
-        {
-          tenant_id: SYSTEM_TENANT_ID,
-          actor_type: "system",
-          actor_id: null,
-          action: AuditAction.MCP_OAUTH_CLIENT_RETIRED,
-          resource_type: "mcp_oauth_client",
-          resource_id: null,
-          result: "success",
-          metadata: {
-            request_source: "scheduler",
-            count: retired.length,
-            ids: retired.map((row) => row.id),
-            client_names: [
-              ...new Set(retired.flatMap((row) => (row.client_name ? [row.client_name] : []))),
-            ],
+      counts[definition.unit] = await db.transaction(async (tx) => {
+        let changed: number;
+        let detached = 0;
+        if (definition.unit === "refresh_tokens_deleted") {
+          const result = await pruneRefreshTokens(tx);
+          changed = result.deleted;
+          detached = result.detached;
+        } else if (definition.global) {
+          changed = await pruneClients(tx, definition.predicate, definition.retire === true);
+        } else {
+          const table = sql.identifier(definition.table);
+          const identity = sql`r.tenant_id=candidates.tenant_id`;
+          const keys = sql`r.id,r.tenant_id`;
+          const mutation = sql`DELETE FROM subkit.${table} r USING candidates`;
+          const result = await tx.execute(sql`WITH candidates AS MATERIALIZED (
+          SELECT ${keys} FROM subkit.${table} r WHERE ${definition.predicate}
+          ORDER BY r.id LIMIT ${MCP_OAUTH_CLEANUP_BATCH_SIZE} FOR UPDATE OF r SKIP LOCKED
+        ) ${mutation} WHERE r.id=candidates.id AND ${identity} AND ${definition.predicate} RETURNING r.id`);
+          changed = returnedKeys.parse(result.rows).length;
+        }
+        const metadata = {
+          request_source: "scheduler",
+          sweep: definition.unit,
+          access_references_detached: detached,
+          ...Object.fromEntries(
+            units.map((unit) => [unit, unit === definition.unit ? changed : 0]),
+          ),
+        };
+        if (definition.retire && changed > 0)
+          await auditAwait(
+            {
+              tenant_id: SYSTEM_TENANT_ID,
+              actor_type: "system",
+              actor_id: null,
+              action: AuditAction.MCP_OAUTH_CLIENT_RETIRED,
+              resource_type: "mcp_oauth_client",
+              resource_id: null,
+              result: "success",
+              metadata: { request_source: "scheduler", count: changed },
+            },
+            tx,
+          );
+        await auditAwait(
+          {
+            tenant_id: SYSTEM_TENANT_ID,
+            actor_type: "system",
+            actor_id: null,
+            action: AuditAction.MCP_OAUTH_EXPIRED_PRUNED,
+            resource_type: "mcp_oauth_token",
+            resource_id: null,
+            result: "success",
+            metadata,
           },
-        },
-        db,
-      );
+          tx,
+        );
+        return changed;
+      });
     } catch (err) {
       logger.error({
         module: "scheduler",
-        action: "mcp_oauth_cleanup.retire_audit_failed",
-        msg: "MCP OAuth retirement audit row failed",
-        tick_id: tickId,
+        action: "mcp_oauth_cleanup.unit_failed",
+        msg: "MCP OAuth cleanup unit failed",
+        sweep: definition.unit,
+        tick_id: started.toISOString(),
         ...errorFields(err),
       });
     }
   }
-
-  // tenant-filter:exempt — cross-tenant retention sweep
-  // CLIENT direction (subkit → external MCP server). 10-min TTL rows; an
-  // expired row is a dead in-flight flow the callback can no longer claim
-  // (its DELETE … WHERE expires_at > now() guard would never match), so
-  // sweep it immediately past expiry without extra grace.
-  try {
-    const deleted = await db
-      .delete(mcpOauthStates)
-      .where(lt(mcpOauthStates.expires_at, sql`now()`))
-      .returning({ id: mcpOauthStates.id });
-    states_deleted = deleted.length;
-  } catch (err) {
-    logger.error({
-      module: "scheduler",
-      action: "mcp_oauth_cleanup.states_failed",
-      msg: "MCP OAuth client-direction state sweep failed",
-      tick_id: tickId,
-      ...errorFields(err),
-    });
-  }
-
-  // tenant-filter:exempt — cross-tenant retention sweep.
-  // Short-lived (10-min TTL); an expired row is unclaimable (the atomic
-  // DELETE WHERE expires_at > now() guard would never match), so sweep
-  // immediately past expiry without extra grace.
-  try {
-    const deleted = await db
-      .delete(connectorOauthStartGrants)
-      .where(lt(connectorOauthStartGrants.expires_at, sql`now()`))
-      .returning({ id: connectorOauthStartGrants.id });
-    connector_oauth_start_grants_deleted = deleted.length;
-  } catch (err) {
-    logger.error({
-      module: "scheduler",
-      action: "mcp_oauth_cleanup.connector_oauth_start_grants_failed",
-      msg: "connector OAuth start-grant sweep failed",
-      tick_id: tickId,
-      ...errorFields(err),
-    });
-  }
-
-  // tenant-filter:exempt — cross-tenant retention sweep.
-  // The callback route atomically claims (DELETE) live rows; expired rows
-  // are dead-flows that the callback will never claim. Sweep immediately
-  // past expiry (same rationale as Sweep 6 above).
-  try {
-    const deleted = await db
-      .delete(connectorOauthStates)
-      .where(lt(connectorOauthStates.expires_at, sql`now()`))
-      .returning({ id: connectorOauthStates.id });
-    connector_oauth_states_deleted = deleted.length;
-  } catch (err) {
-    logger.error({
-      module: "scheduler",
-      action: "mcp_oauth_cleanup.connector_oauth_states_failed",
-      msg: "connector OAuth states sweep failed",
-      tick_id: tickId,
-      ...errorFields(err),
-    });
-  }
-
-  try {
-    await auditAwait(
-      {
-        tenant_id: SYSTEM_TENANT_ID,
-        actor_type: "system",
-        actor_id: null,
-        action: AuditAction.MCP_OAUTH_EXPIRED_PRUNED,
-        resource_type: "mcp_oauth_token",
-        result: "success",
-        metadata: {
-          request_source: "scheduler",
-          codes_deleted,
-          access_tokens_deleted,
-          refresh_tokens_deleted,
-          clients_deleted,
-          clients_retired: retired.length,
-          states_deleted,
-          connector_oauth_start_grants_deleted,
-          connector_oauth_states_deleted,
-        },
-      },
-      db,
-    );
-  } catch (err) {
-    logger.error({
-      module: "scheduler",
-      action: "mcp_oauth_cleanup.audit_failed",
-      msg: "MCP OAuth cleanup audit row failed",
-      tick_id: tickId,
-      ...errorFields(err),
-    });
-  }
-
-  const duration_ms = Date.now() - started.getTime();
   logger.info({
     module: "scheduler",
     action: "mcp_oauth_cleanup.fired",
     msg: "MCP OAuth cleanup cron pass completed",
-    tick_id: tickId,
-    codes_deleted,
-    access_tokens_deleted,
-    refresh_tokens_deleted,
-    clients_deleted,
-    clients_retired: retired.length,
-    states_deleted,
-    connector_oauth_start_grants_deleted,
-    connector_oauth_states_deleted,
-    duration_ms,
+    tick_id: started.toISOString(),
+    ...counts,
+    duration_ms: Date.now() - started.getTime(),
   });
 }

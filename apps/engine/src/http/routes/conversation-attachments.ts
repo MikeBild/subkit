@@ -14,7 +14,6 @@ import {
   auditAwait,
   bucketSize,
   FileCreatedMetadataSchema,
-  FileLinkAddedMetadataSchema,
   FileLinkRemovedMetadataSchema,
   FileScanCompletedMetadataSchema,
   readRequestSource,
@@ -22,6 +21,7 @@ import {
 import type { Db } from "../../db/client.ts";
 import { conversations, fileLinks, files } from "../../db/schema/index.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
+import { FileLinkError, linkStoredFile } from "../../files/links.ts";
 import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
 import { requireFileForTenant } from "../../files/resolver.ts";
 import { fileReference, slugifyFilename } from "../../files/slug.ts";
@@ -118,37 +118,35 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
         return c.json({ code: "not_found", message: "file not found" }, 404);
       }
       const slug = linkSlug(fileRow);
-      await db
-        .insert(fileLinks)
-        .values({
+      const linked = await linkStoredFile(
+        db,
+        {
           tenant_id,
           file_id: fileRow.id,
           resource_type: "conversation",
           resource_id: id,
           slug,
           role: "attachment",
-        })
-        .onConflictDoNothing();
-      await auditAwait(
+        },
         {
-          tenant_id,
           actor_type: actorType(principal),
           actor_id: principal.id,
-          action: AuditAction.FILE_LINK_ADDED,
-          resource_type: "file",
-          resource_id: fileRow.id,
-          result: "success",
-          metadata: FileLinkAddedMetadataSchema.parse({
-            file_id: fileRow.id,
-            resource_type: "conversation",
-            resource_id: id,
-            slug,
-            request_source: readRequestSource(c),
-            source: "conversation_attachments",
-          }),
+          request_source: readRequestSource(c) ?? "api",
+          source: "conversation_attachments",
+          allowed_statuses: ["pending", "uploading", "scanning", "ready", "failed", "expired"],
         },
-        db,
-      );
+      ).catch((error: unknown) => {
+        if (error instanceof FileLinkError)
+          return error.code === "file_unavailable"
+            ? c.json({ code: "not_found", message: "File is no longer available." }, 404)
+            : c.json(
+                { code: "conflict", message: "Attachment link changed; reload and retry." },
+                400,
+              );
+        throw error;
+      });
+      if (linked instanceof Response) return linked;
+
       return c.json(toAttachmentWire(fileRow, slug), 201);
     }
 
@@ -180,17 +178,34 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       await recordFilesDedupSeen(db, tenant_id);
     }
     const slug = linkSlug(row);
-    await db
-      .insert(fileLinks)
-      .values({
+    const linked = await linkStoredFile(
+      db,
+      {
         tenant_id,
         file_id: row.id,
         resource_type: "conversation",
         resource_id: id,
         slug,
         role: "attachment",
-      })
-      .onConflictDoNothing();
+      },
+      {
+        actor_type: actorType(principal),
+        actor_id: principal.id,
+        request_source: readRequestSource(c) ?? "api",
+        source: "conversation_attachments",
+        allowed_statuses: ["pending", "uploading", "scanning", "ready", "failed", "expired"],
+      },
+    ).catch((error: unknown) => {
+      if (error instanceof FileLinkError)
+        return error.code === "file_unavailable"
+          ? c.json({ code: "not_found", message: "File is no longer available." }, 404)
+          : c.json(
+              { code: "conflict", message: "Attachment link changed; reload and retry." },
+              400,
+            );
+      throw error;
+    });
+    if (linked instanceof Response) return linked;
 
     await auditAwait(
       {
@@ -236,26 +251,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
         db,
       );
     }
-    await auditAwait(
-      {
-        tenant_id,
-        actor_type: actorType(principal),
-        actor_id: principal.id,
-        action: AuditAction.FILE_LINK_ADDED,
-        resource_type: "file",
-        resource_id: row.id,
-        result: "success",
-        metadata: FileLinkAddedMetadataSchema.parse({
-          file_id: row.id,
-          resource_type: "conversation",
-          resource_id: id,
-          slug,
-          request_source: readRequestSource(c),
-          source: "conversation_attachments",
-        }),
-      },
-      db,
-    );
+
     return c.json(toAttachmentWire(row, slug), 201);
   });
 

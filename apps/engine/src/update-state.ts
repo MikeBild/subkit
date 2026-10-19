@@ -20,8 +20,8 @@ export function resetUpdateState(): void {
   state = null;
 }
 
-export function startEngineUpdateCheck(currentVersion: string): void {
-  void checkForUpdate(defaultUpdaterConfig("engine", currentVersion))
+export function startEngineUpdateCheck(currentVersion: string): Promise<void> {
+  return checkForUpdate(defaultUpdaterConfig("engine", currentVersion))
     .then((info) => {
       if (info) {
         setUpdateState({ update_available: true, latest_version: info.version });

@@ -5,7 +5,7 @@ import * as links from "./links";
 import { ALL_ROUTE_PATHS, CATALOG_RESOURCES } from "./route-table";
 
 const SRC = join(import.meta.dir, "..");
-const ROUTES = new Set<string>(ALL_ROUTE_PATHS);
+const ROUTES = new Set<string>([...ALL_ROUTE_PATHS, "/recovery"]);
 
 function builtPaths(): { file: string; value: string; router: boolean }[] {
   const out: { file: string; value: string; router: boolean }[] = [];
@@ -38,7 +38,7 @@ test("a router link never repeats the base path the router already carries", () 
   expect(doubled).toEqual([]);
 });
 
-const ROUTE_PATTERNS = ALL_ROUTE_PATHS.map(
+const ROUTE_PATTERNS = [...ROUTES].map(
   (path) => new RegExp(`^${path.replace(/\$[A-Za-z]+/g, "[^/]+")}$`),
 );
 const resolves = (href: string) =>
