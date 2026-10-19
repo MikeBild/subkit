@@ -110,8 +110,10 @@ const SAFE_SQLSTATES = new Set([
   "23503",
   "23505",
   "23514",
+  "28P01",
   "40001",
   "40P01",
+  "42501",
   "53300",
   "53400",
   "57014",
@@ -157,6 +159,18 @@ function sanitizeDatabaseValue(value: unknown, seen = new WeakSet<object>(), dep
     return out;
   }
   return value;
+}
+
+function databaseErrorCode(value: unknown): string | undefined {
+  const seen = new Set<object>();
+  for (let depth = 0; depth < 4 && value !== null && typeof value === "object"; depth++) {
+    if (seen.has(value)) return undefined;
+    seen.add(value);
+    const source = value as { code?: unknown; cause?: unknown };
+    if (isSqlstate(source.code)) return source.code;
+    value = source.cause;
+  }
+  return undefined;
 }
 
 function allowedSqlstate(value: unknown): string | undefined {
@@ -301,7 +315,8 @@ export function errorFields(err: unknown): {
 } {
   const error_class = classifyError(err);
   if (!(err instanceof Error)) return { error: String(err), error_class };
-  const queryError = isDatabaseQueryError(err);
+  const databaseCode = databaseErrorCode(err);
+  const queryError = isDatabaseQueryError(err) || databaseCode !== undefined;
   const out: {
     error: string;
     error_class: ErrorClass;
@@ -312,8 +327,7 @@ export function errorFields(err: unknown): {
     error: queryError ? "database query failed" : (sanitizeDatabaseValue(err.message) as string),
     error_class,
   };
-  const source = err.cause instanceof Error ? err.cause : err;
-  const sqlstate = allowedSqlstate((source as { code?: unknown }).code);
+  const sqlstate = allowedSqlstate(databaseCode);
   if (sqlstate) out.sqlstate = sqlstate;
   if (err.cause instanceof Error) {
     out.cause =
