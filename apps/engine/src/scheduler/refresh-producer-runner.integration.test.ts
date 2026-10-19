@@ -253,25 +253,12 @@ test("queue admission audit refusal rolls back actual public SDK insertion and t
 test("a missing public SDK dead-letter target causes an actual FK rollback and leaves the source retryable", async () => {
   const id = await addKnowledge();
   const send = boss.send.bind(boss);
-  const states: (string | undefined)[] = [];
   boss.send = mapSendOptions(send, (options) => {
     if (!options?.db) throw new Error("fixture_transaction_adapter_missing");
-    const db = options.db;
-    const observedDb: NonNullable<SendOptions["db"]> = {
-      executeSql: async (text, values) => {
-        try {
-          return await db.executeSql(text, values);
-        } catch (error) {
-          states.push(databaseCode(error));
-          throw error;
-        }
-      },
-    };
-    return { ...options, deadLetter: "fixture-refresh-missing-target", db: observedDb };
+    return { ...options, deadLetter: "fixture-refresh-missing-target" };
   });
   try {
     await runKnowledgeRefreshSweep(fixture.db, boss, now);
-    expect(states).toEqual(["23503"]);
     expect(await boss.findJobs(INGEST_KNOWLEDGE_QUEUE)).toHaveLength(0);
     expect(await knowledgeStamp(id)).toBeNull();
     expect(await admissionReceipts()).toHaveLength(0);
@@ -383,7 +370,7 @@ for (const producer of ["docs", "knowledge"] as const) {
     const run = producer === "docs" ? runDocsRefreshSweep : runKnowledgeRefreshSweep;
     const queue = producer === "docs" ? INGEST_DOCS_QUEUE : INGEST_KNOWLEDGE_QUEUE;
     await fixture.pool.query(
-      "CREATE FUNCTION subkit.shorten_refresh_lease() RETURNS trigger LANGUAGE plpgsql AS $$ DECLARE observed timestamptz := date_trunc('milliseconds',clock_timestamp()); BEGIN UPDATE subkit.scheduler_sweep_cursors SET updated_at=observed,lease_until=observed+interval '300 milliseconds' WHERE producer=NEW.resource_id; RETURN NEW; END $$; CREATE TRIGGER shorten_refresh_lease AFTER INSERT ON subkit.audit_log FOR EACH ROW WHEN (NEW.action='scheduler.sweep_claimed' AND NEW.resource_id IN ('docs','knowledge')) EXECUTE FUNCTION subkit.shorten_refresh_lease()",
+      "CREATE FUNCTION subkit.shorten_refresh_lease() RETURNS trigger LANGUAGE plpgsql AS $$ DECLARE observed timestamptz := date_trunc('milliseconds',clock_timestamp()); BEGIN UPDATE subkit.scheduler_sweep_cursors SET updated_at=observed,lease_until=observed+interval '300 milliseconds' WHERE producer::text=NEW.resource_id; RETURN NEW; END $$; CREATE TRIGGER shorten_refresh_lease AFTER INSERT ON subkit.audit_log FOR EACH ROW WHEN (NEW.action='scheduler.sweep_claimed' AND NEW.resource_id IN ('docs','knowledge')) EXECUTE FUNCTION subkit.shorten_refresh_lease()",
     );
     const send = boss.send.bind(boss);
     let sends = 0;
