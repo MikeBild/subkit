@@ -14,7 +14,7 @@ export async function transactionalWebhookAvailable(
   boundary: TransactionalDeliveryBoundary,
 ) {
   const [hook] = await db
-    .select()
+    .select({ verifier: webhooksInbound.verifier, config: webhooksInbound.native_verifier_config })
     .from(webhooksInbound)
     .where(
       and(
@@ -22,17 +22,33 @@ export async function transactionalWebhookAvailable(
         eq(webhooksInbound.id, boundary.webhook_id),
         eq(webhooksInbound.workflow_id, workflow),
         eq(webhooksInbound.active, true),
-        eq(webhooksInbound.verifier, "standard"),
       ),
     )
     .limit(1);
-  const config = hook?.native_verifier_config as { skip?: unknown; events?: unknown } | null;
+  const config = hook?.config as { skip?: unknown; events?: unknown; hmac?: unknown } | null;
+  if (
+    !hook ||
+    config?.skip === true ||
+    !Array.isArray(config?.events) ||
+    config.events.length !== 1 ||
+    config.events[0] !== boundary.event_type
+  )
+    return false;
+  if (boundary.webhook_verifier !== "hmac") return hook.verifier === "standard";
+  if (hook.verifier !== "hmac") return false;
+  const { HmacVerifierConfig } = await import("../webhooks/index.ts");
+  const parsed = HmacVerifierConfig.safeParse(config.hmac);
+  if (!parsed.success) return false;
+  const hmac = parsed.data;
   return (
-    Boolean(hook) &&
-    config?.skip !== true &&
-    Array.isArray(config?.events) &&
-    config.events.length === 1 &&
-    config.events[0] === boundary.event_type
+    hmac.signed_payload === "v1:{timestamp}:{body}" &&
+    Boolean(hmac.timestamp_header) &&
+    hmac.tolerance_seconds <= 300 &&
+    Boolean(hmac.id_field) &&
+    Boolean(hmac.type_field) &&
+    !hmac.type_header &&
+    boundary.request_id_input === `body.${hmac.id_field}` &&
+    boundary.event_type_input === `body.${hmac.type_field}`
   );
 }
 

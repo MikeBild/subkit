@@ -21704,9 +21704,11 @@ export interface components {
                 transactional_delivery?: {
                     /** @enum {string} */
                     kind: "gmail_transactional";
+                    /** @enum {string} */
+                    webhook_verifier?: "standard" | "hmac";
                     /**
                      * Format: uuid
-                     * @description Reviewed active Standard Webhooks binding in the same tenant and workflow; unsigned ingress is forbidden
+                     * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
                      */
                     webhook_id: string;
                     /** @description The single allowed event type configured on the signed binding */
@@ -21715,7 +21717,7 @@ export interface components {
                     event_type_input: string;
                     /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                     recipient_input: string;
-                    /** @description Reviewed UUID field equal to signed webhook-id; one persistent dispatch attempt per workflow and request ID */
+                    /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
                     request_id_input: string;
                     from: string;
                     /** @enum {string} */
@@ -22267,9 +22269,11 @@ export interface components {
             transactional_delivery?: {
                 /** @enum {string} */
                 kind: "gmail_transactional";
+                /** @enum {string} */
+                webhook_verifier?: "standard" | "hmac";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -22278,7 +22282,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed UUID field equal to signed webhook-id; one persistent dispatch attempt per workflow and request ID */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */

@@ -43,6 +43,31 @@ function request(to = "applicant@example.test", extra = "", text = "Your request
   };
 }
 describe("transactional mail is bound to the reviewed signed event", () => {
+  test("HMAC signed-body identities use stable opaque receipts without changing Standard Webhooks", () => {
+    const profile = { ...boundary, webhook_verifier: "hmac" as const };
+    const input = {
+      ...event,
+      id: "signed-event-identity",
+      body: { ...event.body, reference: "signed-event-identity" },
+    };
+    const first = assertTransactionalMessage(profile, input, request());
+    expect(first.request_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(assertTransactionalMessage(profile, input, request()).request_id).toBe(first.request_id);
+    expect(
+      assertTransactionalMessage(
+        profile,
+        { ...input, id: "other-event", body: { ...input.body, reference: "other-event" } },
+        request(),
+      ).request_id,
+    ).not.toBe(first.request_id);
+    expect(() =>
+      assertTransactionalMessage(profile, { ...input, id: "unsigned-header-id" }, request()),
+    ).toThrow();
+    expect(() => assertTransactionalMessage(boundary, input, request())).toThrow();
+    expect(assertTransactionalMessage(boundary, event, request()).request_id).toBe(id);
+  });
   test("supports arbitrary reviewed field names and event types", () => {
     expect(assertTransactionalMessage(boundary, event, request())).toEqual({
       request_id: id,

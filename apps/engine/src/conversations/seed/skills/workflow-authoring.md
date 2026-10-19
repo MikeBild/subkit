@@ -1373,14 +1373,23 @@ recipient_input, request_id_input, from, content_type: "text/plain", max_body_by
 All input paths are reviewed dot paths beginning with `body.`, such as
 `body.registration.email` and `body.registration.id`; the UUID must equal the
 signed `webhook-id`. Fields and event types are application-defined, not tied to
-any product. Use `max_retries: 0`, a single POST to the Gmail send endpoint with
+any product. For a body-bound HMAC source, additionally declare
+`webhook_verifier: "hmac"`. Its active binding must subscribe to exactly the
+reviewed event type, sign `v1:{timestamp}:{body}` with a timestamp window of at
+most 300 seconds, and derive both event ID and type from the signed body. The
+reviewed `request_id_input` and `event_type_input` must match those exact fields;
+an unsigned ID or type header cannot substitute for them. A bounded non-UUID
+signed request ID receives a deterministic opaque receipt UUID, so retries and
+new execution IDs cannot reserve a second mail attempt for that workflow.
+Omitting `webhook_verifier` retains the Standard Webhooks UUID contract.
+Use `max_retries: 0`, a single POST to the Gmail send endpoint with
 only `{raw}`, no pagination, fan-out or read-effect override. Bound template inputs
 and derive the declared request-size ceiling from them. The workflow input schema
 must strictly validate its business fields. The runtime compares actual decoded
 MIME sender, sole recipient and format to the reviewed profile and original
 admitted input. CC/BCC and recipient overrides are refused.
 
-Provision the actual inactive/active Standard Webhooks binding securely, with its
+Provision the actual Standard Webhooks or body-bound HMAC binding securely, with its
 own secret, same tenant/workflow and exactly the reviewed event type. Never use
 `verify: "none"`, never expose a signing key in browser code, and never fabricate
 a signed event or execution caller in a preview. A signature authenticates an

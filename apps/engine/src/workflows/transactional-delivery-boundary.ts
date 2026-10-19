@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
 import type { MaterializedRequest } from "../execution/prepared-request.ts";
 import {
@@ -20,11 +21,12 @@ const inputPath = z
 export const TransactionalDeliveryBoundarySchema = z
   .object({
     kind: z.literal("gmail_transactional"),
+    webhook_verifier: z.enum(["standard", "hmac"]).optional(),
     webhook_id: z
       .string()
       .uuid()
       .describe(
-        "Reviewed active Standard Webhooks binding in the same tenant and workflow; unsigned ingress is forbidden",
+        "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden",
       ),
     event_type: z
       .string()
@@ -38,7 +40,7 @@ export const TransactionalDeliveryBoundarySchema = z
       "Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override",
     ),
     request_id_input: inputPath.describe(
-      "Reviewed UUID field equal to signed webhook-id; one persistent dispatch attempt per workflow and request ID",
+      "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID.",
     ),
     from: ReportDeliveryBoundarySchema.shape.from,
     content_type: z.literal("text/plain"),
@@ -72,7 +74,7 @@ export function supportsTransactionalDelivery(step: RequestStep, target: string 
 
 const eventSchema = z
   .object({
-    id: z.string().uuid(),
+    id: z.string().min(1).max(256),
     type: z.string().min(1).max(128),
     body: z.record(z.string(), z.unknown()),
   })
@@ -99,7 +101,10 @@ export function assertTransactionalMessage(
   const recipient = ReportDeliveryBoundarySchema.shape.to
     .max(255)
     .safeParse(inputField(rawInput, boundary.recipient_input));
-  const requestId = z.string().uuid().safeParse(inputField(rawInput, boundary.request_id_input));
+  const requestId =
+    boundary.webhook_verifier === "hmac"
+      ? z.string().min(1).max(256).safeParse(inputField(rawInput, boundary.request_id_input))
+      : z.string().uuid().safeParse(inputField(rawInput, boundary.request_id_input));
   const message = request ? inspectReportMessage(request.body) : null;
   if (
     !input.success ||
@@ -126,5 +131,16 @@ export function assertTransactionalMessage(
       },
     );
   }
-  return { request_id: requestId.data, email: recipient.data };
+  let receiptId = requestId.data;
+  if (boundary.webhook_verifier === "hmac") {
+    const bytes = createHash("sha256")
+      .update(JSON.stringify(["transactional-hmac", requestId.data]))
+      .digest()
+      .subarray(0, 16);
+    bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x80;
+    bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+    const hex = bytes.toString("hex");
+    receiptId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  return { request_id: receiptId, email: recipient.data };
 }

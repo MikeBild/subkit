@@ -138,8 +138,11 @@ export async function admitWebhookExecution(
         input,
       },
       tx,
-      binding.verifier === "standard" &&
-        !(binding.native_verifier_config as { skip?: boolean } | null)?.skip
+      !(binding.native_verifier_config as { skip?: boolean } | null)?.skip &&
+        (binding.verifier === "standard" ||
+          (binding.verifier === "hmac" &&
+            z.object({ hmac: HmacVerifierConfig }).safeParse(binding.native_verifier_config)
+              .success))
         ? binding.id
         : undefined,
     );
