@@ -76,6 +76,14 @@ const safeFailureCodes = new Set([
   "sandbox_runtime",
   "sandbox_marshal",
   "sandbox_stdlib_init",
+  "sandbox_input_body",
+  "sandbox_input_event_type",
+  "sandbox_input_event_id",
+  "sandbox_input_attributes",
+  "sandbox_input_purpose",
+  "sandbox_input_delivery_request",
+  "sandbox_input_recipient",
+  "sandbox_input_action_url",
 ]);
 
 export function sensitiveFailure(code?: string) {

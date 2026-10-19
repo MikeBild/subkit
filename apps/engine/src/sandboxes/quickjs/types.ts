@@ -35,8 +35,24 @@ export class SandboxError extends Error {
   }
 }
 
+const runtimeValidationCodes = new Map([
+  ["invalid body", "sandbox_input_body"],
+  ["invalid eventType", "sandbox_input_event_type"],
+  ["invalid eventId", "sandbox_input_event_id"],
+  ["invalid attributes", "sandbox_input_attributes"],
+  ["invalid purpose", "sandbox_input_purpose"],
+  ["invalid deliveryRequest", "sandbox_input_delivery_request"],
+  ["invalid recipient", "sandbox_input_recipient"],
+  ["invalid actionUrl", "sandbox_input_action_url"],
+]);
+
 export function sandboxFailureCode(error: unknown): string | null {
-  return error instanceof SandboxError ? `sandbox_${error.cause_kind}` : null;
+  if (!(error instanceof SandboxError)) return null;
+  if (error instanceof SandboxRuntimeError) {
+    const validationCode = runtimeValidationCodes.get(error.message);
+    if (validationCode) return validationCode;
+  }
+  return `sandbox_${error.cause_kind}`;
 }
 
 export class SandboxStdlibInitError extends SandboxError {
