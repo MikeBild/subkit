@@ -2,6 +2,7 @@ import { getConfig } from "../../config/loader.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordSandboxLimitClamped } from "../../observability/instrumentation.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
+import { sandboxFailureCode } from "../../sandboxes/index.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import {
   SandboxInterruptError,
@@ -11,6 +12,7 @@ import {
 import type { TransformStep } from "../../workflows/types.ts";
 import { combineSignals } from "../abort.ts";
 import { resolveScopeForJsonata } from "../jsonata-bindings.ts";
+import { sensitiveFailure } from "../sensitive-payload.ts";
 import { TRANSFORM_TIMEOUT_DEFAULT_MS, TRANSFORM_WALL_CEILING_DEFAULT_MS } from "../timeouts.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
@@ -147,6 +149,8 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
     };
   } catch (err) {
     const duration_ms = Date.now() - start;
+    const privateCode = p.ctx.execution_privacy === "sensitive" ? sandboxFailureCode(err) : null;
+    const privateError = privateCode ? sensitiveFailure(privateCode) : null;
     const detail = buildStepErrorDetail({ code: "transform_error", err });
     const message = detail.message;
     if (err instanceof SandboxTimeoutError || err instanceof SandboxInterruptError) {
@@ -162,7 +166,10 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
         status: "timed_out",
         retry_count: 0,
         duration_ms,
-        error: { code: "transform_timeout", message: transformTimeoutMessage(p.step, wall) },
+        error: privateError ?? {
+          code: "transform_timeout",
+          message: transformTimeoutMessage(p.step, wall),
+        },
       };
     }
     if (err instanceof SandboxMemoryError) {
@@ -178,7 +185,7 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
         status: "failed",
         retry_count: 0,
         duration_ms,
-        error: { code: "transform_memory", message },
+        error: privateError ?? { code: "transform_memory", message },
       };
     }
     if (timeoutCtrl.signal.aborted && !p.ctx.signal.aborted) {
@@ -217,7 +224,7 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
       status: "failed",
       retry_count: 0,
       duration_ms,
-      error: detail,
+      error: privateError ?? detail,
     };
   } finally {
     clearTimeout(timer);

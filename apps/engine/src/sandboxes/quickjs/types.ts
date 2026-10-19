@@ -35,6 +35,10 @@ export class SandboxError extends Error {
   }
 }
 
+export function sandboxFailureCode(error: unknown): string | null {
+  return error instanceof SandboxError ? `sandbox_${error.cause_kind}` : null;
+}
+
 export class SandboxStdlibInitError extends SandboxError {
   constructor(message: string, stats?: SandboxStats) {
     super(message, "stdlib_init", stats);
