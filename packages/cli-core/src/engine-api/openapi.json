@@ -5488,10 +5488,17 @@
                         "gmail_transactional"
                       ]
                     },
+                    "webhook_verifier": {
+                      "type": "string",
+                      "enum": [
+                        "standard",
+                        "hmac"
+                      ]
+                    },
                     "webhook_id": {
                       "type": "string",
                       "format": "uuid",
-                      "description": "Reviewed active Standard Webhooks binding in the same tenant and workflow; unsigned ingress is forbidden"
+                      "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
                     },
                     "event_type": {
                       "type": "string",
@@ -5515,7 +5522,7 @@
                       "type": "string",
                       "maxLength": 128,
                       "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                      "description": "Reviewed UUID field equal to signed webhook-id; one persistent dispatch attempt per workflow and request ID"
+                      "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
                     },
                     "from": {
                       "type": "string",
@@ -7815,10 +7822,17 @@
                   "gmail_transactional"
                 ]
               },
+              "webhook_verifier": {
+                "type": "string",
+                "enum": [
+                  "standard",
+                  "hmac"
+                ]
+              },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -7842,7 +7856,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed UUID field equal to signed webhook-id; one persistent dispatch attempt per workflow and request ID"
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
