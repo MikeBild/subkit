@@ -1,5 +1,6 @@
 import jsonata, { type Expression } from "jsonata";
 import { instrument } from "../observability/runtime-telemetry.ts";
+import { SandboxTimeoutError } from "../sandboxes/index.ts";
 import { runSandboxWorkerJob } from "../sandboxes/quickjs/runtime.ts";
 
 export type EvalBindings = {
@@ -29,8 +30,9 @@ export class JSONataError extends Error {
     column: number | undefined,
     token: string | undefined,
     message: string,
+    cause?: unknown,
   ) {
-    super(message);
+    super(message, { cause });
     this.name = "JSONataError";
     this.source = source;
     this.position = position;
@@ -38,6 +40,10 @@ export class JSONataError extends Error {
     this.column = column;
     this.token = token;
   }
+}
+
+export function isJSONataSandboxTimeout(error: unknown): boolean {
+  return error instanceof JSONataError && error.cause instanceof SandboxTimeoutError;
 }
 
 const CACHE_LIMIT = 4096;
@@ -469,6 +475,7 @@ export function formatError(err: unknown, source: string): JSONataError {
     column,
     token,
     `JSONata error${location}: ${baseMessage}${caret}`,
+    err,
   );
 }
 
