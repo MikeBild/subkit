@@ -69,6 +69,13 @@ const safeFailureCodes = new Set([
   "caller_kind_mismatch",
   "aborted",
   "timed_out",
+  "sandbox_memory",
+  "sandbox_interrupt",
+  "sandbox_timeout",
+  "sandbox_syntax",
+  "sandbox_runtime",
+  "sandbox_marshal",
+  "sandbox_stdlib_init",
 ]);
 
 export function sensitiveFailure(code?: string) {
