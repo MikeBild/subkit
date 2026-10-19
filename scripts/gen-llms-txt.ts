@@ -4,6 +4,14 @@ import { LLMS_PAGE_PATHS, type LlmsPage, renderLlmsIndex } from "@shared/llms-in
 
 const OUT_DIR = "apps/engine/src/http/llms";
 
+function repositoryReferences(markdown: string): string {
+  return markdown.replace(
+    /\[([^\]]+)\]\(((?:\.\.\/|\.\/)?[A-Za-z0-9_./-]+\.md)(#[^)]*)?\)/g,
+    (link, label: string, path: string) =>
+      LLMS_PAGE_PATHS.includes(path) ? link : `${label} (\`${path}\` in the source repository)`,
+  );
+}
+
 function readmeReference(heading: string): string {
   const readme = readFileSync("README.md", "utf8");
   const start = readme.indexOf(`## ${heading}\n`);
@@ -11,16 +19,11 @@ function readmeReference(heading: string): string {
   const rest = readme.slice(start);
   const nextSection = rest.slice(1).search(/\n## (?!#)/);
   const section = nextSection < 0 ? rest : rest.slice(0, nextSection + 1);
-  return section.replace(/^## /, "# ").trimEnd();
+  return repositoryReferences(section.replace(/^## /, "# ").trimEnd());
 }
 
 const SOURCES: Record<string, () => string> = {
-  "setup.md": () =>
-    readFileSync("README.md", "utf8").replace(
-      /\[([^\]]+)\]\(((?:\.\.\/|\.\/)?[A-Za-z0-9_./-]+\.md)(#[^)]*)?\)/g,
-      (link, label: string, path: string) =>
-        LLMS_PAGE_PATHS.includes(path) ? link : `${label} (\`${path}\` in the source repository)`,
-    ),
+  "setup.md": () => repositoryReferences(readFileSync("README.md", "utf8")),
   "coding-agents.md": () => readmeReference("Use sk from a coding agent"),
   "transactional-email.md": () => readmeReference("Transactional email replies"),
   "cli.md": () => run("scripts/gen-cli-reference.ts"),
