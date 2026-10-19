@@ -55,6 +55,7 @@ import {
 import { useCurrentVersionDag, WorkflowVersions } from "@/components/cockpit/workflow-versions";
 import { useI18n } from "@/lib/i18n-context";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
+import { workflowPreviewDefinition } from "@/lib/workflow-preview";
 import { removalConsequenceKeys } from "@/lib/workflow-removal";
 import { deletedConnectorReference } from "@/lib/workflow-strip";
 import { workflowVersionAuthor } from "@/lib/workflow-versions";
@@ -66,15 +67,6 @@ const text = (record: RecordValue, key: string): string | null => {
   const value = record[key];
   return typeof value === "string" && value ? value : null;
 };
-
-function draftDefinition(record: RecordValue, steps: readonly RecordValue[]): RecordValue {
-  return {
-    name: text(record, "name") ?? "Preview",
-    ...(text(record, "slug") ? { slug: record.slug } : {}),
-    ...(text(record, "description") ? { description: record.description } : {}),
-    steps,
-  };
-}
 
 function useTechnicalFacts(record: RecordValue): Fact[] {
   const { t } = useI18n();
@@ -178,7 +170,16 @@ export function WorkflowPage({
   );
 
   const automation = useWorkflowAutomation(id, workflow, permissions);
-  const build = useBuildVersion(id, { ...workflow, steps: stepRecords });
+  const build = useBuildVersion(id, {
+    ...workflow,
+    steps: stepRecords,
+    definition:
+      record.definition && typeof record.definition === "object"
+        ? (record.definition as RecordValue)
+        : null,
+  });
+  const previewDefinition =
+    !draftVersionId || draftVersionId === versionId || build.saved ? build.definition : null;
   const noSteps = !build.pending && build.steps.length === 0;
   const editor = useStepDraft(build.steps);
   const steps = useWorkflowSteps({
@@ -380,6 +381,7 @@ export function WorkflowPage({
             <WorkflowInputOutput
               workflowId={id}
               byWebhook={effectiveTrigger === "webhook" || webhooksActive > 0}
+              draftDefinition={versionId ? null : build.definition}
             />
           </CollapsibleSection>
         </>
@@ -428,7 +430,11 @@ export function WorkflowPage({
             key={`${id}:${build.versionId ?? "none"}`}
             steps={steps}
             workflowName={title}
-            canRun={canRun}
+            canRun={
+              canRun &&
+              Boolean(previewDefinition) &&
+              previewDefinition?.execution_privacy !== "sensitive"
+            }
             {...(canWrite && !legacy
               ? {
                   editor,
@@ -446,10 +452,13 @@ export function WorkflowPage({
               record={record}
               draft={editor}
               preview={
-                canRun && steps.views.length > 0 ? (
+                canRun && previewDefinition && steps.views.length > 0 ? (
                   <WorkflowTestRun
                     steps={steps}
-                    definition={draftDefinition(record, editor.steps as RecordValue[])}
+                    definition={workflowPreviewDefinition(
+                      previewDefinition,
+                      editor.steps as RecordValue[],
+                    )}
                   />
                 ) : undefined
               }

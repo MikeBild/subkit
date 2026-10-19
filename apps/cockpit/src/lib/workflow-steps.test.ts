@@ -509,6 +509,7 @@ describe("the version the build tab shows", () => {
     );
     expect(shown).toEqual({
       steps: saved,
+      definition: draft.definition,
       versionId: "v2",
       version: 2,
       saved: true,
@@ -548,6 +549,7 @@ describe("the version the build tab shows", () => {
     );
     expect(shown).toEqual({
       steps: saved,
+      definition: null,
       versionId: "v2",
       version: 2,
       saved: false,

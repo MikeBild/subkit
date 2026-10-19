@@ -53,25 +53,37 @@ function useFieldFacts(fields: readonly InputField[], withRequired: boolean, tes
 export function WorkflowInputOutput({
   workflowId,
   byWebhook,
+  draftDefinition,
 }: {
   workflowId: string;
   byWebhook: boolean;
+  draftDefinition?: Record<string, unknown> | null;
 }) {
   const { t } = useI18n();
-  const query = useWorkflowInvocation(workflowId);
-  const form = inputForm(query.data?.input.schema ?? null);
+  const query = useWorkflowInvocation(workflowId, !draftDefinition);
+  const draftInput = draftDefinition?.input_schema;
+  const draftOutput = draftDefinition?.output_schema;
+  const inputSchema =
+    draftInput && typeof draftInput === "object"
+      ? (draftInput as Record<string, unknown>)
+      : (query.data?.input.schema ?? null);
+  const outputSchema =
+    draftOutput && typeof draftOutput === "object"
+      ? (draftOutput as Record<string, unknown>)
+      : (query.data?.output.schema ?? null);
+  const form = inputForm(inputSchema);
   const inputs = useFieldFacts(
     form.kind === "fields" ? form.fields : [],
     true,
     "workflow-input-table",
   );
   const outputs = useFieldFacts(
-    query.data ? inputFields(query.data.output.schema) : [],
+    outputSchema ? inputFields(outputSchema) : [],
     false,
     "workflow-output-table",
   );
-  if (query.isPending) return <DataState state="loading" />;
-  if (query.error || !query.data)
+  if (!draftDefinition && query.isPending) return <DataState state="loading" />;
+  if (!draftDefinition && (query.error || !query.data))
     return <DataState state="error" line={t("input.loadFailed")} testId="workflow-io-failed" />;
   const note = "text-sm text-muted-foreground";
   return (
@@ -93,7 +105,7 @@ export function WorkflowInputOutput({
             {t("input.where")}
           </p>
         ) : null}
-        {form.kind !== "none" && query.data.input.source === "synthesized" ? (
+        {form.kind !== "none" && !draftDefinition && query.data?.input.source === "synthesized" ? (
           <p className={note} data-testid="workflow-input-synthesized">
             {t("run.schemaSynthesized")}
           </p>

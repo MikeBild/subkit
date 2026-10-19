@@ -5,3 +5,10 @@ export type WorkflowPreviewSource =
 export function workflowPreviewRequest(source: WorkflowPreviewSource) {
   return { ...source, hold_writes: true as const };
 }
+
+export function workflowPreviewDefinition(
+  definition: Record<string, unknown>,
+  steps: readonly Record<string, unknown>[],
+): Record<string, unknown> {
+  return { ...definition, steps };
+}
