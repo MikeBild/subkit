@@ -1,7 +1,7 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E300.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E306.
 
 Operative L-Aufgaben, Prioritäten und aktueller Issue-Status stehen in den
 [GitHub Issues](https://github.com/MikeBild/subkit/issues) und im
@@ -12,35 +12,36 @@ wesentlichen Statusänderungen mit dem jeweiligen Issue abgeglichen.
 
 ## Aktueller Checkout-Abgleich
 
-Cloud-Quellenstand `7400bb3ef` auf `main` gepusht; Checkoutversion **10.1.4**.
-Für den schnellen Cloud-Fix wurden die breiten lokalen Gates auf Nutzerwunsch
-übersprungen; fokussierte Tests und Typechecks der betroffenen Änderungen bestanden.
-Die bestehende lokale Demo wurde nicht ersetzt.
+Das Linux/AMD64-Cloud-Image aus Commit `6db6cd8ee` ist veröffentlicht und in
+der bestehenden Upraft-App als aktive, stabile Revision deployed. Die einzige
+bedienende Replica ist gesund; öffentliche Health-/Ready-/Cockpit-Routen
+antworten über gültiges TLS. Für den schnellen Cloud-Fix wurden die breiten
+lokalen Gates auf Nutzerwunsch übersprungen; fokussierte Tests, Typecheck und
+Biome der betroffenen Änderung bestanden. Die bestehende lokale Demo wurde
+nicht ersetzt. Der zuvor geprüfte echte OpenAI-Chat und Datei-Roundtrip sind in
+E298 dokumentiert; ihre Testressourcen wurden gelöscht.
 
-Das Linux/AMD64-Image aus dem exakten Quellenstand ist veröffentlicht und in der
-bestehenden Upraft-App als aktive, stabile Revision deployed. Öffentliche Health-/
-Ready-/Cockpit-Routen antworten über gültiges TLS. Ein echter OpenAI-Chat auf
-dieser Revision lieferte die erwartete Antwort; sein Testgespräch wurde gelöscht.
-Ein öffentlicher Datei-Roundtrip lieferte bytegleichen Inhalt; die Testdatei
-wurde gelöscht.
 Die globale Betreiberpolicy ist aktiv: 5 USD je Free-Tenant und 50 USD insgesamt
 pro Monat, 50 MB gemeinsamer logischer Speicher, 10.000 Requests pro Tenant und
-UTC-Monat sowie 1.000 aufbewahrte Datensätze je Ressourcentyp. Signup bleibt
-geschlossen. Der pgBoss-Katalogzugriff wurde gepatcht; in zwei vollständigen
-Scheduler-Zyklen der neuen Cloud-Revision trat kein `42501` mehr auf. Die
-Upraft-OIDC-Option ist aktiv und ihr Browser-Redirect geprüft. Der erste echte
-Auth-Invite erreichte den SubKit-Webhook, scheiterte aber vor Gmail. Die eng
-begrenzte Workflow-Korrektur wurde als Version 10 durch die berechtigte Person
-aktiviert. Nach einem kurzen Ausfall des separaten API-Hosts und gezielten
-Diagnose-Releases erreichten signierte Passwort-Reset-Ereignisse den Webhook.
-Der Mailaufbau scheiterte vor Gmail am Empfänger-Guard. Eine inaktive Version 11
-mit festen, inhaltsfreien Formmarkern ist lokal geprüft und im Cockpit zur
-persönlichen Übernahme vorbereitet; Version 10 läuft weiter. Ein privates
-Upraft-Backupziel, tägliche vollständige Exporte und Aufbewahrung der letzten
-14 Backups sind eingerichtet. Der erste Export wurde isoliert mit PostgreSQL
-18.6 erfolgreich wiederhergestellt; produktiver Restore und Wiederanlaufzeit
-bleiben ungeprüft. Echte Nutzeranmeldung und Zwei-Tenant-Isolation sind offen.
-E298–E300 enthalten die aktuellen externen Nachweise.
+UTC-Monat sowie 1.000 aufbewahrte Datensätze je Ressourcentyp. Die begrenzte
+Hosted-Registrierung ist geöffnet. Zwei verschiedene Upraft-Auth-Identitäten
+haben sich im echten Browser angemeldet und je einen eigenen Workspace erhalten.
+Die zweite Identität sah nur ihre eigene Mitgliedschaft und Person; ein Request
+mit fremdem Tenant-Kontext wurde HTTP 409 abgewiesen, während der eigene Kontext
+bis zur Ressourcenprüfung gelangte. Die aktive Replica blieb gesund; das letzte
+geprüfte 100-Log-Fenster enthielt nur Info-Einträge. Auth-Mail wurde über den
+signierten Webhook-Workflow versandt und die zweite Einladung von der Person
+angenommen. Die Browser-Fehlerseite des OIDC-Callbacks ist im SubKit-Stil
+deployed. E303–E306 enthalten die aktuellen Auth-, Deployment- und
+Isolationsergebnisse.
+
+Ein privates Upraft-Backupziel, tägliche vollständige Exporte und Aufbewahrung
+der letzten 14 Backups sind eingerichtet. Der erste Export wurde isoliert mit
+PostgreSQL 18.6 erfolgreich wiederhergestellt; produktiver Restore und
+Wiederanlaufzeit bleiben ungeprüft. Die allgemeine Upraft-Einladung führt nach
+der Passwortsetzung zur Upraft-Kontoseite; der MCP bietet keine app-spezifische
+Rücksprungoption. Vollständige Cloud-Abnahme und persönliche visuelle Freigabe
+bleiben offen.
 
 Die technische Verifikation ist segmentiert vollständig abgedeckt: 2.168 Dateien,
 20.448 PASS/0 ungelöste FAIL/38 SKIP/5 TODO; Eval 40/40 und kompilierte
