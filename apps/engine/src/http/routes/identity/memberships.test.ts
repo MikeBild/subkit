@@ -141,9 +141,24 @@ describe("hosted browser identity and memberships", () => {
         existing.payload.tenant_id,
       );
       const pending = await beginLogin("new-when-closed");
-      const response = await pending.adapter.finishLogin?.(new Request(pending.callback));
+      const response = await pending.adapter.finishLogin?.(
+        new Request(pending.callback, { headers: { accept: "application/json" } }),
+      );
       expect(response?.status).toBe(403);
       expect(await response?.json()).toMatchObject({ code: "registration_closed" });
+      const browserPending = await beginLogin("new-when-closed-browser");
+      const browserResponse = await browserPending.adapter.finishLogin?.(
+        new Request(browserPending.callback, {
+          headers: { accept: "text/html", "accept-language": "de" },
+        }),
+      );
+      expect(browserResponse?.status).toBe(403);
+      expect(browserResponse?.headers.get("content-type")).toContain("text/html");
+      const html = await browserResponse?.text();
+      expect(html).toContain("Registrierung geschlossen");
+      expect(html).toContain("SubKit-Arbeitsbereiche");
+      expect(html).toContain('data-testid="auth-retry"');
+      expect(html).not.toContain('"code":"registration_closed"');
     } finally {
       await setConfigKey("auth.hosted.registration_enabled", true);
     }

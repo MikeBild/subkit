@@ -294,6 +294,7 @@ export type SignInError =
   | "state_expired"
   | "grant_denied"
   | "account_not_assigned"
+  | "registration_closed"
   | "authorize_invalid"
   | "provider_not_configured"
   | "tenant_unavailable"
@@ -304,6 +305,8 @@ const SIGN_IN_ERRORS: Record<AuthLocale, Record<SignInError, string>> = {
     state_expired: "This sign-in attempt expired or was already used. Please sign in again.",
     account_not_assigned:
       "This company account is not assigned to SubKit. Contact an administrator.",
+    registration_closed:
+      "New SubKit workspaces are currently unavailable. Contact an administrator.",
     grant_denied: "Your account is not authorized for SubKit. Contact the operator.",
     authorize_invalid:
       "This authorization request is invalid. Return to the application and start the sign-in again.",
@@ -317,6 +320,8 @@ const SIGN_IN_ERRORS: Record<AuthLocale, Record<SignInError, string>> = {
       "Dieser Anmeldeversuch ist abgelaufen oder wurde schon verwendet. Melde dich erneut an.",
     account_not_assigned:
       "Dieses Firmenkonto ist SubKit nicht zugeordnet. Frag eine Person mit der Rolle Administrator.",
+    registration_closed:
+      "Neue SubKit-Arbeitsbereiche sind derzeit nicht verfügbar. Frag eine Person mit der Rolle Administrator.",
     grant_denied:
       "Dein Konto ist für SubKit nicht freigegeben. Frag eine Person mit der Rolle Administrator.",
     authorize_invalid:
@@ -332,11 +337,21 @@ const SIGN_IN_ERRORS: Record<AuthLocale, Record<SignInError, string>> = {
 
 export function renderErrorPage(error: SignInError, retryHref: string, look: PageLook): string {
   const copy = PAGE_COPY[look.locale];
+  const title =
+    error === "account_not_assigned"
+      ? look.locale === "de"
+        ? "Konto nicht zugeordnet"
+        : "Account not assigned"
+      : error === "registration_closed"
+        ? look.locale === "de"
+          ? "Registrierung geschlossen"
+          : "Registration closed"
+        : copy.signInFailed;
   return renderSinglePage({
     look,
     surface: "auth",
     context: copy.oauthContext,
-    body: `<div class="stack" role="alert">${pageHead({ title: error === "account_not_assigned" ? (look.locale === "de" ? "Konto nicht zugeordnet" : "Account not assigned") : copy.signInFailed, slot: "auth-heading", line: SIGN_IN_ERRORS[look.locale][error] })}</div>${pageActions(linkButton(retryHref, copy.signInAgain, "primary", ' data-testid="auth-retry"'))}`,
+    body: `<div class="stack" role="alert">${pageHead({ title, slot: "auth-heading", line: SIGN_IN_ERRORS[look.locale][error] })}</div>${pageActions(linkButton(retryHref, copy.signInAgain, "primary", ' data-testid="auth-retry"'))}`,
   });
 }
 

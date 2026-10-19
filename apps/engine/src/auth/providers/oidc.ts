@@ -306,7 +306,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       }
       const url = new URL(req.url);
       if (hostedSignup && (!isConfigLoaded() || !getConfig().auth.hosted.enabled || productId)) {
-        return httpError(403, "hosted_signup_disabled", "hosted signup is not enabled");
+        return browserError(
+          req,
+          403,
+          "hosted_signup_disabled",
+          "hosted signup is not enabled",
+          "provider_not_configured",
+          LOGIN_START_PATH,
+        );
       }
       const tenantSlug = url.searchParams.get("tenant") ?? configuredTenantSlug;
       const redirectTo = url.searchParams.get("redirect_to");
@@ -484,16 +491,26 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       }
 
       if (!pending.tenant_id && !hostedSignup) {
-        return httpError(400, "tenant_missing", "pending login missing tenant");
+        return browserError(
+          req,
+          400,
+          "tenant_missing",
+          "pending login missing tenant",
+          "tenant_unavailable",
+          retryHref,
+        );
       }
       const tenantId = pending.tenant_id;
       if (hostedSignup && pending.redirect_to === "/v1/identity/recovery") {
         const browserState = parseCookies(req.headers.get("cookie"))[RECOVERY_LOGIN_COOKIE];
         if (!browserState || sha256Hex(browserState) !== sha256Hex(pending.state)) {
-          return httpError(
+          return browserError(
+            req,
             403,
             "recovery_browser_binding_required",
             "restart recovery sign-in in this browser",
+            "state_expired",
+            retryHref,
           );
         }
       }
@@ -547,17 +564,38 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       const claims = tokens.claims();
       const sub = typeof claims?.sub === "string" ? claims.sub : null;
       if (!sub) {
-        return httpError(401, "oidc_missing_sub", "id_token missing sub");
+        return browserError(
+          req,
+          401,
+          "oidc_missing_sub",
+          "id_token missing sub",
+          "grant_denied",
+          retryHref,
+        );
       }
       const rawEmail = (claims as { email?: unknown } | undefined)?.email;
       const emailVerified =
         (claims as { email_verified?: unknown } | undefined)?.email_verified === true;
       if (hostedSignup) {
         if (!isConfigLoaded() || !getConfig().auth.hosted.enabled || productId) {
-          return httpError(403, "hosted_signup_disabled", "hosted signup is not enabled");
+          return browserError(
+            req,
+            403,
+            "hosted_signup_disabled",
+            "hosted signup is not enabled",
+            "provider_not_configured",
+            retryHref,
+          );
         }
         if (!emailVerified || typeof rawEmail !== "string" || rawEmail.length === 0) {
-          return httpError(403, "verified_email_required", "a verified email is required");
+          return browserError(
+            req,
+            403,
+            "verified_email_required",
+            "a verified email is required",
+            "grant_denied",
+            retryHref,
+          );
         }
         try {
           if (pending.redirect_to === "/v1/identity/recovery" && !pending.membership_invite_id) {
@@ -569,10 +607,13 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
               Date.now() - authTime * 1000 > 5 * 60_000 ||
               authTime * 1000 > Date.now() + 30_000
             ) {
-              return httpError(
+              return browserError(
+                req,
                 403,
                 "reauthentication_required",
                 "the identity provider must confirm a fresh sign-in",
+                "grant_denied",
+                retryHref,
               );
             }
             return await issueIdentityRecovery(
@@ -624,21 +665,34 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
             error instanceof SelfServiceIdentityError &&
             error.code === "registration_rate_limited"
           )
-            return httpError(
+            return browserError(
+              req,
               429,
               error.code,
               "Registration is temporarily limited. Try again shortly.",
+              "provider_unavailable",
+              retryHref,
             );
           if (
             error instanceof SelfServiceIdentityError &&
             error.code === "registration_policy_unavailable"
           )
-            return httpError(503, error.code, "Registration is temporarily unavailable.");
+            return browserError(
+              req,
+              503,
+              error.code,
+              "Registration is temporarily unavailable.",
+              "provider_unavailable",
+              retryHref,
+            );
           if (error instanceof ZodError) {
-            return httpError(
+            return browserError(
+              req,
               403,
               "invalid_identity_claims",
               "verified identity claims are invalid",
+              "grant_denied",
+              retryHref,
             );
           }
           if (
@@ -646,12 +700,29 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
             error instanceof MembershipInviteError ||
             error instanceof IdentityRecoveryError
           ) {
-            return httpError(403, error.code, "identity or workspace is not available");
+            return browserError(
+              req,
+              403,
+              error.code,
+              "identity or workspace is not available",
+              error instanceof SelfServiceIdentityError && error.code === "registration_closed"
+                ? "registration_closed"
+                : "account_not_assigned",
+              retryHref,
+            );
           }
           throw error;
         }
       }
-      if (!tenantId) return httpError(400, "tenant_missing", "pending login missing tenant");
+      if (!tenantId)
+        return browserError(
+          req,
+          400,
+          "tenant_missing",
+          "pending login missing tenant",
+          "tenant_unavailable",
+          retryHref,
+        );
       const email =
         emailVerified && typeof rawEmail === "string" && rawEmail.length > 0
           ? rawEmail
@@ -724,7 +795,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         await assertTenantActive(tenantId, exec);
       } catch (error) {
         if (error instanceof SelfServiceIdentityError) {
-          return httpError(403, "tenant_unavailable", "workspace is unavailable");
+          return browserError(
+            req,
+            403,
+            "tenant_unavailable",
+            "workspace is unavailable",
+            "tenant_unavailable",
+            retryHref,
+          );
         }
         throw error;
       }
@@ -744,7 +822,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         })
         .returning();
       if (!sessionRow) {
-        return httpError(500, "session_insert_failed", "failed to create session");
+        return browserError(
+          req,
+          500,
+          "session_insert_failed",
+          "failed to create session",
+          "provider_unavailable",
+          retryHref,
+        );
       }
 
       const jwt = await signSessionCookie(sessionSecret, {
