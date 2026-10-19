@@ -62,7 +62,7 @@ describe("runtime configuration revisions", () => {
 
     const secondBoot = await initializeRuntimeConfig(tdb.db, {
       ...getConfig(),
-      database: { url: "postgres://rotated-bootstrap/runtime" },
+      database: { ...getConfig().database, url: "postgres://rotated-bootstrap/runtime" },
       log: { ...getConfig().log, level: "fatal" },
     });
     expect(secondBoot.saved_revision).toBe(1);

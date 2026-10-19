@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
-import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { runCognitoRefreshTokenGrant, runCognitoUserPasswordGrant } from "../client.ts";
 
 const TEST_NOW_MS = getTestNow();
@@ -13,7 +13,7 @@ describe("Cognito User-Password (InitiateAuth)", () => {
   });
 
   function seamTest(name: string, body: () => Promise<void>) {
-    test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+    test(name, () => withSelfHostedDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
   }
 
   seamTest("posts USER_PASSWORD_AUTH body to cognito-idp endpoint", async () => {
@@ -32,12 +32,15 @@ describe("Cognito User-Password (InitiateAuth)", () => {
       ),
     );
 
-    const bundle = await runCognitoUserPasswordGrant({
-      region: "eu-central-1",
-      client_id: "abc123",
-      username: "user@example.com",
-      password: "hunter2",
-    });
+    const bundle = await runCognitoUserPasswordGrant(
+      {
+        region: "eu-central-1",
+        client_id: "abc123",
+        username: "user@example.com",
+        password: "hunter2",
+      },
+      { mode: "permissive" },
+    );
 
     const call = fetchSpy.mock.calls[0];
     expect(call?.[0]).toBe("https://cognito-idp.eu-central-1.amazonaws.com/");
@@ -73,13 +76,16 @@ describe("Cognito User-Password (InitiateAuth)", () => {
       ),
     );
 
-    await runCognitoUserPasswordGrant({
-      region: "us-east-1",
-      client_id: "client-with-secret",
-      client_secret: "shh",
-      username: "user@example.com",
-      password: "pw",
-    });
+    await runCognitoUserPasswordGrant(
+      {
+        region: "us-east-1",
+        client_id: "client-with-secret",
+        client_secret: "shh",
+        username: "user@example.com",
+        password: "pw",
+      },
+      { mode: "permissive" },
+    );
 
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(String(init.body));
@@ -101,13 +107,16 @@ describe("Cognito User-Password (InitiateAuth)", () => {
       ),
     );
 
-    const bundle = await runCognitoUserPasswordGrant({
-      region: "eu-west-1",
-      client_id: "abc",
-      username: "u",
-      password: "p",
-      use_access_token: true,
-    });
+    const bundle = await runCognitoUserPasswordGrant(
+      {
+        region: "eu-west-1",
+        client_id: "abc",
+        username: "u",
+        password: "p",
+        use_access_token: true,
+      },
+      { mode: "permissive" },
+    );
     expect(bundle.access_token).toBe("ac-tok");
   });
 
@@ -124,17 +133,21 @@ describe("Cognito User-Password (InitiateAuth)", () => {
 
     let caught: Error | null = null;
     try {
-      await runCognitoUserPasswordGrant({
-        region: "eu-central-1",
-        client_id: "abc",
-        username: "u",
-        password: "wrong",
-      });
+      await runCognitoUserPasswordGrant(
+        {
+          region: "eu-central-1",
+          client_id: "abc",
+          username: "u",
+          password: "wrong",
+        },
+        { mode: "permissive" },
+      );
     } catch (e) {
       caught = e as Error;
     }
     expect(caught?.message).toContain("400");
-    expect(caught?.message).toContain("NotAuthorizedException");
+    expect(caught?.message).toBe("credential_response_rejected: http_400");
+    expect(caught?.message).not.toContain("NotAuthorizedException");
   });
 
   seamTest("REFRESH_TOKEN_AUTH posts refresh token in AuthParameters", async () => {
@@ -150,13 +163,16 @@ describe("Cognito User-Password (InitiateAuth)", () => {
       ),
     );
 
-    const bundle = await runCognitoRefreshTokenGrant({
-      region: "eu-central-1",
-      client_id: "abc",
-      username: "u@example.com",
-      password: "",
-      refresh_token: "rt-existing",
-    });
+    const bundle = await runCognitoRefreshTokenGrant(
+      {
+        region: "eu-central-1",
+        client_id: "abc",
+        username: "u@example.com",
+        password: "",
+        refresh_token: "rt-existing",
+      },
+      { mode: "permissive" },
+    );
 
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(String(init.body));
@@ -173,16 +189,19 @@ describe("Cognito User-Password (InitiateAuth)", () => {
 
     let caught: Error | null = null;
     try {
-      await runCognitoUserPasswordGrant({
-        region: "eu-central-1",
-        client_id: "abc",
-        username: "u",
-        password: "p",
-      });
+      await runCognitoUserPasswordGrant(
+        {
+          region: "eu-central-1",
+          client_id: "abc",
+          username: "u",
+          password: "p",
+        },
+        { mode: "permissive" },
+      );
     } catch (e) {
       caught = e as Error;
     }
-    expect(caught?.message).toContain("no tokens");
+    expect(caught?.message).toBe("credential_response_invalid");
   });
 
   seamTest(
@@ -196,14 +215,17 @@ describe("Cognito User-Password (InitiateAuth)", () => {
           { status: 200 },
         ),
       );
-      await runCognitoRefreshTokenGrant({
-        region: "eu-central-1",
-        client_id: "abc-secret",
-        client_secret: "shh",
-        username: "user@example.com",
-        password: "",
-        refresh_token: "rt",
-      });
+      await runCognitoRefreshTokenGrant(
+        {
+          region: "eu-central-1",
+          client_id: "abc-secret",
+          client_secret: "shh",
+          username: "user@example.com",
+          password: "",
+          refresh_token: "rt",
+        },
+        { mode: "permissive" },
+      );
       const initWithUser = fetchSpy.mock.calls[0]?.[1] as RequestInit;
       const bodyWithUser = JSON.parse(String(initWithUser.body));
       expect(typeof bodyWithUser.AuthParameters.SECRET_HASH).toBe("string");
@@ -218,14 +240,17 @@ describe("Cognito User-Password (InitiateAuth)", () => {
           { status: 200 },
         ),
       );
-      await runCognitoRefreshTokenGrant({
-        region: "eu-central-1",
-        client_id: "abc-secret",
-        client_secret: "shh",
-        username: "",
-        password: "",
-        refresh_token: "rt",
-      });
+      await runCognitoRefreshTokenGrant(
+        {
+          region: "eu-central-1",
+          client_id: "abc-secret",
+          client_secret: "shh",
+          username: "",
+          password: "",
+          refresh_token: "rt",
+        },
+        { mode: "permissive" },
+      );
       const initEmpty = fetchSpy.mock.calls[0]?.[1] as RequestInit;
       const bodyEmpty = JSON.parse(String(initEmpty.body));
       const hashEmpty = bodyEmpty.AuthParameters.SECRET_HASH as string;

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { DrizzleQueryError } from "drizzle-orm";
+import { HostedResourceCountError, HostedStorageQuotaError } from "../db/hosted-quota-errors.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
 import { toLlmProviderError } from "../llm/provider-errors.ts";
 import {
@@ -43,6 +45,41 @@ describe("describeTurnFailure", () => {
 
   test("the installation's own budget is not the provider's", () => {
     expect(describeTurnFailure(new LlmQuotaExhausted(), now).code).toBe("llm_quota_exhausted");
+  });
+
+  test("workspace content quotas retain their safe typed contract through wrapped SQL errors", () => {
+    const canary = "turn-quota-private-parameter-canary";
+    for (const quota of [new HostedStorageQuotaError(), new HostedResourceCountError()]) {
+      const failure = describeTurnFailure(
+        new Error(`query parameters: ${canary}`, { cause: quota }),
+        now,
+      );
+      expect(failure.code).toBe(quota.code);
+      expect(failure.message).toBe(quota.message);
+      expect(turnFailureFramePayload(failure)).toEqual({
+        code: quota.code,
+        message: quota.message,
+      });
+      expect(JSON.stringify(failure)).not.toContain(canary);
+    }
+  });
+
+  test("SQL errors and their wrappers cannot echo rejected content into stream failures", () => {
+    const canary = "turn-database-private-content-canary";
+    const query = new DrizzleQueryError(
+      "insert into conversation_messages values ($1)",
+      [canary],
+      new Error("invalid byte sequence"),
+    );
+    for (const error of [query, new Error(`Conversation failed: ${canary}`, { cause: query })]) {
+      const failure = describeTurnFailure(error, now);
+      expect(failure).toEqual({
+        code: "internal",
+        message: "The conversation could not be saved.",
+        at: now.toISOString(),
+      });
+      expect(JSON.stringify(turnFailureFramePayload(failure))).not.toContain(canary);
+    }
   });
 
   test("anything else stays internal, with no invented cause", () => {

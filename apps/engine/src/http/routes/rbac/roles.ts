@@ -258,7 +258,7 @@ export function registerRolesRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const role = await rolesSvc.getRole(db, principal.tenant_id, id);
     if (!role) throw new NotFoundError("role");
-    const perms = await rolesSvc.listRolePermissions(db, role.id);
+    const perms = await rolesSvc.listRolePermissions(db, principal.tenant_id, role.id);
     const counts = await rolesSvc.roleMemberCounts(db, principal.tenant_id);
     return c.json(
       { ...serializeRole(role), permissions: perms, member_count: counts.get(role.id) ?? 0 },

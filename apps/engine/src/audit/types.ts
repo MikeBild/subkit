@@ -4,9 +4,16 @@ import { RequestSourceSchema } from "../observability/service-metadata.ts";
 export const SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000" as const;
 
 export const AuditAction = {
+  HOSTED_STORAGE_OBJECT_RECONCILED: "hosted_storage_object.reconciled",
+  HOSTED_WORK_ADMITTED: "hosted_work.admitted",
+  HOSTED_WORK_STARTED: "hosted_work.started",
+  HOSTED_WORK_FINISHED: "hosted_work.finished",
+  HOSTED_WORK_RECONCILED: "hosted_work.reconciled",
   TENANT_CREATED: "tenant.created",
   TENANT_UPDATED: "tenant.updated",
   TENANT_DELETED: "tenant.deleted",
+  TENANT_DELETION_REQUESTED: "tenant.deletion_requested",
+  TENANT_RESTORED: "tenant.restored",
   TENANT_OPERATOR_ASSIGNED: "tenant.operator_assigned",
 
   USER_CREATED: "user.created",
@@ -80,6 +87,7 @@ export const AuditAction = {
   APPROVAL_EXECUTION_BOUND: "approval.execution_bound",
   APPROVAL_DISPATCH_DENIED: "approval.dispatch_denied",
   EXECUTION_ABORT_REQUESTED: "execution.abort_requested",
+  EXECUTION_FAILED: "execution.failed",
   EXECUTION_COMPLETED: "execution.completed",
   EXECUTION_ABORTED: "execution.aborted",
   EXECUTION_AUTO_RETRIED: "execution.auto_retried",
@@ -259,6 +267,8 @@ export const AuditAction = {
   CREDENTIAL_OAUTH2_REFRESHED: "credential.oauth2_refreshed",
 
   LLM_INVOCATION: "llm.invocation",
+  LLM_BUDGET_RESERVED: "llm.budget.reserved",
+  LLM_BUDGET_SETTLED: "llm.budget.settled",
 
   CONNECTOR_INVOKED: "connector.invoked",
 

@@ -3,7 +3,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { mcpOauthAccessTokens, mcpOauthClients, users } from "../../db/schema/index.ts";
-import { issueApiKey } from "../../identity/index.ts";
+import { assertTenantActive, issueApiKey, SelfServiceIdentityError } from "../../identity/index.ts";
 import { revokeOAuthRefreshTokenFamily } from "./refresh-token-revocation.ts";
 import { CLI_LOGIN_SCOPE, oauthResource } from "./resources.ts";
 import { constantTimeHexEquals, parseMcpToken } from "./tokens.ts";
@@ -60,6 +60,7 @@ export async function consumeCliLoginToken(input: {
 
   try {
     return await input.db.transaction(async (tx) => {
+      await assertTenantActive(tokenRow.tenant_id, tx);
       const userRows = await tx
         .select({
           id: users.id,
@@ -146,6 +147,7 @@ export async function consumeCliLoginToken(input: {
       };
     });
   } catch (error) {
+    if (error instanceof SelfServiceIdentityError) return { ok: false, error: "invalid_token" };
     if (error instanceof Error && error.message === "cli_oauth_token_already_consumed") {
       return { ok: false, error: "invalid_token" };
     }

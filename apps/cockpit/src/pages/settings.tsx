@@ -35,6 +35,7 @@ import {
   useCopy,
 } from "@/components/cockpit/patterns";
 import { PreparedChanges } from "@/components/cockpit/prepared-changes";
+import { WorkspaceDeletion } from "@/components/cockpit/workspace-deletion";
 import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
@@ -1078,6 +1079,7 @@ export function SettingsPage() {
       ) : (
         (tabs[0]?.content ?? <ForbiddenState />)
       )}
+      {session.identity_memberships ? <WorkspaceDeletion /> : null}
     </Page>
   );
 }

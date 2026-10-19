@@ -21,6 +21,16 @@ Nutzerentscheidungen vom 19.10.2026:
 - Dieser Auftrag konsolidiert Dokumentation; keine Produktimplementierung,
   Veröffentlichung, Registrierungseröffnung oder Infrastrukturänderung.
 
+Präzisierter Implementierungsauftrag im aktiven Hosted-Goal: globale Identität,
+höchstens ein eigener Mandant und mehrere eingeladene Mitgliedschaften; kein Trial,
+sieben Tage widerrufbare Löschung. Free gilt je UTC-Kalendermonat mit 5 USD
+Modellbudget pro Tenant, 50 USD global und 10.000 metrierter Requests. Gemeinsam
+50.000.000 logische Bytes für Dateien und gespeicherte Nutzerinhalte einschließlich
+Historien; zusätzlich 1.000 aufbewahrte Datensätze je Ressourcentyp einschließlich
+logisch gelöschter Einträge bis zur physischen Bereinigung. Auth-Aktionen werden per
+Webhook zugestellt; die Ziel-URL folgt. Diese Entscheidungen sind keine Aussage
+über produktiv konfigurierte oder vollständig abgenommene Cloud-Fähigkeiten.
+
 Die früheren Aussagen „kein SaaS“ gelten nicht mehr als Produktziel. Die vorhandenen
 Self-Hosting-Launch-Termine werden nicht auf Cloud übertragen. Cloud hat noch keinen
 zugesagten Öffnungstermin. Das historische Gesamtgate ist keine SaaS-Abnahme.
@@ -110,10 +120,10 @@ Offene Registrierung erst nach abgeschlossenem Gesamtpfad C01–C09:
 
 | Entscheidung | Planungsbasis | Wann festzulegen |
 | --- | --- | --- |
-| Mitgliedschaften | Eigener Mandant bei Registrierung; kein impliziter Fremdbeitritt | Vor C02/C03: Verhalten bestehender Einladungen und mehrerer Mitgliedschaften, gegebenenfalls Mandantenwechsel |
-| KI-Budget | Geldbudget pro Mandant plus globale monatliche Obergrenze, fail closed | Vor C02: Währung, Beträge, Abrechnungsperiode, Modelle, Reservierungs-/Fehlerbehandlung |
+| Mitgliedschaften | Bestätigt: höchstens ein eigener Tenant, mehrere eingeladene Mitgliedschaften und sicherer Wechsel; kein impliziter Fremdbeitritt | Integrierte Browser-/CLI-/Cloud-Abnahme vor Öffnung |
+| KI-Budget und Quoten | Bestätigt: 5 USD/Tenant, 50 USD global, UTC-Kalendermonat; 10.000 metrierte Requests, gemeinsam 50 MB und 1.000 Datensätze je Typ | Modellfreigabe und echte Betriebs-/Parallelitätsabnahme vor Öffnung |
 | Kapazität | Zunächst eine Replik als konservative Betriebsbasis | Vor C07: gemessene Kapazität; mehrere Repliken erst mit gemeinsam wirksamen Limits |
-| Beta-Laufzeit | Begrenzte kostenlose Beta, kein zugesagtes Enddatum | Vor C05/C08: Ablauf, Hinweise, Grace Period, Wiederaufnahme und Verhalten ohne Modellbudget |
+| Beta-Laufzeit | Kein Trial, kein zugesagtes Enddatum; bestätigt sieben Tage widerrufbare Löschung | Wiederaufnahme, Quotenerschöpfung und Löschweg integriert abnehmen |
 | Aufbewahrung | Keine erfundenen Fristen | Vor C05/C08: aktive Daten, Auditmetadaten, alte Config-Revisions, Backups und Löschung eingeladener Mitglieder |
 | Betriebsanbieter und Region | Private Umsetzung außerhalb dieses Repos | Vor C07/C08: Datenflüsse, Region, Unterauftragnehmer, Wiederanlauf-/Datenverlustziele und Incident-Verantwortung |
 | Recht und Support | Menschliche Prüfung und realistische Zuständigkeiten | Vor Öffnung: Pflichttexte, Vereinbarungen, Ansprechpartner und Abnahmeverantwortliche |

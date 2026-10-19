@@ -1,5 +1,6 @@
-import { connectors, tenants } from "../../db/schema/index.ts";
+import { authIdentities, connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 
 export interface DocsTestCtx {
   testDb: TestDb;
@@ -8,11 +9,32 @@ export interface DocsTestCtx {
   cleanup: () => Promise<void>;
 }
 
-export async function createDocsTestCtx(label: string): Promise<DocsTestCtx> {
+export async function createDocsTestCtx(
+  label: string,
+  options: { hosted?: boolean } = {},
+): Promise<DocsTestCtx> {
   const testDb = await createTestDb(`docs-${label}`);
+  let ownerId: string | undefined;
+  if (options.hosted) {
+    await configureHostedPolicyForTests(testDb.db, testDb.url);
+    const [identity] = await testDb.db
+      .insert(authIdentities)
+      .values({
+        issuer_url: "https://identity.example.test",
+        subject: label,
+        email: `${label}@example.test`,
+      })
+      .returning();
+    if (!identity) throw new Error("identity fixture missing");
+    ownerId = identity.id;
+  }
   const [tenant] = await testDb.db
     .insert(tenants)
-    .values({ slug: `t-${label}`, display_name: `Docs ${label}` })
+    .values({
+      slug: `t-${label}`,
+      display_name: `Docs ${label}`,
+      ...(ownerId ? { origin: "self_service" as const, owner_identity_id: ownerId } : {}),
+    })
     .returning();
   if (!tenant) throw new Error("seed tenant failed");
   const [connector] = await testDb.db

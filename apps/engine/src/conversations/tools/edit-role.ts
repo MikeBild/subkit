@@ -3,6 +3,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import {
   BuiltinImmutableError,
+  getRole,
   grantPermissionToRole,
   listRolePermissions,
   PermissionNotFoundError,
@@ -50,11 +51,14 @@ export const editRoleTool: ConversationTool = {
     if (args.description !== undefined) metadataPatch.description = args.description;
 
     try {
+      const role = await getRole(ctx.db, ctx.tenant_id, args.role_id);
+      if (!role) throw new RoleNotFoundError();
+      if (role.is_builtin) throw new BuiltinImmutableError();
       if (Object.keys(metadataPatch).length > 0) {
         await updateRole(ctx.db, ctx.tenant_id, args.role_id, metadataPatch);
       }
 
-      const current = new Set(await listRolePermissions(ctx.db, args.role_id));
+      const current = new Set(await listRolePermissions(ctx.db, ctx.tenant_id, args.role_id));
       const granted: string[] = [];
       const revoked: string[] = [];
       if (args.permissions) {
@@ -104,7 +108,7 @@ export const editRoleTool: ConversationTool = {
         ctx.db,
       );
 
-      const finalPerms = await listRolePermissions(ctx.db, args.role_id);
+      const finalPerms = await listRolePermissions(ctx.db, ctx.tenant_id, args.role_id);
       return {
         ok: true,
         data: {

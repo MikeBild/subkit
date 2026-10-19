@@ -27,7 +27,7 @@ import {
 } from "../../execution/tests/setup.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import {
   grantWorkflowAuthority,
   previewWorkflowAuthority,
@@ -101,7 +101,7 @@ async function refusedGrantedRun(workflow_id: string, version_id: string, max_ru
   const remote = Object.assign(async () => Response.json({ id: "sent" }), {
     preconnect: () => {},
   }) as typeof fetch;
-  await withDriverFetchForTests(remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote, async () => {
     const admitted = await admitAuthorizedWorkflowExecution(
       {
         tenant_id: ctx.tenantId,

@@ -2,6 +2,7 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../db/client.ts";
 import type { ListResult } from "../db/list-result.ts";
 import { workflows, workflowsSchedules, workflowVersions } from "../db/schema/index.ts";
@@ -118,6 +119,16 @@ export async function createSchedule(
   db: Db,
   input: CreateScheduleInput,
 ): Promise<CreateScheduleOutcome> {
+  return db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, input.tenant_id);
+    return createScheduleLocked(tx, input);
+  });
+}
+
+async function createScheduleLocked(
+  db: Executor,
+  input: CreateScheduleInput,
+): Promise<CreateScheduleOutcome> {
   const parsed = parseCronExpression(input.cron);
   if (!parsed.ok) {
     throw Object.assign(new Error(`invalid cron: ${parsed.reason}`), {
@@ -176,7 +187,9 @@ export async function createSchedule(
         input_error: null,
         updated_at: new Date(),
       })
-      .where(eq(workflowsSchedules.id, prior.id))
+      .where(
+        and(eq(workflowsSchedules.tenant_id, input.tenant_id), eq(workflowsSchedules.id, prior.id)),
+      )
       .returning();
     await scheduleChanged(db, updated[0] as ScheduleRow | undefined);
     return { status: "updated", row: updated[0] as ScheduleRow };
@@ -226,7 +239,7 @@ export async function listSchedules(
 }
 
 export async function getSchedule(
-  db: Db,
+  db: Executor,
   tenant_id: string,
   id: string,
 ): Promise<ScheduleRow | null> {
@@ -248,6 +261,18 @@ export interface UpdateScheduleInput {
 
 export async function updateSchedule(
   db: Db,
+  tenant_id: string,
+  id: string,
+  patch: UpdateScheduleInput,
+): Promise<ScheduleRow | null> {
+  return db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, tenant_id);
+    return updateScheduleLocked(tx, tenant_id, id, patch);
+  });
+}
+
+async function updateScheduleLocked(
+  db: Executor,
   tenant_id: string,
   id: string,
   patch: UpdateScheduleInput,
@@ -358,7 +383,9 @@ export async function bindFromWorkflow(
         input: inputPayload as never,
         updated_at: new Date(),
       })
-      .where(eq(workflowsSchedules.id, prior.id))
+      .where(
+        and(eq(workflowsSchedules.tenant_id, input.tenant_id), eq(workflowsSchedules.id, prior.id)),
+      )
       .returning();
     const row = (updated[0] as ScheduleRow | undefined) ?? prior;
     await auditAwait(

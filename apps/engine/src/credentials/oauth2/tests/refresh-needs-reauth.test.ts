@@ -165,12 +165,15 @@ describe("refreshIfStale — needs_reauth short-circuit", () => {
 
   test("regression — needs_reauth=false still calls IdP and returns a refreshed token", async () => {
     mock.setExpiresIn(1);
-    const initial = await runClientCredentialsGrant({
-      issuer_url: mock.baseUrl,
-      client_id: "rna-client-c",
-      client_secret: "rna-secret-c",
-      scope: "read",
-    });
+    const initial = await runClientCredentialsGrant(
+      {
+        issuer_url: mock.baseUrl,
+        client_id: "rna-client-c",
+        client_secret: "rna-secret-c",
+        scope: "read",
+      },
+      { mode: "permissive" },
+    );
 
     await upsertCredential(
       {

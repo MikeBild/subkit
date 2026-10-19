@@ -94,11 +94,14 @@ export async function beginConnectorOAuthDance(
     const issuerHost = issuerUrl ? new URL(issuerUrl).host : "";
     let registrationEndpointHost: string | null = null;
     try {
-      const result = await dynamicallyRegisterClient({
-        issuerUrl,
-        clientMetadata: { redirect_uris: [redirect_uri] },
-        allowInsecureRequests: new URL(issuerUrl).protocol === "http:",
-      });
+      const result = await dynamicallyRegisterClient(
+        {
+          issuerUrl,
+          clientMetadata: { redirect_uris: [redirect_uri] },
+          allowInsecureRequests: new URL(issuerUrl).protocol === "http:",
+        },
+        { tenant_id, exec: db },
+      );
       const resolvedRegistrationHost = new URL(result.registrationEndpoint).host;
       registrationEndpointHost = resolvedRegistrationHost;
 
@@ -194,13 +197,16 @@ export async function beginConnectorOAuthDance(
         "client_credentials_json connector is missing config.oauth.token_endpoint",
       );
     }
-    const bundle = await runClientCredentialsJsonGrant({
-      token_endpoint: tokenEndpoint,
-      body_mapping: bodyMapping,
-      response_format: cfg.token_response_format ?? "raw",
-      token_response_ttl_ms: cfg.token_response_ttl_ms ?? 86_400_000,
-      extra_token_headers: cfg.extra_token_headers,
-    });
+    const bundle = await runClientCredentialsJsonGrant(
+      {
+        token_endpoint: tokenEndpoint,
+        body_mapping: bodyMapping,
+        response_format: cfg.token_response_format ?? "raw",
+        token_response_ttl_ms: cfg.token_response_ttl_ms ?? 86_400_000,
+        extra_token_headers: cfg.extra_token_headers,
+      },
+      { tenant_id, exec: db },
+    );
     await credsvc.upsertCredential(
       {
         tenant_id,
@@ -250,7 +256,7 @@ export async function beginConnectorOAuthDance(
   }
 
   const cfgWithRedirect = { ...cfg, redirect_uri };
-  const started = await startAuthorizationCode(cfgWithRedirect);
+  const started = await startAuthorizationCode(cfgWithRedirect, { tenant_id, exec: db });
   await db.insert(connectorOauthStates).values({
     tenant_id,
     connector_id,

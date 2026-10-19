@@ -15,6 +15,18 @@ bleiben bestehen.
 
 ## Ziel und verbindliche Entscheidungen
 
+### Zusätzlich freigegebenes Hosted-Ziel
+
+Der Nutzer hat die vollständige Self-Service-Cloud-Umsetzung einschließlich
+DevOps- und Architektur-Agenten als aktives Goal beauftragt. Die Hosted-Arbeit
+läuft als eigener Lieferpfad neben dem Self-Hosting-Launch; dessen vorhandene
+Nachweise bleiben gültig in ihrem jeweiligen Quell- und Laufzeitumfang.
+Die folgenden früheren Self-Hosting-only-/SaaS-Ausschlüsse beschreiben den
+ursprünglichen Launchumfang und schließen dieses zusätzlich freigegebene Ziel
+nicht mehr aus. Produktentscheidungen stehen in docs/PRODUCT-ROADMAP.md, operative Hosted-Aufgaben
+und offene Freigaben in docs/TODO.md; LAUNCH_STATUS.md führt die bestehenden L-Aufgaben.
+Neue öffentliche Hosted-Versprechen gelten erst nach vollständiger Abnahme.
+
 SubKit ist eine selbst hostbare Plattform für kontrollierte, versionierte und
 auditierbare KI-gestützte Workflows gegen verbundene Systeme. Ein Team beschreibt
 Arbeit, prüft die vorgeschlagene Wirkung, gibt sie menschlich frei und kann die

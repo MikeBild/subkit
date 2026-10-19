@@ -1,3 +1,7 @@
+import { type InboundOrigin, type InboundRow, type InboundVerifierName, serialize } from "./row.ts";
+
+export type { InboundOrigin, InboundRow, InboundVerifierName } from "./row.ts";
+
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
@@ -10,15 +14,17 @@ import { assertInsertRow } from "../../db/assert-insert.ts";
 import { type Db, type Executor, getDb } from "../../db/client.ts";
 import { webhooksInbound, workflows } from "../../db/schema/index.ts";
 import { assertExecutionAuthorityCurrent } from "../../execution/authority-admission.ts";
+import { assertTenantActive, SelfServiceIdentityError } from "../../identity/self-service.ts";
 import { logger } from "../../logging/logger.ts";
 import { enqueueGateDiagnosis } from "../../queue/handlers/workflow-repair.ts";
+import { enqueueHostedWork } from "../../queue/hosted-work.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../../queue/queues.ts";
 import type { WebhookTrigger } from "../../workflows/types.ts";
-import { admitWebhookExecution } from "./admission.ts";
+import { admitWebhookExecution, webhookReplayMatches } from "./admission.ts";
 import { type InboundHoldReason, recordInboundAdmission } from "./admission-state.ts";
 import { markSeenIfNew, wasSeen } from "./dedup.ts";
 import { verifyGitHub } from "./verifiers/github.ts";
-import { verifyHmac } from "./verifiers/hmac.ts";
+import { HmacVerifierConfig, verifyHmac } from "./verifiers/hmac.ts";
 import { verifyStandard } from "./verifiers/standard-webhooks.ts";
 import { verifyStripe } from "./verifiers/stripe.ts";
 import type { VerifierFn, VerifierResult } from "./verifiers/types.ts";
@@ -31,8 +37,6 @@ function toBuf(u: Uint8Array): Buffer {
   return Buffer.from(u);
 }
 
-export type InboundVerifierName = "standard" | "github" | "stripe" | "hmac";
-
 const VERIFIERS: Record<InboundVerifierName, VerifierFn> = {
   standard: verifyStandard,
   github: verifyGitHub,
@@ -41,34 +45,6 @@ const VERIFIERS: Record<InboundVerifierName, VerifierFn> = {
 };
 
 const ACCEPTED_VERIFIERS = Object.keys(VERIFIERS) as InboundVerifierName[];
-
-export type InboundOrigin = "crud" | "trigger";
-
-export interface InboundRow {
-  id: string;
-  tenant_id: string;
-  slug: string;
-  workflow_id: string;
-  verifier: InboundVerifierName;
-  active: boolean;
-  origin: InboundOrigin;
-  created_at: Date;
-  updated_at: Date;
-}
-
-function serialize(row: typeof webhooksInbound.$inferSelect): InboundRow {
-  return {
-    id: row.id,
-    tenant_id: row.tenant_id,
-    slug: row.slug,
-    workflow_id: row.workflow_id,
-    verifier: row.verifier as InboundVerifierName,
-    active: row.active,
-    origin: (row.origin as InboundOrigin | undefined) ?? "crud",
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
-}
 
 export interface CreateInboundInput {
   tenant_id: string;
@@ -606,6 +582,12 @@ export async function handleInbound(
   }
   const row = rows[0];
   if (!row) return { status: "not_found" };
+  try {
+    await assertTenantActive(row.tenant_id, db);
+  } catch (err) {
+    if (!(err instanceof SelfServiceIdentityError)) throw err;
+    return { status: "not_found" };
+  }
   const origin: InboundOrigin = (row.origin as InboundOrigin | undefined) ?? "crud";
   const FIRED_ACTION =
     origin === "trigger" ? AuditAction.WEBHOOK_TRIGGER_FIRED : AuditAction.WEBHOOK_INBOUND_RECEIVED;
@@ -758,6 +740,32 @@ export async function handleInbound(
     standard_webhook_id: verdict.normalized.id,
   });
   if (seen) {
+    const hmac = row.verifier === "hmac" ? HmacVerifierConfig.safeParse(config?.hmac) : null;
+    if (
+      hmac?.success &&
+      hmac.data.id_field &&
+      !(await webhookReplayMatches(db, row, {
+        id: verdict.normalized.id,
+        timestamp: verdict.normalized.timestamp,
+        type: verdict.normalized.type,
+        headers: input.headers,
+        body: JSON.parse(input.rawBody),
+      }))
+    ) {
+      audit(
+        {
+          tenant_id: row.tenant_id,
+          action: FAILED_ACTION,
+          resource_type: "webhook_inbound",
+          resource_id: row.id,
+          result: "denied",
+          reason: "execution_boundary_mismatch",
+          metadata: { ...baseAuditMetadata, event_id: verdict.normalized.id },
+        },
+        db,
+      );
+      return { status: "denied", reason: "execution_boundary_mismatch", inbound_id: row.id };
+    }
     if (origin === "trigger") {
       audit(
         {
@@ -898,7 +906,7 @@ export async function handleInbound(
     execution_mode: "prod",
   };
   if (admitted.status === "queued") {
-    await boss.send(EXECUTION_RUN_QUEUE, job, { id: execution_id });
+    await enqueueHostedWork(db, boss, "execution", EXECUTION_RUN_QUEUE, job, { id: execution_id });
     await holdInboundAdmission(db, row, input.now, null);
   }
   const fresh = await markSeenIfNew(db, {

@@ -12,6 +12,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { bytea } from "./_common.ts";
+import { tenants } from "./identity.ts";
 
 export const runtimeConfigRevisionStatusEnum = pgEnum("runtime_config_revision_status", [
   "saved",
@@ -62,6 +63,16 @@ export const runtimeConfigState = pgTable("runtime_config_state", {
   key: text("key").primaryKey(),
   active_revision: bigint("active_revision", { mode: "number" }),
   desired_revision: bigint("desired_revision", { mode: "number" }),
+  master_key_epoch: bigint("master_key_epoch", { mode: "number" }).default(0).notNull(),
+  master_key_digest: text("master_key_digest"),
+  vault_maintenance_binding: jsonb("vault_maintenance_binding").$type<Record<
+    string,
+    unknown
+  > | null>(),
+  vault_maintenance_context: jsonb("vault_maintenance_context").$type<Record<
+    string,
+    unknown
+  > | null>(),
   updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -91,6 +102,7 @@ export const runtimeConfigReplicas = pgTable(
 export const runtimeSecretVersions = pgTable(
   "runtime_secret_versions",
   {
+    tenant_id: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     version: integer("version").notNull(),
     ciphertext: bytea("ciphertext").notNull(),

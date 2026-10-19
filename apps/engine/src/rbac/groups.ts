@@ -1,6 +1,6 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { groupMembers, groupRoleAssignments, groups, users } from "../db/schema/index.ts";
+import { groupMembers, groupRoleAssignments, groups, roles, users } from "../db/schema/index.ts";
 
 export interface GroupRow {
   id: string;
@@ -65,57 +65,133 @@ export async function getGroup(db: Db, tenant_id: string, id: string): Promise<G
 
 export async function addMember(
   db: Db,
+  tenant_id: string,
   group_id: string,
   user_id: string,
   added_by?: string | null,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const inserted = await db
     .insert(groupMembers)
-    .values({ group_id, user_id, added_by: added_by ?? null })
-    .onConflictDoNothing();
+    .select(
+      db
+        .select({
+          group_id: groups.id,
+          user_id: users.id,
+          added_by: sql<string | null>`${added_by ?? null}::uuid`.as("added_by"),
+          added_at: sql<Date>`CURRENT_TIMESTAMP`.as("added_at"),
+        })
+        .from(groups)
+        .innerJoin(users, eq(users.tenant_id, groups.tenant_id))
+        .where(
+          and(eq(groups.tenant_id, tenant_id), eq(groups.id, group_id), eq(users.id, user_id)),
+        ),
+    )
+    .onConflictDoUpdate({
+      target: [groupMembers.group_id, groupMembers.user_id],
+      set: { user_id: sql`excluded.user_id` },
+    })
+    .returning({ group_id: groupMembers.group_id });
+  return inserted.length > 0;
 }
 
-export async function removeMember(db: Db, group_id: string, user_id: string): Promise<boolean> {
+export async function removeMember(
+  db: Db,
+  tenant_id: string,
+  group_id: string,
+  user_id: string,
+): Promise<boolean> {
   const deleted = await db
     .delete(groupMembers)
-    .where(and(eq(groupMembers.group_id, group_id), eq(groupMembers.user_id, user_id)))
+    .where(
+      and(
+        eq(groupMembers.group_id, group_id),
+        eq(groupMembers.user_id, user_id),
+        inArray(
+          groupMembers.group_id,
+          db.select({ id: groups.id }).from(groups).where(eq(groups.tenant_id, tenant_id)),
+        ),
+      ),
+    )
     .returning({ group_id: groupMembers.group_id });
   return deleted.length > 0;
 }
 
-export async function listMembers(db: Db, group_id: string): Promise<string[]> {
-  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
+export async function listMembers(db: Db, tenant_id: string, group_id: string): Promise<string[]> {
   const rows = await db
     .select({ user_id: groupMembers.user_id })
     .from(groupMembers)
-    .where(eq(groupMembers.group_id, group_id));
+    .innerJoin(groups, eq(groups.id, groupMembers.group_id))
+    .innerJoin(users, eq(users.id, groupMembers.user_id))
+    .where(
+      and(eq(groups.tenant_id, tenant_id), eq(users.tenant_id, tenant_id), eq(groups.id, group_id)),
+    );
   return rows.map((r) => r.user_id);
 }
 
-export async function assignRoleToGroup(db: Db, group_id: string, role_id: string): Promise<void> {
-  await db.insert(groupRoleAssignments).values({ group_id, role_id }).onConflictDoNothing();
+export async function assignRoleToGroup(
+  db: Db,
+  tenant_id: string,
+  group_id: string,
+  role_id: string,
+): Promise<boolean> {
+  const inserted = await db
+    .insert(groupRoleAssignments)
+    .select(
+      db
+        .select({ group_id: groups.id, role_id: roles.id })
+        .from(groups)
+        .innerJoin(roles, or(isNull(roles.tenant_id), eq(roles.tenant_id, groups.tenant_id)))
+        .where(
+          and(eq(groups.tenant_id, tenant_id), eq(groups.id, group_id), eq(roles.id, role_id)),
+        ),
+    )
+    .onConflictDoUpdate({
+      target: [groupRoleAssignments.group_id, groupRoleAssignments.role_id],
+      set: { role_id: sql`excluded.role_id` },
+    })
+    .returning({ group_id: groupRoleAssignments.group_id });
+  return inserted.length > 0;
 }
 
 export async function revokeRoleFromGroup(
   db: Db,
+  tenant_id: string,
   group_id: string,
   role_id: string,
 ): Promise<boolean> {
   const deleted = await db
     .delete(groupRoleAssignments)
     .where(
-      and(eq(groupRoleAssignments.group_id, group_id), eq(groupRoleAssignments.role_id, role_id)),
+      and(
+        eq(groupRoleAssignments.group_id, group_id),
+        eq(groupRoleAssignments.role_id, role_id),
+        inArray(
+          groupRoleAssignments.group_id,
+          db.select({ id: groups.id }).from(groups).where(eq(groups.tenant_id, tenant_id)),
+        ),
+      ),
     )
     .returning({ group_id: groupRoleAssignments.group_id });
   return deleted.length > 0;
 }
 
-export async function listGroupRoles(db: Db, group_id: string): Promise<string[]> {
-  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
+export async function listGroupRoles(
+  db: Db,
+  tenant_id: string,
+  group_id: string,
+): Promise<string[]> {
   const rows = await db
     .select({ role_id: groupRoleAssignments.role_id })
     .from(groupRoleAssignments)
-    .where(eq(groupRoleAssignments.group_id, group_id));
+    .innerJoin(groups, eq(groups.id, groupRoleAssignments.group_id))
+    .innerJoin(roles, eq(roles.id, groupRoleAssignments.role_id))
+    .where(
+      and(
+        eq(groups.tenant_id, tenant_id),
+        eq(groups.id, group_id),
+        or(isNull(roles.tenant_id), eq(roles.tenant_id, tenant_id)),
+      ),
+    );
   return rows.map((r) => r.role_id);
 }
 

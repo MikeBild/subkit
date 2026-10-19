@@ -444,7 +444,10 @@ export const probeConnectorDraftTool: ConversationTool = {
     let credentialOverride: DecryptedCredential | null = null;
     if (draftCredential?.mode === "oauth2") {
       try {
-        credentialOverride = await mintM2mDraftCredential(draftCredential, oauthCfg);
+        credentialOverride = await mintM2mDraftCredential(draftCredential, oauthCfg, {
+          tenant_id: ctx.tenant_id,
+          exec: ctx.db,
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         const endpoint =
@@ -461,10 +464,14 @@ export const probeConnectorDraftTool: ConversationTool = {
       try {
         credentialOverride = draftCredential
           ? draftCredential.mode === "cognito_user_password"
-            ? await toDecryptedCredentialAsync(draftCredential, {
-                aws_region: region,
-                client_id: clientId,
-              })
+            ? await toDecryptedCredentialAsync(
+                draftCredential,
+                {
+                  aws_region: region,
+                  client_id: clientId,
+                },
+                { tenant_id: ctx.tenant_id, exec: ctx.db },
+              )
             : toDecryptedCredential(draftCredential)
           : null;
       } catch (err) {

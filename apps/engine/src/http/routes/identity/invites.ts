@@ -1,9 +1,10 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { policy } from "../../../auth/index.ts";
+import { browserSessionForPrincipal, createOidcProvider, policy } from "../../../auth/index.ts";
+import { getConfig } from "../../../config/loader.ts";
 import * as identity from "../../../identity/index.ts";
 import { now } from "../../../utils/clock.ts";
-import { NotFoundError } from "../../errors.ts";
+import { ForbiddenError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { enforce } from "../../middleware/policy.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -41,12 +42,6 @@ function checkRedeemRateLimit(ip: string): boolean {
   if (entry.count >= REDEEM_MAX_ATTEMPTS) return false;
   entry.count += 1;
   return true;
-}
-
-function clientIp(headers: Headers): string {
-  const fwd = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  if (fwd) return fwd;
-  return headers.get("x-real-ip") ?? "unknown";
 }
 
 const CreateInviteBody = z
@@ -140,6 +135,63 @@ const revokeInviteRoute = createRoute({
     401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const inviteLoginRoute = createRoute({
+  method: "post",
+  path: "/v1/identity/invites/login",
+  tags: ["identity"],
+  summary: "Start a verified hosted identity login for a membership invitation",
+  description:
+    "The invite secret stays in the request body. OIDC state stores only its validated invitation id; no session is issued until the verified identity matches the invited address.",
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z
+            .object({ token: z.string().min(14).max(128), provider_id: z.string().min(1) })
+            .strict(),
+        },
+      },
+    },
+  },
+  responses: {
+    302: {
+      description: "Redirect to the configured OIDC provider",
+      headers: { Location: { schema: { type: "string" } } },
+    },
+    403: {
+      description: "Invitation or hosted provider unavailable",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
+const claimInviteRoute = createRoute({
+  method: "post",
+  path: "/v1/identity/invites/claim",
+  tags: ["identity"],
+  summary: "Accept an unrestricted membership invitation with a verified browser identity",
+  request: { body: { content: { "application/json": { schema: RedeemInviteBody } } } },
+  security: [{ browserSession: [] }],
+  responses: {
+    200: {
+      description: "Membership accepted; no credentials or session issued",
+      content: {
+        "application/json": {
+          schema: z.object({
+            tenant_id: z.string().uuid(),
+            user_id: z.string().uuid(),
+            claimed: z.boolean(),
+          }),
+        },
+      },
+    },
+    403: {
+      description: "Verified identity, invite audience or membership scope rejected",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -268,9 +320,70 @@ export function registerInviteRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.body(null, 204);
   });
 
+  app.openapi(inviteLoginRoute, async (c) => {
+    const input = c.req.valid("json");
+    const config = getConfig();
+    const provider = config.auth.providers.find((entry) => entry.id === input.provider_id);
+    if (
+      !config.auth.hosted.enabled ||
+      provider?.protocol !== "oidc" ||
+      provider.signup_policy !== "self_service" ||
+      provider.product_id
+    )
+      throw new ForbiddenError("hosted_provider_required");
+    try {
+      const target = await identity.membershipInviteLoginTarget(input.token, c.get("db"));
+      const adapter = createOidcProvider({
+        db: c.get("db"),
+        providerId: provider.id,
+        membershipInviteId: target.invite_id,
+      });
+      const start = new URL("/v1/identity/login/start", c.req.url);
+      start.searchParams.set("redirect_to", "/cockpit");
+      const response = await adapter.startLogin?.(new Request(start));
+      if (response?.status !== 302) throw new ForbiddenError("hosted_provider_unavailable");
+      return response;
+    } catch (error) {
+      if (
+        error instanceof identity.MembershipInviteError ||
+        error instanceof identity.SelfServiceIdentityError
+      )
+        throw new ForbiddenError(error.code);
+      throw error;
+    }
+  });
+
+  app.openapi(claimInviteRoute, async (c) => {
+    const principal = requireAuth(c);
+    const payload = await browserSessionForPrincipal(c.req.raw, principal);
+    if (!payload || principal.product_id)
+      throw new ForbiddenError("verified_browser_identity_required");
+    try {
+      const result = await identity.claimMembershipInvite(
+        { ...payload, token: c.req.valid("json").token },
+        c.get("db"),
+      );
+      return c.json(
+        {
+          tenant_id: result.membership.tenant_id,
+          user_id: result.membership.user_id,
+          claimed: result.claimed,
+        },
+        200,
+      );
+    } catch (error) {
+      if (
+        error instanceof identity.MembershipInviteError ||
+        error instanceof identity.SelfServiceIdentityError
+      )
+        throw new ForbiddenError(error.code);
+      throw error;
+    }
+  });
+
   app.openapi(redeemInviteRoute, async (c) => {
     const db = c.get("db");
-    const ip = clientIp(c.req.raw.headers);
+    const ip = c.get("client_ip") ?? "unknown";
     if (!checkRedeemRateLimit(ip)) {
       return c.json(
         { code: "rate_limit_exceeded", message: "too many redeem attempts from this IP" },

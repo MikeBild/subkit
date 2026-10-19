@@ -6,7 +6,7 @@ import { conversations as conversationsTable, tenants } from "../../db/schema/in
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { __setMcpPoolFactoriesForTests, type McpClientLike } from "../../mcp/client/pool.ts";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { startLocalTargetServer } from "../../test-helpers/local-http.ts";
 import { hydrateDraftFromSavedConnector } from "../authoring-state/normalize.ts";
 import {
@@ -503,7 +503,7 @@ describe("probe_connector_draft + draft credential", () => {
     }) as typeof fetch;
 
     try {
-      await withDriverFetchForTests(fetchImpl, async () => {
+      await withSelfHostedDriverFetchForTests(fetchImpl, async () => {
         const conversation_id = await seedConversation();
         const cognitoDraft: DraftDocument = {
           mode: "connector_authoring",

@@ -5,6 +5,7 @@ import {
   markBudgetExceeded,
   recordLinkFollowed,
 } from "../budgets.ts";
+import { readBoundedText } from "../read-response.ts";
 import type { BudgetState, RawChunk } from "../types.ts";
 import { ingestMarkdown } from "./markdown.ts";
 import { ingestOpenAPIUrl } from "./openapi.ts";
@@ -33,7 +34,7 @@ export async function ingestLlmsTxt(
 ): Promise<LlmsTxtIngestResult> {
   const res = await fetchImpl(url, { headers: { accept: "text/plain,text/markdown,*/*" } });
   if (!res.ok) throw new Error(`llms.txt fetch failed: ${res.status}`);
-  const body = await res.text();
+  const body = await readBoundedText(res);
   const bytes = Buffer.byteLength(body, "utf8");
   if (!canConsumeBytes(state, bytes)) {
     markBudgetExceeded(state);

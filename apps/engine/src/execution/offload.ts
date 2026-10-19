@@ -5,6 +5,12 @@ import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { executionFixtures } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import {
+  assertHostedObjectReadable,
+  hostedObjectNamespace,
+  reserveHostedObject,
+  retainHostedObject,
+} from "../storage/hosted-objects.ts";
 import { getObjectStore } from "../storage/object-store.ts";
 import { STEP_RESULT_DB_BYTES, STEP_RESULT_PREVIEW_BYTES } from "./timeouts.ts";
 
@@ -150,6 +156,9 @@ export async function resolveOffloaded(
       );
     }
     try {
+      if (!key.startsWith(`offload/${tenant_id}/`))
+        throw new OffloadResolutionError(uri, "object key does not belong to this tenant");
+      await assertHostedObjectReadable(tenant_id, key, db);
       const bytes = await raceAbort(getObjectStore().get(key), signal, uri);
       if (parsed.data.sha256) {
         const actual = createHash("sha256").update(bytes).digest("hex");
@@ -204,13 +213,28 @@ function objectStoreOffloadConfig(): ObjectStoreOffloadConfig | null {
 }
 
 async function writeToObjectStore(
+  db: Db,
   cfg: ObjectStoreOffloadConfig,
   params: MaybeOffloadParams,
   serialized: string,
 ): Promise<string> {
   const id = randomUUID();
   const key = `${cfg.keyPrefix}/${params.tenant_id}/${params.execution_id}/${id}.json`;
-  await getObjectStore().put(key, Buffer.from(serialized, "utf8"));
+  const body = Buffer.from(serialized, "utf8");
+  const objects = getObjectStore();
+  let namespace: string | undefined;
+  try {
+    namespace = hostedObjectNamespace();
+  } catch {}
+  const reservation = await reserveHostedObject(
+    db,
+    params.tenant_id,
+    key,
+    body.byteLength,
+    namespace,
+  );
+  await objects.put(key, body);
+  if (reservation) await retainHostedObject(db, params.tenant_id, reservation);
   return `s3://${cfg.bucket}/${key}`;
 }
 
@@ -227,10 +251,9 @@ export async function maybeOffload(
     return { storage_uri: null, preview: null, size_bytes: size, sha256 };
   }
 
-  void db;
   const objectStoreConfig = objectStoreOffloadConfig();
   if (!objectStoreConfig) throw new Error("object storage is not configured for payload offload");
-  const uri = await writeToObjectStore(objectStoreConfig, params, serialized);
+  const uri = await writeToObjectStore(db, objectStoreConfig, params, serialized);
   return {
     storage_uri: uri,
     preview: serialized.slice(0, STEP_RESULT_PREVIEW_BYTES),

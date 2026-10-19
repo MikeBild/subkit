@@ -1,5 +1,4 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { streamSSE } from "hono/streaming";
 import * as svc from "../../../conversations/index.ts";
 import {
   harvestCitationsFromPersisted,
@@ -13,6 +12,7 @@ import { monthlyUsage, resolveModelRoute } from "../../../llm/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { streamTenantSSE as streamSSE } from "../../tenant-stream.ts";
 
 export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
   app.get("/v1/conversations/:id/stream", async (c) => {

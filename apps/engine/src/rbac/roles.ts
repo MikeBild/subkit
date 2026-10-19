@@ -120,13 +120,22 @@ export async function deleteRole(db: Db, tenant_id: string, id: string): Promise
     .where(and(eq(rolesTable.id, id), eq(rolesTable.tenant_id, tenant_id)));
 }
 
-export async function listRolePermissions(db: Db, role_id: string): Promise<string[]> {
-  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
+export async function listRolePermissions(
+  db: Db,
+  tenant_id: string,
+  role_id: string,
+): Promise<string[]> {
   const rows = await db
     .select({ name: permissionsTable.name })
     .from(rolePermissions)
     .innerJoin(permissionsTable, eq(permissionsTable.id, rolePermissions.permission_id))
-    .where(eq(rolePermissions.role_id, role_id));
+    .innerJoin(rolesTable, eq(rolesTable.id, rolePermissions.role_id))
+    .where(
+      and(
+        eq(rolePermissions.role_id, role_id),
+        or(isNull(rolesTable.tenant_id), eq(rolesTable.tenant_id, tenant_id)),
+      ),
+    );
   return rows.map((r) => r.name);
 }
 

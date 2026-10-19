@@ -9,7 +9,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { timestamps } from "./_common.ts";
-import { tenants } from "./identity.ts";
+import { tenants, users } from "./identity.ts";
 
 export const permissions = pgTable(
   "permissions",
@@ -105,7 +105,9 @@ export const groupMembers = pgTable(
     group_id: uuid("group_id")
       .notNull()
       .references(() => groups.id, { onDelete: "cascade" }),
-    user_id: uuid("user_id").notNull(),
+    user_id: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     added_by: uuid("added_by"),
     added_at: timestamp("added_at", { withTimezone: true }).defaultNow().notNull(),
   },

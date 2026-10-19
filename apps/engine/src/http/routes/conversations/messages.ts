@@ -4,7 +4,6 @@ import {
   type RouteConfigToTypedResponse,
   z,
 } from "@hono/zod-openapi";
-import { streamSSE } from "hono/streaming";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { actorOf } from "../../../audit/index.ts";
 import type { TurnEvent } from "../../../conversations/index.ts";
@@ -20,6 +19,7 @@ import { logger } from "../../../logging/index.ts";
 import { HttpError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { streamTenantSSE as streamSSE } from "../../tenant-stream.ts";
 import {
   AppendMessageBody,
   buildRuntimeContextFromRequest,

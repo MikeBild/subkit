@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { conversations, workflows } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
-import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import {
   createEmptyDraftDocument,
   withLatestPreview,
@@ -154,7 +154,7 @@ describe("dry_run_workflow · placeholder destinations", () => {
   test("the preview is refused before any execution, no draft mutation, zero egress", async () => {
     fetchCalls = 0;
     const toolCtx = makeCtx(draftWith([sendStep("user@example.com")]), { permission_mode: "auto" });
-    const result = await withDriverFetchForTests(tripwire, () =>
+    const result = await withSelfHostedDriverFetchForTests(tripwire, () =>
       dryRunWorkflowTool.execute(toolCtx, { input: {} }),
     );
     const data = expectPlaceholderGate(result);

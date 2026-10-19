@@ -8,6 +8,7 @@ import {
   recordSpecFetched,
 } from "../budgets.ts";
 import { byteLen } from "../chunker.ts";
+import { readBoundedText } from "../read-response.ts";
 import type { BudgetState, RawChunk } from "../types.ts";
 
 type Json = Record<string, unknown>;
@@ -24,7 +25,7 @@ export async function fetchOpenAPI(
 ): Promise<{ body: string; bytes: number; parsed: Json }> {
   const res = await fetchImpl(url, { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(`openapi fetch failed: ${res.status}`);
-  const body = await res.text();
+  const body = await readBoundedText(res);
   const bytes = byteLen(body);
   assertPageSize(bytes);
   let parsed: Json;

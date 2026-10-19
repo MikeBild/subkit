@@ -1,6 +1,16 @@
 import pg from "pg";
+import type { Executor } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
+import type { EgressGuardContext } from "../egress-guard.ts";
+import {
+  assertPostgresDsnEgress,
+  postgresDsnTarget,
+  postgresPoolConfiguration,
+} from "../postgres-egress.ts";
+
+export { assertPostgresDsnEgress } from "../postgres-egress.ts";
+
 import type { ConnectorView } from "../types.ts";
 import type { DriverProbeResult } from "./index.ts";
 import { classifyPgProbeError } from "./probe-classify.ts";
@@ -13,14 +23,43 @@ function poolKey(connector: ConnectorView): string {
   return `${connector.id}:${connector.environment}`;
 }
 
-export function getPoolForConnector(connector: ConnectorView): pg.Pool {
+export function postgresConnectorTarget(connector: Pick<ConnectorView, "id" | "dsn">): URL {
   if (!connector.dsn) {
     throw new Error(`Postgres connector ${connector.id} has no dsn; cannot open pool`);
   }
-  const key = poolKey(connector);
+  return postgresDsnTarget(connector.dsn);
+}
+
+export async function assertPostgresConnectorEgress(
+  connector: ConnectorView,
+  context: EgressGuardContext = { tenant_id: connector.tenant_id },
+): Promise<void> {
+  if (!connector.dsn) throw new Error("Postgres connector has no dsn");
+  await assertPostgresDsnEgress(connector.dsn, context);
+}
+
+export async function getPoolForConnector(
+  connector: ConnectorView,
+  exec?: Executor,
+): Promise<pg.Pool> {
+  if (!connector.dsn) {
+    throw new Error(`Postgres connector ${connector.id} has no dsn; cannot open pool`);
+  }
+  const prepared = await postgresPoolConfiguration(
+    connector.dsn,
+    { tenant_id: connector.tenant_id, ...(exec ? { exec } : {}) },
+    { max: 5 },
+  );
+  const key = `${poolKey(connector)}:${connector.tenant_id}:${prepared.key}`;
   const existing = pools.get(key);
   if (existing) return existing;
-  const pool = new Pool({ connectionString: connector.dsn, max: 5 });
+  const prefix = `${poolKey(connector)}:${connector.tenant_id}:`;
+  for (const [previousKey, previousPool] of pools) {
+    if (!previousKey.startsWith(prefix)) continue;
+    pools.delete(previousKey);
+    void previousPool.end().catch(() => {});
+  }
+  const pool = new Pool(prepared.options);
   pool.on("error", (err) => {
     logger.error({
       module: "connectors",
@@ -34,7 +73,10 @@ export function getPoolForConnector(connector: ConnectorView): pg.Pool {
   return pool;
 }
 
-export async function probePgConnector(connector: ConnectorView): Promise<DriverProbeResult> {
+export async function probePgConnector(
+  connector: ConnectorView,
+  exec?: Executor,
+): Promise<DriverProbeResult> {
   const start = Date.now();
   if (!connector.dsn) {
     return {
@@ -45,7 +87,11 @@ export async function probePgConnector(connector: ConnectorView): Promise<Driver
     };
   }
   try {
-    const pool = getPoolForConnector(connector);
+    await assertPostgresConnectorEgress(connector, {
+      tenant_id: connector.tenant_id,
+      ...(exec ? { exec } : {}),
+    });
+    const pool = await getPoolForConnector(connector, exec);
     const res = await pool.query("SELECT 1 as ok");
     return {
       ok: res.rows[0]?.ok === 1,
@@ -62,6 +108,7 @@ export async function probePgConnector(connector: ConnectorView): Promise<Driver
 }
 
 export interface PgQueryParams {
+  exec?: Executor;
   on_credential_use?: () => Promise<void>;
   connector: ConnectorView;
   sql: string;
@@ -74,7 +121,11 @@ export interface PgQueryResult<T = unknown> {
 }
 
 export async function pgQueryWithCount<T = unknown>(p: PgQueryParams): Promise<PgQueryResult<T>> {
-  const pool = getPoolForConnector(p.connector);
+  await assertPostgresConnectorEgress(p.connector, {
+    tenant_id: p.connector.tenant_id,
+    ...(p.exec ? { exec: p.exec } : {}),
+  });
+  const pool = await getPoolForConnector(p.connector, p.exec);
   const res = await instrument({
     module: "connector",
     action: "driver.postgres.request",
@@ -103,6 +154,7 @@ export interface PgTransactionStatement {
 }
 
 export async function pgTransaction<T = unknown>(p: {
+  exec?: Executor;
   on_credential_use?: () => Promise<void>;
   connector: ConnectorView;
   statements: PgTransactionStatement[];
@@ -112,7 +164,11 @@ export async function pgTransaction<T = unknown>(p: {
   row_count_per_statement: Array<number | null>;
   total_row_count: number;
 }> {
-  const pool = getPoolForConnector(p.connector);
+  await assertPostgresConnectorEgress(p.connector, {
+    tenant_id: p.connector.tenant_id,
+    ...(p.exec ? { exec: p.exec } : {}),
+  });
+  const pool = await getPoolForConnector(p.connector, p.exec);
   const client = await pool.connect();
   try {
     return await instrument({
@@ -159,13 +215,18 @@ export async function pgTransaction<T = unknown>(p: {
 }
 
 export async function pgQueryCursor<T = unknown>(p: {
+  exec?: Executor;
   on_credential_use?: () => Promise<void>;
   connector: ConnectorView;
   sql: string;
   params?: unknown[];
   fetch_size: number;
 }): Promise<T[]> {
-  const pool = getPoolForConnector(p.connector);
+  await assertPostgresConnectorEgress(p.connector, {
+    tenant_id: p.connector.tenant_id,
+    ...(p.exec ? { exec: p.exec } : {}),
+  });
+  const pool = await getPoolForConnector(p.connector, p.exec);
   const client = await pool.connect();
   const cursorName = `sk_cursor_${Math.random().toString(36).slice(2, 10)}`;
   try {
@@ -202,13 +263,10 @@ export async function pgQueryCursor<T = unknown>(p: {
 }
 
 export async function closePoolForConnector(connector: ConnectorView): Promise<void> {
-  const key = poolKey(connector);
-  const pool = pools.get(key);
-  if (!pool) return;
-  pools.delete(key);
-  try {
-    await pool.end();
-  } catch {}
+  const prefix = `${poolKey(connector)}:${connector.tenant_id}:`;
+  const closing = [...pools].filter(([key]) => key.startsWith(prefix));
+  for (const [key] of closing) pools.delete(key);
+  await Promise.all(closing.map(([, pool]) => pool.end().catch(() => {})));
 }
 
 export async function closeAllPools(): Promise<void> {

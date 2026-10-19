@@ -6,7 +6,7 @@ import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { getMcpTask, setMcpTaskFailureIfNotTerminal } from "../../mcp/tasks/store.ts";
 import { recordUsageEvent } from "../../stats/usage-events.ts";
-import { withJobContext } from "../job-context.ts";
+import { withActiveTenantJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_DLQ, type ConversationRunTurnJob } from "../queues.ts";
 
 export const WORKER_EXPIRED_FAILURE_REASON = "worker_expired";
@@ -105,7 +105,7 @@ export async function registerConversationRunTurnDlqHandler(
     { batchSize: 1, pollingIntervalSeconds: 5 },
     async (jobs: Job<ConversationRunTurnJob>[]) => {
       for (const job of jobs) {
-        await withJobContext(job.data, () => handleOne(job, db));
+        await withActiveTenantJobContext(job.data, db, () => handleOne(job, db));
       }
     },
   );

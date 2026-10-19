@@ -1,6 +1,11 @@
 import { and, asc, eq, gt, max, sql } from "drizzle-orm";
 import pg from "pg";
 import type { Db } from "../db/client.ts";
+import {
+  databaseClientOptions,
+  databaseConnectionSettings,
+  initializeDatabaseSession,
+} from "../db/connection-options.ts";
 import { events as eventsTable, outboxCursors } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { setOutboxCursorLag } from "../observability/instrumentation.ts";
@@ -32,6 +37,7 @@ const DEFAULT_LISTENER_ID = "engine";
 export class PubSubListener {
   private client: pg.Client | null = null;
   private connected = false;
+  private connecting: Promise<void> | null = null;
   private stopped = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private backoffMs = BACKOFF_START_MS;
@@ -62,20 +68,20 @@ export class PubSubListener {
 
   async stop(): Promise<void> {
     this.stopped = true;
-    if (this.inflight.size > 0) {
-      await Promise.allSettled([...this.inflight]);
-      this.inflight.clear();
-    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
     if (this.client) {
       try {
-        await this.client.query("UNLISTEN *").catch(() => {});
         await this.client.end();
       } catch {}
       this.client = null;
+    }
+    if (this.connecting) await this.connecting.catch(() => {});
+    if (this.inflight.size > 0) {
+      await Promise.allSettled([...this.inflight]);
+      this.inflight.clear();
     }
     this.connected = false;
     logger.info({
@@ -124,69 +130,84 @@ export class PubSubListener {
   }
 
   private async connectOnce(): Promise<void> {
-    if (this.stopped) return;
-    const client = new Client({ connectionString: this.opts.connectionString });
-    client.on("error", (err) => {
-      logger.error({
-        module: "pubsub",
-        action: "listener.client_error",
-        msg: "LISTEN pg client emitted error",
-        listener_id: this.listenerId,
-        ...errorFields(err),
-      });
-      this.connected = false;
-      this.client = null;
-      this.backoffMs = Math.min(BACKOFF_MAX_MS, Math.max(BACKOFF_START_MS, this.backoffMs * 2));
-      this.scheduleReconnect();
-    });
-    client.on("end", () => {
-      if (this.stopped) return;
-      logger.warn({
-        module: "pubsub",
-        action: "listener.client_end",
-        msg: "LISTEN pg client ended",
-        listener_id: this.listenerId,
-      });
-      this.connected = false;
-      this.client = null;
-      this.scheduleReconnect();
-    });
-    client.on("notification", (msg) => {
-      void this.onNotification(msg);
-    });
-
-    await client.connect();
-    this.client = client;
-
-    this.catchingUp = true;
+    if (this.connecting) return this.connecting;
+    const pending = this.establishConnection();
+    this.connecting = pending;
     try {
+      await pending;
+    } finally {
+      if (this.connecting === pending) this.connecting = null;
+    }
+  }
+
+  private async establishConnection(): Promise<void> {
+    if (this.stopped || this.connected) return;
+    const settings = databaseConnectionSettings();
+    const client = new Client(databaseClientOptions(this.opts.connectionString, settings));
+    this.client = client;
+    const disconnect = (err?: Error) => {
+      if (this.client !== client) return;
+      this.connected = false;
+      this.client = null;
+      void client.end().catch(() => {});
+      if (err) {
+        logger.error({
+          module: "pubsub",
+          action: "listener.client_error",
+          msg: "LISTEN pg client emitted error",
+          listener_id: this.listenerId,
+          ...errorFields(err),
+        });
+      }
+      this.scheduleReconnect();
+    };
+    client.on("error", disconnect);
+    client.on("end", () => disconnect());
+    client.on("notification", (msg) => {
+      void this.onNotification(msg).catch((err) => {
+        logger.error({
+          module: "pubsub",
+          action: "listener.notification_failed",
+          msg: "pub/sub notification processing failed",
+          listener_id: this.listenerId,
+          ...errorFields(err),
+        });
+      });
+    });
+
+    try {
+      await client.connect();
+      await initializeDatabaseSession(client, settings);
+      if (this.stopped || this.client !== client) return;
+      this.catchingUp = true;
+      for (const channel of this.channels) {
+        await client.query(`LISTEN "${channel}"`);
+      }
       await this.catchUpAll();
+      while (this.pendingDuringCatchup.size > 0) {
+        const pending = this.pendingDuringCatchup;
+        this.pendingDuringCatchup = new Map();
+        for (const [channel, ids] of pending) {
+          if (ids.length > 0) await this.catchUpChannel(channel, Math.max(...ids));
+        }
+      }
+      if (this.stopped || this.client !== client) return;
+      this.connected = true;
+      this.backoffMs = BACKOFF_START_MS;
+      logger.info({
+        module: "pubsub",
+        action: "listener.connected",
+        msg: "pub/sub listener connected",
+        listener_id: this.listenerId,
+        channels: this.channels.length,
+      });
     } finally {
       this.catchingUp = false;
+      if (!this.connected || this.client !== client) {
+        if (this.client === client) this.client = null;
+        await client.end().catch(() => {});
+      }
     }
-
-    for (const channel of this.channels) {
-      await client.query(`LISTEN "${channel}"`);
-    }
-
-    const pending = this.pendingDuringCatchup;
-    this.pendingDuringCatchup = new Map();
-    for (const [channel, ids] of pending) {
-      if (ids.length === 0) continue;
-      const maxId = Math.max(...ids);
-      await this.catchUpChannel(channel, maxId);
-    }
-
-    this.connected = true;
-    this.backoffMs = BACKOFF_START_MS;
-
-    logger.info({
-      module: "pubsub",
-      action: "listener.connected",
-      msg: "pub/sub listener connected",
-      listener_id: this.listenerId,
-      channels: this.channels.length,
-    });
   }
 
   private async onNotification(msg: pg.Notification): Promise<void> {
@@ -312,9 +333,16 @@ let _listener: PubSubListener | null = null;
 
 export async function startListener(opts: ListenerOptions): Promise<PubSubListener> {
   if (_listener) return _listener;
-  _listener = new PubSubListener(opts);
-  await _listener.start();
-  return _listener;
+  const listener = new PubSubListener(opts);
+  _listener = listener;
+  try {
+    await listener.start();
+    return listener;
+  } catch (error) {
+    if (_listener === listener) _listener = null;
+    await listener.stop();
+    throw error;
+  }
 }
 
 export function getListener(): PubSubListener {

@@ -4,12 +4,25 @@ import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { sanitizeForAudit } from "../audit/sanitize.ts";
 import { AuditAction } from "../audit/types.ts";
+import {
+  EgressBlockedError,
+  getConnector,
+  getDriverFetch,
+  guardedFetch,
+  scrubUrl,
+  urlHasInlineCredentials,
+} from "../connectors/index.ts";
 import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
+import { CatalogVocabularyBusyError, lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
+import { hostedQuotaError } from "../db/hosted-quota-errors.ts";
 import { connectorDocumentChunks, connectorDocuments, connectors } from "../db/schema/index.ts";
+import { isTransientDbError } from "../db/transient.ts";
 import { embeddingsAvailable } from "../embeddings/local-provider.ts";
 import { fuseVectorFirst, vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
+import { withTenantWork } from "../execution/index.ts";
+import { getTenant, lockActiveTenant, SelfServiceIdentityError } from "../identity/index.ts";
 import { parseGoogleDiscoveryDocument } from "../llm/flows/document-parsers/google-discovery.ts";
 import { log, logger } from "../logging/logger.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
@@ -33,7 +46,7 @@ import { ingestMarkdown } from "./sources/markdown.ts";
 import { chunkOpenAPI, ingestOpenAPIUrl } from "./sources/openapi.ts";
 import { ingestPostgresInformationSchema } from "./sources/postgres.ts";
 import type { DocSourceType, IngestResult, IngestSourceInput, RawChunk } from "./types.ts";
-import { NotImplementedError } from "./types.ts";
+import { DocumentSourceCredentialsError, NotImplementedError } from "./types.ts";
 
 export interface IngestParams {
   tenant_id: string;
@@ -48,6 +61,15 @@ function docsAuditActor(actor: Actor | null | undefined, legacyActorId: string |
   if (actor) return auditActor(actor);
   if (legacyActorId) return { actor_type: "unknown" as const, actor_id: null };
   return auditActor(null);
+}
+
+function sourceForAudit(uri: string, hosted: boolean): string {
+  if (!hosted) return scrubUrl(uri);
+  try {
+    return scrubUrl(new URL(uri));
+  } catch {
+    return "document_source";
+  }
 }
 
 function parseInlineOpenApiChunks(content: string): RawChunk[] {
@@ -90,7 +112,69 @@ function parseInlineGraphQlChunks(content: string): RawChunk[] {
 
 export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<IngestResult> {
   const db = exec ?? getDb();
-  const fetchImpl = p.fetchImpl ?? fetch;
+  return withTenantWork(p.tenant_id, async () => {
+    const tenant = await getTenant(p.tenant_id, db);
+    if (tenant?.status !== "active") throw new SelfServiceIdentityError("tenant_unavailable");
+    if (!(await getConnector(p.tenant_id, p.connector_id, db)))
+      throw new Error("connector_unavailable");
+    const hosted = tenant.origin === "self_service";
+    try {
+      return await ingestActiveDocs(p, db, hosted);
+    } catch (error) {
+      if (!hosted) throw error;
+      const quota = hostedQuotaError(error);
+      if (quota) throw quota;
+      if (
+        error instanceof SelfServiceIdentityError ||
+        error instanceof PageTooLargeError ||
+        error instanceof DocumentSourceCredentialsError
+      )
+        throw error;
+      if (error instanceof EgressBlockedError)
+        throw new EgressBlockedError("document_destination_blocked", "redacted");
+      if (error instanceof BinaryParseError)
+        throw new BinaryParseError(error.format, "document_parse_failed");
+      if (error instanceof NotImplementedError)
+        throw new NotImplementedError("document_source_unavailable");
+      const seen = new Set<unknown>();
+      let candidate: unknown = error;
+      while (candidate && typeof candidate === "object" && !seen.has(candidate)) {
+        seen.add(candidate);
+        if (isTransientDbError(candidate))
+          throw new CatalogVocabularyBusyError(
+            "Document storage is temporarily unavailable; retry",
+          );
+        candidate = (candidate as { cause?: unknown }).cause;
+      }
+      throw new Error("document_ingest_failed");
+    }
+  });
+}
+
+async function ingestActiveDocs(
+  p: IngestParams,
+  db: Executor,
+  hosted: boolean,
+): Promise<IngestResult> {
+  const transport = p.fetchImpl ?? getDriverFetch();
+  const checkedTransport: typeof fetch = hosted
+    ? Object.assign(
+        async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+          const url = input instanceof Request ? input.url : String(input);
+          if (urlHasInlineCredentials(url)) throw new DocumentSourceCredentialsError();
+          return transport(input, init);
+        },
+        { preconnect: () => {} },
+      )
+    : transport;
+  if (
+    hosted &&
+    p.input.source_type !== "postgres" &&
+    p.input.url &&
+    urlHasInlineCredentials(p.input.url)
+  )
+    throw new DocumentSourceCredentialsError();
+  const fetchImpl = guardedFetch({ tenant_id: p.tenant_id, exec: db }, checkedTransport);
   logger.info({
     module: "docs",
     action: "ingest.started",
@@ -98,7 +182,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
     tenant_id: p.tenant_id,
     connector_id: p.connector_id,
     source_type: p.input.source_type,
-    url: p.input.url ?? null,
+    url: p.input.url ? sourceForAudit(p.input.url, hosted) : null,
   });
 
   const state = createBudgetState();
@@ -164,6 +248,8 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
       case "postgres": {
         if (!p.input.url) throw new Error("postgres source requires url (dsn)");
         const params: Parameters<typeof ingestPostgresInformationSchema>[0] = {
+          exec: db,
+          tenant_id: p.tenant_id,
           dsn: p.input.url,
         };
         if (p.input.schemas) params.schemas = p.input.schemas;
@@ -203,13 +289,24 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
           msg: "cascade picked a winning source",
           winning_source: got.winning_source,
           probes_tried: got.attempts.length,
-          source_uri: uri,
+          source_uri: sourceForAudit(uri, hosted),
         });
         break;
       }
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const failure =
+      hosted &&
+      !(err instanceof PageTooLargeError) &&
+      !(err instanceof EgressBlockedError) &&
+      !(err instanceof DocumentSourceCredentialsError)
+        ? err instanceof BinaryParseError
+          ? new BinaryParseError(err.format, "document_parse_failed")
+          : err instanceof NotImplementedError
+            ? new NotImplementedError("document_source_unavailable")
+            : new Error("document_ingest_failed")
+        : err;
+    const msg = failure instanceof Error ? failure.message : String(failure);
     logger.error({
       module: "docs",
       action: "ingest.failed",
@@ -232,7 +329,9 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
           metadata: {
             source_type: p.input.source_type,
             format: err.format,
-            error: sanitizeForAudit(err.message),
+            error: sanitizeForAudit(
+              failure instanceof Error ? failure.message : "document_parse_failed",
+            ),
             ...(p.input.upload?.filename
               ? { filename: sanitizeForAudit(p.input.upload.filename) }
               : {}),
@@ -244,7 +343,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
     if (err instanceof PageTooLargeError) {
       throw err;
     }
-    throw err;
+    throw failure;
   }
 
   const fingerprinted = fingerprintChunks(rawChunks, {
@@ -266,12 +365,29 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
   }
   budgetExceeded = budgetExceeded || state.budget_exceeded;
 
+  if (hosted && urlHasInlineCredentials(uri)) throw new DocumentSourceCredentialsError();
+
   const version = createHash("sha256")
     .update(`${persistedSourceType}|${uri}|${rawChunks.length}|${totalBytes}`)
     .digest("hex")
     .slice(0, 32);
 
   const result: IngestResult = await db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, p.tenant_id);
+    await lockActiveTenant(p.tenant_id, tx);
+    const [connector] = await tx
+      .select({ id: connectors.id })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.tenant_id, p.tenant_id),
+          eq(connectors.id, p.connector_id),
+          isNull(connectors.deleted_at),
+        ),
+      )
+      .for("share")
+      .limit(1);
+    if (!connector) throw new Error("connector_unavailable");
     const [docRow] = await tx
       .insert(connectorDocuments)
       .values({
@@ -317,7 +433,13 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
     await tx
       .update(connectors)
       .set({ last_ingested_at: new Date() })
-      .where(eq(connectors.id, p.connector_id));
+      .where(
+        and(
+          eq(connectors.tenant_id, p.tenant_id),
+          eq(connectors.id, p.connector_id),
+          isNull(connectors.deleted_at),
+        ),
+      );
 
     await auditAwait(
       {
@@ -331,7 +453,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
           document_id: docRow.id,
           source_type: persistedSourceType,
           requested_source_type: p.input.source_type,
-          source_uri: uri,
+          source_uri: sourceForAudit(uri, hosted),
           bytes: totalBytes,
           chunks: accepted.length,
           dedup_skipped: dedupSkipped,

@@ -5,8 +5,10 @@ import { audit, auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { FETCH_DEADLINE_MS } from "../../connectors/drivers/http.ts";
 import { assertEgressAllowedResolved, EgressBlockedError } from "../../connectors/egress-guard.ts";
+import { fetchWithEgressGuard } from "../../connectors/index.ts";
 import type { Db } from "../../db/client.ts";
 import { deliveries, subscriptions } from "../../db/schema/index.ts";
+import { assertTenantActive } from "../../identity/self-service.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { recordWebhookDelivery } from "../../observability/instrumentation.ts";
 import * as breaker from "./circuit-breaker.ts";
@@ -55,15 +57,23 @@ async function sendDelivery(
   headers: Record<string, string>,
   body: string,
   impl: typeof fetch,
+  tenant_id: string,
+  db: Db,
 ): Promise<DeliveryOutcome> {
   const started = Date.now();
   try {
-    const res = await impl(target_url, {
-      method: "POST",
-      headers,
-      body,
-      signal: AbortSignal.timeout(FETCH_DEADLINE_MS),
-    });
+    const res = await fetchWithEgressGuard(
+      target_url,
+      {
+        method: "POST",
+        headers,
+        body,
+        signal: AbortSignal.timeout(FETCH_DEADLINE_MS),
+        redirect: "manual",
+      },
+      { tenant_id, exec: db },
+      { fetchImpl: impl },
+    );
     const respBody = await res.text().catch(() => "");
     return {
       ok: res.ok,
@@ -76,7 +86,7 @@ async function sendDelivery(
     return {
       ok: false,
       status: 0,
-      error: err instanceof Error ? err.message : String(err),
+      error: err instanceof EgressBlockedError ? "egress_blocked" : "network_error",
       body: "",
       duration_ms: Date.now() - started,
     };
@@ -90,6 +100,7 @@ export async function registerDeliveryWorker(
 
   const handle = async (job: Job<WebhookDeliverJob>): Promise<void> => {
     const data = job.data;
+    await assertTenantActive(data.tenant_id, db);
     const now = Date.now();
 
     await breaker.hydrate(db, data.subscription_id);
@@ -186,6 +197,7 @@ export async function registerDeliveryWorker(
     try {
       await assertEgressAllowedResolved(new URL(loaded.row.target_url), {
         tenant_id: data.tenant_id,
+        exec: db,
       });
     } catch (err) {
       if (err instanceof EgressBlockedError) {
@@ -243,7 +255,14 @@ export async function registerDeliveryWorker(
       }
       throw err;
     }
-    const outcome = await sendDelivery(loaded.row.target_url, headers, data.body, fetchImpl);
+    const outcome = await sendDelivery(
+      loaded.row.target_url,
+      headers,
+      data.body,
+      fetchImpl,
+      data.tenant_id,
+      db,
+    );
 
     if (outcome.ok) {
       await db.insert(deliveries).values({
@@ -287,7 +306,7 @@ export async function registerDeliveryWorker(
     }
 
     const classification = classifyFailure({ status: outcome.status, error: outcome.error });
-    const permanent = isPermanentFailure(classification);
+    const permanent = isPermanentFailure(classification) || outcome.error === "egress_blocked";
 
     const maxAttempts = getMaxAttempts();
     const exhausted = data.attempt_number >= maxAttempts;
@@ -297,7 +316,12 @@ export async function registerDeliveryWorker(
 
     let terminal_reason: string | null = null;
     if (terminal) {
-      terminal_reason = permanent ? "permanent_failure" : "exhausted_retries";
+      terminal_reason =
+        outcome.error === "egress_blocked"
+          ? "egress_blocked"
+          : permanent
+            ? "permanent_failure"
+            : "exhausted_retries";
     }
 
     await db.insert(deliveries).values({

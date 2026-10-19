@@ -43,7 +43,9 @@ import {
 import { writeEvent } from "../../db/events.ts";
 import { fileLinks, files, filesDedupSeen } from "../../db/schema/index.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
-import { buildObjectKey, composeStorageUri, streamFromBytes } from "../../files/object-key.ts";
+import { buildObjectKey, composeStorageUri } from "../../files/object-key.ts";
+import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
+import { removeStoredFile } from "../../files/remove-stored-file.ts";
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import type { ScanResult } from "../../files/scanner.ts";
 import { getScanner, SCANNER_TIMEOUT_SECONDS } from "../../files/scanner.ts";
@@ -348,83 +350,16 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json(toFileWire(canonical), 200);
     }
 
-    const file_uuid = randomUUID();
-    const key = buildObjectKey(tenant_id, file_uuid);
-    const storage_uri = composeStorageUri(key);
-
-    await getObjectStore().put(key, bytes);
-
-    const scan = await scanWithTimeout(streamFromBytes(bytes), {
-      content_type: body.content_type ?? null,
+    const persisted = await persistInlineUpload(db, {
+      tenant_id,
+      actor_id:
+        principal.kind === "user" || principal.kind === "system_account" ? principal.id : null,
       filename: body.filename,
+      content_type: body.content_type ?? null,
+      bytes,
     });
-    recordFileScanResult({ verdict: scan.verdict });
-
-    const status =
-      scan.verdict === "clean" ? "ready" : scan.verdict === "timeout" ? "scanning" : "failed";
-
-    let row: typeof files.$inferSelect | undefined;
-    try {
-      row = await insertFileRow(db, {
-        id: file_uuid,
-        tenant_id,
-        status,
-        filename: body.filename,
-        content_type: body.content_type ?? null,
-        size_bytes: bytes.byteLength,
-        storage_uri,
-        sha256,
-        scan_result: scan.verdict,
-        created_by:
-          principal.kind === "user" || principal.kind === "system_account" ? principal.id : null,
-      });
-    } catch (err) {
-      const causeMsg = err instanceof Error && err.cause instanceof Error ? err.cause.message : "";
-      const msg = err instanceof Error ? err.message : String(err);
-      if (
-        msg.includes("files_tenant_sha256_uq") ||
-        msg.includes("duplicate key") ||
-        causeMsg.includes("files_tenant_sha256_uq") ||
-        causeMsg.includes("duplicate key")
-      ) {
-        const again = await db
-          .select()
-          .from(files)
-          .where(and(eq(files.tenant_id, tenant_id), eq(files.sha256, sha256)))
-          .limit(1);
-        if (again[0]) {
-          try {
-            await getObjectStore().delete(key);
-          } catch {}
-          let canonical = again[0];
-          if (canonical.deleted_at) {
-            canonical = await reviveFileRow(db, canonical);
-          }
-          recordFileDedupHit();
-          await recordFilesDedupSeen(db, tenant_id);
-          observeFileUploadDuration({
-            outcome: "success",
-            duration_ms: Date.now() - uploadStartedAt,
-          });
-          return c.json(toFileWire(canonical), 200);
-        }
-      }
-      observeFileUploadDuration({
-        outcome: "error",
-        duration_ms: Date.now() - uploadStartedAt,
-      });
-      try {
-        await getObjectStore().delete(key);
-      } catch {}
-      throw err;
-    }
-    if (!row) {
-      observeFileUploadDuration({
-        outcome: "error",
-        duration_ms: Date.now() - uploadStartedAt,
-      });
-      return c.json({ code: "internal_error", message: "insert failed" }, 400);
-    }
+    const { row, scan } = persisted;
+    if (scan) recordFileScanResult({ verdict: scan.verdict });
 
     await auditAwait(
       {
@@ -441,46 +376,47 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           content_type: body.content_type ?? null,
           size_bytes_bucket: bucketSize(bytes.byteLength),
           sha256_prefix: sha256.slice(0, 16),
-          dedup: false,
+          dedup: persisted.dedup,
           request_source: readRequestSource(c),
         }),
       },
       db,
     );
-    await auditAwait(
-      {
-        tenant_id,
-        actor_type: actorType(principal),
-        actor_id: principal.id,
-        action: AuditAction.FILE_SCAN_COMPLETED,
-        resource_type: "file",
-        resource_id: row.id,
-        result:
-          scan.verdict === "clean" ? "success" : scan.verdict === "timeout" ? "error" : "denied",
-        metadata: FileScanCompletedMetadataSchema.parse({
-          file_id: row.id,
-          verdict: scan.verdict,
-          engine: scan.engine,
-          signature: scan.signature ?? null,
-          request_source: readRequestSource(c),
-        }),
-      },
-      db,
-    );
-
+    if (scan) {
+      await auditAwait(
+        {
+          tenant_id,
+          actor_type: actorType(principal),
+          actor_id: principal.id,
+          action: AuditAction.FILE_SCAN_COMPLETED,
+          resource_type: "file",
+          resource_id: row.id,
+          result:
+            scan.verdict === "clean" ? "success" : scan.verdict === "timeout" ? "error" : "denied",
+          metadata: FileScanCompletedMetadataSchema.parse({
+            file_id: row.id,
+            verdict: scan.verdict,
+            engine: scan.engine,
+            signature: scan.signature ?? null,
+            request_source: readRequestSource(c),
+          }),
+        },
+        db,
+      );
+    }
     observeFileUploadDuration({
       outcome:
-        scan.verdict === "clean"
+        !scan || scan.verdict === "clean"
           ? "success"
           : scan.verdict === "timeout"
             ? "scan_timeout"
             : "scan_infected",
       duration_ms: Date.now() - uploadStartedAt,
     });
-    if (scan.verdict === "timeout") {
+    if (scan?.verdict === "timeout") {
       c.header("Retry-After", String(SCANNER_TIMEOUT_SECONDS));
     }
-    return c.json(toFileWire(row), 201);
+    return c.json(toFileWire(row), persisted.dedup ? 200 : 201);
   });
 
   const batchCreateRoute = createRoute({
@@ -748,10 +684,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       .where(and(eq(files.tenant_id, tenant_id), eq(files.sha256, digest.sha256)))
       .limit(1);
     if (sibling[0] && sibling[0].id !== row.id) {
-      try {
-        await getObjectStore().delete(key);
-      } catch {}
-      await db.delete(files).where(eq(files.id, row.id));
+      await removeStoredFile(db, row.tenant_id, row.id, eq(files.status, row.status));
       recordFileDedupHit();
       await recordFilesDedupSeen(db, tenant_id);
       await auditAwait(

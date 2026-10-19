@@ -1,7 +1,8 @@
 import { and, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import { type Executor, getDb } from "../../db/client.ts";
-import { llmUsage, userLlmSettings } from "../../db/schema/index.ts";
+import { llmUsage, tenants, userLlmSettings } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { LlmQuotaExhausted } from "../errors.ts";
 import { billedTokenUsage, weightedTotalTokens } from "../pricing.ts";
@@ -189,6 +190,33 @@ export async function checkAndDecrement(
 export async function recordUsage(entry: LlmCallLogEntry, exec?: Executor): Promise<void> {
   const db = exec ?? getDb();
   const bucket = currentMonthBucket();
+  const [tenant] = await db
+    .select({ origin: tenants.origin })
+    .from(tenants)
+    .where(eq(tenants.id, entry.tenant_id))
+    .limit(1);
+  const hosted = tenant?.origin === "self_service";
+  if (hosted) {
+    z.enum([
+      "generate",
+      "extract",
+      "catalog_describe",
+      "repair",
+      "tool_repair",
+      "converse",
+      "discover",
+      "summarize",
+      "suggest_next",
+      "critic_authoring",
+      "judge",
+      "workflow_step",
+    ]).parse(entry.flow);
+    z.string()
+      .regex(/^[a-zA-Z0-9._:@/+-]{1,200}$/)
+      .parse(entry.model);
+    z.enum(["success", "quota_exhausted", "context_too_large", "error"]).parse(entry.result);
+    z.enum(["system", "user", "system_account"]).parse(entry.actor_type ?? "system");
+  }
   const billed = billedTokenUsage({
     result: entry.result,
     prompt_tokens: entry.prompt_tokens,
@@ -208,7 +236,7 @@ export async function recordUsage(entry: LlmCallLogEntry, exec?: Executor): Prom
     total_tokens,
     latency_ms: entry.latency_ms,
     result: entry.result,
-    error: entry.error ?? null,
+    error: entry.error == null ? null : hosted ? "provider_error" : entry.error,
     user_id: entry.user_id ?? null,
     actor_type: entry.actor_type ?? "system",
     month_bucket: bucket,

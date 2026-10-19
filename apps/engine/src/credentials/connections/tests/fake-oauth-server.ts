@@ -15,6 +15,7 @@ export interface FakeOAuthServer {
   descriptor: boolean;
   registration: boolean;
   refuseRefresh: boolean;
+  refreshError?: string;
   beforeRefreshResponse?: () => Promise<void>;
   accessTokens: string[];
   close: () => Promise<void>;
@@ -159,7 +160,8 @@ export async function startFakeOAuthServer(
         issued.spent = true;
         scope = issued.scope;
       } else if (grant === "refresh_token") {
-        if (state.refuseRefresh) return json(res, 400, { error: "invalid_grant" });
+        if (state.refuseRefresh)
+          return json(res, 400, { error: state.refreshError ?? "invalid_grant" });
         const known = refreshTokens.get(form.get("refresh_token") ?? "");
         if (!known || known.client_id !== client_id)
           return json(res, 400, { error: "invalid_grant" });

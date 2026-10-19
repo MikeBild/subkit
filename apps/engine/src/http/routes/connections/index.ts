@@ -249,7 +249,10 @@ export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
     requireAuth(c);
     const { base_url } = c.req.valid("json");
     try {
-      const result = await discoverService(base_url);
+      const result = await discoverService(base_url, {
+        tenant_id: requireAuth(c).tenant_id,
+        exec: c.get("db"),
+      });
       const metadata = result.authorization;
       let reason: string | null = null;
       if (!metadata) reason = "discovery_missing";

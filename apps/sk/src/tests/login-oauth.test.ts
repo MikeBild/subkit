@@ -133,6 +133,42 @@ describe("runCliOAuthLogin", () => {
     );
   });
 
+  test("binds a selected workspace to the browser hint and returned credential", async () => {
+    const fixture = testClient();
+    const tenantId = "00000000-0000-4000-8000-000000000002";
+    const result = await runCliOAuthLogin({
+      engineUrl: ORIGIN,
+      tenantId,
+      client: fixture.client,
+      openBrowser: async (raw) => {
+        const url = new URL(raw);
+        expect(url.searchParams.get("tenant_id")).toBe(tenantId);
+        await fetch(
+          `${url.searchParams.get("redirect_uri")}?code=selected-code&state=${url.searchParams.get("state")}`,
+        );
+      },
+    });
+    expect(result.context_id).toBe(tenantId);
+  });
+
+  test("refuses a credential for a different workspace and revokes temporary tokens", async () => {
+    const fixture = testClient();
+    await expect(
+      runCliOAuthLogin({
+        engineUrl: ORIGIN,
+        tenantId: "00000000-0000-4000-8000-000000000099",
+        client: fixture.client,
+        openBrowser: async (raw) => {
+          const url = new URL(raw);
+          await fetch(
+            `${url.searchParams.get("redirect_uri")}?code=wrong-tenant-code&state=${url.searchParams.get("state")}`,
+          );
+        },
+      }),
+    ).rejects.toThrow("tenant does not match");
+    expect(fixture.revoked).toHaveLength(2);
+  });
+
   test("rejects a callback with the wrong state before exchanging a code", async () => {
     const fixture = testClient();
     await expect(

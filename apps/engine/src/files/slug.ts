@@ -3,6 +3,9 @@ import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db } from "../db/client.ts";
 import { files } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
+import { getObjectStore } from "../storage/object-store.ts";
+import { assertHostedFileAdmission } from "./hosted-quota.ts";
+import { storageKey } from "./resolver.ts";
 
 export const ATTACHMENT_REFERENCE_PREFIX = "@attachment:";
 
@@ -111,6 +114,7 @@ export async function insertFileRow(
     values.tenant_id,
     values.filename,
     async (tx, slug) => {
+      await assertHostedFileAdmission(tx, values.tenant_id, values.size_bytes ?? 0, values.sha256);
       const [row] = await tx
         .insert(files)
         .values({ ...values, slug })
@@ -133,9 +137,13 @@ export async function reviveFileRow(
         .select()
         .from(files)
         .where(and(eq(files.tenant_id, row.tenant_id), eq(files.id, row.id)))
+        .for("update")
         .limit(1);
-      if (!current) return row;
+      if (!current) throw new Error("File was removed before it could be restored");
       if (!current.deleted_at) return current;
+      if (!(await getObjectStore().head(storageKey(current.storage_uri)))) {
+        throw new Error("File object is missing; retained file cannot be restored");
+      }
       return restoreDeletedFileRow(tx as unknown as Db, current);
     }),
   );

@@ -3,6 +3,33 @@ import { ConfigSchema } from "../schema.ts";
 import { dottedPath, findLeafByPath, listConfigLeaves } from "../walk.ts";
 
 describe("ConfigSchema", () => {
+  test("database connection limits are positive, bounded, global and restart-required", () => {
+    const database = ConfigSchema.parse({ database: { url: "postgres://x" } }).database;
+    expect(database.pool_max).toBe(10);
+    expect(database.connect_timeout_ms).toBe(10_000);
+    expect(database.query_timeout_ms).toBe(150_000);
+    expect(database.statement_timeout_ms).toBe(120_000);
+    for (const field of [
+      "pool_max",
+      "connect_timeout_ms",
+      "query_timeout_ms",
+      "statement_timeout_ms",
+      "idle_timeout_ms",
+      "keepalive_delay_ms",
+    ]) {
+      expect(
+        ConfigSchema.safeParse({ database: { url: "postgres://x", [field]: 0 } }).success,
+      ).toBe(false);
+      expect(
+        ConfigSchema.safeParse({
+          database: { url: "postgres://x", [field]: Number.MAX_SAFE_INTEGER },
+        }).success,
+      ).toBe(false);
+      const leaf = findLeafByPath(`database.${field}`);
+      expect(leaf?.meta.scope).toBe("global");
+      expect(leaf?.meta.requiresRestart).toBe(true);
+    }
+  });
   test("new REPL defaults allow preparation while explicit stored modes remain unchanged", () => {
     expect(ConfigSchema.parse({ database: { url: "postgres://x" } }).repl.permissionMode).toBe(
       "auto",

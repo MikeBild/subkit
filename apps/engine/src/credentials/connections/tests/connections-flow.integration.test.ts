@@ -133,11 +133,11 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       client_uri: server.baseUrl,
       redirect_uris: [`${server.baseUrl}/v1/connections/callback`],
     });
-    expect(fake.requests).toEqual([
+    expect(fake.requests.slice(0, 2).sort()).toEqual([
       "GET /.well-known/oauth-authorization-server",
       "GET /.well-known/service-descriptor.json",
-      "POST /register",
     ]);
+    expect(fake.requests.slice(2)).toEqual(["POST /register"]);
 
     const landed = await approveInBrowser(body.authorization_url);
     expect(landed.status).toBe(200);

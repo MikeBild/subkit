@@ -1,6 +1,6 @@
 import type { ChatDelivery } from "../../chat/types.ts";
-import { FETCH_DEADLINE_MS } from "../../connectors/drivers/http.ts";
-import { assertEgressAllowedResolved, EgressBlockedError } from "../../connectors/egress-guard.ts";
+import { EgressBlockedError, FETCH_DEADLINE_MS, guardedFetch } from "../../connectors/index.ts";
+import type { Executor } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import type { NotificationAdapter } from "../service.ts";
 
@@ -9,6 +9,7 @@ export const WEBHOOK_MAX_ATTEMPTS = 3;
 export const WEBHOOK_BACKOFF_CAP_MS = 30_000;
 
 export interface WebhookAdapterOptions {
+  exec: Executor;
   url: string;
   secret?: string;
   fetchImpl?: typeof fetch;
@@ -24,24 +25,6 @@ export class WebhookNotificationAdapter implements NotificationAdapter {
   }
 
   async send(delivery: ChatDelivery): Promise<{ platform_message_id: string }> {
-    try {
-      await assertEgressAllowedResolved(new URL(this.opts.url), {
-        tenant_id: delivery.tenant_id,
-      });
-    } catch (err) {
-      if (err instanceof EgressBlockedError) {
-        logger.warn({
-          module: "notifications",
-          action: "webhook.send_failed",
-          msg: "webhook delivery blocked by egress guard",
-          url: this.opts.url,
-          last_error: "egress_blocked",
-          reason: err.reason,
-          host: err.host,
-        });
-      }
-      throw err;
-    }
     const body = JSON.stringify({
       tenant_id: delivery.tenant_id,
       workspace_id: delivery.workspace_id,
@@ -49,7 +32,10 @@ export class WebhookNotificationAdapter implements NotificationAdapter {
       kind: delivery.kind,
       text: delivery.text ?? null,
     });
-    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    const fetchImpl = guardedFetch(
+      { tenant_id: delivery.tenant_id, exec: this.opts.exec },
+      this.opts.fetchImpl ?? fetch,
+    );
     const sleep = this.opts.sleepMs ?? defaultSleep;
     let lastError: string | null = null;
     for (let attempt = 1; attempt <= WEBHOOK_MAX_ATTEMPTS; attempt += 1) {
@@ -68,9 +54,11 @@ export class WebhookNotificationAdapter implements NotificationAdapter {
           headers,
           body,
           signal: AbortSignal.timeout(FETCH_DEADLINE_MS),
+          redirect: "manual",
         });
       } catch (err) {
-        lastError = err instanceof Error ? err.message : String(err);
+        lastError = err instanceof EgressBlockedError ? "egress_blocked" : "network_error";
+        if (err instanceof EgressBlockedError) break;
         if (attempt === WEBHOOK_MAX_ATTEMPTS) break;
         await sleep(backoffFor(attempt));
         continue;
@@ -79,6 +67,11 @@ export class WebhookNotificationAdapter implements NotificationAdapter {
         const id =
           res.headers.get("x-message-id") ?? `webhook-${Date.now().toString(36)}-${attempt}`;
         return { platform_message_id: id };
+      }
+      await res.body?.cancel();
+      if (res.status >= 300 && res.status < 400) {
+        lastError = "redirect_blocked";
+        break;
       }
       if (res.status >= 400 && res.status < 500 && res.status !== 429) {
         lastError = `http_${res.status}`;
@@ -94,7 +87,7 @@ export class WebhookNotificationAdapter implements NotificationAdapter {
       module: "notifications",
       action: "webhook.send_failed",
       msg: "webhook adapter exhausted retry budget",
-      url: this.opts.url,
+      tenant_id: delivery.tenant_id,
       last_error: lastError,
     });
     throw new Error(`webhook delivery failed: ${lastError ?? "unknown"}`);

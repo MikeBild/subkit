@@ -18,7 +18,7 @@ export type LogContext = {
     | "chat"
     | "queue";
   actor_id?: string;
-  auth_via?: "token_exchange";
+  auth_via?: "token_exchange" | undefined;
 };
 
 const storage = new AsyncLocalStorage<LogContext>();

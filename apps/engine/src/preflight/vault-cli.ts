@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { type RewrapAcknowledgement, rewrapEvidenceDigest } from "./rewrap-evidence.ts";
 
 const VALUE_BEARING_FLAGS = ["--value", "--secret-value", "--previous-key", "--master-key"];
 
@@ -20,6 +22,9 @@ export interface VaultSetCommand {
 export interface RewrapCommand {
   mode: "rewrap";
   fromFile: string;
+  allProducersStopped: true;
+  stopEvidenceFile: string;
+  maintenance: boolean;
 }
 
 export interface PreflightCommand {
@@ -52,8 +57,11 @@ export const VAULT_CLI_USAGE: string = [
   "      --pending: write it, but let a person approve it in the Cockpit",
   "      before it is used; --bind then says what approval re-pins",
   "  engine --rewrap-master-key --from-file <path-to-previous-key>",
-  "      re-encrypt every stored secret under the new MASTER_KEY;",
-  "      stop all engines first",
+  "      --all-producers-stopped --stop-evidence-file <separate-review-file>",
+  "      [--maintenance: use the selected database maintenance login]",
+  "      re-encrypt the settings-secret registry under the target MASTER_KEY;",
+  "      refuses retained non-registry encrypted data or key-bound proofs",
+  "      preserve the original MASTER_KEY if refused; stop all engines first",
   "",
   "The secret value and the previous key are read from a file only — never from",
   "an argument and never from the environment. One trailing newline is stripped.",
@@ -69,6 +77,9 @@ export function parseVaultCliArgs(argv: string[]): VaultCliParse {
   let name: string | undefined;
   let valueFile: string | undefined;
   let fromFile: string | undefined;
+  let stopEvidenceFile: string | undefined;
+  let allProducersStopped = false;
+  let maintenance = false;
   let purpose: string | null = null;
   let ifUnreadable = false;
   let pending = false;
@@ -127,6 +138,23 @@ export function parseVaultCliArgs(argv: string[]): VaultCliParse {
         i += 1;
         break;
       }
+      case "--maintenance": {
+        if (maintenance) return fail("duplicate --maintenance");
+        maintenance = true;
+        break;
+      }
+      case "--all-producers-stopped": {
+        if (allProducersStopped) return fail("duplicate --all-producers-stopped");
+        allProducersStopped = true;
+        break;
+      }
+      case "--stop-evidence-file": {
+        if (stopEvidenceFile !== undefined) return fail("duplicate --stop-evidence-file");
+        stopEvidenceFile = takeValue(i);
+        if (stopEvidenceFile === undefined) return fail("--stop-evidence-file needs a path");
+        i += 1;
+        break;
+      }
       case "--bind": {
         const raw = takeValue(i);
         if (raw === undefined) return fail("--bind needs at least one setting path");
@@ -165,6 +193,9 @@ export function parseVaultCliArgs(argv: string[]): VaultCliParse {
   }
 
   const extras = (): string | null => {
+    if (maintenance) return "--maintenance";
+    if (allProducersStopped) return "--all-producers-stopped";
+    if (stopEvidenceFile !== undefined) return "--stop-evidence-file";
     if (valueFile !== undefined) return "--value-file";
     if (fromFile !== undefined) return "--from-file";
     if (bindings.length) return "--bind";
@@ -183,6 +214,9 @@ export function parseVaultCliArgs(argv: string[]): VaultCliParse {
   if (mode === "check") {
     if (
       valueFile !== undefined ||
+      maintenance ||
+      allProducersStopped ||
+      stopEvidenceFile !== undefined ||
       fromFile !== undefined ||
       bindings.length ||
       purpose !== null ||
@@ -201,9 +235,26 @@ export function parseVaultCliArgs(argv: string[]): VaultCliParse {
     if (valueFile !== undefined || bindings.length || purpose !== null || ifUnreadable || pending) {
       return fail("--rewrap-master-key takes only --from-file");
     }
-    return { ok: true, command: { mode: "rewrap", fromFile } };
+    if (!allProducersStopped) return fail("--rewrap-master-key needs --all-producers-stopped");
+    if (stopEvidenceFile === undefined)
+      return fail("--rewrap-master-key needs --stop-evidence-file <path>");
+    if (resolve(fromFile) === resolve(stopEvidenceFile))
+      return fail("the stop evidence file must be separate from the previous key file");
+    return {
+      ok: true,
+      command: {
+        mode: "rewrap",
+        fromFile,
+        allProducersStopped: true,
+        stopEvidenceFile,
+        maintenance,
+      },
+    };
   }
 
+  if (maintenance) return fail("--maintenance is only accepted by --rewrap-master-key");
+  if (allProducersStopped || stopEvidenceFile !== undefined)
+    return fail("stop acknowledgements are only accepted by --rewrap-master-key");
   if (fromFile !== undefined)
     return fail("--vault-set reads its value from --value-file, not --from-file");
   if (valueFile === undefined) return fail("--vault-set needs --value-file <path>");
@@ -247,7 +298,10 @@ export interface VaultOps {
   ): Promise<{ version: number }>;
   rebind(path: string, name: string, version: number): Promise<Rebound>;
   servingReplicas(): Promise<string[]>;
-  rewrap(previousKeyHex: string): Promise<{ names: number; versions: number }>;
+  rewrap(
+    previousKeyHex: string,
+    acknowledgement: RewrapAcknowledgement & { maintenance: boolean },
+  ): Promise<{ names: number; versions: number }>;
   preflight(): Promise<VaultCliOutcome>;
 }
 
@@ -370,21 +424,43 @@ const MASTER_KEY_HEX = /^[0-9a-fA-F]{64}$/;
 
 async function runRewrap(command: RewrapCommand, deps: VaultCliDeps): Promise<VaultCliOutcome> {
   const { ops } = deps;
-
-  let serving: string[];
-  try {
-    serving = await ops.servingReplicas();
-  } catch (error) {
-    return { exitCode: 1, lines: [`rewrap: ${messageOf(error)}`] };
+  if (command.allProducersStopped !== true) {
+    return { exitCode: 1, lines: ["rewrap: all producers stopped acknowledgement required"] };
   }
-  if (serving.length > 0) {
+  if (
+    !command.stopEvidenceFile ||
+    resolve(command.fromFile) === resolve(command.stopEvidenceFile)
+  ) {
+    return { exitCode: 1, lines: ["rewrap: a separate stop evidence file is required"] };
+  }
+  let acknowledgement: RewrapAcknowledgement;
+  try {
+    const evidence = (deps.readFile ?? defaultReadFile)(command.stopEvidenceFile);
+    acknowledgement = { all_producers_stopped: true, evidence };
+    rewrapEvidenceDigest(acknowledgement);
+  } catch {
     return {
       exitCode: 1,
-      lines: [
-        `rewrap: refused — ${serving.length} replica lease(s) are still healthy: ${serving.slice(0, 5).join(", ")}`,
-        "stop every engine replica, then re-run; a rewrap must not race a process that is serving",
-      ],
+      lines: ["rewrap: stop evidence is unreadable or invalid; provide 120 to 16000 characters"],
     };
+  }
+
+  if (!command.maintenance) {
+    let serving: string[];
+    try {
+      serving = await ops.servingReplicas();
+    } catch (error) {
+      return { exitCode: 1, lines: [`rewrap: ${messageOf(error)}`] };
+    }
+    if (serving.length > 0) {
+      return {
+        exitCode: 1,
+        lines: [
+          `rewrap: refused — ${serving.length} replica lease(s) are still healthy: ${serving.slice(0, 5).join(", ")}`,
+          "stop every engine replica, then re-run; a rewrap must not race a process that is serving",
+        ],
+      };
+    }
   }
 
   let previous: string;
@@ -402,11 +478,14 @@ async function runRewrap(command: RewrapCommand, deps: VaultCliDeps): Promise<Va
   }
 
   try {
-    const report = await ops.rewrap(previous);
+    const report = await ops.rewrap(previous, {
+      ...acknowledgement,
+      maintenance: command.maintenance === true,
+    });
     return {
       exitCode: 0,
       lines: [
-        `rewrap: ${report.versions} version(s) across ${report.names} secret(s) re-encrypted under the running MASTER_KEY`,
+        `rewrap: ${report.versions} version(s) across ${report.names} registry secret(s) re-encrypted under the target MASTER_KEY`,
       ],
     };
   } catch (error) {

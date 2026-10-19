@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { importConnectorFromSpecTool } from "../tools/import-connector-from-spec.ts";
 
 // biome-ignore lint/suspicious/noExplicitAny: minimal stub for stateless tool
@@ -107,12 +107,14 @@ describe("importConnectorFromSpecTool", () => {
       }),
     );
 
-    const result = await withDriverFetchForTests(fetchSpy as unknown as typeof fetch, () =>
-      importConnectorFromSpecTool.execute(nullCtx, {
-        source: "openapi",
-        content: "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
-        environment: "dev",
-      }),
+    const result = await withSelfHostedDriverFetchForTests(
+      fetchSpy as unknown as typeof fetch,
+      () =>
+        importConnectorFromSpecTool.execute(nullCtx, {
+          source: "openapi",
+          content: "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
+          environment: "dev",
+        }),
     );
     const data = result.data as {
       template_match: { slug: string };

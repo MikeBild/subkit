@@ -1,6 +1,7 @@
 import { load as loadYaml } from "js-yaml";
 import { canConsumeBytes, consumeBytes, createBudgetState, markBudgetExceeded } from "./budgets.ts";
 import { byteLen } from "./chunker.ts";
+import { readBoundedText } from "./read-response.ts";
 import { ingestGraphQLIntrospection } from "./sources/graphql.ts";
 import { ingestLlmsTxt } from "./sources/llms-txt.ts";
 import { ingestMarkdown } from "./sources/markdown.ts";
@@ -159,7 +160,7 @@ export async function discoverOpenApiLinks(
     });
     if (!res.ok) return [];
     contentType = (res.headers.get("content-type") ?? "").toLowerCase();
-    body = await res.text();
+    body = await readBoundedText(res);
   } catch {
     return [];
   }
@@ -293,7 +294,7 @@ async function tryRawHttp(
       recordAttempt(attempts, "markdown", uri, "error", `raw-http fetch ${res.status}`);
       return null;
     }
-    const body = await res.text();
+    const body = await readBoundedText(res);
     const bytes = byteLen(body);
     if (bytes < RAW_HTTP_MIN_USEFUL_BYTES) {
       recordAttempt(

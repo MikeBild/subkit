@@ -1,5 +1,40 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { setConfigKey } from "../../config/loader.ts";
+import { _withEgressLookupForTests } from "../../connectors/egress-guard.ts";
+import { tenants } from "../../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { provisionSelfServiceTenant } from "../../identity/index.ts";
+import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 import { WEBHOOK_MAX_ATTEMPTS, WebhookNotificationAdapter } from "../channels/webhook.ts";
+
+let tdb: TestDb;
+let selfhostId: string;
+let hostedId: string;
+beforeAll(async () => {
+  tdb = await createTestDb("notification-webhook-egress");
+  await configureHostedPolicyForTests(tdb.db, tdb.url);
+  await setConfigKey("egress.mode", "permissive");
+  const [tenant] = await tdb.db
+    .insert(tenants)
+    .values({ slug: "notification-selfhost", display_name: "Selfhost" })
+    .returning();
+  if (!tenant) throw new Error("missing tenant");
+  selfhostId = tenant.id;
+  hostedId = (
+    await provisionSelfServiceTenant(
+      {
+        issuer_url: "https://identity.example.test",
+        subject: "notification-owner",
+        email: "owner@example.test",
+        email_verified: true,
+      },
+      tdb.db,
+    )
+  ).tenant.id;
+}, 30_000);
+afterAll(async () => {
+  if (tdb) await tdb.cleanup();
+});
 
 interface FetchCall {
   url: string;
@@ -23,7 +58,7 @@ function makeFetchSequence(
     const url = typeof input === "string" ? input : input.toString();
     const headers: Record<string, string> = {};
     if (init?.headers) {
-      for (const [k, v] of Object.entries(init.headers as Record<string, string>)) {
+      for (const [k, v] of new Headers(init.headers)) {
         headers[k] = v;
       }
     }
@@ -46,7 +81,9 @@ function makeFetchSequence(
 
 describe("WebhookNotificationAdapter", () => {
   const delivery = {
-    tenant_id: "tenant-1",
+    get tenant_id() {
+      return selfhostId;
+    },
     workspace_id: "wsp-1",
     channel_id: "ch-1",
     kind: "message" as const,
@@ -58,6 +95,7 @@ describe("WebhookNotificationAdapter", () => {
       new Response("ok", { status: 200, headers: { "x-message-id": "abc" } }),
     ]);
     const adapter = new WebhookNotificationAdapter({
+      exec: tdb.db,
       url: "http://hook.example/post",
       fetchImpl,
       sleepMs: sleep,
@@ -76,6 +114,7 @@ describe("WebhookNotificationAdapter", () => {
       new Response("ok", { status: 200 }),
     ]);
     const adapter = new WebhookNotificationAdapter({
+      exec: tdb.db,
       url: "http://hook.example/post",
       fetchImpl,
       sleepMs: sleep,
@@ -91,6 +130,7 @@ describe("WebhookNotificationAdapter", () => {
       new Response("ok", { status: 200 }),
     ]);
     const adapter = new WebhookNotificationAdapter({
+      exec: tdb.db,
       url: "http://hook.example/post",
       fetchImpl,
       sleepMs: sleep,
@@ -102,6 +142,7 @@ describe("WebhookNotificationAdapter", () => {
   test("permanent 4xx aborts after the first attempt", async () => {
     const { calls, fetchImpl, sleep } = makeFetchSequence([new Response("bad", { status: 400 })]);
     const adapter = new WebhookNotificationAdapter({
+      exec: tdb.db,
       url: "http://hook.example/post",
       fetchImpl,
       sleepMs: sleep,
@@ -115,6 +156,7 @@ describe("WebhookNotificationAdapter", () => {
       Array.from({ length: WEBHOOK_MAX_ATTEMPTS }, () => new Error("ECONNRESET")),
     );
     const adapter = new WebhookNotificationAdapter({
+      exec: tdb.db,
       url: "http://hook.example/post",
       fetchImpl,
       sleepMs: sleep,
@@ -126,6 +168,7 @@ describe("WebhookNotificationAdapter", () => {
   test("secret is forwarded as x-subkit-secret when configured", async () => {
     const { calls, fetchImpl, sleep } = makeFetchSequence([new Response("ok", { status: 200 })]);
     const adapter = new WebhookNotificationAdapter({
+      exec: tdb.db,
       url: "http://hook.example/post",
       secret: "shh",
       fetchImpl,
@@ -133,5 +176,77 @@ describe("WebhookNotificationAdapter", () => {
     });
     await adapter.send(delivery);
     expect(calls[0]?.headers["x-subkit-secret"]).toBe("shh");
+  });
+
+  test("persisted hosted origin blocks private DNS answers despite permissive global policy", async () => {
+    const { calls, sleeps, fetchImpl, sleep } = makeFetchSequence([new Response("ok")]);
+    const adapter = new WebhookNotificationAdapter({
+      exec: tdb.db,
+      url: "https://hook.example/post",
+      secret: "sensitive-notification-token",
+      fetchImpl,
+      sleepMs: sleep,
+    });
+    await _withEgressLookupForTests(
+      async () => [{ address: "169.254.169.254", family: 4 }],
+      async () => {
+        await expect(adapter.send({ ...delivery, tenant_id: hostedId })).rejects.toThrow(
+          "egress_blocked",
+        );
+      },
+    );
+    expect(calls).toHaveLength(0);
+    expect(sleeps).toHaveLength(0);
+  });
+
+  test("hosted delivery pins the public hop and refuses redirects without replaying its secret", async () => {
+    const { calls, sleeps, fetchImpl, sleep } = makeFetchSequence([
+      new Response(null, { status: 307, headers: { location: "http://169.254.169.254/" } }),
+      new Response("unexpected"),
+    ]);
+    const adapter = new WebhookNotificationAdapter({
+      exec: tdb.db,
+      url: "https://hook.example/post",
+      secret: "sensitive-notification-token",
+      fetchImpl,
+      sleepMs: sleep,
+    });
+    await _withEgressLookupForTests(
+      async () => [{ address: "93.184.216.34", family: 4 }],
+      async () => {
+        await expect(adapter.send({ ...delivery, tenant_id: hostedId })).rejects.toThrow(
+          "redirect_blocked",
+        );
+      },
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("https://93.184.216.34/post");
+    expect(calls[0]?.headers.host).toBe("hook.example");
+    expect(calls[0]?.headers["x-subkit-secret"]).toBe("sensitive-notification-token");
+    expect(sleeps).toHaveLength(0);
+  });
+
+  test("transport errors cannot expose endpoint query credentials in propagated errors", async () => {
+    const canary = "notification-secret-query-canary";
+    const { fetchImpl, sleep } = makeFetchSequence(
+      Array.from(
+        { length: WEBHOOK_MAX_ATTEMPTS },
+        () => new Error(`request failed https://hook.example/post?key=${canary}`),
+      ),
+    );
+    const adapter = new WebhookNotificationAdapter({
+      exec: tdb.db,
+      url: `https://hook.example/post?key=${canary}`,
+      fetchImpl,
+      sleepMs: sleep,
+    });
+    try {
+      await adapter.send(delivery);
+      throw new Error("expected delivery failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("webhook delivery failed: network_error");
+      expect((error as Error).message).not.toContain(canary);
+    }
   });
 });

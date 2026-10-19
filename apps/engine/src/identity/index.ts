@@ -1,6 +1,15 @@
+export * from "./browser-memberships.ts";
+export * from "./identity-migration.ts";
 export * from "./last-admin.ts";
+export * from "./membership-invite.ts";
 export * from "./oauth-connections.ts";
 export * from "./oidc-discovery.ts";
+export * from "./owned-tenant.ts";
 export * from "./provider-identities.ts";
 export * from "./provisioning.ts";
+export * from "./recovery.ts";
+export * from "./self-service.ts";
 export * from "./service.ts";
+export { eraseExpiredTenant, type TenantErasureDependencies } from "./tenant-erasure.ts";
+export * from "./tenant-lifecycle.ts";
+export { lockActiveTenant } from "./tenant-status.ts";

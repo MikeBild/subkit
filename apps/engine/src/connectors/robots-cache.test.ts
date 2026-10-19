@@ -2,11 +2,19 @@ import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "
 
 import * as loader from "../config/loader.ts";
 import { type Config, ConfigSchema } from "../config/schema.ts";
+import { _withEgressLookupForTests, _withEgressTenantOriginForTests } from "./egress-guard.ts";
 import {
   __getRobotsCacheStatsForTests,
   __resetRobotsCacheForTests,
 } from "./robots-cache.test-helpers.ts";
-import { getRobots } from "./robots-cache.ts";
+import { getRobots as readRobots } from "./robots-cache.ts";
+
+function getRobots(params: Parameters<typeof readRobots>[0]) {
+  return _withEgressTenantOriginForTests(
+    async () => "self_hosted",
+    () => readRobots(params),
+  );
+}
 
 const baseConfig: Config = ConfigSchema.parse({
   database: { url: "postgres://test" },
@@ -161,5 +169,68 @@ describe("robots-cache / TTL", () => {
       Date.now = originalNow;
     }
     expect(fetches).toBe(2);
+  });
+});
+
+describe("hosted robots transport", () => {
+  test("a hostname resolving to a private address never reaches the transport", async () => {
+    let calls = 0;
+    const fetchImpl = Object.assign(
+      async () => {
+        calls++;
+        return new Response("");
+      },
+      { preconnect: () => {} },
+    ) as typeof fetch;
+    await _withEgressTenantOriginForTests(
+      async () => "self_service",
+      () =>
+        _withEgressLookupForTests(
+          async () => [{ address: "127.0.0.1", family: 4 }],
+          async () => {
+            expect(
+              await readRobots({
+                tenantId: "hosted-tenant",
+                origin: "https://robots.example.test",
+                userAgent: "fixture",
+                fetchImpl,
+              }),
+            ).toBeNull();
+          },
+        ),
+    );
+    expect(calls).toBe(0);
+  });
+
+  test("a public robots redirect to a private target never sends the second request", async () => {
+    let calls = 0;
+    const fetchImpl = Object.assign(
+      async () => {
+        calls++;
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://127.0.0.1/private" },
+        });
+      },
+      { preconnect: () => {} },
+    ) as typeof fetch;
+    await _withEgressTenantOriginForTests(
+      async () => "self_service",
+      () =>
+        _withEgressLookupForTests(
+          async () => [{ address: "8.8.8.8", family: 4 }],
+          async () => {
+            expect(
+              await readRobots({
+                tenantId: "hosted-tenant",
+                origin: "https://robots.example.test",
+                userAgent: "fixture",
+                fetchImpl,
+              }),
+            ).toBeNull();
+          },
+        ),
+    );
+    expect(calls).toBe(1);
   });
 });

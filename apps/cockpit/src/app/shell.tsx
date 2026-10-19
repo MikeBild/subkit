@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { logout } from "@/api/client";
 import { ResponsiveWorkspace } from "@/components/cockpit/patterns/responsive-workspace";
 import { ReleaseNotesDialog } from "@/components/cockpit/release-notes-dialog";
+import { WorkspaceSwitcher } from "@/components/cockpit/workspace-switcher";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -129,28 +130,35 @@ export function AppShell() {
           data-cockpit-ui="product-sidebar"
         >
           <SidebarHeader data-testid="cockpit-sidebar-header">
-            <SidebarMenu>
-              <SidebarMenuItem data-testid="cockpit-wordmark">
-                <SidebarMenuButton asChild size="lg" tooltip={t("app.name")}>
-                  <Link to="/" data-testid="cockpit-home-link">
-                    <span
-                      data-testid="cockpit-wordmark-icon"
-                      className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground"
-                    >
-                      <Workflow data-icon="inline-start" />
-                    </span>
-                    <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-                      <span data-testid="cockpit-wordmark-name" className="truncate font-semibold">
-                        {t("app.name")}
+            {session.identity_memberships ? (
+              <WorkspaceSwitcher />
+            ) : (
+              <SidebarMenu>
+                <SidebarMenuItem data-testid="cockpit-wordmark">
+                  <SidebarMenuButton asChild size="lg" tooltip={t("app.name")}>
+                    <Link to="/" data-testid="cockpit-home-link">
+                      <span
+                        data-testid="cockpit-wordmark-icon"
+                        className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground"
+                      >
+                        <Workflow data-icon="inline-start" />
                       </span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {session.tenant.display_name}
+                      <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                        <span
+                          data-testid="cockpit-wordmark-name"
+                          className="truncate font-semibold"
+                        >
+                          {t("app.name")}
+                        </span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {session.tenant.display_name}
+                        </span>
                       </span>
-                    </span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            )}
           </SidebarHeader>
 
           <SidebarContent data-testid="cockpit-navigation" key={pathname}>

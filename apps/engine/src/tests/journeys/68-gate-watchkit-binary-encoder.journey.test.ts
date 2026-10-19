@@ -11,7 +11,7 @@ import { admitAuthorizedWorkflowExecution } from "../../execution/authority-admi
 import { runExecution } from "../../execution/engine.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import {
   grantWorkflowAuthority,
   previewWorkflowAuthority,
@@ -138,7 +138,7 @@ describe("journey 68: a declared report the encoder breaks is refused with its r
       },
       { preconnect: () => {} },
     ) as typeof fetch;
-    await withDriverFetchForTests(remote, async () => {
+    await withSelfHostedDriverFetchForTests(remote, async () => {
       const input = { at: "2026-01-01T00:00:00Z" };
       const admitted = await admitAuthorizedWorkflowExecution(
         {

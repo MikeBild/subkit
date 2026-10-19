@@ -3,6 +3,8 @@ import pg from "pg";
 import { getConfig } from "../config/loader.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
+import { databasePoolOptions } from "./connection-options.ts";
+import { hostedQuotaError } from "./hosted-quota-errors.ts";
 import * as schema from "./schema/index.ts";
 
 const { Pool } = pg;
@@ -31,7 +33,7 @@ export function getPool(): pg.Pool {
       "database.url is not set. Configure via `sk settings set database.url '\"…\"'` or set DATABASE_URL.",
     );
   }
-  _pool = new Pool({ connectionString: url });
+  _pool = new Pool(databasePoolOptions(url));
   _pool.on("error", (err) => {
     logger.error({
       module: "db",
@@ -56,7 +58,10 @@ function instrumentTransactions(db: NodePgDatabase<typeof schema>): NodePgDataba
       action: "transaction",
       level: "debug",
       thresholdMs: 500,
-      fn: () => original(...args),
+      fn: () =>
+        original(...args).catch((error: unknown) => {
+          throw hostedQuotaError(error) ?? error;
+        }),
     });
   return new Proxy(db, {
     get(target, prop, receiver) {
@@ -76,7 +81,7 @@ export function createDbFromUrl(url: string): {
   pool: pg.Pool;
   db: NodePgDatabase<typeof schema>;
 } {
-  const pool = new Pool({ connectionString: url });
+  const pool = new Pool(databasePoolOptions(url));
   pool.on("error", (err) => {
     logger.error({
       module: "db",
@@ -93,10 +98,7 @@ export function createMigrationDbFromUrl(url: string): {
   pool: pg.Pool;
   db: NodePgDatabase<typeof schema>;
 } {
-  const pool = new Pool({
-    connectionString: url,
-    max: 1,
-  });
+  const pool = new Pool(databasePoolOptions(url, undefined, true));
   pool.on("error", (err) => {
     logger.error({
       module: "db",

@@ -1,0 +1,399 @@
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { and, eq, sql } from "drizzle-orm";
+import type { PgBoss } from "pg-boss";
+import type { ResolvedPrincipal } from "../auth/types.ts";
+import { setConfigKey } from "../config/loader.ts";
+import { createDbFromUrl } from "../db/client.ts";
+import {
+  auditLog,
+  conversationMessages,
+  conversations,
+  events,
+  executionSteps,
+  executions,
+  hostedTenantUsage,
+  hostedWorkAdmissions,
+  mcpTasks,
+  roles,
+  sessions,
+  tenants,
+  users,
+  workflows,
+  workflowVersions,
+} from "../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { authorizationContextFromPrincipal } from "../execution/authorization-context.ts";
+import { callerFromPrincipal } from "../execution/caller-context.ts";
+import { provisionSelfServiceTenant } from "../identity/self-service.ts";
+import { getMockProvider } from "../llm/mock-provider.ts";
+import { logRing } from "../observability/log-ring.ts";
+import { type EnvHandle, withTestEnv } from "../test-helpers/determinism/env.ts";
+import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
+import { waitFor } from "../test-helpers/determinism/wait.ts";
+import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
+import { now } from "../utils/clock.ts";
+import { createBoss, disposeBoss } from "./boss.ts";
+import {
+  enqueueConversationRunTurn,
+  registerConversationRunTurnHandler,
+} from "./handlers/conversation-run-turn.ts";
+import { registerExecutionRunHandler } from "./handlers/execution-run.ts";
+import { enqueueHostedWork } from "./hosted-work.ts";
+import { CONVERSATION_RUN_TURN_QUEUE, EXECUTION_RUN_QUEUE } from "./queues.ts";
+
+let fixture: TestDb;
+let connection: ReturnType<typeof createDbFromUrl>;
+let boss: PgBoss;
+let env: EnvHandle;
+const nextId = createDeterministicUuidFactory(9181);
+beforeAll(async () => {
+  env = withTestEnv({ LLM_PROVIDER: "mock" });
+  fixture = await createTestDb("hosted-content-quota-workers");
+  await configureHostedPolicyForTests(fixture.db, fixture.url);
+  connection = createDbFromUrl(fixture.url);
+  for (const key of ["pending_jobs", "execution_concurrency", "chat_concurrency"])
+    await setConfigKey(`queue.hosted.${key}`, 2);
+  boss = await createBoss({ connectionString: fixture.url });
+  await boss.createQueue(EXECUTION_RUN_QUEUE, { retryLimit: 0 });
+  await boss.createQueue(CONVERSATION_RUN_TURN_QUEUE, { retryLimit: 0 });
+});
+afterAll(async () => {
+  await disposeBoss(boss);
+  await connection?.pool.end();
+  await fixture?.cleanup();
+  env?.restore();
+});
+
+test("accepted execution and conversation tasks terminate safely when shared content storage is exactly full", async () => {
+  const db = connection.db;
+  const owned = await provisionSelfServiceTenant(
+    {
+      issuer_url: "https://identity.example.test",
+      subject: "content-quota-workers",
+      email: "quota-workers@example.test",
+      email_verified: true,
+    },
+    db,
+  );
+  const tenantId = owned.tenant.id;
+  const [session] = await db
+    .insert(sessions)
+    .values({
+      tenant_id: tenantId,
+      user_id: owned.membership.user_id,
+      auth_identity_id: owned.identity.id,
+      expires_at: new Date(now() + 3600000),
+      absolute_expires_at: new Date(now() + 3600000),
+    })
+    .returning();
+  if (!session) throw new Error("browser fixture missing");
+  const principal: ResolvedPrincipal = {
+    kind: "user",
+    id: owned.membership.user_id,
+    tenant_id: tenantId,
+    provider: "browser_session",
+    roles: ["admin"],
+    auth_source: { kind: "browser_session", session_id: session.id },
+  };
+  const [workflow] = await db
+    .insert(workflows)
+    .values({
+      tenant_id: tenantId,
+      slug: "quota-worker",
+      name: "Quota worker",
+      lifecycle: "active",
+    })
+    .returning();
+  if (!workflow) throw new Error("workflow fixture missing");
+  const [version] = await db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: tenantId,
+      workflow_id: workflow.id,
+      version: 1,
+      dag: {
+        name: "Quota worker",
+        steps: [
+          {
+            id: "result",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.input;",
+          },
+        ],
+      },
+    })
+    .returning();
+  if (!version) throw new Error("version fixture missing");
+  await db
+    .update(workflows)
+    .set({ current_version_id: version.id })
+    .where(and(eq(workflows.tenant_id, tenantId), eq(workflows.id, workflow.id)));
+  const canary = "private-content-quota-worker-canary";
+  const [execution] = await db
+    .insert(executions)
+    .values({
+      tenant_id: tenantId,
+      workflow_id: workflow.id,
+      workflow_version_id: version.id,
+      status: "queued",
+      hold_writes: true,
+      request_source: "api",
+      execution_mode: "dev",
+      input: { private: canary },
+      caller_context: callerFromPrincipal(principal, tenantId),
+      authorization_context: authorizationContextFromPrincipal(principal),
+    })
+    .returning();
+  const [conversation] = await db
+    .insert(conversations)
+    .values({ tenant_id: tenantId, status: "active", owner_id: principal.id })
+    .returning();
+  if (!execution || !conversation) throw new Error("accepted fixture missing");
+  const [message] = await db
+    .insert(conversationMessages)
+    .values({
+      tenant_id: tenantId,
+      conversation_id: conversation.id,
+      role: "user",
+      content: { text: canary },
+    })
+    .returning();
+  if (!message) throw new Error("message fixture missing");
+  getMockProvider().setConversePlan(conversation.id, [{ text: `Quota reply ${canary}` }]);
+  const jobId = nextId();
+  const [task] = await db
+    .insert(mcpTasks)
+    .values({
+      tenant_id: tenantId,
+      conversation_id: conversation.id,
+      kind: "start",
+      turn_seq: 1,
+      job_id: jobId,
+      user_message_id: message.id,
+      actor_id: principal.id,
+      actor_kind: "user",
+      request_source: "mcp",
+    })
+    .returning();
+  if (!task) throw new Error("accepted task missing");
+  await enqueueHostedWork(
+    db,
+    boss,
+    "execution",
+    EXECUTION_RUN_QUEUE,
+    { tenant_id: tenantId, execution_id: execution.id, workflow_id: workflow.id },
+    { id: execution.id },
+  );
+  await enqueueConversationRunTurn(
+    boss,
+    db,
+    {
+      tenant_id: tenantId,
+      conversation_id: conversation.id,
+      mcp_task_id: task.id,
+      actor_id: principal.id,
+      principal,
+      kind: "start",
+    },
+    { id: jobId },
+  );
+  const [baseline] = await db
+    .select()
+    .from(hostedTenantUsage)
+    .where(eq(hostedTenantUsage.tenant_id, tenantId));
+  if (!baseline) throw new Error("usage fixture missing");
+  await db.execute(
+    sql`UPDATE subkit.runtime_config_revisions SET document=jsonb_set(jsonb_set(document,'{storage,hosted,tenant_bytes}',to_jsonb(${baseline.logical_bytes.toString()}::text)),'{storage,hosted,retained_rows_per_resource}',to_jsonb(${Number(baseline.resource_counts.audit_log)}::int)) WHERE revision=(SELECT active_revision FROM subkit.runtime_config_state WHERE key='runtime')`,
+  );
+  logRing.clear();
+  await registerExecutionRunHandler({ db, boss });
+  await registerConversationRunTurnHandler({ db, boss });
+  try {
+    await waitFor(
+      async () => {
+        const [executed] = await db
+          .select()
+          .from(executions)
+          .where(and(eq(executions.tenant_id, tenantId), eq(executions.id, execution.id)));
+        const [chatted] = await db
+          .select()
+          .from(mcpTasks)
+          .where(and(eq(mcpTasks.tenant_id, tenantId), eq(mcpTasks.id, task.id)));
+        return executed?.status === "failed" && Boolean(chatted?.failure_reason);
+      },
+      {
+        tries: 200,
+        sleepMs: 50,
+        label: "full content quota produces durable terminal task outcomes",
+      },
+    );
+    await waitFor(
+      async () => {
+        const jobs = [
+          ...(await boss.findJobs(EXECUTION_RUN_QUEUE, { id: execution.id })),
+          ...(await boss.findJobs(CONVERSATION_RUN_TURN_QUEUE, { id: jobId })),
+        ];
+        const admissions = await db
+          .select()
+          .from(hostedWorkAdmissions)
+          .where(eq(hostedWorkAdmissions.tenant_id, tenantId));
+        return (
+          jobs.length === 2 &&
+          jobs.every((job) => job.state === "completed") &&
+          admissions.every((row) => row.state === "released")
+        );
+      },
+      {
+        tries: 200,
+        sleepMs: 50,
+        label: "actual workers acknowledge terminal jobs and release admissions",
+      },
+    );
+    const [executed] = await db
+      .select()
+      .from(executions)
+      .where(and(eq(executions.tenant_id, tenantId), eq(executions.id, execution.id)));
+    const [chatted] = await db
+      .select()
+      .from(mcpTasks)
+      .where(and(eq(mcpTasks.tenant_id, tenantId), eq(mcpTasks.id, task.id)));
+    expect(executed?.failure?.error_code).toBe("hosted_storage_quota_exhausted");
+    expect(chatted?.failure_reason).toBe("hosted_storage_quota_exhausted");
+    const failureData = JSON.stringify({
+      failure: executed?.failure,
+      chat: chatted?.failure_reason,
+      logs: logRing.tail({ limit: 1000 }),
+    });
+    expect(failureData).not.toContain(canary);
+    expect(failureData).not.toContain("Failed query:");
+    expect(
+      await db.select().from(executionSteps).where(eq(executionSteps.tenant_id, tenantId)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(conversationMessages)
+        .where(eq(conversationMessages.tenant_id, tenantId)),
+    ).toHaveLength(1);
+    const [after] = await db
+      .select()
+      .from(hostedTenantUsage)
+      .where(eq(hostedTenantUsage.tenant_id, tenantId));
+    expect(after?.logical_bytes).toBe(baseline.logical_bytes);
+    expect(after?.resource_counts).toEqual(baseline.resource_counts);
+    expect(await db.select().from(events).where(eq(events.tenant_id, tenantId))).toHaveLength(0);
+    const receipts = await db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.reason, "hosted_storage_quota_exhausted"),
+        ),
+      );
+    expect(receipts).toHaveLength(2);
+    expect(JSON.stringify(receipts)).not.toContain(canary);
+  } finally {
+    await boss.offWork(EXECUTION_RUN_QUEUE);
+    await boss.offWork(CONVERSATION_RUN_TURN_QUEUE);
+  }
+});
+
+test("self-hosted typed quota errors use ordinary worker failure settlement", async () => {
+  const db = connection.db;
+  const [tenant] = await db
+    .insert(tenants)
+    .values({ slug: "quota-selfhost-control", display_name: "Self hosted" })
+    .returning();
+  if (!tenant) throw new Error("tenant missing");
+  const [role] = await db.insert(roles).values({ tenant_id: tenant.id, name: "admin" }).returning();
+  if (!role) throw new Error("role missing");
+  const [user] = await db
+    .insert(users)
+    .values({ tenant_id: tenant.id, role_id: role.id, email: "selfhost@example.test" })
+    .returning();
+  if (!user) throw new Error("user missing");
+  const [session] = await db
+    .insert(sessions)
+    .values({
+      tenant_id: tenant.id,
+      user_id: user.id,
+      expires_at: new Date(now() + 3600000),
+      absolute_expires_at: new Date(now() + 3600000),
+    })
+    .returning();
+  if (!session) throw new Error("session missing");
+  const principal: ResolvedPrincipal = {
+    kind: "user",
+    id: user.id,
+    tenant_id: tenant.id,
+    provider: "browser_session",
+    roles: ["admin"],
+    auth_source: { kind: "browser_session", session_id: session.id },
+  };
+  const [workflow] = await db
+    .insert(workflows)
+    .values({
+      tenant_id: tenant.id,
+      slug: "selfhost-control",
+      name: "Self hosted control",
+      lifecycle: "active",
+    })
+    .returning();
+  if (!workflow) throw new Error("workflow missing");
+  const [execution] = await db
+    .insert(executions)
+    .values({
+      tenant_id: tenant.id,
+      workflow_id: workflow.id,
+      status: "queued",
+      hold_writes: true,
+      request_source: "api",
+      execution_mode: "dev",
+      caller_context: callerFromPrincipal(principal, tenant.id),
+      authorization_context: authorizationContextFromPrincipal(principal),
+    })
+    .returning();
+  if (!execution) throw new Error("execution missing");
+  await db.execute(
+    sql`CREATE FUNCTION subkit.test_selfhost_quota() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.authorization_context IS DISTINCT FROM OLD.authorization_context THEN RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='hosted_storage_quota_exhausted'; END IF; RETURN NEW; END $$`,
+  );
+  await db.execute(
+    sql`CREATE TRIGGER test_selfhost_quota BEFORE UPDATE ON subkit.executions FOR EACH ROW WHEN (OLD.tenant_id=${sql.raw(`'${tenant.id}'::uuid`)}) EXECUTE FUNCTION subkit.test_selfhost_quota()`,
+  );
+  await boss.send(
+    EXECUTION_RUN_QUEUE,
+    { tenant_id: tenant.id, execution_id: execution.id, workflow_id: workflow.id },
+    { id: execution.id },
+  );
+  await registerExecutionRunHandler({ db, boss });
+  try {
+    await waitFor(
+      async () =>
+        (await boss.findJobs(EXECUTION_RUN_QUEUE, { id: execution.id }))[0]?.state === "completed",
+      {
+        tries: 200,
+        sleepMs: 50,
+        label: "self-hosted typed quota failure acknowledged after settlement",
+      },
+    );
+    const [saved] = await db
+      .select()
+      .from(executions)
+      .where(and(eq(executions.tenant_id, tenant.id), eq(executions.id, execution.id)));
+    expect(saved?.status).toBe("failed");
+    expect(saved?.finished_at).not.toBeNull();
+    expect(saved?.failure?.error_code).toBe("hosted_storage_quota_exhausted");
+    expect(
+      await db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.tenant_id, tenant.id), eq(auditLog.action, "execution.failed"))),
+    ).toHaveLength(0);
+  } finally {
+    await boss.offWork(EXECUTION_RUN_QUEUE);
+    await db.execute(sql`DROP TRIGGER test_selfhost_quota ON subkit.executions`);
+    await db.execute(sql`DROP FUNCTION subkit.test_selfhost_quota()`);
+  }
+});

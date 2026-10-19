@@ -17,7 +17,7 @@ import {
   runExecution,
 } from "../../../execution/index.ts";
 import type { ExecutionRunJob } from "../../../queue/index.ts";
-import { EXECUTION_RUN_QUEUE, getBoss } from "../../../queue/index.ts";
+import { EXECUTION_RUN_QUEUE, enqueueHostedWork, getBoss } from "../../../queue/index.ts";
 import { HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -260,7 +260,14 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
         execution_mode,
       };
       try {
-        await (c.get("boss") ?? getBoss()).send(EXECUTION_RUN_QUEUE, job, { id: execution_id });
+        await enqueueHostedWork(
+          db,
+          c.get("boss") ?? getBoss(),
+          "execution",
+          EXECUTION_RUN_QUEUE,
+          job,
+          { id: execution_id },
+        );
       } catch (error) {
         if (!body.idempotency_key)
           await finalizeExecution(db, principal.tenant_id, execution_id, "failed", null, {

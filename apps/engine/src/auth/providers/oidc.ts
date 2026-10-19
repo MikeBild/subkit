@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, lt } from "drizzle-orm";
 import * as jose from "jose";
 import * as oauth from "openid-client";
+import { ZodError } from "zod";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
@@ -13,8 +14,21 @@ import {
   resolvePageLook,
   type SignInError,
 } from "../../http/routes/oauth/ui.ts";
+import {
+  acceptVerifiedMembershipInvite,
+  assertTenantActive,
+  IdentityRecoveryError,
+  issueIdentityRecovery,
+  MembershipInviteError,
+  resolveHostedIdentity,
+  SelfServiceIdentityError,
+} from "../../identity/index.ts";
 import { logger } from "../../logging/logger.ts";
-import { SESSION_ABSOLUTE_TTL_MS, SESSION_SLIDING_TTL_MS } from "../browser-session.ts";
+import {
+  issueBrowserSession,
+  SESSION_ABSOLUTE_TTL_MS,
+  SESSION_SLIDING_TTL_MS,
+} from "../browser-session.ts";
 import {
   IdentityLinkConflictError,
   resolveProviderIdentity,
@@ -28,6 +42,7 @@ const DEFAULT_TENANT_SLUG = "default";
 const LOGIN_STATE_TTL_MS = 10 * 60 * 1000;
 const JWS_ALG = "HS256";
 const LOGIN_START_PATH = "/v1/identity/login/start";
+const RECOVERY_LOGIN_COOKIE = "subkit_recovery_login";
 
 export interface OidcProviderOptions {
   providerId?: string;
@@ -42,6 +57,8 @@ export interface OidcProviderOptions {
   db?: Db;
   sessionSecret?: Uint8Array;
   enableSignup?: boolean;
+  signupPolicy?: "existing_tenant" | "invite_only" | "self_service";
+  membershipInviteId?: string;
 }
 
 function sha256Hex(value: string): string {
@@ -228,6 +245,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         tenant_slug: string;
         product_id?: string | undefined;
         link_by_email?: boolean | undefined;
+        signup_policy?: "existing_tenant" | "invite_only" | "self_service" | undefined;
       }
     | undefined;
   let configuredRedirectUri = "";
@@ -255,8 +273,12 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
     return db ?? getDb();
   }
 
+  const signupPolicy = opts.signupPolicy ?? configured?.signup_policy;
+  const hostedSignup = signupPolicy === "self_service";
+
   function signupEnabled(): boolean {
-    if (productId) return false;
+    if (productId || signupPolicy === "invite_only" || hostedSignup) return false;
+    if (signupPolicy === "existing_tenant") return true;
     if (opts.enableSignup !== undefined) return opts.enableSignup;
     return isConfigLoaded() ? getConfig().auth.enable_signup : false;
   }
@@ -283,12 +305,15 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         );
       }
       const url = new URL(req.url);
+      if (hostedSignup && (!isConfigLoaded() || !getConfig().auth.hosted.enabled || productId)) {
+        return httpError(403, "hosted_signup_disabled", "hosted signup is not enabled");
+      }
       const tenantSlug = url.searchParams.get("tenant") ?? configuredTenantSlug;
       const redirectTo = url.searchParams.get("redirect_to");
       const exec = getExec();
 
-      const tenantId = await resolveTenantId(exec, tenantSlug);
-      if (!tenantId) {
+      const tenantId = hostedSignup ? null : await resolveTenantId(exec, tenantSlug);
+      if (!tenantId && !hostedSignup) {
         return browserError(
           req,
           400,
@@ -326,6 +351,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
       await exec.insert(oidcLoginStates).values({
         tenant_id: tenantId,
+        membership_invite_id: opts.membershipInviteId ?? null,
         state,
         code_verifier,
         nonce,
@@ -340,8 +366,22 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         nonce,
         code_challenge,
         code_challenge_method: "S256",
+        ...(hostedSignup && redirectTo === "/v1/identity/recovery"
+          ? { prompt: "login", max_age: "0" }
+          : {}),
       });
 
+      if (hostedSignup && redirectTo === "/v1/identity/recovery") {
+        const secure = process.env.NODE_ENV !== "development" ? "; Secure" : "";
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: authUrl.toString(),
+            "set-cookie": `${RECOVERY_LOGIN_COOKIE}=${encodeURIComponent(state)}; Path=/v1/identity/login/callback; HttpOnly; SameSite=Lax; Max-Age=600${secure}`,
+            "cache-control": "no-store",
+          },
+        });
+      }
       return Response.redirect(authUrl.toString(), 302);
     },
 
@@ -443,10 +483,20 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         );
       }
 
-      if (!pending.tenant_id) {
+      if (!pending.tenant_id && !hostedSignup) {
         return httpError(400, "tenant_missing", "pending login missing tenant");
       }
       const tenantId = pending.tenant_id;
+      if (hostedSignup && pending.redirect_to === "/v1/identity/recovery") {
+        const browserState = parseCookies(req.headers.get("cookie"))[RECOVERY_LOGIN_COOKIE];
+        if (!browserState || sha256Hex(browserState) !== sha256Hex(pending.state)) {
+          return httpError(
+            403,
+            "recovery_browser_binding_required",
+            "restart recovery sign-in in this browser",
+          );
+        }
+      }
 
       let configuration: oauth.Configuration;
       try {
@@ -502,6 +552,106 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       const rawEmail = (claims as { email?: unknown } | undefined)?.email;
       const emailVerified =
         (claims as { email_verified?: unknown } | undefined)?.email_verified === true;
+      if (hostedSignup) {
+        if (!isConfigLoaded() || !getConfig().auth.hosted.enabled || productId) {
+          return httpError(403, "hosted_signup_disabled", "hosted signup is not enabled");
+        }
+        if (!emailVerified || typeof rawEmail !== "string" || rawEmail.length === 0) {
+          return httpError(403, "verified_email_required", "a verified email is required");
+        }
+        try {
+          if (pending.redirect_to === "/v1/identity/recovery" && !pending.membership_invite_id) {
+            const authTime = claims?.auth_time;
+            if (
+              typeof authTime !== "number" ||
+              !Number.isFinite(authTime) ||
+              authTime * 1000 < pending.created_at.getTime() - 30_000 ||
+              Date.now() - authTime * 1000 > 5 * 60_000 ||
+              authTime * 1000 > Date.now() + 30_000
+            ) {
+              return httpError(
+                403,
+                "reauthentication_required",
+                "the identity provider must confirm a fresh sign-in",
+              );
+            }
+            return await issueIdentityRecovery(
+              { issuer_url: issuerUrl, subject: sub, email: rawEmail, email_verified: true },
+              exec,
+            );
+          }
+          const verified = {
+            issuer_url: issuerUrl,
+            subject: sub,
+            email: rawEmail,
+            email_verified: true as const,
+          };
+          const provisioned = pending.membership_invite_id
+            ? await acceptVerifiedMembershipInvite(verified, pending.membership_invite_id, exec)
+            : await resolveHostedIdentity(
+                verified,
+                { registration_enabled: getConfig().auth.hosted.registration_enabled },
+                exec,
+              );
+          return issueBrowserSession({
+            db: exec,
+            tenantId: provisioned.tenant.id,
+            userId: provisioned.membership.user_id,
+            authIdentityId: provisioned.identity.id,
+            redirectTo:
+              pending.redirect_to && isSafeRedirect(pending.redirect_to, redirectUri)
+                ? pending.redirect_to
+                : "/cockpit",
+            via: "oidc_auth_code",
+            metadata: { provider_id: adapterId },
+          });
+        } catch (error) {
+          if (
+            error instanceof SelfServiceIdentityError &&
+            error.code === "tenant_unavailable" &&
+            !pending.membership_invite_id
+          ) {
+            return new Response(null, {
+              status: 302,
+              headers: {
+                location: `/cockpit/recovery?provider=${encodeURIComponent(adapterId)}`,
+                "set-cookie": clearCookieHeader(),
+                "cache-control": "no-store",
+              },
+            });
+          }
+          if (
+            error instanceof SelfServiceIdentityError &&
+            error.code === "registration_rate_limited"
+          )
+            return httpError(
+              429,
+              error.code,
+              "Registration is temporarily limited. Try again shortly.",
+            );
+          if (
+            error instanceof SelfServiceIdentityError &&
+            error.code === "registration_policy_unavailable"
+          )
+            return httpError(503, error.code, "Registration is temporarily unavailable.");
+          if (error instanceof ZodError) {
+            return httpError(
+              403,
+              "invalid_identity_claims",
+              "verified identity claims are invalid",
+            );
+          }
+          if (
+            error instanceof SelfServiceIdentityError ||
+            error instanceof MembershipInviteError ||
+            error instanceof IdentityRecoveryError
+          ) {
+            return httpError(403, error.code, "identity or workspace is not available");
+          }
+          throw error;
+        }
+      }
+      if (!tenantId) return httpError(400, "tenant_missing", "pending login missing tenant");
       const email =
         emailVerified && typeof rawEmail === "string" && rawEmail.length > 0
           ? rawEmail
@@ -570,6 +720,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         );
       }
 
+      try {
+        await assertTenantActive(tenantId, exec);
+      } catch (error) {
+        if (error instanceof SelfServiceIdentityError) {
+          return httpError(403, "tenant_unavailable", "workspace is unavailable");
+        }
+        throw error;
+      }
       const rawNonce = randomBytes(32).toString("hex");
       const tokenHash = sha256Hex(rawNonce);
       const now = new Date();

@@ -52,12 +52,15 @@ afterAll(async () => {
 describe("oauth2 refresh", () => {
   test("stale token is refreshed inline and replaced in the db", async () => {
     mock.setExpiresIn(1);
-    const initial = await runClientCredentialsGrant({
-      issuer_url: mock.baseUrl,
-      client_id: "rt-client",
-      client_secret: "rt-secret",
-      scope: "read",
-    });
+    const initial = await runClientCredentialsGrant(
+      {
+        issuer_url: mock.baseUrl,
+        client_id: "rt-client",
+        client_secret: "rt-secret",
+        scope: "read",
+      },
+      { mode: "permissive" },
+    );
     expect(initial.refresh_token).toBeTruthy();
 
     await upsertCredential(

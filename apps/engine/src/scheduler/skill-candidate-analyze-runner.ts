@@ -1,4 +1,4 @@
-import { and, isNull, lt, or } from "drizzle-orm";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { Db } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
@@ -20,6 +20,7 @@ export async function runSkillCandidateAnalysisSweep(
     .where(
       and(
         isNull(tenants.deleted_at),
+        eq(tenants.status, "active"),
         or(
           isNull(tenants.last_skill_candidate_analyze_at),
           lt(tenants.last_skill_candidate_analyze_at, cadenceCutoff),

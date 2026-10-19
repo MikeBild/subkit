@@ -14,7 +14,7 @@ import { admitAuthorizedWorkflowExecution } from "../../execution/authority-admi
 import { runExecution } from "../../execution/engine.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import {
   grantWorkflowAuthority,
   previewWorkflowAuthority,
@@ -116,7 +116,7 @@ async function grantAndRun(
     },
     { preconnect: () => {} },
   ) as typeof fetch;
-  return withDriverFetchForTests(remote, async () => {
+  return withSelfHostedDriverFetchForTests(remote, async () => {
     const admitted = await admitAuthorizedWorkflowExecution(
       {
         tenant_id: ctx.tenantId,
@@ -339,7 +339,7 @@ describe("journey 70: a refused report is repaired by a reviewed deterministic f
     expect(before?.reason).toBeUndefined();
 
     const version_id = await currentVersion(wf.id);
-    const prepared = await withDriverFetchForTests(
+    const prepared = await withSelfHostedDriverFetchForTests(
       Object.assign(async () => Response.json({ id: "held" }), {
         preconnect: () => {},
       }) as typeof fetch,
@@ -394,7 +394,7 @@ describe("journey 70: a refused report is repaired by a reviewed deterministic f
         ),
       );
     const version_id = await currentVersion(wf.id);
-    const prepared = await withDriverFetchForTests(
+    const prepared = await withSelfHostedDriverFetchForTests(
       Object.assign(async () => Response.json({ id: "held" }), {
         preconnect: () => {},
       }) as typeof fetch,

@@ -1,3 +1,5 @@
+import { noticeTenantContext, tenantContextHeaders } from "@/api/tenant-context";
+
 export interface SseFrame {
   id: string | null;
   event: string;
@@ -56,6 +58,7 @@ export async function readSseStream(
   },
 ): Promise<void> {
   const headers = new Headers({ accept: "text/event-stream", "x-subkit-client": "cockpit" });
+  for (const [key, value] of Object.entries(tenantContextHeaders())) headers.set(key, value);
   if (options.lastEventId) headers.set("last-event-id", options.lastEventId);
   const response = await fetch(url, {
     credentials: "same-origin",
@@ -65,7 +68,9 @@ export async function readSseStream(
   });
   if (!response.ok || !response.body) {
     const body = (await response.json().catch(() => null)) as { code?: unknown } | null;
-    throw new SseHttpError(response.status, typeof body?.code === "string" ? body.code : null);
+    const code = typeof body?.code === "string" ? body.code : null;
+    noticeTenantContext(response.status, code);
+    throw new SseHttpError(response.status, code);
   }
   options.onOpen?.();
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();

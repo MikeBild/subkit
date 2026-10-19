@@ -25,6 +25,7 @@ import { now } from "../utils/clock.ts";
 import type { ChatAdapter } from "./adapter.ts";
 import { mapToolNameToKind } from "./api.ts";
 import { formatChatText } from "./format/outbound-format.ts";
+import { HostedChatOwnershipRequired, requiresHostedChatOwnership } from "./hosted-ownership.ts";
 import { intakeReviewHandoff } from "./intake-handoff.ts";
 import { resolveChatPrincipal } from "./principal.ts";
 
@@ -432,6 +433,21 @@ async function handleChatEventImpl(
     .limit(1);
   if (!workspace) return { status: "workspace_not_found" };
   const tenant_id = workspace.tenant_id;
+  if (await requiresHostedChatOwnership(db, tenant_id)) {
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: "system",
+        action: AuditAction.CHAT_MESSAGE_DENIED,
+        resource_type: "chat_workspace",
+        resource_id: workspace.id,
+        result: "denied",
+        reason: "hosted_ownership_proof_required",
+      },
+      db,
+    );
+    return { status: "rejected", reply_text: new HostedChatOwnershipRequired().message };
+  }
   if (usage) {
     usage.tenantId = tenant_id;
     usage.sessionId = `${workspace.id}:${ev.thread_id ?? ev.channel_id}`;

@@ -1,3 +1,4 @@
+import type { IncomingMessage } from "node:http";
 import { VERSION } from "@cli-core/version.ts";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { PgBoss } from "pg-boss";
@@ -6,7 +7,10 @@ import type { Db } from "../db/client.ts";
 import type { RequestSource, ServiceMetadata } from "../observability/service-metadata.ts";
 
 export type AppEnv = {
+  Bindings: { incoming?: IncomingMessage };
   Variables: {
+    client_ip?: string;
+    hosted_ingress_admitted?: boolean;
     trace_id: string;
     span_id: string;
     request_source: RequestSource;

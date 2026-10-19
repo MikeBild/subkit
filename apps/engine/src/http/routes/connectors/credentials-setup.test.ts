@@ -30,7 +30,7 @@ import {
   sessions,
 } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
-import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { now } from "../../../utils/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
@@ -484,7 +484,7 @@ describe("unsaved connector draft credential setup", () => {
         headers: { "content-type": "application/json" },
       });
     }) as typeof fetch;
-    const probe = await withDriverFetchForTests(probeFetch, () =>
+    const probe = await withSelfHostedDriverFetchForTests(probeFetch, () =>
       invokeConversationToolDirect({
         db: server.db,
         tenant_id: server.tenantId,

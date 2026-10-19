@@ -7,6 +7,7 @@ import { executions } from "../../db/schema/index.ts";
 import { admitSystemWorkflowExecution } from "../../execution/authority-admission.ts";
 import { recoverExecutionPayload } from "../../execution/sensitive-payload.ts";
 import { JsonValueSchema } from "../../workflows/types.ts";
+import { HmacVerifierConfig } from "./verifiers/hmac.ts";
 
 const PayloadSchema = z
   .object({
@@ -18,19 +19,73 @@ const PayloadSchema = z
   })
   .strict();
 
-function stablePayload(input: z.infer<typeof PayloadSchema>) {
+interface WebhookBinding {
+  tenant_id: string;
+  id: string;
+  workflow_id: string;
+  verifier?: string;
+  native_verifier_config?: unknown;
+}
+
+export function stableWebhookPayload(
+  input: z.infer<typeof PayloadSchema>,
+  binding: WebhookBinding,
+) {
+  const transient = new Set(["webhook-signature", "webhook-timestamp", "stripe-signature"]);
+  if (binding.verifier === "hmac") {
+    const envelope = z
+      .object({ hmac: HmacVerifierConfig })
+      .safeParse(binding.native_verifier_config);
+    const config = envelope.success ? envelope.data.hmac : null;
+    if (config) {
+      transient.add(config.signature_header);
+      if (config.timestamp_header) transient.add(config.timestamp_header);
+      if (config.id_field && config.id_header) transient.add(config.id_header);
+    }
+  }
   const headers = Object.fromEntries(
-    Object.entries(input.headers).filter(
-      ([key]) =>
-        !["webhook-signature", "webhook-timestamp", "stripe-signature"].includes(key.toLowerCase()),
-    ),
+    Object.entries(input.headers).filter(([key]) => !transient.has(key.toLowerCase())),
   );
   return { id: input.id, type: input.type, body: input.body, headers };
 }
 
+export async function webhookReplayMatches(
+  db: Db,
+  binding: WebhookBinding,
+  rawPayload: unknown,
+): Promise<boolean> {
+  const payload = PayloadSchema.parse(rawPayload);
+  const eventDigest = createHash("sha256").update(payload.id).digest("hex");
+  const [existing] = await db
+    .select({ id: executions.id, input: executions.input })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, binding.tenant_id),
+        eq(executions.idempotency_key, `webhook:${binding.id}:${eventDigest}`),
+      ),
+    )
+    .limit(1);
+  if (!existing) return false;
+  try {
+    const original = PayloadSchema.safeParse(
+      recoverExecutionPayload(existing.input, binding.tenant_id, existing.id),
+    );
+    return (
+      original.success &&
+      isDeepStrictEqual(
+        stableWebhookPayload(original.data, binding),
+        stableWebhookPayload(payload, binding),
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function admitWebhookExecution(
   db: Db,
-  binding: { tenant_id: string; id: string; workflow_id: string },
+  binding: WebhookBinding,
   workflow_version_id: string,
   rawPayload: unknown,
 ) {
@@ -58,7 +113,10 @@ export async function admitWebhookExecution(
       );
       if (
         !original.success ||
-        !isDeepStrictEqual(stablePayload(original.data), stablePayload(payload))
+        !isDeepStrictEqual(
+          stableWebhookPayload(original.data, binding),
+          stableWebhookPayload(payload, binding),
+        )
       ) {
         throw Object.assign(
           new Error("the webhook event ID belongs to a different execution input"),

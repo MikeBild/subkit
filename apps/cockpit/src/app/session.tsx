@@ -7,6 +7,12 @@ import {
   bootstrapLimits,
   onSessionExpired,
 } from "@/api/client";
+import {
+  observeTenantSwitches,
+  onTenantContextChanged,
+  tenantContextChanged,
+} from "@/api/tenant-context";
+import { WorkspaceChangedPage } from "@/components/cockpit/workspace-changed";
 import { BootstrapErrorPage, LoginRedirect, SessionExpiredPage } from "@/components/failure-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
@@ -24,14 +30,28 @@ export function useSession(): Bootstrap {
 export function SessionGate({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const client = useQueryClient();
+  const [changed, setChanged] = useState(tenantContextChanged);
   const query = useQuery({
     queryKey: BOOTSTRAP_KEY,
     queryFn: () => bootstrap(bootstrapLimits(client.getQueryData<Bootstrap>(BOOTSTRAP_KEY))),
     retry: false,
+    enabled: !changed,
   });
   const [expired, setExpired] = useState(false);
   useEffect(() => onSessionExpired(() => setExpired(true)), []);
-  const view = sessionView(query, expired);
+  useEffect(
+    () =>
+      onTenantContextChanged(() => {
+        setChanged(true);
+      }),
+    [client],
+  );
+  useEffect(() => {
+    if (changed) void client.cancelQueries().then(() => client.clear());
+  }, [changed, client]);
+  useEffect(observeTenantSwitches, []);
+  const view = sessionView(query, expired, changed);
+  if (view === "changed") return <WorkspaceChangedPage />;
   if (view === "expired") return <SessionExpiredPage href={loginHref()} />;
   if (view === "signed-out")
     return <LoginRedirect href={loginHref()} label={t("common.loading")} />;
@@ -42,12 +62,15 @@ export function SessionGate({ children }: { children: ReactNode }) {
   return <SessionContext.Provider value={query.data}>{children}</SessionContext.Provider>;
 }
 
-export type SessionView = "expired" | "signed-out" | "loading" | "failed" | "ready";
+export type SessionView = "changed" | "expired" | "signed-out" | "loading" | "failed" | "ready";
 
 export function sessionView(
   query: { isPending: boolean; error: unknown; data: Bootstrap | undefined },
   expired: boolean,
+  changed = false,
 ): SessionView {
+  if (changed || (query.error instanceof ApiError && query.error.code === "tenant_context_changed"))
+    return "changed";
   if (query.data && (expired || (query.error instanceof ApiError && query.error.status === 401)))
     return "expired";
   if (expired || (query.error instanceof ApiError && query.error.status === 401))

@@ -5,6 +5,15 @@ import { injectTraceContext, scrubUrl, withEgressAudit } from "../egress.ts";
 const noopAudit = async () => undefined;
 
 describe("scrubUrl", () => {
+  test("redacts URL userinfo and PostgreSQL credential-bearing query parameters", () => {
+    const output = scrubUrl(
+      "postgresql://synthetic-user:synthetic-password@db.example.test/data?password=synthetic-query",
+    );
+    expect(output).not.toContain("synthetic-user");
+    expect(output).not.toContain("synthetic-password");
+    expect(output).not.toContain("synthetic-query");
+    expect(output).toContain("db.example.test/data");
+  });
   test("masks sensitive query params, keeps host + path", () => {
     const out = scrubUrl("https://api.example.com/v1/users?token=abc&limit=10");
     expect(out).toContain("api.example.com");

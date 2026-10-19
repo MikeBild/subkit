@@ -15,6 +15,7 @@ import type { Config } from "../../config/schema.ts";
 import type { Db } from "../../db/client.ts";
 import {
   apiKeys,
+  authIdentities,
   mcpOauthAccessTokens,
   mcpOauthClients,
   sessions,
@@ -22,9 +23,10 @@ import {
   tenants,
   users,
 } from "../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { type CreateTestDbOptions, createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { claimOperatorTenantIfUnassigned } from "../../rbac/operator.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 
 async function ensureConfigLoaded(): Promise<void> {
@@ -101,8 +103,10 @@ export async function browserSessionHeaders(
 }
 
 export interface CreateHttpTestServerOptions {
+  testDbOptions?: CreateTestDbOptions;
   appOptions?: Partial<Parameters<typeof createApp>[0]>;
   operator?: boolean;
+  hosted?: boolean;
 }
 
 export async function createHttpTestServer(
@@ -110,14 +114,34 @@ export async function createHttpTestServer(
   opts?: CreateHttpTestServerOptions,
 ): Promise<HttpTestServer> {
   await ensureConfigLoaded();
-  const testDb = await createTestDb(`http-${label}`);
+  const testDb = await createTestDb(`http-${label}`, opts?.testDbOptions);
 
+  let ownerIdentityId: string | undefined;
+  if (opts?.hosted) {
+    await configureHostedPolicyForTests(testDb.db, testDb.url);
+    const [identity] = await testDb.db
+      .insert(authIdentities)
+      .values({
+        issuer_url: "https://identity.example.test",
+        subject: label,
+        email: `owner-${label}@example.test`,
+      })
+      .returning();
+    if (!identity) throw new Error("seed hosted identity failed");
+    ownerIdentityId = identity.id;
+  }
   const [tenant] = await testDb.db
     .insert(tenants)
-    .values({ slug: `t-${label}`, display_name: `Test ${label}` })
+    .values({
+      slug: `t-${label}`,
+      display_name: `Test ${label}`,
+      ...(ownerIdentityId
+        ? { origin: "self_service" as const, owner_identity_id: ownerIdentityId }
+        : {}),
+    })
     .returning();
   if (!tenant) throw new Error("seed tenant failed");
-  if (opts?.operator ?? true) await claimOperatorTenantIfUnassigned(testDb.db, tenant.id);
+  if (opts?.operator ?? !opts?.hosted) await claimOperatorTenantIfUnassigned(testDb.db, tenant.id);
 
   const [user] = await testDb.db
     .insert(users)

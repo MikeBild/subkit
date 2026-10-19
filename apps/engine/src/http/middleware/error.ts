@@ -2,17 +2,21 @@ import { APICallError, NoObjectGeneratedError } from "ai";
 import type { Context, MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { DescriptionAcceptanceError } from "../../api/catalog-metadata.ts";
+import { HostedChatOwnershipRequired } from "../../chat/hosted-ownership.ts";
 import {
   describeTurnFailure,
   timeoutPhaseOf,
   turnFailureFramePayload,
 } from "../../conversations/turn-failure.ts";
+import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
+import { HostedFileQuotaError } from "../../files/hosted-quota.ts";
 import { ApiKeyOwnerNotFoundError } from "../../identity/api-key-owner.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
 import { toLlmProviderError } from "../../llm/provider-errors.ts";
 import { logger } from "../../logging/logger.ts";
 import type { CapturedError } from "../../observability/error-ring.ts";
 import { errorRing } from "../../observability/error-ring.ts";
+import { HostedWorkQuotaError } from "../../queue/hosted-work.ts";
 import { ScopeExceedsIssuerError, UnknownScopeError } from "../../rbac/scope-issuance.ts";
 import { HttpError, UnauthorizedError } from "../errors.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -81,10 +85,23 @@ function readRetryAfter(details: unknown): number | undefined {
 }
 
 function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
+  const quota = hostedQuotaError(err);
+  if (quota) return envelope(c, quota.status, quota.code, quota.message);
   if (err instanceof Error && err.name === "ProviderMisconfiguredError") {
     captureToRing(c, err, 400, "llm_provider_misconfigured", "llm_provider");
     return envelope(c, 400, "llm_provider_misconfigured", err.message, {
       hint: "set the provider key with `sk settings set llm.providers.<provider>.api_key '\"…\"'` (or `sk init --llm-api-key`), then retry",
+    });
+  }
+  if (err instanceof HostedChatOwnershipRequired) return envelope(c, 403, err.code, err.message);
+  if (err instanceof HostedWorkQuotaError) {
+    return envelope(c, 429, err.code, err.message, {
+      hint: "Wait for active work to finish or ask the engine operator to review pending and unresolved work",
+    });
+  }
+  if (err instanceof HostedFileQuotaError) {
+    return envelope(c, 429, err.code, err.message, {
+      hint: "Ask the engine operator to review the file quota; retained files remain charged until verified cleanup succeeds",
     });
   }
   if (err instanceof LlmQuotaExhausted) {

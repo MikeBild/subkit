@@ -1,3 +1,5 @@
+import type { Executor } from "../../db/client.ts";
+
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
 export type PaginationKind = "page" | "cursor" | "offset" | "link_header";
@@ -71,6 +73,8 @@ export interface DiscoveryResult {
 }
 
 export interface DiscoveryStrategyOptions {
+  exec?: Executor;
+  tenant_id?: string;
   signal?: AbortSignal;
   headers?: Record<string, string>;
 }

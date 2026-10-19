@@ -1,70 +1,42 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E232.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E275.
 
-## Cloud-Dokumentation und Quellenabgleich
+## Aktueller Checkout-Abgleich
 
-Aktuelle Dokumentfortschreibung vom **19.10.2026**, **LOCAL_ONLY**. Neuer Auftrag:
-zusätzliche kostenlose begrenzte Cloud-Self-Service-Beta planen, Dokumentation
-konsolidieren und per passenden MCPs gegenprüfen. [Roadmap](docs/PRODUCT-ROADMAP.md)
-führt Zielbild und Quellen; [Produktaufgaben](docs/TODO.md) führt C01–C09.
-Bestehende L-Status und E01–E231 bleiben historische Nachweise mit ihrem Geltungsbereich.
+Fast-forward auf `1c450cc93` abgeschlossen; Checkoutversion **10.1.3**.
+Bestehende lokale Engine auf Loopback antwortet separat **9.11.2**, HTTP 200;
+sie wurde nicht ersetzt. Lokaler Hosted-Arbeitsstand gesichert und wiederhergestellt;
+Migrationskonflikt gelöst: veröffentlichte Historie unverändert, 49 fokussierte
+Tests PASS (E262). Native Engine/CLI gebaut, native Prozessabnahme zwei PASS/27 Assertions (E272); Typecheck und 22 Invarianten PASS. Vollständiger Gesamtgate und weitere Scheduler-Grenzen offen.
+Kein neuer Commit/Push, Release, Deploy oder Signup-Go aus dieser Integration.
 
-- Main vor Bearbeitung sauber; `git pull --ff-only origin main` erfolgreich,
-  Basis b5d8c6a5e. Checkoutversion **10.1.1**, lokale Engine /health **9.15.2**.
-  Keine Änderung oder Abnahme der lokalen Installation und kein Cloud-Runtime-Nachweis.
-- Offizieller Lovable-MCP erneut lesend: bestehendes Projekt bereit/unveröffentlicht,
-  gleicher Commit wie beim Planungsabgleich der Projektdateien. Damit ist der
-  historische Blocker „Lovable-Verbindung fehlt“ für diese Session aufgehoben;
-  Rechts-/Sichtabnahme, Mailzustellung und öffentliches Hosting bleiben offen.
-- SubKit-Domänensuche liefert bisherige Positionierung, keinen belastbaren SaaS-
-  Betriebsplan. BrowserStack-Werkzeuge nicht verfügbar; Plugin-Suche im
-  Planungsabgleich ohne Treffer. Kein BrowserStack-Konto, Tarif oder Lauf verifiziert.
-- Roadmap, vollständige bisherige Root-TODO, BrowserStack-Strategie und Lovable-
-  Briefing/Setup konsolidiert; README/AGENTS/Launch-Quellen zugeordnet. Die frühere
-  SaaS-Ausschlussentscheidung ist abgelöst, Self-Hosting-Launchtermine bleiben getrennt.
-- E232: 90 lokale Markdown-Verweise einschließlich Ankern in 13 Dokumenten geprüft;
-  `git diff --check` bestanden. `bun run gen:llms-txt` erfolgreich; erneute Generierung
-  über beide Assets byte-identisch, aktueller README-Inhalt eingebettet.
-- `bun test packages/shared/src/tests/llms-index.test.ts apps/engine/src/http/routes/llms-txt.test.ts`:
-  **9 PASS, 0 FAIL, 26 Assertions**. `bun run lint`: Exit 0, 4.467 Dateien,
-  58 bestehende Warnungen und 17 Hinweise in unverändertem Code; keine Fixes angewandt.
-- Toolchain dieser gezielten Prüfungen: Bun **1.3.13**, abweichend von .bun-version
-  **1.4.0**. Kein Release-Nachweis. Vollständiges verify, Build, lokale Demo-/Browser-
-  und Cloud-Live-Gates wegen reinem Dokumentationsumfang nicht ausgeführt. Das normale
-  Git-basierte Driftgate vergleicht gegen HEAD; für die noch uncommitteten beabsichtigten
-  Assetänderungen stattdessen identische Wiederholung des Generators geprüft.
-  Kein Release, kein Deploy oder Publishing.
+## Historischer Release- und Planungsstand
 
-Nächste Schritte: offene Entscheidungen der Roadmap festlegen, danach C01–C03
-als fokussierte technische Inkremente beauftragen; C04–C09 vor Registrierungseröffnung
-abschließen. Website-Änderungen erst anhand konkreter Lovable-Zustände umsetzen.
-
-## Historischer Self-Hosting-Launch-Snapshot vom 18.10.2026
-
-Die folgenden Versions-/Countdown-/Gate- und Verbindungsaussagen gelten für den
-jeweils dokumentierten damaligen Stand. Sie wurden in diesem Dokumentationsauftrag
-nicht vollständig neu verifiziert und sind kein aktueller Cloud-Nachweis.
-
-- Letztes Update: **2026-10-18T18:24:54.713651+00:00**; Planung in Europe/Berlin.
+- Letztes Update: **2026-10-19T05:27:39+00:00**; Planung in Europe/Berlin.
 - Zuletzt bestätigter gemeinsamer Stand: **0a2b4312a**, `main`, Version **10.0.1** vorbereitet.
-  E220–E230 normal geprüft gepusht; alle acht Hooks bestanden. Aktuelles Gesamtgate E224 einschließlich Queue-Adapter bestanden; Produktquellen identisch zum gepushten Stand.
-- Aktuelle Dokumentfortschreibung: **LOCAL_ONLY bis Push**. Übergabe wegen unverändert fehlender externer Voraussetzungen E231; Produktquellen unverändert zu E224.
+  E220–E230 normal geprüft gepusht; alle acht Hooks bestanden. Historisches Gesamtgate E224 einschließlich Queue-Adapter bestanden; die damaligen Produktquellen waren identisch zum gepushten Stand.
+- Aktueller Hosted-Arbeitsstand: **LOCAL_ONLY bis Push**. Neue Produktänderungen in Arbeit; E224 ist ein historischer Nachweis des vorherigen Quellstands und kein Gesamt-PASS für diese Änderungen.
 - Countdown am 18.10.: **9/10 Tage bis Beta am 27./28.10.**, **28 Tage bis GA am 15.11.**
 - Beta-Freigabe **ROT**, Terminprognose **GELB**: bedingt erreichbar.
 - GA-Freigabe **ROT**, Terminprognose **GELB**: insbesondere externe Store-Freigabe offen.
 
-**Autonomer Weiterlauf wartet auf Eingaben, E231:** Drei aufeinanderfolgende
+**Historische Übergabe vor Start des Hosted-Goals, E231:** Drei aufeinanderfolgende
 Prüfungen ohne neue Voraussetzungen. Geeignete Linux-x64-Testumgebung, passender
 Signing-Key-Pfad und Lovable-Verbindung fehlen; Rechts-/Verarbeitungsangaben sowie
 menschliche Abnahmen bleiben offen. Lokales CLI-Profil um 18:23 UTC erneut mit
 Exit 2/unauthorized geprüft. Keine neuen Tests gestartet oder Fachaufgaben auf DONE
 gesetzt; nächste Schritte und benötigte Eingaben stehen unten.
 
-## Aktive Arbeit und nächster Codex-Schritt
+## Aktive Cloud-Arbeit
 
-**L13: aktuelles vollständiges Gate PASS, E224.** `bun run verify` am 18.10.
+Den operativen Cloud-Status einschließlich H01–H09 führt ausschließlich
+[docs/TODO.md](docs/TODO.md#aktueller-implementierungsstand-und-nachweise).
+main-Integration abgeschlossen; E271–E273 beschreiben Matrixabschnitte, nativen Kandidaten
+und aktuelle Komponentenchecks. Ein neuer vollständiger Gesamtgate ist weiterhin offen.
+
+**L13: historisches vollständiges Gate PASS für den vorherigen Quellstand, E224.** `bun run verify` am 18.10.
 16:32–17:41 UTC mit Exit 0 abgeschlossen: **2.051 isolierte Dateien, 19.692 PASS/
 0 FAIL/37 SKIP/5 TODO**; danach AI-Eval, nativer Build, Clipper-Binärprüfung und
 **42 E2E-Dateien, 257 PASS/0 FAIL/20 SKIP/3 TODO** bestanden.
@@ -122,7 +94,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L10 | IN_PROGRESS | ZIP 10.0.1: Versions-/Drift-/Archivprüfung bestanden, E202. Listing, Icons, historische Medien und private Übergabe vorbereitet, E147–E152/E166. Pflichtlinks, Medienabnahme und menschliche Zertifizierung offen. |
 | L11 | IN_PROGRESS | Nutzer hat 9.15.2 eingereicht; letzter Store-Handoff PENDING_REVIEW, E186. E223: konkrete Listing-ID im anonymen Browser zeigt Item not available; aktueller Dashboard-Status UNVERIFIED. Öffentliche Clipper-Privacy fehlt. Keine automatische erneute Einreichung des lokalen 10.0.1-Pakets. |
 | L12 | IN_PROGRESS | **E219: echtes Modell → Knowledge-Vorschlag → Browserbestätigung → Suche/MCP/CLI/Hook-Discovery funktional bestanden; fünf opake Queue-Fehler bleiben unaufgeklärt.** Reale Browser-/Provider-Skill-Journey E185; Knowledge E193; Browser→CLI/MCP/Hook-Handler E200; Clipper→Admission E203; persistierter Chat→Proposal→Bestätigung E205 jeweils begrenzt bestanden. Aktueller Gesamt-/Kategorie-/RBAC-/Kanalnachweis und zuverlässiger Kandidatenstart offen, E194–E196/E201. |
-| L13 | IN_PROGRESS | **Aktuelles vollständiges Gate E224 PASS:** 2.051 isolierte Dateien/19.692 Tests, AI-Eval, nativer Build, Clipper-Binärprüfung und 42 E2E-Dateien/257 Tests; Exit 0, Produktquellhashes unverändert. E216/E217/E222 schließen acht Modell-, zehn PTY- und sechs Real-LLM-Skips separat. Historische Läufe E207–E215 bleiben in der Prüfhistorie. E229: interne Plattform-Builds lokal zweimal identisch. Referenzbenchmark, signierter Kandidat und finale Release-Route offen. |
+| L13 | IN_PROGRESS | **Historisches vollständiges Gate E224 PASS (vor Hosted-Änderungen):** 2.051 isolierte Dateien/19.692 Tests, AI-Eval, nativer Build, Clipper-Binärprüfung und 42 E2E-Dateien/257 Tests; Exit 0, Produktquellhashes unverändert. E216/E217/E222 schließen acht Modell-, zehn PTY- und sechs Real-LLM-Skips separat. Historische Läufe E207–E215 bleiben in der Prüfhistorie. E229: interne Plattform-Builds lokal zweimal identisch. Referenzbenchmark, signierter Kandidat und finale Release-Route offen. |
 | L14 | BLOCKED | L04/L05/L13 und Freigaben für Repository-Öffnung/Artefaktpublikation fehlen. |
 | L15 | TODO | Installation durch externen Nutzer aus öffentlichen Kandidatenartefakten. |
 | L16 | BLOCKED | Website-/Rechtsabnahme und Veröffentlichungsfreigabe fehlen. |
@@ -161,7 +133,7 @@ Website/Recht und Google-Review laufen unabhängig davon, soweit Zugang/Freigabe
 
 | Prüfung | Belegter Stand |
 | --- | --- |
-| Vollständiges lokales Gate | **E224: aktuelles PASS**, Exit 0, Produktquellhashes unverändert und identisch zu main. 2.051 isolierte Dateien: 19.692 PASS/0 FAIL/37 SKIP/5 TODO; AI-Eval, nativer Build, Clipper-Binärprüfung und 42 E2E-Dateien: 257 PASS/0 FAIL/20 SKIP/3 TODO. E215 und E181 sind historische Vorgänger. |
+| Vollständiges lokales Gate | **E224: historisches PASS vor Hosted-Änderungen**, Exit 0, Produktquellhashes unverändert und identisch zu main. 2.051 isolierte Dateien: 19.692 PASS/0 FAIL/37 SKIP/5 TODO; AI-Eval, nativer Build, Clipper-Binärprüfung und 42 E2E-Dateien: 257 PASS/0 FAIL/20 SKIP/3 TODO. E215 und E181 sind historische Vorgänger. |
 | Historische Gate-Fehler | E207: S3-Fixture bei voller Docker-Platte; E209: Issuer-Recovery; E210: historischer ORM-Insert. Jeweils gezielt korrigiert und anschließend im vollständigen E224 bestanden. E212 bleibt eine historische Diagnosefortsetzung. Frühere Logs erhalten; E224 ist der spätere eigenständige Gesamt-PASS. |
 | Reale Modelle | **E222: aktuelle HTTP-/CLI-Gesprächssuite 7 PASS/0 FAIL**, Workflow/Audit und Ablehnung geprüft. E216: zehn lokale Embedding-/Retrieval-/Routingtests PASS. E219: reale Browser-Knowledge-Journey funktional bestanden, Queue-Ursache offen. E169/E170/E185 historisch; keine Abnahme aller Kanäle oder erneute Bestätigung der Produktions-Fallbackroute. |
 | Interne Cross-Builds | **E229:** Linux-x64-Engine und fünf CLI-Binaries für macOS ARM64/x64, Linux ARM64/x64, Windows x64 auf 80a9f9063 gebaut. Zwei Durchläufe im selben Checkout/Cache hashidentisch, sechs Dateiheader und CLI-Prüfsummen korrekt. Native macOS-CLI nach bestehendem lokalen Ad-hoc-Schritt: --version 10.0.1. Kein signierter Release oder Fremdplattform-Lauf. |
@@ -237,3 +209,41 @@ Bei Bedarf gezielt laden oder neuen Kandidaten bauen. Keine fremden Ressourcen b
 Bekannte Lizenzrecherchen E137–E143 nicht wiederholen: alle 103 Polyfill-Versionen
 haben Originaltexte. Vier lokale Source-Archive E144 vorhanden; fehlende Toolchains
 in E145. Kein Wiederaufbau und keine öffentliche Quellauslieferung behauptet.
+
+## Historischer Dokumentationsabgleich auf origin/main
+
+Aktuelle Dokumentfortschreibung vom **19.10.2026**, **LOCAL_ONLY**. Neuer Auftrag:
+zusätzliche kostenlose begrenzte Cloud-Self-Service-Beta planen, Dokumentation
+konsolidieren und per passenden MCPs gegenprüfen. [Roadmap](docs/PRODUCT-ROADMAP.md)
+führt Zielbild und Quellen; [Produktaufgaben](docs/TODO.md) führt C01–C09.
+Bestehende L-Status und E01–E231 bleiben historische Nachweise mit ihrem Geltungsbereich.
+
+- Main vor Bearbeitung sauber; `git pull --ff-only origin main` erfolgreich,
+  Basis b5d8c6a5e. Checkoutversion **10.1.1**, lokale Engine /health **9.15.2**.
+  Keine Änderung oder Abnahme der lokalen Installation und kein Cloud-Runtime-Nachweis.
+- Offizieller Lovable-MCP erneut lesend: bestehendes Projekt bereit/unveröffentlicht,
+  gleicher Commit wie beim Planungsabgleich der Projektdateien. Damit ist der
+  historische Blocker „Lovable-Verbindung fehlt“ für diese Session aufgehoben;
+  Rechts-/Sichtabnahme, Mailzustellung und öffentliches Hosting bleiben offen.
+- SubKit-Domänensuche liefert bisherige Positionierung, keinen belastbaren SaaS-
+  Betriebsplan. BrowserStack-Werkzeuge nicht verfügbar; Plugin-Suche im
+  Planungsabgleich ohne Treffer. Kein BrowserStack-Konto, Tarif oder Lauf verifiziert.
+- Roadmap, vollständige bisherige Root-TODO, BrowserStack-Strategie und Lovable-
+  Briefing/Setup konsolidiert; README/AGENTS/Launch-Quellen zugeordnet. Die frühere
+  SaaS-Ausschlussentscheidung ist abgelöst, Self-Hosting-Launchtermine bleiben getrennt.
+- E260: 90 lokale Markdown-Verweise einschließlich Ankern in 13 Dokumenten geprüft;
+  `git diff --check` bestanden. `bun run gen:llms-txt` erfolgreich; erneute Generierung
+  über beide Assets byte-identisch, aktueller README-Inhalt eingebettet.
+- `bun test packages/shared/src/tests/llms-index.test.ts apps/engine/src/http/routes/llms-txt.test.ts`:
+  **9 PASS, 0 FAIL, 26 Assertions**. `bun run lint`: Exit 0, 4.467 Dateien,
+  58 bestehende Warnungen und 17 Hinweise in unverändertem Code; keine Fixes angewandt.
+- Toolchain dieser gezielten Prüfungen: Bun **1.3.13**, abweichend von .bun-version
+  **1.4.0**. Kein Release-Nachweis. Vollständiges verify, Build, lokale Demo-/Browser-
+  und Cloud-Live-Gates wegen reinem Dokumentationsumfang nicht ausgeführt. Das normale
+  Git-basierte Driftgate vergleicht gegen HEAD; für die noch uncommitteten beabsichtigten
+  Assetänderungen stattdessen identische Wiederholung des Generators geprüft.
+  Kein Release, kein Deploy oder Publishing.
+
+Damals vorgesehene nächste Schritte: offene Entscheidungen der Roadmap festlegen, danach C01–C03
+als fokussierte technische Inkremente beauftragen; C04–C09 vor Registrierungseröffnung
+abschließen. Website-Änderungen erst anhand konkreter Lovable-Zustände umsetzen.

@@ -18,7 +18,10 @@ import {
 
 async function worstTokenBudgetSignal(db: Db): Promise<RiskSignal | null> {
   // tenant-filter:exempt — the allowance is evaluated for every live tenant.
-  const live = await db.select({ id: tenants.id }).from(tenants).where(isNull(tenants.deleted_at));
+  const live = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(and(isNull(tenants.deleted_at), eq(tenants.status, "active")));
   const capped = live.flatMap((tenant) => {
     const budget = resolveMonthlyBudget(tenant.id);
     return budget === null ? [] : [{ id: tenant.id, budget }];

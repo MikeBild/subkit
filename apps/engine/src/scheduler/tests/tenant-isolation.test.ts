@@ -229,3 +229,61 @@ describe("scheduler tenant isolation", () => {
     expect(crossTenantCalls.length).toBe(0);
   });
 });
+
+test("every timers exclude persisted schedules belonging to another workflow tenant", async () => {
+  const { workflow_id: everyWorkflow } = await createWorkflowRow(ctxA, {
+    name: "sched-every-boundary",
+    slug: "sched-every-boundary",
+    steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+  });
+  const schedules = await testDb.db
+    .insert(workflowsSchedules)
+    .values([
+      {
+        tenant_id: ctxA.tenantId,
+        workflow_id: everyWorkflow,
+        cron: "every:3600",
+        timezone: "UTC",
+        paused: false,
+      },
+      {
+        tenant_id: ctxB.tenantId,
+        workflow_id: everyWorkflow,
+        cron: "every:3600",
+        timezone: "UTC",
+        paused: false,
+      },
+    ])
+    .returning({ id: workflowsSchedules.id });
+  if (schedules.length !== 2) throw new Error("schedule fixtures missing");
+  try {
+    const reconciler = new SchedulerReconciler({ boss: createStubBoss([]), db: testDb.db });
+    const desired = await (
+      reconciler as unknown as {
+        computeDesired(): Promise<
+          Map<string, { schedule_id: string; payload: { tenant_id: string; workflow_id: string } }>
+        >;
+      }
+    ).computeDesired();
+    const installed = [...desired.values()];
+    expect(
+      installed.some(
+        (entry) =>
+          entry.schedule_id === schedules[0]?.id &&
+          entry.payload.tenant_id === ctxA.tenantId &&
+          entry.payload.workflow_id === everyWorkflow,
+      ),
+    ).toBe(true);
+    expect(installed.some((entry) => entry.schedule_id === schedules[1]?.id)).toBe(false);
+  } finally {
+    for (const schedule of schedules)
+      await testDb.db
+        .delete(workflowsSchedules)
+        .where(
+          and(
+            eq(workflowsSchedules.id, schedule.id),
+            eq(workflowsSchedules.workflow_id, everyWorkflow),
+          ),
+        );
+  }
+});

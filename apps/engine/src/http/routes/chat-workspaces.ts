@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import {
+  assertChatWorkspaceOwnershipAvailable,
   buildGoogleChatAdapterFromConfig,
   type ChatAdapterRegistry,
   ChatPlatformZodEnum,
@@ -149,6 +150,7 @@ export function registerChatWorkspaceRoutes(
   app.openapi(installRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
+    await assertChatWorkspaceOwnershipAvailable(db, principal.tenant_id);
     const body = c.req.valid("json");
 
     if (body.platform === "slack") {

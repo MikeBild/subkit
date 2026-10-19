@@ -29,5 +29,9 @@ export function _withDriverFetchForTests<T>(
   fn: typeof fetch | null,
   body: () => Promise<T>,
 ): Promise<T> {
+  return withDriverFetch(fn, body);
+}
+
+export function withDriverFetch<T>(fn: typeof fetch | null, body: () => Promise<T>): Promise<T> {
   return overrideStore.run(fn ?? LOAD_TIME_FETCH, body);
 }

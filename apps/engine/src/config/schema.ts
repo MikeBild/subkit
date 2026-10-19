@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hostedRegistrationPolicyError } from "./hosted-registration-policy.ts";
 
 export type FieldScope = "global" | "tenant";
 
@@ -126,6 +127,78 @@ const optionalUrl = z.union([z.literal(""), z.string().url()]);
 
 const ServerSection = z
   .object({
+    hosted_rate_limit: z
+      .object({
+        tenant_per_month: z
+          .number()
+          .int()
+          .min(0)
+          .max(1000000)
+          .default(0)
+          .describe(
+            "Operator request allowance per hosted tenant and UTC calendar month; zero denies hosted requests",
+          )
+          .meta(global()),
+        principal_per_minute: z
+          .number()
+          .int()
+          .min(0)
+          .max(1000000)
+          .default(0)
+          .describe(
+            "Operator request ceiling per authenticated principal and tenant per minute; zero denies hosted requests",
+          )
+          .meta(global()),
+        peer_per_minute: z
+          .number()
+          .int()
+          .min(0)
+          .max(1000000)
+          .default(0)
+          .describe(
+            "Operator request ceiling per verified connection peer and minute; zero denies hosted ingress",
+          )
+          .meta(global()),
+        tenant_per_minute: z
+          .number()
+          .int()
+          .min(0)
+          .max(1000000)
+          .default(0)
+          .describe(
+            "Operator request ceiling per hosted tenant and minute; zero denies hosted requests",
+          )
+          .meta(global()),
+        global_per_minute: z
+          .number()
+          .int()
+          .min(0)
+          .max(1000000)
+          .default(0)
+          .describe(
+            "Operator request ceiling across hosted ingress per minute; zero denies hosted ingress",
+          )
+          .meta(global()),
+      })
+      .prefault({}),
+    trusted_proxy_hops: z
+      .number()
+      .int()
+      .min(0)
+      .max(16)
+      .default(0)
+      .describe(
+        "Trusted reverse-proxy hops counted from the right of X-Forwarded-For; zero ignores forwarding headers.",
+      )
+      .meta(global()),
+    trusted_proxy_ips: z
+      .array(z.union([z.ipv4(), z.ipv6()]))
+      .max(128)
+      .default([])
+      .describe(
+        "Exact trusted reverse-proxy socket peer IPs. Every configured forwarding hop must match; X-Real-IP is never trusted.",
+      )
+      .meta(global()),
     port: z
       .number()
       .int()
@@ -151,7 +224,7 @@ const ServerSection = z
   .prefault({})
   .describe("HTTP server");
 
-const DatabaseSection = z
+export const DatabaseConfigSchema = z
   .object({
     url: z
       .string()
@@ -160,12 +233,113 @@ const DatabaseSection = z
         "Bootstrap-only Postgres connection string. Rotate DATABASE_URL and restart replicas; runtime revisions cannot change this binding.",
       )
       .meta(global({ requiresRestart: true, secret: true })),
+    pool_max: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(10)
+      .describe("Maximum application connections per pool and replica.")
+      .meta(global({ requiresRestart: true })),
+    connect_timeout_ms: z
+      .number()
+      .int()
+      .min(100)
+      .max(60_000)
+      .default(10_000)
+      .describe("Deadline for acquiring or establishing a PostgreSQL connection.")
+      .meta(global({ requiresRestart: true })),
+    query_timeout_ms: z
+      .number()
+      .int()
+      .min(100)
+      .max(900_000)
+      .default(150_000)
+      .describe("Client-side PostgreSQL query deadline in milliseconds.")
+      .meta(global({ requiresRestart: true })),
+    statement_timeout_ms: z
+      .number()
+      .int()
+      .min(100)
+      .max(900_000)
+      .default(120_000)
+      .describe("Server-side PostgreSQL statement deadline, initialized on each session.")
+      .meta(global({ requiresRestart: true })),
+    idle_timeout_ms: z
+      .number()
+      .int()
+      .min(100)
+      .max(300_000)
+      .default(30_000)
+      .describe("Time before an unused pooled connection is closed.")
+      .meta(global({ requiresRestart: true })),
+    keepalive_delay_ms: z
+      .number()
+      .int()
+      .min(100)
+      .max(60_000)
+      .default(10_000)
+      .describe("Initial TCP keepalive delay for PostgreSQL connections.")
+      .meta(global({ requiresRestart: true })),
   })
   .prefault({ url: "" })
   .describe("Database connection");
 
+const HostedMoney = z
+  .string()
+  .regex(/^(0|[1-9]\d*)$/)
+  .max(18);
+const HostedRate = z
+  .string()
+  .regex(/^(0|[1-9]\d*)(\.\d{1,6})?$/)
+  .max(18);
+
+export const HostedLlmModelSchema = z
+  .object({
+    model: z.string().regex(/^(anthropic|openai|gemini|azure|bedrock|vertex):[^\s]+$/),
+    max_context_tokens: z.number().int().min(1).max(2_000_000),
+    max_output_tokens: z.number().int().min(1).max(2_000_000),
+    input_usd_per_million_tokens: HostedRate,
+    output_usd_per_million_tokens: HostedRate,
+    cache_read_usd_per_million_tokens: HostedRate,
+    cache_write_5m_usd_per_million_tokens: HostedRate,
+    cache_write_1h_usd_per_million_tokens: HostedRate,
+  })
+  .strict()
+  .refine((value) => value.max_output_tokens <= value.max_context_tokens, {
+    message: "Hosted output limit must not exceed the verified provider context limit",
+  });
+
 const LlmSection = z
   .object({
+    hosted: z
+      .object({
+        enabled: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Hosted paid-model service mode; requires tenant context independently of signup policy.",
+          )
+          .meta(global()),
+        tenant_monthly_microunits: HostedMoney.default("0")
+          .describe(
+            "Operator-owned monthly hosted budget per tenant in USD microunits; zero blocks paid calls.",
+          )
+          .meta(global()),
+        global_monthly_microunits: HostedMoney.default("0")
+          .describe(
+            "Operator-owned global monthly hosted budget in USD microunits; zero blocks paid calls.",
+          )
+          .meta(global()),
+        models: z
+          .array(HostedLlmModelSchema)
+          .default([])
+          .describe(
+            "Exact provider:model billing allowlist: max_context_tokens must be the verified actual provider-enforced maximum including enabled beta/extended context, not a prompt estimate. Configure maximum USD rates including long-context tiers. Native paid tools and multimodal inputs are unsupported.",
+          )
+          .meta(global({ structural: true, runtimeEditable: true })),
+      })
+      .prefault({}),
     provider: LlmProvider.default("mock").describe("Primary LLM provider").meta(tenant()),
     model: z.string().default("").describe("Primary model identifier").meta(tenant()),
     api_key: z
@@ -284,6 +458,7 @@ const AuthProviders = z
           client_id: z.string().min(1),
           scopes: z.string().default("openid profile email"),
           tenant_slug: z.string().min(1).default("default"),
+          signup_policy: z.enum(["existing_tenant", "invite_only", "self_service"]).optional(),
           link_by_email: z.boolean().optional(),
           product_id: z
             .string()
@@ -439,11 +614,83 @@ const McpOAuthSection = z
 const AuthSection = z
   .object({
     providers: AuthProviders,
+    hosted: z
+      .object({
+        enabled: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Enable identity-first hosted browser authentication for explicitly opted-in providers.",
+          )
+          .meta(global({ requiresRestart: true })),
+        registration_enabled: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Allow new hosted identities to provision their own workspace. Existing members and reviewed invitation handoffs remain available while registration is closed.",
+          )
+          .meta(global()),
+        admission: z
+          .object({
+            tenant_creations_per_minute: z
+              .number()
+              .int()
+              .min(0)
+              .max(1000000)
+              .default(0)
+              .describe(
+                "Operator global ceiling for newly created self-service tenants per minute; idempotent callbacks do not consume it.",
+              )
+              .meta(global()),
+            retained_tenants: z
+              .number()
+              .int()
+              .min(0)
+              .max(1000000)
+              .default(0)
+              .describe(
+                "Operator ceiling for retained self-service tenant records, including erased ownership tombstones; zero denies new tenants.",
+              )
+              .meta(global()),
+            mcp_clients_per_peer_per_minute: z
+              .number()
+              .int()
+              .min(0)
+              .max(1000000)
+              .default(0)
+              .describe(
+                "Operator hosted MCP dynamic-client registration ceiling per verified peer and minute.",
+              )
+              .meta(global()),
+            mcp_clients_per_minute: z
+              .number()
+              .int()
+              .min(0)
+              .max(1000000)
+              .default(0)
+              .describe(
+                "Operator global hosted MCP dynamic-client registration ceiling per minute.",
+              )
+              .meta(global()),
+            retained_mcp_clients: z
+              .number()
+              .int()
+              .min(0)
+              .max(1000000)
+              .default(0)
+              .describe(
+                "Operator ceiling for retained MCP client registrations, including retired and disabled clients; zero denies new clients.",
+              )
+              .meta(global()),
+          })
+          .prefault({}),
+      })
+      .prefault({}),
     enable_signup: z
       .boolean()
       .default(false)
       .describe(
-        "Allow first-time SSO sign-ins to auto-provision a new member account (JIT signup). When false, unknown identities are rejected with access_denied; existing users and links keep working.",
+        "Compatibility fallback for self-hosted OIDC providers without signup_policy: allow first-time SSO member accounts. Explicit provider policies override it; hosted signup never uses it.",
       )
       .meta(global()),
     session: z
@@ -533,6 +780,30 @@ const PlatformSection = z
 
 const StorageSection = z
   .object({
+    hosted: z
+      .object({
+        tenant_bytes: HostedMoney.default("0")
+          .describe(
+            "Operator-owned shared logical byte quota for files, object reservations and all retained user content, including copies and revisions. Not a physical bucket or PostgreSQL disk quota.",
+          )
+          .meta(global()),
+        retained_rows_per_resource: z
+          .number()
+          .int()
+          .min(0)
+          .max(1_000_000)
+          .default(1000)
+          .describe(
+            "Operator-owned retained row ceiling, initially 1,000 for the Free offering, for each hosted resource table, including histories and soft-deleted rows; zero blocks resource creation.",
+          )
+          .meta(global()),
+        max_file_bytes: HostedMoney.default("0")
+          .describe(
+            "Operator-owned maximum declared bytes of each new hosted file; zero blocks file admission.",
+          )
+          .meta(global()),
+      })
+      .prefault({}),
     object_store: z
       .object({
         endpoint: optionalUrl.default("").meta(global()),
@@ -777,6 +1048,40 @@ const SpecSection = z
 
 const QueueSection = z
   .object({
+    hosted: z
+      .object({
+        execution_concurrency: z
+          .number()
+          .int()
+          .min(0)
+          .max(10000)
+          .default(0)
+          .describe(
+            "Operator ceiling for simultaneous hosted root executions per tenant; zero denies work.",
+          )
+          .meta(global()),
+        chat_concurrency: z
+          .number()
+          .int()
+          .min(0)
+          .max(10000)
+          .default(0)
+          .describe(
+            "Operator ceiling for simultaneous hosted chat turns per tenant, including direct calls; zero denies work.",
+          )
+          .meta(global()),
+        pending_jobs: z
+          .number()
+          .int()
+          .min(0)
+          .max(1000000)
+          .default(0)
+          .describe(
+            "Operator ceiling for queued hosted execution and conversation jobs per tenant; zero denies queue admission.",
+          )
+          .meta(global()),
+      })
+      .prefault({}),
     concurrency: z
       .number()
       .int()
@@ -1297,6 +1602,7 @@ const TenantOverlaySchema = z
         summarize_model: z.string().optional(),
         suggestion_model: z.string().optional(),
         context_1m: z.boolean().optional(),
+        web_search: z.boolean().optional(),
         providers: z
           .object({
             anthropic: z
@@ -1446,7 +1752,7 @@ export const ConfigSchema = z
   .object({
     log: LogSection,
     server: ServerSection,
-    database: DatabaseSection,
+    database: DatabaseConfigSchema,
     llm: LlmSection,
     auth: AuthSection,
     platform: PlatformSection,
@@ -1469,6 +1775,15 @@ export const ConfigSchema = z
       .record(z.string(), TenantOverlaySchema)
       .prefault({})
       .describe("Per-tenant override map keyed by tenant_id"),
+  })
+  .superRefine((config, context) => {
+    const message = hostedRegistrationPolicyError(config);
+    if (message)
+      context.addIssue({
+        code: "custom",
+        path: ["auth", "hosted", "registration_enabled"],
+        message,
+      });
   })
   .describe("subkit runtime configuration");
 

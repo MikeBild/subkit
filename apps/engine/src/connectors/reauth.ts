@@ -331,7 +331,7 @@ export function buildReauthUrl(connector: ReauthConnector): {
 }
 
 export async function flagConnectorAuthFailure(
-  db: Db,
+  db: Executor,
   connector: ReauthConnector & Pick<ConnectorView, "tenant_id">,
   opts: { reason: string; workflow_id?: string | null },
 ): Promise<{ transitioned: boolean }> {

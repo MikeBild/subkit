@@ -14,6 +14,139 @@ C01–C08 übernehmen den bisherigen technischen Detailumfang ohne neue Produkta
 Die vorhandene Operatortrennung ist Bestand, kein Beweis fertiger Cloud-Isolation.
 Die Dokumentkonsolidierung ersetzt weder Produktarbeit noch menschliche Abnahmen.
 
+## Aktueller Implementierungsstand und Nachweise
+
+Historischer Integrationscheckpoint E244: Engine-/Cockpit-Typecheck und 22
+Invarianten PASS, globales Lint ohne Fehler. Gezielte Hosted-Regression über
+41 isolierte Testdateien: 317 PASS, zwei Invite-Fehler; korrigierte Fixture
+anschließend fokussiert 3 PASS. Kein neuer Gesamtlauf daraus abgeleitet.
+
+Seitdem geschlossene Lücken: Quotenabschluss tatsächlicher Worker bei voller
+Inhalts-/Auditquote (E245), spezifische Chat-Quotenfehler und sichere SSE-/DB-
+Fehlerantworten (E246), öffentlicher Betreiberpfad für unbekannte Objekt-PUTs
+mit sieben lokalen HTTP/PG-Tests und 55 Assertions (E247), tenantgebundene
+Gruppen/Rollen und Portal-E-Mailauflösung (E248; 73 beziehungsweise elf Tests).
+Intervall-Schedules mit fremder Tenantzuordnung werden ebenfalls verweigert;
+vier PostgreSQL-Tests PASS (E249). Diese Änderungen sind LOCAL_ONLY und noch
+nicht gemeinsam abgenommen.
+
+OAuth-Refresh und Secret-Eigentümerschaft sind jetzt fokussiert abgeschlossen:
+45 Tests für Refresh/Lifecycle (E250), 27 für Zählung, Erasure und frische sowie
+historische Migrationen (E251). Vier Quoten-/Privacy-/Recovery-Dateien nach der
+neuen Migration gemeinsam erneut 23 PASS/118 Assertions (E252).
+
+Ein Teil der Scheduler-/Dateibereinigung ist fokussiert geprüft: öffentliche
+Queue-Schnittstellen, begrenzter Produkt-/SDK-Scan, atomarer Soft-Delete-Audit und
+Gegenprobe zum Löschrennen; 42 Tests PASS (E254), unabhängig geprüft.
+
+Settings-only-Keywartung ist einschließlich CLI und separater DB-Fähigkeit
+fokussiert geprüft: 92 Crypto-/CLI-/Wartungstests sowie 19 DB-Wartungstests PASS.
+Startup-/Coordinator-Tests decken Gate, Key-Pin, Drain und die äußere
+Registrierungs-Commit-Barriere ab. Engine-/Cockpit-Typecheck, Lint ohne Fehler
+und 22 Invarianten bestanden (E259). Eine Rotation aller Produktdaten wird nicht
+behauptet: andere Cipher-/HMAC-Bestände verhindern diese Operation ausdrücklich.
+Externe Stillstandsattestierung bleibt erforderlich; produktive Rollenfähigkeit
+und vollständige private Login-Zuordnung sind nicht nachgewiesen.
+
+Tatsächlicher Source-Prozessstart/-stop besteht zwei Tests mit 25 Assertions
+(E261), einschließlich Key-Verweigerung vor HTTP sowie SIGTERM/SIGKILL.
+Dies ist kein kompiliertes Artefakt und kein Modell-/Cloudnachweis.
+
+Der gesicherte Arbeitsstand ist mit origin/main integriert. Die veröffentlichte Migration und ihre Snapshot-Historie sind unverändert
+integriert; 14 lokale Schritte wurden sicher verschoben, 49 fokussierte Tests PASS
+(E262). Anschließend
+Generatoren, integrierte Hosted-Regression und neues Gesamtgate auf dem gemeinsamen
+Stand. Der unabhängige Ausnahme-Delta-Review fand keinen neuen belegten Bypass;
+Die historischen 34 Annotationen betreffen reguläre Schedulerjobs; der aktuelle
+Abgleich fand 25 noch unbegrenzte SQL-Arbeitseinheiten. Titelpfad und
+Notification-Mutationsbatch sind inzwischen fokussiert begrenzt (E265);
+23 weitere Einheiten aus diesem historischen Inventar bleiben offen. Zusätzlich
+ist außerhalb des Inventars ein unbegrenzter Chat-Dedup-Lauf gefunden; ebenso
+bleibt die Gesamtzahl residenter Timer offen. Kein Cloud-, Release-
+oder aktueller Gesamtgate-PASS wird daraus abgeleitet.
+
+Signed-JWT-Merge gezielt geprüft: Token-Echo vor GraphQL-Fehlerlogging redigiert,
+und vorgelagerte Egress-Prüfungen verwenden den vorgegebenen DB-/TX-Kontext.
+21 Tests PASS/39 Assertions einschließlich tatsächlicher PostgreSQL-Transport-
+Gegenproben (E263); kein gesamter SSRF- oder Cloud-Nachweis.
+
+Integrierter Kandidatenlauf über 151 vorhandene geänderte Testdateien stoppte
+regulär bei Datei 27: 209 PASS/acht FAIL (E266). Fehlender expliziter Fixture-DB-
+Kontext isoliert reproduziert; Korrektur/Gegenprobe aktiv. Die HTTP-Korrektur besteht 30 gezielte Tests. Die Fortsetzung fand vier
+Scrape-Analysefehler; Analyse und tatsächlicher Robots-Abrufpfad sind inzwischen
+mit 35 Tests geprüft (E267). Eine weitere Fortsetzung stoppte im Seed-Setup vor
+Assertions; unveränderte Einzelgegenprobe und verbleibende Dateien offen. Kein
+gemeinsamer PASS vor vollständigem Abgleich. Architektur für acht Producer-Fanouts ist ausgearbeitet:
+explizite operative Cursor-Tabelle, endliche Epochen, kurze CAS-/Lease-Transaktionen
+und je Reconciler vollständige Timer-Generationen; Plan lokal unter
+`.artifacts/launch/hosted-scheduler-fanout-plan-reviewed.md`, unabhängig geprüft
+und korrigiert (Created-at-Cutoff, aktuelle Kadenzen, Admission-Fencing,
+Queue-Mehrdeutigkeit und Timer-Grenzen); noch keine Umsetzung.
+
+Weitere negative Abrufpfade geschlossen: Antwortgrößen/Body-Fristen und native
+Abbruchgegenprobe sowie CPU-sichere begrenzte Sitemap-Erkennung (E268).
+Browser-Lifecycle prüft tatsächlichen Sitzungswiderruf und unabhängige
+Tenant-Statussperre getrennt; Seed-Gegenprobe unverändert bestanden.
+Legacy-Erasure und Lifecycle bestehen 24 fokussierte Tests/129 Assertions;
+das Sweep-Szenario besitzt eigene Datenbank und hält Legacy-Upgrade-Abdeckung.
+Ein Importzyklus im gemeinsamen Body-Reader wurde danach an einer importfreien
+Primitive-Grenze behoben; 94 Tests in sechs isolierten Prozessen PASS.
+Die letzten 19 Dateien bestehen mit 106 PASS/0 FAIL; damit sind alle 151 Dateien
+besucht (E271). Wegen zwischenzeitlicher Korrekturen kein einzelner grüner Gesamtlauf.
+
+Native Engine und CLI 10.1.3 regulär gebaut; zwei tatsächliche native Prozesstests
+bestehen mit 27 Assertions (E272), einschließlich Start, Key-Pin, SIGTERM/SIGKILL.
+Eigene Fixtures bereinigt, Nutzerdemo unverändert. Typecheck und 22 Invarianten
+aktuell PASS (E273). Nach Indexaufnahme bestehen alle 30 Vertragstests (E274). Nächster Schritt: geprüften integrierten Stand normal
+committen/pushen, danach den geprüften Cursor-/Producer-Plan umsetzen.
+
+### Aktives Hosted-Goal
+
+Nutzerauftrag: vollständiger Self-Service-Cloud-Plan einschließlich DevOps und
+Architektur. Eigener Tenant plus eingeladene Mitgliedschaften, Pflichtbudgets,
+eine Startreplik, kein Trial, sieben Tage widerrufbare Löschung. Offenes Signup
+bleibt bis zur vollständigen Abnahme deaktiviert. Alle neuen Ergebnisse sind
+LOCAL_ONLY; kein neuer Release-, Deployment- oder öffentlicher Freigabenachweis.
+
+Freigegebene Free-Betriebswerte: 5 USD Modellkosten pro Tenant/Monat,
+50 USD Modellkosten insgesamt/Monat, 50 MB (50.000.000 Bytes) gemeinsamer logischer
+Speicher für Dateien und gespeicherte Nutzerinhalte pro Tenant
+sowie 1.000 aufbewahrte Datensätze je Ressourcentyp einschließlich logisch gelöschter
+Einträge bis zur physischen Bereinigung und 10.000 metrierte Requests pro
+Tenant/UTC-Kalendermonat. Auth-Aktionen werden
+per Webhook zugestellt; Ziel-URL folgt. Diese Werte sind im privaten
+Deploymentvertrag festgehalten, noch nicht produktiv konfiguriert. Schutzlimits
+pro Minute und Queue-/Dateigrenzen bleiben davon getrennt. Die Nutzerpräzisierung
+schließt Knowledge und Gespräche ein; bestehende Dateiquoten allein erfüllen diese
+Gesamtgrenze noch nicht. Gemeinsames Byte-Ledger einschließlich Content-Historien
+und nicht dateigebundenem Objekt-Offload ist implementiert und fokussiert geprüft;
+die nachträglich gefundene OAuth-Secretversionen-Lücke ist fokussiert geschlossen
+(E251). Settings-only-Wartung ist fokussiert geprüft (E259); kein vollständiger
+Produkt-Keywechsel bei weiteren Cipher-/HMAC-Beständen wird behauptet.
+Eine vollständige integrierte und echte Cloud-Abnahme steht aus.
+
+| ID | Status | Nachweis und nächstes Ergebnis |
+| --- | --- | --- |
+| H01 Bestand/Herkunft | IN_PROGRESS | Historisches Deployment durch private Deployment-Git-Historie belegt. Aktuelle Browser-/MCP-Sicht und physische Datenbank-Kompatibilitätsprüfung finden keine Produktressourcen. Aktueller Katalog später initialisiert; Ersatz oder Reset nicht bewiesen. Recovery-Metadaten mit vorhandenem Token nicht lesbar. Zuordnung bleibt vor Cloudmutation offen. |
+| H02 DB/Runtime | IN_PROGRESS | Gepinnter Bun isoliert verfügbar; früher Versionscheck in Verify/Pre-Push implementiert und positiv/negativ geprüft. Gemeinsame Pool-/Listener-Initialisierung mit Keepalive, Deadlines, Poolgrenze und Session-Search-Path implementiert. 41 fokussierte DB-/Konfigurationstests bestanden; Listener-Lifecycle und Reconnect zusätzlich gezielt geprüft. Fünf Tenant-Statusfälle und Queue-/Scheduler-/Webhook-Regressionen zusammen 24 PASS. Integrierte Kandidatenprüfung ausstehend. Nach main-Fast-forward Checkout 10.1.3, bestehende lokale Demo aktuell separat 9.11.2; Demo unverändert. |
+| H03 Identität/Mitgliedschaften | IN_PROGRESS | Globale Identität, ein eigener Tenant, eingeladene Mitgliedschaften, Browser-Sitzungsrotation und Tenant-Kontextprüfung implementiert. Registrierung getrennt vom laufenden Hosted-Betrieb; acht zusätzliche HTTP/OIDC/PG-Fälle zu geschlossener Registrierung und sicherem Invite-Login bestanden. Frische browsergebundene OIDC-Recovery und zehn zusätzliche HTTP/OIDC/PG-Transportfälle bestanden. CLI-/OAuth-Membership-Handoff implementiert und fokussiert mit HTTP/PG sowie CLI-Tests geprüft; Gruppen-/Rollenisolation mit eigener Vorwärtsmigration nachgeschärft, 73 Tests PASS; Portal-E-Mail tenantgebunden, elf Tests PASS (E248). Native verbundene Browser-/CLI- und echte Cloud-Journey offen. |
+| H04 Geldbudgets/Fairness | IN_PROGRESS | Atomare monatliche Tenant-/Gesamtgeldreservierung mit sieben DB-Tests bestanden. Gemeinsame Modell-Middleware reserviert vor Provideraufrufen, hält unbekannten Verbrauch und verhindert Doppelaufrufe; 42 gezielte Middleware-/Modell-/Labeltests bestanden. Persistente Peer-/Principal-/Tenant-/Global-Requestlimits sowie monatliches Tenant-Kontingent implementiert; acht atomare DB- und sieben echte HTTP-Tests sowie 18 Policy-/Labeltests für den Monatsdeckel bestanden. Unabhängiges Review schloss Pfadfreistellung und Denial-Rollback. Speicherquoten und atomare Queue-/Direct-Chat-Fairness implementiert; 14 Queue-/Ledger-/Reviewtests PASS. Betreiber-Reconciliation zusätzlich drei echte HTTP/PG-Tests PASS, E236. Persistente Signup-/DCR-Admisson und gemeinsames Byte-/Ressourcenledger implementiert und fokussiert geprüft, E242. Neue Queue-Integration 14 PASS; Dokumentimport mit Stream-/Fehlergrenzen E241. Vollquoten-Workerabschluss E245, Chat-Fehlergrenze E246 und Tokenhistorien-Eigentümerschaft E251 fokussiert bestanden. Vollständiges Transportinventar und integrierte Abnahme offen; einzelne Transportchecks ergeben keine gesamte SSRF-Freigabe. |
+| H05 Lifecycle/Auth-Mail | IN_PROGRESS | Tenant-Status sperrt HTTP/MCP, Ausführung und tenantgebundene Jobs. Löschauftrag mit sieben Tagen Frist, atomarem Credential-Widerruf und frischer einmaliger Browser-Recovery implementiert; sieben DB-Tests bestanden. Erasure-Domain isoliert mit Objekt-/Retry-/Nachbartenant-/Drainfällen geprüft; Sweep in bestehende Cleanup-Kadenz integriert und verweigert unaufgelöste Arbeit, fremde Prozessbesitzer oder fehlenden Drainnachweis. Objektledger und Erasure erneut fokussiert geprüft, einschließlich physischem Tombstone bei Budget null, E243. Öffentliche Objekt-Reconciliation E247 und Refresh-Lifecycle E250 fokussiert bestanden. Settings-only-Keywartung einschließlich inaktiver Registry-Owner ist fokussiert geprüft (E259); produktive Rollenfähigkeit und externe Stillstandsattestierung unbewiesen. Vollständiger Produkt-/Objektspeicher-/Cloudnachweis fehlt. Auth-Aktionszustellung per Webhook vorbereitet; Ziel-URL und echter Zustellnachweis offen. |
+| H06 Cockpit/Client-Verträge | IN_PROGRESS | Lovable-Entwurf inspiziert und Workspace-Menü, Löschdialog sowie Recovery-Seite integriert. 33 Cockpit-Session-/Kontexttests bestanden. Browser prüfte Wechsel, Stale-Tab-Sperre sowie HTTP-200-Löschung/Wiederherstellung gegen isolierte PostgreSQL-Fixture; Browser-Identitätsnachweis dabei simuliert. Bootstrap-Refetchloop korrigiert; Zwei-Tab-Gegenprobe blieb bei drei Bootstrap-Aufrufen. Engine- und Cockpit-Typecheck bestanden. Clientparität, finale generierte Assets und Sichtabnahme offen; E232. Zusätzlicher Lovable-Entwurf für Betreiber-Reconciliation meldet Buildfehler, Korrektur wegen fehlender Workspace-Credits abgelehnt; diese neue Oberfläche ist noch nicht integriert, E236. |
+| H07 Vollständige Abnahme | IN_PROGRESS | Gezielte Checks während Entwicklung; Architektur-/Implementierungs-/Review-/Testabgleich vor neuem Gesamtgate. E224 bleibt historischer Nachweis, kein PASS für neue Hosted-Quellen. |
+| H08 Privater Deployment-Vertrag | IN_PROGRESS | SubKit-only Vertrag und rein lesender Kandidatenguard im privaten Deployment-Repo vorbereitet; 29 Tests bestanden, einschließlich bestätigter 1.000 Datensätze je Ressourcentyp samt Soft-Delete, E242. Gemeinsame 50-MB-Quote, Ressourcenanzahl und nachgewiesen unversionierter, nicht gesperrter Objekt-Bucket sind explizite Kandidatengrenzen. Herkunft, finaler Releasepin und Deploymentautorität bleiben gesperrte Pflichteingaben. Historischen Sechsproduktvertrag erhalten. |
+| H09 Release/Cloud/Signup | TODO | Signierte Distribution, autorisiertes Deployment, echte Upraft-Journeys, Backup/Restore, Rechts-/Sichtabnahmen und separate Signup-Freigabe fehlen. |
+
+`query-fragment.test.ts` aktuell allein 4/4 und gemeinsam mit Server-Registry 8/8
+bestanden; alter Batchfehler nicht reproduziert, daher kein spekulativer Fix.
+Nächste Schritte: verbleibende ausgehende Transportpfade und Lifecycle-Lücken
+schließen, gemeinsames Ledger sowie Producer-/Transportabdeckung integriert
+prüfen und den erweiterten Lovable-Betreiberablauf fertigstellen.
+Recovery und Lifecycle sind lokal implementiert; externe Nachweise bleiben getrennt.
+Neue fokussierte Ergebnisse stehen in lokalen Prüfprotokollen; dauerhafte
+Nachweisübernahme und neues Gesamtgate folgen nach dem gemeinsamen Review.
+
+
 ## Technische Inkremente C01–C08
 
 Direction: one shared engine, one isolated tenant per registered account, platform LLM
@@ -28,10 +161,10 @@ Remaining increments, in order. Each one is shippable on its own; open registrat
 requires C01–C09 and the opening criteria in PRODUCT-ROADMAP.md, including isolation,
 real onboarding, lifecycle, operating readiness and legal approval.
 
-1. **C01 — TODO: Database connection robustness:** keepalive and bounded connect, query and statement
+1. **C01 — IN_PROGRESS: Database connection robustness:** keepalive and bounded connect, query and statement
    timeouts on the pool and the listener, configurable pool maximum, `search_path` set
    per connection so the boot assertion does not depend on role settings.
-2. **C02 — TODO: Tenant model and budgets:** tenant origin and status columns, one domain operation that provisions
+2. **C02 — IN_PROGRESS: Tenant model and budgets:** tenant origin and status columns, one domain operation that provisions
    a tenant (insert only, random slug, owner role without engine-wide rights, idempotent
    through a global unique identity binding, only for verified emails), central status
    enforcement (login, principals, hooks, cron, dequeue, seeds, session and key
@@ -39,28 +172,28 @@ real onboarding, lifecycle, operating readiness and legal approval.
    money with a global monthly ceiling, atomic budget reservation with every direct LLM
    call covered, no runtime-config overlay for self-service tenants, tenants cannot set
    their own budget, model or limits.
-3. **C03 — TODO: Login per identity:** ignore the tenant query parameter, resolve the tenant in the
+3. **C03 — IN_PROGRESS: Login per identity:** ignore the tenant query parameter, resolve the tenant in the
    callback, per-provider signup policy instead of the global flag, join an existing
    tenant only through an existing link or an invite token, verified email required,
    adapt the identity assertion, `sk` login and token exchange.
-4. **C04 — TODO: Fairness and abuse protection:** per-tenant job grouping and concurrency, per-tenant
+4. **C04 — IN_PROGRESS: Fairness and abuse protection:** per-tenant job grouping and concurrency, per-tenant
    limit for inline chat turns, rate limits per principal and tenant stored in
    PostgreSQL, trusted proxy hop for forwarded addresses, throttled tenant creation and
    MCP client registration, SSRF gaps (database and object-store connectors, redirects,
    DNS rebinding, missing address ranges, internal platform networks), storage quota and
    smaller file limit per tenant, capped tenant-scoped resource limits, chat workspaces
    locked until ownership is proven.
-5. **C05 — TODO: Tenant lifecycle:** erasure (data, objects, secrets, config entries, audit event),
-   owner-initiated deletion in the Cockpit (design from Lovable), scheduler for trial
-   expiry and grace period, lifecycle webhook route that verifies the signed event and
+5. **C05 — IN_PROGRESS: Tenant lifecycle:** erasure (data, objects, secrets, config entries, audit event),
+   owner-initiated deletion in the Cockpit (design from Lovable), scheduler for the seven-day reversible deletion
+   grace period; no trial expiry, lifecycle webhook route that verifies the signed event and
    maps (issuer, subject) to a tenant. Add an owner-authorized data export and a
    reviewable deletion request, including behaviour for in-flight work and backup retention;
    define these semantics before implementation.
-6. **C06 — TODO: Authentication mail:** Upraft Auth delivery webhook to the SubKit workflow with the
+6. **C06 — IN_PROGRESS: Authentication mail:** Upraft Auth delivery webhook to the SubKit workflow with the
    execution marked sensitive so action links are never stored in clear text; verify
    step outputs, logs and spans; end-to-end test with a dedicated account before
    switching off the built-in mail; uptime monitor on the hook.
-7. **C07 — TODO: Hosted deployment runbook** (outside this repository, every mutation approved):
+7. **C07 — IN_PROGRESS: Hosted deployment runbook** (outside this repository, every mutation approved):
    Git build of the release commit, session-mode writer binding with owner access,
    compatibility repair of managed schemas, app revision with memory, stop-grace,
    drain and probe values, single replica until limits are in PostgreSQL, object-store
@@ -68,7 +201,7 @@ real onboarding, lifecycle, operating readiness and legal approval.
    dedicated Auth realm with open signup, paired database and bucket backup, rollback
    rule, uptime monitors. Review all `tenant-filter:exempt` sites and add cross-tenant
    journeys for self-service before registration opens.
-8. **C08 — TODO: Product position and legal:** update `LAUNCH.md`, `LAUNCH_STATUS.md`, `README.md` and
+8. **C08 — IN_PROGRESS: Product position and legal:** update `LAUNCH.md`, `LAUNCH_STATUS.md`, `README.md` and
    generated `llms*.txt`; imprint, privacy policy, data-processing agreement and terms.
    Document consolidation is prepared locally; product availability, final legal texts
    and human legal acceptance remain open. Include actual providers, region, retention,

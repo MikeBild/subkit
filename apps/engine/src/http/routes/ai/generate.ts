@@ -1,10 +1,10 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { streamSSE } from "hono/streaming";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { runGenerateFlow } from "../../../llm/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { streamTenantSSE as streamSSE } from "../../tenant-stream.ts";
 
 const GenerateBody = z
   .object({

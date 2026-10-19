@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest, apiText, apiUpload } from "@/api/client";
 import type { components } from "@/api/schema";
+import { tenantContentHref } from "@/api/tenant-context";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
 import { absolute, conversationHref, recordHref, workflowHref } from "@/app/links";
@@ -567,7 +568,7 @@ function FileSheet({
   const file = fileQuery.data;
   const kind = file ? previewKind(file.filename, file.content_type) : "other";
   const textual = kind === "markdown" || kind === "text" || kind === "csv";
-  const contentPath = `/v1/files/${encodeURIComponent(id)}/content`;
+  const contentPath = tenantContentHref(`/v1/files/${encodeURIComponent(id)}/content`);
   const textQuery = useQuery({
     queryKey: ["file", id, "content", file?.updated_at],
     queryFn: () => apiText(contentPath),

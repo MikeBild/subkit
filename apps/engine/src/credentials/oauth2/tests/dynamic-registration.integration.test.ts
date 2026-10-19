@@ -132,11 +132,14 @@ describe("dynamic registration + credential persistence — crypto roundtrip + A
     const tenantId = t!.id;
     const connectorId = await seedConnector(tenantId, "dr-aad-connector");
 
-    const reg = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://app.example.com/callback"] },
-      allowInsecureRequests: true,
-    });
+    const reg = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://app.example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    );
 
     await upsertCredential(
       {
@@ -213,11 +216,14 @@ describe("dynamic registration + credential persistence — tenant isolation", (
     const connectorIdA = await seedConnector(tenantIdA, "dr-iso-connector-a");
     const connectorIdB = await seedConnector(tenantIdB, "dr-iso-connector-b");
 
-    const regA = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://app-a.example.com/callback"] },
-      allowInsecureRequests: true,
-    });
+    const regA = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://app-a.example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    );
     await upsertCredential(
       {
         tenant_id: tenantIdA,
@@ -230,11 +236,14 @@ describe("dynamic registration + credential persistence — tenant isolation", (
       ctx.db,
     );
 
-    const regB = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://app-b.example.com/callback"] },
-      allowInsecureRequests: true,
-    });
+    const regB = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://app-b.example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    );
     await upsertCredential(
       {
         tenant_id: tenantIdB,
@@ -266,11 +275,14 @@ describe("dynamic registration — coexistence with oauth2 access token credenti
     const tenantId = t!.id;
     const connectorId = await seedConnector(tenantId, "dr-coexist-connector");
 
-    const reg = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://app.example.com/callback"] },
-      allowInsecureRequests: true,
-    });
+    const reg = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://app.example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    );
     expect(reg.clientSecret).toBeTruthy();
 
     await upsertCredential(
@@ -345,11 +357,14 @@ describe("dynamic registration — audit success path", () => {
     const tenantId = t!.id;
     const connectorId = await seedConnector(tenantId, "dr-audit-ok-connector");
 
-    const reg = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://audit-ok.example.com/callback"] },
-      allowInsecureRequests: true,
-    });
+    const reg = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://audit-ok.example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    );
 
     await upsertCredential(
       {

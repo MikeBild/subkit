@@ -1,23 +1,37 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, executions, fileLinks, files } from "../../db/schema/index.ts";
+import { PgBoss } from "pg-boss";
+import {
+  auditLog,
+  executionSteps,
+  executions,
+  fileLinks,
+  files,
+  tenants,
+  workflows,
+  workflowsSchedules,
+} from "../../db/schema/index.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
+import { logRing } from "../../observability/log-ring.ts";
+import { EXECUTION_RUN_QUEUE } from "../../queue/queues.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { runFilesCleanup } from "../files-cleanup-runner.ts";
-import { bootstrapMinimalPgbossSchema } from "./pgboss-bootstrap.ts";
+import { createFilesCleanupBoss, disposeBoss } from "./pgboss-bootstrap.ts";
 
 const uuid = createDeterministicUuidFactory(0xface02);
 
 let srv: HttpTestServer;
+let boss: PgBoss;
 
 beforeAll(async () => {
   srv = await createHttpTestServer("files-cleanup");
-  await bootstrapMinimalPgbossSchema(srv.db);
+  boss = await createFilesCleanupBoss(srv.testDb.url);
 }, 60_000);
 
 afterAll(async () => {
+  await disposeBoss(boss);
   await srv.cleanup();
 }, 30_000);
 
@@ -35,7 +49,7 @@ describe("runFilesCleanup — sweep 1: pending orphans", () => {
       upload_url_expires_at: expiredAt,
     });
 
-    await runFilesCleanup(new Date(getTestNow()), srv.db);
+    await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
 
     const rows = await srv.db.select().from(files).where(eq(files.id, file_uuid));
     expect(rows).toHaveLength(0);
@@ -68,7 +82,7 @@ describe("runFilesCleanup — sweep 1: pending orphans", () => {
       upload_url_expires_at: futureAt,
     });
 
-    await runFilesCleanup(new Date(getTestNow()), srv.db);
+    await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
 
     const rows = await srv.db.select().from(files).where(eq(files.id, file_uuid));
     expect(rows).toHaveLength(1);
@@ -89,7 +103,7 @@ describe("runFilesCleanup — sweep 2: unlinked TTL", () => {
 
     await srv.db.delete(fileLinks).where(eq(fileLinks.file_id, att.file_uuid));
 
-    await runFilesCleanup(new Date(getTestNow()), srv.db);
+    await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
 
     const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
     expect(row).toBeDefined();
@@ -109,7 +123,7 @@ describe("runFilesCleanup — sweep 2: unlinked TTL", () => {
       deleted_at: oldDeletedAt,
     });
 
-    await runFilesCleanup(new Date(getTestNow()), srv.db);
+    await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
 
     const rows = await srv.db.select().from(files).where(eq(files.id, file_uuid));
     expect(rows).toHaveLength(0);
@@ -153,7 +167,7 @@ describe("runFilesCleanup — sweep 2: unlinked TTL", () => {
       execution_mode: "dev",
     });
 
-    await runFilesCleanup(new Date(getTestNow()), srv.db);
+    await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
 
     const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
     expect(row).toBeDefined();
@@ -161,4 +175,199 @@ describe("runFilesCleanup — sweep 2: unlinked TTL", () => {
 
     await srv.db.delete(executions).where(eq(executions.id, exec_id));
   });
+});
+
+async function seedUnlinked(tenantId = srv.tenantId, deletedAt?: Date) {
+  const id = uuid();
+  await srv.db.insert(files).values({
+    id,
+    tenant_id: tenantId,
+    status: "ready",
+    filename: "guarded.txt",
+    storage_uri: `local://${tenantId}/${id}`,
+    size_bytes: 1,
+    deleted_at: deletedAt,
+  });
+  return id;
+}
+
+async function expectLive(id: string, deletedAt: Date | null = null) {
+  const [row] = await srv.db.select().from(files).where(eq(files.id, id));
+  expect(row).toBeDefined();
+  expect(row?.deleted_at).toEqual(deletedAt);
+}
+
+test("public SDK queued, active, retry and scheduled file references guard soft and expired hard candidates", async () => {
+  const queued = await seedUnlinked();
+  const active = await seedUnlinked();
+  const retry = await seedUnlinked();
+  const scheduled = await seedUnlinked();
+  const expiredAt = new Date(getTestNow() - 8 * 24 * 60 * 60 * 1000);
+  const oldActive = await seedUnlinked(srv.tenantId, expiredAt);
+  await boss.updateQueue(EXECUTION_RUN_QUEUE, {
+    retryLimit: 2,
+    retryDelay: 3600,
+    retryBackoff: false,
+  });
+  await boss.send(EXECUTION_RUN_QUEUE, {
+    tenant_id: srv.tenantId,
+    input: { $file: active, older: { $file: oldActive } },
+  });
+  const retryJob = await boss.send(EXECUTION_RUN_QUEUE, {
+    tenant_id: srv.tenantId,
+    input: { $file: retry },
+  });
+  await boss.fetch(EXECUTION_RUN_QUEUE, { batchSize: 2 });
+  if (!retryJob) throw new Error("missing retry job fixture");
+  await boss.fail(EXECUTION_RUN_QUEUE, retryJob);
+  await boss.send(EXECUTION_RUN_QUEUE, { tenant_id: srv.tenantId, input: { $file: queued } });
+  await boss.schedule(
+    EXECUTION_RUN_QUEUE,
+    "0 0 1 1 *",
+    { tenant_id: srv.tenantId, input: { $file: scheduled } },
+    { key: "file-guard" },
+  );
+  await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
+  for (const id of [queued, active, retry, scheduled]) await expectLive(id);
+  await expectLive(oldActive, expiredAt);
+  await boss.deleteAllJobs(EXECUTION_RUN_QUEUE);
+  await boss.unschedule(EXECUTION_RUN_QUEUE, "file-guard");
+});
+
+test("persisted queued input and workflow schedule input guard files without queue payload copies", async () => {
+  const queued = await seedUnlinked();
+  const scheduled = await seedUnlinked();
+  const executionId = uuid();
+  await srv.db.insert(executions).values({
+    id: executionId,
+    tenant_id: srv.tenantId,
+    status: "queued",
+    source_kind: "draft",
+    input: { $file: queued },
+    request_source: "api",
+    execution_mode: "dev",
+  });
+  const [workflow] = await srv.db
+    .insert(workflows)
+    .values({
+      tenant_id: srv.tenantId,
+      slug: "file-scheduled",
+      name: "File scheduled",
+      lifecycle: "active",
+    })
+    .returning();
+  if (!workflow) throw new Error("missing scheduled workflow fixture");
+  await srv.db.insert(workflowsSchedules).values({
+    tenant_id: srv.tenantId,
+    workflow_id: workflow.id,
+    cron: "0 0 1 1 *",
+    input: { $file: scheduled },
+  });
+  await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
+  await expectLive(queued);
+  await expectLive(scheduled);
+  await srv.db.delete(executions).where(eq(executions.id, executionId));
+  await srv.db.delete(workflows).where(eq(workflows.id, workflow.id));
+});
+
+test("neighbor-tenant SDK references and mismatched product parent rows do not guard another tenant", async () => {
+  const id = await seedUnlinked();
+  const [foreign] = await srv.db
+    .insert(tenants)
+    .values({ slug: "cleanup-foreign", display_name: "Foreign" })
+    .returning();
+  if (!foreign) throw new Error("missing foreign tenant fixture");
+  const executionId = uuid();
+  await srv.db.insert(executions).values({
+    id: executionId,
+    tenant_id: foreign.id,
+    status: "running",
+    source_kind: "draft",
+    input: { $file: id },
+    request_source: "api",
+    execution_mode: "dev",
+  });
+  await srv.db.insert(executionSteps).values({
+    tenant_id: srv.tenantId,
+    execution_id: executionId,
+    step_key: "foreign-parent",
+    kind: "code",
+    status: "running",
+    input_preview: { $file: id },
+  });
+  const [foreignWorkflow] = await srv.db
+    .insert(workflows)
+    .values({ tenant_id: foreign.id, slug: "file-foreign", name: "Foreign", lifecycle: "active" })
+    .returning();
+  if (!foreignWorkflow) throw new Error("missing foreign workflow fixture");
+  await srv.db.insert(workflowsSchedules).values({
+    tenant_id: srv.tenantId,
+    workflow_id: foreignWorkflow.id,
+    cron: "0 0 1 1 *",
+    input: { $file: id },
+  });
+  await boss.send(EXECUTION_RUN_QUEUE, { tenant_id: foreign.id, input: { $file: id } });
+  await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
+  const [row] = await srv.db.select().from(files).where(eq(files.id, id));
+  expect(row?.deleted_at).not.toBeNull();
+  await boss.deleteAllJobs(EXECUTION_RUN_QUEUE);
+});
+
+test("an incomplete SDK scan preserves both soft and expired hard candidates", async () => {
+  const soft = await seedUnlinked();
+  const expiredAt = new Date(getTestNow() - 8 * 24 * 60 * 60 * 1000);
+  const hard = await seedUnlinked(srv.tenantId, expiredAt);
+  const unknown = new PgBoss({
+    db: boss.getDb(),
+    migrate: false,
+    supervise: false,
+    schedule: false,
+  });
+  await runFilesCleanup(new Date(getTestNow()), srv.db, unknown, srv.testDb.pool);
+  await expectLive(soft);
+  await expectLive(hard, expiredAt);
+});
+
+test("oversized product input fails closed before projecting its body into cleanup inventory", async () => {
+  const fileId = await seedUnlinked();
+  const executionId = uuid();
+  await srv.db.insert(executions).values({
+    id: executionId,
+    tenant_id: srv.tenantId,
+    status: "queued",
+    source_kind: "draft",
+    input: { body: "cleanup-product-canary".repeat(10000) },
+    request_source: "api",
+    execution_mode: "dev",
+  });
+  await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool, {
+    rows: 100,
+    bytes: 4096,
+    deadline_ms: 5000,
+  });
+  await expectLive(fileId);
+  expect(JSON.stringify(logRing.tail({ limit: 1000 }))).not.toContain("cleanup-product-canary");
+  await srv.db.delete(executions).where(eq(executions.id, executionId));
+});
+
+test("product inventory row cap never treats a partial reference scan as absence", async () => {
+  const fileId = await seedUnlinked();
+  const executionIds = [uuid(), uuid(), uuid()];
+  for (const id of executionIds)
+    await srv.db.insert(executions).values({
+      id,
+      tenant_id: srv.tenantId,
+      status: "queued",
+      source_kind: "draft",
+      input: { unrelated: true },
+      request_source: "api",
+      execution_mode: "dev",
+    });
+  await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool, {
+    rows: 2,
+    bytes: 1024 * 1024,
+    deadline_ms: 5000,
+  });
+  await expectLive(fileId);
+  for (const id of executionIds) await srv.db.delete(executions).where(eq(executions.id, id));
 });

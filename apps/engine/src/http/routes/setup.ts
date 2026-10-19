@@ -136,12 +136,6 @@ const bootstrapCompleteRoute = createRoute({
   responses: postRoute.responses,
 });
 
-function clientIp(headers: Headers): string {
-  const fwd = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  if (fwd) return fwd;
-  return headers.get("x-real-ip") ?? "unknown";
-}
-
 export function registerSetupRoute(
   app: OpenAPIHono<AppEnv>,
   deps: { probe?: LlmAccessProbe } = {},
@@ -156,7 +150,7 @@ export function registerSetupRoute(
   app.openapi(postRoute, async (c) => {
     const db = c.get("db") ?? getDb();
     const body = c.req.valid("json");
-    const ip = clientIp(c.req.raw.headers);
+    const ip = c.get("client_ip") ?? "unknown";
     const userAgent = c.req.raw.headers.get("user-agent");
 
     const rbacIds = await seedBuiltinRolesAndPermissions(db);
@@ -252,7 +246,7 @@ export function registerSetupRoute(
       },
       {
         token: body.token,
-        ip: clientIp(c.req.raw.headers),
+        ip: c.get("client_ip") ?? "unknown",
         user_agent: c.req.raw.headers.get("user-agent"),
         ...(deps.probe ? { probe: deps.probe } : {}),
       },

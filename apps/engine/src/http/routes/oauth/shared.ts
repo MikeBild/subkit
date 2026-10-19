@@ -194,6 +194,7 @@ export async function parseFormBody(req: Request): Promise<URLSearchParams> {
 }
 
 export const AuthorizeQuerySchema = z.object({
+  tenant_id: z.string().uuid().optional(),
   client_id: z.string().min(1),
   redirect_uri: z.string().min(1),
   response_type: z.string().optional(),

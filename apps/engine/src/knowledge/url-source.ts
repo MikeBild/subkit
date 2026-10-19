@@ -1,6 +1,7 @@
 import type { Actor } from "../audit/actor.ts";
 import { htmlToMarkdown, looksLikeHtml } from "../connectors/discovery/html-to-markdown.ts";
 import { getDriverFetch } from "../connectors/drivers/fetch-seam.ts";
+import { fetchWithEgressGuard } from "../connectors/egress-fetch.ts";
 import { assertEgressAllowedResolved, EgressBlockedError } from "../connectors/egress-guard.ts";
 import type { Executor } from "../db/client.ts";
 import { KNOWLEDGE_SOURCE_MAX_BYTES, KnowledgeBudgetExceededError } from "./budgets.ts";
@@ -46,11 +47,16 @@ export async function fetchUrlDocument(url: string, tenant_id: string): Promise<
   }
   let response: Response;
   try {
-    response = await getDriverFetch()(parsed, {
-      redirect: "follow",
-      headers: { accept: "text/html, text/markdown, text/plain;q=0.9, */*;q=0.5" },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
+    response = await fetchWithEgressGuard(
+      parsed,
+      {
+        redirect: "follow",
+        headers: { accept: "text/html, text/markdown, text/plain;q=0.9, */*;q=0.5" },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      },
+      { tenant_id },
+      { fetchImpl: getDriverFetch() },
+    );
   } catch (error) {
     throw new KnowledgeUrlFetchError(
       `the address could not be reached: ${error instanceof Error ? error.message : String(error)}`,

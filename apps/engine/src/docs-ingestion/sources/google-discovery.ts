@@ -6,6 +6,7 @@ import {
 } from "../../llm/flows/document-parsers/google-discovery.ts";
 import { assertPageSize, consumeBytes, recordSpecFetched } from "../budgets.ts";
 import { byteLen } from "../chunker.ts";
+import { readBoundedText } from "../read-response.ts";
 import type { BudgetState, RawChunk } from "../types.ts";
 
 export interface GoogleDiscoveryIngestResult {
@@ -26,7 +27,7 @@ export async function fetchGoogleDiscovery(
 ): Promise<{ body: string; bytes: number; parsed: GoogleDiscoveryObject }> {
   const res = await fetchImpl(url, { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(`google discovery fetch failed: ${res.status}`);
-  const body = await res.text();
+  const body = await readBoundedText(res);
   const bytes = byteLen(body);
   assertPageSize(bytes);
   return { body, bytes, parsed: parseGoogleDiscoveryDocument(body) };

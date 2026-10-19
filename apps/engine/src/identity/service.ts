@@ -27,6 +27,7 @@ import { generateKey, hashKey } from "./api-key.ts";
 import { ApiKeyOwnerNotFoundError, assertApiKeyOwnerInTenant } from "./api-key-owner.ts";
 import { assertAdminRemains } from "./last-admin.ts";
 import { generatePortalToken } from "./portal-token.ts";
+import { assertTenantActive } from "./self-service.ts";
 
 export const SESSION_SLIDING_TTL_MS = 8 * 60 * 60 * 1000;
 export const SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -480,6 +481,7 @@ export async function issueApiKey(
   const scopes = await authorizeRequestedScopes(db, input.issuer, input.scopes);
   const key = generateKey();
   return db.transaction(async (tx) => {
+    await assertTenantActive(input.tenant_id, tx);
     await assertApiKeyOwnerInTenant(tx, input.tenant_id, input.owner_kind, input.owner_id);
     const [row] = await tx
       .insert(apiKeys)
@@ -875,6 +877,7 @@ export async function createSession(
 ): Promise<SessionView> {
   const db = exec ?? getDb();
   return db.transaction(async (tx) => {
+    await assertTenantActive(input.tenant_id, tx);
     const issuedAt = new Date(now());
     const absolute = new Date(issuedAt.getTime() + SESSION_ABSOLUTE_TTL_MS);
     const [row] = await tx

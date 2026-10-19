@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "b
 import { eq } from "drizzle-orm";
 import { connectors, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
-import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { getCredentialForConnector, upsertCredential } from "../../service.ts";
 import { refreshIfStale } from "../refresh-worker.ts";
 
@@ -62,7 +62,7 @@ beforeEach(() => {
 });
 
 function seamTest(name: string, body: () => Promise<void>) {
-  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+  test(name, () => withSelfHostedDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }
 
 describe("refreshIfStale — client_credentials_json grant", () => {

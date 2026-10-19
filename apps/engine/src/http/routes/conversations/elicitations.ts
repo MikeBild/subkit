@@ -1,5 +1,4 @@
 import { createRoute, type OpenAPIHono, type RouteConfigToTypedResponse } from "@hono/zod-openapi";
-import { streamSSE } from "hono/streaming";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import * as svc from "../../../conversations/index.ts";
 import {
@@ -11,6 +10,7 @@ import {
 import { HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { streamTenantSSE as streamSSE } from "../../tenant-stream.ts";
 import {
   ElicitationParam,
   errorFrame,

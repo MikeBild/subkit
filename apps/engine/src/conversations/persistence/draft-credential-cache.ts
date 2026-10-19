@@ -1,3 +1,4 @@
+import type { EgressGuardContext } from "../../connectors/index.ts";
 import {
   runClientCredentialsJsonGrant,
   runCognitoUserPasswordGrant,
@@ -87,6 +88,7 @@ export function toDecryptedCredential(input: AtomicCredentialInput): DecryptedCr
 export async function toDecryptedCredentialAsync(
   input: AtomicCredentialInput,
   ctx: { aws_region?: string | null; client_id?: string | null },
+  context: EgressGuardContext,
 ): Promise<DecryptedCredential> {
   if (input.mode !== "cognito_user_password") return toDecryptedCredential(input);
   const region = input.aws_region ?? ctx.aws_region ?? null;
@@ -108,7 +110,7 @@ export async function toDecryptedCredentialAsync(
     use_access_token: input.use_access_token === true,
   };
   if (input.client_secret) params.client_secret = input.client_secret;
-  const bundle = await runCognitoUserPasswordGrant(params);
+  const bundle = await runCognitoUserPasswordGrant(params, context);
   return {
     mode: "oauth2",
     access_token: bundle.access_token,
@@ -122,6 +124,7 @@ export async function toDecryptedCredentialAsync(
 export async function mintM2mDraftCredential(
   input: Extract<AtomicCredentialInput, { mode: "oauth2" }>,
   oauth: Record<string, unknown>,
+  context: EgressGuardContext,
 ): Promise<DecryptedCredential> {
   const token_endpoint =
     input.token_endpoint ??
@@ -131,20 +134,23 @@ export async function mintM2mDraftCredential(
       "client_credentials_json draft is missing oauth.token_endpoint — set it via update_connector_draft({ config: { oauth: { token_endpoint: '<url>' } } })",
     );
   }
-  const bundle = await runClientCredentialsJsonGrant({
-    token_endpoint,
-    body_mapping: {
-      client_id: input.client_id,
-      ...(input.client_secret ? { client_secret: input.client_secret } : {}),
+  const bundle = await runClientCredentialsJsonGrant(
+    {
+      token_endpoint,
+      body_mapping: {
+        client_id: input.client_id,
+        ...(input.client_secret ? { client_secret: input.client_secret } : {}),
+      },
+      response_format: oauth.token_response_format === "json" ? "json" : "raw",
+      token_response_ttl_ms:
+        typeof oauth.token_response_ttl_ms === "number" ? oauth.token_response_ttl_ms : 86_400_000,
+      extra_token_headers:
+        oauth.extra_headers && typeof oauth.extra_headers === "object"
+          ? (oauth.extra_headers as Record<string, string>)
+          : undefined,
     },
-    response_format: oauth.token_response_format === "json" ? "json" : "raw",
-    token_response_ttl_ms:
-      typeof oauth.token_response_ttl_ms === "number" ? oauth.token_response_ttl_ms : 86_400_000,
-    extra_token_headers:
-      oauth.extra_headers && typeof oauth.extra_headers === "object"
-        ? (oauth.extra_headers as Record<string, string>)
-        : undefined,
-  });
+    context,
+  );
   return {
     mode: "oauth2",
     access_token: bundle.access_token,

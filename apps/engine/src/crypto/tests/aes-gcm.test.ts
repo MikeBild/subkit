@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { AES_IV_BYTES, decryptSecret, encryptSecret, secureEqual } from "../aes-gcm.ts";
+import { createHash } from "node:crypto";
+import {
+  AES_IV_BYTES,
+  activeMasterKeyDigest,
+  decryptSecret,
+  encryptSecret,
+  parseMasterKeyHex,
+  secureEqual,
+} from "../aes-gcm.ts";
 
 describe("aes-gcm", () => {
   test("roundtrip encrypt/decrypt preserves plaintext", () => {
@@ -60,4 +68,19 @@ describe("aes-gcm", () => {
     expect(secureEqual("foo", "bar")).toBe(false);
     expect(secureEqual("foo", "foo-")).toBe(false);
   });
+});
+
+test("the master-key digest follows the cached crypto key rather than later environment edits", () => {
+  const configured = process.env.MASTER_KEY;
+  if (!configured) throw new Error("missing fixture master key");
+  const expected = createHash("sha256").update(parseMasterKeyHex(configured)).digest("hex");
+  const payload = encryptSecret("cached-key-fixture");
+  expect(activeMasterKeyDigest()).toBe(expected);
+  try {
+    process.env.MASTER_KEY = "54".repeat(32);
+    expect(activeMasterKeyDigest()).toBe(expected);
+    expect(decryptSecret(payload)).toBe("cached-key-fixture");
+  } finally {
+    process.env.MASTER_KEY = configured;
+  }
 });

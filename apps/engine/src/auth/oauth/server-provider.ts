@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import type { OAuthClientInformationFull } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
@@ -12,16 +11,20 @@ import {
   mcpOauthGrants,
   mcpOauthRefreshTokens,
   mcpOauthUnknownGrants,
-  users,
 } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import {
   clientLivenessRefusal,
   type LivenessRefusal,
   livenessRefusalDescription,
-  userLivenessRefusal,
 } from "../liveness.ts";
+import {
+  type RegisterClientInput,
+  type RegisterClientResult,
+  registerMcpClient,
+} from "./client-registration.ts";
 import { revokeOAuthRefreshTokenFamily } from "./refresh-token-revocation.ts";
+import { assertOAuthTenantActive, oauthUserLiveness } from "./tenant.ts";
 import {
   generateAccessToken,
   generateAuthorizationCode,
@@ -30,27 +33,7 @@ import {
   verifyS256,
 } from "./tokens.ts";
 
-export interface RegisterClientInput {
-  client_name?: string | undefined;
-  client_uri?: string | undefined;
-  redirect_uris: string[];
-  grant_types?: string[] | undefined;
-  token_endpoint_auth_method?: string | undefined;
-  scope?: string | undefined;
-  software_id?: string | undefined;
-  requestSource?: string | undefined;
-}
-
-export interface RegisterClientResult {
-  client_id: string;
-  redirect_uris: string[];
-  grant_types: string[];
-  token_endpoint_auth_method: string;
-  scope: string;
-  client_name?: string;
-  client_uri?: string;
-}
-
+export type { RegisterClientInput, RegisterClientResult } from "./client-registration.ts";
 export interface IssueAuthCodeInput {
   clientId: string;
   tenantId: string;
@@ -96,66 +79,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
   const baseUrl = config.server.public_base_url;
 
   async function registerClient(input: RegisterClientInput): Promise<RegisterClientResult> {
-    const authMethod = input.token_endpoint_auth_method ?? "none";
-    if (authMethod !== "none") {
-      throw Object.assign(
-        new Error("invalid_client_metadata: only token_endpoint_auth_method=none is supported"),
-        { oauth_error: "invalid_client_metadata" },
-      );
-    }
-
-    const clientId = randomBytes(16).toString("hex");
-    const grantTypes = input.grant_types ?? ["authorization_code", "refresh_token"];
-    const rawScope = input.scope ?? (cfg.scopes_supported.join(" ") || "mcp:read");
-    const scope = [...new Set(rawScope.split(/\s+/).filter(Boolean))].join(" ");
-    const requestSource = input.requestSource ?? "api";
-
-    await db.insert(mcpOauthClients).values({
-      client_id: clientId,
-      redirect_uris: input.redirect_uris,
-      grant_types: grantTypes,
-      token_endpoint_auth_method: "none",
-      scope,
-      client_name: input.client_name ?? null,
-      client_uri: input.client_uri ?? null,
-      software_id: input.software_id ?? null,
-      registration_source: "dcr",
-    });
-
-    await auditAwait(
-      {
-        tenant_id: SYSTEM_TENANT_ID,
-        actor_type: "system",
-        action: AuditAction.MCP_OAUTH_CLIENT_REGISTERED,
-        resource_type: "mcp_oauth_client",
-        resource_id: clientId,
-        result: "success",
-        metadata: {
-          request_source: requestSource,
-          client_id: clientId,
-          scope,
-          grant_types: grantTypes,
-        },
-      },
-      db,
-    );
-
-    logger.info({
-      module: "mcp_oauth",
-      action: "client.registered",
-      msg: "MCP OAuth client registered",
-      client_id: clientId,
-    });
-
-    return {
-      client_id: clientId,
-      redirect_uris: input.redirect_uris,
-      grant_types: grantTypes,
-      token_endpoint_auth_method: "none",
-      scope,
-      ...(input.client_name ? { client_name: input.client_name } : {}),
-      ...(input.client_uri ? { client_uri: input.client_uri } : {}),
-    };
+    return registerMcpClient(db, config, input);
   }
 
   async function getClient(clientId: string): Promise<OAuthClientInformationFull | null> {
@@ -189,6 +113,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const requestSource = input.requestSource ?? "api";
 
     await db.transaction(async (tx) => {
+      await assertOAuthTenantActive(input.tenantId, tx);
       // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
       const reactivated = await tx
         .update(mcpOauthClients)
@@ -360,12 +285,9 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const refreshExpiresAt = new Date(now.getTime() + cfg.refresh_token_ttl_seconds * 1000);
 
     const minted = await db.transaction(async (tx) => {
-      const userRows = await tx
-        .select({ status: users.status, deleted_at: users.deleted_at })
-        .from(users)
-        .where(and(eq(users.id, codeRow.user_id), eq(users.tenant_id, codeRow.tenant_id)))
-        .for("update");
-      if (userLivenessRefusal(userRows[0])) return "user_revoked" as const;
+      await assertOAuthTenantActive(codeRow.tenant_id, tx);
+      if (await oauthUserLiveness(tx, codeRow.tenant_id, codeRow.user_id, true))
+        return "user_revoked" as const;
 
       // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
       const [client] = await tx
@@ -560,12 +482,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
 
     const now = new Date();
 
-    // tenant-filter:exempt — the refresh row's tenant_id IS the filter
-    const userRows = await db
-      .select({ status: users.status, deleted_at: users.deleted_at })
-      .from(users)
-      .where(and(eq(users.id, refreshRow.user_id), eq(users.tenant_id, refreshRow.tenant_id)))
-      .limit(1);
+    const userRefusal = await oauthUserLiveness(db, refreshRow.tenant_id, refreshRow.user_id);
     // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
     const clientRows = await db
       .select({ disabled_at: mcpOauthClients.disabled_at, retired_at: mcpOauthClients.retired_at })
@@ -573,7 +490,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       .where(eq(mcpOauthClients.client_id, refreshRow.client_id))
       .limit(1);
     const livenessRefusal: LivenessRefusal | null =
-      userLivenessRefusal(userRows[0]) ?? clientLivenessRefusal(clientRows[0]);
+      userRefusal ?? clientLivenessRefusal(clientRows[0]);
     if (livenessRefusal) {
       await db.transaction((tx) =>
         revokeOAuthRefreshTokenFamily(tx, refreshRow.id, refreshRow.tenant_id, now),
@@ -679,12 +596,8 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     let txResult: { newRefreshId: string; newAccessPrefix: string };
     try {
       txResult = await db.transaction(async (tx) => {
-        const lockedUserRows = await tx
-          .select({ status: users.status, deleted_at: users.deleted_at })
-          .from(users)
-          .where(and(eq(users.id, refreshRow.user_id), eq(users.tenant_id, refreshRow.tenant_id)))
-          .for("update");
-        if (userLivenessRefusal(lockedUserRows[0])) {
+        await assertOAuthTenantActive(refreshRow.tenant_id, tx);
+        if (await oauthUserLiveness(tx, refreshRow.tenant_id, refreshRow.user_id, true)) {
           throw Object.assign(new Error("invalid_grant: user revoked"), {
             oauth_error: "invalid_grant",
             oauth_reason: "user_disabled",

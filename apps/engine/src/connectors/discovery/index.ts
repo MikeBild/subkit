@@ -1,6 +1,10 @@
+import type { Executor } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
+import { getDriverFetch, withDriverFetch } from "../drivers/fetch-seam.ts";
 import { validateOutboundHeaders } from "../drivers/http.ts";
 import { scrubUrl } from "../egress.ts";
+import { guardedFetch } from "../egress-fetch.ts";
+import { resolveEgressGuardMode, resolveTenantEgressContext } from "../egress-guard.ts";
 import { getBuiltinTemplate } from "../templates.ts";
 import { graphqlIntrospectStrategy } from "./graphql-introspect.ts";
 import { htmlScrapeStrategy } from "./html-scrape.ts";
@@ -37,6 +41,8 @@ export { extractEmbeddedSpecUrl, swaggerUiScrapeStrategy } from "./swagger-ui-sc
 export * from "./types.ts";
 
 export interface DiscoverConnectorEndpointsInput {
+  exec?: Executor;
+  tenant_id?: string;
   template_id?: string;
   base_url?: string;
   ingestion_url?: string;
@@ -109,15 +115,28 @@ export async function discoverConnectorEndpoints(
   const strategies =
     input.strategies ?? reorderStrategiesForTemplate(input.template_id, DEFAULT_STRATEGIES);
   const opts: DiscoveryStrategyOptions = {
+    ...(input.exec ? { exec: input.exec } : {}),
+    ...(input.tenant_id ? { tenant_id: input.tenant_id } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
     ...(input.headers ? { headers: input.headers } : {}),
   };
 
   const warnings: DiscoveryWarning[] = [];
+  const context = await resolveTenantEgressContext({
+    ...(input.tenant_id ? { tenant_id: input.tenant_id } : {}),
+    ...(input.exec ? { exec: input.exec } : {}),
+  });
+  const transport = guardedFetch(context, getDriverFetch());
   let authRequired: DiscoveryWarning | null = null;
 
   for (const strategy of strategies) {
     try {
+      if (strategy.name === "playwright-crawl" && resolveEgressGuardMode(context) === "strict") {
+        throw new DiscoveryError(
+          "strategy_failed",
+          "Browser discovery requires an operator-reviewed network boundary; use a public API specification or HTTP discovery instead",
+        );
+      }
       const canHandle = await Promise.resolve(strategy.canHandle(url));
       if (!canHandle) {
         warnings.push({
@@ -126,7 +145,7 @@ export async function discoverConnectorEndpoints(
         });
         continue;
       }
-      const result = await strategy.fetch(url, opts);
+      const result = await withDriverFetch(transport, () => strategy.fetch(url, opts));
       return { ...result, warnings: [...warnings, ...result.warnings] };
     } catch (err) {
       const code = err instanceof DiscoveryError ? err.code : "strategy_failed";

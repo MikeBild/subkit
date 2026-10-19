@@ -8,6 +8,7 @@ import {
   type ResolvedPrincipal,
   resolveProviderIdentity,
   SignupDisabledError,
+  signLoginState,
 } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import type { Config } from "../../../config/schema.ts";
@@ -40,6 +41,15 @@ const SessionResponse = z
   .strict()
   .openapi("IdentitySessionResponse");
 
+const BrowserLoginRequired = z
+  .object({
+    error: z.literal("browser_login_required"),
+    message: z.string(),
+    continuation_url: z.string().url(),
+  })
+  .strict()
+  .openapi("IdentityBrowserLoginRequired");
+
 const route = createRoute({
   method: "post",
   path: "/v1/identity/sessions",
@@ -63,8 +73,8 @@ const route = createRoute({
       content: { "application/json": { schema: ErrorSchema } },
     },
     403: {
-      description: "Provider not configured or identity is not allowed",
-      content: { "application/json": { schema: ErrorSchema } },
+      description: "Provider not configured, identity is not allowed, or browser login is required",
+      content: { "application/json": { schema: z.union([ErrorSchema, BrowserLoginRequired]) } },
     },
   },
 });
@@ -135,6 +145,7 @@ async function resolveOidcAssertion(
 
   let resolved: Awaited<ReturnType<typeof resolveProviderIdentity>>;
   try {
+    await identity.assertTenantActive(resolvedTenantId, db);
     resolved = await resolveProviderIdentity(db, {
       tenantId: resolvedTenantId,
       providerId: provider.id,
@@ -143,9 +154,13 @@ async function resolveOidcAssertion(
       ...(provider.product_id ? { productId: provider.product_id } : {}),
       email: accountEmail,
       linkByEmail: !provider.product_id && (provider.link_by_email ?? true) && email !== null,
-      allowCreate: !provider.product_id && getConfig().auth.enable_signup,
+      allowCreate:
+        !provider.product_id &&
+        (provider.signup_policy === "existing_tenant" ||
+          (provider.signup_policy === undefined && getConfig().auth.enable_signup)),
     });
   } catch (error) {
+    if (error instanceof identity.SelfServiceIdentityError) throw new ForbiddenError(error.code);
     if (error instanceof SignupDisabledError) {
       throw new HttpError(403, "access_denied", error.message);
     }
@@ -202,6 +217,25 @@ export function registerIdentitySessionsRoute(app: OpenAPIHono<AppEnv>): void {
     const body = c.req.valid("json");
     const provider = getConfig().auth.providers.find((entry) => entry.id === body.provider_id);
     if (!provider) throw new ForbiddenError("identity provider not configured");
+    if (provider.protocol === "oidc" && provider.signup_policy === "self_service") {
+      const continuation = new URL(
+        "/v1/identity/login/start",
+        getConfig().server.public_base_url || c.req.url,
+      );
+      continuation.searchParams.set("provider", provider.id);
+      continuation.searchParams.set(
+        "login_state",
+        await signLoginState({ redirect_to: "/cockpit" }),
+      );
+      return c.json(
+        {
+          error: "browser_login_required" as const,
+          message: "Continue in your browser to verify your identity and select a workspace.",
+          continuation_url: continuation.toString(),
+        },
+        403,
+      );
+    }
     if (provider.protocol === "api_key") {
       throw new BadRequestError("api_key does not accept identity assertions");
     }

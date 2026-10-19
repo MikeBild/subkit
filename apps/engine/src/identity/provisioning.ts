@@ -4,7 +4,7 @@ import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import type { PrincipalKind } from "../auth/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
-import { apiKeys, sessions, userInvites, users } from "../db/schema/index.ts";
+import { apiKeys, sessions, tenants, userInvites, users } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 import { authorizeRequestedScopes, type ScopeIssuer } from "../rbac/scope-issuance.ts";
@@ -13,6 +13,7 @@ import { constantTimeHexEquals } from "./api-key.ts";
 import { generateInviteToken, parseInviteToken } from "./invite.ts";
 import { assertAdminRemains } from "./last-admin.ts";
 import { revokeConnectionsForUser } from "./oauth-connections.ts";
+import { assertTenantActive } from "./self-service.ts";
 import { type IssueApiKeyResult, issueApiKey, type UserRole, type UserStatus } from "./service.ts";
 
 function auditActor(
@@ -436,6 +437,7 @@ export async function revokeInvite(
 
 export type RedeemInviteError =
   | "invite_invalid"
+  | "invite_browser_required"
   | "invite_expired"
   | "invite_revoked"
   | "invite_already_redeemed";
@@ -476,6 +478,14 @@ export async function redeemInvite(
   if (invite.revoked_at) return { ok: false, code: "invite_revoked" };
   if (invite.redeemed_at) return { ok: false, code: "invite_already_redeemed" };
   if (invite.expires_at.getTime() <= now()) return { ok: false, code: "invite_expired" };
+
+  await assertTenantActive(invite.tenant_id, db);
+  const [destination] = await db
+    .select({ origin: tenants.origin })
+    .from(tenants)
+    .where(eq(tenants.id, invite.tenant_id))
+    .limit(1);
+  if (destination?.origin === "self_service") return { ok: false, code: "invite_browser_required" };
 
   const userRows = await db
     .select({ deleted_at: users.deleted_at })

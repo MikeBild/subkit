@@ -5,7 +5,7 @@ import * as s3Driver from "../../connectors/drivers/s3.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { connectors, roles, schemaVersions, users } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import { callConnectorTool } from "./call-connector.ts";
 import type { ToolContext } from "./index.ts";
@@ -397,7 +397,7 @@ describe("call_connector — schema shape recording", () => {
 
   test("2xx response records the body shape keyed `<METHOD> <path>` (query stripped)", async () => {
     const { connector_id } = await seedHttpConnector({ slug: "call_shape_2xx" });
-    const result = await withDriverFetchForTests(routedFetch, () =>
+    const result = await withSelfHostedDriverFetchForTests(routedFetch, () =>
       callConnectorTool.execute(makeToolContext(), {
         connector_id,
         method: "GET",
@@ -420,7 +420,7 @@ describe("call_connector — schema shape recording", () => {
 
   test("4xx response does NOT record a shape", async () => {
     const { connector_id } = await seedHttpConnector({ slug: "call_shape_4xx" });
-    const result = await withDriverFetchForTests(routedFetch, () =>
+    const result = await withSelfHostedDriverFetchForTests(routedFetch, () =>
       callConnectorTool.execute(makeToolContext(), {
         connector_id,
         method: "GET",

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -23,6 +24,25 @@ export const auditActorKindEnum = pgEnum("audit_actor_kind", [
 ]);
 export const egressGuardModeEnum = pgEnum("egress_guard_mode", ["strict", "permissive"]);
 
+export const tenantOriginEnum = pgEnum("tenant_origin", ["self_hosted", "self_service"]);
+export const tenantStatusEnum = pgEnum("tenant_status", [
+  "active",
+  "suspended",
+  "pending_deletion",
+]);
+
+export const authIdentities = pgTable(
+  "auth_identities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    issuer_url: text("issuer_url").notNull(),
+    subject: text("subject").notNull(),
+    email: text("email").notNull(),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("auth_identities_issuer_subject_key").on(t.issuer_url, t.subject)],
+);
+
 export const tenants = pgTable(
   "tenants",
   {
@@ -44,11 +64,25 @@ export const tenants = pgTable(
       withTimezone: true,
     }),
     is_operator: boolean("is_operator").default(false).notNull(),
+    origin: tenantOriginEnum("origin").default("self_hosted").notNull(),
+    status: tenantStatusEnum("status").default("active").notNull(),
+    owner_identity_id: uuid("owner_identity_id").references(() => authIdentities.id),
+    deletion_requested_at: timestamp("deletion_requested_at", { withTimezone: true }),
+    deletion_scheduled_for: timestamp("deletion_scheduled_for", { withTimezone: true }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
     uniqueIndex("tenants_slug_key").on(t.slug),
+    uniqueIndex("tenants_owner_identity_key").on(t.owner_identity_id),
+    check(
+      "tenants_origin_owner_check",
+      sql`(${t.origin} = 'self_hosted' AND ${t.owner_identity_id} IS NULL) OR (${t.origin} = 'self_service' AND ${t.owner_identity_id} IS NOT NULL AND NOT ${t.is_operator})`,
+    ),
+    check(
+      "tenants_deletion_schedule_check",
+      sql`(${t.status} <> 'pending_deletion' AND ${t.deletion_requested_at} IS NULL AND ${t.deletion_scheduled_for} IS NULL) OR (${t.status} = 'pending_deletion' AND ${t.origin} = 'self_service' AND ${t.deletion_requested_at} IS NOT NULL AND ${t.deletion_scheduled_for} IS NOT NULL AND ${t.deletion_requested_at} < ${t.deletion_scheduled_for})`,
+    ),
     uniqueIndex("tenants_operator_key").on(t.is_operator).where(sql`${t.is_operator}`),
   ],
 );
@@ -65,6 +99,7 @@ export const users = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    auth_identity_id: uuid("auth_identity_id").references(() => authIdentities.id),
     email: text("email").notNull(),
     display_name: text("display_name"),
     role_id: uuid("role_id").notNull(),
@@ -72,7 +107,10 @@ export const users = pgTable(
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [uniqueIndex("users_tenant_email_key").on(t.tenant_id, t.email)],
+  (t) => [
+    uniqueIndex("users_tenant_email_key").on(t.tenant_id, t.email),
+    uniqueIndex("users_tenant_auth_identity_key").on(t.tenant_id, t.auth_identity_id),
+  ],
 );
 
 export const userIdentities = pgTable(
@@ -114,6 +152,7 @@ export const sessions = pgTable(
     user_id: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    auth_identity_id: uuid("auth_identity_id").references(() => authIdentities.id),
     product_id: text("product_id"),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     revoked_at: timestamp("revoked_at", { withTimezone: true }),
@@ -135,6 +174,10 @@ export const oidcLoginStates = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: uuid("tenant_id"),
+    membership_invite_id: uuid("membership_invite_id").references(
+      (): AnyPgColumn => userInvites.id,
+      { onDelete: "cascade" },
+    ),
     state: text("state").notNull(),
     code_verifier: text("code_verifier").notNull(),
     nonce: text("nonce").notNull(),

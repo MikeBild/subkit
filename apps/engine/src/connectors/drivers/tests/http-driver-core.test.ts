@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { upsertCredential } from "../../../credentials/service.ts";
 import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
-import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import {
   createMockServer,
   jsonResponse,
@@ -200,8 +200,9 @@ describe("executePlannedHttpRequest", () => {
     const transportThatNeverSettles = (() =>
       new Promise<Response>(() => {})) as unknown as typeof fetch;
 
-    const request = withDriverFetchForTests(transportThatNeverSettles, () =>
+    const request = withSelfHostedDriverFetchForTests(transportThatNeverSettles, () =>
       executePlannedHttpRequest({
+        exec: ctx.db,
         tenant_id: tenantId,
         method: "POST",
         url: new URL("https://example.invalid/hung"),
@@ -217,6 +218,7 @@ describe("executePlannedHttpRequest", () => {
 
   test("GET against the mock server round-trips status, headers, and JSON body", async () => {
     const result = await executePlannedHttpRequest({
+      exec: ctx.db,
       tenant_id: tenantId,
       method: "GET",
       url: new URL(`${mock.baseUrl}/ping`),
@@ -231,6 +233,7 @@ describe("executePlannedHttpRequest", () => {
 
   test("a JSON body on POST is serialised and content-type defaults to application/json", async () => {
     await executePlannedHttpRequest({
+      exec: ctx.db,
       tenant_id: tenantId,
       method: "POST",
       url: new URL(`${mock.baseUrl}/create`),
@@ -254,6 +257,7 @@ describe("executePlannedHttpRequest", () => {
       });
     });
     const result = await executePlannedHttpRequest({
+      exec: ctx.db,
       tenant_id: tenantId,
       method: "POST",
       url: new URL(`${mock.baseUrl}/raw`),
@@ -283,6 +287,7 @@ describe("executePlannedHttpRequest", () => {
       });
     });
     const result = await executePlannedHttpRequest({
+      exec: ctx.db,
       tenant_id: tenantId,
       method: "GET",
       url: new URL(`${mock.baseUrl}/noop`),
@@ -306,6 +311,7 @@ describe("executePlannedHttpRequest", () => {
       jsonResponse(res, 500, { error: "boom" });
     });
     const result = await executePlannedHttpRequest({
+      exec: ctx.db,
       tenant_id: tenantId,
       method: "GET",
       url: new URL(`${mock.baseUrl}/fail`),

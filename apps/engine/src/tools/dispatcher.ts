@@ -8,6 +8,8 @@ import type { ToolContext, ToolPrecheck, ToolResult } from "../conversations/too
 import { prepareGate } from "../conversations/tools/sdk-wrap/gate-subjects.ts";
 import { checkBeforeGate } from "../conversations/tools/sdk-wrap/pregate.ts";
 import type { Db } from "../db/client.ts";
+import { withTenantWork } from "../execution/tenant-work.ts";
+import { assertTenantActive } from "../identity/tenant-status.ts";
 import { logger } from "../logging/logger.ts";
 import { denialDetails, denialHint } from "../rbac/denial.ts";
 import {
@@ -177,6 +179,16 @@ function precheckBeforeGate(
 }
 
 export async function dispatchTool(
+  deps: DispatchDeps,
+  invocation: ToolInvocation,
+): Promise<ToolEnvelope> {
+  return withTenantWork(deps.principal.tenant_id, async () => {
+    await assertTenantActive(deps.principal.tenant_id, deps.db);
+    return dispatchTenantTool(deps, invocation);
+  });
+}
+
+async function dispatchTenantTool(
   deps: DispatchDeps,
   invocation: ToolInvocation,
 ): Promise<ToolEnvelope> {

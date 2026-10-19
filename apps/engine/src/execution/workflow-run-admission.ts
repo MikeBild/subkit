@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { z } from "@hono/zod-openapi";
 import { and, eq, sql } from "drizzle-orm";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db } from "../db/client.ts";
 import { executions } from "../db/schema/index.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
@@ -115,6 +116,7 @@ export async function admitWorkflowRun(
     if (!check.valid) fail("input_schema_violation", check.errors.join("; "));
   }
   return db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, input.tenant_id);
     if (input.idempotency_key) {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.tenant_id}:${input.idempotency_key}`}, 0))`,

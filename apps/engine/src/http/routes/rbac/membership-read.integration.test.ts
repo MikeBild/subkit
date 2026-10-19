@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { EMBEDDED_MIGRATIONS } from "../../../db/migrations/embedded.ts";
 import {
   groupMembers,
   groupRoleAssignments,
@@ -21,7 +22,11 @@ let roleId: string;
 let emptyRoleId: string;
 
 beforeAll(async () => {
-  server = await createHttpTestServer("membership-read");
+  const migration = EMBEDDED_MIGRATIONS.find((item) => item.tag.endsWith("_rbac_tenant_boundary"));
+  if (!migration) throw new Error("missing RBAC boundary migration");
+  server = await createHttpTestServer("membership-read", {
+    testDbOptions: { upToIdx: migration.idx - 1 },
+  });
   const [foreignTenant] = await server.db
     .insert(tenants)
     .values({ slug: "membership-foreign", display_name: "Foreign" })

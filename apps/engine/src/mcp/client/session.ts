@@ -4,8 +4,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import { assertEgressAllowed, assertEgressAllowedResolved } from "../../connectors/egress-guard.ts";
+import { getDriverFetch, guardedFetch } from "../../connectors/index.ts";
 import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -78,6 +78,7 @@ export function mcpRequestHeaders(auth: Record<string, string>): Record<string, 
 }
 
 function buildTransport(
+  db: Db,
   tenant_id: string,
   row: McpConnectorRow,
   headers: Record<string, string>,
@@ -86,7 +87,8 @@ function buildTransport(
   environment: "dev" | "prod" = "prod",
 ): StreamableHTTPClientTransport | SSEClientTransport {
   const url = new URL(row.url);
-  assertEgressAllowed(url, { tenant_id });
+  assertEgressAllowed(url, { tenant_id, exec: db });
+  const safeFetch = guardedFetch({ tenant_id, exec: db }, getDriverFetch());
   const requestHeaders = mcpRequestHeaders(headers);
   const requestInit: RequestInit = { headers: requestHeaders };
   const observedFetch = async (
@@ -111,8 +113,8 @@ function buildTransport(
     };
     await observeMcpCredential(used);
     return authProvider
-      ? fetchWithMcpOAuth(authProvider, target, init)
-      : getDriverFetch()(target, init);
+      ? fetchWithMcpOAuth(authProvider, target, init, { tenant_id, exec: db })
+      : safeFetch(target, init);
   };
   switch (row.transport) {
     case "http":
@@ -127,7 +129,7 @@ function buildTransport(
         fetch: observedFetch,
         ...(authProvider ? { authProvider } : {}),
         eventSourceInit: {
-          fetch: (target, init) => observedFetch(target, { ...init, headers: requestHeaders }),
+          fetch: observedFetch,
         },
       });
     case "stdio":
@@ -182,12 +184,12 @@ async function openMcpSessionWithContext(
 
   await assertEgressAllowedResolved(
     new URL(row.url),
-    { tenant_id },
+    { tenant_id, exec: db },
     testFactories?.lookupDns ? { lookupImpl: testFactories.lookupDns } : {},
   );
   const transport =
     testFactories?.makeTransport?.(row, headers) ??
-    buildTransport(tenant_id, row, headers, authProvider, material.snapshot, environment);
+    buildTransport(db, tenant_id, row, headers, authProvider, material.snapshot, environment);
   const readNegotiatedProtocolVersion = captureNegotiatedProtocolVersion(transport as Transport);
   const client: McpClientLike =
     testFactories?.makeClient?.(row) ??

@@ -2,6 +2,7 @@ export * from "./browser-session.ts";
 export * from "./hooks.ts";
 export * from "./identity-link.ts";
 export * from "./oauth/cli-session.ts";
+export { McpClientAdmissionError } from "./oauth/client-registration.ts";
 export * from "./oauth/resources.ts";
 export * from "./oauth/server-provider.ts";
 export * from "./oauth/token-exchange.ts";

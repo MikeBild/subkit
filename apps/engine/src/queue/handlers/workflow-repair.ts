@@ -7,7 +7,7 @@ import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
 import { proposeGateRepairs } from "../../self-healing/gate-repairs.ts";
 import { runSelfHealingLoop } from "../../self-healing/service.ts";
 import type { WorkflowRepairJob } from "../../self-healing/types.ts";
-import { withJobContext } from "../job-context.ts";
+import { withActiveTenantJobContext } from "../job-context.ts";
 
 export const WORKFLOW_REPAIR_QUEUE = "workflow.repair" as const;
 
@@ -105,7 +105,7 @@ export async function registerWorkflowRepairHandler(
     { batchSize: 1, pollingIntervalSeconds: 2 },
     async (jobs: Job<WorkflowRepairJob>[]) => {
       for (const job of jobs) {
-        await withJobContext(job.data, () => handleOne(job, db));
+        await withActiveTenantJobContext(job.data, db, () => handleOne(job, db));
       }
     },
   );

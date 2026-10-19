@@ -4,6 +4,7 @@ export { parseCronExpression } from "./cron.ts";
 export { nextScheduleFire } from "./next-fire.ts";
 export { type ReconcilerOptions, SchedulerReconciler } from "./reconciler.ts";
 export * from "./repo.ts";
+export { runTenantErasureSweep } from "./tenant-erasure-runner.ts";
 export {
   bindingFor,
   type EffectiveTrigger,

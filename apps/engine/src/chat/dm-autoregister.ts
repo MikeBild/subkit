@@ -6,12 +6,14 @@ import type { Db } from "../db/client.ts";
 import { chatIdentities, chatWorkspaces } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { chatWorkspaceAad } from "./api.ts";
+import { requiresHostedChatOwnership } from "./hosted-ownership.ts";
 import { type ChatEvent, PLATFORM_HAS_GLOBAL_USER_IDS } from "./types.ts";
 
 export type DmAutoRegistrationDenial =
   | "not_dm_autoregistrable"
   | "dm_sender_not_linked"
-  | "dm_sender_ambiguous";
+  | "dm_sender_ambiguous"
+  | "hosted_ownership_proof_required";
 
 export type DmAutoRegistrationResult =
   | { workspace: typeof chatWorkspaces.$inferSelect; user_id: string }
@@ -53,6 +55,8 @@ export async function ensureDmAutoRegistration(
   const match = [...pairs.values()][0];
   if (!match) return { denied: "dm_sender_not_linked" };
   const { tenant_id, user_id } = match;
+  if (await requiresHostedChatOwnership(db, tenant_id))
+    return { denied: "hosted_ownership_proof_required" };
 
   let workspace: typeof chatWorkspaces.$inferSelect | undefined;
   await db.transaction(async (tx) => {

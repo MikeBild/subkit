@@ -9,7 +9,7 @@ import type {
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { and, desc, eq, gt } from "drizzle-orm";
-import { getDriverFetch } from "../../connectors/index.ts";
+import { getDriverFetch, guardedFetch } from "../../connectors/index.ts";
 import type { CredentialUseSnapshot, VerifiedProviderIdentity } from "../../credentials/index.ts";
 import {
   getCredentialForConnector,
@@ -62,7 +62,10 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     const generation = observedMcpCredentialGeneration(this.connector_id);
     const credentialId = observedMcpCredentialId(this.connector_id);
     const tokenRequest = this.tokenEvidence.isTokenRequest(target, init);
-    const response = await getDriverFetch()(target, init);
+    const response = await guardedFetch(
+      { tenant_id: this.tenant_id, exec: this.db },
+      getDriverFetch(),
+    )(target, init);
     if (tokenRequest && response.ok) {
       const readJson = response.json.bind(response);
       response.json = async () => {

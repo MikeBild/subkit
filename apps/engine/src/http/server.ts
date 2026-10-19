@@ -21,11 +21,14 @@ import {
   type AgentSessionAnalyzeJob,
 } from "../queue/handlers/agent-session-analyze.ts";
 import { CHAT_EVENT_QUEUE, type ChatEventJob } from "../queue/queues.ts";
+import { clientIpMiddleware } from "./client-ip.ts";
 import { registerCockpitRoutes } from "./cockpit.ts";
 import { registerChangeAnnouncements } from "./middleware/announce-change.ts";
 import { authMiddleware } from "./middleware/auth.ts";
 import { browserCsrfMiddleware } from "./middleware/browser-csrf.ts";
+import { browserTenantMiddleware } from "./middleware/browser-tenant.ts";
 import { errorMiddleware, mapKnownErrorResponse } from "./middleware/error.ts";
+import { hostedIngressRateLimit, hostedTenantRateLimit } from "./middleware/hosted-rate-limit.ts";
 import { loggingMiddleware } from "./middleware/logging.ts";
 import { rateLimitMiddleware } from "./middleware/rate-limit.ts";
 import { traceMiddleware } from "./middleware/trace.ts";
@@ -61,11 +64,15 @@ import { registerFileRoutes } from "./routes/files.ts";
 import { registerFileManageRoutes } from "./routes/files-manage.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerHooksInboundRoutes } from "./routes/hooks-inbound.ts";
+import { registerHostedStorageRoutes } from "./routes/hosted-storage.ts";
+import { registerHostedWorkRoutes } from "./routes/hosted-work.ts";
 import { registerApiKeyRoutes } from "./routes/identity/api-keys.ts";
 import { registerCliSessionRoute } from "./routes/identity/cli-session.ts";
 import { registerCockpitIdentityRoutes } from "./routes/identity/cockpit.ts";
 import { registerInviteRoutes } from "./routes/identity/invites.ts";
 import { registerLoginRoutes } from "./routes/identity/login.ts";
+import { registerMembershipRoutes } from "./routes/identity/memberships.ts";
+import { registerOwnedTenantRoutes } from "./routes/identity/owned-tenant.ts";
 import { registerEffectivePermissionsRoute } from "./routes/identity/permissions.ts";
 import { registerPortalTokenRoutes } from "./routes/identity/portal-tokens.ts";
 import { registerProviderIdentityRoutes } from "./routes/identity/provider-identities.ts";
@@ -260,9 +267,13 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
       await next();
     });
   }
+  app.use("*", clientIpMiddleware());
+  app.use("*", hostedIngressRateLimit());
   app.use("*", authMiddleware(registry));
+  app.use("*", hostedTenantRateLimit());
   app.use("*", rateLimitMiddleware(opts.rateLimit ?? {}));
   app.use("/v1/*", browserCsrfMiddleware());
+  app.use("/v1/*", browserTenantMiddleware());
   registerChangeAnnouncements(app);
 
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
@@ -276,6 +287,8 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerRuntimeConfigRoutes(app);
   registerSystemRestartRoutes(app);
   registerSettingsRoutes(app);
+  registerHostedWorkRoutes(app);
+  registerHostedStorageRoutes(app);
   registerSecretApprovalRoutes(app);
   registerConnectionRoutes(app);
   registerMetricsRoute(app);
@@ -283,6 +296,8 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerComposeRoute(app);
   registerRootRoute(app);
   registerTenantRoutes(app);
+  registerMembershipRoutes(app);
+  registerOwnedTenantRoutes(app);
   registerUserRoutes(app);
   registerProviderIdentityRoutes(app);
   registerInviteRoutes(app);

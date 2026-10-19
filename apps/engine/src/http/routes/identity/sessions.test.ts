@@ -4,6 +4,7 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
+import { verifyLoginState } from "../../../auth/index.ts";
 import {
   type MockOidcHandle,
   startMockOidc,
@@ -27,7 +28,12 @@ const ENDPOINT = "http://127.0.0.1/v1/identity/sessions";
 async function writeOidcConfig(
   issuerUrl: string,
   clientId: string,
-  opts: { enableSignup?: boolean; productId?: string; linkByEmail?: boolean } = {},
+  opts: {
+    enableSignup?: boolean;
+    productId?: string;
+    linkByEmail?: boolean;
+    selfService?: boolean;
+  } = {},
 ): Promise<void> {
   const file = join(configDir, "subkit.config.json");
   const providers = issuerUrl
@@ -40,13 +46,37 @@ async function writeOidcConfig(
           issuer_url: issuerUrl,
           client_id: clientId,
           tenant_slug: "default",
+          ...(opts.selfService ? { signup_policy: "self_service" } : {}),
           ...(opts.productId ? { product_id: opts.productId } : {}),
           ...(opts.linkByEmail !== undefined ? { link_by_email: opts.linkByEmail } : {}),
         },
       ]
     : [{ protocol: "api_key", id: "api-key", label: "SubKit API key" }];
   const enable_signup = opts.enableSignup ?? true;
-  await writeFile(file, JSON.stringify({ auth: { providers, enable_signup } }));
+  await writeFile(
+    file,
+    JSON.stringify({
+      ...(opts.selfService
+        ? {
+            server: {
+              public_base_url: "http://127.0.0.1",
+              hosted_rate_limit: {
+                peer_per_minute: 1000,
+                global_per_minute: 10000,
+                tenant_per_minute: 1000,
+                tenant_per_month: 10000,
+                principal_per_minute: 1000,
+              },
+            },
+          }
+        : {}),
+      auth: {
+        providers,
+        enable_signup,
+        ...(opts.selfService ? { hosted: { enabled: true } } : {}),
+      },
+    }),
+  );
   await loadConfig({
     env: { DATABASE_URL: testDb.url, NODE_ENV: "test" },
     configPathOverride: file,
@@ -93,6 +123,27 @@ afterEach(async () => {
 });
 
 describe("POST /v1/identity/sessions — configured provider boundary", () => {
+  test("hosted assertions hand off to a signed browser login without trusting or echoing the assertion", async () => {
+    await writeOidcConfig(mock.url, CLIENT_ID, { selfService: true });
+    const response = await postIdentity({
+      provider_id: "test-identity",
+      identity_token: "untrusted-assertion-canary",
+    });
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { error: string; continuation_url: string };
+    expect(body.error).toBe("browser_login_required");
+    expect(JSON.stringify(body)).not.toContain("untrusted-assertion-canary");
+    const continuation = new URL(body.continuation_url);
+    expect(continuation.pathname).toBe("/v1/identity/login/start");
+    expect(continuation.searchParams.get("provider")).toBe("test-identity");
+    expect(
+      (await verifyLoginState(continuation.searchParams.get("login_state") ?? ""))?.redirect_to,
+    ).toBe("/cockpit");
+    const login = await app.request(continuation.toString());
+    expect(login.status).toBe(302);
+    expect(login.headers.get("location")).toContain(mock.url);
+  });
+
   test("the generic browser callback rejects missing state as input, not as a missing route", async () => {
     const res = await app.request("http://127.0.0.1/v1/identity/login/callback");
     expect(res.status).toBe(400);

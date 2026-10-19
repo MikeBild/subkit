@@ -4,7 +4,7 @@ import {
   ClientCredentialsProvider,
   PrivateKeyJwtProvider,
 } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
-import { getDriverFetch } from "../../connectors/index.ts";
+import { type EgressGuardContext, getDriverFetch, guardedFetch } from "../../connectors/index.ts";
 import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import { recordCredentialProviderIdentity } from "../../credentials/index.ts";
 import {
@@ -78,12 +78,13 @@ export async function mcpOAuthCredentialSnapshot(
 export async function fetchWithMcpOAuth(
   provider: OAuthClientProvider,
   target: Parameters<typeof fetch>[0],
-  init?: RequestInit,
+  init: RequestInit | undefined,
+  context: EgressGuardContext,
 ): Promise<Response> {
   if (provider instanceof McpDbOAuthClientProvider) return provider.fetch(target, init);
   const binding = m2mCredentialBindings.get(provider);
   const generation = binding?.snapshot.credential_generation ?? undefined;
-  const response = await getDriverFetch()(target, init);
+  const response = await guardedFetch(context, getDriverFetch())(target, init);
   await binding?.evidence.observeResponse(target, init, response, generation);
   return response;
 }

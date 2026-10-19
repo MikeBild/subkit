@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { createServer } from "node:http";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { HttpRequestInvalidError, readBodyBytesCapped, readBodyCapped } from "./http.ts";
 
 describe("readBodyCapped", () => {
@@ -94,4 +96,90 @@ describe("readBodyBytesCapped", () => {
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(cancelled).toBe(true);
   });
+});
+
+for (const contentLength of [undefined, "1", "999999999"]) {
+  test(`response overflow cancels an open stream with declared length ${contentLength ?? "absent"}`, async () => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(513));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const response = new Response(stream, {
+      headers: contentLength ? { "content-length": contentLength } : {},
+    });
+    await expect(
+      readBodyCapped(response, 1024, "https://example.test/body"),
+    ).rejects.toBeInstanceOf(HttpRequestInvalidError);
+    expect(cancelled).toBe(true);
+  });
+}
+
+test("an overflowing response does not wait for an uncooperative cancellation promise", async () => {
+  let cancelled = false;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(1025));
+      },
+      cancel() {
+        cancelled = true;
+        return new Promise(() => {});
+      },
+    }),
+  );
+  await expect(readBodyCapped(response, 1024, "https://example.test/body")).rejects.toBeInstanceOf(
+    HttpRequestInvalidError,
+  );
+  expect(cancelled).toBe(true);
+});
+
+test("split UTF-8 sequences obey the byte limit rather than decoded character count", async () => {
+  let cancelled = false;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([0x61, 0x61, 0xe2]));
+        controller.enqueue(new Uint8Array([0x82, 0xac]));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }),
+  );
+  await expect(readBodyCapped(response, 4, "https://example.test/body")).rejects.toBeInstanceOf(
+    HttpRequestInvalidError,
+  );
+  expect(cancelled).toBe(true);
+});
+
+test("native streamed HTTP overflow closes the upstream response", async () => {
+  let closed = false;
+  const server = createServer((_request, response) => {
+    response.once("close", () => {
+      closed = true;
+    });
+    response.writeHead(200, { "content-type": "application/octet-stream" });
+    response.write(Buffer.alloc(2048));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("missing stream fixture port");
+    const response = await fetch(`http://127.0.0.1:${address.port}/stream`);
+    await expect(readBodyCapped(response, 1024, "fixture stream")).rejects.toBeInstanceOf(
+      HttpRequestInvalidError,
+    );
+    await waitFor(() => closed, { tries: 200, sleepMs: 5, label: "native response cancellation" });
+    expect(closed).toBe(true);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+      server.closeAllConnections();
+    });
+  }
 });

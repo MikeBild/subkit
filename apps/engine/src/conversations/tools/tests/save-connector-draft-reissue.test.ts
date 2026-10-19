@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { auditLog, connectors, credentials } from "../../../db/schema/index.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
-import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { createEmptyDraftDocument, withConnectorProbe } from "../../authoring-state.ts";
 import { setDraftCredential } from "../../persistence/draft-credential-cache.ts";
 import { createConversation } from "../../service.ts";
@@ -52,7 +52,7 @@ const fixtureFetch = Object.assign(
 ) as typeof fetch;
 
 function fixtureTest(name: string, body: () => Promise<void>): void {
-  test(name, () => withDriverFetchForTests(fixtureFetch, body));
+  test(name, () => withSelfHostedDriverFetchForTests(fixtureFetch, body));
 }
 
 beforeAll(async () => {

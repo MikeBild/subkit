@@ -7,6 +7,7 @@ import { router } from "@/app/router";
 import { SessionGate } from "@/app/session";
 import { I18nProvider } from "@/components/i18n-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { IdentityRecoveryPage } from "@/pages/identity-recovery";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -28,9 +29,13 @@ createRoot(root).render(
     <I18nProvider>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          <SessionGate>
-            <RouterProvider router={router} />
-          </SessionGate>
+          {window.location.pathname === "/cockpit/recovery" ? (
+            <IdentityRecoveryPage />
+          ) : (
+            <SessionGate>
+              <RouterProvider router={router} />
+            </SessionGate>
+          )}
         </TooltipProvider>
       </QueryClientProvider>
     </I18nProvider>

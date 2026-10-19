@@ -3,7 +3,7 @@ import type { Db } from "../../db/client.ts";
 import * as docs from "../../docs-ingestion/service.ts";
 import type { DocSourceType } from "../../docs-ingestion/types.ts";
 import { log } from "../../logging/logger.ts";
-import { withJobContext } from "../job-context.ts";
+import { withActiveTenantJobContext } from "../job-context.ts";
 
 export const INGEST_DOCS_QUEUE = "connector.ingest-docs" as const;
 
@@ -75,7 +75,7 @@ export async function registerIngestDocsHandler(opts: RegisterIngestDocsOptions)
     { batchSize: 1, pollingIntervalSeconds: 2 },
     async (jobs: Job<IngestDocsJob>[]) => {
       for (const job of jobs) {
-        await withJobContext(job.data, () => handleOne(job, db));
+        await withActiveTenantJobContext(job.data, db, () => handleOne(job, db));
       }
     },
   );

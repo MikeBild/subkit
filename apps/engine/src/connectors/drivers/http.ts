@@ -5,10 +5,11 @@ import { refreshIfStale } from "../../credentials/oauth2/refresh-worker.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import { parseSignedJwtConfig, signJwtBearer } from "../../credentials/signed-jwt.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
-import type { Db } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
+import { fetchWithEgressGuard } from "../egress-fetch.ts";
 import { assertEgressAllowedResolved, assertRobotsAllowed } from "../egress-guard.ts";
 import { requestUsedStoredCredential } from "../reauth.ts";
 import { connectorHeaderPolicy, requestHeaderViolations } from "../request-header-policy.ts";
@@ -21,18 +22,10 @@ import { getDriverFetch } from "./fetch-seam.ts";
 import { shouldPromoteToFile } from "./file-promotion.ts";
 import { buildProbeDiagnostics } from "./probe-diagnostics.ts";
 import { resolveUrl } from "./resolve-url.ts";
+import { HttpRequestInvalidError, readBodyBytesCapped } from "./response-body.ts";
 
 export { EgressBlockedError } from "../egress-guard.ts";
-
-export class HttpRequestInvalidError extends Error {
-  constructor(
-    message: string,
-    public readonly path: string,
-  ) {
-    super(message);
-    this.name = "HttpRequestInvalidError";
-  }
-}
+export { HttpRequestInvalidError, readBodyBytesCapped, readBodyCapped } from "./response-body.ts";
 
 export const FETCH_DEADLINE_MS = 60_000;
 
@@ -42,98 +35,6 @@ export function resolveMaxResponseBytes(tenant_id?: string): number {
   return isConfigLoaded()
     ? getConfig(tenant_id).connectors.http.max_response_bytes
     : DEFAULT_MAX_RESPONSE_BYTES;
-}
-
-export async function readBodyBytesCapped(
-  res: Response,
-  maxBytes: number,
-  path: string,
-  signal?: AbortSignal,
-): Promise<Buffer> {
-  const cl = res.headers.get("content-length");
-  if (cl) {
-    const declared = Number(cl);
-    if (Number.isFinite(declared) && declared > maxBytes) {
-      throw new HttpRequestInvalidError(
-        `response too large: ${declared} bytes exceeds max_response_bytes ${maxBytes}`,
-        path,
-      );
-    }
-  }
-  const body = res.body;
-  if (!body || typeof body.getReader !== "function") {
-    const buf = Buffer.from(await awaitWithAbort(res.arrayBuffer(), signal));
-    if (buf.byteLength > maxBytes) {
-      throw new HttpRequestInvalidError(
-        `response too large: exceeds max_response_bytes ${maxBytes}`,
-        path,
-      );
-    }
-    return buf;
-  }
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await awaitWithAbort(reader.read(), signal, () => {
-      void reader.cancel().catch(() => {});
-    });
-    if (done) break;
-    if (value) {
-      total += value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel().catch(() => {});
-        throw new HttpRequestInvalidError(
-          `response too large: exceeds max_response_bytes ${maxBytes}`,
-          path,
-        );
-      }
-      chunks.push(value);
-    }
-  }
-  return Buffer.concat(chunks);
-}
-
-export async function readBodyCapped(
-  res: Response,
-  maxBytes: number,
-  path: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  return (await readBodyBytesCapped(res, maxBytes, path, signal)).toString("utf8");
-}
-
-function abortError(signal: AbortSignal): Error {
-  return signal.reason instanceof Error
-    ? signal.reason
-    : new DOMException("The operation was aborted", "AbortError");
-}
-
-async function awaitWithAbort<T>(
-  operation: Promise<T>,
-  signal?: AbortSignal,
-  onAbort?: () => void,
-): Promise<T> {
-  if (!signal) return await operation;
-  if (signal.aborted) {
-    onAbort?.();
-    throw abortError(signal);
-  }
-  let handleAbort: (() => void) | null = null;
-  const aborted = new Promise<never>((_, reject) => {
-    handleAbort = () => {
-      onAbort?.();
-      reject(abortError(signal));
-    };
-    signal.addEventListener("abort", handleAbort, { once: true });
-  });
-  try {
-    const result = await Promise.race([operation, aborted]);
-    if (signal.aborted) throw abortError(signal);
-    return result;
-  } finally {
-    if (handleAbort) signal.removeEventListener("abort", handleAbort);
-  }
 }
 
 export const HTTP_HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
@@ -551,7 +452,7 @@ export async function buildRequestPlan(
         caller_query: callerQuery,
       }),
   };
-  await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id });
+  await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id, exec: p.db });
   const snapshot = (p.connector.template_snapshot as { respects_robots?: unknown } | null) ?? null;
   if (snapshot?.respects_robots === true) {
     const cfg = getConfig(p.tenant_id).connectors.web_scraper.runtime;
@@ -566,7 +467,7 @@ export async function buildRequestPlan(
           ? p.connector.config.user_agent
           : cfg.user_agent;
       headers["User-Agent"] = userAgent;
-      await assertRobotsAllowed(url, { tenant_id: p.tenant_id, userAgent });
+      await assertRobotsAllowed(url, { tenant_id: p.tenant_id, exec: p.db, userAgent });
     }
   }
   log.connector.request.planned({
@@ -763,6 +664,7 @@ export async function buildMultipartBody(parts: ResolvedFilePart[]): Promise<For
 }
 
 export async function executePlannedHttpRequest(params: {
+  exec?: Executor;
   before_dispatch?: (
     request: HttpDispatchObservation,
   ) => Promise<RequestDispatchPolicy | undefined>;
@@ -832,7 +734,10 @@ export async function executePlannedHttpRequest(params: {
   if (effectiveDispatchPolicy) init.redirect = effectiveDispatchPolicy.redirect;
   let signedJwtToken: string | null = null;
   if (params.signed_jwt) {
-    await assertEgressAllowedResolved(params.url, { tenant_id: params.tenant_id });
+    await assertEgressAllowedResolved(params.url, {
+      tenant_id: params.tenant_id,
+      ...(params.exec ? { exec: params.exec } : {}),
+    });
     signedJwtToken = await applySignedJwtAuth(
       params.signed_jwt.connector,
       params.signed_jwt.credential,
@@ -846,7 +751,18 @@ export async function executePlannedHttpRequest(params: {
     level: "debug",
     thresholdMs: 1000,
     fields: { method: params.method, url_host: params.url.host },
-    fn: () => settleOnAbort(getDriverFetch()(params.url, init), params.signal),
+    fn: () =>
+      settleOnAbort(
+        fetchWithEgressGuard(
+          params.url,
+          init,
+          { tenant_id: params.tenant_id, ...(params.exec ? { exec: params.exec } : {}) },
+          {
+            fetchImpl: getDriverFetch(),
+          },
+        ),
+        params.signal,
+      ),
   });
   const maxResponseBytes = resolveMaxResponseBytes(params.tenant_id);
   await checkAuthorityRedirect(res, effectiveDispatchPolicy);
@@ -961,6 +877,7 @@ export async function executeConnectorHttpRequest(params: {
   const beforeDispatch = params.before_dispatch;
   const signedJwt = plan.credential?.mode === "signed_jwt";
   const result = await executePlannedHttpRequest({
+    exec: params.db,
     tenant_id: params.tenant_id,
     method: params.method,
     url: plan.url,

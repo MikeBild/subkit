@@ -12,6 +12,7 @@ import {
   getRuntimeRevision,
   initializeRuntimeConfig,
 } from "../../runtime-config/service.ts";
+import { syntheticVaultStopAcknowledgement } from "../../test-helpers/vault-maintenance.ts";
 import { activeSettingsDocument, secretAad } from "../environment.ts";
 import { probeCurrentVersion, rebindSettingPath, rewrapMasterKey } from "../vault-ops.ts";
 
@@ -110,7 +111,7 @@ describe("--rewrap-master-key", () => {
       absent: false,
     });
 
-    const report = await rewrapMasterKey(tdb.db, PREVIOUS_KEY);
+    const report = await rewrapMasterKey(tdb.db, PREVIOUS_KEY, syntheticVaultStopAcknowledgement);
     expect(report.versions).toBeGreaterThanOrEqual(1);
 
     expect(await probeCurrentVersion(tdb.db, name)).toEqual({
@@ -121,13 +122,15 @@ describe("--rewrap-master-key", () => {
   });
 
   test("a second run is a no-op rather than a double-encrypt", async () => {
-    const report = await rewrapMasterKey(tdb.db, PREVIOUS_KEY);
+    const report = await rewrapMasterKey(tdb.db, PREVIOUS_KEY, syntheticVaultStopAcknowledgement);
     expect(report.versions).toBe(0);
     expect(report.names).toBe(0);
   });
 
   test("the previous key being the running key is refused, not silently accepted", async () => {
-    await expect(rewrapMasterKey(tdb.db, RUNNING_KEY)).rejects.toThrow(/same/);
+    await expect(
+      rewrapMasterKey(tdb.db, RUNNING_KEY, syntheticVaultStopAcknowledgement),
+    ).rejects.toThrow(/same/);
   });
 
   test("a version under a third key aborts the sweep and changes nothing", async () => {
@@ -146,7 +149,9 @@ describe("--rewrap-master-key", () => {
       auth_tag: payload.auth_tag,
       created_by: null,
     });
-    await expect(rewrapMasterKey(tdb.db, PREVIOUS_KEY)).rejects.toThrow(/decrypts under neither/);
+    await expect(
+      rewrapMasterKey(tdb.db, PREVIOUS_KEY, syntheticVaultStopAcknowledgement),
+    ).rejects.toThrow(/decrypts under neither/);
     expect(await probeCurrentVersion(tdb.db, name)).toEqual({
       version,
       readable: false,

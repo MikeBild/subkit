@@ -141,6 +141,7 @@ const loginCommand = defineCommand({
     try {
       const result = await runCliOAuthLogin({
         engineUrl,
+        tenantId: tenant ?? undefined,
         onAuthorizationUrl: (url) => {
           process.stdout.write(`sk: complete sign-in in your browser:\n${url}\n`);
         },
@@ -148,7 +149,7 @@ const loginCommand = defineCommand({
           process.stderr.write("sk: browser launch failed; open the URL above manually\n");
         },
       });
-      const activeTenant = tenant ?? result.context_id;
+      const activeTenant = result.context_id;
       saveProfile({
         name: profileName,
         engine_url: engineUrl,
@@ -253,13 +254,29 @@ const tenantsCommand = defineCommand({
       process.exit(2);
     }
     if (args.use) {
-      saveProfile({ ...profile, active_tenant_id: String(args.use) });
-      process.stdout.write(`sk: active tenant set to ${args.use}\n`);
+      const result = await runCliOAuthLogin({
+        engineUrl: profile.engine_url,
+        tenantId: String(args.use),
+        onAuthorizationUrl: (url) => {
+          process.stdout.write(`sk: authorize this workspace in your browser:\n${url}\n`);
+        },
+        onBrowserLaunchError: () => {
+          process.stderr.write("sk: browser launch failed; open the URL above manually\n");
+        },
+      });
+      saveProfile({
+        name: profile.name,
+        engine_url: profile.engine_url,
+        api_key: result.api_key,
+        active_tenant_id: result.context_id,
+      });
+      process.stdout.write(`sk: active tenant set to ${result.context_id}\n`);
       return;
     }
     process.stdout.write(
       `sk tenants: current active tenant = ${profile.active_tenant_id ?? "(none)"}\n` +
-        "  use 'sk tenants <id>' to switch.\n",
+        `  manage memberships in your authenticated browser: ${new URL("/cockpit/", profile.engine_url).toString()}\n` +
+        "  use 'sk tenants <id>' to authorize and switch workspace.\n",
     );
   },
 });

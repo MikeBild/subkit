@@ -12,6 +12,7 @@ import {
   runtimeSecretVersions,
 } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { failRuntimeActivation } from "./activation-failure.ts";
 import { type AppBoundaryActor, recordAppBoundaryActivation } from "./app-boundary-audit.ts";
 import {
   ACTIVATION_TIMEOUT_MS,
@@ -35,6 +36,7 @@ import {
   revisionChangesOnlyTenant,
   setDeep,
 } from "./document.ts";
+import { assertNoHostedTenantOverlays } from "./hosted-overlays.ts";
 import { hasPendingSecretColumns, secretVersionProjection } from "./secret-columns.ts";
 import {
   assertSecretName,
@@ -43,6 +45,12 @@ import {
   parseSecretReference,
   secretReference,
 } from "./secret-reference.ts";
+import { insertRuntimeSecretVersion } from "./secret-write.ts";
+import { ensureRuntimeState, runtimeStateColumns } from "./state-columns.ts";
+
+export { runtimeStateColumns } from "./state-columns.ts";
+
+import { assertTenantRuntimeSecretAllowed } from "./tenant-secret-policy.ts";
 
 export {
   ACTIVATION_TIMEOUT_MS,
@@ -86,6 +94,7 @@ async function createSecretVersionInTransaction(
   created_at: Date;
 }> {
   assertSecretName(name);
+  await assertTenantRuntimeSecretAllowed(tx, name);
   if (plaintext.length === 0) {
     throw new RuntimeConfigValidationError("secret value must not be empty");
   }
@@ -98,39 +107,15 @@ async function createSecretVersionInTransaction(
   const version = (latest?.version ?? 0) + 1;
   const aad = `runtime-secret:${name}:${version}`;
   const encrypted = encryptSecret(plaintext, aad);
-  let created: { created_at: Date } | undefined;
-  if (await hasPendingSecretColumns(tx)) {
-    [created] = await tx
-      .insert(runtimeSecretVersions)
-      .values({
-        name,
-        version,
-        ciphertext: encrypted.ciphertext,
-        iv: encrypted.iv,
-        auth_tag: encrypted.auth_tag,
-        created_by: createdBy,
-        ...(pending
-          ? {
-              pending_since: new Date(),
-              prepared_by: pending.prepared_by,
-              pending_bindings: pending.bindings,
-            }
-          : {}),
-      })
-      .returning({ created_at: runtimeSecretVersions.created_at });
-  } else {
-    if (pending) {
-      throw new RuntimeConfigValidationError(
-        "this database does not know prepared versions yet; migrate first",
-      );
-    }
-    const inserted = await tx.execute(
-      sql`insert into ${runtimeSecretVersions} ("name", "version", "ciphertext", "iv", "auth_tag", "created_by") values (${name}, ${version}, ${Buffer.from(encrypted.ciphertext)}, ${Buffer.from(encrypted.iv)}, ${Buffer.from(encrypted.auth_tag)}, ${createdBy}) returning "created_at"`,
-    );
-    const row = (inserted.rows as Array<{ created_at: Date | string }>)[0];
-    created = row ? { created_at: new Date(row.created_at) } : undefined;
-  }
-  if (!created) throw new Error("runtime secret insert returned no row");
+  const created = await insertRuntimeSecretVersion(tx, {
+    name,
+    version,
+    ciphertext: encrypted.ciphertext,
+    iv: encrypted.iv,
+    auth_tag: encrypted.auth_tag,
+    created_by: createdBy,
+    pending,
+  });
   return {
     name,
     version,
@@ -211,6 +196,7 @@ export async function listSecretVersions(db: Executor): Promise<
 }
 
 async function readSecret(db: Executor, name: string, version: number): Promise<string> {
+  if (name.startsWith("connection.")) await assertTenantRuntimeSecretAllowed(db, name);
   const projection = await secretVersionProjection(db);
   // tenant-filter:exempt — references address the product-global secret registry.
   const [found] = await db
@@ -277,6 +263,7 @@ async function validateAndResolveDocument(
       `${issue?.path.join(".") || "configuration"}: ${issue?.message ?? "invalid document"}`,
     );
   }
+  await assertNoHostedTenantOverlays(db, parsed.data);
   return parsed.data;
 }
 
@@ -378,13 +365,14 @@ async function initializeRuntimeConfigOnce(
   seed: Config,
   ownInstanceId: string,
 ): Promise<RuntimeConfigStateView> {
+  await validateAndResolveDocument(db, seed);
   let bootActivation: { before: RuntimeRevision; after: RuntimeRevision } | null = null;
   const state = await db.transaction(async (tx) => {
     bootActivation = null;
-    await tx.insert(runtimeConfigState).values({ key: CONFIG_STATE_KEY }).onConflictDoNothing();
+    await ensureRuntimeState(tx);
     // tenant-filter:exempt — the canonical active/desired pointer is product-global.
     const [locked] = await tx
-      .select()
+      .select(runtimeStateColumns)
       .from(runtimeConfigState)
       .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY))
       .for("update");
@@ -489,7 +477,7 @@ async function initializeRuntimeConfigOnce(
 export async function getRuntimeConfigState(db: Executor): Promise<RuntimeConfigStateView> {
   // tenant-filter:exempt — the canonical active/desired pointer is product-global.
   const [state] = await db
-    .select()
+    .select(runtimeStateColumns)
     .from(runtimeConfigState)
     .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY))
     .limit(1);
@@ -560,7 +548,7 @@ export async function saveRuntimeConfigPatch(
   const result = await db.transaction(async (tx) => {
     // tenant-filter:exempt — the canonical active/desired pointer is product-global.
     const [state] = await tx
-      .select()
+      .select(runtimeStateColumns)
       .from(runtimeConfigState)
       .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY))
       .for("update");
@@ -670,7 +658,7 @@ export async function revokeSecretVersion(
   return db.transaction(async (tx) => {
     // tenant-filter:exempt — secret revocation checks the product-global pointers.
     const [state] = await tx
-      .select()
+      .select(runtimeStateColumns)
       .from(runtimeConfigState)
       .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY))
       .for("update");
@@ -777,9 +765,10 @@ export async function activateRuntimeRevision(
   }>;
 }> {
   const revision = await requireRevision(db, revisionNumber);
+  await validateAndResolveDocument(db, revision.document);
   // tenant-filter:exempt — activation commits the product-global desired revision.
   const [state] = await db
-    .select()
+    .select(runtimeStateColumns)
     .from(runtimeConfigState)
     .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY))
     .limit(1);
@@ -818,6 +807,12 @@ export async function activateRuntimeRevision(
     .from(runtimeConfigReplicas)
     .where(gte(runtimeConfigReplicas.last_seen_at, cutoff));
   if (healthy.length === 0) {
+    await failRuntimeActivation(
+      db,
+      revisionNumber,
+      "no healthy runtime replicas are available for activation",
+      options.restrict_to_tenant,
+    );
     throw new RuntimeConfigConflictError(
       "no healthy runtime replicas are available for activation",
     );
@@ -854,10 +849,7 @@ export async function activateRuntimeRevision(
     );
     if (nack) {
       const reason = `${nack.instance_id}: ${nack.ack_reason ?? "prepare rejected"}`;
-      await db
-        .update(runtimeConfigRevisions)
-        .set({ status: "failed", failure_reason: reason })
-        .where(eq(runtimeConfigRevisions.revision, revisionNumber));
+      await failRuntimeActivation(db, revisionNumber, reason, options.restrict_to_tenant);
       return {
         saved_revision: revisionNumber,
         active_revision: state.active_revision,
@@ -896,10 +888,7 @@ export async function activateRuntimeRevision(
     );
   if (!allAck) {
     const reason = "activation timed out waiting for every healthy replica ACK";
-    await db
-      .update(runtimeConfigRevisions)
-      .set({ status: "failed", failure_reason: reason })
-      .where(eq(runtimeConfigRevisions.revision, revisionNumber));
+    await failRuntimeActivation(db, revisionNumber, reason, options.restrict_to_tenant);
     return {
       saved_revision: revisionNumber,
       active_revision: state.active_revision,
@@ -922,7 +911,7 @@ export async function activateRuntimeRevision(
   await db.transaction(async (tx) => {
     // tenant-filter:exempt — activation locks the product-global pointer.
     const [locked] = await tx
-      .select()
+      .select(runtimeStateColumns)
       .from(runtimeConfigState)
       .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY))
       .for("update");
@@ -990,3 +979,14 @@ export async function getActivationReplicas(
     last_seen_at: row.last_seen_at,
   }));
 }
+
+export {
+  assertVaultMasterKey,
+  assertVaultProducersStopped,
+  completeRegistryRewrapEpoch,
+  lockVaultMaintenance,
+  lockVaultParticipation,
+  pinVaultMasterKey,
+  VaultParticipationError,
+  withVaultStartupGate,
+} from "./vault-participation.ts";

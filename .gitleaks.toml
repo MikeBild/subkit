@@ -74,3 +74,15 @@ regexes = [
   '''^wf_live_v11_3_fixture_secret$''',
   '''^wf_live_v11_5_rotated_fixture_secret$''',
 ]
+
+[[allowlists]]
+description = "Generated vault maintenance migration tag after the secret ownership symbol"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+paths = [
+  '''(?:^|/)apps/engine/src/db/migrations/embedded\.ts$''',
+]
+regexes = [
+  '''^[0-9]{4}_vault_maintenance$''',
+]

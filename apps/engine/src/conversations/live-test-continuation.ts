@@ -4,6 +4,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
 import { admitWorkflowRun } from "../execution/workflow-run-admission.ts";
+import { enqueueHostedWork } from "../queue/hosted-work.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { gateWorkflowRunRbac } from "../workflows/rbac.ts";
@@ -107,7 +108,10 @@ export async function continueConversationDevLiveTest(input: {
       };
     }
     try {
-      await input.boss.send(
+      await enqueueHostedWork(
+        input.db,
+        input.boss,
+        "execution",
         EXECUTION_RUN_QUEUE,
         {
           tenant_id: input.principal.tenant_id,

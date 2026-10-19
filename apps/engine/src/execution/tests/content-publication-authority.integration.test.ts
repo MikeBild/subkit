@@ -10,7 +10,7 @@ import { executions, sessions, users, workflowsSchedules } from "../../db/schema
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { inspectScheduleAutomation } from "../../scheduler/automation-status.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import {
   loadContentRevisionReceipts,
   proposeContentPublicationBoundaries,
@@ -226,7 +226,7 @@ function remoteFixture() {
 test("held batch -> exact human grant -> scheduler decision resolved -> changing content publishes within limits", async () => {
   const f = await fixture();
   const remote = remoteFixture();
-  await withDriverFetchForTests(remote.remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote.remote, async () => {
     expect((await f.inspect()).eligible_for_repeated_runs).toBe(false);
     const prepared = await f.prepare();
     expect(prepared.status, JSON.stringify(prepared.steps)).toBe("succeeded");
@@ -267,7 +267,7 @@ test("held batch -> exact human grant -> scheduler decision resolved -> changing
 test("a new item cannot inherit the old grant", async () => {
   const f = await fixture();
   const remote = remoteFixture();
-  await withDriverFetchForTests(remote.remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote.remote, async () => {
     await f.prepare();
     await f.grant();
     const result = await f.run({ ...f.baseInput, a: other });
@@ -280,7 +280,7 @@ test("a new item cannot inherit the old grant", async () => {
 test("an authored collector cannot substitute a foreign revision after legitimate writes", async () => {
   const f = await fixture();
   const remote = remoteFixture();
-  await withDriverFetchForTests(remote.remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote.remote, async () => {
     await f.prepare();
     await f.grant();
     const result = await f.run({ ...f.baseInput, foreign: other });
@@ -310,7 +310,7 @@ test("held evidence cannot cross tenant, version or environment", async () => {
 test("loop instances retain distinct approved members and trusted revision receipts", async () => {
   const f = await fixture(true);
   const remote = remoteFixture();
-  await withDriverFetchForTests(remote.remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote.remote, async () => {
     const prepared = await f.prepare();
     expect(prepared.status, JSON.stringify(prepared.steps)).toBe("succeeded");
     const review = await f.inspect();

@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import * as oauth from "openid-client";
-import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
+import type { EgressGuardContext } from "../../connectors/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { identityFromTokenResponse, VerifiedProviderIdentitySchema } from "../provider-identity.ts";
+import { CredentialRequestError, credentialOperation, fetchCredentialRequest } from "../request.ts";
 import {
   type OAuth2ClientConfig,
   type OAuth2TokenBundle,
@@ -12,19 +14,29 @@ import {
 
 const configCache = new Map<string, oauth.Configuration>();
 
-const oauthFetch: oauth.CustomFetch = (url, options) => {
-  const init: RequestInit = {
-    method: options.method,
-    headers: options.headers,
-    redirect: options.redirect,
-    ...(options.signal ? { signal: options.signal } : {}),
-    ...(options.body === undefined ? {} : { body: options.body as BodyInit | null }),
-  };
-  return getDriverFetch()(url, init);
-};
+const executors = new WeakMap<object, number>();
+let executorSequence = 0;
 
-function cacheKey(cfg: OAuth2ClientConfig): string {
-  return `${cfg.issuer_url}|${cfg.client_id}|${cfg.token_auth_method ?? "body"}`;
+function oauthFetchFor(context: EgressGuardContext): oauth.CustomFetch {
+  return (url, options) =>
+    fetchCredentialRequest(context, url, {
+      method: options.method,
+      headers: options.headers,
+      redirect: options.redirect,
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...(options.body === undefined ? {} : { body: options.body as BodyInit | null }),
+    });
+}
+
+function cacheKey(cfg: OAuth2ClientConfig, context: EgressGuardContext): string {
+  let executorId = 0;
+  if (context.exec) {
+    executorId = executors.get(context.exec) ?? ++executorSequence;
+    executors.set(context.exec, executorId);
+  }
+  return createHash("sha256")
+    .update(JSON.stringify([cfg, context.tenant_id ?? null, context.mode ?? null, executorId]))
+    .digest("hex");
 }
 
 function resolveClientAuth(cfg: OAuth2ClientConfig): oauth.ClientAuth | undefined {
@@ -35,8 +47,12 @@ function resolveClientAuth(cfg: OAuth2ClientConfig): oauth.ClientAuth | undefine
   return oauth.ClientSecretPost(cfg.client_secret);
 }
 
-async function getConfig(cfg: OAuth2ClientConfig): Promise<oauth.Configuration> {
-  const key = cacheKey(cfg);
+async function getConfig(
+  cfg: OAuth2ClientConfig,
+  context: EgressGuardContext,
+): Promise<oauth.Configuration> {
+  const key = cacheKey(cfg, context);
+  const oauthFetch = oauthFetchFor(context);
   const existing = configCache.get(key);
   if (existing) return existing;
   const server = new URL(cfg.issuer_url);
@@ -59,18 +75,15 @@ async function getConfig(cfg: OAuth2ClientConfig): Promise<oauth.Configuration> 
       server.protocol === "http:"
         ? { execute: [oauth.allowInsecureRequests], [oauth.customFetch]: oauthFetch }
         : { [oauth.customFetch]: oauthFetch };
-    configuration = await oauth.discovery(
-      server,
-      cfg.client_id,
-      cfg.client_secret,
-      clientAuth,
-      discoveryOptions,
+    configuration = await credentialOperation(() =>
+      oauth.discovery(server, cfg.client_id, cfg.client_secret, clientAuth, discoveryOptions),
     );
   }
   if (server.protocol === "http:") {
     oauth.allowInsecureRequests(configuration);
   }
   configuration[oauth.customFetch] = oauthFetch;
+  if (configCache.size >= 512) configCache.clear();
   configCache.set(key, configuration);
   return configuration;
 }
@@ -140,11 +153,12 @@ function isGoogleIssuer(issuer: string | undefined): boolean {
 
 export async function startAuthorizationCode(
   cfg: OAuth2ClientConfig,
+  context: EgressGuardContext,
 ): Promise<StartAuthCodeResult> {
   if (!cfg.redirect_uri) {
     throw new Error("startAuthorizationCode requires config.redirect_uri");
   }
-  const configuration = await getConfig(cfg);
+  const configuration = await getConfig(cfg, context);
   const usePkce = cfg.use_pkce !== false;
   const code_verifier = usePkce ? oauth.randomPKCECodeVerifier() : "";
   const state = oauth.randomState();
@@ -180,35 +194,40 @@ export interface CompleteAuthCodeParams {
 
 export async function completeAuthorizationCode(
   p: CompleteAuthCodeParams,
+  context: EgressGuardContext,
 ): Promise<OAuth2TokenBundle> {
-  const configuration = await getConfig(p.cfg);
+  const configuration = await getConfig(p.cfg, context);
   const grantOpts: Parameters<typeof oauth.authorizationCodeGrant>[2] = {
     expectedState: p.state,
   };
   if (p.cfg.use_pkce !== false && p.code_verifier) {
     grantOpts.pkceCodeVerifier = p.code_verifier;
   }
-  const res = await oauth.authorizationCodeGrant(configuration, p.current_url, grantOpts);
-  return toBundle(res, p.cfg.issuer_url);
+  const res = await credentialOperation(() =>
+    oauth.authorizationCodeGrant(configuration, p.current_url, grantOpts),
+  );
+  return credentialOperation(() => toBundle(res, p.cfg.issuer_url));
 }
 
 export async function runClientCredentialsGrant(
   cfg: OAuth2ClientConfig,
+  context: EgressGuardContext,
 ): Promise<OAuth2TokenBundle> {
-  const configuration = await getConfig(cfg);
+  const configuration = await getConfig(cfg, context);
   const params: Record<string, string> = {};
   if (cfg.scope) params.scope = cfg.scope;
   if (cfg.audience) params.audience = cfg.audience;
-  const res = await oauth.clientCredentialsGrant(configuration, params);
-  return toBundle(res, cfg.issuer_url);
+  const res = await credentialOperation(() => oauth.clientCredentialsGrant(configuration, params));
+  return credentialOperation(() => toBundle(res, cfg.issuer_url));
 }
 
 export async function runPasswordGrant(
   cfg: OAuth2ClientConfig,
   username: string,
   password: string,
+  context: EgressGuardContext,
 ): Promise<OAuth2TokenBundle> {
-  const configuration = await getConfig(cfg);
+  const configuration = await getConfig(cfg, context);
   const params: URLSearchParams = new URLSearchParams({
     grant_type: "password",
     username,
@@ -216,8 +235,10 @@ export async function runPasswordGrant(
   });
   if (cfg.scope) params.set("scope", cfg.scope);
   if (cfg.audience) params.set("audience", cfg.audience);
-  const res = await oauth.genericGrantRequest(configuration, "password", params);
-  return toBundle(res, cfg.issuer_url);
+  const res = await credentialOperation(() =>
+    oauth.genericGrantRequest(configuration, "password", params),
+  );
+  return credentialOperation(() => toBundle(res, cfg.issuer_url));
 }
 
 export interface CognitoUserPasswordParams {
@@ -249,8 +270,9 @@ async function postCognito<T>(
   region: string,
   target: string,
   body: Record<string, unknown>,
+  context: EgressGuardContext,
 ): Promise<T> {
-  const res = await getDriverFetch()(cognitoEndpoint(region), {
+  const res = await fetchCredentialRequest(context, cognitoEndpoint(region), {
     method: "POST",
     headers: {
       "content-type": "application/x-amz-json-1.1",
@@ -258,11 +280,15 @@ async function postCognito<T>(
     },
     body: JSON.stringify(body),
   });
-  const text = await res.text();
+  const text = await credentialOperation(() => res.text());
   if (!res.ok) {
-    throw new Error(`cognito ${target} returned ${res.status}: ${text}`);
+    throw new CredentialRequestError("credential_response_rejected", res.status);
   }
-  return JSON.parse(text) as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new CredentialRequestError("credential_response_invalid");
+  }
 }
 
 function bundleFromCognito(
@@ -272,15 +298,11 @@ function bundleFromCognito(
 ): OAuth2TokenBundle {
   const r = payload.AuthenticationResult;
   if (!r || (!r.IdToken && !r.AccessToken)) {
-    throw new Error(
-      `cognito InitiateAuth returned no tokens: ${payload.message ?? payload.__type ?? "unknown"}`,
-    );
+    throw new CredentialRequestError("credential_response_invalid");
   }
   const access = useAccessToken ? r.AccessToken : r.IdToken;
   if (!access) {
-    throw new Error(
-      `cognito InitiateAuth missing ${useAccessToken ? "AccessToken" : "IdToken"} in result`,
-    );
+    throw new CredentialRequestError("credential_response_invalid");
   }
   const expires_at =
     typeof r.ExpiresIn === "number" ? new Date(Date.now() + Math.max(0, r.ExpiresIn) * 1000) : null;
@@ -295,6 +317,7 @@ function bundleFromCognito(
 
 export async function runCognitoUserPasswordGrant(
   p: CognitoUserPasswordParams,
+  context: EgressGuardContext,
 ): Promise<OAuth2TokenBundle> {
   const params: Record<string, string> = {
     USERNAME: p.username,
@@ -303,26 +326,37 @@ export async function runCognitoUserPasswordGrant(
   if (p.client_secret) {
     params.SECRET_HASH = await computeCognitoSecretHash(p.username, p.client_id, p.client_secret);
   }
-  const payload = await postCognito<CognitoTokenPayload>(p.region, "InitiateAuth", {
-    AuthFlow: "USER_PASSWORD_AUTH",
-    ClientId: p.client_id,
-    AuthParameters: params,
-  });
+  const payload = await postCognito<CognitoTokenPayload>(
+    p.region,
+    "InitiateAuth",
+    {
+      AuthFlow: "USER_PASSWORD_AUTH",
+      ClientId: p.client_id,
+      AuthParameters: params,
+    },
+    context,
+  );
   return bundleFromCognito(payload, p.use_access_token === true);
 }
 
 export async function runCognitoRefreshTokenGrant(
   p: CognitoUserPasswordParams & { refresh_token: string },
+  context: EgressGuardContext,
 ): Promise<OAuth2TokenBundle> {
   const params: Record<string, string> = { REFRESH_TOKEN: p.refresh_token };
   if (p.client_secret) {
     params.SECRET_HASH = await computeCognitoSecretHash(p.username, p.client_id, p.client_secret);
   }
-  const payload = await postCognito<CognitoTokenPayload>(p.region, "InitiateAuth", {
-    AuthFlow: "REFRESH_TOKEN_AUTH",
-    ClientId: p.client_id,
-    AuthParameters: params,
-  });
+  const payload = await postCognito<CognitoTokenPayload>(
+    p.region,
+    "InitiateAuth",
+    {
+      AuthFlow: "REFRESH_TOKEN_AUTH",
+      ClientId: p.client_id,
+      AuthParameters: params,
+    },
+    context,
+  );
   return bundleFromCognito(payload, p.use_access_token === true, p.refresh_token);
 }
 
@@ -368,9 +402,11 @@ export interface DynamicRegistrationResult {
 
 export async function dynamicallyRegisterClient(
   args: DynamicRegistrationArgs,
+  context: EgressGuardContext,
 ): Promise<DynamicRegistrationResult> {
   RFC7591ClientMetadataSchema.parse(args.clientMetadata);
 
+  const oauthFetch = oauthFetchFor(context);
   const server = new URL(args.issuerUrl);
   const isHttp = server.protocol === "http:";
   const discoveryOptions: oauth.DiscoveryRequestOptions =
@@ -380,25 +416,18 @@ export async function dynamicallyRegisterClient(
 
   let configuration: oauth.Configuration;
   try {
-    configuration = await oauth.discovery(
-      server,
-      "dynamic-registration-probe",
-      undefined,
-      undefined,
-      discoveryOptions,
+    configuration = await credentialOperation(() =>
+      oauth.discovery(server, "dynamic-registration-probe", undefined, undefined, discoveryOptions),
     );
-  } catch (err) {
-    throw new DynamicRegistrationError(
-      `OAuth discovery failed for ${args.issuerUrl}: ${err instanceof Error ? err.message : String(err)}`,
-      "discovery_failed",
-    );
+  } catch {
+    throw new DynamicRegistrationError("oauth_discovery_failed", "discovery_failed");
   }
 
   const serverMeta = configuration.serverMetadata() as Record<string, unknown>;
   const registrationEndpoint = serverMeta.registration_endpoint as string | undefined;
   if (!registrationEndpoint) {
     throw new DynamicRegistrationError(
-      `OAuth server at ${args.issuerUrl} does not advertise a registration_endpoint`,
+      "oauth_registration_endpoint_missing",
       "no_registration_endpoint",
     );
   }
@@ -411,18 +440,18 @@ export async function dynamicallyRegisterClient(
 
   let res: Response;
   try {
-    res = await getDriverFetch()(registrationEndpoint, fetchOpts);
-  } catch (err) {
+    res = await fetchCredentialRequest(context, registrationEndpoint, fetchOpts);
+  } catch {
     throw new DynamicRegistrationError(
-      `Registration POST to ${registrationEndpoint} failed: ${err instanceof Error ? err.message : String(err)}`,
+      "oauth_registration_request_failed",
       "registration_request_failed",
     );
   }
 
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
+    await res.body?.cancel().catch(() => {});
     throw new DynamicRegistrationError(
-      `Registration endpoint returned ${res.status}: ${body}`,
+      `oauth_registration_rejected: http_${res.status}`,
       `registration_http_${res.status}`,
     );
   }
@@ -440,7 +469,7 @@ export async function dynamicallyRegisterClient(
   const registration = RFC7591ClientRegistrationResponseSchema.safeParse(parsed);
   if (!registration.success) {
     throw new DynamicRegistrationError(
-      `Registration response failed schema validation: ${registration.error.message}`,
+      "oauth_registration_response_invalid",
       "registration_response_invalid",
     );
   }
@@ -470,6 +499,7 @@ export interface ClientCredentialsJsonParams {
 
 export async function runClientCredentialsJsonGrant(
   p: ClientCredentialsJsonParams,
+  context: EgressGuardContext,
 ): Promise<OAuth2TokenBundle> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -477,17 +507,15 @@ export async function runClientCredentialsJsonGrant(
     ...(p.extra_token_headers ?? {}),
   };
 
-  const res = await getDriverFetch()(p.token_endpoint, {
+  const res = await fetchCredentialRequest(context, p.token_endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify(p.body_mapping),
   });
 
-  const text = await res.text();
+  const text = await credentialOperation(() => res.text());
   if (!res.ok) {
-    throw new Error(
-      `client_credentials_json token endpoint returned ${res.status}: ${text.slice(0, 200)}`,
-    );
+    throw new CredentialRequestError("credential_response_rejected", res.status);
   }
 
   if (p.response_format === "raw") {
@@ -508,16 +536,14 @@ export async function runClientCredentialsJsonGrant(
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error(
-      `client_credentials_json JSON response is not valid JSON: ${text.slice(0, 200)}`,
-    );
+    throw new CredentialRequestError("credential_response_invalid");
   }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
+    throw new CredentialRequestError("credential_response_invalid");
   const envelope = parsed as Record<string, unknown>;
   const access_token = typeof envelope.access_token === "string" ? envelope.access_token : null;
   if (!access_token) {
-    throw new Error(
-      `client_credentials_json JSON response missing access_token: ${text.slice(0, 200)}`,
-    );
+    throw new CredentialRequestError("credential_response_invalid");
   }
   const expires_in = typeof envelope.expires_in === "number" ? envelope.expires_in : null;
   const expires_at =
@@ -538,13 +564,16 @@ export async function runClientCredentialsJsonGrant(
 export async function runRefreshTokenGrant(
   cfg: OAuth2ClientConfig,
   refresh_token: string,
+  context: EgressGuardContext,
 ): Promise<OAuth2TokenBundle> {
-  const configuration = await getConfig(cfg);
+  const configuration = await getConfig(cfg, context);
   const params: Record<string, string> = {};
   if (cfg.scope) params.scope = cfg.scope;
   try {
-    const res = await oauth.refreshTokenGrant(configuration, refresh_token, params);
-    return toBundle(res, cfg.issuer_url);
+    const res = await credentialOperation(() =>
+      oauth.refreshTokenGrant(configuration, refresh_token, params),
+    );
+    return credentialOperation(() => toBundle(res, cfg.issuer_url));
   } catch (err) {
     logger.warn({
       module: "oauth2",
@@ -558,6 +587,7 @@ export async function runRefreshTokenGrant(
 
 export function isOAuthProviderError(err: unknown): boolean {
   return (
+    err instanceof CredentialRequestError ||
     err instanceof oauth.ClientError ||
     err instanceof oauth.ResponseBodyError ||
     err instanceof oauth.AuthorizationResponseError ||

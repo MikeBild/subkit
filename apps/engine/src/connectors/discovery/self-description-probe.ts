@@ -1,6 +1,8 @@
 import { logger } from "../../logging/logger.ts";
-import { getDriverFetch } from "../drivers/fetch-seam.ts";
+import { getDriverFetch, withDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";
+import { guardedFetch } from "../egress-fetch.ts";
+import type { EgressGuardContext } from "../egress-guard.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
 import type { ConnectorSelfDescriptionLink } from "../types.ts";
 import { looksLikeGraphQLUrl } from "./graphql-introspect.ts";
@@ -162,13 +164,23 @@ async function probeGraphQL(
   return null;
 }
 
+interface SelfDescriptionProbeOptions extends EgressGuardContext {
+  fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
+  headers?: Record<string, string>;
+}
+
 export async function probeAllSelfDescriptionLinks(
   baseUrl: string,
-  opts: {
-    fetchImpl?: typeof fetch;
-    signal?: AbortSignal;
-    headers?: Record<string, string>;
-  },
+  opts: SelfDescriptionProbeOptions,
+): Promise<ConnectorSelfDescriptionLink[]> {
+  const transport = guardedFetch(opts, opts.fetchImpl ?? getDriverFetch());
+  return withDriverFetch(transport, () => probeDescriptionLinks(baseUrl, opts));
+}
+
+async function probeDescriptionLinks(
+  baseUrl: string,
+  opts: SelfDescriptionProbeOptions,
 ): Promise<ConnectorSelfDescriptionLink[]> {
   const origin = originOf(baseUrl);
   if (!origin) return [];

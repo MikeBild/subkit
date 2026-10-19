@@ -3,6 +3,7 @@ import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
+import { fetchWithEgressGuard } from "../egress-fetch.ts";
 import { assertEgressAllowedResolved } from "../egress-guard.ts";
 import { requestUsedStoredCredential } from "../reauth.ts";
 import { connectorHeaderPolicy, requestHeaderViolations } from "../request-header-policy.ts";
@@ -168,7 +169,7 @@ export async function executeGraphQLRequest(p: {
   for (const [k, v] of Object.entries(query)) {
     url.searchParams.set(k, String(v));
   }
-  await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id });
+  await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id, exec: p.db });
 
   logger.debug({
     module: "connector",
@@ -197,7 +198,7 @@ export async function executeGraphQLRequest(p: {
       : requestedDispatchPolicy;
   let signedJwtToken: string | null = null;
   if (credential?.mode === "signed_jwt") {
-    await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id });
+    await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id, exec: p.db });
     signedJwtToken = await applySignedJwtAuth(p.connector, credential, url, headers);
   }
   const res = await instrument({
@@ -212,13 +213,18 @@ export async function executeGraphQLRequest(p: {
       url_host: url.host,
     },
     fn: () =>
-      fetchImpl(url.toString(), {
-        ...(dispatchPolicy ? { redirect: dispatchPolicy.redirect } : {}),
-        method: "POST",
-        headers,
-        body: JSON.stringify({ query: p.op.query, variables: p.op.variables ?? {} }),
-        signal: AbortSignal.timeout(FETCH_DEADLINE_MS),
-      }),
+      fetchWithEgressGuard(
+        url,
+        {
+          ...(dispatchPolicy ? { redirect: dispatchPolicy.redirect } : {}),
+          method: "POST",
+          headers,
+          body: JSON.stringify({ query: p.op.query, variables: p.op.variables ?? {} }),
+          signal: AbortSignal.timeout(FETCH_DEADLINE_MS),
+        },
+        { tenant_id: p.tenant_id, exec: p.db },
+        { fetchImpl },
+      ),
   });
   const maxResponseBytes = resolveMaxResponseBytes(p.tenant_id);
   await checkAuthorityRedirect(res, dispatchPolicy);
@@ -233,6 +239,7 @@ export async function executeGraphQLRequest(p: {
   res.headers.forEach((v, k) => {
     headerObj[k] = v;
   });
+  if (signedJwtToken) parsed = redactSignedJwtValue(parsed, signedJwtToken) as typeof parsed;
   const errorMessages = graphqlErrorMessages(parsed);
   if (errorMessages !== null || res.status >= 400) {
     logger.warn({
@@ -251,7 +258,7 @@ export async function executeGraphQLRequest(p: {
     headers: signedJwtToken
       ? (redactSignedJwtValue(headerObj, signedJwtToken) as Record<string, string>)
       : headerObj,
-    body: (signedJwtToken ? redactSignedJwtValue(parsed, signedJwtToken) : parsed) as {
+    body: parsed as {
       data?: unknown;
       errors?: unknown;
     },

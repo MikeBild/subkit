@@ -14,7 +14,9 @@ import { dedupChunks } from "../docs-ingestion/dedup.ts";
 import type { FingerprintedChunk } from "../docs-ingestion/types.ts";
 import { backfillEmbeddings } from "../embeddings/backfill.ts";
 import { embeddingsAvailable } from "../embeddings/local-provider.ts";
+import { withTenantWork } from "../execution/index.ts";
 import type { PersistInlineUploadResult } from "../files/persist-inline-upload.ts";
+import { assertTenantActive, lockActiveTenant } from "../identity/index.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { errorFields, log, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
@@ -100,9 +102,12 @@ export async function kickSourceEmbeddingBackfill(
   db: Executor,
 ): Promise<void> {
   try {
-    if (!(await embeddingsAvailable())) return;
-    const result = await backfillEmbeddings({ tenant_id, knowledge_source_id }, db);
-    if (result.knowledge.embedded > 0) invalidateKnowledgeCache(tenant_id);
+    await withTenantWork(tenant_id, async () => {
+      await assertTenantActive(tenant_id, db);
+      if (!(await embeddingsAvailable())) return;
+      const result = await backfillEmbeddings({ tenant_id, knowledge_source_id }, db);
+      if (result.knowledge.embedded > 0) invalidateKnowledgeCache(tenant_id);
+    });
   } catch (err) {
     logger.warn({
       module: "knowledge",
@@ -145,6 +150,8 @@ export async function prepareKnowledgeCreate(
   p: CreateKnowledgeSourceParams,
   db: Executor,
 ): Promise<PreparedKnowledgeCreate> {
+  await lockCatalogVocabulary(db, p.tenant_id);
+  await lockActiveTenant(p.tenant_id, db);
   if (p.input.scope === "workflow" && !p.input.workflow_id) {
     throw new Error("workflow_id is required when scope is 'workflow'");
   }
@@ -331,6 +338,7 @@ export async function updateKnowledgeSource(
 
   return await (db as Db).transaction(async (tx) => {
     await lockCatalogVocabulary(tx, p.tenant_id);
+    await lockActiveTenant(p.tenant_id, tx);
     const existing = await tx
       .select()
       .from(knowledgeSources)
@@ -600,6 +608,8 @@ export async function prepareKnowledgeIngest(
   p: IngestKnowledgeSourceParams,
   db: Executor,
 ): Promise<PreparedKnowledgeIngest> {
+  await lockCatalogVocabulary(db, p.tenant_id);
+  await lockActiveTenant(p.tenant_id, db);
   const content = decodeUpload(p.upload.buffer);
   assertSourceSize(content);
   const byteSize = Buffer.byteLength(content, "utf8");

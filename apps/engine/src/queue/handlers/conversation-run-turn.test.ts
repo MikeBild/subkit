@@ -48,13 +48,14 @@ let queuedPrincipal: ResolvedPrincipal;
 const nextUuid = createDeterministicUuidFactory(0xc011a026);
 function enqueueConversationRunTurn(
   boss: Parameters<typeof enqueueRawConversationRunTurn>[0],
-  payload: Parameters<typeof enqueueRawConversationRunTurn>[1],
-  options?: Parameters<typeof enqueueRawConversationRunTurn>[2],
+  payload: Parameters<typeof enqueueRawConversationRunTurn>[2],
+  options?: Parameters<typeof enqueueRawConversationRunTurn>[3],
 ) {
   const auth_source = payload.principal?.auth_source ?? queuedPrincipal.auth_source;
   if (!auth_source) throw new Error("queued fixture requires credential provenance");
   return enqueueRawConversationRunTurn(
     boss,
+    queue.testDb.db,
     {
       ...payload,
       principal: {
@@ -163,7 +164,7 @@ describe("conversation.run-turn worker", () => {
   test("missing queued principal uses the persisted task caller for audit attribution", async () => {
     const { conversation_id, mcp_task_id } =
       await seedConversationAndTask("deny missing principal");
-    await enqueueRawConversationRunTurn(queue.boss, {
+    await enqueueRawConversationRunTurn(queue.boss, queue.testDb.db, {
       tenant_id: tenantId,
       conversation_id,
       mcp_task_id,
@@ -212,7 +213,7 @@ describe("conversation.run-turn worker", () => {
       id: userId,
       tenant_id: nextUuid(),
     };
-    await enqueueRawConversationRunTurn(queue.boss, {
+    await enqueueRawConversationRunTurn(queue.boss, queue.testDb.db, {
       tenant_id: tenantId,
       conversation_id,
       mcp_task_id,
@@ -449,7 +450,7 @@ describe("conversation.run-turn worker — failure path", () => {
     getMockProvider().setFailure("runturn-primary", "overloaded");
     getMockProvider().setFailure("runturn-fallback", "overloaded");
 
-    await enqueueRawConversationRunTurn(queue.boss, {
+    await enqueueRawConversationRunTurn(queue.boss, queue.testDb.db, {
       tenant_id: tenantId,
       conversation_id: created.conversation.id,
       mcp_task_id,
@@ -498,7 +499,7 @@ describe("conversation.run-turn worker — failure path", () => {
       },
       queue.testDb.db,
     );
-    await enqueueRawConversationRunTurn(queue.boss, {
+    await enqueueRawConversationRunTurn(queue.boss, queue.testDb.db, {
       tenant_id: tenantId,
       conversation_id: created.conversation.id,
       mcp_task_id,
@@ -537,7 +538,7 @@ describe("conversation.run-turn worker — failure path", () => {
       },
       queue.testDb.db,
     );
-    await enqueueRawConversationRunTurn(queue.boss, {
+    await enqueueRawConversationRunTurn(queue.boss, queue.testDb.db, {
       tenant_id: tenantId,
       conversation_id: created.conversation.id,
       mcp_task_id,

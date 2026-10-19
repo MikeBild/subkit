@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import type { EgressGuardContext } from "../../connectors/egress-guard.ts";
 import {
   fetchGoogleDiscoverySpec,
   fetchGraphQLIntrospection,
@@ -70,7 +71,10 @@ function firstEndpointBaseUrl(eps: EndpointSpec[]): string {
   return "";
 }
 
-async function parseSource(args: z.infer<typeof inputSchema>): Promise<Parsed> {
+async function parseSource(
+  args: z.infer<typeof inputSchema>,
+  context: EgressGuardContext,
+): Promise<Parsed> {
   const { source, content, headers } = args;
   if (source === "curl") {
     const curl = parseCurlCommand(content);
@@ -101,7 +105,7 @@ async function parseSource(args: z.infer<typeof inputSchema>): Promise<Parsed> {
     let sourceUrl: string | null = null;
     if (/^https?:\/\//i.test(raw)) {
       sourceUrl = raw;
-      const fetched = await fetchOpenApiSpec(raw, headers);
+      const fetched = await fetchOpenApiSpec(raw, headers, context);
       text = fetched.content;
     }
     const parsed = parseOpenApiWithMetadata(text, sourceUrl ?? undefined);
@@ -117,7 +121,7 @@ async function parseSource(args: z.infer<typeof inputSchema>): Promise<Parsed> {
     const raw = content.trim();
     let text = raw;
     if (/^https?:\/\//i.test(raw)) {
-      const fetched = await fetchGoogleDiscoverySpec(raw, headers);
+      const fetched = await fetchGoogleDiscoverySpec(raw, headers, context);
       text = fetched.content;
     }
     const parsed = parseGoogleDiscoveryWithMetadata(text);
@@ -131,7 +135,7 @@ async function parseSource(args: z.infer<typeof inputSchema>): Promise<Parsed> {
     const eps = parseGraphQL(content);
     return { endpoints: eps, base_url: "" };
   }
-  const fetched = await fetchGraphQLIntrospection(content, headers);
+  const fetched = await fetchGraphQLIntrospection(content, headers, context);
   const eps = parseGraphQLIntrospection(fetched.content);
   return {
     endpoints: eps,
@@ -172,7 +176,10 @@ export async function importConnectorDraftFromSpec(p: {
   db?: ToolContext["db"];
 }): Promise<ImportConnectorDraftResult> {
   const { args } = p;
-  const parsed = await parseSource(args);
+  const parsed = await parseSource(args, {
+    ...(p.tenant_id ? { tenant_id: p.tenant_id } : {}),
+    ...(p.db ? { exec: p.db } : {}),
+  });
   const baseUrl = parsed.base_url;
   const reuseEnvelope =
     p.tenant_id && p.db
