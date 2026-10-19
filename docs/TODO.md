@@ -148,26 +148,23 @@ eine Startreplik, kein Trial, sieben Tage widerrufbare Löschung. Offenes Signup
 bleibt bis zur vollständigen Abnahme deaktiviert. Alle neuen Ergebnisse sind
 getrennt nach lokaler Prüfung und externer Abnahme zu bewerten.
 
-**Aktueller externer Stand, E298–E300:** Die bestehende Upraft-App läuft mit dem
-Docker-Hub-Image des geprüften Quellenstands `7400bb3ef` stabil; öffentliche Health-/Ready-/Cockpit-
-Routen und ein echter OpenAI-Chat auf genau dieser Revision bestanden. Die
-Betreiberpolicy einschließlich Upraft-OIDC ist aktiv, Signup geschlossen. Der
-pgBoss-Katalogfehler (`42501`) wurde gepatcht; zwei volle Scheduler-Zyklen
-der neuen Revision blieben fehlerfrei. Upraft Auth meldet die dedizierte signierte
-Zustellregel als bereit. Der erste echte Invite erreichte den aktiven SubKit-
-Workflow, scheiterte aber vor Gmail im Transform-Schritt. Version 10 wurde
-durch die berechtigte Person aktiviert; ein nach kurzem API-Host-Ausfall
-offiziell wiederholtes Passwort-Reset-Ereignis scheiterte zunächst im ersten
-JSONata-Zweig; weitere signierte Ereignisse erreichten den Mailaufbau, dessen
-Empfänger-Guard die reale Form ablehnt. Gmail wurde nicht aufgerufen. Eine
-inaktive Version 11 mit festen, inhaltsfreien Formmarkern ist lokal geprüft und
-wartet im authentifizierten Cockpit auf persönliche Übernahme. Das private Upraft-
-Backupziel und tägliche vollständige Exporte sind eingerichtet; der erste
-Export ließ sich isoliert mit PostgreSQL 18.6 fehlerfrei wiederherstellen.
-Echter Auth-Mailversand, OIDC-Nutzerlogin, Zwei-Tenant-Isolation und produktiver
-Restore bleiben offen. Die älteren H-Zeilen unten enthalten die
-technische Vorgeschichte; dieser Absatz und E298–E300 führen den aktuellen externen
-Betriebsstand bis zur vollständigen Zeilenaktualisierung.
+**Aktueller externer Stand, E303–E308:** Das Linux/AMD64-Cloud-Image aus
+`6db6cd8ee` läuft in der bestehenden Upraft-App mit einer gesunden Replica.
+DNS, TLS, Root-Weiterleitung, Health, Ready und Cockpit sind live geprüft;
+die letzten 100 aktiven Runtime-Zeilen enthalten keine Warnung und keinen Fehler.
+Der signierte Auth-Webhook versandte eine echte Mail; zwei verschiedene
+Upraft-Auth-Identitäten meldeten sich im Browser an und erhielten verschiedene
+Workspaces. Die begrenzte Registrierung ist offen. Der zweite Tenant erhielt
+eine echte OpenAI-Antwort; die genau dafür angelegte Test-Unterhaltung wurde
+nach persönlicher Freigabe gelöscht. Sein Audit zeigt reservierte und abgerechnete
+Betreiber-Modellkosten für denselben Vorgang. Die negative Tenant-Kontextprobe
+wurde HTTP 409 abgewiesen, verwendete aber keine vorhandene fremde Ressource.
+Tägliche private Exporte und Aufbewahrung der letzten 14 Backups sind eingerichtet;
+der erste Export wurde isoliert als PostgreSQL-Schema wiederhergestellt.
+Ressourcenisolation an tatsächlich vorhandenem Fremdobjekt, Grenzverweigerungen,
+Lifecycle, vollständiger semantischer Wiederanlauf und breite Cloud-Journey
+bleiben offen. Die folgenden H-Zeilen enthalten auch historische Technikstände;
+E303–E308 und [LAUNCH_STATUS](../LAUNCH_STATUS.md) führen den aktuellen Betrieb.
 
 Freigegebene Free-Betriebswerte: 5 USD Modellkosten pro Tenant/Monat,
 50 USD Modellkosten insgesamt/Monat, 50 MB (50.000.000 Bytes) gemeinsamer logischer
@@ -176,7 +173,7 @@ sowie 1.000 aufbewahrte Datensätze je Ressourcentyp einschließlich logisch gel
 Einträge bis zur physischen Bereinigung und 10.000 metrierte Requests pro
 Tenant/UTC-Kalendermonat. Auth-Aktionen werden
 per Webhook zugestellt; die dedizierte signierte Zustellregel ist eingerichtet,
-der dynamische Mail-Workflow aktiviert, aber echte Zustellungen bislang vor Gmail gescheitert. Diese Werte sind im privaten
+der dynamische Mail-Workflow aktiviert und eine echte signierte Zustellung bis Gmail belegt. Diese Werte sind im privaten
 Deploymentvertrag festgehalten und als Betreiberpolicy produktiv aktiv. Schutzlimits
 pro Minute und Queue-/Dateigrenzen bleiben davon getrennt. Die Nutzerpräzisierung
 schließt Knowledge und Gespräche ein; bestehende Dateiquoten allein erfüllen diese
@@ -189,15 +186,15 @@ Eine vollständige integrierte und echte Cloud-Abnahme steht aus.
 
 | ID | Status | Nachweis und nächstes Ergebnis |
 | --- | --- | --- |
-| H01 Bestand/Herkunft | IN_PROGRESS | Bestehende Ziel-App, separate Produktdatenbank, privater Objekt-Bucket und DNS sind verbunden. Aktuelles Linux/AMD64-Registry-Image mit geprüfter Quellrevision ist in dieser App aktiv; Upraft meldet Rollout stabil. Historische Recovery-Metadaten bleiben mit diesem Token nicht lesbar, E297. |
-| H02 DB/Runtime | IN_PROGRESS | Engine 10.1.4 startet mit verwaltetem TLS, Migrationen, Queue-Start, Health und Ready in der produktiven Upraft-App. Echter OpenAI-Chat auf der gepatchten Revision bestanden. Zwei volle Scheduler-Zyklen nach dem pgBoss-Katalogpatch waren ohne `42501`. Lokale Demo separat und unverändert, E298. |
-| H03 Identität/Mitgliedschaften | IN_PROGRESS | Globale Identität, ein eigener Tenant, eingeladene Mitgliedschaften, Browser-Sitzungsrotation und Tenant-Kontextprüfung implementiert. Registrierung getrennt vom laufenden Hosted-Betrieb; acht zusätzliche HTTP/OIDC/PG-Fälle zu geschlossener Registrierung und sicherem Invite-Login bestanden. Frische browsergebundene OIDC-Recovery und zehn zusätzliche HTTP/OIDC/PG-Transportfälle bestanden. CLI-/OAuth-Membership-Handoff implementiert und fokussiert mit HTTP/PG sowie CLI-Tests geprüft; Gruppen-/Rollenisolation mit eigener Vorwärtsmigration nachgeschärft, 73 Tests PASS; Portal-E-Mail tenantgebunden, elf Tests PASS (E248). Native verbundene Browser-/CLI- und echte Cloud-Journey offen. |
-| H04 Geldbudgets/Fairness | IN_PROGRESS | Die globale Betreiberpolicy ist gespeichert und aktiv: 5 USD Modellkosten pro Free-Tenant und 50 USD insgesamt je Monat, 50 MB gemeinsamer logischer Speicher, 10.000 Requests pro Tenant/UTC-Monat, 1.000 aufbewahrte Datensätze je Ressourcentyp. Ein echter Betreiber-Chat auf der laufenden Revision war erfolgreich; Buchungs- und Grenzfälle für neue Self-Service-Tenants bleiben per Browser/API nachzuweisen, E297. |
-| H05 Lifecycle/Auth-Mail | IN_PROGRESS | Löschung, Recovery, Secret-Eigentümerschaft und Erasure sind lokal fokussiert geprüft; produktive Rollenfähigkeit bleibt offen. Die dedizierte signierte Upraft-Auth-Zustellregel und der SubKit-Workflow Version 10 sind aktiv. Echte signierte Ereignisse erreichen den Webhook; der Mailaufbau lehnt die tatsächliche Empfängerform ab, Gmail wurde nicht aufgerufen. Version 11 ergänzt nur feste Formmarker und ist als inaktiver Entwurf zur persönlichen Übernahme vorbereitet, E300. |
+| H01 Bestand/Herkunft | IN_PROGRESS | Bestehende Ziel-App, separate Produktdatenbank, privater Objekt-Bucket und DNS sind verbunden. Das aktuelle Linux/AMD64-Registry-Image entspricht der aktiven Quellrevision; DNS/TLS, eine gesunde Replica und öffentliche Routen sind aktuell geprüft. Historische Recovery-Metadaten und vollständige Disaster-Recovery bleiben offen, E308. |
+| H02 DB/Runtime | IN_PROGRESS | Die produktive Engine startet mit verwaltetem TLS, Migrationen und Queue; Health und Ready sind live grün. OpenAI-Chat bestand im zweiten echten Tenant. Die letzten 100 aktiven Runtime-Zeilen enthalten keine Warnung und keinen Fehler; lokale Demo separat, E307–E308. |
+| H03 Identität/Mitgliedschaften | IN_PROGRESS | Globale Identität, ein eigener Tenant, eingeladene Mitgliedschaften, Browser-Sitzungsrotation und Tenant-Kontextprüfung implementiert. Zwei echte Upraft-Auth-Identitäten meldeten sich im Browser an und erhielten getrennte Workspaces. Fremder Tenant-Kontext wurde HTTP 409 abgewiesen; der Zugriff auf eine tatsächlich vorhandene fremde Ressource ist noch nicht live gegengeprüft. CLI-/MCP-/Rollenparität bleibt als Cloud-Nachweis offen, E306. |
+| H04 Geldbudgets/Fairness | IN_PROGRESS | Aktive Betreiberpolicy: 5 USD Modellkosten pro Free-Tenant und 50 USD insgesamt je Monat, 50 MB gemeinsamer logischer Speicher, 10.000 Requests pro Tenant/UTC-Monat, 1.000 aufbewahrte Datensätze je Ressourcentyp. Ein echter OpenAI-Aufruf im zweiten Tenant zeigte Kosten; sein Audit belegt Reservierung und Abrechnung. Grenzverweigerungen, Nebenläufigkeit und Quoten aller Ressourcentypen bleiben live beziehungsweise isoliert zu prüfen, E307–E308. |
+| H05 Lifecycle/Auth-Mail | IN_PROGRESS | Löschung, Recovery, Secret-Eigentümerschaft und Erasure sind lokal fokussiert geprüft. Die signierte Upraft-Auth-Zustellung erreichte den freigegebenen SubKit-Workflow und Gmail; die zweite Einladung wurde persönlich angenommen. Produktive Löschung/Wiederherstellung und endgültige Bereinigung fehlen als Live-Nachweis. Upraft bietet derzeit keine appbezogene automatische Rückleitung nach allgemeiner Einladung, E303–E308. |
 | H06 Cockpit/Client-Verträge | IN_PROGRESS | Lovable-Entwurf inspiziert und Workspace-Menü, Löschdialog sowie Recovery-Seite integriert. 33 Cockpit-Session-/Kontexttests bestanden. Browser prüfte Wechsel, Stale-Tab-Sperre sowie HTTP-200-Löschung/Wiederherstellung gegen isolierte PostgreSQL-Fixture; Browser-Identitätsnachweis dabei simuliert. Bootstrap-Refetchloop korrigiert; Zwei-Tab-Gegenprobe blieb bei drei Bootstrap-Aufrufen. Engine- und Cockpit-Typecheck bestanden. Clientparität, finale generierte Assets und Sichtabnahme offen; E232. Zusätzlicher Lovable-Entwurf für Betreiber-Reconciliation meldet Buildfehler, Korrektur wegen fehlender Workspace-Credits abgelehnt; diese neue Oberfläche ist noch nicht integriert, E236. |
-| H07 Vollständige Abnahme | IN_PROGRESS | Technische Phasenabdeckung E296 segmentiert vollständig: 2.168 Dateien mit 20.448 PASS/0 ungelösten FAIL, Eval 40/40, kompilierte Clipper-Parität und 42 HTTP-/CLI-E2E-Dateien mit 257 PASS. E298–E300 ergänzen gepatchten aktiven Upraft-Rollout, echten OpenAI-Chat, Datei-Roundtrip, fehlerfreie Scheduler-Zyklen, isolierten Restore des ersten Backups und die eingegrenzte Auth-Mail-Störung. Für schnelle Folgefixes wurden breite lokale Gates auf Nutzerwunsch übersprungen; echter Browser-OIDC-Login, Zwei-Tenant-Isolation und produktiver Restore bleiben offen. |
+| H07 Vollständige Abnahme | IN_PROGRESS | Technische Phasenabdeckung E296: 2.168 Dateien mit 20.448 PASS/0 ungelösten FAIL, Eval 40/40, kompilierte Clipper-Parität und 42 HTTP-/CLI-E2E-Dateien mit 257 PASS. E303–E308 ergänzen echten Auth-Mailversand, zwei Browser-OIDC-Logins, getrennte Workspaces, OpenAI-Antwort, Budget-Audit und stabile Cloud-Revision. Breite lokale Gates wurden für schnelle Folgefixes auf Nutzerwunsch übersprungen; echte Fremdobjekt-Isolation, Grenzfälle, Lifecycle und semantischer Restore bleiben offen. |
 | H08 Privater Deployment-Vertrag | IN_PROGRESS | SubKit-only Vertrag und rein lesender Kandidatenguard im privaten Deployment-Repo vorbereitet; 29 Tests bestanden, einschließlich bestätigter 1.000 Datensätze je Ressourcentyp samt Soft-Delete, E242. Gemeinsame 50-MB-Quote, Ressourcenanzahl und nachgewiesen unversionierter, nicht gesperrter Objekt-Bucket sind explizite Kandidatengrenzen. Herkunft, finaler Releasepin und Deploymentautorität bleiben gesperrte Pflichteingaben. Historischen Sechsproduktvertrag erhalten. |
-| H09 Release/Cloud/Signup | IN_PROGRESS | Docker-Hub-Image aus Quellenstand `7400bb3ef` in bestehender Upraft-App deployed, Rollout stabil; öffentliche Health-/Ready-/Cockpit-Routen antworten 200 über gültiges TLS. DNS und Betreiberpolicy einschließlich Upraft-OIDC sind aktiv, Signup geschlossen. Privates tägliches Backup eingerichtet und erster Export isoliert wiederhergestellt. Auth-Mail und E2E-Abnahme offen; signierte öffentliche Distribution, Rechts-/Sichtabnahmen und separate Signup-Freigabe bleiben eigenständige Gates, E298–E300. |
+| H09 Release/Cloud/Signup | IN_PROGRESS | Linux/AMD64-Image aus `6db6cd8ee` in der bestehenden Upraft-App stabil deployed; öffentliche Health-/Ready-/Cockpit-Routen antworten 200 über gültiges TLS, Root leitet zum Cockpit. Begrenzte Registrierung, Betreiberpolicy und Upraft-OIDC sind aktiv. Tägliches privates Backup und erster isolierter PostgreSQL-Restore belegt; semantischer Wiederanlauf, Cloud-E2E, signierte öffentliche Distribution sowie Rechts-/Sichtabnahmen bleiben eigenständige Gates, E303–E308. |
 
 `query-fragment.test.ts` aktuell allein 4/4 und gemeinsam mit Server-Registry 8/8
 bestanden; alter Batchfehler nicht reproduziert, daher kein spekulativer Fix.

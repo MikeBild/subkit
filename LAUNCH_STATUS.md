@@ -1,7 +1,7 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E307.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E308.
 
 Operative L-Aufgaben, Prioritäten und aktueller Issue-Status stehen in den
 [GitHub Issues](https://github.com/MikeBild/subkit/issues) und im
@@ -35,7 +35,12 @@ enthielten keinen parsebaren Warn- oder Fehlerlog. Auth-Mail wurde über den
 signierten Webhook-Workflow versandt und die zweite Einladung von der Person
 angenommen. Die Browser-Fehlerseite des OIDC-Callbacks ist im SubKit-Stil
 deployed. E303–E307 enthalten die aktuellen Auth-, Deployment- und
-Isolationsergebnisse.
+Isolationsergebnisse. E308 bestätigt zusätzlich per frischem Registry-, DNS-,
+TLS- und Runtime-Audit die aktive Revision. Im echten zweiten Tenant zeigen
+`llm.budget.reserved` und `llm.budget.settled` die Buchung des Modellaufrufs;
+ein Grenzfall oder Zugriff auf eine tatsächlich vorhandene fremde Ressource ist
+damit noch nicht bewiesen. „Kein Kontingent gesetzt“ in der Nutzungsansicht
+bezeichnet das separate Cockpit-Nutzerkontingent, nicht den Betreiber-Gelddeckel.
 
 Ein privates Upraft-Backupziel, tägliche vollständige Exporte und Aufbewahrung
 der letzten 14 Backups sind eingerichtet. Der erste Export wurde isoliert mit
