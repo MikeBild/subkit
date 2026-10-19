@@ -158,3 +158,53 @@ describe("formatSkillIndex", () => {
     expect(block).not.toContain("$" + "{engine_url}");
   });
 });
+
+describe("skill guidance for nested generation", () => {
+  test("includes complete approved guidance without inventing retrieval capabilities", () => {
+    const body = `Preserve the caller boundary. ${"Domain guidance. ".repeat(40)}FINAL_REQUIRED_CONTRACT`;
+    const block = formatSkillIndex(
+      "Global",
+      [
+        fakeSkill({
+          id: "guidance",
+          title: "Approved guidance",
+          body,
+          best_practices: ["Keep reviewed destinations fixed"],
+          pitfalls: ["Never fabricate caller identity"],
+          doc_refs: ["contract-reference"],
+          examples: ["A typed workflow definition"],
+        }),
+      ],
+      undefined,
+      "guidance",
+    );
+    expect(block).toContain(body);
+    expect(block).toContain("Keep reviewed destinations fixed");
+    expect(block).toContain("Never fabricate caller identity");
+    expect(block).toContain("contract-reference");
+    expect(block).toContain("A typed workflow definition");
+    expect(block).not.toContain("skill index — call");
+    expect(block).toContain("outer authoring agent");
+    expect(block).toContain("use abort to name the exact missing fact");
+  });
+
+  test("catalog mode keeps demoted guidance descriptive without restoring its full body", () => {
+    const block = formatSkillIndex(
+      "Loaded",
+      [
+        fakeSkill({
+          id: "demoted",
+          title: "Earlier guidance",
+          description: "An earlier reviewed reference",
+          body: "FULL_BODY_NOT_REQUESTED",
+        }),
+      ],
+      undefined,
+      "catalog",
+    );
+    expect(block).toContain("An earlier reviewed reference");
+    expect(block).not.toContain("FULL_BODY_NOT_REQUESTED");
+    expect(block).not.toContain("call `load_skill");
+    expect(block).toContain("no retrieval tool is available");
+  });
+});

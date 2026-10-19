@@ -134,6 +134,8 @@ export async function assembleEnhancedPrompt(
     db,
   );
 
+  const generating = p.flow === "generate";
+  const skillIndexMode = generating ? "guidance" : "interactive";
   const globalSkills = skillsApplicable.filter((s) => s.scope === "global");
   const connectorSkills = skillsApplicable.filter((s) => s.scope === "connector");
   const workflowSkills = skillsApplicable.filter((s) => s.scope === "workflow");
@@ -330,9 +332,24 @@ export async function assembleEnhancedPrompt(
     };
     sections.push(baseSystem);
     if (runtimeBlock) vol(runtimeBlock);
-    const globalIndexBlock = formatSkillIndex("Global", globalSkills, p.runtime_context);
-    const connectorIndexBlock = formatSkillIndex("Connector", connectorSkills, p.runtime_context);
-    const workflowIndexBlock = formatSkillIndex("Workflow", workflowSkills, p.runtime_context);
+    const globalIndexBlock = formatSkillIndex(
+      "Global",
+      globalSkills,
+      p.runtime_context,
+      skillIndexMode,
+    );
+    const connectorIndexBlock = formatSkillIndex(
+      "Connector",
+      connectorSkills,
+      p.runtime_context,
+      skillIndexMode,
+    );
+    const workflowIndexBlock = formatSkillIndex(
+      "Workflow",
+      workflowSkills,
+      p.runtime_context,
+      skillIndexMode,
+    );
     if (globalIndexBlock) sections.push(globalIndexBlock);
     if (connectorOperatorQuirksBlock) sections.push(connectorOperatorQuirksBlock);
     if (connectorRecipesBlock) sections.push(connectorRecipesBlock);
@@ -341,7 +358,12 @@ export async function assembleEnhancedPrompt(
     if (connectorIndexBlock) sections.push(connectorIndexBlock);
     if (workflowIndexBlock) sections.push(workflowIndexBlock);
     for (const s of loadedSkills) sections.push(formatSkill(s, p.runtime_context));
-    const loadedIndexBlock = formatSkillIndex("Loaded", loadedIndexSkills, p.runtime_context);
+    const loadedIndexBlock = formatSkillIndex(
+      "Loaded",
+      loadedIndexSkills,
+      p.runtime_context,
+      generating ? "catalog" : "interactive",
+    );
     if (loadedIndexBlock) sections.push(loadedIndexBlock);
     if (skillCandidatesBlock) vol(skillCandidatesBlock);
     for (const kc of knowledgeChunks) sections.push(formatKnowledgeChunk(kc));
@@ -377,10 +399,12 @@ export async function assembleEnhancedPrompt(
   };
 
   const trimmed: string[] = [];
-  const CONNECTOR_SCHEMA_TRIM_REF =
-    "# Connector operations (from the connector's schema)\n[trimmed to fit the context budget — call discover_connector_endpoints to reload the real operation index; do not guess operation or argument names]";
-  const PROBE_SAMPLES_TRIM_REF =
-    "# Recorded endpoint samples\n[trimmed to fit the context budget — probe_connector / call_connector re-record real response shapes; suggest_jsonata_paths serves the field vocabulary. Do not guess field names]";
+  const CONNECTOR_SCHEMA_TRIM_REF = generating
+    ? "# Connector operations\n[omitted because the context budget is exhausted; no discovery tool is available in this call. If a required operation contract is missing, abort and ask the outer agent to supply the exact schema. Never guess.]"
+    : "# Connector operations (from the connector's schema)\n[trimmed to fit the context budget — call discover_connector_endpoints to reload the real operation index; do not guess operation or argument names]";
+  const PROBE_SAMPLES_TRIM_REF = generating
+    ? "# Recorded endpoint samples\n[omitted because the context budget is exhausted; no probe tool is available in this call. If a required response shape is missing, abort and identify the exact evidence the outer agent must supply. Never guess.]"
+    : "# Recorded endpoint samples\n[trimmed to fit the context budget — probe_connector / call_connector re-record real response shapes; suggest_jsonata_paths serves the field vocabulary. Do not guess field names]";
   const SKILL_BODY_SUMMARY_LIMIT = 100;
   const trimSkill = (s: Skill): typeof s => {
     if (s.body.length <= SKILL_BODY_SUMMARY_LIMIT) return s;
@@ -425,23 +449,27 @@ export async function assembleEnhancedPrompt(
     } else if (authoringContext) {
       authoringContext = "";
       trimmed.push("authoring_context");
-    } else if (loadedSkills.length > 0 && trimmedLoadedCursor < loadedSkills.length) {
+    } else if (
+      !generating &&
+      loadedSkills.length > 0 &&
+      trimmedLoadedCursor < loadedSkills.length
+    ) {
       const idx = trimmedLoadedCursor++;
       const cur = loadedSkills[idx];
       if (cur && cur.body.length > SKILL_BODY_SUMMARY_LIMIT) {
         loadedSkills[idx] = trimSkill(cur);
         trimmed.push("loaded_skill_body_trimmed");
       }
-    } else if (loadedSkills.length > 0) {
+    } else if (!generating && loadedSkills.length > 0) {
       loadedSkills.pop();
       trimmed.push("loaded_skill");
     } else if (loadedIndexSkills.length > 0) {
       loadedIndexSkills.length = 0;
       trimmed.push("loaded_skill_index");
-    } else if (workflowSkills.length > 0) {
+    } else if (!generating && workflowSkills.length > 0) {
       workflowSkills.length = 0;
       trimmed.push("workflow_skill_index");
-    } else if (connectorSkills.length > 0) {
+    } else if (!generating && connectorSkills.length > 0) {
       connectorSkills.length = 0;
       trimmed.push("connector_skill_index");
     } else if (skillCandidatesBlock) {
@@ -460,7 +488,7 @@ export async function assembleEnhancedPrompt(
     } else if (connectorOperatorQuirksBlock) {
       connectorOperatorQuirksBlock = null;
       trimmed.push("connector_operator_quirks");
-    } else if (globalSkills.length > 0) {
+    } else if (!generating && globalSkills.length > 0) {
       globalSkills.length = 0;
       trimmed.push("global_skill_index");
     } else if (connectorSchemaBlock || probeShapeExamplesBlock) {
@@ -482,10 +510,12 @@ export async function assembleEnhancedPrompt(
         cap,
         trimmed,
       });
-      throw new LlmContextTooLarge("prompt exceeds model context window after trimming", {
-        total,
-        cap,
-      });
+      throw new LlmContextTooLarge(
+        generating
+          ? "The generation goal and complete approved skill guidance exceed the context budget. Narrow the workflow scope or provide a larger verified model context; generation cannot omit required guidance or call tools to reload it."
+          : "prompt exceeds model context window after trimming",
+        { total, cap },
+      );
     }
     recount();
   }
@@ -511,9 +541,13 @@ export async function assembleEnhancedPrompt(
     skillCandidatesBlock !== null ? countTokens(skillCandidatesBlock) : 0;
   const priorWorkflowsTokens = priorWorkflowsBlock !== null ? countTokens(priorWorkflowsBlock) : 0;
   const ambientSkillTokens =
-    countTokens(formatSkillIndex("Global", globalSkills, p.runtime_context) ?? "") +
-    countTokens(formatSkillIndex("Connector", connectorSkills, p.runtime_context) ?? "") +
-    countTokens(formatSkillIndex("Workflow", workflowSkills, p.runtime_context) ?? "");
+    countTokens(formatSkillIndex("Global", globalSkills, p.runtime_context, skillIndexMode) ?? "") +
+    countTokens(
+      formatSkillIndex("Connector", connectorSkills, p.runtime_context, skillIndexMode) ?? "",
+    ) +
+    countTokens(
+      formatSkillIndex("Workflow", workflowSkills, p.runtime_context, skillIndexMode) ?? "",
+    );
   const loadedSkillTokens = loadedSkills.reduce(
     (t, s) => t + countTokens(formatSkill(s, p.runtime_context)),
     0,

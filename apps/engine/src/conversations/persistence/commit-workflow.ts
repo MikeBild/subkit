@@ -74,6 +74,7 @@ export function commitGateBypassedByAutoMode(p: {
 export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promise<ToolResult> {
   const { ctx } = p;
   const fullDraft = ctx.getDraft();
+  const sensitiveDraft = getWorkflowDraft(fullDraft).execution_privacy === "sensitive";
   const latestPreview = fullDraft.latest_preview;
   const latestExecution = fullDraft.state?.latest_execution ?? null;
   const latestPreviewClearedRepair =
@@ -83,6 +84,16 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   const previewFailureClass = previewFailed ? classifyPreviewFailure(latestPreview) : null;
   const runtimeDataFailure = previewFailureClass === "runtime_data";
   const forceClearsPreview = p.forceCommit === true && (previewMissing || runtimeDataFailure);
+
+  if (sensitiveDraft && p.forceCommit === true) {
+    return {
+      ok: false,
+      error_code: "sensitive_save_override_forbidden",
+      message:
+        "Sensitive definitions may only be saved as inspected, validated inactive drafts. Preview overrides are forbidden; runtime verification remains unavailable in chat.",
+      next_best_actions: ["inspect_workflow_draft", "validate_draft", "save_workflow_draft"],
+    };
+  }
 
   const gatePlayground = async (): Promise<ToolResult | null> => {
     if (fullDraft.session?.playground !== true) return null;
@@ -160,7 +171,8 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   const gateInspectValidate = async (): Promise<ToolResult | null> => {
     const previewedSeq = fullDraft.state?.checkpoints?.workflow_previewed?.mutation_seq ?? -1;
     const draftSeq = fullDraft.state?.workflow_mutation_seq ?? 0;
-    const previewSatisfiesInspectValidate = latestPreview?.ok === true && previewedSeq === draftSeq;
+    const previewSatisfiesInspectValidate =
+      !sensitiveDraft && latestPreview?.ok === true && previewedSeq === draftSeq;
     const staleCheckpoints = previewSatisfiesInspectValidate
       ? []
       : missingFreshCheckpoints(fullDraft, ["workflow_inspected", "workflow_validated"]);
@@ -174,6 +186,9 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
               reason.startsWith("missing:"),
           ),
         ];
+    if (sensitiveDraft && fullDraft.state?.checkpoints.workflow_validated?.ok !== true) {
+      blocking_reasons.push("validate_draft");
+    }
     if (staleCheckpoints.length > 0 || blocking_reasons.length > 0) {
       return {
         ok: false,
@@ -299,6 +314,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   };
 
   const gatePreview = async (): Promise<ToolResult | null> => {
+    if (sensitiveDraft) return null;
     if ((previewMissing || previewFailed) && !forceClearsPreview) {
       const configInvalid = previewFailureClass === "config_invalid";
       const recovery = configInvalid
@@ -402,7 +418,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     }
   }
 
-  return persistAuthoringWorkflowDraft({
+  const result = await persistAuthoringWorkflowDraft({
     ctx,
     fullDraft,
     def,
@@ -410,6 +426,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       ...p.extraAuditMetadata,
       reason: p.reason ?? "authoring_draft_saved",
       source: p.emitAutoPersistAudit ? "harness_auto_persist" : "tool_call",
+      ...(sensitiveDraft ? { runtime_verification: "not_performed" } : {}),
       ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
       ...(forceClearsPreview && runtimeDataFailure
         ? { forced_over_runtime_data: true, preview_failure_class: previewFailureClass }
@@ -417,4 +434,14 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     },
     ...(p.target_workflow_id ? { explicitTarget: p.target_workflow_id } : {}),
   });
+  if (!sensitiveDraft || !result.ok) return result;
+  return {
+    ...result,
+    data: {
+      ...(typeof result.data === "object" && result.data !== null ? result.data : {}),
+      runtime_verification: "not_performed",
+      verification_guidance:
+        "Only the inactive sensitive definition was saved. Chat previews remain forbidden; use the permitted execution/result API with the original caller for separately authorized runtime verification.",
+    },
+  };
 }
