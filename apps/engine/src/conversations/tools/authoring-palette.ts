@@ -27,6 +27,7 @@ const ALWAYS_VISIBLE: ReadonlySet<string> = new Set([
   "list_attachments",
   "list_skills",
   "load_skill",
+  "open_workflow_draft",
   "preview_attachment",
   "request_connector_reauth",
   "search_knowledge",

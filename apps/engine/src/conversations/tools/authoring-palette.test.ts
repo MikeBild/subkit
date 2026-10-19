@@ -29,6 +29,18 @@ describe("intake processing palette", () => {
   });
 });
 
+describe("existing workflow authoring palette", () => {
+  test("can open a saved workflow before the workflow skill is loaded", () => {
+    const tools = [
+      { name: "open_workflow_draft" },
+      { name: "edit_workflow_patch" },
+      { name: "save_workflow_draft" },
+    ];
+    const names = filterByAuthoringPalette(tools, {} as never, new Set()).map((tool) => tool.name);
+    expect(names).toEqual(["open_workflow_draft"]);
+  });
+});
+
 describe("resolveExecutionToolGate", () => {
   test("default-deny: no bound target and no named slug hides execution", () => {
     const d = resolveExecutionToolGate({
