@@ -838,6 +838,8 @@ package contents fail the build. Valid cached assets do not require a network fe
 Embedding inputs are limited to 8,192 characters before tokenization so large
 API catalogs cannot monopolize the engine's event loop. Full documents remain
 stored and available to text search; this limit applies only to vector generation.
+Background embedding processes one text at a time and yields between texts so
+HTTP requests can run during a backfill.
 
 When intentionally updating the model or runtime dependency, verify the upstream
 revision, license and asset provenance before updating this manifest. Do not accept
