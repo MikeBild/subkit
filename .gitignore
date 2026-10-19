@@ -42,6 +42,7 @@ docs/
 /docs/*
 !/docs/PRODUCT-ROADMAP.md
 !/docs/TODO.md
+!/docs/roadmap-issues.json
 !/docs/browserstack.md
 !/docs/browserstack-teststrategie.md
 !/docs/lovable-setup.md

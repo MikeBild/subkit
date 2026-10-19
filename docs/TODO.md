@@ -2,11 +2,16 @@
 
 ## Zuständigkeit und Status
 
-Diese Liste ist die kanonische Aufgabenquelle für Cloud-Self-Service und die hierher
-übernommenen offenen Root-TODO-Befunde. [Roadmap](PRODUCT-ROADMAP.md) führt Ziele,
-Entscheidungen und Abhängigkeiten. [LAUNCH_STATUS](../LAUNCH_STATUS.md) führt weiterhin
-ausschließlich den aktuellen Status der L-Aufgaben; [WEBSITE-TODO](../WEBSITE-TODO.md)
-führt Website-Arbeit. Keine zweite Kopie dieser Statuslisten anlegen.
+Die [GitHub Issues](https://github.com/MikeBild/subkit/issues) und das
+[SubKit Product Project](https://github.com/users/MikeBild/projects/4) führen
+operative Aufgaben, Priorität und aktuellen Issue-Status. Die stabile
+[ID-Zuordnung](roadmap-issues.json) verlinkt C01–C09 und weitere Arbeitspakete.
+Diese Datei hält Hosted-Kriterien, technische Einordnung und Nachweise;
+[Roadmap](PRODUCT-ROADMAP.md) führt Ziele, Entscheidungen und Abhängigkeiten.
+[LAUNCH_STATUS](../LAUNCH_STATUS.md) hält L-Nachweise und
+[WEBSITE-TODO](../WEBSITE-TODO.md) den Website-Handoff. Statusänderungen an
+Issues und Nachweisdateien gemeinsam abgleichen, keine zweite Aufgabenliste
+anlegen.
 
 Status: TODO, IN_PROGRESS, BLOCKED, UNVERIFIED, DONE gemäß
 [Launch-Arbeitsvertrag](../LAUNCH_SYNC.md). DONE braucht passenden Nachweis.
@@ -276,9 +281,12 @@ backfill in a multi-tenant installation picks silently and should log its choice
   The operator separation has since passed focused checks and the complete local
   gate on the product source recorded in LAUNCH_STATUS.md (E206/E215). Local-demo,
   live-channel and publication evidence remain separate.
-- `query-fragment.test.ts` fails in batch runs and passes alone; find the shared state.
-- The sandbox helper drift check fails with a Bun version other than the pinned one;
-  make the pre-push hook or `verify` fail early with a clear message about the pinned version.
+- Der historische `query-fragment.test.ts`-Batchbefund wurde später allein und
+  gemeinsam mit der Server-Registry ohne Reproduktion geprüft (8/8; siehe oben).
+  Ein neuer reproduzierbarer Fehler braucht einen eigenen Befund.
+- Die gepinnte Bun-Version wird vor `verify` und im Pre-Push-Hook durch
+  `check:bun-version` mit konkreter Fehlermeldung geprüft; zwei fokussierte
+  Regressionen decken passende und falsche Version ab. Kein offener Bun-Task.
 - Not reviewed in depth: inbound hooks, read tools of the chat, the apps listing.
 - Optional hardening left out: composite foreign keys and tenant filters in API-key row
   and role lookups, a deterministic test for a token refresh racing a client revoke,

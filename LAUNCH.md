@@ -157,8 +157,12 @@ eine schreibende Hauptsession. Zuerst abschließen, dann Neues beginnen.
 P0 verhindert sichere Beta/Veröffentlichung; P1 ist für GA erforderlich; P2 ist verschiebbar.
 C = Codex, M = Mensch, E = extern. ★ = kritischer Beta-Pfad, ◆ = kritischer GA-Pfad.
 Aufwände sind aktive Stunden, sofern nicht anders angegeben. Die folgenden IDs sind stabil.
-Der aktuelle Status aller Aufgaben steht in LAUNCH_STATUS.md, damit keine zweite Statusliste driftet.
-Jede Aufgabe besteht aus ihrer Planzeile, der DoD-Zeile und ihrem Status-/Nachweiseintrag.
+Der operative Status aller offenen Aufgaben steht in den verlinkten
+[GitHub Issues](https://github.com/MikeBild/subkit/issues) und im
+[SubKit Product Project](https://github.com/users/MikeBild/projects/4).
+[LAUNCH_STATUS.md](LAUNCH_STATUS.md) hält die datierten Nachweise und Grenzen;
+die [ID-Zuordnung](docs/roadmap-issues.json) verbindet beide. Jede Aufgabe
+besteht aus Planzeile, DoD, Issue und Evidenzstand.
 
 | ID | Prio | Komponente | Ergebnis / Meilenstein | Rolle | Abhängigkeiten | Aufwand | Deadline |
 | --- | --- | --- | --- | --- | --- | --- | --- |

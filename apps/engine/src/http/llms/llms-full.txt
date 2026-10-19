@@ -157,16 +157,25 @@ the hosted deployment implementation stays outside this repository.
 
 | Document | Purpose |
 | --- | --- |
+| [GitHub Issues](https://github.com/MikeBild/subkit/issues) / [SubKit Product Project](https://github.com/users/MikeBild/projects/4) | Operational tasks, priority, status and views for self-hosted Beta, GA, hosted Beta, website and backlog |
+| [Task and milestone links](docs/roadmap-issues.json) | Stable mapping from repository task IDs to GitHub Issues, Project views and Milestones; check with `node scripts/check-roadmap-links.mjs` |
 | Product roadmap (`docs/PRODUCT-ROADMAP.md` in the source repository) | Cloud requirements, dependencies, opening criteria and pending decisions |
-| Product tasks (`docs/TODO.md` in the source repository) | Ordered implementation increments and outstanding verification |
-| Launch status (`LAUNCH_STATUS.md` in the source repository) | Existing self-hosting launch status and evidence boundaries |
-| Website tasks (`WEBSITE-TODO.md` in the source repository) | Website work and operational handoff |
+| Product tasks (`docs/TODO.md` in the source repository) | Hosted acceptance details and verification evidence |
+| Launch status (`LAUNCH_STATUS.md` in the source repository) | Self-hosting evidence snapshots and release boundaries |
+| Website tasks (`WEBSITE-TODO.md` in the source repository) | Website criteria and operational handoff |
 | Lovable briefing (`docs/lovable-website-briefing.md` in the source repository) / setup (`docs/lovable-setup.md` in the source repository) | Binding product/design decisions and existing project workflow |
 | BrowserStack (`docs/browserstack.md` in the source repository) / test strategy (`docs/browserstack-teststrategie.md` in the source repository) | Planned supplementary browser coverage, prerequisites and acceptance scenarios |
 
 These planning documents do not replace the generated API, CLI or settings
 references. The installation instructions below describe self-hosting; they do not
 provision a cloud account.
+
+GitHub Issues and the Project are the current work queue for ChatGPT Daily/Weekly
+briefings. Briefings must check the live `main` SHA and issue/milestone state, then
+read the linked evidence files. The two private read-only GitHub briefing workflows
+can provide daily or weekly snapshots only when their sensitive results are
+available through an authorized client; a scheduled ChatGPT task must report a
+client execution limit and use authorized GitHub reads when that handoff fails.
 
 The multi-tenant hosted offering is under development. Public registration remains
 closed until its security, operational and human acceptance gates pass. The approved

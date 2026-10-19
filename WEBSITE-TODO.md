@@ -4,6 +4,9 @@
 
 Diese Datei vor weiterer Website-Arbeit lesen. Sie verlinkt Nutzerentscheidungen
 und hält Umsetzungsstand und offene Website-Aufgaben fest; sie ist keine Release-Freigabe.
+Die operativen W01–W04-Issues und Prioritäten stehen im
+[SubKit Product Project](https://github.com/users/MikeBild/projects/4/views/5);
+die [ID-Zuordnung](docs/roadmap-issues.json) verbindet Issues und Handoff.
 Zusätzlich AGENTS.md, LAUNCH.md, LAUNCH_STATUS.md und LAUNCH_SYNC.md beachten.
 Ältere Framer-Aufträge und widersprechende Schreibregeln sind durch das
 verlinkte aktuelle Briefing ersetzt.

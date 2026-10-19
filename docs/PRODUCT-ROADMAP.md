@@ -64,8 +64,11 @@ Korrekturen an bestätigtem Wissen/Skills erfordern den bestehenden menschlichen
 
 ## Ausbaustufen und Voraussetzungen
 
-Diese Roadmap führt Zielbild und Abhängigkeiten; den operativen Status führt
-[docs/TODO.md](TODO.md). Launch-L-Aufgaben bleiben ausschließlich im Launch-Status.
+Diese Roadmap führt Zielbild und Abhängigkeiten; den operativen Status führen
+[GitHub Issues](https://github.com/MikeBild/subkit/issues) und das
+[SubKit Product Project](https://github.com/users/MikeBild/projects/4).
+[docs/TODO.md](TODO.md) hält Hosted-Kriterien und Nachweise; L-Evidenz bleibt
+in LAUNCH_STATUS.md. Die [ID-Zuordnung](roadmap-issues.json) verbindet beide Ebenen.
 
 | Stufe | Fähigkeit / Ergebnis | Voraussetzung und Abnahme |
 | --- | --- | --- |

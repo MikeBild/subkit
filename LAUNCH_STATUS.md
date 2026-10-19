@@ -3,6 +3,13 @@
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
 Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E300.
 
+Operative L-Aufgaben, Prioritäten und aktueller Issue-Status stehen in den
+[GitHub Issues](https://github.com/MikeBild/subkit/issues) und im
+[SubKit Product Project](https://github.com/users/MikeBild/projects/4).
+Die [ID-Zuordnung](docs/roadmap-issues.json) verbindet offene L-Aufgaben mit
+den Issues. Die folgende Tabelle ist ein datierter Evidenzstand und wird bei
+wesentlichen Statusänderungen mit dem jeweiligen Issue abgeglichen.
+
 ## Aktueller Checkout-Abgleich
 
 Cloud-Quellenstand `7400bb3ef` auf `main` gepusht; Checkoutversion **10.1.4**.
@@ -63,7 +70,8 @@ gesetzt; nächste Schritte und benötigte Eingaben stehen unten.
 
 ## Aktive Cloud-Arbeit
 
-Den operativen Cloud-Status einschließlich H01–H09 führt ausschließlich
+Die Hosted-Issues im [Project](https://github.com/users/MikeBild/projects/4/views/4)
+führen die operative Cloud-Arbeit; die H01–H09-Evidenz steht in
 [docs/TODO.md](docs/TODO.md#aktueller-implementierungsstand-und-nachweise).
 main-Integration abgeschlossen; E271–E273 beschreiben Matrixabschnitte, nativen Kandidaten
 und aktuelle Komponentenchecks. Ein neuer vollständiger Gesamtgate ist weiterhin offen.
@@ -138,7 +146,7 @@ DONE setzt einen passenden Nachweis voraus; bestehende gültige Ergebnisse wiede
 | L22 | TODO | Finale GA-Gates und menschliche Abnahme. |
 | L23 | TODO | Öffentliche GA, Kommunikation und Supportübernahme. |
 | L24 | TODO | P2-Roadmap bis nach Launch zurückgestellt. |
-| L25 | BLOCKED | **E230: SubKit-App in dieser Session authentifiziert, domänenbegrenzte Knowledge-Suche mit drei quellreferenzierten Treffern.** Kein nativer Clientdispatch daraus abgeleitet. Isoliertes CLI-/Hook-Handler-Briefing und permission-scoped Reminder bestanden, E38/E199/E200. E219 ergänzt Discovery der realmodellgestützt aufgenommenen Quelle über gemeinsame Hook-Handler, weiterhin kein nativer Clientdispatch. Nutzerprofil am 18.10. 18:23 UTC erneut lesend geprüft: Exit 2/unauthorized, E231 (vorher E213/E32). Tatsächlicher Clientdispatch, freigegebener Datenfluss und Daily-/Weekly-Lesezugriff fehlen; E150/E180. Keine globale Konfiguration geändert. |
+| L25 | BLOCKED | E230/E219 belegen authentifizierte, begrenzte SubKit-Suche und Hook-Handler, jedoch keinen nativen Clientdispatch. Am 19.10. wurden zwei aktive private, rein lesende GitHub-Workflows mit je einem erfolgreichen Daily- und Weekly-PROD-Lauf über autorisierte Browser-Sitzungen überprüft. Vier getrennte ChatGPT-Aufgaben für SubKit/Harmoniqs (Daily/Weekly) wurden auf Workflow-Vorrang und autorisierten GitHub-GET-Fallback ausgerichtet; frühere manuelle Läufe belegen die neuen Prompts nicht. ChatGPT kann sensible Workflow-Ergebnisse weiter nicht direkt lesen (`sensitive_execution_unsupported`); nach Aktualisierung auf GitHub Issues/Projects steht ein neuer geplanter Lauf noch aus. Native Hook-Auslösung und vollständiger Clientdispatch bleiben offen; [Issue B01](https://github.com/MikeBild/subkit/issues/410). Keine globale Konfiguration geändert. |
 
 ## Fünf dominante Blocker / kritischer Pfad
 
