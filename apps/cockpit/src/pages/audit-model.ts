@@ -159,6 +159,7 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   conversation_elicitation: "audit.resource.conversationQuestion",
   runtime_config_revision: "audit.resource.settingsRevision",
   workflow_schedule: "audit.resource.workflowSchedule",
+  scheduler_sweep: "audit.resource.schedulerSweep",
   self_healing_scan: "audit.resource.selfHealingScan",
   engine: "audit.resource.engine",
   discovery_run: "audit.resource.discoveryRun",
