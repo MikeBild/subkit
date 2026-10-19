@@ -1,6 +1,5 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { and, eq, lt } from "drizzle-orm";
-import * as jose from "jose";
 import * as oauth from "openid-client";
 import { ZodError } from "zod";
 import { auditAwait } from "../../audit/audit.ts";
@@ -36,11 +35,19 @@ import {
 } from "../identity-link.ts";
 import { createMcpOAuthProvider } from "../oauth/server-provider.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
+import {
+  buildCookieHeader,
+  clearCookieHeader,
+  deriveSessionSecret,
+  parseCookies,
+  SESSION_COOKIE,
+  sha256Hex,
+  signSessionCookie,
+  verifySessionCookie,
+} from "./oidc-session.ts";
 
-const SESSION_COOKIE = "subkit_session";
 const DEFAULT_TENANT_SLUG = "default";
 const LOGIN_STATE_TTL_MS = 10 * 60 * 1000;
-const JWS_ALG = "HS256";
 const LOGIN_START_PATH = "/v1/identity/login/start";
 const RECOVERY_LOGIN_COOKIE = "subkit_recovery_login";
 
@@ -59,36 +66,6 @@ export interface OidcProviderOptions {
   enableSignup?: boolean;
   signupPolicy?: "existing_tenant" | "invite_only" | "self_service";
   membershipInviteId?: string;
-}
-
-function sha256Hex(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function deriveSessionSecret(override?: Uint8Array): Uint8Array {
-  if (override) return override;
-  let fromConfig = "";
-  try {
-    fromConfig = (getConfig().auth.session.secret ?? "").trim();
-  } catch {}
-  if (fromConfig.length > 0) {
-    return new TextEncoder().encode(fromConfig);
-  }
-  const masterKey = process.env.MASTER_KEY ?? "";
-  return new Uint8Array(createHash("sha256").update(`${masterKey}:session`).digest());
-}
-
-function parseCookies(header: string | null): Record<string, string> {
-  if (!header) return {};
-  const out: Record<string, string> = {};
-  for (const part of header.split(";")) {
-    const idx = part.indexOf("=");
-    if (idx < 0) continue;
-    const name = part.slice(0, idx).trim();
-    const value = part.slice(idx + 1).trim();
-    if (name) out[name] = decodeURIComponent(value);
-  }
-  return out;
 }
 
 async function loadConfig(
@@ -118,45 +95,6 @@ async function loadConfig(
     oauth.allowInsecureRequests(configuration);
   }
   return configuration;
-}
-
-async function signSessionCookie(
-  secret: Uint8Array,
-  payload: { session_id: string; user_id: string; tenant_id: string },
-): Promise<string> {
-  return await new jose.SignJWT(payload)
-    .setProtectedHeader({ alg: JWS_ALG })
-    .setIssuedAt()
-    .setExpirationTime(Math.floor((Date.now() + SESSION_ABSOLUTE_TTL_MS) / 1000))
-    .sign(secret);
-}
-
-async function verifySessionCookie(
-  secret: Uint8Array,
-  jwt: string,
-): Promise<{ session_id: string; user_id: string; tenant_id: string } | null> {
-  try {
-    const { payload } = await jose.jwtVerify(jwt, secret);
-    const session_id = typeof payload.session_id === "string" ? payload.session_id : null;
-    const user_id = typeof payload.user_id === "string" ? payload.user_id : null;
-    const tenant_id = typeof payload.tenant_id === "string" ? payload.tenant_id : null;
-    if (!session_id || !user_id || !tenant_id) return null;
-    return { session_id, user_id, tenant_id };
-  } catch {
-    return null;
-  }
-}
-
-function buildCookieHeader(jwt: string): string {
-  const maxAge = Math.floor(SESSION_ABSOLUTE_TTL_MS / 1000);
-  const secure = process.env.NODE_ENV !== "development" ? " Secure;" : "";
-  return `${SESSION_COOKIE}=${encodeURIComponent(
-    jwt,
-  )}; Path=/; HttpOnly; SameSite=Lax;${secure} Max-Age=${maxAge}`;
-}
-
-function clearCookieHeader(): string {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
 }
 
 function httpError(status: number, code: string, message: string): Response {
