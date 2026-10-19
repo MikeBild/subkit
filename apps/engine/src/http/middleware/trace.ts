@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import { withContext } from "../../logging/context.ts";
+import { withIsolatedContext } from "../../logging/context.ts";
 import type { AppEnv } from "../openapi.ts";
 
 function detectSource(path: string): AppEnv["Variables"]["request_source"] {
@@ -59,9 +59,16 @@ export function traceMiddleware(): MiddlewareHandler<AppEnv> {
       `00-${inboundTraceparent?.trace_id ?? padTraceId(trace_id)}-${span_id}-${inboundTraceparent?.flags ?? "00"}`,
     );
 
-    await withContext({ trace_id, span_id, request_source: source }, async () => {
-      await next();
-    });
+    await withIsolatedContext(
+      {
+        trace_id,
+        span_id,
+        request_source: source,
+      },
+      async () => {
+        await next();
+      },
+    );
   };
 }
 

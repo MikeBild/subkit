@@ -28,6 +28,10 @@ export function withContext<T>(ctx: LogContext, fn: () => T): T {
   return storage.run(merged, fn);
 }
 
+export function withIsolatedContext<T>(ctx: LogContext, fn: () => T): T {
+  return storage.run(ctx, fn);
+}
+
 export function getContext(): LogContext {
   return storage.getStore() ?? {};
 }
