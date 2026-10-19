@@ -1,3 +1,5 @@
+import { ConversationTurnInProgressError } from "../conversations/turns.ts";
+
 const tails = new Map<string, Promise<unknown>>();
 
 export async function withConversationTurnLock<T>(
@@ -6,17 +8,14 @@ export async function withConversationTurnLock<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const key = `${tenant_id}:${conversation_id}`;
-  const prev = tails.get(key) ?? Promise.resolve();
-  const run = prev.then(fn, fn);
-  const tail = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  tails.set(key, tail);
-  void tail.then(() => {
-    if (tails.get(key) === tail) tails.delete(key);
-  });
-  return run;
+  if (tails.has(key)) throw new ConversationTurnInProgressError();
+  const marker = Promise.resolve();
+  tails.set(key, marker);
+  try {
+    return await fn();
+  } finally {
+    if (tails.get(key) === marker) tails.delete(key);
+  }
 }
 
 export function _turnLockSizeForTests(): number {

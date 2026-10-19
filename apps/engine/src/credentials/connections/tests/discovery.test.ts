@@ -62,6 +62,6 @@ describe("requireConnectable", () => {
   test("a server without metadata is discovery_missing", () => {
     expect(() =>
       requireConnectable({ base_url: "https://s.example", authorization: null, descriptor: null }),
-    ).toThrow(/publishes no authorization-server metadata/);
+    ).toThrow(new ConnectionError("discovery_missing", "authorization_metadata_missing"));
   });
 });

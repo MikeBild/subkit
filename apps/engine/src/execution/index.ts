@@ -40,6 +40,10 @@ export {
   tenantWorkSnapshot,
   withTenantWork,
 } from "./tenant-work.ts";
+export {
+  listTransactionalMailReceipts,
+  TransactionalMailReceiptSchema,
+} from "./transactional-mail.ts";
 export * from "./types.ts";
 export {
   captureWorkflowPermission,

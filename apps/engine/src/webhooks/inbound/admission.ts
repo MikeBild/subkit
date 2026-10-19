@@ -138,6 +138,10 @@ export async function admitWebhookExecution(
         input,
       },
       tx,
+      binding.verifier === "standard" &&
+        !(binding.native_verifier_config as { skip?: boolean } | null)?.skip
+        ? binding.id
+        : undefined,
     );
   });
 }

@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { makeStubCtx, makeStubDb, makeTestPrincipal } from "../../../tools/tests/_helpers.ts";
+import {
+  makeStubCtx,
+  makeStubDb,
+  makeTestPrincipal,
+  usePolicyFixture,
+} from "../../../tools/tests/_helpers.ts";
 import { inspectRecipeTool } from "../inspect-recipe.ts";
+
+usePolicyFixture();
 
 const { db: STUB_DB } = makeStubDb();
 const STUB_PRINCIPAL = makeTestPrincipal();

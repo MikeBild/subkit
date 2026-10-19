@@ -4,7 +4,7 @@ name: sk Platform Reference — Webhooks & Triggers
 description: How sk receives inbound webhooks (public signed ingress, replay dedup, CRUD bindings) and how workflow triggers (request | webhook | schedule) start executions.
 tags: [sk-platform-reference, webhooks, triggers, schedule, cron, inbound, signature-verification]
 scope: global
-version: 1
+version: 2
 ---
 
 # Webhooks & Triggers — overview
@@ -168,3 +168,48 @@ To run a workflow on demand over MCP use `run_workflow` (or the per-workflow `wf
 - "Why did a repeated event not run twice?" → replay dedup on the provider event id; the duplicate returns `{ deduped: true }`.
 - "Set up a daily run at 07:00 Berlin, weekdays only, skip holidays?" → `trigger: { kind: "schedule", cron: "0 7 * * *", tz: "Europe/Berlin", execution_mode: "prod", business_days_only: true, skip_dates: ["<YYYY-MM-DD>"] }` (skip_dates takes ISO-8601 calendar dates, e.g. public holidays).
 - "Trigger-bound webhook rejects real events?" → the bind wrote a placeholder secret; rotate the real signing secret onto the binding.
+
+
+# Transactional email from a signed input
+
+`transactional_delivery` is an explicit Gmail execution-authority profile for one
+reply per unique request to the email in a reviewed original input path. Its
+`webhook_id` must identify an active same-tenant, same-workflow Standard Webhooks
+binding with exactly its reviewed `event_type`; skip verification is refused.
+The trusted webhook admission stores verified source provenance independently of
+visitor input. An authenticated on-demand invocation that merely labels its
+input as a webhook cannot use this profile. The existing fixed `gmail_report`
+profile is unchanged.
+
+Standard Webhooks signs `webhook-id.webhook-timestamp.rawBody` using its dedicated
+secret. The existing five-minute timestamp window and event filter apply. Replays
+with identical stable input reuse the admitted execution; changed content under
+the same signed event ID is refused. Persist the original request ID and payload
+before handoff. Renew the timestamp and signature when retrying, not the payload.
+No API credential belongs in a public form or browser bundle.
+
+The transactional mail receipt survives retries and version changes. Reservation
+precedes network access and prevents a second dispatch attempt, including after a
+crash with unknown delivery. Result states `attempted`, `sent` and
+`delivery_unknown` are operational evidence, not proof of inbox delivery.
+
+A signed ingress does not approve effects. The operator reviews the exact workflow,
+connection, sender, recipient field, event source and request-size ceiling, plus
+normal run/time limits. Revocation and inactive bindings are rechecked before
+external dispatch. This feature does not authorize sending to arbitrary recipient
+lists, add CC/BCC, or bypass sensitive execution restrictions.
+
+For transactional mail, also declare `event_type_input`, a reviewed dot path in
+`body` whose signed value equals `event_type`. The `webhook-type` header itself is
+not covered by the Standard Webhooks signature; matching only that header is
+insufficient. Use `execution_privacy: sensitive`. Inspect persistent outcomes with
+`GET /v1/workflows/{id}/transactional-mail-receipts` under `workflow:read`; this
+endpoint includes no email address or message body and cannot trigger delivery.
+
+`get_workflow` includes the newest durable mail receipts for transactional email
+workflows; inspect these before diagnosing handoff or suggesting any resend.
+
+Signer interoperability: SubKit uses the stored secret string verbatim as UTF-8
+HMAC-SHA256 key, signs `id.timestamp.rawBody` and sends `v1,<Base64-HMAC>`. It does
+not strip or Base64-decode a `whsec_` prefix. Match the same bytes in a server
+adapter; never paste the secret into a conversation or browser bundle.

@@ -2022,6 +2022,62 @@
     "tenant": true
   },
   {
+    "table": "conversation_turns",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "tenant_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "conversation_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "attempt_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "task_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "worker_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "cancel_requested",
+        "type": "boolean",
+        "enum": null
+      },
+      {
+        "name": "state",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      }
+    ],
+    "tenant": true
+  },
+  {
     "table": "conversations",
     "columns": [
       {
@@ -7182,6 +7238,52 @@
       },
       {
         "name": "consumed_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      }
+    ],
+    "tenant": true
+  },
+  {
+    "table": "transactional_mail_receipts",
+    "columns": [
+      {
+        "name": "tenant_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "workflow_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "request_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "execution_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "step_id",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "state",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "updated_at",
         "type": "timestamp with time zone",
         "enum": null
       }

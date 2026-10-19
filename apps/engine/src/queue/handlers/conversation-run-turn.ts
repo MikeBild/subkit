@@ -4,11 +4,7 @@ import type { Job, PgBoss } from "pg-boss";
 import { auditAwait } from "../../audit/audit.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
-import {
-  isExpectedCancellation,
-  registerConversationAbort,
-  unregisterConversationAbort,
-} from "../../conversations/abort.ts";
+import { isExpectedCancellation } from "../../conversations/abort.ts";
 import {
   humanInBandAnswer,
   humanPortalAnswer,
@@ -16,6 +12,16 @@ import {
 } from "../../conversations/answer-actor.ts";
 import * as svc from "../../conversations/service.ts";
 import { describeTurnFailure } from "../../conversations/turn-failure.ts";
+import {
+  bindConversationTurn,
+  conversationTurnId,
+  finishConversationTurn,
+  parkConversationTurn,
+  acquireConversationTurn as registerConversationAbort,
+  reserveConversationTurn,
+  stopConversationTaskTurn,
+  releaseConversationTurn as unregisterConversationAbort,
+} from "../../conversations/turns.ts";
 import type { Db } from "../../db/client.ts";
 import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { conversationMessages, users } from "../../db/schema/index.ts";
@@ -69,14 +75,25 @@ const NATIVE_ELICITATION_CANCELLATION_REASONS = new Set([
   "invalid_elicit_response",
 ]);
 
-async function userMessageTextById(db: Db, tenant_id: string, message_id: string): Promise<string> {
+async function userMessageTextById(
+  db: Db,
+  tenant_id: string,
+  conversation_id: string,
+  message_id: string,
+): Promise<string> {
   const [row] = await db
     .select({ content: conversationMessages.content })
     .from(conversationMessages)
     .where(
-      and(eq(conversationMessages.tenant_id, tenant_id), eq(conversationMessages.id, message_id)),
+      and(
+        eq(conversationMessages.tenant_id, tenant_id),
+        eq(conversationMessages.conversation_id, conversation_id),
+        eq(conversationMessages.role, "user"),
+        eq(conversationMessages.id, message_id),
+      ),
     )
     .limit(1);
+  if (!row) throw new Error("turn message does not belong to this conversation");
   const content = row?.content as { text?: unknown } | undefined;
   return typeof content?.text === "string" ? content.text : "";
 }
@@ -84,6 +101,7 @@ async function userMessageTextById(db: Db, tenant_id: string, message_id: string
 function toEnvelope(outcome: svc.ConversationTurnOutcome): ConversationTurnEnvelope {
   return {
     conversation_id: outcome.conversation.id,
+    ...(outcome.turn_id ? { turn_id: outcome.turn_id } : {}),
     status: outcome.result.status,
     events: outcome.result.events,
     ...(outcome.result.pending_elicitation_id
@@ -99,18 +117,29 @@ async function storeAttemptResult(
   data: ConversationRunTurnJob,
   result: ConversationTurnEnvelope,
   db: Db,
+  turnId: string | undefined,
 ): Promise<boolean> {
-  if (data.attempt_id) {
-    return await setMcpTaskResultIfCurrentAttempt(
-      data.tenant_id,
-      data.mcp_task_id,
-      data.attempt_id,
-      result,
-      db,
-    );
-  }
-  await setMcpTaskResult(data.tenant_id, data.mcp_task_id, result, db);
-  return true;
+  return db.transaction(async (tx) => {
+    const stored = data.attempt_id
+      ? await setMcpTaskResultIfCurrentAttempt(
+          data.tenant_id,
+          data.mcp_task_id,
+          data.attempt_id,
+          result,
+          tx,
+        )
+      : await setMcpTaskResult(data.tenant_id, data.mcp_task_id, result, tx).then(() => true);
+    if (stored && turnId)
+      await finishConversationTurn(
+        tx,
+        data.tenant_id,
+        data.conversation_id,
+        turnId,
+        "completed",
+        data.attempt_id,
+      );
+    return stored;
+  });
 }
 
 async function storeAttemptFailure(
@@ -180,6 +209,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
     });
     return;
   }
+  if (task.conversation_id !== data.conversation_id) throw new Error("task conversation mismatch");
   if (data.attempt_id && task.job_id !== data.attempt_id) {
     log.queue.job.completed({
       msg: "conversation.run-turn queue attempt was superseded — idempotent no-op",
@@ -191,6 +221,16 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
     return;
   }
   if (task.result || task.failure_reason || task.cancelled_at) {
+    if (data.turn_id && data.attempt_id)
+      await stopConversationTaskTurn(
+        db,
+        data.tenant_id,
+        data.conversation_id,
+        data.turn_id,
+        data.mcp_task_id,
+        data.attempt_id,
+        task.cancelled_at ? "cancelled" : task.failure_reason ? "failed" : "completed",
+      );
     log.queue.job.completed({
       msg: "conversation.run-turn job already terminal — idempotent no-op",
       queue: CONVERSATION_RUN_TURN_QUEUE,
@@ -228,21 +268,29 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
     await clearMcpTaskPark(data.tenant_id, data.mcp_task_id, db);
   }
 
-  const turnAbortCtrl = registerConversationAbort(data.tenant_id, data.conversation_id);
-  const recheck = await getMcpTask(data.tenant_id, data.mcp_task_id, db);
-  if (turnAbortCtrl.signal.aborted || recheck?.cancelled_at || recheck?.failure_reason) {
-    unregisterConversationAbort(data.tenant_id, data.conversation_id, turnAbortCtrl);
-    log.queue.job.completed({
-      msg: "conversation.run-turn cancelled before turn start",
-      queue: CONVERSATION_RUN_TURN_QUEUE,
-      job_id: job.id,
-      duration_ms: Date.now() - started,
-    });
-    return;
-  }
-
+  let turnAbortCtrl: AbortController | undefined;
+  let turnId: string | undefined;
   const rssBefore = readMemoryUsage().rss;
   try {
+    turnAbortCtrl = await registerConversationAbort(
+      data.tenant_id,
+      data.conversation_id,
+      db,
+      data.turn_id ? { turn_id: data.turn_id, attempt_id: data.attempt_id ?? job.id } : undefined,
+    );
+    turnId = conversationTurnId(turnAbortCtrl);
+    const recheck = await getMcpTask(data.tenant_id, data.mcp_task_id, db);
+    if (turnAbortCtrl.signal.aborted || recheck?.cancelled_at || recheck?.failure_reason) {
+      await unregisterConversationAbort(data.tenant_id, data.conversation_id, turnAbortCtrl);
+      log.queue.job.completed({
+        msg: "conversation.run-turn cancelled before turn start",
+        queue: CONVERSATION_RUN_TURN_QUEUE,
+        job_id: job.id,
+        duration_ms: Date.now() - started,
+      });
+      return;
+    }
+
     const principal = await rehydrateExecutionPrincipal(
       db,
       callerFromPrincipal(data.principal, data.tenant_id, data.principal?.product_id),
@@ -271,7 +319,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       }
       const { getElicitation } = await import("../../conversations/elicitations.ts");
       const elicitation = await getElicitation(data.tenant_id, data.elicitation_id, db);
-      if (!elicitation) {
+      if (!elicitation || elicitation.conversation_id !== data.conversation_id) {
         throw new Error("respond_elicitation job has no conversation_elicitations row");
       }
       outcome = await svc.respondElicitation(
@@ -304,7 +352,12 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       if (!task.user_message_id) {
         throw new Error(`${data.kind} job has no user_message_id on the mcp_tasks row`);
       }
-      const message = await userMessageTextById(db, data.tenant_id, task.user_message_id);
+      const message = await userMessageTextById(
+        db,
+        data.tenant_id,
+        data.conversation_id,
+        task.user_message_id,
+      );
       outcome = await svc.runConversationTurn(
         {
           tenant_id: data.tenant_id,
@@ -322,7 +375,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       );
     }
 
-    const resultStored = await storeAttemptResult(data, toEnvelope(outcome), db);
+    const resultStored = await storeAttemptResult(data, toEnvelope(outcome), db, turnId);
     if (!resultStored) {
       log.queue.job.completed({
         msg: "conversation.run-turn completed after a newer attempt took ownership — stale result discarded",
@@ -369,6 +422,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       });
       if (finalized !== "unmatched") return;
     }
+    if (!turnAbortCtrl) throw err;
     const refusalCode = (err as { code?: string }).code;
     const authenticationRefusal =
       refusalCode === "execution_authentication_unavailable" ||
@@ -410,7 +464,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
         ],
         pending_elicitation_id: err.elicitation_id,
       } satisfies ConversationTurnEnvelope;
-      const validationStored = await storeAttemptResult(data, validationResult, db);
+      const validationStored = await storeAttemptResult(data, validationResult, db, turnId);
       if (!validationStored) return;
       recordUsageEvent(db, {
         tenantId: data.tenant_id,
@@ -439,13 +493,14 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
     let failureAttemptId = data.attempt_id;
     if (parkPlan) {
       try {
+        await parkConversationTurn(data.tenant_id, data.conversation_id, turnAbortCtrl);
         const retryAttemptId = randomUUID();
         await setMcpTaskJobId(data.tenant_id, data.mcp_task_id, retryAttemptId, db);
         failureAttemptId = retryAttemptId;
         const retryJobId = await enqueueConversationRunTurn(
           boss,
           db,
-          { ...data, provider_limit_parks: parkPlan.parks },
+          { ...data, ...(turnId ? { turn_id: turnId } : {}), provider_limit_parks: parkPlan.parks },
           { id: retryAttemptId, startAfter: parkPlan.start_after },
         );
         if (retryJobId !== retryAttemptId) throw new Error("queue rejected the parked retry job");
@@ -470,6 +525,15 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
         });
         return;
       } catch (sendErr) {
+        if (turnId)
+          await finishConversationTurn(
+            db,
+            data.tenant_id,
+            data.conversation_id,
+            turnId,
+            "failed",
+            data.attempt_id,
+          );
         log.queue.job.failed({
           msg: "conversation.run-turn park re-enqueue failed — falling back to terminal failure",
           queue: CONVERSATION_RUN_TURN_QUEUE,
@@ -531,7 +595,8 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
     });
     throw err;
   } finally {
-    unregisterConversationAbort(data.tenant_id, data.conversation_id, turnAbortCtrl);
+    if (turnAbortCtrl)
+      await unregisterConversationAbort(data.tenant_id, data.conversation_id, turnAbortCtrl);
   }
 }
 
@@ -617,12 +682,50 @@ export async function enqueueConversationRunTurn(
   options: { id?: string; startAfter?: Date } = {},
 ): Promise<string | null> {
   const { id, ...sendOptions } = options;
-  return await enqueueHostedWork(
-    db,
-    boss,
-    "chat",
-    CONVERSATION_RUN_TURN_QUEUE,
-    { ...payload, ...(id ? { attempt_id: id } : {}) },
-    { ...sendOptions, ...(id ? { id } : {}) },
-  );
+  const turnId =
+    payload.turn_id ??
+    (await reserveConversationTurn(db, payload.tenant_id, payload.conversation_id));
+  const attempt = id ?? randomUUID();
+  let bound = false;
+  try {
+    if (!id) await setMcpTaskJobId(payload.tenant_id, payload.mcp_task_id, attempt, db);
+    await bindConversationTurn(
+      db,
+      payload.tenant_id,
+      payload.conversation_id,
+      turnId,
+      payload.mcp_task_id,
+      attempt,
+      payload.attempt_id,
+    );
+    bound = true;
+    const queued = await enqueueHostedWork(
+      db,
+      boss,
+      "chat",
+      CONVERSATION_RUN_TURN_QUEUE,
+      { ...payload, turn_id: turnId, attempt_id: attempt },
+      { ...sendOptions, id: attempt },
+    );
+    if (!queued)
+      await finishConversationTurn(
+        db,
+        payload.tenant_id,
+        payload.conversation_id,
+        turnId,
+        "failed",
+        attempt,
+      );
+    return queued;
+  } catch (error) {
+    await finishConversationTurn(
+      db,
+      payload.tenant_id,
+      payload.conversation_id,
+      turnId,
+      "failed",
+      bound ? attempt : (payload.attempt_id ?? null),
+    );
+    throw error;
+  }
 }

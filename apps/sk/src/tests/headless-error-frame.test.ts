@@ -47,9 +47,9 @@ function timedOutTurnResponse(): Response {
   );
 }
 
-async function runTimedOutTurn(output: OutputFormat) {
+async function runHeadlessTurn(output: OutputFormat, turnResponse = timedOutTurnResponse) {
   globalThis.fetch = (async (_input: string | URL | Request) =>
-    timedOutTurnResponse()) as typeof globalThis.fetch;
+    turnResponse()) as typeof globalThis.fetch;
   const stdout: string[] = [];
   const stderr: string[] = [];
   const result = await runHeadless({
@@ -72,7 +72,7 @@ async function runTimedOutTurn(output: OutputFormat) {
 
 describe("runHeadless — the engine ends the stream with an error frame", () => {
   test("text mode prints the timeout wording on stderr and exits 1", async () => {
-    const { result, stdout, stderr } = await runTimedOutTurn("text");
+    const { result, stdout, stderr } = await runHeadlessTurn("text");
     expect(result.exitCode).toBe(1);
     expect(stderr).toContain("Timed out after 120 s");
     expect(stderr).toContain("LLM provider timed out");
@@ -81,7 +81,7 @@ describe("runHeadless — the engine ends the stream with an error frame", () =>
   });
 
   test("json mode reports status error with the frame as a validation error", async () => {
-    const { result, stdout } = await runTimedOutTurn("json");
+    const { result, stdout } = await runHeadlessTurn("json");
     expect(result.exitCode).toBe(1);
     const payload = JSON.parse(stdout) as {
       status: string;
@@ -94,7 +94,7 @@ describe("runHeadless — the engine ends the stream with an error frame", () =>
   });
 
   test("stream-json mode emits the synthetic validation_error event", async () => {
-    const { result, stdout } = await runTimedOutTurn("stream-json");
+    const { result, stdout } = await runHeadlessTurn("stream-json");
     expect(result.exitCode).toBe(1);
     const events = stdout
       .trim()
@@ -107,4 +107,70 @@ describe("runHeadless — the engine ends the stream with an error frame", () =>
       },
     ]);
   });
+});
+
+test.each(["json", "stream-json"] as const)(
+  "headless %s waits for the transport outcome after the model completed event",
+  async (output) => {
+    let outcomeRead = false;
+    let emitted = false;
+    const { result, stdout } = await runHeadlessTurn(
+      output,
+      () =>
+        new Response(
+          new ReadableStream(
+            {
+              pull(controller) {
+                const encoder = new TextEncoder();
+                if (!emitted) {
+                  emitted = true;
+                  controller.enqueue(
+                    encoder.encode(
+                      'event: conversation_started\ndata: {"conversation":{"id":"conv-completed"}}\n\nevent: completed\ndata: {"type":"completed","status":"awaiting_input"}\n\n',
+                    ),
+                  );
+                  return;
+                }
+                outcomeRead = true;
+                controller.enqueue(
+                  encoder.encode(
+                    'event: next_suggestion\ndata: {"type":"next_suggestion","suggestion":"Continue","reason":"suggested","kind":null}\n\nevent: outcome\ndata: {"conversation_id":"conv-completed","status":"awaiting_input"}\n\n',
+                  ),
+                );
+                controller.close();
+              },
+            },
+            { highWaterMark: 0 },
+          ),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+    );
+    expect(result.exitCode).toBe(0);
+    expect(outcomeRead).toBe(true);
+    if (output === "stream-json") {
+      const events = stdout
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { type: string });
+      expect(events.at(-1)?.type).toBe("completed");
+      expect(events.filter((event) => event.type === "completed")).toHaveLength(1);
+    }
+  },
+);
+
+test("a terminal transport error after model completion remains a failed turn", async () => {
+  const { result, stdout } = await runHeadlessTurn(
+    "stream-json",
+    () =>
+      new Response(
+        `event: conversation_started\ndata: {"conversation":{"id":"conv-late-error"}}\n\nevent: completed\ndata: {"type":"completed","status":"active"}\n\nevent: error\ndata: ${JSON.stringify(TIMEOUT_FRAME)}\n\n`,
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+  );
+  expect(result.exitCode).toBe(1);
+  const events = stdout
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as { type: string });
+  expect(events.map((event) => event.type)).toEqual(["validation_error"]);
 });

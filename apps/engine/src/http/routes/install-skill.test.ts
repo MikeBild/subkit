@@ -1,9 +1,11 @@
-import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { LLMS_PAGE_PATHS } from "@shared/llms-index.ts";
+import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
 import type { AppEnv } from "../openapi.ts";
 import { createApp } from "../server.ts";
 import {
@@ -13,6 +15,19 @@ import {
   SKILL_REFERENCES,
 } from "./install-skill.ts";
 import { registerLlmsTxtRoutes } from "./llms-txt.ts";
+
+let configDirectory: string;
+beforeAll(async () => {
+  configDirectory = mkdtempSync(join(tmpdir(), "sk-install-skill-"));
+  await loadConfig({
+    env: { DATABASE_URL: "postgres://localhost/x", NODE_ENV: "test" },
+    configPathOverride: join(configDirectory, "subkit.config.json"),
+  });
+});
+afterAll(() => {
+  _resetConfigForTests();
+  rmSync(configDirectory, { recursive: true, force: true });
+});
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../../..");
 const onDisk = readFileSync(join(ROOT, "agent-skills/build-or-adopt/SKILL.md"), "utf8");

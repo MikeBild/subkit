@@ -474,6 +474,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   }
 
   let streamState = session;
+  let terminalEvent: TurnEvent | null = null;
   if (!streamResponse) {
     stderr.write("sk: turn stream was not opened\n");
     return { exitCode: 2, session, conversation_id: conversationId };
@@ -575,13 +576,16 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       verbose ? { event: ev } : { event_type: ev.type },
       traceContext(),
     );
-    if (opts.output === "stream-json") {
+    if (opts.output === "stream-json" && ev.type !== "completed") {
       writeLine(stdout, JSON.stringify(ev));
     }
     streamState = applyTurnEvent(streamState, ev);
-    if (ev.type === "completed") return false;
+    if (ev.type === "completed") terminalEvent = ev;
     return true;
   });
+  if (opts.output === "stream-json" && terminalEvent && streamState.status !== "error") {
+    writeLine(stdout, JSON.stringify(terminalEvent));
+  }
   debugLog("sse.close", { final_status: streamState.status }, traceContext());
 
   const assistantText = lastAssistantText(streamState);

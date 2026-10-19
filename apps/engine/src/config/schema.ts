@@ -335,7 +335,7 @@ const LlmSection = z
           .array(HostedLlmModelSchema)
           .default([])
           .describe(
-            "Exact provider:model billing allowlist: max_context_tokens must be the verified actual provider-enforced maximum including enabled beta/extended context, not a prompt estimate. Configure maximum USD rates including long-context tiers. Native paid tools and multimodal inputs are unsupported.",
+            "Exact provider:model allowlist with verified provider-enforced context maxima, including extended context, and maximum USD rates for every context tier. No paid native tools or multimodal inputs.",
           )
           .meta(global({ structural: true, runtimeEditable: true })),
       })

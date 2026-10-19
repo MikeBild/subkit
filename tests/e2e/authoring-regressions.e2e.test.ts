@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server as HttpServer } from "node:http";
+import { hasConversationAbort } from "../../apps/engine/src/conversations/abort.ts";
 import { conversations, tenants } from "../../apps/engine/src/db/schema/index.ts";
 import type { ConverseMockStep } from "../../apps/engine/src/llm/mock-provider.ts";
 import { getMockProvider } from "../../apps/engine/src/llm/mock-provider.ts";
 import { getTestNow } from "../../apps/engine/src/test-helpers/determinism/clock.ts";
+import { waitFor } from "../../apps/engine/src/test-helpers/determinism/wait.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
@@ -435,7 +437,7 @@ describe("authoring regressions", () => {
     expect(detail.draft?.latest_preview?.summary.length).toBeGreaterThan(0);
   });
 
-  test("sync-register contract — cancelling a slow preview abandons the turn without surfacing a 500", async () => {
+  test("cancelling an acquired turn abandons the turn without surfacing a 500", async () => {
     const created = await createConversation({ title: "preview-cancel" });
     const conversationId = created.conversation.id;
     getMockProvider().setConversePlan(conversationId, [
@@ -461,6 +463,10 @@ describe("authoring regressions", () => {
       method: "POST",
       headers: adminHeaders(),
       body: JSON.stringify({ message: "Create a workflow and preview the slow request now" }),
+    });
+    await waitFor(() => hasConversationAbort(env.tenantId, conversationId), {
+      tries: 2_000,
+      sleepMs: 5,
     });
     const cancel = await fetch(`${env.baseUrl}/v1/conversations/${conversationId}/cancel`, {
       method: "POST",

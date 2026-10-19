@@ -14,6 +14,25 @@ C01–C08 übernehmen den bisherigen technischen Detailumfang ohne neue Produkta
 Die vorhandene Operatortrennung ist Bestand, kein Beweis fertiger Cloud-Isolation.
 Die Dokumentkonsolidierung ersetzt weder Produktarbeit noch menschliche Abnahmen.
 
+## Allgemeine Antworten auf signierte Anfragen
+
+IN_PROGRESS / LOCAL_ONLY: Wiederverwendbares `transactional_delivery`-Profil für
+Gmail mit frei wählbaren signierten Ereignis-/Empfänger-/UUID-Feldern, geprüfter
+Versandgrenze, sensibler Ausführung und dauerhafter atomarer Versandreservierung.
+Tenantgebundene Statusabfrage und Audit enthalten keine Empfänger-/Nachrichteninhalte.
+Workflow-Autorierung, mitgeliefertes Webhook-Wissen, OpenAPI und Agent-Dokumentation
+sind angepasst; inkompatible Modell-Tool-Schemas werden allgemein vor dem Aufruf
+gefiltert und präzise diagnostiziert. [Vertrag und Betriebsablauf](transactional-email.md).
+
+Gezielte Tests und KI-Vertragsprüfungen bestehen. Veröffentlichung, Produktion,
+Geheimnis-Provisionierung, exakte menschliche Workflow-Freigabe und echte
+E-Mail-Zustellung sind daraus nicht nachgewiesen. Die zunächst auch im vorher vorhandenen Stand reproduzierte Regression
+`queue failure retries the same reserved execution rather than spending another run`
+ist durch gezielte, begrenzte Wiederholung der sicheren Katalogsperre bei der
+Zulassung behoben (20 HTTP-/Berechtigungstests PASS). Keine Wiederholung von
+Versand oder mehrdeutigen Netzwerkfehlern. Der vollständige Qualitätslauf ist noch
+nicht als bestanden nachgewiesen; keinen Deployment-Erfolg aus gezielten Tests ableiten.
+
 ## Aktueller Implementierungsstand und Nachweise
 
 Historischer Integrationscheckpoint E244: Engine-/Cockpit-Typecheck und 22
@@ -61,8 +80,10 @@ Die historischen 34 Annotationen betreffen reguläre Schedulerjobs; der aktuelle
 Abgleich fand 25 noch unbegrenzte SQL-Arbeitseinheiten. Titelpfad und
 Notification-Mutationsbatch sind inzwischen fokussiert begrenzt (E265);
 23 weitere Einheiten aus diesem historischen Inventar bleiben offen. Zusätzlich
-ist außerhalb des Inventars ein unbegrenzter Chat-Dedup-Lauf gefunden; ebenso
-bleibt die Gesamtzahl residenter Timer offen. Kein Cloud-, Release-
+wurde außerhalb des Inventars ein unbegrenzter Chat-Dedup-Lauf gefunden. Dieser
+ist jetzt auf Batches mit höchstens 500 abgelaufenen Ereignissen begrenzt; die
+fokussierte PostgreSQL-Prüfung erhält frische Replay-Sperren. Die Gesamtzahl
+residenter Timer bleibt offen. Kein Cloud-, Release-
 oder aktueller Gesamtgate-PASS wird daraus abgeleitet.
 
 Signed-JWT-Merge gezielt geprüft: Token-Echo vor GraphQL-Fehlerlogging redigiert,

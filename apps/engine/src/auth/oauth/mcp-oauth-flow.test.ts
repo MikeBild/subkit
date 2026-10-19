@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Db } from "../../db/client.ts";
 import { TEST_DB_HOOK_TIMEOUT } from "../../db/tests/setup.ts";
 import type { HttpTestServer } from "../../http/tests/setup.ts";
@@ -15,14 +15,14 @@ let ctx: HttpTestServer;
 let db: Db;
 let priorBaseUrl = "";
 
-beforeAll(async () => {
+beforeEach(async () => {
   const s = await setupMcpOauthServer("mcp-oauth-flow");
   ctx = s.ctx;
   db = ctx.db;
   priorBaseUrl = s.priorBaseUrl;
 }, TEST_DB_HOOK_TIMEOUT);
 
-afterAll(async () => {
+afterEach(async () => {
   if (ctx) await teardownMcpOauthServer(ctx, priorBaseUrl);
 }, TEST_DB_HOOK_TIMEOUT);
 
@@ -36,6 +36,7 @@ describe("GET /v1/oauth/authorize", () => {
         client_name: "Authorize Test Client",
       }),
     });
+    expect(res.status).toBe(201);
     const body = (await res.json()) as { client_id: string };
     return body.client_id;
   }
@@ -259,6 +260,7 @@ describe("full OAuth flow", () => {
       }),
     });
     expect(regRes.status).toBe(201);
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
@@ -350,6 +352,7 @@ describe("full OAuth flow", () => {
         client_name: "Refresh Test",
       }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
@@ -456,6 +459,7 @@ describe("POST /v1/oauth/token — edge cases", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://app.example.com/cb"] }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const res = await fetch(`${ctx.baseUrl}/v1/oauth/token`, {
@@ -515,6 +519,7 @@ describe("POST /v1/oauth/token — JSON body", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://json-token.example.com/cb"] }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const res = await fetch(`${ctx.baseUrl}/v1/oauth/token`, {

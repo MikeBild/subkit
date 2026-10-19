@@ -199,7 +199,11 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       created: svc.CreateConversationResult,
       onEvent?: (ev: TurnEvent) => void,
     ): Promise<svc.ConversationTurnOutcome> => {
-      const turnAbortCtrl = registerConversationAbort(principal.tenant_id, created.conversation.id);
+      const turnAbortCtrl = await registerConversationAbort(
+        principal.tenant_id,
+        created.conversation.id,
+        db,
+      );
       try {
         return await svc.runConversationTurn(
           {
@@ -220,7 +224,11 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
           db,
         );
       } finally {
-        unregisterConversationAbort(principal.tenant_id, created.conversation.id, turnAbortCtrl);
+        await unregisterConversationAbort(
+          principal.tenant_id,
+          created.conversation.id,
+          turnAbortCtrl,
+        );
       }
     };
 

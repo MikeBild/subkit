@@ -15,6 +15,12 @@ import { computeLineDiff } from "./text-line-diff.ts";
 import { getTool, type ToolContext, type ToolResult } from "./tools/index.ts";
 import { checkToolPermission, type ToolPermissionResult } from "./tools/permission-gate.ts";
 import { normalizeToolResultPayload, toolCallOutcome } from "./tools/result-payload.ts";
+import {
+  acquireConversationTurn,
+  assertConversationTurn,
+  markConversationTurnFailed,
+  releaseConversationTurn,
+} from "./turns.ts";
 import type { DraftDocument } from "./types.ts";
 
 export const DIRECT_INVOKE_TOOLS: ReadonlySet<string> = new Set([
@@ -61,6 +67,21 @@ export interface DirectInvokeOutcome {
 
 export async function invokeConversationToolDirect(
   p: DirectInvokeParams,
+): Promise<DirectInvokeOutcome> {
+  const ctrl = await acquireConversationTurn(p.tenant_id, p.conversation_id, p.db);
+  try {
+    return await driveDirectTool(p, ctrl.signal);
+  } catch (error) {
+    markConversationTurnFailed(ctrl);
+    throw error;
+  } finally {
+    await releaseConversationTurn(p.tenant_id, p.conversation_id, ctrl);
+  }
+}
+
+async function driveDirectTool(
+  p: DirectInvokeParams,
+  signal: AbortSignal,
 ): Promise<DirectInvokeOutcome> {
   const tool = getTool(p.tool);
   if (!tool || !DIRECT_INVOKE_TOOLS.has(p.tool)) {
@@ -153,8 +174,10 @@ export async function invokeConversationToolDirect(
       actor_type: engineClientActorType(p.principal, p.actor_id),
       db: p.db,
     }),
+    abortSignal: signal,
     getDraft: () => draft,
     setDraft: async (next) => {
+      await assertConversationTurn(signal);
       draft = next;
       await appendSnapshot(p.tenant_id, p.conversation_id, next, p.db);
     },
@@ -189,6 +212,7 @@ export async function invokeConversationToolDirect(
 
   let result: ToolResult;
   try {
+    await assertConversationTurn(signal);
     result = permCheck.allow
       ? await tool.execute(ctx, args)
       : (tool.permission?.denyResult?.(permCheck.permission, permCheck.reason) ?? {

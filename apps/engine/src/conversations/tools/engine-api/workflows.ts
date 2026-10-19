@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { listedDescription } from "../../../api/catalog-metadata.ts";
+import { listTransactionalMailReceipts } from "../../../execution/index.ts";
 import { bindingFor, workflowTriggerView } from "../../../scheduler/trigger-bindings.ts";
 import type { ConversationTool } from "../index.ts";
 
@@ -77,7 +78,7 @@ export const listWorkflowsTool: ConversationTool = {
 export const getWorkflowTool: ConversationTool = {
   name: "get_workflow",
   description:
-    "Fetch a single workflow by id or slug. `effective_trigger` says what really starts it (a bound schedule or webhook beats the definition's declared `trigger`); `schedule` is the bound schedule, if any.",
+    "Fetch a single workflow by id or slug. `effective_trigger` says what really starts it (a bound schedule or webhook beats the definition's declared `trigger`); `schedule` is the bound schedule, if any. Transactional email workflows also include their newest durable mail receipts, without applicant data. attempted or delivery_unknown never authorizes resend.",
   inputSchema: GetInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof GetInput>) {
@@ -89,11 +90,17 @@ export const getWorkflowTool: ConversationTool = {
     }
     if (!wf) return { ok: false, data: { error: "workflow_not_found" } };
     const bindings = await ctx.engineClient.workflows.triggerBindings([wf.id]);
+    const receipts = wf.definition.steps.some(
+      (step) => step.kind === "request" && step.transactional_delivery,
+    )
+      ? await listTransactionalMailReceipts(ctx.db, ctx.tenant_id, wf.id)
+      : undefined;
     return {
       ok: true,
       data: {
         workflow: {
           ...wf,
+          ...(receipts ? { transactional_mail_receipts: receipts } : {}),
           ...workflowTriggerView(wf.definition.trigger, bindingFor(bindings, wf.id)),
         },
       },

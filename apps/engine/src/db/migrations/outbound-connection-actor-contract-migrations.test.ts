@@ -27,23 +27,21 @@ test(
     VALUES (${"connection-actor-contract"}, ${"Connection actor contract"}) RETURNING id
   `);
       if (!tenant) throw new Error("test tenant was not created");
-      const [user] = await ctx.db
-        .insert(users)
-        .values({
-          tenant_id: tenant.id,
-          email: "connection-actor-contract@test.local",
-          role_id: await builtinRoleId(ctx.db, "member"),
-        })
-        .returning({ id: users.id });
+      const {
+        rows: [user],
+      } = await ctx.db.execute<{ id: string }>(sql`
+        INSERT INTO users (tenant_id, email, role_id)
+        VALUES (${tenant.id}, ${"connection-actor-contract@test.local"}, ${await builtinRoleId(ctx.db, "member")})
+        RETURNING id
+      `);
       if (!user) throw new Error("test user was not created");
-      const [actorUser] = await ctx.db
-        .insert(users)
-        .values({
-          tenant_id: tenant.id,
-          email: "connection-actor-contract-actor@test.local",
-          role_id: await builtinRoleId(ctx.db, "member"),
-        })
-        .returning({ id: users.id });
+      const {
+        rows: [actorUser],
+      } = await ctx.db.execute<{ id: string }>(sql`
+        INSERT INTO users (tenant_id, email, role_id)
+        VALUES (${tenant.id}, ${"connection-actor-contract-actor@test.local"}, ${await builtinRoleId(ctx.db, "member")})
+        RETURNING id
+      `);
       if (!actorUser) throw new Error("test actor user was not created");
       const [systemAccount] = await ctx.db
         .insert(systemAccounts)

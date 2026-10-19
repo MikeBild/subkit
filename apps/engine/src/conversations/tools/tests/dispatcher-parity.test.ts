@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
+import { makeStubDb, usePolicyFixture } from "../../../tools/tests/_helpers.ts";
 import { invokeForSdk } from "../dispatch-adapter.ts";
 import type { ToolContext, ToolResult } from "../index.ts";
+
+usePolicyFixture();
 
 const PRINCIPAL: ResolvedPrincipal = {
   kind: "user",
   id: "00000000-0000-0000-0000-000000000001",
-  tenant_id: "00000000-0000-0000-0000-000000000002",
+  tenant_id: "00000000-0000-4000-8000-000000000002",
   authoring_role_id: null,
   scopes: new Set(),
   permission_grants: [],
@@ -15,15 +18,9 @@ const PRINCIPAL: ResolvedPrincipal = {
   // biome-ignore lint/suspicious/noExplicitAny: test stub
 } as any;
 
-// biome-ignore lint/suspicious/noExplicitAny: test stub
-const DB_STUB: any = {
-  transaction: async (fn: (db: unknown) => unknown) => fn(DB_STUB),
-  insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
-};
-
 function stubCtx(): ToolContext {
   return {
-    db: DB_STUB,
+    db: makeStubDb().db,
     tenant_id: PRINCIPAL.tenant_id,
     conversation_id: "test-conv",
     actor_id: PRINCIPAL.id,
@@ -39,7 +36,7 @@ function stubCtx(): ToolContext {
 describe("conversations/tools — invokeForSdk envelope parity", () => {
   test("unknown tool returns ToolResult.ok=false with structured error_code", async () => {
     const result: ToolResult = await invokeForSdk({
-      db: DB_STUB,
+      db: makeStubDb().db,
       principal: PRINCIPAL,
       conversationCtx: stubCtx(),
       permissionMode: null,
@@ -59,7 +56,7 @@ describe("conversations/tools — invokeForSdk envelope parity", () => {
 
   test("envelope shape matches the ToolResult discriminator (ok:true | ok:false)", async () => {
     const result: ToolResult = await invokeForSdk({
-      db: DB_STUB,
+      db: makeStubDb().db,
       principal: PRINCIPAL,
       conversationCtx: stubCtx(),
       permissionMode: null,
@@ -76,7 +73,7 @@ describe("conversations/tools — invokeForSdk envelope parity", () => {
 
   test("dispatcher rejects draft_write tools on MCP surface via not_available_on_surface → ok=false", async () => {
     const result: ToolResult = await invokeForSdk({
-      db: DB_STUB,
+      db: makeStubDb().db,
       principal: PRINCIPAL,
       conversationCtx: stubCtx(),
       permissionMode: null,

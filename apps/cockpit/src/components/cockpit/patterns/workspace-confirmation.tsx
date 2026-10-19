@@ -59,10 +59,16 @@ export function WorkspaceConfirmation({
         </DialogHeader>
         {children}
         <DialogFooter>
-          <Button variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>
+          <Button
+            data-testid="workspace-confirm-cancel"
+            variant="ghost"
+            disabled={pending}
+            onClick={() => onOpenChange(false)}
+          >
             {t("common.cancel")}
           </Button>
           <Button
+            data-testid="workspace-confirm-submit"
             variant={destructive ? "destructive" : "default"}
             disabled={pending || disabled}
             onClick={onConfirm}

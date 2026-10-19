@@ -10,7 +10,8 @@ import {
   loadConfig,
   setConfigKey,
 } from "../loader.ts";
-import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../walk.ts";
+import { type ConfigLeaf, dottedPath } from "../walk.ts";
+import { configurationSweepLeaves, sampleConfigLeaf as valueFor } from "./leaf-samples.ts";
 
 interface CapturedLog {
   module?: string;
@@ -63,98 +64,6 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function pickStringCandidate(leaf: ConfigLeaf, tag: string): string {
-  const candidates: string[] = [
-    tag,
-    `https://example.com/${tag.replaceAll("_", "-")}`,
-    tag.padEnd(32, "x").slice(0, 32),
-    "00:00",
-    "",
-  ];
-  for (const c of candidates) {
-    const r = leaf.schema.safeParse(c);
-    if (r.success) return c;
-  }
-  return tag;
-}
-
-function valueFor(leaf: ConfigLeaf, salt: number): unknown {
-  const tag = `applied-${dottedPath(leaf).replaceAll(".", "-")}-${salt}`;
-  switch (leaf.kind) {
-    case "string":
-      return pickStringCandidate(leaf, tag);
-    case "number": {
-      const sandboxValues: Record<string, number> = {
-        "sandbox.queue_limit": 64,
-        "sandbox.tenant_queue_limit": 4,
-        "sandbox.ipc_max_bytes": 1024 * 1024,
-        "sandbox.worker_rss_bytes": 256 * 1024 * 1024,
-      };
-      const sandboxValue = sandboxValues[dottedPath(leaf)];
-      if (sandboxValue !== undefined) return sandboxValue;
-      const candidates = [((salt + 5) % 45) + 5, 0.5, 200, 1_000, 60_000, 100_000, 3_600_000];
-      for (const c of candidates) {
-        if (leaf.schema.safeParse(c).success) return c;
-      }
-      return candidates[0]!;
-    }
-    case "boolean":
-      return true;
-    case "enum": {
-      const values = leaf.enumValues ?? [];
-      if (values.length < 2) return values[0] ?? null;
-      return values[1 + (salt % (values.length - 1))];
-    }
-    case "string-list":
-      return [tag];
-    case "string-array":
-      return [tag];
-    case "json": {
-      const samples: Record<string, unknown> = {
-        "auth.providers": [
-          { protocol: "api_key", id: "api-key", label: "SubKit API key" },
-          {
-            protocol: "oidc",
-            id: `oidc-${salt}`,
-            label: "Public OIDC",
-            issuer_url: "https://identity.example.test",
-            client_id: `client-${salt}`,
-            scopes: "openid profile email",
-            tenant_slug: "default",
-          },
-        ],
-        products: {
-          [`app-${salt}`]: {
-            execution_environment: "prod",
-            assistant_workflow_id: "00000000-0000-4000-8000-000000000001",
-            budget_bucket: `bucket-${salt}`,
-          },
-        },
-        "tokens.prices": [
-          {
-            model: `model-${salt}`,
-            input_per_mtok: 3,
-            output_per_mtok: 15,
-            cache_read_per_mtok: 0.3,
-            cache_write_per_mtok: 3.75,
-          },
-        ],
-      };
-      const dotted = dottedPath(leaf);
-      const sample = samples[dotted];
-      if (sample === undefined) {
-        throw new Error(
-          `no sample value for structural leaf "${dotted}". Add one to \`samples\` in this file — ` +
-            "a structural leaf is written as one whole value and cannot be synthesised generically.",
-        );
-      }
-      return sample;
-    }
-    default:
-      return tag;
-  }
-}
-
 function readDeep(source: unknown, leafPath: string[]): unknown {
   let cursor: unknown = source;
   for (const seg of leafPath) {
@@ -164,7 +73,7 @@ function readDeep(source: unknown, leafPath: string[]): unknown {
   return cursor;
 }
 
-const LEAVES = listConfigLeaves();
+const LEAVES = configurationSweepLeaves();
 
 const PINNED_SCOPES_LEAF = "auth.mcp_oauth.scopes_supported";
 

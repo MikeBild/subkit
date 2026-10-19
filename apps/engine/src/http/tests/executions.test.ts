@@ -13,6 +13,7 @@ import {
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -117,6 +118,7 @@ describe("idempotency key on the saved-workflow trigger", () => {
       status: response.status,
       body: (await response.json()) as {
         execution_id: string;
+        code?: string;
         status: string;
         output?: unknown;
         idempotent_replay?: boolean;
@@ -247,7 +249,25 @@ describe("idempotency key on the saved-workflow trigger", () => {
       input: { date: "r" },
       idempotency_key: key,
     };
-    const results = await Promise.all([post(body), post(body), post(body)]);
+    const postAfterCatalogConflict = async () => {
+      let result = await post(body);
+      await waitFor(
+        async () => {
+          if (result.status !== 409 || result.body.code !== "catalog_vocabulary_changed")
+            return true;
+          result = await post(body);
+          return result.status !== 409 || result.body.code !== "catalog_vocabulary_changed";
+        },
+        { tries: 40, sleepMs: 5, label: "idempotent HTTP admission after catalog conflict" },
+      );
+      expect([200, 202]).toContain(result.status);
+      return result;
+    };
+    const results = await Promise.all([
+      postAfterCatalogConflict(),
+      postAfterCatalogConflict(),
+      postAfterCatalogConflict(),
+    ]);
     const ids = new Set(results.map((r) => r.body.execution_id));
     expect(ids.size).toBe(1);
     expect(results.filter((r) => r.body.idempotent_replay === true).length).toBeGreaterThanOrEqual(

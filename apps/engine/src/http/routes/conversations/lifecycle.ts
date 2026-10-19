@@ -189,6 +189,10 @@ const compactRoute = createRoute({
       description: "OK",
       content: { "application/json": { schema: CompactConversationResponse } },
     },
+    409: {
+      description: "Conversation turn already running",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -268,17 +272,22 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const result = await svc.compactConversation(
-      {
-        tenant_id: principal.tenant_id,
-        conversation_id: id,
-        actor_id: principal.id,
-        actor_type: actorType(principal),
-        ...(body.keep_last !== undefined ? { keep_last: body.keep_last } : {}),
-      },
-      db,
-    );
-    return c.json(result, 200);
+    const ctrl = await svc.registerConversationAbort(principal.tenant_id, id, db);
+    try {
+      const result = await svc.compactConversation(
+        {
+          tenant_id: principal.tenant_id,
+          conversation_id: id,
+          actor_id: principal.id,
+          actor_type: actorType(principal),
+          ...(body.keep_last !== undefined ? { keep_last: body.keep_last } : {}),
+        },
+        db,
+      );
+      return c.json(result, 200);
+    } finally {
+      await svc.unregisterConversationAbort(principal.tenant_id, id, ctrl);
+    }
   });
 
   app.openapi(forkFromMessageRoute, async (c) => {

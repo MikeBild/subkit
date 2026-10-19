@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { auditLog, sessions, users } from "../../db/schema/index.ts";
@@ -18,14 +18,14 @@ let ctx: HttpTestServer;
 let db: Db;
 let priorBaseUrl = "";
 
-beforeAll(async () => {
+beforeEach(async () => {
   const s = await setupMcpOauthServer("mcp-oauth-scope-audit");
   ctx = s.ctx;
   db = ctx.db;
   priorBaseUrl = s.priorBaseUrl;
 }, TEST_DB_HOOK_TIMEOUT);
 
-afterAll(async () => {
+afterEach(async () => {
   if (ctx) await teardownMcpOauthServer(ctx, priorBaseUrl);
 }, TEST_DB_HOOK_TIMEOUT);
 
@@ -50,6 +50,7 @@ describe("consent denial", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://client.example.com/deny-cb"] }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
@@ -104,6 +105,7 @@ describe("consent denial", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://client.example.com/revoke-cb"] }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
@@ -159,6 +161,7 @@ describe("consent denial", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://client.example.com/expired-cb"] }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
     const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
     const jwt = await mintSessionCookie({
@@ -208,6 +211,7 @@ describe("scope intersection — role-based scope restriction", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://member.example.com/cb"] }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const sessionId = await seedSession(db, ctx.tenantId, memberUser.id);
@@ -292,6 +296,7 @@ describe("scope intersection — role-based scope restriction", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://downgrade.example.com/cb"] }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const sessionId = await seedSession(db, ctx.tenantId, user.id);
@@ -354,6 +359,7 @@ describe("scope selection — client request is a hard ceiling", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://elevate.example.com/cb"] }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
@@ -430,6 +436,7 @@ describe("scope selection — client request is a hard ceiling", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://tamper.example.com/cb"] }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const sessionId = await seedSession(db, ctx.tenantId, memberUser.id);
@@ -500,6 +507,7 @@ describe("scope intersection — member role requesting only mcp:admin", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://admin-only.example.com/cb"] }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const sessionId = await seedSession(db, ctx.tenantId, memberUser.id);
@@ -540,6 +548,7 @@ async function runFullOAuthFlow(opts: {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ redirect_uris: [redirectUri], client_name: label }),
   });
+  expect(regRes.status).toBe(201);
   const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
   const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
@@ -608,6 +617,7 @@ describe("audit log entries (HTTP layer)", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://audit.example.com/cb"] }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
@@ -783,6 +793,7 @@ describe("consent form structure — scope inputs must submit", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://form.example.com/cb"] }),
     });
+    expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
     const sessionId = await seedSession(db, ctx.tenantId, memberUser.id);

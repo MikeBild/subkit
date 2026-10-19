@@ -13,6 +13,7 @@ import {
   wrapLanguageModel,
 } from "ai";
 import { getConfig } from "../../config/loader.ts";
+import type { Executor } from "../../db/client.ts";
 import { modelTenantContext, wrapHostedBudgetModel } from "./hosted-budget-middleware.ts";
 import { fetchWithResponseTimeout } from "./response-timeout.ts";
 
@@ -86,6 +87,7 @@ export type ProviderKind = "gateway" | "mock" | DirectProviderKind;
 export type ProviderState = ProviderKind | "unconfigured";
 
 export interface ModelInitOptions {
+  exec?: Executor;
   providerEnvVar?: string;
   tenantId?: string;
   providerOverride?: ProviderKind;
@@ -546,6 +548,7 @@ export async function initializeModel(options?: ModelInitOptions): Promise<Resol
       resolved.provider,
       resolved.modelId,
       tenantId,
+      options?.exec,
     ),
   };
 }

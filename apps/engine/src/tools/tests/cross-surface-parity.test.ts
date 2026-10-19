@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { invokeForSdk } from "../../conversations/tools/dispatch-adapter.ts";
 import { callToolViaDispatcher } from "../../mcp/adapter.ts";
 import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../policy.ts";
-import { makeStubCtx, makeStubDb, makeTestPrincipal } from "./_helpers.ts";
+import { makeStubCtx, makeStubDb, makeTestPrincipal, usePolicyFixture } from "./_helpers.ts";
+
+usePolicyFixture();
 
 const PRINCIPAL = makeTestPrincipal();
 const { db: DB_STUB } = makeStubDb();

@@ -12,7 +12,6 @@ import {
   cancelConversation,
   deleteConversation,
   getConversation,
-  listConversations,
   OWN_CONVERSATIONS,
   renameConversation,
   respondToChatApproval,
@@ -206,6 +205,7 @@ import {
   type OptimisticMessage,
   optimisticUiMessage,
   optimisticVisible,
+  ownsChatOperation,
   recoverFailedSend,
   tokenPill,
   turnFailureCause,
@@ -1364,9 +1364,19 @@ export function ChatPage() {
   const [optimistic, setOptimistic] = useState<OptimisticMessage | null>(null);
   const [sentMode, setSentMode] = useState<AuthoringMode | null>(null);
   const restoreComposer = useRef<RestoreComposer | null>(null);
-  const startedConversationId = useRef<string | null>(null);
+  const sessionRef = useRef(0);
+  const operationRef = useRef<object | null>(null);
+  const ownsOperation = (operation: ReturnType<typeof beginOperation>) =>
+    ownsChatOperation(operationRef.current, operation, sessionRef.current);
+  const beginOperation = () => {
+    const operation = { session: sessionRef.current, startedId: null as string | null };
+    operationRef.current = operation;
+    return operation;
+  };
   const navigate = (navigation: ChatNavigation, beginsHere: boolean) => {
-    setSessionKey((key) => nextSessionKey(key, navigation));
+    sessionRef.current = nextSessionKey(sessionRef.current, navigation);
+    setSessionKey(sessionRef.current);
+    clearStream();
     setStartedHere(beginsHere);
     setOptimistic(null);
     setSentMode(null);
@@ -1376,7 +1386,9 @@ export function ChatPage() {
       const prompt = chatSeedFromUrl(window.location.search).prompt;
       const next = selectionFromPath(prompt);
       setSelection(next);
-      setSessionKey((key) => nextSessionKey(key, "popstate"));
+      sessionRef.current = nextSessionKey(sessionRef.current, "popstate");
+      setSessionKey(sessionRef.current);
+      clearStream();
       setStartedHere(next.kind === "new");
       setOptimistic(null);
       setSentMode(null);
@@ -1450,17 +1462,18 @@ export function ChatPage() {
       references,
       conversationId,
       attachments = [],
+      operation,
     }: {
       message: string;
       references?: ConversationReference[];
       conversationId: string | null;
+      operation: ReturnType<typeof beginOperation>;
       attachments?: readonly PendingAttachment[];
     }) => {
       clearStream();
 
       const target = chatTargetFromUrl(window.location.search);
       const intakeItemIds = chatSeedFromUrl(window.location.search).intakeItemIds;
-      startedConversationId.current = null;
       let targetId = conversationId;
       let text = message;
       if (attachments.length > 0) {
@@ -1471,7 +1484,7 @@ export function ChatPage() {
             intakeItemIds,
           });
           targetId = opened.id;
-          startedConversationId.current = opened.id;
+          operation.startedId = opened.id;
         }
         const slugs: string[] = [];
         for (const attachment of attachments)
@@ -1484,9 +1497,8 @@ export function ChatPage() {
               conversationId: targetId,
               message: text,
               references,
-              pendingElicitation: conversationId
-                ? detail.data?.resume_summary?.pending_approval
-                : null,
+              pendingElicitation:
+                (await getConversation(targetId)).resume_summary?.pending_approval ?? null,
             }
           : {
               message: text,
@@ -1498,23 +1510,24 @@ export function ChatPage() {
         (event) => {
           if (event.type === "conversation_started") {
             const id = (event.conversation as { id?: unknown } | undefined)?.id;
-            if (typeof id === "string") startedConversationId.current = id;
+            if (typeof id === "string") operation.startedId = id;
             return;
           }
-          onTurnEvent(event);
+          if (ownsOperation(operation)) onTurnEvent(event);
         },
       );
     },
-    onError: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["conversation", activeId] });
+    onError: async (_error, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ["conversation", variables.conversationId] });
     },
-    onSuccess: async (result) => {
+    onSuccess: async (result, variables) => {
       const id = result.conversation.id;
       const loaded = await loadTranscript(id);
-      setSelection({ kind: "existing", id });
-      setChatPath(id, true);
-      setSessionKey((key) => nextSessionKey(key, "firstSendSaved"));
-      clearStream();
+      if (ownsOperation(variables.operation)) {
+        setSelection({ kind: "existing", id });
+        setChatPath(id, true);
+        clearStream();
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["conversations"] }),
         queryClient.invalidateQueries({ queryKey: ["decisions"] }),
@@ -1523,6 +1536,8 @@ export function ChatPage() {
       ]);
     },
   });
+  const sendPending = send.isPending && send.variables?.operation.session === sessionKey;
+  const sendError = send.variables?.operation.session === sessionKey ? send.error : null;
   const turnFailure =
     (
       detail.data as
@@ -1538,14 +1553,14 @@ export function ChatPage() {
         | undefined
     )?.last_turn_error ?? null;
   const turnFailureMessage =
-    (send.error instanceof ApiError ? send.error.message : null) ?? turnFailure?.message ?? null;
-  const failureCause = send.error
-    ? send.error instanceof ApiError
+    (sendError instanceof ApiError ? sendError.message : null) ?? turnFailure?.message ?? null;
+  const failureCause = sendError
+    ? sendError instanceof ApiError
       ? turnFailureCause({
-          code: send.error.code,
-          kind: send.error.details?.kind,
-          retry_at: send.error.details?.retry_at,
-          timeout_ms: send.error.details?.timeout_ms,
+          code: sendError.code,
+          kind: sendError.details?.kind,
+          retry_at: sendError.details?.retry_at,
+          timeout_ms: sendError.details?.timeout_ms,
         })
       : null
     : turnFailureCause(
@@ -1566,6 +1581,7 @@ export function ChatPage() {
     message: string,
     references: ConversationReference[] = [],
   ): Promise<boolean> => {
+    const operation = beginOperation();
     const pinned = pinSelectionForSend(selection, conversationList.items[0]?.id);
     if (selection.kind === "automatic") setSelection(pinned);
     const targetId = pinned.kind === "existing" ? pinned.id : null;
@@ -1580,39 +1596,26 @@ export function ChatPage() {
     if (!targetId) setSentMode(newPermissionMode);
     const sentAttachments = attachments;
     setAttachments([]);
-    const knownIds = targetId
-      ? null
-      : await Promise.race([
-          queryClient
-            .ensureQueryData({
-              queryKey: ["conversations", "", "visible"],
-              queryFn: () => listConversations(),
-            })
-            .then((list) => new Set(list.items.map((c) => c.id)))
-            .catch(() => null),
-          new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 3_000)),
-        ]);
     try {
       await send.mutateAsync({
         message,
         references,
         conversationId: targetId,
         attachments: sentAttachments,
+        operation,
       });
       return true;
     } catch {
+      if (!ownsOperation(operation)) return false;
       try {
         let openedId: string | null = null;
         if (!targetId) {
-          const [listed] = await Promise.all([
-            listConversations().catch(() => null),
-            queryClient.invalidateQueries({ queryKey: ["conversations"] }),
-          ]);
+          await queryClient.invalidateQueries({ queryKey: ["conversations"] });
           openedId = conversationOpenedByFailedSend({
-            startedId: startedConversationId.current,
-            knownIds,
+            startedId: operation.startedId,
+            knownIds: null,
             sentAt: pending.sentAt,
-            listed: listed?.items ?? [],
+            listed: [],
           });
         }
         const after = targetId
@@ -1627,6 +1630,7 @@ export function ChatPage() {
                   .catch(() => null)
               )?.messages ?? null)
             : null;
+        if (!ownsOperation(operation)) return false;
         const recovery = recoverFailedSend({
           activeId: targetId,
           openedId,
@@ -1640,6 +1644,7 @@ export function ChatPage() {
         }
         if (!recovery.restoreComposer) return true;
       } catch {}
+      if (!ownsOperation(operation)) return false;
       setOptimistic(null);
       restoreComposer.current?.(message, references);
       setAttachments((current) => addAttachments(sentAttachments, current));
@@ -1666,10 +1671,10 @@ export function ChatPage() {
     document.querySelector<HTMLTextAreaElement>('[data-testid="chat-composer-input"]')?.focus();
   };
   const cancel = useMutation({
-    mutationFn: () => cancelConversation(activeId ?? ""),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversation", activeId] }),
+    mutationFn: (id: string) => cancelConversation(id),
+    onSuccess: (_result, id) => queryClient.invalidateQueries({ queryKey: ["conversation", id] }),
   });
-  const decisionLock = useRef(false);
+  const decisionLock = useRef<ReturnType<typeof beginOperation> | null>(null);
   const decide = useMutation({
     mutationFn: ({
       toolCallId,
@@ -1677,7 +1682,11 @@ export function ChatPage() {
       approved,
       choiceValue,
       formOutput,
+      operation,
+      conversationId,
     }: {
+      operation: ReturnType<typeof beginOperation>;
+      conversationId: string;
       toolCallId?: string;
       elicitationId?: string;
       approved?: boolean;
@@ -1685,21 +1694,28 @@ export function ChatPage() {
       formOutput?: Record<string, unknown>;
     }) => {
       clearStream();
+      const onEvent = (event: Parameters<typeof onTurnEvent>[0]) => {
+        if (ownsOperation(operation)) onTurnEvent(event);
+      };
       return elicitationId
         ? formOutput !== undefined
-          ? respondToChatForm(activeId ?? "", elicitationId, formOutput, onTurnEvent)
+          ? respondToChatForm(conversationId, elicitationId, formOutput, onEvent)
           : choiceValue !== undefined
-            ? respondToChatChoice(activeId ?? "", elicitationId, choiceValue, onTurnEvent)
-            : respondToChatApproval(activeId ?? "", elicitationId, approved === true, onTurnEvent)
-        : respondToToolCall(activeId ?? "", toolCallId ?? "", approved === true);
+            ? respondToChatChoice(conversationId, elicitationId, choiceValue, onEvent)
+            : respondToChatApproval(conversationId, elicitationId, approved === true, onEvent)
+        : respondToToolCall(conversationId, toolCallId ?? "", approved === true);
     },
-    onSuccess: async () => {
-      const loaded = await loadTranscript(activeId);
-      clearStream();
-      if (!loaded) await queryClient.invalidateQueries({ queryKey: ["conversation", activeId] });
+    onSuccess: async (_result, variables) => {
+      const loaded = await loadTranscript(variables.conversationId);
+      if (ownsOperation(variables.operation)) clearStream();
+      if (!loaded)
+        await queryClient.invalidateQueries({
+          queryKey: ["conversation", variables.conversationId],
+        });
     },
-    onError: () => queryClient.invalidateQueries({ queryKey: ["conversation", activeId] }),
-    onSettled: async () => {
+    onError: (_error, variables) =>
+      queryClient.invalidateQueries({ queryKey: ["conversation", variables.conversationId] }),
+    onSettled: async (_data, _error, variables) => {
       try {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["conversations"] }),
@@ -1707,26 +1723,60 @@ export function ChatPage() {
           queryClient.invalidateQueries({ queryKey: ["attention"] }),
         ]);
       } finally {
-        decisionLock.current = false;
+        if (decisionLock.current === variables.operation) decisionLock.current = null;
       }
     },
   });
+  const decidePending = decide.isPending && decide.variables?.operation.session === sessionKey;
   const submitApproval = (elicitationId: string, approved: boolean) => {
-    if (decisionLock.current || send.isPending || decide.isPending) return;
-    decisionLock.current = true;
-    decide.mutate({ elicitationId, approved });
+    if (
+      (decisionLock.current && ownsOperation(decisionLock.current)) ||
+      sendPending ||
+      decidePending
+    )
+      return;
+    const operation = beginOperation();
+    decisionLock.current = operation;
+    decide.mutate({
+      elicitationId,
+      approved,
+      conversationId: activeId ?? "",
+      operation,
+    });
   };
   const submitChoice = (elicitationId: string, choiceValue: string) => {
-    if (decisionLock.current || send.isPending || decide.isPending) return;
-    decisionLock.current = true;
+    if (
+      (decisionLock.current && ownsOperation(decisionLock.current)) ||
+      sendPending ||
+      decidePending
+    )
+      return;
+    const operation = beginOperation();
+    decisionLock.current = operation;
     send.reset();
-    decide.mutate({ elicitationId, choiceValue });
+    decide.mutate({
+      elicitationId,
+      choiceValue,
+      conversationId: activeId ?? "",
+      operation,
+    });
   };
   const submitForm = (elicitationId: string, formOutput: Record<string, unknown>) => {
-    if (decisionLock.current || send.isPending || decide.isPending) return;
-    decisionLock.current = true;
+    if (
+      (decisionLock.current && ownsOperation(decisionLock.current)) ||
+      sendPending ||
+      decidePending
+    )
+      return;
+    const operation = beginOperation();
+    decisionLock.current = operation;
     send.reset();
-    decide.mutate({ elicitationId, formOutput });
+    decide.mutate({
+      elicitationId,
+      formOutput,
+      conversationId: activeId ?? "",
+      operation,
+    });
   };
   const remove = useMutation({
     mutationFn: (target: Conversation) => deleteConversation(target.id),
@@ -1917,7 +1967,7 @@ export function ChatPage() {
   const readyAutomations =
     readySchedules.length +
     (automationStatus.data?.inbound_hooks?.filter((hook) => hook.ready).length ?? 0);
-  const status = send.isPending || decide.isPending ? "streaming" : "ready";
+  const status = sendPending || decidePending ? "streaming" : "ready";
   const ordered = useMemo(
     () => [...conversationList.items].sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
     [conversationList.items],
@@ -1940,7 +1990,7 @@ export function ChatPage() {
     rowOutcome: activeRow?.outcome,
   });
   const badge =
-    send.isPending || decide.isPending
+    sendPending || decidePending
       ? { label: t("chat.outcome.in_progress"), state: "running" }
       : waitsForYou
         ? { label: t("chat.outcome.awaiting_you"), state: "awaiting_input" }
@@ -1974,7 +2024,7 @@ export function ChatPage() {
     ? { text: t("chat.choice.hint"), visible: true }
     : formOpen
       ? null
-      : pendingText && !send.isPending
+      : pendingText && !sendPending
         ? {
             text: t("chat.text.composerHint", { question: questionExcerpt(pendingText.question) }),
             visible: true,
@@ -2026,7 +2076,7 @@ export function ChatPage() {
     queryFn: () => apiRequest<unknown>("/v1/status"),
   });
   const budget = budgetPill(budgetPressure(budgetSummary(monthStatus.data)));
-  const busy = send.isPending || decide.isPending;
+  const busy = sendPending || decidePending;
   const showPreparation = Boolean(
     resume?.unsaved &&
       resume?.stage !== "workflow_draft_conflict" &&
@@ -2063,7 +2113,9 @@ export function ChatPage() {
   const unanchoredChoice = unanchored(pendingChoice);
   const unanchoredForm = unanchored(pendingForm);
   const decisionErrorFor = (id: string | undefined) =>
-    decide.isError && decide.variables?.elicitationId === id;
+    decide.isError &&
+    decide.variables?.operation.session === sessionKey &&
+    decide.variables?.elicitationId === id;
   const menuItems =
     current && !conversationFailed
       ? [
@@ -2177,8 +2229,7 @@ export function ChatPage() {
       })}
     />
   );
-  const blocked =
-    send.error instanceof ApiError && send.error.code === "pending_elicitation_blocked";
+  const blocked = sendError instanceof ApiError && sendError.code === "pending_elicitation_blocked";
   const target = resume?.active_target;
   const targetNamed = Boolean(target && target.kind !== "none" && (target.name || target.kind));
   const contextFacts: Fact[] = [
@@ -2190,7 +2241,7 @@ export function ChatPage() {
       : [
           {
             label: t("chat.context.stage"),
-            value: decide.isPending
+            value: decidePending
               ? t("chat.decision.processing")
               : resumeStageLabel(resume?.stage, t),
             help: resume?.one_sentence
@@ -2424,8 +2475,8 @@ export function ChatPage() {
                 line={
                   blocked ? (
                     t(
-                      (send.error instanceof ApiError
-                        ? (send.error.details?.pending_elicitation as
+                      (sendError instanceof ApiError
+                        ? (sendError.details?.pending_elicitation as
                             | { tool_name?: unknown }
                             | undefined)
                         : undefined
@@ -2490,7 +2541,7 @@ export function ChatPage() {
                       onRetry={conversationMissing ? undefined : () => void detail.refetch()}
                       testId="chat-load-failed"
                     />
-                  ) : messages.length === 0 && !send.isPending && !showOptimistic ? (
+                  ) : messages.length === 0 && !sendPending && !showOptimistic ? (
                     <div className="flex flex-1 py-6" data-testid="chat-empty">
                       {selection.kind === "new" && initialPrompt ? (
                         <p className="text-sm text-muted-foreground">{t("chat.empty.title")}</p>
@@ -2560,7 +2611,12 @@ export function ChatPage() {
                             ])
                           }
                           onDecision={(toolCallId, approved) =>
-                            decide.mutate({ toolCallId, approved })
+                            decide.mutate({
+                              toolCallId,
+                              approved,
+                              conversationId: activeId ?? "",
+                              operation: beginOperation(),
+                            })
                           }
                         />
                       </MessageScrollerItem>
@@ -2835,7 +2891,7 @@ export function ChatPage() {
                     mode={pillMode}
                     label={pillLabel}
                     editable={!activeId}
-                    disabled={send.isPending}
+                    disabled={sendPending}
                     onChange={setNewPermissionMode}
                   />
                 )}
@@ -2880,7 +2936,7 @@ export function ChatPage() {
                         : { fileId: attachment.id, contentType: attachment.contentType }),
                     })
                   }
-                  onStop={() => cancel.mutate()}
+                  onStop={() => cancel.mutate(activeId ?? "")}
                   onSend={submitTurn}
                   restoreRef={restoreComposer}
                 />

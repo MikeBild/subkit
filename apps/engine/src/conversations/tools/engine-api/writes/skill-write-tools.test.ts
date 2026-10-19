@@ -7,10 +7,16 @@ import { createSkill } from "../../../../skills/service.ts";
 import { dispatchTool } from "../../../../tools/dispatcher.ts";
 import { conversationToolProvider } from "../../../../tools/providers/conversation.ts";
 import { buildRegistry } from "../../../../tools/registry.ts";
-import { makeStubDb, makeTestPrincipal } from "../../../../tools/tests/_helpers.ts";
+import {
+  makeStubDb,
+  makeTestPrincipal,
+  usePolicyFixture,
+} from "../../../../tools/tests/_helpers.ts";
 import type { ToolContext } from "../../index.ts";
 import { deleteSkillTool } from "./delete-skill.ts";
 import { updateSkillTool } from "./update-skill.ts";
+
+usePolicyFixture();
 
 const CONVO_ID = "00000000-0000-4000-8000-000000000099";
 const MISSING_UUID = "00000000-0000-4000-8000-000000009999";

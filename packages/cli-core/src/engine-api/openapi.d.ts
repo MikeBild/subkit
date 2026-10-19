@@ -6621,6 +6621,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/{id}/transactional-mail-receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect durable transactional email outcomes without applicant data
+         * @description One immutable dispatch reservation per workflow and signed request ID. sent requires a Gmail message ID; attempted and delivery_unknown require inspection and never authorize automatic resend. Receipts survive execution cleanup. This read cannot retry delivery.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number | null;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["TransactionalMailReceipt"][];
+                        };
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows/{id}/diagnosis": {
         parameters: {
             query?: never;
@@ -14676,7 +14731,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Pending input */
+                /** @description A response is running or a pending question must be answered */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -14756,6 +14811,15 @@ export interface paths {
                         };
                     };
                 };
+                /** @description A response is running or a pending question must be answered */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -14801,6 +14865,15 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A response is already running for this conversation */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -14862,6 +14935,15 @@ export interface paths {
                 };
                 /** @description Not found — no elicitation links to that tool_call */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A response is already running for this conversation */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -15128,6 +15210,15 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conversation turn already running */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -21610,6 +21701,28 @@ export interface components {
                     /** @enum {string} */
                     content_type: "text/plain" | "text/html" | "multipart/alternative";
                 };
+                transactional_delivery?: {
+                    /** @enum {string} */
+                    kind: "gmail_transactional";
+                    /**
+                     * Format: uuid
+                     * @description Reviewed active Standard Webhooks binding in the same tenant and workflow; unsigned ingress is forbidden
+                     */
+                    webhook_id: string;
+                    /** @description The single allowed event type configured on the signed binding */
+                    event_type: string;
+                    /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                    event_type_input: string;
+                    /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                    recipient_input: string;
+                    /** @description Reviewed UUID field equal to signed webhook-id; one persistent dispatch attempt per workflow and request ID */
+                    request_id_input: string;
+                    from: string;
+                    /** @enum {string} */
+                    content_type: "text/plain";
+                    /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                    max_body_bytes: number;
+                };
                 content_publication?: {
                     /** @enum {string} */
                     kind: "content_revision";
@@ -21821,6 +21934,19 @@ export interface components {
             target: string | null;
             /** @enum {string} */
             effect: "read" | "write" | "unknown" | "destructive";
+        };
+        TransactionalMailReceipt: {
+            /** Format: uuid */
+            request_id: string;
+            /** Format: uuid */
+            execution_id: string;
+            step_id: string;
+            /** @enum {string} */
+            state: "attempted" | "sent" | "failed" | "delivery_unknown";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
         };
         WorkflowDiagnosis: {
             /** Format: uuid */
@@ -22137,6 +22263,28 @@ export interface components {
                 from: string;
                 /** @enum {string} */
                 content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
+            transactional_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_transactional";
+                /**
+                 * Format: uuid
+                 * @description Reviewed active Standard Webhooks binding in the same tenant and workflow; unsigned ingress is forbidden
+                 */
+                webhook_id: string;
+                /** @description The single allowed event type configured on the signed binding */
+                event_type: string;
+                /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                event_type_input: string;
+                /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                recipient_input: string;
+                /** @description Reviewed UUID field equal to signed webhook-id; one persistent dispatch attempt per workflow and request ID */
+                request_id_input: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                max_body_bytes: number;
             };
             headers?: {
                 [key: string]: string;
@@ -25437,6 +25585,8 @@ export interface components {
             name: string | null;
         } | null;
         ConversationRunOutcome: {
+            /** Format: uuid */
+            turn_id?: string;
             conversation: components["schemas"]["Conversation"];
             events: unknown[];
             status: string;

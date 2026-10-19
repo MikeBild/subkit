@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type ServerType, serve } from "@hono/node-server";
 import { eq } from "drizzle-orm";
+import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import { engineSettings, tenants } from "../../db/schema/identity.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -20,6 +24,7 @@ interface Ctx {
 }
 
 let ctx: Ctx;
+let configDirectory: string;
 
 async function startServer(
   testDb: TestDb,
@@ -43,6 +48,11 @@ async function startServer(
 }
 
 beforeAll(async () => {
+  configDirectory = mkdtempSync(join(tmpdir(), "sk-http-setup-"));
+  await loadConfig({
+    env: { DATABASE_URL: "postgres://localhost/x", NODE_ENV: "test" },
+    configPathOverride: join(configDirectory, "subkit.config.json"),
+  });
   const testDb = await createTestDb("http-setup");
   const { baseUrl, close } = await startServer(testDb);
   ctx = {
@@ -57,6 +67,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await ctx.cleanup();
+  _resetConfigForTests();
+  rmSync(configDirectory, { recursive: true, force: true });
 });
 
 beforeEach(async () => {

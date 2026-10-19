@@ -330,6 +330,7 @@ export const CompactConversationResponse = z
 
 export const RunOutcomeSchema = z
   .object({
+    turn_id: z.string().uuid().optional(),
     conversation: ConversationSchema,
     events: z.array(z.any()),
     status: z.string(),
@@ -339,6 +340,7 @@ export const RunOutcomeSchema = z
   .openapi("ConversationRunOutcome");
 
 export type RunOutcomeJson = {
+  turn_id?: string;
   conversation: {
     id: string;
     tenant_id: string;
@@ -532,6 +534,7 @@ export function serializeConversation(c: svc.ConversationTurnOutcome): RunOutcom
     conversation: c.conversation,
     events: c.result.events,
     status: c.result.status,
+    ...(c.turn_id ? { turn_id: c.turn_id } : {}),
   };
   if (c.result.committed_workflow_id) out.committed_workflow_id = c.result.committed_workflow_id;
   if (c.result.pending_elicitation_id) out.pending_elicitation_id = c.result.pending_elicitation_id;

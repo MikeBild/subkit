@@ -11,6 +11,10 @@ export const PAGE_ROUTES = [
 
 export type PageRoute = (typeof PAGE_ROUTES)[number];
 
+export const RECOVERY_ROUTE = "/recovery";
+
+export const STANDALONE_ROUTES = [RECOVERY_ROUTE] as const;
+
 export const REDIRECT_ROUTES = ["/access"] as const;
 
 export function movedTarget(search: string): string {
@@ -42,6 +46,7 @@ export const CATALOG_RESOURCES = [
 export type CatalogResource = (typeof CATALOG_RESOURCES)[number];
 
 export const ALL_ROUTE_PATHS: readonly string[] = [
+  ...STANDALONE_ROUTES,
   ...REDIRECT_ROUTES,
   ...PAGE_ROUTES,
   ...CHAT_ROUTES,

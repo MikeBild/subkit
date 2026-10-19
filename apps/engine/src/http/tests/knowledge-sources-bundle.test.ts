@@ -6,6 +6,7 @@ import { apiKeys, files, users } from "../../db/schema/index.ts";
 import { NoopScanner } from "../../files/scanner.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -50,6 +51,22 @@ function postBundle(body: unknown, key = srv.apiKey): Promise<Response> {
     headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+async function postBundleAfterCatalogConflict(body: unknown): Promise<Response> {
+  let response = await postBundle(body);
+  const busy = async () =>
+    response.status === 409 &&
+    ((await response.clone().json()) as { code?: string }).code === "catalog_vocabulary_changed";
+  await waitFor(
+    async () => {
+      if (!(await busy())) return true;
+      response = await postBundle(body);
+      return !(await busy());
+    },
+    { tries: 100, sleepMs: 5, label: "bundle import after catalog conflict" },
+  );
+  return response;
 }
 
 const WIKI = {
@@ -236,13 +253,13 @@ describe("POST /v1/knowledge-sources/bundle — create_only", () => {
     const beforeObjects = await getObjectStore().list(`${srv.tenantId}/`);
     const slug = "clip-collection-concurrent-create-only";
     const [first, second] = await Promise.all([
-      postBundle({
+      postBundleAfterCatalogConflict({
         name: "Concurrent clip collection",
         slug,
         create_only: true,
         files: [{ path: "clips/first.md", content: "# First concurrent" }],
       }),
-      postBundle({
+      postBundleAfterCatalogConflict({
         name: "Concurrent clip collection",
         slug,
         create_only: true,
@@ -461,7 +478,9 @@ describe("POST /v1/knowledge-sources/bundle — review-verified edge cases", () 
       slug: "race-wiki",
       files: [{ path: "a.md", content: "raced" }],
     };
-    const responses = await Promise.all(Array.from({ length: 6 }, () => postBundle(bundle)));
+    const responses = await Promise.all(
+      Array.from({ length: 6 }, () => postBundleAfterCatalogConflict(bundle)),
+    );
     for (const res of responses) expect(res.status).toBe(200);
     const outcomes = await Promise.all(
       responses.map(async (r) => ((await r.json()) as { outcome: string }).outcome),

@@ -42,6 +42,7 @@ export interface RetryTransientOptions {
   startMs?: number;
   maxMs?: number;
   label?: string;
+  shouldRetry?: (error: unknown) => boolean;
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -63,7 +64,7 @@ export async function retryTransient<T>(
       return await fn();
     } catch (err) {
       lastErr = err;
-      if (attempt >= tries || !isTransientDbError(err)) throw err;
+      if (attempt >= tries || !(opts.shouldRetry ?? isTransientDbError)(err)) throw err;
       const sleepMs = jitter(delay);
       recordDbTransientRetry(opts.label !== undefined ? { label: opts.label } : {});
       logger.warn({

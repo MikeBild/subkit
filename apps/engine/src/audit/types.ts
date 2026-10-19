@@ -139,6 +139,8 @@ export const AuditAction = {
   WEBHOOK_OUTBOUND_DELIVERED: "webhook.outbound.delivered",
   WEBHOOK_OUTBOUND_FAILED: "webhook.outbound.failed",
   WEBHOOK_OUTBOUND_REPLAYED: "webhook.outbound.replayed",
+  TRANSACTIONAL_MAIL_RESERVED: "transactional_mail.reserved",
+  TRANSACTIONAL_MAIL_SETTLED: "transactional_mail.settled",
 
   EVENT_EMITTED: "event.emitted",
 
@@ -186,6 +188,7 @@ export const AuditAction = {
   CONVERSATION_DELETED: "conversation.deleted",
   CONVERSATION_SKILL_LOADED: "conversation.skill_loaded",
   CONVERSATION_ANSWER_CITED: "conversation.answer_cited",
+  CONVERSATION_TURN_CHANGED: "conversation.turn_changed",
   CONVERSATION_TURN_FAILED: "conversation.turn_failed",
   CONVERSATION_PROBE_CONNECTOR: "conversation.probe_connector",
   CONVERSATION_DRY_RUN_TRANSFORM: "conversation.dry_run_transform",

@@ -2,8 +2,10 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { AuditAction } from "../../audit/types.ts";
 import { _resetLoggerForTests, reconfigureLogger } from "../../logging/logger.ts";
 import { type CapturedLog, logRing } from "../../observability/log-ring.ts";
-import { makeStubDb, makeTestPrincipal } from "../../tools/tests/_helpers.ts";
+import { makeStubDb, makeTestPrincipal, usePolicyFixture } from "../../tools/tests/_helpers.ts";
 import { type ConfirmGateInput, runConfirmGate } from "../confirmation.ts";
+
+usePolicyFixture();
 
 const PRINCIPAL = makeTestPrincipal();
 const CONVERSATION_ID = "00000000-0000-0000-0000-000000000003";

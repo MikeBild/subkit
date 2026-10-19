@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type ServerType, serve } from "@hono/node-server";
 import { and, eq } from "drizzle-orm";
+import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, tenants, users } from "../../db/schema/index.ts";
@@ -198,13 +202,21 @@ const ROUTE_SPECS: RouteSpec[] = [
 ];
 
 let ctx: BoundaryCtx;
+let configDirectory: string;
 
 beforeAll(async () => {
+  configDirectory = mkdtempSync(join(tmpdir(), "sk-route-boundary-"));
+  await loadConfig({
+    env: { DATABASE_URL: "postgres://localhost/x", NODE_ENV: "test" },
+    configPathOverride: join(configDirectory, "subkit.config.json"),
+  });
   ctx = await buildBoundaryCtx();
 }, 30_000);
 
 afterAll(async () => {
   await ctx.cleanup();
+  _resetConfigForTests();
+  rmSync(configDirectory, { recursive: true, force: true });
 }, 30_000);
 
 describe("route-boundary contracts (HTTP)", () => {

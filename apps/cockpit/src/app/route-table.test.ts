@@ -7,7 +7,9 @@ import {
   INTAKE_ROUTES,
   movedTarget,
   PAGE_ROUTES,
+  RECOVERY_ROUTE,
   REDIRECT_ROUTES,
+  STANDALONE_ROUTES,
 } from "@/app/route-table";
 import { peopleSectionFromUrl } from "./links";
 
@@ -40,6 +42,15 @@ describe("cockpit route table", () => {
     for (const path of PAGE_ROUTES) {
       expect(source, `${path} has no component`).toContain(`"${path}":`);
     }
+  });
+
+  test("includes the standalone recovery entry without requiring an authenticated router", () => {
+    const source = readFileSync(new URL("../main.tsx", import.meta.url), "utf8");
+    expect(STANDALONE_ROUTES).toContain(RECOVERY_ROUTE);
+    expect(ALL_ROUTE_PATHS).toContain(RECOVERY_ROUTE);
+    expect(PAGE_ROUTES as readonly string[]).not.toContain(RECOVERY_ROUTE);
+    expect(source).toContain("window.location.pathname === absolute(RECOVERY_ROUTE)");
+    expect(source).toContain("<IdentityRecoveryPage />");
   });
 
   test("keeps every navigation target on a route that exists", () => {

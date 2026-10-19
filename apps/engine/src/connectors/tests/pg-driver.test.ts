@@ -41,7 +41,7 @@ describe("pg driver", () => {
     );
     const conn = await getConnector(tenantId, c.id, ctx.db);
     expect(conn).not.toBeNull();
-    const probe = await probePgConnector(conn!);
+    const probe = await probePgConnector(conn!, ctx.db);
     expect(probe.ok).toBe(true);
     expect(probe.latency_ms).toBeGreaterThanOrEqual(0);
 
@@ -53,6 +53,7 @@ describe("pg driver", () => {
     expect(dispatched.ok).toBe(true);
 
     const res = await pgQueryWithCount<{ n: number }>({
+      exec: ctx.db,
       connector: conn!,
       sql: "SELECT 1 as n",
     });

@@ -3,7 +3,9 @@ import { PRODUCT_PERMISSIONS } from "../../rbac/evaluator.ts";
 import { dispatchTool } from "../dispatcher.ts";
 import { getUnifiedRegistry } from "../index.ts";
 import type { ToolDescriptor } from "../types.ts";
-import { makeStubDb, makeTestPrincipal } from "./_helpers.ts";
+import { makeStubDb, makeTestPrincipal, usePolicyFixture } from "./_helpers.ts";
+
+usePolicyFixture();
 
 const MODES = ["product", "authoring", "admin"] as const;
 

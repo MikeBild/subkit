@@ -1,9 +1,26 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
 import type { AppEnv } from "../openapi.ts";
 import { createApp } from "../server.ts";
 import { _internal, registerInstallClipperRoute } from "./install-clipper.ts";
+
+let configDirectory: string;
+beforeAll(async () => {
+  configDirectory = mkdtempSync(join(tmpdir(), "sk-install-clipper-"));
+  await loadConfig({
+    env: { DATABASE_URL: "postgres://localhost/x", NODE_ENV: "test" },
+    configPathOverride: join(configDirectory, "subkit.config.json"),
+  });
+});
+afterAll(() => {
+  _resetConfigForTests();
+  rmSync(configDirectory, { recursive: true, force: true });
+});
 
 function buildApp(): OpenAPIHono<AppEnv> {
   const app = new OpenAPIHono<AppEnv>();

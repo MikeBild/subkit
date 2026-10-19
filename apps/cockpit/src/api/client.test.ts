@@ -12,17 +12,49 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-function outcomeResponse(): Response {
+function outcomeResponse(input?: RequestInfo | URL): Response {
+  const pathId =
+    typeof input === "string" ? input.match(/^\/v1\/conversations\/([^/]+)/)?.[1] : null;
+  const id = pathId ? decodeURIComponent(pathId) : "conversation-1";
   return new Response(
-    'event: outcome\ndata: {"conversation":{"id":"conversation-1"},"result":{"status":"active"}}\n\n',
+    `event: outcome\ndata: ${JSON.stringify({ conversation: { id }, result: { status: "active" } })}\n\n`,
     { status: 200, headers: { "content-type": "text/event-stream" } },
   );
 }
 
 describe("sendConversationTurn", () => {
+  test("refuses a stream event for another conversation before displaying it", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          'event: text_delta\ndata: {"type":"text_delta","conversation_id":"conversation-2","text":"foreign"}\n\n',
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+    ) as unknown as typeof fetch;
+    const displayed: unknown[] = [];
+    await expect(
+      sendConversationTurn({ conversationId: "conversation-1", message: "inspect it" }, (event) =>
+        displayed.push(event),
+      ),
+    ).rejects.toMatchObject({ code: "conversation_stream_mismatch" });
+    expect(displayed).toHaveLength(0);
+  });
+
+  test("refuses a foreign outcome after the create stream announced its identity", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          'event: conversation_started\ndata: {"conversation":{"id":"conversation-1"}}\n\nevent: outcome\ndata: {"conversation":{"id":"conversation-2"},"status":"active"}\n\n',
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+    ) as unknown as typeof fetch;
+    await expect(sendConversationTurn({ message: "inspect it" })).rejects.toMatchObject({
+      code: "conversation_stream_mismatch",
+    });
+  });
   test("creates a conversation with the shared message, target, and reference contract", async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      outcomeResponse(),
+      outcomeResponse(_input),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
@@ -61,7 +93,7 @@ describe("sendConversationTurn", () => {
 
   test("preserves an explicit conservative mode for a new conversation", async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      outcomeResponse(),
+      outcomeResponse(_input),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     await sendConversationTurn({ message: "inspect it", permissionMode: "ask" });
@@ -74,7 +106,7 @@ describe("sendConversationTurn", () => {
 
   test("sends the selected intake ids only when the conversation starts", async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      outcomeResponse(),
+      outcomeResponse(_input),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     await sendConversationTurn({
@@ -90,7 +122,7 @@ describe("sendConversationTurn", () => {
 
   test("appends through the same API without leaking create-only fields", async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      outcomeResponse(),
+      outcomeResponse(_input),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
@@ -201,13 +233,13 @@ describe("answering pending conversation questions", () => {
 for (const confirmed of [true, false]) {
   test(`chat approval sends the explicit ${confirmed} decision to the canonical elicitation`, async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      outcomeResponse(),
+      outcomeResponse(_input),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     fetchMock.mockImplementation(
       async () =>
         new Response(
-          'event: message\ndata: {"type":"text_delta","text":"Weiter"}\n\nevent: outcome\ndata: {"conversation":{"id":"conversation-1"}}\n\n',
+          'event: message\ndata: {"type":"text_delta","text":"Weiter"}\n\nevent: outcome\ndata: {"conversation":{"id":"conversation/1"}}\n\n',
         ),
     );
     const event = mock(() => {});
@@ -236,7 +268,7 @@ test("a stale approval is surfaced without retrying the decision", async () => {
 
 test("choice submits exactly the declared value to the canonical request route", async () => {
   const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-    outcomeResponse(),
+    outcomeResponse(_input),
   );
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   await respondToChatChoice("conversation-1", "request-1", "dryrun");
@@ -248,7 +280,7 @@ test("choice submits exactly the declared value to the canonical request route",
 
 test("form submission and cancellation use the exact pending elicitation endpoint", async () => {
   const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-    outcomeResponse(),
+    outcomeResponse(_input),
   );
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   await respondToChatForm("conversation/1", "form/1", { values: { days: 7, include: false } });

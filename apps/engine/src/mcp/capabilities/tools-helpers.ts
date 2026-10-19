@@ -8,6 +8,7 @@ import {
 } from "../../conversations/tools/workflow-input-normalize.ts";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, workflows } from "../../db/schema/index.ts";
+import { supportsToolSchema } from "../../llm/core/tool-schema-compatibility.ts";
 import { logger } from "../../logging/logger.ts";
 import { listWorkflowToolsForTenant } from "../../workflows/catalog.ts";
 import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
@@ -36,16 +37,29 @@ export async function listWorkflowTools({
     principal,
     ...(limit !== undefined ? { limit } : {}),
   });
-  return catalog.map((entry) => ({
-    name: workflowToolName(entry.slug),
-    title: entry.name,
-    description: describeWorkflowTool(entry),
-    inputSchema: entry.inputSchema as Tool["inputSchema"],
-    ...(entry.outputSchema ? { outputSchema: entry.outputSchema as Tool["outputSchema"] } : {}),
-    annotations: buildWorkflowToolAnnotations(entry.effect),
-    execution: { taskSupport: "forbidden" as const },
-    _meta: buildWorkflowToolMeta(entry.effect),
-  }));
+  return catalog
+    .filter((entry) => {
+      const compatible = supportsToolSchema(entry.inputSchema);
+      if (!compatible)
+        logger.warn({
+          module: "mcp",
+          action: "tool.schema_incompatible",
+          tenant_id: principal.tenant_id,
+          workflow_id: entry.workflow_id,
+          msg: "Workflow alias omitted from model palette; run_workflow preserves its validated input contract",
+        });
+      return compatible;
+    })
+    .map((entry) => ({
+      name: workflowToolName(entry.slug),
+      title: entry.name,
+      description: describeWorkflowTool(entry),
+      inputSchema: entry.inputSchema as Tool["inputSchema"],
+      ...(entry.outputSchema ? { outputSchema: entry.outputSchema as Tool["outputSchema"] } : {}),
+      annotations: buildWorkflowToolAnnotations(entry.effect),
+      execution: { taskSupport: "forbidden" as const },
+      _meta: buildWorkflowToolMeta(entry.effect),
+    }));
 }
 
 export function describeWorkflowTool(entry: {

@@ -147,6 +147,10 @@ import sql0126HostedResourceQuota from "./0126_hosted_resource_quota.sql" with {
 import sql0127RbacTenantBoundary from "./0127_rbac_tenant_boundary.sql" with { type: "text" };
 import sql0128RuntimeSecretOwnership from "./0128_runtime_secret_ownership.sql" with { type: "text" };
 import sql0129VaultMaintenance from "./0129_vault_maintenance.sql" with { type: "text" };
+import sql0130ConversationTurns from "./0130_conversation_turns.sql" with { type: "text" };
+import sql0131ConversationTurnCancellation from "./0131_conversation_turn_cancellation.sql" with { type: "text" };
+import sql0132ConversationTurnGuards from "./0132_conversation_turn_guards.sql" with { type: "text" };
+import sql0133TransactionalMail from "./0133_transactional_mail.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -301,6 +305,10 @@ const SQL_BY_TAG: Record<string, string> = {
   "0127_rbac_tenant_boundary": sql0127RbacTenantBoundary,
   "0128_runtime_secret_ownership": sql0128RuntimeSecretOwnership,
   "0129_vault_maintenance": sql0129VaultMaintenance,
+  "0130_conversation_turns": sql0130ConversationTurns,
+  "0131_conversation_turn_cancellation": sql0131ConversationTurnCancellation,
+  "0132_conversation_turn_guards": sql0132ConversationTurnGuards,
+  "0133_transactional_mail": sql0133TransactionalMail,
 };
 
 const journal = journalMeta as unknown as Journal;

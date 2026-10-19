@@ -4,7 +4,9 @@ import columns from "./hosted-quota-columns.json";
 import * as schema from "./schema/index.ts";
 
 export const HOSTED_OPERATIONAL_TABLES = new Set([
+  "transactional_mail_receipts",
   "hosted_tenant_usage",
+  "conversation_turns",
   "hosted_budget_reservations",
   "hosted_work_admissions",
   "llm_usage",

@@ -47,6 +47,7 @@ export async function resolveLanguageModel(
   provider: LlmProviderKind,
   modelId: string,
   tenantId?: string,
+  exec?: Executor,
 ): Promise<LanguageModel | string> {
   const bare = modelId.includes(":") ? modelId.slice(modelId.indexOf(":") + 1) : modelId;
   const initOptions: ModelInitOptions = {
@@ -54,6 +55,7 @@ export async function resolveLanguageModel(
     defaultModel: bare,
     modelOverride: bare,
     ...(tenantId ? { tenantId } : {}),
+    ...(exec ? { exec } : {}),
   };
   const resolved = await initializeModel(initOptions);
   return await maybeWrapForDevtools(
@@ -510,11 +512,13 @@ async function dispatchReal<T>(
   const messages: SubkitLlmMessage[] = [...systemMessages, ...userMessages];
 
   const model = new AiSdkModel({
+    exec: db,
     tenantId: params.tenant_id,
     providerOverride: route.provider,
     defaultModel: route.primary,
     modelOverride: route.primary,
     fallback: {
+      exec: db,
       tenantId: params.tenant_id,
       providerOverride: route.fallback_provider,
       defaultModel: route.fallback,

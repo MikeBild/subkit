@@ -160,6 +160,7 @@ import {
   completionEvidenceGuard,
   turnLoopBudgetStopCondition,
 } from "./turn-helpers.ts";
+import { assertConversationTurn } from "./turns.ts";
 import type { ConversationStatus, DraftDocument, TurnEvent } from "./types.ts";
 
 export const CONVERSE_FIRST_CHUNK_TIMEOUT_MS = PROVIDER_RESPONSE_TIMEOUT_MS;
@@ -320,6 +321,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     }),
     getDraft: () => draft,
     setDraft: async (next) => {
+      await assertConversationTurn(turnAbortCtrl.signal);
       draft = next;
       await appendSnapshot(p.tenant_id, p.conversation_id, next, p.db);
     },
@@ -849,6 +851,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
   });
 
   const tools = wrappedTools;
+  let paletteSkills = loadedSkills;
 
   if (draft.session?.intake_review_active || draft.session?.intake_item_ids?.length) {
     delete tools.create_knowledge_source;
@@ -926,6 +929,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     attemptProvider: typeof route.provider,
     prebuiltMessages?: ModelMessage[],
   ): Promise<void> {
+    await assertConversationTurn(turnAbortCtrl.signal);
     let lastStepEnd = now();
     let activeStepModel = modelId;
     let turnRepairCount = 0;
@@ -936,7 +940,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
         conversation_id: p.conversation_id,
       }));
     let capturedError: unknown;
-    const resolvedModel = await resolveLanguageModel(attemptProvider, modelId, p.tenant_id);
+    const resolvedModel = await resolveLanguageModel(attemptProvider, modelId, p.tenant_id, p.db);
     const turnBudgetMs = Math.min(10 * 60_000, 30_000 * budget);
     const firstChunkTimeoutMs = firstChunkTimeoutMsOverride ?? CONVERSE_FIRST_CHUNK_TIMEOUT_MS;
     const streamStartedAt = now();
@@ -1062,6 +1066,50 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
       },
       prepareStep: async ({ stepNumber, steps, messages: stepMessages, model: stepModel }) =>
         timePhaseAsync("converse.prepare_step", async () => {
+          await assertConversationTurn(turnAbortCtrl.signal);
+          if (stepNumber > 0) {
+            const [skillRow] = await p.db
+              .select({ loaded_skills: conversations.loaded_skills })
+              .from(conversations)
+              .where(
+                and(
+                  eq(conversations.tenant_id, p.tenant_id),
+                  eq(conversations.id, p.conversation_id),
+                ),
+              )
+              .limit(1);
+            const nextSkills = [
+              ...new Set([
+                ...paletteSkills,
+                ...parseLoadedSkills(skillRow?.loaded_skills).map((entry) => entry.slug),
+              ]),
+            ];
+            if (nextSkills.length !== paletteSkills.length) {
+              const refreshed = await wrapTools(
+                ctx,
+                signals,
+                events,
+                p.db,
+                nextSkills,
+                loopToolPolicies,
+                p.permission_mode ?? null,
+                p.principal ?? null,
+              );
+              if (draft.session?.intake_review_active || draft.session?.intake_item_ids?.length) {
+                delete refreshed.create_knowledge_source;
+                delete refreshed.update_knowledge_source;
+                delete refreshed.analyze_knowledge_source;
+              }
+              applyExecutionToolGate(
+                refreshed,
+                executionGate,
+                collectSyntheticWorkflowSlugs(Object.keys(refreshed)),
+              );
+              Object.assign(tools, refreshed);
+              Object.assign(turnTools, refreshed);
+              paletteSkills = nextSkills;
+            }
+          }
           activeStepModel = modelId;
           {
             const m = readMemoryUsage();
@@ -1119,6 +1167,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
                 attemptProvider,
                 decision.modelId,
                 p.tenant_id,
+                p.db,
               );
               activeStepModel = decision.modelId;
               logger.info({

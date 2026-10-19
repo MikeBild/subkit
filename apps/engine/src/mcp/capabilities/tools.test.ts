@@ -12,6 +12,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import {
   createJourneyCtx,
   JOURNEY_HOOK_TIMEOUT,
@@ -424,11 +425,30 @@ describe("MCP tools/call — wf_<slug> end-to-end (T7)", () => {
     const before = writes;
     const client = await connect();
     try {
-      const results = await Promise.all(
-        Array.from({ length: 3 }, () =>
-          client.callTool({ name: `wf_${fixture.slug}`, arguments: {} }),
-        ),
-      );
+      const callAfterCatalogConflict = async () => {
+        let result: Awaited<ReturnType<typeof client.callTool>> | undefined;
+        await waitFor(
+          async () => {
+            try {
+              result = await client.callTool({ name: `wf_${fixture.slug}`, arguments: {} });
+              return true;
+            } catch (error) {
+              if (
+                error instanceof Error &&
+                (error as { code?: unknown }).code === -32603 &&
+                error.message ===
+                  "MCP error -32603: Catalog vocabulary changed concurrently; retry the operation"
+              )
+                return false;
+              throw error;
+            }
+          },
+          { tries: 100, sleepMs: 5, label: "MCP admission after catalog conflict" },
+        );
+        if (!result) throw new Error("MCP admission did not return a result");
+        return result;
+      };
+      const results = await Promise.all(Array.from({ length: 3 }, callAfterCatalogConflict));
       expect(results.filter((result) => body(result).status === "preparation")).toHaveLength(1);
       expect(writes).toBe(before + 2);
       const rows = await ctx.db
@@ -654,6 +674,41 @@ test("run_workflow accepts omitted and empty input when declared fields are opti
       expect(body.status).toBe("succeeded");
       expect(body.error_code).toBeUndefined();
     }
+  } finally {
+    await client.close();
+  }
+});
+
+test("MCP omits provider-incompatible workflow aliases and keeps generic execution", async () => {
+  const schema = {
+    type: "object",
+    properties: { choice: { type: "string" } },
+    oneOf: [
+      { properties: { choice: { const: "a" } }, required: ["choice"] },
+      { properties: { choice: { const: "b" } }, required: ["choice"] },
+    ],
+    additionalProperties: false,
+  };
+  const response = await journeyFetch(ctx, "/v1/workflows", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Discriminated input",
+      slug: "discriminated-input",
+      input_schema: schema,
+      steps: [{ kind: "request", id: "probe", method: "GET", url: `${mockBase}/test` }],
+    }),
+  });
+  expect(response.status).toBe(201);
+  const workflow = (await response.json()) as { id: string };
+  const client = await connect();
+  try {
+    const names = (await client.listTools()).tools.map((entry) => entry.name);
+    expect(names).not.toContain("wf_discriminated-input");
+    expect(names).toContain("run_workflow");
+    const saved = (await (await journeyFetch(ctx, `/v1/workflows/${workflow.id}`)).json()) as {
+      input_schema: unknown;
+    };
+    expect(saved.input_schema).toEqual(schema);
   } finally {
     await client.close();
   }

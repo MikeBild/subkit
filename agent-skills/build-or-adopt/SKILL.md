@@ -102,5 +102,6 @@ references/setup.md        from nothing to a running engine
 references/cli.md          every sk command
 references/settings.md     every runtime setting
 references/connectors.md   connector templates and recipes
+references/transactional-email.md signed replies, receipt inspection and authority review
 references/coding-agents.md repository setup, briefings and coding-agent hooks
 ```

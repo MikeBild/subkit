@@ -17,9 +17,11 @@ import {
   interpretConfirmDecision,
   normalizeConfirmOutput,
 } from "../tools/ask-user/interpret-confirm.ts";
+import { conversationTurnId, markConversationTurnFailed } from "../turns.ts";
 import type { ConversationPermissionMode } from "../types.ts";
 import { getConversation } from "./get.ts";
 import {
+  ConversationNotFoundError,
   type ConversationTurnOutcome,
   ElicitationAlreadyResolvedError,
   getStoredPermissionMode,
@@ -63,12 +65,7 @@ export class ElicitationAnswerActorUnavailableError extends Error {
   }
 }
 
-export class ConversationNotFoundError extends Error {
-  readonly code = "CONVERSATION_NOT_FOUND";
-  constructor(public readonly conversation_id: string) {
-    super(`conversation ${conversation_id} not found in this tenant`);
-  }
-}
+export { ConversationNotFoundError } from "./shared.ts";
 
 export class ElicitationNotFoundError extends Error {
   readonly code = "ELICITATION_NOT_FOUND";
@@ -131,6 +128,28 @@ export async function respondElicitation(
   p: RespondElicitationParams,
   exec: Db,
 ): Promise<ConversationTurnOutcome> {
+  const turn_id = conversationTurnId(p.turn_abort_ctrl);
+  const onEvent = p.onEvent;
+  const scoped = {
+    ...p,
+    ...(onEvent
+      ? {
+          onEvent: (event: import("../types.ts").TurnEvent) =>
+            onEvent({ ...event, ...{ conversation_id: p.conversation_id, turn_id } }),
+        }
+      : {}),
+  };
+  const outcome = await driveElicitation(scoped, exec).catch((error: unknown) => {
+    markConversationTurnFailed(p.turn_abort_ctrl);
+    throw error;
+  });
+  return { ...outcome, ...(turn_id ? { turn_id } : {}) };
+}
+
+async function driveElicitation(
+  p: RespondElicitationParams,
+  exec: Db,
+): Promise<ConversationTurnOutcome> {
   if (p.require_same_actor) {
     const detail = await getConversation(p.tenant_id, p.conversation_id, exec);
     if (!detail) throw new ConversationNotFoundError(p.conversation_id);
@@ -141,6 +160,8 @@ export async function respondElicitation(
 
   const { getElicitation, resolveElicitation } = await import("../elicitations.ts");
   const pendingRow = await getElicitation(p.tenant_id, p.elicitation_id, exec);
+  if (!pendingRow || pendingRow.conversation_id !== p.conversation_id)
+    throw new ElicitationNotFoundError(p.elicitation_id);
   if (p.answer_actor.kind === "human" && p.answer_actor.via === "portal") {
     const [answerUser] = await exec
       .select({ id: users.id })

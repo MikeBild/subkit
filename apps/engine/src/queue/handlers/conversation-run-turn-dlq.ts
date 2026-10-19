@@ -2,6 +2,7 @@ import type { Job, PgBoss } from "pg-boss";
 import { auditAwait } from "../../audit/audit.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { stopConversationTaskTurn } from "../../conversations/turns.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { getMcpTask, setMcpTaskFailureIfNotTerminal } from "../../mcp/tasks/store.ts";
@@ -65,6 +66,19 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
     );
     return true;
   });
+  if (data.turn_id && data.attempt_id && data.conversation_id) {
+    const task = await getMcpTask(data.tenant_id, data.mcp_task_id, db);
+    if (task?.failure_reason === WORKER_EXPIRED_FAILURE_REASON) {
+      await stopConversationTaskTurn(
+        db,
+        data.tenant_id,
+        data.conversation_id,
+        data.turn_id,
+        data.mcp_task_id,
+        data.attempt_id,
+      );
+    }
+  }
   if (!stamped) {
     log.queue.job.completed({
       msg: "conversation.run-turn.dlq job — mcp_tasks row already terminal, no-op",

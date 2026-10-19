@@ -172,3 +172,32 @@ describe("retryTransient — predictive metric", () => {
     expect(entry?.samples.length ?? 0).toBe(0);
   });
 });
+
+test("a transaction-specific predicate refuses ambiguous connection retries", async () => {
+  let attempts = 0;
+  const busy = new Error("catalog busy");
+  await expect(
+    retryTransient(
+      async () => {
+        attempts++;
+        throw Object.assign(new Error("connection lost"), { code: "ECONNRESET" });
+      },
+      { shouldRetry: (error) => error === busy, startMs: 0 },
+    ),
+  ).rejects.toThrow("connection lost");
+  expect(attempts).toBe(1);
+});
+
+test("a transaction-specific predicate retries only its safe contention case", async () => {
+  let attempts = 0;
+  const busy = new Error("catalog busy");
+  const result = await retryTransient(
+    async () => {
+      if (++attempts < 2) throw busy;
+      return "admitted";
+    },
+    { tries: 2, startMs: 0, shouldRetry: (error) => error === busy },
+  );
+  expect(result).toBe("admitted");
+  expect(attempts).toBe(2);
+});

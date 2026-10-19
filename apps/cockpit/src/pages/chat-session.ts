@@ -48,12 +48,7 @@ export function conversationOpenedByFailedSend(input: {
   sentAt: string;
   listed: readonly { id: string; created_at: string }[];
 }): string | null {
-  if (input.startedId) return input.startedId;
-  const known = input.knownIds;
-  if (!known) return null;
-  const since = Date.parse(input.sentAt);
-  const fresh = input.listed.filter((c) => !known.has(c.id) && Date.parse(c.created_at) >= since);
-  return fresh.length === 1 ? (fresh[0]?.id ?? null) : null;
+  return input.startedId;
 }
 
 export type TurnFailureCause =
@@ -63,6 +58,7 @@ export type TurnFailureCause =
         | "provider_rate_limited"
         | "provider_overloaded"
         | "provider_unreachable"
+        | "tool_schema_invalid"
         | "provider_context_too_large"
         | "tenant_budget_exhausted";
       retryAt: string | null;
@@ -76,6 +72,8 @@ function causeKind(
   switch (code) {
     case "llm_provider_limited":
       return kind === "quota_exhausted" ? "provider_quota_exhausted" : "provider_rate_limited";
+    case "llm_tool_schema_invalid":
+      return "tool_schema_invalid";
     case "llm_provider_unavailable":
       return kind === "overloaded" ? "provider_overloaded" : "provider_unreachable";
     case "llm_context_too_large":
@@ -174,4 +172,17 @@ export function budgetPill(
   state: "ample" | "tightening" | "critical" | null | undefined,
 ): "tightening" | "critical" | null {
   return state === "tightening" || state === "critical" ? state : null;
+}
+
+export interface ChatOperation {
+  session: number;
+  startedId: string | null;
+}
+
+export function ownsChatOperation(
+  active: object | null,
+  operation: ChatOperation,
+  session: number,
+): boolean {
+  return active === operation && operation.session === session;
 }
