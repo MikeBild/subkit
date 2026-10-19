@@ -1,29 +1,46 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E296.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E300.
 
 ## Aktueller Checkout-Abgleich
 
-Hosted-Korrekturen `ef1cfca6b` normal gepusht; Checkoutversion **10.1.4**.
-Alle acht Pre-Push-Gates bestanden. Nachfolgende generierte Clipper-Artefakte
-separat korrigiert; keine weitere Laufzeitlogikänderung. Die bestehende lokale
-Demo wurde nicht ersetzt.
+Cloud-Quellenstand `7400bb3ef` auf `main` gepusht; Checkoutversion **10.1.4**.
+Für den schnellen Cloud-Fix wurden die breiten lokalen Gates auf Nutzerwunsch
+übersprungen; fokussierte Tests und Typechecks der betroffenen Änderungen bestanden.
+Die bestehende lokale Demo wurde nicht ersetzt.
 
-Cloud-Image aus exaktem Git-Archiv gebaut, veröffentlichter Digest und Linux/AMD64
-geprüft, Import in die bestehende Image-Reihe **ready/ready**. Die vorherige App
-scheiterte an einer inzwischen korrigierten Regression des verwalteten TLS-Vertrags
-und wurde kontrolliert gestoppt. Neue Revision noch nicht gestartet: Die Plattform
-verlangt geschützte Secret-Eingabe; die Steuerverbindung zum vorhandenen Browser-Tab
-antwortet nicht. Der Dialog ist inzwischen geschlossen, manuelles Neuladen angefragt. Kein gesunder Cloudstart,
-angewandte Betreiberpolicy oder echtes Cloud-Browser-E2E behauptet.
+Das Linux/AMD64-Image aus dem exakten Quellenstand ist veröffentlicht und in der
+bestehenden Upraft-App als aktive, stabile Revision deployed. Öffentliche Health-/
+Ready-/Cockpit-Routen antworten über gültiges TLS. Ein echter OpenAI-Chat auf
+dieser Revision lieferte die erwartete Antwort; sein Testgespräch wurde gelöscht.
+Ein öffentlicher Datei-Roundtrip lieferte bytegleichen Inhalt; die Testdatei
+wurde gelöscht.
+Die globale Betreiberpolicy ist aktiv: 5 USD je Free-Tenant und 50 USD insgesamt
+pro Monat, 50 MB gemeinsamer logischer Speicher, 10.000 Requests pro Tenant und
+UTC-Monat sowie 1.000 aufbewahrte Datensätze je Ressourcentyp. Signup bleibt
+geschlossen. Der pgBoss-Katalogzugriff wurde gepatcht; in zwei vollständigen
+Scheduler-Zyklen der neuen Cloud-Revision trat kein `42501` mehr auf. Die
+Upraft-OIDC-Option ist aktiv und ihr Browser-Redirect geprüft. Der erste echte
+Auth-Invite erreichte den SubKit-Webhook, scheiterte aber vor Gmail. Die eng
+begrenzte Workflow-Korrektur wurde als Version 10 durch die berechtigte Person
+aktiviert. Nach einem kurzen Ausfall des separaten API-Hosts und gezielten
+Diagnose-Releases erreichten signierte Passwort-Reset-Ereignisse den Webhook.
+Der Mailaufbau scheiterte vor Gmail am Empfänger-Guard. Eine inaktive Version 11
+mit festen, inhaltsfreien Formmarkern ist lokal geprüft und im Cockpit zur
+persönlichen Übernahme vorbereitet; Version 10 läuft weiter. Ein privates
+Upraft-Backupziel, tägliche vollständige Exporte und Aufbewahrung der letzten
+14 Backups sind eingerichtet. Der erste Export wurde isoliert mit PostgreSQL
+18.6 erfolgreich wiederhergestellt; produktiver Restore und Wiederanlaufzeit
+bleiben ungeprüft. Echte Nutzeranmeldung und Zwei-Tenant-Isolation sind offen.
+E298–E300 enthalten die aktuellen externen Nachweise.
 
 Die technische Verifikation ist segmentiert vollständig abgedeckt: 2.168 Dateien,
 20.448 PASS/0 ungelöste FAIL/38 SKIP/5 TODO; Eval 40/40 und kompilierte
 Clipper-Parität PASS. Abschließende HTTP-/CLI-E2Es: 42 Dateien, 257 PASS/0 FAIL/
 20 SKIP/3 TODO. E296 benennt gültige Teilnachweise, Korrekturen und vollständigen
 Dateiabgleich; kein frischer einzelner Vollkommando-PASS wird behauptet.
-Cloudstart und echte Cloud-Abnahme bleiben offen. E289 ist hinsichtlich
+Die vollständige Cloud-Abnahme bleibt offen. E289 ist hinsichtlich
 verwalteter Upraft-Kompatibilität abgelöst. Operativer Cloud-Aufgabenstand:
 [docs/TODO.md](docs/TODO.md#aktueller-implementierungsstand-und-nachweise).
 
