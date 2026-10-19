@@ -1,4 +1,5 @@
 import type { components } from "./schema";
+import { acceptTenantContext, noticeTenantContext, tenantContextHeaders } from "./tenant-context";
 
 export type Bootstrap = components["schemas"]["CockpitBootstrapResponse"];
 export type Conversation = components["schemas"]["Conversation"];
@@ -30,7 +31,9 @@ export class ApiError extends Error {
 const sessionExpiryListeners = new Set<() => void>();
 
 export function isSessionExpiry(status: number, code: string | null): boolean {
-  return status === 401 && code === "unauthorized";
+  return (
+    (status === 401 && code === "unauthorized") || (status === 403 && code === "tenant_unavailable")
+  );
 }
 
 export function onSessionExpired(listener: () => void): () => void {
@@ -56,6 +59,7 @@ export function retryQuery(failures: number, error: unknown): boolean {
 function failure(status: number, body: unknown, traceId: string | null): ApiError {
   const error = new ApiError(status, body, traceId);
   noticeSessionExpiry(error.status, error.code);
+  noticeTenantContext(error.status, error.code);
   return error;
 }
 
@@ -84,6 +88,7 @@ export async function apiRequest<T>(
   limits: RequestLimits = {},
 ): Promise<T> {
   const headers = new Headers(init.headers);
+  for (const [key, value] of Object.entries(tenantContextHeaders())) headers.set(key, value);
   headers.set("accept", "application/json");
   headers.set("x-subkit-client", "cockpit");
   if (init.body && !(init.body instanceof FormData))
@@ -117,6 +122,8 @@ export function apiUpload<T>(
     request.setRequestHeader("accept", "application/json");
     request.setRequestHeader("content-type", "application/json");
     request.setRequestHeader("x-subkit-client", "cockpit");
+    for (const [key, value] of Object.entries(tenantContextHeaders()))
+      request.setRequestHeader(key, value);
     if (csrfToken) request.setRequestHeader("x-subkit-csrf", csrfToken);
     request.upload.onprogress = (event) => {
       if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
@@ -140,6 +147,7 @@ export function apiUpload<T>(
 
 export async function apiText(path: string): Promise<string> {
   const headers = new Headers({ accept: "text/plain", "x-subkit-client": "cockpit" });
+  for (const [key, value] of Object.entries(tenantContextHeaders())) headers.set(key, value);
   const response = await fetch(path, { credentials: "same-origin", headers });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -154,6 +162,16 @@ export function bootstrapLimits(loaded: Bootstrap | undefined): RequestLimits {
 
 export async function bootstrap(limits: RequestLimits = {}): Promise<Bootstrap> {
   const result = await apiRequest<Bootstrap>("/v1/cockpit/bootstrap", {}, limits);
+  if (!acceptTenantContext(result.tenant.id)) {
+    throw failure(
+      409,
+      {
+        code: "tenant_context_changed",
+        message: "Reload the workspace session before continuing.",
+      },
+      null,
+    );
+  }
   csrfToken = result.csrf_token;
   return result;
 }
@@ -212,6 +230,7 @@ async function streamConversation(
     "x-subkit-client": "cockpit",
   });
   if (csrfToken) headers.set("x-subkit-csrf", csrfToken);
+  for (const [key, value] of Object.entries(tenantContextHeaders())) headers.set(key, value);
   const response = await fetch(path, {
     method: "POST",
     credentials: "same-origin",

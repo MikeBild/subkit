@@ -1,6 +1,7 @@
 import pg from "pg";
 import { log } from "../../logging/logger.ts";
 import { scrubUrl } from "../egress.ts";
+import { postgresPoolConfiguration } from "../postgres-egress.ts";
 import {
   DiscoveryError,
   type DiscoveryResult,
@@ -84,13 +85,24 @@ interface IntrospectionData {
   foreignKeys: ForeignKeyRow[];
 }
 
-async function fetchSchema(url: string, signal?: AbortSignal): Promise<IntrospectionData> {
-  const pool = new pg.Pool({
-    connectionString: url,
-    max: 1,
-    connectionTimeoutMillis: DEFAULT_TIMEOUT_MS,
-    statement_timeout: DEFAULT_TIMEOUT_MS,
-  });
+async function fetchSchema(
+  url: string,
+  opts: DiscoveryStrategyOptions,
+): Promise<IntrospectionData> {
+  const signal = opts.signal;
+  const prepared = await postgresPoolConfiguration(
+    url,
+    {
+      ...(opts.tenant_id ? { tenant_id: opts.tenant_id } : {}),
+      ...(opts.exec ? { exec: opts.exec } : {}),
+    },
+    {
+      max: 1,
+      connectionTimeoutMillis: DEFAULT_TIMEOUT_MS,
+      statement_timeout: DEFAULT_TIMEOUT_MS,
+    },
+  );
+  const pool = new pg.Pool(prepared.options);
   const aborted = new Promise<never>((_, reject) => {
     if (!signal) return;
     if (signal.aborted) reject(new DiscoveryError("aborted", "discovery aborted"));
@@ -210,7 +222,7 @@ class PostgresIntrospectStrategy implements DiscoveryStrategy {
       url: scrubUrl(url),
     });
     try {
-      const data = await fetchSchema(url, opts.signal);
+      const data = await fetchSchema(url, opts);
       const markdown = renderSchemaMarkdown(data);
       log.info({
         module: "connector",

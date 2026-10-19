@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { OAuth2ClientConfig } from "../credentials/oauth2/types.ts";
 import { getOAuth2ClientCredential } from "../credentials/service.ts";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { getTemplateOAuthCredentials } from "./template-credentials.ts";
 import { parseTemplateSnapshot } from "./template-resolver.ts";
 import { getBuiltinTemplate } from "./templates.ts";
@@ -108,7 +108,7 @@ export type ConnectorOAuthConfigResolution =
   | { ok: false; missing: "issuer_url" | "client_id" | "template_oauth_credentials" };
 
 export async function resolveConnectorOAuthConfig(
-  db: Db,
+  db: Executor,
   tenant_id: string,
   connector: Pick<
     ConnectorView,
@@ -120,7 +120,7 @@ export async function resolveConnectorOAuthConfig(
 }
 
 export async function resolveConnectorOAuthConfigDetailed(
-  db: Db,
+  db: Executor,
   tenant_id: string,
   connector: Pick<
     ConnectorView,

@@ -277,6 +277,7 @@ export const callConnectorTool: ConversationTool = {
         }
         await guard?.(loadedCredential);
         const res = await pgQueryWithCount({
+          exec: ctx.db,
           connector,
           sql: finalSql,
           params: args.parameters ?? [],

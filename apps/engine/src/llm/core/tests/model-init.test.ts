@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MockLanguageModelV4 } from "ai/test";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../../config/loader.ts";
+import { withContext } from "../../../logging/context.ts";
 import {
   buildAnthropicWebSearchTool,
   detectConfiguredProvider,
   initializeModel,
+  nativeWebSearchSetting,
   ProviderMisconfiguredError,
   sendsToolInputExamplesNatively,
   withToolInputExamples,
@@ -83,6 +85,14 @@ describe("initializeModel", () => {
     const r = await initializeModel();
     expect(r.provider).toBe("mock");
     expect(r.model).toBe("mock:never-dispatched");
+  });
+
+  it("rejects a model tenant that differs from the authenticated context", async () => {
+    await withContext({ tenant_id: "tenant-a" }, async () => {
+      await expect(
+        initializeModel({ providerOverride: "mock", tenantId: "tenant-b" }),
+      ).rejects.toThrow("do not match");
+    });
   });
 
   it("returns the mock sentinel when providerOverride=mock", async () => {
@@ -195,6 +205,23 @@ describe("initializeModel", () => {
     expect(r.provider).toBe("anthropic");
     expect(r.modelId).toBe("claude-sonnet-4-5");
     expect(typeof r.model).toBe("object");
+  });
+
+  it("hosted service suppresses native paid search without changing self-hosted preferences", async () => {
+    configDir = mkdtempSync(join(tmpdir(), "sk-model-search-policy-"));
+    await loadConfig({
+      env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
+      configPathOverride: join(configDir, "subkit.config.json"),
+    });
+    await setConfigKey("llm.web_search", true, { tenantId: "tenant-a", force: true });
+    expect(nativeWebSearchSetting("tenant-a")).toBe(true);
+    await setConfigKey("llm.hosted.enabled", true, { force: true });
+    expect(nativeWebSearchSetting("tenant-a")).toBe(false);
+    expect(nativeWebSearchSetting()).toBe(false);
+    await setConfigKey("llm.hosted.enabled", false, { force: true });
+    expect(nativeWebSearchSetting("tenant-a")).toBe(true);
+    await setConfigKey("llm.web_search", false, { tenantId: "tenant-a", force: true });
+    expect(nativeWebSearchSetting("tenant-a")).toBe(false);
   });
 
   it("builds web search with tenant credentials without borrowing another tenant's key", async () => {

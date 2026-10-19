@@ -2,6 +2,8 @@
 
 set -e
 
+bun run check:bun-version
+
 echo "[pre-push] lint + typecheck + determinism + invariants + drift + commit messages + secrets + build"
 
 echo "[pre-push] 1/8 biome (lint)"

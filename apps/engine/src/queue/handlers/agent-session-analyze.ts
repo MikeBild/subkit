@@ -3,7 +3,7 @@ import { analyzeAgentSession } from "../../agent/sessions.ts";
 import type { Actor } from "../../audit/actor.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
-import { withJobContext } from "../job-context.ts";
+import { withActiveTenantJobContext } from "../job-context.ts";
 
 export const AGENT_SESSION_ANALYZE_QUEUE = "agent-session.analyze" as const;
 
@@ -82,7 +82,9 @@ export async function registerAgentSessionAnalyzeHandler(
     { batchSize: 1, pollingIntervalSeconds: 2 },
     async (jobs: Job<AgentSessionAnalyzeJob>[]) => {
       for (const job of jobs) {
-        await withJobContext(job.data, () => processAgentSessionAnalyzeJob(job, db));
+        await withActiveTenantJobContext(job.data, db, () =>
+          processAgentSessionAnalyzeJob(job, db),
+        );
       }
     },
   );

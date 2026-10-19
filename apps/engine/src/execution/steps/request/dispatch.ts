@@ -190,6 +190,7 @@ async function fetchOnce(
   body: unknown,
   signal: AbortSignal,
   tenant_id: string,
+  db: Db,
   multipartBody?: FormData,
   captureBinary?: boolean,
   beforeDispatch?: (request: MaterializedRequest) => Promise<RequestDispatchPolicy | undefined>,
@@ -205,6 +206,7 @@ async function fetchOnce(
     );
   }
   const execution = await executePlannedHttpRequest({
+    exec: db,
     tenant_id,
     method,
     url: parsedUrl,
@@ -246,6 +248,7 @@ async function sleep(ms: number, signal: AbortSignal): Promise<void> {
 
 interface DoOnePageParams {
   signed_jwt?: Parameters<typeof executePlannedHttpRequest>[0]["signed_jwt"];
+  db: Db;
   before_dispatch?: (request: MaterializedRequest) => Promise<RequestDispatchPolicy | undefined>;
   url: string;
   method: string;
@@ -348,6 +351,7 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         p.body,
         p.signal,
         p.tenant_id,
+        p.db,
         p.multipartBody,
         p.capture_binary,
         p.before_dispatch,
@@ -1562,6 +1566,7 @@ async function dispatchRequestStep(
               ];
               const stepLevelExpectation = p.step.expected_row_count;
               const tx = await pgTransaction({
+                exec: p.ctx.db,
                 on_credential_use: async () => {
                   await persistCredentialUse({
                     connector_id: connector.id,
@@ -1601,6 +1606,7 @@ async function dispatchRequestStep(
             }
             if (useCursor && cursor) {
               const rows = await pgQueryCursor({
+                exec: p.ctx.db,
                 on_credential_use: async () => {
                   await persistCredentialUse({
                     connector_id: connector.id,
@@ -1621,6 +1627,7 @@ async function dispatchRequestStep(
               return { output: rows, rowCount: Array.isArray(rows) ? rows.length : null };
             }
             const res = await pgQueryWithCount({
+              exec: p.ctx.db,
               on_credential_use: async () => {
                 await persistCredentialUse({
                   connector_id: connector.id,
@@ -2079,6 +2086,7 @@ async function dispatchRequestStep(
       }
       const callDoOnePage = () =>
         doOnePage({
+          db: p.ctx.db,
           before_dispatch: beforeHttpDispatch,
           ...(signedJwt ? { signed_jwt: signedJwt } : {}),
           url: baseUrl.toString(),
@@ -2405,6 +2413,7 @@ async function dispatchRequestStep(
       }
       const callPage = () =>
         doOnePage({
+          db: p.ctx.db,
           before_dispatch: beforeHttpDispatch,
           ...(signedJwt ? { signed_jwt: signedJwt } : {}),
           url: next.url,

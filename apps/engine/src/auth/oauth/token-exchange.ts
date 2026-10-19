@@ -6,6 +6,7 @@ import { AuditAction } from "../../audit/types.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { apiKeys } from "../../db/schema/index.ts";
 import { env } from "../../env.ts";
+import { assertTenantActive, SelfServiceIdentityError } from "../../identity/index.ts";
 import { log } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { extractBearerToken, matchApiKeyRow } from "../providers/api-key.ts";
@@ -145,6 +146,14 @@ export async function exchangeApiKeyForToken(
   if (!row) throw new TokenExchangeError("invalid_grant", "api key not accepted");
   const principal = await resolvePrincipalFromApiKeyRow(db, row, { provider: PROVIDER });
   if (!principal) throw new TokenExchangeError("invalid_grant", "api key not accepted");
+  try {
+    await assertTenantActive(row.tenant_id, db);
+  } catch (error) {
+    if (error instanceof SelfServiceIdentityError) {
+      throw new TokenExchangeError("invalid_grant", "workspace is unavailable");
+    }
+    throw error;
+  }
 
   const grants = narrowGrants(requested, {
     scopes: normalizeScopes(row.scopes) ?? [],

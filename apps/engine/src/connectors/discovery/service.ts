@@ -6,6 +6,8 @@ import { assertInsertRow } from "../../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
+import { withTenantWork } from "../../execution/tenant-work.ts";
+import { assertTenantActive } from "../../identity/tenant-status.ts";
 import { knowledgeContentHash, recordKnowledgeVersion } from "../../knowledge/version-record.ts";
 import { logger } from "../../logging/logger.ts";
 import { applyAuthMaterial, resolveConnectorCredential } from "../drivers/http.ts";
@@ -378,6 +380,16 @@ export async function runDiscoveryCached(
   ctx: DiscoveryServiceContext,
   args: DiscoveryServiceArgs,
 ): Promise<DiscoveryServiceResult> {
+  return withTenantWork(ctx.tenant_id, async () => {
+    await assertTenantActive(ctx.tenant_id, ctx.db);
+    return discoverWithCache(ctx, args);
+  });
+}
+
+async function discoverWithCache(
+  ctx: DiscoveryServiceContext,
+  args: DiscoveryServiceArgs,
+): Promise<DiscoveryServiceResult> {
   const cache = deriveCacheKey(args);
 
   logger.info({
@@ -453,6 +465,8 @@ export async function runDiscoveryCached(
       }
     }
     const input: DiscoverConnectorEndpointsInput = {
+      exec: ctx.db,
+      tenant_id: ctx.tenant_id,
       signal: controller.signal,
       ...(args.template_id ? { template_id: args.template_id } : {}),
       ...(args.ingestion_url ? { ingestion_url: args.ingestion_url } : {}),

@@ -811,7 +811,7 @@ describe("hold-writes · postgres", () => {
     expect(rows.rows).toHaveLength(0);
     const connector = await getConnector(ctx.tenantId, pgConnectorId, ctx.testDb.db);
     if (!connector) throw new Error("Postgres fixture connector missing");
-    const client = await getPoolForConnector(connector).connect();
+    const client = await (await getPoolForConnector(connector, ctx.testDb.db)).connect();
     try {
       await client.query("BEGIN");
       await client.query("SELECT public.hold_write_via_select()");

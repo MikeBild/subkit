@@ -3656,6 +3656,19 @@
           "items"
         ]
       },
+      "RedeemInviteBody": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 14,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
       "InviteRedeemed": {
         "type": "object",
         "properties": {
@@ -3680,19 +3693,6 @@
           "tenant_id",
           "api_key",
           "api_key_prefix"
-        ]
-      },
-      "RedeemInviteBody": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string",
-            "minLength": 14,
-            "maxLength": 128
-          }
-        },
-        "required": [
-          "token"
         ]
       },
       "SystemAccountListResponse": {
@@ -4226,6 +4226,30 @@
         ],
         "additionalProperties": false
       },
+      "IdentityBrowserLoginRequired": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "browser_login_required"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "continuation_url": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "error",
+          "message",
+          "continuation_url"
+        ],
+        "additionalProperties": false
+      },
       "IdentitySessionRequest": {
         "type": "object",
         "properties": {
@@ -4359,6 +4383,10 @@
               "absolute_expires_at"
             ]
           },
+          "identity_memberships": {
+            "type": "boolean",
+            "description": "Verified browser identity supports workspace membership selection"
+          },
           "permissions": {
             "type": "array",
             "items": {
@@ -4420,6 +4448,7 @@
           "principal",
           "tenant",
           "session",
+          "identity_memberships",
           "permissions",
           "csrf_token",
           "version",
@@ -6867,6 +6896,9 @@
                       "type": "string"
                     },
                     "signature_prefix": {
+                      "type": "string"
+                    },
+                    "id_field": {
                       "type": "string"
                     }
                   },
@@ -32208,6 +32240,478 @@
         }
       }
     },
+    "/v1/settings/hosted-work/{tenant_id}": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "List unresolved work for an operator browser review",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "tenant_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "At most 100 unresolved admissions, oldest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "admission_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "tenant_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "execution",
+                              "chat"
+                            ]
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "pending",
+                              "active",
+                              "reconciliation_required",
+                              "released"
+                            ]
+                          },
+                          "owner_boot_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "started_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "current_process": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "admission_id",
+                          "tenant_id",
+                          "kind",
+                          "state",
+                          "owner_boot_id",
+                          "started_at",
+                          "current_process"
+                        ]
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "has_more"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Review refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Release one admission after a human reviews proof that its former owner stopped",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "tenant_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "admission_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "owner_boot_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "reviewed_owner_stop_evidence": {
+                    "type": "string",
+                    "minLength": 120,
+                    "maxLength": 16000
+                  },
+                  "all_work_from_owner_stopped": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                },
+                "required": [
+                  "admission_id",
+                  "owner_boot_id",
+                  "reviewed_owner_stop_evidence",
+                  "all_work_from_owner_stopped"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Released after operator review; evidence text is not retained",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "admission_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "released"
+                      ]
+                    },
+                    "evidence_sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    }
+                  },
+                  "required": [
+                    "admission_id",
+                    "state",
+                    "evidence_sha256"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Review refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Review refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/settings/hosted-storage/{tenant_id}": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "List unresolved uploads for an operator browser review",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "tenant_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "At most 100 pending object reservations, oldest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "reservation_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "tenant_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "storage_key": {
+                            "type": "string"
+                          },
+                          "storage_namespace": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{64}$"
+                          },
+                          "declared_bytes": {
+                            "type": "string",
+                            "pattern": "^[1-9][0-9]*$"
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "updated_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "reservation_id",
+                          "tenant_id",
+                          "storage_key",
+                          "storage_namespace",
+                          "declared_bytes",
+                          "created_at",
+                          "updated_at"
+                        ]
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "has_more"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Review refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Review refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Review refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Remove one pending object after review of proof that every remote upload ended",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "tenant_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reservation_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "storage_namespace": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "expected_updated_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "all_possible_upload_origins_stopped": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "all_remote_puts_terminal": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "reviewed_remote_stop_evidence": {
+                    "type": "string",
+                    "minLength": 120,
+                    "maxLength": 16000
+                  }
+                },
+                "required": [
+                  "reservation_id",
+                  "storage_namespace",
+                  "expected_updated_at",
+                  "all_possible_upload_origins_stopped",
+                  "all_remote_puts_terminal",
+                  "reviewed_remote_stop_evidence"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verified physical absence and exactly one quota release; evidence text is not retained",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "reservation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "resolved_absent"
+                      ]
+                    },
+                    "evidence_sha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    }
+                  },
+                  "required": [
+                    "reservation_id",
+                    "state",
+                    "evidence_sha256"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Review refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Review refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Review refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/secret-approvals": {
       "get": {
         "tags": [
@@ -32916,6 +33420,596 @@
         }
       }
     },
+    "/v1/identity/recovery/providers": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "List public provider choices for verified hosted identity recovery",
+        "responses": {
+          "200": {
+            "description": "Hosted recovery provider labels",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "label"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity/recovery/login": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Reauthenticate a hosted identity for a one-time recovery handoff",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provider_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "provider_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Fresh interactive OIDC authorization address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "authorization_url": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  },
+                  "required": [
+                    "authorization_url"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A verified browser identity session is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity/recovery": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Read a short-lived verified identity recovery handoff without tenant authority",
+        "responses": {
+          "200": {
+            "description": "Recovery status and one-time action proof",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tenant": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "display_name": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "suspended",
+                            "pending_deletion"
+                          ]
+                        },
+                        "deletion_scheduled_for": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "display_name",
+                        "status",
+                        "deletion_scheduled_for"
+                      ]
+                    },
+                    "can_restore": {
+                      "type": "boolean"
+                    },
+                    "csrf_token": {
+                      "type": "string"
+                    },
+                    "expires_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "tenant",
+                    "can_restore",
+                    "csrf_token",
+                    "expires_at"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A verified browser identity session is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity/memberships": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "List the verified browser identity's active tenant memberships",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active memberships",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tenant_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "display_name": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string",
+                            "enum": [
+                              "self_hosted",
+                              "self_service"
+                            ]
+                          },
+                          "user_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "role_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "is_owner": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "tenant_id",
+                          "slug",
+                          "display_name",
+                          "origin",
+                          "user_id",
+                          "role_id",
+                          "role",
+                          "is_owner"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A verified browser identity session is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity/tenant-session": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Rotate the verified browser session into an existing tenant membership",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tenant_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "tenant_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rotated tenant session and CSRF proof",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "membership": {
+                      "type": "object",
+                      "properties": {
+                        "tenant_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "display_name": {
+                          "type": "string"
+                        },
+                        "origin": {
+                          "type": "string",
+                          "enum": [
+                            "self_hosted",
+                            "self_service"
+                          ]
+                        },
+                        "user_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "role_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "is_owner": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "tenant_id",
+                        "slug",
+                        "display_name",
+                        "origin",
+                        "user_id",
+                        "role_id",
+                        "role",
+                        "is_owner"
+                      ]
+                    },
+                    "csrf_token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "membership",
+                    "csrf_token"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A verified browser identity session is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity/owned-tenant": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Read the verified browser identity's own hosted tenant",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Own tenant status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tenant": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "display_name": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "suspended",
+                            "pending_deletion"
+                          ]
+                        },
+                        "deletion_requested_at": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "deletion_scheduled_for": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "display_name",
+                        "status",
+                        "deletion_requested_at",
+                        "deletion_scheduled_for"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "tenant"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Verified owner browser identity or recovery proof required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity/owned-tenant/deletion": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Request deletion of the current owned hosted tenant after seven days",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "confirmation": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "confirmation"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tenant blocked immediately; deletion scheduled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tenant_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending_deletion"
+                      ]
+                    },
+                    "deletion_scheduled_for": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "tenant_id",
+                    "status",
+                    "deletion_scheduled_for"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Verified owner browser identity or recovery proof required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity/owned-tenant/restore": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Restore the owner tenant using a fresh one-time identity recovery proof",
+        "description": "Requires the separate HttpOnly recovery cookie and X-Subkit-Recovery-CSRF from GET /v1/identity/recovery. Does not issue or reactivate tenant credentials.",
+        "responses": {
+          "200": {
+            "description": "Tenant restored; sign in again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tenant_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "active"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "tenant_id",
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Verified owner browser identity or recovery proof required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/identity/users": {
       "get": {
         "tags": [
@@ -33291,6 +34385,178 @@
         }
       }
     },
+    "/v1/identity/provider-identities/migration": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Preview or explicitly apply existing pinned identity bindings as global memberships",
+        "description": "Engine operator only. Omit reviewed_digest for a conflict report. Submit the exact returned digest to apply that reviewed state. Never merges accounts by email or creates a login session.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "browserSession": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "issuer_url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "reviewed_digest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "issuer_url",
+                  "subject"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Migration preview or applied result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "applied": {
+                      "type": "boolean"
+                    },
+                    "digest": {
+                      "type": "string"
+                    },
+                    "conflicts": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "identity_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid"
+                    },
+                    "bindings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "binding_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "tenant_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "user_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "role_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "auth_identity_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "uuid"
+                          },
+                          "user_status": {
+                            "type": "string"
+                          },
+                          "user_deleted_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          },
+                          "tenant_status": {
+                            "type": "string"
+                          },
+                          "tenant_deleted_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "binding_id",
+                          "tenant_id",
+                          "user_id",
+                          "email",
+                          "role_id",
+                          "auth_identity_id",
+                          "user_status",
+                          "user_deleted_at",
+                          "tenant_status",
+                          "tenant_deleted_at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "applied",
+                    "digest",
+                    "conflicts",
+                    "identity_id",
+                    "bindings"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operator required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Reviewed state changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/identity/users/{id}/provider-identities": {
       "post": {
         "tags": [
@@ -33607,6 +34873,124 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity/invites/login": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Start a verified hosted identity login for a membership invitation",
+        "description": "The invite secret stays in the request body. OIDC state stores only its validated invitation id; no session is issued until the verified identity matches the invited address.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 14,
+                    "maxLength": 128
+                  },
+                  "provider_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "token",
+                  "provider_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "302": {
+            "description": "Redirect to the configured OIDC provider",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invitation or hosted provider unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity/invites/claim": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Accept an unrestricted membership invitation with a verified browser identity",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeemInviteBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Membership accepted; no credentials or session issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tenant_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "claimed": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "tenant_id",
+                    "user_id",
+                    "claimed"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Verified identity, invite audience or membership scope rejected",
             "content": {
               "application/json": {
                 "schema": {
@@ -34355,11 +35739,18 @@
             }
           },
           "403": {
-            "description": "Provider not configured or identity is not allowed",
+            "description": "Provider not configured, identity is not allowed, or browser login is required",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IdentityBrowserLoginRequired"
+                    }
+                  ]
                 }
               }
             }

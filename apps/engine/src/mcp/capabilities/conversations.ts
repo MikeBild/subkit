@@ -225,6 +225,7 @@ async function backgroundTurn(p: {
     await setMcpTaskJobId(p.principal.tenant_id, taskId, attemptId, p.db);
     jobId = await enqueueConversationRunTurn(
       getBoss(),
+      p.db,
       {
         tenant_id: p.principal.tenant_id,
         conversation_id: p.conversation_id,

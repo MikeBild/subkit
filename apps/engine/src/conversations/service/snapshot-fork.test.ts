@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import type { PgBoss } from "pg-boss";
 import {
   auditLog,
   conversationMessages,
@@ -10,16 +11,20 @@ import {
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { runFilesCleanup } from "../../scheduler/files-cleanup-runner.ts";
+import { createFilesCleanupBoss, disposeBoss } from "../../scheduler/tests/pgboss-bootstrap.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { forkConversation } from "./fork.ts";
 
 let srv: HttpTestServer;
+let boss: PgBoss;
 
 beforeAll(async () => {
   srv = await createHttpTestServer("snapshot-fork-files");
+  boss = await createFilesCleanupBoss(srv.testDb.url);
 }, 60_000);
 
 afterAll(async () => {
+  await disposeBoss(boss);
   await srv.cleanup();
 }, 30_000);
 
@@ -136,7 +141,7 @@ describe("forkConversation + file_links", () => {
     );
     expect(result).not.toBeNull();
 
-    await runFilesCleanup(new Date(FROZEN_NOW), srv.db);
+    await runFilesCleanup(new Date(FROZEN_NOW), srv.db, boss, srv.testDb.pool);
 
     const [fileRow] = await srv.db
       .select({ status: files.status, deleted_at: files.deleted_at })

@@ -281,7 +281,8 @@ export function registerGroupsRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id, user_id } = c.req.valid("param");
     const group = await groupsSvc.getGroup(db, principal.tenant_id, id);
     if (!group) throw new NotFoundError("group");
-    await groupsSvc.addMember(db, id, user_id, principal.id);
+    const ok = await groupsSvc.addMember(db, principal.tenant_id, id, user_id, principal.id);
+    if (!ok) throw new NotFoundError("member");
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
@@ -302,7 +303,7 @@ export function registerGroupsRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id, user_id } = c.req.valid("param");
-    const ok = await groupsSvc.removeMember(db, id, user_id);
+    const ok = await groupsSvc.removeMember(db, principal.tenant_id, id, user_id);
     if (!ok) throw new NotFoundError("member");
     await auditAwait(
       {
@@ -328,7 +329,8 @@ export function registerGroupsRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!group) throw new NotFoundError("group");
     const role = await rolesSvc.getRole(db, principal.tenant_id, role_id);
     if (!role) throw new NotFoundError("role");
-    await groupsSvc.assignRoleToGroup(db, id, role_id);
+    const ok = await groupsSvc.assignRoleToGroup(db, principal.tenant_id, id, role_id);
+    if (!ok) throw new NotFoundError("group_role");
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
@@ -349,7 +351,7 @@ export function registerGroupsRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id, role_id } = c.req.valid("param");
-    const ok = await groupsSvc.revokeRoleFromGroup(db, id, role_id);
+    const ok = await groupsSvc.revokeRoleFromGroup(db, principal.tenant_id, id, role_id);
     if (!ok) throw new NotFoundError("group_role");
     await auditAwait(
       {

@@ -11,6 +11,7 @@ import {
 import { logger } from "../logging/logger.ts";
 import { CONFIG_STATE_KEY, REPLICA_LEASE_MS, type RevisionStatus } from "./contracts.ts";
 import { getRuntimeRevision } from "./service.ts";
+import { runtimeStateColumns } from "./state-columns.ts";
 
 export const ENGINE_RESTART_EXIT_CODE = 75;
 export const RESTART_MIN_INTERVAL_MS = 60_000;
@@ -100,7 +101,7 @@ function supervisedIn(document: Record<string, unknown>): boolean {
 async function lockedState(tx: Executor) {
   // tenant-filter:exempt — the canonical active/desired pointer is product-global.
   const [state] = await tx
-    .select()
+    .select(runtimeStateColumns)
     .from(runtimeConfigState)
     .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY))
     .for("update");
@@ -134,7 +135,7 @@ async function writeRestartRequest(tx: Executor, request: EngineRestartRequest):
 export async function getRestartStatus(db: Executor): Promise<RestartStatus> {
   // tenant-filter:exempt — the canonical active/desired pointer is product-global.
   const [state] = await db
-    .select()
+    .select(runtimeStateColumns)
     .from(runtimeConfigState)
     .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY))
     .limit(1);

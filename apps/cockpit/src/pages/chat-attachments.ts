@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { apiRequest, type Conversation, type ConversationTarget } from "@/api/client";
+import { tenantContentHref } from "@/api/tenant-context";
 import { fileRefusal, formatBytes } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 
@@ -140,5 +141,5 @@ export function listConversationAttachments(
 }
 
 export function fileContentHref(fileId: string): string {
-  return `/v1/files/${encodeURIComponent(fileId)}/content`;
+  return tenantContentHref(`/v1/files/${encodeURIComponent(fileId)}/content`);
 }

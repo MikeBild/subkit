@@ -2,9 +2,14 @@ import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
-import type { Db } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
+import {
+  assertEgressAllowedResolved,
+  resolveEgressGuardMode,
+  resolveTenantEgressContext,
+} from "../egress-guard.ts";
 import type { ConnectorView } from "../types.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
 import type {
@@ -16,6 +21,7 @@ import type { DriverProbeResult } from "./index.ts";
 import { classifyS3ProbeError } from "./probe-classify.ts";
 import { executeBoundS3Request } from "./s3-bound-dispatch.ts";
 import { executeBoundS3List } from "./s3-bound-list.ts";
+import { makeGuardedS3Request } from "./s3-guarded-request.ts";
 
 export interface S3ConnectorConfig {
   region: string;
@@ -158,19 +164,42 @@ async function resolveS3Credentials(
 }
 
 class ObservedS3Client extends S3Client {
+  #credentials: S3Credentials | null;
   constructor(
     options: ConstructorParameters<typeof S3Client>[0],
     private readonly onCredentialUse?: () => Promise<void>,
+    private readonly tenantId?: string,
+    credentials: S3Credentials | null = null,
+    private readonly exec?: Executor,
   ) {
     super(options);
+    this.#credentials = credentials;
   }
   override async makeRequest(options: Parameters<S3Client["makeRequest"]>[0]): Promise<Response> {
+    const bucket = options.bucketName ?? this.defaultBucket;
+    const host = this.pathStyle ? this.host : `${bucket}.${this.host}`;
+    const context = await resolveTenantEgressContext({
+      ...(this.tenantId === undefined ? {} : { tenant_id: this.tenantId }),
+      ...(this.exec ? { exec: this.exec } : {}),
+    });
+    if (resolveEgressGuardMode(context) === "strict") {
+      await assertEgressAllowedResolved(`${this.protocol}//${host}/`, context);
+      return makeGuardedS3Request({
+        client: this,
+        bucket: this.getBucketName(options),
+        options,
+        credentials: this.#credentials,
+        context,
+        onCredentialUse: this.onCredentialUse,
+      });
+    }
     await this.onCredentialUse?.();
     return super.makeRequest(options);
   }
 }
 
 export function buildS3Client(p: {
+  exec?: Executor;
   on_credential_use?: () => Promise<void>;
   connector: ConnectorView;
   credentials?: S3Credentials | null;
@@ -190,6 +219,9 @@ export function buildS3Client(p: {
   return new ObservedS3Client(
     opts as ConstructorParameters<typeof S3Client>[0],
     p.on_credential_use,
+    p.connector.tenant_id,
+    p.credentials ?? null,
+    p.exec,
   );
 }
 
@@ -259,6 +291,7 @@ export async function executeS3Request(p: {
     identity: null,
   };
   const client = buildS3Client({
+    exec: p.db,
     connector: p.connector,
     credentials,
     ...(!p.before_dispatch && p.on_credential_use

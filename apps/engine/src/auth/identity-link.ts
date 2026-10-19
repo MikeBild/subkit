@@ -2,7 +2,13 @@ import { createHash } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { Db, Executor } from "../db/client.ts";
-import { productIdentityTombstones, roles, userIdentities, users } from "../db/schema/index.ts";
+import {
+  productIdentityTombstones,
+  roles,
+  tenants,
+  userIdentities,
+  users,
+} from "../db/schema/index.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 
 export class IdentityLinkConflictError extends Error {
@@ -17,6 +23,15 @@ export class SignupDisabledError extends Error {
     super("signups are disabled and this identity matches no existing account");
     this.name = "SignupDisabledError";
   }
+}
+
+async function assertTenantLocalIdentityAllowed(exec: Executor, tenantId: string): Promise<void> {
+  const [tenant] = await exec
+    .select({ origin: tenants.origin })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+  if (tenant?.origin === "self_service") throw new IdentityLinkConflictError();
 }
 
 export interface ResolveProviderIdentityOptions {
@@ -41,6 +56,7 @@ export async function resolveProviderIdentity(
   const email = options.email.trim().toLowerCase();
 
   return db.transaction(async (tx) => {
+    await assertTenantLocalIdentityAllowed(tx, options.tenantId);
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${options.tenantId}:${options.providerId}:identity`}, 0))`,
     );
@@ -294,6 +310,7 @@ export async function resolveProductBearerIdentity(
   db: Db,
   options: ResolveProductBearerIdentityOptions,
 ): Promise<ProductBearerIdentity> {
+  await assertTenantLocalIdentityAllowed(db, options.tenantId);
   const now = options.now ?? new Date();
   const existing = await productBinding(db, options);
   if (existing) {
@@ -317,6 +334,7 @@ export async function resolveProductBearerIdentity(
     };
   }
   return db.transaction(async (tx) => {
+    await assertTenantLocalIdentityAllowed(tx, options.tenantId);
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${options.tenantId}:${options.providerId}:identity`}, 0))`,
     );

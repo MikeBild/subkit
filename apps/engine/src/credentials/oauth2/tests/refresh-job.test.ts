@@ -53,12 +53,15 @@ afterAll(async () => {
 describe("connector.refresh-oauth job", () => {
   test("stale credential is refreshed, persisted, and updated_at bumped; a fresh one is a no-op", async () => {
     mock.setExpiresIn(1);
-    const initial = await runClientCredentialsGrant({
-      issuer_url: mock.baseUrl,
-      client_id: "rjt-client",
-      client_secret: "rjt-secret",
-      scope: "read",
-    });
+    const initial = await runClientCredentialsGrant(
+      {
+        issuer_url: mock.baseUrl,
+        client_id: "rjt-client",
+        client_secret: "rjt-secret",
+        scope: "read",
+      },
+      { mode: "permissive" },
+    );
     expect(initial.refresh_token).toBeTruthy();
 
     const row = await upsertCredential(

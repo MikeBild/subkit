@@ -17,7 +17,7 @@ import {
 } from "../../../execution/index.ts";
 import type { RequestSource } from "../../../observability/index.ts";
 import type { ExecutionRunJob } from "../../../queue/index.ts";
-import { EXECUTION_RUN_QUEUE, getBoss } from "../../../queue/index.ts";
+import { EXECUTION_RUN_QUEUE, enqueueHostedWork, getBoss } from "../../../queue/index.ts";
 import { normalizeWorkflowRunInput } from "../../../workflows/index.ts";
 import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -288,7 +288,10 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       }
       if (body.async) {
         try {
-          await (c.get("boss") ?? getBoss()).send(
+          await enqueueHostedWork(
+            db,
+            c.get("boss") ?? getBoss(),
+            "execution",
             EXECUTION_RUN_QUEUE,
             {
               tenant_id: principal.tenant_id,

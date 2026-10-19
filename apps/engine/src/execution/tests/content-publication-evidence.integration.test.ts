@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { executionSteps, workflowExecutionAuthorities } from "../../db/schema/index.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { previewWorkflowAuthority } from "../../workflows/execution-authorities.ts";
 import { admitAuthorizedWorkflowExecution } from "../authority-admission.ts";
 import { runExecution } from "../engine.ts";
@@ -121,7 +121,7 @@ test("held preview records fixed item evidence without publishing or creating a 
     },
     { preconnect: () => {} },
   ) as typeof fetch;
-  await withDriverFetchForTests(remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote, async () => {
     const result = await f.prepare();
     expect(result.status, JSON.stringify(result.steps)).toBe("succeeded");
     const step = await f.evidence(result.execution_id);
@@ -155,7 +155,7 @@ test("receipt uses the raw provider ID even when the authored output selector su
       preconnect: () => {},
     },
   ) as typeof fetch;
-  await withDriverFetchForTests(remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote, async () => {
     const result = await f.run();
     expect(result.status, JSON.stringify(result.steps)).toBe("succeeded");
     const step = await f.evidence(result.execution_id);

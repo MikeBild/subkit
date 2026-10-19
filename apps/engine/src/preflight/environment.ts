@@ -9,6 +9,7 @@ import {
   runtimeSecretVersions,
 } from "../db/schema/index.ts";
 import { CONFIG_STATE_KEY } from "../runtime-config/contracts.ts";
+import { runtimeStateColumns } from "../runtime-config/service.ts";
 import { type ObjectStoreConfig, S3ObjectStore } from "../storage/object-store.ts";
 import type { ObjectStoreBinding, PreflightEnvironment } from "./checks.ts";
 
@@ -122,7 +123,7 @@ export async function activeSettingsDocument(db: Db): Promise<Record<string, unk
   try {
     // tenant-filter:exempt — the canonical active pointer is product-global.
     const [state] = await db
-      .select()
+      .select(runtimeStateColumns)
       .from(runtimeConfigState)
       .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY))
       .limit(1);

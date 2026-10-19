@@ -4,7 +4,7 @@ import * as discoveryService from "../../connectors/discovery/service.ts";
 import { connectors, conversations, credentials, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,
@@ -304,7 +304,7 @@ describe("saveConnectorAtomic — cognito_user_password cache fallback for oauth
       throw new Error(`unexpected fetch to ${url}`);
     }) as typeof fetch;
 
-    await withDriverFetchForTests(fetchImpl, async () => {
+    await withSelfHostedDriverFetchForTests(fetchImpl, async () => {
       const { conversation_id, tool_ctx } = await seedGraphql("cognito-oauth2-graphql");
       setDraftCredential(conversation_id, {
         mode: "cognito_user_password",

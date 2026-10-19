@@ -78,7 +78,7 @@ async function probeWithDriver(p: {
     case "http":
       return probeHttpConnector(p);
     case "postgres":
-      return probePgConnector(p.connector);
+      return probePgConnector(p.connector, p.db);
     case "s3":
       return probeS3Connector(p);
     case "graphql":

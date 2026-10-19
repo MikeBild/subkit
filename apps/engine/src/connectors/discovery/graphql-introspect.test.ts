@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { graphqlIntrospectStrategy, looksLikeGraphQLUrl } from "./graphql-introspect.ts";
 import { DiscoveryError } from "./types.ts";
 
@@ -10,7 +10,7 @@ beforeEach(() => {
 });
 
 function seamTest(name: string, body: () => Promise<void>) {
-  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+  test(name, () => withSelfHostedDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }
 
 const SAMPLE_SCHEMA = {

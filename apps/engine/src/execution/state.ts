@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { AuditAction, type AuditActorType, auditAwait } from "../audit/index.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { executionSteps, executions, workflowVersions } from "../db/schema/index.ts";
@@ -104,6 +105,7 @@ export async function createExecution(
     throw Object.assign(new Error("caller_tenant_mismatch"), { code: "caller_tenant_mismatch" });
   const callerOrigin = resolveExecutionCallerOrigin(params.tenant_id, caller, params.caller_origin);
   const id = await db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, params.tenant_id);
     const [version] = params.workflow_version_id
       ? await tx
           .select({ dag: workflowVersions.dag })

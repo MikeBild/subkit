@@ -19,6 +19,7 @@ const GRANT_FORM_PATHS = [
 
 function isExempt(path: string, method: string): boolean {
   return (
+    (method === "POST" && path === "/v1/identity/recovery/login") ||
     EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix)) ||
     (method === "POST" && GRANT_FORM_PATHS.some((pattern) => pattern.test(path)))
   );

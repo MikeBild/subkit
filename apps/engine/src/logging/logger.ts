@@ -118,7 +118,7 @@ const SAFE_SQLSTATES = new Set([
   "57P01",
 ]);
 
-function isDatabaseQueryError(value: unknown): boolean {
+export function isDatabaseQueryError(value: unknown): boolean {
   if (!(value instanceof Error)) return false;
   return (
     /failed query:|\bparams:\s*/i.test(value.message) ||

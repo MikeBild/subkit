@@ -16,6 +16,7 @@ export interface CliOAuthLoginResult {
 
 export interface CliOAuthLoginOptions {
   engineUrl: string;
+  tenantId?: string | undefined;
   client?: EngineClient | undefined;
   openBrowser?: ((url: string) => Promise<void>) | undefined;
   onAuthorizationUrl?: ((url: string) => void) | undefined;
@@ -211,6 +212,7 @@ export async function runCliOAuthLogin(
     authorizationUrl.searchParams.set("scope", CLI_LOGIN_SCOPE);
     authorizationUrl.searchParams.set("resource", resource);
     authorizationUrl.searchParams.set("state", state);
+    if (options.tenantId) authorizationUrl.searchParams.set("tenant_id", options.tenantId);
     options.onAuthorizationUrl?.(authorizationUrl.toString());
     try {
       await (options.openBrowser ?? defaultOpenBrowser)(authorizationUrl.toString());
@@ -248,6 +250,9 @@ export async function runCliOAuthLogin(
       !credential.email
     ) {
       throw new Error("CLI session response is invalid");
+    }
+    if (options.tenantId && credential.context_id !== options.tenantId) {
+      throw new Error("CLI session tenant does not match the selected workspace");
     }
     return credential;
   } finally {

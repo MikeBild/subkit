@@ -12,7 +12,7 @@ import { LLM_CALL_TIMEOUT_MS } from "../../llm/core/ai-sdk-model.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import type { WorkflowTrigger } from "../../workflows/types.ts";
 import {
   GeneratedWorkflowSchema,
@@ -56,7 +56,7 @@ const tripwire = ((..._args: unknown[]) => {
 }) as unknown as typeof fetch;
 
 function tw(name: string, body: () => Promise<void>) {
-  test(name, () => withDriverFetchForTests(tripwire, body));
+  test(name, () => withSelfHostedDriverFetchForTests(tripwire, body));
 }
 
 beforeAll(async () => {

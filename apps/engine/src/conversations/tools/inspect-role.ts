@@ -33,7 +33,7 @@ export const inspectRoleTool: ConversationTool = {
         next_best_actions: ["find_role", "list_roles"],
       };
     }
-    const permissions = await listRolePermissions(ctx.db, role.id);
+    const permissions = await listRolePermissions(ctx.db, ctx.tenant_id, role.id);
     const byRoleId = await ctx.db
       .select({ id: users.id, email: users.email })
       .from(users)

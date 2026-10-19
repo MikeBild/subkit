@@ -1,5 +1,6 @@
 import { assertPageSize, consumeBytes } from "../budgets.ts";
 import { byteLen } from "../chunker.ts";
+import { readBoundedText } from "../read-response.ts";
 import type { BudgetState, RawChunk } from "../types.ts";
 
 export interface MarkdownSourceInput {
@@ -26,7 +27,7 @@ export async function fetchMarkdown(
   if (!input.url) throw new Error("markdown source requires url or content");
   const res = await fetchImpl(input.url, { headers: { accept: "text/markdown,text/plain,*/*" } });
   if (!res.ok) throw new Error(`markdown fetch failed: ${res.status}`);
-  const body = await res.text();
+  const body = await readBoundedText(res);
   const bytes = byteLen(body);
   assertPageSize(bytes);
   return { uri: input.url, body, bytes };

@@ -47,7 +47,7 @@ export const findRoleTool: ConversationTool = {
     const all = await listRoles(ctx.db, ctx.tenant_id);
     const augmented: RoleSummary[] = await Promise.all(
       all.map(async (r) => {
-        const perms = await listRolePermissions(ctx.db, r.id);
+        const perms = await listRolePermissions(ctx.db, ctx.tenant_id, r.id);
         return {
           id: r.id,
           name: r.name,

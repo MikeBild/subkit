@@ -35,10 +35,12 @@ export const PREFLIGHT_HELP: string =
   "                                 engine is running and a person should\n" +
   "                                 decide, not the deploy script\n\n" +
   "  --rewrap-master-key --from-file <path-to-previous-key>\n" +
-  "      You changed MASTER_KEY and still have the old one: re-encrypt every\n" +
-  "      stored secret under the new key. Stop all engines first — it refuses\n" +
-  "      while any is running. Covers settings secrets, not connector\n" +
-  "      credentials; those still have to be entered again.\n\n" +
+  "        --all-producers-stopped --stop-evidence-file <path-to-review>\n" +
+  "        [--maintenance]          use the separately granted database login\n" +
+  "      Re-encrypt the settings-secret registry after all producers stop.\n" +
+  "      Retained credentials, encrypted content and approval proofs outside\n" +
+  "      that registry are unsupported and cause refusal. Preserve the\n" +
+  "      original MASTER_KEY; expired heartbeats are not a stop proof.\n\n" +
   "  Exit codes, the same for all four:\n" +
   "      0  done, or nothing needed doing\n" +
   "      1  something failed; read the line it printed\n" +

@@ -17,6 +17,7 @@ export interface InboundHookSigning {
     encoding: "hex" | "base64";
     signed_payload: string;
     signature_prefix: string;
+    id_field?: string;
   } | null;
 }
 
@@ -33,7 +34,7 @@ export function describeInboundSigning(
       signed: true,
       headers: [
         scheme.signature_header,
-        scheme.id_header,
+        ...(scheme.id_header ? [scheme.id_header] : []),
         ...(scheme.timestamp_header ? [scheme.timestamp_header] : []),
         ...(scheme.type_header ? [scheme.type_header] : []),
       ],
@@ -42,6 +43,7 @@ export function describeInboundSigning(
         encoding: scheme.encoding,
         signed_payload: scheme.signed_payload,
         signature_prefix: scheme.signature_prefix,
+        ...(scheme.id_field ? { id_field: scheme.id_field } : {}),
       },
     };
   }

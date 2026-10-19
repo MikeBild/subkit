@@ -114,11 +114,14 @@ afterAll(async () => {
 describe("dynamicallyRegisterClient — happy path", () => {
   test("returns clientId and clientSecret from 201 response", async () => {
     idp = await startMockIdP();
-    const result = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://example.com/callback"] },
-      allowInsecureRequests: true,
-    });
+    const result = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    );
     expect(result.clientId).toBe("dyn-client-id");
     expect(result.clientSecret).toBe("dyn-secret");
     expect(result.registrationEndpoint).toContain("/register");
@@ -130,11 +133,14 @@ describe("dynamicallyRegisterClient — happy path", () => {
     idp = await startMockIdP({
       registerBody: { client_id: "public-client" },
     });
-    const result = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://example.com/callback"] },
-      allowInsecureRequests: true,
-    });
+    const result = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    );
     expect(result.clientId).toBe("public-client");
     expect(result.clientSecret).toBeUndefined();
     await idp.close();
@@ -145,11 +151,14 @@ describe("dynamicallyRegisterClient — validation before network call", () => {
   test("rejects empty redirect_uris before any network call", async () => {
     idp = await startMockIdP();
     await expect(
-      dynamicallyRegisterClient({
-        issuerUrl: idp.baseUrl,
-        clientMetadata: { redirect_uris: [] },
-        allowInsecureRequests: true,
-      }),
+      dynamicallyRegisterClient(
+        {
+          issuerUrl: idp.baseUrl,
+          clientMetadata: { redirect_uris: [] },
+          allowInsecureRequests: true,
+        },
+        { mode: "permissive" },
+      ),
     ).rejects.toThrow();
     expect(idp.registrationCallCount()).toBe(0);
     await idp.close();
@@ -158,12 +167,15 @@ describe("dynamicallyRegisterClient — validation before network call", () => {
   test("rejects missing redirect_uris before any network call", async () => {
     idp = await startMockIdP();
     await expect(
-      dynamicallyRegisterClient({
-        issuerUrl: idp.baseUrl,
-        // @ts-expect-error intentionally invalid
-        clientMetadata: {},
-        allowInsecureRequests: true,
-      }),
+      dynamicallyRegisterClient(
+        {
+          issuerUrl: idp.baseUrl,
+          // @ts-expect-error intentionally invalid
+          clientMetadata: {},
+          allowInsecureRequests: true,
+        },
+        { mode: "permissive" },
+      ),
     ).rejects.toThrow();
     expect(idp.registrationCallCount()).toBe(0);
     await idp.close();
@@ -173,11 +185,14 @@ describe("dynamicallyRegisterClient — validation before network call", () => {
 describe("dynamicallyRegisterClient — discovery failures", () => {
   test("throws DynamicRegistrationError when registration_endpoint is absent", async () => {
     idp = await startMockIdP({ advertiseRegistrationEndpoint: false });
-    const err = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://example.com/callback"] },
-      allowInsecureRequests: true,
-    }).catch((e) => e);
+    const err = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    ).catch((e) => e);
     expect(err).toBeInstanceOf(DynamicRegistrationError);
     expect((err as DynamicRegistrationError).error_code).toBe("no_registration_endpoint");
     expect(idp.registrationCallCount()).toBe(0);
@@ -185,11 +200,14 @@ describe("dynamicallyRegisterClient — discovery failures", () => {
   });
 
   test("throws DynamicRegistrationError with discovery_failed when issuer unreachable", async () => {
-    const err = await dynamicallyRegisterClient({
-      issuerUrl: "http://127.0.0.1:1",
-      clientMetadata: { redirect_uris: ["https://example.com/callback"] },
-      allowInsecureRequests: true,
-    }).catch((e) => e);
+    const err = await dynamicallyRegisterClient(
+      {
+        issuerUrl: "http://127.0.0.1:1",
+        clientMetadata: { redirect_uris: ["https://example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    ).catch((e) => e);
     expect(err).toBeInstanceOf(DynamicRegistrationError);
     expect((err as DynamicRegistrationError).error_code).toBe("discovery_failed");
   });
@@ -201,11 +219,14 @@ describe("dynamicallyRegisterClient — registration POST failures", () => {
       registerStatus: 400,
       registerBody: { error: "invalid_redirect_uri" },
     });
-    const err = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://example.com/callback"] },
-      allowInsecureRequests: true,
-    }).catch((e) => e);
+    const err = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    ).catch((e) => e);
     expect(err).toBeInstanceOf(DynamicRegistrationError);
     expect((err as DynamicRegistrationError).error_code).toBe("registration_http_400");
     await idp.close();
@@ -213,11 +234,14 @@ describe("dynamicallyRegisterClient — registration POST failures", () => {
 
   test("throws DynamicRegistrationError with http_401 error_code on 401", async () => {
     idp = await startMockIdP({ registerStatus: 401, registerBody: { error: "unauthorized" } });
-    const err = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://example.com/callback"] },
-      allowInsecureRequests: true,
-    }).catch((e) => e);
+    const err = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    ).catch((e) => e);
     expect(err).toBeInstanceOf(DynamicRegistrationError);
     expect((err as DynamicRegistrationError).error_code).toBe("registration_http_401");
     await idp.close();
@@ -225,11 +249,14 @@ describe("dynamicallyRegisterClient — registration POST failures", () => {
 
   test("throws DynamicRegistrationError with http_500 error_code on 500", async () => {
     idp = await startMockIdP({ registerStatus: 500, registerBody: { error: "server_error" } });
-    const err = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://example.com/callback"] },
-      allowInsecureRequests: true,
-    }).catch((e) => e);
+    const err = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    ).catch((e) => e);
     expect(err).toBeInstanceOf(DynamicRegistrationError);
     expect((err as DynamicRegistrationError).error_code).toBe("registration_http_500");
     await idp.close();
@@ -237,11 +264,14 @@ describe("dynamicallyRegisterClient — registration POST failures", () => {
 
   test("throws DynamicRegistrationError when response body is non-JSON", async () => {
     idp = await startMockIdP({ registerNonJson: true });
-    const err = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://example.com/callback"] },
-      allowInsecureRequests: true,
-    }).catch((e) => e);
+    const err = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    ).catch((e) => e);
     expect(err).toBeInstanceOf(DynamicRegistrationError);
     expect((err as DynamicRegistrationError).error_code).toBe("registration_response_invalid");
     await idp.close();
@@ -251,11 +281,14 @@ describe("dynamicallyRegisterClient — registration POST failures", () => {
     idp = await startMockIdP({
       registerBody: { client_secret: "secret-only-no-id" },
     });
-    const err = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://example.com/callback"] },
-      allowInsecureRequests: true,
-    }).catch((e) => e);
+    const err = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    ).catch((e) => e);
     expect(err).toBeInstanceOf(DynamicRegistrationError);
     expect((err as DynamicRegistrationError).error_code).toBe("registration_response_invalid");
     await idp.close();
@@ -265,11 +298,14 @@ describe("dynamicallyRegisterClient — registration POST failures", () => {
 describe("dynamicallyRegisterClient — allowInsecureRequests", () => {
   test("allowInsecureRequests: true allows http:// discovery", async () => {
     idp = await startMockIdP();
-    const result = await dynamicallyRegisterClient({
-      issuerUrl: idp.baseUrl,
-      clientMetadata: { redirect_uris: ["https://example.com/callback"] },
-      allowInsecureRequests: true,
-    });
+    const result = await dynamicallyRegisterClient(
+      {
+        issuerUrl: idp.baseUrl,
+        clientMetadata: { redirect_uris: ["https://example.com/callback"] },
+        allowInsecureRequests: true,
+      },
+      { mode: "permissive" },
+    );
     expect(result.clientId).toBeTruthy();
     await idp.close();
   });
@@ -310,15 +346,18 @@ describe("dynamicallyRegisterClient — allowInsecureRequests", () => {
     const addr = server.address() as AddressInfo;
     const base = `http://127.0.0.1:${addr.port}`;
 
-    await dynamicallyRegisterClient({
-      issuerUrl: base,
-      clientMetadata: {
-        redirect_uris: ["https://app.example.com/callback"],
-        client_name: "My Test App",
-        scope: "openid profile",
+    await dynamicallyRegisterClient(
+      {
+        issuerUrl: base,
+        clientMetadata: {
+          redirect_uris: ["https://app.example.com/callback"],
+          client_name: "My Test App",
+          scope: "openid profile",
+        },
+        allowInsecureRequests: true,
       },
-      allowInsecureRequests: true,
-    });
+      { mode: "permissive" },
+    );
 
     expect(capturedBody.client_name).toBe("My Test App");
     expect(capturedBody.scope).toBe("openid profile");

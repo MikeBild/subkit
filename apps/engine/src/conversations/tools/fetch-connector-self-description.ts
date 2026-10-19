@@ -6,7 +6,7 @@ import {
   printSchema,
 } from "graphql";
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
-import { assertEgressAllowed } from "../../connectors/egress-guard.ts";
+import { fetchWithEgressGuard } from "../../connectors/index.ts";
 import { getConnector } from "../../connectors/service.ts";
 import type {
   ConnectorSelfDescription,
@@ -72,13 +72,17 @@ async function fetchTextLink(
   ctx: ToolContext,
   url: string,
 ): Promise<{ text: string; truncated: boolean }> {
-  assertEgressAllowed(url, { tenant_id: ctx.tenant_id });
   return withTimeout(ctx, async (signal) => {
-    const res = await getDriverFetch()(url, {
-      method: "GET",
-      headers: { accept: "text/plain, text/markdown, application/json, application/yaml, */*" },
-      signal,
-    });
+    const res = await fetchWithEgressGuard(
+      url,
+      {
+        method: "GET",
+        headers: { accept: "text/plain, text/markdown, application/json, application/yaml, */*" },
+        signal,
+      },
+      { tenant_id: ctx.tenant_id, exec: ctx.db },
+      { fetchImpl: getDriverFetch() },
+    );
     if (!res.ok) throw new Error(`GET ${url} returned ${res.status}`);
     return decodeCapped(await res.arrayBuffer());
   });
@@ -88,17 +92,21 @@ async function fetchGraphqlIntrospection(
   ctx: ToolContext,
   url: string,
 ): Promise<{ body: string; truncated: boolean; format: "sdl" | "introspection_json" }> {
-  assertEgressAllowed(url, { tenant_id: ctx.tenant_id });
   const raw = await withTimeout(ctx, async (signal) => {
-    const res = await getDriverFetch()(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify({
-        query: getIntrospectionQuery(),
-        operationName: "IntrospectionQuery",
-      }),
-      signal,
-    });
+    const res = await fetchWithEgressGuard(
+      url,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          query: getIntrospectionQuery(),
+          operationName: "IntrospectionQuery",
+        }),
+        signal,
+      },
+      { tenant_id: ctx.tenant_id, exec: ctx.db },
+      { fetchImpl: getDriverFetch() },
+    );
     if (!res.ok) throw new Error(`POST ${url} returned ${res.status}`);
     return new TextDecoder().decode(await res.arrayBuffer());
   });

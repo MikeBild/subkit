@@ -6,6 +6,7 @@ import { AuditAction } from "../audit/types.ts";
 import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
 import { executions, workflowExecutionAuthorities, workflows } from "../db/schema/index.ts";
+import { withTenantWork } from "../execution/tenant-work.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { parsePlaceholders } from "../llm/substitution/parser.ts";
 import { resolvePlaceholdersTypePreserving } from "../llm/substitution/resolver.ts";
@@ -17,6 +18,7 @@ import {
 } from "../observability/instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
+import { withHostedWork } from "../queue/hosted-work.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { SANDBOX_TOOL_MANIFEST, STDLIB_VERSION } from "../sandboxes/quickjs/stdlib/index.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
@@ -124,6 +126,12 @@ export interface RunExecutionParams {
 }
 
 export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
+  return withTenantWork(p.tenant_id, () =>
+    withHostedWork(p.db, p.tenant_id, "execution", () => runExecutionAdmitted(p)),
+  );
+}
+
+async function runExecutionAdmitted(p: RunExecutionParams): Promise<RunResult> {
   assertCallerExecutionSource(p.options?.principal, p.source.kind);
   const [persisted] = p.options?.existing_execution_id
     ? await p.db

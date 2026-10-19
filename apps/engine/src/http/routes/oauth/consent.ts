@@ -17,6 +17,7 @@ import { getConfig } from "../../../config/loader.ts";
 import { roles as rolesTable, sessions, tenants, users } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { resolveAuthorizationMembership } from "./membership.ts";
 import {
   AuthorizeQuerySchema,
   buildErrorRedirect,
@@ -194,14 +195,25 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       return buildErrorRedirect(redirectUri, "access_denied", state);
     }
 
+    let authorizationMembership: { tenant_id: string; user_id: string };
+    try {
+      authorizationMembership = await resolveAuthorizationMembership(
+        sessionPayload,
+        q.data.tenant_id,
+        db,
+      );
+    } catch {
+      return buildErrorRedirect(redirectUri, "access_denied", state);
+    }
+
     const userRows = await db
       .select({ email: users.email, role_name: rolesTable.name })
       .from(users)
       .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
       .where(
         and(
-          eq(users.id, sessionPayload.user_id),
-          eq(users.tenant_id, sessionPayload.tenant_id),
+          eq(users.id, authorizationMembership.user_id),
+          eq(users.tenant_id, authorizationMembership.tenant_id),
           isNull(users.deleted_at),
           eq(users.status, "active"),
         ),
@@ -211,9 +223,9 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!userRow) {
       await auditAwait(
         {
-          tenant_id: sessionPayload.tenant_id,
+          tenant_id: authorizationMembership.tenant_id,
           actor_type: "user",
-          actor_id: sessionPayload.user_id,
+          actor_id: authorizationMembership.user_id,
           action: AuditAction.MCP_OAUTH_CONSENT_DENIED,
           resource_type: "mcp_oauth_client",
           resource_id: clientId,
@@ -227,8 +239,8 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
         module: "mcp_oauth",
         action: "oauth.authorize.account_not_active",
         msg: "an account that is disabled or deleted reached the consent screen; denied",
-        tenant_id: sessionPayload.tenant_id,
-        user_id: sessionPayload.user_id,
+        tenant_id: authorizationMembership.tenant_id,
+        user_id: authorizationMembership.user_id,
         client_id: clientId,
       });
       return buildErrorRedirect(redirectUri, "access_denied", state);
@@ -237,7 +249,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     const tenantRows = await db
       .select({ display_name: tenants.display_name })
       .from(tenants)
-      .where(eq(tenants.id, sessionPayload.tenant_id))
+      .where(eq(tenants.id, authorizationMembership.tenant_id))
       .limit(1);
     const tenantRow = tenantRows[0];
 
@@ -256,8 +268,8 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
         ? [CLI_LOGIN_SCOPE]
         : await permittedMcpScopes(
             db,
-            sessionPayload.tenant_id,
-            sessionPayload.user_id,
+            authorizationMembership.tenant_id,
+            authorizationMembership.user_id,
             userRow.role_name,
           );
     const scopeOrder =
@@ -287,9 +299,9 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!hasEntitlement) {
       await auditAwait(
         {
-          tenant_id: sessionPayload.tenant_id,
+          tenant_id: authorizationMembership.tenant_id,
           actor_type: "user",
-          actor_id: sessionPayload.user_id,
+          actor_id: authorizationMembership.user_id,
           action: AuditAction.MCP_OAUTH_CONSENT_DENIED,
           resource_type: "mcp_oauth_client",
           resource_id: clientId,
@@ -306,8 +318,8 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
         module: "mcp_oauth",
         action: "oauth.authorize.no_entitlement",
         msg: "account holds no mcp:* permission; consent denied",
-        tenant_id: sessionPayload.tenant_id,
-        user_id: sessionPayload.user_id,
+        tenant_id: authorizationMembership.tenant_id,
+        user_id: authorizationMembership.user_id,
         client_id: clientId,
         role: userRow.role_name,
       });
@@ -317,6 +329,8 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     const csrfSecret = deriveSessionSecret();
     const csrfToken = await signCsrfToken(csrfSecret, {
       session_id: sessionPayload.session_id,
+      authorization_tenant_id: authorizationMembership.tenant_id,
+      authorization_user_id: authorizationMembership.user_id,
       client_id: clientId,
       redirect_uri: redirectUri,
       offered_scopes: offeredScopes.join(" "),
@@ -330,7 +344,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       clientName: client.client_name ?? clientId,
       clientUri: client.client_uri ?? null,
       look: resolvePageLook(c.req.raw.headers),
-      tenantName: tenantRow?.display_name ?? sessionPayload.tenant_id,
+      tenantName: tenantRow?.display_name ?? authorizationMembership.tenant_id,
       userEmail: userRow.email,
       offeredScopes,
       preChecked,
@@ -491,6 +505,9 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       authorizeUrl.searchParams.set("code_challenge", String(csrfPayload.code_challenge ?? ""));
       authorizeUrl.searchParams.set("code_challenge_method", "S256");
       authorizeUrl.searchParams.set("scope", String(csrfPayload.offered_scopes ?? "mcp:read"));
+      if (typeof csrfPayload.authorization_tenant_id === "string") {
+        authorizeUrl.searchParams.set("tenant_id", csrfPayload.authorization_tenant_id);
+      }
       if (resource) authorizeUrl.searchParams.set("resource", resource);
       if (state) authorizeUrl.searchParams.set("state", state);
       return new Response(null, {
@@ -503,6 +520,26 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       });
     }
 
+    if (
+      typeof csrfPayload.authorization_tenant_id !== "string" ||
+      typeof csrfPayload.authorization_user_id !== "string"
+    ) {
+      return buildErrorRedirect(redirectUri, "access_denied", state);
+    }
+    let authorizationMembership: { tenant_id: string; user_id: string };
+    try {
+      authorizationMembership = await resolveAuthorizationMembership(
+        sessionPayload,
+        csrfPayload.authorization_tenant_id,
+        db,
+      );
+      if (authorizationMembership.user_id !== csrfPayload.authorization_user_id) {
+        return buildErrorRedirect(redirectUri, "access_denied", state);
+      }
+    } catch {
+      return buildErrorRedirect(redirectUri, "access_denied", state);
+    }
+
     const codeChallenge = (csrfPayload.code_challenge as string | undefined) ?? "";
     const ceiling = (csrfPayload.offered_scopes as string | undefined) ?? "";
     const freshUserRows = await db
@@ -510,7 +547,10 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       .from(users)
       .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
       .where(
-        and(eq(users.id, sessionPayload.user_id), eq(users.tenant_id, sessionPayload.tenant_id)),
+        and(
+          eq(users.id, authorizationMembership.user_id),
+          eq(users.tenant_id, authorizationMembership.tenant_id),
+        ),
       )
       .limit(1);
     const freshRoleRow = freshUserRows[0];
@@ -518,7 +558,12 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     const freshRoleScopes =
       target.kind === "cli_login"
         ? [CLI_LOGIN_SCOPE]
-        : await permittedMcpScopes(db, sessionPayload.tenant_id, sessionPayload.user_id, freshRole);
+        : await permittedMcpScopes(
+            db,
+            authorizationMembership.tenant_id,
+            authorizationMembership.user_id,
+            freshRole,
+          );
     const scope = intersectScopes(
       intersectScopes(selectedScopes.join(" "), ceiling.split(" ").filter(Boolean)),
       freshRoleScopes,
@@ -526,9 +571,9 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!scope) {
       await auditAwait(
         {
-          tenant_id: sessionPayload.tenant_id,
+          tenant_id: authorizationMembership.tenant_id,
           actor_type: "user",
-          actor_id: sessionPayload.user_id,
+          actor_id: authorizationMembership.user_id,
           action: AuditAction.MCP_OAUTH_CONSENT_DENIED,
           resource_type: "mcp_oauth_client",
           resource_id: clientId,
@@ -547,8 +592,8 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     try {
       const code = await provider.issueAuthorizationCode({
         clientId,
-        tenantId: sessionPayload.tenant_id,
-        userId: sessionPayload.user_id,
+        tenantId: authorizationMembership.tenant_id,
+        userId: authorizationMembership.user_id,
         redirectUri,
         codeChallenge,
         scope,
@@ -559,9 +604,9 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
 
       await auditAwait(
         {
-          tenant_id: sessionPayload.tenant_id,
+          tenant_id: authorizationMembership.tenant_id,
           actor_type: "user",
-          actor_id: sessionPayload.user_id,
+          actor_id: authorizationMembership.user_id,
           action: AuditAction.MCP_OAUTH_CONSENT_GRANTED,
           resource_type: "mcp_oauth_client",
           resource_id: clientId,

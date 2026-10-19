@@ -8,7 +8,7 @@ import {
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
-import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { fetchConnectorSelfDescriptionTool } from "../fetch-connector-self-description.ts";
 import type { ToolContext } from "../index.ts";
 
@@ -113,8 +113,10 @@ async function countPersistedRows(): Promise<{ docs: number; sources: number }> 
 describe("fetch_connector_self_description", () => {
   test("returns the fetched body transiently and persists nothing", async () => {
     const before = await countPersistedRows();
-    const result = await withDriverFetchForTests(fakeFetch("# Acme LLMs doc\nhello world"), () =>
-      fetchConnectorSelfDescriptionTool.execute(makeCtx(connector_with_links), { kind: "llms" }),
+    const result = await withSelfHostedDriverFetchForTests(
+      fakeFetch("# Acme LLMs doc\nhello world"),
+      () =>
+        fetchConnectorSelfDescriptionTool.execute(makeCtx(connector_with_links), { kind: "llms" }),
     );
 
     expect(result.ok).toBe(true);
@@ -142,7 +144,7 @@ describe("fetch_connector_self_description", () => {
 
   test("caps oversize bodies", async () => {
     const huge = "x".repeat(200 * 1024);
-    const result = await withDriverFetchForTests(fakeFetch(huge), () =>
+    const result = await withSelfHostedDriverFetchForTests(fakeFetch(huge), () =>
       fetchConnectorSelfDescriptionTool.execute(makeCtx(connector_with_links), { kind: "llms" }),
     );
     expect(result.ok).toBe(true);
@@ -154,7 +156,7 @@ describe("fetch_connector_self_description", () => {
   });
 
   test("returns the no-link-recorded path when self_description is empty", async () => {
-    const result = await withDriverFetchForTests(fakeFetch("never called"), () =>
+    const result = await withSelfHostedDriverFetchForTests(fakeFetch("never called"), () =>
       fetchConnectorSelfDescriptionTool.execute(makeCtx(connector_without_links), { kind: "all" }),
     );
     expect(result.ok).toBe(false);

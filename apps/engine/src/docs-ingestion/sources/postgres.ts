@@ -1,4 +1,6 @@
 import pg from "pg";
+import { postgresPoolConfiguration } from "../../connectors/index.ts";
+import type { Executor } from "../../db/client.ts";
 import { consumeBytes } from "../budgets.ts";
 import { byteLen } from "../chunker.ts";
 import type { BudgetState, RawChunk } from "../types.ts";
@@ -6,6 +8,8 @@ import type { BudgetState, RawChunk } from "../types.ts";
 const { Pool } = pg;
 
 export interface PostgresIngestParams {
+  exec?: Executor;
+  tenant_id?: string;
   dsn: string;
   schemas?: string[];
 }
@@ -90,8 +94,16 @@ export async function ingestPostgresInformationSchema(
   p: PostgresIngestParams,
   state: BudgetState,
 ): Promise<PostgresIngestResult> {
+  const prepared = await postgresPoolConfiguration(
+    p.dsn,
+    {
+      ...(p.tenant_id ? { tenant_id: p.tenant_id } : {}),
+      ...(p.exec ? { exec: p.exec } : {}),
+    },
+    { max: 2 },
+  );
   const schemas = p.schemas && p.schemas.length > 0 ? p.schemas : ["public"];
-  const pool = new Pool({ connectionString: p.dsn, max: 2 });
+  const pool = new Pool(prepared.options);
   try {
     const colsRes = await pool.query<ColumnRow>(
       `SELECT table_schema, table_name, column_name, data_type, is_nullable, column_default, ordinal_position

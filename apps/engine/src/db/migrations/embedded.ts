@@ -133,6 +133,20 @@ import sql0112CallerBudget from "./0112_caller_budget.sql" with { type: "text" }
 import sql0113IntakeSessionTargets from "./0113_intake_session_targets.sql" with { type: "text" };
 import sql0114OperatorTenant from "./0114_operator_tenant.sql" with { type: "text" };
 import sql0115ConcernedRafaelVega from "./0115_concerned_rafael_vega.sql" with { type: "text" };
+import sql0116DizzyBlackQueen from "./0116_dizzy_black_queen.sql" with { type: "text" };
+import sql0117CooingThundra from "./0117_cooing_thundra.sql" with { type: "text" };
+import sql0118LightVictorMancha from "./0118_light_victor_mancha.sql" with { type: "text" };
+import sql0119RichNightshade from "./0119_rich_nightshade.sql" with { type: "text" };
+import sql0120EvenGravity from "./0120_even_gravity.sql" with { type: "text" };
+import sql0121ParchedLoners from "./0121_parched_loners.sql" with { type: "text" };
+import sql0122WetInertia from "./0122_wet_inertia.sql" with { type: "text" };
+import sql0123LateInertia from "./0123_late_inertia.sql" with { type: "text" };
+import sql0124NicePatch from "./0124_nice_patch.sql" with { type: "text" };
+import sql0125SpicyCarlieCooper from "./0125_spicy_carlie_cooper.sql" with { type: "text" };
+import sql0126HostedResourceQuota from "./0126_hosted_resource_quota.sql" with { type: "text" };
+import sql0127RbacTenantBoundary from "./0127_rbac_tenant_boundary.sql" with { type: "text" };
+import sql0128RuntimeSecretOwnership from "./0128_runtime_secret_ownership.sql" with { type: "text" };
+import sql0129VaultMaintenance from "./0129_vault_maintenance.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -273,6 +287,20 @@ const SQL_BY_TAG: Record<string, string> = {
   "0113_intake_session_targets": sql0113IntakeSessionTargets,
   "0114_operator_tenant": sql0114OperatorTenant,
   "0115_concerned_rafael_vega": sql0115ConcernedRafaelVega,
+  "0116_dizzy_black_queen": sql0116DizzyBlackQueen,
+  "0117_cooing_thundra": sql0117CooingThundra,
+  "0118_light_victor_mancha": sql0118LightVictorMancha,
+  "0119_rich_nightshade": sql0119RichNightshade,
+  "0120_even_gravity": sql0120EvenGravity,
+  "0121_parched_loners": sql0121ParchedLoners,
+  "0122_wet_inertia": sql0122WetInertia,
+  "0123_late_inertia": sql0123LateInertia,
+  "0124_nice_patch": sql0124NicePatch,
+  "0125_spicy_carlie_cooper": sql0125SpicyCarlieCooper,
+  "0126_hosted_resource_quota": sql0126HostedResourceQuota,
+  "0127_rbac_tenant_boundary": sql0127RbacTenantBoundary,
+  "0128_runtime_secret_ownership": sql0128RuntimeSecretOwnership,
+  "0129_vault_maintenance": sql0129VaultMaintenance,
 };
 
 const journal = journalMeta as unknown as Journal;

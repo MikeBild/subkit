@@ -500,7 +500,8 @@ export class EngineClient {
   rbac = {
     listRoles: () => rbacRoles.listRoles(this.db, this.tenant_id),
     getRole: (id: string) => rbacRoles.getRole(this.db, this.tenant_id, id),
-    listRolePermissions: (role_id: string) => rbacRoles.listRolePermissions(this.db, role_id),
+    listRolePermissions: (role_id: string) =>
+      rbacRoles.listRolePermissions(this.db, this.tenant_id, role_id),
   };
 
   hooks = {

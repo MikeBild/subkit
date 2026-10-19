@@ -325,12 +325,15 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       const current = new URL(stateRow.redirect_uri);
       current.searchParams.set("code", q.code);
       current.searchParams.set("state", q.state);
-      const bundle = await completeAuthorizationCode({
-        cfg: cfgWithRedirect,
-        current_url: current,
-        code_verifier: stateRow.code_verifier,
-        state: stateRow.state,
-      });
+      const bundle = await completeAuthorizationCode(
+        {
+          cfg: cfgWithRedirect,
+          current_url: current,
+          code_verifier: stateRow.code_verifier,
+          state: stateRow.state,
+        },
+        { tenant_id: stateRow.tenant_id, exec: db },
+      );
       const scopeDiff = connectorSvc.diffOauthScopes(stateRow.requested_scopes, bundle.scope);
       const requestedScopes = scopeDiff?.expected ?? [];
       const grantedScopes = scopeDiff?.granted ?? [];

@@ -51,7 +51,10 @@ export async function persistCredential(p: {
       use_access_token: cred.use_access_token === true,
     };
     if (cred.client_secret) grantParams.client_secret = cred.client_secret;
-    const bundle = await runCognitoUserPasswordGrant(grantParams);
+    const bundle = await runCognitoUserPasswordGrant(grantParams, {
+      tenant_id: p.tenant_id,
+      exec: p.db,
+    });
     await upsertCredential(
       {
         tenant_id: p.tenant_id,

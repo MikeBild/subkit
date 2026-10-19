@@ -10,8 +10,11 @@ import {
   outboundConnectionStarts,
   outboundConnections,
   systemAccounts,
+  tenants,
   users,
 } from "../../db/schema/index.ts";
+import { withTenantWork } from "../../execution/index.ts";
+import { lockActiveTenant, SelfServiceIdentityError } from "../../identity/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { invalidateTenantState } from "../../operator/index.ts";
 import {
@@ -47,6 +50,7 @@ import {
 const START_TTL_MS = 10 * 60_000;
 export const REFRESH_BUFFER_MS = 5 * 60_000;
 const LAST_USED_WRITE_INTERVAL_MS = 60_000;
+export const CONNECTION_REFRESH_PASS_LIMIT = 64;
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 type ConnectionRow = typeof outboundConnections.$inferSelect;
@@ -135,15 +139,21 @@ export async function startConnection(
     if (taken) throw new ConnectionError("name_taken", `a connection named ${name} already exists`);
   }
 
-  const discovery = await discoverService(existing ? existing.base_url : input.base_url);
+  const discovery = await discoverService(existing ? existing.base_url : input.base_url, {
+    tenant_id: input.tenant_id,
+    exec: db,
+  });
   const metadata = requireConnectable(discovery);
   const requested = requestedScopes(scopes, metadata);
-  const client_id = await registerClient({
-    metadata,
-    redirectUri: input.redirect_uri,
-    clientUri: input.client_uri,
-    scopes: requested,
-  });
+  const client_id = await registerClient(
+    {
+      metadata,
+      redirectUri: input.redirect_uri,
+      clientUri: input.client_uri,
+      scopes: requested,
+    },
+    { tenant_id: input.tenant_id, exec: db },
+  );
 
   const code_verifier = base64url(randomBytes(48));
   const code_challenge = createHash("sha256").update(code_verifier).digest("base64url");
@@ -309,7 +319,7 @@ export async function completeConnection(
   };
 
   if (input.error || !input.code) {
-    return fail("denied", input.error ?? "the other side sent no code");
+    return fail("denied", input.error ? "authorization_denied" : "authorization_code_missing");
   }
 
   let token: TokenResponse;
@@ -324,6 +334,7 @@ export async function completeConnection(
         code_verifier: start.code_verifier,
       },
       "token_exchange_failed",
+      { tenant_id: start.tenant_id, exec: db },
     );
   } catch (error) {
     return fail("token_exchange_failed", messageOf(error));
@@ -463,7 +474,11 @@ export async function connectorsUsingConnection(
   return (users.get(connectionId) ?? []).map((user) => user.connector_id);
 }
 
-async function findConnection(db: Db, tenantId: string, id: string): Promise<ConnectionRow | null> {
+async function findConnection(
+  db: Executor,
+  tenantId: string,
+  id: string,
+): Promise<ConnectionRow | null> {
   const [row] = await db
     .select()
     .from(outboundConnections)
@@ -478,7 +493,7 @@ async function requireConnection(db: Db, tenantId: string, id: string): Promise<
   return row;
 }
 
-async function currentAccessToken(db: Db, row: ConnectionRow): Promise<string | null> {
+async function currentAccessToken(db: Executor, row: ConnectionRow): Promise<string | null> {
   try {
     return await readSecretVersion(
       db,
@@ -643,122 +658,158 @@ export async function summarizeConnections(
 }
 
 async function refreshRow(db: Db, row: ConnectionRow, actor: Actor | null): Promise<ConnectionRow> {
-  const names = secretNames(row.tenant_id, row.name);
-  if (row.refresh_token_version === null) {
-    throw new ConnectionError("refresh_failed", "no refresh token; renew the connection");
-  }
-  try {
-    const refreshToken = await readSecretVersion(db, names.refresh, row.refresh_token_version);
-    const token = await postTokenEndpoint(
-      row.token_endpoint,
-      { grant_type: "refresh_token", refresh_token: refreshToken, client_id: row.client_id },
-      "refresh_failed",
-    );
-    const now = new Date();
-    const nextScopes = grantedScopes(token) ?? row.granted_scopes;
-    const authorityChanged = !sameAuthorityScopes(
-      row.granted_scopes?.join(" ") ?? null,
-      nextScopes?.join(" ") ?? null,
-    );
-    const refreshed = await db.transaction(async (tx) => {
+  return withTenantWork(row.tenant_id, async () => {
+    const names = secretNames(row.tenant_id, row.name);
+    if (row.refresh_token_version === null) {
+      throw new ConnectionError("refresh_failed", "no refresh token; renew the connection");
+    }
+    const refreshVersion = row.refresh_token_version;
+    const refreshToken = await db.transaction(async (tx) => {
+      await lockActiveTenant(row.tenant_id, tx);
       const [current] = await tx
         .select({ id: outboundConnections.id })
         .from(outboundConnections)
         .where(
           and(
-            eq(outboundConnections.id, row.id),
             eq(outboundConnections.tenant_id, row.tenant_id),
+            eq(outboundConnections.id, row.id),
             eq(outboundConnections.authority_revision, row.authority_revision),
             eq(outboundConnections.access_token_version, row.access_token_version),
+            eq(outboundConnections.refresh_token_version, refreshVersion),
           ),
         )
-        .for("update");
+        .limit(1);
       if (!current)
         throw new ConnectionError("refresh_failed", "connection changed during refresh");
-      const versions = await storeTokens(tx, {
-        tenant_id: row.tenant_id,
-        name: row.name,
-        token,
-        created_by: row.created_by,
-        previous: { access: row.access_token_version, refresh: row.refresh_token_version },
-        grant: "refresh_token",
-      });
-      const [updated] = await tx
-        .update(outboundConnections)
-        .set({
-          access_token_version: versions.access,
-          verified_identity: identityFromTokenResponse(row.issuer, token),
-          refresh_token_version: versions.refresh,
-          expires_at: expiryOf(token),
-          granted_scopes: nextScopes,
-          authority_revision: row.authority_revision + (authorityChanged ? 1 : 0),
-          last_refreshed_at: now,
-          refresh_failed_at: null,
-          last_error: null,
-          updated_at: now,
-        })
-        .where(
-          and(
-            eq(outboundConnections.id, row.id),
-            eq(outboundConnections.tenant_id, row.tenant_id),
-            eq(outboundConnections.authority_revision, row.authority_revision),
-            eq(outboundConnections.access_token_version, row.access_token_version),
-          ),
-        )
-        .returning();
-      if (!updated)
-        throw new ConnectionError("refresh_failed", "connection changed during refresh");
-      await auditAwait(
-        {
-          tenant_id: row.tenant_id,
-          ...(actor
-            ? auditActor(actor)
-            : resolveActor({ tenant_id: row.tenant_id, actor_id: null })),
-          action: AuditAction.CONNECTION_REFRESHED,
-          resource_type: "connection",
-          resource_id: row.id,
-          result: "success",
-          metadata: {
-            name: row.name,
-            expires_at: expiryOf(token)?.toISOString() ?? null,
-            authority_changed: authorityChanged,
-          },
-        },
-        tx,
-      );
-      return updated;
+      return readSecretVersion(tx, names.refresh, refreshVersion);
     });
-    invalidateTenantState(row.tenant_id);
-    return refreshed;
-  } catch (error) {
-    const message = messageOf(error);
-    await db
-      .update(outboundConnections)
-      .set({ refresh_failed_at: new Date(), last_error: message, updated_at: new Date() })
-      .where(
-        and(
-          eq(outboundConnections.id, row.id),
-          eq(outboundConnections.tenant_id, row.tenant_id),
-          eq(outboundConnections.authority_revision, row.authority_revision),
-          eq(outboundConnections.access_token_version, row.access_token_version),
-        ),
+    try {
+      const token = await postTokenEndpoint(
+        row.token_endpoint,
+        { grant_type: "refresh_token", refresh_token: refreshToken, client_id: row.client_id },
+        "refresh_failed",
+        { tenant_id: row.tenant_id, exec: db },
       );
-    invalidateTenantState(row.tenant_id);
-    await auditAwait(
-      {
-        tenant_id: row.tenant_id,
-        ...(actor ? auditActor(actor) : resolveActor({ tenant_id: row.tenant_id, actor_id: null })),
-        action: AuditAction.CONNECTION_REFRESH_FAILED,
-        resource_type: "connection",
-        resource_id: row.id,
-        result: "error",
-        reason: "refresh_failed",
-        metadata: { name: row.name, message },
-      },
-      db,
-    );
-    throw error instanceof ConnectionError ? error : new ConnectionError("refresh_failed", message);
-  }
+      const now = new Date();
+      const nextScopes = grantedScopes(token) ?? row.granted_scopes;
+      const authorityChanged = !sameAuthorityScopes(
+        row.granted_scopes?.join(" ") ?? null,
+        nextScopes?.join(" ") ?? null,
+      );
+      const refreshed = await db.transaction(async (tx) => {
+        await lockActiveTenant(row.tenant_id, tx);
+        const [current] = await tx
+          .select({ id: outboundConnections.id })
+          .from(outboundConnections)
+          .where(
+            and(
+              eq(outboundConnections.id, row.id),
+              eq(outboundConnections.tenant_id, row.tenant_id),
+              eq(outboundConnections.authority_revision, row.authority_revision),
+              eq(outboundConnections.access_token_version, row.access_token_version),
+            ),
+          )
+          .for("update");
+        if (!current)
+          throw new ConnectionError("refresh_failed", "connection changed during refresh");
+        const versions = await storeTokens(tx, {
+          tenant_id: row.tenant_id,
+          name: row.name,
+          token,
+          created_by: row.created_by,
+          previous: { access: row.access_token_version, refresh: row.refresh_token_version },
+          grant: "refresh_token",
+        });
+        const [updated] = await tx
+          .update(outboundConnections)
+          .set({
+            access_token_version: versions.access,
+            verified_identity: identityFromTokenResponse(row.issuer, token),
+            refresh_token_version: versions.refresh,
+            expires_at: expiryOf(token),
+            granted_scopes: nextScopes,
+            authority_revision: row.authority_revision + (authorityChanged ? 1 : 0),
+            last_refreshed_at: now,
+            refresh_failed_at: null,
+            last_error: null,
+            updated_at: now,
+          })
+          .where(
+            and(
+              eq(outboundConnections.id, row.id),
+              eq(outboundConnections.tenant_id, row.tenant_id),
+              eq(outboundConnections.authority_revision, row.authority_revision),
+              eq(outboundConnections.access_token_version, row.access_token_version),
+            ),
+          )
+          .returning();
+        if (!updated)
+          throw new ConnectionError("refresh_failed", "connection changed during refresh");
+        await auditAwait(
+          {
+            tenant_id: row.tenant_id,
+            ...(actor
+              ? auditActor(actor)
+              : resolveActor({ tenant_id: row.tenant_id, actor_id: null })),
+            action: AuditAction.CONNECTION_REFRESHED,
+            resource_type: "connection",
+            resource_id: row.id,
+            result: "success",
+            metadata: {
+              name: row.name,
+              expires_at: expiryOf(token)?.toISOString() ?? null,
+              authority_changed: authorityChanged,
+            },
+          },
+          tx,
+        );
+        return updated;
+      });
+      invalidateTenantState(row.tenant_id);
+      return refreshed;
+    } catch (error) {
+      const message = messageOf(error);
+      try {
+        await db.transaction(async (tx) => {
+          await lockActiveTenant(row.tenant_id, tx);
+          const updated = await tx
+            .update(outboundConnections)
+            .set({ refresh_failed_at: new Date(), last_error: message, updated_at: new Date() })
+            .where(
+              and(
+                eq(outboundConnections.id, row.id),
+                eq(outboundConnections.tenant_id, row.tenant_id),
+                eq(outboundConnections.authority_revision, row.authority_revision),
+                eq(outboundConnections.access_token_version, row.access_token_version),
+              ),
+            )
+            .returning({ id: outboundConnections.id });
+          if (!updated[0]) return;
+          await auditAwait(
+            {
+              tenant_id: row.tenant_id,
+              ...(actor
+                ? auditActor(actor)
+                : resolveActor({ tenant_id: row.tenant_id, actor_id: null })),
+              action: AuditAction.CONNECTION_REFRESH_FAILED,
+              resource_type: "connection",
+              resource_id: row.id,
+              result: "error",
+              reason: "refresh_failed",
+              metadata: { name: row.name, message },
+            },
+            tx,
+          );
+        });
+      } catch (failure) {
+        if (!(failure instanceof SelfServiceIdentityError)) throw failure;
+      }
+      invalidateTenantState(row.tenant_id);
+      throw error instanceof ConnectionError
+        ? error
+        : new ConnectionError("refresh_failed", message);
+    }
+  });
 }
 
 function needsRefresh(row: ConnectionRow, nowMs: number): boolean {
@@ -779,34 +830,52 @@ export async function readAccessToken(
   access_token_version: number;
   verified_identity: VerifiedProviderIdentity | null;
 } | null> {
-  let row = await findConnection(db, tenantId, connectionId);
-  if (!row) return null;
-  const nowMs = Date.now();
-  if (needsRefresh(row, nowMs)) {
-    try {
-      row = await refreshRow(db, row, null);
-    } catch {
+  return withTenantWork(tenantId, async () => {
+    let row = await db.transaction(async (tx) => {
+      await lockActiveTenant(tenantId, tx);
+      return findConnection(tx, tenantId, connectionId);
+    });
+    if (!row) return null;
+    const nowMs = Date.now();
+    if (needsRefresh(row, nowMs)) {
+      try {
+        row = await refreshRow(db, row, null);
+      } catch {
+        return null;
+      }
+    } else if (row.expires_at && row.expires_at.getTime() <= nowMs) {
       return null;
     }
-  } else if (row.expires_at && row.expires_at.getTime() <= nowMs) {
-    return null;
-  }
-  const access_token = await currentAccessToken(db, row);
-  if (!access_token) return null;
-  if (!row.last_used_at || nowMs - row.last_used_at.getTime() > LAST_USED_WRITE_INTERVAL_MS) {
-    await db
-      .update(outboundConnections)
-      .set({ last_used_at: new Date(nowMs) })
-      .where(and(eq(outboundConnections.id, row.id), eq(outboundConnections.tenant_id, tenantId)));
-  }
-  return {
-    access_token,
-    issuer: row.issuer,
-    expires_at: row.expires_at,
-    connection_authority: { id: row.id, revision: row.authority_revision },
-    access_token_version: row.access_token_version,
-    verified_identity: row.verified_identity,
-  };
+    const current = row;
+    return db.transaction(async (tx) => {
+      await lockActiveTenant(tenantId, tx);
+      const row = await findConnection(tx, tenantId, connectionId);
+      if (
+        !row ||
+        row.authority_revision !== current.authority_revision ||
+        row.access_token_version !== current.access_token_version
+      )
+        return null;
+      const access_token = await currentAccessToken(tx, row);
+      if (!access_token) return null;
+      if (!row.last_used_at || nowMs - row.last_used_at.getTime() > LAST_USED_WRITE_INTERVAL_MS) {
+        await tx
+          .update(outboundConnections)
+          .set({ last_used_at: new Date(nowMs) })
+          .where(
+            and(eq(outboundConnections.id, row.id), eq(outboundConnections.tenant_id, tenantId)),
+          );
+      }
+      return {
+        access_token,
+        issuer: row.issuer,
+        expires_at: row.expires_at,
+        connection_authority: { id: row.id, revision: row.authority_revision },
+        access_token_version: row.access_token_version,
+        verified_identity: row.verified_identity,
+      };
+    });
+  });
 }
 
 export async function refreshDueConnections(
@@ -815,21 +884,31 @@ export async function refreshDueConnections(
 ): Promise<{ refreshed: number; failed: number }> {
   // tenant-filter:exempt — the sweep spans every tenant on purpose; each row carries its own.
   const due = await db
-    .select()
+    .select({ id: outboundConnections.id, tenant_id: outboundConnections.tenant_id })
     .from(outboundConnections)
     .where(
       and(
         lte(outboundConnections.expires_at, new Date(now.getTime() + REFRESH_BUFFER_MS)),
         isNull(outboundConnections.refresh_failed_at),
         sql`${outboundConnections.refresh_token_version} is not null`,
+        sql`EXISTS (SELECT 1 FROM ${tenants} WHERE ${tenants.id} = ${outboundConnections.tenant_id} AND ${tenants.status} = 'active' AND ${tenants.deleted_at} IS NULL)`,
       ),
-    );
+    )
+    .orderBy(asc(outboundConnections.id))
+    .limit(CONNECTION_REFRESH_PASS_LIMIT);
   let refreshed = 0;
   let failed = 0;
   for (const row of due) {
     try {
-      await refreshRow(db, row, null);
-      refreshed += 1;
+      await withTenantWork(row.tenant_id, async () => {
+        const current = await db.transaction(async (tx) => {
+          await lockActiveTenant(row.tenant_id, tx);
+          return findConnection(tx, row.tenant_id, row.id);
+        });
+        if (!current || !needsRefresh(current, now.getTime())) return;
+        await refreshRow(db, current, null);
+        refreshed += 1;
+      });
     } catch {
       failed += 1;
     }

@@ -7,6 +7,7 @@ export {
   assertExecutionAuthorityCurrent,
 } from "./authority-admission.ts";
 export { authorizationContextFromPrincipal } from "./authorization-context.ts";
+export { settleExecutionGuards } from "./caller-budget.ts";
 export { assertCallerExecutionSource, CallerContextSchema } from "./caller-context.ts";
 export * from "./caller-summary.ts";
 export { PREVIEW_CLASSIFICATIONS, type PreviewClassification } from "./classify.ts";
@@ -33,6 +34,12 @@ export {
   recoverExecutionPayload,
 } from "./sensitive-payload.ts";
 export * from "./state.ts";
+export {
+  beginTenantWork,
+  tenantWorkInFlight,
+  tenantWorkSnapshot,
+  withTenantWork,
+} from "./tenant-work.ts";
 export * from "./types.ts";
 export {
   captureWorkflowPermission,

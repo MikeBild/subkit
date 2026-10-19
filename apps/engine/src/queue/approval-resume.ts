@@ -122,6 +122,7 @@ export async function enqueueApprovalElicitationResume(
     await setMcpTaskJobId(p.tenant_id, task_id, attempt_id, db);
     const job_id = await enqueueConversationRunTurn(
       boss,
+      db,
       {
         tenant_id: p.tenant_id,
         conversation_id: p.conversation_id,

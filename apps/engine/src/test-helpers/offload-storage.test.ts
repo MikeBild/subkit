@@ -9,7 +9,8 @@ import {
   loadConfig,
   setConfigKey,
 } from "../config/loader.ts";
-import type { Db } from "../db/client.ts";
+import { tenants } from "../db/schema/index.ts";
+import { createTestDb } from "../db/tests/setup.ts";
 import { _s3OffloadConfigForTests, maybeOffload } from "../execution/offload.ts";
 import { STEP_RESULT_DB_BYTES } from "../execution/timeouts.ts";
 import { getObjectStore } from "../storage/object-store.ts";
@@ -82,15 +83,24 @@ describe("useMemoryOffloadStorage", () => {
   test("maybeOffload writes a large payload into the memory store while a bucket-less config is loaded", async () => {
     await loadThrowawayConfig();
     const storage = await useMemoryOffloadStorage();
-    const result = await maybeOffload(null as unknown as Db, {
-      tenant_id: "tenant-a",
-      execution_id: "exec-1",
-      result: { blob: "x".repeat(STEP_RESULT_DB_BYTES + 1) },
-    });
-    expect(
-      result.storage_uri?.startsWith(`s3://${OFFLOAD_TEST_BUCKET}/offload/tenant-a/exec-1/`),
-    ).toBe(true);
-    expect(await storage.store.list("offload/tenant-a/exec-1/")).toHaveLength(1);
-    await storage.restore();
+    const database = await createTestDb("memory-offload");
+    try {
+      const [tenant] = await database.db
+        .insert(tenants)
+        .values({ slug: "memory-offload", display_name: "Memory offload" })
+        .returning();
+      const result = await maybeOffload(database.db, {
+        tenant_id: tenant!.id,
+        execution_id: "exec-1",
+        result: { blob: "x".repeat(STEP_RESULT_DB_BYTES + 1) },
+      });
+      expect(
+        result.storage_uri?.startsWith(`s3://${OFFLOAD_TEST_BUCKET}/offload/${tenant!.id}/exec-1/`),
+      ).toBe(true);
+      expect(await storage.store.list(`offload/${tenant!.id}/exec-1/`)).toHaveLength(1);
+    } finally {
+      await database.cleanup();
+      await storage.restore();
+    }
   });
 });

@@ -4,6 +4,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
+import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
 import { auditAdmissionRefusal } from "../../execution/admission-audit.ts";
 import { rehydrateExecutionPrincipal } from "../../execution/authorization-context.ts";
@@ -25,7 +26,17 @@ import {
   endpointKeyFromRequestMeta,
   parsePersistedRequestMeta,
 } from "../../self-healing/step-snapshot.ts";
-import { withJobContext } from "../job-context.ts";
+import {
+  finalizeHostedContentQuota,
+  hostedContentQuotaCode,
+} from "../hosted-content-finalization.ts";
+import {
+  HostedWorkQuotaError,
+  hostedQueueGroupConcurrency,
+  ifHostedJobStillPending,
+  withHostedWork,
+} from "../hosted-work.ts";
+import { withActiveTenantJobContext } from "../job-context.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queues.ts";
 import { enqueueGateDiagnosis, enqueueRepair } from "./workflow-repair.ts";
 
@@ -239,6 +250,17 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
         }
       }
     } catch (error) {
+      const quotaCode = hostedContentQuotaCode(error);
+      if (quotaCode && data.execution_id) {
+        const finalized = await finalizeHostedContentQuota(db, {
+          tenantId: data.tenant_id,
+          resourceType: "execution",
+          resourceId: data.execution_id,
+          code: quotaCode,
+        });
+        if (finalized !== "unmatched") return;
+        throw hostedQuotaError(error) ?? error;
+      }
       await auditAwait(
         {
           tenant_id: data.tenant_id,
@@ -279,7 +301,18 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
       await maybeEnqueueRepair(boss, db, failed);
       await maybeEnqueueGateDiagnosis(boss, db, failed);
     }
-  } catch (err) {
+  } catch (caught) {
+    const err = hostedQuotaError(caught) ?? caught;
+    const quotaCode = hostedContentQuotaCode(err);
+    if (quotaCode && data.execution_id) {
+      const finalized = await finalizeHostedContentQuota(db, {
+        tenantId: data.tenant_id,
+        resourceType: "execution",
+        resourceId: data.execution_id,
+        code: quotaCode,
+      });
+      if (finalized !== "unmatched") return;
+    }
     const message = err instanceof Error ? err.message : String(err);
     log.queue.job.failed({
       msg: "execution.run job failed",
@@ -318,10 +351,53 @@ export async function registerExecutionRunHandler(
   }
   const workerId = await boss.work<ExecutionRunJob>(
     EXECUTION_RUN_QUEUE,
-    { batchSize: concurrency, pollingIntervalSeconds: 1 },
+    {
+      batchSize: 1,
+      localConcurrency: concurrency,
+      groupConcurrency: hostedQueueGroupConcurrency("execution"),
+      pollingIntervalSeconds: 1,
+    },
     async (jobs: Job<ExecutionRunJob>[]) => {
       for (const job of jobs) {
-        await withJobContext(job.data, () => handleOne(job, db, boss));
+        try {
+          await withActiveTenantJobContext(job.data, db, () =>
+            withHostedWork(db, job.data.tenant_id, "execution", () => handleOne(job, db, boss), {
+              queue: EXECUTION_RUN_QUEUE,
+              id: job.id,
+            }),
+          );
+        } catch (error) {
+          const quotaCode = hostedContentQuotaCode(error);
+          if (quotaCode && job.data.execution_id) {
+            const finalized = await finalizeHostedContentQuota(db, {
+              tenantId: job.data.tenant_id,
+              resourceType: "execution",
+              resourceId: job.data.execution_id,
+              code: quotaCode,
+            });
+            if (finalized !== "unmatched") continue;
+          }
+          if (error instanceof HostedWorkQuotaError && job.data.execution_id) {
+            await ifHostedJobStillPending(
+              db,
+              job.data.tenant_id,
+              EXECUTION_RUN_QUEUE,
+              job.id,
+              async () => {
+                await finalizeExecution(
+                  db,
+                  job.data.tenant_id,
+                  job.data.execution_id ?? "",
+                  "failed",
+                  null,
+                  { step_id: null, error_code: error.code, error_message: error.message },
+                  ["queued"],
+                );
+              },
+            );
+          }
+          throw error;
+        }
       }
     },
   );

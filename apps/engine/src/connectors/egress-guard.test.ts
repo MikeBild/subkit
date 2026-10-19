@@ -1,10 +1,57 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  _withEgressTenantOriginForTests,
   assertEgressAllowed,
   assertEgressAllowedResolved,
   EgressBlockedError,
   isPrivateOrLoopback,
 } from "./egress-guard.ts";
+
+test("persisted self-service origin overrides permissive mode without hosted feature flags", async () => {
+  await _withEgressTenantOriginForTests(
+    async () => "self_service",
+    async () => {
+      await expect(
+        assertEgressAllowedResolved("https://10.0.0.1/", {
+          tenant_id: "self-service-fixture",
+          mode: "permissive",
+        }),
+      ).rejects.toThrow("private_ip_blocked");
+    },
+  );
+});
+
+test("persisted self-hosted origin retains explicit private connection policy", async () => {
+  await _withEgressTenantOriginForTests(
+    async () => "self_hosted",
+    async () => {
+      await expect(
+        assertEgressAllowedResolved("https://10.0.0.1/", {
+          tenant_id: "self-hosted-fixture",
+          mode: "permissive",
+        }),
+      ).resolves.toBeUndefined();
+    },
+  );
+});
+
+test("tenant origin lookup failures and missing tenants fail closed", async () => {
+  for (const reader of [
+    async () => null,
+    async () => {
+      throw new Error("unavailable");
+    },
+  ]) {
+    await _withEgressTenantOriginForTests(reader, async () => {
+      await expect(
+        assertEgressAllowedResolved("https://93.184.216.34/", {
+          tenant_id: "missing-fixture",
+          mode: "permissive",
+        }),
+      ).rejects.toThrow("tenant_context_unavailable");
+    });
+  }
+});
 
 // biome-ignore lint/suspicious/noExplicitAny: test stub for node's dns lookup
 type LookupStub = any;
@@ -24,6 +71,68 @@ afterEach(() => {
 });
 
 describe("isPrivateOrLoopback", () => {
+  test("blocks the complete local-use translation prefix after IPv6 normalization", async () => {
+    for (const host of [
+      "64:ff9b:1::a9fe:a9fe",
+      "0064:ff9b:0001:ffff:ffff:ffff:ffff:ffff",
+      "64:ff9b:1::",
+    ]) {
+      expect(isPrivateOrLoopback(host)).toBe(true);
+      expect(() => assertEgressAllowed(`https://[${host}]/`, { mode: "strict" })).toThrow(
+        EgressBlockedError,
+      );
+      await expect(
+        assertEgressAllowedResolved(
+          "https://translated.example.test/",
+          { mode: "strict" },
+          { lookupImpl: fakeLookup(host) },
+        ),
+      ).rejects.toThrow(EgressBlockedError);
+    }
+    expect(isPrivateOrLoopback("64:ff9b:2::1")).toBe(false);
+  });
+  test("blocks local DNS names with a terminal root dot", () => {
+    for (const host of ["localhost.", "metadata.local.", "database.internal."]) {
+      expect(isPrivateOrLoopback(host)).toBe(true);
+      expect(() => assertEgressAllowed(`https://${host}/`, { mode: "strict" })).toThrow(
+        EgressBlockedError,
+      );
+    }
+  });
+
+  test("normalizes expanded IPv6 before classifying loopback and mapped private addresses", () => {
+    for (const host of ["0:0:0:0:0:0:0:1", "0:0:0:0:0:ffff:7f00:1", "0:0:0:0:0:0:0:0"]) {
+      expect(isPrivateOrLoopback(host)).toBe(true);
+    }
+  });
+
+  test("blocks shared, benchmarking, multicast and reserved address space", () => {
+    for (const host of [
+      "0.1.2.3",
+      "100.64.0.1",
+      "100.127.255.254",
+      "198.18.0.1",
+      "198.19.255.254",
+      "224.0.0.1",
+      "239.255.255.255",
+      "240.0.0.1",
+      "255.255.255.255",
+      "fec0::1",
+      "ff02::1",
+    ]) {
+      expect(isPrivateOrLoopback(host)).toBe(true);
+    }
+    for (const host of ["100.63.255.254", "100.128.0.1", "198.17.255.254", "198.20.0.1"]) {
+      expect(isPrivateOrLoopback(host)).toBe(false);
+    }
+  });
+
+  test("keeps private self-hosted destinations available in explicit permissive mode", () => {
+    for (const host of ["100.64.0.1", "198.18.0.1", "database.internal."]) {
+      expect(() => assertEgressAllowed(`https://${host}/`, { mode: "permissive" })).not.toThrow();
+    }
+  });
+
   test("blocks the full 127.0.0.0/8 loopback range, not just .1", () => {
     expect(isPrivateOrLoopback("127.0.0.1")).toBe(true);
     expect(isPrivateOrLoopback("127.255.255.254")).toBe(true);
@@ -251,12 +360,35 @@ describe("assertEgressAllowedResolved — DNS resolution", () => {
     ).rejects.toThrow(EgressBlockedError);
   });
 
-  test("a DNS-resolution failure does not block (the fetch surfaces it)", async () => {
+  test("strict mode blocks DNS resolution failure before dispatch", async () => {
     const failing: LookupStub = async () => {
       throw new Error("ENOTFOUND");
     };
     await expect(
       assertEgressAllowedResolved("https://nxdomain.example/x", strict, { lookupImpl: failing }),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("dns_resolution_failed");
+  });
+
+  test("strict mode blocks an empty DNS answer", async () => {
+    await expect(
+      assertEgressAllowedResolved("https://empty.example/x", strict, {
+        lookupImpl: async () => [],
+      }),
+    ).rejects.toThrow("dns_resolution_failed");
+  });
+
+  test("permissive mode does not resolve private self-hosted names", async () => {
+    let resolved = false;
+    await assertEgressAllowedResolved(
+      "https://database.internal/",
+      { mode: "permissive" },
+      {
+        lookupImpl: async () => {
+          resolved = true;
+          throw new Error("unavailable resolver");
+        },
+      },
+    );
+    expect(resolved).toBe(false);
   });
 });

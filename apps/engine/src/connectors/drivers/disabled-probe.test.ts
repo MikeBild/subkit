@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { UNDESCRIBED_METADATA } from "../../api/catalog-metadata.ts";
 import type { Db } from "../../db/client.ts";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import type { ConnectorView, DriverName } from "../types.ts";
 import { probeConnector } from "./index.ts";
 
@@ -60,7 +60,7 @@ let fetchCalls = 0;
 
 async function countingEgress<T>(body: () => Promise<T>): Promise<T> {
   fetchCalls = 0;
-  return withDriverFetchForTests(
+  return withSelfHostedDriverFetchForTests(
     ((...args: Parameters<typeof fetch>) => {
       fetchCalls++;
       return Promise.reject(

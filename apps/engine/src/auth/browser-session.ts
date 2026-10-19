@@ -6,6 +6,7 @@ import { AuditAction } from "../audit/types.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { sessions } from "../db/schema/index.ts";
+import { assertTenantActive, SelfServiceIdentityError } from "../identity/index.ts";
 import type { ResolvedPrincipal } from "./types.ts";
 
 export const BROWSER_SESSION_COOKIE = "subkit_session";
@@ -158,8 +159,23 @@ export async function issueBrowserSession(opts: {
   userId: string;
   redirectTo: string;
   via: string;
+  authIdentityId?: string;
   metadata?: Record<string, unknown>;
 }): Promise<Response> {
+  try {
+    await assertTenantActive(opts.tenantId, opts.db);
+  } catch (error) {
+    if (error instanceof SelfServiceIdentityError) {
+      return new Response(
+        JSON.stringify({ code: "tenant_unavailable", message: "workspace is unavailable" }),
+        {
+          status: 403,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }
+    throw error;
+  }
   const now = new Date();
   const tokenHash = createHash("sha256").update(randomBytes(32)).digest("hex");
   const [session] = await opts.db
@@ -167,6 +183,7 @@ export async function issueBrowserSession(opts: {
     .values({
       tenant_id: opts.tenantId,
       user_id: opts.userId,
+      auth_identity_id: opts.authIdentityId ?? null,
       expires_at: new Date(now.getTime() + SESSION_SLIDING_TTL_MS),
       absolute_expires_at: new Date(now.getTime() + SESSION_ABSOLUTE_TTL_MS),
       last_seen_at: now,

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import type { MaterializedRequest } from "../../execution/prepared-request.ts";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { assertStorageRequest, storageBoundary } from "../../workflows/storage-boundary.ts";
 import { RequestStepSchema } from "../../workflows/types.ts";
 import { executeBoundS3Request } from "./s3-bound-dispatch.ts";
@@ -36,7 +36,7 @@ function client(): S3Client {
 async function removeKey(key: string): Promise<{ error: unknown; fetches: number }> {
   let fetches = 0;
   let error: unknown = null;
-  await withDriverFetchForTests(
+  await withSelfHostedDriverFetchForTests(
     (() => {
       fetches += 1;
       return Promise.resolve(new Response(null, { status: 204 }));

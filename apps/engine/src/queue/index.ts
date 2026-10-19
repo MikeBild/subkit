@@ -6,6 +6,13 @@ export {
   type AgentSessionAnalyzeJob,
 } from "./handlers/agent-session-analyze.ts";
 export { registerAllHandlers } from "./handlers/index.ts";
+export { enqueueHostedWork, HostedWorkQuotaError, listUnsettledHostedWork } from "./hosted-work.ts";
+export {
+  HostedWorkReviewError,
+  HostedWorkStopReviewSchema,
+  listHostedWorkForReview,
+  reconcileHostedWorkAfterReviewedOwnerStop,
+} from "./hosted-work-reconciliation.ts";
 export * from "./queues.ts";
 export {
   EXECUTION_RUN_DLQ,
@@ -16,3 +23,8 @@ export {
   type QueueConfig,
   type QueueName,
 } from "./queues.ts";
+export {
+  eraseTenantQueueJobs,
+  type TenantErasureQueue,
+  TenantQueueDrainRequired,
+} from "./tenant-erasure.ts";

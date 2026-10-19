@@ -34,6 +34,7 @@ apps/engine/src/connectors/template-audit-report.json
 
 /claude-key.txt
 /openai-key.txt
+/upraft-key.txt
 /creds.txt
 .devtools
 docs/

@@ -137,6 +137,28 @@ describe("portal-token provider — happy path + allow-list normalization", () =
     expect(principal?.email).toBe("owner@pt.local");
   });
 
+  test("a foreign user id remains opaque without exposing its email", async () => {
+    const [foreignTenant] = await db
+      .insert(tenants)
+      .values({ slug: "portal-foreign-owner", display_name: "Foreign portal owner" })
+      .returning();
+    if (!foreignTenant) throw new Error("seed foreign tenant failed");
+    const [foreignUser] = await db
+      .insert(users)
+      .values({
+        tenant_id: foreignTenant.id,
+        email: "foreign-owner@example.test",
+        role_id: await builtinRoleId(db, "member"),
+      })
+      .returning();
+    if (!foreignUser) throw new Error("seed foreign user failed");
+    const issued = await seedToken({ enduser_ref: foreignUser.id });
+    const principal = await createPortalTokenProvider({ db }).resolve(bearerReq(issued.plaintext));
+    expect(principal?.tenant_id).toBe(tenantId);
+    expect(principal?.id).toBe(foreignUser.id);
+    expect(principal?.email).toBeUndefined();
+  });
+
   test("a single-entry ['*'] allow-list normalizes to the literal 'all'", async () => {
     const issued = await seedToken({ allowed_workflows: ["*"] });
     const provider = createPortalTokenProvider({ db });

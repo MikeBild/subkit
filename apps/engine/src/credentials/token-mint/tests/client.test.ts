@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { runTokenMintGrant } from "../client.ts";
 
 let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
@@ -9,7 +9,7 @@ beforeEach(() => {
 });
 
 function seamTest(name: string, body: () => Promise<void>) {
-  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+  test(name, () => withSelfHostedDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }
 
 describe("runTokenMintGrant — shape: aws_initiate_auth (Cognito)", () => {
@@ -28,14 +28,17 @@ describe("runTokenMintGrant — shape: aws_initiate_auth (Cognito)", () => {
           { status: 200 },
         ),
       );
-      const bundle = await runTokenMintGrant({
-        shape: "aws_initiate_auth",
-        mint_endpoint: "https://cognito-idp.eu-central-1.amazonaws.com/",
-        credentials: { username: "user@example.com", password: "pw", client_id: "abc" },
-        token_path: "AuthenticationResult.IdToken",
-        refresh_token_path: "AuthenticationResult.RefreshToken",
-        expires_in_path: "AuthenticationResult.ExpiresIn",
-      });
+      const bundle = await runTokenMintGrant(
+        {
+          shape: "aws_initiate_auth",
+          mint_endpoint: "https://cognito-idp.eu-central-1.amazonaws.com/",
+          credentials: { username: "user@example.com", password: "pw", client_id: "abc" },
+          token_path: "AuthenticationResult.IdToken",
+          refresh_token_path: "AuthenticationResult.RefreshToken",
+          expires_in_path: "AuthenticationResult.ExpiresIn",
+        },
+        { mode: "permissive" },
+      );
       const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
       const headers = init.headers as Record<string, string>;
       expect(headers["x-amz-target"]).toBe("AWSCognitoIdentityProviderService.InitiateAuth");
@@ -59,17 +62,20 @@ describe("runTokenMintGrant — shape: aws_initiate_auth (Cognito)", () => {
         status: 200,
       }),
     );
-    await runTokenMintGrant({
-      shape: "aws_initiate_auth",
-      mint_endpoint: "https://cognito-idp.eu-central-1.amazonaws.com/",
-      credentials: {
-        username: "user@example.com",
-        password: "pw",
-        client_id: "abc",
-        client_secret: "shh",
+    await runTokenMintGrant(
+      {
+        shape: "aws_initiate_auth",
+        mint_endpoint: "https://cognito-idp.eu-central-1.amazonaws.com/",
+        credentials: {
+          username: "user@example.com",
+          password: "pw",
+          client_id: "abc",
+          client_secret: "shh",
+        },
+        token_path: "AuthenticationResult.IdToken",
       },
-      token_path: "AuthenticationResult.IdToken",
-    });
+      { mode: "permissive" },
+    );
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(String(init.body));
     expect(typeof body.AuthParameters.SECRET_HASH).toBe("string");
@@ -84,15 +90,18 @@ describe("runTokenMintGrant — shape: json (Firebase / generic)", () => {
         status: 200,
       }),
     );
-    const bundle = await runTokenMintGrant({
-      shape: "json",
-      mint_endpoint:
-        "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=API_KEY",
-      credentials: { username: "u@e.com", password: "p" },
-      token_path: "idToken",
-      refresh_token_path: "refreshToken",
-      expires_in_path: "expiresIn",
-    });
+    const bundle = await runTokenMintGrant(
+      {
+        shape: "json",
+        mint_endpoint:
+          "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=API_KEY",
+        credentials: { username: "u@e.com", password: "p" },
+        token_path: "idToken",
+        refresh_token_path: "refreshToken",
+        expires_in_path: "expiresIn",
+      },
+      { mode: "permissive" },
+    );
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
     expect((init.headers as Record<string, string>)["content-type"]).toBe("application/json");
     const body = JSON.parse(String(init.body));
@@ -109,13 +118,16 @@ describe("runTokenMintGrant — shape: form (OAuth2 password / generic)", () => 
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify({ access_token: "oa-tok", expires_in: 3600 }), { status: 200 }),
     );
-    const bundle = await runTokenMintGrant({
-      shape: "form",
-      mint_endpoint: "https://example.test/oauth/token",
-      credentials: { username: "u", password: "p", client_id: "id", client_secret: "sec" },
-      token_path: "access_token",
-      expires_in_path: "expires_in",
-    });
+    const bundle = await runTokenMintGrant(
+      {
+        shape: "form",
+        mint_endpoint: "https://example.test/oauth/token",
+        credentials: { username: "u", password: "p", client_id: "id", client_secret: "sec" },
+        token_path: "access_token",
+        expires_in_path: "expires_in",
+      },
+      { mode: "permissive" },
+    );
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
     expect((init.headers as Record<string, string>)["content-type"]).toBe(
       "application/x-www-form-urlencoded",
@@ -131,48 +143,59 @@ describe("runTokenMintGrant — shape: form (OAuth2 password / generic)", () => 
 });
 
 describe("runTokenMintGrant — error paths", () => {
-  seamTest("non-2xx response throws with the upstream body in the message", async () => {
-    fetchSpy.mockResolvedValue(new Response("invalid_grant", { status: 401 }));
+  seamTest("non-2xx response exposes status without upstream content", async () => {
+    fetchSpy.mockResolvedValue(new Response("body-canary token-canary", { status: 401 }));
     let caught: Error | null = null;
     try {
-      await runTokenMintGrant({
-        shape: "form",
-        mint_endpoint: "https://example.test/oauth/token",
-        credentials: { username: "u", password: "p" },
-        token_path: "access_token",
-      });
+      await runTokenMintGrant(
+        {
+          shape: "form",
+          mint_endpoint: "https://example.test/oauth/token",
+          credentials: { username: "u", password: "p" },
+          token_path: "access_token",
+        },
+        { mode: "permissive" },
+      );
     } catch (e) {
       caught = e as Error;
     }
     expect(caught?.message).toContain("401");
-    expect(caught?.message).toContain("invalid_grant");
+    expect(caught?.message).toBe("credential_response_rejected: http_401");
+    expect(caught?.message).not.toContain("body-canary");
+    expect(caught?.message).not.toContain("token-canary");
   });
 
   seamTest("missing token at token_path throws", async () => {
     fetchSpy.mockResolvedValue(new Response(JSON.stringify({ unexpected: "x" }), { status: 200 }));
     let caught: Error | null = null;
     try {
-      await runTokenMintGrant({
-        shape: "json",
-        mint_endpoint: "https://example.test",
-        credentials: { username: "u", password: "p" },
-        token_path: "id_token",
-      });
+      await runTokenMintGrant(
+        {
+          shape: "json",
+          mint_endpoint: "https://example.test",
+          credentials: { username: "u", password: "p" },
+          token_path: "id_token",
+        },
+        { mode: "permissive" },
+      );
     } catch (e) {
       caught = e as Error;
     }
-    expect(caught?.message).toContain("missing token at path 'id_token'");
+    expect(caught?.message).toBe("credential_response_invalid");
   });
 
   seamTest("aws_initiate_auth without client_id throws synchronously (before fetch)", async () => {
     let caught: Error | null = null;
     try {
-      await runTokenMintGrant({
-        shape: "aws_initiate_auth",
-        mint_endpoint: "https://cognito-idp.eu-central-1.amazonaws.com/",
-        credentials: { username: "u", password: "p" },
-        token_path: "AuthenticationResult.IdToken",
-      });
+      await runTokenMintGrant(
+        {
+          shape: "aws_initiate_auth",
+          mint_endpoint: "https://cognito-idp.eu-central-1.amazonaws.com/",
+          credentials: { username: "u", password: "p" },
+          token_path: "AuthenticationResult.IdToken",
+        },
+        { mode: "permissive" },
+      );
     } catch (e) {
       caught = e as Error;
     }

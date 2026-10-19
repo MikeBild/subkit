@@ -6,6 +6,12 @@ import {
   readBodyCapped,
   validateOutboundHeaders,
 } from "./drivers/http.ts";
+import { fetchWithEgressGuard } from "./egress-fetch.ts";
+import {
+  EgressBlockedError,
+  type EgressGuardContext,
+  isPrivateOrLoopback,
+} from "./egress-guard.ts";
 
 export interface FetchedSpec {
   content: string;
@@ -19,14 +25,7 @@ export const GOOGLE_DISCOVERY_SPEC_MAX_BYTES = API_SPEC_MAX_BYTES;
 const TIMEOUT_MS = 15_000;
 
 function isPrivateHost(host: string): boolean {
-  if (!host) return true;
-  const lower = host.toLowerCase();
-  if (lower === "localhost" || lower.endsWith(".local")) return true;
-  if (lower === "169.254.169.254") return true;
-  if (/^127\./.test(lower) || /^10\./.test(lower)) return true;
-  if (/^192\.168\./.test(lower)) return true;
-  if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(lower)) return true;
-  return false;
+  return !host || isPrivateOrLoopback(host);
 }
 
 export class SpecFetchError extends Error {
@@ -80,7 +79,11 @@ interface BudgetedResponse {
   release: () => void;
 }
 
-async function fetchWithBudget(url: string, init: RequestInit): Promise<BudgetedResponse> {
+async function fetchWithBudget(
+  url: string,
+  init: RequestInit,
+  context: EgressGuardContext,
+): Promise<BudgetedResponse> {
   const u = new URL(url);
   let allowPrivate = false;
   try {
@@ -93,10 +96,16 @@ async function fetchWithBudget(url: string, init: RequestInit): Promise<Budgeted
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await getDriverFetch()(url, { ...init, signal: controller.signal });
+    const response = await fetchWithEgressGuard(
+      url,
+      { ...init, signal: controller.signal },
+      { ...context, mode: allowPrivate ? "permissive" : "strict" },
+      { fetchImpl: getDriverFetch() },
+    );
     return { response, release: () => clearTimeout(timer) };
   } catch (err) {
     clearTimeout(timer);
+    if (err instanceof EgressBlockedError) throw new SpecFetchError(err.message, url);
     throw err;
   }
 }
@@ -104,11 +113,16 @@ async function fetchWithBudget(url: string, init: RequestInit): Promise<Budgeted
 export async function fetchOpenApiSpec(
   url: string,
   headers?: Record<string, string>,
+  context: EgressGuardContext = {},
 ): Promise<FetchedSpec> {
-  const { response, release } = await fetchWithBudget(url, {
-    method: "GET",
-    ...(headers ? { headers } : {}),
-  });
+  const { response, release } = await fetchWithBudget(
+    url,
+    {
+      method: "GET",
+      ...(headers ? { headers } : {}),
+    },
+    context,
+  );
   try {
     if (!response.ok) {
       throw new SpecFetchError(`OpenAPI fetch returned ${response.status}`, url, response.status);
@@ -127,11 +141,16 @@ export async function fetchOpenApiSpec(
 export async function fetchGoogleDiscoverySpec(
   url: string,
   headers?: Record<string, string>,
+  context: EgressGuardContext = {},
 ): Promise<FetchedSpec> {
-  const { response, release } = await fetchWithBudget(url, {
-    method: "GET",
-    ...(headers ? { headers } : {}),
-  });
+  const { response, release } = await fetchWithBudget(
+    url,
+    {
+      method: "GET",
+      ...(headers ? { headers } : {}),
+    },
+    context,
+  );
   try {
     if (!response.ok) {
       throw new SpecFetchError(
@@ -154,16 +173,21 @@ export async function fetchGoogleDiscoverySpec(
 export async function fetchGraphQLIntrospection(
   endpoint: string,
   headers?: Record<string, string>,
+  context: EgressGuardContext = {},
 ): Promise<FetchedSpec> {
-  const { response, release } = await fetchWithBudget(endpoint, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json",
-      ...(headers ?? {}),
+  const { response, release } = await fetchWithBudget(
+    endpoint,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        ...(headers ?? {}),
+      },
+      body: JSON.stringify({ query: getIntrospectionQuery() }),
     },
-    body: JSON.stringify({ query: getIntrospectionQuery() }),
-  });
+    context,
+  );
   try {
     if (!response.ok) {
       throw new SpecFetchError(

@@ -2,7 +2,7 @@ import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { describePendingCatalog } from "../../workflows/catalog-describe.ts";
-import { withJobContext } from "../job-context.ts";
+import { withActiveTenantJobContext } from "../job-context.ts";
 
 export const CATALOG_DESCRIBE_QUEUE = "catalog.describe" as const;
 
@@ -58,7 +58,7 @@ export async function registerCatalogDescribeHandler(
     { batchSize: 1, pollingIntervalSeconds: 5 },
     async (jobs: Job<CatalogDescribeJob>[]) => {
       for (const job of jobs) {
-        await withJobContext(job.data, () => handleOne(job, db));
+        await withActiveTenantJobContext(job.data, db, () => handleOne(job, db));
       }
     },
   );

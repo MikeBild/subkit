@@ -1,14 +1,16 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, gte } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, or, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../audit/types.ts";
 import {
   decryptSecret,
-  decryptSecretWithKey,
-  encryptSecretWithKey,
+  decryptSecretBytesWithKey,
+  encryptSecretBytesWithKey,
   parseMasterKeyHex,
+  secureEqual,
 } from "../crypto/aes-gcm.ts";
-import type { Db } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import {
   runtimeConfigReplicas,
   runtimeConfigRevisions,
@@ -22,12 +24,19 @@ import {
   secretVersionProjection,
 } from "../runtime-config/secret-columns.ts";
 import {
+  assertVaultProducersStopped,
+  completeRegistryRewrapEpoch,
   createSecretVersion,
   getRuntimeConfigState,
+  lockVaultMaintenance,
+  runtimeStateColumns,
   saveRuntimeConfigPatch,
   secretReference,
 } from "../runtime-config/service.ts";
 import { secretAad } from "./environment.ts";
+import { type RewrapAcknowledgement, rewrapEvidenceDigest } from "./rewrap-evidence.ts";
+import { rewrapRegistryWithMaintenance } from "./rewrap-maintenance.ts";
+import { assertRegistryRewrapScope } from "./rewrap-stock.ts";
 import type { Rebound, VaultOps, VersionProbe } from "./vault-cli.ts";
 
 function keyFingerprint(keyHex: string): string {
@@ -57,7 +66,7 @@ export async function probeCurrentVersion(db: Db, name: string): Promise<Version
   }
 }
 
-export async function servingReplicas(db: Db): Promise<string[]> {
+export async function servingReplicas(db: Executor): Promise<string[]> {
   const cutoff = new Date(Date.now() - REPLICA_LEASE_MS);
   // tenant-filter:exempt — replica leases are product-global runtime state.
   const rows = await db
@@ -67,10 +76,33 @@ export async function servingReplicas(db: Db): Promise<string[]> {
   return rows.map((row) => row.instance_id).sort();
 }
 
+const rewrapBeforeWrite = new AsyncLocalStorage<(tx: Executor) => Promise<void>>();
+
+export function _withRewrapBeforeWriteForTests<T>(
+  hook: (tx: Executor) => Promise<void>,
+  run: () => Promise<T>,
+): Promise<T> {
+  return rewrapBeforeWrite.run(hook, run);
+}
+
+function inactiveSecretOwnerRefusal(error: unknown): boolean {
+  const visited = new Set<unknown>();
+  while (error instanceof Error && !visited.has(error)) {
+    visited.add(error);
+    if (error.message === "runtime_secret_owner_inactive") return true;
+    error = error.cause;
+  }
+  return false;
+}
+
+export const REWRAP_INVENTORY_PAGE_SIZE = 128;
+
 export async function rewrapMasterKey(
   db: Db,
   previousKeyHex: string,
+  acknowledgement: RewrapAcknowledgement,
 ): Promise<{ names: number; versions: number }> {
+  const evidenceDigest = rewrapEvidenceDigest(acknowledgement);
   const previousKey = parseMasterKeyHex(previousKeyHex);
   const runningHex = process.env.MASTER_KEY ?? "";
   const runningKey = parseMasterKeyHex(runningHex);
@@ -78,76 +110,110 @@ export async function rewrapMasterKey(
     throw new Error("the previous key and the running MASTER_KEY are the same — nothing to rewrap");
   }
 
-  const report = await db.transaction(async (tx) => {
-    // tenant-filter:exempt — the secret registry is product-global operator state.
-    const rows = await tx
-      .select({
-        name: runtimeSecretVersions.name,
-        version: runtimeSecretVersions.version,
-        ciphertext: runtimeSecretVersions.ciphertext,
-        iv: runtimeSecretVersions.iv,
-        auth_tag: runtimeSecretVersions.auth_tag,
-      })
-      .from(runtimeSecretVersions)
-      .orderBy(asc(runtimeSecretVersions.name), asc(runtimeSecretVersions.version));
-
-    const names = new Set<string>();
-    let versions = 0;
-    for (const row of rows) {
-      const aad = secretAad(row.name, row.version);
-      const payload = { ciphertext: row.ciphertext, iv: row.iv, auth_tag: row.auth_tag };
-      let plaintext: string;
-      try {
-        decryptSecretWithKey(runningKey, payload, aad);
-        continue;
-      } catch {}
-      try {
-        plaintext = decryptSecretWithKey(previousKey, payload, aad);
-      } catch (error) {
-        throw new Error(
-          `${row.name}/${row.version} decrypts under neither the running MASTER_KEY nor the key in --from-file; nothing was changed (${error instanceof Error ? error.message : String(error)})`,
-        );
+  return db
+    .transaction(async (tx) => {
+      await lockVaultMaintenance(tx);
+      if ((await servingReplicas(tx)).length > 0) throw new Error("rewrap_serving_replicas");
+      await assertVaultProducersStopped(tx);
+      await assertRegistryRewrapScope(tx);
+      await tx.execute(sql`LOCK TABLE subkit.runtime_secret_versions IN SHARE ROW EXCLUSIVE MODE`);
+      const names = new Set<string>();
+      let versions = 0;
+      let cursor: { name: string; version: number } | undefined;
+      for (;;) {
+        const cursorPredicate = cursor
+          ? or(
+              gt(runtimeSecretVersions.name, cursor.name),
+              and(
+                eq(runtimeSecretVersions.name, cursor.name),
+                gt(runtimeSecretVersions.version, cursor.version),
+              ),
+            )
+          : undefined;
+        // tenant-filter:exempt — operator-only retained secret inventory uses bounded keyset pages.
+        const rows = await tx
+          .select({
+            name: runtimeSecretVersions.name,
+            version: runtimeSecretVersions.version,
+            ciphertext: runtimeSecretVersions.ciphertext,
+            iv: runtimeSecretVersions.iv,
+            auth_tag: runtimeSecretVersions.auth_tag,
+          })
+          .from(runtimeSecretVersions)
+          .where(cursorPredicate)
+          .orderBy(asc(runtimeSecretVersions.name), asc(runtimeSecretVersions.version))
+          .limit(REWRAP_INVENTORY_PAGE_SIZE);
+        if (rows.length === 0) break;
+        const last = rows[rows.length - 1];
+        if (!last) throw new Error("rewrap_inventory_invalid");
+        cursor = { name: last.name, version: last.version };
+        for (const row of rows) {
+          const aad = secretAad(row.name, row.version);
+          const payload = { ciphertext: row.ciphertext, iv: row.iv, auth_tag: row.auth_tag };
+          let plaintext: Uint8Array;
+          try {
+            decryptSecretBytesWithKey(runningKey, payload, aad);
+            continue;
+          } catch {}
+          try {
+            plaintext = decryptSecretBytesWithKey(previousKey, payload, aad);
+          } catch {
+            throw new Error("secret decrypts under neither supplied key; rewrap refused");
+          }
+          const reencrypted = encryptSecretBytesWithKey(runningKey, plaintext, aad);
+          if (!secureEqual(plaintext, decryptSecretBytesWithKey(runningKey, reencrypted, aad))) {
+            throw new Error("rewrap_plaintext_mismatch");
+          }
+          await rewrapBeforeWrite.getStore()?.(tx);
+          const updated = await tx
+            .update(runtimeSecretVersions)
+            .set({
+              ciphertext: reencrypted.ciphertext,
+              iv: reencrypted.iv,
+              auth_tag: reencrypted.auth_tag,
+            })
+            .where(
+              and(
+                eq(runtimeSecretVersions.name, row.name),
+                eq(runtimeSecretVersions.version, row.version),
+                eq(runtimeSecretVersions.ciphertext, row.ciphertext),
+                eq(runtimeSecretVersions.iv, row.iv),
+                eq(runtimeSecretVersions.auth_tag, row.auth_tag),
+              ),
+            )
+            .returning({ name: runtimeSecretVersions.name });
+          if (updated.length !== 1) throw new Error("rewrap_ciphertext_changed");
+          names.add(row.name);
+          versions += 1;
+        }
       }
-      const reencrypted = encryptSecretWithKey(runningKey, plaintext, aad);
-      await tx
-        .update(runtimeSecretVersions)
-        .set({
-          ciphertext: reencrypted.ciphertext,
-          iv: reencrypted.iv,
-          auth_tag: reencrypted.auth_tag,
-        })
-        .where(
-          and(
-            eq(runtimeSecretVersions.name, row.name),
-            eq(runtimeSecretVersions.version, row.version),
-          ),
-        );
-      names.add(row.name);
-      versions += 1;
-    }
-    return { names: names.size, versions };
-  });
-
-  await auditAwait(
-    {
-      tenant_id: SYSTEM_TENANT_ID,
-      actor_type: "system",
-      actor_id: null,
-      action: AuditAction.MASTER_KEY_REWRAPPED,
-      resource_type: "runtime_secret",
-      resource_id: "*",
-      result: "success",
-      metadata: {
-        names: report.names,
-        versions: report.versions,
-        from_key_fingerprint: keyFingerprint(previousKeyHex),
-        to_key_fingerprint: keyFingerprint(runningHex),
-      },
-    },
-    db,
-  );
-
-  return report;
+      const report = { names: names.size, versions };
+      await auditAwait(
+        {
+          tenant_id: SYSTEM_TENANT_ID,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.MASTER_KEY_REWRAPPED,
+          resource_type: "runtime_secret",
+          resource_id: "*",
+          result: "success",
+          metadata: {
+            ...report,
+            evidence_sha256: evidenceDigest,
+            from_key_fingerprint: keyFingerprint(previousKeyHex),
+            to_key_fingerprint: keyFingerprint(runningHex),
+          },
+        },
+        tx,
+      );
+      await completeRegistryRewrapEpoch(tx, runningKey);
+      return report;
+    })
+    .catch((error: unknown) => {
+      if (inactiveSecretOwnerRefusal(error))
+        throw new Error("rewrap_inactive_owner_requires_maintenance");
+      throw error;
+    });
 }
 
 export async function rebindSettingPath(
@@ -179,7 +245,7 @@ async function activateRevisionOnHost(db: Db, revision: number): Promise<void> {
   await db.transaction(async (tx) => {
     // tenant-filter:exempt — the canonical active pointer is product-global.
     const [state] = await tx
-      .select()
+      .select(runtimeStateColumns)
       .from(runtimeConfigState)
       .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY))
       .for("update");
@@ -277,7 +343,10 @@ export function createVaultOps(
     },
     rebind: (path, name, version) => rebindSettingPath(db, path, name, version),
     servingReplicas: () => servingReplicas(db),
-    rewrap: (previousKeyHex) => rewrapMasterKey(db, previousKeyHex),
+    rewrap: (previousKeyHex, acknowledgement) =>
+      acknowledgement.maintenance
+        ? rewrapRegistryWithMaintenance(db, previousKeyHex, acknowledgement)
+        : rewrapMasterKey(db, previousKeyHex, acknowledgement),
     preflight,
   };
 }

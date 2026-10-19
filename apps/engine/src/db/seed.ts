@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import pc from "picocolors";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { lockActiveTenant } from "../identity/index.ts";
 import { logger } from "../logging/logger.ts";
 import { claimOperatorTenantIfUnassigned } from "../rbac/operator.ts";
 import {
@@ -120,7 +121,12 @@ export async function seedTenantBootstrap(
     const issued: IssuedKey[] = [];
     let adminApiKey: { plaintext: string; prefix: string } | null = null;
 
-    let [tenant] = await tx.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
+    let [tenant] = await tx
+      .select()
+      .from(tenants)
+      .where(eq(tenants.slug, slug))
+      .for("update")
+      .limit(1);
     if (!tenant) {
       [tenant] = await tx.insert(tenants).values({ slug, display_name: displayName }).returning();
       if (!tenant) throw new Error("seed: tenant insert returned no row");
@@ -137,6 +143,10 @@ export async function seedTenantBootstrap(
         tx,
       );
     }
+
+    await lockActiveTenant(tenant.id, tx);
+    if (tenant.origin !== "self_hosted")
+      throw new Error("seed_bootstrap_requires_self_hosted_tenant");
 
     await claimOperatorTenantIfUnassigned(tx, tenant.id);
     await lockCatalogVocabulary(tx, tenant.id);

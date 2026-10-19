@@ -28,16 +28,21 @@ export async function refreshTokenMintIfStale(
   const expiresMs = decrypted.expires_at ? decrypted.expires_at.getTime() : 0;
   if (expiresMs > 0 && expiresMs - now > REFRESH_LEAD_MS) return decrypted;
   try {
-    const bundle = await runTokenMintGrant({
-      shape: decrypted.shape,
-      mint_endpoint: decrypted.mint_endpoint,
-      credentials: decrypted.credentials,
-      token_path: decrypted.token_path,
-      ...(decrypted.refresh_token_path ? { refresh_token_path: decrypted.refresh_token_path } : {}),
-      ...(decrypted.expires_in_path ? { expires_in_path: decrypted.expires_in_path } : {}),
-      ...(decrypted.expires_at_path ? { expires_at_path: decrypted.expires_at_path } : {}),
-      ...(decrypted.header_template ? { header_template: decrypted.header_template } : {}),
-    });
+    const bundle = await runTokenMintGrant(
+      {
+        shape: decrypted.shape,
+        mint_endpoint: decrypted.mint_endpoint,
+        credentials: decrypted.credentials,
+        token_path: decrypted.token_path,
+        ...(decrypted.refresh_token_path
+          ? { refresh_token_path: decrypted.refresh_token_path }
+          : {}),
+        ...(decrypted.expires_in_path ? { expires_in_path: decrypted.expires_in_path } : {}),
+        ...(decrypted.expires_at_path ? { expires_at_path: decrypted.expires_at_path } : {}),
+        ...(decrypted.header_template ? { header_template: decrypted.header_template } : {}),
+      },
+      { tenant_id, exec: db },
+    );
     const plaintext = JSON.stringify({
       access_token: bundle.access_token,
       shape: decrypted.shape,

@@ -47,6 +47,9 @@ const CockpitBootstrapResponse = z
       expires_at: z.string().datetime(),
       absolute_expires_at: z.string().datetime().nullable(),
     }),
+    identity_memberships: z
+      .boolean()
+      .describe("Verified browser identity supports workspace membership selection"),
     permissions: z.array(z.string()),
     csrf_token: z.string(),
     version: z.string(),
@@ -155,6 +158,7 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const [sessionRow] = await db
       .select({
+        auth_identity_id: sessions.auth_identity_id,
         expires_at: sessions.expires_at,
         absolute_expires_at: sessions.absolute_expires_at,
       })
@@ -240,6 +244,7 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
           expires_at: sessionRow.expires_at.toISOString(),
           absolute_expires_at: sessionRow.absolute_expires_at?.toISOString() ?? null,
         },
+        identity_memberships: sessionRow.auth_identity_id !== null,
         permissions,
         csrf_token: await signBrowserCsrf(payload),
         version: OPENAPI_INFO.version,

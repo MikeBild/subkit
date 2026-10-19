@@ -1,6 +1,10 @@
 export * from "./adapter.ts";
 export * from "./api.ts";
 export * from "./dispatcher.ts";
+export {
+  assertChatWorkspaceOwnershipAvailable,
+  HostedChatOwnershipRequired,
+} from "./hosted-ownership.ts";
 export * from "./hydrate.ts";
 export * from "./pending-spaces.ts";
 export * from "./registry.ts";

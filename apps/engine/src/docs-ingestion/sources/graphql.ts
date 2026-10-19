@@ -1,5 +1,6 @@
 import { assertPageSize, consumeBytes, recordSpecFetched } from "../budgets.ts";
 import { byteLen } from "../chunker.ts";
+import { readBoundedText } from "../read-response.ts";
 import type { BudgetState, RawChunk } from "../types.ts";
 
 const INTROSPECTION_QUERY = `
@@ -174,7 +175,7 @@ export async function fetchIntrospection(
     body: JSON.stringify({ query: INTROSPECTION_QUERY }),
   });
   if (!res.ok) throw new Error(`graphql introspection failed: ${res.status}`);
-  const body = await res.text();
+  const body = await readBoundedText(res);
   const bytes = byteLen(body);
   assertPageSize(bytes);
   let parsed: { data?: { __schema?: IntrospectionSchema }; errors?: unknown };

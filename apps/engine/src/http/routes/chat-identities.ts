@@ -2,7 +2,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
-import { ChatPlatformZodEnum } from "../../chat/index.ts";
+import { assertChatWorkspaceOwnershipAvailable, ChatPlatformZodEnum } from "../../chat/index.ts";
 import { chatIdentities, chatWorkspaces, users } from "../../db/schema/index.ts";
 import { ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -127,6 +127,7 @@ export function registerChatIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(linkRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
+    await assertChatWorkspaceOwnershipAvailable(db, principal.tenant_id);
     const body = c.req.valid("json");
 
     const [ws] = await db

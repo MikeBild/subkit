@@ -14,31 +14,11 @@ const PRUNE_INTERVAL_MS = 60_000;
 export interface RateLimitOptions {
   max?: number;
   windowMs?: number;
-  trustedProxies?: number;
-}
-
-export function resolveClientIp(
-  xff: string | undefined,
-  realIp: string | undefined,
-  hops: number,
-): string {
-  if (xff) {
-    const parts = xff
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (parts.length > 0) {
-      const idx = Math.max(0, parts.length - hops);
-      return parts[idx] ?? "unknown";
-    }
-  }
-  return realIp ?? "unknown";
 }
 
 export function rateLimitMiddleware(opts: RateLimitOptions = {}): MiddlewareHandler<AppEnv> {
   const max = opts.max ?? DEFAULT_MAX;
   const windowMs = opts.windowMs ?? DEFAULT_WINDOW_MS;
-  const trustedProxies = Math.max(1, opts.trustedProxies ?? 1);
   const buckets = new Map<string, Bucket>();
   let lastPrune = Date.now();
 
@@ -59,11 +39,7 @@ export function rateLimitMiddleware(opts: RateLimitOptions = {}): MiddlewareHand
       lastPrune = now;
     }
 
-    const ip = resolveClientIp(
-      c.req.header("x-forwarded-for"),
-      c.req.header("x-real-ip"),
-      trustedProxies,
-    );
+    const ip = c.get("client_ip") ?? "unknown";
 
     const bucket = buckets.get(ip);
     if (bucket) {

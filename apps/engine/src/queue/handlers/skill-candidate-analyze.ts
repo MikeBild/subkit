@@ -3,7 +3,7 @@ import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
 import { runPatternAnalysis } from "../../skill-candidates/service.ts";
-import { withJobContext } from "../job-context.ts";
+import { withActiveTenantJobContext } from "../job-context.ts";
 
 export const SKILL_CANDIDATE_ANALYZE_QUEUE = "skill-candidate.analyze" as const;
 
@@ -61,7 +61,7 @@ export async function registerSkillCandidateAnalyzeHandler(
     { batchSize: 1, pollingIntervalSeconds: 5 },
     async (jobs: Job<SkillCandidateAnalyzeJob>[]) => {
       for (const job of jobs) {
-        await withJobContext(job.data, () => handleOne(job, db));
+        await withActiveTenantJobContext(job.data, db, () => handleOne(job, db));
       }
     },
   );

@@ -44,6 +44,31 @@ These planning documents do not replace the generated API, CLI or settings
 references. The installation instructions below describe self-hosting; they do not
 provision a cloud account.
 
+The multi-tenant hosted offering is under development. Public registration remains
+closed until its security, operational and human acceptance gates pass. The approved
+Free allowance is USD 5 in model costs per tenant and UTC calendar month, USD 50
+across all Free tenants, 50 MB (50,000,000 bytes) of combined logical storage for
+files and persisted user content per tenant, 1,000 retained records per resource
+type, and 10,000 metered requests per tenant and UTC calendar month. Account bootstrap, workspace
+switching and owner deletion retain separate abuse protection and are excluded from
+the monthly request allowance. Soft-deleted records remain counted until physical
+cleanup succeeds. Authentication action delivery uses webhooks; its
+destination and actual delivery verification are pending. Combined storage and
+resource accounting is implemented and undergoing integrated acceptance; live
+cloud verification remains pending. It includes retained knowledge and conversation
+copies as well as reserved non-file object offloads.
+
+Hosted connector traffic requires public destinations. Strict HTTP transports pin
+the validated destination address while preserving the original Host and TLS name;
+proxy environment variables are unsupported and cause refusal. Strict PostgreSQL
+connectors require an explicit host and user, verified TLS with system trust and
+the original hostname. DSN options cannot disable that verification. Local TLS file
+paths, process PostgreSQL defaults and password-file fallback are unavailable in
+this mode. Explicit permissive self-hosted connector behavior remains available.
+External chat-workspace linking for hosted tenants remains unavailable until
+ownership can be verified. See TODO.md (`TODO.md` in the source repository) and
+LAUNCH_STATUS.md (`LAUNCH_STATUS.md` in the source repository) for the complete remaining acceptance scope.
+
 ## Run the engine
 
 Requires Docker with Compose, OpenSSL and a POSIX shell. Use `docker-compose.yml`
@@ -79,6 +104,16 @@ stored secrets; losing it makes those secrets unreadable. Never regenerate it fo
 an existing database. Keep the database password unchanged when reusing its volume;
 changing `.env` does not change the password inside an initialized PostgreSQL database.
 Never commit `.env` or share `docker compose config` output, which contains secrets.
+
+The offline `--rewrap-master-key` command covers the settings-secret registry.
+It refuses retained credentials, encrypted workflow or conversation data, approval
+proofs, and other encrypted stores outside that scope. Preserve the original
+`MASTER_KEY` when it refuses. The command requires explicit confirmation that all
+producers have stopped and a separate stop-evidence file; expired heartbeats alone
+do not establish that. Hosted maintenance of inactive owners additionally requires
+an explicitly provisioned maintenance capability. Select that login through the
+existing database configuration and use `--maintenance`; it receives only the
+designated maintenance functions. The engine creates no database users.
 
 For subsequent starts, run `docker compose up -d --wait` from the same directory.
 `docker compose stop` stops services without deleting data. The database and object
@@ -3095,15 +3130,28 @@ HTTP server
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `server.hosted_rate_limit.global_per_minute` | number | `0` | global | no | no | Operator request ceiling across hosted ingress per minute; zero denies hosted ingress |
+| `server.hosted_rate_limit.peer_per_minute` | number | `0` | global | no | no | Operator request ceiling per verified connection peer and minute; zero denies hosted ingress |
+| `server.hosted_rate_limit.principal_per_minute` | number | `0` | global | no | no | Operator request ceiling per authenticated principal and tenant per minute; zero denies hosted requests |
+| `server.hosted_rate_limit.tenant_per_minute` | number | `0` | global | no | no | Operator request ceiling per hosted tenant and minute; zero denies hosted requests |
+| `server.hosted_rate_limit.tenant_per_month` | number | `0` | global | no | no | Operator request allowance per hosted tenant and UTC calendar month; zero denies hosted requests |
 | `server.port` | number | `3000` | global | no | yes | HTTP port to bind (1..65535) |
 | `server.public_base_url` | string | `""` | global | no | no | External-facing URL the engine resolves at. Used by /install, chat link replies, and OAuth2 redirect-URI synthesis. Required for any OAuth2 connector. |
 | `server.restart_supervised` | boolean | `false` | global | no | no | A supervisor (systemd with Restart=on-failure, Docker with a restart policy) starts the engine again after it ends. Enables POST /v1/system/restart (exit code 75). |
+| `server.trusted_proxy_hops` | number | `0` | global | no | no | Trusted reverse-proxy hops counted from the right of X-Forwarded-For; zero ignores forwarding headers. |
+| `server.trusted_proxy_ips` | array | `[]` | global | no | no | Exact trusted reverse-proxy socket peer IPs. Every configured forwarding hop must match; X-Real-IP is never trusted. |
 
 ## database
 Database connection
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `database.connect_timeout_ms` | number | `10000` | global | no | yes | Deadline for acquiring or establishing a PostgreSQL connection. |
+| `database.idle_timeout_ms` | number | `30000` | global | no | yes | Time before an unused pooled connection is closed. |
+| `database.keepalive_delay_ms` | number | `10000` | global | no | yes | Initial TCP keepalive delay for PostgreSQL connections. |
+| `database.pool_max` | number | `10` | global | no | yes | Maximum application connections per pool and replica. |
+| `database.query_timeout_ms` | number | `150000` | global | no | yes | Client-side PostgreSQL query deadline in milliseconds. |
+| `database.statement_timeout_ms` | number | `120000` | global | no | yes | Server-side PostgreSQL statement deadline, initialized on each session. |
 | `database.url` | string | `—` | global | yes | yes | Bootstrap-only Postgres connection string. Rotate DATABASE_URL and restart replicas; runtime revisions cannot change this binding. |
 
 ## llm
@@ -3118,6 +3166,10 @@ LLM configuration
 | `llm.critic.min_steps` | number | `3` | tenant | no | no | Minimum step count for the critic to run on a draft (drift in recent drafts also triggers a run) |
 | `llm.fallback_model` | string | `""` | tenant | no | no | Fallback model identifier |
 | `llm.fallback_provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `null` | tenant | no | no | Fallback provider on primary failure |
+| `llm.hosted.enabled` | boolean | `false` | global | no | no | Hosted paid-model service mode; requires tenant context independently of signup policy. |
+| `llm.hosted.global_monthly_microunits` | string | `"0"` | global | no | no | Operator-owned global monthly hosted budget in USD microunits; zero blocks paid calls. |
+| `llm.hosted.models` | json | `[]` | global | no | no | Exact provider:model billing allowlist: max_context_tokens must be the verified actual provider-enforced maximum including enabled beta/extended context, not a prompt estimate. Configure maximum USD rates including long-context tiers. Native paid tools and multimodal inputs are unsupported. |
+| `llm.hosted.tenant_monthly_microunits` | string | `"0"` | global | no | no | Operator-owned monthly hosted budget per tenant in USD microunits; zero blocks paid calls. |
 | `llm.model` | string | `""` | tenant | no | no | Primary model identifier |
 | `llm.output_guard` | enum("soft" \| "hard" \| "off") | `"soft"` | global | no | no | LLM output safety mode (soft: rewrite + log, hard: throw, off: bypass — never use in production) |
 | `llm.provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `"mock"` | tenant | no | no | Primary LLM provider |
@@ -3161,7 +3213,14 @@ Authentication
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `auth.enable_signup` | boolean | `false` | global | no | no | Allow first-time SSO sign-ins to auto-provision a new member account (JIT signup). When false, unknown identities are rejected with access_denied; existing users and links keep working. |
+| `auth.enable_signup` | boolean | `false` | global | no | no | Compatibility fallback for self-hosted OIDC providers without signup_policy: allow first-time SSO member accounts. Explicit provider policies override it; hosted signup never uses it. |
+| `auth.hosted.admission.mcp_clients_per_minute` | number | `0` | global | no | no | Operator global hosted MCP dynamic-client registration ceiling per minute. |
+| `auth.hosted.admission.mcp_clients_per_peer_per_minute` | number | `0` | global | no | no | Operator hosted MCP dynamic-client registration ceiling per verified peer and minute. |
+| `auth.hosted.admission.retained_mcp_clients` | number | `0` | global | no | no | Operator ceiling for retained MCP client registrations, including retired and disabled clients; zero denies new clients. |
+| `auth.hosted.admission.retained_tenants` | number | `0` | global | no | no | Operator ceiling for retained self-service tenant records, including erased ownership tombstones; zero denies new tenants. |
+| `auth.hosted.admission.tenant_creations_per_minute` | number | `0` | global | no | no | Operator global ceiling for newly created self-service tenants per minute; idempotent callbacks do not consume it. |
+| `auth.hosted.enabled` | boolean | `false` | global | no | yes | Enable identity-first hosted browser authentication for explicitly opted-in providers. |
+| `auth.hosted.registration_enabled` | boolean | `false` | global | no | no | Allow new hosted identities to provision their own workspace. Existing members and reviewed invitation handoffs remain available while registration is closed. |
 | `auth.mcp_oauth.access_token_ttl_seconds` | number | `3600` | global | no | no | Lifetime in seconds for MCP OAuth access tokens. |
 | `auth.mcp_oauth.authorization_code_ttl_seconds` | number | `60` | global | no | no | Lifetime in seconds for MCP OAuth authorization codes. |
 | `auth.mcp_oauth.dynamic_registration_enabled` | boolean | `true` | global | no | no | Allow RFC 7591 dynamic client registration at POST /v1/oauth/register. |
@@ -3192,6 +3251,9 @@ Object storage
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `storage.hosted.max_file_bytes` | string | `"0"` | global | no | no | Operator-owned maximum declared bytes of each new hosted file; zero blocks file admission. |
+| `storage.hosted.retained_rows_per_resource` | number | `1000` | global | no | no | Operator-owned retained row ceiling, initially 1,000 for the Free offering, for each hosted resource table, including histories and soft-deleted rows; zero blocks resource creation. |
+| `storage.hosted.tenant_bytes` | string | `"0"` | global | no | no | Operator-owned shared logical byte quota for files, object reservations and all retained user content, including copies and revisions. Not a physical bucket or PostgreSQL disk quota. |
 | `storage.object_store.access_key_id` | string | `""` | global | yes | no |  |
 | `storage.object_store.bucket` | string | `""` | global | no | no |  |
 | `storage.object_store.endpoint` | string | `""` | global | no | no |  |
@@ -3265,6 +3327,9 @@ Queue worker
 | `queue.concurrency` | number | `1` | global | no | yes | Executions this replica runs at once. Raising it trades isolation for throughput. Restart required. |
 | `queue.crash_recovery_sweep_interval_ms` | number | `60000` | global | no | no | Hot-reloadable interval for reconciling executions orphaned by a worker or engine restart. |
 | `queue.crash_recovery_threshold_ms` | number | `0` | global | no | no | Hard age threshold for crash recovery. 0 uses each workflow timeout multiplied by its grace factor. |
+| `queue.hosted.chat_concurrency` | number | `0` | global | no | no | Operator ceiling for simultaneous hosted chat turns per tenant, including direct calls; zero denies work. |
+| `queue.hosted.execution_concurrency` | number | `0` | global | no | no | Operator ceiling for simultaneous hosted root executions per tenant; zero denies work. |
+| `queue.hosted.pending_jobs` | number | `0` | global | no | no | Operator ceiling for queued hosted execution and conversation jobs per tenant; zero denies queue admission. |
 
 ## tokens
 Token budget

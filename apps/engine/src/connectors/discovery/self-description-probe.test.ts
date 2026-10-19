@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { probeAllSelfDescriptionLinks } from "./self-description-probe.ts";
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -51,7 +51,7 @@ describe("probeAllSelfDescriptionLinks", () => {
       },
     ]);
 
-    const links = await withDriverFetchForTests(mockFetch, () =>
+    const links = await withSelfHostedDriverFetchForTests(mockFetch, () =>
       probeAllSelfDescriptionLinks("https://api.example.com", {}),
     );
 
@@ -76,7 +76,7 @@ describe("probeAllSelfDescriptionLinks", () => {
       },
     ]);
 
-    const links = await withDriverFetchForTests(mockFetch, () =>
+    const links = await withSelfHostedDriverFetchForTests(mockFetch, () =>
       probeAllSelfDescriptionLinks("https://api.example.com", {}),
     );
 
@@ -96,7 +96,7 @@ describe("probeAllSelfDescriptionLinks", () => {
       },
     ]);
 
-    const links = await withDriverFetchForTests(mockFetch, () =>
+    const links = await withSelfHostedDriverFetchForTests(mockFetch, () =>
       probeAllSelfDescriptionLinks("https://api.example.com/graphql", {}),
     );
 
@@ -107,8 +107,9 @@ describe("probeAllSelfDescriptionLinks", () => {
   seamTest("all surfaces 404 → returns []", async () => {
     const mockFetch = mock<FetchLike>(() => Promise.resolve(new Response(null, { status: 404 })));
 
-    const links = await withDriverFetchForTests(mockFetch as unknown as typeof fetch, () =>
-      probeAllSelfDescriptionLinks("https://api.example.com", {}),
+    const links = await withSelfHostedDriverFetchForTests(
+      mockFetch as unknown as typeof fetch,
+      () => probeAllSelfDescriptionLinks("https://api.example.com", {}),
     );
 
     expect(links).toEqual([]);
@@ -120,7 +121,7 @@ describe("probeAllSelfDescriptionLinks", () => {
     let caught: Error | null = null;
     let links: Awaited<ReturnType<typeof probeAllSelfDescriptionLinks>> = [];
     try {
-      links = await withDriverFetchForTests(mockFetch as unknown as typeof fetch, () =>
+      links = await withSelfHostedDriverFetchForTests(mockFetch as unknown as typeof fetch, () =>
         probeAllSelfDescriptionLinks("http://localhost:8080", {}),
       );
     } catch (e) {
@@ -134,8 +135,9 @@ describe("probeAllSelfDescriptionLinks", () => {
   seamTest("invalid base URL → returns []", async () => {
     const mockFetch = mock<FetchLike>(() => Promise.resolve(new Response(null, { status: 200 })));
 
-    const links = await withDriverFetchForTests(mockFetch as unknown as typeof fetch, () =>
-      probeAllSelfDescriptionLinks("not-a-url", {}),
+    const links = await withSelfHostedDriverFetchForTests(
+      mockFetch as unknown as typeof fetch,
+      () => probeAllSelfDescriptionLinks("not-a-url", {}),
     );
 
     expect(links).toEqual([]);
@@ -152,7 +154,7 @@ describe("probeAllSelfDescriptionLinks", () => {
       },
     ]);
 
-    const links = await withDriverFetchForTests(mockFetch, () =>
+    const links = await withSelfHostedDriverFetchForTests(mockFetch, () =>
       probeAllSelfDescriptionLinks("https://api.example.com", {}),
     );
 
@@ -170,7 +172,7 @@ describe("probeAllSelfDescriptionLinks", () => {
       },
     ]);
 
-    const links = await withDriverFetchForTests(mockFetch, () =>
+    const links = await withSelfHostedDriverFetchForTests(mockFetch, () =>
       probeAllSelfDescriptionLinks("https://api.example.com", {}),
     );
 
@@ -186,7 +188,7 @@ describe("probeAllSelfDescriptionLinks", () => {
       },
     ]);
 
-    const links = await withDriverFetchForTests(mockFetch, () =>
+    const links = await withSelfHostedDriverFetchForTests(mockFetch, () =>
       probeAllSelfDescriptionLinks("https://api.example.com", {}),
     );
 

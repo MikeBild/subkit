@@ -23,12 +23,20 @@ export const HmacVerifierConfig = z
     signed_payload: z.string().min(1).max(256).default("{body}"),
     timestamp_header: headerName.optional(),
     tolerance_seconds: z.number().int().min(1).max(86_400).default(300),
-    id_header: headerName,
+    id_header: headerName.optional(),
+    id_field: z.string().min(1).max(128).optional(),
     type_header: headerName.optional(),
     type_field: z.string().min(1).max(128).optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {
+    if (!cfg.id_header && !cfg.id_field) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["id_header"],
+        message: "id_header or signed-body id_field is required",
+      });
+    }
     const used = [...cfg.signed_payload.matchAll(PLACEHOLDER)].map((m) => m[1] ?? "");
     for (const name of used) {
       if (!ALLOWED_PLACEHOLDERS.has(name)) {
@@ -51,6 +59,13 @@ export const HmacVerifierConfig = z
         code: "custom",
         path: ["timestamp_header"],
         message: "timestamp_header is required when signed_payload uses {timestamp}",
+      });
+    }
+    if (used.includes("id") && !cfg.id_header) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["id_header"],
+        message: "id_header is required when signed_payload uses {id}",
       });
     }
   });
@@ -87,8 +102,12 @@ export function verifyHmac(input: VerifyInput): VerifierResult {
   const cfg = parsed.data;
 
   const sigHeader = input.headers[cfg.signature_header];
-  const id = input.headers[cfg.id_header];
-  if (!sigHeader || !id) {
+  const headerId = cfg.id_header ? input.headers[cfg.id_header] : undefined;
+  if (
+    !sigHeader ||
+    (!cfg.id_field && !headerId) ||
+    (cfg.signed_payload.includes("{id}") && !headerId)
+  ) {
     return { ok: false, reason: "missing_hmac_headers" };
   }
 
@@ -116,7 +135,7 @@ export function verifyHmac(input: VerifyInput): VerifierResult {
   }
 
   const base = cfg.signed_payload.replace(PLACEHOLDER, (_, name: string) =>
-    name === "body" ? input.rawBody : name === "id" ? id : rawTimestamp,
+    name === "body" ? input.rawBody : name === "id" ? (headerId ?? "") : rawTimestamp,
   );
   const expected = createHmac(cfg.algorithm, input.secret).update(base, "utf8").digest();
   if (!timingSafeEqual(provided, expected)) {
@@ -128,6 +147,27 @@ export function verifyHmac(input: VerifyInput): VerifierResult {
     });
     return { ok: false, reason: "bad_signature" };
   }
+
+  let id = headerId;
+  if (cfg.id_field) {
+    try {
+      const body: unknown = JSON.parse(input.rawBody);
+      const value =
+        typeof body === "object" &&
+        body !== null &&
+        !Array.isArray(body) &&
+        Object.hasOwn(body, cfg.id_field)
+          ? (body as Record<string, unknown>)[cfg.id_field]
+          : undefined;
+      if (typeof value !== "string" || value.length === 0 || value.length > 512) {
+        return { ok: false, reason: "bad_hmac_event_id" };
+      }
+      id = value;
+    } catch {
+      return { ok: false, reason: "bad_hmac_event_id" };
+    }
+  }
+  if (!id) return { ok: false, reason: "bad_hmac_event_id" };
 
   const type = eventType(input, cfg);
   logger.debug({

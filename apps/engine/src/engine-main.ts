@@ -9,7 +9,7 @@ import { closeDb, getDb, getPool } from "./db/client.ts";
 import { type DriftReport, detectDrift, runMigrationsFromUrl } from "./db/migrate.ts";
 import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { warmEmbeddings } from "./embeddings/local-provider.ts";
-import { startAbortMonitor } from "./execution/index.ts";
+import { startAbortMonitor, tenantWorkInFlight } from "./execution/index.ts";
 import { recoverCrashedExecutions, startCrashRecoveryMonitor } from "./execution/recovery.ts";
 import { reapOrphanedWaits } from "./execution/wait-reaper.ts";
 import { getScanner, NoopScanner } from "./files/scanner.ts";
@@ -75,34 +75,35 @@ async function runServer(): Promise<void> {
   }
 
   const { runProductionPreflightOrExit } = await import("./preflight/runner.ts");
-  await bootPhase("preflight", () => runProductionPreflightOrExit(getDb(), cfg));
-
   await bootPhase("crypto_assert", () => assertCryptoKeyOrExit());
   const db = getDb();
-
+  const { assertVaultMasterKey, initializeRuntimeConfig, pinVaultMasterKey } = await import(
+    "./runtime-config/service.ts"
+  );
+  const { RuntimeConfigCoordinator } = await import("./runtime-config/coordinator.ts");
+  const runtimeConfigCoordinator = new RuntimeConfigCoordinator(db, OPENAPI_INFO.version);
   const chatRegistry = new ChatAdapterRegistry();
-
   chatRegistry.registerFallback("sk_cli", new SkCliAdapter(db));
 
-  try {
-    await bootPhase("migrations", () => runMigrationsFromUrl(cfg.database.url));
-  } catch (err) {
-    logger.fatal({
-      module: "engine",
-      action: "migrate.failed_aborting_boot",
-      msg: "embedded migrations failed; aborting boot to avoid running on a half-migrated schema",
-      ...errorFields(err),
-    });
-    process.exit(1);
-  }
-
-  const { assertSearchPathOrAbort } = await import("./db/assert-search-path-or-abort.ts");
-  await bootPhase("search_path", assertSearchPathOrAbort);
-
-  const { initializeRuntimeConfig } = await import("./runtime-config/service.ts");
-  const { RuntimeConfigCoordinator } = await import("./runtime-config/coordinator.ts");
-  await bootPhase("runtime_config", () => initializeRuntimeConfig(db, cfg));
-  const runtimeConfigCoordinator = new RuntimeConfigCoordinator(db, OPENAPI_INFO.version);
+  await runtimeConfigCoordinator.registerStartup(async (tx) => {
+    await bootPhase("preflight", () => runProductionPreflightOrExit(db, cfg));
+    try {
+      await bootPhase("migrations", () => runMigrationsFromUrl(cfg.database.url));
+    } catch (err) {
+      logger.fatal({
+        module: "engine",
+        action: "migrate.failed_aborting_boot",
+        msg: "embedded migrations failed; aborting boot to avoid running on a half-migrated schema",
+        ...errorFields(err),
+      });
+      process.exit(1);
+    }
+    const { assertSearchPathOrAbort } = await import("./db/assert-search-path-or-abort.ts");
+    await bootPhase("search_path", assertSearchPathOrAbort);
+    await assertVaultMasterKey(tx);
+    await bootPhase("runtime_config", () => initializeRuntimeConfig(db, cfg));
+    await pinVaultMasterKey(tx);
+  });
   await bootPhase("runtime_config_coordinator", () => runtimeConfigCoordinator.start());
   const restart = await import("./runtime-config/restart.ts");
   await bootPhase("restart_outcome", () => restart.answerRestartRequestAtBoot(db));
@@ -452,7 +453,7 @@ async function runServer(): Promise<void> {
       crashRecoveryMonitor.stop();
       abortMonitor.stop();
       await stopListener();
-      await runtimeConfigCoordinator.stop();
+      await runtimeConfigCoordinator.pause();
       await stopBoss(SHUTDOWN_DRAIN_TIMEOUT_MS);
       httpShutdown.forceClose();
       const httpClosed = await httpShutdown.waitUntilClosed(1_000);
@@ -473,6 +474,18 @@ async function runServer(): Promise<void> {
           action: "shutdown.pg_pools_drain_failed",
           msg: "failed to drain postgres connector pools",
           ...errorFields(err),
+        });
+      }
+      const inFlight = tenantWorkInFlight();
+      if (httpClosed && inFlight === 0) {
+        await runtimeConfigCoordinator.stop();
+      } else {
+        logger.warn({
+          module: "runtime_config",
+          action: "shutdown.replica_registration_retained",
+          msg: "Shutdown has unsettled work; replica registration retained for operator review",
+          http_closed: httpClosed,
+          in_flight: inFlight,
         });
       }
       await closeDb();

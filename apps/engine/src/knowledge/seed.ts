@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
+import { and, eq, isNull } from "drizzle-orm";
 import { PLATFORM_CATEGORY } from "../api/catalog-metadata.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
+import { withTenantWork } from "../execution/index.ts";
+import { assertTenantActive, SelfServiceIdentityError } from "../identity/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { EMBEDDED_KNOWLEDGE_SEEDS } from "./embedded-seeds.ts";
 import {
@@ -69,81 +72,92 @@ export async function applyKnowledgeSeeds(
   tenant_id: string,
   db: Db = getDb(),
 ): Promise<ApplyOutcome> {
-  let inserted = 0;
-  let updated = 0;
-  let unchanged = 0;
-  for (const s of seeds) {
-    const version = createHash("sha256").update(s.body).digest("hex").slice(0, 32);
-    const buffer = Buffer.from(s.body, "utf8");
-    const existing = await getKnowledgeSourceBySlug(tenant_id, s.slug, db);
-    if (!existing) {
-      await createKnowledgeSource(
+  return withTenantWork(tenant_id, async () => {
+    await assertTenantActive(tenant_id, db);
+    let inserted = 0;
+    let updated = 0;
+    let unchanged = 0;
+    for (const s of seeds) {
+      const version = createHash("sha256").update(s.body).digest("hex").slice(0, 32);
+      const buffer = Buffer.from(s.body, "utf8");
+      const existing = await getKnowledgeSourceBySlug(tenant_id, s.slug, db);
+      if (!existing) {
+        await createKnowledgeSource(
+          {
+            tenant_id,
+            actor: null,
+            input: {
+              name: s.name,
+              slug: s.slug,
+              description: s.description,
+              category: PLATFORM_CATEGORY,
+              tags: s.tags,
+              scope: "global",
+            },
+            upload: { buffer, filename: `${s.slug}.md`, mime: "text/markdown" },
+            source_type_override: "seed",
+          },
+          db,
+        );
+        inserted++;
+        continue;
+      }
+      if (existing.source_type !== "seed") {
+        logger.warn({
+          module: "knowledge.seed",
+          action: "seed.slug_occupied",
+          msg: "seed slug is occupied by a non-seed source; leaving it untouched",
+          tenant_id,
+          slug: s.slug,
+          occupying_source_type: existing.source_type,
+        });
+        unchanged++;
+        continue;
+      }
+      if (existing.category !== PLATFORM_CATEGORY) {
+        await updateKnowledgeSource(
+          { tenant_id, id: existing.id, patch: { category: PLATFORM_CATEGORY }, actor_id: null },
+          db,
+        );
+      }
+      if (existing.version === version) {
+        unchanged++;
+        continue;
+      }
+      await ingestKnowledgeSource(
         {
           tenant_id,
-          actor: null,
-          input: {
-            name: s.name,
-            slug: s.slug,
-            description: s.description,
-            category: PLATFORM_CATEGORY,
-            tags: s.tags,
-            scope: "global",
-          },
+          knowledge_source_id: existing.id,
           upload: { buffer, filename: `${s.slug}.md`, mime: "text/markdown" },
-          source_type_override: "seed",
+          actor: null,
         },
         db,
       );
-      inserted++;
-      continue;
+      updated++;
     }
-    if (existing.source_type !== "seed") {
-      logger.warn({
-        module: "knowledge.seed",
-        action: "seed.slug_occupied",
-        msg: "seed slug is occupied by a non-seed source; leaving it untouched",
-        tenant_id,
-        slug: s.slug,
-        occupying_source_type: existing.source_type,
-      });
-      unchanged++;
-      continue;
-    }
-    if (existing.category !== PLATFORM_CATEGORY) {
-      await updateKnowledgeSource(
-        { tenant_id, id: existing.id, patch: { category: PLATFORM_CATEGORY }, actor_id: null },
-        db,
-      );
-    }
-    if (existing.version === version) {
-      unchanged++;
-      continue;
-    }
-    await ingestKnowledgeSource(
-      {
-        tenant_id,
-        knowledge_source_id: existing.id,
-        upload: { buffer, filename: `${s.slug}.md`, mime: "text/markdown" },
-        actor: null,
-      },
-      db,
-    );
-    updated++;
-  }
-  return { tenant_id, inserted, updated, unchanged };
+    return { tenant_id, inserted, updated, unchanged };
+  });
 }
 
 export async function applyKnowledgeSeedsForAllTenants(
   seeds: SeededKnowledge[],
   db: Db = getDb(),
 ): Promise<ApplyOutcome[]> {
-  const allTenants = await db.select({ id: tenants.id }).from(tenants);
+  const allTenants = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(and(eq(tenants.status, "active"), isNull(tenants.deleted_at)));
   const outcomes: ApplyOutcome[] = [];
   for (const t of allTenants) {
-    const r = await retryTransient(() => applyKnowledgeSeeds(seeds, t.id, db), {
-      label: "knowledge_seed",
-    });
-    outcomes.push(r);
+    try {
+      const r = await retryTransient(() => applyKnowledgeSeeds(seeds, t.id, db), {
+        label: "knowledge_seed",
+      });
+      outcomes.push(r);
+    } catch (error) {
+      if (!(error instanceof SelfServiceIdentityError) || error.code !== "tenant_unavailable")
+        throw error;
+    }
   }
   return outcomes;
 }

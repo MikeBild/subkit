@@ -1,8 +1,16 @@
 import { APICallError } from "ai";
+import {
+  HostedResourceCountError,
+  HostedStorageQuotaError,
+  hostedQuotaError,
+} from "../db/hosted-quota-errors.ts";
 import { LlmError, LlmProviderError } from "../llm/errors.ts";
 import { toLlmProviderError } from "../llm/provider-errors.ts";
+import { isDatabaseQueryError } from "../logging/index.ts";
 
 export type TurnFailureCode =
+  | "hosted_storage_quota_exhausted"
+  | "hosted_resource_count_exhausted"
   | "llm_provider_limited"
   | "llm_provider_unavailable"
   | "llm_context_too_large"
@@ -73,6 +81,17 @@ function providerFailure(error: LlmProviderError, at: string): TurnFailure {
 
 export function describeTurnFailure(error: unknown, now: Date = new Date()): TurnFailure {
   const at = now.toISOString();
+  const quota = hostedQuotaError(error);
+  if (quota instanceof HostedStorageQuotaError || quota instanceof HostedResourceCountError)
+    return { code: quota.code, message: quota.message, at };
+  const seen = new Set<unknown>();
+  let cause: unknown = error;
+  while (cause && typeof cause === "object" && !seen.has(cause)) {
+    seen.add(cause);
+    if (isDatabaseQueryError(cause))
+      return { code: "internal", message: "The conversation could not be saved.", at };
+    cause = (cause as { cause?: unknown }).cause;
+  }
   const providerErr =
     error instanceof LlmProviderError
       ? error

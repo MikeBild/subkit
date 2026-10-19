@@ -200,7 +200,7 @@ describe("OffloadRef round-trip + resolveOffloaded", () => {
   });
 
   test("resolveOffloaded fails closed when application SHA-256 metadata mismatches", async () => {
-    const key = `offload/integrity/${uuid()}.json`;
+    const key = `offload/${ctx.tenantId}/integrity/${uuid()}.json`;
     const body = Buffer.from('{"integrity":"expected"}', "utf8");
     await storage.store.put(key, body);
     const ref: OffloadRef = {

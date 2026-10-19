@@ -123,7 +123,10 @@ export async function handleAuthenticate(
   }
 
   try {
-    const started = await startAuthorizationCode({ ...oauthCfg, redirect_uri });
+    const started = await startAuthorizationCode(
+      { ...oauthCfg, redirect_uri },
+      { tenant_id: principal.tenant_id, exec: db },
+    );
     const expires = new Date(Date.now() + 10 * 60_000);
     await db.insert(connectorOauthStates).values({
       tenant_id: principal.tenant_id,

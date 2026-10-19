@@ -293,7 +293,10 @@ export const authenticateOAuthTool: ConversationTool = {
       args.scopes && args.scopes.length > 0
         ? { ...cfgWithRedirect, scope: args.scopes.join(" ") }
         : cfgWithRedirect;
-    const started = await startAuthorizationCode(cfgWithScope);
+    const started = await startAuthorizationCode(cfgWithScope, {
+      tenant_id: ctx.tenant_id,
+      exec: ctx.db,
+    });
     const expires = new Date(Date.now() + 10 * 60_000);
     await ctx.db.insert(connectorOauthStates).values({
       tenant_id: ctx.tenant_id,

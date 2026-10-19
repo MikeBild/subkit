@@ -3,7 +3,6 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import {
   connectorEndpointSchemas,
@@ -13,6 +12,7 @@ import {
   fileLinks,
   files,
 } from "../db/schema/index.ts";
+import { withTenantWork } from "../execution/tenant-work.ts";
 import {
   actorFields,
   checkAndDecrement,
@@ -36,7 +36,11 @@ import {
 } from "../llm/core/context-assembler.ts";
 import { recordConversationBudgetReport } from "../llm/core/conversation-budget-report.ts";
 import { resolveModelRoute } from "../llm/core/invoke.ts";
-import { anthropicWebSearchApplies, buildAnthropicWebSearchTool } from "../llm/core/model-init.ts";
+import {
+  anthropicWebSearchApplies,
+  buildAnthropicWebSearchTool,
+  nativeWebSearchSetting,
+} from "../llm/core/model-init.ts";
 import { repairToolCall as repairToolCallHandler } from "../llm/core/repair-tool-call.ts";
 import { PROVIDER_RESPONSE_TIMEOUT_MS } from "../llm/core/response-timeout.ts";
 import {
@@ -71,6 +75,7 @@ import {
 } from "../observability/instrumentation.ts";
 import { readMemoryUsage, timePhase, timePhaseAsync } from "../observability/runtime-telemetry.ts";
 import { enrichActiveSpan, isTracingActive, toolSpanAttributes } from "../observability/tracing.ts";
+import { withHostedWork } from "../queue/hosted-work.ts";
 import { skillAudienceForAuthoringMode } from "../skills/types.ts";
 import { now } from "../utils/clock.ts";
 import { validateTenantWorkflowDef } from "../workflows/tenant-validator.ts";
@@ -200,6 +205,12 @@ export interface RunLoopResult {
 }
 
 export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
+  return withTenantWork(p.tenant_id, () =>
+    withHostedWork(p.db, p.tenant_id, "chat", () => runLoopAdmitted(p)),
+  );
+}
+
+async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
   const sink = new EventSink(p.onEvent);
   const events: TurnEvent[] = sink.asArrayProxy();
   const budget = p.step_budget ?? DEFAULT_BUDGET;
@@ -980,13 +991,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       thinking_suppressed_by_forced_tool: thinkingDecision.suppressedByForcedTool,
       cache_supported: cacheSupported,
     });
-    const webSearchSetting = (() => {
-      try {
-        return getConfig(p.tenant_id).llm.web_search === true;
-      } catch {
-        return false;
-      }
-    })();
+    const webSearchSetting = nativeWebSearchSetting(p.tenant_id);
     const webSearchEnabled = anthropicWebSearchApplies(attemptProvider, modelId, webSearchSetting);
     const turnTools: ToolSet = webSearchEnabled
       ? { ...tools, web_search: buildAnthropicWebSearchTool(5, p.tenant_id) }

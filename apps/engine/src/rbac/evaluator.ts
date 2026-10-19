@@ -5,6 +5,7 @@ import type { Executor } from "../db/client.ts";
 import {
   groupMembers,
   groupRoleAssignments,
+  groups,
   permissions as permissionsTable,
   resourceGrants,
   rolePermissions,
@@ -122,29 +123,40 @@ async function roleHasPermission(
 
 async function groupGrantsPermission(
   db: Executor,
+  tenantId: string,
   userId: string,
   permissionId: string,
 ): Promise<boolean> {
-  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db
     .select({ group_id: groupMembers.group_id })
     .from(groupMembers)
+    .innerJoin(groups, eq(groups.id, groupMembers.group_id))
+    .innerJoin(users, eq(users.id, groupMembers.user_id))
     .innerJoin(groupRoleAssignments, eq(groupRoleAssignments.group_id, groupMembers.group_id))
+    .innerJoin(rolesTable, eq(rolesTable.id, groupRoleAssignments.role_id))
     .innerJoin(rolePermissions, eq(rolePermissions.role_id, groupRoleAssignments.role_id))
-    .where(and(eq(groupMembers.user_id, userId), eq(rolePermissions.permission_id, permissionId)))
+    .where(
+      and(
+        eq(groups.tenant_id, tenantId),
+        eq(users.tenant_id, tenantId),
+        or(isNull(rolesTable.tenant_id), eq(rolesTable.tenant_id, tenantId)),
+        eq(groupMembers.user_id, userId),
+        eq(rolePermissions.permission_id, permissionId),
+      ),
+    )
     .limit(1);
   return rows.length > 0;
 }
 
-async function userGroupIds(db: Executor, userId: string): Promise<string[]> {
-  // tenant-filter:exempt — group_members has no tenant_id column; a user's
-  // group memberships are tenant-scoped transitively (group_members.group_id
-  // → groups.tenant_id, and a user only joins groups in its own tenant). The
-  // resulting grant lookup IS tenant-filtered. Mirrors groupGrantsPermission.
+async function userGroupIds(db: Executor, tenantId: string, userId: string): Promise<string[]> {
   const rows = await db
     .select({ group_id: groupMembers.group_id })
     .from(groupMembers)
-    .where(eq(groupMembers.user_id, userId));
+    .innerJoin(groups, eq(groups.id, groupMembers.group_id))
+    .innerJoin(users, eq(users.id, groupMembers.user_id))
+    .where(
+      and(eq(groups.tenant_id, tenantId), eq(users.tenant_id, tenantId), eq(users.id, userId)),
+    );
   return rows.map((r) => r.group_id);
 }
 
@@ -162,7 +174,7 @@ async function hasResourceGrant(
     ),
   ];
   if (check.principal.kind === "user") {
-    const groupIds = await userGroupIds(db, check.principal.id);
+    const groupIds = await userGroupIds(db, check.tenant_id, check.principal.id);
     if (groupIds.length > 0) {
       subjectClauses.push(
         and(eq(resourceGrants.subject_type, "group"), inArray(resourceGrants.subject_id, groupIds)),
@@ -334,7 +346,12 @@ export async function can(db: Executor, check: PermissionCheck): Promise<Decisio
   }
 
   if (!isPortalToken && check.principal.kind === "user") {
-    const granted = await groupGrantsPermission(db, check.principal.id, permissionId);
+    const granted = await groupGrantsPermission(
+      db,
+      check.tenant_id,
+      check.principal.id,
+      permissionId,
+    );
     if (granted) {
       recordMetric("allow", check.permission, "group");
       log.rbac.checked({ allow: true, source: "group", ...rbacCtx(check) });
@@ -427,7 +444,7 @@ export async function resourceAccess(
         ),
       ];
       if (principal.kind === "user") {
-        const groupIds = await userGroupIds(db, principal.id);
+        const groupIds = await userGroupIds(db, check.tenant_id, principal.id);
         if (groupIds.length > 0) {
           subjectClauses.push(
             and(

@@ -36,7 +36,7 @@ describe("session loading", () => {
 
   test("the first bootstrap request carries a five second limit", async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      Response.json({ csrf_token: "token" }),
+      Response.json({ csrf_token: "token", tenant: { id: "tenant-a" } }),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     expect(bootstrapLimits(undefined)).toEqual({ timeoutMs: BOOTSTRAP_TIMEOUT_MS });
@@ -49,7 +49,7 @@ describe("session loading", () => {
 
   test("a refresh of a loaded session is not cut off by the first-load limit", async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      Response.json({ csrf_token: "token" }),
+      Response.json({ csrf_token: "token", tenant: { id: "tenant-a" } }),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     const loaded = { csrf_token: "token" } as Bootstrap;
@@ -122,4 +122,19 @@ describe("session loading", () => {
     );
     expect(sessionView({ isPending: false, error: null, data }, false)).toBe("ready");
   });
+});
+
+test("a changed workspace hides cached data even when bootstrap previously succeeded", () => {
+  const data = { csrf_token: "old" } as Bootstrap;
+  expect(
+    sessionView(
+      {
+        isPending: false,
+        error: new ApiError(409, { code: "tenant_context_changed" }, null),
+        data,
+      },
+      false,
+    ),
+  ).toBe("changed");
+  expect(sessionView({ isPending: false, error: null, data }, false, true)).toBe("changed");
 });

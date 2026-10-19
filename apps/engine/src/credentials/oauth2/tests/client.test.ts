@@ -49,12 +49,15 @@ afterAll(async () => {
 
 describe("oauth2 client-credentials grant + encrypted storage", () => {
   test("token is stored encrypted, ciphertext differs from plaintext", async () => {
-    const bundle = await runClientCredentialsGrant({
-      issuer_url: mock.baseUrl,
-      client_id: "test-client",
-      client_secret: "test-secret",
-      scope: "read",
-    });
+    const bundle = await runClientCredentialsGrant(
+      {
+        issuer_url: mock.baseUrl,
+        client_id: "test-client",
+        client_secret: "test-secret",
+        scope: "read",
+      },
+      { mode: "permissive" },
+    );
     expect(bundle.access_token).toMatch(/^at-/);
     expect(bundle.refresh_token).toMatch(/^rt-/);
     expect(mock.lastGrantType()).toBe("client_credentials");

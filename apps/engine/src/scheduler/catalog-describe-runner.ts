@@ -1,4 +1,4 @@
-import { isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { Db } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
@@ -8,7 +8,10 @@ import { hasPendingCatalogDescriptions } from "../workflows/catalog-describe.ts"
 
 export async function runCatalogDescribeSweep(db: Db, boss: PgBoss): Promise<void> {
   // tenant-filter:exempt — the describe sweep visits every tenant; each job carries its tenant_id
-  const all = await db.select({ id: tenants.id }).from(tenants).where(isNull(tenants.deleted_at));
+  const all = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(and(isNull(tenants.deleted_at), eq(tenants.status, "active")));
   for (const tenant of all) {
     try {
       if (!(await hasPendingCatalogDescriptions(tenant.id, db))) continue;

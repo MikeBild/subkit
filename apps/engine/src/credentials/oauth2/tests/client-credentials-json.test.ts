@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { runClientCredentialsJsonGrant } from "../client.ts";
 
 let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
@@ -9,7 +9,7 @@ beforeEach(() => {
 });
 
 function seamTest(name: string, body: () => Promise<void>) {
-  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+  test(name, () => withSelfHostedDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }
 
 describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
@@ -21,12 +21,15 @@ describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
       }),
     );
 
-    await runClientCredentialsJsonGrant({
-      token_endpoint: "https://example.test/api/v2/authenticate",
-      body_mapping: { client_id: "cid-001", client_secret: "s3cr3t" },
-      response_format: "raw",
-      token_response_ttl_ms: 86_400_000,
-    });
+    await runClientCredentialsJsonGrant(
+      {
+        token_endpoint: "https://example.test/api/v2/authenticate",
+        body_mapping: { client_id: "cid-001", client_secret: "s3cr3t" },
+        response_format: "raw",
+        token_response_ttl_ms: 86_400_000,
+      },
+      { mode: "permissive" },
+    );
 
     const call = fetchSpy.mock.calls[0];
     expect(call?.[0]).toBe("https://example.test/api/v2/authenticate");
@@ -47,12 +50,15 @@ describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
       }),
     );
 
-    const bundle = await runClientCredentialsJsonGrant({
-      token_endpoint: "https://example.test/api/v2/authenticate",
-      body_mapping: { client_id: "cid", client_secret: "sec" },
-      response_format: "raw",
-      token_response_ttl_ms: 86_400_000,
-    });
+    const bundle = await runClientCredentialsJsonGrant(
+      {
+        token_endpoint: "https://example.test/api/v2/authenticate",
+        body_mapping: { client_id: "cid", client_secret: "sec" },
+        response_format: "raw",
+        token_response_ttl_ms: 86_400_000,
+      },
+      { mode: "permissive" },
+    );
 
     expect(bundle.access_token).toBe("eyJraWQiOiJ0ZXN0Ii5wYXlsb2FkLnNpZw==");
     expect(bundle.token_type).toBe("Bearer");
@@ -68,12 +74,15 @@ describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
       }),
     );
 
-    const bundle = await runClientCredentialsJsonGrant({
-      token_endpoint: "https://example.test/api/v2/authenticate",
-      body_mapping: { client_id: "cid", client_secret: "sec" },
-      response_format: "raw",
-      token_response_ttl_ms: 86_400_000,
-    });
+    const bundle = await runClientCredentialsJsonGrant(
+      {
+        token_endpoint: "https://example.test/api/v2/authenticate",
+        body_mapping: { client_id: "cid", client_secret: "sec" },
+        response_format: "raw",
+        token_response_ttl_ms: 86_400_000,
+      },
+      { mode: "permissive" },
+    );
 
     expect(bundle.expires_at).toBeInstanceOf(Date);
     const expectedMs = Date.now() + 86_400_000; // allow-wall-clock: tolerance-window assertion against the production clock (oauth2/client.ts computes expiry via Date.now)
@@ -90,12 +99,15 @@ describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
 
     let caught: Error | null = null;
     try {
-      await runClientCredentialsJsonGrant({
-        token_endpoint: "https://example.test/api/v2/authenticate",
-        body_mapping: { client_id: "bad", client_secret: "bad" },
-        response_format: "raw",
-        token_response_ttl_ms: 86_400_000,
-      });
+      await runClientCredentialsJsonGrant(
+        {
+          token_endpoint: "https://example.test/api/v2/authenticate",
+          body_mapping: { client_id: "bad", client_secret: "bad" },
+          response_format: "raw",
+          token_response_ttl_ms: 86_400_000,
+        },
+        { mode: "permissive" },
+      );
     } catch (e) {
       caught = e as Error;
     }
@@ -117,12 +129,15 @@ describe("runClientCredentialsJsonGrant — json response", () => {
       ),
     );
 
-    const bundle = await runClientCredentialsJsonGrant({
-      token_endpoint: "https://example.test/token",
-      body_mapping: { client_id: "cid", client_secret: "sec" },
-      response_format: "json",
-      token_response_ttl_ms: 86_400_000,
-    });
+    const bundle = await runClientCredentialsJsonGrant(
+      {
+        token_endpoint: "https://example.test/token",
+        body_mapping: { client_id: "cid", client_secret: "sec" },
+        response_format: "json",
+        token_response_ttl_ms: 86_400_000,
+      },
+      { mode: "permissive" },
+    );
 
     expect(bundle.access_token).toBe("json-tok-abc");
     expect(bundle.token_type).toBe("Bearer");
@@ -139,12 +154,15 @@ describe("runClientCredentialsJsonGrant — json response", () => {
       }),
     );
 
-    const bundle = await runClientCredentialsJsonGrant({
-      token_endpoint: "https://example.test/token",
-      body_mapping: { client_id: "cid", client_secret: "sec" },
-      response_format: "json",
-      token_response_ttl_ms: 7_200_000,
-    });
+    const bundle = await runClientCredentialsJsonGrant(
+      {
+        token_endpoint: "https://example.test/token",
+        body_mapping: { client_id: "cid", client_secret: "sec" },
+        response_format: "json",
+        token_response_ttl_ms: 7_200_000,
+      },
+      { mode: "permissive" },
+    );
 
     expect(bundle.access_token).toBe("tok-no-expiry");
     const expectedMs = Date.now() + 7_200_000; // allow-wall-clock: tolerance-window assertion against the production clock (oauth2/client.ts computes expiry via Date.now)
@@ -161,16 +179,19 @@ describe("runClientCredentialsJsonGrant — json response", () => {
 
     let caught: Error | null = null;
     try {
-      await runClientCredentialsJsonGrant({
-        token_endpoint: "https://example.test/token",
-        body_mapping: { client_id: "cid", client_secret: "sec" },
-        response_format: "json",
-        token_response_ttl_ms: 86_400_000,
-      });
+      await runClientCredentialsJsonGrant(
+        {
+          token_endpoint: "https://example.test/token",
+          body_mapping: { client_id: "cid", client_secret: "sec" },
+          response_format: "json",
+          token_response_ttl_ms: 86_400_000,
+        },
+        { mode: "permissive" },
+      );
     } catch (e) {
       caught = e as Error;
     }
-    expect(caught?.message).toContain("access_token");
+    expect(caught?.message).toBe("credential_response_invalid");
   });
 });
 
@@ -180,13 +201,16 @@ describe("runClientCredentialsJsonGrant — extra_token_headers forwarded", () =
       new Response('"tok"', { status: 200, headers: { "content-type": "text/plain" } }),
     );
 
-    await runClientCredentialsJsonGrant({
-      token_endpoint: "https://example.test/auth",
-      body_mapping: { client_id: "cid", client_secret: "sec" },
-      response_format: "raw",
-      token_response_ttl_ms: 86_400_000,
-      extra_token_headers: { "x-custom": "value" },
-    });
+    await runClientCredentialsJsonGrant(
+      {
+        token_endpoint: "https://example.test/auth",
+        body_mapping: { client_id: "cid", client_secret: "sec" },
+        response_format: "raw",
+        token_response_ttl_ms: 86_400_000,
+        extra_token_headers: { "x-custom": "value" },
+      },
+      { mode: "permissive" },
+    );
 
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
     const headers = init.headers as Record<string, string>;

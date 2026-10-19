@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import type { PgBoss } from "pg-boss";
 import { fileLinks, files } from "../../db/schema/index.ts";
 import { requireFileForTenant, resolvedFromRow } from "../../files/resolver.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
@@ -7,18 +8,20 @@ import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setu
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { runFilesCleanup } from "../files-cleanup-runner.ts";
-import { bootstrapMinimalPgbossSchema } from "./pgboss-bootstrap.ts";
+import { createFilesCleanupBoss, disposeBoss } from "./pgboss-bootstrap.ts";
 
 const uuid = createDeterministicUuidFactory(0xface01);
 
 let srv: HttpTestServer;
+let boss: PgBoss;
 
 beforeAll(async () => {
   srv = await createHttpTestServer("files-cleanup-races");
-  await bootstrapMinimalPgbossSchema(srv.db);
+  boss = await createFilesCleanupBoss(srv.testDb.url);
 }, 60_000);
 
 afterAll(async () => {
+  await disposeBoss(boss);
   await srv.cleanup();
 }, 30_000);
 
@@ -35,7 +38,7 @@ describe("files cleanup race — soft-delete grace", () => {
     });
     await srv.db.delete(fileLinks).where(eq(fileLinks.file_id, att.file_uuid));
 
-    await runFilesCleanup(new Date(FROZEN_NOW), srv.db);
+    await runFilesCleanup(new Date(FROZEN_NOW), srv.db, boss, srv.testDb.pool);
 
     const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
     expect(row).toBeDefined();
@@ -64,7 +67,7 @@ describe("files cleanup race — soft-delete grace", () => {
       slug: `race-relink-${uuid().slice(0, 8)}`,
     });
 
-    await runFilesCleanup(new Date(FROZEN_NOW), srv.db);
+    await runFilesCleanup(new Date(FROZEN_NOW), srv.db, boss, srv.testDb.pool);
 
     const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
     expect(row).toBeDefined();

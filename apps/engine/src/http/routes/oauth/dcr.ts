@@ -6,7 +6,7 @@ import {
   readRequestSource,
   SYSTEM_TENANT_ID,
 } from "../../../audit/index.ts";
-import { createMcpOAuthProvider } from "../../../auth/index.ts";
+import { createMcpOAuthProvider, McpClientAdmissionError } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import { logger } from "../../../logging/index.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -40,9 +40,8 @@ export function registerOAuthDcrRoutes(app: OpenAPIHono<AppEnv>): void {
   }
 
   app.post("/v1/oauth/register", async (c) => {
-    const ip =
-      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? c.req.header("x-real-ip") ?? null;
-    if (ip !== null && !checkDcrRateLimit(ip)) {
+    const ip = c.get("client_ip") ?? "unknown";
+    if (!checkDcrRateLimit(ip)) {
       await auditAwait(
         {
           tenant_id: SYSTEM_TENANT_ID,
@@ -153,6 +152,7 @@ export function registerOAuthDcrRoutes(app: OpenAPIHono<AppEnv>): void {
       const result = await provider.registerClient({
         ...parsed.data,
         requestSource: readRequestSource(c) ?? "api",
+        registration_peer: c.get("client_ip") ?? "unknown",
       });
       return c.json(
         {
@@ -162,6 +162,16 @@ export function registerOAuthDcrRoutes(app: OpenAPIHono<AppEnv>): void {
         201,
       );
     } catch (err) {
+      if (err instanceof McpClientAdmissionError) {
+        if (err.retry_after_seconds) c.header("Retry-After", String(err.retry_after_seconds));
+        return c.json(
+          {
+            error: err.reason === "rate" ? "too_many_requests" : "temporarily_unavailable",
+            error_description: err.message,
+          },
+          err.reason === "rate" ? 429 : 503,
+        );
+      }
       const oauthError = (err as { oauth_error?: string }).oauth_error;
       logger.error({
         module: "mcp_oauth",

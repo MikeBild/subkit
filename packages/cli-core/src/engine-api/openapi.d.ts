@@ -2202,6 +2202,278 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/settings/hosted-work/{tenant_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List unresolved work for an operator browser review */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    tenant_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description At most 100 unresolved admissions, oldest first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: {
+                                /** Format: uuid */
+                                admission_id: string;
+                                /** Format: uuid */
+                                tenant_id: string;
+                                /** @enum {string} */
+                                kind: "execution" | "chat";
+                                /** @enum {string} */
+                                state: "pending" | "active" | "reconciliation_required" | "released";
+                                /** Format: uuid */
+                                owner_boot_id: string;
+                                /** Format: date-time */
+                                started_at: string;
+                                current_process: boolean;
+                            }[];
+                            has_more: boolean;
+                        };
+                    };
+                };
+                /** @description Review refused */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Release one admission after a human reviews proof that its former owner stopped */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    tenant_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        admission_id: string;
+                        /** Format: uuid */
+                        owner_boot_id: string;
+                        reviewed_owner_stop_evidence: string;
+                        /** @enum {boolean} */
+                        all_work_from_owner_stopped: true;
+                    };
+                };
+            };
+            responses: {
+                /** @description Released after operator review; evidence text is not retained */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            admission_id: string;
+                            /** @enum {string} */
+                            state: "released";
+                            evidence_sha256: string;
+                        };
+                    };
+                };
+                /** @description Review refused */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Review refused */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/settings/hosted-storage/{tenant_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List unresolved uploads for an operator browser review */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    tenant_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description At most 100 pending object reservations, oldest first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: {
+                                /** Format: uuid */
+                                reservation_id: string;
+                                /** Format: uuid */
+                                tenant_id: string;
+                                storage_key: string;
+                                storage_namespace: string;
+                                declared_bytes: string;
+                                /** Format: date-time */
+                                created_at: string;
+                                /** Format: date-time */
+                                updated_at: string;
+                            }[];
+                            has_more: boolean;
+                        };
+                    };
+                };
+                /** @description Review refused */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Review refused */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Review refused */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Remove one pending object after review of proof that every remote upload ended */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    tenant_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        reservation_id: string;
+                        storage_namespace: string;
+                        /** Format: date-time */
+                        expected_updated_at: string;
+                        /** @enum {boolean} */
+                        all_possible_upload_origins_stopped: true;
+                        /** @enum {boolean} */
+                        all_remote_puts_terminal: true;
+                        reviewed_remote_stop_evidence: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Verified physical absence and exactly one quota release; evidence text is not retained */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            reservation_id: string;
+                            /** @enum {string} */
+                            state: "resolved_absent";
+                            evidence_sha256: string;
+                        };
+                    };
+                };
+                /** @description Review refused */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Review refused */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Review refused */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/secret-approvals": {
         parameters: {
             query?: never;
@@ -3022,6 +3294,456 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/identity/recovery/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List public provider choices for verified hosted identity recovery */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Hosted recovery provider labels */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: {
+                                id: string;
+                                label: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/recovery/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reauthenticate a hosted identity for a one-time recovery handoff */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        provider_id: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Fresh interactive OIDC authorization address */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uri */
+                            authorization_url: string;
+                        };
+                    };
+                };
+                /** @description A verified browser identity session is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a short-lived verified identity recovery handoff without tenant authority */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Recovery status and one-time action proof */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            tenant: {
+                                /** Format: uuid */
+                                id: string;
+                                display_name: string;
+                                /** @enum {string} */
+                                status: "active" | "suspended" | "pending_deletion";
+                                /** Format: date-time */
+                                deletion_scheduled_for: string | null;
+                            } | null;
+                            can_restore: boolean;
+                            csrf_token: string;
+                            /** Format: date-time */
+                            expires_at: string;
+                        };
+                    };
+                };
+                /** @description A verified browser identity session is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the verified browser identity's active tenant memberships */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Active memberships */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: {
+                                /** Format: uuid */
+                                tenant_id: string;
+                                slug: string;
+                                display_name: string;
+                                /** @enum {string} */
+                                origin: "self_hosted" | "self_service";
+                                /** Format: uuid */
+                                user_id: string;
+                                /** Format: uuid */
+                                role_id: string;
+                                role: string;
+                                is_owner: boolean;
+                            }[];
+                        };
+                    };
+                };
+                /** @description A verified browser identity session is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/tenant-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate the verified browser session into an existing tenant membership */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        tenant_id: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Rotated tenant session and CSRF proof */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            membership: {
+                                /** Format: uuid */
+                                tenant_id: string;
+                                slug: string;
+                                display_name: string;
+                                /** @enum {string} */
+                                origin: "self_hosted" | "self_service";
+                                /** Format: uuid */
+                                user_id: string;
+                                /** Format: uuid */
+                                role_id: string;
+                                role: string;
+                                is_owner: boolean;
+                            };
+                            csrf_token: string;
+                        };
+                    };
+                };
+                /** @description A verified browser identity session is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/owned-tenant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the verified browser identity's own hosted tenant */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Own tenant status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            tenant: {
+                                /** Format: uuid */
+                                id: string;
+                                display_name: string;
+                                /** @enum {string} */
+                                status: "active" | "suspended" | "pending_deletion";
+                                /** Format: date-time */
+                                deletion_requested_at: string | null;
+                                /** Format: date-time */
+                                deletion_scheduled_for: string | null;
+                            } | null;
+                        };
+                    };
+                };
+                /** @description Verified owner browser identity or recovery proof required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/owned-tenant/deletion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request deletion of the current owned hosted tenant after seven days */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        confirmation: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Tenant blocked immediately; deletion scheduled */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            tenant_id: string;
+                            /** @enum {string} */
+                            status: "pending_deletion";
+                            /** Format: date-time */
+                            deletion_scheduled_for: string;
+                        };
+                    };
+                };
+                /** @description Verified owner browser identity or recovery proof required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/owned-tenant/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore the owner tenant using a fresh one-time identity recovery proof
+         * @description Requires the separate HttpOnly recovery cookie and X-Subkit-Recovery-CSRF from GET /v1/identity/recovery. Does not issue or reactivate tenant credentials.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Tenant restored; sign in again */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            tenant_id: string;
+                            /** @enum {string} */
+                            status: "active";
+                        };
+                    };
+                };
+                /** @description Verified owner browser identity or recovery proof required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/identity/users": {
         parameters: {
             query?: never;
@@ -3315,6 +4037,97 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/v1/identity/provider-identities/migration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview or explicitly apply existing pinned identity bindings as global memberships
+         * @description Engine operator only. Omit reviewed_digest for a conflict report. Submit the exact returned digest to apply that reviewed state. Never merges accounts by email or creates a login session.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** Format: uri */
+                        issuer_url: string;
+                        subject: string;
+                        reviewed_digest?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Migration preview or applied result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            applied: boolean;
+                            digest: string;
+                            conflicts: string[];
+                            /** Format: uuid */
+                            identity_id: string | null;
+                            bindings: {
+                                /** Format: uuid */
+                                binding_id: string;
+                                /** Format: uuid */
+                                tenant_id: string;
+                                /** Format: uuid */
+                                user_id: string;
+                                email: string;
+                                /** Format: uuid */
+                                role_id: string;
+                                /** Format: uuid */
+                                auth_identity_id: string | null;
+                                user_status: string;
+                                /** Format: date-time */
+                                user_deleted_at: string | null;
+                                tenant_status: string;
+                                /** Format: date-time */
+                                tenant_deleted_at: string | null;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Operator required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Reviewed state changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/identity/users/{id}/provider-identities": {
@@ -3611,6 +4424,115 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/invites/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a verified hosted identity login for a membership invitation
+         * @description The invite secret stays in the request body. OIDC state stores only its validated invitation id; no session is issued until the verified identity matches the invited address.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        token: string;
+                        provider_id: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Redirect to the configured OIDC provider */
+                302: {
+                    headers: {
+                        Location?: string;
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invitation or hosted provider unavailable */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/invites/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept an unrestricted membership invitation with a verified browser identity */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RedeemInviteBody"];
+                };
+            };
+            responses: {
+                /** @description Membership accepted; no credentials or session issued */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            tenant_id: string;
+                            /** Format: uuid */
+                            user_id: string;
+                            claimed: boolean;
+                        };
+                    };
+                };
+                /** @description Verified identity, invite audience or membership scope rejected */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -20256,6 +21178,9 @@ export interface components {
         UserInviteListResponse: {
             items: components["schemas"]["UserInvite"][];
         };
+        RedeemInviteBody: {
+            token: string;
+        };
         InviteRedeemed: {
             /** Format: uuid */
             user_id: string;
@@ -20264,9 +21189,6 @@ export interface components {
             /** @description The invited user's personal API key. Returned exactly once. */
             api_key: string;
             api_key_prefix: string;
-        };
-        RedeemInviteBody: {
-            token: string;
         };
         SystemAccountListResponse: {
             items: components["schemas"]["SystemAccount"][];
@@ -20391,6 +21313,13 @@ export interface components {
             context_id: string | null;
             email: string | null;
         };
+        IdentityBrowserLoginRequired: {
+            /** @enum {string} */
+            error: "browser_login_required";
+            message: string;
+            /** Format: uri */
+            continuation_url: string;
+        };
         IdentitySessionRequest: {
             provider_id: string;
             identity_token: string;
@@ -20428,6 +21357,8 @@ export interface components {
                 /** Format: date-time */
                 absolute_expires_at: string | null;
             };
+            /** @description Verified browser identity supports workspace membership selection */
+            identity_memberships: boolean;
             permissions: string[];
             csrf_token: string;
             version: string;
@@ -21000,6 +21931,7 @@ export interface components {
                     encoding: "hex" | "base64";
                     signed_payload: string;
                     signature_prefix: string;
+                    id_field?: string;
                 } | null;
                 /** @enum {string} */
                 state: "active" | "inactive" | "held";
@@ -26413,13 +27345,13 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Provider not configured or identity is not allowed */
+            /** @description Provider not configured, identity is not allowed, or browser login is required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": components["schemas"]["Error"] | components["schemas"]["IdentityBrowserLoginRequired"];
                 };
             };
         };

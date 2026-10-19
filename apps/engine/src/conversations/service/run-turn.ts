@@ -5,6 +5,8 @@ import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
+import { withTenantWork } from "../../execution/tenant-work.ts";
+import { assertTenantActive } from "../../identity/tenant-status.ts";
 import { scrubString } from "../../logging/scrub-secrets.ts";
 import { recordConversationToolCall } from "../../observability/instrumentation.ts";
 import type { AnswerActor } from "../answer-actor.ts";
@@ -49,6 +51,16 @@ export interface RunConversationTurnParams {
 }
 
 export async function runConversationTurn(
+  p: RunConversationTurnParams,
+  exec: Db,
+): Promise<ConversationTurnOutcome> {
+  return withTenantWork(p.tenant_id, async () => {
+    await assertTenantActive(p.tenant_id, exec);
+    return driveConversationTurn(p, exec);
+  });
+}
+
+async function driveConversationTurn(
   p: RunConversationTurnParams,
   exec: Db,
 ): Promise<ConversationTurnOutcome> {

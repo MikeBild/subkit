@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { normalizeKnownHosts, openApiDirectStrategy } from "./openapi-direct.ts";
 import { DiscoveryError } from "./types.ts";
 
@@ -14,7 +14,7 @@ beforeEach(() => {
 });
 
 function seamTest(name: string, body: () => Promise<void>) {
-  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+  test(name, () => withSelfHostedDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }
 
 function specArchive(files: Record<string, string>): ArrayBuffer {

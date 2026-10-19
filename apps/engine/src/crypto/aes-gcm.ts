@@ -70,6 +70,10 @@ function getKey(): Buffer {
   return cachedKey;
 }
 
+export function activeMasterKeyDigest(): string {
+  return createHash("sha256").update(getKey()).digest("hex");
+}
+
 export interface EncryptedPayload {
   ciphertext: Uint8Array;
   iv: Uint8Array;
@@ -91,6 +95,14 @@ export function encryptSecretWithKey(
   plaintext: string,
   aad?: string,
 ): EncryptedPayload {
+  return encryptSecretBytesWithKey(key, Buffer.from(plaintext, "utf8"), aad);
+}
+
+export function encryptSecretBytesWithKey(
+  key: Buffer,
+  plaintext: Uint8Array,
+  aad?: string,
+): EncryptedPayload {
   const iv = randomBytes(AES_IV_BYTES);
   const cipher = createCipheriv(AES_ALGORITHM, key, iv, {
     authTagLength: AES_AUTH_TAG_BYTES,
@@ -98,7 +110,7 @@ export function encryptSecretWithKey(
   if (aad) {
     cipher.setAAD(Buffer.from(aad, "utf8"));
   }
-  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const auth_tag = cipher.getAuthTag();
   if (auth_tag.length !== AES_AUTH_TAG_BYTES) {
     throw new CryptoError(
@@ -118,6 +130,14 @@ export function decryptSecret(payload: EncryptedPayload, aad?: string): string {
 }
 
 export function decryptSecretWithKey(key: Buffer, payload: EncryptedPayload, aad?: string): string {
+  return Buffer.from(decryptSecretBytesWithKey(key, payload, aad)).toString("utf8");
+}
+
+export function decryptSecretBytesWithKey(
+  key: Buffer,
+  payload: EncryptedPayload,
+  aad?: string,
+): Uint8Array {
   if (payload.iv.length !== AES_IV_BYTES) {
     throw new CryptoError(`iv length ${payload.iv.length}, expected ${AES_IV_BYTES}`, "iv_length");
   }
@@ -136,7 +156,7 @@ export function decryptSecretWithKey(key: Buffer, payload: EncryptedPayload, aad
   decipher.setAuthTag(Buffer.from(payload.auth_tag));
   try {
     const out = Buffer.concat([decipher.update(Buffer.from(payload.ciphertext)), decipher.final()]);
-    return out.toString("utf8");
+    return new Uint8Array(out);
   } catch (err) {
     throw new CryptoError(
       `decrypt failed: ${err instanceof Error ? err.message : String(err)}`,

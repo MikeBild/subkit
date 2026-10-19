@@ -26,7 +26,9 @@ import {
   INGEST_KNOWLEDGE_QUEUE,
 } from "../queue/handlers/ingest-knowledge.ts";
 import { enqueueGateDiagnosis } from "../queue/handlers/workflow-repair.ts";
+import { enqueueHostedWork } from "../queue/hosted-work.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
+import { getObjectStore } from "../storage/object-store.ts";
 import {
   calendarGateSkipReason,
   localDateInTz,
@@ -55,6 +57,7 @@ import {
 } from "./schedule-admission-state.ts";
 import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
 import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
+import { runTenantErasureSweep } from "./tenant-erasure-runner.ts";
 import { runToolApprovalsCleanup } from "./tool-approvals-cleanup-runner.ts";
 
 const PROACTIVE_DRIFT_SCAN_CADENCE_MS = 60 * 60 * 1000;
@@ -453,7 +456,13 @@ export class SchedulerReconciler {
     const rows = await this.opts.db
       .select()
       .from(connectors)
-      .where(and(isNotNull(connectors.auto_refresh_cron), isNull(connectors.deleted_at)));
+      .where(
+        and(
+          isNotNull(connectors.auto_refresh_cron),
+          isNull(connectors.deleted_at),
+          sql`EXISTS (SELECT 1 FROM ${tenants} WHERE ${tenants.id} = ${connectors.tenant_id} AND ${tenants.status} = 'active' AND ${tenants.deleted_at} IS NULL)`,
+        ),
+      );
     for (const row of rows) {
       const cron = row.auto_refresh_cron;
       if (!cron) continue;
@@ -644,6 +653,7 @@ export class SchedulerReconciler {
       .where(
         and(
           isNull(tenants.deleted_at),
+          eq(tenants.status, "active"),
           or(
             isNull(tenants.last_proactive_scan_at),
             lt(tenants.last_proactive_scan_at, cadenceCutoff),
@@ -676,6 +686,7 @@ export class SchedulerReconciler {
       .where(
         and(
           isNull(tenants.deleted_at),
+          eq(tenants.status, "active"),
           or(
             isNull(tenants.last_connector_reauth_scan_at),
             lt(tenants.last_connector_reauth_scan_at, cadenceCutoff),
@@ -719,6 +730,7 @@ export class SchedulerReconciler {
       .where(
         and(
           isNull(tenants.deleted_at),
+          eq(tenants.status, "active"),
           or(
             isNull(tenants.last_endpoint_contract_scan_at),
             lt(tenants.last_endpoint_contract_scan_at, cadenceCutoff),
@@ -756,7 +768,11 @@ export class SchedulerReconciler {
       if (elapsed < FILES_CLEANUP_CADENCE_MS) return;
     }
     this.lastFilesCleanupAt = now;
-    await runFilesCleanup(now, this.opts.db);
+    await runFilesCleanup(now, this.opts.db, this.opts.boss);
+    await runTenantErasureSweep(this.opts.db, () => ({
+      queue: this.opts.boss,
+      objects: getObjectStore(),
+    }));
   }
 
   async reconcileRiskSignalEdges(now: Date = new Date()): Promise<void> {
@@ -882,6 +898,7 @@ export class SchedulerReconciler {
           inArray(connectors.driver, ["http", "graphql"]),
           isNotNull(connectors.base_url),
           isNull(connectors.deleted_at),
+          sql`EXISTS (SELECT 1 FROM ${tenants} WHERE ${tenants.id} = ${connectors.tenant_id} AND ${tenants.status} = 'active' AND ${tenants.deleted_at} IS NULL)`,
         ),
       )
       .orderBy(
@@ -922,6 +939,8 @@ export class SchedulerReconciler {
       }
       try {
         const probeLinks = await this.probeRunner(row.base_url, {
+          tenant_id: row.tenant_id,
+          exec: this.opts.db,
           signal: AbortSignal.timeout(CONNECTOR_SELF_DESCRIPTION_DISCOVERY_TIMEOUT_MS),
         });
         if (probeLinks.length > 0) {
@@ -993,7 +1012,9 @@ export class SchedulerReconciler {
     const { input: _queuedInput, ...queuedPayload } = payload;
     const job: ExecutionRunJob = { ...queuedPayload, execution_id, request_source: "scheduler" };
     if (admitted.status === "queued")
-      await this.opts.boss.send(EXECUTION_RUN_QUEUE, job, { id: execution_id });
+      await enqueueHostedWork(this.opts.db, this.opts.boss, "execution", EXECUTION_RUN_QUEUE, job, {
+        id: execution_id,
+      });
     await recordScheduleAdmission(this.opts.db, audit, null);
     await auditAwait(
       {
@@ -1118,6 +1139,18 @@ export class SchedulerReconciler {
 
     const every: EveryDesiredState = new Map();
     for (const { schedule, wf } of rows) {
+      if (schedule.tenant_id !== wf.tenant_id) {
+        logger.warn({
+          module: "scheduler",
+          action: "schedule.tenant_mismatch",
+          msg: "schedule tenant_id does not match workflow tenant_id — skipping",
+          schedule_id: schedule.id,
+          schedule_tenant_id: schedule.tenant_id,
+          workflow_id: wf.id,
+          workflow_tenant_id: wf.tenant_id,
+        });
+        continue;
+      }
       const parsed = parseCronExpression(schedule.cron);
       if (!parsed.ok) {
         logger.warn({

@@ -57,3 +57,17 @@ test("a server failure, timeout, rate limit or lost connection is retried up to 
   expect(retryQuery(0, new TypeError("Failed to fetch"))).toBe(true);
   expect(retryQuery(3, new ApiError(500, { code: "internal" }, null))).toBe(false);
 });
+
+test("an unavailable tenant closes the cached session immediately", async () => {
+  let notices = 0;
+  const stop = onSessionExpired(() => {
+    notices += 1;
+  });
+  try {
+    answer(403, { code: "tenant_unavailable" });
+    await expect(apiRequest("/v1/workflows")).rejects.toBeInstanceOf(ApiError);
+    expect(notices).toBe(1);
+  } finally {
+    stop();
+  }
+});

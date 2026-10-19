@@ -17,6 +17,7 @@ import {
 import * as svc from "../../conversations/service.ts";
 import { describeTurnFailure } from "../../conversations/turn-failure.ts";
 import type { Db } from "../../db/client.ts";
+import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { conversationMessages, users } from "../../db/schema/index.ts";
 import {
   authorizationContextFromPrincipal,
@@ -40,7 +41,19 @@ import {
 import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
 import { can } from "../../rbac/evaluator.ts";
 import { recordUsageEvent } from "../../stats/usage-events.ts";
-import { withJobContext } from "../job-context.ts";
+import {
+  finalizeHostedContentQuota,
+  hostedContentQuotaCode,
+} from "../hosted-content-finalization.ts";
+import {
+  enqueueHostedWork,
+  HostedWorkQuotaError,
+  hostedQueueGroupConcurrency,
+  ifHostedJobStillPending,
+  queueWorkerConcurrency,
+  withHostedWork,
+} from "../hosted-work.ts";
+import { withActiveTenantJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_QUEUE, type ConversationRunTurnJob } from "../queues.ts";
 import { planProviderLimitPark } from "./provider-limit-park.ts";
 
@@ -343,7 +356,19 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       rss_mb: Math.round((readMemoryUsage().rss / 1048576) * 10) / 10,
       rss_delta_mb: Math.round(((readMemoryUsage().rss - rssBefore) / 1048576) * 10) / 10,
     });
-  } catch (err) {
+  } catch (caught) {
+    const err = hostedQuotaError(caught) ?? caught;
+    const quotaCode = hostedContentQuotaCode(err);
+    if (quotaCode) {
+      const finalized = await finalizeHostedContentQuota(db, {
+        tenantId: data.tenant_id,
+        resourceType: "mcp_task",
+        resourceId: data.mcp_task_id,
+        code: quotaCode,
+        expectedJobId: data.attempt_id ?? job.id,
+      });
+      if (finalized !== "unmatched") return;
+    }
     const refusalCode = (err as { code?: string }).code;
     const authenticationRefusal =
       refusalCode === "execution_authentication_unavailable" ||
@@ -419,6 +444,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
         failureAttemptId = retryAttemptId;
         const retryJobId = await enqueueConversationRunTurn(
           boss,
+          db,
           { ...data, provider_limit_parks: parkPlan.parks },
           { id: retryAttemptId, startAfter: parkPlan.start_after },
         );
@@ -515,10 +541,65 @@ export async function registerConversationRunTurnHandler(
   const { boss, db } = opts;
   const workerId = await boss.work<ConversationRunTurnJob>(
     CONVERSATION_RUN_TURN_QUEUE,
-    { batchSize: 1, pollingIntervalSeconds: 2 },
+    {
+      batchSize: 1,
+      localConcurrency: queueWorkerConcurrency(),
+      groupConcurrency: hostedQueueGroupConcurrency("chat"),
+      pollingIntervalSeconds: 2,
+    },
     async (jobs: Job<ConversationRunTurnJob>[]) => {
       for (const job of jobs) {
-        await withJobContext(job.data, () => handleOne(job, db, boss));
+        try {
+          await withActiveTenantJobContext(job.data, db, () =>
+            withHostedWork(db, job.data.tenant_id, "chat", () => handleOne(job, db, boss), {
+              queue: CONVERSATION_RUN_TURN_QUEUE,
+              id: job.id,
+            }),
+          );
+        } catch (error) {
+          const quotaCode = hostedContentQuotaCode(error);
+          if (quotaCode) {
+            const finalized = await finalizeHostedContentQuota(db, {
+              tenantId: job.data.tenant_id,
+              resourceType: "mcp_task",
+              resourceId: job.data.mcp_task_id,
+              code: quotaCode,
+              expectedJobId: job.data.attempt_id ?? job.id,
+            });
+            if (finalized !== "unmatched") continue;
+          }
+          if (error instanceof HostedWorkQuotaError) {
+            await ifHostedJobStillPending(
+              db,
+              job.data.tenant_id,
+              CONVERSATION_RUN_TURN_QUEUE,
+              job.id,
+              async (tx) => {
+                const changed = await setMcpTaskFailureIfNotTerminal(
+                  job.data.tenant_id,
+                  job.data.mcp_task_id,
+                  error.code,
+                  tx,
+                  job.data.attempt_id,
+                );
+                if (changed)
+                  await auditAwait(
+                    {
+                      tenant_id: job.data.tenant_id,
+                      action: AuditAction.CONVERSATION_TURN_FAILED,
+                      actor_type: "system",
+                      resource_type: "conversation",
+                      resource_id: job.data.conversation_id,
+                      result: "error",
+                      reason: error.code,
+                    },
+                    tx,
+                  );
+              },
+            );
+          }
+          throw error;
+        }
       }
     },
   );
@@ -531,11 +612,15 @@ export async function registerConversationRunTurnHandler(
 
 export async function enqueueConversationRunTurn(
   boss: PgBoss,
+  db: Db,
   payload: ConversationRunTurnJob,
   options: { id?: string; startAfter?: Date } = {},
 ): Promise<string | null> {
   const { id, ...sendOptions } = options;
-  return await boss.send(
+  return await enqueueHostedWork(
+    db,
+    boss,
+    "chat",
     CONVERSATION_RUN_TURN_QUEUE,
     { ...payload, ...(id ? { attempt_id: id } : {}) },
     { ...sendOptions, ...(id ? { id } : {}) },

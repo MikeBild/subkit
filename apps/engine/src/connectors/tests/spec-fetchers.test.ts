@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { _withEgressLookupForTests } from "../egress-guard.ts";
 import {
   fetchGoogleDiscoverySpec,
   fetchGraphQLIntrospection,
@@ -18,7 +19,12 @@ beforeEach(() => {
 });
 
 function seamTest(name: string, body: () => Promise<void>) {
-  test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
+  test(name, () =>
+    _withEgressLookupForTests(
+      async () => [{ address: "93.184.216.34", family: 4 }],
+      () => withSelfHostedDriverFetchForTests(fetchSpy as unknown as typeof fetch, body),
+    ),
+  );
 }
 
 describe("fetchOpenApiSpec — SSRF guard", () => {

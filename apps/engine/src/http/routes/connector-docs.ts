@@ -3,7 +3,11 @@ import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { actorOf } from "../../audit/index.ts";
 import * as connectorSvc from "../../connectors/index.ts";
 import * as docs from "../../docs-ingestion/index.ts";
-import { NotImplementedError, PageTooLargeError } from "../../docs-ingestion/index.ts";
+import {
+  DocumentSourceCredentialsError,
+  NotImplementedError,
+  PageTooLargeError,
+} from "../../docs-ingestion/index.ts";
 import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -178,7 +182,7 @@ export function registerConnectorDocsRoutes(app: OpenAPIHono<AppEnv>): void {
       );
       return c.json(result, 200);
     } catch (err) {
-      if (err instanceof NotImplementedError) {
+      if (err instanceof NotImplementedError || err instanceof DocumentSourceCredentialsError) {
         throw new BadRequestError(err.message);
       }
       if (err instanceof PageTooLargeError) {

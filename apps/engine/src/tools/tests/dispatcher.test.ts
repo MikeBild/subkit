@@ -51,6 +51,12 @@ let dbTenantId: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("dispatcher-confirm");
+  DB_STUB.select = testDb.db.select.bind(testDb.db);
+  await testDb.db.insert(tenants).values({
+    id: PRINCIPAL.tenant_id,
+    slug: "dispatcher-policy-fixture",
+    display_name: "Dispatcher Policy",
+  });
   const [tenant] = await testDb.db
     .insert(tenants)
     .values({ slug: "t-dispatcher-confirm", display_name: "Dispatcher Confirm" })
@@ -522,7 +528,10 @@ describe("tools/dispatcher — RBAC denial path", () => {
     // biome-ignore lint/suspicious/noExplicitAny: stub for tests
     const captureDb: any = {
       transaction: async (fn: (db: unknown) => unknown) => fn(captureDb),
-      select: () => emptySelectChain,
+      select: (fields?: { status?: unknown }) =>
+        fields?.status === tenants.status
+          ? testDb.db.select({ status: tenants.status, deleted_at: tenants.deleted_at })
+          : emptySelectChain,
       insert: () => ({
         values: (row: {
           action?: string | undefined;
@@ -604,7 +613,10 @@ describe("tools/dispatcher — RBAC denial path", () => {
     // biome-ignore lint/suspicious/noExplicitAny: stub for tests
     const captureDb: any = {
       transaction: async (fn: (db: unknown) => unknown) => fn(captureDb),
-      select: () => emptySelectChain,
+      select: (fields?: { status?: unknown }) =>
+        fields?.status === tenants.status
+          ? testDb.db.select({ status: tenants.status, deleted_at: tenants.deleted_at })
+          : emptySelectChain,
       insert: () => ({
         values: (row: {
           action?: string | undefined;

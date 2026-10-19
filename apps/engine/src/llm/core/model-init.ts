@@ -13,6 +13,7 @@ import {
   wrapLanguageModel,
 } from "ai";
 import { getConfig } from "../../config/loader.ts";
+import { modelTenantContext, wrapHostedBudgetModel } from "./hosted-budget-middleware.ts";
 import { fetchWithResponseTimeout } from "./response-timeout.ts";
 
 const CONFIG_UNINITIALIZED = Symbol("config_uninitialized");
@@ -279,6 +280,14 @@ function resolveAnthropic(
   };
 }
 
+export function nativeWebSearchSetting(tenantId?: string): boolean {
+  try {
+    return !getConfig().llm.hosted.enabled && getConfig(tenantId).llm.web_search === true;
+  } catch {
+    return false;
+  }
+}
+
 export function anthropicWebSearchApplies(
   provider: string,
   modelId: string,
@@ -480,7 +489,7 @@ export function withToolInputExamples(
 
 export const DEFAULT_INIT_MODEL = "claude-sonnet-4-6";
 
-export async function initializeModel(options?: ModelInitOptions): Promise<ResolvedModel> {
+async function resolveModel(options?: ModelInitOptions): Promise<ResolvedModel> {
   const providerEnvVar = options?.providerEnvVar ?? "LLM_PROVIDER";
   const defaultModel = options?.defaultModel ?? DEFAULT_INIT_MODEL;
   const modelOverride = options?.modelOverride;
@@ -524,4 +533,19 @@ export async function initializeModel(options?: ModelInitOptions): Promise<Resol
     case "vertex":
       return resolveVertex(defaultModel, modelOverride, tenantId, apiKey);
   }
+}
+
+export async function initializeModel(options?: ModelInitOptions): Promise<ResolvedModel> {
+  const tenantId = modelTenantContext(options?.tenantId);
+  const resolved = await resolveModel({ ...options, ...(tenantId ? { tenantId } : {}) });
+  if (resolved.provider === "mock") return resolved;
+  return {
+    ...resolved,
+    model: await wrapHostedBudgetModel(
+      resolved.model as LanguageModelV4 | string,
+      resolved.provider,
+      resolved.modelId,
+      tenantId,
+    ),
+  };
 }

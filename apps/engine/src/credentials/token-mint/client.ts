@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
-import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
+import type { EgressGuardContext } from "../../connectors/index.ts";
+import { CredentialRequestError, credentialOperation, fetchCredentialRequest } from "../request.ts";
 import type { TokenMintCredentialValue } from "../types.ts";
 
 export interface TokenMintBundle {
@@ -22,7 +23,10 @@ function cognitoSecretHash(username: string, client_id: string, client_secret: s
   return createHmac("sha256", client_secret).update(`${username}${client_id}`).digest("base64");
 }
 
-export async function runTokenMintGrant(cred: TokenMintCredentialValue): Promise<TokenMintBundle> {
+export async function runTokenMintGrant(
+  cred: TokenMintCredentialValue,
+  context: EgressGuardContext,
+): Promise<TokenMintBundle> {
   const { shape, mint_endpoint, credentials } = cred;
   let body: string;
   const headers: Record<string, string> = {};
@@ -71,21 +75,25 @@ export async function runTokenMintGrant(cred: TokenMintCredentialValue): Promise
     });
   }
 
-  const res = await getDriverFetch()(mint_endpoint, { method: "POST", headers, body });
-  const text = await res.text();
+  const res = await fetchCredentialRequest(context, mint_endpoint, {
+    method: "POST",
+    headers,
+    body,
+  });
+  const text = await credentialOperation(() => res.text());
   if (!res.ok) {
-    throw new Error(`token_mint POST ${mint_endpoint} returned ${res.status}: ${text}`);
+    throw new CredentialRequestError("credential_response_rejected", res.status);
   }
   let payload: unknown;
   try {
     payload = JSON.parse(text);
   } catch {
-    throw new Error(`token_mint response is not JSON: ${text}`);
+    throw new CredentialRequestError("credential_response_invalid");
   }
 
   const access_token = dotPath(payload, cred.token_path);
   if (typeof access_token !== "string" || access_token.length === 0) {
-    throw new Error(`token_mint response missing token at path '${cred.token_path}'`);
+    throw new CredentialRequestError("credential_response_invalid");
   }
 
   let refresh_token: string | null = null;

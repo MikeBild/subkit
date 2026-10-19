@@ -1,0 +1,1 @@
+ALTER TABLE "oidc_login_states" ADD CONSTRAINT "oidc_login_states_membership_invite_id_user_invites_id_fk" FOREIGN KEY ("membership_invite_id") REFERENCES "subkit"."user_invites"("id") ON DELETE cascade ON UPDATE no action;

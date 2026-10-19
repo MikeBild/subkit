@@ -57,3 +57,12 @@ export class NotImplementedError extends Error {
     this.name = "NotImplementedError";
   }
 }
+
+export class DocumentSourceCredentialsError extends Error {
+  constructor() {
+    super(
+      "Use a public documentation URL without embedded credentials, or upload the documentation content.",
+    );
+    this.name = "DocumentSourceCredentialsError";
+  }
+}

@@ -81,6 +81,7 @@ const WorkflowInvocationSchema = z
               encoding: z.enum(["hex", "base64"]),
               signed_payload: z.string(),
               signature_prefix: z.string(),
+              id_field: z.string().optional(),
             })
             .nullable(),
           state: z.enum(["active", "inactive", "held"]),

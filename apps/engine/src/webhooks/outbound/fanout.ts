@@ -1,11 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+import { SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type { ChatPlatform } from "../../chat/types.ts";
 import type { Db } from "../../db/client.ts";
 import { events, subscriptions } from "../../db/schema/index.ts";
+import { withTenantWork } from "../../execution/tenant-work.ts";
 import type { RequestSource } from "../../execution/types.ts";
+import { assertTenantActive } from "../../identity/self-service.ts";
 import { logger } from "../../logging/logger.ts";
 import type { NotificationEvent, NotificationSeverity } from "../../notifications/matcher.ts";
 import {
@@ -114,6 +117,7 @@ function extractRequestSource(payload: unknown): RequestSource | null {
 
 export async function fanoutEvent(input: FanoutInput): Promise<FanoutStats> {
   const { db, boss, tenant_id, event_type, payload, event_row_id } = input;
+  if (tenant_id !== SYSTEM_TENANT_ID) await assertTenantActive(tenant_id, db);
   const rows = await db
     .select()
     .from(subscriptions)
@@ -204,15 +208,17 @@ export async function fanoutEventRow(
   const rows = await db.select().from(events).where(eq(events.id, event_row_id)).limit(1);
   const row = rows[0];
   if (!row) return null;
-  return await fanoutEvent({
-    db,
-    boss,
-    tenant_id: row.tenant_id,
-    event_row_id: row.id,
-    event_type: row.type,
-    payload: row.payload,
-    ...(opts.notificationAdapterResolver
-      ? { notificationAdapterResolver: opts.notificationAdapterResolver }
-      : {}),
-  });
+  return withTenantWork(row.tenant_id, () =>
+    fanoutEvent({
+      db,
+      boss,
+      tenant_id: row.tenant_id,
+      event_row_id: row.id,
+      event_type: row.type,
+      payload: row.payload,
+      ...(opts.notificationAdapterResolver
+        ? { notificationAdapterResolver: opts.notificationAdapterResolver }
+        : {}),
+    }),
+  );
 }

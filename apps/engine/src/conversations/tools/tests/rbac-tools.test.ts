@@ -221,3 +221,34 @@ describe("edit_role", () => {
     expect((result as { error_code?: string }).error_code).toBe("role_not_found");
   });
 });
+
+test("no-op edit of a foreign role returns no permissions and writes no success audit", async () => {
+  const [foreignTenant] = await ctx.db
+    .insert(tenants)
+    .values({ slug: "foreign-role", display_name: "Foreign" })
+    .returning();
+  if (!foreignTenant) throw new Error("missing foreign tenant fixture");
+  const foreignRole = await createRole(ctx.db, foreignTenant.id, "private-role");
+  await grantPermissionToRole(ctx.db, foreignTenant.id, foreignRole.id, "audit:read");
+  const result = await editRoleTool.execute(makeToolCtx(), { role_id: foreignRole.id });
+  expect(result).toMatchObject({ ok: false, error_code: "role_not_found" });
+  expect(await makeToolCtx().engineClient.rbac.listRolePermissions(foreignRole.id)).toEqual([]);
+  const audits = await ctx.db
+    .select()
+    .from(auditLog)
+    .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.resource_id, foreignRole.id)));
+  expect(audits).toEqual([]);
+});
+
+test("builtin role permissions remain visible while a no-op edit remains immutable", async () => {
+  const builtin = await ctx.db.select().from(roles).where(eq(roles.is_builtin, true)).limit(1);
+  const role = builtin[0];
+  if (!role) throw new Error("missing builtin role fixture");
+  expect(
+    (await makeToolCtx().engineClient.rbac.listRolePermissions(role.id)).length,
+  ).toBeGreaterThan(0);
+  expect(await editRoleTool.execute(makeToolCtx(), { role_id: role.id })).toMatchObject({
+    ok: false,
+    error_code: "builtin_immutable",
+  });
+});

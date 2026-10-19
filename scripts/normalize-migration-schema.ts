@@ -27,6 +27,16 @@ export async function normalizeNewMigrations(): Promise<void> {
       .trim()
       .split("\n"),
   );
+  const metadata = [...generated]
+    .filter(
+      (filename) => filename.startsWith(`${relativeDirectory}/meta/`) && filename.endsWith(".json"),
+    )
+    .map((filename) => path.join(root, filename));
+  metadata.push(path.join(directory, "meta/_journal.json"));
+  execFileSync(process.execPath, ["x", "biome", "format", "--write", ...metadata], {
+    cwd: root,
+    stdio: "pipe",
+  });
   for (const entry of journal.entries.slice(boundary + 1)) {
     const relative = `${relativeDirectory}/${entry.tag}.sql`;
     if (!generated.has(relative)) continue;

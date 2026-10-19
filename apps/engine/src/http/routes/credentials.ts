@@ -143,7 +143,10 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
       throw new BadRequestError("oauth2 credential has no refresh token to rotate");
     }
 
-    const bundle = await runRefreshTokenGrant(cfg, fetched.value.refresh_token);
+    const bundle = await runRefreshTokenGrant(cfg, fetched.value.refresh_token, {
+      tenant_id: principal.tenant_id,
+      exec: db,
+    });
     await rotateOAuth2Tokens(
       {
         tenant_id: principal.tenant_id,

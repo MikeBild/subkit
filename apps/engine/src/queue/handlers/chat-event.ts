@@ -19,6 +19,8 @@ import { PLATFORM_HAS_GLOBAL_USER_IDS } from "../../chat/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { chatWorkspaces } from "../../db/schema/index.ts";
+import { beginTenantWork } from "../../execution/tenant-work.ts";
+import { assertTenantActive } from "../../identity/self-service.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { tryAcquire } from "../../notifications/rate-limit.ts";
 import { CHAT_EVENT_QUEUE, type ChatEventJob } from "../queues.ts";
@@ -161,82 +163,88 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
     }
   }
 
-  if (event.event_key) {
-    const fresh = await markChatEventSeen(db, {
+  const finishTenantWork = beginTenantWork(workspace.tenant_id);
+  try {
+    await assertTenantActive(workspace.tenant_id, db);
+    if (event.event_key) {
+      const fresh = await markChatEventSeen(db, {
+        tenant_id: workspace.tenant_id,
+        workspace_id: workspace.id,
+        platform_event_id: event.event_key,
+      });
+      if (!fresh) {
+        log.queue.job.completed({
+          msg: "chat.event dropped — duplicate (replay)",
+          queue: CHAT_EVENT_QUEUE,
+          job_id: job.id,
+          platform: event.platform,
+          event_key: event.event_key,
+          duration_ms: Date.now() - started,
+        });
+        await auditAwait(
+          {
+            tenant_id: workspace.tenant_id,
+            actor_type: "system",
+            actor_id: null,
+            action: AuditAction.CHAT_MESSAGE_DENIED,
+            resource_type: "chat_message",
+            resource_id: null,
+            result: "denied",
+            reason: "replay",
+            metadata: {
+              platform: event.platform,
+              workspace_id: event.workspace_id,
+              event_key: event.event_key,
+              kind: event.kind,
+            },
+          },
+          db,
+        );
+        return;
+      }
+    }
+
+    const key = {
       tenant_id: workspace.tenant_id,
-      workspace_id: workspace.id,
-      platform_event_id: event.event_key,
-    });
-    if (!fresh) {
+      platform: event.platform,
+      workspace_id: event.workspace_id,
+    };
+    let adapter = chatRegistry.get(key);
+    if (!adapter) {
+      await ensureChatRegistryHydrated(db, chatRegistry);
+      adapter = chatRegistry.get(key);
+    }
+    if (!adapter) {
+      throw new Error(
+        `chat.event: no adapter registered for tenant=${workspace.tenant_id} platform=${event.platform} workspace=${event.workspace_id}`,
+      );
+    }
+
+    try {
+      const outcome = await handleChatEvent({ db, adapter }, event);
       log.queue.job.completed({
-        msg: "chat.event dropped — duplicate (replay)",
+        msg: "chat.event job completed",
         queue: CHAT_EVENT_QUEUE,
         job_id: job.id,
         platform: event.platform,
-        event_key: event.event_key,
+        status: outcome.status,
+        conversation_id: outcome.conversation_id ?? null,
         duration_ms: Date.now() - started,
       });
-      await auditAwait(
-        {
-          tenant_id: workspace.tenant_id,
-          actor_type: "system",
-          actor_id: null,
-          action: AuditAction.CHAT_MESSAGE_DENIED,
-          resource_type: "chat_message",
-          resource_id: null,
-          result: "denied",
-          reason: "replay",
-          metadata: {
-            platform: event.platform,
-            workspace_id: event.workspace_id,
-            event_key: event.event_key,
-            kind: event.kind,
-          },
-        },
-        db,
-      );
-      return;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.queue.job.failed({
+        msg: "chat.event job failed",
+        queue: CHAT_EVENT_QUEUE,
+        job_id: job.id,
+        platform: event.platform,
+        error: message,
+        duration_ms: Date.now() - started,
+      });
+      throw err;
     }
-  }
-
-  const key = {
-    tenant_id: workspace.tenant_id,
-    platform: event.platform,
-    workspace_id: event.workspace_id,
-  };
-  let adapter = chatRegistry.get(key);
-  if (!adapter) {
-    await ensureChatRegistryHydrated(db, chatRegistry);
-    adapter = chatRegistry.get(key);
-  }
-  if (!adapter) {
-    throw new Error(
-      `chat.event: no adapter registered for tenant=${workspace.tenant_id} platform=${event.platform} workspace=${event.workspace_id}`,
-    );
-  }
-
-  try {
-    const outcome = await handleChatEvent({ db, adapter }, event);
-    log.queue.job.completed({
-      msg: "chat.event job completed",
-      queue: CHAT_EVENT_QUEUE,
-      job_id: job.id,
-      platform: event.platform,
-      status: outcome.status,
-      conversation_id: outcome.conversation_id ?? null,
-      duration_ms: Date.now() - started,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    log.queue.job.failed({
-      msg: "chat.event job failed",
-      queue: CHAT_EVENT_QUEUE,
-      job_id: job.id,
-      platform: event.platform,
-      error: message,
-      duration_ms: Date.now() - started,
-    });
-    throw err;
+  } finally {
+    finishTenantWork();
   }
 }
 

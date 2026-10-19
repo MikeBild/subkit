@@ -3,6 +3,7 @@ import { z } from "@hono/zod-openapi";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { RequestDispatchPolicy } from "../connectors/drivers/http.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../db/client.ts";
 import {
   executions,
@@ -10,6 +11,7 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
+import { assertTenantActive } from "../identity/self-service.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import { authorityLive, authorityNotExpired } from "../workflows/authority-live.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
@@ -90,6 +92,8 @@ export async function admitAuthorizedWorkflowExecution(
   const input = admissionSchema.parse(raw);
   const origin = resolveExecutionCallerOrigin(input.tenant_id, caller, callerOrigin);
   return db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, input.tenant_id);
+    await assertTenantActive(input.tenant_id, tx);
     if (input.idempotency_key) {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.tenant_id}:${input.idempotency_key}`}, 0))`,
@@ -269,6 +273,7 @@ export async function assertExecutionAuthorityCurrent(
   execution_id: string,
   snapshot?: RequestAuthoritySnapshot,
 ): Promise<RequestDispatchPolicy | undefined> {
+  await assertTenantActive(tenant_id, db);
   const [execution] = await db
     .select()
     .from(executions)

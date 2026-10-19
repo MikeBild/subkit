@@ -180,6 +180,7 @@ describe("signed_jwt request-step transport", () => {
     });
     const seenByHook: Record<string, string>[] = [];
     const result = await executePlannedHttpRequest({
+      exec: ctx.testDb.db,
       tenant_id: ctx.tenantId,
       method: "GET",
       url: new URL(`${mock.baseUrl}/echo`),
@@ -256,6 +257,7 @@ describe("signed_jwt request-step transport", () => {
     });
     await expect(
       executePlannedHttpRequest({
+        exec: ctx.testDb.db,
         tenant_id: ctx.tenantId,
         method: "GET",
         url: new URL(`${mock.baseUrl}/redirect`),

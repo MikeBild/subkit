@@ -29,6 +29,31 @@ These planning documents do not replace the generated API, CLI or settings
 references. The installation instructions below describe self-hosting; they do not
 provision a cloud account.
 
+The multi-tenant hosted offering is under development. Public registration remains
+closed until its security, operational and human acceptance gates pass. The approved
+Free allowance is USD 5 in model costs per tenant and UTC calendar month, USD 50
+across all Free tenants, 50 MB (50,000,000 bytes) of combined logical storage for
+files and persisted user content per tenant, 1,000 retained records per resource
+type, and 10,000 metered requests per tenant and UTC calendar month. Account bootstrap, workspace
+switching and owner deletion retain separate abuse protection and are excluded from
+the monthly request allowance. Soft-deleted records remain counted until physical
+cleanup succeeds. Authentication action delivery uses webhooks; its
+destination and actual delivery verification are pending. Combined storage and
+resource accounting is implemented and undergoing integrated acceptance; live
+cloud verification remains pending. It includes retained knowledge and conversation
+copies as well as reserved non-file object offloads.
+
+Hosted connector traffic requires public destinations. Strict HTTP transports pin
+the validated destination address while preserving the original Host and TLS name;
+proxy environment variables are unsupported and cause refusal. Strict PostgreSQL
+connectors require an explicit host and user, verified TLS with system trust and
+the original hostname. DSN options cannot disable that verification. Local TLS file
+paths, process PostgreSQL defaults and password-file fallback are unavailable in
+this mode. Explicit permissive self-hosted connector behavior remains available.
+External chat-workspace linking for hosted tenants remains unavailable until
+ownership can be verified. See [TODO.md](TODO.md) and
+[LAUNCH_STATUS.md](LAUNCH_STATUS.md) for the complete remaining acceptance scope.
+
 ## Run the engine
 
 Requires Docker with Compose, OpenSSL and a POSIX shell. Use `docker-compose.yml`
@@ -64,6 +89,16 @@ stored secrets; losing it makes those secrets unreadable. Never regenerate it fo
 an existing database. Keep the database password unchanged when reusing its volume;
 changing `.env` does not change the password inside an initialized PostgreSQL database.
 Never commit `.env` or share `docker compose config` output, which contains secrets.
+
+The offline `--rewrap-master-key` command covers the settings-secret registry.
+It refuses retained credentials, encrypted workflow or conversation data, approval
+proofs, and other encrypted stores outside that scope. Preserve the original
+`MASTER_KEY` when it refuses. The command requires explicit confirmation that all
+producers have stopped and a separate stop-evidence file; expired heartbeats alone
+do not establish that. Hosted maintenance of inactive owners additionally requires
+an explicitly provisioned maintenance capability. Select that login through the
+existing database configuration and use `--maintenance`; it receives only the
+designated maintenance functions. The engine creates no database users.
 
 For subsequent starts, run `docker compose up -d --wait` from the same directory.
 `docker compose stop` stops services without deleting data. The database and object

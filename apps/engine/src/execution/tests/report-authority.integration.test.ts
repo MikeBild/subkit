@@ -19,7 +19,7 @@ import {
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { inspectScheduleAutomation } from "../../scheduler/automation-status.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
-import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { carryApprovalsForward } from "../../workflows/authority-inheritance.ts";
 import {
   grantWorkflowAuthority,
@@ -237,7 +237,7 @@ test("preview -> human recurring grant -> schedule resolved -> two changing repo
     },
     { preconnect: () => {} },
   ) as typeof fetch;
-  await withDriverFetchForTests(remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote, async () => {
     expect((await f.inspect()).eligible_for_repeated_runs).toBe(false);
     await f.automaticPrepare();
     expect(sends).toBe(0);
@@ -281,7 +281,7 @@ test("a report approval follows an activated version that reaches nothing new, a
     },
     { preconnect: () => {} },
   ) as typeof fetch;
-  await withDriverFetchForTests(remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote, async () => {
     await f.automaticPrepare();
     const granted = await f.grant();
     const db = ctx.testDb.db;
@@ -335,7 +335,7 @@ test("a changed recipient is rejected before egress even with a live recurring a
     },
     { preconnect: () => {} },
   ) as typeof fetch;
-  await withDriverFetchForTests(remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote, async () => {
     const changed = Buffer.from(
       Buffer.from(f.raw, "base64url")
         .toString()
@@ -482,7 +482,7 @@ test("reviewed identifier path permits changing project reads and blocks path es
     },
     { preconnect: () => {} },
   ) as typeof fetch;
-  await withDriverFetchForTests(remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote, async () => {
     await f.prepare();
     expect((await f.inspect()).eligible_for_repeated_runs).toBe(true);
     await f.grant();
@@ -511,7 +511,7 @@ test("documented Analytics report reads execute in preview while email remains h
     },
     { preconnect: () => {} },
   ) as typeof fetch;
-  await withDriverFetchForTests(remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote, async () => {
     await f.automaticPrepare();
     expect(reads).toBe(1);
     expect((await f.inspect()).eligible_for_repeated_runs).toBe(true);
@@ -533,7 +533,7 @@ test("documented report reads cannot delegate preview permission through a redir
     },
     { preconnect: () => {} },
   ) as typeof fetch;
-  await withDriverFetchForTests(remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote, async () => {
     await expect(f.automaticPrepare()).rejects.toMatchObject({
       code: "authority_preparation_failed",
     });
@@ -710,7 +710,7 @@ test("a recipient the author declares is reviewed, and the runtime still holds i
     },
     { preconnect: () => {} },
   ) as typeof fetch;
-  await withDriverFetchForTests(remote, async () => {
+  await withSelfHostedDriverFetchForTests(remote, async () => {
     expect((await f.run()).status).toBe("succeeded");
     expect(sent).toBe(1);
     const elsewhere = Buffer.from(

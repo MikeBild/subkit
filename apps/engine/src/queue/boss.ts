@@ -1,9 +1,26 @@
-import type { ConstructorOptions, QueueResult } from "pg-boss";
+import type { Db as BossDb, ConstructorOptions, QueueResult } from "pg-boss";
 import { PgBoss } from "pg-boss";
+import { databasePoolOptions } from "../db/connection-options.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { setDlqJobCount, setQueueDepth, setQueueLag } from "../observability/instrumentation.ts";
 import { queueErrorFields } from "./error-fields.ts";
 import { QUEUE_DEFINITIONS, QUEUE_NAMES, type QueueName } from "./queues.ts";
+
+const ownedBossSchemas = new WeakMap<PgBoss, string>();
+
+export function createBossReadOnlyReader(boss: PgBoss, db: BossDb): PgBoss {
+  const schema = ownedBossSchemas.get(boss);
+  if (!schema) throw new Error("queue_reader_owner_unknown");
+  return new PgBoss({
+    db,
+    schema,
+    migrate: false,
+    supervise: false,
+    schedule: false,
+    registerInstance: false,
+    useListenNotify: false,
+  });
+}
 
 let _boss: PgBoss | null = null;
 let _depthPoller: NodeJS.Timeout | null = null;
@@ -59,12 +76,15 @@ export interface StartBossOptions {
 
 export async function createBoss(opts: StartBossOptions): Promise<PgBoss> {
   const bossOptions: ConstructorOptions = {
-    connectionString: opts.connectionString,
+    ...databasePoolOptions(opts.connectionString),
     schema: opts.schema ?? "pgboss",
+    useListenNotify: false,
+    schedule: false,
     cronMonitorIntervalSeconds: 5,
     cronWorkerIntervalSeconds: 2,
   };
   const boss = new PgBoss(bossOptions);
+  ownedBossSchemas.set(boss, bossOptions.schema ?? "pgboss");
 
   boss.on("error", (err: unknown) => {
     logger.error({
