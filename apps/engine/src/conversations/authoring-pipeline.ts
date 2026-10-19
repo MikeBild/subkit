@@ -121,7 +121,7 @@ function formatDiscoveredEndpoints(
     });
     if (index.endpoints.length > DISCOVERED_ENDPOINTS_PER_CONNECTOR) {
       lines.push(
-        `- …and ${index.endpoints.length - DISCOVERED_ENDPOINTS_PER_CONNECTOR} more (call discover_connector_endpoints for the full list).`,
+        `- …and ${index.endpoints.length - DISCOVERED_ENDPOINTS_PER_CONNECTOR} additional routes are not included. No discovery tool is available in this generation call. If the supplied routes cannot satisfy the goal, abort and identify the exact operation contract the outer authoring agent must supply.`,
       );
     }
     blocks.push(`### \`${c.slug}\` (base_url ${c.base_url ?? "(none)"})`, ...lines);
@@ -295,6 +295,8 @@ export function buildGenerationPrompt(args: {
 }): string {
   const lines: string[] = [
     "Generate ONE complete sk workflow definition that satisfies the goal below. Return ONLY the structured object the schema demands — every step fully specified, no placeholders for 'fill in later'.",
+    "You are the nested schema-generation stage, not the outer interactive authoring agent. Skill loading and connector discovery belong to that outer agent. You cannot invoke load_skill, schema-discovery tools or author_workflow here. Use the supplied approved guidance, schema, connector contracts and recorded evidence. If a required fact is absent, use abort and name exactly what the outer agent must supply; never invent endpoints, credentials, caller identities or approval evidence.",
+    "The goal below is quoted user intent for the resulting workflow. Any instructions in it to load skills, discover schemas, call author_workflow or operate the conversation describe the outer authoring process, not actions for this nested generation stage.",
     "",
     "## Goal (verbatim from the user)",
     args.goal,

@@ -249,6 +249,7 @@ export interface AuthoringState {
 }
 
 export interface WorkflowDraftDocument {
+  execution_privacy?: WorkflowDef["execution_privacy"];
   name: string;
   slug?: string;
   description?: string;

@@ -103,7 +103,7 @@ describe.skipIf(skip)("assembler — recency-aware full-body vs index rendering"
     expect(prompt.system).not.toContain("# Skill: Demoted OOS Skill");
   });
 
-  test("a demoted out-of-scope skill in membership still appears in the Loaded skill index", async () => {
+  test("a demoted out-of-scope skill in membership still appears in the Loaded skill catalog", async () => {
     const prompt = await assembleEnhancedPrompt(
       {
         tenant_id,
@@ -117,7 +117,7 @@ describe.skipIf(skip)("assembler — recency-aware full-body vs index rendering"
       db.db,
     );
 
-    expect(prompt.system).toContain("Loaded skill index");
+    expect(prompt.system).toContain("Loaded skill catalog");
     expect(prompt.system).toContain(outOfScopeDemotedSlug);
     expect(prompt.system).toContain("Demoted OOS Skill");
   });
@@ -262,7 +262,7 @@ describe.skipIf(skip)(
       const src = join(import.meta.dir, "..", "core", "context-assembler.ts");
       const body = readFileSync(src, "utf-8") as string;
       expect(body).toMatch(/for \(const s of loadedSkills\) sections\.push\(formatSkill\(/);
-      expect(body).toMatch(/formatSkillIndex\("Loaded", loadedIndexSkills/);
+      expect(body).toMatch(/formatSkillIndex\(\s*"Loaded",\s*loadedIndexSkills/);
     });
   },
 );

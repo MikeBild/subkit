@@ -67,7 +67,7 @@ For product S3 requests, declare `s3.scope: { key_prefix: "products/<product-id>
 
 Validate the actual definition with the schema and placeholder validator before saving. Ground business input separately from identity: never put a fabricated caller in `input_schema`, `input_schema_sample`, fixtures or request data to make validation pass. For ordinary workflows, use existing authoring/validation tools and a permitted preview; validate the result, warnings and storage boundary before the human effect review. Product execution must use the approved matching saved workflow through the public run API.
 
-`execution_privacy: "sensitive"` is an explicit opt-in. Sensitive input/results are encrypted at rest and require the original authenticated caller for resume/result access. Sensitive execution is refused in chat and `dry_run_workflow`; inspection/sample tools do not expose its payload. It also refuses persistent state, event waits/signals, pagination and prepared fixture replay; an ordinary parent cannot call a sensitive child. Generic opaque portal callers cannot resume sensitive executions. Prepare and schema-validate an inert definition without inventing private sample data or bypassing gates, and report that live verification remains unavailable in chat. The preview/save recipes below apply to ordinary workflows; do not force a sensitive save past a missing or forbidden preview. Use the documented execution/result APIs with the actual original caller for permitted execution and verification; do not embed a deployment's database, files, queues or private runtime in a workflow. Caller support needs no product-specific engine fork.
+`execution_privacy: "sensitive"` is an explicit opt-in. Sensitive input/results are encrypted at rest and require the original authenticated caller for resume/result access. Sensitive execution is refused in chat and `dry_run_workflow`; inspection/sample tools do not expose its payload. It also refuses persistent state, event waits/signals, pagination and prepared fixture replay; an ordinary parent cannot call a sensitive child. Generic opaque portal callers cannot resume sensitive executions. Prepare an inert definition without inventing private sample data. Fresh inspection and successful schema validation permit saving an immutable inactive sensitive draft through the normal human save policy, without a chat preview. Saving grants no execution authority, activates no version or trigger, and records runtime verification as not performed. Report that live verification remains unavailable in chat. The preview/save recipes below apply to ordinary workflows; do not force a sensitive save past a missing or forbidden preview. Use the documented execution/result APIs with the actual original caller for permitted execution and verification; do not embed a deployment's database, files, queues or private runtime in a workflow. Caller support needs no product-specific engine fork.
 
 ## Chat completion and human review
 
@@ -1387,8 +1387,10 @@ a signed event or execution caller in a preview. A signature authenticates an
 incoming request; it does not grant execution authority. Prepare the exact saved
 version and show the normal human boundary/limits review before activation. With
 sensitive execution, do not attempt a chat preview or force-save around missing
-evidence; use a permitted exact-version preparation flow and report any missing
-capability.
+evidence. Fresh inspection and successful schema validation allow saving only an
+inactive immutable draft under the normal save approval policy. This does not
+activate the workflow or grant runs; runtime verification remains outstanding
+and uses the permitted execution/result API separately.
 
 A persistent per-workflow/request receipt reserves one dispatch attempt before
 network access. An uncertain result or crash after reservation must not be retried

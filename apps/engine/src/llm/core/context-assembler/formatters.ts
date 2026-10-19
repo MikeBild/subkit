@@ -47,8 +47,17 @@ export function formatSkillIndex(
   label: string,
   skills: Skill[],
   runtime_context?: AssembleContextParams["runtime_context"],
+  mode: "interactive" | "catalog" | "guidance" = "interactive",
 ): string | null {
   if (skills.length === 0) return null;
+  if (mode === "guidance") {
+    return [
+      `# ${label} approved skill guidance for schema generation`,
+      "The complete approved guidance follows. Preserve its applicable domain constraints, security rules, data handling and workflow semantics. Any interactive tool procedure it describes belongs to the outer authoring agent; it does not add tools to this nested generation call.",
+      ...skills.map((skill) => formatSkill(skill, runtime_context)),
+      "This nested call emits the requested structured definition only. It cannot load skills, discover schemas or invoke author_workflow. All supplied guidance is already available above. If a required fact or contract is absent, use abort to name the exact missing fact and the evidence the outer agent must supply; never invent it.",
+    ].join("\n\n");
+  }
   const lines = skills.map((s) => {
     const ref = s.slug ?? s.id;
     const stated = s.description?.replace(/\s+/g, " ").trim();
@@ -62,9 +71,11 @@ export function formatSkillIndex(
     const desc = firstLine.length > 120 ? `${firstLine.slice(0, 120)}…` : firstLine;
     return `- \`${ref}\` — ${s.title}${desc.length > 0 ? `: ${desc}` : ""}`;
   });
-  return [`# ${label} skill index — call \`load_skill('<slug>')\` for any of these`, ...lines].join(
-    "\n",
-  );
+  const title =
+    mode === "interactive"
+      ? `# ${label} skill index — call \`load_skill('<slug>')\` for any of these`
+      : `# ${label} skill catalog — descriptions only; no retrieval tool is available in this generation call`;
+  return [title, ...lines].join("\n");
 }
 
 export function countSkillTokens(
