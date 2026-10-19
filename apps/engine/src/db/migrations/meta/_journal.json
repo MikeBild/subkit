@@ -911,6 +911,34 @@
       "when": 1792388186953,
       "tag": "0129_vault_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1792397340052,
+      "tag": "0130_conversation_turns",
+      "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1792397762810,
+      "tag": "0131_conversation_turn_cancellation",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1792398589065,
+      "tag": "0132_conversation_turn_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1792400505816,
+      "tag": "0133_transactional_mail",
+      "breakpoints": true
     }
   ]
 }

@@ -18,6 +18,7 @@ import {
   mapElicitResultToAskUserOutput,
 } from "../../conversations/tools/ask-user/elicit-bridge.ts";
 import { validateElicitationAnswer } from "../../conversations/tools/ask-user/validate-answer.ts";
+import { withReservedConversationTurn } from "../../conversations/turns.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 
@@ -48,6 +49,7 @@ export interface NativeDeliveryResult {
 }
 
 interface NativeResumeParams {
+  turn_id?: string;
   reason?: string;
   reuse_task_id?: string;
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
@@ -137,60 +139,67 @@ export async function deliverPendingNativeElicitationCore(p: {
   const stageAnswerAndResume = async (
     result: ElicitationResult,
     output: unknown,
-  ): Promise<NativeDeliveryResult> => {
-    const staged = await stageElicitationAnswer(
-      {
-        tenant_id: p.principal.tenant_id,
-        conversation_id: p.pending.conversation_id,
-        id: p.pending.id,
-        output,
-      },
+  ): Promise<NativeDeliveryResult> =>
+    withReservedConversationTurn(
       p.db,
-    );
-    if (staged.kind !== "staged") {
-      return errorText(
-        staged.kind === "not_found"
-          ? "elicitation not found"
-          : `elicitation already ${staged.existing.status}`,
-      );
-    }
-    const reason =
-      urlElicitation && p.pending.delivery_last_error === "url_failed"
-        ? "external_interaction_failed"
-        : result.action === "decline"
-          ? "user_declined"
-          : result.action === "cancel"
-            ? "user_cancelled"
-            : output === null
-              ? "invalid_elicit_response"
-              : undefined;
-    const resumed = await p.resume({
-      ...(p.reuse_task_id ? { reuse_task_id: p.reuse_task_id } : {}),
-      ...(reason ? { reason } : {}),
-      ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
-    });
-    if (resumed.isError) {
-      await releaseNativeElicitationDelivery(
-        {
+      p.principal.tenant_id,
+      p.pending.conversation_id,
+      async (turn_id) => {
+        const staged = await stageElicitationAnswer(
+          {
+            tenant_id: p.principal.tenant_id,
+            conversation_id: p.pending.conversation_id,
+            id: p.pending.id,
+            output,
+          },
+          p.db,
+        );
+        if (staged.kind !== "staged") {
+          return errorText(
+            staged.kind === "not_found"
+              ? "elicitation not found"
+              : `elicitation already ${staged.existing.status}`,
+          );
+        }
+        const reason =
+          urlElicitation && p.pending.delivery_last_error === "url_failed"
+            ? "external_interaction_failed"
+            : result.action === "decline"
+              ? "user_declined"
+              : result.action === "cancel"
+                ? "user_cancelled"
+                : output === null
+                  ? "invalid_elicit_response"
+                  : undefined;
+        const resumed = await p.resume({
+          turn_id,
+          ...(p.reuse_task_id ? { reuse_task_id: p.reuse_task_id } : {}),
+          ...(reason ? { reason } : {}),
+          ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
+        });
+        if (resumed.isError) {
+          await releaseNativeElicitationDelivery(
+            {
+              tenant_id: p.principal.tenant_id,
+              id: p.pending.id,
+              lease_id: claim.lease_id,
+              error_code: "resume_enqueue_failed",
+            },
+            p.db,
+          );
+        }
+        logger.info({
+          module: "mcp",
+          action: "mcp.elicitation.native_answer_staged",
+          msg: "native MCP elicitation answered and queued for conversation resume",
           tenant_id: p.principal.tenant_id,
-          id: p.pending.id,
-          lease_id: claim.lease_id,
-          error_code: "resume_enqueue_failed",
-        },
-        p.db,
-      );
-    }
-    logger.info({
-      module: "mcp",
-      action: "mcp.elicitation.native_answer_staged",
-      msg: "native MCP elicitation answered and queued for conversation resume",
-      tenant_id: p.principal.tenant_id,
-      conversation_id: p.pending.conversation_id,
-      elicitation_id: p.pending.id,
-      elicitation_action: result.action,
-    });
-    return resumed;
-  };
+          conversation_id: p.pending.conversation_id,
+          elicitation_id: p.pending.id,
+          elicitation_action: result.action,
+        });
+        return resumed;
+      },
+    );
 
   if (
     urlElicitation &&

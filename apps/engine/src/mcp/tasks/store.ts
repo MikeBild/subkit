@@ -5,6 +5,7 @@ import type { Db, Executor } from "../../db/client.ts";
 import { conversationToolCalls, mcpTasks } from "../../db/schema/index.ts";
 
 export interface ConversationTurnEnvelope {
+  turn_id?: string;
   conversation_id: string;
   status: "active" | "awaiting_input" | "committed" | "abandoned" | "exhausted";
   events: unknown[];
@@ -122,7 +123,7 @@ export async function setMcpTaskResult(
   tenant_id: string,
   task_id: string,
   result: ConversationTurnEnvelope,
-  db: Db,
+  db: Executor,
 ): Promise<void> {
   await db
     .update(mcpTasks)

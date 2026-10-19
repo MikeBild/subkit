@@ -1040,24 +1040,17 @@ describe("conversation.run-turn worker — respond_elicitation surface threading
 });
 
 describe("conversation.run-turn worker — concurrent turns (B2)", () => {
-  test("two concurrent appends each run their OWN pinned message — neither is dropped", async () => {
+  test("a queued turn rejects another enqueue for the same dialog", async () => {
     const created = await svc.createConversation(
       { tenant_id: tenantId, actor_id: userId, initial_message: "concurrent turn seed" },
       queue.testDb.db,
     );
     const conversation_id = created.conversation.id;
     getMockProvider().setConversePlan(conversation_id, []);
-
     const appendA = await svc.appendUserMessage(
       { tenant_id: tenantId, conversation_id, actor_id: userId, message: "MESSAGE-ALPHA" },
       queue.testDb.db,
     );
-    const appendB = await svc.appendUserMessage(
-      { tenant_id: tenantId, conversation_id, actor_id: userId, message: "MESSAGE-BRAVO" },
-      queue.testDb.db,
-    );
-    expect(appendA.message_id).not.toBe(appendB.message_id);
-
     const taskA = await insertMcpTask(
       {
         tenant_id: tenantId,
@@ -1069,17 +1062,6 @@ describe("conversation.run-turn worker — concurrent turns (B2)", () => {
       },
       queue.testDb.db,
     );
-    const taskB = await insertMcpTask(
-      {
-        tenant_id: tenantId,
-        conversation_id,
-        kind: "append",
-        actor: { kind: "user", id: userId },
-        request_source: "mcp",
-        user_message_id: appendB.message_id,
-      },
-      queue.testDb.db,
-    );
     await enqueueConversationRunTurn(queue.boss, {
       tenant_id: tenantId,
       conversation_id,
@@ -1087,29 +1069,23 @@ describe("conversation.run-turn worker — concurrent turns (B2)", () => {
       actor_id: userId,
       kind: "append",
     });
-    await enqueueConversationRunTurn(queue.boss, {
-      tenant_id: tenantId,
-      conversation_id,
-      mcp_task_id: taskB,
-      actor_id: userId,
-      kind: "append",
-    });
+    await expect(
+      svc.appendUserMessage(
+        { tenant_id: tenantId, conversation_id, actor_id: userId, message: "MESSAGE-BRAVO" },
+        queue.testDb.db,
+      ),
+    ).rejects.toMatchObject({ code: "conversation_turn_in_progress" });
     await waitForTerminal(taskA);
-    await waitForTerminal(taskB);
-
-    const rowA = await getMcpTask(tenantId, taskA, queue.testDb.db);
-    const rowB = await getMcpTask(tenantId, taskB, queue.testDb.db);
-    const userTextOf = (row: typeof rowA): string | undefined => {
-      const events = (row?.result?.events ?? []) as Array<{
-        type?: string;
-        role?: string;
-        content?: { text?: string };
-      }>;
-      return events.find((e) => e.type === "message" && e.role === "user")?.content?.text;
-    };
-    expect(userTextOf(rowA)).toBe("MESSAGE-ALPHA");
-    expect(userTextOf(rowB)).toBe("MESSAGE-BRAVO");
-  }, 90_000);
+    const row = await getMcpTask(tenantId, taskA, queue.testDb.db);
+    const events = row?.result?.events as Array<{
+      type?: string;
+      role?: string;
+      content?: { text?: string };
+    }>;
+    expect(
+      events.find((event) => event.type === "message" && event.role === "user")?.content?.text,
+    ).toBe("MESSAGE-ALPHA");
+  }, 30_000);
 });
 
 describe("conversation.run-turn worker — parked turn supersession", () => {

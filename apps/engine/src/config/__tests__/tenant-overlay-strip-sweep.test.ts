@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetConfigForTests, loadConfig, ScopeViolationError, setConfigKey } from "../loader.ts";
 import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../walk.ts";
+import { sampleConfigLeaf } from "./leaf-samples.ts";
 
 let dir: string;
 let cfgPath: string;
@@ -58,14 +59,9 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
       configPathOverride: cfgPath,
     });
     const failures: string[] = [];
-    for (const leaf of GLOBAL_LEAVES.slice(0, 30)) {
+    for (const [index, leaf] of GLOBAL_LEAVES.entries()) {
       try {
-        const probe =
-          leaf.kind === "boolean"
-            ? true
-            : leaf.kind === "json"
-              ? structuralProbe(dottedPath(leaf))
-              : "x";
+        const probe = sampleConfigLeaf(leaf, index);
         await setConfigKey(leaf.path, probe, {
           tenantId: "tenant-x",
           force: true,
@@ -89,55 +85,7 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
     let salt = 0;
     for (const leaf of TENANT_LEAVES) {
       const dotted = dottedPath(leaf);
-      let value: unknown;
-      switch (leaf.kind) {
-        case "boolean":
-          value = true;
-          break;
-        case "number": {
-          const tagN = salt++;
-          const candidatesN = [
-            Math.max(1, Math.min(50, tagN + 1)),
-            200,
-            1_000,
-            60_000,
-            100_000,
-            3_600_000,
-          ];
-          value = candidatesN[0];
-          for (const c of candidatesN) {
-            if (leaf.schema.safeParse(c).success) {
-              value = c;
-              break;
-            }
-          }
-          break;
-        }
-        case "string": {
-          const tag = `tenant-${salt++}`;
-          const candidates = [tag, "00:00", ""];
-          value = tag;
-          for (const c of candidates) {
-            const r = leaf.schema.safeParse(c);
-            if (r.success) {
-              value = c;
-              break;
-            }
-          }
-          break;
-        }
-        case "enum":
-          value = leaf.enumValues?.[1] ?? leaf.enumValues?.[0];
-          break;
-        case "string-array":
-          value = [`tenant-${salt++}`];
-          break;
-        case "json":
-          value = structuralProbe(dotted);
-          break;
-        default:
-          value = `tenant-${salt++}`;
-      }
+      const value = sampleConfigLeaf(leaf, salt++);
       try {
         await setConfigKey(leaf.path, value, { tenantId: "tenant-y", force: true });
       } catch (err) {
@@ -169,26 +117,3 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
     expect(getConfig().llm.provider).toBe("mock");
   });
 });
-
-function structuralProbe(dotted: string): unknown {
-  const probes: Record<string, unknown> = {
-    "auth.providers": [{ protocol: "api_key", id: "api-key", label: "SubKit API key" }],
-    "tokens.prices": [
-      {
-        model: "model-probe",
-        input_per_mtok: 3,
-        output_per_mtok: 15,
-        cache_read_per_mtok: 0.3,
-        cache_write_per_mtok: 3.75,
-      },
-    ],
-  };
-  const probe = probes[dotted];
-  if (probe === undefined) {
-    throw new Error(
-      `no structural probe for "${dotted}". Add one to \`probes\` in this file — a structural ` +
-        "leaf is written as one whole value and cannot be probed with a scalar.",
-    );
-  }
-  return probe;
-}

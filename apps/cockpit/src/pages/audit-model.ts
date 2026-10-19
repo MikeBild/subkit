@@ -188,6 +188,11 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   policy: "audit.resource.policy",
   tool: "audit.resource.tool",
   system: "audit.resource.system",
+  auth_identity: "audit.resource.userIdentity",
+  hosted_storage_object: "audit.resource.hostedStorageObject",
+  hosted_work: "audit.resource.hostedWork",
+  identity_recovery_session: "audit.resource.recoverySession",
+  llm_budget: "audit.resource.llmBudget",
 };
 
 export function auditResourceLabel(resourceType: string, t: Translate): CatalogLabel {

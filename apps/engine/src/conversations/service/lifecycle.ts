@@ -20,6 +20,7 @@ import { stringifyConversationExcerpt, truncateExcerpt } from "../excerpt.ts";
 import type { ConversationOutcome } from "../lifecycle-view.ts";
 import { deriveConversationOutcome } from "../lifecycle-view.ts";
 import type { TurnFailure } from "../turn-failure.ts";
+import { cancelConversationTurns } from "../turns.ts";
 import type {
   ConversationOwner,
   ConversationRecord,
@@ -56,6 +57,7 @@ export async function cancelConversation(
     },
     exec,
   );
+  await cancelConversationTurns(exec, tenant_id, conversation_id);
   cancelConversationAbort(tenant_id, conversation_id);
   return rowToRecord(row);
 }

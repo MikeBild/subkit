@@ -55,12 +55,12 @@ function append(accept: string) {
     }),
   });
 }
-test("direct HTTP and SSE chat explain the shared content allowance before a provider call", async () => {
+test("HTTP and SSE requests reject exhausted content allowance before opening a stream or calling a provider", async () => {
   const json = await append("application/json");
   expect(json.status).toBe(429);
   expect(await json.json()).toMatchObject({ code: "hosted_storage_quota_exhausted" });
   const stream = await append("text/event-stream");
-  expect(stream.status).toBe(200);
+  expect(stream.status).toBe(429);
   const frames = await stream.text();
   expect(frames).toContain('"code":"hosted_storage_quota_exhausted"');
   expect(frames).not.toContain('"code":"internal"');

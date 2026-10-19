@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -9,6 +10,7 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
@@ -131,5 +133,30 @@ export const conversationHidden = pgTable(
   (t) => [
     primaryKey({ columns: [t.conversation_id, t.user_id] }),
     index("conversation_hidden_tenant_user_idx").on(t.tenant_id, t.user_id),
+  ],
+);
+
+export const conversationTurns = pgTable(
+  "conversation_turns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    conversation_id: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    attempt_id: uuid("attempt_id"),
+    task_id: uuid("task_id"),
+    worker_id: uuid("worker_id"),
+    cancel_requested: boolean("cancel_requested").notNull().default(false),
+    state: text("state")
+      .$type<"queued" | "running" | "parked" | "completed" | "failed" | "cancelled">()
+      .notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("conversation_turns_active_idx")
+      .on(t.tenant_id, t.conversation_id)
+      .where(sql`${t.state} IN ('queued', 'running', 'parked')`),
+    index("conversation_turns_conversation_idx").on(t.tenant_id, t.conversation_id, t.created_at),
   ],
 );

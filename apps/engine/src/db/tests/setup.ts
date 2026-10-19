@@ -3,7 +3,9 @@ import { randomBytes } from "node:crypto";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { localDatabaseUrl } from "../../../../../scripts/lib/local-database-url.ts";
+import { tenantWorkSnapshot } from "../../execution/tenant-work.ts";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createMigrationDbFromUrl } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
 import { EMBEDDED_MIGRATIONS } from "../migrations/embedded.ts";
@@ -149,6 +151,15 @@ export async function createTestDb(
   await seedBuiltinRolesAndPermissions(db);
 
   const cleanup = async () => {
+    const tenantRows = await db
+      .select({ id: schema.tenants.id })
+      .from(schema.tenants)
+      .catch(() => []);
+    await waitFor(() => tenantRows.every(({ id }) => tenantWorkSnapshot(id).in_flight === 0), {
+      tries: 5000,
+      sleepMs: 2,
+      label: "database fixture tenant background work",
+    });
     const admin2 = new Client({ connectionString: getAdminUrl() });
     await admin2.connect();
     try {

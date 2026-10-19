@@ -436,6 +436,10 @@ export function GrantWorkflowAuthority({
     review?.manifest.effects.flatMap((effect) =>
       effect.report_delivery ? [effect.report_delivery] : [],
     ) ?? [];
+  const transactionalDeliveries =
+    review?.manifest.effects.flatMap((effect) =>
+      effect.transactional_delivery ? [effect.transactional_delivery] : [],
+    ) ?? [];
   const recurringReport = deliveries.length > 0 && !unsupported;
   const publications =
     review?.manifest.effects.flatMap((effect) =>
@@ -793,6 +797,7 @@ export function GrantWorkflowAuthority({
           </section>
         ),
       )}
+      <TransactionalDeliveryReview deliveries={transactionalDeliveries} />
       {recurringReport && (
         <Section
           testId="authority-report-boundary"
@@ -1191,5 +1196,40 @@ export function GrantWorkflowAuthority({
         </div>
       )}
     </FormDialog>
+  );
+}
+
+export function TransactionalDeliveryReview({
+  deliveries,
+}: {
+  deliveries: Array<
+    NonNullable<WorkflowAuthorityPreview["manifest"]["effects"][number]["transactional_delivery"]>
+  >;
+}) {
+  const { t } = useI18n();
+  return (
+    deliveries.length > 0 && (
+      <Section
+        testId="authority-transactional-boundary"
+        label={t("authority.transactional.recipients")}
+      >
+        <div className="flex flex-col gap-1 text-sm">
+          <p>{t("authority.transactional.scope")}</p>
+          {deliveries.map((delivery, index) => (
+            <p key={`${delivery.webhook_id}:${index}`}>
+              {t("authority.transactional.delivery", {
+                from: delivery.from,
+                field: delivery.recipient_input,
+                event: delivery.event_type,
+                eventField: delivery.event_type_input,
+                requestField: delivery.request_id_input,
+                bytes: delivery.max_body_bytes,
+                hook: delivery.webhook_id,
+              })}
+            </p>
+          ))}
+        </div>
+      </Section>
+    )
   );
 }

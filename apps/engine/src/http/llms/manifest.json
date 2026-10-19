@@ -24,6 +24,11 @@
       "path": "connectors.md",
       "title": "Connector & recipe catalog",
       "summary": "What ships in the box: 61 connector templates across 16 categories, carrying 247 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page."
+    },
+    {
+      "path": "transactional-email.md",
+      "title": "Transactional email replies",
+      "summary": "A Gmail request step may use the explicit transactionaldelivery profile to reply to the address in an original signed request."
     }
   ]
 }

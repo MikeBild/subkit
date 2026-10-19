@@ -34,6 +34,7 @@ import {
   type ResolvedModel,
 } from "./model-init.ts";
 import { normalizeSchema, unwrapResult } from "./schema-normalizer.ts";
+import { compatibleToolPalette } from "./tool-schema-compatibility.ts";
 
 export const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
@@ -166,9 +167,9 @@ export class AiSdkModel implements SubkitLlm {
     return this.resolved;
   }
 
-  private buildExtraTools(
+  private async buildExtraTools(
     extras: SubkitLlmToolWithContext[] | undefined,
-  ): Record<string, Tool> | undefined {
+  ): Promise<Record<string, Tool> | undefined> {
     if (!extras || extras.length === 0) return undefined;
     const tools: Record<string, Tool> = {};
     for (const item of extras) {
@@ -189,7 +190,15 @@ export class AiSdkModel implements SubkitLlm {
           })
         : tool(baseSpec);
     }
-    return tools;
+    const palette = await compatibleToolPalette(tools);
+    for (const name of palette.omitted)
+      logger.warn({
+        module: "llm",
+        action: "tool.schema_incompatible",
+        tool: name,
+        msg: "Tool omitted because its input schema is incompatible with the model tool contract",
+      });
+    return palette.tools;
   }
 
   private async callWithFallback(params: {
@@ -341,7 +350,10 @@ export class AiSdkModel implements SubkitLlm {
     const cwfParams: Parameters<typeof this.callWithFallback>[0] = {
       messages: seeded,
       output,
-      tools: { ...(this.buildExtraTools(input.tools) ?? {}), [ABORT_TOOL_NAME]: abortTool() },
+      tools: {
+        ...((await this.buildExtraTools(input.tools)) ?? {}),
+        [ABORT_TOOL_NAME]: abortTool(),
+      },
       stopWhen: stepCountIs(maxAttempts),
     };
     if (temperature !== undefined) cwfParams.temperature = temperature;

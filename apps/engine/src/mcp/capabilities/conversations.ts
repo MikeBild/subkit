@@ -5,7 +5,6 @@ import { actorOf } from "../../audit/actor.ts";
 import { principalOrigin } from "../../auth/origin.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { type ElicitationRecord, getElicitation } from "../../conversations/elicitations.ts";
-import { findResumableAuthoringConversation } from "../../conversations/resumable-authoring.ts";
 import * as svc from "../../conversations/service.ts";
 import {
   approvalHandleFromElicitationInput,
@@ -13,6 +12,7 @@ import {
 } from "../../conversations/tools/ask-user/commit-intent.ts";
 import { resolvePublicBaseUrl } from "../../conversations/tools/usage-guidance.ts";
 import { suggestConversationsByTopic } from "../../conversations/topic-routing.ts";
+import { withReservedConversationTurn } from "../../conversations/turns.ts";
 import type { Db } from "../../db/client.ts";
 import * as intake from "../../knowledge/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -177,7 +177,8 @@ function cockpitConversationHandoff(conversationId: string): {
   };
 }
 
-async function backgroundTurn(p: {
+type BackgroundTurnParams = {
+  turn_id?: string;
   db: Db;
   principal: ResolvedPrincipal;
   conversation_id: string;
@@ -193,7 +194,19 @@ async function backgroundTurn(p: {
   conversation_url?: string;
   conversation_path?: string;
   conversation_next_action?: string;
-}): Promise<HandleConversationToolResult> {
+};
+
+async function backgroundTurn(p: BackgroundTurnParams): Promise<HandleConversationToolResult> {
+  return p.turn_id
+    ? backgroundTurnReserved({ ...p, turn_id: p.turn_id })
+    : withReservedConversationTurn(p.db, p.principal.tenant_id, p.conversation_id, (turn_id) =>
+        backgroundTurnReserved({ ...p, turn_id }),
+      );
+}
+
+async function backgroundTurnReserved(
+  p: BackgroundTurnParams & { turn_id: string },
+): Promise<HandleConversationToolResult> {
   const taskId = p.reuse_task_id
     ? p.reuse_task_id
     : await insertMcpTask(
@@ -230,6 +243,7 @@ async function backgroundTurn(p: {
         tenant_id: p.principal.tenant_id,
         conversation_id: p.conversation_id,
         mcp_task_id: taskId,
+        turn_id: p.turn_id,
         actor_id: p.principal.id,
         principal: p.principal,
         kind: p.kind,
@@ -275,6 +289,7 @@ async function backgroundTurn(p: {
   return successText({
     conversation_id: p.conversation_id,
     mcp_task_id: taskId,
+    turn_id: p.turn_id,
     ...(p.resumed ? { resumed: true } : {}),
     ...(p.conversation_url ? { conversation_url: p.conversation_url } : {}),
     ...(p.conversation_path ? { conversation_path: p.conversation_path } : {}),
@@ -303,6 +318,7 @@ export async function deliverPendingNativeElicitation(p: {
         kind: "respond_elicitation",
         user_message_id: null,
         elicitation_id: p.pending.id,
+        ...(resume.turn_id ? { turn_id: resume.turn_id } : {}),
         answer_channel: "mcp_native",
         ...(resume.reuse_task_id ? { reuse_task_id: resume.reuse_task_id } : {}),
         ...(resume.reason ? { reason: resume.reason } : {}),
@@ -397,42 +413,6 @@ export async function handleConversationTool(
         if (selected.some((item) => item === null))
           return errorText("selected intake item not found");
       }
-      const resumable =
-        playground || parsed.data.intake_item_ids?.length
-          ? null
-          : await findResumableAuthoringConversation(
-              principal.tenant_id,
-              principal.id,
-              parsed.data.message,
-              db,
-              {
-                ...(parsed.data.workflow_id ? { workflow_id: parsed.data.workflow_id } : {}),
-                ...(parsed.data.connector_id ? { connector_id: parsed.data.connector_id } : {}),
-              },
-            );
-      if (resumable) {
-        const appended = await svc.appendUserMessage(
-          {
-            tenant_id: principal.tenant_id,
-            conversation_id: resumable.conversation_id,
-            actor_id: principal.id,
-            principal,
-            message: parsed.data.message,
-            ...(permission_mode ? { permission_mode } : {}),
-          },
-          db,
-        );
-        return backgroundTurn({
-          db,
-          principal,
-          conversation_id: resumable.conversation_id,
-          kind: "append",
-          user_message_id: appended.message_id,
-          resumed: true,
-          ...(permission_mode ? { permission_mode } : {}),
-          ...(taskAugmented ? { taskAugmented } : {}),
-        });
-      }
       const created = await svc.createConversation(
         {
           tenant_id: principal.tenant_id,
@@ -466,26 +446,35 @@ export async function handleConversationTool(
     if (name === "conversation_append") {
       const parsed = AppendArgs.safeParse(args);
       if (!parsed.success) return errorText("conversation_id and message are required");
-      const appended = await svc.appendUserMessage(
-        {
-          tenant_id: principal.tenant_id,
-          conversation_id: parsed.data.conversation_id,
-          actor_id: principal.id,
-          principal,
-          message: parsed.data.message,
-          ...(permission_mode ? { permission_mode } : {}),
+      return await withReservedConversationTurn(
+        db,
+        principal.tenant_id,
+        parsed.data.conversation_id,
+        async (turn_id) => {
+          const appended = await svc.appendUserMessage(
+            {
+              tenant_id: principal.tenant_id,
+              conversation_id: parsed.data.conversation_id,
+              actor_id: principal.id,
+              principal,
+              message: parsed.data.message,
+              turn_id,
+              ...(permission_mode ? { permission_mode } : {}),
+            },
+            db,
+          );
+          return backgroundTurn({
+            db,
+            turn_id,
+            principal,
+            conversation_id: parsed.data.conversation_id,
+            kind: "append",
+            user_message_id: appended.message_id,
+            ...(permission_mode ? { permission_mode } : {}),
+            ...(taskAugmented ? { taskAugmented } : {}),
+          });
         },
-        db,
       );
-      return backgroundTurn({
-        db,
-        principal,
-        conversation_id: parsed.data.conversation_id,
-        kind: "append",
-        user_message_id: appended.message_id,
-        ...(permission_mode ? { permission_mode } : {}),
-        ...(taskAugmented ? { taskAugmented } : {}),
-      });
     }
 
     if (name === "conversation_respond_elicitation") {
@@ -495,31 +484,39 @@ export async function handleConversationTool(
       }
       const refusal = await refuseApprovalElicitation(db, principal, parsed.data);
       if (refusal) return refusal;
-      const { stageElicitationAnswer } = await import("../../conversations/elicitations.ts");
-      const staged = await stageElicitationAnswer(
-        {
-          tenant_id: principal.tenant_id,
-          conversation_id: parsed.data.conversation_id,
-          id: parsed.data.elicitation_id,
-          output: parsed.data.output,
+      return await withReservedConversationTurn(
+        db,
+        principal.tenant_id,
+        parsed.data.conversation_id,
+        async (turn_id) => {
+          const { stageElicitationAnswer } = await import("../../conversations/elicitations.ts");
+          const staged = await stageElicitationAnswer(
+            {
+              tenant_id: principal.tenant_id,
+              conversation_id: parsed.data.conversation_id,
+              id: parsed.data.elicitation_id,
+              output: parsed.data.output,
+            },
+            db,
+          );
+          if (staged.kind === "not_found") return errorText("elicitation not found");
+          if (staged.kind === "already_resolved") {
+            return errorText(`elicitation already ${staged.existing.status}`);
+          }
+          return backgroundTurn({
+            db,
+            turn_id,
+            principal,
+            conversation_id: parsed.data.conversation_id,
+            kind: "respond_elicitation",
+            user_message_id: null,
+            elicitation_id: parsed.data.elicitation_id,
+            ...(parsed.data.reason ? { reason: parsed.data.reason } : {}),
+            ...(permission_mode ? { permission_mode } : {}),
+            ...(taskAugmented ? { taskAugmented } : {}),
+          });
         },
-        db,
       );
-      if (staged.kind === "not_found") return errorText("elicitation not found");
-      if (staged.kind === "already_resolved") {
-        return errorText(`elicitation already ${staged.existing.status}`);
-      }
-      return backgroundTurn({
-        db,
-        principal,
-        conversation_id: parsed.data.conversation_id,
-        kind: "respond_elicitation",
-        user_message_id: null,
-        elicitation_id: parsed.data.elicitation_id,
-        ...(parsed.data.reason ? { reason: parsed.data.reason } : {}),
-        ...(permission_mode ? { permission_mode } : {}),
-        ...(taskAugmented ? { taskAugmented } : {}),
-      });
     }
 
     if (name === "conversation_get") {

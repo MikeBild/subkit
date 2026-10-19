@@ -3,7 +3,7 @@ import { z } from "@hono/zod-openapi";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { RequestDispatchPolicy } from "../connectors/drivers/http.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
-import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
+import { CatalogVocabularyBusyError, lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../db/client.ts";
 import {
   executions,
@@ -11,6 +11,7 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
+import { retryTransient } from "../db/transient.ts";
 import { assertTenantActive } from "../identity/self-service.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import { authorityLive, authorityNotExpired } from "../workflows/authority-live.ts";
@@ -32,6 +33,7 @@ import { assertRequestBoundary } from "../workflows/request-boundary.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { assertStorageRequest } from "../workflows/storage-boundary.ts";
 import { executableDefinition } from "../workflows/stored-definition.ts";
+import { assertTransactionalMessage } from "../workflows/transactional-delivery-boundary.ts";
 import { JsonValueSchema } from "../workflows/types.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { bindCallerBudget, reserveCallerBudget } from "./caller-budget.ts";
@@ -39,9 +41,10 @@ import { assertCallerMatches, type CallerContext } from "./caller-context.ts";
 import { type CallerOrigin, resolveExecutionCallerOrigin } from "./caller-origin.ts";
 import { validateAgainstJsonSchema } from "./engine/envelope.ts";
 import { resolveDefinition } from "./resolve-definition.ts";
-import { recoverExecutionPayload } from "./sensitive-payload.ts";
+import { isSensitivePayload, recoverExecutionPayload } from "./sensitive-payload.ts";
 import { createExecution } from "./state.ts";
 import { assertToolApprovalDispatch } from "./tool-approval-dispatch.ts";
+import { reserveTransactionalMail, transactionalWebhookAvailable } from "./transactional-mail.ts";
 import type { RequestAuthoritySnapshot } from "./types.ts";
 
 const requestSnapshotSchema = z
@@ -88,183 +91,209 @@ export async function admitAuthorizedWorkflowExecution(
   caller: CallerContext | null = null,
   authorization: import("./authorization-context.ts").ExecutionAuthorizationContext | null = null,
   callerOrigin: CallerOrigin = caller ? "principal" : "unknown",
+  verifiedWebhookId?: string,
 ) {
   const input = admissionSchema.parse(raw);
   const origin = resolveExecutionCallerOrigin(input.tenant_id, caller, callerOrigin);
-  return db.transaction(async (tx) => {
-    await lockCatalogVocabulary(tx, input.tenant_id);
-    await assertTenantActive(input.tenant_id, tx);
-    if (input.idempotency_key) {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.tenant_id}:${input.idempotency_key}`}, 0))`,
-      );
-      const [existing] = await tx
-        .select()
-        .from(executions)
-        .where(
-          and(
-            eq(executions.tenant_id, input.tenant_id),
-            eq(executions.idempotency_key, input.idempotency_key),
-          ),
-        )
-        .limit(1);
-      if (existing) {
-        if (existing.workflow_id !== input.workflow_id || !existing.workflow_version_id)
-          fail(
-            "execution_boundary_mismatch",
-            "the idempotency key belongs to a different execution boundary",
+  return retryTransient(
+    () =>
+      db.transaction(async (tx) => {
+        await lockCatalogVocabulary(tx, input.tenant_id);
+        await assertTenantActive(input.tenant_id, tx);
+        if (input.idempotency_key) {
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.tenant_id}:${input.idempotency_key}`}, 0))`,
           );
-        const pinned = await resolveDefinition(tx, input.tenant_id, {
-          kind: "saved",
-          workflow_id: input.workflow_id,
-          version_id: existing.workflow_version_id,
-        });
-        const normalized = JsonValueSchema.parse(
-          normalizeWorkflowRunInput(input.input, pinned.def.input_schema) ?? null,
-        );
+          const [existing] = await tx
+            .select()
+            .from(executions)
+            .where(
+              and(
+                eq(executions.tenant_id, input.tenant_id),
+                eq(executions.idempotency_key, input.idempotency_key),
+              ),
+            )
+            .limit(1);
+          if (existing) {
+            if (existing.workflow_id !== input.workflow_id || !existing.workflow_version_id)
+              fail(
+                "execution_boundary_mismatch",
+                "the idempotency key belongs to a different execution boundary",
+              );
+            const pinned = await resolveDefinition(tx, input.tenant_id, {
+              kind: "saved",
+              workflow_id: input.workflow_id,
+              version_id: existing.workflow_version_id,
+            });
+            const normalized = JsonValueSchema.parse(
+              normalizeWorkflowRunInput(input.input, pinned.def.input_schema) ?? null,
+            );
+            if (
+              !existing.execution_authority_id ||
+              existing.workflow_id !== input.workflow_id ||
+              (input.workflow_version_id &&
+                input.workflow_version_id !== existing.workflow_version_id) ||
+              (input.execution_authority_id &&
+                input.execution_authority_id !== existing.execution_authority_id) ||
+              existing.execution_mode !== input.execution_environment ||
+              (existing.parent_execution_id ?? null) !== (input.parent_execution_id ?? null) ||
+              !isDeepStrictEqual(existing.caller_context, caller) ||
+              existing.caller_origin !== origin ||
+              !isDeepStrictEqual(
+                recoverExecutionPayload(existing.input, input.tenant_id, existing.id),
+                normalized,
+              )
+            )
+              fail(
+                "execution_boundary_mismatch",
+                "the idempotency key belongs to a different execution boundary",
+              );
+            return {
+              execution_id: existing.id,
+              execution_authority_id: existing.execution_authority_id,
+              workflow_version_id: existing.workflow_version_id!,
+              status: existing.status,
+              input: normalized,
+              replayed: true,
+            };
+          }
+        }
+        const workflow = await lockWorkflowForVersionWrite(tx, input.tenant_id, input.workflow_id);
         if (
-          !existing.execution_authority_id ||
-          existing.workflow_id !== input.workflow_id ||
-          (input.workflow_version_id &&
-            input.workflow_version_id !== existing.workflow_version_id) ||
-          (input.execution_authority_id &&
-            input.execution_authority_id !== existing.execution_authority_id) ||
-          existing.execution_mode !== input.execution_environment ||
-          (existing.parent_execution_id ?? null) !== (input.parent_execution_id ?? null) ||
-          !isDeepStrictEqual(existing.caller_context, caller) ||
-          existing.caller_origin !== origin ||
-          !isDeepStrictEqual(
-            recoverExecutionPayload(existing.input, input.tenant_id, existing.id),
-            normalized,
-          )
+          workflow?.lifecycle !== "active" ||
+          !workflow.current_version_id ||
+          (input.workflow_version_id && input.workflow_version_id !== workflow.current_version_id)
         )
           fail(
-            "execution_boundary_mismatch",
-            "the idempotency key belongs to a different execution boundary",
+            "workflow_version_not_active",
+            "only the exact active workflow version can be admitted",
           );
-        return {
-          execution_id: existing.id,
-          execution_authority_id: existing.execution_authority_id,
-          workflow_version_id: existing.workflow_version_id!,
-          status: existing.status,
+        const [version] = await tx
+          .select({ dag: workflowVersions.dag })
+          .from(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.tenant_id, input.tenant_id),
+              eq(workflowVersions.workflow_id, input.workflow_id),
+              eq(workflowVersions.id, workflow.current_version_id),
+            ),
+          )
+          .for("share")
+          .limit(1);
+        if (!version) fail("workflow_version_not_active", "active workflow version unavailable");
+        const definition = executableDefinition(version.dag);
+        const normalized = JsonValueSchema.parse(
+          normalizeWorkflowRunInput(input.input, definition.input_schema) ?? null,
+        );
+        if (input.request_source === "chat" && definition.execution_privacy === "sensitive")
+          fail(
+            "sensitive_execution_unsupported",
+            "Sensitive execution is unavailable on conversation surfaces.",
+          );
+        assertCallerMatches(
+          caller,
+          input.tenant_id,
+          definition.product_id,
+          definition.required_caller_kind,
+        );
+        if (definition.input_schema) {
+          const check = validateAgainstJsonSchema(normalized, definition.input_schema, "$input");
+          if (!check.valid) fail("input_schema_violation", check.errors.join("; "));
+        }
+        const preview = await previewWorkflowAuthority(
+          {
+            tenant_id: input.tenant_id,
+            workflow_id: input.workflow_id,
+            workflow_version_id: workflow.current_version_id,
+            execution_environment: input.execution_environment,
+          },
+          tx,
+        );
+        if (!preview.eligible_for_repeated_runs)
+          fail(
+            "execution_authority_required",
+            "this workflow requires concrete-run review for its current effects",
+          );
+        const [authority] = await tx
+          .select()
+          .from(workflowExecutionAuthorities)
+          .where(
+            and(
+              eq(workflowExecutionAuthorities.tenant_id, input.tenant_id),
+              eq(workflowExecutionAuthorities.workflow_id, input.workflow_id),
+              eq(workflowExecutionAuthorities.workflow_version_id, workflow.current_version_id),
+              eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
+              input.execution_authority_id
+                ? eq(workflowExecutionAuthorities.id, input.execution_authority_id)
+                : eq(workflowExecutionAuthorities.effect_manifest_digest, preview.digest),
+              authorityLive(),
+            ),
+          )
+          .orderBy(
+            desc(workflowExecutionAuthorities.created_at),
+            desc(workflowExecutionAuthorities.id),
+          )
+          .for("update")
+          .limit(1);
+        if (!authority)
+          fail(
+            "execution_authority_unavailable",
+            "no matching live execution authority has runs remaining",
+          );
+        if (authority.effect_manifest_digest !== preview.digest)
+          fail(
+            "execution_authority_changed",
+            "the execution authority no longer matches the current effect boundary",
+          );
+        const reservation = await reserveCallerBudget(tx, definition, caller, normalized);
+        const execution_id = await createExecution(tx, {
+          tenant_id: input.tenant_id,
+          workflow_id: input.workflow_id,
+          workflow_version_id: workflow.current_version_id,
+          execution_authority_id: authority.id,
+          execution_mode: input.execution_environment,
+          source_kind: "saved",
+          source_ref:
+            verifiedWebhookId && origin === "trusted_system"
+              ? { verified_webhook_id: verifiedWebhookId }
+              : input.parent_execution_id
+                ? { rerun_of: input.parent_execution_id }
+                : null,
           input: normalized,
-          replayed: true,
+          caller_context: caller,
+          caller_origin: origin,
+          authorization_context: authorization,
+          execution_privacy: definition.execution_privacy,
+          request_source: input.request_source,
+          parent_execution_id: input.parent_execution_id ?? null,
+          idempotency_key: input.idempotency_key ?? null,
+        });
+        await bindCallerBudget(tx, input.tenant_id, execution_id, reservation);
+        return {
+          execution_id,
+          execution_authority_id: authority.id,
+          workflow_version_id: workflow.current_version_id,
+          status: "queued" as const,
+          input: normalized,
+          replayed: false,
         };
-      }
-    }
-    const workflow = await lockWorkflowForVersionWrite(tx, input.tenant_id, input.workflow_id);
-    if (
-      workflow?.lifecycle !== "active" ||
-      !workflow.current_version_id ||
-      (input.workflow_version_id && input.workflow_version_id !== workflow.current_version_id)
-    )
-      fail("workflow_version_not_active", "only the exact active workflow version can be admitted");
-    const [version] = await tx
-      .select({ dag: workflowVersions.dag })
-      .from(workflowVersions)
-      .where(
-        and(
-          eq(workflowVersions.tenant_id, input.tenant_id),
-          eq(workflowVersions.workflow_id, input.workflow_id),
-          eq(workflowVersions.id, workflow.current_version_id),
-        ),
-      )
-      .for("share")
-      .limit(1);
-    if (!version) fail("workflow_version_not_active", "active workflow version unavailable");
-    const definition = executableDefinition(version.dag);
-    const normalized = JsonValueSchema.parse(
-      normalizeWorkflowRunInput(input.input, definition.input_schema) ?? null,
-    );
-    if (input.request_source === "chat" && definition.execution_privacy === "sensitive")
-      fail(
-        "sensitive_execution_unsupported",
-        "Sensitive execution is unavailable on conversation surfaces.",
-      );
-    assertCallerMatches(
-      caller,
-      input.tenant_id,
-      definition.product_id,
-      definition.required_caller_kind,
-    );
-    if (definition.input_schema) {
-      const check = validateAgainstJsonSchema(normalized, definition.input_schema, "$input");
-      if (!check.valid) fail("input_schema_violation", check.errors.join("; "));
-    }
-    const preview = await previewWorkflowAuthority(
-      {
-        tenant_id: input.tenant_id,
-        workflow_id: input.workflow_id,
-        workflow_version_id: workflow.current_version_id,
-        execution_environment: input.execution_environment,
-      },
-      tx,
-    );
-    if (!preview.eligible_for_repeated_runs)
-      fail(
-        "execution_authority_required",
-        "this workflow requires concrete-run review for its current effects",
-      );
-    const [authority] = await tx
-      .select()
-      .from(workflowExecutionAuthorities)
-      .where(
-        and(
-          eq(workflowExecutionAuthorities.tenant_id, input.tenant_id),
-          eq(workflowExecutionAuthorities.workflow_id, input.workflow_id),
-          eq(workflowExecutionAuthorities.workflow_version_id, workflow.current_version_id),
-          eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
-          input.execution_authority_id
-            ? eq(workflowExecutionAuthorities.id, input.execution_authority_id)
-            : eq(workflowExecutionAuthorities.effect_manifest_digest, preview.digest),
-          authorityLive(),
-        ),
-      )
-      .orderBy(desc(workflowExecutionAuthorities.created_at), desc(workflowExecutionAuthorities.id))
-      .for("update")
-      .limit(1);
-    if (!authority)
-      fail(
-        "execution_authority_unavailable",
-        "no matching live execution authority has runs remaining",
-      );
-    if (authority.effect_manifest_digest !== preview.digest)
-      fail(
-        "execution_authority_changed",
-        "the execution authority no longer matches the current effect boundary",
-      );
-    const reservation = await reserveCallerBudget(tx, definition, caller, normalized);
-    const execution_id = await createExecution(tx, {
-      tenant_id: input.tenant_id,
-      workflow_id: input.workflow_id,
-      workflow_version_id: workflow.current_version_id,
-      execution_authority_id: authority.id,
-      execution_mode: input.execution_environment,
-      source_kind: "saved",
-      source_ref: input.parent_execution_id ? { rerun_of: input.parent_execution_id } : null,
-      input: normalized,
-      caller_context: caller,
-      caller_origin: origin,
-      authorization_context: authorization,
-      execution_privacy: definition.execution_privacy,
-      request_source: input.request_source,
-      parent_execution_id: input.parent_execution_id ?? null,
-      idempotency_key: input.idempotency_key ?? null,
-    });
-    await bindCallerBudget(tx, input.tenant_id, execution_id, reservation);
-    return {
-      execution_id,
-      execution_authority_id: authority.id,
-      workflow_version_id: workflow.current_version_id,
-      status: "queued" as const,
-      input: normalized,
-      replayed: false,
-    };
-  });
+      }),
+    {
+      tries: 5,
+      startMs: 25,
+      maxMs: 200,
+      label: "execution_admission_catalog",
+      shouldRetry: (error) => error instanceof CatalogVocabularyBusyError,
+    },
+  );
 }
 
-export function admitSystemWorkflowExecution(raw: unknown, db: Executor) {
-  return admitAuthorizedWorkflowExecution(raw, db, null, null, "trusted_system");
+export function admitSystemWorkflowExecution(
+  raw: unknown,
+  db: Executor,
+  verifiedWebhookId?: string,
+) {
+  return admitAuthorizedWorkflowExecution(raw, db, null, null, "trusted_system", verifiedWebhookId);
 }
 
 export async function assertExecutionAuthorityCurrent(
@@ -280,6 +309,14 @@ export async function assertExecutionAuthorityCurrent(
     .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, execution_id)))
     .limit(1);
   if (!execution) fail("execution_boundary_mismatch", "execution unavailable");
+  if (
+    snapshot?.requires_transactional_authority &&
+    (execution.tool_approval_id || !execution.execution_authority_id)
+  )
+    fail(
+      "execution_authority_unavailable",
+      "Transactional email requires its reviewed recurring authority",
+    );
   if (execution.tool_approval_id)
     return assertToolApprovalDispatch(db, tenant_id, execution_id, snapshot);
   let authorityId = execution.execution_authority_id;
@@ -308,6 +345,7 @@ export async function assertExecutionAuthorityCurrent(
     governing.push(root);
   }
   if (!authorityId) return;
+  let pendingMail: { request_id: string; step_id: string } | undefined;
   for (const row of governing) {
     if (row.abort_requested_at || !["queued", "running"].includes(row.status))
       fail(
@@ -349,6 +387,7 @@ export async function assertExecutionAuthorityCurrent(
       step_row_id: _row,
       connector_id: _connector,
       request_max_attempts: _attempts,
+      requires_transactional_authority: _transactional,
       principal_id: _principal,
       referenced_authorities: referencedAuthorities,
       ...authoritySnapshot
@@ -383,6 +422,40 @@ export async function assertExecutionAuthorityCurrent(
         );
     }
     if (effect.report_delivery) assertReportDelivery(effect.report_delivery, snapshot.request);
+    if (effect.transactional_delivery) {
+      const provenance = recoverExecutionPayload(
+        execution.source_ref,
+        tenant_id,
+        execution_id,
+        "source",
+      ) as { verified_webhook_id?: unknown } | null;
+      if (
+        !isSensitivePayload(execution.input) ||
+        execution.request_source !== "webhook" ||
+        execution.caller_origin !== "trusted_system" ||
+        execution.parent_execution_id ||
+        execution.authority_root_execution_id ||
+        provenance?.verified_webhook_id !== effect.transactional_delivery.webhook_id ||
+        snapshot.request_max_attempts !== 1 ||
+        !(await transactionalWebhookAvailable(
+          db,
+          tenant_id,
+          boundary.workflow_id,
+          effect.transactional_delivery,
+        ))
+      )
+        fail(
+          "execution_authority_changed",
+          "Transactional delivery requires its reviewed verified webhook and one dispatch attempt",
+        );
+      const event = assertTransactionalMessage(
+        effect.transactional_delivery,
+        recoverExecutionPayload(execution.input, tenant_id, execution_id),
+        snapshot.request,
+      );
+      pendingMail = { request_id: event.request_id, step_id: effect.step_id };
+    }
+
     if (effect.content_publication?.kind === "content_revision")
       assertContentRevision(effect.content_publication, snapshot.request);
     if (effect.content_publication?.kind === "content_release")
@@ -445,5 +518,12 @@ export async function assertExecutionAuthorityCurrent(
       "execution_authority_changed",
       "the reserved execution no longer matches its approved effect boundary",
     );
+  if (pendingMail)
+    await reserveTransactionalMail(db, {
+      tenant_id,
+      workflow_id: boundary.workflow_id,
+      execution_id,
+      ...pendingMail,
+    });
   return { redirect: "manual" };
 }

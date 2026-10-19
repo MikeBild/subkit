@@ -238,11 +238,13 @@ function suggestNextModelInvoker(db: Db | undefined): SuggestNextModelInvoker {
       if (route.provider === "mock") return { text: null };
       const suggestionModel = getConfig(call.tenant_id).llm.suggestion_model;
       model = new AiSdkModel({
+        ...(db ? { exec: db } : {}),
         tenantId: call.tenant_id,
         providerOverride: route.provider,
         defaultModel: suggestionModel,
         modelOverride: suggestionModel,
         fallback: {
+          ...(db ? { exec: db } : {}),
           tenantId: call.tenant_id,
           providerOverride: route.fallback_provider,
           defaultModel: route.fallback,

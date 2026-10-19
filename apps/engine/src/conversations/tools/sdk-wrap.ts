@@ -5,6 +5,7 @@ import {
 } from "../../audit/recorders/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
+import { compatibleToolPalette } from "../../llm/core/tool-schema-compatibility.ts";
 import { logger } from "../../logging/logger.ts";
 import { redactUpstreamDetail } from "../../mcp/client/registry.ts";
 import type { PermissionMode, ToolPolicies } from "../tool-policies.ts";
@@ -120,6 +121,20 @@ export async function wrapTools(
       }
     }
   }
-  ctx.availableToolNames = new Set(Object.keys(out));
-  return out;
+  const palette = await compatibleToolPalette(out);
+  for (const name of palette.omitted) {
+    logger.warn({
+      module: "conversation_tool",
+      action: "tool.schema_incompatible",
+      tenant_id: ctx.tenant_id,
+      tool: name,
+      msg: "Tool omitted from model palette because its root input schema is not provider-compatible",
+    });
+    ctx.onLog?.(
+      "warn",
+      `Tool ${name} has an incompatible input schema and was omitted; saved workflows remain accessible through run_workflow.`,
+    );
+  }
+  ctx.availableToolNames = new Set(Object.keys(palette.tools));
+  return palette.tools;
 }

@@ -7,12 +7,13 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { withWorkflowPersisted } from "../../conversations/authoring-state.ts";
 import { appendSnapshot, loadDraft } from "../../conversations/draft.ts";
+import { finishConversationTurn } from "../../conversations/turns.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
 import {
-  connectors,
   conversationElicitations,
   conversations,
   conversationToolCalls,
+  conversationTurns,
   mcpTasks,
   tenants,
   users,
@@ -33,6 +34,15 @@ const nextIntakeUuid = createDeterministicUuidFactory(0x1a2b_3c4d);
 let testDb: TestDb;
 let principal: ResolvedPrincipal;
 let foreignPrincipal: ResolvedPrincipal;
+
+async function finishQueuedConversation(conversation_id: string) {
+  const rows = await testDb.db
+    .select()
+    .from(conversationTurns)
+    .where(eq(conversationTurns.conversation_id, conversation_id));
+  for (const row of rows)
+    await finishConversationTurn(testDb.db, principal.tenant_id, conversation_id, row.id);
+}
 
 async function ensureConfig(): Promise<void> {
   try {
@@ -236,77 +246,30 @@ describe("conversation_start", () => {
   });
 });
 
-describe("conversation_start — slug idempotency (resume, not duplicate)", () => {
-  test("a second start naming the same slug resumes the first conversation", async () => {
-    const message = "create workflow load-jira-issue-full-details";
+describe("conversation_start keeps independent dialogs", () => {
+  test("identical opening messages always create distinct conversations", async () => {
+    const message = "create workflow load-issue-full-details";
     const first = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_start",
+      args: { message },
+    });
+    const second = await handleConversationTool({
       db: testDb.db,
       principal,
       name: "conversation_start",
       args: { message },
     });
     expect(first.isError).toBe(false);
-    const firstBody = JSON.parse(first.content[0]?.text ?? "{}") as {
-      conversation_id: string;
-      resumed?: boolean;
-    };
-    expect(firstBody.resumed).toBeUndefined();
-    expect(firstBody.conversation_id.length).toBeGreaterThan(0);
-
-    const second = await handleConversationTool({
-      db: testDb.db,
-      principal,
-      name: "conversation_start",
-      args: { message },
-    });
     expect(second.isError).toBe(false);
-    const secondBody = JSON.parse(second.content[0]?.text ?? "{}") as {
-      conversation_id: string;
-      resumed?: boolean;
-    };
-    expect(secondBody.resumed).toBe(true);
-    expect(secondBody.conversation_id).toBe(firstBody.conversation_id);
-
-    const tasks = await testDb.db
-      .select()
-      .from(mcpTasks)
-      .where(eq(mcpTasks.conversation_id, firstBody.conversation_id));
-    expect(tasks).toHaveLength(2);
-    expect(tasks.map((t) => t.kind).sort()).toEqual(["append", "start"]);
-    expect(tasks.every((t) => t.job_id)).toBe(true);
+    const a = JSON.parse(first.content[0]?.text ?? "{}");
+    const b = JSON.parse(second.content[0]?.text ?? "{}");
+    expect(a.conversation_id).not.toBe(b.conversation_id);
+    expect(b.resumed).toBeUndefined();
   });
-
-  test("a terminal (committed) conversation is not resumed — a fresh one is created", async () => {
-    const slug = "sync-committed-orders-nightly";
-    const message = `create workflow ${slug}`;
-    const [conv] = await testDb.db
-      .insert(conversations)
-      .values({
-        tenant_id: principal.tenant_id,
-        owner_id: principal.id,
-        status: "committed",
-        draft: { workflow: { name: "Sync Committed Orders Nightly", slug, steps: [] } },
-      })
-      .returning();
-    if (!conv) throw new Error("seed conversation failed");
-
-    const started = await handleConversationTool({
-      db: testDb.db,
-      principal,
-      name: "conversation_start",
-      args: { message },
-    });
-    expect(started.isError).toBe(false);
-    const body = JSON.parse(started.content[0]?.text ?? "{}") as {
-      conversation_id: string;
-      resumed?: boolean;
-    };
-    expect(body.resumed).toBeUndefined();
-    expect(body.conversation_id).not.toBe(conv.id);
-  });
-
-  test("an explicit workflow id never resumes an unbound conversation with the same slug", async () => {
-    const target = await seedWorkflow("explicit-binding-repair", [
+  test("targeting the same workflow does not implicitly append to another dialog", async () => {
+    const target = await seedWorkflow("same-target", [
       {
         id: "existing_step",
         kind: "transform",
@@ -314,221 +277,27 @@ describe("conversation_start — slug idempotency (resume, not duplicate)", () =
         expression: "return input.input;",
       },
     ]);
-    const [unbound] = await testDb.db
-      .insert(conversations)
-      .values({
-        tenant_id: principal.tenant_id,
-        owner_id: principal.id,
-        status: "active",
-        draft: {
-          workflow: {
-            name: "Explicit Binding Repair",
-            slug: target.slug,
-            steps: [],
-          },
-        },
-      })
-      .returning();
-    if (!unbound) throw new Error("seed unbound conversation failed");
-
-    const started = await handleConversationTool({
-      db: testDb.db,
-      principal,
-      name: "conversation_start",
-      args: {
-        workflow_id: target.workflow_id,
-        message: `edit the existing workflow ${target.slug}`,
-      },
-    });
-    expect(started.isError).toBe(false);
-    const body = JSON.parse(started.content[0]?.text ?? "{}") as {
-      conversation_id: string;
-      resumed?: boolean;
+    const args = {
+      workflow_id: target.workflow_id,
+      message: "inspect the existing workflow same-target",
     };
-    expect(body.resumed).toBeUndefined();
-    expect(body.conversation_id).not.toBe(unbound.id);
-
-    const [created] = await testDb.db
-      .select({ target_workflow_id: conversations.target_workflow_id })
-      .from(conversations)
-      .where(eq(conversations.id, body.conversation_id));
-    expect(created?.target_workflow_id).toBe(target.workflow_id);
-
-    const hydrated = await loadDraft(principal.tenant_id, body.conversation_id, testDb.db);
-    expect(hydrated.workflow.slug).toBe(target.slug);
-    expect(hydrated.workflow.steps.map((step) => step.id)).toEqual(["existing_step"]);
-    expect(hydrated.summary?.active_target?.id).toBe(target.workflow_id);
-  });
-
-  test("an explicit workflow id resumes only the conversation bound to that exact resource", async () => {
-    const target = await seedWorkflow("explicit-binding-resume", [
-      {
-        id: "existing_step",
-        kind: "transform",
-        language: "javascript",
-        expression: "return input.input;",
-      },
-    ]);
-    const [bound] = await testDb.db
-      .insert(conversations)
-      .values({
-        tenant_id: principal.tenant_id,
-        owner_id: principal.id,
-        status: "active",
-        target_workflow_id: target.workflow_id,
-        draft: { workflow: { name: "new-workflow", steps: [] } },
-      })
-      .returning();
-    if (!bound) throw new Error("seed bound conversation failed");
-
-    const started = await handleConversationTool({
-      db: testDb.db,
-      principal,
-      name: "conversation_start",
-      args: {
-        workflow_id: target.workflow_id,
-        message: "apply the requested version changes",
-      },
-    });
-    expect(started.isError).toBe(false);
-    const body = JSON.parse(started.content[0]?.text ?? "{}") as {
-      conversation_id: string;
-      resumed?: boolean;
-    };
-    expect(body.resumed).toBe(true);
-    expect(body.conversation_id).toBe(bound.id);
-  });
-
-  test("an explicit connector id resumes only the conversation bound to that exact resource", async () => {
-    const [connector] = await testDb.db
-      .insert(connectors)
-      .values({
-        tenant_id: principal.tenant_id,
-        slug: "explicit-connector-resume",
-        display_name: "Explicit Connector Resume",
-        driver: "http",
-      })
-      .returning();
-    if (!connector) throw new Error("seed connector failed");
-    const [bound] = await testDb.db
-      .insert(conversations)
-      .values({
-        tenant_id: principal.tenant_id,
-        owner_id: principal.id,
-        status: "active",
-        target_connector_id: connector.id,
-        draft: { workflow: { name: "new-workflow", steps: [] } },
-      })
-      .returning();
-    if (!bound) throw new Error("seed connector-bound conversation failed");
-
-    const started = await handleConversationTool({
-      db: testDb.db,
-      principal,
-      name: "conversation_start",
-      args: {
-        connector_id: connector.id,
-        message: "apply the requested connector changes",
-      },
-    });
-    expect(started.isError).toBe(false);
-    const body = JSON.parse(started.content[0]?.text ?? "{}") as {
-      conversation_id: string;
-      resumed?: boolean;
-    };
-    expect(body.resumed).toBe(true);
-    expect(body.conversation_id).toBe(bound.id);
-  });
-
-  test("a different slug creates a new conversation, not a resume", async () => {
     const first = await handleConversationTool({
       db: testDb.db,
       principal,
       name: "conversation_start",
-      args: { message: "create workflow export-hubspot-contacts-daily" },
+      args,
     });
-    const firstBody = JSON.parse(first.content[0]?.text ?? "{}") as { conversation_id: string };
-
     const second = await handleConversationTool({
       db: testDb.db,
       principal,
       name: "conversation_start",
-      args: { message: "create workflow import-stripe-invoices-hourly" },
+      args,
     });
-    const secondBody = JSON.parse(second.content[0]?.text ?? "{}") as {
-      conversation_id: string;
-      resumed?: boolean;
-    };
-    expect(secondBody.resumed).toBeUndefined();
-    expect(secondBody.conversation_id).not.toBe(firstBody.conversation_id);
-  });
-
-  test("shared prose compounds (German hyphenated words) never resume — only authored slugs do", async () => {
-    const first = await handleConversationTool({
-      db: testDb.db,
-      principal,
-      name: "conversation_start",
-      args: {
-        message:
-          "Lege einen neuen HTTP-Connector für die TrustMRR-API an. Authentifizierung: Bearer Token im Authorization-Header.",
-      },
-    });
-    const firstBody = JSON.parse(first.content[0]?.text ?? "{}") as { conversation_id: string };
-
-    const second = await handleConversationTool({
-      db: testDb.db,
-      principal,
-      name: "conversation_start",
-      args: {
-        message:
-          "Baue vier Workflows für den Opportunity-Radar. Nutze dafür den bestehenden HTTP-Connector mit dem API-Key.",
-      },
-    });
+    expect(first.isError).toBe(false);
     expect(second.isError).toBe(false);
-    const secondBody = JSON.parse(second.content[0]?.text ?? "{}") as {
-      conversation_id: string;
-      resumed?: boolean;
-    };
-    expect(secondBody.resumed).toBeUndefined();
-    expect(secondBody.conversation_id).not.toBe(firstBody.conversation_id);
-  });
-
-  test("naming the candidate's authored draft slug resumes AND runs the message as a turn", async () => {
-    const slug = "radar-sync-weekly-digest";
-    const [conv] = await testDb.db
-      .insert(conversations)
-      .values({
-        tenant_id: principal.tenant_id,
-        owner_id: principal.id,
-        status: "active",
-        draft: { workflow: { name: "Radar Sync Weekly Digest", slug, steps: [] } },
-      })
-      .returning();
-    if (!conv) throw new Error("seed conversation failed");
-
-    const started = await handleConversationTool({
-      db: testDb.db,
-      principal,
-      name: "conversation_start",
-      args: { message: `bitte ${slug} fertigstellen und speichern` },
-    });
-    expect(started.isError).toBe(false);
-    const body = JSON.parse(started.content[0]?.text ?? "{}") as {
-      conversation_id: string;
-      resumed?: boolean;
-      status: string;
-    };
-    expect(body.resumed).toBe(true);
-    expect(body.conversation_id).toBe(conv.id);
-    expect(body.status).toBe("working");
-
-    const tasks = await testDb.db
-      .select()
-      .from(mcpTasks)
-      .where(eq(mcpTasks.conversation_id, conv.id));
-    expect(tasks).toHaveLength(1);
-    expect(tasks[0]?.kind).toBe("append");
-    expect(tasks[0]?.job_id).toBeTruthy();
+    expect(JSON.parse(first.content[0]?.text ?? "{}").conversation_id).not.toBe(
+      JSON.parse(second.content[0]?.text ?? "{}").conversation_id,
+    );
   });
 });
 
@@ -543,6 +312,7 @@ describe("conversation_append", () => {
     const conversation_id = (
       JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
     ).conversation_id;
+    await finishQueuedConversation(conversation_id);
 
     const appended = await handleConversationTool({
       db: testDb.db,
@@ -572,6 +342,7 @@ describe("conversation_respond_elicitation", () => {
     const conversation_id = (
       JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
     ).conversation_id;
+    await finishQueuedConversation(conversation_id);
 
     const [elicitation] = await testDb.db
       .insert(conversationElicitations)
@@ -626,6 +397,7 @@ describe("conversation_respond_elicitation", () => {
     const conversation_id = (
       JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
     ).conversation_id;
+    await finishQueuedConversation(conversation_id);
 
     const [elicitation] = await testDb.db
       .insert(conversationElicitations)
@@ -677,6 +449,7 @@ describe("conversation_respond_elicitation", () => {
     const conversation_id = (
       JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
     ).conversation_id;
+    await finishQueuedConversation(conversation_id);
 
     const responded = await handleConversationTool({
       db: testDb.db,
@@ -702,6 +475,7 @@ describe("conversation_respond_elicitation", () => {
     const conversation_id = (
       JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
     ).conversation_id;
+    await finishQueuedConversation(conversation_id);
 
     const approvalId = "11111111-2222-3333-4444-555555555555";
     const [elicitation] = await testDb.db
@@ -780,6 +554,7 @@ describe("conversation_respond_elicitation", () => {
     const conversation_id = (
       JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
     ).conversation_id;
+    await finishQueuedConversation(conversation_id);
 
     const approvalId = "22222222-3333-4444-5555-666666666666";
     const approvalUrl = "https://engine.example.test/v1/tool-approvals/decide?grant=skag_probe";
@@ -843,6 +618,7 @@ describe("conversation_respond_elicitation", () => {
     const conversation_id = (
       JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
     ).conversation_id;
+    await finishQueuedConversation(conversation_id);
 
     const [elicitation] = await testDb.db
       .insert(conversationElicitations)

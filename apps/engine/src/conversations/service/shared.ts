@@ -13,6 +13,13 @@ import type {
   DraftDocument,
 } from "../types.ts";
 
+export class ConversationNotFoundError extends Error {
+  readonly code = "CONVERSATION_NOT_FOUND";
+  constructor(public readonly conversation_id: string) {
+    super(`conversation not found in this tenant: ${conversation_id}`);
+  }
+}
+
 export function normalizePermissionMode(value: unknown): ConversationPermissionMode | null {
   return value === "auto" || value === "ask" || value === "plan" || value === "yolo" ? value : null;
 }
@@ -78,6 +85,7 @@ export function isAskUserToolName(value: string | null | undefined): boolean {
 }
 
 export interface ConversationTurnOutcome {
+  turn_id?: string;
   conversation: ConversationRecord;
   result: RunLoopResult;
 }

@@ -3,6 +3,7 @@ import { FileRefSchema } from "../api/files-schemas.ts";
 import { ReportDeliveryBoundarySchema } from "./report-delivery-boundary.ts";
 import { RequestBoundaryScopeSchema } from "./request-boundary.ts";
 import { StorageScopeSchema } from "./storage-boundary.ts";
+import { TransactionalDeliveryBoundarySchema } from "./transactional-delivery-boundary.ts";
 import { looksLikeJsonObjectOrArray, parseHeaderLines } from "./types-helpers.ts";
 import {
   MarkdownConfigSchema,
@@ -182,6 +183,7 @@ export const RequestStepSchema = z
     connector_id: z.string().uuid().optional(),
     boundary: RequestBoundaryScopeSchema.optional(),
     report_delivery: ReportDeliveryBoundarySchema.optional(),
+    transactional_delivery: TransactionalDeliveryBoundarySchema.optional(),
     headers: z
       .union([
         z.record(z.string(), z.string()),

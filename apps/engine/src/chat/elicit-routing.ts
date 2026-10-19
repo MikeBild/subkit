@@ -1,7 +1,6 @@
 import { NoSuchToolError } from "ai";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
-import { registerConversationAbort, unregisterConversationAbort } from "../conversations/abort.ts";
 import { humanChatAnswer } from "../conversations/answer-actor.ts";
 import {
   ConversationNotFoundError,
@@ -10,6 +9,10 @@ import {
   ElicitationValidationError,
 } from "../conversations/service/elicit.ts";
 import { ElicitationAlreadyResolvedError, respondElicitation } from "../conversations/service.ts";
+import {
+  acquireConversationTurn as registerConversationAbort,
+  releaseConversationTurn as unregisterConversationAbort,
+} from "../conversations/turns.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import {
@@ -237,7 +240,7 @@ export async function routeChatInteraction(
     return { status: "ignored" };
   }
 
-  const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+  const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, db);
   const principal = await resolveChatPrincipal(db, tenant_id, user_id);
   try {
     await withConversationTurnLock(tenant_id, conversation_id, () =>
@@ -347,7 +350,7 @@ export async function routeChatInteraction(
         throw err;
     }
   } finally {
-    unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+    await unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
   }
   const isApprove =
     approval?.[1] === "approve" ||

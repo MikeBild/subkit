@@ -10,7 +10,8 @@ import {
   loadConfig,
   setConfigKey,
 } from "../loader.ts";
-import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../walk.ts";
+import { dottedPath } from "../walk.ts";
+import { configurationSweepLeaves, sampleConfigLeaf as valueFor } from "./leaf-samples.ts";
 
 const PINNED_SCOPES_LEAF = "auth.mcp_oauth.scopes_supported";
 
@@ -32,100 +33,6 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function pickStringCandidate(leaf: ConfigLeaf, tag: string): string {
-  const candidates: string[] = [
-    tag,
-    `https://example.com/${tag.replaceAll("_", "-")}`,
-    tag.padEnd(32, "x").slice(0, 32),
-    "00:00",
-    "",
-  ];
-  for (const c of candidates) {
-    const r = leaf.schema.safeParse(c);
-    if (r.success) return c;
-  }
-  return tag;
-}
-
-function pickNumberCandidate(leaf: ConfigLeaf, salt: number): number {
-  const sandboxValues: Record<string, number> = {
-    "sandbox.queue_limit": 64,
-    "sandbox.tenant_queue_limit": 4,
-    "sandbox.ipc_max_bytes": 1024 * 1024,
-    "sandbox.worker_rss_bytes": 256 * 1024 * 1024,
-  };
-  const sandboxValue = sandboxValues[dottedPath(leaf)];
-  if (sandboxValue !== undefined) return sandboxValue;
-  const candidates = [
-    Math.max(1, Math.min(50, salt + 1)),
-    0.5,
-    100,
-    1_000,
-    60_000,
-    100_000,
-    3_600_000,
-  ];
-  for (const c of candidates) {
-    if (leaf.schema.safeParse(c).success) return c;
-  }
-  return candidates[0]!;
-}
-
-function valueFor(leaf: ConfigLeaf, salt: number): unknown {
-  const tag = `rt-${dottedPath(leaf).replaceAll(".", "_")}-${salt}`;
-  switch (leaf.kind) {
-    case "string":
-      return pickStringCandidate(leaf, tag);
-    case "number":
-      return pickNumberCandidate(leaf, salt);
-    case "boolean":
-      return salt % 2 === 0;
-    case "enum": {
-      const values = leaf.enumValues ?? [];
-      if (values.length === 0) return null;
-      return values[salt % values.length];
-    }
-    case "string-list":
-      return [tag, `${tag}-2`];
-    case "string-array":
-      return [tag];
-    case "json": {
-      if (dottedPath(leaf) === "products")
-        return {
-          app: {
-            execution_environment: "prod",
-            assistant_workflow_id: "00000000-0000-4000-8000-000000000001",
-            budget_bucket: "assistant",
-          },
-        };
-      if (dottedPath(leaf) === "tokens.prices")
-        return [
-          {
-            model: "model-sample",
-            input_per_mtok: 3,
-            output_per_mtok: 15,
-            cache_read_per_mtok: 0.3,
-            cache_write_per_mtok: 3.75,
-          },
-        ];
-      return [
-        { protocol: "api_key", id: "api-key", label: "SubKit API key" },
-        {
-          protocol: "oidc",
-          id: `oidc-${salt}`,
-          label: "Public OIDC",
-          issuer_url: "https://identity.example.test",
-          client_id: `client-${salt}`,
-          scopes: "openid profile email",
-          tenant_slug: "default",
-        },
-      ];
-    }
-    default:
-      return tag;
-  }
-}
-
 function readDeep(source: unknown, leafPath: string[]): unknown {
   let cursor: unknown = source;
   for (const seg of leafPath) {
@@ -136,7 +43,7 @@ function readDeep(source: unknown, leafPath: string[]): unknown {
 }
 
 describe("ConfigSchema round-trip — every leaf", () => {
-  const leaves = listConfigLeaves();
+  const leaves = configurationSweepLeaves();
 
   test(`writes and reads back every leaf (${leaves.length} leaves)`, async () => {
     let salt = 0;

@@ -33,6 +33,10 @@ const respondElicitationRoute = createRoute({
     body: { content: { "application/json": { schema: RespondElicitationBody } } },
   },
   responses: {
+    409: {
+      description: "A response is already running for this conversation",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     200: { description: "OK", content: { "application/json": { schema: RunOutcomeSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
     422: {
@@ -55,6 +59,10 @@ const respondByToolCallRoute = createRoute({
     body: { content: { "application/json": { schema: RespondElicitationBody } } },
   },
   responses: {
+    409: {
+      description: "A response is already running for this conversation",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     200: { description: "OK", content: { "application/json": { schema: RunOutcomeSchema } } },
     404: {
       description: "Not found — no elicitation links to that tool_call",
@@ -74,7 +82,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id, elicitation_id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
+    const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);
     let ownershipTransferred = false;
     try {
       const baseParams = {
@@ -103,6 +111,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               },
               db,
             );
+            await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
             await stream.writeSSE(outcomeFrame(outcome));
           } catch (error) {
             if (error instanceof svc.ElicitationAlreadyResolvedError) {
@@ -133,7 +142,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               .catch(() => {});
             await stream.writeSSE(errorFrame(svc.turnFailureFramePayload(failure)));
           } finally {
-            unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+            await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
         }) as Response & RouteConfigToTypedResponse<typeof respondElicitationRoute>;
         ownershipTransferred = true;
@@ -168,7 +177,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json(serializeConversation(outcome), 200);
     } finally {
       if (!ownershipTransferred) {
-        unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+        await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
       }
     }
   });
@@ -185,7 +194,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!elicit) {
       throw new NotFoundError("elicitation_for_tool_call");
     }
-    const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
+    const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);
     let ownershipTransferred = false;
     try {
       const baseParams = {
@@ -214,6 +223,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               },
               db,
             );
+            await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
             await stream.writeSSE(outcomeFrame(outcome));
           } catch (error) {
             if (error instanceof svc.ElicitationAlreadyResolvedError) {
@@ -244,7 +254,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               .catch(() => {});
             await stream.writeSSE(errorFrame(svc.turnFailureFramePayload(failure)));
           } finally {
-            unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+            await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
         }) as Response & RouteConfigToTypedResponse<typeof respondByToolCallRoute>;
         ownershipTransferred = true;
@@ -279,7 +289,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json(serializeConversation(outcome), 200);
     } finally {
       if (!ownershipTransferred) {
-        unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+        await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
       }
     }
   });

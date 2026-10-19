@@ -10,6 +10,7 @@ export const LLMS_PAGE_PATHS: ReadonlyArray<string> = [
   "cli.md",
   "settings.md",
   "connectors.md",
+  "transactional-email.md",
 ];
 
 export interface RenderLlmsIndexOptions {
@@ -21,7 +22,7 @@ export function renderLlmsIndex(pages: LlmsPage[], opts: RenderLlmsIndexOptions)
   const lines = [
     "# sk",
     "",
-    "> A self-hosted engine for governed workflows. These pages describe setup, coding-agent briefings and hooks, the sk CLI, runtime settings, and the connector catalog.",
+    "> A self-hosted engine for governed workflows. These pages describe setup, coding-agent briefings and hooks, the sk CLI, runtime settings, the connector catalog, and governed transactional email.",
     `> All pages in one file: ${opts.fullUrl}`,
     "",
     "## Pages",

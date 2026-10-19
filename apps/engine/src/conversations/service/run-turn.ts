@@ -17,6 +17,7 @@ import { type RunLoopResult, runLoop } from "../loop.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
 import type { ConversationReference } from "../references.ts";
 import { refreshConversationTitle, shouldRefreshTitle } from "../title.ts";
+import { conversationTurnId, markConversationTurnFailed } from "../turns.ts";
 import type { ConversationPermissionMode, TurnEvent } from "../types.ts";
 import { getConversation } from "./get.ts";
 import { type ConversationTurnOutcome, getStoredPermissionMode } from "./shared.ts";
@@ -56,7 +57,22 @@ export async function runConversationTurn(
 ): Promise<ConversationTurnOutcome> {
   return withTenantWork(p.tenant_id, async () => {
     await assertTenantActive(p.tenant_id, exec);
-    return driveConversationTurn(p, exec);
+    const turn_id = conversationTurnId(p.turn_abort_ctrl);
+    const onEvent = p.onEvent;
+    const scoped = {
+      ...p,
+      ...(onEvent
+        ? {
+            onEvent: (event: TurnEvent) =>
+              onEvent({ ...event, ...{ conversation_id: p.conversation_id, turn_id } }),
+          }
+        : {}),
+    };
+    const outcome = await driveConversationTurn(scoped, exec).catch((error: unknown) => {
+      markConversationTurnFailed(p.turn_abort_ctrl);
+      throw error;
+    });
+    return { ...outcome, ...(turn_id ? { turn_id } : {}) };
   });
 }
 

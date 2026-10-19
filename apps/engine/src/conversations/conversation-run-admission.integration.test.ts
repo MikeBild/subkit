@@ -23,6 +23,7 @@ import { capturePreparedWorkflowReferences } from "../execution/prepared-workflo
 import { assertToolApprovalDispatch } from "../execution/tool-approval-dispatch.ts";
 import type { RequestAuthoritySnapshot } from "../execution/types.ts";
 import { databaseNow } from "../test-helpers/database-clock.ts";
+import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
 import { capturePreparedWorkflowBinding } from "../tools/prepared-workflow-approval.ts";
 import { authorityConnectorDigest } from "../workflows/authority-configuration.ts";
@@ -1204,10 +1205,31 @@ test("synthetic tools preserve an explicit per-workflow approval preference", as
   expect((await f.rows())[0]?.hold_writes).toBe(true);
 });
 
-test("generic, synthetic and fast-path starts share the same last-run reservation", async () => {
+async function retryCatalogConflict<T>(operation: () => Promise<T>): Promise<T> {
+  let result = await operation();
+  const busy = () =>
+    JSON.stringify(result)?.includes(
+      "Catalog vocabulary changed concurrently; retry the operation",
+    ) === true;
+  await waitFor(
+    async () => {
+      if (!busy()) return true;
+      result = await operation();
+      return !busy();
+    },
+    { tries: 40, sleepMs: 5, label: "catalog conflict retried before admission" },
+  );
+  return result;
+}
+
+test("generic, synthetic and fast-path starts share the last-run reservation after catalog conflict retries", async () => {
   const f = await fixture({ maxRuns: 1 });
   const before = remote.callCount();
-  await Promise.all([f.runTool("generic"), f.runTool("synthetic"), f.run()]);
+  await Promise.all([
+    retryCatalogConflict(() => f.runTool("generic")),
+    retryCatalogConflict(() => f.runTool("synthetic")),
+    retryCatalogConflict(() => f.run()),
+  ]);
   expect(remote.callCount() - before).toBe(1);
   expect(await f.reserved()).toBe(1);
   const rows = await f.rows();
@@ -1275,10 +1297,13 @@ test("matching authority runs twice without a new gate, then holds the exhausted
   expect(rows.filter((row) => row.hold_writes)).toHaveLength(1);
 });
 
-test("parallel starts cannot spend the last authorized run twice", async () => {
+test("parallel starts cannot spend the last authorized run twice after catalog conflict retries", async () => {
   const f = await fixture({ maxRuns: 1 });
   const before = remote.callCount();
-  await Promise.all([f.run("chat"), f.run("mcp")]);
+  await Promise.all([
+    retryCatalogConflict(() => f.run("chat")),
+    retryCatalogConflict(() => f.run("mcp")),
+  ]);
   expect(remote.callCount() - before).toBe(1);
   expect(await f.reserved()).toBe(1);
   const rows = await f.rows();

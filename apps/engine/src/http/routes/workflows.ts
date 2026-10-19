@@ -44,6 +44,7 @@ import {
   WorkflowSchema,
 } from "./workflow-representation.ts";
 import { ScheduleEntry } from "./workflow-schedule-schemas.ts";
+import { registerTransactionalMailRoutes } from "./workflow-transactional-mail.ts";
 import { registerWorkflowVersionRoutes } from "./workflow-versions.ts";
 
 const CreateBody = z
@@ -404,6 +405,7 @@ const inputSchemaRoute = createRoute({
 
 export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   registerWorkflowAuthorityRoutes(app);
+  registerTransactionalMailRoutes(app);
   registerWorkflowDiagnosisRoutes(app);
   registerWorkflowInvocationRoutes(app);
   registerWorkflowDraftRoutes(app);

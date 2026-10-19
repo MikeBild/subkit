@@ -165,6 +165,7 @@ export interface ChatEventJob {
 }
 
 export interface ConversationRunTurnJob {
+  turn_id?: string;
   tenant_id: string;
   conversation_id: string;
   mcp_task_id: string;

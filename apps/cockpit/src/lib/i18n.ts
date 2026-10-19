@@ -171,6 +171,11 @@ const EN = {
   "authority.content.confirm": "Allow scheduled publication",
   "authority.report.title": "Allow scheduled reports?",
   "authority.report.description": "Allows future reports within these limits; nothing is sent now.",
+  "authority.transactional.recipients": "Replies to signed requests",
+  "authority.transactional.delivery":
+    "From {from} to the address in {field}; event {event} from {eventField}, request ID from {requestField}, at most {bytes} request bytes; signed source {hook}.",
+  "authority.transactional.scope":
+    "Authorizes one email per unique request to a changing recipient from the signed input. No CC/BCC or automatic resend after an uncertain result. Run and time limits still apply.",
   "authority.report.recipients": "Fixed delivery",
   "authority.report.delivery": "From {from} to {to}",
   "authority.report.variable":
@@ -1886,6 +1891,10 @@ const EN = {
   "audit.actor.system": "Engine",
   "audit.actor.unknown": "Unknown actor",
   "audit.resource.session": "Session",
+  "audit.resource.hostedStorageObject": "Stored object",
+  "audit.resource.hostedWork": "Queued work",
+  "audit.resource.recoverySession": "Recovery session",
+  "audit.resource.llmBudget": "AI budget",
   "audit.resource.intakeItem": "Collected item",
   "audit.resource.userIdentity": "Login identity",
   "audit.resource.workflow": "Workflow",
@@ -2792,6 +2801,8 @@ const EN = {
   "chat.cause.provider_rate_limited":
     "The AI provider is limiting requests right now. Try again in a moment.",
   "chat.cause.provider_overloaded": "The AI provider is overloaded right now.",
+  "chat.cause.tool_schema_invalid":
+    "A tool input schema is incompatible with the AI provider. Its definition needs repair.",
   "chat.cause.provider_unreachable": "The AI provider could not be reached.",
   "chat.cause.provider_context_too_large": "The conversation is too long for the model.",
   "chat.cause.tenant_budget_exhausted": "This installation's monthly AI budget is used up.",
@@ -3438,6 +3449,102 @@ const EN = {
   "settings.leaf.server.restart_supervised": "Supervisor present",
   "settings.leaf.database.url": "Database connection",
   "settings.leaf.llm.provider": "Primary provider",
+  "settings.leaf.server.hosted_rate_limit.tenant_per_month":
+    "Hosted requests per workspace and month",
+  "settings.help.server.hosted_rate_limit.tenant_per_month":
+    "Monthly request allowance for each hosted workspace. A zero value blocks requests.",
+  "settings.leaf.server.hosted_rate_limit.principal_per_minute":
+    "Hosted requests per identity and minute",
+  "settings.help.server.hosted_rate_limit.principal_per_minute":
+    "Request ceiling per authenticated identity and workspace per minute; zero blocks requests.",
+  "settings.leaf.server.hosted_rate_limit.peer_per_minute": "Hosted requests per peer and minute",
+  "settings.help.server.hosted_rate_limit.peer_per_minute":
+    "Ingress ceiling per verified connection peer per minute; zero blocks ingress.",
+  "settings.leaf.server.hosted_rate_limit.tenant_per_minute":
+    "Hosted requests per workspace and minute",
+  "settings.help.server.hosted_rate_limit.tenant_per_minute":
+    "Request ceiling per hosted workspace per minute; zero blocks requests.",
+  "settings.leaf.server.hosted_rate_limit.global_per_minute": "Total hosted requests per minute",
+  "settings.help.server.hosted_rate_limit.global_per_minute":
+    "Shared ingress ceiling across hosted workspaces per minute; zero blocks ingress.",
+  "settings.leaf.server.trusted_proxy_hops": "Trusted proxy hops",
+  "settings.help.server.trusted_proxy_hops":
+    "Forwarding hops trusted from the right of X-Forwarded-For. Zero ignores forwarding headers.",
+  "settings.leaf.server.trusted_proxy_ips": "Trusted proxy addresses",
+  "settings.help.server.trusted_proxy_ips":
+    "Exact socket-peer IP addresses of trusted reverse proxies. Every configured hop must match.",
+  "settings.leaf.database.pool_max": "Database connections per pool",
+  "settings.help.database.pool_max":
+    "Maximum application connections per pool and replica. Requires a restart.",
+  "settings.leaf.database.connect_timeout_ms": "Database connection deadline",
+  "settings.help.database.connect_timeout_ms":
+    "Deadline in milliseconds to acquire or establish a PostgreSQL connection. Requires a restart.",
+  "settings.leaf.database.query_timeout_ms": "Database client query deadline",
+  "settings.help.database.query_timeout_ms":
+    "Client-side deadline for PostgreSQL queries in milliseconds. Requires a restart.",
+  "settings.leaf.database.statement_timeout_ms": "Database server statement deadline",
+  "settings.help.database.statement_timeout_ms":
+    "Server-side statement deadline in milliseconds, applied on each session. Requires a restart.",
+  "settings.leaf.database.idle_timeout_ms": "Unused database connection lifetime",
+  "settings.help.database.idle_timeout_ms":
+    "Milliseconds before an unused pooled connection closes. Requires a restart.",
+  "settings.leaf.database.keepalive_delay_ms": "Database keepalive delay",
+  "settings.help.database.keepalive_delay_ms":
+    "Initial TCP keepalive delay for database connections in milliseconds. Requires a restart.",
+  "settings.leaf.llm.hosted.enabled": "Hosted paid AI service",
+  "settings.help.llm.hosted.enabled":
+    "Enable hosted paid-model mode, which requires a workspace context independently of signup policy.",
+  "settings.leaf.llm.hosted.tenant_monthly_microunits": "Monthly AI budget per hosted workspace",
+  "settings.help.llm.hosted.tenant_monthly_microunits":
+    "Budget per workspace in millionths of a US dollar. Zero blocks paid model calls.",
+  "settings.leaf.llm.hosted.global_monthly_microunits": "Total monthly hosted AI budget",
+  "settings.help.llm.hosted.global_monthly_microunits":
+    "Shared hosted budget in millionths of a US dollar. Zero blocks paid model calls.",
+  "settings.leaf.llm.hosted.models": "Permitted hosted AI models",
+  "settings.help.llm.hosted.models":
+    "Exact provider and model allowlist with verified provider context limits and maximum USD rates, including long-context tiers. Paid native tools and multimodal inputs are unsupported.",
+  "settings.leaf.auth.hosted.enabled": "Hosted browser authentication",
+  "settings.help.auth.hosted.enabled":
+    "Enable identity-first hosted browser authentication for explicitly selected providers. Requires a restart.",
+  "settings.leaf.auth.hosted.registration_enabled": "Public hosted registration",
+  "settings.help.auth.hosted.registration_enabled":
+    "Allow new identities to create a workspace. Existing memberships and reviewed invitations remain available while registration is closed.",
+  "settings.leaf.auth.hosted.admission.tenant_creations_per_minute":
+    "New hosted workspaces per minute",
+  "settings.help.auth.hosted.admission.tenant_creations_per_minute":
+    "Global ceiling for new self-service workspaces per minute. Idempotent callbacks do not consume it.",
+  "settings.leaf.auth.hosted.admission.retained_tenants": "Retained hosted workspaces",
+  "settings.help.auth.hosted.admission.retained_tenants":
+    "Ceiling for retained workspace records, including erased ownership records. Zero blocks new workspaces.",
+  "settings.leaf.auth.hosted.admission.mcp_clients_per_peer_per_minute":
+    "MCP registrations per peer and minute",
+  "settings.help.auth.hosted.admission.mcp_clients_per_peer_per_minute":
+    "Hosted dynamic MCP client registrations allowed per verified peer per minute.",
+  "settings.leaf.auth.hosted.admission.mcp_clients_per_minute":
+    "Total MCP registrations per minute",
+  "settings.help.auth.hosted.admission.mcp_clients_per_minute":
+    "Global ceiling for hosted dynamic MCP client registrations per minute.",
+  "settings.leaf.auth.hosted.admission.retained_mcp_clients": "Retained MCP clients",
+  "settings.help.auth.hosted.admission.retained_mcp_clients":
+    "Ceiling for retained MCP clients, including retired and disabled registrations. Zero blocks new clients.",
+  "settings.leaf.storage.hosted.tenant_bytes": "Hosted storage per workspace",
+  "settings.help.storage.hosted.tenant_bytes":
+    "Shared logical byte quota for files, reservations and retained content, including copies and revisions. This is not a physical disk quota.",
+  "settings.leaf.storage.hosted.retained_rows_per_resource": "Retained rows per hosted resource",
+  "settings.help.storage.hosted.retained_rows_per_resource":
+    "Retained row ceiling per resource table, including histories and soft-deleted rows. Zero blocks creation.",
+  "settings.leaf.storage.hosted.max_file_bytes": "Maximum hosted file size",
+  "settings.help.storage.hosted.max_file_bytes":
+    "Maximum declared bytes for each new hosted file. Zero blocks file admission.",
+  "settings.leaf.queue.hosted.execution_concurrency": "Parallel hosted runs per workspace",
+  "settings.help.queue.hosted.execution_concurrency":
+    "Ceiling for simultaneous root executions per hosted workspace. Zero blocks work.",
+  "settings.leaf.queue.hosted.chat_concurrency": "Parallel hosted chat steps per workspace",
+  "settings.help.queue.hosted.chat_concurrency":
+    "Ceiling for simultaneous chat steps per hosted workspace, including direct calls. Zero blocks work.",
+  "settings.leaf.queue.hosted.pending_jobs": "Queued hosted jobs per workspace",
+  "settings.help.queue.hosted.pending_jobs":
+    "Ceiling for queued execution and conversation jobs per workspace. Zero blocks queue admission.",
   "settings.leaf.llm.model": "Primary model",
   "settings.leaf.llm.api_key": "Primary API key",
   "settings.leaf.llm.fallback_provider": "Fallback provider",
@@ -4866,6 +4973,11 @@ const DE: Record<TranslationKey, string> = {
   "authority.report.title": "Regelmäßige Berichte freigeben?",
   "authority.report.description":
     "Erlaubt künftige Berichte in diesen Grenzen; jetzt wird nichts versendet.",
+  "authority.transactional.recipients": "Antworten auf signierte Anfragen",
+  "authority.transactional.delivery":
+    "Von {from} an die Adresse aus {field}; Ereignis {event} aus {eventField}, Anfrage-ID aus {requestField}, höchstens {bytes} Anfrage-Bytes; signierte Quelle {hook}.",
+  "authority.transactional.scope":
+    "Erlaubt eine E-Mail je eindeutiger Anfrage an wechselnde Empfänger aus der signierten Eingabe. Kein CC/BCC und kein automatischer Neuversand bei unklarem Ergebnis. Lauf- und Zeitgrenzen gelten weiterhin.",
   "authority.report.recipients": "Fester Versand",
   "authority.report.delivery": "Von {from} an {to}",
   "authority.report.variable":
@@ -6609,6 +6721,10 @@ const DE: Record<TranslationKey, string> = {
   "audit.actor.system": "Engine",
   "audit.actor.unknown": "Unbekannter Akteur",
   "audit.resource.session": "Sitzung",
+  "audit.resource.hostedStorageObject": "Gespeichertes Objekt",
+  "audit.resource.hostedWork": "Eingereihte Arbeit",
+  "audit.resource.recoverySession": "Wiederherstellungssitzung",
+  "audit.resource.llmBudget": "KI-Budget",
   "audit.resource.intakeItem": "Gesammelter Eintrag",
   "audit.resource.userIdentity": "Anmeldeidentität",
   "audit.resource.workflow": "Workflow",
@@ -7540,6 +7656,8 @@ const DE: Record<TranslationKey, string> = {
   "chat.cause.provider_rate_limited":
     "Der KI-Anbieter drosselt gerade Anfragen. Versuch es gleich noch einmal.",
   "chat.cause.provider_overloaded": "Der KI-Anbieter ist gerade überlastet.",
+  "chat.cause.tool_schema_invalid":
+    "Ein Tool-Eingabeschema ist mit dem KI-Anbieter nicht kompatibel. Die Tool-Definition muss korrigiert werden.",
   "chat.cause.provider_unreachable": "Der KI-Anbieter war nicht erreichbar.",
   "chat.cause.provider_context_too_large": "Die Unterhaltung ist zu lang für das Modell.",
   "chat.cause.tenant_budget_exhausted":
@@ -8203,6 +8321,106 @@ const DE: Record<TranslationKey, string> = {
   "settings.leaf.server.restart_supervised": "Aufseher vorhanden",
   "settings.leaf.database.url": "Datenbankverbindung",
   "settings.leaf.llm.provider": "Primärer Anbieter",
+  "settings.leaf.server.hosted_rate_limit.tenant_per_month":
+    "Hosted-Anfragen pro Arbeitsbereich und Monat",
+  "settings.help.server.hosted_rate_limit.tenant_per_month":
+    "Monatliches Anfragekontingent je Hosted-Arbeitsbereich. Der Wert null sperrt Anfragen.",
+  "settings.leaf.server.hosted_rate_limit.principal_per_minute":
+    "Hosted-Anfragen pro Identität und Minute",
+  "settings.help.server.hosted_rate_limit.principal_per_minute":
+    "Anfragegrenze je angemeldeter Identität und Arbeitsbereich pro Minute; null sperrt Anfragen.",
+  "settings.leaf.server.hosted_rate_limit.peer_per_minute":
+    "Hosted-Anfragen pro Gegenstelle und Minute",
+  "settings.help.server.hosted_rate_limit.peer_per_minute":
+    "Eingangsgrenze je geprüfter Verbindungsgegenstelle pro Minute; null sperrt den Zugang.",
+  "settings.leaf.server.hosted_rate_limit.tenant_per_minute":
+    "Hosted-Anfragen pro Arbeitsbereich und Minute",
+  "settings.help.server.hosted_rate_limit.tenant_per_minute":
+    "Anfragegrenze je Hosted-Arbeitsbereich pro Minute; null sperrt Anfragen.",
+  "settings.leaf.server.hosted_rate_limit.global_per_minute":
+    "Hosted-Anfragen insgesamt pro Minute",
+  "settings.help.server.hosted_rate_limit.global_per_minute":
+    "Gemeinsame Eingangsgrenze aller Hosted-Arbeitsbereiche pro Minute; null sperrt den Zugang.",
+  "settings.leaf.server.trusted_proxy_hops": "Vertrauenswürdige Proxy-Schritte",
+  "settings.help.server.trusted_proxy_hops":
+    "Vertrauenswürdige Schritte von rechts in X-Forwarded-For. Null ignoriert Weiterleitungsheader.",
+  "settings.leaf.server.trusted_proxy_ips": "Vertrauenswürdige Proxy-Adressen",
+  "settings.help.server.trusted_proxy_ips":
+    "Exakte IP-Adressen vertrauenswürdiger Reverse-Proxys. Jeder konfigurierte Schritt muss passen.",
+  "settings.leaf.database.pool_max": "Datenbankverbindungen pro Pool",
+  "settings.help.database.pool_max":
+    "Maximale Anwendungsverbindungen je Pool und Replikat. Erfordert einen Neustart.",
+  "settings.leaf.database.connect_timeout_ms": "Zeitlimit für Datenbankverbindungen",
+  "settings.help.database.connect_timeout_ms":
+    "Zeitlimit in Millisekunden zum Erhalten oder Aufbauen einer PostgreSQL-Verbindung. Erfordert einen Neustart.",
+  "settings.leaf.database.query_timeout_ms": "Zeitlimit für Datenbankabfragen im Client",
+  "settings.help.database.query_timeout_ms":
+    "Clientseitiges Zeitlimit für PostgreSQL-Abfragen in Millisekunden. Erfordert einen Neustart.",
+  "settings.leaf.database.statement_timeout_ms": "Zeitlimit für Datenbankanweisungen im Server",
+  "settings.help.database.statement_timeout_ms":
+    "Serverseitiges Zeitlimit für Anweisungen in Millisekunden, gesetzt je Sitzung. Erfordert einen Neustart.",
+  "settings.leaf.database.idle_timeout_ms": "Lebensdauer ungenutzter Datenbankverbindungen",
+  "settings.help.database.idle_timeout_ms":
+    "Millisekunden bis zum Schließen einer ungenutzten Pool-Verbindung. Erfordert einen Neustart.",
+  "settings.leaf.database.keepalive_delay_ms": "Wartezeit für Datenbank-Keepalive",
+  "settings.help.database.keepalive_delay_ms":
+    "Anfängliche TCP-Keepalive-Wartezeit für Datenbankverbindungen in Millisekunden. Erfordert einen Neustart.",
+  "settings.leaf.llm.hosted.enabled": "Kostenpflichtiger Hosted-KI-Dienst",
+  "settings.help.llm.hosted.enabled":
+    "Aktiviert den Hosted-Modus für kostenpflichtige Modelle. Ein Arbeitsbereichskontext ist unabhängig von der Registrierung nötig.",
+  "settings.leaf.llm.hosted.tenant_monthly_microunits":
+    "Monatliches KI-Budget pro Hosted-Arbeitsbereich",
+  "settings.help.llm.hosted.tenant_monthly_microunits":
+    "Budget je Arbeitsbereich in Millionstel US-Dollar. Null sperrt kostenpflichtige Modellaufrufe.",
+  "settings.leaf.llm.hosted.global_monthly_microunits": "Monatliches Hosted-KI-Gesamtbudget",
+  "settings.help.llm.hosted.global_monthly_microunits":
+    "Gemeinsames Hosted-Budget in Millionstel US-Dollar. Null sperrt kostenpflichtige Modellaufrufe.",
+  "settings.leaf.llm.hosted.models": "Erlaubte Hosted-KI-Modelle",
+  "settings.help.llm.hosted.models":
+    "Exakte Anbieter- und Modellliste mit geprüften Kontextgrenzen und maximalen USD-Preisen einschließlich großer Kontexte. Kostenpflichtige native Werkzeuge und multimodale Eingaben werden nicht unterstützt.",
+  "settings.leaf.auth.hosted.enabled": "Hosted-Browseranmeldung",
+  "settings.help.auth.hosted.enabled":
+    "Aktiviert die identitätsbasierte Hosted-Browseranmeldung für ausdrücklich ausgewählte Anbieter. Erfordert einen Neustart.",
+  "settings.leaf.auth.hosted.registration_enabled": "Öffentliche Hosted-Registrierung",
+  "settings.help.auth.hosted.registration_enabled":
+    "Erlaubt neuen Identitäten, einen Arbeitsbereich anzulegen. Bestehende Mitgliedschaften und geprüfte Einladungen bleiben bei geschlossener Registrierung nutzbar.",
+  "settings.leaf.auth.hosted.admission.tenant_creations_per_minute":
+    "Neue Hosted-Arbeitsbereiche pro Minute",
+  "settings.help.auth.hosted.admission.tenant_creations_per_minute":
+    "Globale Grenze neuer Self-Service-Arbeitsbereiche pro Minute. Wiederholte identische Rückrufe verbrauchen das Kontingent nicht.",
+  "settings.leaf.auth.hosted.admission.retained_tenants": "Aufbewahrte Hosted-Arbeitsbereiche",
+  "settings.help.auth.hosted.admission.retained_tenants":
+    "Grenze aufbewahrter Arbeitsbereichsdatensätze einschließlich gelöschter Eigentumsnachweise. Null sperrt neue Arbeitsbereiche.",
+  "settings.leaf.auth.hosted.admission.mcp_clients_per_peer_per_minute":
+    "MCP-Registrierungen pro Gegenstelle und Minute",
+  "settings.help.auth.hosted.admission.mcp_clients_per_peer_per_minute":
+    "Erlaubte dynamische Hosted-MCP-Clientregistrierungen je geprüfter Gegenstelle pro Minute.",
+  "settings.leaf.auth.hosted.admission.mcp_clients_per_minute":
+    "MCP-Registrierungen insgesamt pro Minute",
+  "settings.help.auth.hosted.admission.mcp_clients_per_minute":
+    "Globale Grenze dynamischer Hosted-MCP-Clientregistrierungen pro Minute.",
+  "settings.leaf.auth.hosted.admission.retained_mcp_clients": "Aufbewahrte MCP-Clients",
+  "settings.help.auth.hosted.admission.retained_mcp_clients":
+    "Grenze aufbewahrter MCP-Clients einschließlich stillgelegter und deaktivierter Registrierungen. Null sperrt neue Clients.",
+  "settings.leaf.storage.hosted.tenant_bytes": "Hosted-Speicher pro Arbeitsbereich",
+  "settings.help.storage.hosted.tenant_bytes":
+    "Gemeinsames logisches Bytekontingent für Dateien, Reservierungen und aufbewahrte Inhalte einschließlich Kopien und Revisionen. Dies ist kein physisches Datenträgerlimit.",
+  "settings.leaf.storage.hosted.retained_rows_per_resource":
+    "Aufbewahrte Datensätze pro Hosted-Ressource",
+  "settings.help.storage.hosted.retained_rows_per_resource":
+    "Datensatzgrenze je Ressourcentabelle einschließlich Historien und vorgemerkter Löschungen. Null sperrt neue Datensätze.",
+  "settings.leaf.storage.hosted.max_file_bytes": "Maximale Hosted-Dateigröße",
+  "settings.help.storage.hosted.max_file_bytes":
+    "Maximale angegebene Bytezahl je neuer Hosted-Datei. Null sperrt die Dateiübernahme.",
+  "settings.leaf.queue.hosted.execution_concurrency": "Parallele Hosted-Läufe pro Arbeitsbereich",
+  "settings.help.queue.hosted.execution_concurrency":
+    "Grenze gleichzeitiger Hauptausführungen je Hosted-Arbeitsbereich. Null sperrt Arbeit.",
+  "settings.leaf.queue.hosted.chat_concurrency": "Parallele Hosted-Chatschritte pro Arbeitsbereich",
+  "settings.help.queue.hosted.chat_concurrency":
+    "Grenze gleichzeitiger Chatschritte je Hosted-Arbeitsbereich einschließlich direkter Aufrufe. Null sperrt Arbeit.",
+  "settings.leaf.queue.hosted.pending_jobs": "Eingereihte Hosted-Aufträge pro Arbeitsbereich",
+  "settings.help.queue.hosted.pending_jobs":
+    "Grenze eingereihter Ausführungs- und Gesprächsaufträge je Arbeitsbereich. Null sperrt die Aufnahme in die Warteschlange.",
   "settings.leaf.llm.model": "Primäres Modell",
   "settings.leaf.llm.api_key": "Primärer API-Schlüssel",
   "settings.leaf.llm.fallback_provider": "Ausweich-Anbieter",

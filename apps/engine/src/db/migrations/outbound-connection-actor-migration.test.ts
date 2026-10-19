@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { runMigrations } from "../migrate.ts";
-import { outboundConnectionStarts, systemAccounts, users } from "../schema/index.ts";
+import { outboundConnectionStarts, systemAccounts } from "../schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
@@ -34,32 +34,29 @@ test(
     VALUES (${"connection-actor-migration-other"}, ${"Connection actor migration other"}) RETURNING id
   `);
       if (!otherTenant) throw new Error("second test tenant was not created");
-      const [user] = await ctx.db
-        .insert(users)
-        .values({
-          tenant_id: tenant.id,
-          email: "connection-actor-migration@test.local",
-          role_id: await builtinRoleId(ctx.db, "member"),
-        })
-        .returning({ id: users.id });
+      const {
+        rows: [user],
+      } = await ctx.db.execute<{ id: string }>(sql`
+        INSERT INTO users (tenant_id, email, role_id)
+        VALUES (${tenant.id}, ${"connection-actor-migration@test.local"}, ${await builtinRoleId(ctx.db, "member")})
+        RETURNING id
+      `);
       if (!user) throw new Error("test user was not created");
-      const [collisionUser] = await ctx.db
-        .insert(users)
-        .values({
-          tenant_id: tenant.id,
-          email: "connection-actor-collision@test.local",
-          role_id: await builtinRoleId(ctx.db, "member"),
-        })
-        .returning({ id: users.id });
+      const {
+        rows: [collisionUser],
+      } = await ctx.db.execute<{ id: string }>(sql`
+        INSERT INTO users (tenant_id, email, role_id)
+        VALUES (${tenant.id}, ${"connection-actor-collision@test.local"}, ${await builtinRoleId(ctx.db, "member")})
+        RETURNING id
+      `);
       if (!collisionUser) throw new Error("collision user was not created");
-      const [otherTenantUser] = await ctx.db
-        .insert(users)
-        .values({
-          tenant_id: otherTenant.id,
-          email: "connection-actor-other-tenant@test.local",
-          role_id: await builtinRoleId(ctx.db, "member"),
-        })
-        .returning({ id: users.id });
+      const {
+        rows: [otherTenantUser],
+      } = await ctx.db.execute<{ id: string }>(sql`
+        INSERT INTO users (tenant_id, email, role_id)
+        VALUES (${otherTenant.id}, ${"connection-actor-other-tenant@test.local"}, ${await builtinRoleId(ctx.db, "member")})
+        RETURNING id
+      `);
       if (!otherTenantUser) throw new Error("second-tenant user was not created");
       await ctx.db.insert(systemAccounts).values({
         id: collisionUser.id,

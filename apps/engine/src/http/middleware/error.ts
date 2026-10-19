@@ -4,10 +4,15 @@ import { HTTPException } from "hono/http-exception";
 import { DescriptionAcceptanceError } from "../../api/catalog-metadata.ts";
 import { HostedChatOwnershipRequired } from "../../chat/hosted-ownership.ts";
 import {
+  ConversationNotFoundError,
+  ElicitationNotFoundError,
+} from "../../conversations/service/elicit.ts";
+import {
   describeTurnFailure,
   timeoutPhaseOf,
   turnFailureFramePayload,
 } from "../../conversations/turn-failure.ts";
+import { ConversationTurnInProgressError } from "../../conversations/turns.ts";
 import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { HostedFileQuotaError } from "../../files/hosted-quota.ts";
 import { ApiKeyOwnerNotFoundError } from "../../identity/api-key-owner.ts";
@@ -203,6 +208,10 @@ export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Respons
       /malformed json/i.test(err.message) ? "malformed_json" : "bad_request",
       err.message || "Bad request",
     );
+  if (err instanceof ConversationTurnInProgressError)
+    return envelope(c, 409, err.code, err.message);
+  if (err instanceof ElicitationNotFoundError || err instanceof ConversationNotFoundError)
+    return envelope(c, 404, "not_found", "Conversation or question not found.");
   if (err instanceof HttpError) {
     if (err.status >= 500) captureToRing(c, err, err.status, err.code, "http");
     if (err instanceof UnauthorizedError && err.wwwAuthenticate) {

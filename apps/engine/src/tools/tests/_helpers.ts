@@ -1,6 +1,26 @@
+import { afterAll, beforeAll } from "bun:test";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import type { Db } from "../../db/client.ts";
+import { tenants } from "../../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+
+let policyFixture: TestDb;
+
+export function usePolicyFixture(): void {
+  beforeAll(async () => {
+    policyFixture = await createTestDb("tool-policy-fixture");
+    await policyFixture.db.insert(tenants).values({
+      id: makeTestPrincipal().tenant_id,
+      slug: "tool-policy-fixture",
+      display_name: "Tool Policy Fixture",
+    });
+  }, 120_000);
+
+  afterAll(async () => {
+    await policyFixture?.cleanup();
+  }, 120_000);
+}
 
 export function makeTestPrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
   return {
@@ -31,15 +51,6 @@ export interface StubDbCapture {
 export function makeStubDb(): { db: Db; capture: StubDbCapture } {
   const capture: StubDbCapture = { inserts: [] };
   // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
-  const emptySelect: any = {
-    from: () => emptySelect,
-    where: () => emptySelect,
-    leftJoin: () => emptySelect,
-    innerJoin: () => emptySelect,
-    limit: () => Promise.resolve([]),
-    orderBy: () => Promise.resolve([]),
-  };
-  // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
   const emptyUpdate: any = {
     set: () => emptyUpdate,
     where: () => emptyUpdate,
@@ -49,7 +60,7 @@ export function makeStubDb(): { db: Db; capture: StubDbCapture } {
   const db: any = {
     // biome-ignore lint/suspicious/noExplicitAny: transaction wrapper
     transaction: async (fn: any) => fn(db),
-    select: () => emptySelect,
+    select: (...args: Parameters<Db["select"]>) => policyFixture.db.select(...args),
     update: () => emptyUpdate,
     insert: () => ({
       // biome-ignore lint/suspicious/noExplicitAny: drizzle insert chain

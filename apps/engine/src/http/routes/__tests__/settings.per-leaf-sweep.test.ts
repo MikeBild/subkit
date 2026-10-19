@@ -4,8 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { METRICS_SCOPE } from "../../../auth/scopes.ts";
+import {
+  configurationSweepLeaves,
+  sampleConfigLeaf,
+} from "../../../config/__tests__/leaf-samples.ts";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../../config/loader.ts";
-import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../../../config/walk.ts";
+import { dottedPath } from "../../../config/walk.ts";
 import { auditLog } from "../../../db/schema/audit.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
@@ -79,107 +83,7 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
   });
 }
 
-function pickValue(leaf: ConfigLeaf, salt: number): unknown {
-  const tag = `sweep-${dottedPath(leaf).replaceAll(".", "-")}-${salt}`;
-  switch (leaf.kind) {
-    case "string": {
-      const candidates = [
-        tag,
-        `https://example.com/${tag}`,
-        tag.padEnd(32, "x").slice(0, 32),
-        "00:00",
-        "",
-      ];
-      for (const c of candidates) {
-        const r = leaf.schema.safeParse(c);
-        if (r.success) return c;
-      }
-      return tag;
-    }
-    case "number": {
-      const sandboxValues: Record<string, number> = {
-        "sandbox.queue_limit": 64,
-        "sandbox.tenant_queue_limit": 4,
-        "sandbox.ipc_max_bytes": 1024 * 1024,
-        "sandbox.worker_rss_bytes": 256 * 1024 * 1024,
-      };
-      const sandboxValue = sandboxValues[dottedPath(leaf)];
-      if (sandboxValue !== undefined) return sandboxValue;
-      const numCandidates = [
-        0.5,
-        Math.max(1, Math.min(50, salt + 1)),
-        200,
-        1_000,
-        60_000,
-        100_000,
-        3_600_000,
-      ];
-      for (const c of numCandidates) {
-        if (leaf.schema.safeParse(c).success) return c;
-      }
-      return numCandidates[0]!;
-    }
-    case "boolean":
-      return true;
-    case "enum": {
-      const values = leaf.enumValues ?? [];
-      if (values.length < 2) return values[0] ?? null;
-      return values[1 + (salt % (values.length - 1))];
-    }
-    case "string-list":
-      return [tag];
-    case "string-array":
-      return [tag];
-    case "json":
-      return structuralSample(dottedPath(leaf), salt);
-    default:
-      return tag;
-  }
-}
-
-const STRUCTURAL_SAMPLES: Record<string, (salt: number) => unknown> = {
-  "auth.providers": (salt) => [
-    { protocol: "api_key", id: "api-key", label: "SubKit API key" },
-    {
-      protocol: "oidc",
-      id: `oidc-${salt}`,
-      label: "Public OIDC",
-      issuer_url: "https://identity.example.test",
-      client_id: `client-${salt}`,
-      scopes: "openid profile email",
-      tenant_slug: "default",
-    },
-  ],
-  products: (salt) => ({
-    [`app-${salt}`]: {
-      execution_environment: "prod",
-      assistant_workflow_id: "00000000-0000-4000-8000-000000000001",
-      budget_bucket: `bucket-${salt}`,
-    },
-  }),
-  "tokens.prices": (salt) => [
-    {
-      model: `sweep-model-${salt}`,
-      input_per_mtok: 3,
-      output_per_mtok: 15,
-      cache_read_per_mtok: 0.3,
-      cache_write_per_mtok: 3.75,
-    },
-  ],
-};
-
-function structuralSample(dotted: string, salt: number): unknown {
-  const make = STRUCTURAL_SAMPLES[dotted];
-  if (!make) {
-    throw new Error(
-      `no sweep sample for structural leaf '${dotted}' — add one to STRUCTURAL_SAMPLES; ` +
-        `without it the sweep PUTs another leaf's shape and reports a 422 about the wrong thing`,
-    );
-  }
-  return make(salt);
-}
-
-const LEAVES = listConfigLeaves();
+const LEAVES = configurationSweepLeaves();
 const BOOTSTRAP_ONLY_PATHS = new Set(["database.url"]);
 const EDITABLE_LEAVES = LEAVES.filter((leaf) => !BOOTSTRAP_ONLY_PATHS.has(dottedPath(leaf)));
 const SWEPT_LEAVES = EDITABLE_LEAVES.filter((leaf) => leaf.path[0] !== "log");
@@ -197,7 +101,7 @@ describe(`per-leaf HTTP sweep — ${EDITABLE_LEAVES.length}/${LEAVES.length} edi
         continue;
       }
 
-      const value = pickValue(leaf, salt++);
+      const value = sampleConfigLeaf(leaf, salt++);
       captured.length = 0;
       await server.db.delete(auditLog);
 

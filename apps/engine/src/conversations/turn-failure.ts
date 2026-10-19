@@ -5,10 +5,12 @@ import {
   hostedQuotaError,
 } from "../db/hosted-quota-errors.ts";
 import { LlmError, LlmProviderError } from "../llm/errors.ts";
-import { toLlmProviderError } from "../llm/provider-errors.ts";
+import { isToolSchemaError, toLlmProviderError } from "../llm/provider-errors.ts";
 import { isDatabaseQueryError } from "../logging/index.ts";
+import { ConversationTurnInProgressError } from "./turns.ts";
 
 export type TurnFailureCode =
+  | "llm_tool_schema_invalid"
   | "hosted_storage_quota_exhausted"
   | "hosted_resource_count_exhausted"
   | "llm_provider_limited"
@@ -16,6 +18,7 @@ export type TurnFailureCode =
   | "llm_context_too_large"
   | "llm_quota_exhausted"
   | "llm_timeout"
+  | "conversation_turn_in_progress"
   | "internal";
 
 export type TimeoutPhase = "total" | "first_chunk" | "step" | "chunk";
@@ -81,6 +84,8 @@ function providerFailure(error: LlmProviderError, at: string): TurnFailure {
 
 export function describeTurnFailure(error: unknown, now: Date = new Date()): TurnFailure {
   const at = now.toISOString();
+  if (error instanceof ConversationTurnInProgressError)
+    return { code: error.code, message: error.message, at };
   const quota = hostedQuotaError(error);
   if (quota instanceof HostedStorageQuotaError || quota instanceof HostedResourceCountError)
     return { code: quota.code, message: quota.message, at };
@@ -92,6 +97,13 @@ export function describeTurnFailure(error: unknown, now: Date = new Date()): Tur
       return { code: "internal", message: "The conversation could not be saved.", at };
     cause = (cause as { cause?: unknown }).cause;
   }
+  if (isToolSchemaError(error))
+    return {
+      code: "llm_tool_schema_invalid",
+      message:
+        "A tool input schema is incompatible with the AI provider. Repair the tool schema or omit its model alias; the provider is reachable.",
+      at,
+    };
   const providerErr =
     error instanceof LlmProviderError
       ? error
@@ -110,6 +122,8 @@ export function describeTurnFailure(error: unknown, now: Date = new Date()): Tur
     };
   }
   const message = error instanceof Error ? error.message : String(error ?? "");
+  if (error instanceof LlmError && error.code === "llm_context_too_large")
+    return { code: error.code, message, at };
   if (error instanceof LlmError && error.code === "llm_quota_exhausted") {
     return { code: "llm_quota_exhausted", message, at };
   }

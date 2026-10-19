@@ -138,3 +138,10 @@ export function toLlmProviderError(err: unknown): LlmProviderError {
             : "other";
   return new LlmProviderError(mappedKind, message, buildProviderErrorDetails(err));
 }
+
+export function isToolSchemaError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /(?:input_schema|invalid schema for (?:function|tool)|function[.]parameters|tools[.[]\d+.*schema)/i.test(
+    message,
+  );
+}

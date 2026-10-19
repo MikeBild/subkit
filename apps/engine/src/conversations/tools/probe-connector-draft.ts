@@ -263,7 +263,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       const started = Date.now();
       const res =
         connector.driver === "postgres"
-          ? await probePgConnector(draftView)
+          ? await probePgConnector(draftView, ctx.db)
           : await probeS3Connector({ db: ctx.db, tenant_id: ctx.tenant_id, connector: draftView });
       const duration_ms = Date.now() - started;
       const latest_probe = {

@@ -742,8 +742,7 @@ export async function handleInbound(
   if (seen) {
     const hmac = row.verifier === "hmac" ? HmacVerifierConfig.safeParse(config?.hmac) : null;
     if (
-      hmac?.success &&
-      hmac.data.id_field &&
+      (row.verifier === "standard" || (hmac?.success && hmac.data.id_field)) &&
       !(await webhookReplayMatches(db, row, {
         id: verdict.normalized.id,
         timestamp: verdict.normalized.timestamp,

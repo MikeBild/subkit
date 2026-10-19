@@ -1,8 +1,11 @@
+import baseline from "./hosted-quota-baseline-columns.json";
 import { HOSTED_OPERATIONAL_TABLES } from "./hosted-quota-catalog.ts";
 
 export function renderHostedOperationalGuardsSql(): string[] {
+  const baselineTables = new Set(baseline.map((table) => table.table));
   const tables = [...HOSTED_OPERATIONAL_TABLES, "hosted_storage_objects"].filter(
     (table) =>
+      baselineTables.has(table) &&
       !["hosted_tenant_usage", "files_dedup_seen", "outbound_connection_starts"].includes(table),
   );
   return [

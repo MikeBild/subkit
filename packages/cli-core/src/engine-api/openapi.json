@@ -5479,6 +5479,74 @@
                   ],
                   "additionalProperties": false
                 },
+                "transactional_delivery": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "gmail_transactional"
+                      ]
+                    },
+                    "webhook_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Reviewed active Standard Webhooks binding in the same tenant and workflow; unsigned ingress is forbidden"
+                    },
+                    "event_type": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "description": "The single allowed event type configured on the signed binding"
+                    },
+                    "event_type_input": {
+                      "type": "string",
+                      "maxLength": 128,
+                      "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
+                      "description": "Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed"
+                    },
+                    "recipient_input": {
+                      "type": "string",
+                      "maxLength": 128,
+                      "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
+                      "description": "Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override"
+                    },
+                    "request_id_input": {
+                      "type": "string",
+                      "maxLength": 128,
+                      "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
+                      "description": "Reviewed UUID field equal to signed webhook-id; one persistent dispatch attempt per workflow and request ID"
+                    },
+                    "from": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+                    },
+                    "content_type": {
+                      "type": "string",
+                      "enum": [
+                        "text/plain"
+                      ]
+                    },
+                    "max_body_bytes": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 16384,
+                      "description": "Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "webhook_id",
+                    "event_type",
+                    "event_type_input",
+                    "recipient_input",
+                    "request_id_input",
+                    "from",
+                    "content_type",
+                    "max_body_bytes"
+                  ],
+                  "additionalProperties": false
+                },
                 "content_publication": {
                   "anyOf": [
                     {
@@ -6493,6 +6561,47 @@
           "connector_id",
           "target",
           "effect"
+        ]
+      },
+      "TransactionalMailReceipt": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "step_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "attempted",
+              "sent",
+              "failed",
+              "delivery_unknown"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "request_id",
+          "execution_id",
+          "step_id",
+          "state",
+          "created_at",
+          "updated_at"
         ]
       },
       "WorkflowDiagnosis": {
@@ -7694,6 +7803,74 @@
               "to",
               "from",
               "content_type"
+            ],
+            "additionalProperties": false
+          },
+          "transactional_delivery": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gmail_transactional"
+                ]
+              },
+              "webhook_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Reviewed active Standard Webhooks binding in the same tenant and workflow; unsigned ingress is forbidden"
+              },
+              "event_type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "The single allowed event type configured on the signed binding"
+              },
+              "event_type_input": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
+                "description": "Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed"
+              },
+              "recipient_input": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
+                "description": "Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override"
+              },
+              "request_id_input": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
+                "description": "Reviewed UUID field equal to signed webhook-id; one persistent dispatch attempt per workflow and request ID"
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "content_type": {
+                "type": "string",
+                "enum": [
+                  "text/plain"
+                ]
+              },
+              "max_body_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16384,
+                "description": "Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs"
+              }
+            },
+            "required": [
+              "kind",
+              "webhook_id",
+              "event_type",
+              "event_type_input",
+              "recipient_input",
+              "request_id_input",
+              "from",
+              "content_type",
+              "max_body_bytes"
             ],
             "additionalProperties": false
           },
@@ -20744,6 +20921,10 @@
       "ConversationRunOutcome": {
         "type": "object",
         "properties": {
+          "turn_id": {
+            "type": "string",
+            "format": "uuid"
+          },
           "conversation": {
             "$ref": "#/components/schemas/Conversation"
           },
@@ -37894,6 +38075,86 @@
         }
       }
     },
+    "/v1/workflows/{id}/transactional-mail-receipts": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Inspect durable transactional email outcomes without applicant data",
+        "description": "One immutable dispatch reservation per workflow and signed request ID. sent requires a Gmail message ID; attempted and delivery_unknown require inspection and never authorize automatic resend. Receipts survive execution cleanup. This read cannot retry delivery.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TransactionalMailReceipt"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workflows/{id}/diagnosis": {
       "get": {
         "tags": [
@@ -47597,7 +47858,7 @@
             }
           },
           "409": {
-            "description": "Pending input",
+            "description": "A response is running or a pending question must be answered",
             "content": {
               "application/json": {
                 "schema": {
@@ -47708,6 +47969,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "A response is running or a pending question must be answered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -47765,6 +48036,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A response is already running for this conversation",
             "content": {
               "application/json": {
                 "schema": {
@@ -47839,6 +48120,16 @@
           },
           "404": {
             "description": "Not found — no elicitation links to that tool_call",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A response is already running for this conversation",
             "content": {
               "application/json": {
                 "schema": {
@@ -48108,6 +48399,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conversation turn already running",
             "content": {
               "application/json": {
                 "schema": {

@@ -4,7 +4,7 @@ import {
   METRIC_NAMES,
   resetMetricsRegistryForTests,
 } from "../../observability/metrics.ts";
-import { makeStubDb, makeTestPrincipal } from "../../tools/tests/_helpers.ts";
+import { makeStubDb, makeTestPrincipal, usePolicyFixture } from "../../tools/tests/_helpers.ts";
 import {
   type ConfirmGateInput,
   type GateRecord,
@@ -12,6 +12,8 @@ import {
   runConfirmGate,
 } from "../confirmation.ts";
 import { CONVERSATION_SURFACES, type ConversationSurface } from "../lifecycle-view.ts";
+
+usePolicyFixture();
 
 const PRINCIPAL = makeTestPrincipal();
 const CONVERSATION_ID = "00000000-0000-0000-0000-000000000003";

@@ -4,7 +4,6 @@ import { sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { runMigrations } from "../migrate.ts";
-import { users } from "../schema/index.ts";
 import {
   mcpOauthAccessTokens,
   mcpOauthClients,
@@ -38,23 +37,20 @@ test(
     VALUES (${"oauth-grants-migration-other"}, ${"OAuth grants other"}) RETURNING id
   `);
       if (!otherTenant) throw new Error("second test tenant was not created");
-      const [user] = await ctx.db
-        .insert(users)
-        .values({
-          tenant_id: tenant.id,
-          email: "oauth-grants@test.local",
-          role_id: await builtinRoleId(ctx.db, "member"),
-        })
-        .returning({ id: users.id });
+      const roleId = await builtinRoleId(ctx.db, "member");
+      const {
+        rows: [user],
+      } = await ctx.db.execute<{ id: string }>(sql`
+        INSERT INTO users (tenant_id, email, role_id)
+        VALUES (${tenant.id}, ${"oauth-grants@test.local"}, ${roleId}) RETURNING id
+      `);
       if (!user) throw new Error("test user was not created");
-      const [otherTenantUser] = await ctx.db
-        .insert(users)
-        .values({
-          tenant_id: otherTenant.id,
-          email: "oauth-grants-other@test.local",
-          role_id: await builtinRoleId(ctx.db, "member"),
-        })
-        .returning({ id: users.id });
+      const {
+        rows: [otherTenantUser],
+      } = await ctx.db.execute<{ id: string }>(sql`
+        INSERT INTO users (tenant_id, email, role_id)
+        VALUES (${otherTenant.id}, ${"oauth-grants-other@test.local"}, ${roleId}) RETURNING id
+      `);
       if (!otherTenantUser) throw new Error("second test user was not created");
 
       const clientIds = ["oauth-grants-access", "oauth-grants-refresh"];

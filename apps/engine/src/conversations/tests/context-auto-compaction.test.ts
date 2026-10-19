@@ -91,7 +91,18 @@ describe("context auto-compaction mechanism (B)", () => {
     });
     expect(["semantic", "stub"]).toContain(String(markers[0]?.mode));
     const after = await messageTokens(conversationId);
-    expect(after).toBeLessThan(before / 2);
+    expect(after).toBeLessThan(before);
+    const replay = await buildModelMessages(ctx.db, tenant_id, conversationId);
+    for (let i = 0; i < 30; i += 2) {
+      expect(
+        replay.some(
+          (message) =>
+            message.role === "user" &&
+            typeof message.content === "string" &&
+            message.content.includes(`${bigBlock} #${i}`),
+        ),
+      ).toBe(true);
+    }
   }, 30_000);
 
   test("compacting an already-minimal conversation collapses nothing — the loop then throws instead of looping", async () => {

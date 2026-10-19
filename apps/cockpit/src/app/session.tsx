@@ -12,7 +12,7 @@ import {
   onTenantContextChanged,
   tenantContextChanged,
 } from "@/api/tenant-context";
-import { WorkspaceChangedPage } from "@/components/cockpit/workspace-changed";
+import { WorkspaceChangedPage } from "@/components/cockpit/patterns/workspace-changed";
 import { BootstrapErrorPage, LoginRedirect, SessionExpiredPage } from "@/components/failure-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";

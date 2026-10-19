@@ -11,6 +11,7 @@ import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { appendMessage } from "../persist.ts";
 import { captureDraftCredentialFromChatText } from "../persistence/auto-persist/credential-cache.ts";
 import type { ConversationReference } from "../references.ts";
+import { assertConversationAvailable } from "../turns.ts";
 import type { ConversationPermissionMode, ConversationRecord } from "../types.ts";
 import { getConversation } from "./get.ts";
 import {
@@ -21,6 +22,7 @@ import {
 } from "./shared.ts";
 
 export interface AppendMessageParams {
+  turn_id?: string | undefined;
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
@@ -43,6 +45,7 @@ export async function appendUserMessage(
   p: AppendMessageParams,
   exec: Db,
 ): Promise<AppendMessageResult> {
+  await assertConversationAvailable(exec, p.tenant_id, p.conversation_id, p.turn_id);
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
   const explicitPermissionMode = normalizePermissionMode(p.permission_mode);
@@ -83,7 +86,9 @@ export async function appendUserMessage(
     await exec
       .update(conversations)
       .set({ memory: p.memory, updated_at: new Date() })
-      .where(eq(conversations.id, p.conversation_id));
+      .where(
+        and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
+      );
     effectiveMemory = p.memory;
     await auditAwait(
       {

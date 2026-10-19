@@ -34,12 +34,16 @@ export interface FetchedDocument {
   mime: string;
 }
 
-export async function fetchUrlDocument(url: string, tenant_id: string): Promise<FetchedDocument> {
+export async function fetchUrlDocument(
+  url: string,
+  tenant_id: string,
+  exec?: Executor,
+): Promise<FetchedDocument> {
   const parsed = new URL(url);
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
     throw new KnowledgeUrlFetchError("only http and https addresses can be read", null);
   try {
-    await assertEgressAllowedResolved(parsed, { tenant_id });
+    await assertEgressAllowedResolved(parsed, { tenant_id, ...(exec ? { exec } : {}) });
   } catch (error) {
     if (error instanceof EgressBlockedError)
       throw new KnowledgeUrlFetchError(`the address may not be read: ${error.reason}`, null);
@@ -54,7 +58,7 @@ export async function fetchUrlDocument(url: string, tenant_id: string): Promise<
         headers: { accept: "text/html, text/markdown, text/plain;q=0.9, */*;q=0.5" },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       },
-      { tenant_id },
+      { tenant_id, ...(exec ? { exec } : {}) },
       { fetchImpl: getDriverFetch() },
     );
   } catch (error) {
@@ -100,7 +104,7 @@ export async function createKnowledgeSourceFromUrl(
   },
   exec?: Executor,
 ): Promise<KnowledgeSourceView> {
-  const document = await fetchUrlDocument(p.url, p.tenant_id);
+  const document = await fetchUrlDocument(p.url, p.tenant_id, exec);
   return createKnowledgeSource(
     {
       tenant_id: p.tenant_id,
@@ -130,7 +134,7 @@ export async function refreshKnowledgeSource(
   if (!source) return null;
   if (source.source_type !== "url")
     throw new KnowledgeSourceNotRefreshableError(source.source_type);
-  const document = await fetchUrlDocument(source.source_uri, p.tenant_id);
+  const document = await fetchUrlDocument(source.source_uri, p.tenant_id, exec);
   await ingestKnowledgeSource(
     {
       tenant_id: p.tenant_id,

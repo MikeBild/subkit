@@ -10,6 +10,7 @@ import {
   users,
 } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { retryCatalogConflict } from "../../test-helpers/catalog-retry.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
@@ -230,7 +231,9 @@ describe("reservation at admission", () => {
     const principal = await productUser();
     await keepOpen((await admit(principal, { turn_id: "flood", round: 1 })).execution_id);
     const results = await Promise.allSettled(
-      Array.from({ length: 40 }, () => admit(principal, { turn_id: "flood", round: 2 })),
+      Array.from({ length: 40 }, () =>
+        retryCatalogConflict(() => admit(principal, { turn_id: "flood", round: 2 })),
+      ),
     );
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     for (const result of results.filter((entry) => entry.status === "rejected")) {
@@ -317,7 +320,9 @@ describe("reservation at admission", () => {
     await admit(principal, { turn_id: "second", round: 1 }, limitedWorkflow);
     const results = await Promise.allSettled(
       Array.from({ length: 20 }, (_, index) =>
-        admit(principal, { turn_id: `race-${index}`, round: 1 }, limitedWorkflow),
+        retryCatalogConflict(() =>
+          admit(principal, { turn_id: `race-${index}`, round: 1 }, limitedWorkflow),
+        ),
       ),
     );
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);

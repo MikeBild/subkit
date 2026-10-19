@@ -8,6 +8,7 @@ import {
   connectorUnavailability,
   type FoundConnectorUnavailability,
 } from "../execution/connector-availability.ts";
+import { transactionalWebhookAvailable } from "../execution/transactional-mail.ts";
 import { authorityConnectorConfiguration } from "./authority-configuration.ts";
 import { authorityExecutionShape, type ResolvedCallShape } from "./authority-execution-shape.ts";
 import { contradictedStorageBoundaries } from "./boundary-evidence.ts";
@@ -52,6 +53,7 @@ import {
   storageTarget,
 } from "./storage-boundary.ts";
 import { executableDefinition } from "./stored-definition.ts";
+import { supportsTransactionalDelivery } from "./transactional-delivery-boundary.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
 const inputSchema = z
@@ -189,7 +191,8 @@ export async function resolveWorkflowEffectManifest(
         (contentShapes.get(binding.step_id)?.kind === "content_revision" &&
           !binding.content_publication) ||
         (binding.target === "https://gmail.googleapis.com/gmail/v1/users/me/messages/send" &&
-          !binding.report_delivery),
+          !binding.report_delivery &&
+          !binding.transactional_delivery),
     ),
     ...(options.include_review
       ? { execution_shape: authorityExecutionShape(definition, bindings, callShapes) }
@@ -299,7 +302,11 @@ async function resolveBindings(
       contentBoundary &&
       supportsContentPublication(step, contentBoundary, contentShape.target);
     if (supportedContent) target = contentShape.target;
-    if (reportEvidence === undefined && supportsReportDelivery(step, target))
+    const transactional =
+      driver === "http" && supportsTransactionalDelivery(step, target)
+        ? step.transactional_delivery
+        : undefined;
+    if (reportEvidence === undefined && supportsReportDelivery(step, target) && !transactional)
       reportEvidence = await proposeReportDeliveryBoundaries(input, db, options.facts?.history);
     const statedDelivery =
       step.report_delivery && supportsReportDelivery(step, target) ? step.report_delivery : null;
@@ -309,6 +316,17 @@ async function resolveBindings(
         (observation) =>
           !observation.ok || reportDeliveryDiscrepancy(statedDelivery, observation.boundary),
       );
+    if (
+      transactional &&
+      (definition.execution_privacy !== "sensitive" ||
+        !(await transactionalWebhookAvailable(
+          db,
+          input.tenant_id,
+          input.workflow_id,
+          transactional,
+        )))
+    )
+      unavailable_steps.push(step.id);
     const declaredDelivery = contradicted ? null : statedDelivery;
     let boundary: RequestBoundary | null = null;
     if (driver === "http" && (authoredBoundary || hasRuntimeValue(step))) {
@@ -316,7 +334,7 @@ async function resolveBindings(
       const profile = stricter
         ? contradicted
           ? "report_delivery_contradicted"
-          : declaredDelivery
+          : declaredDelivery || transactional
             ? null
             : profileRefusal(step.id, contentShape !== null, reportEvidence)
         : undefined;
@@ -351,9 +369,11 @@ async function resolveBindings(
       ...(readPath ? { read_path: readPath } : {}),
       ...(storage ? { storage } : {}),
       ...(boundary ? { boundary } : {}),
+      ...(transactional ? { transactional_delivery: transactional } : {}),
       ...(declaredDelivery
         ? { report_delivery: declaredDelivery }
-        : !contradicted &&
+        : !transactional &&
+            !contradicted &&
             reportEvidence?.boundaries[step.id] &&
             supportsReportDelivery(step, target)
           ? { report_delivery: reportEvidence.boundaries[step.id] }

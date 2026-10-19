@@ -3,7 +3,6 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { principalOrigin } from "../auth/origin.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { registerConversationAbort, unregisterConversationAbort } from "../conversations/abort.ts";
 import { humanChatAnswer } from "../conversations/answer-actor.ts";
 import type { RunLoopResult } from "../conversations/loop.ts";
 import {
@@ -14,6 +13,11 @@ import {
   runConversationTurn,
 } from "../conversations/service.ts";
 import { describeTurnFailure, type TurnFailure } from "../conversations/turn-failure.ts";
+import {
+  conversationTurnId,
+  acquireConversationTurn as registerConversationAbort,
+  releaseConversationTurn as unregisterConversationAbort,
+} from "../conversations/turns.ts";
 import type { Db } from "../db/client.ts";
 import { chatIdentities, chatSessions, chatWorkspaces } from "../db/schema/index.ts";
 import { errorFields, log, logger } from "../logging/logger.ts";
@@ -359,7 +363,7 @@ async function salvageTypedReplyToPendingElicitation(args: {
     return null;
   }
 
-  const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+  const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, deps.db);
   try {
     const resolved = await withConversationTurnLock(tenant_id, conversation_id, () =>
       respondElicitation(
@@ -408,7 +412,7 @@ async function salvageTypedReplyToPendingElicitation(args: {
     );
     return null;
   } finally {
-    unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+    await unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
   }
 }
 
@@ -663,7 +667,7 @@ async function handleChatEventImpl(
     try {
       turn = await runTurnForChannel(() =>
         withConversationTurnLock(tenant_id, conversation_id, async () => {
-          const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+          const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, db);
           try {
             const appended = await appendUserMessage(
               {
@@ -672,6 +676,7 @@ async function handleChatEventImpl(
                 actor_id: user_id,
                 principal: chatPrincipal,
                 message: prompt,
+                turn_id: conversationTurnId(turnAbortCtrl),
               },
               db,
             );
@@ -691,7 +696,7 @@ async function handleChatEventImpl(
             );
             return result.result;
           } finally {
-            unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+            await unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
           }
         }),
       );
@@ -731,7 +736,7 @@ async function handleChatEventImpl(
     });
     turn = await runTurnForChannel(() =>
       withConversationTurnLock(tenant_id, conversation_id, async () => {
-        const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+        const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, db);
         try {
           const result = await runConversationTurn(
             {
@@ -749,7 +754,7 @@ async function handleChatEventImpl(
           );
           return result.result;
         } finally {
-          unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+          await unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
         }
       }),
     );

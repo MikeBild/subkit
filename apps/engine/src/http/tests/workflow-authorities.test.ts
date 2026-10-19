@@ -24,6 +24,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createBoss, disposeBoss, EXECUTION_RUN_QUEUE } from "../../queue/index.ts";
 import { builtinRoleId, createRole, grantPermissionToRole } from "../../rbac/roles.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
@@ -450,7 +451,26 @@ test("queue failure retries the same reserved execution rather than spending ano
   } finally {
     failedSend.mockRestore();
   }
-  const retries = await Promise.all([request(true), request(true), request(true)]);
+  const retryAfterCatalogConflict = async () => {
+    let response = await request(true);
+    const busy = async () =>
+      response.status === 409 &&
+      ((await response.clone().json()) as { code?: string }).code === "catalog_vocabulary_changed";
+    await waitFor(
+      async () => {
+        if (!(await busy())) return true;
+        response = await request(true);
+        return !(await busy());
+      },
+      { tries: 100, sleepMs: 5, label: "queue retry after catalog conflict" },
+    );
+    return response;
+  };
+  const retries = await Promise.all([
+    retryAfterCatalogConflict(),
+    retryAfterCatalogConflict(),
+    retryAfterCatalogConflict(),
+  ]);
   const retried = retries[0]!;
   expect(retries.map((response) => response.status)).toEqual([202, 202, 202]);
   expect(retried.status).toBe(202);

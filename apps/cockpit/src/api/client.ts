@@ -245,6 +245,8 @@ async function streamConversation(
   const decoder = new TextDecoder();
   let buffer = "";
   let outcome: ConversationRun | null = null;
+  const pathId = path.match(/^\/v1\/conversations\/([^/]+)/)?.[1];
+  let expectedId = pathId ? decodeURIComponent(pathId) : null;
   while (true) {
     const { done, value } = await reader.read();
     buffer += decoder.decode(value, { stream: !done });
@@ -259,10 +261,34 @@ async function streamConversation(
         .join("\n");
       if (!data) continue;
       const parsed = JSON.parse(data) as ConversationStreamEvent;
+      const recordId = (parsed.conversation as { id?: unknown } | undefined)?.id;
+      const eventId =
+        typeof parsed.conversation_id === "string"
+          ? parsed.conversation_id
+          : typeof recordId === "string"
+            ? recordId
+            : null;
+      if (eventId && expectedId && eventId !== expectedId) {
+        await reader.cancel();
+        throw new ApiError(
+          409,
+          {
+            code: "conversation_stream_mismatch",
+            message:
+              "The response does not belong to this conversation. Reload the conversation before continuing.",
+          },
+          response.headers.get("x-trace-id"),
+        );
+      }
+      if (eventName === "conversation_started" && eventId) expectedId = eventId;
       if (eventName === "outcome") {
         outcome = { ...parsed, events: [] } as unknown as ConversationRun;
       } else if (eventName === "error")
-        throw new ApiError(500, parsed, response.headers.get("x-trace-id"));
+        throw new ApiError(
+          parsed.code === "conversation_turn_in_progress" ? 409 : 500,
+          parsed,
+          response.headers.get("x-trace-id"),
+        );
       else if (eventName === "conversation_started")
         onEvent?.({ ...parsed, type: "conversation_started" });
       else onEvent?.(parsed);

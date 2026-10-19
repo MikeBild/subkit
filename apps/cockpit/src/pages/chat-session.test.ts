@@ -11,6 +11,7 @@ import {
   type OptimisticMessage,
   optimisticUiMessage,
   optimisticVisible,
+  ownsChatOperation,
   recoverFailedSend,
   shouldRestoreComposer,
   tokenPill,
@@ -81,7 +82,7 @@ describe("a failed first send", () => {
     ).toBe("c-new");
   });
 
-  test("without that frame, finds exactly one conversation created since the send", () => {
+  test("without an announced ID never adopts another newly created conversation", () => {
     const listed = [
       { id: "old-1", created_at: "2026-09-01T00:00:00.000Z" },
       { id: "c-new", created_at: "2026-09-29T10:00:01.000Z" },
@@ -89,7 +90,7 @@ describe("a failed first send", () => {
     ];
     expect(
       conversationOpenedByFailedSend({ startedId: null, knownIds: known, sentAt, listed }),
-    ).toBe("c-new");
+    ).toBeNull();
   });
 
   test("never guesses between two new conversations", () => {
@@ -296,5 +297,39 @@ describe("messageAuthor", () => {
         CATALOGS[locale]["chat.role.assistant"],
       );
     }
+  });
+});
+
+describe("pending operation ownership", () => {
+  test("late stream events and completion cannot affect a newly selected conversation", async () => {
+    const operation = { session: 0, startedId: "a" };
+    let session = 0;
+    let active: object | null = operation;
+    let text = "";
+    let selected = "a";
+    const event = (delta: string) => {
+      if (ownsChatOperation(active, operation, session)) text += delta;
+    };
+    const complete = () => {
+      if (ownsChatOperation(active, operation, session)) selected = "a";
+    };
+    event("belongs to a");
+    expect(text).toBe("belongs to a");
+    session += 1;
+    selected = "b";
+    text = "";
+    await Promise.resolve();
+    event("late response");
+    complete();
+    expect(text).toBe("");
+    expect(selected).toBe("b");
+    active = { session, startedId: "b" };
+    expect(ownsChatOperation(active, operation, session)).toBe(false);
+  });
+  test("a newer operation in the same dialog owns completion", () => {
+    const old = { session: 1, startedId: "a" };
+    const current = { session: 1, startedId: "a" };
+    expect(ownsChatOperation(current, old, 1)).toBe(false);
+    expect(ownsChatOperation(current, current, 1)).toBe(true);
   });
 });

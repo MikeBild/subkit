@@ -1,6 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
+  acquireConversationTurn,
+  assertConversationTurn,
+  bindConversationTurn,
+  finishConversationTurn,
+  releaseConversationTurn,
+  reserveConversationTurn,
+} from "../../conversations/turns.ts";
+import {
   conversationElicitations,
   conversations,
   mcpTasks,
@@ -356,4 +364,25 @@ describe("ConversationTaskStore.updateTaskStatus — cancel of a terminal task",
     const task = await owner.getTask(taskId);
     expect(task?.status).toBe("working");
   });
+});
+
+test("cancelling an older MCP task cannot cancel the current conversation owner", async () => {
+  const id = await seedConversation("active");
+  const oldTask = await seedTask(id);
+  const attempt = "00000000-0000-4000-8000-000000000056";
+  await testDb.db.update(mcpTasks).set({ job_id: attempt }).where(eq(mcpTasks.id, oldTask));
+  const oldTurn = await reserveConversationTurn(testDb.db, tenantId, id);
+  await bindConversationTurn(testDb.db, tenantId, id, oldTurn, oldTask, attempt);
+  const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+  await store.updateTaskStatus(oldTask, "cancelled");
+  const ctrl = await acquireConversationTurn(tenantId, id, testDb.db);
+  try {
+    await store.updateTaskStatus(oldTask, "cancelled");
+    await assertConversationTurn(ctrl.signal);
+    expect(ctrl.signal.aborted).toBe(false);
+  } finally {
+    await releaseConversationTurn(tenantId, id, ctrl);
+  }
+  const next = await reserveConversationTurn(testDb.db, tenantId, id);
+  await finishConversationTurn(testDb.db, tenantId, id, next);
 });

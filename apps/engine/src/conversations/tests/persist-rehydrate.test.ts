@@ -121,7 +121,7 @@ describe("buildModelMessages — interaction_log rehydration", () => {
     expect(call.toolCallId).toBe(tool_call_id);
   });
 
-  it("replays only the latest compaction summary and newer messages", async () => {
+  it("replays the latest summary and newer messages while preserving original user instructions", async () => {
     const [conv] = await ctx.testDb.db
       .insert(conversations)
       .values({ tenant_id: ctx.tenant_id, status: "active" })
@@ -167,7 +167,10 @@ describe("buildModelMessages — interaction_log rehydration", () => {
       role: "system",
       content: "Compacted earlier turns about connector cleanup.",
     });
-    expect(JSON.stringify(msgs)).not.toContain("old user question");
+    expect(
+      msgs.filter((message) => message.role === "user" && message.content === "old user question"),
+    ).toHaveLength(1);
+    expect(JSON.stringify(msgs)).not.toContain("old assistant answer");
     expect(JSON.stringify(msgs)).toContain("new request after compaction");
   });
 

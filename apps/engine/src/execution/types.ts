@@ -33,6 +33,7 @@ export interface RequestAuthoritySnapshot {
   connector_id?: string | null;
   requires_review?: boolean;
   request_max_attempts?: number;
+  requires_transactional_authority?: boolean;
   principal_id?: string | null;
   request?: MaterializedRequest;
   step_id: string;

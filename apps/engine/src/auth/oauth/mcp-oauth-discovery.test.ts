@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Db } from "../../db/client.ts";
 import { TEST_DB_HOOK_TIMEOUT } from "../../db/tests/setup.ts";
 import type { HttpTestServer } from "../../http/tests/setup.ts";
@@ -8,14 +8,14 @@ let ctx: HttpTestServer;
 let _db: Db;
 let priorBaseUrl = "";
 
-beforeAll(async () => {
+beforeEach(async () => {
   const s = await setupMcpOauthServer("mcp-oauth-discovery");
   ctx = s.ctx;
   _db = ctx.db;
   priorBaseUrl = s.priorBaseUrl;
 }, TEST_DB_HOOK_TIMEOUT);
 
-afterAll(async () => {
+afterEach(async () => {
   if (ctx) await teardownMcpOauthServer(ctx, priorBaseUrl);
 }, TEST_DB_HOOK_TIMEOUT);
 
@@ -250,18 +250,17 @@ describe("POST /v1/oauth/register — redirect_uri validation", () => {
 
 describe("POST /v1/oauth/register — per-IP rate limit", () => {
   test("11th registration from same IP returns 429", async () => {
-    const uniqueIp = "10.9.8.7";
     let lastStatus = 0;
     for (let i = 0; i < 11; i++) {
       const res = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-forwarded-for": uniqueIp,
         },
         body: JSON.stringify({ redirect_uris: [`https://ratelimit-test.example.com/cb${i}`] }),
       });
       lastStatus = res.status;
+      expect(lastStatus).toBe(i < 10 ? 201 : 429);
       await res.json().catch(() => null);
     }
     expect(lastStatus).toBe(429);

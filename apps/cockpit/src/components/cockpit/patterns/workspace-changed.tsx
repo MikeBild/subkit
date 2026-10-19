@@ -11,7 +11,12 @@ export function WorkspaceChangedPage() {
         <AlertTitle>{t("workspace.staleTitle")}</AlertTitle>
         <AlertDescription>
           <p>{t("workspace.staleBody")}</p>
-          <Button className="mt-2" size="sm" onClick={() => window.location.replace(absolute("/"))}>
+          <Button
+            data-testid="workspace-reload"
+            className="mt-2"
+            size="sm"
+            onClick={() => window.location.replace(absolute("/"))}
+          >
             {t("workspace.reload")}
           </Button>
         </AlertDescription>

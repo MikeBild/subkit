@@ -1,8 +1,6 @@
 export {
   CONVERSATION_CANCELLED_REASON,
   cancelConversationAbort,
-  registerConversationAbort,
-  unregisterConversationAbort,
 } from "./abort.ts";
 export * from "./answer-actor.ts";
 export {
@@ -56,5 +54,10 @@ export {
   timeoutPhaseOf,
   turnFailureFramePayload,
 } from "./turn-failure.ts";
+export {
+  acquireConversationTurn as registerConversationAbort,
+  conversationTurnId,
+  releaseConversationTurn as unregisterConversationAbort,
+} from "./turns.ts";
 export * from "./types.ts";
 export { type ConversationUsage, readConversationUsage } from "./usage.ts";

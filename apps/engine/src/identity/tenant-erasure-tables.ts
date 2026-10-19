@@ -1,4 +1,5 @@
 export const ERASED_TENANT_TABLES = [
+  "transactional_mail_receipts",
   "runtime_secret_versions",
   "api_keys",
   "audit_log",
@@ -30,6 +31,7 @@ export const ERASED_TENANT_TABLES = [
   "conversation_hidden",
   "conversation_messages",
   "conversation_tool_calls",
+  "conversation_turns",
   "conversations",
   "credentials",
   "deliveries",

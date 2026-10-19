@@ -1,0 +1,1 @@
+ALTER TABLE "conversation_turns" ADD COLUMN "cancel_requested" boolean DEFAULT false NOT NULL;

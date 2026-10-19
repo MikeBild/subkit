@@ -81,6 +81,7 @@ function effectCovered(next: Effect, granted: Effect): boolean {
 }
 
 const SUB_BOUNDARIES = [
+  "transactional_delivery",
   "report_delivery",
   "content_publication",
   "read_path",

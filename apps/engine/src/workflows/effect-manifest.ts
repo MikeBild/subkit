@@ -20,6 +20,10 @@ import {
   requestBoundaryTarget,
 } from "./request-boundary.ts";
 import { StorageBoundarySchema, storageBoundary, storageTarget } from "./storage-boundary.ts";
+import {
+  supportsTransactionalDelivery,
+  TransactionalDeliveryBoundarySchema,
+} from "./transactional-delivery-boundary.ts";
 import { JsonValueSchema, type RequestStep, WorkflowDefSchema } from "./types.ts";
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
@@ -41,6 +45,7 @@ export const ResolvedEffectBindingSchema = z
     credential_binding_digest: digest.nullable(),
     rewrites_target: z.boolean(),
     report_delivery: ReportDeliveryBoundarySchema.optional(),
+    transactional_delivery: TransactionalDeliveryBoundarySchema.optional(),
     content_publication: ContentPublicationBoundarySchema.optional(),
     read_path: ReadPathBoundarySchema.optional(),
     storage: StorageBoundarySchema.optional(),
@@ -253,7 +258,7 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       });
       const call_path: CallPath = [step.id];
       for (const effect of child.manifest.effects) {
-        if (effect.report_delivery || effect.content_publication) {
+        if (effect.report_delivery || effect.transactional_delivery || effect.content_publication) {
           manifest.issues.push({ step_id: effect.step_id, code: "binding_mismatch", call_path });
         }
         manifest.effects.push({ ...effect, call_path });
@@ -354,6 +359,10 @@ export function compileWorkflowEffectManifest(raw: unknown): {
               supportedReadPath ||
               supportedContent ||
               readQuery ||
+              (binding.transactional_delivery &&
+                supportsTransactionalDelivery(step, binding.target) &&
+                workflowJsonDigest(binding.transactional_delivery) ===
+                  workflowJsonDigest(step.transactional_delivery)) ||
               (binding.report_delivery && supportsReportDelivery(step, binding.target))))
         )) ||
       hasRuntimeValue(binding.target) ||
@@ -361,6 +370,15 @@ export function compileWorkflowEffectManifest(raw: unknown): {
     )
       issue("dynamic_request");
     if (binding.report_delivery && !supportsReportDelivery(step, binding.target))
+      issue("binding_mismatch");
+    if (
+      Boolean(binding.transactional_delivery) !== Boolean(step.transactional_delivery) ||
+      (binding.transactional_delivery &&
+        (definition.execution_privacy !== "sensitive" ||
+          !supportsTransactionalDelivery(step, binding.target) ||
+          workflowJsonDigest(binding.transactional_delivery) !==
+            workflowJsonDigest(step.transactional_delivery)))
+    )
       issue("binding_mismatch");
     const effect = effectOf(step, binding);
     if (effect === "unknown") issue("unknown_effect");

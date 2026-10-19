@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getConfig } from "../../config/loader.ts";
 import type { Config } from "../../config/schema.ts";
-import { getDb } from "../../db/client.ts";
+import { type Executor, getDb } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { getContext } from "../../logging/context.ts";
 import { reserveHostedBudget, settleHostedBudget } from "../accounting/hosted-budget.ts";
@@ -176,15 +176,32 @@ export async function wrapHostedBudgetModel(
   provider: string,
   modelId: string,
   tenantId?: string,
+  exec?: Executor,
 ): Promise<LanguageModelV4 | string> {
+  const deps: HostedBillingDependencies = exec
+    ? {
+        ...dependencies,
+        tenant: async (id) => {
+          const [tenant] = await exec
+            .select({ origin: tenants.origin })
+            .from(tenants)
+            .where(eq(tenants.id, id))
+            .limit(1);
+          return tenant;
+        },
+        reserve: (input) => reserveHostedBudget(input, exec),
+        settle: (tenant, reservation, amount) =>
+          settleHostedBudget(tenant, reservation, amount, exec),
+      }
+    : dependencies;
   if (typeof model === "string") {
-    if (await hostedPolicy(tenantId, provider, modelId, dependencies)) {
+    if (await hostedPolicy(tenantId, provider, modelId, deps)) {
       return unsupportedHostedBilling("gateway string models do not support hosted accounting");
     }
     return model;
   }
   return wrapLanguageModel({
     model,
-    middleware: hostedBudgetMiddleware(provider, modelId, tenantId),
+    middleware: hostedBudgetMiddleware(provider, modelId, tenantId, deps),
   });
 }

@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [sk-platform-reference, webhooks, triggers, schedule, cron]
-version: 1
+version: 2
 ---
 
 # Webhooks & Triggers
@@ -29,6 +29,16 @@ Every workflow has one optional `trigger` block that decides how its execution s
 ## Read-only MCP tools
 
 `list_inbound_hooks` (no input) and `get_inbound_hook({ id })` inspect bindings. To run a workflow on demand use `run_workflow` or the per-workflow `wf_<slug>` tool. Tool names use underscores, never dots.
+
+## Transactional replies
+
+For a Gmail reply to the address in a signed request, use the separately reviewed
+`transactional_delivery` profile described by `workflow-authoring`. Event and field
+names are configurable. Require a signed body event type and original recipient/UUID,
+sensitive execution, one dispatch attempt and the real same-workflow Standard Webhooks
+binding; never substitute unsigned ingress or a fake fixed report recipient. Inspect
+mail receipts with `get_workflow` before suggesting any resend. SubKit uses the stored
+secret verbatim as UTF-8 HMAC key, with no `whsec_` prefix decoding.
 
 ## Get the full reference
 

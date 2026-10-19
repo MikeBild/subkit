@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 40
+version: 41
 ---
 
 # Authoring Workflows In A Conversation
@@ -1358,3 +1358,62 @@ into a malformed payload in production. Likewise never reach for `new Date()`,
 - `sk-concepts.md` — the envelope and placeholder tokens.
 - `data-handling.md` — JSONata cheatsheet and reshaping patterns.
 - `error-recovery.md` — recovering from tool errors mid-conversation.
+
+
+## Transactional replies to signed requests
+
+Use `transactional_delivery` on a Gmail request step when one email must be sent
+to a different applicant on each verified incoming request. This is a separate
+profile from `report_delivery`, whose recipient remains fixed. Never keep a fixed
+report recipient as an audit placeholder while sending a different MIME recipient.
+Generic HTTP `boundary` cannot replace either Gmail profile.
+
+The declaration is `{kind: "gmail_transactional", webhook_id, event_type, event_type_input,
+recipient_input, request_id_input, from, content_type: "text/plain", max_body_bytes}`.
+All input paths are reviewed dot paths beginning with `body.`, such as
+`body.registration.email` and `body.registration.id`; the UUID must equal the
+signed `webhook-id`. Fields and event types are application-defined, not tied to
+any product. Use `max_retries: 0`, a single POST to the Gmail send endpoint with
+only `{raw}`, no pagination, fan-out or read-effect override. Bound template inputs
+and derive the declared request-size ceiling from them. The workflow input schema
+must strictly validate its business fields. The runtime compares actual decoded
+MIME sender, sole recipient and format to the reviewed profile and original
+admitted input. CC/BCC and recipient overrides are refused.
+
+Provision the actual inactive/active Standard Webhooks binding securely, with its
+own secret, same tenant/workflow and exactly the reviewed event type. Never use
+`verify: "none"`, never expose a signing key in browser code, and never fabricate
+a signed event or execution caller in a preview. A signature authenticates an
+incoming request; it does not grant execution authority. Prepare the exact saved
+version and show the normal human boundary/limits review before activation. With
+sensitive execution, do not attempt a chat preview or force-save around missing
+evidence; use a permitted exact-version preparation flow and report any missing
+capability.
+
+A persistent per-workflow/request receipt reserves one dispatch attempt before
+network access. An uncertain result or crash after reservation must not be retried
+automatically, even by rerunning the workflow or changing versions. Inspect the
+receipt and execution first. `sent` means the remote API accepted the request, not
+that the message reached an inbox. Normal form receipt and webhook acceptance are
+separate from mail outcome. Update website copy to match what is actually enabled.
+
+For transactional mail, also declare `event_type_input`, a reviewed dot path in
+`body` whose signed value equals `event_type`. The `webhook-type` header itself is
+not covered by the Standard Webhooks signature; matching only that header is
+insufficient. Use `execution_privacy: sensitive`. Inspect persistent outcomes with
+`GET /v1/workflows/{id}/transactional-mail-receipts` under `workflow:read`; this
+endpoint includes no email address or message body and cannot trigger delivery.
+
+`get_workflow` includes the newest durable mail receipts for transactional email
+workflows; inspect these before diagnosing handoff or suggesting any resend.
+
+## Provider-compatible tool palettes
+
+The conversation palette checks every native, saved-workflow and external tool's
+root input schema before sending it to a model. MCP workflow aliases use the same compatibility rule. Incompatible root combinators are
+omitted without weakening or rewriting the underlying business schema. Saved
+workflows remain available through `run_workflow` with their original validated
+input. Do not repair this by deleting valid `oneOf` constraints from a workflow or
+by suppressing all execution tools in a prompt. Tool-schema rejection is reported
+as `llm_tool_schema_invalid`, not a network outage. Follow the precise diagnostic
+and repair the tool definition or provider adapter rather than retrying unchanged.

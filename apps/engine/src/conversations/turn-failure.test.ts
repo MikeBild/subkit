@@ -158,3 +158,15 @@ describe("timeouts", () => {
     expect(timeoutPhaseOf("conversation_cancelled")).toBeNull();
   });
 });
+
+test("provider tool schema rejection is not reported as a network outage", () => {
+  expect(
+    describeTurnFailure(
+      new LlmProviderError("other", "tools.159.custom.input_schema: root oneOf is unsupported"),
+      now,
+    ).code,
+  ).toBe("llm_tool_schema_invalid");
+  expect(describeTurnFailure(new LlmProviderError("other", "connect ECONNREFUSED"), now).code).toBe(
+    "llm_provider_unavailable",
+  );
+});

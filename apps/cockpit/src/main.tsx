@@ -3,6 +3,8 @@ import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { retryQuery } from "@/api/client";
+import { absolute } from "@/app/links";
+import { RECOVERY_ROUTE } from "@/app/route-table";
 import { router } from "@/app/router";
 import { SessionGate } from "@/app/session";
 import { I18nProvider } from "@/components/i18n-provider";
@@ -29,7 +31,7 @@ createRoot(root).render(
     <I18nProvider>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          {window.location.pathname === "/cockpit/recovery" ? (
+          {window.location.pathname === absolute(RECOVERY_ROUTE) ? (
             <IdentityRecoveryPage />
           ) : (
             <SessionGate>

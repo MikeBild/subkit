@@ -3,7 +3,7 @@ import { AuditAction } from "../../../audit/types.ts";
 import { dispatchTool } from "../../../tools/dispatcher.ts";
 import { conversationToolProvider } from "../../../tools/providers/conversation.ts";
 import { buildRegistry } from "../../../tools/registry.ts";
-import { makeStubDb, makeTestPrincipal } from "../../../tools/tests/_helpers.ts";
+import { makeStubDb, makeTestPrincipal, usePolicyFixture } from "../../../tools/tests/_helpers.ts";
 import type { ToolDescriptor } from "../../../tools/types.ts";
 import { getConnectorTool, listConnectorsTool } from "../engine-api/connectors.ts";
 import { getExecutionTool } from "../engine-api/executions.ts";
@@ -28,6 +28,8 @@ import { findConnectorTool } from "../find-connector.ts";
 import { listCapabilityGapsTool } from "../list-capability-gaps.ts";
 import { listSkillsTool } from "../list-skills.ts";
 import { reviewWorkflowAutomationTool } from "../review-workflow-automation.ts";
+
+usePolicyFixture();
 
 type PermCase = {
   tool: {

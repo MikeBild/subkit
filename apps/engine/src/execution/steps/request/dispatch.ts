@@ -107,6 +107,7 @@ import {
 } from "../../prepared-request.ts";
 import { applyResponseFilters, ResponseFilterFailError } from "../../response-filter.ts";
 import { GOVERNANCE_REFUSALS } from "../../state.ts";
+import { isConfirmedTransactionalMail, settleTransactionalMail } from "../../transactional-mail.ts";
 import type {
   ConnectorResolutionSummary,
   RequestMeta,
@@ -568,7 +569,7 @@ export interface RunRequestStepParams {
 export async function runRequestStep(p: RunRequestStepParams): Promise<StepResult> {
   const dispatchedEffects: Array<"read" | "write"> = [];
   const ownCredentials: string[] = [];
-  const result = redactOwnCredentials(
+  let result = redactOwnCredentials(
     await dispatchRequestStep(
       p,
       (effect) => {
@@ -578,6 +579,29 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     ),
     ownCredentials,
   );
+  if (
+    p.step.transactional_delivery &&
+    result.status === "succeeded" &&
+    !isConfirmedTransactionalMail(result)
+  )
+    result = {
+      ...result,
+      status: "failed",
+      error: {
+        code: "transactional_delivery_unknown",
+        message: "Gmail did not confirm a message ID; inspect the receipt before any resend",
+      },
+    };
+  if (p.step.transactional_delivery && !p.ctx.hold_writes)
+    await settleTransactionalMail(
+      p.ctx.db,
+      {
+        tenant_id: p.ctx.tenant_id,
+        execution_id: p.ctx.execution_id,
+        step_id: p.step.id,
+      },
+      result,
+    );
   if (!dispatchedEffects.length) return result;
   const metadata: RequestMeta = result.request_meta ?? { driver: "error", url: null };
   return {
@@ -630,6 +654,7 @@ async function dispatchRequestStep(
     connector_id: p.step.connector_id ?? null,
     requires_review: requestRequiresPreparationHold(p.step, activeConnector?.driver),
     request_max_attempts: max_attempts,
+    ...(p.step.transactional_delivery ? { requires_transactional_authority: true } : {}),
     principal_id: p.ctx.principal?.id ?? null,
     configuration_digest: configurationDigest,
     credential_id: credential.credential_id,
@@ -643,6 +668,11 @@ async function dispatchRequestStep(
   };
   const beforeDispatch = async (credential = credentialSnapshot, request?: MaterializedRequest) => {
     try {
+      if (p.step.transactional_delivery && !p.ctx.before_external_request)
+        throw Object.assign(
+          new Error("Transactional email requires execution authority enforcement"),
+          { code: "execution_authority_unavailable" },
+        );
       const documentedRead = p.step.side_effects !== "write" && isDocumentedReadOperation(request);
       const policy = await p.ctx.before_external_request?.({
         ...authoritySnapshot(credential),

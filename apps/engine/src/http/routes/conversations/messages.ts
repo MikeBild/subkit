@@ -9,6 +9,7 @@ import { actorOf } from "../../../audit/index.ts";
 import type { TurnEvent } from "../../../conversations/index.ts";
 import * as svc from "../../../conversations/index.ts";
 import {
+  conversationTurnId,
   humanChatAnswer,
   registerConversationAbort,
   serializeEvent,
@@ -41,8 +42,11 @@ const appendRoute = createRoute({
     body: { content: { "application/json": { schema: AppendMessageBody } } },
   },
   responses: {
+    409: {
+      description: "A response is running or a pending question must be answered",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     200: { description: "OK", content: { "application/json": { schema: RunOutcomeSchema } } },
-    409: { description: "Pending input", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -84,6 +88,10 @@ const uploadRoute = createRoute({
     },
   },
   responses: {
+    409: {
+      description: "A response is running or a pending question must be answered",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     200: {
       description: "OK",
       content: { "application/json": { schema: UploadRunOutcomeSchema } },
@@ -105,10 +113,11 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
+    const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);
     let ownershipTransferred = false;
     try {
       const appendParams = {
+        turn_id: conversationTurnId(turnAbortCtrl),
         tenant_id: principal.tenant_id,
         conversation_id: id,
         actor_id: principal.id,
@@ -154,6 +163,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
             const outcome = await driveTurn(appended, (ev: TurnEvent) => {
               void stream.writeSSE(serializeEvent(ev));
             });
+            await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
             await stream.writeSSE(outcomeFrame(outcome));
           } catch (error) {
             if (error instanceof svc.PendingElicitationBlockedError) {
@@ -175,7 +185,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
               .catch(() => {});
             await stream.writeSSE(errorFrame(svc.turnFailureFramePayload(failure)));
           } finally {
-            unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+            await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
         }) as Response & RouteConfigToTypedResponse<typeof appendRoute>;
         ownershipTransferred = true;
@@ -200,7 +210,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json(serializeConversation(outcome), 200);
     } finally {
       if (!ownershipTransferred) {
-        unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+        await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
       }
     }
   });
@@ -223,68 +233,68 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!conv) return c.json({ error: "conversation not found" }, 404);
     const targetWorkflowId = conv.conversation.target_workflow_id;
 
-    const ingestedSources: string[] = [];
-    for (const file of files) {
-      if (!(file instanceof File)) continue;
-      try {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const source = await createKnowledgeSource(
-          {
-            tenant_id: principal.tenant_id,
-            input: {
-              name: file.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " "),
-              scope: targetWorkflowId ? "workflow" : "global",
-              ...(targetWorkflowId ? { workflow_id: targetWorkflowId } : {}),
-            },
-            upload: {
-              buffer,
-              filename: file.name,
-              ...(file.type ? { mime: file.type } : {}),
-            },
-            actor: actorOf(principal),
-          },
-          db,
-        );
-        ingestedSources.push(source.id);
-        if (source.description === null || source.tags.length === 0) {
-          try {
-            await analyzeKnowledgeSource(
-              {
-                tenant_id: principal.tenant_id,
-                id: source.id,
-                actor_id: principal.id,
-                actor: actorOf(principal),
-              },
-              db,
-            );
-          } catch (enrichErr) {
-            logger.warn({
-              module: "conversations",
-              action: "file_attachment.analyze_skipped",
-              msg: `Failed to auto-analyze knowledge source: ${source.id}`,
-              error: enrichErr instanceof Error ? enrichErr.message : String(enrichErr),
-              knowledge_source_id: source.id,
-            });
-          }
-        }
-      } catch (err) {
-        logger.warn({
-          module: "conversations",
-          action: "file_attachment.ingest_failed",
-          msg: `Failed to ingest file attachment: ${file.name}`,
-          error: err instanceof Error ? err.message : String(err),
-          filename: file.name,
-        });
-      }
-    }
-
-    const enrichedMessage =
-      ingestedSources.length > 0
-        ? `${message}\n\n[Attached ${ingestedSources.length} file(s) as knowledge sources]`
-        : message;
-
-    const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
+    const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);
     try {
+      const ingestedSources: string[] = [];
+      for (const file of files) {
+        if (!(file instanceof File)) continue;
+        try {
+          const buffer = Buffer.from(await file.arrayBuffer());
+          const source = await createKnowledgeSource(
+            {
+              tenant_id: principal.tenant_id,
+              input: {
+                name: file.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " "),
+                scope: targetWorkflowId ? "workflow" : "global",
+                ...(targetWorkflowId ? { workflow_id: targetWorkflowId } : {}),
+              },
+              upload: {
+                buffer,
+                filename: file.name,
+                ...(file.type ? { mime: file.type } : {}),
+              },
+              actor: actorOf(principal),
+            },
+            db,
+          );
+          ingestedSources.push(source.id);
+          if (source.description === null || source.tags.length === 0) {
+            try {
+              await analyzeKnowledgeSource(
+                {
+                  tenant_id: principal.tenant_id,
+                  id: source.id,
+                  actor_id: principal.id,
+                  actor: actorOf(principal),
+                },
+                db,
+              );
+            } catch (enrichErr) {
+              logger.warn({
+                module: "conversations",
+                action: "file_attachment.analyze_skipped",
+                msg: `Failed to auto-analyze knowledge source: ${source.id}`,
+                error: enrichErr instanceof Error ? enrichErr.message : String(enrichErr),
+                knowledge_source_id: source.id,
+              });
+            }
+          }
+        } catch (err) {
+          logger.warn({
+            module: "conversations",
+            action: "file_attachment.ingest_failed",
+            msg: `Failed to ingest file attachment: ${file.name}`,
+            error: err instanceof Error ? err.message : String(err),
+            filename: file.name,
+          });
+        }
+      }
+
+      const enrichedMessage =
+        ingestedSources.length > 0
+          ? `${message}\n\n[Attached ${ingestedSources.length} file(s) as knowledge sources]`
+          : message;
+
       const appended = await svc.appendUserMessage(
         {
           tenant_id: principal.tenant_id,
@@ -292,6 +302,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
           actor_id: principal.id,
           principal,
           message: enrichedMessage,
+          turn_id: conversationTurnId(turnAbortCtrl),
           ...(typeof memory === "string" && memory.length > 0 ? { memory } : {}),
         },
         db,
@@ -314,7 +325,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       const serialized = serializeConversation(outcome);
       return c.json({ ...serialized, ingested_knowledge_source_ids: ingestedSources }, 200);
     } finally {
-      unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+      await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
     }
   });
 }

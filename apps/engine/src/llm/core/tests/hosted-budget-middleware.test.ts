@@ -1,12 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { APICallError, generateText, wrapLanguageModel } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
+import { setConfigKey } from "../../../config/loader.ts";
 import { ConfigSchema } from "../../../config/schema.ts";
+import { hostedBudgetReservations } from "../../../db/schema/index.ts";
+import { createTestDb } from "../../../db/tests/setup.ts";
+import { provisionSelfServiceTenant } from "../../../identity/self-service.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
+import { configureHostedPolicyForTests } from "../../../test-helpers/hosted-policy.ts";
 import { hostedReportedAmount, hostedReservationAmount } from "../hosted-billing-policy.ts";
 import {
   type HostedBillingDependencies,
   hostedBudgetMiddleware,
+  wrapHostedBudgetModel,
 } from "../hosted-budget-middleware.ts";
 
 type CallOptions = Parameters<MockLanguageModelV4["doGenerate"]>[0];
@@ -351,4 +357,51 @@ describe("hosted provider budget boundary", () => {
     expect(f.reserved.map((entry) => entry.request_key)).toEqual(["attempt-0", "attempt-1"]);
     expect(f.settled).toHaveLength(1);
   });
+});
+
+test("an explicit database owns hosted model reservation and settlement", async () => {
+  const database = await createTestDb("model-billing-context");
+  try {
+    await configureHostedPolicyForTests(database.db, "postgres://fixture.invalid/unavailable");
+    await setConfigKey("llm.hosted.models", [policy]);
+    await setConfigKey("llm.hosted.tenant_monthly_microunits", "1000000");
+    await setConfigKey("llm.hosted.global_monthly_microunits", "2000000");
+    const created = await provisionSelfServiceTenant(
+      {
+        issuer_url: "https://identity.example.test",
+        subject: "model-billing",
+        email: "billing@example.test",
+        email_verified: true,
+      },
+      database.db,
+    );
+    const mock = new MockLanguageModelV4({ doGenerate: result });
+    const model = await wrapHostedBudgetModel(
+      mock,
+      "anthropic",
+      "billing-model",
+      created.tenant.id,
+      database.db,
+    );
+    if (typeof model === "string") throw new Error("expected a wrapped model");
+    await model.doGenerate({ ...params(), maxOutputTokens: 100 });
+    const reservations = await database.db.select().from(hostedBudgetReservations);
+    expect(reservations).toHaveLength(1);
+    expect(reservations[0]?.tenant_id).toBe(created.tenant.id);
+    expect(reservations[0]?.state).toBe("settled");
+    expect(reservations[0]?.reported_microunits).toBe(hostedReportedAmount(policy, usage, "5m"));
+    const unlisted = await wrapHostedBudgetModel(
+      mock,
+      "anthropic",
+      "unlisted",
+      created.tenant.id,
+      database.db,
+    );
+    if (typeof unlisted === "string") throw new Error("expected a wrapped model");
+    await expect(unlisted.doGenerate({ ...params(), maxOutputTokens: 100 })).rejects.toThrow();
+    expect(mock.doGenerateCalls).toHaveLength(1);
+    expect(await database.db.select().from(hostedBudgetReservations)).toHaveLength(1);
+  } finally {
+    await database.cleanup();
+  }
 });

@@ -23,6 +23,7 @@ import { RunLlmBudget } from "../../llm/accounting/index.ts";
 import { EXECUTION_RUN_QUEUE } from "../../queue/queues.ts";
 import { createSecretVersion } from "../../runtime-config/service.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
+import { retryCatalogConflict } from "../../test-helpers/catalog-retry.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
@@ -483,8 +484,8 @@ test("concurrent retries preserve one execution and one reservation", async () =
   const f = await fixture(1);
   const params = { ...f.params, idempotency_key: "one-run" };
   const results = await Promise.all([
-    admitAuthorizedWorkflowExecution(params, ctx.db),
-    admitAuthorizedWorkflowExecution(params, ctx.db),
+    retryCatalogConflict(() => admitAuthorizedWorkflowExecution(params, ctx.db)),
+    retryCatalogConflict(() => admitAuthorizedWorkflowExecution(params, ctx.db)),
   ]);
   expect(results[0]?.execution_id).toBe(results[1]?.execution_id);
   expect(results.map((row) => row.replayed).sort()).toEqual([false, true]);

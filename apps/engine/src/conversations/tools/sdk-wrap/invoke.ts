@@ -40,6 +40,7 @@ import {
   prerequisitesForTool,
   type ToolPolicies,
 } from "../../tool-policies.ts";
+import { assertConversationTurn } from "../../turns.ts";
 import type { DraftDocument, TurnEvent } from "../../types.ts";
 import { withApprovalHandle, withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { decodeAskUserPromptEscapes } from "../ask-user/decode-prompt-escapes.ts";
@@ -197,6 +198,7 @@ export function wrapOne(
       });
       await prevChain;
       const executeBody = async (): Promise<WrappedToolOutput> => {
+        await assertConversationTurn(ctx.abortSignal);
         if (intakeReviewBlocksWrite(ctx.getDraft(), inner.name)) {
           return {
             ok: false,

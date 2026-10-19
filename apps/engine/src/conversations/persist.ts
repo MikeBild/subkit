@@ -1,5 +1,5 @@
 import type { FilePart, ImagePart, ModelMessage, TextPart } from "ai";
-import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { fileLinks } from "../db/schema/files.ts";
@@ -346,7 +346,8 @@ function maybeCompactReplay(messages: ModelMessage[]): ModelMessage[] {
   const prefix = messages.slice(0, splitIndex);
   const tail = messages.slice(splitIndex);
   if (prefix.length === 0) return messages;
-  return [{ role: "system", content: summarizeReplayPrefix(prefix) }, ...tail];
+  const instructions = prefix.filter((message) => message.role === "user");
+  return [{ role: "system", content: summarizeReplayPrefix(prefix) }, ...instructions, ...tail];
 }
 
 export async function buildModelMessages(
@@ -392,9 +393,6 @@ export async function buildModelMessages(
 
   const lowerBoundClauseMessages = replayStartAt
     ? gte(conversationMessages.created_at, replayStartAt)
-    : undefined;
-  const lowerBoundClauseElicitations = replayStartAt
-    ? gte(conversationElicitations.created_at, replayStartAt)
     : undefined;
   const lowerBoundClauseCalls = replayStartAt
     ? gte(conversationToolCalls.created_at, replayStartAt)
@@ -505,7 +503,9 @@ export async function buildModelMessages(
         and(
           eq(conversationMessages.tenant_id, tenant_id),
           eq(conversationMessages.conversation_id, conversation_id),
-          ...(lowerBoundClauseMessages ? [lowerBoundClauseMessages] : []),
+          ...(lowerBoundClauseMessages
+            ? [or(eq(conversationMessages.role, "user"), lowerBoundClauseMessages)]
+            : []),
         ),
       )
       .orderBy(asc(conversationMessages.created_at)),
@@ -544,7 +544,6 @@ export async function buildModelMessages(
         and(
           eq(conversationElicitations.tenant_id, tenant_id),
           eq(conversationElicitations.conversation_id, conversation_id),
-          ...(lowerBoundClauseElicitations ? [lowerBoundClauseElicitations] : []),
         ),
       )
       .orderBy(asc(conversationElicitations.created_at)),

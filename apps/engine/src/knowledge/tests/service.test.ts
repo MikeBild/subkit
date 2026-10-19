@@ -7,6 +7,7 @@ import {
   knowledgeSources,
   knowledgeSourceVersions,
 } from "../../db/schema/index.ts";
+import { TEST_DB_HOOK_TIMEOUT } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { runWithTestEnv } from "../../test-helpers/determinism/env.ts";
@@ -43,7 +44,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!skip && ctx?.cleanup) await ctx.cleanup();
-}, 30_000);
+}, TEST_DB_HOOK_TIMEOUT);
 
 describe.skipIf(skip)("knowledge/service", () => {
   let createdId: string;

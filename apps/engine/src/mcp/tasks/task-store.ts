@@ -4,9 +4,13 @@ import type {
 } from "@modelcontextprotocol/sdk/experimental/tasks/index.js";
 import type { Request, RequestId, Result, Task } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq } from "drizzle-orm";
-import { cancelConversationAbort } from "../../conversations/abort.ts";
+import { stopConversationTaskTurn } from "../../conversations/turns.ts";
 import type { Db } from "../../db/client.ts";
-import { conversationElicitations, conversations } from "../../db/schema/index.ts";
+import {
+  conversationElicitations,
+  conversations,
+  conversationTurns,
+} from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordUsageEvent } from "../../stats/usage-events.ts";
 import { projectTurnEnvelopeForClient } from "../capabilities/turn-projection.ts";
@@ -121,7 +125,30 @@ export class ConversationTaskStore implements TaskStore {
       const row = await getMcpTask(this.tenantId, taskId, this.db);
       if (!row) throw new Error(`task not found: ${taskId}`);
       const firstCancellation = await setMcpTaskCancelled(this.tenantId, taskId, this.db);
-      cancelConversationAbort(this.tenantId, row.conversation_id);
+      if (row.job_id) {
+        const [turn] = await this.db
+          .select({ id: conversationTurns.id })
+          .from(conversationTurns)
+          .where(
+            and(
+              eq(conversationTurns.tenant_id, this.tenantId),
+              eq(conversationTurns.conversation_id, row.conversation_id),
+              eq(conversationTurns.task_id, taskId),
+              eq(conversationTurns.attempt_id, row.job_id),
+            ),
+          )
+          .limit(1);
+        if (turn)
+          await stopConversationTaskTurn(
+            this.db,
+            this.tenantId,
+            row.conversation_id,
+            turn.id,
+            taskId,
+            row.job_id,
+            "cancelled",
+          );
+      }
       if (firstCancellation) {
         recordUsageEvent(this.db, {
           tenantId: this.tenantId,

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { mcpOauthClients, users } from "../../db/schema/index.ts";
@@ -22,14 +22,14 @@ let ctx: HttpTestServer;
 let db: Db;
 let priorBaseUrl = "";
 
-beforeAll(async () => {
+beforeEach(async () => {
   const s = await setupMcpOauthServer("mcp-oauth-withdrawal");
   ctx = s.ctx;
   db = ctx.db;
   priorBaseUrl = s.priorBaseUrl;
 }, TEST_DB_HOOK_TIMEOUT);
 
-afterAll(async () => {
+afterEach(async () => {
   if (ctx) await teardownMcpOauthServer(ctx, priorBaseUrl);
 }, TEST_DB_HOOK_TIMEOUT);
 
