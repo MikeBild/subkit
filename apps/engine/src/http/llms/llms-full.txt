@@ -5,7 +5,7 @@
 
 ## Pages
 
-- [sk](llms/setup.md): sk is a self-hosted engine for governed workflows: describe the work in plain language, approve what it may touch, and every run is recorded.
+- [sk](llms/setup.md): sk is a self-hostable engine for governed workflows: describe the work in plain language, approve what it may touch, and every run is recorded.
 - [Use sk from a coding agent](llms/coding-agents.md): Use MCP for approved sk tools; run sk agent init to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings.
 - [sk CLI reference](llms/cli.md): Every sk command and argument — and the surface authoring runs through: creating or changing a workflow, connector, knowledge source or skill is a definition edit, and definition edits belong here, where the change is a file you can read and a command you can re-run.
 - [subkit runtime settings](llms/settings.md): Every value below lives in canonical runtime configuration and is editable via the Cockpit, HTTP/MCP settings APIs, sk settings configure, or sk settings set.
@@ -15,7 +15,34 @@
 
 # sk
 
-sk is a self-hosted engine for governed workflows: describe the work in plain language, approve what it may touch, and every run is recorded.
+sk is a self-hostable engine for governed workflows: describe the work in plain language, approve what it may touch, and every run is recorded.
+
+## Availability and product planning
+
+Self-hosting is the current operating model described below. A hosted self-service
+cloud offering is planned as a limited free beta alongside self-hosting: register,
+verify your email, receive an isolated workspace and start with a capped platform
+AI budget. Open cloud registration and a launch date are not available or verified
+by this documentation. Paid plans and billing are a later stage. Self-hosting still
+requires your own infrastructure and provider configuration; those can incur costs.
+
+The cloud plan preserves human execution approvals and the separate authenticated
+confirmation of knowledge or skill admissions. Signing up never approves effects
+in connected systems. Product persistence and domain operations remain in SubKit;
+the hosted deployment implementation stays outside this repository.
+
+| Document | Purpose |
+| --- | --- |
+| [Product roadmap](docs/PRODUCT-ROADMAP.md) | Cloud requirements, dependencies, opening criteria and pending decisions |
+| [Product tasks](docs/TODO.md) | Ordered implementation increments and outstanding verification |
+| [Launch status](LAUNCH_STATUS.md) | Existing self-hosting launch status and evidence boundaries |
+| [Website tasks](WEBSITE-TODO.md) | Website work and operational handoff |
+| [Lovable briefing](docs/lovable-website-briefing.md) / [setup](docs/lovable-setup.md) | Binding product/design decisions and existing project workflow |
+| [BrowserStack](docs/browserstack.md) / [test strategy](docs/browserstack-teststrategie.md) | Planned supplementary browser coverage, prerequisites and acceptance scenarios |
+
+These planning documents do not replace the generated API, CLI or settings
+references. The installation instructions below describe self-hosting; they do not
+provision a cloud account.
 
 ## Run the engine
 

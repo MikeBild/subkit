@@ -3,7 +3,7 @@
     {
       "path": "setup.md",
       "title": "sk",
-      "summary": "sk is a self-hosted engine for governed workflows: describe the work in plain language, approve what it may touch, and every run is recorded."
+      "summary": "sk is a self-hostable engine for governed workflows: describe the work in plain language, approve what it may touch, and every run is recorded."
     },
     {
       "path": "coding-agents.md",

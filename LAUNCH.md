@@ -23,7 +23,13 @@ Ausführungen nachvollziehen. KI-Unterstützung ersetzt keine Ausführungsfreiga
 - Öffentliche, extern installierbare Beta: 27./28.10.2026.
 - General Availability (GA): möglichst bis 15.11.2026; früher, sobald alle Gates erfüllt sind.
 - Veröffentlichung hat Vorrang vor neuen Features, Refactorings und Architekturarbeit.
-- Kostenloses Self-Hosting, kein SaaS, kein Checkout und kein kostenpflichtiges B2C-Angebot.
+- Kostenloses Self-Hosting bleibt bestehen. Nutzerentscheidung vom 19.10.2026 ergänzt
+  eine geplante kostenlose begrenzte Cloud-Self-Service-Beta. Die frühere Entscheidung
+  „kein SaaS“ ist als Produktziel abgelöst; Checkout und bezahlte Tarife folgen später.
+  [Produktroadmap](docs/PRODUCT-ROADMAP.md) und [Produktaufgaben](docs/TODO.md) führen
+  den zusätzlichen Pfad. Dieser Dokumentationsauftrag eröffnet keine Registrierung.
+- Die obigen Beta-/GA-Termine gelten für den vorhandenen Self-Hosting-Launchplan;
+  daraus folgt kein Cloud-Termin und kein gemeinsamer Go für beide Betriebsformen.
 - SubKit-Website in Lovable vorbereiten, vollständig Deutsch und Englisch; aktuelle Nutzerentscheidungen und Designzuständigkeit in WEBSITE-TODO.md beachten. Frühere Framer-Aufträge sind abgelöst. Quellrepository nach Prüfung öffentlich machen.
 - Clipper einschließlich späterer öffentlicher Chrome-Web-Store-Version gehört zum Launch.
 - Praktisch getestete Installation, menschliche Freigaben und Release-Gates sind zwingend.
@@ -76,8 +82,11 @@ Dokumentation, öffentliche Store-Installation, finale Produktabnahme und Suppor
 
 ### Nicht-Ziele
 
-Neue Connectoren, Slack-/Teams-Adapter, SaaS, Abrechnung, Marketplace, Kubernetes,
-zusätzliche Engine-Architekturen und Produkt-UI-Redesign sind P2. Lovable ist durch die
+Neue Connectoren, Slack-/Teams-Adapter, Abrechnung, Marketplace, Kubernetes,
+zusätzliche Engine-Architekturen und Produkt-UI-Redesign bleiben außerhalb dieses
+Self-Hosting-Launchpfads. Cloud-Self-Service wird separat nach der Produktroadmap
+vorbereitet; seine Planung ist keine implizite Produktimplementierung oder Änderung
+der L-Aufgaben und ihrer Release-Gates. Lovable ist durch die
 Nutzerentscheidung für die öffentliche SubKit-Website im Launch-Scope.
 Vorhandene Roadmap-Issues werden nicht automatisch Launch-Blocker. Das ältere GitHub-Issue
 #318 zur ChatGPT-Katalogauffindbarkeit wird nur anhand eines aktuellen Pflichtpfads bewertet;
@@ -343,7 +352,8 @@ Konkrete Hosts und private Infrastruktur bleiben außerhalb dieser Dateien.
 | Recht/Lizenzen | Freigegebenes Impressum, Datenschutzhinweise und erforderliche Drittanbieterhinweise |
 
 Technische Dokumentation bleibt aus README/Code und bestehenden Generatoren abgeleitet;
-keine zweite unabhängig gepflegte technische Dokumentationsstruktur. Website verlinkt oder
+keine zweite unabhängig gepflegte API-/CLI-/Settings-Referenz. docs/ enthält die
+beauftragte Produktroadmap, Aufgaben, Teststrategie und Lovable-Übergabe. Website verlinkt oder
 übernimmt versioniert diese Inhalte. Neue Produktseiten erhalten kein zusätzliches Tracking;
 bestehende Dienste dennoch inventarisieren. Manuelle Sichtabnahme und funktionale Link-/Downloadtests.
 
@@ -583,6 +593,10 @@ Official sources checked during preparation:
 
 ## Website-Inhaltsentwurf für den bestehenden Produktbereich
 
+Historischer Inhaltsentwurf: aktuelle Produkt-/Designentscheidungen stehen im
+[Lovable-Briefing](docs/lovable-website-briefing.md). Diesen Abschnitt nicht als
+aktuellen Auftrag oder Cloud-Verfügbarkeitsaussage übernehmen.
+
 Status: redaktioneller Entwurf, nicht veröffentlicht. Zielquelle nach Review:
 `MikeBild/mikebild-dev-content`, `content/site/projects/subkit.md`.
 Der gelesene main-Baum enthält noch keine SubKit-Projektseite. Keine vorhandene Seite
@@ -780,7 +794,7 @@ setzen die vollständige L12-Abnahme voraus.
 
 ## Historisches Framer-Arbeitspaket
 
-Abgelöst durch WEBSITE-TODO.md; die folgenden alten Aufträge nicht ausführen.
+Abgelöst durch WEBSITE-TODO.md und docs/lovable-website-briefing.md; die folgenden alten Aufträge nicht ausführen.
 
 ### Redaktioneller Stand und Verwendung
 
