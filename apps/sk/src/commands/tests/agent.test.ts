@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
 import {
   existsSync,
   mkdirSync,
@@ -10,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { runCommand } from "citty";
 import {
   AGENT_FILE_RELPATH,
@@ -30,6 +31,20 @@ import {
   wireClaudeHooks,
   wireCodexHooks,
 } from "../agent.ts";
+
+const fileExists = fs.existsSync;
+const fixtureDirectory = `${resolve(tmpdir())}${sep}`;
+const inheritedDeclarations = spyOn(fs, "existsSync").mockImplementation((path) => {
+  if (
+    typeof path === "string" &&
+    path.endsWith(AGENT_FILE_RELPATH) &&
+    !resolve(path).startsWith(fixtureDirectory)
+  )
+    return false;
+  return fileExists(path);
+});
+
+afterAll(() => inheritedDeclarations.mockRestore());
 
 describe("findAgentFile", () => {
   test("walks up from a nested cwd to the repo-root declaration", () => {
