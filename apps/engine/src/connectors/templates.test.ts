@@ -23,6 +23,10 @@ describe("connector-template catalog — structural", () => {
       ttl_seconds: 300,
     });
     expect(template?.oauth).toBeNull();
+    expect(template?.ingestion_source).toBe("openapi");
+    expect(template?.ingestion_url).toBe(
+      "https://developer.apple.com/sample-code/app-store-connect/app-store-connect-openapi-specification.zip",
+    );
   });
 
   test("supabase-graphql url_pattern matches a real host, not the literal [^/]+", () => {

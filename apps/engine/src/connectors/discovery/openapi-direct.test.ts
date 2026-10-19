@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { normalizeKnownHosts, openApiDirectStrategy } from "./openapi-direct.ts";
 import { DiscoveryError } from "./types.ts";
@@ -12,6 +16,69 @@ beforeEach(() => {
 function seamTest(name: string, body: () => Promise<void>) {
   test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }
+
+function specArchive(files: Record<string, string>): ArrayBuffer {
+  const dir = mkdtempSync(join(tmpdir(), "openapi-archive-"));
+  try {
+    for (const [name, content] of Object.entries(files)) {
+      const path = join(dir, name);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, content);
+    }
+    execFileSync("zip", ["-qr", "archive.zip", ...Object.keys(files)], { cwd: dir });
+    return new Uint8Array(readFileSync(join(dir, "archive.zip"))).buffer;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe("OpenAPI archives", () => {
+  const spec = JSON.stringify({
+    openapi: "3.0.3",
+    info: { title: "Archived API", version: "1" },
+    paths: { "/apps": { get: { responses: { "200": { description: "OK" } } } } },
+  });
+
+  seamTest("reads a nested JSON specification and ignores archive metadata", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(specArchive({ "api/openapi.json": spec, "__MACOSX/._api.json": "junk" })),
+    );
+    const result = await openApiDirectStrategy.fetch("https://api.example.com/spec.zip", {});
+    expect(result.endpoints.map((endpoint) => endpoint.path)).toEqual(["/apps"]);
+  });
+
+  seamTest("uses the archived YAML filename to select the parser", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(
+        specArchive({
+          "api.yaml":
+            'openapi: 3.0.3\ninfo:\n  title: YAML API\n  version: "1"\npaths:\n  /apps:\n    get:\n      responses:\n        "200":\n          description: OK\n',
+        }),
+      ),
+    );
+    const result = await openApiDirectStrategy.fetch("https://api.example.com/spec.zip", {});
+    expect(result.endpoints.map((endpoint) => endpoint.path)).toEqual(["/apps"]);
+  });
+
+  seamTest(
+    "rejects ambiguous archives instead of selecting an arbitrary specification",
+    async () => {
+      fetchSpy.mockResolvedValue(new Response(specArchive({ "one.json": spec, "two.json": spec })));
+      await expect(
+        openApiDirectStrategy.fetch("https://api.example.com/spec.zip", {}),
+      ).rejects.toMatchObject({ code: "parse_failed" });
+    },
+  );
+
+  seamTest("bounds decompressed specification size", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(specArchive({ "large.json": " ".repeat(16 * 1024 * 1024 + 1) })),
+    );
+    await expect(
+      openApiDirectStrategy.fetch("https://api.example.com/spec.zip", {}),
+    ).rejects.toMatchObject({ code: "spec_too_large" });
+  });
+});
 
 const STRIPE_LIKE_OPENAPI_3 = {
   openapi: "3.0.3",
