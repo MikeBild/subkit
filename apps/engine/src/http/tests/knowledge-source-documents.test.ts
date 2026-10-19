@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { issueBrowserSession } from "../../auth/browser-session.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import {
@@ -247,11 +247,11 @@ describe("POST /v1/knowledge-sources/{id}/documents", () => {
           eq(fileLinks.resource_id, created.knowledge_source.id),
         ),
       );
-    expect(links).toHaveLength(1);
-    expect(source?.file_id).toBe(links[0]?.file_id);
+    expect(links).toHaveLength(2);
+    expect(links.some((link) => link.file_id === source?.file_id)).toBe(true);
   });
 
-  test("replaces a historical stale file link when the source is edited again", async () => {
+  test("retains a historical source link and restores the current link on a later edit", async () => {
     const created = await createBundle("Historical links", [
       { path: "historical/seed.md", content: "# Historical source" },
     ]);
@@ -270,7 +270,11 @@ describe("POST /v1/knowledge-sources/{id}/documents", () => {
     });
     expect(first.status).toBe(201);
     const firstVersion = (await first.json()) as { version: string };
-    await srv.db.update(fileLinks).set({ file_id: original!.file_id }).where(linkScope);
+    await srv.db.delete(fileLinks).where(and(linkScope, ne(fileLinks.id, original!.id)));
+    await srv.db
+      .update(fileLinks)
+      .set({ slug: "historical-links" })
+      .where(and(linkScope, eq(fileLinks.id, original!.id)));
     const second = await call("POST", `/v1/knowledge-sources/${sourceId}/documents`, {
       expected_version: firstVersion.version,
       path: "historical/repaired.md",
@@ -282,9 +286,9 @@ describe("POST /v1/knowledge-sources/{id}/documents", () => {
       .from(knowledgeSources)
       .where(and(eq(knowledgeSources.tenant_id, srv.tenantId), eq(knowledgeSources.id, sourceId)));
     const links = await srv.db.select().from(fileLinks).where(linkScope);
-    expect(links).toHaveLength(1);
-    expect(source?.file_id).toBe(links[0]?.file_id);
-    expect(links[0]?.file_id).not.toBe(original?.file_id);
+    expect(links).toHaveLength(2);
+    expect(links.some((link) => link.file_id === source?.file_id)).toBe(true);
+    expect(links.find((link) => link.file_id === original?.file_id)?.slug).toBe("historical-links");
     expect((await readContent(sourceId)).documents).toHaveLength(3);
   });
 
