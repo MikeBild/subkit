@@ -21,7 +21,7 @@ Eine angemeldete Person kann **mehrere eigenständig benannte Cockpit-PWAs** ins
 4. **Browsergrenzen nachweisen:** Installierbarkeit und getrennte App-Identitäten auf unterstützten Browsern testen (insbesondere Chrome/Edge Desktop, Safari/macOS nach unterstütztem Verhalten). Unterschiedliche Manifest-IDs garantieren nicht in jedem Browser voneinander unabhängige Cookie-Jars. Wenn echte gleichzeitige Isolation innerhalb eines Origins nicht erreichbar ist, diese Beschränkung zeigen und die UX entsprechend gestalten statt Isolierung zu behaupten.
 5. **Navigation:** `start_url`, Manifest-Auslieferung und `scope` auf das bestehende Cockpit-Routing abstimmen; jeder Deep Link erhält den Installationskontext. Abmeldung, Sessionablauf, Mitgliedschaftswechsel, expliziter Ausstieg aus dem fest gebundenen Mandanten und neue Logins sind definiert. Nicht installierte Browser-Tabs behalten das gewohnte Wechselverhalten.
 6. **Sicherheit und Cache:** Manifest-API darf Mandantennamen nur gegenüber Berechtigten ausgeben und braucht passende `Cache-Control`-/Auth-Regeln; keine privaten API-Antworten offline cachen. Service Worker nur bei belegtem Bedarf, mit strengem Cache-Scope, Versionswechsel und Löschstrategie. HTTPS-Voraussetzung, CSP, Icon- und Manifest-Content-Type prüfen.
-7. **UI-/Designhoheit:** Der Installationsdialog wird nach dem bestehenden Cockpit-Muster und einer konkret geprüften Lovable-Vorlage gebaut (siehe `AGENTS.md`). Kein eigenständig gestalteter neuer Screen.
+7. **UI-/Designhoheit:** Der Installationsdialog wird nach dem bestehenden Cockpit-Muster und den vorhandenen SubKit-Entwürfen in Superdesign (superdesign.dev) sowie `.superdesign/design-system.md` gebaut (siehe `AGENTS.md`). Kein eigenständig gestalteter neuer Screen.
 
 ## Vorgeschlagene Lieferung in kleinen PRs
 
@@ -38,6 +38,10 @@ Eine angemeldete Person kann **mehrere eigenständig benannte Cockpit-PWAs** ins
 - [ ] API-Key-/MCP-Zugriffe bleiben unverändert und erhalten durch Installations-IDs keine zusätzlichen Rechte.
 - [ ] Browserkompatibilität und PWA-Installationsbedingungen real nachgewiesen und Einschränkungen dokumentiert.
 - [ ] Tests, CSP-/Cache-/Auth-Review und menschliche Sichtabnahme bestanden; kein bestehendes Approval-Gate geändert.
+
+## Design-Quelle
+
+Für **SubKit-Cockpit** ist **Superdesign (superdesign.dev)** die vom Nutzer gewählte Designquelle, nicht Lovable. Bestehende SubKit-Entwürfe dort zuerst prüfen; Referenz im Repository: `.superdesign/design-system.md`. Direkter Zugriff auf den privaten Superdesign-Workspace ist in dieser Sitzung nicht verifiziert; keine Designfreigabe behaupten. Die ältere Lovable-Vorgabe in `AGENTS.md` muss vor UI-Implementierung durch eine abgestimmte Repo-Anweisung aktualisiert werden.
 
 ## Verweise
 
