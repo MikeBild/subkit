@@ -42,6 +42,14 @@ import { projectTurnEnvelopeForClient } from "./turn-projection.ts";
 
 export const CONVERSATION_TOOL_PREFIX = "conversation_";
 
+const conversationToolNames = new Set<string>();
+
+export function isConversationToolName(name: string): boolean {
+  if (name.startsWith(CONVERSATION_TOOL_PREFIX)) return true;
+  if (!conversationToolNames.has(name)) listConversationTools();
+  return conversationToolNames.has(name);
+}
+
 const StartArgs = z.object({
   connector_id: z.string().optional(),
   workflow_id: z.string().optional(),
@@ -73,7 +81,7 @@ function jsonSchema(schema: z.ZodTypeAny): Tool["inputSchema"] {
 }
 
 export function listConversationTools(): Tool[] {
-  return [
+  const tools: Tool[] = [
     {
       name: "conversation_start",
       title: "Start conversation",
@@ -127,6 +135,8 @@ export function listConversationTools(): Tool[] {
       execution: { taskSupport: "forbidden" },
     },
   ];
+  for (const tool of tools) conversationToolNames.add(tool.name);
+  return tools;
 }
 
 export interface HandleConversationToolParams {

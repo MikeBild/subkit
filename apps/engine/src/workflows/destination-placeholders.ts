@@ -26,7 +26,7 @@ interface PlaceholderHit {
   match: string;
 }
 
-const TOKEN_RE = /\b(?:REPLACE_ME|CHANGE_ME|TODO|FIXME|TBD)\b/g;
+const TOKEN_RE = /\b(?:REPLACE_ME|CHANGE_ME|TODO|FIXME|TBD)\b(?!\.(?:md|markdown|txt|rst)\b)/g;
 const DESTINATION_NAME = "recipient|email|address|channel|webhook|url|your[_-][a-z0-9_-]+";
 const ANGLE_PLACEHOLDER_RE = new RegExp(`<(?:${DESTINATION_NAME})>`, "gi");
 const MUSTACHE_RE = new RegExp(`\\{\\{\\s*(?:${DESTINATION_NAME})\\s*\\}\\}`, "gi");

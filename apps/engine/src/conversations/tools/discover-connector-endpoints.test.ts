@@ -309,6 +309,38 @@ describe("discover_connector_endpoints — force_refresh", () => {
 });
 
 describe("discover_connector_endpoints — connector_id resolution", () => {
+  test("uses the bound template's spec instead of the API root", async () => {
+    const connector = await createConnector(
+      {
+        tenant_id,
+        actor_id: null,
+        input: {
+          slug: "github-bound",
+          name: "GitHub Bound",
+          driver: "http",
+          environment: "dev",
+          base_url: "https://api.github.com",
+          auth_type: "none",
+          template_slug: "github",
+        },
+      },
+      ctx.db,
+    );
+    const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
+      SAMPLE_RESULT,
+    );
+    try {
+      const r = await discoverConnectorEndpointsTool.execute(makeCtx(), {
+        connector_id: connector.id,
+        force_refresh: false,
+      });
+      expect(r.ok).toBe(true);
+      expect(spy.mock.calls[0]?.[0]).toMatchObject({ template_id: "github" });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test("resolves the connector's stored base_url and discovers against it", async () => {
     const connector = await createConnector(
       {
