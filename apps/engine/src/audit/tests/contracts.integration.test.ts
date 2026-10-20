@@ -446,6 +446,24 @@ describe("request-source attribution", () => {
     expect(projected.api_key_id).toBeNull();
     expect(projected.recorded_api_key_id).toBe(recordedKeyId);
   });
+
+  test("API-key use receipts remain searchable by their resource ID", async () => {
+    const apiKeyId = uuid();
+    const receipt = await auditAwait(
+      {
+        tenant_id: tenantA,
+        action: AuditAction.API_KEY_USED,
+        resource_type: "api_key",
+        resource_id: apiKeyId,
+        metadata: { sampled: true },
+      },
+      testDb.db,
+    );
+    const found = await queryAuditLog(testDb.db, { tenant_id: tenantA, api_key_id: apiKeyId });
+    expect(found.items.map((item) => item.id)).toContain(receipt.id);
+    const foreign = await queryAuditLog(testDb.db, { tenant_id: tenantB, api_key_id: apiKeyId });
+    expect(foreign.items.map((item) => item.id)).not.toContain(receipt.id);
+  });
 });
 
 describe("query filter coverage", () => {

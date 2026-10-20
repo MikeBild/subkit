@@ -7,7 +7,7 @@ import { ApiError, apiRequest } from "@/api/client";
 import { listIntakeClips } from "@/api/intake";
 import { loadKnowledgeChunks } from "@/api/knowledge";
 import type { components } from "@/api/schema";
-import { absolute, chatNewHref, recordHref, workflowHref } from "@/app/links";
+import { absolute, chatNewHref, recordHref, uuidParam, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
 import {
@@ -142,7 +142,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
-  const selectedId = new URLSearchParams(searchStr).get("item");
+  const selectedId = uuidParam(new URLSearchParams(searchStr), "item");
   const canRead = permissions.includes("knowledge:read");
   const canWrite = permissions.includes("knowledge:write");
   const canChat = permissions.includes("conversation:write");

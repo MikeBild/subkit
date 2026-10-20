@@ -8,7 +8,7 @@ import { listProposedSkillCandidates, type SkillCandidate } from "@/api/decision
 import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
 import { type ActorDirectory, actorLabel } from "@/app/actor-directory-model";
-import { absolute, chatNewHref, recordHref } from "@/app/links";
+import { absolute, chatNewHref, recordHref, uuidParam } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
 import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
@@ -119,7 +119,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
-  const selectedId = new URLSearchParams(searchStr).get("item");
+  const selectedId = uuidParam(new URLSearchParams(searchStr), "item");
   const client = useQueryClient();
   const live = useLiveQueryOptions();
   const canRead = permissions.includes("skill:read");

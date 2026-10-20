@@ -2,6 +2,7 @@ import {
   WORKFLOW_OPERATING_STATUSES,
   type WorkflowOperatingStatus,
 } from "@shared/workflow-operating-status.ts";
+import { uuidParam } from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
 import type { ListParams } from "@/lib/use-infinite-list";
 
@@ -43,10 +44,7 @@ export function catalogListParams(resource: string, state: CatalogQueryState): L
 export type RecordValue = Record<string, unknown>;
 
 export function catalogSelectedId(search: string): string | null {
-  const id = new URLSearchParams(search).get("selected");
-  return id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-    ? id
-    : null;
+  return uuidParam(new URLSearchParams(search), "selected");
 }
 
 export function catalogSelectionHref(path: string, search: string, id: string | null): string {

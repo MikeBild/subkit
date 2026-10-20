@@ -93,7 +93,7 @@ function buildWhere(filters: AuditQueryFilters, before?: AuditKeysetCursor) {
   if (filters.actor_type) tenantConds.push(eq(auditLog.actor_type, filters.actor_type));
   if (filters.api_key_id) {
     tenantConds.push(
-      sql`(${auditLog.metadata}->>'audit_used_api_key_id' = ${filters.api_key_id} OR (${auditLog.metadata}->>'audit_access_type' IS NULL AND ${auditLog.metadata}->>'api_key_id' = ${filters.api_key_id}))`,
+      sql`(${auditLog.metadata}->>'audit_used_api_key_id' = ${filters.api_key_id} OR (${auditLog.metadata}->>'audit_access_type' IS NULL AND ${auditLog.metadata}->>'api_key_id' = ${filters.api_key_id}) OR (${auditLog.action} = 'api_key.used' AND ${auditLog.resource_type} = 'api_key' AND ${auditLog.resource_id} = ${filters.api_key_id}))`,
     );
   }
   if (filters.session_id) {

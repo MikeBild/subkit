@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { _drainAuditWritesForTests } from "../../../audit/audit.ts";
+import { queryAuditLog, serializeAuditEntry } from "../../../audit/query.ts";
 import type { Db } from "../../../db/client.ts";
 import { apiKeys, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../../db/tests/setup.ts";
@@ -8,6 +10,7 @@ import { logger } from "../../../logging/logger.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
 import { createApiKeyProvider } from "../api-key.ts";
+import { resetApiKeyUsageThrottle } from "../api-key-row.ts";
 
 let testDb: TestDb;
 let db: Db;
@@ -65,6 +68,21 @@ function bearerReq(token: string): Request {
 }
 
 describe("api-key provider — negative paths", () => {
+  test("first authenticated request records a filterable verified key use", async () => {
+    const key = await seedKey({});
+    resetApiKeyUsageThrottle();
+    const provider = createApiKeyProvider({ db });
+    expect(await provider.resolve(bearerReq(key.plaintext))).not.toBeNull();
+    await _drainAuditWritesForTests(db);
+    const receipts = await queryAuditLog(db, {
+      tenant_id: tenantId,
+      api_key_id: key.id,
+      actions: ["api_key.used"],
+    });
+    expect(receipts.items).toHaveLength(1);
+    expect(serializeAuditEntry(receipts.items[0]!).api_key_id).toBe(key.id);
+  });
+
   test("malformed token (wrong prefix) returns null without DB hit", async () => {
     const provider = createApiKeyProvider({ db });
     const req = bearerReq("not_a_subkit_key");
