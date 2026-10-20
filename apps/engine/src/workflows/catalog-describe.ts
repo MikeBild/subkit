@@ -7,7 +7,7 @@ import {
 } from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
-import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
+import { CatalogVocabularyBusyError, lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import {
   catalogCategories,
@@ -20,6 +20,7 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
+import { retryTransient } from "../db/transient.ts";
 import { type FileRow, resolvedFromRow } from "../files/resolver.ts";
 import {
   type CatalogDescribeInput,
@@ -610,7 +611,7 @@ export async function describePendingCategoryPurposes(
     )
     .limit(limit);
   for (const snapshot of pending) {
-    const claimed = await db.transaction(async (tx) => {
+    const claimedAt = await db.transaction(async (tx) => {
       await lockCatalogVocabulary(tx, tenant_id);
       const rows = await tx
         .update(catalogCategories)
@@ -627,10 +628,10 @@ export async function describePendingCategoryPurposes(
             ),
           ),
         )
-        .returning({ name: catalogCategories.name });
-      return rows.length > 0;
+        .returning({ attempted_at: sql<string>`${catalogCategories.purpose_attempted_at}::text` });
+      return rows[0]?.attempted_at ?? null;
     });
-    if (!claimed) continue;
+    if (!claimedAt) continue;
     let purpose: string | null;
     try {
       purpose = await generate(tenant_id, snapshot.name, snapshot.aliases, db);
@@ -645,42 +646,83 @@ export async function describePendingCategoryPurposes(
       continue;
     }
     if (!purpose) continue;
-    await db.transaction(async (tx) => {
-      await lockCatalogVocabulary(tx, tenant_id);
-      const [updated] = await tx
-        .update(catalogCategories)
-        .set({
-          purpose,
-          purpose_source: "llm",
-          purpose_pending: false,
-          revision: sql`${catalogCategories.revision} + 1`,
-          updated_at: sql`now()`,
-        })
-        .where(
-          and(
-            eq(catalogCategories.tenant_id, tenant_id),
-            eq(catalogCategories.name, snapshot.name),
-            eq(catalogCategories.revision, snapshot.revision),
-            eq(catalogCategories.purpose_pending, true),
-            isNull(catalogCategories.purpose),
-            isNull(catalogCategories.redirect_to),
-          ),
-        )
-        .returning({ name: catalogCategories.name });
-      if (!updated) return;
-      await auditAwait(
+    try {
+      await retryTransient(
+        () =>
+          db.transaction(async (tx) => {
+            await lockCatalogVocabulary(tx, tenant_id);
+            const [updated] = await tx
+              .update(catalogCategories)
+              .set({
+                purpose,
+                purpose_source: "llm",
+                purpose_pending: false,
+                revision: sql`${catalogCategories.revision} + 1`,
+                updated_at: sql`now()`,
+              })
+              .where(
+                and(
+                  eq(catalogCategories.tenant_id, tenant_id),
+                  eq(catalogCategories.name, snapshot.name),
+                  eq(catalogCategories.revision, snapshot.revision),
+                  eq(catalogCategories.purpose_pending, true),
+                  isNull(catalogCategories.purpose),
+                  isNull(catalogCategories.redirect_to),
+                ),
+              )
+              .returning({ name: catalogCategories.name });
+            if (!updated) return;
+            await auditAwait(
+              {
+                tenant_id,
+                actor_type: "system",
+                actor_id: null,
+                action: AuditAction.CATALOG_METADATA_GENERATED,
+                resource_type: "catalog_category",
+                resource_id: snapshot.name,
+                result: "success",
+                after: { purpose, purpose_source: "llm" },
+              },
+              tx,
+            );
+          }),
         {
-          tenant_id,
-          actor_type: "system",
-          actor_id: null,
-          action: AuditAction.CATALOG_METADATA_GENERATED,
-          resource_type: "catalog_category",
-          resource_id: snapshot.name,
-          result: "success",
-          after: { purpose, purpose_source: "llm" },
+          tries: 5,
+          startMs: 25,
+          maxMs: 200,
+          label: "category_purpose_catalog",
+          shouldRetry: (error) => error instanceof CatalogVocabularyBusyError,
         },
-        tx,
       );
-    });
+    } catch (error) {
+      await retryTransient(
+        () =>
+          db.transaction(async (tx) => {
+            await lockCatalogVocabulary(tx, tenant_id);
+            await tx
+              .update(catalogCategories)
+              .set({ purpose_attempted_at: null })
+              .where(
+                and(
+                  eq(catalogCategories.tenant_id, tenant_id),
+                  eq(catalogCategories.name, snapshot.name),
+                  eq(catalogCategories.revision, snapshot.revision),
+                  eq(catalogCategories.purpose_pending, true),
+                  isNull(catalogCategories.purpose),
+                  isNull(catalogCategories.redirect_to),
+                  eq(catalogCategories.purpose_attempted_at, sql`${claimedAt}::timestamptz`),
+                ),
+              );
+          }),
+        {
+          tries: 5,
+          startMs: 25,
+          maxMs: 200,
+          label: "category_purpose_release",
+          shouldRetry: (retryError) => retryError instanceof CatalogVocabularyBusyError,
+        },
+      );
+      throw error;
+    }
   }
 }
