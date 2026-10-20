@@ -13,6 +13,8 @@ export const TenantBrandingLogoOperationSchema = z.discriminatedUnion("operation
     .strict(),
 ]);
 
+export const TenantBrandingAppIconOperationSchema = TenantBrandingLogoOperationSchema;
+
 export const TenantBrandingUpdateSchema = z
   .object({
     revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
@@ -22,6 +24,7 @@ export const TenantBrandingUpdateSchema = z
     logos: z
       .object({ light: TenantBrandingLogoOperationSchema, dark: TenantBrandingLogoOperationSchema })
       .strict(),
+    app_icon: TenantBrandingAppIconOperationSchema.optional(),
   })
   .strict();
 
@@ -46,6 +49,8 @@ export const TenantBrandingResponseSchema = z.object({
   palette: z.enum(["standard", "indigo", "teal"]).nullable(),
   logos: z.object({ light: z.boolean(), dark: z.boolean() }),
   logo_urls: z.object({ light: z.string().nullable(), dark: z.string().nullable() }),
+  app_icon: z.boolean(),
+  app_icon_urls: z.object({ icon_192: z.string().nullable(), icon_512: z.string().nullable() }),
 });
 
 export function tenantBrandingResponse(value: TenantBrandingValue, tenantId: string) {
@@ -56,6 +61,10 @@ export function tenantBrandingResponse(value: TenantBrandingValue, tenantId: str
     logo_urls: {
       light: available ? `/v1/tenant/branding/logo?theme=light&${query}` : null,
       dark: available ? `/v1/tenant/branding/logo?theme=dark&${query}` : null,
+    },
+    app_icon_urls: {
+      icon_192: value.app_icon ? `/v1/tenant/branding/icon?size=192&${query}` : null,
+      icon_512: value.app_icon ? `/v1/tenant/branding/icon?size=512&${query}` : null,
     },
   };
 }

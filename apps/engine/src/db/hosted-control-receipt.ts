@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 
 export function hostedControlReceiptId(
   tenantId: string,
-  resourceType: "execution" | "mcp_task" | "hosted_storage_object",
+  resourceType:
+    | "execution"
+    | "mcp_task"
+    | "hosted_storage_object"
+    | "session"
+    | "cockpit_installation",
   resourceId: string,
 ): string {
   const digest = createHash("sha256")

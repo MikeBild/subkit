@@ -3,6 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import {
   BrandingImageError,
   readTenantBranding,
+  readTenantBrandingAppIcon,
   readTenantBrandingLogo,
   resetTenantBranding,
   TenantBrandingConflictError,
@@ -20,6 +21,7 @@ export const TenantBrandingUpdate = TenantBrandingUpdateSchema.openapi("TenantBr
 export const TenantBrandingResponse =
   TenantBrandingResponseSchema.openapi("TenantBrandingResponse");
 const resetSchema = TenantBrandingResetSchema;
+const iconSizeSchema = z.coerce.number().pipe(z.union([z.literal(192), z.literal(512)]));
 
 export function registerTenantBrandingRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openAPIRegistry.registerPath({
@@ -42,6 +44,29 @@ export function registerTenantBrandingRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       401: { description: "Authentication required" },
       404: { description: "Logo unavailable for this workspace, theme or revision" },
+      409: { description: "Browser workspace context changed" },
+    },
+  });
+  app.openAPIRegistry.registerPath({
+    method: "get",
+    path: "/v1/tenant/branding/icon",
+    operationId: "getTenantBrandingAppIcon",
+    tags: ["identity"],
+    security: [{ bearerAuth: [] }, { browserSession: [] }],
+    request: {
+      query: z.object({
+        size: iconSizeSchema,
+        revision: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+        tenant_context: z.string().uuid().optional(),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Normalized app icon for the current workspace and revision",
+        content: { "image/png": { schema: z.string().openapi({ format: "binary" }) } },
+      },
+      401: { description: "Authentication required" },
+      404: { description: "App icon unavailable for this workspace or revision" },
       409: { description: "Browser workspace context changed" },
     },
   });
@@ -175,6 +200,31 @@ export function registerTenantBrandingRoutes(app: OpenAPIHono<AppEnv>): void {
     );
     if (!logo) return c.notFound();
     return new Response(Buffer.from(logo), {
+      headers: {
+        "content-type": "image/png",
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  });
+  app.get("/v1/tenant/branding/icon", async (c) => {
+    const principal = requireAuth(c);
+    const size = Number(c.req.query("size"));
+    const revision = Number(c.req.query("revision"));
+    const context = c.req.query("tenant_context");
+    if (
+      (context !== undefined && context !== principal.tenant_id) ||
+      (size !== 192 && size !== 512) ||
+      !Number.isSafeInteger(revision) ||
+      revision < 0
+    )
+      return c.notFound();
+    const icon = await readTenantBrandingAppIcon(
+      { tenant_id: principal.tenant_id, revision, size },
+      c.get("db"),
+    );
+    if (!icon) return c.notFound();
+    return new Response(Buffer.from(icon), {
       headers: {
         "content-type": "image/png",
         "cache-control": "private, no-store",

@@ -35,6 +35,8 @@ export const CHAT_ROUTES = ["/chat", "/chat/new", "/chat/$conversationId"] as co
 
 export const INTAKE_ROUTES = ["/intake"] as const;
 
+export const INSTALLATION_ROUTES = ["/incoming/files"] as const;
+
 export const CATALOG_RESOURCES = [
   "workflows",
   "connectors",
@@ -51,5 +53,6 @@ export const ALL_ROUTE_PATHS: readonly string[] = [
   ...PAGE_ROUTES,
   ...CHAT_ROUTES,
   ...INTAKE_ROUTES,
+  ...INSTALLATION_ROUTES,
   ...CATALOG_RESOURCES.flatMap((resource) => [`/${resource}`, `/${resource}/$resourceId`]),
 ];

@@ -51,6 +51,7 @@ function update(revision: number) {
       },
       dark: { operation: "keep" },
     },
+    app_icon: { operation: "keep" },
   };
 }
 

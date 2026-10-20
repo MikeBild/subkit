@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
-import { signLoginState } from "../../auth/index.ts";
+import { cockpitInstallationIdFromPath, signLoginState } from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { completeApprovalBackedElicitation } from "../../conversations/index.ts";
 import type { Db } from "../../db/client.ts";
@@ -112,11 +112,25 @@ async function resolveApprovalApprover(
   return null;
 }
 
-async function redirectToSignIn(grant: string, publicBaseUrl: string): Promise<Response> {
-  const back = new URL(APPROVAL_PORTAL_PATH, publicBaseUrl);
+async function redirectToSignIn(
+  grant: string,
+  publicBaseUrl: string,
+  requestPath: string,
+): Promise<Response> {
+  const installationId = cockpitInstallationIdFromPath(requestPath);
+  const apiPrefix = installationId ? `/cockpit/i/${installationId}/api` : "";
+  const back = new URL(`${apiPrefix}${APPROVAL_PORTAL_PATH}`, publicBaseUrl);
   back.searchParams.set("grant", grant);
-  const loginUrl = new URL("/v1/identity/login/start", publicBaseUrl);
-  loginUrl.searchParams.set("login_state", await signLoginState({ redirect_to: back.toString() }));
+  const loginUrl = new URL(
+    installationId ? `${apiPrefix}/v1/identity/cockpit-login` : "/v1/identity/login/start",
+    publicBaseUrl,
+  );
+  if (installationId) loginUrl.searchParams.set("return_to", `${back.pathname}${back.search}`);
+  else
+    loginUrl.searchParams.set(
+      "login_state",
+      await signLoginState({ redirect_to: back.toString() }),
+    );
   return Response.redirect(loginUrl.toString(), 302);
 }
 
@@ -145,7 +159,7 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const approver = await resolveApprovalApprover(c, db, view.tenant_id);
     if (!approver) {
-      return await redirectToSignIn(grant, publicBaseUrl());
+      return await redirectToSignIn(grant, publicBaseUrl(), c.req.path);
     }
 
     const csrfToken = await signCsrfToken(deriveSessionSecret(), {
@@ -153,7 +167,7 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
       grant_sha256: sha256Hex(grant),
     });
     return c.body(
-      buildApprovalDecisionHtml(view, grant, approver, csrfToken, look),
+      buildApprovalDecisionHtml(view, grant, approver, csrfToken, look, c.req.path),
       200,
       HTML_HEADERS,
     );
@@ -233,7 +247,14 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         return c.body(html, status, remembered);
       }
       return c.body(
-        buildApprovalDecisionHtml(view, grant, approver, form.get("csrf_token") ?? "", look),
+        buildApprovalDecisionHtml(
+          view,
+          grant,
+          approver,
+          form.get("csrf_token") ?? "",
+          look,
+          c.req.path,
+        ),
         200,
         remembered,
       );

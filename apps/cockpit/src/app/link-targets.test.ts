@@ -88,6 +88,67 @@ test("Übersicht and its review sheet resolve to the start page, spelled as the 
 
 const ENGINE_SRC = join(import.meta.dir, "..", "..", "..", "engine", "src");
 const ENGINE_NON_PAGES = new Set(["/cockpit/favicon.svg", "/cockpit/{path}"]);
+const COCKPIT_NON_PAGES = new Set(["/cockpit/i/", "/cockpit/app-icon-192.png"]);
+const INSTALLATION_SEGMENT =
+  "(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|:[A-Za-z_][A-Za-z0-9_]*|\\$\\{[^}]+\\})";
+const INSTALLATION_BASE = new RegExp(`^/cockpit/i/${INSTALLATION_SEGMENT}(?=/|$)`, "i");
+
+function stringLiterals(source: string): string[] {
+  const values: string[] = [];
+  for (let start = 0; start < source.length; start += 1) {
+    const quote = source[start];
+    if (quote !== '"' && quote !== "'" && quote !== "`") continue;
+    let value = "";
+    let interpolation = 0;
+    let escaped = false;
+    for (let index = start + 1; index < source.length; index += 1) {
+      const char = source[index]!;
+      if (escaped) {
+        value += char;
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        value += char;
+        escaped = true;
+        continue;
+      }
+      if (quote === "`" && char === "$" && source[index + 1] === "{") {
+        interpolation += 1;
+        value += "${";
+        index += 1;
+        continue;
+      }
+      if (quote === "`" && interpolation > 0) {
+        value += char;
+        if (char === "{") interpolation += 1;
+        if (char === "}") interpolation -= 1;
+        continue;
+      }
+      if (char === quote) {
+        values.push(value);
+        start = index;
+        break;
+      }
+      value += char;
+    }
+  }
+  return values;
+}
+
+function installationNonPage(value: string): boolean {
+  const path = value.split(/[?#]/)[0] ?? "";
+  if (!INSTALLATION_BASE.test(path)) return false;
+  const suffix = path.replace(INSTALLATION_BASE, "") || "/";
+  return (
+    /^\/api(?:\/|\$\{|$)/.test(suffix) ||
+    suffix === "/manifest.webmanifest" ||
+    /^\/icon\/(?:[^/]+)$/.test(suffix) ||
+    suffix === "/sw.js" ||
+    suffix === "/incoming/share" ||
+    suffix === "/*"
+  );
+}
 
 function engineCockpitAddresses(): { file: string; value: string }[] {
   const out: { file: string; value: string }[] = [];
@@ -98,12 +159,13 @@ function engineCockpitAddresses(): { file: string; value: string }[] {
         if (entry.name !== "tests") walk(full);
       } else if (/\.ts$/.test(entry.name) && !entry.name.includes(".test.")) {
         const text = readFileSync(full, "utf8");
-        for (const m of text.matchAll(/['"`}](\/cockpit(?![\w-])[^"'`\s]*)/g)) {
-          const value = m[1]!;
-          if (value.startsWith("/cockpit${")) continue;
-          out.push({ file: full, value });
+        for (const literal of stringLiterals(text)) {
+          if (literal.startsWith("/cockpit") && !literal.startsWith("/cockpit${"))
+            out.push({ file: full, value: literal });
+          const publicCockpit = /^\$\{[^}]+\}(\/cockpit[^\s]*)/.exec(literal)?.[1];
+          if (publicCockpit) out.push({ file: full, value: publicCockpit });
         }
-        for (const m of text.matchAll(/\bcockpitHref\(\s*"([^"]*)"/g))
+        for (const m of text.matchAll(/\bcockpitHref\(\s*["']([^"']*)/g))
           out.push({ file: full, value: `/cockpit${m[1]}` });
       }
     }
@@ -114,7 +176,8 @@ function engineCockpitAddresses(): { file: string; value: string }[] {
 
 function engineRoute(value: string): string {
   const path = value.split(/[?#]/)[0] ?? "";
-  const filled = path.replace(/\$\{[^}]*\}?/g, "x").replace(/^\/cockpit/, "") || "/";
+  const scoped = path.replace(INSTALLATION_BASE, "/cockpit");
+  const filled = scoped.replace(/\$\{[^}]*\}?/g, "x").replace(/^\/cockpit/, "") || "/";
   return filled.length > 1 ? filled.replace(/\/$/, "") : filled;
 }
 
@@ -129,10 +192,18 @@ test("every cockpit address the engine hands out resolves to one of the cockpit'
   ])
     expect(producers.has(known)).toBe(true);
   const dead = found
-    .filter((entry) => !ENGINE_NON_PAGES.has(entry.value))
+    .filter((entry) => !ENGINE_NON_PAGES.has(entry.value) && !installationNonPage(entry.value))
     .filter((entry) => !(entry.value === "/cockpit/" || resolves(engineRoute(entry.value))))
     .map((entry) => `${entry.file}: ${entry.value}`);
   expect(dead).toEqual([]);
+});
+
+test("scoped installation addresses retain the page contract", () => {
+  const id = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
+  expect(resolves(engineRoute(`/cockpit/i/${id}/files`))).toBe(true);
+  expect(resolves(engineRoute(`/cockpit/i/${id}/unknown`))).toBe(false);
+  expect(installationNonPage(`/cockpit/i/${id}/manifest.webmanifest`)).toBe(true);
+  expect(installationNonPage(`/cockpit/i/${id}/unknown`)).toBe(false);
 });
 
 test("the engine names no retired cockpit address", () => {
@@ -150,7 +221,7 @@ test("every address the cockpit builds resolves to one of its pages", () => {
       ...entry,
       route: routeOf(entry.router ? entry.value : entry.value.replace(/^\/cockpit/, "") || "/"),
     }))
-    .filter((entry) => !ROUTES.has(entry.route))
+    .filter((entry) => !COCKPIT_NON_PAGES.has(entry.value) && !ROUTES.has(entry.route))
     .map((entry) => `${entry.file}: ${entry.value} -> ${entry.route}`);
   expect(dead).toEqual([]);
 });

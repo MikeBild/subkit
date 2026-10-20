@@ -19,6 +19,16 @@ function normalizeSegments(path: string): string {
     .join("/");
 }
 
+function canonicalFacadePair(pair: string): string {
+  const firstSpace = pair.indexOf(" ");
+  const method = pair.slice(0, firstSpace);
+  const path = pair.slice(firstSpace + 1);
+  const prefix = "/cockpit/i/{param}/api";
+  return path === prefix || path.startsWith(`${prefix}/`)
+    ? `${method} ${path.slice(prefix.length) || "/"}`
+    : pair;
+}
+
 const EXCLUDED_ROUTES = new Set<string>([
   "GET /docs",
   "GET /openapi.json",
@@ -43,6 +53,17 @@ const EXCLUDED_ROUTES = new Set<string>([
 ]);
 
 const KNOWN_UNDOCUMENTED_ROUTES: string[] = [];
+
+const COCKPIT_WEB_SURFACE = new Set<string>([
+  "GET /cockpit/i/{param}",
+  "HEAD /cockpit/i/{param}",
+  "GET /cockpit/i/{param}/*",
+  "HEAD /cockpit/i/{param}/*",
+  "GET /cockpit/i/{param}/manifest.webmanifest",
+  "GET /cockpit/i/{param}/icon/{param}",
+  "GET /cockpit/i/{param}/sw.js",
+  "POST /cockpit/i/{param}/incoming/share",
+]);
 
 const MCP_AUTH_OPERATIONS = [
   "GET /.well-known/oauth-protected-resource",
@@ -138,7 +159,9 @@ describe("openapi route coverage", () => {
     const registeredPairs = new Set<string>();
     for (const route of app.routes) {
       if (route.method === "ALL") continue;
-      registeredPairs.add(`${route.method.toUpperCase()} ${normalizeSegments(route.path)}`);
+      registeredPairs.add(
+        canonicalFacadePair(`${route.method.toUpperCase()} ${normalizeSegments(route.path)}`),
+      );
     }
 
     const res = await fetch(`${ctx.baseUrl}/openapi.json`);
@@ -153,6 +176,7 @@ describe("openapi route coverage", () => {
     }
 
     const missing = [...registeredPairs]
+      .filter((pair) => !COCKPIT_WEB_SURFACE.has(pair))
       .filter((pair) => !EXCLUDED_ROUTES.has(pair))
       .filter((pair) => !specPairs.has(pair))
       .sort();
@@ -164,5 +188,13 @@ describe("openapi route coverage", () => {
         `KNOWN_UNDOCUMENTED_ROUTES). A MISSING entry means a route got documented — remove it ` +
         `from KNOWN_UNDOCUMENTED_ROUTES so the ratchet tightens.`,
     ).toEqual(KNOWN_UNDOCUMENTED_ROUTES);
+  });
+
+  test("normalizes only scoped API facade aliases", () => {
+    expect(canonicalFacadePair("GET /cockpit/i/{param}/api/v1/files")).toBe("GET /v1/files");
+    expect(canonicalFacadePair("GET /cockpit/i/{param}/api/v1/unknown")).toBe("GET /v1/unknown");
+    expect(canonicalFacadePair("GET /cockpit/i/{param}/manifest.webmanifest")).toBe(
+      "GET /cockpit/i/{param}/manifest.webmanifest",
+    );
   });
 });

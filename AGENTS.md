@@ -34,6 +34,7 @@
 ## Design
 
 - Lovable owns public website design. Inspect the selected project through the official integration before implementation; preserve approved layouts and interactions.
+- Superdesign owns Cockpit design. Inspect the concrete approved draft before UI changes; preserve its layouts, components, states and responsive variants.
 - Existing Cockpit patterns remain binding until an approved design replaces them. Reuse DataTable, categories, form dialogs, row/bulk actions and visible @ references.
 - Intake opens item details; source URLs remain separate. Use an action-only instruction with the selected item's @ reference. No browser prompt/alert/confirm for product editing.
 - Category membership, processing and knowledge admission are separate; moving or editing a clip never admits it. A changed proposal must be reviewed again.

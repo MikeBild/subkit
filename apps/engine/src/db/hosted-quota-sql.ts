@@ -43,10 +43,10 @@ const existingControlAudit = (row: string) => {
 const controlAudit = (row: string) =>
   `(subkit.hosted_singleton_control_receipt(to_jsonb(${row})) OR ${existingControlAudit(row)})`;
 
-export function renderHostedQuotaSql(): string {
+export function renderHostedQuotaSql(options: { cockpitControls?: boolean } = {}): string {
   const resources = hostedQuotaResources(baselineColumns);
   const parts = [
-    ...renderHostedTerminalSql(),
+    ...renderHostedTerminalSql({ cockpitControls: options.cockpitControls ?? true }),
     `CREATE OR REPLACE FUNCTION subkit.hosted_apply_usage(p_tenant uuid,p_resource text,p_bytes bigint,p_count bigint) RETURNS void LANGUAGE plpgsql VOLATILE AS $$
 DECLARE v_origin text; v_document jsonb; v_limit bigint; v_rows bigint; v_usage bigint; v_count bigint;
 BEGIN

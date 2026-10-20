@@ -3,6 +3,7 @@ import sharp from "sharp";
 import {
   BRANDING_IMAGE_MAX_BYTES,
   BrandingImageError,
+  normalizeBrandingAppIcon,
   normalizeBrandingImage,
 } from "./branding-image.ts";
 
@@ -187,5 +188,30 @@ describe("tenant branding image admission", () => {
     await expect(normalizeBrandingImage(input(bytes, "image/webp"))).rejects.toBeInstanceOf(
       BrandingImageError,
     );
+  });
+});
+
+describe("tenant branding app icon admission", () => {
+  test("creates canonical square app icons", async () => {
+    const icons = await normalizeBrandingAppIcon(input(await image("png", 1024, 1024)));
+    expect(await sharp(icons.icon_192).metadata()).toMatchObject({
+      format: "png",
+      width: 192,
+      height: 192,
+    });
+    expect(await sharp(icons.icon_512).metadata()).toMatchObject({
+      format: "png",
+      width: 512,
+      height: 512,
+    });
+  });
+
+  test("rejects undersized and non-square app icons", async () => {
+    await expect(
+      normalizeBrandingAppIcon(input(await image("png", 511, 511))),
+    ).rejects.toBeInstanceOf(BrandingImageError);
+    await expect(
+      normalizeBrandingAppIcon(input(await image("png", 512, 256))),
+    ).rejects.toBeInstanceOf(BrandingImageError);
   });
 });

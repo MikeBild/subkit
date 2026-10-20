@@ -151,6 +151,7 @@ import sql0130SchedulerSweepCursors from "./0130_scheduler_sweep_cursors.sql" wi
 import sql0131ConversationMail from "./0131_conversation_mail.sql" with { type: "text" };
 import sql0132ConversationTurnGuards from "./0132_conversation_turn_guards.sql" with { type: "text" };
 import sql0133YummyStardust from "./0133_yummy_stardust.sql" with { type: "text" };
+import sql0134WetGreymalkin from "./0134_wet_greymalkin.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -309,6 +310,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0131_conversation_mail": sql0131ConversationMail,
   "0132_conversation_turn_guards": sql0132ConversationTurnGuards,
   "0133_yummy_stardust": sql0133YummyStardust,
+  "0134_wet_greymalkin": sql0134WetGreymalkin,
 };
 
 const journal = journalMeta as unknown as Journal;

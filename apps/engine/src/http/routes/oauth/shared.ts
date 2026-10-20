@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
 import { z } from "zod";
-import type { ResolvedPrincipal } from "../../../auth/index.ts";
+import { browserSessionFromRequest, type ResolvedPrincipal } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import type { Db } from "../../../db/client.ts";
 import { sessions } from "../../../db/schema/index.ts";
@@ -58,19 +58,11 @@ export interface SessionPrincipal {
   session_id: string;
   user_id: string;
   tenant_id: string;
+  installation_id?: string;
 }
 
 export async function resolveSession(req: Request): Promise<SessionPrincipal | null> {
-  const cookieHeader = req.headers.get("cookie");
-  const cookies = parseCookies(cookieHeader);
-  const jwt = cookies[SESSION_COOKIE];
-  if (!jwt) return null;
-
-  const secret = deriveSessionSecret();
-  const payload = await verifySessionCookie(secret, jwt);
-  if (!payload) return null;
-
-  return payload;
+  return await browserSessionFromRequest(req);
 }
 
 export async function signCsrfToken(

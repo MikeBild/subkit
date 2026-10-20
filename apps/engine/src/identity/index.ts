@@ -1,4 +1,6 @@
 export * from "./browser-memberships.ts";
+export * from "./cockpit-installations.ts";
+export * from "./cockpit-push.ts";
 export * from "./identity-migration.ts";
 export * from "./last-admin.ts";
 export * from "./membership-invite.ts";

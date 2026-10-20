@@ -189,8 +189,14 @@ test("generated quota migration matches the reviewed catalog renderer", () => {
   const entry = journal.entries.find((value) => value.tag.endsWith("_hosted_resource_quota"));
   expect(entry).toBeDefined();
   expect(readFileSync(new URL(`./migrations/${entry!.tag}.sql`, import.meta.url), "utf8")).toBe(
-    renderHostedQuotaSql(),
+    renderHostedQuotaSql({ cockpitControls: false }),
   );
+});
+
+test("current generated quota SQL retains cockpit revocation receipt controls", () => {
+  const current = renderHostedQuotaSql();
+  expect(current).toContain("IF kind='session' THEN");
+  expect(current).toContain("IF kind='cockpit_installation' THEN");
 });
 
 test("trusted transaction and HTTP quota boundaries never expose private query parameters", async () => {

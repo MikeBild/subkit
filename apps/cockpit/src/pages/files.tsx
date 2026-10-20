@@ -8,6 +8,9 @@ import type { components } from "@/api/schema";
 import { tenantContentHref } from "@/api/tenant-context";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
+import { cockpitApiHref } from "@/app/installation-context";
+import { exportInstallationFile } from "@/app/installation-export";
+import { useInstallation } from "@/app/installation-provider";
 import { absolute, conversationHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
@@ -20,6 +23,7 @@ import {
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
 import { IconButton } from "@/components/cockpit/icon-button";
+import { InstallationInputActions } from "@/components/cockpit/installation-dialogs";
 import {
   ActionMenu,
   Button,
@@ -161,6 +165,8 @@ export function FilesPage() {
   const params = useParams({ strict: false }) as { resourceId?: string };
   const openId = params.resourceId ?? null;
   const canWrite = session.permissions.includes("file:write");
+  const canIntakeWrite = session.permissions.includes("intake:write");
+  const installation = useInstallation();
   const canDelete = session.permissions.includes("file:delete");
   const [search, setSearch] = useState("");
   const [upload, setUpload] = useState<{ files: File[]; replace: StoredFile | null } | null>(null);
@@ -223,6 +229,25 @@ export function FilesPage() {
       {t("files.upload")}
     </Button>
   ) : null;
+  const installationActions =
+    installation.available && canWrite && canIntakeWrite ? (
+      <InstallationInputActions
+        onFiles={(files) => installation.stageIncoming({ title: "", text: "", url: "", files })}
+        onClipboard={() => {
+          void navigator.clipboard
+            .readText()
+            .then((text) => installation.stageIncoming({ title: "", text, url: "", files: [] }))
+            .catch(() => {});
+        }}
+      />
+    ) : null;
+  const fileActions =
+    uploadAction || installationActions ? (
+      <div className="flex flex-wrap gap-2">
+        {installationActions}
+        {uploadAction}
+      </div>
+    ) : null;
   const allLoaded = !list.infinite.hasNextPage;
   const totalBytes = items.reduce(
     (sum, file) => sum + (typeof file.size_bytes === "number" ? file.size_bytes : 0),
@@ -239,7 +264,7 @@ export function FilesPage() {
         <PageHeader
           eyebrow={t("nav.group.knowledge")}
           title={t("files.title")}
-          action={hasFiles ? uploadAction : undefined}
+          action={hasFiles ? fileActions : undefined}
         />
       }
     >
@@ -301,7 +326,7 @@ export function FilesPage() {
               : null
           }
           emptyState={{
-            zero: { title: t("files.empty"), action: uploadAction },
+            zero: { title: t("files.empty"), action: fileActions },
             filtered: {
               title: t("resource.noMatches"),
               description: t("resource.broaderSearch"),
@@ -542,12 +567,14 @@ function FileSheet({
   onReplace(file: StoredFile): void;
 }) {
   const { t, dateTime, locale } = useI18n();
+  const installation = useInstallation();
   const directory = useActorDirectory(true);
   const client = useQueryClient();
   const live = useLiveQueryOptions();
   const [renaming, setRenaming] = useState(false);
   const [describing, setDescribing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const fileQuery = useQuery({
     queryKey: ["file", id],
     queryFn: () => apiRequest<StoredFile>(`/v1/files/${encodeURIComponent(id)}`),
@@ -651,6 +678,25 @@ function FileSheet({
     )
   ) : null;
 
+  const exportFile = async () => {
+    if (!file) return;
+    setExporting(true);
+    try {
+      const result = await exportInstallationFile(
+        file.filename,
+        async () => await fetch(cockpitApiHref(contentPath), { credentials: "same-origin" }),
+      );
+      if (result === "unsupported") {
+        const anchor = document.createElement("a");
+        anchor.href = contentPath;
+        anchor.download = file.filename;
+        anchor.click();
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <>
       <RecordSheet
@@ -668,9 +714,20 @@ function FileSheet({
         action={
           file ? (
             <Button variant="outline" asChild>
-              <a href={contentPath} download={file.filename} data-testid="file-download">
-                {t("files.download")}
-              </a>
+              {installation.available ? (
+                <button
+                  type="button"
+                  disabled={exporting}
+                  onClick={() => void exportFile()}
+                  data-testid="file-download"
+                >
+                  {t("files.download")}
+                </button>
+              ) : (
+                <a href={contentPath} download={file.filename} data-testid="file-download">
+                  {t("files.download")}
+                </a>
+              )}
             </Button>
           ) : null
         }

@@ -1,12 +1,12 @@
 import { randomBytes } from "node:crypto";
-import { and, eq, lt } from "drizzle-orm";
+import { eq, lt } from "drizzle-orm";
 import * as oauth from "openid-client";
 import { ZodError } from "zod";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import { type Db, getDb } from "../../db/client.ts";
-import { oidcLoginStates, roles, sessions, tenants, users } from "../../db/schema/index.ts";
+import { oidcLoginStates, sessions, tenants } from "../../db/schema/index.ts";
 import {
   authHtmlResponse,
   renderErrorPage,
@@ -34,12 +34,18 @@ import {
   SignupDisabledError,
 } from "../identity-link.ts";
 import { createMcpOAuthProvider } from "../oauth/server-provider.ts";
-import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
+import type { AuthProvider } from "../types.ts";
+import {
+  findActiveCockpitInstallation,
+  findActiveCockpitInstallationForTenant,
+  findCockpitInstallationIdentity,
+} from "./oidc-installation.ts";
 import {
   buildCookieHeader,
   clearCookieHeader,
   deriveSessionSecret,
   parseCookies,
+  resolveOidcSession,
   SESSION_COOKIE,
   sha256Hex,
   signSessionCookie,
@@ -66,6 +72,7 @@ export interface OidcProviderOptions {
   enableSignup?: boolean;
   signupPolicy?: "existing_tenant" | "invite_only" | "self_service";
   membershipInviteId?: string;
+  installationId?: string;
 }
 
 async function loadConfig(
@@ -257,7 +264,22 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       const redirectTo = url.searchParams.get("redirect_to");
       const exec = getExec();
 
-      const tenantId = hostedSignup ? null : await resolveTenantId(exec, tenantSlug);
+      let installation = null;
+      if (opts.installationId) {
+        installation = await findActiveCockpitInstallation(exec, opts.installationId);
+        if (!installation) {
+          return browserError(
+            req,
+            404,
+            "installation_not_found",
+            "Cockpit installation not found",
+            "account_not_assigned",
+            LOGIN_START_PATH,
+          );
+        }
+      }
+      const tenantId =
+        installation?.tenant_id ?? (hostedSignup ? null : await resolveTenantId(exec, tenantSlug));
       if (!tenantId && !hostedSignup) {
         return browserError(
           req,
@@ -297,6 +319,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       await exec.insert(oidcLoginStates).values({
         tenant_id: tenantId,
         membership_invite_id: opts.membershipInviteId ?? null,
+        installation_id: installation?.id ?? null,
         state,
         code_verifier,
         nonce,
@@ -514,6 +537,72 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       const rawEmail = (claims as { email?: unknown } | undefined)?.email;
       const emailVerified =
         (claims as { email_verified?: unknown } | undefined)?.email_verified === true;
+      if (pending.installation_id) {
+        if (!pending.tenant_id) {
+          return browserError(
+            req,
+            403,
+            "installation_unavailable",
+            "Cockpit installation is unavailable",
+            "account_not_assigned",
+            retryHref,
+          );
+        }
+        const installation = await findActiveCockpitInstallationForTenant(
+          exec,
+          pending.installation_id,
+          pending.tenant_id,
+        );
+        if (!installation) {
+          return browserError(
+            req,
+            403,
+            "installation_unavailable",
+            "Cockpit installation is unavailable",
+            "account_not_assigned",
+            retryHref,
+          );
+        }
+        const identity = await findCockpitInstallationIdentity(exec, {
+          installationId: pending.installation_id,
+          tenantId: pending.tenant_id,
+          providerId: adapterId,
+          subject: sub,
+          issuerUrl,
+          ...(productId !== undefined ? { productId } : {}),
+        });
+        if (!identity) {
+          return browserError(
+            req,
+            403,
+            "installation_identity_mismatch",
+            "this identity cannot access the Cockpit installation",
+            "account_not_assigned",
+            retryHref,
+          );
+        }
+        const target = pending.redirect_to;
+        if (!target?.startsWith(`/cockpit/i/${installation.id}/`)) {
+          return browserError(
+            req,
+            400,
+            "installation_redirect_invalid",
+            "Cockpit installation redirect is invalid",
+            "state_expired",
+            retryHref,
+          );
+        }
+        return await issueBrowserSession({
+          db: exec,
+          tenantId: identity.tenant_id,
+          userId: identity.owner_user_id,
+          ...(identity.auth_identity_id ? { authIdentityId: identity.auth_identity_id } : {}),
+          installationId: identity.id,
+          redirectTo: target,
+          via: "oidc_cockpit_installation",
+          metadata: { provider_id: adapterId, installation_id: identity.id },
+        });
+      }
       if (hostedSignup) {
         if (!isConfigLoaded() || !getConfig().auth.hosted.enabled || productId) {
           return browserError(
@@ -845,98 +934,8 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       return res;
     },
 
-    async resolve(req: Request): Promise<ResolvedPrincipal | null> {
-      const cookies = parseCookies(req.headers.get("cookie"));
-      const jwt = cookies[SESSION_COOKIE];
-      if (!jwt) return null;
-
-      const payload = await verifySessionCookie(sessionSecret, jwt);
-      if (!payload) return null;
-
-      const exec = getExec();
-      // tenant-filter:exempt — OIDC issuer/sub lookup pre-tenant
-      const rows = await exec
-        .select()
-        .from(sessions)
-        .where(eq(sessions.id, payload.session_id))
-        .limit(1);
-      const row = rows[0];
-      if (!row) return null;
-
-      const now = new Date();
-
-      let denyReason: "revoked" | "expired_absolute" | "expired_sliding" | null = null;
-      if (row.revoked_at) {
-        denyReason = "revoked";
-      } else if (row.absolute_expires_at && row.absolute_expires_at.getTime() <= now.getTime()) {
-        denyReason = "expired_absolute";
-      } else if (
-        row.last_seen_at &&
-        now.getTime() - row.last_seen_at.getTime() > SESSION_SLIDING_TTL_MS
-      ) {
-        denyReason = "expired_sliding";
-      }
-
-      if (denyReason) {
-        await auditAwait(
-          {
-            tenant_id: row.tenant_id,
-            actor_type: "system",
-            actor_id: null,
-            action: AuditAction.SESSION_REVOKED,
-            resource_type: "session",
-            resource_id: row.id,
-            result: "denied",
-            reason: denyReason,
-            metadata: { via: "oidc_resolve", subject_user_id: row.user_id },
-          },
-          exec,
-        );
-        return null;
-      }
-
-      void Promise.resolve().then(() => {
-        exec
-          .update(sessions)
-          .set({ last_seen_at: new Date() })
-          .where(eq(sessions.id, row.id))
-          .catch((err) => {
-            logger.warn({
-              module: "auth",
-              action: "oidc.last_seen_flush_failed",
-              msg: "failed to bump sessions.last_seen_at",
-              session_id: row.id,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
-      });
-
-      const userRows = await exec
-        .select({
-          role_name: roles.name,
-          email: users.email,
-          status: users.status,
-          deleted_at: users.deleted_at,
-        })
-        .from(users)
-        .leftJoin(roles, eq(roles.id, users.role_id))
-        .where(and(eq(users.tenant_id, row.tenant_id), eq(users.id, row.user_id)))
-        .limit(1);
-      const u = userRows[0];
-      if (u?.status !== "active" || u.deleted_at !== null) return null;
-
-      const principal: ResolvedPrincipal = {
-        provider: "oidc",
-        kind: "user",
-        id: row.user_id,
-        tenant_id: row.tenant_id,
-        roles: u.role_name ? [u.role_name] : [],
-        session_id: row.id,
-        auth_source: { kind: "browser_session", session_id: row.id },
-      };
-      if (row.product_id) principal.product_id = row.product_id;
-      if (u.email) principal.email = u.email;
-      return principal;
+    async resolve(req: Request) {
+      return await resolveOidcSession(getExec(), sessionSecret, req);
     },
 
     async revoke(req: Request): Promise<Response> {

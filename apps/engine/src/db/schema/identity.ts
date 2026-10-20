@@ -14,6 +14,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { bytea, tenantId, timestamps } from "./_common.ts";
+import { cockpitInstallations } from "./cockpit-installations.ts";
 
 export const userStatusEnum = pgEnum("user_status", ["invited", "active", "disabled"]);
 export const auditActorKindEnum = pgEnum("audit_actor_kind", [
@@ -153,6 +154,9 @@ export const sessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     auth_identity_id: uuid("auth_identity_id").references(() => authIdentities.id),
+    installation_id: uuid("installation_id").references(() => cockpitInstallations.id, {
+      onDelete: "cascade",
+    }),
     product_id: text("product_id"),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     revoked_at: timestamp("revoked_at", { withTimezone: true }),
@@ -166,6 +170,7 @@ export const sessions = pgTable(
     index("sessions_absolute_expires_idx").on(t.absolute_expires_at),
     index("sessions_last_seen_idx").on(t.last_seen_at),
     index("sessions_token_sha256_idx").on(t.token_sha256),
+    index("sessions_installation_idx").on(t.installation_id),
   ],
 );
 
@@ -178,6 +183,9 @@ export const oidcLoginStates = pgTable(
       (): AnyPgColumn => userInvites.id,
       { onDelete: "cascade" },
     ),
+    installation_id: uuid("installation_id").references(() => cockpitInstallations.id, {
+      onDelete: "cascade",
+    }),
     state: text("state").notNull(),
     code_verifier: text("code_verifier").notNull(),
     nonce: text("nonce").notNull(),

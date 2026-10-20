@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
-import { browserSessionForPrincipal } from "../../auth/browser-session.ts";
+import { browserSessionForPrincipal, canonicalBrowserPath } from "../../auth/browser-session.ts";
 import { sessions } from "../../db/schema/index.ts";
 import type { AppEnv } from "../openapi.ts";
 
@@ -16,11 +16,12 @@ const IDENTITY_PATHS = new Set([
 
 export function browserTenantMiddleware(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
+    const path = canonicalBrowserPath(c.req.raw);
     if (
-      IDENTITY_PATHS.has(c.req.path) ||
-      c.req.path.startsWith("/v1/identity/login/") ||
-      c.req.path.startsWith("/v1/oauth/") ||
-      c.req.path.startsWith("/v1/tool-approvals/")
+      IDENTITY_PATHS.has(path) ||
+      path.startsWith("/v1/identity/login/") ||
+      path.startsWith("/v1/oauth/") ||
+      path.startsWith("/v1/tool-approvals/")
     ) {
       return next();
     }
@@ -43,8 +44,9 @@ export function browserTenantMiddleware(): MiddlewareHandler<AppEnv> {
     const expectedTenant =
       c.req.header("x-subkit-tenant") ??
       (c.req.method === "GET" &&
-      (/^\/v1\/files\/[^/]+\/content$/.test(c.req.path) ||
-        c.req.path === "/v1/tenant/branding/logo")
+      (/^\/v1\/files\/[^/]+\/content$/.test(path) ||
+        path === "/v1/tenant/branding/logo" ||
+        path === "/v1/tenant/branding/icon")
         ? c.req.query("tenant_context")
         : undefined);
     if (expectedTenant !== payload.tenant_id) {

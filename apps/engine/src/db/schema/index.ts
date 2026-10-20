@@ -3,6 +3,8 @@ export * from "./audit.ts";
 export * from "./caller-budget.ts";
 export * from "./catalog_categories.ts";
 export * from "./chat.ts";
+export * from "./cockpit-installations.ts";
+export * from "./cockpit-push.ts";
 export * from "./connections.ts";
 export * from "./connector_docs.ts";
 export * from "./connector_mcp_sessions.ts";

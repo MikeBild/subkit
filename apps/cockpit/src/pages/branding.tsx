@@ -14,7 +14,7 @@ import { useDirtyGuard } from "@/app/version-notice";
 import { Button, ConfirmDialog, DataState, SaveBar } from "@/components/cockpit/patterns";
 import { Alert, AlertDescription } from "@/components/cockpit/patterns/controls";
 import { SectionHeading } from "@/components/cockpit/patterns/section";
-import { brandingDraft, readBrandingLogo } from "@/lib/branding";
+import { brandingDraft, readBrandingAppIcon, readBrandingLogo } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n-context";
 import { BrandingForm } from "./branding-form";
 
@@ -94,6 +94,18 @@ export function BrandingSettings() {
       setReading(false);
     }
   }
+  async function uploadIcon(file: File) {
+    setReading(true);
+    setFailure(null);
+    try {
+      const icon = await readBrandingAppIcon(file);
+      setDraft((current) => ({ ...(current ?? brandingDraft(saved)), app_icon: icon }));
+    } catch {
+      setFailure("image");
+    } finally {
+      setReading(false);
+    }
+  }
   return (
     <section
       data-testid="branding-settings"
@@ -116,6 +128,7 @@ export function BrandingSettings() {
         disabled={disabled}
         onChange={change}
         onUpload={(theme, file) => void upload(theme, file)}
+        onIconUpload={(file) => void uploadIcon(file)}
       />
       {failure ? (
         <Alert variant="destructive" className="mt-4" data-testid="branding-error">

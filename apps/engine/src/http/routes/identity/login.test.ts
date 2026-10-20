@@ -3,6 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { signLoginState } from "../../../auth/index.ts";
 import * as loader from "../../../config/loader.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { apiKeyLoginRefusal, registerLoginRoutes } from "./login.ts";
@@ -60,4 +61,33 @@ test("a refused API key is explained in the page's language", () => {
   expect(apiKeyLoginRefusal("de")).toContain("API-Schlüssel ist ungültig");
   expect(apiKeyLoginRefusal("de")).not.toMatch(/invalid|expired|owned/);
   expect(apiKeyLoginRefusal("en")).toContain("not owned by a person");
+});
+
+test("installed API-key sign-in explains the OIDC requirement and offers the regular Cockpit", async () => {
+  const real = loader.getConfig();
+  spyOn(loader, "getConfig").mockReturnValue({
+    ...real,
+    auth: {
+      ...real.auth,
+      providers: [{ protocol: "api_key", id: "api-key", label: "SubKit API key" }],
+    },
+  });
+  const installationId = "11111111-1111-4111-8111-111111111111";
+  const state = await signLoginState({
+    installation_id: installationId,
+    redirect_to: `/cockpit/i/${installationId}/`,
+  });
+  const app = new OpenAPIHono<AppEnv>();
+  registerLoginRoutes(app);
+  const response = await app.request(
+    `http://127.0.0.1/v1/identity/login/start?provider=api-key&login_state=${encodeURIComponent(state)}`,
+    { headers: { accept: "text/html", cookie: "sk_locale=de" } },
+  );
+  expect(response.status).toBe(400);
+  const html = await response.text();
+  expect(html).toContain("bestehendes OIDC-Konto");
+  expect(html).toContain("Cockpit im Browser öffnen");
+  expect(html).toContain('href="/cockpit"');
+  expect(html).not.toContain("Anmeldeversuch ist abgelaufen");
+  expect(response.headers.get("set-cookie")).toBeNull();
 });
