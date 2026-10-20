@@ -67,10 +67,13 @@ if (process.argv.includes("--live")) {
       if (!item[field]) failures.push(`Issue #${issue.number}: set Project ${field}.`);
     if (item.status === "Done")
       failures.push(`Issue #${issue.number}: open Issue is marked Done in the Project.`);
-    const priority = issue.labels
+    const priorities = issue.labels
       .map((label) => label.name)
-      .find((name) => /^priority:P[012]$/.test(name));
-    if (priority && priority.slice(9) !== item.priority)
+      .filter((name) => name.startsWith("priority:"));
+    const priority = priorities[0];
+    if (priorities.length !== 1 || !/^priority:P[012]$/.test(priority ?? ""))
+      failures.push(`Issue #${issue.number}: use exactly one priority:P0/P1/P2 label.`);
+    else if (priority.slice(9) !== item.priority)
       failures.push(`Issue #${issue.number}: align priority label and Project field.`);
   }
   for (const item of project.items) {
