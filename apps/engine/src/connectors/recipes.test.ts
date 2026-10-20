@@ -89,6 +89,7 @@ describe("GraphQL and AWS recipe coverage", () => {
       expect.arrayContaining([
         "viewer",
         "list-viewer-repositories",
+        "user-project-items",
         "repository-issues",
         "repository-pull-requests",
         "search-repositories",
@@ -98,6 +99,21 @@ describe("GraphQL and AWS recipe coverage", () => {
     const query = JSON.stringify(list.workflow.steps[0]);
     expect(query).toContain("pageInfo");
     expect(query).toContain("rateLimit");
+    const project = githubGraphql.recipes.find((r) => r.slug === "user-project-items")!;
+    const projectStep = project.workflow.steps[0] as {
+      graphql?: {
+        query?: string;
+        cursor_pagination?: {
+          connection_path?: string;
+          required_connection_paths?: string[];
+        };
+      };
+    };
+    expect(projectStep.graphql?.query).toContain("projectV2(number: $number)");
+    expect(projectStep.graphql?.cursor_pagination).toMatchObject({
+      connection_path: "user.projectV2.items",
+      required_connection_paths: ["fieldValues"],
+    });
   });
 
   test("appsync recipes use placeholder connector ids for tenant-specific endpoints", () => {
