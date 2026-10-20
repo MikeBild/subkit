@@ -3,10 +3,8 @@ import { CalendarDays, ChevronDown, ExternalLink, Filter, Search } from "lucide-
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
-import { type ActorDirectory, actorDirectory } from "@/app/actor-directory-model";
 import { useLiveQueryOptions, useLiveStatus } from "@/app/live-events";
 import { useSession } from "@/app/session";
-import { useNameIndex } from "@/app/use-decisions";
 import {
   Button,
   DataState,
@@ -239,13 +237,26 @@ function actionLabel(action: string, t: ReturnType<typeof useI18n>["t"]): string
   const label = auditActionLabel(action);
   return label.kind === "named" ? t(label.key) : t("audit.action.other");
 }
-function changeFieldLabel(field: string, t: ReturnType<typeof useI18n>["t"]): string {
+export function changeFieldLabel(field: string, t: ReturnType<typeof useI18n>["t"]): string {
   if (field === "name" || field === "display_name" || field === "title")
     return t("audit.meta.name");
   if (field === "status") return t("audit.meta.status");
   if (field === "enabled") return t("audit.timeline.enabledField");
   if (field === "filename") return t("audit.timeline.fileNameField");
   return t("audit.timeline.otherField");
+}
+export function changedFieldsDescription(
+  fields: readonly string[],
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  return fields.map((field) => `${changeFieldLabel(field, t)} (${field})`).join(", ");
+}
+export function unverifiedApiKeyClient(entry: TimelineEntry): boolean {
+  return (
+    (entry.access_type === "api_key" || Boolean(entry.api_key_id)) &&
+    entry.credential_origin !== "cli_oauth_session" &&
+    auditInitiatingSource(entry) === "api"
+  );
 }
 function resourcePermission(type: string): string | null {
   const permissions: Record<string, string> = {
@@ -764,17 +775,14 @@ function groupLabel(
   entry: TimelineEntry,
   zone: string,
   locale: Locale,
-  directory: ActorDirectory,
   t: ReturnType<typeof useI18n>["t"],
-  names: ReturnType<typeof useNameIndex>,
 ): string {
   if (group === "day")
     return new Intl.DateTimeFormat(locale === "de" ? "de-DE" : "en-US", {
       dateStyle: "full",
       timeZone: zone,
     }).format(new Date(entry.ts));
-  if (group === "actor")
-    return auditActorName(entry, directory, t)?.text ?? t("audit.timeline.notRecorded");
+  if (group === "actor") return auditActorName(entry, t)?.text ?? t("audit.timeline.notRecorded");
   if (group === "access") {
     if (entry.api_key_id) {
       const access =
@@ -790,8 +798,12 @@ function groupLabel(
     return accessLabel(entry.access_type, t);
   }
   if (group === "resourceType") return auditResourceLabel(entry.resource_type, t).text;
-  if (group === "resource")
-    return `${auditObjectName(entry, names, t)} · ${auditResourceLabel(entry.resource_type, t).text}`;
+  if (group === "resource") {
+    const object = auditObjectName(entry, t);
+    return entry.resource_name?.trim()
+      ? `${object} · ${auditResourceLabel(entry.resource_type, t).text}`
+      : object;
+  }
   if (group === "source") return sourceLabel(key === "unknown" ? null : key, t);
   if (group === "executed") return sourceLabel(key === "unknown" ? null : key, t);
   if (group === "result") return auditResultLabel(key, t).text;
@@ -802,18 +814,14 @@ function EventCard({
   selected,
   open,
   zone,
-  directory,
-  names,
 }: {
   entry: TimelineEntry;
   selected: boolean;
   open(): void;
   zone: string;
-  directory: ActorDirectory;
-  names: ReturnType<typeof useNameIndex>;
 }) {
   const { t, dateTime, locale } = useI18n();
-  const actor = auditActorName(entry, directory, t)?.text ?? t("audit.timeline.notRecorded");
+  const actor = auditActorName(entry, t)?.text ?? t("audit.timeline.notRecorded");
   const label = actionLabel(entry.action, t);
   const local = new Intl.DateTimeFormat(locale === "de" ? "de-DE" : "en-US", {
     timeZone: zone,
@@ -850,7 +858,10 @@ function EventCard({
         </div>
         <div className="mt-2 text-sm font-semibold">{label}</div>
         <div className="mt-1 text-sm text-muted-foreground">
-          {auditObjectName(entry, names, t)} · {auditResourceLabel(entry.resource_type, t).text}
+          {auditObjectName(entry, t)}
+          {entry.resource_name?.trim()
+            ? ` · ${auditResourceLabel(entry.resource_type, t).text}`
+            : null}
         </div>
         <div className="mt-3 grid gap-x-4 gap-y-1 border-t pt-3 text-xs sm:grid-cols-2">
           <div>
@@ -869,12 +880,10 @@ function EventCard({
 function AuditDetail({
   entry,
   zone,
-  directory,
   onOperation,
 }: {
   entry: TimelineEntry;
   zone: string;
-  directory: ActorDirectory;
   onOperation(correlationId: string): void;
 }) {
   const { t, dateTime } = useI18n();
@@ -894,7 +903,7 @@ function AuditDetail({
       />
     );
   const missing = t("audit.timeline.notRecorded");
-  const actor = auditActorName(current, directory, t)?.text ?? missing;
+  const actor = auditActorName(current, t)?.text ?? missing;
   const reason = auditReasonLabel(current.reason, t);
   const recordedAccess = auditRecordedAccess(current);
   const facts = [
@@ -925,6 +934,14 @@ function AuditDetail({
           ? t("audit.timeline.credentialOrigin.cliOAuthSession")
           : missing,
     },
+    ...(unverifiedApiKeyClient(current)
+      ? [
+          {
+            label: t("audit.timeline.clientApplication"),
+            value: t("audit.timeline.clientApplication.unverifiedApiKey"),
+          },
+        ]
+      : []),
     { label: t("audit.timeline.execution"), value: current.execution_id || missing },
     { label: t("audit.timeline.conversation"), value: current.conversation_id || missing },
     { label: t("audit.timeline.workflow"), value: current.workflow_id || missing },
@@ -951,7 +968,9 @@ function AuditDetail({
     { label: t("audit.timeline.operation"), value: current.correlation_id || missing },
     {
       label: t("audit.timeline.changedFields"),
-      value: current.changed_fields?.length ? current.changed_fields.join(", ") : missing,
+      value: current.changed_fields?.length
+        ? changedFieldsDescription(current.changed_fields, t)
+        : missing,
     },
   ];
   return (
@@ -979,9 +998,13 @@ function AuditDetail({
           <div className="space-y-3">
             {current.changes.map((change) => (
               <div key={change.field} className="border-t pt-2 text-xs">
-                <div className="font-medium" title={change.field}>
-                  {changeFieldLabel(change.field, t)}
-                </div>
+                <div className="font-medium">{changeFieldLabel(change.field, t)}</div>
+                <code
+                  className="mt-0.5 block text-[11px] text-muted-foreground"
+                  title={t("audit.timeline.fieldId")}
+                >
+                  {change.field}
+                </code>
                 <div className="mt-1 grid gap-2 sm:grid-cols-2">
                   <div>
                     <span className="text-muted-foreground">
@@ -1052,7 +1075,6 @@ export function AuditTimelinePage() {
     first: null,
     height: 0,
   });
-  const names = useNameIndex(session.permissions, allowed);
   const live = useLiveQueryOptions();
   const liveStatus = useLiveStatus();
   const readable = canReadDirectory(session);
@@ -1072,10 +1094,6 @@ export function AuditTimelinePage() {
       apiRequest<{ items?: Array<{ id: string; name?: string }> }>("/v1/identity/system-accounts"),
     ...live,
   });
-  const directory = useMemo(
-    () => actorDirectory(people.data, accounts.data),
-    [people.data, accounts.data],
-  );
   const identities = useMemo<IdentityOption[]>(
     () => [
       ...(people.data?.items ?? []).map((item) => ({
@@ -1610,9 +1628,7 @@ export function AuditTimelinePage() {
                         bucket.entries[0]!,
                         zone,
                         locale,
-                        directory,
                         t,
-                        names,
                       )}
                     >
                       <span
@@ -1620,16 +1636,7 @@ export function AuditTimelinePage() {
                         className="absolute -left-[9px] top-0 size-4 rounded-full border-[3px] border-background bg-slate-400"
                       />
                       <SectionHeading className="mb-4 flex flex-wrap items-baseline gap-2 pl-6 text-sm font-semibold text-muted-foreground sm:pl-8">
-                        {groupLabel(
-                          bucket.key,
-                          group,
-                          bucket.entries[0]!,
-                          zone,
-                          locale,
-                          directory,
-                          t,
-                          names,
-                        )}
+                        {groupLabel(bucket.key, group, bucket.entries[0]!, zone, locale, t)}
                         {list.infinite.hasNextPage && (
                           <span className="text-xs font-normal">
                             {t("audit.timeline.groupPartial")}
@@ -1646,8 +1653,6 @@ export function AuditTimelinePage() {
                             openEntry(entry.id);
                           }}
                           zone={zone}
-                          directory={directory}
-                          names={names}
                         />
                       ))}
                     </section>
@@ -1732,12 +1737,7 @@ export function AuditTimelinePage() {
           }
         >
           {current ? (
-            <AuditDetail
-              entry={current}
-              zone={zone}
-              directory={directory}
-              onOperation={onOperation}
-            />
+            <AuditDetail entry={current} zone={zone} onOperation={onOperation} />
           ) : detailUnavailable ? (
             <DataState
               state="empty"

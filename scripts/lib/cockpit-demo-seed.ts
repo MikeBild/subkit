@@ -74,7 +74,7 @@ export const cockpitDemoManifest = {
   connectors: 6,
   workflows: 12,
   executions: 24,
-  conversations: 7,
+  conversations: 8,
   knowledgeSources: 6,
   knowledgeChunks: 12,
   skills: 8,
@@ -373,6 +373,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       source_uri: `text:demo-knowledge-${i}`,
       version: "1",
       status: i < 3 ? "active" : i === 3 ? "inactive" : i === 4 ? "processing" : "error",
+      ...(i === 0 ? { created_at: ago(340), updated_at: ago(170) } : {}),
       last_error: i === 5 ? "Synthetischer Einlesefehler: Quelldokument nicht verfügbar" : null,
       chunk_count: 2,
       bytes_total: Buffer.byteLength(content),
@@ -389,6 +390,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       content: { kind: "document", filename: `${name}.md`, mime: "text/markdown", text: content },
       content_hash: createHash("sha256").update(content).digest("hex"),
       author_user_id: adminUserId,
+      ...(i === 0 ? { created_at: ago(338) } : {}),
     });
     for (let j = 0; j < 2; j++)
       insert("knowledge_chunks", {
@@ -458,13 +460,23 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
   statements.push(
     `INSERT INTO role_permissions (role_id,permission_id) SELECT ${quote(id("reviewer-role"))},id FROM permissions WHERE name IN ('workflow:read','connector:read','execution:read','knowledge:read','skill:read') ON CONFLICT DO NOTHING;`,
   );
+  insert("roles", {
+    id: id("archive-editor-role"),
+    tenant_id: tenantId,
+    name: "Demo-Wissensbearbeiter",
+    description: "Synthetische Bearbeitung des Vertragsarchivs",
+  });
+  statements.push(
+    `INSERT INTO role_permissions (role_id,permission_id) SELECT ${quote(id("archive-editor-role"))},id FROM permissions WHERE name IN ('knowledge:read','knowledge:write','audit:read') ON CONFLICT DO NOTHING;`,
+  );
   ["active", "invited", "disabled"].forEach((status, i) => {
     insert("users", {
       id: id(`user-${i}`),
       tenant_id: tenantId,
       email: ["anna@example.test", "ben@example.test", "carla@example.test"][i],
-      role_id: id("reviewer-role"),
+      role_id: id(i === 0 ? "archive-editor-role" : "reviewer-role"),
       status,
+      created_at: ago(400),
     });
   });
   insert("api_keys", {
@@ -476,6 +488,38 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     credential_origin: "cli_oauth_session",
     name: "Lokaler Demo-Zugang",
     scopes: ["*"],
+    created_at: ago(300),
+  });
+  insert("conversations", {
+    id: id("archive-conversation"),
+    tenant_id: tenantId,
+    owner_id: adminUserId,
+    status: "committed",
+    title: "Vertragsarchiv wieder aktivieren",
+    surface: "mcp",
+    origin_client: "mcp",
+    turn_count: 1,
+    created_at: ago(171),
+    updated_at: ago(170),
+  });
+  insert("conversation_messages", {
+    id: id("archive-message"),
+    tenant_id: tenantId,
+    conversation_id: id("archive-conversation"),
+    role: "user",
+    content: { text: "Aktiviere das synthetische Vertragsarchiv wieder." },
+    created_at: ago(171),
+  });
+  insert("conversation_tool_calls", {
+    id: id("archive-tool-call"),
+    tenant_id: tenantId,
+    conversation_id: id("archive-conversation"),
+    parent_message_id: id("archive-message"),
+    tool: "update_knowledge_source",
+    input: { id: id("knowledge-0"), status: "active" },
+    output: { updated: true, id: id("knowledge-0") },
+    outcome: "success",
+    created_at: ago(170),
   });
   const archiveEvents = [
     {
@@ -487,7 +531,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       result: "success",
       hours: 340,
       before: null,
-      after: { name: "Vertragsarchiv", status: "draft" },
+      after: { name: "Vertragsarchiv", status: "processing" },
     },
     {
       action: "knowledge_source.ingested",
@@ -497,19 +541,19 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       execution: "queue",
       result: "success",
       hours: 338,
-      before: { name: "Vertragsarchiv", status: "draft" },
+      before: { name: "Vertragsarchiv", status: "processing" },
       after: { name: "Vertragsarchiv", status: "active" },
     },
     {
       action: "knowledge_source.updated",
       actor: id("user-0"),
-      source: "cli",
+      source: "api",
       origin: "api",
       execution: "api",
       result: "success",
       hours: 290,
       before: { name: "Vertragsarchiv", status: "active" },
-      after: { name: "Vertragsarchiv", status: "paused" },
+      after: { name: "Vertragsarchiv", status: "inactive" },
     },
     {
       action: "knowledge_source.refreshed",
@@ -525,12 +569,12 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     {
       action: "knowledge_source.updated",
       actor: adminUserId,
-      source: "mcp",
+      source: "chat",
       origin: "mcp",
-      execution: "mcp",
+      execution: "tool-chain",
       result: "success",
       hours: 170,
-      before: { name: "Vertragsarchiv", status: "paused" },
+      before: { name: "Vertragsarchiv", status: "inactive" },
       after: { name: "Vertragsarchiv", status: "active" },
     },
     {
@@ -576,7 +620,8 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
         origin_source: event.origin,
         execution_source: event.execution,
         audit_trace_id: id(`archive-trace-${Math.floor(index / 2)}`).replaceAll("-", ""),
-        ...(index === 2
+        ...([4, 5].includes(index) ? { conversation_id: id("archive-conversation") } : {}),
+        ...([2, 3].includes(index)
           ? {
               audit_used_api_key_id: id("audit-demo-key"),
               audit_access_type: "api_key",

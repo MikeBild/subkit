@@ -1,5 +1,4 @@
 import type { components } from "@/api/schema";
-import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import {
   absolute,
   connectorHref,
@@ -13,7 +12,6 @@ import {
 import type { CatalogResource } from "@/app/route-table";
 import type { TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
-import type { NameIndex } from "@/lib/name-index";
 
 type AuditEntry = Omit<components["schemas"]["AuditEntry"], "resource_name"> & {
   resource_name?: string | null;
@@ -66,14 +64,17 @@ export function canReadDirectory(session: {
 
 export function auditActorName(
   entry: Pick<AuditEntry, "actor_type" | "actor_id">,
-  directory: ActorDirectory,
   t: Translate,
 ): CatalogLabel | null {
   const kind = entry.actor_type?.trim() ?? "";
-  const named = entry.actor_id ? actorDirectoryName(directory, kind, entry.actor_id) : undefined;
-  if (named) return { text: named, machine: false };
-  if (!kind) return null;
-  return actorTypeLabel(kind, t);
+  const id = entry.actor_id?.trim();
+  const shownId =
+    id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+      ? `${id.slice(0, 8)}…${id.slice(-12)}`
+      : id;
+  if (!kind) return shownId ? { text: shownId, machine: true } : null;
+  const label = actorTypeLabel(kind, t);
+  return { text: shownId ? `${label.text} · ${shownId}` : label.text, machine: label.machine };
 }
 
 const RESULT_KEYS: Record<string, TranslationKey> = {
@@ -549,7 +550,6 @@ type MetadataReference = {
   label: TranslationKey;
   open: TranslationKey;
   href(id: string): string;
-  names?: keyof NameIndex;
 };
 
 const METADATA_REFERENCES: Readonly<Record<string, MetadataReference>> = {
@@ -557,13 +557,11 @@ const METADATA_REFERENCES: Readonly<Record<string, MetadataReference>> = {
     label: "audit.meta.workflow",
     open: "audit.meta.openWorkflow",
     href: workflowHref,
-    names: "workflow",
   },
   connector_id: {
     label: "audit.meta.connector",
     open: "audit.meta.openConnector",
     href: connectorHref,
-    names: "connector",
   },
   execution_id: { label: "audit.meta.run", open: "audit.detail.openRun", href: runHref },
   conversation_id: {
@@ -593,7 +591,6 @@ function scalarText(value: unknown): string | null {
 export function auditMetadataFacts(
   metadata: Readonly<Record<string, unknown>> | null | undefined,
   t: Translate,
-  names: NameIndex,
 ): { facts: AuditMetadataFact[]; rest: string | null } {
   const facts: AuditMetadataFact[] = [];
   const rest: Record<string, unknown> = {};
@@ -601,11 +598,10 @@ export function auditMetadataFacts(
     const reference = METADATA_REFERENCES[key];
     const text = scalarText(value);
     if (reference && text) {
-      const name = reference.names ? names[reference.names].get(text) : undefined;
       facts.push({
         key,
         label: t(reference.label),
-        value: name ?? t(reference.open),
+        value: `${t(reference.open)} · ${text}`,
         href: reference.href(text),
       });
       continue;
@@ -646,12 +642,11 @@ export function auditDetailFacts(
   entry: AuditEntry,
   t: Translate,
   dateTime: FormatDateTime,
-  directory: ActorDirectory = new Map(),
 ): AuditFact[] {
   return [
     { label: t("audit.column.time"), value: dateTime(entry.ts) },
     labelFact(t("audit.column.result"), auditResultLabel(entry.result, t)),
-    labelFact(t("audit.column.actor"), auditActorName(entry, directory, t)),
+    labelFact(t("audit.column.actor"), auditActorName(entry, t)),
     { label: t("audit.detail.actorId"), value: recordedText(entry.actor_id), mono: true },
     labelFact(t("audit.column.resource"), auditResourceLabel(entry.resource_type, t)),
     { label: t("audit.detail.resourceId"), value: recordedText(entry.resource_id), mono: true },
@@ -704,18 +699,12 @@ export function auditAreaParams(area: AuditArea): Record<string, string> {
 
 export function auditObjectName(
   entry: Pick<AuditEntry, "resource_type" | "resource_id" | "resource_name">,
-  names: NameIndex,
   t: Translate,
 ): string {
-  if (entry.resource_name?.trim()) return entry.resource_name;
-  if (
-    entry.resource_id &&
-    (entry.resource_type === "workflow" || entry.resource_type === "connector")
-  ) {
-    const name = names[entry.resource_type].get(entry.resource_id);
-    if (name) return name;
-  }
-  return auditResourceLabel(entry.resource_type, t).text;
+  if (entry.resource_name?.trim()) return entry.resource_name.trim();
+  const type = auditResourceLabel(entry.resource_type, t).text;
+  const id = entry.resource_id?.trim();
+  return id ? `${type} · ${id}` : type;
 }
 
 export function initialAuditFilter(search: string, now: number) {
