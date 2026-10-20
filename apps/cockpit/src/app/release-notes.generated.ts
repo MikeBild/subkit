@@ -1356,9 +1356,13 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     {
       "version": "v10.0.1",
       "notes": []
+    },
+    {
+      "version": "v10.1.4",
+      "notes": [
+        "connect APIs with signed JWT keys and App Store Connect"
+      ]
     }
   ],
-  "unpublished": [
-    "connect APIs with signed JWT keys and App Store Connect"
-  ]
+  "unpublished": []
 };
