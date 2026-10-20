@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -230,11 +229,9 @@ export async function createConversation(
 
   if (p.initial_message) {
     const msg = p.initial_message;
-    let seedRepairStageEvidence = false;
     if (/open.?meteo|berlin.*weather|tomorrow.*forecast/i.test(msg)) {
       const { cannedOpenMeteoBerlinPlan } = await import("../../llm/mock-provider.ts");
       getMockProvider().setConversePlan(row.id, cannedOpenMeteoBerlinPlan());
-      seedRepairStageEvidence = true;
     } else if (
       /subkit engine onboarding|guided connector workflow|connect the subkit engine/i.test(msg)
     ) {
@@ -245,30 +242,12 @@ export async function createConversation(
     } else if (/list.*users/i.test(msg)) {
       const { cannedListUsersPlan } = await import("../../llm/mock-provider.ts");
       getMockProvider().setConversePlan(row.id, cannedListUsersPlan(p.connector_id ?? undefined));
-      seedRepairStageEvidence = true;
     } else if (/workflow.*(github|git\s*hub).*(private|priv)?.*repos?/i.test(msg)) {
       const { cannedListPrivateGithubReposPlan } = await import("../../llm/mock-provider.ts");
       getMockProvider().setConversePlan(
         row.id,
         cannedListPrivateGithubReposPlan(p.connector_id ?? undefined),
       );
-      seedRepairStageEvidence = true;
-    }
-    if (seedRepairStageEvidence && getMockProvider().conversePlans.has(row.id)) {
-      await exec
-        .update(conversations)
-        .set({
-          draft: {
-            ...initialDraft,
-            latest_preview: {
-              ok: false,
-              step_id: null,
-              summary: "stage evidence (canned repair-stage fixture)",
-              step_traces: [],
-            },
-          },
-        })
-        .where(eq(conversations.id, row.id));
     }
   }
 
