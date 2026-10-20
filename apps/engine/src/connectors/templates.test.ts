@@ -39,6 +39,17 @@ describe("connector-template catalog — structural", () => {
     expect(re.test("https://[^/]+.supabase.co/graphql/v1")).toBe(false);
   });
 
+  test("GitHub GraphQL guides private Project reads without requesting write scope by default", () => {
+    const template = templates.find((entry) => entry.slug === "github-graphql");
+    expect(template?.setup_instructions).toContain("read:project");
+    expect(template?.setup_instructions).toContain("pageInfo.endCursor");
+    expect(template?.setup_instructions).toContain("REST OpenAPI discovery is not required");
+    expect(template?.oauth?.scopes).not.toContain("project");
+    expect(
+      template?.auth_options?.find((option) => option.auth_type === "bearer")?.description,
+    ).toContain("read:project");
+  });
+
   test("every slug matches the lowercase-kebab regex", () => {
     for (const t of templates) {
       expect(t.slug).toMatch(/^[a-z0-9][a-z0-9-]*$/);

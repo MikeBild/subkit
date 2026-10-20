@@ -6732,21 +6732,21 @@
     "ingestion_source": "graphql",
     "ingestion_url": "https://docs.github.com/public/fpt/schema.docs.graphql",
     "icon": "github.svg",
-    "description": "GitHub GraphQL API v4 — one roundtrip instead of N+1 REST fetches for deep traversals (repo → issues → comments → labels).",
+    "description": "GitHub GraphQL API v4 — read nested repository and ProjectV2 data without relying on REST OpenAPI discovery. Query only reviewed fields and inspect pageInfo for incomplete results.",
     "category": "devops",
     "tags": ["graphql", "webhooks", "git", "efficient"],
-    "setup_instructions": "Use the same PAT as the REST template (repo + read:org). Send queries to https://api.github.com/graphql. Monitor X-RateLimit-Cost.",
+    "setup_instructions": "Use a token with access to the selected repositories. Add read:project only when querying private Projects; do not request project write scope for read-only workflows. Send named queries to https://api.github.com/graphql, probe the exact ProjectV2 query with the authenticated connector, and follow pageInfo.endCursor while hasNextPage is true. Monitor GraphQL errors and rate-limit cost. REST OpenAPI discovery is not required.",
     "auth_options": [
       {
         "auth_type": "bearer",
         "label": "Personal Access Token (classic or fine-grained)",
-        "description": "A PAT with repo + read:org works for both REST and GraphQL endpoints.",
+        "description": "Repository access permits private repository queries. Private ProjectV2 queries additionally require read:project or equivalent fine-grained read permission.",
         "oauth": null
       },
       {
         "auth_type": "oauth2",
         "label": "OAuth App (Authorization Code)",
-        "description": "Same OAuth App as the REST connector — the token works against both APIs.",
+        "description": "The same OAuth App can access REST and GraphQL. Request read:project separately when private ProjectV2 queries are needed.",
         "oauth": {
           "grant_type": "authorization_code",
           "token_auth_method": "body",

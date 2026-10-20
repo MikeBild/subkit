@@ -3673,7 +3673,7 @@ A **template** connects a system: base URL, auth flow, endpoint schema, and a ve
 | -------- | ---- | ------ | ---- | ---------------- |
 | **App Store Connect** | `app-store-connect` | http | signed_jwt | App Store Connect REST API for app metadata, TestFlight builds, beta groups, testers, and public links. |
 | **GitHub (REST)** | `github` | http | bearer | GitHub REST API (date-versioned: 2026-03-10 latest, 2022-11-28 default) — best for write operations (issue creation, PR merge, file commits) where REST is more expressive than GraphQL. |
-| **GitHub (GraphQL)** | `github-graphql` | graphql | bearer | GitHub GraphQL API v4 — one roundtrip instead of N+1 REST fetches for deep traversals (repo → issues → comments → labels). |
+| **GitHub (GraphQL)** | `github-graphql` | graphql | bearer | GitHub GraphQL API v4 — read nested repository and ProjectV2 data without relying on REST OpenAPI discovery. |
 | **Vercel** | `vercel` | http | bearer | Vercel deployment and hosting API |
 
 ### Databases
