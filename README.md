@@ -119,11 +119,13 @@ A production claim additionally needs the released engine, migrated receipt tabl
 signed binding, reviewed active workflow, server secret provisioning and an actual
 controlled end-to-end delivery. Website publication is a separate final step.
 
-The public website integration is being prepared in the existing Lovable project.
-Its current implementation, personal approval handoffs and outstanding live
-delivery evidence are tracked in [Website tasks](WEBSITE-TODO.md) and
-[Lovable setup](docs/lovable-setup.md); offline checks do not imply production mail
-delivery or website publication.
+The existing Lovable website was published after controlled live acceptance on
+2026-10-20. Contact and beta-request forms delivered both the operator notification
+and localized acknowledgement through the reviewed Gmail workflow in preview and
+on the public host. An identical repeated request created no additional execution.
+[Website tasks](WEBSITE-TODO.md) and [Lovable setup](docs/lovable-setup.md) distinguish
+this verified integration from remaining product, legal and distribution work;
+operational evidence stays in the private handoff.
 
 ## Availability and product planning
 
