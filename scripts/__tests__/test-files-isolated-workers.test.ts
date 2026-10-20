@@ -9,7 +9,7 @@ afterEach(() => rmSync(fixture, { recursive: true, force: true }));
 async function run(workers: string, ...args: string[]) {
   return Bun.spawn([process.execPath, "scripts/test-files-isolated.ts", ...args], {
     cwd: root,
-    env: { ...process.env, SUBKIT_TEST_WORKERS: workers },
+    env: { ...process.env, SUBKIT_TEST_WORKERS: workers, SUBKIT_TEST_WORKER_CHILD: "0" },
     stdout: "pipe",
     stderr: "pipe",
   });
