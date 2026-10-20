@@ -1,12 +1,17 @@
 import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { and, count, eq, isNull } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
-import { auditLog, files, tenants } from "../../db/schema/index.ts";
+import { createDbFromUrl } from "../../db/client.ts";
+import { auditLog, fileLinks, files, tenants } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import { MemoryObjectStore, setObjectStoreForTesting } from "../../storage/object-store.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { FILES_CLEANUP_BATCH_SIZE, runFilesCleanup } from "../files-cleanup-runner.ts";
+import {
+  FILES_CLEANUP_BATCH_SIZE,
+  FILES_UNLINKED_CLEANUP_BATCH_SIZE,
+  runFilesCleanup,
+} from "../files-cleanup-runner.ts";
 import { createFilesCleanupBoss, disposeBoss } from "./pgboss-bootstrap.ts";
 
 const uuid = createDeterministicUuidFactory(0xf11ec);
@@ -50,7 +55,11 @@ for (const kind of ["pending", "scanning", "soft", "hard"] as const) {
   test(
     `${kind} backlog advances through bounded pages without changing fresh neighbors`,
     async () => {
-      const f = await seed(kind, FILES_CLEANUP_BATCH_SIZE * 2 + 1);
+      const batchSize =
+        kind === "soft" || kind === "hard"
+          ? FILES_UNLINKED_CLEANUP_BATCH_SIZE
+          : FILES_CLEANUP_BATCH_SIZE;
+      const f = await seed(kind, batchSize * 2 + 1);
       const freshId = uuid();
       await fixture.db.insert(files).values({
         id: freshId,
@@ -75,7 +84,7 @@ for (const kind of ["pending", "scanning", "soft", "hard"] as const) {
             );
           return Number(row?.n ?? 0) - (kind === "pending" ? 1 : 0);
         };
-        for (const expected of [257, 1, 0]) {
+        for (const expected of [batchSize + 1, 1, 0]) {
           await run();
           expect(await remaining()).toBe(expected);
           expect(
@@ -86,6 +95,51 @@ for (const kind of ["pending", "scanning", "soft", "hard"] as const) {
           ).toHaveLength(1);
         }
       } finally {
+        await fixture.db.delete(tenants).where(eq(tenants.id, f.tenantId));
+      }
+    },
+    TEST_DB_HOOK_TIMEOUT,
+  );
+}
+
+for (const kind of ["soft", "hard"] as const) {
+  test(
+    `${kind} cleanup advances past a protected page`,
+    async () => {
+      const f = await seed(kind, FILES_UNLINKED_CLEANUP_BATCH_SIZE + 1);
+      const ordered = [...f.rows].sort((a, b) => a.id.localeCompare(b.id));
+      const free = ordered.at(-1);
+      if (!free) throw new Error("cleanup_fixture_missing");
+      await fixture.db.insert(fileLinks).values(
+        ordered.slice(0, FILES_UNLINKED_CLEANUP_BATCH_SIZE).map((row) => ({
+          tenant_id: f.tenantId,
+          file_id: row.id,
+          resource_type: "conversation" as const,
+          resource_id: uuid(),
+        })),
+      );
+      const isolated = createDbFromUrl(fixture.url);
+      try {
+        const runIsolated = () =>
+          runFilesCleanup(new Date(getTestNow()), isolated.db, boss, fixture.pool);
+        await runIsolated();
+        expect(await fixture.db.select().from(files).where(eq(files.id, free.id))).toHaveLength(1);
+        await runIsolated();
+        const [freeAfter] = await fixture.db.select().from(files).where(eq(files.id, free.id));
+        if (kind === "soft") expect(freeAfter?.deleted_at).not.toBeNull();
+        else expect(freeAfter).toBeUndefined();
+        expect(
+          await fixture.db
+            .select({ id: files.id })
+            .from(files)
+            .where(eq(files.tenant_id, f.tenantId)),
+        ).toHaveLength(
+          kind === "soft"
+            ? FILES_UNLINKED_CLEANUP_BATCH_SIZE + 1
+            : FILES_UNLINKED_CLEANUP_BATCH_SIZE,
+        );
+      } finally {
+        await isolated.pool.end();
         await fixture.db.delete(tenants).where(eq(tenants.id, f.tenantId));
       }
     },
