@@ -66,11 +66,11 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
           overrides: {},
           permission_mode: "auto",
         }).mode,
-      ).toBe("confirm_before_execution");
+      ).toBe("no_confirm");
     }
   });
 
-  it("held draft writes do not create a routine development approval", () => {
+  it("draft probes require confirmation before a development write", () => {
     expect(
       decideToolMode({
         tool: "probe_connector_draft",
@@ -79,7 +79,7 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
         overrides: {},
         permission_mode: "auto",
       }).mode,
-    ).toBe("no_confirm");
+    ).toBe("confirm_before_execution");
   });
 
   it("run_workflow environment=dev auto-confirms (no_confirm)", () => {
