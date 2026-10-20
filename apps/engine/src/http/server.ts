@@ -1,7 +1,3 @@
-import { registerCockpitInstallationAssets } from "./cockpit-installation-assets.ts";
-import { registerCockpitPushRoutes } from "./routes/cockpit-push.ts";
-import { resolveCockpitInstallationContext, requireCockpitInstallation } from "./middleware/cockpit-installation.ts";
-import { registerCockpitInstallationRoutes } from "./routes/cockpit-installations.ts";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { PgBoss } from "pg-boss";
 import { createTokenExchangeProvider } from "../auth/oauth/token-exchange.ts";
@@ -27,10 +23,16 @@ import {
 import { CHAT_EVENT_QUEUE, type ChatEventJob } from "../queue/queues.ts";
 import { clientIpMiddleware } from "./client-ip.ts";
 import { registerCockpitRoutes } from "./cockpit.ts";
+import { registerCockpitInstallationAssets } from "./cockpit-installation-assets.ts";
 import { registerChangeAnnouncements } from "./middleware/announce-change.ts";
 import { authMiddleware } from "./middleware/auth.ts";
 import { browserCsrfMiddleware } from "./middleware/browser-csrf.ts";
 import { browserTenantMiddleware } from "./middleware/browser-tenant.ts";
+import {
+  requireCockpitInstallation,
+  resolveCockpitInstallationContext,
+} from "./middleware/cockpit-installation.ts";
+import { guardCockpitInstallationStreams } from "./middleware/cockpit-installation-stream.ts";
 import { errorMiddleware, mapKnownErrorResponse } from "./middleware/error.ts";
 import { hostedIngressRateLimit, hostedTenantRateLimit } from "./middleware/hosted-rate-limit.ts";
 import { loggingMiddleware } from "./middleware/logging.ts";
@@ -51,6 +53,8 @@ import { registerChatIdentityRoutes } from "./routes/chat-identities.ts";
 import { registerChatSpaceRoutes } from "./routes/chat-spaces.ts";
 import { registerChatWorkspaceRoutes } from "./routes/chat-workspaces.ts";
 import { registerCockpitEventRoutes } from "./routes/cockpit-events.ts";
+import { registerCockpitInstallationRoutes } from "./routes/cockpit-installations.ts";
+import { registerCockpitPushRoutes } from "./routes/cockpit-push.ts";
 import { registerComposeRoute } from "./routes/compose.ts";
 import { registerConnectionRoutes } from "./routes/connections/index.ts";
 import { registerConnectorDiscoveryRoutes } from "./routes/connector-discovery.ts";
@@ -276,6 +280,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   app.use("*", hostedIngressRateLimit());
   app.use("*", authMiddleware(registry));
   app.use("/cockpit/i/:installationId/api/*", requireCockpitInstallation());
+  app.use("/cockpit/i/:installationId/api/*", guardCockpitInstallationStreams());
   app.use("*", hostedTenantRateLimit());
   app.use("*", rateLimitMiddleware(opts.rateLimit ?? {}));
   app.use("/v1/*", browserCsrfMiddleware());

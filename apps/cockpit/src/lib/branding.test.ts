@@ -9,6 +9,8 @@ const branding: TenantBranding = {
   subtitle: null,
   palette: "indigo",
   logos: { light: true, dark: false },
+  app_icon: false,
+  app_icon_urls: { icon_192: null, icon_512: null },
   logo_urls: { light: "/logo?tenant_context=example&revision=7", dark: null },
 };
 

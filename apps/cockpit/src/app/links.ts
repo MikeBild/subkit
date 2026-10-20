@@ -1,10 +1,12 @@
 import { cockpitBasePath } from "./installation-context";
 import type { CatalogResource } from "./route-table";
 
-
 export function absolute(path: string): string {
   const BASE = cockpitBasePath();
-  if (BASE !== "/cockpit" && (path === "/cockpit" || path.startsWith("/cockpit/") && !path.startsWith("/cockpit/i/")))
+  if (
+    BASE !== "/cockpit" &&
+    (path === "/cockpit" || (path.startsWith("/cockpit/") && !path.startsWith("/cockpit/i/")))
+  )
     return `${BASE}${path.slice("/cockpit".length)}`;
   if (path === BASE || path.startsWith(`${BASE}/`) || path.startsWith(`${BASE}?`)) return path;
   if (path === "/") return BASE;

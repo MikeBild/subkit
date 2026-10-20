@@ -1,5 +1,5 @@
-import { cockpitApiHref } from "@/app/installation-context";
 import { noticeTenantContext, tenantContextHeaders } from "@/api/tenant-context";
+import { cockpitApiHref } from "@/app/installation-context";
 
 export interface SseFrame {
   id: string | null;

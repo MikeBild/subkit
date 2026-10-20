@@ -1,4 +1,3 @@
-import { cockpitBasePath } from "./installation-context";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   ChevronsUpDown,
@@ -62,6 +61,7 @@ import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { RunOverlays } from "@/pages/runs";
+import { cockpitBasePath } from "./installation-context";
 import { LiveEventsProvider, useLiveStatus } from "./live-events";
 import { LiveIndicator } from "./live-indicator";
 import { navigationItem, visibleNavigation } from "./navigation";

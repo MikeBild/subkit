@@ -380,6 +380,40 @@ describe("tenant branding HTTP acceptance", () => {
     expect(stale.status).toBe(409);
   });
 
+  test("removes an app icon with a revision compare-and-swap", async () => {
+    const restored = await request("/v1/tenant/branding", {
+      method: "PUT",
+      body: JSON.stringify(
+        update(3, {
+          app_icon: {
+            operation: "replace",
+            mime_type: "image/png",
+            content_base64: appIconBase64,
+          },
+        }),
+      ),
+    });
+    expect(restored.status).toBe(200);
+    expect(await restored.json()).toMatchObject({ revision: 4, app_icon: true });
+
+    const removed = await request("/v1/tenant/branding", {
+      method: "PUT",
+      body: JSON.stringify(update(4, { app_icon: { operation: "remove" } })),
+    });
+    expect(removed.status).toBe(200);
+    expect(await removed.json()).toMatchObject({
+      revision: 5,
+      app_icon: false,
+      app_icon_urls: { icon_192: null, icon_512: null },
+    });
+
+    const stale = await request("/v1/tenant/branding", {
+      method: "PUT",
+      body: JSON.stringify(update(3, { app_icon: { operation: "keep" } })),
+    });
+    expect(stale.status).toBe(409);
+  });
+
   test("caps a streamed request before JSON parsing when content length is absent", async () => {
     const body = JSON.stringify({ ...update(3), padding: "x".repeat(6 * 1024 * 1024) });
     const response = await fetch(`${ctx.baseUrl}/v1/tenant/branding`, {

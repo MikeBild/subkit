@@ -1,14 +1,15 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
-import { browserSessionForPrincipal, issueBrowserSession } from "../../auth/browser-session.ts";
+import { browserSessionForPrincipal, issueBrowserSession } from "../../auth/index.ts";
 import { sessions } from "../../db/schema/identity.ts";
 import {
   createOrReuseCockpitInstallation,
   revokeCockpitInstallation,
-} from "../../identity/cockpit-installations.ts";
+} from "../../identity/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import type { AppEnv } from "../openapi.ts";
 
+const InstallationFailure = z.object({ code: z.string(), message: z.string().optional() });
 const EmptyBody = z.object({}).strict();
 const InstallationResponse = z.object({
   id: z.string().uuid(),
@@ -21,8 +22,21 @@ const createInstallationRoute = createRoute({
   path: "/v1/cockpit/installations",
   tags: ["cockpit"],
   summary: "Create or reuse the current browser user's Cockpit installation",
-  request: { body: { content: { "application/json": { schema: EmptyBody } } } },
+  request: { body: { required: true, content: { "application/json": { schema: EmptyBody } } } },
+  security: [{ browserSession: [] }],
   responses: {
+    401: {
+      description: "Browser session required",
+      content: { "application/json": { schema: InstallationFailure } },
+    },
+    403: {
+      description: "Installation or workspace unavailable",
+      content: { "application/json": { schema: InstallationFailure } },
+    },
+    500: {
+      description: "Session could not be issued",
+      content: { "application/json": { schema: InstallationFailure } },
+    },
     200: {
       description: "Cockpit installation",
       content: { "application/json": { schema: InstallationResponse } },
@@ -74,12 +88,16 @@ export function registerCockpitInstallationRoutes(app: OpenAPIHono<AppEnv>): voi
       db: c.get("db"),
       tenantId: installation.tenant_id,
       userId: installation.owner_user_id,
-      authIdentityId: rootSession?.auth_identity_id ?? undefined,
+      ...(rootSession?.auth_identity_id ? { authIdentityId: rootSession.auth_identity_id } : {}),
       installationId: installation.id,
       redirectTo: `/cockpit/i/${installation.id}/`,
       via: "cockpit_installation",
       metadata: { installation_id: installation.id, created },
     });
+    if (issued.status !== 302) {
+      const failure = InstallationFailure.parse(await issued.json());
+      return c.json(failure, issued.status === 403 ? 403 : 500);
+    }
     return c.json(
       {
         id: installation.id,

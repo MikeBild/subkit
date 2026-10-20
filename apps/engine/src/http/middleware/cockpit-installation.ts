@@ -1,14 +1,14 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
+import type { ResolvedPrincipal } from "../../auth/index.ts";
 import {
   type BrowserSessionPayload,
   browserSessionForPrincipal,
   cockpitInstallationIdFromPath,
-} from "../../auth/browser-session.ts";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
+} from "../../auth/index.ts";
 import type { Db } from "../../db/client.ts";
-import { sessions } from "../../db/schema/identity.ts";
-import { getCockpitInstallation } from "../../identity/cockpit-installations.ts";
+import { sessions, tenants, users } from "../../db/schema/identity.ts";
+import { getCockpitInstallation } from "../../identity/index.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const APP_TENANT_SWITCH_PATHS = new Set([
@@ -50,15 +50,27 @@ export async function resolveCockpitInstallationContext(
   ) {
     return null;
   }
+  const now = new Date();
+  const slidingCutoff = new Date(now.getTime() - 8 * 60 * 60 * 1000);
   const [session] = await db
     .select({ expires_at: sessions.expires_at })
     .from(sessions)
+    .innerJoin(users, and(eq(users.tenant_id, sessions.tenant_id), eq(users.id, sessions.user_id)))
+    .innerJoin(tenants, eq(tenants.id, sessions.tenant_id))
     .where(
       and(
         eq(sessions.id, payload.session_id),
         eq(sessions.installation_id, installation.id),
         eq(sessions.tenant_id, installation.tenant_id),
         eq(sessions.user_id, installation.owner_user_id),
+        isNull(sessions.revoked_at),
+        gt(sessions.expires_at, now),
+        or(isNull(sessions.absolute_expires_at), gt(sessions.absolute_expires_at, now)),
+        gt(sessions.last_seen_at, slidingCutoff),
+        eq(users.status, "active"),
+        isNull(users.deleted_at),
+        eq(tenants.status, "active"),
+        isNull(tenants.deleted_at),
       ),
     )
     .limit(1);
@@ -75,7 +87,12 @@ export async function resolveCockpitInstallationContext(
 export function requireCockpitInstallation(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const installationId = cockpitInstallationIdFromPath(c.req.path);
-    if (!installationId) return await next();
+    if (!installationId) {
+      return c.json(
+        { code: "installation_not_found", message: "Cockpit installation not found" },
+        404,
+      );
+    }
     const canonical = c.req.path.replace(/^\/cockpit\/i\/[0-9a-f-]+\/api/i, "");
     if (APP_LOGIN_PATHS.has(canonical)) return await next();
     const context = await resolveCockpitInstallationContext(

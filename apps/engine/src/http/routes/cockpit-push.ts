@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { EgressBlockedError } from "../../connectors/egress-guard.ts";
+import type { Context } from "hono";
+import { EgressBlockedError } from "../../connectors/index.ts";
 import type { Db } from "../../db/client.ts";
 import {
   type CockpitPushContext,
@@ -7,7 +8,7 @@ import {
   prepareCockpitPushKey,
   removeCockpitPushSubscription,
   upsertCockpitPushSubscription,
-} from "../../identity/cockpit-push.ts";
+} from "../../identity/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import type { AppEnv } from "../openapi.ts";
 
@@ -27,6 +28,7 @@ const SubscriptionBody = z
 const PushStatus = z.object({ subscribed: z.boolean() }).openapi("CockpitPushSubscriptionStatus");
 
 const PushKey = z.object({ public_key: z.string() }).openapi("CockpitPushKey");
+const PushError = z.object({ code: z.string(), message: z.string().optional() });
 
 const statusRoute = createRoute({
   method: "get",
@@ -39,6 +41,10 @@ const statusRoute = createRoute({
       description: "Push subscription status",
       content: { "application/json": { schema: PushStatus } },
     },
+    401: {
+      description: "Installation session required",
+      content: { "application/json": { schema: PushError } },
+    },
   },
 });
 
@@ -50,6 +56,10 @@ const prepareRoute = createRoute({
   security: [{ browserSession: [] }],
   responses: {
     200: { description: "VAPID public key", content: { "application/json": { schema: PushKey } } },
+    401: {
+      description: "Installation session required",
+      content: { "application/json": { schema: PushError } },
+    },
   },
 });
 
@@ -62,7 +72,17 @@ const updateRoute = createRoute({
   request: {
     body: { required: true, content: { "application/json": { schema: SubscriptionBody } } },
   },
-  responses: { 204: { description: "Stored" }, 400: { description: "Invalid push subscription" } },
+  responses: {
+    204: { description: "Stored" },
+    400: {
+      description: "Invalid push subscription",
+      content: { "application/json": { schema: PushError } },
+    },
+    401: {
+      description: "Installation session required",
+      content: { "application/json": { schema: PushError } },
+    },
+  },
 });
 
 const deleteRoute = createRoute({
@@ -71,7 +91,13 @@ const deleteRoute = createRoute({
   tags: ["identity"],
   summary: "Remove the current installed Cockpit app session push subscription",
   security: [{ browserSession: [] }],
-  responses: { 204: { description: "Removed" } },
+  responses: {
+    204: { description: "Removed" },
+    401: {
+      description: "Installation session required",
+      content: { "application/json": { schema: PushError } },
+    },
+  },
 });
 
 export type ResolveCockpitPushContext = (
@@ -84,17 +110,20 @@ export function registerCockpitPushRoutes(
   app: OpenAPIHono<AppEnv>,
   resolveContext: ResolveCockpitPushContext,
 ): void {
-  const context = async (request: Request, appContext: Parameters<typeof requireAuth>[0]) =>
+  const context = async (request: Request, appContext: Context<AppEnv>) =>
     await resolveContext(appContext.get("db"), request, requireAuth(appContext));
   app.openapi(statusRoute, async (c) => {
     const pushContext = await context(c.req.raw, c);
     if (!pushContext) return c.json({ code: "cockpit_installation_session_required" }, 401);
-    return c.json({ subscribed: await cockpitPushSubscriptionActive(c.get("db"), pushContext) });
+    return c.json(
+      { subscribed: await cockpitPushSubscriptionActive(c.get("db"), pushContext) },
+      200,
+    );
   });
   app.openapi(prepareRoute, async (c) => {
     const pushContext = await context(c.req.raw, c);
     if (!pushContext) return c.json({ code: "cockpit_installation_session_required" }, 401);
-    return c.json({ public_key: await prepareCockpitPushKey(c.get("db"), pushContext) });
+    return c.json({ public_key: await prepareCockpitPushKey(c.get("db"), pushContext) }, 200);
   });
   app.openapi(updateRoute, async (c) => {
     const pushContext = await context(c.req.raw, c);

@@ -1,4 +1,3 @@
-import { cockpitBasePath } from "./installation-context";
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { NotFoundPage, RouteErrorPage } from "@/components/failure-state";
 import { PeopleAndAccessPage } from "@/pages/admin";
@@ -14,6 +13,7 @@ import { OverviewPage } from "@/pages/overview";
 import { SettingsPage } from "@/pages/settings";
 import { SkillPage, SkillsPage } from "@/pages/skills";
 import { UsagePage } from "@/pages/usage";
+import { cockpitBasePath } from "./installation-context";
 import { absolute } from "./links";
 import {
   CHAT_ROUTES,

@@ -53,7 +53,12 @@ export function createBrowserSessionProvider(
             revoked_at: cockpitInstallations.revoked_at,
           })
           .from(cockpitInstallations)
-          .where(eq(cockpitInstallations.id, row.installation_id))
+          .where(
+            and(
+              eq(cockpitInstallations.id, row.installation_id),
+              eq(cockpitInstallations.tenant_id, row.tenant_id),
+            ),
+          )
           .limit(1);
         if (
           !installation ||

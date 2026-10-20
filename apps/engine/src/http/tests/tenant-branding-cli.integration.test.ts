@@ -44,6 +44,7 @@ beforeAll(async () => {
         },
         dark: { operation: "keep" },
       },
+      app_icon: { operation: "keep" },
     }),
   );
 });

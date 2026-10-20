@@ -1,4 +1,4 @@
-import { and, isNull } from "drizzle-orm";
+import { isNull } from "drizzle-orm";
 import { index, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { timestamps } from "./_common.ts";
 import { tenants, users } from "./identity.ts";
@@ -19,7 +19,7 @@ export const cockpitInstallations = pgTable(
   (t) => [
     uniqueIndex("cockpit_installations_active_tenant_owner_key")
       .on(t.tenant_id, t.owner_user_id)
-      .where(and(isNull(t.revoked_at))),
+      .where(isNull(t.revoked_at)),
     index("cockpit_installations_tenant_owner_idx").on(t.tenant_id, t.owner_user_id),
   ],
 );

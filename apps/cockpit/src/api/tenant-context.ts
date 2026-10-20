@@ -1,4 +1,5 @@
 import { cockpitApiHref, installationId } from "@/app/installation-context";
+
 let tenantId: string | null = null;
 
 export function acceptTenantContext(id: string): boolean {

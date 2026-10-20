@@ -1,16 +1,17 @@
-import { createHash } from "node:crypto";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { createHash, ECDH } from "node:crypto";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import webpush from "web-push";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
-import { assertEgressAllowedResolved } from "../connectors/egress-guard.ts";
+import { assertEgressAllowedResolved } from "../connectors/index.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { cockpitInstallations } from "../db/schema/cockpit-installations.ts";
 import { cockpitPushKeys, cockpitPushSubscriptions } from "../db/schema/cockpit-push.ts";
-import { sessions } from "../db/schema/identity.ts";
+import { sessions, tenants, users } from "../db/schema/identity.ts";
 
 const PUSH_AUDIENCE_MAX = 20;
+const PUSH_ENDPOINT_HOSTS = new Set(["fcm.googleapis.com", "updates.push.services.mozilla.com"]);
 const NEUTRAL_PUSH_PAYLOAD = JSON.stringify({
   title: "SubKit",
   body: "Attention required",
@@ -46,6 +47,55 @@ function endpointHash(endpoint: string): string {
 
 function subscriptionAad(context: CockpitPushContext, hash: string): string {
   return `cockpit-push-subscription:${context.tenant_id}:${context.installation_id}:${context.session_id}:${hash}`;
+}
+
+function isPushEndpointHost(host: string): boolean {
+  return (
+    PUSH_ENDPOINT_HOSTS.has(host) ||
+    host.endsWith(".push.apple.com") ||
+    host.endsWith(".notify.windows.com")
+  );
+}
+
+export function parseCockpitPushEndpoint(endpoint: string): URL {
+  const value = new URL(endpoint);
+  if (
+    value.protocol !== "https:" ||
+    value.username ||
+    value.password ||
+    value.port ||
+    value.hash ||
+    !isPushEndpointHost(value.hostname.toLowerCase())
+  ) {
+    throw new TypeError("cockpit push endpoint is not permitted");
+  }
+  return value;
+}
+
+function activeSessionWhere(
+  context: Pick<CockpitPushContext, "tenant_id" | "installation_id"> & { session_id?: string },
+  now: Date,
+) {
+  return and(
+    eq(cockpitPushSubscriptions.tenant_id, context.tenant_id),
+    eq(cockpitPushSubscriptions.installation_id, context.installation_id),
+    ...(context.session_id ? [eq(cockpitPushSubscriptions.session_id, context.session_id)] : []),
+    eq(sessions.tenant_id, context.tenant_id),
+    eq(sessions.installation_id, context.installation_id),
+    isNull(sessions.revoked_at),
+    gt(sessions.expires_at, now),
+    or(isNull(sessions.absolute_expires_at), gt(sessions.absolute_expires_at, now)),
+    eq(cockpitInstallations.tenant_id, context.tenant_id),
+    eq(cockpitInstallations.owner_user_id, sessions.user_id),
+    isNull(cockpitInstallations.revoked_at),
+    eq(users.tenant_id, context.tenant_id),
+    eq(users.id, sessions.user_id),
+    eq(users.status, "active"),
+    isNull(users.deleted_at),
+    eq(tenants.id, context.tenant_id),
+    eq(tenants.status, "active"),
+    isNull(tenants.deleted_at),
+  );
 }
 
 function parseKeyPair(raw: string): VapidKeyPair {
@@ -116,10 +166,22 @@ export async function upsertCockpitPushSubscription(
   context: CockpitPushContext,
   subscription: CockpitPushSubscriptionInput,
 ): Promise<void> {
-  const endpoint = new URL(subscription.endpoint);
-  if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password) {
-    throw new Error("cockpit push endpoint must be an HTTPS URL without credentials");
+  const publicKey = Buffer.from(subscription.keys.p256dh, "base64url");
+  const auth = Buffer.from(subscription.keys.auth, "base64url");
+  if (
+    publicKey.length !== 65 ||
+    publicKey[0] !== 4 ||
+    auth.length !== 16 ||
+    publicKey.toString("base64url") !== subscription.keys.p256dh ||
+    auth.toString("base64url") !== subscription.keys.auth
+  )
+    throw new TypeError("invalid push key material");
+  try {
+    ECDH.convertKey(publicKey, "prime256v1");
+  } catch {
+    throw new TypeError("invalid push key material");
   }
+  const endpoint = parseCockpitPushEndpoint(subscription.endpoint);
   await assertEgressAllowedResolved(endpoint, { tenant_id: context.tenant_id, exec: db });
   const hash = endpointHash(subscription.endpoint);
   const encrypted = encryptSecret(JSON.stringify(subscription), subscriptionAad(context, hash));
@@ -186,16 +248,18 @@ export async function cockpitPushSubscriptionActive(
   db: Executor,
   context: CockpitPushContext,
 ): Promise<boolean> {
+  const now = new Date();
   const rows = await db
     .select({ id: cockpitPushSubscriptions.id })
     .from(cockpitPushSubscriptions)
-    .where(
-      and(
-        eq(cockpitPushSubscriptions.tenant_id, context.tenant_id),
-        eq(cockpitPushSubscriptions.installation_id, context.installation_id),
-        eq(cockpitPushSubscriptions.session_id, context.session_id),
-      ),
+    .innerJoin(sessions, eq(sessions.id, cockpitPushSubscriptions.session_id))
+    .innerJoin(
+      cockpitInstallations,
+      eq(cockpitInstallations.id, cockpitPushSubscriptions.installation_id),
     )
+    .innerJoin(users, eq(users.id, sessions.user_id))
+    .innerJoin(tenants, eq(tenants.id, sessions.tenant_id))
+    .where(activeSessionWhere(context, now))
     .limit(1);
   return rows.length > 0;
 }
@@ -205,6 +269,7 @@ export async function sendCockpitPushNotifications(input: {
   tenant_id: string;
   installation_id: string;
   subject: string;
+  send?: typeof webpush.sendNotification;
 }): Promise<{ attempted: number; delivered: number }> {
   const subject = new URL(input.subject);
   if (subject.protocol !== "https:" || subject.username || subject.password)
@@ -239,14 +304,15 @@ export async function sendCockpitPushNotifications(input: {
       cockpitInstallations,
       eq(cockpitInstallations.id, cockpitPushSubscriptions.installation_id),
     )
+    .innerJoin(users, eq(users.id, sessions.user_id))
+    .innerJoin(tenants, eq(tenants.id, sessions.tenant_id))
     .where(
-      and(
-        eq(cockpitPushSubscriptions.tenant_id, input.tenant_id),
-        eq(cockpitPushSubscriptions.installation_id, input.installation_id),
-        isNull(sessions.revoked_at),
-        gt(sessions.expires_at, now),
-        isNull(cockpitInstallations.revoked_at),
-        eq(cockpitInstallations.tenant_id, input.tenant_id),
+      activeSessionWhere(
+        {
+          tenant_id: input.tenant_id,
+          installation_id: input.installation_id,
+        },
+        now,
       ),
     )
     .limit(PUSH_AUDIENCE_MAX);
@@ -260,14 +326,28 @@ export async function sendCockpitPushNotifications(input: {
       expires_at: now,
     };
     try {
+      const live = await input.db
+        .select({ id: cockpitPushSubscriptions.id })
+        .from(cockpitPushSubscriptions)
+        .innerJoin(sessions, eq(sessions.id, cockpitPushSubscriptions.session_id))
+        .innerJoin(
+          cockpitInstallations,
+          eq(cockpitInstallations.id, cockpitPushSubscriptions.installation_id),
+        )
+        .innerJoin(users, eq(users.id, sessions.user_id))
+        .innerJoin(tenants, eq(tenants.id, sessions.tenant_id))
+        .where(activeSessionWhere(context, new Date()))
+        .limit(1);
+      if (live.length === 0) continue;
       const subscription = parseSubscription(
         decryptSecret(row, subscriptionAad(context, row.endpoint_sha256)),
       );
-      await assertEgressAllowedResolved(subscription.endpoint, {
+      const endpoint = parseCockpitPushEndpoint(subscription.endpoint);
+      await assertEgressAllowedResolved(endpoint, {
         tenant_id: input.tenant_id,
         exec: input.db,
       });
-      await webpush.sendNotification(subscription, NEUTRAL_PUSH_PAYLOAD, {
+      await (input.send ?? webpush.sendNotification)(subscription, NEUTRAL_PUSH_PAYLOAD, {
         vapidDetails: {
           subject: input.subject,
           publicKey: vapid.publicKey,

@@ -10,6 +10,8 @@ const branding: TenantBranding = {
   palette: "teal",
   logos: { light: true, dark: false },
   logo_urls: { light: "/logo", dark: "/logo" },
+  app_icon: false,
+  app_icon_urls: { icon_192: null, icon_512: null },
 };
 
 describe("tenant branding EngineClient parity", () => {
@@ -31,6 +33,7 @@ describe("tenant branding EngineClient parity", () => {
       subtitle: null,
       palette: "teal",
       logos: { light: { operation: "keep" }, dark: { operation: "remove" } },
+      app_icon: { operation: "keep" },
     });
     await client.resetTenantBranding(8);
     expect(calls.map((call) => [call.url, call.init?.method])).toEqual([

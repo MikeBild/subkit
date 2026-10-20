@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
-import { cockpitInstallationIdFromPath } from "../../auth/browser-session.ts";
+import { cockpitInstallationIdFromPath } from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { completeApprovalBackedElicitation } from "../../conversations/index.ts";
 import type { Db } from "../../db/client.ts";
@@ -112,7 +112,11 @@ async function resolveApprovalApprover(
   return null;
 }
 
-async function redirectToSignIn(grant: string, publicBaseUrl: string, requestPath: string): Promise<Response> {
+async function redirectToSignIn(
+  grant: string,
+  publicBaseUrl: string,
+  requestPath: string,
+): Promise<Response> {
   const installationId = cockpitInstallationIdFromPath(requestPath);
   const apiPrefix = installationId ? `/cockpit/i/${installationId}/api` : "";
   const back = new URL(`${apiPrefix}${APPROVAL_PORTAL_PATH}`, publicBaseUrl);
@@ -235,7 +239,14 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         return c.body(html, status, remembered);
       }
       return c.body(
-        buildApprovalDecisionHtml(view, grant, approver, form.get("csrf_token") ?? "", look, c.req.path),
+        buildApprovalDecisionHtml(
+          view,
+          grant,
+          approver,
+          form.get("csrf_token") ?? "",
+          look,
+          c.req.path,
+        ),
         200,
         remembered,
       );

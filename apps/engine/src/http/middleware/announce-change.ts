@@ -1,5 +1,5 @@
-import { canonicalBrowserPath } from "../../auth/browser-session.ts";
 import type { Hono, MiddlewareHandler } from "hono";
+import { canonicalBrowserPath } from "../../auth/browser-session.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
 import { emitResourceChange, type ResourceChangeType } from "../../pubsub/index.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -40,7 +40,11 @@ export function announcesChange(
 export function announceChange(announcement: ChangeAnnouncement): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     await next();
-    if (c.error || !announcesChange(announcement, c.req.method, canonicalBrowserPath(c.req.raw), c.res.status)) return;
+    if (
+      c.error ||
+      !announcesChange(announcement, c.req.method, canonicalBrowserPath(c.req.raw), c.res.status)
+    )
+      return;
     const principal = c.get("principal");
     if (!principal) return;
     try {

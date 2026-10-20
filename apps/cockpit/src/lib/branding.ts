@@ -1,10 +1,11 @@
-import { cockpitApiHref } from "@/app/installation-context";
 import type { BrandingPalette, TenantBranding, TenantBrandingUpdate } from "@/api/tenant-branding";
+import { cockpitApiHref } from "@/app/installation-context";
 
 export const BRANDING_PALETTES: readonly BrandingPalette[] = ["standard", "indigo", "teal"];
 
 export function brandingLogo(value: TenantBranding | undefined, theme: "light" | "dark") {
-  const source = value?.logo_urls[theme] ?? value?.logo_urls[theme === "light" ? "dark" : "light"] ?? null;
+  const source =
+    value?.logo_urls[theme] ?? value?.logo_urls[theme === "light" ? "dark" : "light"] ?? null;
   return source ? cockpitApiHref(source) : null;
 }
 

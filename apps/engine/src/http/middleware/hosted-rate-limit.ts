@@ -1,6 +1,6 @@
-import { canonicalBrowserPath } from "../../auth/browser-session.ts";
 import { eq } from "drizzle-orm";
 import type { Context, MiddlewareHandler } from "hono";
+import { canonicalBrowserPath } from "../../auth/browser-session.ts";
 import { getConfig } from "../../config/loader.ts";
 import { tenants } from "../../db/schema/index.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -45,7 +45,8 @@ const ACCOUNT_PATHS = new Set([
 export function hostedIngressRateLimit(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const config = getConfig();
-    if (!config.auth.hosted.enabled || !isMeteredPath(canonicalBrowserPath(c.req.raw))) return next();
+    if (!config.auth.hosted.enabled || !isMeteredPath(canonicalBrowserPath(c.req.raw)))
+      return next();
     const policy = config.server.hosted_rate_limit;
     if (policy.peer_per_minute <= 0 || policy.global_per_minute <= 0) return unavailable(c);
     const secret = config.auth.session.secret;

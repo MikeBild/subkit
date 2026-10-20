@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
+import { auditAwait } from "../../audit/audit.ts";
+import { AuditAction } from "../../audit/types.ts";
 import { getConfig } from "../../config/loader.ts";
-import { SESSION_ABSOLUTE_TTL_MS } from "../browser-session.ts";
+import type { Db } from "../../db/client.ts";
+import { roles, sessions, users } from "../../db/schema/index.ts";
+import { logger } from "../../logging/logger.ts";
+import { SESSION_ABSOLUTE_TTL_MS, SESSION_SLIDING_TTL_MS } from "../browser-session.ts";
+import type { ResolvedPrincipal } from "../types.ts";
 
 export const SESSION_COOKIE = "subkit_session";
 const JWS_ALG = "HS256";
@@ -73,4 +80,89 @@ export function buildCookieHeader(jwt: string): string {
 
 export function clearCookieHeader(): string {
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+}
+
+export async function resolveOidcSession(
+  db: Db,
+  sessionSecret: Uint8Array,
+  req: Request,
+): Promise<ResolvedPrincipal | null> {
+  const jwt = parseCookies(req.headers.get("cookie"))[SESSION_COOKIE];
+  if (!jwt) return null;
+  const payload = await verifySessionCookie(sessionSecret, jwt);
+  if (!payload) return null;
+
+  // tenant-filter:exempt — session lookup by id resolves the tenant.
+  const [row] = await db
+    .select()
+    .from(sessions)
+    .where(eq(sessions.id, payload.session_id))
+    .limit(1);
+  if (!row) return null;
+
+  const now = new Date();
+  const denyReason: "revoked" | "expired_absolute" | "expired_sliding" | null = row.revoked_at
+    ? "revoked"
+    : row.absolute_expires_at && row.absolute_expires_at.getTime() <= now.getTime()
+      ? "expired_absolute"
+      : row.last_seen_at && now.getTime() - row.last_seen_at.getTime() > SESSION_SLIDING_TTL_MS
+        ? "expired_sliding"
+        : null;
+  if (denyReason) {
+    await auditAwait(
+      {
+        tenant_id: row.tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.SESSION_REVOKED,
+        resource_type: "session",
+        resource_id: row.id,
+        result: "denied",
+        reason: denyReason,
+        metadata: { via: "oidc_resolve", subject_user_id: row.user_id },
+      },
+      db,
+    );
+    return null;
+  }
+
+  void Promise.resolve().then(() => {
+    db.update(sessions)
+      .set({ last_seen_at: new Date() })
+      .where(eq(sessions.id, row.id))
+      .catch((err) => {
+        logger.warn({
+          module: "auth",
+          action: "oidc.last_seen_flush_failed",
+          msg: "failed to bump sessions.last_seen_at",
+          session_id: row.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+  });
+
+  const [user] = await db
+    .select({
+      role_name: roles.name,
+      email: users.email,
+      status: users.status,
+      deleted_at: users.deleted_at,
+    })
+    .from(users)
+    .leftJoin(roles, eq(roles.id, users.role_id))
+    .where(and(eq(users.tenant_id, row.tenant_id), eq(users.id, row.user_id)))
+    .limit(1);
+  if (user?.status !== "active" || user.deleted_at !== null) return null;
+
+  return {
+    provider: "oidc",
+    kind: "user",
+    id: row.user_id,
+    tenant_id: row.tenant_id,
+    roles: user.role_name ? [user.role_name] : [],
+    session_id: row.id,
+    auth_source: { kind: "browser_session", session_id: row.id },
+    ...(row.product_id ? { product_id: row.product_id } : {}),
+    ...(user.email ? { email: user.email } : {}),
+  };
 }

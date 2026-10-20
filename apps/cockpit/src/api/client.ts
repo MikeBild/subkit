@@ -33,7 +33,14 @@ const sessionExpiryListeners = new Set<() => void>();
 
 export function isSessionExpiry(status: number, code: string | null): boolean {
   return (
-    (status === 401 && (code === "unauthorized" || code === "installation_session_required" || code === "cockpit_installation_session_required")) || (status === 403 && (code === "tenant_unavailable" || code === "installation_unavailable" || code === "installation_revoked"))
+    (status === 401 &&
+      (code === "unauthorized" ||
+        code === "installation_session_required" ||
+        code === "cockpit_installation_session_required")) ||
+    (status === 403 &&
+      (code === "tenant_unavailable" ||
+        code === "installation_unavailable" ||
+        code === "installation_revoked"))
   );
 }
 

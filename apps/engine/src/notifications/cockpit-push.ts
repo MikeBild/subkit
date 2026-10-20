@@ -18,13 +18,13 @@ export async function dispatchCockpitPushAttention(db: Db, tenantId: string): Pr
   if (!subject) return;
   try {
     await sendCockpitPushAttention({ db, tenant_id: tenantId, subject });
-  } catch (error) {
+  } catch {
     logger.error({
       module: "notifications",
       action: "cockpit_push.dispatch_failed",
       msg: "cockpit push dispatch failed",
       tenant_id: tenantId,
-      error: error instanceof Error ? error.message : String(error),
+      error: "push_delivery_failed",
     });
   }
 }

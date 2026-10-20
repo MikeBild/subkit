@@ -18,7 +18,8 @@ import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
 export const TenantBrandingUpdate = TenantBrandingUpdateSchema.openapi("TenantBrandingUpdate");
-export const TenantBrandingResponse = TenantBrandingResponseSchema.openapi("TenantBrandingResponse");
+export const TenantBrandingResponse =
+  TenantBrandingResponseSchema.openapi("TenantBrandingResponse");
 const resetSchema = TenantBrandingResetSchema;
 const iconSizeSchema = z.coerce.number().pipe(z.union([z.literal(192), z.literal(512)]));
 

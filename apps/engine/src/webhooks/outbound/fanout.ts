@@ -10,12 +10,12 @@ import { withTenantWork } from "../../execution/tenant-work.ts";
 import type { RequestSource } from "../../execution/types.ts";
 import { assertTenantActive } from "../../identity/self-service.ts";
 import { logger } from "../../logging/logger.ts";
+import { dispatchCockpitPushAttention } from "../../notifications/cockpit-push.ts";
 import type { NotificationEvent, NotificationSeverity } from "../../notifications/matcher.ts";
 import {
   type AdapterResolver,
   dispatchEvent as dispatchNotifications,
 } from "../../notifications/service.ts";
-import { dispatchCockpitPushAttention } from "../../notifications/cockpit-push.ts";
 import { matchEventPattern } from "../events/catalog.ts";
 import { WEBHOOK_DELIVER_QUEUE, type WebhookDeliverJob } from "./delivery-worker.ts";
 

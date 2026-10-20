@@ -219,7 +219,10 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
     await revokeBrowserSession(c.get("db"), payload, "user_logout");
     return new Response(null, {
       status: 204,
-      headers: { "set-cookie": clearBrowserSessionCookie(), "cache-control": "no-store" },
+      headers: {
+        "set-cookie": clearBrowserSessionCookie(payload?.installation_id),
+        "cache-control": "no-store",
+      },
     });
   });
 }

@@ -4511,6 +4511,30 @@
                   "light",
                   "dark"
                 ]
+              },
+              "app_icon": {
+                "type": "boolean"
+              },
+              "app_icon_urls": {
+                "type": "object",
+                "properties": {
+                  "icon_192": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "icon_512": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "icon_192",
+                  "icon_512"
+                ]
               }
             },
             "required": [
@@ -4520,7 +4544,9 @@
               "subtitle",
               "palette",
               "logos",
-              "logo_urls"
+              "logo_urls",
+              "app_icon",
+              "app_icon_urls"
             ]
           }
         },
@@ -4535,6 +4561,61 @@
           "oauth_callback_url",
           "recent_conversations"
         ]
+      },
+      "CockpitPushSubscriptionStatus": {
+        "type": "object",
+        "properties": {
+          "subscribed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "subscribed"
+        ]
+      },
+      "CockpitPushKey": {
+        "type": "object",
+        "properties": {
+          "public_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_key"
+        ]
+      },
+      "CockpitPushSubscription": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "maxLength": 4096,
+            "format": "uri"
+          },
+          "keys": {
+            "type": "object",
+            "properties": {
+              "p256dh": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{40,512}$"
+              },
+              "auth": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{8,256}$"
+              }
+            },
+            "required": [
+              "p256dh",
+              "auth"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "endpoint",
+          "keys"
+        ],
+        "additionalProperties": false
       },
       "TenantBrandingResponse": {
         "type": "object",
@@ -4604,6 +4685,30 @@
               "light",
               "dark"
             ]
+          },
+          "app_icon": {
+            "type": "boolean"
+          },
+          "app_icon_urls": {
+            "type": "object",
+            "properties": {
+              "icon_192": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "icon_512": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "icon_192",
+              "icon_512"
+            ]
           }
         },
         "required": [
@@ -4613,7 +4718,9 @@
           "subtitle",
           "palette",
           "logos",
-          "logo_urls"
+          "logo_urls",
+          "app_icon",
+          "app_icon_urls"
         ]
       },
       "TenantBrandingUpdate": {
@@ -4787,6 +4894,70 @@
               "dark"
             ],
             "additionalProperties": false
+          },
+          "app_icon": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "operation": {
+                    "type": "string",
+                    "enum": [
+                      "keep"
+                    ]
+                  }
+                },
+                "required": [
+                  "operation"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "operation": {
+                    "type": "string",
+                    "enum": [
+                      "remove"
+                    ]
+                  }
+                },
+                "required": [
+                  "operation"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "operation": {
+                    "type": "string",
+                    "enum": [
+                      "replace"
+                    ]
+                  },
+                  "mime_type": {
+                    "type": "string",
+                    "enum": [
+                      "image/png",
+                      "image/jpeg",
+                      "image/webp"
+                    ]
+                  },
+                  "content_base64": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2796204
+                  }
+                },
+                "required": [
+                  "operation",
+                  "mime_type",
+                  "content_base64"
+                ],
+                "additionalProperties": false
+              }
+            ]
           }
         },
         "required": [
@@ -36467,6 +36638,351 @@
         }
       }
     },
+    "/v1/cockpit/installations": {
+      "post": {
+        "tags": [
+          "cockpit"
+        ],
+        "summary": "Create or reuse the current browser user's Cockpit installation",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cockpit installation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "start_url": {
+                      "type": "string"
+                    },
+                    "manifest_url": {
+                      "type": "string"
+                    },
+                    "created": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "start_url",
+                    "manifest_url",
+                    "created"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Installation or workspace unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Session could not be issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cockpit/installations/{installationId}": {
+      "delete": {
+        "tags": [
+          "cockpit"
+        ],
+        "summary": "Revoke the current browser user's Cockpit installation",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "installationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Cockpit installation revoked"
+          },
+          "404": {
+            "description": "Installation not found"
+          }
+        }
+      }
+    },
+    "/v1/cockpit/push-subscription": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Read the current installed Cockpit app push subscription status",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Push subscription status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CockpitPushSubscriptionStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Installation session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Store a push subscription for the current installed Cockpit app session",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CockpitPushSubscription"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Stored"
+          },
+          "400": {
+            "description": "Invalid push subscription",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Installation session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Remove the current installed Cockpit app session push subscription",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "description": "Installation session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cockpit/push-subscription/prepare": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Prepare the current installed Cockpit app for explicit push opt-in",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VAPID public key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CockpitPushKey"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Installation session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/tenant/branding/logo": {
       "get": {
         "operationId": "getTenantBrandingLogo",
@@ -36534,6 +37050,76 @@
           },
           "404": {
             "description": "Logo unavailable for this workspace, theme or revision"
+          },
+          "409": {
+            "description": "Browser workspace context changed"
+          }
+        }
+      }
+    },
+    "/v1/tenant/branding/icon": {
+      "get": {
+        "operationId": "getTenantBrandingAppIcon",
+        "tags": [
+          "identity"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "number"
+            },
+            "required": true,
+            "name": "size",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": false,
+            "name": "revision",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "tenant_context",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Normalized app icon for the current workspace and revision",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "App icon unavailable for this workspace or revision"
           },
           "409": {
             "description": "Browser workspace context changed"
