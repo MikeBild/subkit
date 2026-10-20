@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -181,6 +181,28 @@ describe("tenant scoping on reads", () => {
     const byId = await searchAuditResources(testDb.db, tenantA, firstId);
     expect(byId).toHaveLength(1);
     expect(byId[0]?.resource_name).toBe("Archiv 2026");
+  });
+
+  test("resource search cannot probe a secret hidden by the response projection", async () => {
+    const resourceId = uuid();
+    const event = await auditAwait(
+      {
+        tenant_id: tenantA,
+        action: "knowledge_source.created",
+        resource_type: "knowledge_source",
+        resource_id: resourceId,
+        after: { name: "Safe archive" },
+      },
+      testDb.db,
+    );
+    await testDb.db
+      .update(auditLog)
+      .set({ after: { name: `Safe archive ghp_${"A".repeat(32)}` } })
+      .where(and(eq(auditLog.tenant_id, tenantA), eq(auditLog.id, event.id)));
+    expect(await searchAuditResources(testDb.db, tenantA, "AAAAAAA")).toEqual([]);
+    expect((await searchAuditResources(testDb.db, tenantA, "Safe archive"))[0]?.resource_id).toBe(
+      resourceId,
+    );
   });
 });
 

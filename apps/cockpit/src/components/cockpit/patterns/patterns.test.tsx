@@ -245,6 +245,7 @@ describe("P11 StatusBadge", () => {
     expect(statusTone("succeeded")).toBe("ok");
     expect(statusTone("RUNNING")).toBe("warn");
     expect(statusTone("needs_reauth")).toBe("error");
+    expect(statusTone("denied")).toBe("error");
     expect(statusTone("draft")).toBe("neutral");
   });
 });

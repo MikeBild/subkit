@@ -589,6 +589,13 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
   }, [requestedCategory]);
   const [editingClip, setEditingClip] = useState<IntakeClip | null>(null);
   const [detailClip, setDetailClip] = useState<IntakeClip | null>(null);
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1600px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1600px)");
+    const update = () => setWide(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const [sorting, setSorting] = useState<SortingState>([{ id: "captured_at", desc: true }]);
   const [groupMode, setGroupMode] = useState("all");
   const [settingDefaultCategory, setSettingDefaultCategory] = useState(false);
@@ -854,6 +861,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
           }
         />
         <RecordSheet
+          dock={wide}
           open={detailClip !== null}
           onOpenChange={(open) => {
             if (!open) setDetailClip(null);

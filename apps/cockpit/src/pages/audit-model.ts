@@ -404,6 +404,21 @@ export function auditScopeParams(scope: AuditScope): Record<string, string> {
   return {};
 }
 
+export function normalizedAuditScope(
+  scope: AuditScope,
+  action: string,
+  actorType: string,
+): AuditScope {
+  if (
+    scope === "decisions" &&
+    action &&
+    action.split(",").some((item) => !DECISION_ACTIONS.some((decision) => decision === item))
+  )
+    return "all";
+  if (scope === "operations" && actorType && actorType !== "system") return "all";
+  return scope;
+}
+
 export function auditTraceFromUrl(search: string): string | null {
   const raw = new URLSearchParams(search).get("trace_id")?.trim() ?? "";
   if (!raw || raw.length > 128 || !/^[\w-]+$/.test(raw)) return null;

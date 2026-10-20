@@ -218,40 +218,46 @@ export async function searchAuditResources(
 ): Promise<AuditResourceMatch[]> {
   const escaped = search.replace(/[\\%_]/g, "\\$&");
   const pattern = `%${escaped}%`;
-  const result = await db.execute(sql`
+  const pageSize = 100;
+  const maximum = Math.max(1, Math.min(limit, 30));
+  const found: AuditResourceMatch[] = [];
+  const needle = search.toLocaleLowerCase();
+  for (let offset = 0; found.length < maximum; offset += pageSize) {
+    const result = await db.execute(sql`
     WITH matches AS (
-      SELECT a.resource_type, a.resource_id, max(a.ts) AS last_seen_at
+      SELECT a.resource_type, a.resource_id, max(a.ts) AS last_seen_at,
+        array_agg(DISTINCT historical.resource_name)
+          FILTER (WHERE historical.resource_name ILIKE ${pattern}) AS matching_names
       FROM audit_log a
+      CROSS JOIN LATERAL (VALUES
+        (CASE a.resource_type
+          WHEN 'workflow' THEN a.after->>'name'
+          WHEN 'connector' THEN coalesce(a.after->>'display_name', a.after->>'name')
+          WHEN 'knowledge_source' THEN a.after->>'name'
+          WHEN 'skill' THEN coalesce(a.after->>'title', a.after->>'name')
+          WHEN 'file' THEN a.after->>'filename'
+          WHEN 'conversation' THEN a.after->>'title'
+        END),
+        (CASE a.resource_type
+          WHEN 'workflow' THEN a.before->>'name'
+          WHEN 'connector' THEN coalesce(a.before->>'display_name', a.before->>'name')
+          WHEN 'knowledge_source' THEN a.before->>'name'
+          WHEN 'skill' THEN coalesce(a.before->>'title', a.before->>'name')
+          WHEN 'file' THEN a.before->>'filename'
+          WHEN 'conversation' THEN a.before->>'title'
+        END)
+      ) AS historical(resource_name)
       WHERE a.tenant_id = ${tenant_id}::uuid
         AND a.resource_id IS NOT NULL
         AND a.resource_type IN ('workflow', 'connector', 'knowledge_source', 'skill', 'file', 'conversation')
         AND (${resource_type ?? null}::text IS NULL OR a.resource_type = ${resource_type ?? null})
-        AND (a.resource_id ILIKE ${pattern} OR EXISTS (
-          SELECT 1 FROM (VALUES
-            (CASE a.resource_type
-              WHEN 'workflow' THEN a.after->>'name'
-              WHEN 'connector' THEN coalesce(a.after->>'display_name', a.after->>'name')
-              WHEN 'knowledge_source' THEN a.after->>'name'
-              WHEN 'skill' THEN coalesce(a.after->>'title', a.after->>'name')
-              WHEN 'file' THEN a.after->>'filename'
-              WHEN 'conversation' THEN a.after->>'title'
-            END),
-            (CASE a.resource_type
-              WHEN 'workflow' THEN a.before->>'name'
-              WHEN 'connector' THEN coalesce(a.before->>'display_name', a.before->>'name')
-              WHEN 'knowledge_source' THEN a.before->>'name'
-              WHEN 'skill' THEN coalesce(a.before->>'title', a.before->>'name')
-              WHEN 'file' THEN a.before->>'filename'
-              WHEN 'conversation' THEN a.before->>'title'
-            END)
-          ) AS historical(resource_name)
-          WHERE historical.resource_name ILIKE ${pattern}
-        ))
+        AND (a.resource_id ILIKE ${pattern} OR historical.resource_name ILIKE ${pattern})
       GROUP BY a.resource_type, a.resource_id
       ORDER BY max(a.ts) DESC, a.resource_type, a.resource_id
-      LIMIT ${Math.max(1, Math.min(limit, 30))}
+      LIMIT ${pageSize} OFFSET ${offset}
     )
-    SELECT matches.resource_type, matches.resource_id, latest.resource_name, matches.last_seen_at
+    SELECT matches.resource_type, matches.resource_id, latest.resource_name,
+      matches.matching_names, matches.last_seen_at
     FROM matches
     LEFT JOIN LATERAL (
       SELECT candidate.resource_name
@@ -283,23 +289,37 @@ export async function searchAuditResources(
       LIMIT 1
     ) latest ON true
     ORDER BY matches.last_seen_at DESC, matches.resource_type, matches.resource_id
-  `);
-  return result.rows.map((raw) => {
-    const row = raw as {
-      resource_type: string;
-      resource_id: string;
-      resource_name: string | null;
-      last_seen_at: Date;
-    };
-    return {
-      resource_type: row.resource_type,
-      resource_id: row.resource_id,
-      resource_name: row.resource_name?.trim()
-        ? sanitizeForAudit(String(scrubSecrets(row.resource_name)))
-        : null,
-      last_seen_at: new Date(row.last_seen_at).toISOString(),
-    };
-  });
+    `);
+    for (const raw of result.rows) {
+      const row = raw as {
+        resource_type: string;
+        resource_id: string;
+        resource_name: string | null;
+        matching_names: string[] | null;
+        last_seen_at: Date;
+      };
+      if (
+        !row.resource_id.toLocaleLowerCase().includes(needle) &&
+        !(row.matching_names ?? []).some((name) =>
+          sanitizeForAudit(String(scrubSecrets(name)))
+            .toLocaleLowerCase()
+            .includes(needle),
+        )
+      )
+        continue;
+      found.push({
+        resource_type: row.resource_type,
+        resource_id: row.resource_id,
+        resource_name: row.resource_name?.trim()
+          ? sanitizeForAudit(String(scrubSecrets(row.resource_name)))
+          : null,
+        last_seen_at: new Date(row.last_seen_at).toISOString(),
+      });
+      if (found.length === maximum) break;
+    }
+    if (result.rows.length < pageSize) break;
+  }
+  return found;
 }
 
 export async function* streamAuditLog(

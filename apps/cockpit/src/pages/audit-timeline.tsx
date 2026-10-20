@@ -39,6 +39,7 @@ import {
   canReadDirectory,
   initialAuditFilter,
   isAuditEntry,
+  normalizedAuditScope,
 } from "./audit-model";
 import {
   AUDIT_GROUPS,
@@ -143,31 +144,43 @@ interface FilterState {
   fromInstant: string;
   toInstant: string;
 }
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function validUrlUuid(value: string | null): string {
+  return value && UUID.test(value) ? value : "";
+}
 function fromUrl(): FilterState {
   const search = typeof window === "undefined" ? "" : window.location.search;
   const linked = initialAuditFilter(search, Date.now());
   const params = new URLSearchParams(search);
   const accessType = params.get("access_type") ?? "";
   const oauthClientId = params.get("oauth_client_id") ?? "";
+  const actorType = params.get("actor_type") ?? "";
+  const validActorType = ["user", "system_account", "system", "unknown"].includes(actorType)
+    ? actorType
+    : "";
+  const originSource = params.get("origin_source") ?? "";
+  const executionSource = params.get("execution_source") ?? "";
+  const result = params.get("result") ?? "";
+  const action = linked.actions.join(",");
   const zone = localTimeZone();
   return {
-    scope: linked.scope ?? "all",
+    scope: normalizedAuditScope(linked.scope ?? "all", action, validActorType),
     resourceType: linked.resourceType ?? "",
     resourceId: linked.resourceId ?? "",
     resourceQuery: linked.resourceId ?? "",
-    actorType: params.get("actor_type") ?? "",
-    actorId: params.get("actor_id") ?? "",
-    apiKeyId: params.get("api_key_id") ?? "",
-    sessionId: params.get("session_id") ?? "",
+    actorType: validActorType,
+    actorId: validUrlUuid(params.get("actor_id")),
+    apiKeyId: validUrlUuid(params.get("api_key_id")),
+    sessionId: validUrlUuid(params.get("session_id")),
     accessType: ACCESS_TYPES.some((access) => access === accessType) ? accessType : "",
     oauthClientId: /^[a-zA-Z0-9._:-]{1,128}$/.test(oauthClientId) ? oauthClientId : "",
-    originSource: params.get("origin_source") ?? "",
-    executionSource: params.get("execution_source") ?? "",
-    executionId: params.get("execution_id") ?? "",
-    conversationId: params.get("conversation_id") ?? "",
-    workflowId: params.get("workflow_id") ?? "",
-    result: params.get("result") ?? "",
-    action: linked.actions.join(","),
+    originSource: SOURCES.includes(originSource as Source) ? originSource : "",
+    executionSource: SOURCES.includes(executionSource as Source) ? executionSource : "",
+    executionId: validUrlUuid(params.get("execution_id")),
+    conversationId: validUrlUuid(params.get("conversation_id")),
+    workflowId: validUrlUuid(params.get("workflow_id")),
+    result: ["success", "denied", "error"].includes(result) ? result : "",
+    action,
     traceId: linked.traceId ?? "",
     correlationId: params.get("correlation_id") ?? "",
     from: localDateTimeInput(linked.tsFrom, zone),
@@ -255,7 +268,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 const inputClass =
   "h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring";
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 interface IdentityOption {
   kind: "user" | "system_account";
   id: string;
@@ -286,6 +298,8 @@ function FilterForm({
     setDraft((current) => ({
       ...current,
       [key]: value,
+      ...(key === "scope" && value === "decisions" ? { action: "" } : {}),
+      ...(key === "scope" && value === "operations" ? { actorType: "" } : {}),
       ...(key === "from" ? { fromChoice: "", fromInstant: "" } : {}),
       ...(key === "to" ? { toChoice: "", toInstant: "" } : {}),
       ...(key === "fromChoice" ? { fromInstant: "" } : {}),
@@ -800,7 +814,7 @@ function EventCard({
       >
         <span
           aria-hidden
-          className={`absolute -left-[35px] top-5 size-4 rounded-full border-[3px] border-background ${entry.result === "denied" ? "bg-amber-600" : entry.result === "error" ? "bg-destructive" : "bg-emerald-600"}`}
+          className={`absolute -left-[35px] top-5 size-4 rounded-full border-[3px] border-background ${entry.result === "denied" || entry.result === "error" ? "bg-destructive" : "bg-emerald-600"}`}
         />
         <time
           dateTime={entry.ts}
@@ -929,7 +943,7 @@ function AuditDetail({
         />
       )}
       <div
-        className={`rounded-lg border p-4 ${current.result === "denied" ? "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950" : current.result === "error" ? "border-destructive/30 bg-destructive/5" : "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950"}`}
+        className={`rounded-lg border p-4 ${current.result === "denied" || current.result === "error" ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950"}`}
       >
         <div className="text-sm font-semibold">{auditResultLabel(current.result, t).text}</div>
         <div className="mt-1 text-xs">{actionLabel(current.action, t)}</div>
@@ -1209,9 +1223,12 @@ export function AuditTimelinePage() {
       setFilterError(t("audit.timeline.invalidRange"));
       return;
     }
+    const scope = normalizedAuditScope(draft.scope, draft.action, draft.actorType);
     setFilterError(null);
+    setDraft((current) => ({ ...current, scope }));
     setFilter({
       ...draft,
+      scope,
       resourceId: selectedResourceId,
       fromInstant: from ?? "",
       toInstant: to ?? "",
@@ -1264,7 +1281,7 @@ export function AuditTimelinePage() {
       correlation_id: draft.correlationId,
       ts_from: from,
       ts_to: to,
-      scope: draft.scope === "all" ? null : draft.scope,
+      scope: scope === "all" ? null : scope,
     };
     for (const [key, value] of Object.entries(next)) if (value) url.searchParams.set(key, value);
     window.history.replaceState(

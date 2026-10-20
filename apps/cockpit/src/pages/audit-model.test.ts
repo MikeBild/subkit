@@ -28,6 +28,7 @@ import {
   isAuditEntry,
   isAuditScope,
   LINKED_RESOURCE_TYPES,
+  normalizedAuditScope,
   searchedActionParams,
   shortIdentifier,
 } from "@/pages/audit-model";
@@ -283,6 +284,10 @@ describe("the two halves of the log", () => {
     expect(auditScopeParams("decisions")).toHaveProperty("action");
     expect(auditScopeParams("operations")).toEqual({ actor_type: "system" });
     expect(auditScopeParams("all")).toEqual({});
+    expect(normalizedAuditScope("decisions", "workflow.deleted", "")).toBe("decisions");
+    expect(normalizedAuditScope("decisions", "workflow.created", "")).toBe("all");
+    expect(normalizedAuditScope("operations", "", "user")).toBe("all");
+    expect(normalizedAuditScope("operations", "", "system")).toBe("operations");
   });
 
   test("the decision scope carries the verbs a person answers for", () => {

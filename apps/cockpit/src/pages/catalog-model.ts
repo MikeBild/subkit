@@ -42,6 +42,19 @@ export function catalogListParams(resource: string, state: CatalogQueryState): L
 
 export type RecordValue = Record<string, unknown>;
 
+export function catalogSelectedId(search: string): string | null {
+  const id = new URLSearchParams(search).get("selected");
+  return id && id.length <= 200 ? id : null;
+}
+
+export function catalogSelectionHref(path: string, search: string, id: string | null): string {
+  const params = new URLSearchParams(search);
+  if (id) params.set("selected", id);
+  else params.delete("selected");
+  const suffix = params.toString();
+  return suffix ? `${path}?${suffix}` : path;
+}
+
 export function recordTitle(record: RecordValue | undefined): string {
   for (const key of ["name", "display_name", "title", "filename", "slug"]) {
     const value = record?.[key];

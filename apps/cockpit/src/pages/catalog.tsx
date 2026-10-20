@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { Bot } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -7,17 +6,20 @@ import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
 import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
-import { CatalogNameCell } from "@/components/cockpit/catalog-metadata";
+import { CatalogMetadataSummary, CatalogNameCell } from "@/components/cockpit/catalog-metadata";
 import { CreateAction } from "@/components/cockpit/create-choice";
 import {
   Button,
   type CockpitColumn,
+  DataState,
   DataTable,
+  FactList,
   FilterBar,
   type FilterSelect,
   GroupingTabs,
   Page,
   PageHeader,
+  RecordSheet,
   StatusBadge,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
@@ -33,7 +35,10 @@ import {
   CATALOG_WORKFLOW_FILTER_STATUSES,
   catalogListParams,
   catalogOperatingStatus,
+  catalogSelectedId,
+  catalogSelectionHref,
   OPERATING_STATUS_KEYS,
+  recordTitle,
   type WorkflowStatusFilter,
 } from "@/pages/catalog-model";
 import { driverLabel } from "@/pages/connector-detail-model";
@@ -164,6 +169,8 @@ function useCatalogState(config: CatalogConfig) {
         if (next.health) params.set("health", next.health);
         if (next.sort !== config.defaultSort) params.set("sort", next.sort);
         if (next.order !== "desc") params.set("order", next.order);
+        const selected = catalogSelectedId(window.location.search);
+        if (selected) params.set("selected", selected);
         const suffix = params.size > 0 ? `?${params}` : "";
         window.history.pushState({}, "", `${window.location.pathname}${suffix}`);
         return next;
@@ -308,12 +315,36 @@ export function CatalogPage({
   permissions: readonly string[];
 }) {
   const { t, dateTime, locale } = useI18n();
-  const navigate = useNavigate();
   const config = CONFIG[resource];
   const [state, setState] = useCatalogState(config);
   const [search, setSearch] = useState(state.q);
   const [groupMode, setGroupMode] = useState("all");
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    catalogSelectedId(window.location.search),
+  );
   useEffect(() => setGroupMode("all"), [resource]);
+  useEffect(() => setSelectedId(catalogSelectedId(window.location.search)), [resource]);
+  useEffect(() => {
+    const onPopState = () => setSelectedId(catalogSelectedId(window.location.search));
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+  const selectRecord = useCallback((id: string | null) => {
+    if (id) {
+      window.history.pushState(
+        {},
+        "",
+        catalogSelectionHref(window.location.pathname, window.location.search, id),
+      );
+    } else {
+      window.history.replaceState(
+        {},
+        "",
+        catalogSelectionHref(window.location.pathname, window.location.search, null),
+      );
+    }
+    setSelectedId(id);
+  }, []);
   const origin = useCatalogOrigin();
   const debouncedSearch = useDebouncedValue(search);
   useEffect(() => setSearch(state.q), [state.q]);
@@ -331,6 +362,12 @@ export function CatalogPage({
     queryKey: ["catalog", resource, params],
   });
   const query = list.query;
+  const selected = useQuery({
+    queryKey: ["catalog-detail", resource, selectedId],
+    enabled: permissions.includes(config.permission) && Boolean(selectedId),
+    queryFn: () =>
+      apiRequest<CatalogRow>(`${config.endpoint}/${encodeURIComponent(selectedId ?? "")}`),
+  });
 
   const canReadWorkflows = permissions.includes("workflow:read");
   const workflowIndex = useQuery({
@@ -362,6 +399,10 @@ export function CatalogPage({
   );
   const sorting: SortingState = [{ id: state.sort, desc: state.order === "desc" }];
   const rows = list.items;
+  const selectedRow = rows.find((row) => row.id === selectedId);
+  const selectedOperatingStatus = catalogOperatingStatus(
+    selectedRow?.operating_status ?? selected.data?.operating_status,
+  );
   const total = list.total ?? rows.length;
   const categories = useMemo(() => list.first?.categories ?? [], [list.first]);
   const title = t(config.titleKey);
@@ -604,9 +645,13 @@ export function CatalogPage({
           }}
           onOpen={(row) => {
             const id = row.id;
-            if (typeof id === "string") void navigate({ to: recordHref(resource, id) });
+            if (typeof id === "string") selectRecord(id);
           }}
-          rowHref={(row) => (typeof row.id === "string" ? recordHref(resource, row.id) : null)}
+          rowHref={(row) =>
+            typeof row.id === "string"
+              ? catalogSelectionHref(window.location.pathname, window.location.search, row.id)
+              : null
+          }
           total={total}
           infinite={list.infinite}
           columnsLabel={t("catalog.columns")}
@@ -615,6 +660,112 @@ export function CatalogPage({
           actionsLabel={t("common.actions")}
         />
       </div>
+      <RecordSheet
+        dock
+        open={Boolean(selectedId)}
+        onOpenChange={(open) => {
+          if (!open) selectRecord(null);
+        }}
+        title={selected.data ? recordTitle(selected.data) : t("common.details")}
+        subtitle={selected.data ? <CatalogMetadataSummary record={selected.data} /> : undefined}
+        action={
+          selectedId && selected.data ? (
+            <Button asChild variant="outline" size="sm">
+              <a
+                href={absolute(recordHref(resource, selectedId))}
+                data-testid="catalog-open-detail"
+              >
+                {t("common.open")}
+              </a>
+            </Button>
+          ) : undefined
+        }
+        loading={selected.isPending && !selected.error}
+        testId="catalog-detail-sheet"
+        closeTestId="catalog-detail-close"
+      >
+        {selected.error ? (
+          <DataState
+            state="error"
+            line={t("detail.loadFailed")}
+            onRetry={() => void selected.refetch()}
+            testId="catalog-detail-error"
+          />
+        ) : selected.data ? (
+          <FactList
+            testId="catalog-detail-facts"
+            items={
+              resource === "workflows"
+                ? [
+                    {
+                      label: t("catalog.status"),
+                      value: (
+                        <StatusBadge
+                          state={selectedOperatingStatus}
+                          label={t(OPERATING_STATUS_KEYS[selectedOperatingStatus])}
+                        />
+                      ),
+                    },
+                    {
+                      label: t("catalog.trigger"),
+                      value:
+                        selected.data.effective_trigger &&
+                        typeof selected.data.effective_trigger === "object" &&
+                        "kind" in selected.data.effective_trigger
+                          ? t(
+                              triggerLabelKey(
+                                selected.data
+                                  .effective_trigger as WorkflowListItem["effective_trigger"],
+                              ),
+                            )
+                          : MISSING,
+                    },
+                    {
+                      label: t("catalog.version"),
+                      value:
+                        typeof selected.data.current_version === "number"
+                          ? `v${selected.data.current_version}`
+                          : MISSING,
+                    },
+                    {
+                      label: t("catalog.lastRun"),
+                      value: stringField(selected.data, "last_executed_at")
+                        ? dateTime(stringField(selected.data, "last_executed_at") ?? "")
+                        : MISSING,
+                    },
+                  ]
+                : [
+                    {
+                      label: t("catalog.kind"),
+                      value: driverLabel(stringField(selected.data, "driver"), t) || MISSING,
+                    },
+                    {
+                      label: t("catalog.status"),
+                      value: (
+                        <StatusBadge
+                          state={
+                            selected.data.enabled === false
+                              ? "disabled"
+                              : (stringField(selected.data, "health_state") ?? "unknown")
+                          }
+                        />
+                      ),
+                    },
+                    {
+                      label: t("catalog.tested"),
+                      value: stringField(selected.data, "last_tested_at")
+                        ? dateTime(stringField(selected.data, "last_tested_at") ?? "")
+                        : MISSING,
+                    },
+                    {
+                      label: t("resource.field.slug"),
+                      value: stringField(selected.data, "slug") ?? MISSING,
+                    },
+                  ]
+            }
+          />
+        ) : null}
+      </RecordSheet>
     </Page>
   );
 }
