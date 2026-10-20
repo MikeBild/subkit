@@ -35,6 +35,7 @@ import {
   FieldLabel,
   FilePreview,
   FilterBar,
+  GroupingTabs,
   Input,
   Page,
   PageHeader,
@@ -123,6 +124,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   const canChat = permissions.includes("conversation:write");
   const [proposalId, setProposalId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [groupMode, setGroupMode] = useState("all");
   const q = useDebouncedValue(search).trim();
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
@@ -301,6 +303,32 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
           <DataTable
             columns={columns}
             data={rows}
+            groupingTabs={
+              <GroupingTabs
+                label={t("common.groupBy")}
+                value={groupMode}
+                onChange={setGroupMode}
+                options={[
+                  { value: "all", label: t("common.all") },
+                  { value: "status", label: t("resource.field.status") },
+                  { value: "scope", label: t("skills.column.scope") },
+                ]}
+                testId="skills-grouping"
+                note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+              />
+            }
+            grouping={
+              groupMode === "all"
+                ? undefined
+                : {
+                    getKey: (row) =>
+                      groupMode === "scope"
+                        ? t(skillScopeKey(rowScope(row)))
+                        : row.kind === "skill"
+                          ? t(skillStateLabelKey(row.skill.status))
+                          : t("skills.state.proposed"),
+                  }
+            }
             infinite={list.infinite}
             total={list.total}
             getRowId={(row) =>
@@ -315,6 +343,14 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
                   testId: "skills-search",
                 }}
                 selects={categoryFilter.select ? [categoryFilter.select] : []}
+                reset={{
+                  label: t("catalog.clearFilters"),
+                  onClick: () => {
+                    setSearch("");
+                    categoryFilter.select?.onChange("all");
+                    origin.setValue("all");
+                  },
+                }}
               />
             }
             pending={pending}

@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { render } from "./test-utils";
+import { render, renderInRouter } from "./test-utils";
 import { WorkspaceChangedPage } from "./workspace-changed";
 import { WorkspaceMenu } from "./workspace-menu";
 import { WorkspaceRecovery } from "./workspace-recovery";
 
-test("workspace menu renders its loading state before memberships arrive", () => {
-  const html = render(
+test("workspace menu renders its loading state before memberships arrive", async () => {
+  const html = await renderInRouter(
     <SidebarProvider>
       <WorkspaceMenu
         items={undefined}

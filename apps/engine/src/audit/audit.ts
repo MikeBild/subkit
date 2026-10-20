@@ -27,10 +27,22 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
           execution_privacy: "sensitive",
           ...(ctx.execution_id ? { execution_id: ctx.execution_id } : {}),
         }
-      : (entry.metadata ?? {}),
+      : { ...(entry.metadata ?? {}) },
     ctx.auth_via,
   );
-  return scrubAuditEntry({
+  if (ctx.request_source && !("request_source" in metadata)) {
+    metadata.request_source = ctx.request_source;
+  }
+  delete metadata.origin_source;
+  delete metadata.execution_source;
+  delete metadata.audit_trace_id;
+  if (ctx.audit_origin_source) metadata.origin_source = ctx.audit_origin_source;
+  if (ctx.audit_execution_source) metadata.execution_source = ctx.audit_execution_source;
+  if (ctx.audit_trace_id) metadata.audit_trace_id = ctx.audit_trace_id;
+  if (ctx.conversation_id) metadata.conversation_id = ctx.conversation_id;
+  if (ctx.api_key_id) metadata.api_key_id = ctx.api_key_id;
+  if (ctx.session_id) metadata.session_id = ctx.session_id;
+  const scrubbed = scrubAuditEntry({
     id: entry.id ?? crypto.randomUUID(),
     ts: entry.ts ?? new Date(),
     tenant_id: tenantId,
@@ -48,6 +60,10 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
     reason: sensitive && entry.reason ? "sensitive_execution" : (entry.reason ?? null),
     metadata,
   });
+  if (ctx.api_key_id && UUID_RE.test(ctx.api_key_id)) {
+    scrubbed.metadata.api_key_id = ctx.api_key_id;
+  }
+  return scrubbed;
 }
 
 function withAuthVia(

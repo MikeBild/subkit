@@ -8,6 +8,7 @@ import { useSession } from "@/app/session";
 import {
   type CockpitColumn,
   DataTable,
+  GroupingTabs,
   Page,
   PageHeader,
   Section,
@@ -78,6 +79,7 @@ export function UsagePage() {
   const live = useLiveQueryOptions();
   const allowed = session.permissions.includes("stats:read");
   const title = t("resource.usage.title");
+  const [groupBy, setGroupBy] = useState<"origin" | "workflow" | "model">("origin");
   const [bounds, setBounds] = useState<WindowBounds>(() =>
     windowBounds(usageWindowFromUrl(window.location.search)),
   );
@@ -411,7 +413,21 @@ export function UsagePage() {
           help={t("resource.usage.consumptionDescription")}
         />
 
-        <div className="grid min-w-0 grid-cols-1 gap-8 2xl:grid-cols-2">
+        <GroupingTabs
+          label={t("common.groupBy")}
+          value={groupBy}
+          onChange={(value) => {
+            if (value === "origin" || value === "workflow" || value === "model") setGroupBy(value);
+          }}
+          options={[
+            { value: "origin", label: t("resource.usage.byOrigin") },
+            { value: "workflow", label: t("resource.usage.byWorkflow") },
+            { value: "model", label: t("resource.usage.byModel") },
+          ]}
+          testId="usage-grouping"
+        />
+
+        {groupBy === "origin" ? (
           <Section label={t("resource.usage.byOrigin")} testId="usage-origins">
             <DataTable
               collectionId="usage-origin-table"
@@ -429,7 +445,9 @@ export function UsagePage() {
               actionsLabel={t("common.actions")}
             />
           </Section>
+        ) : null}
 
+        {groupBy === "model" ? (
           <Section label={t("resource.usage.byModel")} testId="usage-models">
             <DataTable
               collectionId="usage-model-table"
@@ -447,9 +465,9 @@ export function UsagePage() {
               actionsLabel={t("common.actions")}
             />
           </Section>
-        </div>
+        ) : null}
 
-        {byWorkflow.isPending || byWorkflow.error || attributedRows.length > 0 ? (
+        {groupBy === "workflow" ? (
           <Section label={t("resource.usage.byWorkflow")} testId="usage-breakdown">
             <DataTable
               collectionId="usage-consumption-table"

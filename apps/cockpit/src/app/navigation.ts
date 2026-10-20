@@ -184,6 +184,19 @@ export function visibleNavigation(permissions: readonly string[]): NavigationGro
   })).filter((group) => group.items.length > 0);
 }
 
+export function visiblePrimaryNavigation(permissions: readonly string[]): NavigationGroup[] {
+  return visibleNavigation(permissions)
+    .filter((group) => group.id !== "admin")
+    .map((group) => ({ ...group, items: group.items.filter((item) => item.path !== "/") }))
+    .filter((group) => group.items.length > 0);
+}
+
+export function visibleAccountNavigation(
+  permissions: readonly string[],
+): readonly NavigationItem[] {
+  return visibleNavigation(permissions).find((group) => group.id === "admin")?.items ?? [];
+}
+
 export function navigationItem(pathname: string): NavigationItem | undefined {
   const under = (path: string) => pathname === path || pathname.startsWith(`${path}/`);
   return NAVIGATION.flatMap((group) => group.items).find((item) =>

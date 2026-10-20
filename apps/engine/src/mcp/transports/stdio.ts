@@ -52,6 +52,8 @@ if (import.meta.main) {
       trace_id: newTraceId(),
       tenant_id: "system",
       request_source: "cli",
+      audit_origin_source: "mcp",
+      audit_execution_source: "mcp",
       actor_id: "mcp-stdio",
     },
     async () => {

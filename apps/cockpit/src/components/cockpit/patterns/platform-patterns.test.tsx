@@ -45,6 +45,26 @@ function table(props: Partial<Parameters<typeof DataTable<Row>>[0]> = {}) {
 }
 
 describe("DataTable", () => {
+  test("groups loaded rows on desktop and mobile without changing within-group order", () => {
+    const html = table({
+      data: [
+        { id: "a", name: "Alpha", owner: "x" },
+        { id: "b", name: "Beta", owner: "y" },
+        { id: "c", name: "Gamma", owner: "x" },
+      ],
+      grouping: { getKey: (row) => row.owner },
+      groupingTabs: <span>Group choices</span>,
+    });
+    const desktop = html.slice(
+      html.indexOf('data-testid="t-desktop"'),
+      html.indexOf('data-testid="t-mobile"'),
+    );
+    expect(desktop.indexOf("Alpha")).toBeLessThan(desktop.indexOf("Gamma"));
+    expect(desktop.indexOf("Gamma")).toBeLessThan(desktop.indexOf("Beta"));
+    expect((html.match(/data-slot="group-heading"/g) ?? []).length).toBe(4);
+    expect(html).toContain('data-review-layout="true"');
+  });
+
   test("has no pager and no visible record count", () => {
     const html = table();
     expect(html).not.toContain('data-family-slot="pagination"');

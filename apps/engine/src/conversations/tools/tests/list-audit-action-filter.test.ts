@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { AuditQueryFilters } from "../../../audit/index.ts";
-import { queryAuditTool } from "../engine-api/audit.ts";
+import type { AuditEntry, AuditQueryFilters } from "../../../audit/index.ts";
+import { getAuditEntryTool, queryAuditTool } from "../engine-api/audit.ts";
 import type { ToolContext } from "../index.ts";
 
 type RecordedFilters = Partial<Omit<AuditQueryFilters, "tenant_id">>;
@@ -58,4 +58,89 @@ describe("list_audit action filter", () => {
     expect("action" in filters).toBe(false);
     expect(filters.resource_type).toBe("workflow");
   });
+
+  test("passes trusted provenance and correlation filters without rewriting them", async () => {
+    const { ctx, recorded } = makeCtx();
+    const correlationId = "a".repeat(32);
+    const sessionId = "11111111-1111-4111-8111-111111111111";
+    const apiKeyId = "22222222-2222-4222-8222-222222222222";
+    const start = "2026-10-19T08:00:00.000Z";
+    const end = "2026-10-19T09:00:00.000Z";
+    await queryAuditTool.execute(ctx, {
+      actor_type: "user",
+      api_key_id: apiKeyId,
+      session_id: sessionId,
+      request_source: "cli",
+      origin_source: "mcp",
+      execution_source: "queue",
+      correlation_id: correlationId,
+      result: "denied",
+      ts_from: start,
+      ts_to: end,
+    });
+    expect(recorded[0]).toMatchObject({
+      actor_type: "user",
+      api_key_id: apiKeyId,
+      session_id: sessionId,
+      request_source: "cli",
+      origin_source: "mcp",
+      execution_source: "queue",
+      correlation_id: correlationId,
+      result: "denied",
+      ts_from: new Date(start),
+      ts_to: new Date(end),
+    });
+  });
+});
+
+test("MCP list and detail expose the same redacted audit evidence", async () => {
+  const entry: AuditEntry = {
+    id: "11111111-1111-4111-8111-111111111111",
+    ts: new Date("2026-10-19T08:00:00.000Z"),
+    tenant_id: "22222222-2222-4222-8222-222222222222",
+    actor_type: "user",
+    actor_id: "33333333-3333-4333-8333-333333333333",
+    action: "knowledge_source.updated",
+    resource_type: "knowledge_source",
+    resource_id: "44444444-4444-4444-8444-444444444444",
+    result: "success",
+    trace_id: "trace",
+    ip: "private-ip-canary",
+    user_agent: "private-agent-canary",
+    before: { name: "Vertragsarchiv", password: "private-before-canary" },
+    after: { name: "Vertragsarchiv", status: "active" },
+    reason: "private free text canary",
+    metadata: {
+      origin_source: "ui",
+      execution_source: "queue",
+      audit_trace_id: "a".repeat(32),
+      payload: "private-metadata-canary",
+    },
+  };
+  const ctx = {
+    engineClient: {
+      audit: {
+        query: async () => ({ items: [entry], next_cursor: null }),
+        get: async () => entry,
+      },
+    },
+  } as unknown as ToolContext;
+  const listed = await queryAuditTool.execute(ctx, {});
+  const detail = await getAuditEntryTool.execute(ctx, { id: entry.id });
+  expect(listed.ok).toBe(true);
+  expect(detail.ok).toBe(true);
+  const listEntry = (listed.data as { entries: unknown[] }).entries[0];
+  const detailEntry = (detail.data as { entry: unknown }).entry;
+  expect(listEntry).toEqual(detailEntry);
+  const wire = JSON.stringify(detailEntry);
+  expect(wire).toContain('"origin_source":"ui"');
+  expect(wire).toContain('"execution_source":"queue"');
+  for (const privateValue of [
+    "private-ip-canary",
+    "private-agent-canary",
+    "private-before-canary",
+    "private-metadata-canary",
+  ]) {
+    expect(wire).not.toContain(privateValue);
+  }
 });

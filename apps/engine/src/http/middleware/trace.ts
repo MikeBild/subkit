@@ -47,6 +47,7 @@ export function traceMiddleware(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const inboundTraceparent = parseTraceparent(c.req.header("traceparent"));
     const trace_id = inboundTraceId(c) ?? randomTraceId();
+    const audit_trace_id = randomTraceId();
     const span_id = randomSpanId();
     const source = detectSource(new URL(c.req.url).pathname);
     c.set("trace_id", trace_id);
@@ -62,8 +63,11 @@ export function traceMiddleware(): MiddlewareHandler<AppEnv> {
     await withIsolatedContext(
       {
         trace_id,
+        audit_trace_id,
         span_id,
         request_source: source,
+        audit_origin_source: source,
+        audit_execution_source: source,
       },
       async () => {
         await next();

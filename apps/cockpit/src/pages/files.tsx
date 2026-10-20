@@ -41,6 +41,7 @@ import {
   FilterBar,
   FormDialog,
   formatBytes,
+  GroupingTabs,
   Input,
   Page,
   PageHeader,
@@ -169,6 +170,7 @@ export function FilesPage() {
   const installation = useInstallation();
   const canDelete = session.permissions.includes("file:delete");
   const [search, setSearch] = useState("");
+  const [groupMode, setGroupMode] = useState("all");
   const [upload, setUpload] = useState<{ files: File[]; replace: StoredFile | null } | null>(null);
   const categoryFilter = useCategoryFilter("file");
   const origin = useCatalogOrigin();
@@ -298,6 +300,42 @@ export function FilesPage() {
           collectionId="files"
           columns={columns}
           data={items}
+          groupingTabs={
+            <GroupingTabs
+              label={t("common.groupBy")}
+              value={groupMode}
+              onChange={setGroupMode}
+              options={[
+                { value: "all", label: t("common.all") },
+                { value: "kind", label: t("files.column.kind") },
+                { value: "date", label: t("files.column.uploaded") },
+              ]}
+              testId="files-grouping"
+              note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+            />
+          }
+          grouping={
+            groupMode === "all"
+              ? undefined
+              : {
+                  getKey: (row) =>
+                    groupMode === "kind"
+                      ? fileKindLabel(t, row)
+                      : new Intl.DateTimeFormat("sv-SE", {
+                          year: "numeric",
+                          month: "2-digit",
+                          day: "2-digit",
+                        }).format(new Date(row.created_at)),
+                  label: (key) =>
+                    groupMode === "date"
+                      ? new Intl.DateTimeFormat(LOCALE_TAGS[locale], {
+                          dateStyle: "medium",
+                        }).format(new Date(`${key}T12:00:00`))
+                      : key,
+                  compareKeys:
+                    groupMode === "date" ? (left, right) => right.localeCompare(left) : undefined,
+                }
+          }
           getRowId={(row) => row.id}
           infinite={list.infinite}
           total={list.total}
@@ -311,6 +349,14 @@ export function FilesPage() {
                   testId: "files-search",
                 }}
                 selects={categoryFilter.select ? [categoryFilter.select] : []}
+                reset={{
+                  label: t("catalog.clearFilters"),
+                  onClick: () => {
+                    setSearch("");
+                    categoryFilter.select?.onChange("all");
+                    origin.setValue("all");
+                  },
+                }}
               />
             ) : undefined
           }

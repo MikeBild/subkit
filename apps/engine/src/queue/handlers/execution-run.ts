@@ -20,7 +20,9 @@ import {
 } from "../../execution/index.ts";
 import { finalizeExecution, GOVERNANCE_REFUSALS } from "../../execution/state.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
+import { withContext } from "../../logging/context.ts";
 import { log, logger } from "../../logging/logger.ts";
+import { RequestSourceSchema } from "../../observability/service-metadata.ts";
 import { can } from "../../rbac/evaluator.ts";
 import {
   endpointKeyFromRequestMeta,
@@ -360,12 +362,41 @@ export async function registerExecutionRunHandler(
     async (jobs: Job<ExecutionRunJob>[]) => {
       for (const job of jobs) {
         try {
-          await withActiveTenantJobContext(job.data, db, () =>
-            withHostedWork(db, job.data.tenant_id, "execution", () => handleOne(job, db, boss), {
-              queue: EXECUTION_RUN_QUEUE,
-              id: job.id,
-            }),
-          );
+          await withActiveTenantJobContext(job.data, db, async () => {
+            const [boundary] = job.data.execution_id
+              ? await db
+                  .select({
+                    origin_source: executions.origin_source,
+                    audit_trace_id: executions.audit_trace_id,
+                  })
+                  .from(executions)
+                  .where(
+                    and(
+                      eq(executions.tenant_id, job.data.tenant_id),
+                      eq(executions.id, job.data.execution_id),
+                    ),
+                  )
+                  .limit(1)
+              : [];
+            const originSource = RequestSourceSchema.safeParse(boundary?.origin_source);
+            return withContext(
+              {
+                audit_origin_source: originSource.success ? originSource.data : undefined,
+                audit_trace_id: boundary?.audit_trace_id ?? undefined,
+              },
+              () =>
+                withHostedWork(
+                  db,
+                  job.data.tenant_id,
+                  "execution",
+                  () => handleOne(job, db, boss),
+                  {
+                    queue: EXECUTION_RUN_QUEUE,
+                    id: job.id,
+                  },
+                ),
+            );
+          });
         } catch (error) {
           const quotaCode = hostedContentQuotaCode(error);
           if (quotaCode && job.data.execution_id) {

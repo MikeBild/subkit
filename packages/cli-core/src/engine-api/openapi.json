@@ -28902,6 +28902,137 @@
               "null"
             ]
           },
+          "api_key_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "request_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "api",
+              "cli",
+              "scheduler",
+              "mcp",
+              "webhook",
+              "tool-chain",
+              "ui",
+              "chat",
+              "queue",
+              null
+            ]
+          },
+          "origin_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "api",
+              "cli",
+              "scheduler",
+              "mcp",
+              "webhook",
+              "tool-chain",
+              "ui",
+              "chat",
+              "queue",
+              null
+            ]
+          },
+          "execution_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "api",
+              "cli",
+              "scheduler",
+              "mcp",
+              "webhook",
+              "tool-chain",
+              "ui",
+              "chat",
+              "queue",
+              null
+            ]
+          },
+          "execution_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "workflow_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "changed_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "before": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "after": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "field",
+                "before",
+                "after"
+              ]
+            }
+          },
           "action": {
             "type": "string"
           },
@@ -28925,6 +29056,12 @@
             "type": "string"
           },
           "trace_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "correlation_id": {
             "type": [
               "string",
               "null"
@@ -28961,12 +29098,23 @@
           "tenant_id",
           "actor_type",
           "actor_id",
+          "api_key_id",
+          "session_id",
+          "request_source",
+          "origin_source",
+          "execution_source",
+          "execution_id",
+          "conversation_id",
+          "workflow_id",
+          "changed_fields",
+          "changes",
           "action",
           "resource_type",
           "resource_id",
           "resource_name",
           "result",
           "trace_id",
+          "correlation_id",
           "ip",
           "user_agent",
           "reason",
@@ -54843,6 +54991,108 @@
           },
           {
             "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "api_key_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "session_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "api",
+                "cli",
+                "scheduler",
+                "mcp",
+                "webhook",
+                "tool-chain",
+                "ui",
+                "chat",
+                "queue"
+              ]
+            },
+            "required": false,
+            "name": "request_source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "api",
+                "cli",
+                "scheduler",
+                "mcp",
+                "webhook",
+                "tool-chain",
+                "ui",
+                "chat",
+                "queue"
+              ]
+            },
+            "required": false,
+            "name": "origin_source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "api",
+                "cli",
+                "scheduler",
+                "mcp",
+                "webhook",
+                "tool-chain",
+                "ui",
+                "chat",
+                "queue"
+              ]
+            },
+            "required": false,
+            "name": "execution_source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "execution_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "conversation_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "workflow_id",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "string"
             },
             "required": false,
@@ -54890,6 +55140,15 @@
           {
             "schema": {
               "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            "required": false,
+            "name": "correlation_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "format": "date-time"
             },
             "required": false,
@@ -54899,9 +55158,11 @@
           {
             "schema": {
               "type": "string",
-              "format": "date-time"
+              "format": "date-time",
+              "description": "Exclusive UTC upper bound. Events at this instant are excluded."
             },
             "required": false,
+            "description": "Exclusive UTC upper bound. Events at this instant are excluded.",
             "name": "ts_to",
             "in": "query"
           },
@@ -54934,6 +55195,118 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AuditLogListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/audit-log/resources": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "Find resources by recorded audit names or stable ID",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 100
+            },
+            "required": true,
+            "name": "search",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "required": false,
+            "name": "resource_type",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 30
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching recorded resource names and IDs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "resource_type": {
+                            "type": "string"
+                          },
+                          "resource_id": {
+                            "type": "string"
+                          },
+                          "resource_name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "last_seen_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "resource_type",
+                          "resource_id",
+                          "resource_name",
+                          "last_seen_at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
                 }
               }
             }

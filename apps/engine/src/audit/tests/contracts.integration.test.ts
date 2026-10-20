@@ -3,11 +3,18 @@ import { eq, sql } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { withContext } from "../../logging/context.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import * as auditModule from "../audit.ts";
 import { auditAwait } from "../audit.ts";
-import { getAuditRowById, queryAuditLog, serializeAuditEntry, streamAuditLog } from "../query.ts";
+import {
+  getAuditRowById,
+  queryAuditLog,
+  searchAuditResources,
+  serializeAuditEntry,
+  streamAuditLog,
+} from "../query.ts";
 import { recordExecutionCrashRecovered } from "../recorders/execution.ts";
 import { recordKnowledgeSourceCandidatesSynthesized } from "../recorders/knowledge.ts";
 import { AuditAction } from "../types.ts";
@@ -117,6 +124,45 @@ describe("tenant scoping on reads", () => {
     }
     expect(collected.every((t) => t === tenantA)).toBe(true);
     expect(collected.length).toBeGreaterThan(0);
+  });
+
+  test("resource search retains historical names and distinct IDs within the tenant", async () => {
+    const firstId = uuid();
+    const secondId = uuid();
+    await auditAwait(
+      {
+        tenant_id: tenantA,
+        action: "knowledge_source.updated",
+        resource_type: "knowledge_source",
+        resource_id: firstId,
+        before: { name: "Vertragsarchiv" },
+        after: { name: "Archiv 2026" },
+      },
+      testDb.db,
+    );
+    await auditAwait(
+      {
+        tenant_id: tenantA,
+        action: "knowledge_source.created",
+        resource_type: "knowledge_source",
+        resource_id: secondId,
+        after: { name: "Vertragsarchiv" },
+      },
+      testDb.db,
+    );
+    await auditAwait(
+      {
+        tenant_id: tenantB,
+        action: "knowledge_source.created",
+        resource_type: "knowledge_source",
+        resource_id: uuid(),
+        after: { name: "Vertragsarchiv" },
+      },
+      testDb.db,
+    );
+    const matches = await searchAuditResources(testDb.db, tenantA, "Vertragsarchiv");
+    expect(matches.map((match) => match.resource_id).sort()).toEqual([firstId, secondId].sort());
+    expect(matches.every((match) => match.resource_name === "Vertragsarchiv")).toBe(true);
   });
 });
 
@@ -262,6 +308,45 @@ describe("request-source attribution", () => {
       expect((fetched!.metadata as { request_source?: string }).request_source).toBe(source);
     });
   }
+
+  test("trusted request context persists source and credential identity for filtering", async () => {
+    const apiKeyId = uuid();
+    const sessionId = uuid();
+    const resourceId = uuid();
+    const entry = await withContext(
+      { request_source: "ui", api_key_id: apiKeyId, session_id: sessionId },
+      () =>
+        auditAwait(
+          {
+            tenant_id: tenantA,
+            action: "knowledge_source.updated",
+            resource_type: "knowledge_source",
+            resource_id: resourceId,
+            result: "success",
+          },
+          testDb.db,
+        ),
+    );
+    const filtered = await queryAuditLog(testDb.db, {
+      tenant_id: tenantA,
+      request_source: "ui",
+      api_key_id: apiKeyId,
+      session_id: sessionId,
+      resource_id: resourceId,
+    });
+    expect(filtered.items.map((item) => item.id)).toContain(entry.id);
+    const found = filtered.items.find((item) => item.id === entry.id);
+    if (!found) throw new Error("filtered audit entry missing");
+    const projected = serializeAuditEntry(found);
+    expect(projected.request_source).toBe("ui");
+    expect(projected.api_key_id).toBe(apiKeyId);
+    expect(projected.session_id).toBe(sessionId);
+    const otherTenant = await queryAuditLog(testDb.db, {
+      tenant_id: tenantB,
+      api_key_id: apiKeyId,
+    });
+    expect(otherTenant.items).toEqual([]);
+  });
 });
 
 describe("query filter coverage", () => {
@@ -394,6 +479,33 @@ describe("query filter coverage", () => {
     ).toBe(false);
   });
 
+  test("ts_to excludes an event exactly at the upper boundary", async () => {
+    const boundary = new Date(FROZEN_NOW);
+    const resourceId = uuid();
+    const entry = await auditAwait(
+      {
+        tenant_id: tenantA,
+        ts: boundary,
+        action: "knowledge_source.updated",
+        resource_type: "knowledge_source",
+        resource_id: resourceId,
+      },
+      testDb.db,
+    );
+    const excluded = await queryAuditLog(testDb.db, {
+      tenant_id: tenantA,
+      resource_id: resourceId,
+      ts_to: boundary,
+    });
+    expect(excluded.items.some((item) => item.id === entry.id)).toBe(false);
+    const included = await queryAuditLog(testDb.db, {
+      tenant_id: tenantA,
+      resource_id: resourceId,
+      ts_from: boundary,
+    });
+    expect(included.items.some((item) => item.id === entry.id)).toBe(true);
+  });
+
   test("limit + cursor walks pages newest-first", async () => {
     const first = await queryAuditLog(testDb.db, { tenant_id: tenantA }, { limit: 1 });
     expect(first.items.length).toBe(1);
@@ -404,6 +516,29 @@ describe("query filter coverage", () => {
     if (first.items[0] && second.items[0]) {
       expect(first.items[0].ts.getTime()).toBeGreaterThanOrEqual(second.items[0].ts.getTime());
     }
+  });
+
+  test("an exactly full final page has no continuation cursor", async () => {
+    const resourceId = uuid();
+    for (const offset of [0, 1]) {
+      await auditAwait(
+        {
+          tenant_id: tenantA,
+          action: AuditAction.SYSTEM_STARTUP,
+          resource_type: "system",
+          resource_id: resourceId,
+          ts: new Date(Date.UTC(2026, 0, 1, 0, 0, offset)),
+        },
+        testDb.db,
+      );
+    }
+    const page = await queryAuditLog(
+      testDb.db,
+      { tenant_id: tenantA, resource_id: resourceId },
+      { limit: 2 },
+    );
+    expect(page.items).toHaveLength(2);
+    expect(page.next_cursor).toBeNull();
   });
 
   test("limit caps at MAX_LIMIT (500) silently", async () => {

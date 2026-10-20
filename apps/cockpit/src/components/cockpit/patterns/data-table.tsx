@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   createContext,
+  Fragment,
   type MouseEvent,
   type ReactNode,
   useContext,
@@ -311,6 +312,8 @@ export function DataTable<TData extends RowData>({
   searchLabel = "Tabelle durchsuchen",
   searchText = (row) => JSON.stringify(row) ?? "",
   showDefaultSearch,
+  grouping,
+  groupingTabs,
 }: {
   columns: CockpitColumn<TData>[];
   data: TData[];
@@ -341,6 +344,12 @@ export function DataTable<TData extends RowData>({
   searchLabel?: string;
   searchText?: (row: TData) => string;
   showDefaultSearch?: boolean;
+  grouping?: {
+    getKey(row: TData): string;
+    label?(key: string): string;
+    compareKeys?(left: string, right: string): number;
+  };
+  groupingTabs?: ReactNode;
 }) {
   const searchInputId = useId();
   const [queryText, setQueryText] = useState("");
@@ -349,10 +358,18 @@ export function DataTable<TData extends RowData>({
     if (!needle || collectionTier === "embedded") return data;
     return data.filter((row) => searchText(row).toLocaleLowerCase().includes(needle));
   }, [collectionTier, data, queryText, searchText]);
+  const orderedData = useMemo(() => {
+    if (!grouping) return filteredData;
+    return [...filteredData].sort((left, right) => {
+      const leftKey = grouping.getKey(left);
+      const rightKey = grouping.getKey(right);
+      return grouping.compareKeys?.(leftKey, rightKey) ?? leftKey.localeCompare(rightKey);
+    });
+  }, [filteredData, grouping]);
   const { t } = useI18n();
   const phase = useLoadingPhase(Boolean(pending));
   const arrivedContent = useArrived(phase);
-  const motion = useRowMotion(filteredData, getRowId, !pending && !error);
+  const motion = useRowMotion(orderedData, getRowId, !pending && !error);
   const tableData = useMemo(() => motion.display.map((entry) => entry.row), [motion.display]);
   const leavingAt = (index: number) => motion.display[index]?.leaving === true;
   const rowMotionClass = (row: TData, index: number) =>
@@ -402,6 +419,10 @@ export function DataTable<TData extends RowData>({
     linkColumn ?? visibleColumns[0]?.id,
   );
   const rows = table.getRowModel().rows;
+  const groupHeader = (row: TData, index: number) =>
+    grouping && (index === 0 || grouping.getKey(rows[index - 1]!.original) !== grouping.getKey(row))
+      ? (grouping.label?.(grouping.getKey(row)) ?? grouping.getKey(row))
+      : null;
   const resultCount = queryText.trim() ? filteredData.length : (total ?? data.length);
   const showSkeleton = phase !== "content";
   const empty = !showSkeleton && !error && rows.length === 0;
@@ -476,6 +497,7 @@ export function DataTable<TData extends RowData>({
             : "sort loading-state empty-state error-state"
       }
       data-family-state={pending ? "loading" : error ? "error" : empty ? "empty" : "ready"}
+      data-review-layout={groupingTabs ? "true" : undefined}
       aria-busy={pending ? true : undefined}
     >
       {toolbarShown ? (
@@ -533,6 +555,7 @@ export function DataTable<TData extends RowData>({
       ) : (
         resultCountLabel
       )}
+      {groupingTabs}
       <div
         className={cn(
           "@container min-h-0 overflow-auto",
@@ -636,79 +659,91 @@ export function DataTable<TData extends RowData>({
             ) : (
               rows.map((row, index) => {
                 const leaving = leavingAt(index);
+                const heading = leaving ? null : groupHeader(row.original, index);
                 const open =
                   onOpen && !leaving && (canOpen?.(row.original) ?? true)
                     ? () => onOpen(row.original)
                     : null;
                 return (
-                  <TableRow
-                    key={row.id}
-                    data-family-slot={leaving ? undefined : "list-row"}
-                    data-family-collection-row={leaving ? undefined : "true"}
-                    aria-hidden={leaving ? true : undefined}
-                    className={cn(
-                      "h-11",
-                      open && "cursor-pointer",
-                      rowMotionClass(row.original, index),
-                    )}
-                    data-testid={leaving ? undefined : `${collectionId}-row-${index}`}
-                    onClick={
-                      open
-                        ? (event) => {
-                            if (opensRow(event)) open();
-                          }
-                        : undefined
-                    }
-                  >
-                    {row.getVisibleCells().map((cell, cellIndex) => (
-                      <TableCell
-                        key={cell.id}
-                        style={{ width: widthByColumnId.get(cell.column.id) }}
-                        className={cn(
-                          "min-w-0",
-                          cell.column.columnDef.meta?.align === "end" && "text-right",
-                          priorityClass(cell.column.columnDef.meta?.priority),
-                          cellIndex === 0 ? "font-medium" : "text-muted-foreground",
-                        )}
-                      >
-                        {open && cell.column.id === linkColumnId ? (
-                          <LinkedCell
-                            owns={Boolean(cell.column.columnDef.meta?.ownsRowLink)}
-                            target={{
-                              href: rowHref?.(row.original) ?? null,
-                              onOpen: open,
-                              testId: `${collectionId}-row-link-${index}`,
-                              label: rowLabel?.(row.original),
-                            }}
-                          >
+                  <Fragment key={row.id}>
+                    {heading ? (
+                      <TableRow data-slot="group-heading" className="bg-muted/40 hover:bg-muted/40">
+                        <TableCell
+                          colSpan={bodySpan}
+                          className="py-2 text-xs font-semibold text-muted-foreground"
+                        >
+                          {heading}
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                    <TableRow
+                      data-family-slot={leaving ? undefined : "list-row"}
+                      data-family-collection-row={leaving ? undefined : "true"}
+                      aria-hidden={leaving ? true : undefined}
+                      className={cn(
+                        "h-11",
+                        open && "cursor-pointer",
+                        rowMotionClass(row.original, index),
+                      )}
+                      data-testid={leaving ? undefined : `${collectionId}-row-${index}`}
+                      onClick={
+                        open
+                          ? (event) => {
+                              if (opensRow(event)) open();
+                            }
+                          : undefined
+                      }
+                    >
+                      {row.getVisibleCells().map((cell, cellIndex) => (
+                        <TableCell
+                          key={cell.id}
+                          style={{ width: widthByColumnId.get(cell.column.id) }}
+                          className={cn(
+                            "min-w-0",
+                            cell.column.columnDef.meta?.align === "end" && "text-right",
+                            priorityClass(cell.column.columnDef.meta?.priority),
+                            cellIndex === 0 ? "font-medium" : "text-muted-foreground",
+                          )}
+                        >
+                          {open && cell.column.id === linkColumnId ? (
+                            <LinkedCell
+                              owns={Boolean(cell.column.columnDef.meta?.ownsRowLink)}
+                              target={{
+                                href: rowHref?.(row.original) ?? null,
+                                onOpen: open,
+                                testId: `${collectionId}-row-link-${index}`,
+                                label: rowLabel?.(row.original),
+                              }}
+                            >
+                              <table.FlexRender cell={cell} />
+                            </LinkedCell>
+                          ) : (
                             <table.FlexRender cell={cell} />
-                          </LinkedCell>
-                        ) : (
-                          <table.FlexRender cell={cell} />
-                        )}
-                      </TableCell>
-                    ))}
-                    {hasActionColumn ? (
-                      <TableCell
-                        className="w-56 whitespace-nowrap"
-                        style={{ width: "14rem" }}
-                        data-slot="row-actions"
-                      >
-                        <span className="flex max-w-full flex-wrap items-center justify-end gap-1">
-                          {rowActions?.(row.original, index)}
-                        </span>
-                      </TableCell>
-                    ) : null}
-                    {hasChevron ? (
-                      <TableCell
-                        className="w-8 text-muted-foreground"
-                        style={{ width: "2rem" }}
-                        data-slot="row-chevron"
-                      >
-                        {open ? <ChevronRight aria-hidden="true" className="size-4" /> : null}
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
+                          )}
+                        </TableCell>
+                      ))}
+                      {hasActionColumn ? (
+                        <TableCell
+                          className="w-56 whitespace-nowrap"
+                          style={{ width: "14rem" }}
+                          data-slot="row-actions"
+                        >
+                          <span className="flex max-w-full flex-wrap items-center justify-end gap-1">
+                            {rowActions?.(row.original, index)}
+                          </span>
+                        </TableCell>
+                      ) : null}
+                      {hasChevron ? (
+                        <TableCell
+                          className="w-8 text-muted-foreground"
+                          style={{ width: "2rem" }}
+                          data-slot="row-chevron"
+                        >
+                          {open ? <ChevronRight aria-hidden="true" className="size-4" /> : null}
+                        </TableCell>
+                      ) : null}
+                    </TableRow>
+                  </Fragment>
                 );
               })
             )}
@@ -748,6 +783,7 @@ export function DataTable<TData extends RowData>({
             <div className={cn("grid divide-y rounded-lg border", arrivedContent && "sk-fade-in")}>
               {rows.map((row, index) => {
                 const leaving = leavingAt(index);
+                const heading = leaving ? null : groupHeader(row.original, index);
                 const open =
                   onOpen && !leaving && (canOpen?.(row.original) ?? true)
                     ? () => onOpen(row.original)
@@ -764,71 +800,80 @@ export function DataTable<TData extends RowData>({
                   .slice(0, MOBILE_CARD_FACTS);
                 const actions = rowActions?.(row.original, index);
                 return (
-                  <div
-                    key={row.id}
-                    className={cn(
-                      "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 px-3 py-2.5 text-left text-sm",
-                      open && "cursor-pointer transition-colors hover:bg-muted/50",
-                      rowMotionClass(row.original, index),
-                    )}
-                    onClick={
-                      open
-                        ? (event) => {
-                            if (opensRow(event)) open();
-                          }
-                        : undefined
-                    }
-                    aria-hidden={leaving ? true : undefined}
-                    data-testid={leaving ? undefined : `${collectionId}-mobile-row-${index}`}
-                    data-family-slot={leaving ? undefined : "list-row"}
-                    data-family-collection-row={leaving ? undefined : "true"}
-                    data-family-collection-mobile-card="true"
-                    data-action-scope="row"
-                  >
-                    {title ? (
-                      <span
-                        className="col-start-1 min-w-0 break-words font-medium"
-                        data-family-slot="card-title"
+                  <Fragment key={row.id}>
+                    {heading ? (
+                      <div
+                        data-slot="group-heading"
+                        className="bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground"
                       >
-                        {open && title === named ? (
-                          <LinkedCell
-                            owns={Boolean(title.column.columnDef.meta?.ownsRowLink)}
-                            target={{
-                              href: rowHref?.(row.original) ?? null,
-                              onOpen: open,
-                              testId: `${collectionId}-mobile-row-link-${index}`,
-                              label: rowLabel?.(row.original),
-                            }}
-                          >
+                        {heading}
+                      </div>
+                    ) : null}
+                    <div
+                      className={cn(
+                        "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 px-3 py-2.5 text-left text-sm",
+                        open && "cursor-pointer transition-colors hover:bg-muted/50",
+                        rowMotionClass(row.original, index),
+                      )}
+                      onClick={
+                        open
+                          ? (event) => {
+                              if (opensRow(event)) open();
+                            }
+                          : undefined
+                      }
+                      aria-hidden={leaving ? true : undefined}
+                      data-testid={leaving ? undefined : `${collectionId}-mobile-row-${index}`}
+                      data-family-slot={leaving ? undefined : "list-row"}
+                      data-family-collection-row={leaving ? undefined : "true"}
+                      data-family-collection-mobile-card="true"
+                      data-action-scope="row"
+                    >
+                      {title ? (
+                        <span
+                          className="col-start-1 min-w-0 break-words font-medium"
+                          data-family-slot="card-title"
+                        >
+                          {open && title === named ? (
+                            <LinkedCell
+                              owns={Boolean(title.column.columnDef.meta?.ownsRowLink)}
+                              target={{
+                                href: rowHref?.(row.original) ?? null,
+                                onOpen: open,
+                                testId: `${collectionId}-mobile-row-link-${index}`,
+                                label: rowLabel?.(row.original),
+                              }}
+                            >
+                              <table.FlexRender cell={title} />
+                            </LinkedCell>
+                          ) : (
                             <table.FlexRender cell={title} />
-                          </LinkedCell>
-                        ) : (
-                          <table.FlexRender cell={title} />
-                        )}
-                      </span>
-                    ) : null}
-                    {facts.map((cell) => (
-                      <span
-                        key={cell.id}
-                        className="col-start-1 min-w-0 break-words text-[13px] leading-5 text-muted-foreground"
-                        data-family-slot="card-fact"
-                      >
-                        {cell.column.columnDef.meta?.cardLabel &&
-                        typeof cell.column.columnDef.header === "string"
-                          ? `${cell.column.columnDef.header} `
-                          : null}
-                        <table.FlexRender cell={cell} />
-                      </span>
-                    ))}
-                    {actions ? (
-                      <span
-                        className="col-start-2 row-start-1 flex items-center gap-1 self-center"
-                        style={{ gridRowEnd: `span ${1 + facts.length}` }}
-                      >
-                        {actions}
-                      </span>
-                    ) : null}
-                  </div>
+                          )}
+                        </span>
+                      ) : null}
+                      {facts.map((cell) => (
+                        <span
+                          key={cell.id}
+                          className="col-start-1 min-w-0 break-words text-[13px] leading-5 text-muted-foreground"
+                          data-family-slot="card-fact"
+                        >
+                          {cell.column.columnDef.meta?.cardLabel &&
+                          typeof cell.column.columnDef.header === "string"
+                            ? `${cell.column.columnDef.header} `
+                            : null}
+                          <table.FlexRender cell={cell} />
+                        </span>
+                      ))}
+                      {actions ? (
+                        <span
+                          className="col-start-2 row-start-1 flex items-center gap-1 self-center"
+                          style={{ gridRowEnd: `span ${1 + facts.length}` }}
+                        >
+                          {actions}
+                        </span>
+                      ) : null}
+                    </div>
+                  </Fragment>
                 );
               })}
             </div>

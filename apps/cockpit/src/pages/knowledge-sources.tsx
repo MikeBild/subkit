@@ -36,6 +36,7 @@ import {
   FilePreview,
   FilterBar,
   FormDialog,
+  GroupingTabs,
   Input,
   Page,
   PageHeader,
@@ -52,6 +53,7 @@ import { bytes, MISSING, tableColumns } from "@/components/cockpit/table-columns
 import { ForbiddenState, queryView } from "@/components/failure-state";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
@@ -143,6 +145,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
   const canWrite = permissions.includes("knowledge:write");
   const canChat = permissions.includes("conversation:write");
   const [search, setSearch] = useState("");
+  const [groupMode, setGroupMode] = useState("all");
   const q = useDebouncedValue(search).trim();
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
@@ -274,6 +277,30 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         <DataTable
           columns={columns}
           data={rows}
+          groupingTabs={
+            <GroupingTabs
+              label={t("common.groupBy")}
+              value={groupMode}
+              onChange={setGroupMode}
+              options={[
+                { value: "all", label: t("common.all") },
+                { value: "kind", label: t("knowledge.column.kind") },
+                { value: "status", label: t("resource.field.status") },
+              ]}
+              testId="knowledge-grouping"
+              note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+            />
+          }
+          grouping={
+            groupMode === "all"
+              ? undefined
+              : {
+                  getKey: (row) =>
+                    groupMode === "kind"
+                      ? t(KIND_KEYS[sourceKind(row.source_type)])
+                      : statusLabel(t, row.status),
+                }
+          }
           infinite={list.infinite}
           total={list.total}
           getRowId={(row) => row.id}
@@ -286,6 +313,14 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
                 testId: "knowledge-search",
               }}
               selects={categoryFilter.select ? [categoryFilter.select] : []}
+              reset={{
+                label: t("catalog.clearFilters"),
+                onClick: () => {
+                  setSearch("");
+                  categoryFilter.select?.onChange("all");
+                  origin.setValue("all");
+                },
+              }}
             />
           }
           pending={pending}

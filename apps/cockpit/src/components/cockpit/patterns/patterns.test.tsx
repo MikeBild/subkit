@@ -151,7 +151,7 @@ describe("P5 SummaryLine", () => {
 });
 
 describe("P7 FilterBar", () => {
-  test("a search and at most two selects", () => {
+  test("a search and every configured select remain available", () => {
     const select = (label: string) => ({
       value: "all",
       onChange() {},
@@ -165,7 +165,7 @@ describe("P7 FilterBar", () => {
       />,
     );
     expect(html).toContain('data-testid="search"');
-    expect(count(html, /role="combobox"/g)).toBe(2);
+    expect(count(html, /role="combobox"/g)).toBe(3);
   });
 });
 

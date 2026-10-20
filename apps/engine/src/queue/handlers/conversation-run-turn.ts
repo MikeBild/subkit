@@ -30,6 +30,7 @@ import {
   rehydrateExecutionPrincipal,
 } from "../../execution/authorization-context.ts";
 import { callerFromPrincipal } from "../../execution/caller-context.ts";
+import { withContext } from "../../logging/context.ts";
 import { log } from "../../logging/logger.ts";
 import {
   type ConversationTurnEnvelope,
@@ -45,6 +46,7 @@ import {
   setMcpTaskResultIfCurrentAttempt,
 } from "../../mcp/tasks/store.ts";
 import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
+import { RequestSourceSchema } from "../../observability/service-metadata.ts";
 import { can } from "../../rbac/evaluator.ts";
 import { recordUsageEvent } from "../../stats/usage-events.ts";
 import {
@@ -615,12 +617,21 @@ export async function registerConversationRunTurnHandler(
     async (jobs: Job<ConversationRunTurnJob>[]) => {
       for (const job of jobs) {
         try {
-          await withActiveTenantJobContext(job.data, db, () =>
-            withHostedWork(db, job.data.tenant_id, "chat", () => handleOne(job, db, boss), {
-              queue: CONVERSATION_RUN_TURN_QUEUE,
-              id: job.id,
-            }),
-          );
+          await withActiveTenantJobContext(job.data, db, async () => {
+            const task = await getMcpTask(job.data.tenant_id, job.data.mcp_task_id, db);
+            const originSource = RequestSourceSchema.safeParse(task?.origin_source);
+            return withContext(
+              {
+                audit_origin_source: originSource.success ? originSource.data : undefined,
+                audit_trace_id: task?.audit_trace_id ?? undefined,
+              },
+              () =>
+                withHostedWork(db, job.data.tenant_id, "chat", () => handleOne(job, db, boss), {
+                  queue: CONVERSATION_RUN_TURN_QUEUE,
+                  id: job.id,
+                }),
+            );
+          });
         } catch (error) {
           const quotaCode = hostedContentQuotaCode(error);
           if (quotaCode) {

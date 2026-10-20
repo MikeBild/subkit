@@ -4,6 +4,7 @@ import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { auditFilterQuery } from "./audit-filter.ts";
 
 function makeClient() {
   const profile = resolveProfile();
@@ -24,14 +25,29 @@ const queryCmd = defineCommand({
     },
     action: { type: "string", description: "Action name filter" },
     actor: { type: "string", description: "Actor id filter" },
+    "actor-type": { type: "string", description: "Actor kind" },
+    "api-key-id": { type: "string", description: "Recorded API key id" },
+    "session-id": { type: "string", description: "Recorded session id" },
+    "request-source": { type: "string", description: "Legacy recorded source (not verified)" },
+    "origin-source": { type: "string", description: "Verified initiating source" },
+    "execution-source": { type: "string", description: "Immediate server execution step" },
+    "correlation-id": { type: "string", description: "Trusted audit correlation id" },
+    "resource-type": { type: "string", description: "Resource type" },
+    "resource-types": { type: "string", description: "Comma-separated resource types" },
     "resource-id": { type: "string", description: "Filter by resource id" },
+    result: { type: "string", description: "success, denied or error" },
+    "trace-id": { type: "string", description: "Trace id" },
+    "execution-id": { type: "string", description: "Recorded execution id" },
+    "conversation-id": { type: "string", description: "Recorded conversation id" },
+    "workflow-id": { type: "string", description: "Recorded workflow id" },
+    to: { type: "string", description: "Exclusive UTC upper bound (ISO-8601)" },
     cursor: { type: "string", description: "Continue after a previous page (its next_cursor)" },
     json: { type: "boolean", description: "JSON output" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
-      const q: Record<string, string | number | undefined> = {};
+      const q: Record<string, string | number | undefined> = auditFilterQuery(args);
       if (args.limit) q.limit = Number(args.limit);
       if (args.since) {
         const raw = String(args.since);
@@ -44,9 +60,7 @@ const queryCmd = defineCommand({
           q.ts_from = raw;
         }
       }
-      if (args.action) q.action = String(args.action);
-      if (args.actor) q.actor_id = String(args.actor);
-      if (args["resource-id"]) q.resource_id = String(args["resource-id"]);
+      if (args.to) q.ts_to = String(args.to);
       if (args.cursor) q.cursor = String(args.cursor);
       const result = await client.queryAuditLog(q);
       if (args.json) {
@@ -55,7 +69,7 @@ const queryCmd = defineCommand({
       }
       emitList(
         false,
-        ["id", "action", "actor_id", "created_at"],
+        ["id", "ts", "action", "actor_id", "origin_source", "execution_source", "result"],
         result.items as Record<string, unknown>[],
       );
     } catch (err) {
@@ -81,13 +95,32 @@ const exportCmd = defineCommand({
   meta: { name: "export", description: "Stream audit log as NDJSON to stdout or a file" },
   args: {
     since: { type: "string", description: "Lower bound — ISO-8601 timestamp" },
+    to: { type: "string", description: "Exclusive UTC upper bound (ISO-8601)" },
+    action: { type: "string", description: "Action name filter" },
+    actor: { type: "string", description: "Actor id filter" },
+    "actor-type": { type: "string", description: "Actor kind" },
+    "api-key-id": { type: "string", description: "Recorded API key id" },
+    "session-id": { type: "string", description: "Recorded session id" },
+    "request-source": { type: "string", description: "Legacy recorded source (not verified)" },
+    "origin-source": { type: "string", description: "Verified initiating source" },
+    "execution-source": { type: "string", description: "Immediate server execution step" },
+    "correlation-id": { type: "string", description: "Trusted audit correlation id" },
+    "resource-type": { type: "string", description: "Resource type" },
+    "resource-types": { type: "string", description: "Comma-separated resource types" },
+    "resource-id": { type: "string", description: "Resource id" },
+    result: { type: "string", description: "success, denied or error" },
+    "trace-id": { type: "string", description: "Trace id" },
+    "execution-id": { type: "string", description: "Recorded execution id" },
+    "conversation-id": { type: "string", description: "Recorded conversation id" },
+    "workflow-id": { type: "string", description: "Recorded workflow id" },
     output: { type: "string", description: "Output file path (default: stdout)" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
-      const q: Record<string, string | number | undefined> = {};
+      const q: Record<string, string | number | undefined> = auditFilterQuery(args);
       if (args.since) q.ts_from = String(args.since);
+      if (args.to) q.ts_to = String(args.to);
       const res = await client.exportAuditLog(q);
       if (!res.ok) {
         let body: unknown;

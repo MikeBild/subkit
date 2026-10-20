@@ -15,6 +15,7 @@ import {
   DataTable,
   FilterBar,
   type FilterSelect,
+  GroupingTabs,
   Page,
   PageHeader,
   StatusBadge,
@@ -311,6 +312,8 @@ export function CatalogPage({
   const config = CONFIG[resource];
   const [state, setState] = useCatalogState(config);
   const [search, setSearch] = useState(state.q);
+  const [groupMode, setGroupMode] = useState("all");
+  useEffect(() => setGroupMode("all"), [resource]);
   const origin = useCatalogOrigin();
   const debouncedSearch = useDebouncedValue(search);
   useEffect(() => setSearch(state.q), [state.q]);
@@ -362,6 +365,24 @@ export function CatalogPage({
   const total = list.total ?? rows.length;
   const categories = useMemo(() => list.first?.categories ?? [], [list.first]);
   const title = t(config.titleKey);
+  const grouping =
+    groupMode === "all"
+      ? undefined
+      : {
+          getKey: (row: CatalogRow) => {
+            if (resource === "workflows") {
+              if (groupMode === "trigger")
+                return t(
+                  triggerLabelKey(row.effective_trigger as WorkflowListItem["effective_trigger"]),
+                );
+              return t(OPERATING_STATUS_KEYS[catalogOperatingStatus(row.operating_status)]);
+            }
+            if (groupMode === "kind") return driverLabel(stringField(row, "driver"), t) || MISSING;
+            return row.enabled === false
+              ? statusLabel(t, "disabled")
+              : statusLabel(t, stringField(row, "health_state") ?? "unknown");
+          },
+        };
   const hasActiveFilters =
     Boolean(state.q) ||
     state.status !== "all" ||
@@ -491,6 +512,29 @@ export function CatalogPage({
         <DataTable
           columns={columns}
           data={rows}
+          groupingTabs={
+            <GroupingTabs
+              label={t("common.groupBy")}
+              value={groupMode}
+              onChange={setGroupMode}
+              options={
+                resource === "workflows"
+                  ? [
+                      { value: "all", label: t("common.all") },
+                      { value: "status", label: t("catalog.status") },
+                      { value: "trigger", label: t("catalog.trigger") },
+                    ]
+                  : [
+                      { value: "all", label: t("common.all") },
+                      { value: "kind", label: t("catalog.kind") },
+                      { value: "health", label: t("catalog.status") },
+                    ]
+              }
+              testId={`catalog-${resource}-grouping`}
+              note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+            />
+          }
+          grouping={grouping}
           toolbar={
             <>
               <FilterBar
@@ -501,6 +545,7 @@ export function CatalogPage({
                   testId: "catalog-search",
                 }}
                 selects={selects}
+                reset={{ label: t("catalog.clearFilters"), onClick: resetFilters }}
               />
               {resource === "connectors" && state.health === "not_ok" ? (
                 <Button
