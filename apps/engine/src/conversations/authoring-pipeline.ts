@@ -68,6 +68,7 @@ import {
 } from "../workflows/types.ts";
 import { runCriticAgent } from "./authoring-critic/critic-agent.ts";
 import { shouldRunCritic } from "./authoring-critic/gating.ts";
+import { selectDiscoveredEndpoints } from "./authoring-endpoint-selection.ts";
 import { withWorkflowDraft } from "./authoring-state.ts";
 import {
   buildGroundingIndex,
@@ -109,19 +110,25 @@ const JSONATA_CONTRACT_LINES: ReadonlyArray<string> = [
 function formatDiscoveredEndpoints(
   connectors: GroundedConnector[],
   discoveredById: Map<string, DiscoveryResult>,
+  goal: string,
 ): string | null {
   const blocks: string[] = [];
   for (const c of connectors) {
     const index = discoveredById.get(c.id);
     if (!index || index.endpoints.length === 0) continue;
-    const lines = index.endpoints.slice(0, DISCOVERED_ENDPOINTS_PER_CONNECTOR).map((e) => {
+    const selected = selectDiscoveredEndpoints(
+      index.endpoints,
+      goal,
+      DISCOVERED_ENDPOINTS_PER_CONNECTOR,
+    );
+    const lines = selected.map((e) => {
       const ct = e.request_content_type ? ` [${e.request_content_type}]` : "";
       const summary = e.summary ? ` — ${e.summary}` : "";
       return `- ${e.method} ${e.path}${ct}${summary}`;
     });
     if (index.endpoints.length > DISCOVERED_ENDPOINTS_PER_CONNECTOR) {
       lines.push(
-        `- …and ${index.endpoints.length - DISCOVERED_ENDPOINTS_PER_CONNECTOR} additional routes are not included. No discovery tool is available in this generation call. If the supplied routes cannot satisfy the goal, abort and identify the exact operation contract the outer authoring agent must supply.`,
+        `- …and ${index.endpoints.length - DISCOVERED_ENDPOINTS_PER_CONNECTOR} documented routes are omitted from this goal-ranked excerpt. No discovery tool is available in this generation call. If the supplied routes cannot satisfy the goal, abort and identify the exact operation contract the outer authoring agent must supply.`,
       );
     }
     blocks.push(`### \`${c.slug}\` (base_url ${c.base_url ?? "(none)"})`, ...lines);
@@ -129,7 +136,7 @@ function formatDiscoveredEndpoints(
   if (blocks.length === 0) return null;
   return [
     "## Discovered endpoints — authoritative source of truth",
-    "The connector(s) below publish a machine-readable spec. These are the ONLY routes they expose. Bind every request step to one of these EXACT `method` + `path` pairs — do NOT invent, guess, drop a version prefix, or REST-ify routes (e.g. never turn `/v1/sites/{site}/content` into `/sites/{site}/items`). When an endpoint declares a request media type in `[brackets]`, encode the body that way — for `text/markdown` send the raw markdown string as the body, NOT a JSON object wrapping it.",
+    "The connector(s) below publish a machine-readable spec. These listed routes are documented, but the excerpt may omit other routes. Bind every request step to an exact grounded `method` + `path` pair — do NOT invent, guess, drop a version prefix, or REST-ify routes (e.g. never turn `/v1/sites/{site}/content` into `/sites/{site}/items`). When an endpoint declares a request media type in `[brackets]`, encode the body that way — for `text/markdown` send the raw markdown string as the body, NOT a JSON object wrapping it.",
     ...blocks,
   ].join("\n");
 }
@@ -493,7 +500,7 @@ export async function runAuthoringPipeline(
   for (const { id, index } of discoveredIndexes) {
     if (index && index.endpoints.length > 0) discoveredById.set(id, index);
   }
-  const discoveredSection = formatDiscoveredEndpoints(connectors, discoveredById);
+  const discoveredSection = formatDiscoveredEndpoints(connectors, discoveredById, goal);
   const discoveredEndpointCount = [...discoveredById.values()].reduce(
     (acc, index) => acc + index.endpoints.length,
     0,
