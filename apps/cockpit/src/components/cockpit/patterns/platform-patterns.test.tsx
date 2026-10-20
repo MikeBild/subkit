@@ -79,7 +79,9 @@ describe("DataTable", () => {
       toolbar: (
         <>
           <FilterBar search={{ value: "", onChange() {}, placeholder: "Suchen" }} />
-          <button type="button">Weitere Aktion</button>
+          <button type="button" data-testid="embedded-extra-action">
+            Weitere Aktion
+          </button>
         </>
       ),
     });

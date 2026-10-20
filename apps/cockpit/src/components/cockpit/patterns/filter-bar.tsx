@@ -130,6 +130,7 @@ export function FilterBar({
                 type="button"
                 onClick={reset.onClick}
                 className="text-sm text-muted-foreground underline underline-offset-2"
+                data-testid="filter-bar-panel-reset"
               >
                 {reset.label}
               </button>
