@@ -51,6 +51,8 @@ import { LLM_CALL_TIMEOUT_MS } from "../llm/core/ai-sdk-model.ts";
 import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatters.ts";
 import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
 import { invoke } from "../llm/core/invoke.ts";
+import { LlmError, LlmProviderError } from "../llm/errors.ts";
+import { buildProviderErrorDetails, classifyProviderError } from "../llm/provider-errors.ts";
 import { logger } from "../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../observability/instrumentation.ts";
 import {
@@ -208,7 +210,9 @@ export type AuthoringPipelineResult =
       error_code:
         | "authoring_generation_failed"
         | "authoring_connectors_unresolved"
-        | "authoring_definition_invalid";
+        | "authoring_definition_invalid"
+        | "llm_provider_limited"
+        | "llm_quota_exhausted";
       message: string;
       deadline_exceeded?: true;
       requires_user_input?: true;
@@ -663,6 +667,37 @@ export async function runAuthoringPipeline(
         pass,
         error: message,
       });
+      if (err instanceof LlmError && err.code === "llm_quota_exhausted") {
+        return {
+          ok: false,
+          error_code: "llm_quota_exhausted",
+          message:
+            "The tenant LLM token budget is exhausted. Increase the authorized budget or retry after reset. No draft was changed.",
+          errors: [{ path: "(llm)", message: "tenant token budget exhausted" }],
+          attempts,
+          unresolved_connectors: unresolved,
+        };
+      }
+      const providerFailure = classifyProviderError(err);
+      if (providerFailure === "rate_limit" || providerFailure === "quota_exhausted") {
+        const retryAt =
+          (err instanceof LlmProviderError ? err.details?.retry_at : undefined) ??
+          buildProviderErrorDetails(err)?.retry_at;
+        const parsedRetryAt = typeof retryAt === "string" ? Date.parse(retryAt) : NaN;
+        const safeRetryAt = Number.isFinite(parsedRetryAt)
+          ? new Date(parsedRetryAt).toISOString()
+          : null;
+        return {
+          ok: false,
+          error_code: "llm_provider_limited",
+          message: safeRetryAt
+            ? `The generation provider is limited. Retry after ${safeRetryAt}, or configure an available provider. No draft was changed.`
+            : "The generation provider is limited. Check its quota or configure an available provider before retrying. No draft was changed.",
+          errors: [{ path: "(llm)", message: "provider limit" }],
+          attempts,
+          unresolved_connectors: unresolved,
+        };
+      }
       lastGenerationError = message;
       passErrors = [{ path: "(llm)", message }];
     }

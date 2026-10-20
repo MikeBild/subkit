@@ -42,7 +42,14 @@ describe("connector-template catalog — structural", () => {
   test("GitHub GraphQL guides private Project reads without requesting write scope by default", () => {
     const template = templates.find((entry) => entry.slug === "github-graphql");
     expect(template?.setup_instructions).toContain("read:project");
+    expect(template?.setup_instructions).toContain(
+      "fine-grained PATs cannot access user-owned Projects",
+    );
+    expect(template?.setup_instructions).toContain(
+      "separate fine-grained repository-read connector",
+    );
     expect(template?.setup_instructions).toContain("pageInfo.endCursor");
+    expect(template?.setup_instructions).toContain("Mark the result incomplete");
     expect(template?.setup_instructions).toContain("REST OpenAPI discovery is not required");
     expect(template?.oauth?.scopes).not.toContain("project");
     expect(

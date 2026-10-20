@@ -32,6 +32,10 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the current draft has unsaved changes, so it was not replaced. Save it with save_workflow_draft, or ask the user whether to drop them and then call open_workflow_draft with discard_unsaved:true.",
   authoring_definition_invalid:
     "the generated definition did not validate, so it was not stored and the previous draft is unchanged. Retry author_workflow with a narrower goal, or split the workflow into smaller ones. Do not hand-write the definition piecewise into an unrelated draft.",
+  llm_provider_limited:
+    "the generation provider rejected the call for a quota or rate limit. Do not repeat author_workflow in this turn. Wait until the reported retry time or configure an authorized provider with capacity; the draft is unchanged.",
+  llm_quota_exhausted:
+    "the tenant's LLM token budget is exhausted. Do not repeat author_workflow in this turn. Wait for the budget reset or have an operator increase the authorized budget; the draft is unchanged.",
   preview_input_unavailable:
     "the preview could not take its input from a saved schedule: the workflow has none enabled in this environment, or more than one, so the engine will not pick for you. Nothing ran. Read them with list_schedules and pass that schedule's saved input explicitly; if there is genuinely none, ask the user for the real values with ask_user_form. Never invent sample values to make a preview pass.",
   draft_conflict:

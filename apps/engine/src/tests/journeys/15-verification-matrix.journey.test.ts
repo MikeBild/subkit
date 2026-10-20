@@ -293,7 +293,13 @@ describe("journey: verification matrix (docs/33)", () => {
         async: true,
       }),
     });
-    const body = (await asyncRun.json()) as { execution_id: string };
+    const body = (await asyncRun.json()) as {
+      execution_id?: string;
+      code?: string;
+      message?: string;
+    };
+    if (asyncRun.status !== 202 || !body.execution_id)
+      throw new Error(`async execution was not queued: ${asyncRun.status} ${JSON.stringify(body)}`);
     const cancel = await journeyFetch(ctx, `/v1/executions/${body.execution_id}/cancel`, {
       method: "POST",
     });
