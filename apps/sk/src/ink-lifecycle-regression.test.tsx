@@ -43,6 +43,13 @@ async function type(instance: ReturnType<typeof render>, text: string): Promise<
   await tick();
 }
 
+async function waitForFrame(instance: ReturnType<typeof render>, text: string): Promise<void> {
+  for (let attempt = 0; attempt < 50 && !instance.lastFrame()?.includes(text); attempt++) {
+    await tick(20);
+  }
+  expect(instance.lastFrame()).toContain(text);
+}
+
 afterEach(() => cleanup());
 
 describe("Ink REPL lifecycle", () => {
@@ -135,8 +142,7 @@ describe("Ink REPL lifecycle", () => {
 
     await type(instance, "new prompt");
     instance.stdin.write("\r");
-    await tick(80);
-    expect(instance.lastFrame()).toContain("new reply");
+    await waitForFrame(instance, "new reply");
     expect(instance.lastFrame()).not.toContain("old reply");
   });
 

@@ -10,7 +10,7 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { tenantWorkInFlight, withTenantWork } from "../execution/index.ts";
-import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import {
   acquireSweepPage,
@@ -41,7 +41,7 @@ async function tenantRows(count: number) {
       id,
       slug: id,
       display_name: "Sweep fixture",
-      created_at: new Date(getTestNow()),
+      created_at: new Date(FROZEN_NOW),
     })),
   );
   return ids.sort();
@@ -362,7 +362,7 @@ test("a pre-cutoff transaction that commits late is recovered on the next wrap",
       id,
       slug: id,
       display_name: "Existing sweep fixture",
-      created_at: new Date(getTestNow() - 1000),
+      created_at: new Date(FROZEN_NOW - 1000),
     })),
   );
   const inserted = Promise.withResolvers<void>();
@@ -422,7 +422,7 @@ test("the four entity sources return only metadata and exclude inactive parents"
   if (!active || !inactive) throw new Error("missing source fixture tenants");
   await fixture.db.update(tenants).set({ status: "suspended" }).where(eq(tenants.id, inactive));
   const large = "fixture-body-must-stay-in-postgres".repeat(32768);
-  const born = new Date(getTestNow() - 1000);
+  const born = new Date(FROZEN_NOW - 1000);
   const docs = [uuid(), uuid()];
   await fixture.db.insert(schema.connectors).values(
     [active, inactive].map((tenant_id, index) => ({

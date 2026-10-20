@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   getCurrentCockpitInstallation,
   revokeCockpitInstallation,
@@ -44,6 +45,7 @@ export function WorkspaceSwitcher() {
   });
   const revoke = useMutation({
     mutationFn: (id: string) => revokeCockpitInstallation(id),
+    onError: () => toast.error(t("common.actionFailed")),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["cockpit-installation"] });
       setRevoking(false);
@@ -88,7 +90,7 @@ export function WorkspaceSwitcher() {
           consequence={t("installation.revokeConsequence")}
           destructive
           pending={revoke.isPending}
-          onConfirm={() => revoke.mutateAsync(currentInstallation.id).then(() => undefined)}
+          onConfirm={() => revoke.mutate(currentInstallation.id)}
           testId="workspace-revoke-installation-dialog"
         />
       ) : null}

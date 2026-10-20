@@ -94,7 +94,7 @@ export function InstallationImportDialog() {
     }
   };
   const submit = async () => {
-    if (!draft) return;
+    if (!draft || (category === null && !defaultCategory.data)) return;
     if (!canImport) {
       setError(t("installation.permission"));
       return;
@@ -133,11 +133,16 @@ export function InstallationImportDialog() {
       submit={{
         label: t("installation.importAction", { category: categoryLabel }),
         pending,
-        disabled: !draft || draft.records.length === 0 || !canImport,
+        disabled:
+          !draft ||
+          draft.records.length === 0 ||
+          !canImport ||
+          (category === null && !defaultCategory.data),
       }}
       onSubmit={submit}
       error={
         error ??
+        (defaultCategory.error && category === null ? t("installation.importFailed") : null) ??
         (incomingError ? t("installation.importFailed") : null) ??
         (draft && !canImport ? t("installation.permission") : null)
       }

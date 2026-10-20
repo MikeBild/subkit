@@ -1,5 +1,6 @@
 import { Bell, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { createCockpitInstallation } from "@/api/cockpit-installations";
 import { cockpitApiHref, installationId } from "@/app/installation-context";
 import { useInstallation } from "@/app/installation-provider";
@@ -40,20 +41,22 @@ export function InstallationDialog({
     return () => window.removeEventListener("beforeinstallprompt", listener);
   }, []);
   const install = async () => {
-    if (prompt) {
-      await prompt.prompt();
-      setPrompt(null);
-      onOpenChange(false);
-      return;
-    }
-    if (installationId()) {
+    if (installationId() && !prompt) {
       setUnavailable(true);
       return;
     }
     setCreating(true);
     try {
+      if (prompt) {
+        await prompt.prompt();
+        setPrompt(null);
+        onOpenChange(false);
+        return;
+      }
       const installation = await createCockpitInstallation();
       window.location.assign(`${installation.start_url}?install=1`);
+    } catch {
+      toast.error(t("common.actionFailed"));
     } finally {
       setCreating(false);
     }
@@ -80,7 +83,10 @@ export function InstallationDialog({
       </FormDialog>
       <FormDialog
         open={unavailable}
-        onOpenChange={setUnavailable}
+        onOpenChange={(next) => {
+          setUnavailable(next);
+          if (!next) onOpenChange(false);
+        }}
         title={t("installation.unavailableTitle")}
         testId="installation-unavailable-dialog"
       >
@@ -103,8 +109,8 @@ export function InstallationNotificationsDialog({
   const [pending, setPending] = useState(false);
   const [denied, setDenied] = useState(false);
   useEffect(() => {
-    if (open) void refreshPushSubscription().catch(() => {});
-  }, [open, refreshPushSubscription]);
+    if (open) void refreshPushSubscription().catch(() => toast.error(t("common.actionFailed")));
+  }, [open, refreshPushSubscription, t]);
   const toggle = async (checked: boolean) => {
     setPending(true);
     try {
@@ -112,6 +118,8 @@ export function InstallationNotificationsDialog({
         const enabled = await enablePush();
         setDenied(!enabled && Notification.permission === "denied");
       } else await disablePush();
+    } catch {
+      toast.error(t("common.actionFailed"));
     } finally {
       setPending(false);
     }

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { ElicitationCompleteNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
 import {
   createEmptyDraftDocument,
@@ -19,6 +19,7 @@ import {
   conversationElicitations,
   conversationMessages,
   conversations,
+  conversationTurns,
   credentials,
   mcpTasks,
   workflows,
@@ -156,15 +157,38 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
             and(
               eq(mcpTasks.tenant_id, suite.http.tenantId),
               eq(mcpTasks.conversation_id, conversationId),
+              eq(mcpTasks.kind, "respond_elicitation"),
             ),
-          );
-        if (row?.kind !== "respond_elicitation") return null;
+          )
+          .orderBy(desc(mcpTasks.turn_seq))
+          .limit(1);
+        if (!row) return null;
         if (row.failure_reason) {
           throw new Error(`resumed MCP task failed: ${row.failure_reason}`);
         }
         return row.result ? row : null;
       },
       { tries: 500, sleepMs: 10, label: "resumed MCP task completion" },
+    );
+  }
+
+  async function waitForElicitationDeliveryReady(conversationId: string): Promise<void> {
+    await waitFor(
+      async () => {
+        const [turn] = await suite.http.db
+          .select({ state: conversationTurns.state })
+          .from(conversationTurns)
+          .where(
+            and(
+              eq(conversationTurns.tenant_id, suite.http.tenantId),
+              eq(conversationTurns.conversation_id, conversationId),
+            ),
+          )
+          .orderBy(desc(conversationTurns.created_at))
+          .limit(1);
+        return turn?.state === "completed" ? turn : null;
+      },
+      { tries: 500, sleepMs: 10, label: "native elicitation delivery readiness" },
     );
   }
 
@@ -752,6 +776,7 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
       },
       { tries: 500, sleepMs: 10, label: "native approval pause" },
     );
+    await waitForElicitationDeliveryReady(conversation.id);
 
     const delivery = await approvalClient.callTool({
       name: "conversation_get",

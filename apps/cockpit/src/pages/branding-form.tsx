@@ -65,7 +65,10 @@ export function BrandingForm({
             <FieldDescription className="text-xs">{t("branding.nameHint")}</FieldDescription>
           </Field>
           <Field className="gap-1.5">
-            <FieldLabel htmlFor="branding-subtitle">{t("branding.subtitle")}</FieldLabel>
+            <FieldLabel htmlFor="branding-subtitle" className="gap-1">
+              {t("branding.subtitle")}{" "}
+              <span className="font-normal text-muted-foreground">({t("input.optional")})</span>
+            </FieldLabel>
             <Input
               id="branding-subtitle"
               className="h-9 rounded-lg px-3"
