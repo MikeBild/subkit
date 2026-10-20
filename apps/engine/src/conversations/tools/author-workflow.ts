@@ -23,14 +23,14 @@ const inputSchema = z
       .min(1)
       .optional()
       .describe(
-        "The exact workflow name requested by the user. Applied to the draft before preview and saving; never defer naming to a persisted metadata update.",
+        "The exact workflow name requested by the user. Applied to the draft before review and saving; never defer naming to a persisted metadata update.",
       ),
     slug: z
       .string()
       .regex(/^[a-z0-9][a-z0-9-]*$/)
       .optional()
       .describe(
-        "The exact lowercase workflow identifier requested by the user, when supplied. Preserved over the generated identifier before preview.",
+        "The exact lowercase workflow identifier requested by the user, when supplied. Preserved over the generated identifier before review.",
       ),
     connector_ids: z
       .array(z.string())
@@ -52,15 +52,15 @@ const inputSchema = z
 export const authorWorkflowTool: ConversationTool = {
   name: "author_workflow",
   description:
-    "THE canonical entry for authoring a NEW workflow. Never for an existing one: a slug that is already saved is refused with workflow_already_exists — open it with open_workflow_draft and change it with edit_workflow_patch. One call runs the engine-side pipeline — ground in the named connectors (recorded endpoint samples + docs), generate the COMPLETE definition (JavaScript transforms by default), evaluate it against recorded evidence with bounded auto-repair — and returns the evaluated draft. Set the requested name and slug on the draft, inspect it, then call dry_run_workflow.",
+    "THE canonical entry for authoring a NEW workflow. Never for an existing one: a slug that is already saved is refused with workflow_already_exists — open it with open_workflow_draft and change it with edit_workflow_patch. One call runs the engine-side pipeline — ground in the named connectors (recorded endpoint samples + docs), generate the COMPLETE definition (JavaScript transforms by default), evaluate it against recorded evidence with bounded auto-repair — and returns the evaluated draft. Set the requested name and slug on the draft, then inspect it. Preview ordinary definitions; inspect and validate sensitive definitions before saving them inactive.",
   use_case:
     "Use whenever the user asks to build/create/author a workflow. This is THE builder; apply targeted follow-up edits afterwards with edit_workflow_patch.",
   important_notes: [
-    "Writes to the conversation draft only — dry_run_workflow is the next step; a green, judged preview auto-commits.",
-    "Pass the user's goal VERBATIM and pass any explicitly requested name/slug in their fields. Verify them before preview, which can save immediately. Do not defer requested naming to update_workflow after saving.",
+    "Writes to the conversation draft only. Ordinary definitions use dry_run_workflow next; a green, judged preview auto-commits. Sensitive definitions use inspect_workflow_draft and validate_draft before an inert save, without chat preview.",
+    "Pass the user's goal VERBATIM and pass any explicitly requested name/slug in their fields. Verify them before preview or sensitive-draft review; an ordinary green preview can save immediately. Do not defer requested naming to update_workflow after saving.",
     "When the user supplied (or you can infer) an example input payload, pass it as `input_example`. It is persisted as the workflow's sample and becomes the input contract the run/dry-run present — a far more reliable idiom than hand-writing an input_schema. A run/dry-run TEST payload is a separate thing and is never written into the workflow.",
     "Name every connector the workflow should call (ids or slugs) — their recorded endpoint samples and docs ground the generation. Probe a connector first when it has never been called; recorded shapes make the difference between a grounded draft and a guessed one.",
-    "The result's `recorded_eval` may carry findings and verified `repair` proposals; a valid definition is stashed with them — apply repairs via edit_workflow_patch, then preview. A definition that fails workflow validation is never stashed: the call refuses with authoring_definition_invalid and the previous draft stays.",
+    "The result's `recorded_eval` may carry findings and verified `repair` proposals; a valid definition is stashed with them — apply repairs via edit_workflow_patch, then preview ordinary definitions or inspect and validate sensitive definitions. A definition that fails workflow validation is never stashed: the call refuses with authoring_definition_invalid and the previous draft stays.",
     "Destinations (recipients, channels, webhook URLs, upload targets) come from the user: when the goal does not name them, ask with ask_user_text/ask_user_form BEFORE calling this tool. A generated definition that fills a destination with a placeholder is refused with authoring_definition_invalid, `requires_user_input: true` and `placeholder_destinations` naming each field; never retry with another placeholder.",
     "No live HTTP fires inside this call; generation cost rides the tenant token budget (≤2 generation passes + bounded expression repair).",
   ],
@@ -196,6 +196,7 @@ export const authorWorkflowTool: ConversationTool = {
     }
 
     const nextDraft = ctx.getDraft();
+    const sensitiveDefinition = result.definition.execution_privacy === "sensitive";
     return {
       ok: true,
       data: buildDraftMutationPayload(nextDraft, {
@@ -218,9 +219,13 @@ export const authorWorkflowTool: ConversationTool = {
           ...(result.critic_rejection ? { critic_rejection: result.critic_rejection } : {}),
           persistence: "draft_only" as const,
           next_step: result.next,
-          next_hint: result.recorded_eval.ok
-            ? "Preview with dry_run_workflow — a green, judged preview auto-commits."
-            : "Apply the recorded_eval findings (verified repairs ride findings[].repair.expression) via edit_workflow_patch, then dry_run_workflow.",
+          next_hint: sensitiveDefinition
+            ? result.recorded_eval.ok
+              ? "Inspect and validate the draft, then save it inactive. Chat preview is unavailable for sensitive definitions."
+              : "Apply the recorded_eval findings via edit_workflow_patch, then inspect and validate before an inactive save. Chat preview is unavailable for sensitive definitions."
+            : result.recorded_eval.ok
+              ? "Preview with dry_run_workflow — a green, judged preview auto-commits."
+              : "Apply the recorded_eval findings (verified repairs ride findings[].repair.expression) via edit_workflow_patch, then dry_run_workflow.",
         },
       }),
     };
