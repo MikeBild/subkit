@@ -125,7 +125,10 @@ export async function getTenantBrandingLogo(
   const [row] = await db
     .select({
       revision: tenantBranding.revision,
-      logo: theme === "light" ? tenantBranding.logo_light : tenantBranding.logo_dark,
+      logo:
+        theme === "light"
+          ? sql<Uint8Array | null>`coalesce(${tenantBranding.logo_light}, ${tenantBranding.logo_dark})`
+          : sql<Uint8Array | null>`coalesce(${tenantBranding.logo_dark}, ${tenantBranding.logo_light})`,
     })
     .from(tenantBranding)
     .where(eq(tenantBranding.tenant_id, tenantId))
@@ -153,7 +156,12 @@ export async function getTenantBrandingAppIcon(
 }
 
 export async function updateTenantBranding(
-  input: TenantBrandingUpdate & { tenant_id: string; actor_id: string },
+  input: TenantBrandingUpdate & {
+    tenant_id: string;
+    actor_id: string;
+    actor_type?: "user" | "system_account";
+    request_source?: "api" | "cli" | "mcp" | "ui";
+  },
   db: Executor,
 ): Promise<TenantBrandingValue> {
   return await db.transaction(async (tx) => {
@@ -205,14 +213,15 @@ export async function updateTenantBranding(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: "user",
+        actor_type: input.actor_type ?? "user",
         actor_id: input.actor_id,
         action: AuditAction.TENANT_UPDATED,
         resource_type: "tenant_branding",
         resource_id: input.tenant_id,
         result: "success",
         metadata: {
-          source: "ui",
+          source: input.request_source ?? "ui",
+          request_source: input.request_source ?? "ui",
           revision: row.revision,
           before: present(current),
           after: present(row),
@@ -229,7 +238,13 @@ export async function updateTenantBranding(
 }
 
 export async function resetTenantBranding(
-  input: { tenant_id: string; revision: number; actor_id: string },
+  input: {
+    tenant_id: string;
+    revision: number;
+    actor_id: string;
+    actor_type?: "user" | "system_account";
+    request_source?: "api" | "cli" | "mcp" | "ui";
+  },
   db: Executor,
 ): Promise<TenantBrandingValue> {
   return await updateTenantBranding(

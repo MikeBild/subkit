@@ -33,8 +33,8 @@ export function brandingDraftLogo(
   if (change.operation === "remove") return null;
   if (change.operation === "replace")
     return `data:${change.mime_type};base64,${change.content_base64}`;
-  const source = saved.logo_urls[theme];
-    return source ? cockpitApiHref(source) : null;
+  const source = saved.logos[theme] ? saved.logo_urls[theme] : null;
+  return source ? cockpitApiHref(source) : null;
 }
 
 export function brandingPreviewLogo(

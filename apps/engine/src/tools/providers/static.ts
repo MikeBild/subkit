@@ -43,6 +43,21 @@ import {
   subkitSettingsMcpTool,
   subkitUpdateSettingMcpTool,
 } from "../../mcp/tools/settings.ts";
+import {
+  GET_TENANT_BRANDING_LOGO_TOOL_NAME,
+  GET_TENANT_BRANDING_TOOL_NAME,
+  getTenantBrandingLogoMcpTool,
+  getTenantBrandingMcpTool,
+  handleGetTenantBranding,
+  handleGetTenantBrandingLogo,
+  handleResetTenantBranding,
+  handleUpdateTenantBranding,
+  prepareTenantBrandingApprovalArgs,
+  RESET_TENANT_BRANDING_TOOL_NAME,
+  resetTenantBrandingMcpTool,
+  UPDATE_TENANT_BRANDING_TOOL_NAME,
+  updateTenantBrandingMcpTool,
+} from "../../mcp/tools/tenant-branding.ts";
 import type { ToolListFilter, ToolProvider, ToolRegistry } from "../registry.ts";
 import type { ToolCategory, ToolDescriptor, ToolEnvelope } from "../types.ts";
 
@@ -60,12 +75,19 @@ export type StaticInvoke = (
   args: Record<string, unknown>,
 ) => Promise<ToolEnvelope>;
 
+export type StaticApprovalArgsPreparation = (
+  args: Record<string, unknown>,
+) => Promise<
+  { ok: true; args: Record<string, unknown> } | { ok: false; error_code: string; message: string }
+>;
+
 interface StaticEntry {
   readonly tool: Tool;
   readonly visibleInMcpModes: ReadonlyArray<"product" | "authoring" | "admin"> | null;
   readonly visibleOnChat: boolean;
   readonly category: ToolCategory;
   readonly rbac?: NonNullable<ToolDescriptor["rbac"]>;
+  readonly prepareApprovalArgs?: StaticApprovalArgsPreparation;
   readonly invoke: StaticInvoke;
 }
 
@@ -224,6 +246,61 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
     },
   },
   {
+    tool: getTenantBrandingMcpTool,
+    visibleInMcpModes: ["authoring", "admin"],
+    visibleOnChat: false,
+    category: "tenant_read",
+    async invoke(ctx) {
+      const result = await handleGetTenantBranding({ db: ctx.db, principal: ctx.principal });
+      return envelopeForOk(result.data);
+    },
+  },
+  {
+    tool: getTenantBrandingLogoMcpTool,
+    visibleInMcpModes: ["authoring", "admin"],
+    visibleOnChat: false,
+    category: "tenant_read",
+    async invoke(ctx, args) {
+      const result = await handleGetTenantBrandingLogo(
+        { db: ctx.db, principal: ctx.principal },
+        args,
+      );
+      if (result.ok) return envelopeForOk(result.data);
+      return envelopeForError(result.data.error_code, result.data.message);
+    },
+  },
+  {
+    tool: updateTenantBrandingMcpTool,
+    visibleInMcpModes: ["admin"],
+    visibleOnChat: false,
+    category: "tenant_write",
+    rbac: { permission: "identity:write", additional_permissions: ["settings:write"] },
+    prepareApprovalArgs: prepareTenantBrandingApprovalArgs,
+    async invoke(ctx, args) {
+      const result = await handleUpdateTenantBranding(
+        { db: ctx.db, principal: ctx.principal },
+        args,
+      );
+      if (result.ok) return envelopeForOk(result.data);
+      return envelopeForError(result.data.error_code, result.data.message);
+    },
+  },
+  {
+    tool: resetTenantBrandingMcpTool,
+    visibleInMcpModes: ["admin"],
+    visibleOnChat: false,
+    category: "tenant_write",
+    rbac: { permission: "identity:write", additional_permissions: ["settings:write"] },
+    async invoke(ctx, args) {
+      const result = await handleResetTenantBranding(
+        { db: ctx.db, principal: ctx.principal },
+        args,
+      );
+      if (result.ok) return envelopeForOk(result.data);
+      return envelopeForError(result.data.error_code, result.data.message);
+    },
+  },
+  {
     tool: listAppsMcpTool,
     visibleInMcpModes: ["admin"],
     visibleOnChat: false,
@@ -268,6 +345,7 @@ export interface StaticProviderEntry {
   readonly kind: "static";
   readonly tool: Tool;
   readonly toolName: string;
+  readonly prepareApprovalArgs?: StaticApprovalArgsPreparation;
   readonly invoke: StaticInvoke;
 }
 
@@ -306,6 +384,7 @@ export const staticToolProvider: ToolProvider = {
       kind: "static",
       tool: e.tool,
       toolName: e.tool.name,
+      ...(e.prepareApprovalArgs ? { prepareApprovalArgs: e.prepareApprovalArgs } : {}),
       invoke: e.invoke,
     };
     return { descriptor: descriptorOf(e), executor: entry };
@@ -315,9 +394,13 @@ export const staticToolProvider: ToolProvider = {
 export {
   AUTHENTICATE_TOOL_NAME,
   GET_APP_TOOL_NAME,
+  GET_TENANT_BRANDING_LOGO_TOOL_NAME,
+  GET_TENANT_BRANDING_TOOL_NAME,
   LIST_APPS_TOOL_NAME,
   LIST_RECIPES_TOOL_NAME,
+  RESET_TENANT_BRANDING_TOOL_NAME,
   SELF_HEALING_SCAN_TOOL_NAME,
   SUBKIT_SETTINGS_TOOL_NAME,
   SUBKIT_UPDATE_SETTING_TOOL_NAME,
+  UPDATE_TENANT_BRANDING_TOOL_NAME,
 };

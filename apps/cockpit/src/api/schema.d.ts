@@ -27630,7 +27630,7 @@ export interface operations {
             query: {
                 theme: "light" | "dark";
                 revision?: number | null;
-                tenant_context: string;
+                tenant_context?: string;
             };
             header?: never;
             path?: never;
@@ -27647,7 +27647,7 @@ export interface operations {
                     "image/png": string;
                 };
             };
-            /** @description Browser session required */
+            /** @description Authentication required */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -27695,7 +27695,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Browser session required */
+            /** @description Authentication required */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -27754,7 +27754,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Browser session required */
+            /** @description Authentication required */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -27815,7 +27815,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Browser session required */
+            /** @description Authentication required */
             401: {
                 headers: {
                     [name: string]: unknown;

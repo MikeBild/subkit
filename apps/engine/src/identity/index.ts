@@ -13,6 +13,8 @@ export * from "./recovery.ts";
 export * from "./self-service.ts";
 export * from "./service.ts";
 export * from "./tenant-branding.ts";
+export * from "./tenant-branding-access.ts";
+export * from "./tenant-branding-contract.ts";
 export { eraseExpiredTenant, type TenantErasureDependencies } from "./tenant-erasure.ts";
 export * from "./tenant-lifecycle.ts";
 export { lockActiveTenant } from "./tenant-status.ts";
