@@ -55,18 +55,19 @@ Keine Playwright-Suite oder Screenshot-Testprogramme erstellen oder ausführen.
 
 ## Veröffentlichung und Backend-Grenze
 
-Noch offen: echte Formularzustellung, tatsächliches Hosting, finale Texte/Bilder,
+Hosting und echte Formularzustellung sind am 20.10.2026 geprüft. Offen bleiben
+finale Texte/Bilder,
 Rechts-/Sichtabnahme und öffentliche Downloads. Die Veröffentlichung auf der
 bestätigten Lovable-Subdomain ist im aktuellen Formularauftrag autorisiert;
-sie folgt nach kontrollierter Prüfung. Das öffnet keine Cloud-Registrierung.
+sie wurde nach kontrollierter Prüfung ausgeführt. Das öffnet keine Cloud-Registrierung.
 Vorhandene Betreiberangaben und serverseitiger Empfänger beweisen keinen Versand.
 Analytics ist optional und kein Startblocker; ohne freigegebene echte Konfiguration
 keine Aktivierung. Ein zusätzlicher DNS-Wechsel ist nicht Teil dieses Auftrags.
 
-Laut gelesenem RELEASE.md veröffentlicht Lovable das Projekt insgesamt; einzelne
-Clipper-Rechtsseiten wurden nicht separat veröffentlicht. Die unfertige Website
-nicht als Nebenwirkung einer Datenschutzveröffentlichung starten. Eine isolierte
-öffentliche Bereitstellung und der konkrete Store-Status bleiben gesondert zu prüfen.
+Lovable veröffentlicht das Projekt insgesamt. Die ausdrücklich beauftragte
+Gesamtveröffentlichung umfasst inzwischen die öffentlich geprüften Clipper-
+Rechtsseiten; sie war keine automatische Nebenwirkung einer Datenschutzänderung.
+Store-Verknüpfung und Store-Prüfentscheidung wurden dabei nicht verändert.
 
 Lovable gestaltet und integriert die Oberfläche. Mandanten, Credentials, Budgets,
 Workflows und Freigaben bleiben in den zuständigen SubKit-Domänenoperationen.
@@ -94,37 +95,40 @@ externen Übergabe. Entwurfsänderungen über die öffentliche Draft-Patch-Funkt
 ersetzen keine persönliche Speicherung oder Versandfreigabe. Zugangsschlüssel
 werden im sicheren Lovable-Dialog persönlich eingegeben, niemals im Chat.
 
-Stand 19.10.2026: vollständige zweite Version persönlich gespeichert und die
-Freigabe für Produktion/30 Tage bestätigt. Die Version wurde aktiv, die
-abschließende Effektfreigabe scheiterte jedoch am entfernten Eingang.
-Beide Konfigurationseinträge sind in Lovable
-vorhanden, ohne Schlüsselauslesung. 34 unabhängige Offline-Prüfungen bestanden.
-Lovable meldet 150 Tests, Build/Typprüfung und isolierten Migrations-Replay sowie
-62 fokussierte Prüfungen zur zusätzlichen genauen Vorschau-Adresse bestanden.
+Stand 20.10.2026: Version 3 ist persönlich für Produktion und 30 Tage freigegeben.
+Der unabhängig verwaltete signierte Eingang blieb nach Aktivierung erhalten.
+Die allgemeine Engine-Korrektur ist damit für diesen Aktivierungspfad produktiv
+bestätigt. Keine Engine-Bereitstellung durch die Website-Session.
 
-Die Kontrolle nach Aktivierung zeigte einen entfernten signierten Eingang.
-Ursache: Die bisherige Engine-Reconciliation löschte bei Anfrage-Auslösern auch
-separat verwaltete CRUD-Eingänge. Die allgemeine Korrektur trennt deren Herkunft
-von umgekehrten Workflow-Bindungen; auch ein Webhook-Auslöser darf unabhängige
-Eingänge nicht umschreiben. Vollständiges Archivieren/Löschen entfernt weiterhin
-alle Eingänge des Workflows. Regressionstests prüfen Anfrage-/Zeitplanwechsel,
-unveränderte Signaturkonfiguration und Mandantentrennung. Die Korrektur ist noch
-nicht als ausgeliefert nachgewiesen. Kein Engine-Deployment durch Website-Arbeit.
+Der boolesche Übergabeschalter wurde in Settings → Secrets → Add durch Speichern
+desselben Namens aktualisiert; die Oberfläche bestätigt die Ersetzung. Das ist
+keine Änderung am Signaturschlüssel. Sonstige Geheimniswerte wurden nicht gelesen.
+Die aktuelle Projektvorschau meldet sämtliche Konfigurationsprüfungen erfolgreich;
+die zuvor benutzte benannte Vorschau lieferte einen älteren Stand. Zwei dort
+angenommene Anfragen bleiben unverändert ohne Versandversuch. Bestehende Zustände
+bleiben endgültig; die zeitweise unerwünscht eingeführte erneute Übergabe wurde
+mit einer Folgemigration vollständig zurückgenommen. Die ursprüngliche Funktion
+wurde direkt geprüft und die gesamte Migrationsfolge isoliert wiederholt.
 
-Automatischer Nachweis: zehn gezielte PostgreSQL-Regressionstests bestanden;
-2.176 Testdateien über initialen Gesamtlauf und dokumentierte Fortsetzung mit
-unterstützter Shard-/Start-after-Funktion abgedeckt. Aufgefallene Fälle wurden
-behoben beziehungsweise nach aktualisierter gesperrter Abhängigkeitsinstallation
-isoliert erfolgreich wiederholt. Vorgesehene Opt-in-Prüfungen für Live-Dienste,
-reale Modelle, mehrsprachige Suche und interaktive PTY-Sitzungen bleiben
-übersprungen und sind einzeln im privaten Nachweis aufgeführt. Deterministische
-KI-Verträge, kompilierte Programme und regulärer CLI-End-to-End-Umfang bestanden;
-37 zusätzliche Root-/Konfigurationsprüfungen nach Übernahme paralleler Änderungen
-bestanden. Die privaten Prüfartefakte führen Umfang, Fortsetzung und Grenzen.
+Echte Browsernachweise: zwei Vorschau- und zwei öffentliche Anfragen, Kontakt DE
+und Beta EN, insgesamt vier erfolgreiche Produktionsläufe mit jeweils sechs
+Schritten. Beide Empfangsadressen gehören dem Nutzer. Betreiberbenachrichtigungen
+und lokalisierte Bestätigungen sind in den tatsächlichen Postfächern geprüft;
+keine automatische Beta-Freischaltung. Identische Wiederholung derselben Anfrage
+liefert denselben Annahmebeleg und erzeugt keinen weiteren Lauf. Annahmebeleg,
+Workflow-Erfolg und Inbox-Zustellung sind getrennte Nachweise.
 
-Übergabe bleibt deaktiviert; reale Zustellprüfung und Veröffentlichung stehen
-aus. Nach korrigiertem Release den entfernten Eingang über öffentliche Verwaltung
-neu anlegen und die tatsächliche neue Kennung in einer normal gespeicherten und
-persönlich geprüften Workflowfassung verwenden. Danach erneut den Eingang prüfen;
-keine Wiederverwendung der entfernten Kennung oder unsignierte Ausnahme. Bestehende
-Website und Unterhaltung anhand der externen Übergabe fortsetzen, nicht duplizieren.
+Die Website ist auf der beauftragten Lovable-Subdomain veröffentlicht. Öffentliche
+Sprach-/Formular-/Rechtsseiten, Clipper-Hinweise, Social-Bilder, robots.txt und
+Sitemap sind erreichbar; Canonical/hreflang und Indexierung wurden nachgelesen,
+unbekannte Pfade liefern 404. Der Kontaktbildschirm wurde bei derselben
+Desktopbreite visuell mit der vorhandenen Vorlage verglichen; Layout erhalten,
+Datenschutzhinweis erklärt nun zusätzlich die Eingangsbestätigung. App- und
+Plattform-Analytics bleiben aus. Kein DNS-Wechsel, kein weiterer Mailanbieter.
+
+Grenzen: Safari/Firefox, persönliche visuelle Gesamtabnahme, externe Social-
+Linkvorschauen, Rechts-/Provider-/Aufbewahrungsprüfung und öffentliche Produktpakete
+sind damit nicht freigegeben oder vollständig geprüft. Die detaillierten
+operativen Versionen, Lauf-/Anfragekennungen, Screenshots und datierten Nachweise
+bleiben in der externen Übergabe. Lovable hält lokale Tests getrennt von diesen
+extern durchgeführten echten Browser-/Gmail-Prüfungen fest.

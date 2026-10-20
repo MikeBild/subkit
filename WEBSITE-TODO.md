@@ -19,28 +19,26 @@ Nachrichten stehen außerhalb des Repositorys in
 `/Users/mikebild/Documents/SubKit-Lovable/WEBSITE-HANDOFF.md`.
 Diese Angaben nicht erneut vom Nutzer erfragen.
 
-Die Website ist unveröffentlicht. Weder vollständige Releasefähigkeit noch
-tatsächliche Formularzustellung oder öffentliche Installierbarkeit behaupten.
+Aktueller Formularauftrag: am 20.10.2026 veröffentlicht und auf dem öffentlichen
+Host geprüft. Kontakt- und Beta-Anfragen senden je eine Betreiberbenachrichtigung
+und eine lokalisierte Eingangsbestätigung über den bestehenden Gmail-Konnektor.
+Die korrigierte dritte Workflowfassung wurde persönlich für Produktion und
+30 Tage freigegeben. Der separat verwaltete signierte Eingang blieb nach
+Aktivierung erhalten. Zwei Vorschau- und zwei öffentliche Anfragen liefen jeweils
+mit sechs erfolgreichen Schritten; beide Bestätigungen wurden in den eigenen
+Posteingängen geprüft. Eine identische wiederholte Anfrage erzeugte keinen
+weiteren Lauf. Website-Annahme und tatsächlicher Mailnachweis sind getrennt belegt.
 
-Aktueller Formularauftrag (19.10.2026): Veröffentlichung auf der bestätigten
-Lovable-Subdomain ist nach kontrollierter Prüfung beauftragt. Kontakt- und
-Beta-Anfrage sollen jeweils eine Betreiberbenachrichtigung und eine lokalisierte
-Eingangsbestätigung über den bestehenden Gmail-Konnektor erhalten. Die erste
-Workflowfassung und anschließend die vollständige Fassung wurden persönlich
-gespeichert. Die vollständige Fassung hat 34 unabhängige Offline-Prüfungen
-bestanden. Die persönliche Freigabe für Produktion und 30 Tage wurde bestätigt;
-die Version ist aktiv, die abschließende Effektfreigabe wurde jedoch wegen des
-entfernten Eingangs nicht erfolgreich abgeschlossen. Beide
-Lovable-Konfigurationseinträge sind vorhanden. Die Kontrolle nach Aktivierung
-hat jedoch einen Engine-Fehler nachgewiesen: Der separat verwaltete signierte
-Eingang wurde entfernt. Versand bleibt deaktiviert, keine echte Testmail oder
-Veröffentlichung. Die allgemeine Korrektur und Regressionstests liegen im
-Repository. Automatischer Prüfungsumfang abgeschlossen; produktiver Release und
-echte Zustellprüfung stehen weiterhin aus. Vorgesehene Opt-in-Prüfungen für
-Live-Dienste/Modelle, mehrsprachige Suche und interaktive PTY-Sitzungen wurden
-übersprungen; die einzelnen Fälle stehen im privaten Nachweis und zählen nicht
-als ausgeführt.
-Aktuelle Dialoge, Laufzeitstand und private Zugangsdaten siehe externe Übergabe.
+Die benannte Vorschau lieferte zunächst einen älteren Stand; zwei dort gespeicherte
+Anfragen bleiben ohne Versandversuch im Zustand „nicht konfiguriert“. Die aktuelle
+Projektvorschau und der veröffentlichte Host sind geprüft. Keine alten Anfragen
+wiederholen oder löschen. Der ursprüngliche Schutz vor Wiederholung wurde nach
+einer unerwünschten Änderung mit einer Folgemigration wiederhergestellt und direkt
+im Annahmespeicher geprüft; vollständiger isolierter Migrations-Replay bestanden.
+Analytics in App und Plattform ist ausgeschaltet. Die Veröffentlichung ist kein
+Cloud-/Produkt-Beta-Go und kein Nachweis öffentlicher Installierbarkeit oder
+Rechtsabnahme. Konkrete Versionen, Adressen und datierte Nachweise stehen in der
+externen Übergabe.
 
 ## Maßgebliche Quellen
 
@@ -69,21 +67,23 @@ Self-Hosting-Einstiege erst nach nachgewiesener Cloud-Öffnung ändern.
 - [x] Spät ladende Analytics-Scripts können nach Widerruf keine vorgemerkten
   Ereignisse mehr senden; Warteschlange wird verworfen.
 
-Nachweisgrenze: Lovable meldet erfolgreichen Build und 41 fokussierte Tests.
+Historischer Nachweis vor der Formularintegration: Lovable meldet erfolgreichen
+Build und 41 fokussierte Tests.
 Geprüft wurden acht vollständige englische Seiten, 16 direkte Sprachseiten,
 275 Links/Anker, zwölf simulierte Formularzustände, Systemwechsel und Consent
 einschließlich Reload, Cross-tab, Widerruf während Scriptladung und erneuter
 Einwilligung. Browsernachweise stammen aus Chromium auf localhost.
 Google-Scripts wurden lokal abgefangen, Formularantworten simuliert.
-Keine echten E-Mails, keine reale GA-Messung, keine Veröffentlichung.
+In diesem historischen Prüfumfang keine echten E-Mails, keine reale GA-Messung
+und keine Veröffentlichung; aktueller Live-Nachweis siehe Einstieg.
 Ausgewählte Codeänderungen wurden zusätzlich über die offizielle Integration
-nachgelesen. Kein eigener vollständiger Produktionsnachweis durch den Hauptagenten.
+nachgelesen. Der damalige Umfang war kein eigener vollständiger Produktionsnachweis.
 
 Im Lovable-Projekt enthalten RELEASE.md und VERIFICATION.md die Aktivierungsregeln,
 Reproduktionsbefehle und offenen Prüfgrenzen. Diese vor neuen Tests lesen und
 bestandene Ergebnisse wiederverwenden. Keine automatische visuelle Matrix erneut
-starten; manuelle Sichtabnahme bleibt beim Nutzer. Safari/Firefox und tatsächliche
-öffentliche Hosting-Ausführung wurden noch nicht nachgewiesen.
+starten; manuelle Sichtabnahme bleibt beim Nutzer. Safari/Firefox wurden noch
+nicht nachgewiesen; öffentliche Hosting-Ausführung inzwischen gemäß Einstieg geprüft.
 
 ## Offene Aufgaben, priorisiert
 
@@ -117,11 +117,10 @@ starten; manuelle Sichtabnahme bleibt beim Nutzer. Safari/Firefox und tatsächli
 - [x] Vollständige inaktive Workflowfassung persönlich speichern, ihre beiden
   Gmail-Effekte prüfen und persönlich freigeben. Gemeinsamen Signaturschlüssel
   über den sicheren Lovable-Dialog provisionieren.
-- [ ] Allgemeine Engine-Korrektur für unabhängige signierte Eingänge prüfen und
-  im zuständigen Release ausliefern. Danach Eingang über öffentliche Verwaltung
-  neu anlegen, tatsächliche neue Kennung im Workflow referenzieren, neue Fassung
-  normal prüfen/freigeben und Erhalt des Eingangs nach Aktivierung nachweisen.
-  Erst dann Website-Übergabe aktivieren; keine unsignierte Ausweichlösung.
+- [x] Allgemeine Engine-Korrektur ausgeliefert; Ersatz-Eingang über öffentliche
+  Verwaltung angelegt, tatsächliche Kennung in Version 3 referenziert, persönlich
+  freigegeben und Erhalt nach Aktivierung nachgewiesen. Website-Übergabe über
+  unterstützte Settings-Ersetzung aktiviert; Signaturprüfung unverändert.
 
   Quellprüfung: zehn PostgreSQL-Regressionstests für die Bindung bestanden;
   sämtliche 2.176 Testdateien über den Gesamtlauf und dokumentierte Fortsetzungen
@@ -131,10 +130,11 @@ starten; manuelle Sichtabnahme bleibt beim Nutzer. Safari/Firefox und tatsächli
   KI-Verträge, kompilierte Programme und CLI-End-to-End bestanden. Nach Übernahme
   paralleler Root-/Konfigurationsänderungen weitere 37 Tests bestanden. Dies ist
   ausdrücklich kein Nachweis produktiver Gmail-Zustellung oder Veröffentlichung.
-- [ ] Tatsächliche Zustellung, Fehlerfälle und Schutz vor Massenanfragen prüfen.
-  Keine Simulation als echten Zustellnachweis ausgeben. Kontrollierte Tests an
-  das eigene bestätigte Postfach gehören zum Auftrag; bisher kein Versand.
-- [ ] Beta-Anfrage erklärt konkret, was nach Absenden passiert; keine erfundene
+- [x] Echte Zustellung beider Mailarten in DE/EN über Vorschau und öffentlichen
+  Host geprüft; vier erfolgreiche Läufe, acht Mails, eigene Empfangsadressen.
+  Identische Wiederholung ohne weiteren Lauf. Fehler-/Signatur-/Rate-Limit-Verträge
+  bleiben automatisierte Nachweise; kein Lasttest durch echten Massenversand.
+- [x] Beta-Anfrage erklärt konkret, was nach Absenden passiert; keine erfundene
   Reaktionszeit, automatische Aufnahme oder Newsletter-Anmeldung.
 - [ ] Öffentlich freigegebenes Self-Hosting-Paket mit exakter Version,
   Release-Compose, Prüfsumme und passenden Start-/Setup-Befehlen eintragen.
@@ -148,10 +148,12 @@ starten; manuelle Sichtabnahme bleibt beim Nutzer. Safari/Firefox und tatsächli
 - [ ] Tatsächliches Hosting, Versanddienst, Aufbewahrungsfristen und Datenflüsse
   klären; Datenschutzhinweise DE/EN vervollständigen und rechtlich prüfen lassen.
   Vorhandene Betreiberangaben allein sind keine vollständige Rechtsfreigabe.
-- [ ] Ziel-Domain technisch anbinden, DNS/TLS prüfen; zuvor Freigabe beachten.
+- [x] Beauftragte Lovable-Subdomain veröffentlicht und öffentlich über HTTPS geprüft;
+  keine zusätzliche eigene Domain oder DNS-Änderung vorgenommen.
 - [ ] Finale manuelle Inhalts-/Sichtabnahme und gezielter Browser-/Tastaturcheck.
-- [ ] Nach Veröffentlichungsfreigabe Produktions-SEO aktivieren: robots,
-  Indexierbarkeit, Sitemap, Canonical/hreflang und öffentliche Fehlerseiten prüfen.
+- [x] Produktions-SEO auf dem veröffentlichten Host geprüft: robots erlaubt,
+  Sitemap mit 16 URLs, Canonical/hreflang, Sprach-/Rechtsseiten und echte 404.
+  Vorschau bleibt durch die hostabhängige Indexierungsregel gesperrt.
 - [ ] Echte Social-Linkvorschauen auf der öffentlichen Domain testen.
 - [ ] GA-Kennung später ergänzen; kein Blocker für einen Start ohne Analytics.
   Enhanced Measurement/Google Signals/Werbefunktionen nach RELEASE.md deaktivieren;
@@ -205,11 +207,10 @@ vor neuer Arbeit mit git status prüfen.
   28 fokussierte Tests bestanden; keine Website-Analytics oder Formulare auf
   diesen Seiten. Inhalt und Hosting-Grenzen stehen im Lovable-Projekt in
   `CLIPPER-PRIVACY.md`, `RELEASE.md` und `VERIFICATION.md`.
-- Diese Seiten sind noch unveröffentlicht. Lovable veröffentlicht projektweit,
-  nicht einzelne Routen. Nicht deshalb die unfertige Marketing-Website starten.
-  Nächster Schritt: Clipper-Hinweise separat öffentlich bereitstellen oder in
-  die bestehende öffentliche Datenschutzseite aufnehmen, dann den Store-Link
-  kontrollieren/aktualisieren. Anschließend Googles Prüfentscheidung abfragen.
+- Stand 20.10.2026: Mit der ausdrücklich beauftragten Gesamtveröffentlichung sind
+  beide Clipper-Datenschutzseiten öffentlich erreichbar (HTTP 200). Keine
+  Analytics oder Formulare auf diesen Seiten. Store-Link und Googles
+  Prüfentscheidung wurden in diesem Formularauftrag nicht geändert oder geprüft.
 - Konkrete Projekt-/Store-Adressen, IDs, Auftrags- und Commitstand sowie die
   operative Übergabe liegen außerhalb des Repositorys in
   `/Users/mikebild/Documents/SubKit-Lovable/WEBSITE-HANDOFF.md` und
