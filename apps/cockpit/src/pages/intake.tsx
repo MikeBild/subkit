@@ -21,6 +21,7 @@ import {
 import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorLabel } from "@/app/actor-directory-model";
+import { contextualHref } from "@/app/installation-context";
 import { absolute, chatNewHref, recordHref } from "@/app/links";
 import { CatalogCategories } from "@/components/cockpit/catalog-categories";
 import {
@@ -994,7 +995,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
               {!detailSession && detailClip.original_snapshot.source_url ? (
                 <a
                   className="break-words text-sm text-accent underline-offset-4 hover:underline"
-                  href={detailClip.original_snapshot.source_url}
+                  href={contextualHref(detailClip.original_snapshot.source_url)}
                   data-testid="intake-original-source-link"
                   target="_blank"
                   rel="noreferrer"

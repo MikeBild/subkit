@@ -30,6 +30,7 @@ export interface ResolvedPrincipal {
   roles: string[];
   api_key_id?: string;
   session_id?: string;
+  installation_id?: string;
   oauth_client_id?: string;
   scopes?: string[];
   allowed_workflows?: AllowList;

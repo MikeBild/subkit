@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
+import { cockpitApiHref } from "@/app/installation-context";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useConnectorNames } from "@/components/cockpit/connector-names";
@@ -621,7 +622,9 @@ export function GrantWorkflowAuthority({
             <Button asChild>
               <a
                 data-testid="authority-sign-in"
-                href={`/v1/identity/cockpit-login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+                href={cockpitApiHref(
+                  `/v1/identity/cockpit-login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`,
+                )}
               >
                 {t("authority.signIn")}
               </a>

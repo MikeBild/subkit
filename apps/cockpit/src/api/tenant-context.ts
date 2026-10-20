@@ -1,3 +1,5 @@
+import { cockpitApiHref, installationId } from "@/app/installation-context";
+
 let tenantId: string | null = null;
 
 export function acceptTenantContext(id: string): boolean {
@@ -11,9 +13,9 @@ export function tenantContextHeaders(): Record<string, string> {
 }
 
 export function tenantContentHref(path: string): string {
-  if (!tenantId) return path;
+  if (!tenantId) return cockpitApiHref(path);
   const separator = path.includes("?") ? "&" : "?";
-  return `${path}${separator}tenant_context=${encodeURIComponent(tenantId)}`;
+  return cockpitApiHref(`${path}${separator}tenant_context=${encodeURIComponent(tenantId)}`);
 }
 
 const contextListeners = new Set<() => void>();
@@ -37,7 +39,7 @@ export function noticeTenantContext(status: number, code: string | null): void {
 }
 
 export function observeTenantSwitches(): () => void {
-  if (typeof BroadcastChannel === "undefined") return () => {};
+  if (installationId() || typeof BroadcastChannel === "undefined") return () => {};
   const channel = new BroadcastChannel("subkit-workspace-context");
   channel.onmessage = (event: MessageEvent<unknown>) => {
     if (typeof event.data === "string" && tenantId !== null && event.data !== tenantId) {
@@ -48,7 +50,7 @@ export function observeTenantSwitches(): () => void {
 }
 
 export function broadcastTenantSwitch(nextTenantId: string): void {
-  if (typeof BroadcastChannel === "undefined") return;
+  if (installationId() || typeof BroadcastChannel === "undefined") return;
   const channel = new BroadcastChannel("subkit-workspace-context");
   channel.postMessage(nextTenantId);
   channel.close();

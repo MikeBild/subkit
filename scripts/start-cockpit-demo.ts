@@ -56,6 +56,7 @@ const env = {
   ...(INSTANCE.id ? { SUBKIT_DEMO_INSTANCE: INSTANCE.id } : {}),
 };
 let key = "";
+const CATALOG_RETRY_ATTEMPTS = 8;
 
 type DemoState = {
   tenantId?: string;
@@ -118,22 +119,31 @@ function sql(statement: string): string {
   return result.stdout.trim();
 }
 
+export function retryableDemoRequest(status: number, code: string): boolean {
+  return status === 409 && code === "catalog_vocabulary_changed";
+}
+
 async function api(path: string, method = "GET", body?: unknown) {
-  const response = await fetch(`${BASE}${path}`, {
-    method,
-    redirect: "error",
-    signal: AbortSignal.timeout(60_000),
-    headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  if (!response.ok) {
+  for (let attempt = 0; attempt < CATALOG_RETRY_ATTEMPTS; attempt += 1) {
+    const response = await fetch(`${BASE}${path}`, {
+      method,
+      redirect: "error",
+      signal: AbortSignal.timeout(60_000),
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    if (response.ok) return response.status === 204 ? null : response.json();
     let code = "request_failed";
     try {
       code = (await response.json()).code ?? code;
     } catch {}
+    if (retryableDemoRequest(response.status, code) && attempt + 1 < CATALOG_RETRY_ATTEMPTS) {
+      await Bun.sleep(Math.min(250 * 2 ** attempt, 2_000));
+      continue;
+    }
     fail(`${method} ${path.split("?")[0]}: HTTP ${response.status} (${code})`);
   }
-  return response.status === 204 ? null : response.json();
+  fail(`${method} ${path.split("?")[0]}: catalog vocabulary retry exhausted`);
 }
 
 async function keyWorks(): Promise<boolean> {

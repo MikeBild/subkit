@@ -3,6 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
   browserSessionForPrincipal,
+  cockpitInstallationIdFromPath,
   signBrowserCsrf,
   signLoginState,
 } from "../../../auth/index.ts";
@@ -77,6 +78,11 @@ const CockpitBootstrapResponse = z
         palette: z.enum(["standard", "indigo", "teal"]).nullable(),
         logos: z.object({ light: z.boolean(), dark: z.boolean() }),
         logo_urls: z.object({ light: z.string().nullable(), dark: z.string().nullable() }),
+        app_icon: z.boolean(),
+        app_icon_urls: z.object({
+          icon_192: z.string().nullable(),
+          icon_512: z.string().nullable(),
+        }),
       })
       .optional(),
   })
@@ -151,7 +157,18 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
         { vary: NEGOTIATED_VARY },
       );
     }
-    const loginState = await signLoginState({ redirect_to: returnTo });
+    const installationId = cockpitInstallationIdFromPath(c.req.path);
+    if (installationId && !returnTo.startsWith(`/cockpit/i/${installationId}/`)) {
+      return c.json(
+        { code: "invalid_return_to", message: "return_to must stay in this Cockpit installation" },
+        400,
+        { vary: NEGOTIATED_VARY },
+      );
+    }
+    const loginState = await signLoginState({
+      redirect_to: returnTo,
+      ...(installationId ? { installation_id: installationId } : {}),
+    });
     return c.redirect(
       `/v1/identity/login/start?login_state=${encodeURIComponent(loginState)}`,
       302,
@@ -257,7 +274,7 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
           expires_at: sessionRow.expires_at.toISOString(),
           absolute_expires_at: sessionRow.absolute_expires_at?.toISOString() ?? null,
         },
-        identity_memberships: sessionRow.auth_identity_id !== null,
+        identity_memberships: sessionRow.auth_identity_id !== null && !payload.installation_id,
         permissions,
         csrf_token: await signBrowserCsrf(payload),
         version: OPENAPI_INFO.version,

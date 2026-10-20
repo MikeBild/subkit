@@ -41,6 +41,7 @@ export function FormDialog({
   trigger,
   titleTestId,
   cancelTestId,
+  cancelLabel,
   size = "default",
   testId,
   children,
@@ -64,6 +65,7 @@ export function FormDialog({
   trigger?: ReactNode;
   titleTestId?: string;
   cancelTestId?: string;
+  cancelLabel?: string;
   size?: DialogSize;
   testId: string;
   children: ReactNode;
@@ -140,7 +142,7 @@ export function FormDialog({
               onClick={() => onOpenChange(false)}
               data-testid={cancelTestId ?? `${testId}-cancel`}
             >
-              {t("common.cancel")}
+              {cancelLabel ?? t("common.cancel")}
             </Button>
             {actions}
             {submit ? (

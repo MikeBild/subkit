@@ -20,7 +20,8 @@ describe("inspect_recipe — tool metadata contract", () => {
 
   test("description directs the model to call before clone, not after", () => {
     expect(inspectRecipeTool.description).toMatch(/before cloning/i);
-    expect(inspectRecipeTool.use_case).toMatch(/start_workflow_from_recipe/i);
+    expect(inspectRecipeTool.use_case).toMatch(/before cloning/i);
+    expect(inspectRecipeTool.important_notes?.join(" ")).toMatch(/start_workflow_from_recipe/i);
   });
 });
 

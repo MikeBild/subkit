@@ -1,4 +1,5 @@
 import { noticeTenantContext, tenantContextHeaders } from "@/api/tenant-context";
+import { cockpitApiHref } from "@/app/installation-context";
 
 export interface SseFrame {
   id: string | null;
@@ -60,7 +61,7 @@ export async function readSseStream(
   const headers = new Headers({ accept: "text/event-stream", "x-subkit-client": "cockpit" });
   for (const [key, value] of Object.entries(tenantContextHeaders())) headers.set(key, value);
   if (options.lastEventId) headers.set("last-event-id", options.lastEventId);
-  const response = await fetch(url, {
+  const response = await fetch(cockpitApiHref(url), {
     credentials: "same-origin",
     cache: "no-store",
     headers,

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { cockpitBasePath, installationId } from "@/app/installation-context";
 import { useSession } from "@/app/session";
 import { brandingLogo } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n-context";
@@ -9,18 +10,30 @@ import { BrandingLogo } from "./branding-logo";
 export function BrandingAppearance() {
   const session = useSession();
   const value = session.branding;
+  const installed = Boolean(installationId());
   useEffect(() => {
     const root = document.documentElement;
     const title = document.title;
+    const touchIcon = installed ? document.createElement("link") : null;
+    if (touchIcon) {
+      touchIcon.rel = "apple-touch-icon";
+      touchIcon.sizes = "512x512";
+      touchIcon.type = "image/png";
+      touchIcon.crossOrigin = "use-credentials";
+      touchIcon.href = `${cockpitBasePath()}/icon/512.png?revision=${value?.revision ?? 0}`;
+      document.head.append(touchIcon);
+    }
     if (value?.configured) {
       root.dataset.brandPalette = value.palette ?? "standard";
-      document.title = value.display_name || session.tenant.display_name;
     }
+    if (installed) document.title = session.tenant.display_name;
+    else if (value?.configured) document.title = value.display_name || session.tenant.display_name;
     return () => {
       delete root.dataset.brandPalette;
       document.title = title;
+      touchIcon?.remove();
     };
-  }, [value, session.tenant.id, session.tenant.display_name]);
+  }, [value, installed, session.tenant.id, session.tenant.display_name]);
   return null;
 }
 
@@ -43,7 +56,11 @@ export function BrandingWordmark() {
       </span>
       <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
         <span data-testid="cockpit-wordmark-name" className="truncate font-semibold">
-          {value?.configured ? value.display_name || session.tenant.display_name : t("app.name")}
+          {installationId()
+            ? session.tenant.display_name
+            : value?.configured
+              ? value.display_name || session.tenant.display_name
+              : t("app.name")}
         </span>
         <span className="truncate text-xs text-muted-foreground">
           {value?.configured ? value.subtitle : session.tenant.display_name}

@@ -27,6 +27,7 @@ const update = {
   subtitle: "Managed through MCP",
   palette: "indigo",
   logos: { light: { operation: "keep" }, dark: { operation: "keep" } },
+  app_icon: { operation: "keep" },
 };
 
 describe("MCP tenant branding tools", () => {

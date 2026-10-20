@@ -9,7 +9,11 @@ export * from "./drivers/index.ts";
 export { readBodyCapped } from "./drivers/response-body.ts";
 export { scrubUrl, urlHasInlineCredentials } from "./egress.ts";
 export { fetchWithEgressGuard, guardedFetch } from "./egress-fetch.ts";
-export { EgressBlockedError, type EgressGuardContext } from "./egress-guard.ts";
+export {
+  assertEgressAllowedResolved,
+  EgressBlockedError,
+  type EgressGuardContext,
+} from "./egress-guard.ts";
 export * from "./health.ts";
 export * from "./health-state.ts";
 export * from "./mcp-tool-trust.ts";

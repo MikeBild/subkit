@@ -31,6 +31,12 @@ export const AuditAction = {
   SESSION_REFRESHED: "session.refreshed",
   SESSION_REVOKED: "session.revoked",
 
+  COCKPIT_INSTALLATION_CREATED: "cockpit_installation.created",
+  COCKPIT_INSTALLATION_REVOKED: "cockpit_installation.revoked",
+  COCKPIT_PUSH_KEY_PREPARED: "cockpit_push.key_prepared",
+  COCKPIT_PUSH_SUBSCRIPTION_UPSERTED: "cockpit_push.subscription_upserted",
+  COCKPIT_PUSH_SUBSCRIPTION_REMOVED: "cockpit_push.subscription_removed",
+
   SYSTEM_ACCOUNT_CREATED: "system_account.created",
   SYSTEM_ACCOUNT_ROLE_CHANGED: "system_account.role_changed",
   SYSTEM_ACCOUNT_DELETED: "system_account.deleted",

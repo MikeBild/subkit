@@ -21,6 +21,8 @@ export const tenantBranding = pgTable(
     palette: tenantBrandingPaletteEnum("palette"),
     logo_light: bytea("logo_light"),
     logo_dark: bytea("logo_dark"),
+    app_icon_192: bytea("app_icon_192"),
+    app_icon_512: bytea("app_icon_512"),
     ...timestamps,
   },
   (t) => [

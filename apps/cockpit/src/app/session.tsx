@@ -16,6 +16,8 @@ import { WorkspaceChangedPage } from "@/components/cockpit/patterns/workspace-ch
 import { BootstrapErrorPage, LoginRedirect, SessionExpiredPage } from "@/components/failure-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
+import { cockpitApiHref, installationId } from "./installation-context";
+import { InstallationProvider } from "./installation-provider";
 
 const SessionContext = createContext<Bootstrap | null>(null);
 
@@ -54,12 +56,25 @@ export function SessionGate({ children }: { children: ReactNode }) {
   if (view === "changed") return <WorkspaceChangedPage />;
   if (view === "expired") return <SessionExpiredPage href={loginHref()} />;
   if (view === "signed-out")
-    return <LoginRedirect href={loginHref()} label={t("common.loading")} />;
+    return installationId() ? (
+      <SessionExpiredPage href={loginHref()} />
+    ) : (
+      <LoginRedirect href={loginHref()} label={t("common.loading")} />
+    );
   if (view === "loading") return <SessionSkeleton label={t("common.loading")} />;
   if (view === "failed" || !query.data) {
     return <BootstrapErrorPage onRetry={() => void query.refetch()} />;
   }
-  return <SessionContext.Provider value={query.data}>{children}</SessionContext.Provider>;
+  return (
+    <SessionContext.Provider value={query.data}>
+      <InstallationProvider
+        key={`${query.data.tenant.id}:${query.data.principal.id}`}
+        identity={{ tenantId: query.data.tenant.id, userId: query.data.principal.id }}
+      >
+        {children}
+      </InstallationProvider>
+    </SessionContext.Provider>
+  );
 }
 
 export type SessionView = "changed" | "expired" | "signed-out" | "loading" | "failed" | "ready";
@@ -124,5 +139,8 @@ export function loginHref(
   location: Pick<Location, "pathname" | "search"> = window.location,
 ): string {
   const returnTo = `${location.pathname}${location.search}`;
-  return `/v1/identity/cockpit-login?return_to=${encodeURIComponent(returnTo)}`;
+  return cockpitApiHref(
+    `/v1/identity/cockpit-login?return_to=${encodeURIComponent(returnTo)}`,
+    location.pathname,
+  );
 }

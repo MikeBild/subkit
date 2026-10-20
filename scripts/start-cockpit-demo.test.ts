@@ -6,6 +6,7 @@ import {
   cockpitDemoFingerprintInputs,
   cockpitDemoSourceFingerprint,
 } from "./lib/cockpit-demo-fingerprint.ts";
+import { retryableDemoRequest } from "./start-cockpit-demo.ts";
 
 describe("local demo source fingerprint", () => {
   test("tracks active Compose files and demo helpers while retaining discovered sources", () => {
@@ -43,4 +44,10 @@ test("model asset manifest changes invalidate the demo fingerprint without disco
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("retries only the transient catalog vocabulary conflict", () => {
+  expect(retryableDemoRequest(409, "catalog_vocabulary_changed")).toBe(true);
+  expect(retryableDemoRequest(409, "operator_change_pending")).toBe(false);
+  expect(retryableDemoRequest(500, "catalog_vocabulary_changed")).toBe(false);
 });

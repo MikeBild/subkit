@@ -15,11 +15,17 @@ import {
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { logout } from "@/api/client";
+import { installationId } from "@/app/installation-context";
 import {
   BrandingAppearance,
   BrandingAttribution,
   BrandingWordmark,
 } from "@/components/cockpit/branding";
+import {
+  InstallationFollowupPrompt,
+  InstallationNotificationControl,
+} from "@/components/cockpit/installation-dialogs";
+import { InstallationImportDialog } from "@/components/cockpit/installation-import-dialog";
 import { ResponsiveWorkspace } from "@/components/cockpit/patterns/responsive-workspace";
 import { ReleaseNotesDialog } from "@/components/cockpit/release-notes-dialog";
 import { WorkspaceSwitcher } from "@/components/cockpit/workspace-switcher";
@@ -61,6 +67,7 @@ import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { RunOverlays } from "@/pages/runs";
+import { cockpitBasePath } from "./installation-context";
 import { LiveEventsProvider, useLiveStatus } from "./live-events";
 import { LiveIndicator } from "./live-indicator";
 import { navigationItem, visibleNavigation } from "./navigation";
@@ -115,10 +122,12 @@ export function AppShell() {
   const { t } = useI18n();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const groups = visibleNavigation(session.permissions);
-  const active = navigationItem(pathname.replace(/^\/cockpit(?=\/|$)/, "") || "/");
-  const brandName = session.branding?.configured
-    ? session.branding.display_name || session.tenant.display_name
-    : t("app.name");
+  const active = navigationItem(pathname.slice(cockpitBasePath().length) || "/");
+  const brandName = installationId()
+    ? session.tenant.display_name
+    : session.branding?.configured
+      ? session.branding.display_name || session.tenant.display_name
+      : t("app.name");
 
   return (
     <LiveEventsProvider>
@@ -130,7 +139,9 @@ export function AppShell() {
       >
         <Sidebar
           collapsible="icon"
-          mobileTitle={session.branding?.configured ? brandName : t("app.cockpit")}
+          mobileTitle={
+            installationId() || session.branding?.configured ? brandName : t("app.cockpit")
+          }
           mobileDescription={t("nav.mobileDescription")}
           mobileCloseLabel={t("common.close")}
           mobileCloseTestId="cockpit-sidebar-mobile-close"
@@ -138,7 +149,7 @@ export function AppShell() {
           data-cockpit-ui="product-sidebar"
         >
           <SidebarHeader data-testid="cockpit-sidebar-header">
-            {session.identity_memberships ? (
+            {!installationId() ? (
               <WorkspaceSwitcher />
             ) : (
               <SidebarMenu>
@@ -192,6 +203,8 @@ export function AppShell() {
           >
             <BrandingAttribution />
             <ShellLiveIndicator />
+            <InstallationNotificationControl />
+            <InstallationFollowupPrompt tenantName={session.tenant.display_name} />
             <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
               <SidebarMenu className="min-w-0 flex-1">
                 <SidebarMenuItem>
@@ -212,6 +225,7 @@ export function AppShell() {
           <ShellContent />
         </SidebarInset>
         <Toaster richColors position="bottom-right" />
+        <InstallationImportDialog />
         <VersionNotice />
       </SidebarProvider>
     </LiveEventsProvider>
@@ -309,7 +323,7 @@ function AccountMenu() {
     setSigningOut(true);
     try {
       await logout();
-      window.location.assign("/cockpit");
+      window.location.assign(cockpitBasePath());
     } catch {
       toast.error(t("account.signOutFailed"), {
         description: t("account.signOutFailedDescription"),

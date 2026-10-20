@@ -13,6 +13,7 @@ import { OverviewPage } from "@/pages/overview";
 import { SettingsPage } from "@/pages/settings";
 import { SkillPage, SkillsPage } from "@/pages/skills";
 import { UsagePage } from "@/pages/usage";
+import { cockpitBasePath } from "./installation-context";
 import { absolute } from "./links";
 import {
   CHAT_ROUTES,
@@ -89,6 +90,11 @@ const filesRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/files", component: FilesPage }),
   createRoute({
     getParentRoute: () => rootRoute,
+    path: "/incoming/files",
+    component: FilesPage,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
     path: "/files/$resourceId",
     component: FilesPage,
   }),
@@ -126,7 +132,7 @@ const routeTree = rootRoute.addChildren([
 
 export const router = createRouter({
   routeTree,
-  basepath: "/cockpit",
+  basepath: cockpitBasePath(),
   trailingSlash: "never",
   defaultErrorComponent: RouteErrorPage,
 });

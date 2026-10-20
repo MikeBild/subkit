@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { Context, MiddlewareHandler } from "hono";
+import { canonicalBrowserPath } from "../../auth/browser-session.ts";
 import { getConfig } from "../../config/loader.ts";
 import { tenants } from "../../db/schema/index.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -44,7 +45,8 @@ const ACCOUNT_PATHS = new Set([
 export function hostedIngressRateLimit(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const config = getConfig();
-    if (!config.auth.hosted.enabled || !isMeteredPath(c.req.path)) return next();
+    if (!config.auth.hosted.enabled || !isMeteredPath(canonicalBrowserPath(c.req.raw)))
+      return next();
     const policy = config.server.hosted_rate_limit;
     if (policy.peer_per_minute <= 0 || policy.global_per_minute <= 0) return unavailable(c);
     const secret = config.auth.session.secret;
@@ -66,7 +68,7 @@ export function hostedIngressRateLimit(): MiddlewareHandler<AppEnv> {
 
 export function hostedTenantRateLimit(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    if (!isMeteredPath(c.req.path)) return next();
+    if (!isMeteredPath(canonicalBrowserPath(c.req.raw))) return next();
     const principal = c.get("principal");
     if (!principal) return next();
     const [tenant] = await c
@@ -79,7 +81,7 @@ export function hostedTenantRateLimit(): MiddlewareHandler<AppEnv> {
     if (tenant.origin !== "self_service") return next();
     const config = getConfig();
     const max = config.server.hosted_rate_limit.tenant_per_minute;
-    const monthlyMetered = !ACCOUNT_PATHS.has(c.req.path);
+    const monthlyMetered = !ACCOUNT_PATHS.has(canonicalBrowserPath(c.req.raw));
     if (
       max <= 0 ||
       (monthlyMetered && config.server.hosted_rate_limit.tenant_per_month <= 0) ||

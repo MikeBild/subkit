@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, Loader2, User, Users, Workflow } from "lucide-react";
+import { Check, ChevronsUpDown, Download, Loader2, User, Users, Workflow } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Membership } from "@/api/memberships";
 import {
@@ -30,6 +30,9 @@ export function WorkspaceMenu({
   open,
   onOpenChange,
   onSwitch,
+  onInstall,
+  currentOnly = false,
+  onRevoke,
 }: {
   items: Membership[] | undefined;
   tenantId: string;
@@ -43,6 +46,9 @@ export function WorkspaceMenu({
   open: boolean;
   onOpenChange(value: boolean): void;
   onSwitch(id: string): void;
+  onInstall?(): void;
+  currentOnly?: boolean;
+  onRevoke?(): void;
 }) {
   const { t } = useI18n();
   const { isMobile } = useSidebar();
@@ -146,11 +152,47 @@ export function WorkspaceMenu({
                 </DropdownMenuItem>
               );
             })}
+            {currentOnly ? (
+              <DropdownMenuItem
+                disabled
+                className="gap-2 p-2 data-[disabled]:opacity-100"
+                data-testid="workspace-current"
+              >
+                <div className="flex size-6 items-center justify-center rounded-md border">
+                  <Workflow className="size-3.5" />
+                </div>
+                <span className="flex-1 truncate text-sm">{tenantName}</span>
+                <Check className="size-4" aria-label={t("workspace.current")} />
+              </DropdownMenuItem>
+            ) : null}
             {items?.length === 1 ? (
               <>
                 <DropdownMenuSeparator />
                 <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("workspace.single")}</p>
               </>
+            ) : null}
+            {onInstall ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="gap-2"
+                  data-testid="workspace-install"
+                  onSelect={onInstall}
+                >
+                  <Download className="size-4 text-muted-foreground" />
+                  {t("installation.install")}
+                </DropdownMenuItem>
+              </>
+            ) : null}
+            {onRevoke ? (
+              <DropdownMenuItem
+                className="gap-2 text-destructive focus:text-destructive"
+                data-testid="workspace-revoke-installation"
+                onSelect={onRevoke}
+              >
+                <Download className="size-4" />
+                {t("installation.revoke")}
+              </DropdownMenuItem>
             ) : null}
             {changeError || loadError ? (
               <>

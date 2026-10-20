@@ -116,7 +116,7 @@ export function inlineScriptHashes(html: string): string[] {
 const HASHED_ASSET_PREFIX = "assets/";
 const assetCache = new Map<string, Asset>();
 
-function cachedAsset(relativePath: string): Asset | null {
+export function cachedCockpitAsset(relativePath: string): Asset | null {
   const cached = assetCache.get(relativePath);
   if (cached) return cached;
   const asset = readAsset(relativePath);
@@ -147,7 +147,7 @@ function readAsset(relativePath: string): Asset | null {
   };
 }
 
-function cockpitSecurityHeaders(csp: string) {
+export function cockpitSecurityHeaders(csp: string) {
   return {
     "content-security-policy": csp,
     "permissions-policy": "camera=(), microphone=(), geolocation=()",
@@ -187,7 +187,7 @@ export function registerCockpitRoutes(app: OpenAPIHono<AppEnv>): void {
   const serve = (c: Context<AppEnv>) => {
     if (!shell) return cockpitBundleMissing(c);
     const relative = c.req.path.slice(COCKPIT_PREFIX.length).replace(/^\/+/, "");
-    const requested = relative ? cachedAsset(relative) : null;
+    const requested = relative ? cachedCockpitAsset(relative) : null;
     const hashed = relative.startsWith(HASHED_ASSET_PREFIX);
     if (hashed && !requested)
       return c.text("cockpit asset not found\n", 404, {

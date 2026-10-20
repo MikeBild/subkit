@@ -1,10 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import * as jose from "jose";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
+import { cockpitInstallations } from "../db/schema/cockpit-installations.ts";
 import { sessions } from "../db/schema/index.ts";
 import { assertTenantActive, SelfServiceIdentityError } from "../identity/index.ts";
 import type { ResolvedPrincipal } from "./types.ts";
@@ -17,6 +18,36 @@ export interface BrowserSessionPayload {
   session_id: string;
   user_id: string;
   tenant_id: string;
+  installation_id?: string;
+}
+
+const INSTALLATION_PATH = /^\/cockpit\/i\/([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})(?:\/|$)/i;
+
+export function cockpitInstallationIdFromPath(path: string): string | null {
+  return INSTALLATION_PATH.exec(path)?.[1]?.toLowerCase() ?? null;
+}
+
+export function canonicalBrowserPath(request: Request | URL | string): string {
+  const path =
+    typeof request === "string"
+      ? new URL(request, "https://subkit.invalid").pathname
+      : request instanceof URL
+        ? request.pathname
+        : new URL(request.url).pathname;
+  const match = INSTALLATION_PATH.exec(path);
+  if (!match) return path;
+  const prefix = `/cockpit/i/${match[1]}/api`;
+  if (!path.startsWith(`${prefix}/`)) return path;
+  return path.slice(prefix.length);
+}
+
+export function cockpitInstallationSessionCookie(installationId: string): string {
+  return `subkit_installation_${installationId}`;
+}
+
+function browserSessionCookieName(request: Request): string | null {
+  const installationId = cockpitInstallationIdFromPath(new URL(request.url).pathname);
+  return installationId ? cockpitInstallationSessionCookie(installationId) : BROWSER_SESSION_COOKIE;
 }
 
 export function browserSessionSecret(): Uint8Array {
@@ -54,6 +85,9 @@ export async function verifyBrowserSession(jwt: string): Promise<BrowserSessionP
       session_id: payload.session_id,
       user_id: payload.user_id,
       tenant_id: payload.tenant_id,
+      ...(typeof payload.installation_id === "string"
+        ? { installation_id: payload.installation_id }
+        : {}),
     };
   } catch {
     return null;
@@ -61,14 +95,21 @@ export async function verifyBrowserSession(jwt: string): Promise<BrowserSessionP
 }
 
 export function browserSessionFromRequest(req: Request): Promise<BrowserSessionPayload | null> {
+  const name = browserSessionCookieName(req);
+  if (!name) return Promise.resolve(null);
   const cookie = req.headers
     .get("cookie")
     ?.split(";")
     .map((part) => part.trim())
-    .find((part) => part.startsWith(`${BROWSER_SESSION_COOKIE}=`));
+    .find((part) => part.startsWith(`${name}=`));
   if (!cookie) return Promise.resolve(null);
-  const raw = cookie.slice(BROWSER_SESSION_COOKIE.length + 1);
-  return verifyBrowserSession(decodeURIComponent(raw));
+  const raw = cookie.slice(name.length + 1);
+  return verifyBrowserSession(decodeURIComponent(raw)).then((payload) => {
+    const installationId = cockpitInstallationIdFromPath(new URL(req.url).pathname);
+    if (installationId && payload?.installation_id !== installationId) return null;
+    if (!installationId && payload?.installation_id) return null;
+    return payload;
+  });
 }
 
 export async function browserSessionForPrincipal(
@@ -80,7 +121,8 @@ export async function browserSessionForPrincipal(
   if (
     payload?.session_id !== principal.session_id ||
     payload.user_id !== principal.id ||
-    payload.tenant_id !== principal.tenant_id
+    payload.tenant_id !== principal.tenant_id ||
+    payload.installation_id !== principal.installation_id
   ) {
     return null;
   }
@@ -134,14 +176,26 @@ export async function verifyBrowserCsrf(
   }
 }
 
-export function browserSessionCookie(jwt: string, maxAge?: number): string {
+export function browserSessionCookie(
+  jwt: string,
+  maxAge?: number,
+  installationId?: string,
+): string {
   const age = maxAge ?? Math.floor(SESSION_ABSOLUTE_TTL_MS / 1000);
   const secure = process.env.NODE_ENV !== "development" ? " Secure;" : "";
-  return `${BROWSER_SESSION_COOKIE}=${encodeURIComponent(jwt)}; Path=/; HttpOnly; SameSite=Lax;${secure} Max-Age=${age}`;
+  const name = installationId
+    ? cockpitInstallationSessionCookie(installationId)
+    : BROWSER_SESSION_COOKIE;
+  const path = installationId ? `/cockpit/i/${installationId}/` : "/";
+  return `${name}=${encodeURIComponent(jwt)}; Path=${path}; HttpOnly; SameSite=Lax;${secure} Max-Age=${age}`;
 }
 
-export function clearBrowserSessionCookie(): string {
-  return `${BROWSER_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+export function clearBrowserSessionCookie(installationId?: string): string {
+  const name = installationId
+    ? cockpitInstallationSessionCookie(installationId)
+    : BROWSER_SESSION_COOKIE;
+  const path = installationId ? `/cockpit/i/${installationId}/` : "/";
+  return `${name}=; Path=${path}; HttpOnly; SameSite=Lax; Max-Age=0`;
 }
 
 export function isSafeBrowserRedirect(target: string, publicBaseUrl: string): boolean {
@@ -160,6 +214,7 @@ export async function issueBrowserSession(opts: {
   redirectTo: string;
   via: string;
   authIdentityId?: string;
+  installationId?: string;
   metadata?: Record<string, unknown>;
 }): Promise<Response> {
   try {
@@ -178,18 +233,34 @@ export async function issueBrowserSession(opts: {
   }
   const now = new Date();
   const tokenHash = createHash("sha256").update(randomBytes(32)).digest("hex");
-  const [session] = await opts.db
-    .insert(sessions)
-    .values({
-      tenant_id: opts.tenantId,
-      user_id: opts.userId,
-      auth_identity_id: opts.authIdentityId ?? null,
-      expires_at: new Date(now.getTime() + SESSION_SLIDING_TTL_MS),
-      absolute_expires_at: new Date(now.getTime() + SESSION_ABSOLUTE_TTL_MS),
-      last_seen_at: now,
-      token_sha256: tokenHash,
-    })
-    .returning();
+  const session = await opts.db.transaction(async (tx) => {
+    if (opts.installationId) {
+      const locked = await tx.execute(
+        sql`select ${cockpitInstallations.id}
+            from ${cockpitInstallations}
+            where ${cockpitInstallations.id} = ${opts.installationId}
+              and ${cockpitInstallations.tenant_id} = ${opts.tenantId}
+              and ${cockpitInstallations.owner_user_id} = ${opts.userId}
+              and ${cockpitInstallations.revoked_at} is null
+            for update`,
+      );
+      if (locked.rows.length === 0) return null;
+    }
+    const rows = await tx
+      .insert(sessions)
+      .values({
+        tenant_id: opts.tenantId,
+        user_id: opts.userId,
+        auth_identity_id: opts.authIdentityId ?? null,
+        installation_id: opts.installationId ?? null,
+        expires_at: new Date(now.getTime() + SESSION_SLIDING_TTL_MS),
+        absolute_expires_at: new Date(now.getTime() + SESSION_ABSOLUTE_TTL_MS),
+        last_seen_at: now,
+        token_sha256: tokenHash,
+      })
+      .returning();
+    return rows[0] ?? null;
+  });
   if (!session) {
     return new Response(JSON.stringify({ code: "session_insert_failed" }), {
       status: 500,
@@ -200,6 +271,7 @@ export async function issueBrowserSession(opts: {
     session_id: session.id,
     user_id: opts.userId,
     tenant_id: opts.tenantId,
+    ...(opts.installationId ? { installation_id: opts.installationId } : {}),
   });
   await auditAwait(
     {
@@ -231,7 +303,7 @@ export async function issueBrowserSession(opts: {
     status: 302,
     headers: {
       location: opts.redirectTo,
-      "set-cookie": browserSessionCookie(jwt),
+      "set-cookie": browserSessionCookie(jwt, undefined, opts.installationId),
       "cache-control": "no-store",
     },
   });

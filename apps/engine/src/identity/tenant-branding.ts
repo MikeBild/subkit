@@ -3,7 +3,11 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { tenantBranding, tenants } from "../db/schema/index.ts";
-import { normalizeBrandingImage } from "../files/branding-image.ts";
+import {
+  type BRANDING_APP_ICON_SIZES,
+  normalizeBrandingAppIcon,
+  normalizeBrandingImage,
+} from "../files/branding-image.ts";
 
 export { BrandingImageError } from "../files/branding-image.ts";
 
@@ -25,6 +29,7 @@ export interface TenantBrandingValue {
   subtitle: string | null;
   palette: BrandingPalette | null;
   logos: { light: boolean; dark: boolean };
+  app_icon: boolean;
 }
 
 export interface TenantBrandingUpdate {
@@ -34,6 +39,7 @@ export interface TenantBrandingUpdate {
   palette: BrandingPalette | null;
   logo_light: Uint8Array | null | undefined;
   logo_dark: Uint8Array | null | undefined;
+  app_icon: { icon_192: Uint8Array; icon_512: Uint8Array } | null | undefined;
 }
 
 function present(row: typeof tenantBranding.$inferSelect | undefined): TenantBrandingValue {
@@ -43,7 +49,9 @@ function present(row: typeof tenantBranding.$inferSelect | undefined): TenantBra
       row.subtitle !== null ||
       row.palette !== null ||
       row.logo_light !== null ||
-      row.logo_dark !== null);
+      row.logo_dark !== null ||
+      row.app_icon_192 !== null ||
+      row.app_icon_512 !== null);
   return row
     ? {
         configured,
@@ -52,6 +60,7 @@ function present(row: typeof tenantBranding.$inferSelect | undefined): TenantBra
         subtitle: row.subtitle,
         palette: row.palette,
         logos: { light: row.logo_light !== null, dark: row.logo_dark !== null },
+        app_icon: row.app_icon_192 !== null && row.app_icon_512 !== null,
       }
     : {
         configured: false,
@@ -60,6 +69,7 @@ function present(row: typeof tenantBranding.$inferSelect | undefined): TenantBra
         subtitle: null,
         palette: null,
         logos: { light: false, dark: false },
+        app_icon: false,
       };
 }
 
@@ -82,6 +92,7 @@ export async function getTenantBranding(
       palette: tenantBranding.palette,
       logo_light: sql<boolean>`${tenantBranding.logo_light} IS NOT NULL`,
       logo_dark: sql<boolean>`${tenantBranding.logo_dark} IS NOT NULL`,
+      app_icon: sql<boolean>`${tenantBranding.app_icon_192} IS NOT NULL AND ${tenantBranding.app_icon_512} IS NOT NULL`,
     })
     .from(tenantBranding)
     .where(eq(tenantBranding.tenant_id, tenantId))
@@ -93,12 +104,14 @@ export async function getTenantBranding(
           row.subtitle !== null ||
           row.palette !== null ||
           row.logo_light ||
-          row.logo_dark,
+          row.logo_dark ||
+          row.app_icon,
         revision: row.revision,
         display_name: row.display_name,
         subtitle: row.subtitle,
         palette: row.palette,
         logos: { light: row.logo_light, dark: row.logo_dark },
+        app_icon: row.app_icon,
       }
     : present(undefined);
 }
@@ -122,6 +135,24 @@ export async function getTenantBrandingLogo(
     .limit(1);
   if (!row || row.revision !== revision) return null;
   return row.logo;
+}
+
+export async function getTenantBrandingAppIcon(
+  tenantId: string,
+  revision: number,
+  size: (typeof BRANDING_APP_ICON_SIZES)[number],
+  db: Executor,
+): Promise<Uint8Array | null> {
+  const [row] = await db
+    .select({
+      revision: tenantBranding.revision,
+      icon: size === 192 ? tenantBranding.app_icon_192 : tenantBranding.app_icon_512,
+    })
+    .from(tenantBranding)
+    .where(eq(tenantBranding.tenant_id, tenantId))
+    .limit(1);
+  if (!row || row.revision !== revision) return null;
+  return row.icon;
 }
 
 export async function updateTenantBranding(
@@ -152,6 +183,14 @@ export async function updateTenantBranding(
       palette: input.palette,
       logo_light: input.logo_light === undefined ? (current?.logo_light ?? null) : input.logo_light,
       logo_dark: input.logo_dark === undefined ? (current?.logo_dark ?? null) : input.logo_dark,
+      app_icon_192:
+        input.app_icon === undefined
+          ? (current?.app_icon_192 ?? null)
+          : (input.app_icon?.icon_192 ?? null),
+      app_icon_512:
+        input.app_icon === undefined
+          ? (current?.app_icon_512 ?? null)
+          : (input.app_icon?.icon_512 ?? null),
       revision: input.revision + 1,
       updated_at: new Date(),
     };
@@ -188,6 +227,8 @@ export async function updateTenantBranding(
           after: present(row),
           logo_light_bytes: row.logo_light?.length ?? 0,
           logo_dark_bytes: row.logo_dark?.length ?? 0,
+          app_icon_192_bytes: row.app_icon_192?.length ?? 0,
+          app_icon_512_bytes: row.app_icon_512?.length ?? 0,
         },
       },
       tx,
@@ -214,7 +255,15 @@ export async function resetTenantBranding(
       palette: null,
       logo_light: null,
       logo_dark: null,
+      app_icon: null,
     },
     db,
   );
+}
+
+export async function normalizeTenantBrandingAppIcon(input: {
+  mime_type: string;
+  content_base64: string;
+}): Promise<{ icon_192: Uint8Array; icon_512: Uint8Array }> {
+  return await normalizeBrandingAppIcon(input);
 }

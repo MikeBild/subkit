@@ -1,6 +1,10 @@
 import { z } from "@hono/zod-openapi";
 import type { MiddlewareHandler } from "hono";
-import { browserSessionForPrincipal, verifyBrowserCsrf } from "../../auth/browser-session.ts";
+import {
+  browserSessionForPrincipal,
+  canonicalBrowserPath,
+  verifyBrowserCsrf,
+} from "../../auth/browser-session.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const CsrfHeaderSchema = z.string().min(1).max(4096);
@@ -28,7 +32,8 @@ function isExempt(path: string, method: string): boolean {
 export function browserCsrfMiddleware(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const principal = c.get("principal");
-    if (!MUTATING_METHODS.has(c.req.method) || isExempt(c.req.path, c.req.method)) {
+    const path = canonicalBrowserPath(c.req.raw);
+    if (!MUTATING_METHODS.has(c.req.method) || isExempt(path, c.req.method)) {
       return await next();
     }
 

@@ -4,7 +4,9 @@ import type { Db, Executor } from "../db/client.ts";
 import { can } from "../rbac/index.ts";
 import {
   getTenantBranding,
+  getTenantBrandingAppIcon,
   getTenantBrandingLogo,
+  normalizeTenantBrandingAppIcon,
   normalizeTenantBrandingImage,
   updateTenantBranding,
 } from "./tenant-branding.ts";
@@ -46,6 +48,7 @@ export async function writeTenantBranding(
         ? null
         : undefined;
   }
+  const appIcon = value.app_icon;
   const saved = await updateTenantBranding(
     {
       tenant_id: input.tenant_id,
@@ -58,6 +61,12 @@ export async function writeTenantBranding(
       palette: value.palette,
       logo_light: await logo(value.logos.light),
       logo_dark: await logo(value.logos.dark),
+      app_icon:
+        appIcon?.operation === "replace"
+          ? await normalizeTenantBrandingAppIcon(appIcon)
+          : appIcon?.operation === "remove"
+            ? null
+            : undefined,
     },
     db,
   );
@@ -73,4 +82,15 @@ export async function readTenantBrandingLogo(
   db: Executor,
 ) {
   return await getTenantBrandingLogo(input.tenant_id, input.theme, input.revision, db);
+}
+
+export async function readTenantBrandingAppIcon(
+  input: {
+    tenant_id: string;
+    revision: number;
+    size: 192 | 512;
+  },
+  db: Executor,
+) {
+  return await getTenantBrandingAppIcon(input.tenant_id, input.revision, input.size, db);
 }

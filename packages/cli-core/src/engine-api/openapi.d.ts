@@ -5403,6 +5403,342 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/cockpit/installations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the current browser owner's active workspace installation */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Current installation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            installation: {
+                                /** Format: uuid */
+                                id: string;
+                                start_url: string;
+                                manifest_url: string;
+                            } | null;
+                        };
+                    };
+                };
+                /** @description Root browser session required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create or reuse the current browser user's Cockpit installation */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            responses: {
+                /** @description Cockpit installation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            start_url: string;
+                            manifest_url: string;
+                            created: boolean;
+                        };
+                    };
+                };
+                /** @description Browser session required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
+                /** @description Installation or workspace unavailable */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
+                /** @description Session could not be issued */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cockpit/installations/{installationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke the current browser user's Cockpit installation */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    installationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Cockpit installation revoked */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Installation not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cockpit/push-subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the current installed Cockpit app push subscription status */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Push subscription status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CockpitPushSubscriptionStatus"];
+                    };
+                };
+                /** @description Installation session required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
+            };
+        };
+        /** Store a push subscription for the current installed Cockpit app session */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CockpitPushSubscription"];
+                };
+            };
+            responses: {
+                /** @description Stored */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid push subscription */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
+                /** @description Installation session required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Remove the current installed Cockpit app session push subscription */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Installation session required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cockpit/push-subscription/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare the current installed Cockpit app for explicit push opt-in */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description VAPID public key */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CockpitPushKey"];
+                    };
+                };
+                /** @description Installation session required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tenant/branding/logo": {
         parameters: {
             query?: never;
@@ -5411,6 +5747,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getTenantBrandingLogo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tenant/branding/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTenantBrandingAppIcon"];
         put?: never;
         post?: never;
         delete?: never;
@@ -21519,6 +21871,25 @@ export interface components {
                     light: string | null;
                     dark: string | null;
                 };
+                app_icon: boolean;
+                app_icon_urls: {
+                    icon_192: string | null;
+                    icon_512: string | null;
+                };
+            };
+        };
+        CockpitPushSubscriptionStatus: {
+            subscribed: boolean;
+        };
+        CockpitPushKey: {
+            public_key: string;
+        };
+        CockpitPushSubscription: {
+            /** Format: uri */
+            endpoint: string;
+            keys: {
+                p256dh: string;
+                auth: string;
             };
         };
         TenantBrandingResponse: {
@@ -21535,6 +21906,11 @@ export interface components {
             logo_urls: {
                 light: string | null;
                 dark: string | null;
+            };
+            app_icon: boolean;
+            app_icon_urls: {
+                icon_192: string | null;
+                icon_512: string | null;
             };
         };
         TenantBrandingUpdate: {
@@ -21570,6 +21946,19 @@ export interface components {
                     mime_type: "image/png" | "image/jpeg" | "image/webp";
                     content_base64: string;
                 };
+            };
+            app_icon?: {
+                /** @enum {string} */
+                operation: "keep";
+            } | {
+                /** @enum {string} */
+                operation: "remove";
+            } | {
+                /** @enum {string} */
+                operation: "replace";
+                /** @enum {string} */
+                mime_type: "image/png" | "image/jpeg" | "image/webp";
+                content_base64: string;
             };
         };
         OAuthClientListResponse: {
@@ -27655,6 +28044,51 @@ export interface operations {
                 content?: never;
             };
             /** @description Logo unavailable for this workspace, theme or revision */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Browser workspace context changed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getTenantBrandingAppIcon: {
+        parameters: {
+            query: {
+                size: number;
+                revision?: number | null;
+                tenant_context?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Normalized app icon for the current workspace and revision */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description App icon unavailable for this workspace or revision */
             404: {
                 headers: {
                     [name: string]: unknown;
