@@ -6878,6 +6878,58 @@
         }
       },
       {
+        "slug": "user-project-items",
+        "title": "List user Project items completely",
+        "description": "Read every item and its single-select and text field values from a user-owned ProjectV2 with checked cursor pagination.",
+        "intent_keywords": ["github project items", "projectv2 graphql", "user project status"],
+        "derived_from_skill": "github-graphql-basics",
+        "category": "devops",
+        "tags": [],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "github-graphql-user-project-items",
+          "description": "Read every item and its single-select and text field values from a user-owned ProjectV2 with checked cursor pagination.",
+          "input_schema": {
+            "type": "object",
+            "required": ["login", "number"],
+            "properties": {
+              "login": { "type": "string", "description": "GitHub user login" },
+              "number": { "type": "integer", "minimum": 1, "description": "User Project number" }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "project_items",
+              "method": "POST",
+              "url": "${connector.github-graphql.base_url}",
+              "graphql": {
+                "operation": "query",
+                "query": "query UserProjectItems($login: String!, $number: Int!, $after: String) { user(login: $login) { projectV2(number: $number) { id title items(first: 50, after: $after) { totalCount nodes { id content { ... on Issue { id number url title } ... on PullRequest { id number url title } ... on DraftIssue { id title } } fieldValues(first: 20) { totalCount nodes { __typename ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2FieldCommon { name } } } ... on ProjectV2ItemFieldTextValue { text field { ... on ProjectV2FieldCommon { name } } } } pageInfo { hasNextPage } } } pageInfo { hasNextPage endCursor } } } } }",
+                "variables": { "login": "${input.login}", "number": "${input.number}" },
+                "cursor_pagination": {
+                  "connection_path": "user.projectV2.items",
+                  "cursor_variable": "after",
+                  "items_field": "nodes",
+                  "required_connection_paths": ["fieldValues"],
+                  "max_pages": 100,
+                  "max_items": 10000
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
         "slug": "repository-issues",
         "title": "List repository issues",
         "description": "Fetch issues for an owner/repo pair with labels, assignees, and cursor metadata.",

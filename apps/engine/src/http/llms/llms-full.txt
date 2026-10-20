@@ -9,7 +9,7 @@
 - [Use sk from a coding agent](llms/coding-agents.md): Use MCP for approved sk tools; run sk agent init to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings.
 - [sk CLI reference](llms/cli.md): Every sk command and argument — and the surface authoring runs through: creating or changing a workflow, connector, knowledge source or skill is a definition edit, and definition edits belong here, where the change is a file you can read and a command you can re-run.
 - [subkit runtime settings](llms/settings.md): Every value below lives in canonical runtime configuration and is editable via the Cockpit, HTTP/MCP settings APIs, sk settings configure, or sk settings set.
-- [Connector & recipe catalog](llms/connectors.md): What ships in the box: 61 connector templates across 16 categories, carrying 247 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page.
+- [Connector & recipe catalog](llms/connectors.md): What ships in the box: 61 connector templates across 16 categories, carrying 248 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page.
 - [Transactional email replies](llms/transactional-email.md): A Gmail request step may use the explicit transactionaldelivery profile to reply to the address in an original signed request.
 
 <!-- Source: setup.md -->
@@ -3646,7 +3646,7 @@ Configured labels are diagnostic metadata only. The common `mcp-auth` surface de
 
 # Connector & recipe catalog
 
-What ships in the box: **61 connector templates** across **16 categories**, carrying **247 recipes** — pre-authored, runnable workflows you clone instead of starting from a blank page.
+What ships in the box: **61 connector templates** across **16 categories**, carrying **248 recipes** — pre-authored, runnable workflows you clone instead of starting from a blank page.
 
 A **template** connects a system: base URL, auth flow, endpoint schema, and a vendor-basics Skill. A **recipe** is a complete workflow shipped on that template — say what you want in a conversation and sk clones the closest recipe as your starting draft.
 
@@ -4000,6 +4000,7 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 | `repository-issues` | Fetch issues for an owner/repo pair with labels, assignees, and cursor metadata. | request | — |
 | `repository-pull-requests` | Fetch recent pull requests with review status signals and cursor metadata. | request | — |
 | `search-repositories` | Run a GitHub GraphQL search query and return repository nodes plus rate-limit cost. | request | — |
+| `user-project-items` | Read every item and its single-select and text field values from a user-owned ProjectV2 with checked cursor pagination. | request | — |
 | `viewer` | Fetch the authenticated viewer and current GraphQL rate-limit state. | request | — |
 
 ### Google Analytics 4 (`google-analytics`)
