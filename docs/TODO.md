@@ -21,7 +21,8 @@ Die Dokumentkonsolidierung ersetzt weder Produktarbeit noch menschliche Abnahmen
 
 ## Allgemeine Antworten auf signierte Anfragen
 
-IN_PROGRESS / LOCAL_ONLY: Wiederverwendbares `transactional_delivery`-Profil für
+Implementiert; produktiver Teilnachweis E314: Wiederverwendbares
+`transactional_delivery`-Profil für
 Gmail mit frei wählbaren signierten Ereignis-/Empfänger-/UUID-Feldern, geprüfter
 Versandgrenze, sensibler Ausführung und dauerhafter atomarer Versandreservierung.
 Tenantgebundene Statusabfrage und Audit enthalten keine Empfänger-/Nachrichteninhalte.
@@ -29,14 +30,22 @@ Workflow-Autorierung, mitgeliefertes Webhook-Wissen, OpenAPI und Agent-Dokumenta
 sind angepasst; inkompatible Modell-Tool-Schemas werden allgemein vor dem Aufruf
 gefiltert und präzise diagnostiziert. [Vertrag und Betriebsablauf](transactional-email.md).
 
-Gezielte Tests und KI-Vertragsprüfungen bestehen. Veröffentlichung, Produktion,
-Geheimnis-Provisionierung, exakte menschliche Workflow-Freigabe und echte
-E-Mail-Zustellung sind daraus nicht nachgewiesen. Die zunächst auch im vorher vorhandenen Stand reproduzierte Regression
+E314 ergänzt am 20.10.2026 echte Zustellung für die persönlich freigegebene
+Website-Integration: signierte Anfragen, sensibler Workflow, zwei tatsächliche
+eigene Empfangsadressen, Betreiberbenachrichtigung und lokalisierte Bestätigung
+in Vorschau und öffentlichem Betrieb. Vier erfolgreiche Läufe; identische
+Wiederholung ohne zusätzlichen Lauf. Dies belegt diesen eingegrenzten Vertrag,
+nicht jede mögliche Profilkonfiguration oder die separate Auth-Mail-Journey C06.
+Die allgemein korrigierte Aktivierung erhält unabhängige signierte Eingänge;
+die Website-Session hat den Erhalt nach persönlicher Aktivierung geprüft.
+
+Historischer Quellnachweis: gezielte Tests und KI-Vertragsprüfungen bestehen.
+Die zunächst auch im vorher vorhandenen Stand reproduzierte Regression
 `queue failure retries the same reserved execution rather than spending another run`
 ist durch gezielte, begrenzte Wiederholung der sicheren Katalogsperre bei der
 Zulassung behoben (20 HTTP-/Berechtigungstests PASS). Keine Wiederholung von
-Versand oder mehrdeutigen Netzwerkfehlern. Der vollständige Qualitätslauf ist noch
-nicht als bestanden nachgewiesen; keinen Deployment-Erfolg aus gezielten Tests ableiten.
+Versand oder mehrdeutigen Netzwerkfehlern. Vollständige Release-Gates und die
+separaten späteren Cloud-Nachweise bleiben nach ihrem jeweiligen Umfang getrennt.
 
 ## Aktueller Implementierungsstand und Nachweise
 
@@ -275,6 +284,9 @@ real onboarding, lifecycle, operating readiness and legal approval.
    Document consolidation is prepared locally; product availability, final legal texts
    and human legal acceptance remain open. Include actual providers, region, retention,
    support and updated Clipper privacy for hosted as well as independent installations.
+   E314 confirms public website and separate DE/EN Clipper privacy availability,
+   plus actual contact/beta Gmail delivery. This does not complete provider/region/
+   retention review, agreements/terms, or human legal acceptance.
 
 Known smaller findings to fold into the increments above: a failed tenant activation
 blocks other tenants' settings writes until the operator activates; the operator
