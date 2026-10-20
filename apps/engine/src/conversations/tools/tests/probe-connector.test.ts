@@ -367,6 +367,7 @@ describe("probe_connector — dispatch + credential substitution", () => {
       path: "/v1/customers",
       query: { limit: 2 },
       environment: "dev",
+      response_mode: "full",
     });
 
     expect(result.ok).toBe(true);
@@ -383,6 +384,21 @@ describe("probe_connector — dispatch + credential substitution", () => {
     expect(req.url).toContain("/v1/customers");
     expect(req.url).toContain("limit=2");
     expect(req.headers.authorization).toBe(`Bearer ${CANARY}`);
+  });
+
+  test("default read probe returns field shape without response values", async () => {
+    const env = await seedProbeConnector({ slug: "shape_probe", tokenValue: CANARY });
+    const result = await probeConnectorTool.execute(makeToolContext(env), {
+      connector_slug: "shape_probe",
+      method: "GET",
+      path: "/v1/customers",
+      environment: "dev",
+    });
+    expect(result.ok).toBe(true);
+    const body = (result.data as { body: { fields: Array<{ path: string }> } }).body;
+    expect(body.fields.some((field) => field.path === "data[0].id")).toBe(true);
+    expect(JSON.stringify(body)).not.toContain("cust_42");
+    expect(JSON.stringify(body)).not.toContain(CANARY);
   });
 
   test("unresolved placeholder in custom header fails before dispatch", async () => {
@@ -710,6 +726,7 @@ describe("probe_connector — downstream error handling", () => {
       connector_slug: "err1",
       method: "GET",
       environment: "dev",
+      response_mode: "full",
     });
     expect(result.ok).toBe(true);
     const out = result.data as { status_code: number; body: { error: string } };

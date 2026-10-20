@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import {
@@ -126,6 +127,15 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       limit: DEFAULT_PALETTE_LIMIT,
     });
     const tools = assembleCatalog({ principal, readOnly, mode, fullPalette });
+    const catalogFingerprint = createHash("sha256")
+      .update(
+        tools
+          .map((tool) => tool.name)
+          .sort()
+          .join("\n"),
+      )
+      .digest("hex")
+      .slice(0, 16);
     const presentNames = new Set(tools.map((t) => t.name));
     const missingCore = [...MCP_CORE_TOOL_NAMES].filter((coreName) => !presentNames.has(coreName));
     if (missingCore.length > 0) {
@@ -144,6 +154,10 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       action: "mcp.catalog.assembled",
       msg: "tools/list catalog assembled",
       tool_count: tools.length,
+      catalog_fingerprint: catalogFingerprint,
+      client_name: clientInfo?.name,
+      client_version: clientInfo?.version,
+      cursor_present: request.params?.cursor !== undefined,
       mode,
       principal_id: principal.id,
       tenant_id: principal.tenant_id,

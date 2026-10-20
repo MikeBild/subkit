@@ -28,6 +28,7 @@ import {
 import { auditActorFromToolContext } from "./audit-actor.ts";
 import { directConnectorGuard, preflightDirectConnector } from "./direct-connector-guard.ts";
 import type { ConversationTool, ToolContext, ToolEffect, ToolResult } from "./index.ts";
+import { summarizeProbeBody } from "./probe-shape.ts";
 import { truncateForLlm } from "./truncate.ts";
 
 const Method = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);
@@ -73,6 +74,7 @@ const CallConnectorInput = z
       .describe(
         "Postgres only. Caps SELECT results by appending `LIMIT $N` when the query has no LIMIT clause. Defaults to 100.",
       ),
+    response_mode: z.enum(["shape", "sample", "full"]).default("shape"),
   })
   .openapi("CallConnectorToolInput");
 
@@ -148,7 +150,7 @@ function structuredError(
 export const callConnectorTool: ConversationTool = {
   name: "call_connector",
   description:
-    "Invoke an HTTP/GraphQL/Postgres/S3 endpoint against a *persisted* connector with its real credential applied. Use this AFTER the connector is saved to sample a response, validate pagination, run an exploratory SELECT, or check field shapes before proposing a workflow step. Always confirm-before-execute. Returns `{ status, headers, body, latency_ms }`.",
+    "Invoke an HTTP/GraphQL/Postgres/S3 endpoint against a persisted connector. Read-only calls return a bounded response shape by default; request response_mode:sample for a few short values or response_mode:full for a confirmed full response. Writes and full responses require confirmation. Use this after saving the connector to verify actual field shapes or pagination.",
   use_case:
     "Reach for this when the connector is saved and the user (or you) needs to see the actual vendor response shape — for endpoint discovery, pagination probing, sampling rows, or field-name verification — without committing to a workflow draft.",
   important_notes: [
@@ -158,7 +160,7 @@ export const callConnectorTool: ConversationTool = {
     "Auth/credential is injected from the saved row — additional `headers` are merged on top (HTTP).",
     "4xx/5xx responses still return `ok:true` with the upstream status — the LLM should inspect the body and decide.",
     "`health` is `ok|auth_failed|endpoint_gone|deprecated|not_found|rate_limited|degraded`. `auth_failed`/`endpoint_gone` mean the connector itself is unusable: an empty body means 'auth failed / endpoint removed', NOT 'no data' — tell the user to fix the connector. `not_found`/`rate_limited` are request-level (wrong path / throttled); `deprecated` means the call SUCCEEDED but the vendor announced removal — surface the migration hint. Always use `health_suggestion` + `next_best_actions`.",
-    "Response bodies > 8KB are truncated; retrieve larger payloads with `get_raw_result(ref=raw_ref)` and follow its bounded field retrieval instructions.",
+    "Only response_mode:full may produce a raw_ref for a large body; retrieve it with `get_raw_result` under the same caller and conversation scope.",
     "Postgres: writes (INSERT/UPDATE/DELETE/DROP/…) are rejected unless `allow_writes:true` is passed. `row_limit` defaults to 100; queries with an existing LIMIT pass through unchanged.",
     "S3: `method` is one of GET/PUT/HEAD/LIST/DELETE; `path` is the object key (or prefix for LIST).",
     "Audit row records actor + connector + method + URL host + status; bodies, headers, full SQL, and full request bodies are NEVER logged.",
@@ -395,8 +397,25 @@ export const callConnectorTool: ConversationTool = {
     }
 
     const body_byte_count = approximateByteLength(responseBody);
-    const truncatedBody = truncateForLlm(responseBody);
-    const truncatedHeaders = truncateForLlm(responseHeaders);
+    const truncatedBody =
+      args.response_mode === "full"
+        ? truncateForLlm(responseBody)
+        : {
+            data: summarizeProbeBody(responseBody, args.response_mode),
+            truncated: false,
+            raw_ref: undefined,
+          };
+    const truncatedHeaders =
+      args.response_mode === "full"
+        ? truncateForLlm(
+            Object.fromEntries(
+              Object.entries(responseHeaders).map(([name, value]) => [
+                name,
+                /authorization|cookie|token|secret|api[-_]?key/i.test(name) ? "[redacted]" : value,
+              ]),
+            ),
+          )
+        : { data: Object.keys(responseHeaders).sort() };
 
     logger.info({
       module: "conversation_tool",

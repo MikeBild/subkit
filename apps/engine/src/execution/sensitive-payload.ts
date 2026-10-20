@@ -61,6 +61,8 @@ const safeFailureCodes = new Set([
   "authority_redirect_denied",
   "sensitive_resume_forbidden",
   "sensitive_execution_unsupported",
+  "graphql_pagination_incomplete",
+  "graphql_pagination_not_read_only",
   "input_schema_violation",
   "invalid",
   "caller_required",
@@ -87,9 +89,15 @@ const safeFailureCodes = new Set([
 ]);
 
 export function sensitiveFailure(code?: string) {
+  const safeCode = code && safeFailureCodes.has(code) ? code : "sensitive_execution_failure";
   return {
-    code: code && safeFailureCodes.has(code) ? code : "sensitive_execution_failure",
-    message: "Sensitive execution failed.",
+    code: safeCode,
+    message:
+      safeCode === "graphql_pagination_incomplete"
+        ? "GraphQL pages are incomplete. Check pageInfo, totalCount, cursor continuity and configured limits before retrying."
+        : safeCode === "graphql_pagination_not_read_only"
+          ? "Cursor pagination requires a read-only GraphQL query. Remove mutations from this step."
+          : "Sensitive execution failed.",
   };
 }
 

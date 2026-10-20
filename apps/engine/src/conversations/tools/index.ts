@@ -82,6 +82,8 @@ export interface ToolContext {
   onLog?: (level: "debug" | "info" | "warn" | "error", message: string) => void;
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
+  direct_mcp_invocation?: boolean;
+  raw_result_scope_id?: string;
   recentUserMessage?: string | null;
   emitDiff?: (params: {
     title: string;

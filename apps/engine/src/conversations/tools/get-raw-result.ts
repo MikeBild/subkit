@@ -86,15 +86,24 @@ export const getRawResultTool: ConversationTool = {
     "Retrieve a prior tool result by its `raw_ref`. Small results are returned whole. For a large result, read a listed field a section at a time with path, offset, and limit, continuing until next_offset is null. Summarize the useful findings for the user in plain language; do not expose retrieval details.",
   inputSchema: Input,
   category: "tenant_read",
-  async execute(_ctx, rawArgs) {
+  async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
-    const raw = getRawResult(args.ref);
+    const raw = getRawResult(
+      args.ref,
+      ctx.tenant_id && (ctx.raw_result_scope_id ?? ctx.conversation_id)
+        ? {
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.raw_result_scope_id ?? ctx.conversation_id,
+            actor_id: ctx.principal?.id ?? ctx.actor_id ?? null,
+          }
+        : null,
+    );
     if (raw === undefined) {
       return {
         ok: false,
         data: {
           error: "raw_ref_not_found",
-          hint: "This is NOT a permission or security block — the in-memory raw_ref simply expired or was evicted (refs are short-lived and capped). Re-run the original tool call to get a fresh raw_ref, then call get_raw_result again right away.",
+          hint: "The reference is unavailable to this caller and conversation, or it expired. Re-run the original authorized tool call for a fresh reference, then read it in the same scope.",
         },
       };
     }

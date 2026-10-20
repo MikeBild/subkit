@@ -1,3 +1,4 @@
+import { inferGraphqlOperation } from "@shared/index.ts";
 import { and, eq } from "drizzle-orm";
 import { auditAwait, normalizeAuditActorId } from "../../../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../../../audit/types.ts";
@@ -125,6 +126,7 @@ import {
 } from "./circuit-evidence.ts";
 import { RequestError } from "./errors.ts";
 import { promoteResponseToFile } from "./file-output.ts";
+import { runGraphqlCursorPages } from "./graphql-pagination.ts";
 import { runGraphqlWithRetry } from "./graphql-retry.ts";
 import { runMcpWithRetry } from "./mcp-retry.ts";
 import { redactOwnCredentials } from "./own-credentials.ts";
@@ -1103,6 +1105,21 @@ async function dispatchRequestStep(
           if (Object.keys(resolvedStepHeaders).length > 0) {
             args.extra_headers = resolvedStepHeaders;
           }
+          const graphqlConfig = p.step.graphql;
+          const graphqlConnectorResolution = connectorResolution;
+          const cursorPagination = graphqlConfig.cursor_pagination;
+          if (cursorPagination && inferGraphqlOperation(queryRes.value) !== "query") {
+            return {
+              status: "failed",
+              retry_count: 0,
+              duration_ms: Date.now() - start,
+              error: {
+                code: "graphql_pagination_not_read_only",
+                message:
+                  "Cursor pagination requires a valid GraphQL query document without mutations.",
+              },
+            };
+          }
           const cfg = (connector.config ?? {}) as { endpoint?: unknown };
           const endpointUrl =
             typeof cfg.endpoint === "string" && cfg.endpoint.length > 0
@@ -1122,27 +1139,35 @@ async function dispatchRequestStep(
               },
             });
           }
-          const graphqlResult = await runGraphqlWithRetry({
-            queryArgs: args,
-            egressInput: {
-              executor: p.ctx.db,
-              tenant_id: p.ctx.tenant_id,
-              ...requestEgressActor(p.ctx.principal),
-              connector_id: connector.id,
-              connector_slug: connector.slug,
-              driver: "graphql",
-              operation: p.step.graphql.operation ?? "query",
-              url: endpointUrl,
-              source: "execution",
-              execution_id: p.ctx.execution_id,
-              workflow_id: p.ctx.workflow_id,
-              step_id: p.step.id,
-            },
-            step: p.step,
-            signal,
-            start,
-            connectorResolution,
-          });
+          const executeGraphqlPage = (variables: Record<string, unknown>) =>
+            runGraphqlWithRetry({
+              queryArgs: { ...args, variables },
+              egressInput: {
+                executor: p.ctx.db,
+                tenant_id: p.ctx.tenant_id,
+                ...requestEgressActor(p.ctx.principal),
+                connector_id: connector.id,
+                connector_slug: connector.slug,
+                driver: "graphql",
+                operation: graphqlConfig.operation ?? "query",
+                url: endpointUrl,
+                source: "execution",
+                execution_id: p.ctx.execution_id,
+                workflow_id: p.ctx.workflow_id,
+                step_id: p.step.id,
+              },
+              step: p.step,
+              signal,
+              start,
+              connectorResolution: graphqlConnectorResolution,
+            });
+          const graphqlResult = cursorPagination
+            ? await runGraphqlCursorPages({
+                spec: cursorPagination,
+                variables: args.variables ?? {},
+                execute: executeGraphqlPage,
+              })
+            : await executeGraphqlPage(args.variables ?? {});
           await recordDriverOutcome(p.ctx.db, connector, graphqlEvidence(graphqlResult));
           return graphqlResult;
         } catch (err) {

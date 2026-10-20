@@ -410,15 +410,17 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   call_connector: {
     defaultMode: "no_confirm",
     computeModeFromInput: (input) =>
-      callConnectorSideEffect(input) === "write" ? "confirm_before_execution" : "no_confirm",
+      callConnectorSideEffect(input) === "write" || asObj(input).response_mode === "full"
+        ? "confirm_before_execution"
+        : "no_confirm",
     computeDangerFromInput: (input) => callConnectorSideEffect(input) === "write",
   },
   web_search: { defaultMode: "confirm_before_execution" },
   probe_connector: {
     defaultMode: "no_confirm",
     computeModeFromInput: (input) => {
-      const env = asObj(input).environment;
-      return env === "prod" || callConnectorSideEffect(input) === "write"
+      const probe = asObj(input);
+      return probe.response_mode === "full" || callConnectorSideEffect(input) === "write"
         ? "confirm_before_execution"
         : "no_confirm";
     },
@@ -427,7 +429,9 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   probe_connector_draft: {
     defaultMode: "no_confirm",
     computeModeFromInput: (input) =>
-      asObj(input).environment === "prod" ? "confirm_before_execution" : "no_confirm",
+      asObj(input).response_mode === "full" || callConnectorSideEffect(input) === "write"
+        ? "confirm_before_execution"
+        : "no_confirm",
   },
 };
 
@@ -461,6 +465,13 @@ export function decideToolMode(args: {
 
   if (def?.credentialFields && hasInlineCredential(input, def.credentialFields)) {
     return { mode: "confirm_before_execution", rule: "inline_credential" };
+  }
+
+  if (
+    (tool === "call_connector" || tool === "probe_connector" || tool === "probe_connector_draft") &&
+    asObj(input).response_mode === "full"
+  ) {
+    return { mode: "confirm_before_execution", rule: "computed_from_input" };
   }
 
   if (args.connector_trust === true && permission_mode !== "plan") {

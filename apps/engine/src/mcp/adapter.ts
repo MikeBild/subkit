@@ -2,6 +2,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ZodType } from "zod";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { ToolContext } from "../conversations/tools/index.ts";
+import { withRawResultScope } from "../conversations/tools/truncate.ts";
 import type { Db } from "../db/client.ts";
 import { EngineClient } from "../engine-client/index.ts";
 import { logger as mcpStubLogger } from "../logging/logger.ts";
@@ -179,6 +180,8 @@ export function buildMcpStubCtx(opts: { db: Db; principal: ResolvedPrincipal }):
     connector_id: null,
     workflow_id: null,
     surface: "mcp",
+    direct_mcp_invocation: true,
+    raw_result_scope_id: `mcp:${opts.principal.id}`,
     engineClient,
     getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
@@ -192,17 +195,25 @@ export async function callToolViaDispatcher(opts: {
   readOnly: boolean;
   invocation: ToolInvocation;
 }): Promise<ReturnType<typeof envelopeToMcpResponse>> {
-  const envelope = await dispatchTool(
+  const envelope = await withRawResultScope(
     {
-      registry: getUnifiedRegistry(),
-      db: opts.db,
-      principal: opts.principal,
-      buildMcpStubCtx: () => buildMcpStubCtx({ db: opts.db, principal: opts.principal }),
-      mcpMode: opts.mcpMode,
-      readOnly: opts.readOnly,
-      permissionMode: "auto",
+      tenant_id: opts.principal.tenant_id,
+      conversation_id: `mcp:${opts.principal.id}`,
+      actor_id: opts.principal.id,
     },
-    opts.invocation,
+    () =>
+      dispatchTool(
+        {
+          registry: getUnifiedRegistry(),
+          db: opts.db,
+          principal: opts.principal,
+          buildMcpStubCtx: () => buildMcpStubCtx({ db: opts.db, principal: opts.principal }),
+          mcpMode: opts.mcpMode,
+          readOnly: opts.readOnly,
+          permissionMode: "auto",
+        },
+        opts.invocation,
+      ),
   );
   return envelopeToMcpResponse(envelope);
 }

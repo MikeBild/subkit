@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "../../logging/logger.ts";
 import { summarizeScopeShape } from "../../workflows/scope-shape.ts";
 
@@ -14,13 +15,38 @@ const RAW_REF_MAX_ENTRIES = 512;
 interface RawEntry {
   value: unknown;
   expires_at: number;
+  scope: RawResultScope | null;
+}
+
+export interface RawResultScope {
+  tenant_id: string;
+  conversation_id: string;
+  actor_id: string | null;
+}
+
+const rawResultScope = new AsyncLocalStorage<RawResultScope>();
+
+export function withRawResultScope<T>(scope: RawResultScope, operation: () => T): T {
+  return rawResultScope.run(scope, operation);
+}
+
+function sameRawResultScope(left: RawResultScope | null, right: RawResultScope | null): boolean {
+  return (
+    left?.tenant_id === right?.tenant_id &&
+    left?.conversation_id === right?.conversation_id &&
+    left?.actor_id === right?.actor_id
+  );
 }
 
 const rawStore = new Map<string, RawEntry>();
 
 function storeRaw(refId: string, value: unknown): void {
   const now = Date.now();
-  rawStore.set(refId, { value, expires_at: now + RAW_REF_TTL_MS });
+  rawStore.set(refId, {
+    value,
+    expires_at: now + RAW_REF_TTL_MS,
+    scope: rawResultScope.getStore() ?? null,
+  });
   for (const [key, entry] of rawStore) {
     if (entry.expires_at < now) rawStore.delete(key);
   }
@@ -351,9 +377,13 @@ export function sampleWorkflowOutputForLlm(output: unknown): SampledOutput {
   };
 }
 
-export function getRawResult(ref: string): unknown | undefined {
+export function getRawResult(
+  ref: string,
+  scope: RawResultScope | null = rawResultScope.getStore() ?? null,
+): unknown | undefined {
   const entry = rawStore.get(ref);
   if (entry === undefined) return undefined;
+  if (!sameRawResultScope(entry.scope, scope)) return undefined;
   if (entry.expires_at < Date.now()) {
     rawStore.delete(ref);
     return undefined;

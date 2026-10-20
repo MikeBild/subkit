@@ -18,6 +18,7 @@ import { directConnectorGuard, preflightDirectConnector } from "./direct-connect
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { pickProbeRecoveryActions } from "./probe-recovery.ts";
+import { summarizeProbeBody } from "./probe-shape.ts";
 import { truncateForLlm } from "./truncate.ts";
 
 const Method = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);
@@ -37,6 +38,7 @@ const ProbeInput = z
     body: z.unknown().optional(),
     environment: Environment.default("dev"),
     timeout_ms: z.number().int().min(100).max(60_000).default(15_000),
+    response_mode: z.enum(["shape", "sample", "full"]).default("shape"),
   })
   .openapi("ProbeConnectorToolInput");
 
@@ -144,14 +146,14 @@ function isTimeoutError(error: unknown): boolean {
 export const probeConnectorTool: ConversationTool = {
   name: "probe_connector",
   description:
-    "Perform a one-shot authenticated HTTP call against a configured connector and return a truncated response envelope. Use this to verify the shape of an API before authoring a step.",
+    "Perform a one-shot authenticated HTTP call against a configured connector. The default response_mode:shape returns field paths and types without values; sample returns a few bounded values; full requires confirmation. Use this to verify an API before authoring a step.",
   use_case:
     "Call BEFORE writing `request` step configs or `transform` expressions that depend on a vendor payload shape. A probe reveals field names, status codes, and error bodies — grounding the LLM so it does not hallucinate paths.",
   important_notes: [
     "Does NOT create an `executions` row — this is an authoring-time aid, not a workflow run.",
     "Rate-limited to 20 probes / minute / conversation; over the limit the tool returns `probe_rate_limited`.",
     "Audit row (action=conversation.probe_connector) captures the connector slug + URL host + status, never the full URL or body.",
-    "For non-GET methods or prod environment, the upstream policy inserts a confirm_before_execution elicitation; the LLM must wait for the operator.",
+    "Read-only shape and sample probes can run in prod without a separate confirmation. Writes and response_mode:full require confirmation; wait for the operator when prompted.",
     `Use \`\${cred.<slug>.<field>}\` in headers/query/body — the resolver substitutes credentials safely and records placeholder names (not values) on the audit row.`,
   ],
   requires_skill: "http-connectors",
@@ -330,7 +332,14 @@ export const probeConnectorTool: ConversationTool = {
     }
 
     const duration_ms = Date.now() - started;
-    const truncated = truncateForLlm(responseBody);
+    const truncated =
+      args.response_mode === "full"
+        ? truncateForLlm(responseBody)
+        : {
+            data: summarizeProbeBody(responseBody, args.response_mode),
+            truncated: false,
+            raw_ref: undefined,
+          };
 
     await auditAwait(
       {

@@ -31,6 +31,7 @@ import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { resolveDraftProbeSecrets } from "./probe-draft-secrets.ts";
 import { pickProbeRecoveryActions as pickFromShared, probeStatusHint } from "./probe-recovery.ts";
+import { summarizeProbeBody } from "./probe-shape.ts";
 import { truncateForLlm } from "./truncate.ts";
 
 const inputSchema = z
@@ -42,6 +43,7 @@ const inputSchema = z
     body: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).optional(),
     timeout_ms: z.number().int().min(100).max(60_000).default(15_000),
+    response_mode: z.enum(["shape", "sample", "full"]).default("shape"),
   })
   .openapi("ProbeConnectorDraftToolInput");
 
@@ -122,7 +124,7 @@ function isTimeoutError(error: unknown): boolean {
 export const probeConnectorDraftTool: ConversationTool = {
   name: "probe_connector_draft",
   description:
-    "Probe the current connector draft before saving it. MCP drafts perform a throwaway initialize + tools/list handshake; no draft secret is persisted before success.",
+    "Probe the current connector draft before saving it. The default response_mode:shape returns field paths and types; sample returns bounded values; full and writes require confirmation. MCP drafts perform a throwaway initialize + tools/list handshake; no draft secret is persisted before success.",
   inputSchema,
   category: "draft_write",
   authoring_resource: "connector",
@@ -773,7 +775,14 @@ export const probeConnectorDraftTool: ConversationTool = {
     }
 
     const duration_ms = Date.now() - started;
-    const truncated = truncateForLlm(responseBody);
+    const truncated =
+      args.response_mode === "full"
+        ? truncateForLlm(responseBody)
+        : {
+            data: summarizeProbeBody(responseBody, args.response_mode),
+            truncated: false,
+            raw_ref: undefined,
+          };
     const probed_at = new Date().toISOString();
     const latest_probe = errorDetail
       ? {

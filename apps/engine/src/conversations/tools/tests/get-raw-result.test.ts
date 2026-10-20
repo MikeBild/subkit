@@ -1,12 +1,36 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { getRawResultTool } from "../get-raw-result.ts";
-import { clearRawStore, rememberRaw } from "../truncate.ts";
+import { clearRawStore, rememberRaw, withRawResultScope } from "../truncate.ts";
 
 afterEach(() => {
   clearRawStore();
 });
 
 describe("get_raw_result", () => {
+  it("keeps a reference within its tenant, actor and conversation", async () => {
+    const scope = {
+      tenant_id: "tenant-a",
+      conversation_id: "conversation-a",
+      actor_id: "actor-a",
+    };
+    const ref = withRawResultScope(scope, () => rememberRaw({ private: "sample" }));
+
+    expect(await getRawResultTool.execute(scope as never, { ref })).toEqual({
+      ok: true,
+      data: { raw: { private: "sample" } },
+    });
+    for (const changed of [
+      { ...scope, tenant_id: "tenant-b" },
+      { ...scope, conversation_id: "conversation-b" },
+      { ...scope, actor_id: "actor-b" },
+    ]) {
+      expect(await getRawResultTool.execute(changed as never, { ref })).toMatchObject({
+        ok: false,
+        data: { error: "raw_ref_not_found" },
+      });
+    }
+  });
+
   it("returns small prior results without changing their shape", async () => {
     const value = { item: { title: "Sample" } };
     const ref = rememberRaw(value);
