@@ -45,10 +45,16 @@ const PENDING_EXPIRY_GRACE = sql`interval '1 hour'`;
 const STUCK_SCAN_GRACE = sql`interval '1 hour'`;
 
 export const FILES_CLEANUP_BATCH_SIZE = 256;
+export const FILES_UNLINKED_CLEANUP_BATCH_SIZE = 16;
 type CleanupPass = "pending" | "soft" | "hard";
 const cleanupPositions = new WeakMap<Db, Partial<Record<CleanupPass, string>>>();
 
-async function cleanupCandidates(db: Db, pass: CleanupPass, eligible: SQL | undefined) {
+async function cleanupCandidates(
+  db: Db,
+  pass: CleanupPass,
+  eligible: SQL | undefined,
+  limit = FILES_CLEANUP_BATCH_SIZE,
+) {
   const positions = cleanupPositions.get(db) ?? {};
   cleanupPositions.set(db, positions);
   // tenant-filter:exempt — bounded global cleanup keys retain tenant ownership for exact mutation-time rechecks.
@@ -58,7 +64,7 @@ async function cleanupCandidates(db: Db, pass: CleanupPass, eligible: SQL | unde
       .from(files)
       .where(and(eligible, after ? gt(files.id, after) : undefined))
       .orderBy(asc(files.id))
-      .limit(FILES_CLEANUP_BATCH_SIZE)
+      .limit(limit)
       .for("update", { skipLocked: true });
   let rows = await select(positions[pass]);
   if (rows.length === 0 && positions[pass]) {
@@ -287,20 +293,18 @@ async function sweepUnlinkedTtl(
   const candidates = await cleanupCandidates(
     db,
     "soft",
-    and(
-      eq(files.status, "ready"),
-      isNull(files.deleted_at),
-      hasNoFileLink(),
-      hasNoRetainedFileReference(),
-    ),
+    and(eq(files.status, "ready"), isNull(files.deleted_at)),
+    FILES_UNLINKED_CLEANUP_BATCH_SIZE,
   );
 
-  const eligible = and(
-    lt(files.deleted_at, sql`now() - ${UNLINKED_HARD_DELETE_AFTER}`),
-    hasNoFileLink(),
-    hasNoRetainedFileReference(),
+  const hardSelection = lt(files.deleted_at, sql`now() - ${UNLINKED_HARD_DELETE_AFTER}`);
+  const eligible = and(hardSelection, hasNoFileLink(), hasNoRetainedFileReference());
+  const hardCandidates = await cleanupCandidates(
+    db,
+    "hard",
+    hardSelection,
+    FILES_UNLINKED_CLEANUP_BATCH_SIZE,
   );
-  const hardCandidates = await cleanupCandidates(db, "hard", eligible);
   if (candidates.length === 0 && hardCandidates.length === 0) return { soft: 0, hard: 0 };
   const scan = await loadInFlightFidStrings(db, boss, pool, budget);
   if (scan.pgboss_scan_failed) {
