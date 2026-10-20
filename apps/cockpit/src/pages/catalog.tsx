@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { Bot } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
@@ -151,30 +151,36 @@ function parseState(config: CatalogConfig): CatalogState {
 
 function useCatalogState(config: CatalogConfig) {
   const [state, setStateValue] = useState<CatalogState>(() => parseState(config));
+  const stateRef = useRef(state);
   useEffect(() => {
-    const onPopState = () => setStateValue(parseState(config));
+    const onPopState = () => {
+      const next = parseState(config);
+      stateRef.current = next;
+      setStateValue(next);
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, [config]);
   const setState = useCallback(
     (patch: Partial<CatalogState>) => {
-      setStateValue((current) => {
-        const next = { ...current, ...patch };
-        const params = new URLSearchParams();
-        if (next.q) params.set("q", next.q);
-        if (next.kind !== "all") params.set("kind", next.kind);
-        if (next.status !== "all") params.set("operating_status", next.status);
-        if (next.category !== "all") params.set("category", next.category);
-        if (next.connector) params.set("connector", next.connector);
-        if (next.health) params.set("health", next.health);
-        if (next.sort !== config.defaultSort) params.set("sort", next.sort);
-        if (next.order !== "desc") params.set("order", next.order);
-        const selected = catalogSelectedId(window.location.search);
-        if (selected) params.set("selected", selected);
-        const suffix = params.size > 0 ? `?${params}` : "";
-        window.history.pushState({}, "", `${window.location.pathname}${suffix}`);
-        return next;
-      });
+      const next = { ...stateRef.current, ...patch };
+      stateRef.current = next;
+      const params = new URLSearchParams();
+      if (next.q) params.set("q", next.q);
+      if (next.kind !== "all") params.set("kind", next.kind);
+      if (next.status !== "all") params.set("operating_status", next.status);
+      if (next.category !== "all") params.set("category", next.category);
+      if (next.connector) params.set("connector", next.connector);
+      if (next.health) params.set("health", next.health);
+      if (next.sort !== config.defaultSort) params.set("sort", next.sort);
+      if (next.order !== "desc") params.set("order", next.order);
+      const selected = catalogSelectedId(window.location.search);
+      if (selected) params.set("selected", selected);
+      const suffix = params.size > 0 ? `?${params}` : "";
+      const href = `${window.location.pathname}${suffix}`;
+      if (href !== `${window.location.pathname}${window.location.search}`)
+        window.history.pushState({}, "", href);
+      setStateValue(next);
     },
     [config.defaultSort],
   );
