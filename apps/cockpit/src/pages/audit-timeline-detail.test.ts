@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { translate } from "@/lib/i18n";
-import { changedFieldsDescription, unverifiedApiKeyClient } from "./audit-timeline";
+import {
+  auditChangeValue,
+  changedFieldsDescription,
+  unverifiedApiKeyClient,
+} from "./audit-timeline";
 import type { TimelineEntry } from "./audit-timeline-model";
 
 describe("Audit details", () => {
@@ -48,5 +52,18 @@ describe("Audit details", () => {
     expect(changedFieldsDescription(fields, (key) => translate("en", key))).toBe(
       "Name (name), State (status), File name (filename), Other field (internal_field)",
     );
+  });
+
+  test("explains knowledge status values in both languages and keeps the recorded value", () => {
+    const de = (key: Parameters<typeof translate>[1]) => translate("de", key);
+    const en = (key: Parameters<typeof translate>[1]) => translate("en", key);
+    expect(auditChangeValue("status", "inactive", "knowledge_source", de)).toBe(
+      "Deaktiviert (inactive)",
+    );
+    expect(auditChangeValue("status", "processing", "knowledge_source", en)).toBe(
+      "Being ingested (processing)",
+    );
+    expect(auditChangeValue("status", "unlisted", "knowledge_source", de)).toBe("unlisted");
+    expect(auditChangeValue("status", "inactive", "workflow", de)).toBe("inactive");
   });
 });

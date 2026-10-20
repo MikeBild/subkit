@@ -251,6 +251,25 @@ export function changedFieldsDescription(
 ): string {
   return fields.map((field) => `${changeFieldLabel(field, t)} (${field})`).join(", ");
 }
+export function auditChangeValue(
+  field: string,
+  value: string | number | boolean | null,
+  resourceType: string,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  if (value === null) return t("audit.timeline.emptyValue");
+  if (field === "status" && resourceType === "knowledge_source" && typeof value === "string") {
+    const statuses: Record<string, TranslationKey> = {
+      active: "audit.timeline.knowledgeStatus.active",
+      inactive: "audit.timeline.knowledgeStatus.inactive",
+      processing: "audit.timeline.knowledgeStatus.processing",
+      error: "audit.timeline.knowledgeStatus.error",
+    };
+    const key = statuses[value];
+    if (key) return `${t(key)} (${value})`;
+  }
+  return String(value);
+}
 export function unverifiedApiKeyClient(entry: TimelineEntry): boolean {
   return (
     (entry.access_type === "api_key" || Boolean(entry.api_key_id)) &&
@@ -1010,15 +1029,13 @@ function AuditDetail({
                     <span className="text-muted-foreground">
                       {t("audit.timeline.beforeValue")}:{" "}
                     </span>
-                    {change.before === null
-                      ? t("audit.timeline.emptyValue")
-                      : String(change.before)}
+                    {auditChangeValue(change.field, change.before, current.resource_type, t)}
                   </div>
                   <div>
                     <span className="text-muted-foreground">
                       {t("audit.timeline.afterValue")}:{" "}
                     </span>
-                    {change.after === null ? t("audit.timeline.emptyValue") : String(change.after)}
+                    {auditChangeValue(change.field, change.after, current.resource_type, t)}
                   </div>
                 </div>
               </div>
