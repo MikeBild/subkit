@@ -131,6 +131,7 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   product: "people.app",
   credential: "permission.resource.credentials",
   setting: "nav.settings",
+  tenant_branding: "branding.title",
   webhook_inbound: "audit.resource.inboundWebhook",
   mcp_oauth_client: "audit.resource.oauthClient",
   mcp_oauth_code: "audit.resource.oauthCode",
