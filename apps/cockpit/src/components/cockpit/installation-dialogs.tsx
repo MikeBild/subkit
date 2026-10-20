@@ -221,11 +221,15 @@ export function InstallationInputActions({
       }
     ).showOpenFilePicker;
     if (capabilities.fileOpen && picker) {
-      void picker()
+      void picker
+        .call(window)
         .then(async (handles) =>
           onFiles(await Promise.all(handles.map(async (handle) => await handle.getFile()))),
         )
-        .catch(() => {});
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          toast.error(t("installation.importFailed"));
+        });
       return;
     }
     const input = document.createElement("input");
