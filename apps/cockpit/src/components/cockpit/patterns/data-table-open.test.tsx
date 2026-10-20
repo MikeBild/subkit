@@ -82,7 +82,8 @@ test("only available records expose row navigation on desktop and mobile", () =>
   expect(available?.querySelector("a")?.getAttribute("href")).toContain("/workflows/available");
   expect(unavailable?.classList.contains("cursor-pointer")).toBe(false);
   expect(unavailable?.querySelector("a")).toBeNull();
-  expect(unavailable?.querySelector('[data-slot="row-chevron"] svg')).toBeNull();
+  expect(document.querySelectorAll('[data-slot="row-chevron"]')).toHaveLength(0);
+  expect(available?.querySelectorAll('[data-slot="table-cell"]')).toHaveLength(2);
   const mobileAvailable = document.querySelector('[data-testid="availability-mobile-row-0"]');
   const mobileUnavailable = document.querySelector('[data-testid="availability-mobile-row-1"]');
   expect(mobileAvailable?.classList.contains("cursor-pointer")).toBe(true);

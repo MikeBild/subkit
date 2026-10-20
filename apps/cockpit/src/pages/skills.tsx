@@ -439,12 +439,14 @@ function SkillSheet({ id, onClose }: { id: string; onClose(): void }) {
         skill ? (
           <Button asChild variant="outline" size="sm">
             <a href={absolute(recordHref("skills", skill.id))} data-testid="skill-sheet-open">
-              {t("common.details")}
+              {t("common.open")}
             </a>
           </Button>
         ) : null
       }
       testId="skill-sheet"
+      closeTestId="skill-sheet-close"
+      titleTestId="skill-sheet-title"
       loading={query.isPending}
     >
       {query.error ? (

@@ -8,15 +8,7 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  ChevronRight,
-  Columns3,
-  Loader2,
-  Search,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Columns3, Loader2, Search } from "lucide-react";
 import {
   Children,
   createContext,
@@ -164,7 +156,7 @@ export function rowLinkColumn(
 
 export function tableColumnWidths(
   widths: readonly (string | undefined)[],
-  controls: { actions: boolean; chevron: boolean },
+  controls: { actions: boolean },
 ): string[] {
   const specified = widths.map((width) => {
     const match = width?.match(/w-\[(\d+(?:\.\d+)?)%\]/);
@@ -174,7 +166,7 @@ export function tableColumnWidths(
   const fallback = known.length ? known.reduce((sum, weight) => sum + weight, 0) / known.length : 1;
   const weights = specified.map((weight) => weight ?? fallback);
   const total = weights.reduce((sum, weight) => sum + weight, 0);
-  const reservedRem = (controls.actions ? 14 : 0) + (controls.chevron ? 2 : 0);
+  const reservedRem = controls.actions ? 14 : 0;
   return weights.map((weight) => {
     const share = weight / total;
     return `calc(${(share * 100).toFixed(4)}cqw - ${(share * reservedRem).toFixed(4)}rem)`;
@@ -420,15 +412,14 @@ export function DataTable<TData extends RowData>({
     pickColumns && collectionTier === "primary" && hideableColumns.length > 1,
   );
   const hasActionColumn = Boolean(rowActions);
-  const hasChevron = Boolean(onOpen);
   const contentColumnWidths = tableColumnWidths(
     visibleColumns.map((column) => column.columnDef.meta?.width),
-    { actions: hasActionColumn, chevron: hasChevron },
+    { actions: hasActionColumn },
   );
   const widthByColumnId = new Map(
     visibleColumns.map((column, index) => [column.id, contentColumnWidths[index]]),
   );
-  const bodySpan = visibleColumns.length + (hasActionColumn ? 1 : 0) + (hasChevron ? 1 : 0);
+  const bodySpan = visibleColumns.length + (hasActionColumn ? 1 : 0);
   const linkColumnId = rowLinkColumn(
     visibleColumns.map((column) => ({
       id: column.id,
@@ -646,9 +637,6 @@ export function DataTable<TData extends RowData>({
                       <span className="sr-only">{actionsLabel}</span>
                     </TableHead>
                   ) : null}
-                  {hasChevron ? (
-                    <TableHead className="w-8" style={{ width: "2rem" }} aria-hidden="true" />
-                  ) : null}
                 </TableRow>
               ))}
             </TableHeader>
@@ -686,7 +674,6 @@ export function DataTable<TData extends RowData>({
                     {hasActionColumn ? (
                       <TableCell className="w-56" style={{ width: "14rem" }} />
                     ) : null}
-                    {hasChevron ? <TableCell className="w-8" style={{ width: "2rem" }} /> : null}
                   </TableRow>
                 ))
               ) : error || empty ? (
@@ -771,15 +758,6 @@ export function DataTable<TData extends RowData>({
                             <span className="flex max-w-full flex-wrap items-center justify-end gap-1">
                               {rowActions?.(row.original, index)}
                             </span>
-                          </TableCell>
-                        ) : null}
-                        {hasChevron ? (
-                          <TableCell
-                            className="w-8 text-muted-foreground"
-                            style={{ width: "2rem" }}
-                            data-slot="row-chevron"
-                          >
-                            {open ? <ChevronRight aria-hidden="true" className="size-4" /> : null}
                           </TableCell>
                         ) : null}
                       </TableRow>

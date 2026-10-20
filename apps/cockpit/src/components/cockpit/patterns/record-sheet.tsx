@@ -79,17 +79,19 @@ function RecordBody({
             {back.label}
           </button>
         ) : null}
-        <div className="flex flex-wrap items-center gap-2">
-          <SheetTitle
-            {...(titleId ? { id: titleId } : {})}
-            data-testid={titleTestId}
-            className="flex min-w-0 items-center gap-2"
-          >
-            {title}
-          </SheetTitle>
-          {badge}
+        <div className="flex min-w-0 items-start gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <SheetTitle
+              {...(titleId ? { id: titleId } : {})}
+              data-testid={titleTestId}
+              className="flex min-w-0 flex-1 items-center gap-2 break-words"
+            >
+              {title}
+            </SheetTitle>
+            {badge}
+          </div>
           {action || menu ? (
-            <span className="ml-auto flex items-center gap-2">
+            <span className="ml-auto flex shrink-0 items-center gap-2">
               {menu}
               {action}
             </span>

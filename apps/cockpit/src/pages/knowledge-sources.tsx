@@ -395,12 +395,14 @@ function KnowledgeSourceSheet({ id, onClose }: { id: string; onClose(): void }) 
               href={absolute(recordHref("knowledge", source.id))}
               data-testid="knowledge-sheet-open"
             >
-              {t("common.details")}
+              {t("common.open")}
             </a>
           </Button>
         ) : null
       }
       testId="knowledge-source-sheet"
+      closeTestId="knowledge-sheet-close"
+      titleTestId="knowledge-sheet-title"
       loading={query.isPending}
     >
       {query.error ? (
