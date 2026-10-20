@@ -68,6 +68,9 @@ function descriptorToMcpTool(d: ToolDescriptor): Tool {
   };
   const baseMeta = buildConversationToolMeta(d.category, d.name);
   const subkitMeta: Record<string, unknown> = { ...baseMeta.subkit };
+  if (d.rbac?.additional_permissions?.length) {
+    subkitMeta.required_permissions = [d.rbac.permission, ...(d.rbac.additional_permissions ?? [])];
+  }
   if (d.disabled) {
     subkitMeta.disabled = { reason: d.disabled.reason };
   }

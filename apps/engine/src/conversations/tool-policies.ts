@@ -298,6 +298,39 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     defaultMode: "confirm_before_execution",
     buildPendingOutput: (input) => pickFields(input, ["portal_token_id", "prefix"]),
   },
+  update_tenant_branding: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => {
+      const obj = asObj(input);
+      const logos = asObj(obj.logos);
+      const summarize = (theme: "light" | "dark") => {
+        const operation = asObj(logos[theme]);
+        return {
+          operation: operation.operation ?? null,
+          ...(operation.operation === "replace"
+            ? {
+                mime_type: operation.mime_type ?? null,
+                content_base64_length:
+                  typeof operation.content_base64 === "string"
+                    ? operation.content_base64.length
+                    : null,
+              }
+            : {}),
+        };
+      };
+      return {
+        revision: obj.revision ?? null,
+        display_name: obj.display_name ?? null,
+        subtitle: obj.subtitle ?? null,
+        palette: obj.palette ?? null,
+        logos: { light: summarize("light"), dark: summarize("dark") },
+      };
+    },
+  },
+  reset_tenant_branding: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => pickFields(input, ["revision"]),
+  },
   test_rbac_expression: { defaultMode: "no_confirm" },
   suggest_connector_templates: { defaultMode: "no_confirm" },
   start_connector_from_template: { defaultMode: "no_confirm" },

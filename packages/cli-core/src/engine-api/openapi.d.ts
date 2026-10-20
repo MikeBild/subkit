@@ -5403,6 +5403,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tenant/branding/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTenantBrandingLogo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tenant/branding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTenantBranding"];
+        put: operations["updateTenantBranding"];
+        post?: never;
+        delete: operations["resetTenantBranding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/.well-known/oauth-protected-resource": {
         parameters: {
             query?: never;
@@ -21472,6 +21504,73 @@ export interface components {
                 /** Format: date-time */
                 updated_at: string;
             }[];
+            branding?: {
+                configured: boolean;
+                revision: number;
+                display_name: string | null;
+                subtitle: string | null;
+                /** @enum {string|null} */
+                palette: "standard" | "indigo" | "teal" | null;
+                logos: {
+                    light: boolean;
+                    dark: boolean;
+                };
+                logo_urls: {
+                    light: string | null;
+                    dark: string | null;
+                };
+            };
+        };
+        TenantBrandingResponse: {
+            configured: boolean;
+            revision: number;
+            display_name: string | null;
+            subtitle: string | null;
+            /** @enum {string|null} */
+            palette: "standard" | "indigo" | "teal" | null;
+            logos: {
+                light: boolean;
+                dark: boolean;
+            };
+            logo_urls: {
+                light: string | null;
+                dark: string | null;
+            };
+        };
+        TenantBrandingUpdate: {
+            revision: number;
+            display_name: string | null;
+            subtitle: string | null;
+            /** @enum {string|null} */
+            palette: "standard" | "indigo" | "teal" | null;
+            logos: {
+                light: {
+                    /** @enum {string} */
+                    operation: "keep";
+                } | {
+                    /** @enum {string} */
+                    operation: "remove";
+                } | {
+                    /** @enum {string} */
+                    operation: "replace";
+                    /** @enum {string} */
+                    mime_type: "image/png" | "image/jpeg" | "image/webp";
+                    content_base64: string;
+                };
+                dark: {
+                    /** @enum {string} */
+                    operation: "keep";
+                } | {
+                    /** @enum {string} */
+                    operation: "remove";
+                } | {
+                    /** @enum {string} */
+                    operation: "replace";
+                    /** @enum {string} */
+                    mime_type: "image/png" | "image/jpeg" | "image/webp";
+                    content_base64: string;
+                };
+            };
         };
         OAuthClientListResponse: {
             items: components["schemas"]["OAuthClient"][];
@@ -27523,6 +27622,226 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Error"] | components["schemas"]["IdentityBrowserLoginRequired"];
                 };
+            };
+        };
+    };
+    getTenantBrandingLogo: {
+        parameters: {
+            query: {
+                theme: "light" | "dark";
+                revision?: number | null;
+                tenant_context?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Normalized logo for the current workspace and revision */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Logo unavailable for this workspace, theme or revision */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Browser workspace context changed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getTenantBranding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant branding */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantBrandingResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Concurrent update */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateTenantBranding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantBrandingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Tenant branding */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantBrandingResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Concurrent update */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resetTenantBranding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Tenant branding */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantBrandingResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Concurrent update */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

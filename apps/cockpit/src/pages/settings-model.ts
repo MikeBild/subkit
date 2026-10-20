@@ -124,6 +124,7 @@ export const SETTING_SECTION_KEYS: Readonly<Record<string, TranslationKey>> = {
 };
 
 export function settingSectionLabel(section: string, t: Translate): CatalogLabel {
+  if (section === "branding") return catalogLabel(section, "branding.title", t);
   return catalogLabel(section, SETTING_SECTION_KEYS[section], t);
 }
 

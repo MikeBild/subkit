@@ -274,6 +274,38 @@ async function dispatchTenantTool(
       }
     }
 
+    if (!halted && entry.descriptor.rbac?.additional_permissions) {
+      for (const permission of entry.descriptor.rbac.additional_permissions) {
+        const decision = await can(deps.db, {
+          tenant_id: deps.principal.tenant_id,
+          principal: deps.principal,
+          permission,
+        });
+        if (decision.allow) continue;
+        const reason = decision.reason ?? "permission_denied";
+        await emitPolicyDenied(
+          deps,
+          entry.descriptor.name,
+          invocation.surface,
+          permission,
+          reason,
+          null,
+          claimed ? approvalAuditResource(claimed) : null,
+          execArgs,
+        );
+        const details = denialDetails(decision.detail);
+        envelope = {
+          status: "error",
+          error_code: "policy_denied",
+          message: denialHint(decision.detail),
+          ...(details ? { details } : {}),
+        };
+        decisionLabel = "policy_denied";
+        halted = true;
+        break;
+      }
+    }
+
     if (!halted && entry.descriptor.rbac) {
       let resource = entry.descriptor.rbac.resource
         ? entry.descriptor.rbac.resource(execArgs)
@@ -349,6 +381,26 @@ async function dispatchTenantTool(
         halted = true;
       } else {
         execArgs = canonical.args;
+      }
+    }
+
+    if (
+      !halted &&
+      claimed === null &&
+      isStaticExecutor(entry.executor) &&
+      entry.executor.prepareApprovalArgs
+    ) {
+      const prepared = await entry.executor.prepareApprovalArgs(execArgs);
+      if (prepared.ok) {
+        execArgs = prepared.args;
+      } else {
+        envelope = {
+          status: "error",
+          error_code: prepared.error_code,
+          message: prepared.message,
+        };
+        decisionLabel = prepared.error_code;
+        halted = true;
       }
     }
 

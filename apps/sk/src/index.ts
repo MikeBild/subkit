@@ -9,6 +9,7 @@ import { apiKeysCommand } from "./commands/apikeys.ts";
 import { appsCommand } from "./commands/apps.ts";
 import { auditCommand } from "./commands/audit.ts";
 import { authCommand } from "./commands/auth.ts";
+import { brandingCommand } from "./commands/branding.ts";
 import { categoriesCommand } from "./commands/categories.ts";
 import { chatCommand } from "./commands/chat.ts";
 import { clipperCommand } from "./commands/clipper.ts";
@@ -432,6 +433,7 @@ const mainCommand = defineCommand({
     doctor: doctorCommand,
     logs: logsCommand,
     settings: settingsCommand,
+    branding: brandingCommand,
     extract: extractCommand,
     files: filesCommand,
     attach: attachCommand,
@@ -600,6 +602,7 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   doctor: { command: doctorCommand },
   logs: { command: logsCommand, requires: "audit:read" },
   settings: { command: settingsCommand, requires: "settings:read" },
+  branding: { command: brandingCommand },
   extract: { command: extractCommand, requires: "conversation:write" },
   files: { command: filesCommand, requires: "file:read" },
   attach: { command: attachCommand, requires: "file:write" },
