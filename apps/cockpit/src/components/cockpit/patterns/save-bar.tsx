@@ -14,6 +14,7 @@ export function SaveBar({
   count,
   line,
   notice,
+  description,
   discard,
   save,
   secondary,
@@ -22,6 +23,7 @@ export function SaveBar({
   count: number;
   line?: string;
   notice?: ReactNode;
+  description?: ReactNode;
   discard: BarAction;
   save: BarAction;
   secondary?: ReactNode;
@@ -40,6 +42,7 @@ export function SaveBar({
           {line ??
             t(count === 1 ? "pattern.saveBar.unsaved.one" : "pattern.saveBar.unsaved", { count })}
         </p>
+        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
         {notice ? <div className="text-xs text-destructive">{notice}</div> : null}
       </div>
       <div className="flex flex-wrap gap-2">

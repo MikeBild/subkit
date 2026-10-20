@@ -11,9 +11,11 @@ import {
   FieldLabel,
   FieldLegend,
   FieldSet,
-} from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+  Input,
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/cockpit/patterns/controls";
+import { SectionHeading } from "@/components/cockpit/patterns/section";
 import {
   BRANDING_PALETTES,
   BRANDING_SWATCHES,
@@ -39,11 +41,11 @@ export function BrandingForm({
   const { t } = useI18n();
   return (
     <div className="flex flex-col gap-5">
-      <FieldSet className="rounded-xl border p-4">
-        <FieldLegend className="px-1" variant="label">
+      <FieldSet className="block rounded-xl border">
+        <FieldLegend className="mb-0 ml-4 px-1" variant="label">
           {t("branding.wordmark")}
         </FieldLegend>
-        <FieldGroup className="gap-4">
+        <FieldGroup className="gap-4 p-4">
           <Field className="gap-1.5">
             <FieldLabel htmlFor="branding-name">{t("branding.name")}</FieldLabel>
             <Input
@@ -86,11 +88,13 @@ export function BrandingForm({
               />
             ))}
           </div>
-          <FieldDescription className="text-xs">{t("branding.imageHint")}</FieldDescription>
+          <FieldDescription className="-mt-2 text-xs">{t("branding.imageHint")}</FieldDescription>
         </FieldGroup>
       </FieldSet>
-      <FieldSet>
-        <FieldLegend variant="label">{t("branding.palette")}</FieldLegend>
+      <FieldSet className="block">
+        <FieldLegend className="mb-2" variant="label">
+          {t("branding.palette")}
+        </FieldLegend>
         <ToggleGroup
           type="single"
           value={draft.palette ?? "standard"}
@@ -114,11 +118,11 @@ export function BrandingForm({
                 {t(`branding.${palette}`)}
                 <Check className="invisible group-data-[state=on]:visible" />
               </span>
-              <span className="my-3 flex gap-1" aria-hidden="true">
+              <span className="mt-3 mb-2 flex gap-1" aria-hidden="true">
                 {BRANDING_SWATCHES[palette].map((color) => (
                   <span
                     key={color}
-                    className="h-5 min-w-0 flex-1 rounded-sm border"
+                    className={cn("h-5 min-w-0 flex-1 rounded-sm", color === "#f8fafc" && "border")}
                     style={{ backgroundColor: color }}
                   />
                 ))}
@@ -169,7 +173,7 @@ function LogoUpload({
       />
       <Button
         variant="outline"
-        className="h-auto min-h-24 w-full border-dashed px-4 py-3 [&>span]:flex-col"
+        className="h-auto min-h-24 w-full gap-0 rounded-lg whitespace-normal border-dashed bg-background px-4 py-3 dark:bg-background [&>span]:flex-col"
         disabled={disabled}
         onClick={() => file.current?.click()}
         data-testid={`branding-upload-${theme}`}
@@ -211,9 +215,9 @@ function BrandingPreview({ draft, saved }: { draft: TenantBrandingUpdate; saved:
   return (
     <section aria-labelledby="branding-preview-title">
       <div className="mb-2">
-        <h3 id="branding-preview-title" className="text-sm font-medium">
+        <SectionHeading id="branding-preview-title" className="text-sm font-medium">
           {t("branding.preview")}
-        </h3>
+        </SectionHeading>
         <p className="mt-0.5 text-xs text-muted-foreground">{t("branding.previewHint")}</p>
       </div>
       <div className="rounded-xl border p-3">
@@ -237,13 +241,19 @@ function BrandingPreview({ draft, saved }: { draft: TenantBrandingUpdate; saved:
                 <div className="flex min-w-0 items-center gap-2 border-b pb-2">
                   <span
                     className={cn(
-                      "grid size-8 shrink-0 place-items-center overflow-hidden rounded-md",
+                      "grid shrink-0 place-items-center overflow-hidden rounded-md",
+                      kind === "mobile" ? "size-7" : "size-8",
                       !src && "bg-primary text-primary-foreground",
                     )}
                   >
                     <BrandingLogo key={src} src={src} />
                   </span>
-                  <span className="grid min-w-0 text-xs leading-tight">
+                  <span
+                    className={cn(
+                      "grid min-w-0 leading-tight",
+                      kind === "mobile" ? "text-[11px]" : "text-xs",
+                    )}
+                  >
                     <b className="truncate">
                       {configured
                         ? draft.display_name || session.tenant.display_name
@@ -254,12 +264,16 @@ function BrandingPreview({ draft, saved }: { draft: TenantBrandingUpdate; saved:
                     </span>
                   </span>
                 </div>
-                <div className="mt-2 grid gap-1 text-xs">
+                <div
+                  className={cn("mt-2 grid gap-1", kind === "mobile" ? "text-[11px]" : "text-xs")}
+                >
                   <span className="rounded-md px-2 py-1.5">{t("nav.overview")}</span>
                   <span className="rounded-md bg-muted px-2 py-1.5 font-medium">
                     {t("resource.settings.title")}
                   </span>
-                  <span className="rounded-md px-2 py-1.5">{t("nav.people")}</span>
+                  {kind !== "mobile" ? (
+                    <span className="rounded-md px-2 py-1.5">{t("nav.people")}</span>
+                  ) : null}
                 </div>
                 <p className="mt-auto px-2 text-[10px] text-muted-foreground">
                   powered by <b className="text-foreground">SubKit</b>

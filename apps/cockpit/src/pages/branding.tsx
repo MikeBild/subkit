@@ -12,7 +12,8 @@ import {
 import { useSession } from "@/app/session";
 import { useDirtyGuard } from "@/app/version-notice";
 import { Button, ConfirmDialog, DataState, SaveBar } from "@/components/cockpit/patterns";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/cockpit/patterns/controls";
+import { SectionHeading } from "@/components/cockpit/patterns/section";
 import { brandingDraft, readBrandingLogo } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n-context";
 import { BrandingForm } from "./branding-form";
@@ -65,7 +66,7 @@ export function BrandingSettings() {
       <Alert variant="destructive">
         <AlertDescription>
           {t("branding.loadFailed")}{" "}
-          <Button variant="ghost" onClick={() => void query.refetch()}>
+          <Button variant="ghost" data-testid="branding-retry" onClick={() => void query.refetch()}>
             {t("pattern.retry")}
           </Button>
         </AlertDescription>
@@ -101,10 +102,10 @@ export function BrandingSettings() {
       aria-labelledby="branding-title"
     >
       <div className="mb-5">
-        <h2 id="branding-title" className="text-lg font-semibold tracking-tight">
+        <SectionHeading id="branding-title" className="text-lg font-semibold tracking-tight">
           {t("branding.title")}
-        </h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t("branding.intro")}</p>
+        </SectionHeading>
+        <p className="mt-1 text-sm text-muted-foreground">{t("branding.intro")}</p>
       </div>
       {!canWrite ? (
         <p className="mb-4 text-sm text-muted-foreground">{t("branding.readOnly")}</p>
@@ -129,6 +130,7 @@ export function BrandingSettings() {
             {failure === "conflict" ? (
               <Button
                 variant="ghost"
+                data-testid="branding-reload"
                 disabled={mutation.isPending}
                 onClick={() =>
                   void query.refetch().then((result) => {
@@ -149,6 +151,7 @@ export function BrandingSettings() {
         <SaveBar
           count={draft ? 1 : 0}
           line={draft ? t("branding.unsaved") : t("branding.previewHint")}
+          description={draft ? t("branding.localDraft") : undefined}
           testId="branding-save-bar"
           discard={{
             onClick: () => {
@@ -168,6 +171,7 @@ export function BrandingSettings() {
             </Button>
           }
           save={{
+            label: t("branding.save"),
             onClick: () => mutation.mutate(false),
             pending: mutation.isPending,
             disabled: !draft || reading || failure === "conflict",

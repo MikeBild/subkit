@@ -32,4 +32,5 @@ export { Separator } from "@/components/ui/separator";
 export { Spinner } from "@/components/ui/spinner";
 export { Switch } from "@/components/ui/switch";
 export { Textarea } from "@/components/ui/textarea";
+export { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 export { Button } from "./button";

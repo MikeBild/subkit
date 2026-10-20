@@ -73,3 +73,9 @@
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+
+[data-branding-editor] [data-slot="save-bar"] button {
+  height: 36px;
+  border-radius: 8px;
+  padding-inline: 14px;
+}
