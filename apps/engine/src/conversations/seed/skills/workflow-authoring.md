@@ -1319,8 +1319,10 @@ into a malformed payload in production. Likewise never reach for `new Date()`,
   directly.** In `ask`/`plan`, `save_workflow_draft` uses the human gate and the inner
   prior-approval check may reject with `no_prior_approval`. In `auto`, ordinary
   inert saves do not require that decision. In every mode the persistence
-  contract starts with a green judged preview. If the dry-run is failing, the
-  workflow needs a fix, not a force-commit.
+  contract starts with a green judged preview for ordinary workflows. Sensitive
+  workflows cannot use chat dry-run; follow the validated, inactive-draft and
+  separate human-review path above. If a permitted dry-run fails, repair the
+  workflow before saving it.
 - **Calling `save_workflow_draft` after a green `dry_run_workflow`.** The
   correct next action is envelope-dependent: after `auto_committed: true`, a
   save only earns an `already_persisted` round-trip; after
