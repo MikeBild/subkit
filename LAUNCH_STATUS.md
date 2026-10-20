@@ -1,7 +1,7 @@
 # SubKit Launch-Status
 
 Plan: [LAUNCH.md](LAUNCH.md) · Arbeitsvertrag: [LAUNCH_SYNC.md](LAUNCH_SYNC.md) ·
-Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E310.
+Prüfhistorie: [LAUNCH_EVIDENCE.md](LAUNCH_EVIDENCE.md), E01–E313.
 
 Operative L-Aufgaben, Prioritäten und aktueller Issue-Status stehen in den
 [GitHub Issues](https://github.com/MikeBild/subkit/issues) und im
@@ -12,7 +12,7 @@ wesentlichen Statusänderungen mit dem jeweiligen Issue abgeglichen.
 
 ## Aktueller Checkout-Abgleich
 
-Das Linux/AMD64-Cloud-Image aus Commit `6db6cd8ee` ist veröffentlicht und in
+Das Linux/AMD64-Cloud-Image aus Commit `29bdb95ef` ist veröffentlicht und in
 der bestehenden Upraft-App als aktive, stabile Revision deployed. Die einzige
 bedienende Replica ist gesund; öffentliche Health-/Ready-/Cockpit-Routen
 antworten über gültiges TLS. Für den schnellen Cloud-Fix wurden die breiten
@@ -30,8 +30,7 @@ Die zweite Identität sah nur ihre eigene Mitgliedschaft und Person; ein Request
 mit fremdem Tenant-Kontext wurde HTTP 409 abgewiesen, während der eigene Kontext
 bis zur Ressourcenprüfung gelangte. Ein echter Cockpit-Chat im zweiten Tenant
 lieferte eine OpenAI-Antwort; die exakte Test-Unterhaltung wurde nach persönlicher
-Freigabe gelöscht. Die aktive Replica blieb gesund; die geprüften App-Logfenster
-enthielten keinen parsebaren Warn- oder Fehlerlog. Auth-Mail wurde über den
+Freigabe gelöscht. Auth-Mail wurde über den
 signierten Webhook-Workflow versandt und die zweite Einladung von der Person
 angenommen. Die Browser-Fehlerseite des OIDC-Callbacks ist im SubKit-Stil
 deployed. E303–E307 enthalten die aktuellen Auth-, Deployment- und
@@ -53,12 +52,23 @@ während Version 12 den bisherigen Versand weiterführt. E309 hält den Fehler
 und den begrenzten Entwurf fest. Vollständige Cloud-Abnahme und persönliche visuelle Freigabe
 bleiben offen.
 
-E310: Die vollständige Workflow-Definition und ihre Sicherheitsfelder werden beim
+E310–E312: Die vollständige Workflow-Definition und ihre Sicherheitsfelder werden beim
 Bearbeiten von Schritten erhalten. Der Fix ist auf dem getrennten API-Host
-deployed und im Browser zurückgelesen; das passende Cloud-Image ist bei Upraft
-bereit. Die Cloud-App verwendet noch die vorherige Revision, bis der bestehende
-Laufzeit-Masterkey über Uprafts sichere Eingabe an die neue Revision gebunden ist.
-Die Auth-Mail-Entwurfsreparatur und ihre Wirkungsfreigabe stehen separat aus.
+deployed und im Browser zurückgelesen. Das passende Cloud-Image ist auch in der
+bestehenden Upraft-App aktiv; Root-Weiterleitung und öffentliche Routen bestanden
+erneut. Nach einem zeitweiligen Erreichbarkeitsausfall erholte sich der Dienst.
+Ein Katalog-Job lief nach `40001` erneut erfolgreich, doch eine unmittelbar zuvor
+generierte Kategoriebeschreibung könnte durch den sechs Stunden wirksamen
+Bearbeitungszeitpunkt ungespeichert bleiben. Zwei frühe Audit-Schreibfehler sind
+noch nicht rückwirkend geklärt. E312 behebt den Katalog-Speicherpfad im Code:
+42 gezielte PostgreSQL-Tests, Typecheck und Pre-Push-Gates sind grün. Das neue
+Linux/AMD64-Image aus `29bdb95ef` ist registryseitig geprüft und in der
+bestehenden Cloud-App aktiv und stabil. Der zweite Browser-Tenant lud Dateien
+und Überblick; 100 aktuelle Runtime-Zeilen nach dem Wechsel waren Info-Einträge
+mit erfolgreichen API-Aufrufen. Der Auth-Mail-Entwurf v13 bleibt inaktiv:
+Der MCP-Autoring-Versuch konnte seine vollständige Definition nicht feldgenau
+lesen und stoppte ohne Speicherung. Die Wirkungsprüfung und persönliche Freigabe
+stehen separat aus, E313.
 
 Die technische Verifikation ist segmentiert vollständig abgedeckt: 2.168 Dateien,
 20.448 PASS/0 ungelöste FAIL/38 SKIP/5 TODO; Eval 40/40 und kompilierte

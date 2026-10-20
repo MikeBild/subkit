@@ -148,10 +148,14 @@ eine Startreplik, kein Trial, sieben Tage widerrufbare Löschung. Offenes Signup
 bleibt bis zur vollständigen Abnahme deaktiviert. Alle neuen Ergebnisse sind
 getrennt nach lokaler Prüfung und externer Abnahme zu bewerten.
 
-**Aktueller externer Stand, E303–E309:** Das Linux/AMD64-Cloud-Image aus
-`6db6cd8ee` läuft in der bestehenden Upraft-App mit einer gesunden Replica.
+**Aktueller externer Stand, E303–E313:** Das Linux/AMD64-Cloud-Image aus
+`29bdb95ef` läuft in der bestehenden Upraft-App mit einer gesunden Replica.
 DNS, TLS, Root-Weiterleitung, Health, Ready und Cockpit sind live geprüft;
-die letzten 100 aktiven Runtime-Zeilen enthalten keine Warnung und keinen Fehler.
+nach einem zeitweiligen Erreichbarkeitsausfall erholte sich die App. Ein
+Katalog-Speicherfehler `40001` trat nach einem Modellaufruf auf; derselbe
+Queue-Job schloss im nächsten Versuch ab, ohne die zuvor erzeugte Beschreibung
+nachweislich zu speichern. Zwei frühe Audit-Schreibfehler sind ungeklärt;
+zwei spätere begrenzte Logfenster bis 02:05 UTC enthielten keine neuen Fehler.
 Der signierte Auth-Webhook versandte eine echte Mail; zwei verschiedene
 Upraft-Auth-Identitäten meldeten sich im Browser an und erhielten verschiedene
 Workspaces. Die begrenzte Registrierung ist offen. Der zweite Tenant erhielt
@@ -164,11 +168,13 @@ der erste Export wurde isoliert als PostgreSQL-Schema wiederhergestellt.
 Ressourcenisolation an tatsächlich vorhandenem Fremdobjekt, Grenzverweigerungen,
 Lifecycle, vollständiger semantischer Wiederanlauf und breite Cloud-Journey
 bleiben offen. Die folgenden H-Zeilen enthalten auch historische Technikstände;
-E303–E310 und [LAUNCH_STATUS](../LAUNCH_STATUS.md) führen den aktuellen Betrieb.
-Der Workflow-Detail-/Cockpit-Fix ist auf dem getrennten API-Host aktiv; das
-gleichstämmige Cloud-Image ist importiert, aber noch nicht als App-Revision
-aktiviert, E310. Der sichere Masterkey-Handoff und die Auth-Mail-Freigabe stehen
-aus; die bisherige Cloud-Revision bedient weiter.
+E303–E313 und [LAUNCH_STATUS](../LAUNCH_STATUS.md) führen den aktuellen Betrieb.
+Der Workflow-Detail-/Cockpit-Fix ist auf dem getrennten API-Host und in der Cloud
+aktiv. Der zusätzliche Katalog-Persistenzfix `29bdb95ef` bestand 42 gezielte
+PostgreSQL-Tests, Typecheck und Pre-Push-Gates; sein Image ist in Upraft aktiv
+und stabil. Der Auth-Mail-Entwurf v13 bleibt inaktiv: Die vollständige Definition
+war über die MCP-Leseschnittstelle nicht feldgenau verfügbar; die versuchte
+Ein-Feld-Reparatur stoppte ohne Mutation. Die Auth-Mail-Freigabe steht separat aus.
 
 Freigegebene Free-Betriebswerte: 5 USD Modellkosten pro Tenant/Monat,
 50 USD Modellkosten insgesamt/Monat, 50 MB (50.000.000 Bytes) gemeinsamer logischer
@@ -198,7 +204,7 @@ Eine vollständige integrierte und echte Cloud-Abnahme steht aus.
 | H06 Cockpit/Client-Verträge | IN_PROGRESS | Lovable-Entwurf inspiziert und Workspace-Menü, Löschdialog sowie Recovery-Seite integriert. 33 Cockpit-Session-/Kontexttests bestanden. Browser prüfte Wechsel, Stale-Tab-Sperre sowie HTTP-200-Löschung/Wiederherstellung gegen isolierte PostgreSQL-Fixture; Browser-Identitätsnachweis dabei simuliert. Bootstrap-Refetchloop korrigiert; Zwei-Tab-Gegenprobe blieb bei drei Bootstrap-Aufrufen. Engine- und Cockpit-Typecheck bestanden. Clientparität, finale generierte Assets und Sichtabnahme offen; E232. Zusätzlicher Lovable-Entwurf für Betreiber-Reconciliation meldet Buildfehler, Korrektur wegen fehlender Workspace-Credits abgelehnt; diese neue Oberfläche ist noch nicht integriert, E236. |
 | H07 Vollständige Abnahme | IN_PROGRESS | Technische Phasenabdeckung E296: 2.168 Dateien mit 20.448 PASS/0 ungelösten FAIL, Eval 40/40, kompilierte Clipper-Parität und 42 HTTP-/CLI-E2E-Dateien mit 257 PASS. E303–E308 ergänzen echten Auth-Mailversand, zwei Browser-OIDC-Logins, getrennte Workspaces, OpenAI-Antwort, Budget-Audit und stabile Cloud-Revision. Breite lokale Gates wurden für schnelle Folgefixes auf Nutzerwunsch übersprungen; echte Fremdobjekt-Isolation, Grenzfälle, Lifecycle und semantischer Restore bleiben offen. |
 | H08 Privater Deployment-Vertrag | IN_PROGRESS | SubKit-only Vertrag und rein lesender Kandidatenguard im privaten Deployment-Repo vorbereitet; 29 Tests bestanden, einschließlich bestätigter 1.000 Datensätze je Ressourcentyp samt Soft-Delete, E242. Gemeinsame 50-MB-Quote, Ressourcenanzahl und nachgewiesen unversionierter, nicht gesperrter Objekt-Bucket sind explizite Kandidatengrenzen. Herkunft, finaler Releasepin und Deploymentautorität bleiben gesperrte Pflichteingaben. Historischen Sechsproduktvertrag erhalten. |
-| H09 Release/Cloud/Signup | IN_PROGRESS | Linux/AMD64-Image aus `6db6cd8ee` in der bestehenden Upraft-App stabil deployed; öffentliche Health-/Ready-/Cockpit-Routen antworten 200 über gültiges TLS, Root leitet zum Cockpit. Begrenzte Registrierung, Betreiberpolicy und Upraft-OIDC sind aktiv. Tägliches privates Backup und erster isolierter PostgreSQL-Restore belegt; semantischer Wiederanlauf, Cloud-E2E, signierte öffentliche Distribution sowie Rechts-/Sichtabnahmen bleiben eigenständige Gates, E303–E308. |
+| H09 Release/Cloud/Signup | IN_PROGRESS | Linux/AMD64-Image aus `29bdb95ef` in der bestehenden Upraft-App stabil deployed; öffentliche Health-/Ready-/Cockpit-Routen antworten 200 über gültiges TLS, Root leitet zum Cockpit. Begrenzte Registrierung, Betreiberpolicy und Upraft-OIDC sind aktiv. Tägliches privates Backup und erster isolierter PostgreSQL-Restore belegt; semantischer Wiederanlauf, Cloud-E2E, signierte öffentliche Distribution sowie Rechts-/Sichtabnahmen bleiben eigenständige Gates, E303–E313. |
 
 `query-fragment.test.ts` aktuell allein 4/4 und gemeinsam mit Server-Registry 8/8
 bestanden; alter Batchfehler nicht reproduziert, daher kein spekulativer Fix.
