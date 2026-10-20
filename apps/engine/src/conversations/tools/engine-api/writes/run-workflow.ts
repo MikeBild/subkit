@@ -30,6 +30,7 @@ import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../tru
 import { workflowInputSlot } from "../../workflow-input-normalize.ts";
 import { activationRequiredRefusal } from "./activation-required.ts";
 import { detectRepairLoop } from "./repair-loop-history.ts";
+import { describeRunWorkflowError } from "./run-workflow-error.ts";
 
 const Input = z
   .object({
@@ -794,14 +795,17 @@ export const runWorkflowTool: ConversationTool = {
         reason: msg,
         metadata: { conversation_id: ctx.conversation_id },
       });
-      const invalid = (err as { code?: unknown }).code === "workflow_version_invalid";
+      const failure = describeRunWorkflowError(err);
       return {
         ok: false,
         data: withStatus(
           buildGateError(currentDraft, {
-            error_code: invalid ? "workflow_version_invalid" : "run_failed",
-            message: msg,
-            recommended_mode: invalid ? "workflow" : "execution",
+            error_code: failure.error_code,
+            message: failure.message,
+            recommended_mode: failure.recommended_mode,
+            ...(failure.recoverable
+              ? {}
+              : { next_best_actions: [], extra: { recoverable: false } }),
           }),
           "failed",
         ),
