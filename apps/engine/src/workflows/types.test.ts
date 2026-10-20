@@ -58,6 +58,47 @@ describe("StepSchema — retired `tool` step is rejected", () => {
   });
 });
 
+test("GraphQL pagination accepts valid required nested connection paths", () => {
+  const step = {
+    kind: "request",
+    id: "read",
+    url: "https://api.example.com/graphql",
+    graphql: {
+      operation: "query",
+      query:
+        "query($after: String) { items(after: $after) { nodes { id } pageInfo { hasNextPage endCursor } } }",
+      cursor_pagination: {
+        connection_path: "items",
+        cursor_variable: "after",
+        items_field: "nodes",
+        required_connection_paths: ["fieldValues", "details.entries"],
+        max_pages: 2,
+        max_items: 50,
+      },
+    },
+  };
+  const parsed = StepSchema.safeParse(step);
+  expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+  if (parsed.success && parsed.data.kind === "request") {
+    expect(parsed.data.graphql?.cursor_pagination?.required_connection_paths).toEqual([
+      "fieldValues",
+      "details.entries",
+    ]);
+  }
+  expect(
+    StepSchema.safeParse({
+      ...step,
+      graphql: {
+        ...step.graphql,
+        cursor_pagination: {
+          ...step.graphql.cursor_pagination,
+          required_connection_paths: ["fieldValues..pageInfo"],
+        },
+      },
+    }).success,
+  ).toBe(false);
+});
+
 describe("baseStep.for_each — W3a schema", () => {
   test("for_each is accepted on a request step (Zod parse)", () => {
     const result = StepSchema.safeParse({

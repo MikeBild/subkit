@@ -8500,6 +8500,14 @@
                         ],
                         "default": "nodes"
                       },
+                      "required_connection_paths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                        },
+                        "maxItems": 16
+                      },
                       "max_pages": {
                         "type": "integer",
                         "minimum": 1,

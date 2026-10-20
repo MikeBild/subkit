@@ -55,6 +55,8 @@ query($after: String) {
 
 For sensitive workflows, keep pages inside one read-only GraphQL request step with `graphql.cursor_pagination`. Set `connection_path` to the path inside GraphQL `data`, such as `repository.issues`, `cursor_variable` to `after`, `items_field` to `nodes` or `edges`, and explicit `max_pages` and `max_items` limits. Request `pageInfo { endCursor hasNextPage }` and, when available, `totalCount`. The step returns the merged connection only after all pages pass completeness checks; limit exhaustion, repeated cursors, partial GraphQL errors, or a count mismatch fail without a partial snapshot. Ordinary workflows may also use a bounded loop. Never claim completeness from a first page with `hasNextPage: true`.
 
+For `ProjectV2.items` with selected `fieldValues`, set `required_connection_paths: ["fieldValues"]` and request `fieldValues { totalCount nodes { ... } pageInfo { hasNextPage } }`. If its `hasNextPage` is true, the outer items cursor cannot finish it; query that item's field values separately before reporting a complete project snapshot.
+
 For Projects, query `ProjectV2.items(first: ..., after: ...)` and read its `pageInfo` and `totalCount`. Probe the exact query with the authenticated connector; a working repository query does not prove Project access. GitHub's REST OpenAPI discovery is not required for a GraphQL query.
 
 ## Rate-limit budget

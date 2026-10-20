@@ -118,3 +118,102 @@ test("rejects a GraphQL partial page without returning its data", async () => {
   expect(result.error?.code).toBe("graphql_pagination_incomplete");
   expect(result.output).toBeUndefined();
 });
+
+test("rejects duplicate node IDs in edges without returning a partial snapshot", async () => {
+  let calls = 0;
+  const result = await runGraphqlCursorPages({
+    spec: { ...spec, items_field: "edges" },
+    variables: {},
+    execute: async () => {
+      calls += 1;
+      return {
+        status: "succeeded",
+        retry_count: 0,
+        duration_ms: 0,
+        output: {
+          user: {
+            project: {
+              items: {
+                totalCount: 2,
+                edges: [{ cursor: `edge-${calls}`, node: { id: "same" } }],
+                pageInfo: {
+                  hasNextPage: calls === 1,
+                  endCursor: calls === 1 ? "next" : null,
+                },
+              },
+            },
+          },
+        },
+      };
+    },
+  });
+  expect(calls).toBe(2);
+  expect(result.error?.code).toBe("graphql_pagination_incomplete");
+  expect(result.output).toBeUndefined();
+});
+
+test("requires selected nested connections to be complete", async () => {
+  for (const fieldValues of [
+    { totalCount: 2, nodes: [{ id: "field-1" }], pageInfo: { hasNextPage: true } },
+    { totalCount: 2, nodes: [{ id: "field-1" }], pageInfo: { hasNextPage: false } },
+    { nodes: [{ id: "field-1" }] },
+  ]) {
+    const result = await runGraphqlCursorPages({
+      spec: { ...spec, required_connection_paths: ["fieldValues"] },
+      variables: {},
+      execute: async () => ({
+        status: "succeeded",
+        retry_count: 0,
+        duration_ms: 0,
+        output: {
+          user: {
+            project: {
+              items: {
+                totalCount: 1,
+                nodes: [{ id: "item-1", fieldValues }],
+                pageInfo: { hasNextPage: false },
+              },
+            },
+          },
+        },
+      }),
+    });
+    expect(result.error?.code).toBe("graphql_pagination_incomplete");
+    expect(result.output).toBeUndefined();
+  }
+});
+
+test("accepts complete selected nested connections", async () => {
+  const result = await runGraphqlCursorPages({
+    spec: { ...spec, items_field: "edges", required_connection_paths: ["fieldValues"] },
+    variables: {},
+    execute: async () => ({
+      status: "succeeded",
+      retry_count: 0,
+      duration_ms: 0,
+      output: {
+        user: {
+          project: {
+            items: {
+              totalCount: 1,
+              edges: [
+                {
+                  node: {
+                    id: "item-1",
+                    fieldValues: {
+                      totalCount: 1,
+                      nodes: [{ id: "field-1" }],
+                      pageInfo: { hasNextPage: false },
+                    },
+                  },
+                },
+              ],
+              pageInfo: { hasNextPage: false },
+            },
+          },
+        },
+      },
+    }),
+  });
+  expect(result.status).toBe("succeeded");
+});
