@@ -54,6 +54,17 @@ describe("tenant branding client contracts", () => {
     expect(branding.logo_urls.light).toContain("tenant_context=example");
   });
 
+  test("effective fallback URLs do not turn an empty upload slot into a stored logo", () => {
+    const saved: TenantBranding = {
+      ...branding,
+      logo_urls: { light: "/logo?theme=light", dark: "/logo?theme=dark" },
+    };
+    const draft = brandingDraft(saved);
+    draft.logos.light = { operation: "remove" };
+    expect(brandingPreviewLogo(draft, saved, "dark")).toBeNull();
+    expect(brandingPreviewLogo(draft, saved, "light")).toBeNull();
+  });
+
   for (const [palette, colors] of Object.entries(BRANDING_SWATCHES)) {
     test(`${palette} foreground pairs meet text and focus contrast in both themes`, () => {
       expect(contrast(colors[0], "#f8fafc")).toBeGreaterThanOrEqual(4.5);

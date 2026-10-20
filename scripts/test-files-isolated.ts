@@ -7,6 +7,12 @@ let listOnly = false;
 let shardIndex = 0;
 let shardCount = 1;
 let startAfter: string | undefined;
+const workersRaw = process.env.SUBKIT_TEST_WORKERS ?? "1";
+const workers = Number(workersRaw);
+if (!Number.isInteger(workers) || workers < 1 || workers > 4) {
+  throw new Error("SUBKIT_TEST_WORKERS must be an integer between 1 and 4");
+}
+const workerChild = process.env.SUBKIT_TEST_WORKER_CHILD === "1";
 const targets: string[] = [];
 
 for (let index = 0; index < args.length; index += 1) {
@@ -52,6 +58,34 @@ if (targets.length === 0) {
   throw new Error(
     "usage: bun run scripts/test-files-isolated.ts [--list] [--shard <index>/<count>] [--start-after <file>] <file-or-directory> [...]",
   );
+}
+if (workers > 1 && !workerChild && (listOnly || startAfter !== undefined || shardCount !== 1)) {
+  throw new Error("SUBKIT_TEST_WORKERS cannot be combined with --list, --start-after, or --shard");
+}
+if (workers > 1 && !workerChild) {
+  const exits = await Promise.all(
+    Array.from({ length: workers }, async (_, index) => {
+      const child = Bun.spawn(
+        [
+          "bun",
+          "run",
+          "scripts/test-files-isolated.ts",
+          "--shard",
+          `${index + 1}/${workers}`,
+          ...targets,
+        ],
+        {
+          cwd: repoRoot,
+          env: { ...process.env, SUBKIT_TEST_WORKERS: "1", SUBKIT_TEST_WORKER_CHILD: "1" },
+          stdout: "inherit",
+          stderr: "inherit",
+        },
+      );
+      return child.exited;
+    }),
+  );
+  if (exits.some((exitCode) => exitCode !== 0)) process.exit(1);
+  process.exit(0);
 }
 
 function repoRelative(target: string): string {

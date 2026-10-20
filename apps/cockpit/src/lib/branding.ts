@@ -31,7 +31,7 @@ export function brandingDraftLogo(
   if (change.operation === "remove") return null;
   if (change.operation === "replace")
     return `data:${change.mime_type};base64,${change.content_base64}`;
-  return saved.logo_urls[theme];
+  return saved.logos[theme] ? saved.logo_urls[theme] : null;
 }
 
 export function brandingPreviewLogo(

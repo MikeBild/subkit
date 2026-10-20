@@ -9,7 +9,7 @@ import {
 import { buildOAuthRedirectUri } from "../../../credentials/index.ts";
 import { conversations } from "../../../db/schema/conversations.ts";
 import { roles, sessions, tenants, users } from "../../../db/schema/index.ts";
-import { getTenantBranding } from "../../../identity/index.ts";
+import { readTenantBranding } from "../../../identity/index.ts";
 import { ALL_PERMISSION_NAMES, can, isOperatorPrincipal } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../../openapi.ts";
@@ -236,11 +236,7 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
           .orderBy(desc(conversations.updated_at))
           .limit(10)
       : [];
-    const branding = await getTenantBranding(principal.tenant_id, db);
-    const brandingQuery = new URLSearchParams({
-      tenant_context: principal.tenant_id,
-      revision: String(branding.revision),
-    });
+    const branding = await readTenantBranding({ tenant_id: principal.tenant_id }, db);
 
     return c.json(
       {
@@ -270,17 +266,7 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
           ...row,
           updated_at: row.updated_at.toISOString(),
         })),
-        branding: {
-          ...branding,
-          logo_urls: {
-            light: branding.logos.light
-              ? `/v1/tenant/branding/logo?theme=light&${brandingQuery}`
-              : null,
-            dark: branding.logos.dark
-              ? `/v1/tenant/branding/logo?theme=dark&${brandingQuery}`
-              : null,
-          },
-        },
+        branding,
       },
       200,
     );

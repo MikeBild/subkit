@@ -16,6 +16,7 @@ export interface ToolDescriptor {
   readonly requires_draft?: boolean;
   readonly rbac?: {
     readonly permission: string;
+    readonly additional_permissions?: readonly string[];
     readonly resource?: (
       args: Record<string, unknown>,
     ) => { readonly type: string; readonly id: string } | null;

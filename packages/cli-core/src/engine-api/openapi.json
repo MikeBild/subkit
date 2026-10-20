@@ -4704,7 +4704,8 @@
                       },
                       "content_base64": {
                         "type": "string",
-                        "minLength": 1
+                        "minLength": 1,
+                        "maxLength": 2796204
                       }
                     },
                     "required": [
@@ -4767,7 +4768,8 @@
                       },
                       "content_base64": {
                         "type": "string",
-                        "minLength": 1
+                        "minLength": 1,
+                        "maxLength": 2796204
                       }
                     },
                     "required": [
@@ -36473,6 +36475,9 @@
         ],
         "security": [
           {
+            "bearerAuth": []
+          },
+          {
             "browserSession": []
           }
         ],
@@ -36507,7 +36512,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "required": true,
+            "required": false,
             "name": "tenant_context",
             "in": "query"
           }
@@ -36525,7 +36530,7 @@
             }
           },
           "401": {
-            "description": "Browser session required"
+            "description": "Authentication required"
           },
           "404": {
             "description": "Logo unavailable for this workspace, theme or revision"
@@ -36543,6 +36548,9 @@
           "identity"
         ],
         "security": [
+          {
+            "bearerAuth": []
+          },
           {
             "browserSession": []
           }
@@ -36562,7 +36570,7 @@
             "description": "Invalid request"
           },
           "401": {
-            "description": "Browser session required"
+            "description": "Authentication required"
           },
           "403": {
             "description": "Permission denied"
@@ -36581,6 +36589,9 @@
           "identity"
         ],
         "security": [
+          {
+            "bearerAuth": []
+          },
           {
             "browserSession": []
           }
@@ -36610,7 +36621,7 @@
             "description": "Invalid request"
           },
           "401": {
-            "description": "Browser session required"
+            "description": "Authentication required"
           },
           "403": {
             "description": "Permission denied"
@@ -36629,6 +36640,9 @@
           "identity"
         ],
         "security": [
+          {
+            "bearerAuth": []
+          },
           {
             "browserSession": []
           }
@@ -36669,7 +36683,7 @@
             "description": "Invalid request"
           },
           "401": {
-            "description": "Browser session required"
+            "description": "Authentication required"
           },
           "403": {
             "description": "Permission denied"

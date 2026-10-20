@@ -9,6 +9,7 @@ import {
 } from "./debug.ts";
 import { agentMethods } from "./engine-client/agent.ts";
 import { appsMethods } from "./engine-client/apps.ts";
+import { brandingMethods } from "./engine-client/branding.ts";
 import { catalogMethods } from "./engine-client/catalog.ts";
 import { chatMethods } from "./engine-client/chat.ts";
 import { connectorsMethods } from "./engine-client/connectors.ts";
@@ -35,6 +36,7 @@ import { statsMethods } from "./engine-client/stats.ts";
 import { workflowsMethods } from "./engine-client/workflows.ts";
 
 export type { AppCheck, AppSummary, AppView } from "./engine-client/apps.ts";
+export type { TenantBranding, TenantBrandingUpdate } from "./engine-client/branding.ts";
 export type { ConnectorPromotionResponse } from "./engine-client/connectors.ts";
 export type {
   ConversationContextSnapshot,
@@ -169,6 +171,15 @@ export class EngineClient {
 
   private isSensitiveRequestBodyPath(path: string): boolean {
     return /\/elicitations\/[^/]+\/respond$/.test(path);
+  }
+
+  async requestBytes(path: string): Promise<Uint8Array> {
+    const response = await this.fetchImpl(`${this.base}${path}`, {
+      headers: this.headers({ accept: "image/png" }, { traceId: this.newClientTraceId() }),
+    });
+    if (!response.ok)
+      throw new EngineError(response.status, parseResponseBody(await response.text()));
+    return new Uint8Array(await response.arrayBuffer());
   }
 
   async request<T = unknown>(
@@ -562,6 +573,7 @@ type ApiMethods<T> = { [K in keyof T]: OmitThisParameter<T[K]> };
 
 export interface EngineClient
   extends ApiMethods<typeof agentMethods>,
+    ApiMethods<typeof brandingMethods>,
     ApiMethods<typeof appsMethods>,
     ApiMethods<typeof catalogMethods>,
     ApiMethods<typeof chatMethods>,
@@ -585,6 +597,7 @@ export interface EngineClient
 Object.assign(
   EngineClient.prototype,
   agentMethods,
+  brandingMethods,
   appsMethods,
   catalogMethods,
   chatMethods,
