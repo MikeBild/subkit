@@ -1,7 +1,7 @@
 export type ReleaseNotes = { version: string; notes: string[] };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: string[] } = {
-  "source": "93bb8579ba3eb5da43151552b7e19e719cdbcade",
+  "source": "0ae7d1c0fdc7839e901441fc23341278c55de94d",
   "releases": [
     {
       "version": "v1.0.0",
@@ -1328,7 +1328,37 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     {
       "version": "v9.11.2",
       "notes": []
+    },
+    {
+      "version": "v9.14.0",
+      "notes": []
+    },
+    {
+      "version": "v9.14.1",
+      "notes": []
+    },
+    {
+      "version": "v9.15.0",
+      "notes": []
+    },
+    {
+      "version": "v9.15.1",
+      "notes": []
+    },
+    {
+      "version": "v9.15.2",
+      "notes": []
+    },
+    {
+      "version": "v10.0.0",
+      "notes": []
+    },
+    {
+      "version": "v10.0.1",
+      "notes": []
     }
   ],
-  "unpublished": []
+  "unpublished": [
+    "connect APIs with signed JWT keys and App Store Connect"
+  ]
 };
