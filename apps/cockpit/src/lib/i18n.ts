@@ -7,6 +7,39 @@ export const LOCALE_TAGS: Record<Locale, string> = {
 };
 
 const EN = {
+  "branding.title": "Tenant branding",
+  "branding.intro": "Customize your workspace name, logos and a reviewed palette.",
+  "branding.wordmark": "Wordmark",
+  "branding.name": "Organization name",
+  "branding.nameHint": "Up to 80 characters. Leave blank to use the workspace name.",
+  "branding.subtitle": "Subtitle (optional)",
+  "branding.subtitleHint": "Up to 160 characters, shared across all languages.",
+  "branding.lightLogo": "Light logo",
+  "branding.darkLogo": "Dark logo",
+  "branding.upload": "Upload PNG, WebP or JPEG",
+  "branding.imageHint":
+    "Up to 2 MiB and 4 megapixels. One logo is used for both themes until a second is added.",
+  "branding.removeLogo": "Remove logo",
+  "branding.palette": "Color palette",
+  "branding.standard": "Standard",
+  "branding.indigo": "Indigo",
+  "branding.teal": "Teal",
+  "branding.standardHint": "Familiar blue accents, reviewed in both themes.",
+  "branding.indigoHint": "Indigo wordmark with accessible light and dark contrasts.",
+  "branding.tealHint": "Calm teal accents; semantic status colors stay unchanged.",
+  "branding.preview": "Inline shell preview",
+  "branding.previewHint": "Only this local preview changes until you save.",
+  "branding.mobile": "Mobile sheet",
+  "branding.unsaved": "Unsaved branding changes",
+  "branding.reset": "Reset branding",
+  "branding.resetConsequence":
+    "Removes this workspace's brand texts, palettes and logos. SubKit defaults return for all members.",
+  "branding.saved": "Branding saved",
+  "branding.failed": "Branding could not be saved. Your draft is preserved.",
+  "branding.conflict": "Branding has changed. Reload the saved settings before editing again.",
+  "branding.imageError": "Use a still PNG, JPEG or WebP up to 2 MiB and 4 megapixels.",
+  "branding.readOnly": "You can view the branding. Only workspace administrators can change it.",
+  "branding.loadFailed": "Branding could not be loaded.",
   "workflowStrip.line.noRecentFailures": "no failures in 7 days",
   "catalog.conversations.ask": "Ask in chat",
   "catalog.conversations.empty": "No conversations yet.",
@@ -4805,6 +4838,43 @@ const EN = {
 export type TranslationKey = keyof typeof EN;
 
 const DE: Record<TranslationKey, string> = {
+  "branding.title": "Mandanten-Branding",
+  "branding.intro":
+    "Passe den Namen, Logos und eine geprüfte Farbpalette deines Arbeitsbereichs an.",
+  "branding.wordmark": "Wortmarke",
+  "branding.name": "Organisationsname",
+  "branding.nameHint": "Maximal 80 Zeichen. Leer lassen, um den Workspace-Namen zu verwenden.",
+  "branding.subtitle": "Untertitel (optional)",
+  "branding.subtitleHint": "Maximal 160 Zeichen, in allen Sprachen gleich.",
+  "branding.lightLogo": "Logo für Hellmodus",
+  "branding.darkLogo": "Logo für Dunkelmodus",
+  "branding.upload": "PNG, WebP oder JPEG hochladen",
+  "branding.imageHint":
+    "Maximal 2 MiB und 4 Megapixel. Ein einzelnes Logo wird für beide Themes verwendet.",
+  "branding.removeLogo": "Logo entfernen",
+  "branding.palette": "Farbpalette",
+  "branding.standard": "Standard",
+  "branding.indigo": "Indigo",
+  "branding.teal": "Teal",
+  "branding.standardHint": "Vertrauter blauer Akzent mit geprüftem Kontrast in beiden Themes.",
+  "branding.indigoHint": "Indigobasierte Wortmarke mit zugänglichen Hell-/Dunkel-Kontrasten.",
+  "branding.tealHint": "Ruhiger Teal-Akzent; semantische Statusfarben bleiben erhalten.",
+  "branding.preview": "Inline-Shell-Vorschau",
+  "branding.previewHint": "Bis zum Speichern ändert sich nur diese lokale Vorschau.",
+  "branding.mobile": "Mobile Navigation",
+  "branding.unsaved": "Ungespeicherte Branding-Änderungen",
+  "branding.reset": "Branding zurücksetzen",
+  "branding.resetConsequence":
+    "Entfernt Markentexte, Farbpalette und Logos dieses Arbeitsbereichs. Alle Mitglieder sehen wieder die SubKit-Standardeinstellungen.",
+  "branding.saved": "Branding gespeichert",
+  "branding.failed": "Branding konnte nicht gespeichert werden. Dein Entwurf bleibt erhalten.",
+  "branding.conflict":
+    "Das Branding wurde geändert. Lade die gespeicherten Einstellungen neu, bevor du weiter bearbeitest.",
+  "branding.imageError":
+    "Verwende ein nicht animiertes PNG, JPEG oder WebP mit maximal 2 MiB und 4 Megapixeln.",
+  "branding.readOnly":
+    "Du kannst das Branding ansehen. Änderungen sind Workspace-Administratoren vorbehalten.",
+  "branding.loadFailed": "Branding konnte nicht geladen werden.",
   "workflowStrip.line.noRecentFailures": "kein Fehler in 7 Tagen",
   "catalog.conversations.ask": "Im Chat fragen",
   "catalog.conversations.empty": "Noch keine Unterhaltungen.",

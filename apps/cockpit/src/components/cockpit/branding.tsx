@@ -1,0 +1,67 @@
+import { useEffect } from "react";
+import { useSession } from "@/app/session";
+import { brandingLogo } from "@/lib/branding";
+import { useI18n } from "@/lib/i18n-context";
+import { useTheme } from "@/lib/theme";
+import { cn } from "@/lib/utils";
+import { BrandingLogo } from "./branding-logo";
+
+export function BrandingAppearance() {
+  const session = useSession();
+  const value = session.branding;
+  useEffect(() => {
+    const root = document.documentElement;
+    const title = document.title;
+    if (value?.configured) {
+      root.dataset.brandPalette = value.palette ?? "standard";
+      document.title = value.display_name || session.tenant.display_name;
+    }
+    return () => {
+      delete root.dataset.brandPalette;
+      document.title = title;
+    };
+  }, [value, session.tenant.id, session.tenant.display_name]);
+  return null;
+}
+
+export function BrandingWordmark() {
+  const session = useSession();
+  const { t } = useI18n();
+  const { resolved } = useTheme();
+  const value = session.branding;
+  const src = brandingLogo(value, resolved);
+  return (
+    <>
+      <span
+        data-testid="cockpit-wordmark-icon"
+        className={cn(
+          "grid size-8 shrink-0 place-items-center overflow-hidden rounded-lg",
+          !src && "bg-primary text-primary-foreground",
+        )}
+      >
+        <BrandingLogo key={src} src={src} />
+      </span>
+      <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+        <span data-testid="cockpit-wordmark-name" className="truncate font-semibold">
+          {value?.configured ? value.display_name || session.tenant.display_name : t("app.name")}
+        </span>
+        <span className="truncate text-xs text-muted-foreground">
+          {value?.configured ? value.subtitle : session.tenant.display_name}
+        </span>
+      </span>
+    </>
+  );
+}
+
+export function BrandingAttribution() {
+  const session = useSession();
+  if (!session.branding?.configured) return null;
+  return (
+    <p
+      className="px-2 text-[11px] text-muted-foreground group-data-[collapsible=icon]:sr-only"
+      data-testid="branding-attribution"
+    >
+      powered by <span className="font-medium text-foreground">SubKit</span>
+    </p>
+  );
+}

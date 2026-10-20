@@ -11,6 +11,7 @@ import { I18nProvider } from "@/components/i18n-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { IdentityRecoveryPage } from "@/pages/identity-recovery";
 import "./index.css";
+import "./branding.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
