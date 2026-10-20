@@ -123,7 +123,8 @@ describe("github-graphql-basics — private project guidance", () => {
     expect(body).toContain("Do not request the write-capable `project` scope");
     expect(body).toContain("ProjectV2.items");
     expect(body).toContain("hasNextPage");
-    expect(body).toContain("Sensitive workflows currently reject pagination");
+    expect(body).toContain("graphql.cursor_pagination");
+    expect(body).toContain("fail without a partial snapshot");
   });
 });
 
