@@ -1,4 +1,4 @@
-import { Check, Upload } from "lucide-react";
+import { Check, Image as ImageIcon, Upload } from "lucide-react";
 import { useRef } from "react";
 import type { BrandingPalette, TenantBranding, TenantBrandingUpdate } from "@/api/tenant-branding";
 import { useSession } from "@/app/session";
@@ -243,10 +243,18 @@ function BrandingPreview({ draft, saved }: { draft: TenantBrandingUpdate; saved:
                     className={cn(
                       "grid shrink-0 place-items-center overflow-hidden rounded-md",
                       kind === "mobile" ? "size-7" : "size-8",
-                      !src && "bg-primary text-primary-foreground",
+                      !src && "border border-dashed",
+                      !src &&
+                        (theme === "light"
+                          ? "border-[#cbd5e1] bg-[#f8fafc]"
+                          : "border-[#475569] bg-[#1e293b]"),
                     )}
                   >
-                    <BrandingLogo key={src} src={src} />
+                    {src ? (
+                      <BrandingLogo key={src} src={src} />
+                    ) : (
+                      <ImageIcon className="size-4 text-muted-foreground" />
+                    )}
                   </span>
                   <span
                     className={cn(
