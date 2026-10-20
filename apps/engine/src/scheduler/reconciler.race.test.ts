@@ -63,6 +63,7 @@ async function insertSchedule(
       timezone: "UTC",
       paused: false,
       input: { from: "test" },
+      created_at: last_enqueued_at ?? new Date(FROZEN_NOW),
       last_enqueued_at,
     })
     .returning({ id: workflowsSchedules.id });
