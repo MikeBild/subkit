@@ -15,6 +15,7 @@ export const DB_TRANSIENT_RETRY_LABELS = new Set<string>([
   "endpoint_contract_scan",
   "skill_candidate_analyze",
   "files_cleanup",
+  "files_cleanup_unlinked",
   "mcp_oauth_cleanup",
   "chat_dedup_cleanup",
   "compute_desired",

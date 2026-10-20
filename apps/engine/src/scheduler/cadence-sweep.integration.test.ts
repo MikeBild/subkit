@@ -4,6 +4,8 @@ import type { PgBoss } from "pg-boss";
 import { auditLog, schedulerSweepCursors, tenants } from "../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../db/tests/setup.ts";
 import { tenantWorkBootId, tenantWorkSnapshot } from "../execution/tenant-work.ts";
+import { initializeModel } from "../llm/core/model-init.ts";
+import { getContext, withContext } from "../logging/context.ts";
 import { createBoss, disposeBoss } from "../queue/boss.ts";
 import { SKILL_CANDIDATE_ANALYZE_QUEUE } from "../queue/handlers/skill-candidate-analyze.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
@@ -108,6 +110,28 @@ test("all cadence families preserve their independent business-time stamps", asy
     expect(row.last_skill_candidate_analyze_at?.toISOString()).toBe(now.toISOString());
     expect(tenantWorkSnapshot(row.id).in_flight).toBe(0);
   }
+});
+
+test("scheduler work uses each tenant context without inheriting the boot tenant", async () => {
+  const ids = await seed(2);
+  const contexts: string[] = [];
+  await withContext({ tenant_id: uuid(), request_source: "cli", actor_id: "boot" }, () =>
+    runTenantCadenceSweep("drift", now, fixture.db, async (id) => {
+      const context = getContext();
+      expect(context).toMatchObject({
+        tenant_id: id,
+        request_source: "scheduler",
+        actor_id: "scheduler",
+      });
+      await expect(
+        initializeModel({ providerOverride: "mock", tenantId: id }),
+      ).resolves.toMatchObject({
+        provider: "mock",
+      });
+      contexts.push(context.tenant_id ?? "");
+    }),
+  );
+  expect(contexts).toEqual(ids);
 });
 
 test("an expired cursor never releases a pending producer or admits its old owner's next candidate", async () => {

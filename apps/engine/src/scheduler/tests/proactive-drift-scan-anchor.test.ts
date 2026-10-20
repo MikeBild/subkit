@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { AuditAction } from "../../audit/index.ts";
-import { auditLog, patchCandidates, schemaVersions } from "../../db/schema/index.ts";
+import {
+  auditLog,
+  patchCandidates,
+  schemaVersions,
+  selfHealingScans,
+} from "../../db/schema/index.ts";
 import { driftSignalContext } from "../../self-healing/proactive-scanner.ts";
 import {
   createSelfHealingCtx,
@@ -22,6 +27,61 @@ afterAll(async () => {
 }, 30_000);
 
 describe("proactive drift scan", () => {
+  test("a failed signal marks the scan and completion audit failed", async () => {
+    const isolated = await createSelfHealingCtx("drift_signal_failure");
+    try {
+      const now = getTestNow();
+      await isolated.testDb.db.insert(schemaVersions).values([
+        {
+          tenant_id: isolated.tenant_id,
+          connector_id: isolated.connector_id,
+          workflow_id: isolated.workflow_id,
+          step_id: SEED_STEP_ID,
+          endpoint_key: "GET /users/1",
+          schema: { type: "object", properties: { data: { type: "object" } } },
+          seen_at: new Date(now - 60_000),
+        },
+        {
+          tenant_id: isolated.tenant_id,
+          connector_id: isolated.connector_id,
+          workflow_id: isolated.workflow_id,
+          step_id: SEED_STEP_ID,
+          endpoint_key: "GET /users/1",
+          schema: { type: "object", properties: { data: { type: "string" } } },
+          seen_at: new Date(now),
+        },
+      ]);
+      await isolated.testDb.db.execute(
+        sql.raw(`CREATE FUNCTION refuse_patch_candidate() RETURNS trigger AS $$
+        BEGIN RAISE EXCEPTION 'candidate insertion refused for test'; END $$ LANGUAGE plpgsql`),
+      );
+      await isolated.testDb.db.execute(
+        sql.raw(`CREATE TRIGGER refuse_patch_candidate BEFORE INSERT ON patch_candidates
+          FOR EACH ROW EXECUTE FUNCTION refuse_patch_candidate()`),
+      );
+      await runProactiveDriftScanForTenant(isolated.tenant_id, new Date(now), isolated.testDb.db);
+      const [scan] = await isolated.testDb.db
+        .select()
+        .from(selfHealingScans)
+        .where(eq(selfHealingScans.tenant_id, isolated.tenant_id));
+      expect(scan?.signals_detected).toBeGreaterThan(0);
+      expect(scan?.status).toBe("failed");
+      expect(scan?.error).toContain("drift signal(s) failed");
+      const [completed] = await isolated.testDb.db
+        .select({ result: auditLog.result })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, isolated.tenant_id),
+            eq(auditLog.action, AuditAction.SELF_HEALING_SCAN_COMPLETED),
+          ),
+        );
+      expect(completed?.result).toBe("error");
+    } finally {
+      await isolated.cleanup();
+    }
+  });
+
   test("carries the definition anchor into the candidate it creates", async () => {
     const endpoint_key = "GET /users/1";
     const now = getTestNow();
