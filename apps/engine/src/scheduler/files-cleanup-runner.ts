@@ -24,6 +24,7 @@ import {
   workflows,
   workflowsSchedules,
 } from "../db/schema/index.ts";
+import { retryTransient } from "../db/transient.ts";
 import { hasNoRetainedFileReference } from "../files/reference-protection.ts";
 import { removeStoredFile } from "../files/remove-stored-file.ts";
 import { errorFields, logger } from "../logging/logger.ts";
@@ -289,7 +290,30 @@ async function sweepUnlinkedTtl(
   boss: PgBoss,
   pool: pg.Pool,
   budget: CleanupQueueBudget,
-): Promise<{ soft: number; hard: number }> {
+): Promise<{ soft: number; hard: number; incomplete: boolean }> {
+  return retryTransient(
+    async () => {
+      try {
+        return await sweepUnlinkedTtlPass(db, boss, pool, budget);
+      } catch (err) {
+        const positions = cleanupPositions.get(db);
+        if (positions) {
+          delete positions.soft;
+          delete positions.hard;
+        }
+        throw err;
+      }
+    },
+    { tries: 3, startMs: 50, maxMs: 200, label: "files_cleanup_unlinked" },
+  );
+}
+
+async function sweepUnlinkedTtlPass(
+  db: Db,
+  boss: PgBoss,
+  pool: pg.Pool,
+  budget: CleanupQueueBudget,
+): Promise<{ soft: number; hard: number; incomplete: boolean }> {
   const candidates = await cleanupCandidates(
     db,
     "soft",
@@ -305,7 +329,8 @@ async function sweepUnlinkedTtl(
     hardSelection,
     FILES_UNLINKED_CLEANUP_BATCH_SIZE,
   );
-  if (candidates.length === 0 && hardCandidates.length === 0) return { soft: 0, hard: 0 };
+  if (candidates.length === 0 && hardCandidates.length === 0)
+    return { soft: 0, hard: 0, incomplete: false };
   const scan = await loadInFlightFidStrings(db, boss, pool, budget);
   if (scan.pgboss_scan_failed) {
     logger.warn({
@@ -313,7 +338,7 @@ async function sweepUnlinkedTtl(
       action: "files_cleanup.unlinked_soft_delete_skipped",
       msg: "Queue scan incomplete; no unlinked files are removed this tick",
     });
-    return { soft: 0, hard: 0 };
+    return { soft: 0, hard: 0, incomplete: true };
   }
   const isReferenced = (candidate: { id: string; tenant_id: string }) =>
     scan.blockedTenants.has(candidate.tenant_id) ||
@@ -396,7 +421,7 @@ async function sweepUnlinkedTtl(
     }
   }
 
-  return { soft: softDeleted, hard: hardDeleted };
+  return { soft: softDeleted, hard: hardDeleted, incomplete: false };
 }
 
 async function refreshFilesGauges(db: Db): Promise<void> {
@@ -439,12 +464,14 @@ export async function runFilesCleanup(
   let stuck_scanning_flipped = 0;
   let unlinked_soft = 0;
   let unlinked_hard = 0;
+  let failed = false;
 
   try {
     const r = await sweepPendingOrphans(db);
     pending_deleted = r.pending;
     stuck_scanning_flipped = r.stuck_scanning;
   } catch (err) {
+    failed = true;
     logger.error({
       module: "scheduler",
       action: "files_cleanup.pending_failed",
@@ -458,7 +485,9 @@ export async function runFilesCleanup(
     const r = await sweepUnlinkedTtl(db, boss, pool, budget);
     unlinked_soft = r.soft;
     unlinked_hard = r.hard;
+    failed ||= r.incomplete;
   } catch (err) {
+    failed = true;
     logger.error({
       module: "scheduler",
       action: "files_cleanup.unlinked_failed",
@@ -481,15 +510,19 @@ export async function runFilesCleanup(
   }
 
   const duration_ms = Date.now() - started.getTime();
-  logger.info({
+  const summary = {
     module: "scheduler",
-    action: "files_cleanup.fired",
-    msg: "files cleanup cron pass completed",
+    action: failed ? "files_cleanup.failed" : "files_cleanup.fired",
+    msg: failed
+      ? "files cleanup cron pass finished with error"
+      : "files cleanup cron pass completed",
     tick_id: tickId,
     pending_deleted,
     stuck_scanning_flipped,
     unlinked_soft,
     unlinked_hard,
     duration_ms,
-  });
+  };
+  if (failed) logger.warn(summary);
+  else logger.info(summary);
 }

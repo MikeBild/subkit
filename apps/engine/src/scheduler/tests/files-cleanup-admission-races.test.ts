@@ -4,6 +4,8 @@ import pg from "pg";
 import { executions, files, workflows } from "../../db/schema/index.ts";
 import { createExecution } from "../../execution/state.ts";
 import { createHttpTestServer } from "../../http/tests/setup.ts";
+import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
+import { EXECUTION_RUN_QUEUE } from "../../queue/queues.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
@@ -145,6 +147,53 @@ test("admission and schedule producers use the cleanup catalog lock before writi
   } finally {
     await blocker.query("ROLLBACK");
     blocker.release();
+    await srv.cleanup();
+  }
+});
+
+test("unlinked cleanup retries a catalog conflict with a fresh reference scan", async () => {
+  const srv = await createHttpTestServer("cleanup-catalog-retry");
+  const boss = await createFilesCleanupBoss(srv.testDb.url);
+  const blocker = await srv.testDb.pool.connect();
+  try {
+    const id = uuid();
+    await srv.db.insert(files).values({
+      id,
+      tenant_id: srv.tenantId,
+      status: "ready",
+      filename: "retry.txt",
+      storage_uri: `local://${srv.tenantId}/${id}`,
+      size_bytes: 1,
+    });
+    await blocker.query("BEGIN");
+    await blocker.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,741937))", [
+      srv.tenantId,
+    ]);
+    const retries = () =>
+      getMetrics()
+        .snapshot()
+        .find((metric) => metric.name === METRIC_NAMES.DB_TRANSIENT_RETRIES_TOTAL)
+        ?.samples.find((sample) => sample.labels.label === "files_cleanup_unlinked")?.value ?? 0;
+    const before = retries();
+    const cleanup = runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
+    await waitFor(() => retries() > before, {
+      label: "cleanup retried catalog lock",
+      sleepMs: 1,
+      tries: 1000,
+    });
+    await boss.send(EXECUTION_RUN_QUEUE, { tenant_id: srv.tenantId, input: { $file: id } });
+    await blocker.query("ROLLBACK");
+    await cleanup;
+    const [protectedFile] = await srv.db.select().from(files).where(eq(files.id, id));
+    expect(protectedFile?.deleted_at).toBeNull();
+    await boss.deleteAllJobs(EXECUTION_RUN_QUEUE);
+    await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
+    const [unlinkedFile] = await srv.db.select().from(files).where(eq(files.id, id));
+    expect(unlinkedFile?.deleted_at).not.toBeNull();
+  } finally {
+    await blocker.query("ROLLBACK");
+    blocker.release();
+    await disposeBoss(boss);
     await srv.cleanup();
   }
 });

@@ -489,7 +489,7 @@
       "query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ issues(last:20,states:OPEN){ nodes { number title comments(last:5){ nodes { body } } labels(first:10){ nodes { name } } } } } } — 20 issues with comments and labels in one roundtrip"
     ],
     "best_practices": [
-      "Page large lists with pageInfo.endCursor + first:50 in ordinary workflows; sensitive workflows must report truncation when their supported bounded read cannot traverse every page",
+      "Page large lists with pageInfo.endCursor + first:50. For sensitive workflows, use a bounded read-only graphql.cursor_pagination collection within one request step; require pageInfo.hasNextPage, compare totalCount when available, and fail rather than report a partial snapshot when pages, items, memory, or rate limits stop the read",
       "Request only the fields you consume — every extra field increases the query cost",
       "Use named operations (query MyOp { ... }) so request_meta.operation_name is human-readable in traces"
     ],
