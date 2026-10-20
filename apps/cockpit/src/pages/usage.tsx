@@ -323,28 +323,39 @@ export function UsagePage() {
     ];
   }, [t, dateTime, percent, number]);
 
-  const header = (
-    <PageHeader
-      title={title}
-      secondary={
-        <SegmentedControl
-          label={t("resource.usage.windowPicker")}
-          testId="usage-window"
-          value={span}
-          onValueChange={chooseWindow}
-          options={STATS_WINDOWS.map((candidate) => ({
-            value: candidate,
-            label: t(WINDOW_OPTION[candidate]),
-            testId: `usage-window-${candidate}`,
-          }))}
-        />
-      }
-    />
+  const header = <PageHeader title={title} />;
+  const filters = (
+    <div
+      className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 border-b pb-3"
+      data-testid="usage-filters"
+    >
+      <span className="text-xs font-medium text-muted-foreground">
+        {t("resource.usage.windowPicker")}
+      </span>
+      <SegmentedControl
+        label={t("resource.usage.windowPicker")}
+        testId="usage-window"
+        value={span}
+        onValueChange={chooseWindow}
+        options={STATS_WINDOWS.map((candidate) => ({
+          value: candidate,
+          label: t(WINDOW_OPTION[candidate]),
+          testId: `usage-window-${candidate}`,
+        }))}
+      />
+    </div>
   );
 
   if (!allowed)
     return (
-      <Page kind="list" surface="collection" testId="resource-usage" scroll="page" header={header}>
+      <Page
+        kind="list"
+        surface="collection"
+        testId="resource-usage"
+        scroll="page"
+        header={header}
+        toolbar={filters}
+      >
         <ForbiddenState />
       </Page>
     );
@@ -389,8 +400,15 @@ export function UsagePage() {
   });
 
   return (
-    <Page kind="list" surface="collection" testId="resource-usage" scroll="page" header={header}>
-      <div className="flex min-w-0 flex-col gap-8">
+    <Page
+      kind="list"
+      surface="collection"
+      testId="resource-usage"
+      scroll="page"
+      header={header}
+      toolbar={filters}
+    >
+      <div className="flex min-w-0 flex-col gap-6">
         <SummaryLine
           testId="usage-cap-line"
           text={

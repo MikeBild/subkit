@@ -473,6 +473,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     user_id: id("user-0"),
     prefix: `demo${tenantId.replaceAll("-", "").slice(0, 12)}`,
     token_sha256: "0".repeat(64),
+    credential_origin: "cli_oauth_session",
     name: "Lokaler Demo-Zugang",
     scopes: ["*"],
   });
