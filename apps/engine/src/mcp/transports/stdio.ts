@@ -21,6 +21,7 @@ export function bindStdioPrincipalContext(
     withIsolatedContext(
       {
         trace_id: newTraceId(),
+        audit_trace_id: crypto.randomUUID().replace(/-/g, ""),
         tenant_id: principal.tenant_id,
         actor_id: principal.id,
         request_source: "cli",

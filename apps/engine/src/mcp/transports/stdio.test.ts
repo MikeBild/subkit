@@ -65,6 +65,9 @@ test("stdio handlers inherit verified API-key and OAuth provenance for each mess
     });
   }
   expect(observed[0]?.trace_id).not.toBe(observed[1]?.trace_id);
+  expect(observed[0]?.audit_trace_id).toMatch(/^[0-9a-f]{32}$/);
+  expect(observed[1]?.audit_trace_id).toMatch(/^[0-9a-f]{32}$/);
+  expect(observed[0]?.audit_trace_id).not.toBe(observed[1]?.audit_trace_id);
 });
 
 test("stdio token exchange retains the verified key and exchange provenance", () => {
