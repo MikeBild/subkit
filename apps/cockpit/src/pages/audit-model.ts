@@ -425,6 +425,11 @@ export function auditTraceFromUrl(search: string): string | null {
   return raw;
 }
 
+export function auditCorrelationFromUrl(search: string): string | null {
+  const raw = new URLSearchParams(search).get("correlation_id");
+  return raw && /^[0-9a-f]{32}$/.test(raw) ? raw : null;
+}
+
 export interface AuditLinkFilter {
   resourceType: string | null;
   resourceId: string | null;
@@ -715,7 +720,14 @@ export function auditObjectName(
 
 export function initialAuditFilter(search: string, now: number) {
   const filter = auditFilterFromUrl(search);
-  if (filter.tsFrom || filter.tsTo || filter.traceId || filter.resourceId) return filter;
+  if (
+    filter.tsFrom ||
+    filter.tsTo ||
+    filter.traceId ||
+    filter.resourceId ||
+    auditCorrelationFromUrl(search)
+  )
+    return filter;
   return { ...filter, tsFrom: new Date(now - 30 * 86_400_000).toISOString() };
 }
 
@@ -735,7 +747,8 @@ export function auditCountKey(
     filter.tsTo === null &&
     !hasExplicitAuditWindow(search) &&
     filter.traceId === null &&
-    filter.resourceId === null;
+    filter.resourceId === null &&
+    auditCorrelationFromUrl(search) === null;
   if (defaultWindow)
     return hasNextPage
       ? "audit.countWindowMore"

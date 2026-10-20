@@ -1008,6 +1008,12 @@ test("audit defaults to thirty days but keeps linked operation history unrestric
   const now = Date.parse("2026-01-31T00:00:00Z");
   expect(initialAuditFilter("", now).tsFrom).toBe("2026-01-01T00:00:00.000Z");
   expect(initialAuditFilter("?trace_id=operation", now).tsFrom).toBeNull();
+  expect(
+    initialAuditFilter("?correlation_id=0123456789abcdef0123456789abcdef", now).tsFrom,
+  ).toBeNull();
+  expect(initialAuditFilter("?correlation_id=invalid", now).tsFrom).toBe(
+    "2026-01-01T00:00:00.000Z",
+  );
   expect(initialAuditFilter("?ts_from=2025-01-01T00:00:00Z", now).tsFrom).toBe(
     "2025-01-01T00:00:00.000Z",
   );
@@ -1022,4 +1028,7 @@ test("audit count names the implicit thirty-day window and preserves linked-rang
   const linked = initialAuditFilter("?ts_from=2025-01-01T00:00:00Z", 1_760_000_000_000);
   expect(auditCountKey("?ts_from=2025-01-01T00:00:00Z", linked, 2, false)).toBe("audit.count");
   expect(auditCountKey("", { ...implicit, tsFrom: null }, 2, false)).toBe("audit.count");
+  expect(
+    auditCountKey("?correlation_id=0123456789abcdef0123456789abcdef", implicit, 2, false),
+  ).toBe("audit.count");
 });
