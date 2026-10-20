@@ -6,6 +6,7 @@ import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { getIntakeItem } from "../../knowledge/intake.ts";
+import { detectConfiguredProvider } from "../../llm/core/model-init.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { log } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
@@ -227,7 +228,7 @@ export async function createConversation(
     );
   }
 
-  if (p.initial_message) {
+  if (p.initial_message && detectConfiguredProvider({ tenantId: p.tenant_id }) === "mock") {
     const msg = p.initial_message;
     if (/open.?meteo|berlin.*weather|tomorrow.*forecast/i.test(msg)) {
       const { cannedOpenMeteoBerlinPlan } = await import("../../llm/mock-provider.ts");
