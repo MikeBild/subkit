@@ -3,6 +3,7 @@
 set -e
 
 bun run check:bun-version
+bun run check:github-sources
 
 echo "[pre-push] lint + typecheck + determinism + invariants + drift + commit messages + secrets + build"
 
