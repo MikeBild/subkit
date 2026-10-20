@@ -219,34 +219,70 @@ export async function searchAuditResources(
   const escaped = search.replace(/[\\%_]/g, "\\$&");
   const pattern = `%${escaped}%`;
   const result = await db.execute(sql`
-    SELECT a.resource_type, a.resource_id, n.resource_name, max(a.ts) AS last_seen_at
-    FROM audit_log a
-    CROSS JOIN LATERAL (VALUES
-      (CASE a.resource_type
-        WHEN 'workflow' THEN a.after->>'name'
-        WHEN 'connector' THEN coalesce(a.after->>'display_name', a.after->>'name')
-        WHEN 'knowledge_source' THEN a.after->>'name'
-        WHEN 'skill' THEN coalesce(a.after->>'title', a.after->>'name')
-        WHEN 'file' THEN a.after->>'filename'
-        WHEN 'conversation' THEN a.after->>'title'
-      END),
-      (CASE a.resource_type
-        WHEN 'workflow' THEN a.before->>'name'
-        WHEN 'connector' THEN coalesce(a.before->>'display_name', a.before->>'name')
-        WHEN 'knowledge_source' THEN a.before->>'name'
-        WHEN 'skill' THEN coalesce(a.before->>'title', a.before->>'name')
-        WHEN 'file' THEN a.before->>'filename'
-        WHEN 'conversation' THEN a.before->>'title'
-      END)
-    ) AS n(resource_name)
-    WHERE a.tenant_id = ${tenant_id}::uuid
-      AND a.resource_id IS NOT NULL
-      AND a.resource_type IN ('workflow', 'connector', 'knowledge_source', 'skill', 'file', 'conversation')
-      AND (${resource_type ?? null}::text IS NULL OR a.resource_type = ${resource_type ?? null})
-      AND (n.resource_name ILIKE ${pattern} OR a.resource_id ILIKE ${pattern})
-    GROUP BY a.resource_type, a.resource_id, n.resource_name
-    ORDER BY max(a.ts) DESC, a.resource_type, a.resource_id, n.resource_name
-    LIMIT ${Math.max(1, Math.min(limit, 30))}
+    WITH matches AS (
+      SELECT a.resource_type, a.resource_id, max(a.ts) AS last_seen_at
+      FROM audit_log a
+      WHERE a.tenant_id = ${tenant_id}::uuid
+        AND a.resource_id IS NOT NULL
+        AND a.resource_type IN ('workflow', 'connector', 'knowledge_source', 'skill', 'file', 'conversation')
+        AND (${resource_type ?? null}::text IS NULL OR a.resource_type = ${resource_type ?? null})
+        AND (a.resource_id ILIKE ${pattern} OR EXISTS (
+          SELECT 1 FROM (VALUES
+            (CASE a.resource_type
+              WHEN 'workflow' THEN a.after->>'name'
+              WHEN 'connector' THEN coalesce(a.after->>'display_name', a.after->>'name')
+              WHEN 'knowledge_source' THEN a.after->>'name'
+              WHEN 'skill' THEN coalesce(a.after->>'title', a.after->>'name')
+              WHEN 'file' THEN a.after->>'filename'
+              WHEN 'conversation' THEN a.after->>'title'
+            END),
+            (CASE a.resource_type
+              WHEN 'workflow' THEN a.before->>'name'
+              WHEN 'connector' THEN coalesce(a.before->>'display_name', a.before->>'name')
+              WHEN 'knowledge_source' THEN a.before->>'name'
+              WHEN 'skill' THEN coalesce(a.before->>'title', a.before->>'name')
+              WHEN 'file' THEN a.before->>'filename'
+              WHEN 'conversation' THEN a.before->>'title'
+            END)
+          ) AS historical(resource_name)
+          WHERE historical.resource_name ILIKE ${pattern}
+        ))
+      GROUP BY a.resource_type, a.resource_id
+      ORDER BY max(a.ts) DESC, a.resource_type, a.resource_id
+      LIMIT ${Math.max(1, Math.min(limit, 30))}
+    )
+    SELECT matches.resource_type, matches.resource_id, latest.resource_name, matches.last_seen_at
+    FROM matches
+    LEFT JOIN LATERAL (
+      SELECT candidate.resource_name
+      FROM (
+        SELECT coalesce(
+          nullif(btrim(CASE a.resource_type
+          WHEN 'workflow' THEN a.after->>'name'
+          WHEN 'connector' THEN coalesce(a.after->>'display_name', a.after->>'name')
+          WHEN 'knowledge_source' THEN a.after->>'name'
+          WHEN 'skill' THEN coalesce(a.after->>'title', a.after->>'name')
+          WHEN 'file' THEN a.after->>'filename'
+          WHEN 'conversation' THEN a.after->>'title'
+          END), ''),
+          nullif(btrim(CASE a.resource_type
+          WHEN 'workflow' THEN a.before->>'name'
+          WHEN 'connector' THEN coalesce(a.before->>'display_name', a.before->>'name')
+          WHEN 'knowledge_source' THEN a.before->>'name'
+          WHEN 'skill' THEN coalesce(a.before->>'title', a.before->>'name')
+          WHEN 'file' THEN a.before->>'filename'
+          WHEN 'conversation' THEN a.before->>'title'
+          END), '')
+        ) AS resource_name, a.ts, a.id
+        FROM audit_log a
+        WHERE a.tenant_id = ${tenant_id}::uuid
+          AND a.resource_type = matches.resource_type
+          AND a.resource_id = matches.resource_id
+      ) candidate
+      ORDER BY candidate.resource_name IS NOT NULL DESC, candidate.ts DESC, candidate.id DESC
+      LIMIT 1
+    ) latest ON true
+    ORDER BY matches.last_seen_at DESC, matches.resource_type, matches.resource_id
   `);
   return result.rows.map((raw) => {
     const row = raw as {

@@ -49,8 +49,9 @@ import {
   localDateTimeInput,
   localTimeZone,
   type TimelineEntry,
+  utcChoiceForInstant,
   utcChoicesForLocalInput,
-  utcFromLocalInput,
+  utcFromLocalInputPreservingInstant,
 } from "./audit-timeline-model";
 
 type Source =
@@ -138,6 +139,8 @@ interface FilterState {
   to: string;
   fromChoice: string;
   toChoice: string;
+  fromInstant: string;
+  toInstant: string;
 }
 function fromUrl(): FilterState {
   const search = typeof window === "undefined" ? "" : window.location.search;
@@ -145,6 +148,7 @@ function fromUrl(): FilterState {
   const params = new URLSearchParams(search);
   const accessType = params.get("access_type") ?? "";
   const oauthClientId = params.get("oauth_client_id") ?? "";
+  const zone = localTimeZone();
   return {
     scope: linked.scope ?? "all",
     resourceType: linked.resourceType ?? "",
@@ -165,10 +169,12 @@ function fromUrl(): FilterState {
     action: linked.actions.join(","),
     traceId: linked.traceId ?? "",
     correlationId: params.get("correlation_id") ?? "",
-    from: localDateTimeInput(linked.tsFrom),
-    to: localDateTimeInput(linked.tsTo),
-    fromChoice: "",
-    toChoice: "",
+    from: localDateTimeInput(linked.tsFrom, zone),
+    to: localDateTimeInput(linked.tsTo, zone),
+    fromChoice: utcChoiceForInstant(linked.tsFrom, zone),
+    toChoice: utcChoiceForInstant(linked.tsTo, zone),
+    fromInstant: linked.tsFrom ?? "",
+    toInstant: linked.tsTo ?? "",
   };
 }
 const EMPTY: FilterState = {
@@ -195,6 +201,8 @@ const EMPTY: FilterState = {
   to: "",
   fromChoice: "",
   toChoice: "",
+  fromInstant: "",
+  toInstant: "",
 };
 function sourceLabel(
   source: string | null | undefined,
@@ -277,8 +285,10 @@ function FilterForm({
     setDraft((current) => ({
       ...current,
       [key]: value,
-      ...(key === "from" ? { fromChoice: "" } : {}),
-      ...(key === "to" ? { toChoice: "" } : {}),
+      ...(key === "from" ? { fromChoice: "", fromInstant: "" } : {}),
+      ...(key === "to" ? { toChoice: "", toInstant: "" } : {}),
+      ...(key === "fromChoice" ? { fromInstant: "" } : {}),
+      ...(key === "toChoice" ? { toInstant: "" } : {}),
     }));
   const fromChoices = draft.from ? utcChoicesForLocalInput(draft.from, zone) : [];
   const toChoices = draft.to ? utcChoicesForLocalInput(draft.to, zone) : [];
@@ -1054,8 +1064,26 @@ export function AuditTimelinePage() {
       ...(filter.action ? { action: filter.action } : {}),
       ...(filter.traceId ? { trace_id: filter.traceId } : {}),
       ...(filter.correlationId ? { correlation_id: filter.correlationId } : {}),
-      ...(filter.from ? { ts_from: utcFromLocalInput(filter.from, zone, filter.fromChoice) } : {}),
-      ...(filter.to ? { ts_to: utcFromLocalInput(filter.to, zone, filter.toChoice) } : {}),
+      ...(filter.from
+        ? {
+            ts_from: utcFromLocalInputPreservingInstant(
+              filter.from,
+              zone,
+              filter.fromChoice,
+              filter.fromInstant,
+            ),
+          }
+        : {}),
+      ...(filter.to
+        ? {
+            ts_to: utcFromLocalInputPreservingInstant(
+              filter.to,
+              zone,
+              filter.toChoice,
+              filter.toInstant,
+            ),
+          }
+        : {}),
     }),
     [filter, zone],
   );
@@ -1100,7 +1128,15 @@ export function AuditTimelinePage() {
     filter.scope !== "all" ||
     Object.entries(filter).some(
       ([key, value]) =>
-        !["scope", "from", "fromChoice", "resourceQuery"].includes(key) && Boolean(value),
+        ![
+          "scope",
+          "from",
+          "fromChoice",
+          "toChoice",
+          "fromInstant",
+          "toInstant",
+          "resourceQuery",
+        ].includes(key) && Boolean(value),
     ) ||
     (Boolean(filter.from) && new URLSearchParams(window.location.search).has("ts_from"));
   const openEntry = useCallback((id: string | null) => {
@@ -1141,8 +1177,13 @@ export function AuditTimelinePage() {
       setFilterError(t("audit.timeline.invalidOAuthClient"));
       return;
     }
-    const from = draft.from ? utcFromLocalInput(draft.from, zone, draft.fromChoice) : null;
-    const to = draft.to ? utcFromLocalInput(draft.to, zone, draft.toChoice) : null;
+    const from = utcFromLocalInputPreservingInstant(
+      draft.from,
+      zone,
+      draft.fromChoice,
+      draft.fromInstant,
+    );
+    const to = utcFromLocalInputPreservingInstant(draft.to, zone, draft.toChoice, draft.toInstant);
     if ((draft.from && !from) || (draft.to && !to)) {
       setFilterError(t("audit.timeline.invalidTime"));
       return;
@@ -1152,7 +1193,12 @@ export function AuditTimelinePage() {
       return;
     }
     setFilterError(null);
-    setFilter({ ...draft, resourceId: selectedResourceId });
+    setFilter({
+      ...draft,
+      resourceId: selectedResourceId,
+      fromInstant: from ?? "",
+      toInstant: to ?? "",
+    });
     openEntry(null);
     setManualClose(false);
     setFilterOpen(false);

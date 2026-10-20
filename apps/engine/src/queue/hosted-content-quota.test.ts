@@ -130,6 +130,8 @@ test("accepted execution and conversation tasks terminate safely when shared con
     .set({ current_version_id: version.id })
     .where(and(eq(workflows.tenant_id, tenantId), eq(workflows.id, workflow.id)));
   const canary = "private-content-quota-worker-canary";
+  const executionCorrelation = "a".repeat(32);
+  const conversationCorrelation = "b".repeat(32);
   const [execution] = await db
     .insert(executions)
     .values({
@@ -139,6 +141,8 @@ test("accepted execution and conversation tasks terminate safely when shared con
       status: "queued",
       hold_writes: true,
       request_source: "api",
+      origin_source: "ui",
+      audit_trace_id: executionCorrelation,
       execution_mode: "dev",
       input: { private: canary },
       caller_context: callerFromPrincipal(principal, tenantId),
@@ -174,6 +178,8 @@ test("accepted execution and conversation tasks terminate safely when shared con
       actor_id: principal.id,
       actor_kind: "user",
       request_source: "mcp",
+      origin_source: "mcp",
+      audit_trace_id: conversationCorrelation,
     })
     .returning();
   if (!task) throw new Error("accepted task missing");
@@ -227,7 +233,21 @@ test("accepted execution and conversation tasks terminate safely when shared con
         sleepMs: 50,
         label: "full content quota produces durable terminal task outcomes",
       },
-    );
+    ).catch(async (error: unknown) => {
+      const [executed] = await db
+        .select({ status: executions.status, failure: executions.failure })
+        .from(executions)
+        .where(and(eq(executions.tenant_id, tenantId), eq(executions.id, execution.id)));
+      const [chatted] = await db
+        .select({
+          failure_reason: mcpTasks.failure_reason,
+          result: mcpTasks.result,
+          job_id: mcpTasks.job_id,
+        })
+        .from(mcpTasks)
+        .where(and(eq(mcpTasks.tenant_id, tenantId), eq(mcpTasks.id, task.id)));
+      throw new Error(JSON.stringify({ executed, chatted }), { cause: error });
+    });
     await waitFor(
       async () => {
         const jobs = [
@@ -294,11 +314,23 @@ test("accepted execution and conversation tasks terminate safely when shared con
       );
     expect(receipts).toHaveLength(2);
     expect(JSON.stringify(receipts)).not.toContain(canary);
+    const executionReceipt = receipts.find((row) => row.resource_id === execution.id);
+    const conversationReceipt = receipts.find((row) => row.resource_id === task.id);
+    expect(executionReceipt?.metadata).toMatchObject({
+      origin_source: "ui",
+      execution_source: "queue",
+      audit_trace_id: executionCorrelation,
+    });
+    expect(conversationReceipt?.metadata).toMatchObject({
+      origin_source: "mcp",
+      execution_source: "queue",
+      audit_trace_id: conversationCorrelation,
+    });
   } finally {
     await boss.offWork(EXECUTION_RUN_QUEUE);
     await boss.offWork(CONVERSATION_RUN_TURN_QUEUE);
   }
-});
+}, 30_000);
 
 test("self-hosted typed quota errors use ordinary worker failure settlement", async () => {
   const db = connection.db;

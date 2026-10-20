@@ -20,7 +20,7 @@ import {
 } from "../../execution/index.ts";
 import { finalizeExecution, GOVERNANCE_REFUSALS } from "../../execution/state.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
-import { withContext } from "../../logging/context.ts";
+import { getContext, type LogContext, withContext } from "../../logging/context.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { RequestSourceSchema } from "../../observability/service-metadata.ts";
 import { can } from "../../rbac/evaluator.ts";
@@ -361,6 +361,7 @@ export async function registerExecutionRunHandler(
     },
     async (jobs: Job<ExecutionRunJob>[]) => {
       for (const job of jobs) {
+        let settlementContext: LogContext | undefined;
         try {
           await withActiveTenantJobContext(job.data, db, async () => {
             const [boundary] = job.data.execution_id
@@ -384,8 +385,9 @@ export async function registerExecutionRunHandler(
                 audit_origin_source: originSource.success ? originSource.data : undefined,
                 audit_trace_id: boundary?.audit_trace_id ?? undefined,
               },
-              () =>
-                withHostedWork(
+              () => {
+                settlementContext = { ...getContext() };
+                return withHostedWork(
                   db,
                   job.data.tenant_id,
                   "execution",
@@ -394,37 +396,42 @@ export async function registerExecutionRunHandler(
                     queue: EXECUTION_RUN_QUEUE,
                     id: job.id,
                   },
-                ),
+                );
+              },
             );
           });
         } catch (error) {
           const quotaCode = hostedContentQuotaCode(error);
           if (quotaCode && job.data.execution_id) {
-            const finalized = await finalizeHostedContentQuota(db, {
-              tenantId: job.data.tenant_id,
-              resourceType: "execution",
-              resourceId: job.data.execution_id,
-              code: quotaCode,
-            });
+            const finalized = await withContext(settlementContext ?? {}, () =>
+              finalizeHostedContentQuota(db, {
+                tenantId: job.data.tenant_id,
+                resourceType: "execution",
+                resourceId: job.data.execution_id ?? "",
+                code: quotaCode,
+              }),
+            );
             if (finalized !== "unmatched") continue;
           }
           if (error instanceof HostedWorkQuotaError && job.data.execution_id) {
-            await ifHostedJobStillPending(
-              db,
-              job.data.tenant_id,
-              EXECUTION_RUN_QUEUE,
-              job.id,
-              async () => {
-                await finalizeExecution(
-                  db,
-                  job.data.tenant_id,
-                  job.data.execution_id ?? "",
-                  "failed",
-                  null,
-                  { step_id: null, error_code: error.code, error_message: error.message },
-                  ["queued"],
-                );
-              },
+            await withContext(settlementContext ?? {}, () =>
+              ifHostedJobStillPending(
+                db,
+                job.data.tenant_id,
+                EXECUTION_RUN_QUEUE,
+                job.id,
+                async () => {
+                  await finalizeExecution(
+                    db,
+                    job.data.tenant_id,
+                    job.data.execution_id ?? "",
+                    "failed",
+                    null,
+                    { step_id: null, error_code: error.code, error_message: error.message },
+                    ["queued"],
+                  );
+                },
+              ),
             );
           }
           throw error;

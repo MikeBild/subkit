@@ -49,12 +49,24 @@ export function localTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
-export function localDateTimeInput(instant: string | null): string {
+export function localDateTimeInput(instant: string | null, zone = localTimeZone()): string {
   if (!instant) return "";
   const date = new Date(instant);
   if (Number.isNaN(date.getTime())) return "";
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const fields = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  );
+  return `${fields.year}-${fields.month}-${fields.day}T${fields.hour}:${fields.minute}`;
 }
 
 export interface UtcChoice {
@@ -108,6 +120,34 @@ export function utcFromLocalInput(
   const choices = utcChoicesForLocalInput(value, zone);
   if (selected) return choices.some((choice) => choice.instant === selected) ? selected : null;
   return choices.length === 1 ? choices[0]!.instant : null;
+}
+
+export function utcChoiceForInstant(instant: string | null, zone = localTimeZone()): string {
+  if (!instant) return "";
+  const local = localDateTimeInput(instant, zone);
+  return (
+    utcChoicesForLocalInput(local, zone).find(
+      (choice) =>
+        Math.floor(Date.parse(choice.instant) / 60_000) ===
+        Math.floor(Date.parse(instant) / 60_000),
+    )?.instant ?? ""
+  );
+}
+
+export function utcFromLocalInputPreservingInstant(
+  value: string,
+  zone: string,
+  selected: string,
+  original: string,
+): string | null {
+  if (!value) return null;
+  if (
+    original &&
+    localDateTimeInput(original, zone) === value &&
+    utcChoiceForInstant(original, zone) === selected
+  )
+    return original;
+  return utcFromLocalInput(value, zone, selected);
 }
 
 export function auditGroupKey(entry: TimelineEntry, group: AuditGroup, zone: string): string {

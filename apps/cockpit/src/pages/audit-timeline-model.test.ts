@@ -5,8 +5,10 @@ import {
   groupLoadedAudit,
   localDateTimeInput,
   type TimelineEntry,
+  utcChoiceForInstant,
   utcChoicesForLocalInput,
   utcFromLocalInput,
+  utcFromLocalInputPreservingInstant,
 } from "./audit-timeline-model";
 
 function entry(id: string, ts: string, overrides: Partial<TimelineEntry> = {}): TimelineEntry {
@@ -161,6 +163,38 @@ describe("Audit time boundary", () => {
   });
 
   test("displays a known instant as a local input without seconds", () => {
-    expect(localDateTimeInput("2026-10-19T06:00:00.000Z")).toMatch(/^2026-10-19T\d{2}:00$/);
+    expect(localDateTimeInput("2026-10-19T06:00:42.321Z", "Europe/Berlin")).toBe(
+      "2026-10-19T08:00",
+    );
+  });
+
+  test("retains the linked exact instant until the visible minute changes", () => {
+    const original = "2026-10-19T06:00:42.321Z";
+    const choice = utcChoiceForInstant(original, "Europe/Berlin");
+    expect(choice).toBe("2026-10-19T06:00:00.000Z");
+    expect(
+      utcFromLocalInputPreservingInstant("2026-10-19T08:00", "Europe/Berlin", choice, original),
+    ).toBe(original);
+    expect(
+      utcFromLocalInputPreservingInstant("2026-10-19T08:01", "Europe/Berlin", "", original),
+    ).toBe("2026-10-19T06:01:00.000Z");
+  });
+
+  test("retains the exact linked instant and offset across the autumn overlap", () => {
+    const original = "2026-10-25T01:30:42.321Z";
+    const choice = utcChoiceForInstant(original, "Europe/Berlin");
+    expect(localDateTimeInput(original, "Europe/Berlin")).toBe("2026-10-25T02:30");
+    expect(choice).toBe("2026-10-25T01:30:00.000Z");
+    expect(
+      utcFromLocalInputPreservingInstant("2026-10-25T02:30", "Europe/Berlin", choice, original),
+    ).toBe(original);
+    expect(
+      utcFromLocalInputPreservingInstant(
+        "2026-10-25T02:30",
+        "Europe/Berlin",
+        "2026-10-25T00:30:00.000Z",
+        "",
+      ),
+    ).toBe("2026-10-25T00:30:00.000Z");
   });
 });

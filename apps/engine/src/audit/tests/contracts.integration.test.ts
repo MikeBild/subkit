@@ -126,10 +126,10 @@ describe("tenant scoping on reads", () => {
     expect(collected.length).toBeGreaterThan(0);
   });
 
-  test("resource search retains historical names and distinct IDs within the tenant", async () => {
+  test("resource search returns one current label per resource and keeps limit fair", async () => {
     const firstId = uuid();
     const secondId = uuid();
-    await auditAwait(
+    const renamed = await auditAwait(
       {
         tenant_id: tenantA,
         action: "knowledge_source.updated",
@@ -137,6 +137,16 @@ describe("tenant scoping on reads", () => {
         resource_id: firstId,
         before: { name: "Vertragsarchiv" },
         after: { name: "Archiv 2026" },
+      },
+      testDb.db,
+    );
+    await auditAwait(
+      {
+        tenant_id: tenantA,
+        ts: new Date(renamed.ts.getTime() + 1000),
+        action: "catalog_metadata.generated",
+        resource_type: "knowledge_source",
+        resource_id: firstId,
       },
       testDb.db,
     );
@@ -160,9 +170,17 @@ describe("tenant scoping on reads", () => {
       },
       testDb.db,
     );
-    const matches = await searchAuditResources(testDb.db, tenantA, "Vertragsarchiv");
+    const matches = await searchAuditResources(testDb.db, tenantA, "Vertragsarchiv", undefined, 2);
     expect(matches.map((match) => match.resource_id).sort()).toEqual([firstId, secondId].sort());
-    expect(matches.every((match) => match.resource_name === "Vertragsarchiv")).toBe(true);
+    expect(matches.find((match) => match.resource_id === firstId)?.resource_name).toBe(
+      "Archiv 2026",
+    );
+    expect(matches.find((match) => match.resource_id === secondId)?.resource_name).toBe(
+      "Vertragsarchiv",
+    );
+    const byId = await searchAuditResources(testDb.db, tenantA, firstId);
+    expect(byId).toHaveLength(1);
+    expect(byId[0]?.resource_name).toBe("Archiv 2026");
   });
 });
 
