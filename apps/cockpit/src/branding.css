@@ -76,6 +76,6 @@
 
 [data-branding-editor] [data-slot="save-bar"] button {
   height: 36px;
-  border-radius: 8px;
+  border-radius: 12px;
   padding-inline: 14px;
 }
