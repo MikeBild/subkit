@@ -82,7 +82,7 @@ function browserStateError(
   );
 }
 
-function oidcProvider(config: OidcConfig, db: Db) {
+function oidcProvider(config: OidcConfig, db: Db, installationId?: string) {
   return createOidcProvider({
     db,
     providerId: config.id,
@@ -93,6 +93,7 @@ function oidcProvider(config: OidcConfig, db: Db) {
     tenantSlug: config.tenant_slug,
     ...(config.product_id ? { productId: config.product_id } : {}),
     ...(config.link_by_email !== undefined ? { linkByEmail: config.link_by_email } : {}),
+    ...(installationId ? { installationId } : {}),
   });
 }
 
@@ -100,10 +101,14 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
   app.get("/v1/identity/login/start", async (c) => {
     const selectedId = c.req.query("provider");
     const existingState = c.req.query("login_state");
+    const existingLoginState = await verifyLoginState(existingState ?? "");
+    const installationId =
+      typeof existingLoginState?.installation_id === "string"
+        ? existingLoginState.installation_id
+        : undefined;
 
     if (!selectedId) {
-      const verified = await verifyLoginState(existingState ?? "");
-      const carried = safeRedirect(String(verified?.redirect_to ?? ""));
+      const carried = safeRedirect(String(existingLoginState?.redirect_to ?? ""));
       const state = carried
         ? (existingState ?? "")
         : await signLoginState({ redirect_to: DEFAULT_LOGIN_REDIRECT });
@@ -128,7 +133,7 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     const state = existingState ?? "";
-    const loginState = await verifyLoginState(state);
+    const loginState = existingLoginState;
     if (!loginState) return c.redirect("/v1/identity/login/start", 302);
     const selected = providers().find((provider) => provider.id === selectedId);
     if (!selected) {
@@ -141,6 +146,7 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     if (selected.protocol === "api_key") {
+      if (installationId) return browserStateError(c, 400, "installation_login_requires_oidc");
       return authHtmlResponse(
         renderApiKeyLogin(
           "/v1/identity/login/start",
@@ -156,7 +162,7 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!redirectTo) return browserStateError(c, 400, "invalid_state");
     const target = new URL(c.req.url);
     target.searchParams.set("redirect_to", redirectTo);
-    const handler = oidcProvider(selected, c.get("db"));
+    const handler = oidcProvider(selected, c.get("db"), installationId);
     return handler.startLogin?.(new Request(target)) ?? c.json({ code: "not_supported" }, 500);
   });
 

@@ -1,12 +1,20 @@
 import { randomBytes } from "node:crypto";
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, isNull, lt } from "drizzle-orm";
 import * as oauth from "openid-client";
 import { ZodError } from "zod";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import { type Db, getDb } from "../../db/client.ts";
-import { oidcLoginStates, roles, sessions, tenants, users } from "../../db/schema/index.ts";
+import { cockpitInstallations } from "../../db/schema/cockpit-installations.ts";
+import {
+  oidcLoginStates,
+  roles,
+  sessions,
+  tenants,
+  userIdentities,
+  users,
+} from "../../db/schema/index.ts";
 import {
   authHtmlResponse,
   renderErrorPage,
@@ -66,6 +74,7 @@ export interface OidcProviderOptions {
   enableSignup?: boolean;
   signupPolicy?: "existing_tenant" | "invite_only" | "self_service";
   membershipInviteId?: string;
+  installationId?: string;
 }
 
 async function loadConfig(
@@ -257,7 +266,36 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       const redirectTo = url.searchParams.get("redirect_to");
       const exec = getExec();
 
-      const tenantId = hostedSignup ? null : await resolveTenantId(exec, tenantSlug);
+      let installation: { id: string; tenant_id: string; owner_user_id: string } | null = null;
+      if (opts.installationId) {
+        const rows = await exec
+          .select({
+            id: cockpitInstallations.id,
+            tenant_id: cockpitInstallations.tenant_id,
+            owner_user_id: cockpitInstallations.owner_user_id,
+          })
+          .from(cockpitInstallations)
+          .where(
+            and(
+              eq(cockpitInstallations.id, opts.installationId),
+              isNull(cockpitInstallations.revoked_at),
+            ),
+          )
+          .limit(1);
+        installation = rows[0] ?? null;
+        if (!installation) {
+          return browserError(
+            req,
+            404,
+            "installation_not_found",
+            "Cockpit installation not found",
+            "account_not_assigned",
+            LOGIN_START_PATH,
+          );
+        }
+      }
+      const tenantId =
+        installation?.tenant_id ?? (hostedSignup ? null : await resolveTenantId(exec, tenantSlug));
       if (!tenantId && !hostedSignup) {
         return browserError(
           req,
@@ -297,6 +335,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       await exec.insert(oidcLoginStates).values({
         tenant_id: tenantId,
         membership_invite_id: opts.membershipInviteId ?? null,
+        installation_id: installation?.id ?? null,
         state,
         code_verifier,
         nonce,
@@ -514,6 +553,94 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       const rawEmail = (claims as { email?: unknown } | undefined)?.email;
       const emailVerified =
         (claims as { email_verified?: unknown } | undefined)?.email_verified === true;
+      if (pending.installation_id) {
+        const [installation] = await exec
+          .select({
+            id: cockpitInstallations.id,
+            tenant_id: cockpitInstallations.tenant_id,
+            owner_user_id: cockpitInstallations.owner_user_id,
+            revoked_at: cockpitInstallations.revoked_at,
+          })
+          .from(cockpitInstallations)
+          .where(eq(cockpitInstallations.id, pending.installation_id))
+          .limit(1);
+        if (
+          !installation ||
+          installation.revoked_at ||
+          pending.tenant_id !== installation.tenant_id
+        ) {
+          return browserError(
+            req,
+            403,
+            "installation_unavailable",
+            "Cockpit installation is unavailable",
+            "account_not_assigned",
+            retryHref,
+          );
+        }
+        const [identity] = await exec
+          .select({
+            user_id: users.id,
+            auth_identity_id: users.auth_identity_id,
+            status: users.status,
+            deleted_at: users.deleted_at,
+            issuer_url: userIdentities.issuer_url,
+            product_id: userIdentities.product_id,
+          })
+          .from(userIdentities)
+          .innerJoin(
+            users,
+            and(
+              eq(users.tenant_id, userIdentities.tenant_id),
+              eq(users.id, userIdentities.user_id),
+            ),
+          )
+          .where(
+            and(
+              eq(userIdentities.tenant_id, installation.tenant_id),
+              eq(userIdentities.user_id, installation.owner_user_id),
+              eq(userIdentities.provider_id, adapterId),
+              eq(userIdentities.subject, sub),
+            ),
+          )
+          .limit(1);
+        if (
+          identity?.status !== "active" ||
+          identity.deleted_at !== null ||
+          identity.issuer_url !== (issuerUrl || null) ||
+          identity.product_id !== (productId ?? null)
+        ) {
+          return browserError(
+            req,
+            403,
+            "installation_identity_mismatch",
+            "this identity cannot access the Cockpit installation",
+            "account_not_assigned",
+            retryHref,
+          );
+        }
+        const target = pending.redirect_to;
+        if (!target?.startsWith(`/cockpit/i/${installation.id}/`)) {
+          return browserError(
+            req,
+            400,
+            "installation_redirect_invalid",
+            "Cockpit installation redirect is invalid",
+            "state_expired",
+            retryHref,
+          );
+        }
+        return await issueBrowserSession({
+          db: exec,
+          tenantId: installation.tenant_id,
+          userId: installation.owner_user_id,
+          authIdentityId: identity.auth_identity_id ?? undefined,
+          installationId: installation.id,
+          redirectTo: target,
+          via: "oidc_cockpit_installation",
+          metadata: { provider_id: adapterId, installation_id: installation.id },
+        });
+      }
       if (hostedSignup) {
         if (!isConfigLoaded() || !getConfig().auth.hosted.enabled || productId) {
           return browserError(

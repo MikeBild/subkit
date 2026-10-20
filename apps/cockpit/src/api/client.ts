@@ -1,3 +1,4 @@
+import { cockpitApiHref } from "@/app/installation-context";
 import type { components } from "./schema";
 import { acceptTenantContext, noticeTenantContext, tenantContextHeaders } from "./tenant-context";
 
@@ -32,7 +33,7 @@ const sessionExpiryListeners = new Set<() => void>();
 
 export function isSessionExpiry(status: number, code: string | null): boolean {
   return (
-    (status === 401 && code === "unauthorized") || (status === 403 && code === "tenant_unavailable")
+    (status === 401 && (code === "unauthorized" || code === "installation_session_required" || code === "cockpit_installation_session_required")) || (status === 403 && (code === "tenant_unavailable" || code === "installation_unavailable" || code === "installation_revoked"))
   );
 }
 
@@ -98,7 +99,7 @@ export async function apiRequest<T>(
     headers.set("x-subkit-csrf", csrfToken);
   }
   const signal = limitedSignal(init.signal, limits.timeoutMs);
-  const response = await fetch(path, {
+  const response = await fetch(cockpitApiHref(path), {
     ...init,
     ...(signal ? { signal } : {}),
     credentials: "same-origin",
@@ -117,7 +118,7 @@ export function apiUpload<T>(
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open("POST", path);
+    request.open("POST", cockpitApiHref(path));
     request.withCredentials = true;
     request.setRequestHeader("accept", "application/json");
     request.setRequestHeader("content-type", "application/json");
@@ -148,7 +149,7 @@ export function apiUpload<T>(
 export async function apiText(path: string): Promise<string> {
   const headers = new Headers({ accept: "text/plain", "x-subkit-client": "cockpit" });
   for (const [key, value] of Object.entries(tenantContextHeaders())) headers.set(key, value);
-  const response = await fetch(path, { credentials: "same-origin", headers });
+  const response = await fetch(cockpitApiHref(path), { credentials: "same-origin", headers });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw failure(response.status, body, response.headers.get("x-trace-id"));
@@ -231,7 +232,7 @@ async function streamConversation(
   });
   if (csrfToken) headers.set("x-subkit-csrf", csrfToken);
   for (const [key, value] of Object.entries(tenantContextHeaders())) headers.set(key, value);
-  const response = await fetch(path, {
+  const response = await fetch(cockpitApiHref(path), {
     method: "POST",
     credentials: "same-origin",
     headers,

@@ -1,3 +1,4 @@
+import { cockpitBasePath } from "./installation-context";
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { NotFoundPage, RouteErrorPage } from "@/components/failure-state";
 import { PeopleAndAccessPage } from "@/pages/admin";
@@ -126,7 +127,7 @@ const routeTree = rootRoute.addChildren([
 
 export const router = createRouter({
   routeTree,
-  basepath: "/cockpit",
+  basepath: cockpitBasePath(),
   trailingSlash: "never",
   defaultErrorComponent: RouteErrorPage,
 });

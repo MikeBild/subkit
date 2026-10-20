@@ -1,4 +1,7 @@
 export const ERASED_TENANT_TABLES = [
+  "cockpit_push_subscriptions",
+  "cockpit_push_keys",
+  "cockpit_installations",
   "transactional_mail_receipts",
   "runtime_secret_versions",
   "api_keys",

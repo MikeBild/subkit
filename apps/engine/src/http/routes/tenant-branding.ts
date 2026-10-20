@@ -5,7 +5,9 @@ import { browserSessionForPrincipal } from "../../auth/index.ts";
 import {
   BrandingImageError,
   getTenantBranding,
+  getTenantBrandingAppIcon,
   getTenantBrandingLogo,
+  normalizeTenantBrandingAppIcon,
   normalizeTenantBrandingImage,
   resetTenantBranding,
   TenantBrandingConflictError,
@@ -35,6 +37,7 @@ export const TenantBrandingUpdate = z
     subtitle,
     palette: z.enum(["standard", "indigo", "teal"]).nullable(),
     logos: z.object({ light: operation, dark: operation }).strict(),
+    app_icon: operation.optional(),
   })
   .strict()
   .openapi("TenantBrandingUpdate");
@@ -47,6 +50,11 @@ export const TenantBrandingResponse = z
     palette: z.enum(["standard", "indigo", "teal"]).nullable(),
     logos: z.object({ light: z.boolean(), dark: z.boolean() }),
     logo_urls: z.object({ light: z.string().nullable(), dark: z.string().nullable() }),
+    app_icon: z.boolean(),
+    app_icon_urls: z.object({
+      icon_192: z.string().nullable(),
+      icon_512: z.string().nullable(),
+    }),
   })
   .openapi("TenantBrandingResponse");
 const updateSchema = TenantBrandingUpdate;
@@ -68,6 +76,10 @@ function brandingResponse(value: Awaited<ReturnType<typeof getTenantBranding>>, 
     logo_urls: {
       light: value.logos.light ? `/v1/tenant/branding/logo?theme=light&${query}` : null,
       dark: value.logos.dark ? `/v1/tenant/branding/logo?theme=dark&${query}` : null,
+    },
+    app_icon_urls: {
+      icon_192: value.app_icon ? `/v1/tenant/branding/icon?size=192&${query}` : null,
+      icon_512: value.app_icon ? `/v1/tenant/branding/icon?size=512&${query}` : null,
     },
   };
 }
@@ -93,6 +105,29 @@ export function registerTenantBrandingRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       401: { description: "Browser session required" },
       404: { description: "Logo unavailable for this workspace, theme or revision" },
+      409: { description: "Browser workspace context changed" },
+    },
+  });
+  app.openAPIRegistry.registerPath({
+    method: "get",
+    path: "/v1/tenant/branding/icon",
+    operationId: "getTenantBrandingAppIcon",
+    tags: ["identity"],
+    security: [{ browserSession: [] }],
+    request: {
+      query: z.object({
+        size: z.coerce.union([z.literal(192), z.literal(512)]),
+        revision: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+        tenant_context: z.string().uuid(),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Normalized app icon for the current workspace and revision",
+        content: { "image/png": { schema: z.string().openapi({ format: "binary" }) } },
+      },
+      401: { description: "Browser session required" },
+      404: { description: "App icon unavailable for this workspace or revision" },
       409: { description: "Browser workspace context changed" },
     },
   });
@@ -186,6 +221,12 @@ export function registerTenantBrandingRoutes(app: OpenAPIHono<AppEnv>): void {
           palette: parsed.data.palette,
           logo_light: await toBytes(parsed.data.logos.light),
           logo_dark: await toBytes(parsed.data.logos.dark),
+          app_icon:
+            parsed.data.app_icon?.operation === "replace"
+              ? await normalizeTenantBrandingAppIcon(parsed.data.app_icon)
+              : parsed.data.app_icon?.operation === "remove"
+                ? null
+                : undefined,
         },
         c.get("db"),
       );
@@ -241,6 +282,29 @@ export function registerTenantBrandingRoutes(app: OpenAPIHono<AppEnv>): void {
     const logo = await getTenantBrandingLogo(principal.tenant_id, theme, revision, c.get("db"));
     if (!logo) return c.notFound();
     return new Response(Buffer.from(logo), {
+      headers: {
+        "content-type": "image/png",
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  });
+  app.get("/v1/tenant/branding/icon", async (c) => {
+    const principal = await browserPrincipal(c);
+    const size = Number(c.req.query("size"));
+    const revision = Number(c.req.query("revision"));
+    const context = c.req.query("tenant_context");
+    if (
+      !principal ||
+      context !== principal.tenant_id ||
+      (size !== 192 && size !== 512) ||
+      !Number.isSafeInteger(revision) ||
+      revision < 0
+    )
+      return c.notFound();
+    const icon = await getTenantBrandingAppIcon(principal.tenant_id, revision, size, c.get("db"));
+    if (!icon) return c.notFound();
+    return new Response(Buffer.from(icon), {
       headers: {
         "content-type": "image/png",
         "cache-control": "private, no-store",

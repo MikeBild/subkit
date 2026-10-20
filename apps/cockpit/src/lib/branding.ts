@@ -1,9 +1,11 @@
+import { cockpitApiHref } from "@/app/installation-context";
 import type { BrandingPalette, TenantBranding, TenantBrandingUpdate } from "@/api/tenant-branding";
 
 export const BRANDING_PALETTES: readonly BrandingPalette[] = ["standard", "indigo", "teal"];
 
 export function brandingLogo(value: TenantBranding | undefined, theme: "light" | "dark") {
-  return value?.logo_urls[theme] ?? value?.logo_urls[theme === "light" ? "dark" : "light"] ?? null;
+  const source = value?.logo_urls[theme] ?? value?.logo_urls[theme === "light" ? "dark" : "light"] ?? null;
+  return source ? cockpitApiHref(source) : null;
 }
 
 export const BRANDING_SWATCHES = {
@@ -31,7 +33,8 @@ export function brandingDraftLogo(
   if (change.operation === "remove") return null;
   if (change.operation === "replace")
     return `data:${change.mime_type};base64,${change.content_base64}`;
-  return saved.logo_urls[theme];
+  const source = saved.logo_urls[theme];
+    return source ? cockpitApiHref(source) : null;
 }
 
 export function brandingPreviewLogo(

@@ -15,6 +15,7 @@ let ctx: HttpTestServer;
 let secondary: SecondaryTenant;
 let ownerHeaders: Record<string, string>;
 let logoBase64: string;
+let appIconBase64: string;
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("tenant-branding-acceptance");
@@ -22,6 +23,11 @@ beforeAll(async () => {
   ownerHeaders = await browserSessionHeaders(ctx, ctx.userId);
   logoBase64 = (
     await sharp({ create: { width: 2, height: 2, channels: 4, background: "#2563eb" } })
+      .png()
+      .toBuffer()
+  ).toString("base64");
+  appIconBase64 = (
+    await sharp({ create: { width: 512, height: 512, channels: 4, background: "#2563eb" } })
       .png()
       .toBuffer()
   ).toString("base64");
@@ -52,6 +58,7 @@ function update(revision: number, overrides: Record<string, unknown> = {}) {
       light: { operation: "keep" },
       dark: { operation: "keep" },
     },
+    app_icon: { operation: "keep" },
     ...overrides,
   };
 }
@@ -74,6 +81,8 @@ describe("tenant branding HTTP acceptance", () => {
       palette: null,
       logos: { light: false, dark: false },
       logo_urls: { light: null, dark: null },
+      app_icon: false,
+      app_icon_urls: { icon_192: null, icon_512: null },
     });
   });
 
@@ -98,10 +107,33 @@ describe("tenant branding HTTP acceptance", () => {
       revision: number;
       logos: { light: boolean; dark: boolean };
       logo_urls: { light: string | null; dark: string | null };
+      app_icon: boolean;
+      app_icon_urls: { icon_192: string | null; icon_512: string | null };
     };
     expect(body).toMatchObject({ revision: 1, logos: { light: true, dark: false } });
     expect(body.logo_urls.light).toContain(`tenant_context=${ctx.tenantId}`);
     expect(body.logo_urls.light).toContain("revision=1");
+
+    const icon = await request("/v1/tenant/branding", {
+      method: "PUT",
+      body: JSON.stringify(
+        update(1, {
+          app_icon: {
+            operation: "replace",
+            mime_type: "image/png",
+            content_base64: appIconBase64,
+          },
+        }),
+      ),
+    });
+    expect(icon.status).toBe(200);
+    const iconBody = (await icon.json()) as {
+      revision: number;
+      app_icon: boolean;
+      app_icon_urls: { icon_192: string | null; icon_512: string | null };
+    };
+    expect(iconBody).toMatchObject({ revision: 2, app_icon: true });
+    expect(iconBody.app_icon_urls.icon_192).toContain("size=192");
 
     const otherHeaders = await secondary.admin.sessionHeaders();
     const other = await request("/v1/tenant/branding", {}, otherHeaders);
@@ -114,7 +146,7 @@ describe("tenant branding HTTP acceptance", () => {
       .where(
         and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_type, "tenant_branding")),
       );
-    expect(audit).toHaveLength(1);
+    expect(audit).toHaveLength(2);
     expect(JSON.stringify(audit[0])).not.toContain(logoBase64);
   });
 
@@ -136,7 +168,7 @@ describe("tenant branding HTTP acceptance", () => {
     delete headers["x-subkit-csrf"];
     const response = await request(
       "/v1/tenant/branding",
-      { method: "PUT", body: JSON.stringify(update(1)) },
+      { method: "PUT", body: JSON.stringify(update(2)) },
       headers,
     );
     expect(response.status).toBe(403);
@@ -152,17 +184,18 @@ describe("tenant branding HTTP acceptance", () => {
 
     const malformed = await request("/v1/tenant/branding", {
       method: "PUT",
-      body: JSON.stringify({ ...update(1), unexpected: true }),
+      body: JSON.stringify({ ...update(2), unexpected: true }),
     });
     expect(malformed.status).toBe(400);
 
     const current = await request("/v1/tenant/branding");
-    expect(await current.json()).toMatchObject({ revision: 1, display_name: "Acme Research" });
+    expect(await current.json()).toMatchObject({ revision: 2, display_name: "Acme Research" });
   });
 
   test("scopes logo reads to tenant context and the exact revision", async () => {
     const current = (await (await request("/v1/tenant/branding")).json()) as {
       logo_urls: { light: string | null };
+      app_icon_urls: { icon_192: string | null };
     };
     if (!current.logo_urls.light) throw new Error("expected light logo URL");
 
@@ -178,21 +211,31 @@ describe("tenant branding HTTP acceptance", () => {
     const wrongRevision = new URL(current.logo_urls.light, ctx.baseUrl);
     wrongRevision.searchParams.set("revision", "0");
     expect((await request(`${wrongRevision.pathname}${wrongRevision.search}`)).status).toBe(404);
+
+    if (!current.app_icon_urls.icon_192) throw new Error("expected app icon URL");
+    const icon = await request(current.app_icon_urls.icon_192);
+    expect(icon.status).toBe(200);
+    expect(icon.headers.get("content-type")).toBe("image/png");
+    const wrongIconTenant = new URL(current.app_icon_urls.icon_192, ctx.baseUrl);
+    wrongIconTenant.searchParams.set("tenant_context", secondary.tenantId);
+    expect((await request(`${wrongIconTenant.pathname}${wrongIconTenant.search}`)).status).toBe(
+      404,
+    );
   });
 
   test("reset preserves the row revision and prevents an ABA overwrite", async () => {
     const reset = await request("/v1/tenant/branding", {
       method: "DELETE",
-      body: JSON.stringify({ revision: 1 }),
+      body: JSON.stringify({ revision: 2 }),
     });
     expect(reset.status).toBe(200);
-    expect(await reset.json()).toMatchObject({ configured: false, revision: 2 });
+    expect(await reset.json()).toMatchObject({ configured: false, revision: 3 });
 
     const row = await ctx.db
       .select({ revision: tenantBranding.revision })
       .from(tenantBranding)
       .where(eq(tenantBranding.tenant_id, ctx.tenantId));
-    expect(row).toEqual([{ revision: 2 }]);
+    expect(row).toEqual([{ revision: 3 }]);
 
     const stale = await request("/v1/tenant/branding", {
       method: "PUT",
@@ -202,7 +245,7 @@ describe("tenant branding HTTP acceptance", () => {
   });
 
   test("caps a streamed request before JSON parsing when content length is absent", async () => {
-    const body = JSON.stringify({ ...update(2), padding: "x".repeat(6 * 1024 * 1024) });
+    const body = JSON.stringify({ ...update(3), padding: "x".repeat(6 * 1024 * 1024) });
     const response = await fetch(`${ctx.baseUrl}/v1/tenant/branding`, {
       method: "PUT",
       headers: ownerHeaders,

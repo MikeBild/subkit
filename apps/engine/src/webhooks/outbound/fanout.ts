@@ -15,6 +15,7 @@ import {
   type AdapterResolver,
   dispatchEvent as dispatchNotifications,
 } from "../../notifications/service.ts";
+import { dispatchCockpitPushAttention } from "../../notifications/cockpit-push.ts";
 import { matchEventPattern } from "../events/catalog.ts";
 import { WEBHOOK_DELIVER_QUEUE, type WebhookDeliverJob } from "./delivery-worker.ts";
 
@@ -183,6 +184,8 @@ export async function fanoutEvent(input: FanoutInput): Promise<FanoutStats> {
       error: err instanceof Error ? err.message : String(err),
     });
   }
+
+  await dispatchCockpitPushAttention(db, tenant_id);
 
   logger.debug({
     module: "webhooks.outbound",

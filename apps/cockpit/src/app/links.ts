@@ -1,8 +1,11 @@
+import { cockpitBasePath } from "./installation-context";
 import type { CatalogResource } from "./route-table";
 
-const BASE = "/cockpit";
 
 export function absolute(path: string): string {
+  const BASE = cockpitBasePath();
+  if (BASE !== "/cockpit" && (path === "/cockpit" || path.startsWith("/cockpit/") && !path.startsWith("/cockpit/i/")))
+    return `${BASE}${path.slice("/cockpit".length)}`;
   if (path === BASE || path.startsWith(`${BASE}/`) || path.startsWith(`${BASE}?`)) return path;
   if (path === "/") return BASE;
   if (path.startsWith("/?")) return `${BASE}${path.slice(1)}`;
@@ -10,6 +13,7 @@ export function absolute(path: string): string {
 }
 
 export function routerPath(href: string): string {
+  const BASE = cockpitBasePath();
   if (href === BASE) return "/";
   if (href.startsWith(`${BASE}?`)) return `/${href.slice(BASE.length)}`;
   if (href.startsWith(`${BASE}/`)) return href.slice(BASE.length);

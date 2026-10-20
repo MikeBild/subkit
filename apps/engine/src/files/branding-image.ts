@@ -16,6 +16,7 @@ export const BRANDING_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 export const BRANDING_IMAGE_MAX_PIXELS = 4_000_000;
 export const BRANDING_IMAGE_MAX_EDGE = 512;
 export const BRANDING_IMAGE_MAX_BASE64 = Math.ceil(BRANDING_IMAGE_MAX_BYTES / 3) * 4;
+export const BRANDING_APP_ICON_SIZES = [192, 512] as const;
 
 type ImageFormat = "image/png" | "image/jpeg" | "image/webp";
 type ImageDetails = { format: ImageFormat; width: number; height: number; orientation: number };
@@ -340,28 +341,32 @@ async function decode(bytes: Uint8Array, details: ImageDetails): Promise<ImageDa
   return decodeWebp(source);
 }
 
+function parseBrandingImage(input: { mime_type: string; content_base64: string }): ImageDetails & {
+  bytes: Uint8Array;
+} {
+  if (
+    typeof input.content_base64 !== "string" ||
+    input.content_base64.length === 0 ||
+    input.content_base64.length > BRANDING_IMAGE_MAX_BASE64 ||
+    input.content_base64.length % 4 !== 0 ||
+    /[^A-Za-z0-9+/=]/.test(input.content_base64)
+  )
+    fail();
+  const bytes = Buffer.from(input.content_base64, "base64");
+  if (bytes.length > BRANDING_IMAGE_MAX_BYTES || bytes.toString("base64") !== input.content_base64)
+    fail();
+  const details = parseImage(bytes);
+  if (details.format !== input.mime_type) fail();
+  return { ...details, bytes };
+}
+
 export async function normalizeBrandingImage(input: {
   mime_type: string;
   content_base64: string;
 }): Promise<Uint8Array> {
   try {
-    if (
-      typeof input.content_base64 !== "string" ||
-      input.content_base64.length === 0 ||
-      input.content_base64.length > BRANDING_IMAGE_MAX_BASE64 ||
-      input.content_base64.length % 4 !== 0 ||
-      /[^A-Za-z0-9+/=]/.test(input.content_base64)
-    )
-      fail();
-    const bytes = Buffer.from(input.content_base64, "base64");
-    if (
-      bytes.length > BRANDING_IMAGE_MAX_BYTES ||
-      bytes.toString("base64") !== input.content_base64
-    )
-      fail();
-    const details = parseImage(bytes);
-    if (details.format !== input.mime_type) fail();
-    const oriented = orient(await decode(bytes, details), details.orientation);
+    const details = parseBrandingImage(input);
+    const oriented = orient(await decode(details.bytes, details), details.orientation);
     dimensions(oriented.width, oriented.height);
     const target = outputSize(oriented.width, oriented.height);
     const normalized =
@@ -369,6 +374,31 @@ export async function normalizeBrandingImage(input: {
         ? oriented
         : await resize(oriented, { ...target, method: "lanczos3" });
     return new Uint8Array(await encodePng(normalized));
+  } catch {
+    throw new BrandingImageError();
+  }
+}
+
+export async function normalizeBrandingAppIcon(input: {
+  mime_type: string;
+  content_base64: string;
+}): Promise<{ icon_192: Uint8Array; icon_512: Uint8Array }> {
+  try {
+    const details = parseBrandingImage(input);
+    if (details.width !== details.height || details.width < 512 || details.height < 512) fail();
+    const oriented = orient(await decode(details.bytes, details), details.orientation);
+    if (oriented.width !== oriented.height || oriented.width < 512 || oriented.height < 512) fail();
+    const icon_512 = new Uint8Array(
+      await encodePng(
+        oriented.width === 512
+          ? oriented
+          : await resize(oriented, { width: 512, height: 512, method: "lanczos3" }),
+      ),
+    );
+    const icon_192 = new Uint8Array(
+      await encodePng(await resize(oriented, { width: 192, height: 192, method: "lanczos3" })),
+    );
+    return { icon_192, icon_512 };
   } catch {
     throw new BrandingImageError();
   }

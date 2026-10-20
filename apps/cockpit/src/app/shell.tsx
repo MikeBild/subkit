@@ -1,3 +1,4 @@
+import { cockpitBasePath } from "./installation-context";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   ChevronsUpDown,
@@ -115,7 +116,7 @@ export function AppShell() {
   const { t } = useI18n();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const groups = visibleNavigation(session.permissions);
-  const active = navigationItem(pathname.replace(/^\/cockpit(?=\/|$)/, "") || "/");
+  const active = navigationItem(pathname.slice(cockpitBasePath().length) || "/");
   const brandName = session.branding?.configured
     ? session.branding.display_name || session.tenant.display_name
     : t("app.name");
@@ -309,7 +310,7 @@ function AccountMenu() {
     setSigningOut(true);
     try {
       await logout();
-      window.location.assign("/cockpit");
+      window.location.assign(cockpitBasePath());
     } catch {
       toast.error(t("account.signOutFailed"), {
         description: t("account.signOutFailedDescription"),

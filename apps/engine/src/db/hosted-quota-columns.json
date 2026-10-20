@@ -723,6 +723,134 @@
     "tenant": true
   },
   {
+    "table": "cockpit_installations",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "tenant_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "owner_user_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "revoked_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      }
+    ],
+    "tenant": true
+  },
+  {
+    "table": "cockpit_push_keys",
+    "columns": [
+      {
+        "name": "tenant_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "ciphertext",
+        "type": "bytea",
+        "enum": null
+      },
+      {
+        "name": "iv",
+        "type": "bytea",
+        "enum": null
+      },
+      {
+        "name": "auth_tag",
+        "type": "bytea",
+        "enum": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      }
+    ],
+    "tenant": true
+  },
+  {
+    "table": "cockpit_push_subscriptions",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "tenant_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "installation_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "session_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "endpoint_sha256",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "ciphertext",
+        "type": "bytea",
+        "enum": null
+      },
+      {
+        "name": "iv",
+        "type": "bytea",
+        "enum": null
+      },
+      {
+        "name": "auth_tag",
+        "type": "bytea",
+        "enum": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      }
+    ],
+    "tenant": true
+  },
+  {
     "table": "connector_credential_setup_grants",
     "columns": [
       {
@@ -5228,6 +5356,11 @@
         "enum": null
       },
       {
+        "name": "installation_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
         "name": "state",
         "type": "text",
         "enum": null
@@ -6377,6 +6510,11 @@
         "enum": null
       },
       {
+        "name": "installation_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
         "name": "product_id",
         "type": "text",
         "enum": null
@@ -6969,6 +7107,16 @@
       },
       {
         "name": "logo_dark",
+        "type": "bytea",
+        "enum": null
+      },
+      {
+        "name": "app_icon_192",
+        "type": "bytea",
+        "enum": null
+      },
+      {
+        "name": "app_icon_512",
         "type": "bytea",
         "enum": null
       },

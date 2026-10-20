@@ -49,3 +49,5 @@ export * from "./workflow_run_state.ts";
 export * from "./workflow_signals.ts";
 export * from "./workflow_waits.ts";
 export * from "./workflows.ts";
+export * from "./cockpit-installations.ts";
+export * from "./cockpit-push.ts";

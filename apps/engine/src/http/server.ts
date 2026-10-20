@@ -1,3 +1,7 @@
+import { registerCockpitInstallationAssets } from "./cockpit-installation-assets.ts";
+import { registerCockpitPushRoutes } from "./routes/cockpit-push.ts";
+import { resolveCockpitInstallationContext, requireCockpitInstallation } from "./middleware/cockpit-installation.ts";
+import { registerCockpitInstallationRoutes } from "./routes/cockpit-installations.ts";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { PgBoss } from "pg-boss";
 import { createTokenExchangeProvider } from "../auth/oauth/token-exchange.ts";
@@ -271,6 +275,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   app.use("*", clientIpMiddleware());
   app.use("*", hostedIngressRateLimit());
   app.use("*", authMiddleware(registry));
+  app.use("/cockpit/i/:installationId/api/*", requireCockpitInstallation());
   app.use("*", hostedTenantRateLimit());
   app.use("*", rateLimitMiddleware(opts.rateLimit ?? {}));
   app.use("/v1/*", browserCsrfMiddleware());
@@ -310,6 +315,8 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerCliSessionRoute(app);
   registerLoginRoutes(app);
   registerCockpitIdentityRoutes(app);
+  registerCockpitInstallationRoutes(app);
+  registerCockpitPushRoutes(app, resolveCockpitInstallationContext);
   registerTenantBrandingRoutes(app);
   registerMcpOAuthRoutes(app);
   registerOAuthClientAdminRoutes(app);
@@ -376,6 +383,11 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerAuditLogRoutes(app);
   registerDiagnosticsRoutes(app);
   registerMcpHttpRoutes(app);
+  const cockpitApiRoutes = app.routes.filter((route) => route.path.startsWith("/v1/"));
+  for (const route of cockpitApiRoutes) {
+    app.on(route.method, `/cockpit/i/:installationId/api${route.path}`, route.handler);
+  }
+  registerCockpitInstallationAssets(app);
   registerCockpitRoutes(app);
 
   app.doc31("/openapi.json", {

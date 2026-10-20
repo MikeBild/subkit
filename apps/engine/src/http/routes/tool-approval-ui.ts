@@ -68,6 +68,7 @@ export function buildApprovalDecisionHtml(
   approver: { email: string; user_id?: string },
   csrfToken: string,
   look: PageLook,
+  actionPath = APPROVAL_PORTAL_PATH,
 ): string {
   const locale = look.locale;
   const copy = approvalCopy(locale);
@@ -133,7 +134,7 @@ ${review ? `<dt>${copy.attempts}</dt><dd>${escapeHtml(copy.attemptsValue.replace
         .join("")}</ul>`
     : `<p class="muted">${copy.missing}</p>`;
   const hidden = `<input type="hidden" name="grant" value="${escapeHtml(grant)}"><input type="hidden" name="csrf_token" value="${escapeHtml(csrfToken)}">`;
-  const language = `<form method="POST" action="${APPROVAL_PORTAL_PATH}" aria-label="${copy.language}">${hidden}<button class="button ghost" type="submit" name="language" value="de" lang="de" aria-pressed="${locale === "de"}">Deutsch</button><button class="button ghost" type="submit" name="language" value="en" lang="en" aria-pressed="${locale === "en"}">English</button></form>`;
+  const language = `<form method="POST" action="${escapeHtml(actionPath)}" aria-label="${copy.language}">${hidden}<button class="button ghost" type="submit" name="language" value="de" lang="de" aria-pressed="${locale === "de"}">Deutsch</button><button class="button ghost" type="submit" name="language" value="en" lang="en" aria-pressed="${locale === "en"}">English</button></form>`;
   return portalPage(
     look,
     `${pageHead({ title, slot: "auth-heading", line: copy.intro, chip: { tone: "warning", word: copy.pending } })}
@@ -143,7 +144,7 @@ ${review ? `<dt>${copy.attempts}</dt><dd>${escapeHtml(copy.attemptsValue.replace
 <h2>${copy.why}</h2><p>${copy.whyHelp}</p><h2>${copy.changes}</h2><p>${copy.changesHelp}</p><p>${copy.via}: <span class="mono">${visible(view.surface)}</span></p></div></details>
 <p class="note" role="note"><span class="strong">${copy.outcome}.</span> ${copy.outcomeHelp}</p>
 <p>${copy.signed} <strong>${escapeHtml(approver.email)}</strong>. ${copy.attribution}</p>
-<form method="POST" action="${APPROVAL_PORTAL_PATH}">${hidden}<input type="hidden" name="language" value="${locale}">${pageActions(`<button class="button outline" type="submit" name="decision" value="decline">${copy.decline}</button><button class="button primary" type="submit" name="decision" value="approve">${copy.approve}</button>`)}</form>`,
+<form method="POST" action="${escapeHtml(actionPath)}">${hidden}<input type="hidden" name="language" value="${locale}">${pageActions(`<button class="button outline" type="submit" name="decision" value="decline">${copy.decline}</button><button class="button primary" type="submit" name="decision" value="approve">${copy.approve}</button>`)}</form>`,
     { wide: true, footer: language },
   );
 }

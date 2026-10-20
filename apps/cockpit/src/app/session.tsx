@@ -1,3 +1,4 @@
+import { cockpitApiHref, installationId } from "./installation-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import {
@@ -54,7 +55,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
   if (view === "changed") return <WorkspaceChangedPage />;
   if (view === "expired") return <SessionExpiredPage href={loginHref()} />;
   if (view === "signed-out")
-    return <LoginRedirect href={loginHref()} label={t("common.loading")} />;
+    return installationId() ? <SessionExpiredPage href={loginHref()} /> : <LoginRedirect href={loginHref()} label={t("common.loading")} />;
   if (view === "loading") return <SessionSkeleton label={t("common.loading")} />;
   if (view === "failed" || !query.data) {
     return <BootstrapErrorPage onRetry={() => void query.refetch()} />;
@@ -124,5 +125,5 @@ export function loginHref(
   location: Pick<Location, "pathname" | "search"> = window.location,
 ): string {
   const returnTo = `${location.pathname}${location.search}`;
-  return `/v1/identity/cockpit-login?return_to=${encodeURIComponent(returnTo)}`;
+  return cockpitApiHref(`/v1/identity/cockpit-login?return_to=${encodeURIComponent(returnTo)}`, location.pathname);
 }
