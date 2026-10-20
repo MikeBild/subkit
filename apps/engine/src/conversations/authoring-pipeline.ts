@@ -203,7 +203,7 @@ export type AuthoringPipelineResult =
       unresolved_connectors: string[];
       note?: string;
       critic_rejection?: CriticRejectionDetail;
-      next: "dry_run_workflow";
+      next: "dry_run_workflow" | "inspect_workflow_draft";
     }
   | {
       ok: false;
@@ -917,11 +917,13 @@ export async function runAuthoringPipeline(
   await ctx.setDraft(nextDraft);
 
   const findingCount = recordedEval.expressions.filter((f) => f.status !== "ok").length;
+  const nextAction =
+    definition.execution_privacy === "sensitive" ? "inspect_workflow_draft" : "dry_run_workflow";
   ctx.onLog?.(
     findingCount > 0 ? "warn" : "info",
     findingCount > 0
-      ? `emit · draft stashed with ${findingCount} recorded-eval finding(s) — next: apply repairs, then dry_run_workflow`
-      : "emit · draft stashed clean — next: dry_run_workflow",
+      ? `emit · draft stashed with ${findingCount} recorded-eval finding(s) — next: apply repairs, then ${nextAction}`
+      : `emit · draft stashed clean — next: ${nextAction}`,
   );
   const note = deadlineExceeded
     ? `generation/repair time budget exceeded — returning the current draft with ${findingCount} finding(s) for you to refine (edit_workflow_patch from recorded_eval.expressions)`
@@ -936,6 +938,6 @@ export async function runAuthoringPipeline(
     unresolved_connectors: unresolved,
     ...(note ? { note } : {}),
     ...(criticRejection ? { critic_rejection: criticRejection } : {}),
-    next: "dry_run_workflow",
+    next: nextAction,
   };
 }
