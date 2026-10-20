@@ -135,81 +135,14 @@ A production claim additionally needs the released engine, migrated receipt tabl
 signed binding, reviewed active workflow, server secret provisioning and an actual
 controlled end-to-end delivery. Website publication is a separate final step.
 
-The public website integration is being prepared in the existing Lovable project.
-Its current implementation, personal approval handoffs and outstanding live
-delivery evidence are tracked in Website tasks (`WEBSITE-TODO.md` in the source repository) and
-Lovable setup (`docs/lovable-setup.md` in the source repository); offline checks do not imply production mail
-delivery or website publication.
+The existing Lovable website was published after controlled live acceptance on
+2026-10-20. Contact and beta-request forms delivered both the operator notification
+and localized acknowledgement through the reviewed Gmail workflow in preview and
+on the public host. An identical repeated request created no additional execution.
+[Website tasks](https://github.com/MikeBild/subkit/wiki/website-todo) and [Lovable setup](https://github.com/MikeBild/subkit/wiki/docs-lovable-setup) distinguish
+this verified integration from remaining product, legal and distribution work;
+operational evidence stays in the private handoff.
 
-## Availability and product planning
-
-Self-hosting is the current operating model described below. A hosted self-service
-cloud offering is planned as a limited free beta alongside self-hosting: register,
-verify your email, receive an isolated workspace and start with a capped platform
-AI budget. Open cloud registration and a launch date are not available or verified
-by this documentation. Paid plans and billing are a later stage. Self-hosting still
-requires your own infrastructure and provider configuration; those can incur costs.
-
-The cloud plan preserves human execution approvals and the separate authenticated
-confirmation of knowledge or skill admissions. Signing up never approves effects
-in connected systems. Product persistence and domain operations remain in SubKit;
-the hosted deployment implementation stays outside this repository.
-
-| Document | Purpose |
-| --- | --- |
-| [GitHub Issues](https://github.com/MikeBild/subkit/issues) / [SubKit Product Project](https://github.com/users/MikeBild/projects/4) | Operational tasks, priority, status and views for self-hosted Beta, GA, hosted Beta, website and backlog |
-| [Task and milestone links](docs/roadmap-issues.json) | Stable mapping from repository task IDs to GitHub Issues, Project views and Milestones; check with `node scripts/check-roadmap-links.mjs` |
-| Product roadmap (`docs/PRODUCT-ROADMAP.md` in the source repository) | Cloud requirements, dependencies, opening criteria and pending decisions |
-| Product tasks (`docs/TODO.md` in the source repository) | Hosted acceptance details and verification evidence |
-| Launch status (`LAUNCH_STATUS.md` in the source repository) | Self-hosting evidence snapshots and release boundaries |
-| Website tasks (`WEBSITE-TODO.md` in the source repository) | Website criteria and operational handoff |
-| Lovable briefing (`docs/lovable-website-briefing.md` in the source repository) / setup (`docs/lovable-setup.md` in the source repository) | Binding product/design decisions and existing project workflow |
-| BrowserStack (`docs/browserstack.md` in the source repository) / test strategy (`docs/browserstack-teststrategie.md` in the source repository) | Planned supplementary browser coverage, prerequisites and acceptance scenarios |
-
-These planning documents do not replace the generated API, CLI or settings
-references. The installation instructions below describe self-hosting; they do not
-provision a cloud account.
-
-GitHub Issues and the Project are the current work queue for ChatGPT Daily/Weekly
-briefings. Briefings must check the live `main` SHA and issue/milestone state, then
-read the linked evidence files. The two private read-only GitHub briefing workflows
-can provide daily or weekly snapshots only when their sensitive results are
-available through an authorized client; a scheduled ChatGPT task must report a
-client execution limit and use authorized GitHub reads when that handoff fails.
-
-The multi-tenant hosted offering is under development. Public registration remains
-closed until its security, operational and human acceptance gates pass. The approved
-Free allowance is USD 5 in model costs per tenant and UTC calendar month, USD 50
-across all Free tenants, 50 MB (50,000,000 bytes) of combined logical storage for
-files and persisted user content per tenant, 1,000 retained records per resource
-type, and 10,000 metered requests per tenant and UTC calendar month. Account bootstrap, workspace
-switching and owner deletion retain separate abuse protection and are excluded from
-the monthly request allowance. Soft-deleted records remain counted until physical
-cleanup succeeds. Authentication action delivery uses webhooks; its
-destination and actual delivery verification are pending. Combined storage and
-resource accounting is implemented and undergoing integrated acceptance; live
-cloud verification remains pending. It includes retained knowledge and conversation
-copies as well as reserved non-file object offloads.
-
-File-retention safeguards are under validation. Automatic unlinked-file cleanup
-conservatively preserves UUID and `@attachment:` references in retained workflow
-versions, schedules and conversation intent. Any queued or running execution
-defers this cleanup for its tenant, including when file references are computed
-at runtime. Retained text can keep otherwise unused files, so physical reclamation
-may be delayed. This does not establish complete reference accuracy for arbitrary
-dynamic expressions or protect every active reader; those acceptance checks remain
-open. An incomplete queue-reference scan continues to prevent unlinked cleanup.
-
-Hosted connector traffic requires public destinations. Strict HTTP transports pin
-the validated destination address while preserving the original Host and TLS name;
-proxy environment variables are unsupported and cause refusal. Strict PostgreSQL
-connectors require an explicit host and user, verified TLS with system trust and
-the original hostname. DSN options cannot disable that verification. Local TLS file
-paths, process PostgreSQL defaults and password-file fallback are unavailable in
-this mode. Explicit permissive self-hosted connector behavior remains available.
-External chat-workspace linking for hosted tenants remains unavailable until
-ownership can be verified. See TODO.md (`TODO.md` in the source repository) and
-LAUNCH_STATUS.md (`LAUNCH_STATUS.md` in the source repository) for the complete remaining acceptance scope.
 
 ## Run the engine
 
@@ -4317,8 +4250,10 @@ A production claim additionally needs the released engine, migrated receipt tabl
 signed binding, reviewed active workflow, server secret provisioning and an actual
 controlled end-to-end delivery. Website publication is a separate final step.
 
-The public website integration is being prepared in the existing Lovable project.
-Its current implementation, personal approval handoffs and outstanding live
-delivery evidence are tracked in Website tasks (`WEBSITE-TODO.md` in the source repository) and
-Lovable setup (`docs/lovable-setup.md` in the source repository); offline checks do not imply production mail
-delivery or website publication.
+The existing Lovable website was published after controlled live acceptance on
+2026-10-20. Contact and beta-request forms delivered both the operator notification
+and localized acknowledgement through the reviewed Gmail workflow in preview and
+on the public host. An identical repeated request created no additional execution.
+[Website tasks](https://github.com/MikeBild/subkit/wiki/website-todo) and [Lovable setup](https://github.com/MikeBild/subkit/wiki/docs-lovable-setup) distinguish
+this verified integration from remaining product, legal and distribution work;
+operational evidence stays in the private handoff.

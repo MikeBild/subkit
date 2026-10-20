@@ -12,20 +12,21 @@ function repositoryReferences(markdown: string): string {
   );
 }
 
-function readmeReference(heading: string): string {
-  const readme = readFileSync("README.md", "utf8");
-  const start = readme.indexOf(`## ${heading}\n`);
-  if (start < 0) throw new Error(`README.md has no ${heading} section`);
-  const rest = readme.slice(start);
+function technicalReference(heading: string): string {
+  const reference = readFileSync("apps/engine/src/http/reference/setup.md", "utf8");
+  const start = reference.indexOf(`## ${heading}\n`);
+  if (start < 0) throw new Error(`technical setup reference has no ${heading} section`);
+  const rest = reference.slice(start);
   const nextSection = rest.slice(1).search(/\n## (?!#)/);
   const section = nextSection < 0 ? rest : rest.slice(0, nextSection + 1);
   return repositoryReferences(section.replace(/^## /, "# ").trimEnd());
 }
 
 const SOURCES: Record<string, () => string> = {
-  "setup.md": () => repositoryReferences(readFileSync("README.md", "utf8")),
-  "coding-agents.md": () => readmeReference("Use sk from a coding agent"),
-  "transactional-email.md": () => readmeReference("Transactional email replies"),
+  "setup.md": () =>
+    repositoryReferences(readFileSync("apps/engine/src/http/reference/setup.md", "utf8")),
+  "coding-agents.md": () => technicalReference("Use sk from a coding agent"),
+  "transactional-email.md": () => technicalReference("Transactional email replies"),
   "cli.md": () => run("scripts/gen-cli-reference.ts"),
   "settings.md": () => run("apps/engine/scripts/gen-settings-doc.ts"),
   "connectors.md": () => run("scripts/gen-catalog.ts"),

@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import { _drainAuditWritesForTests } from "../../audit/audit.ts";
+import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
 import {
   auditLog,
   catalogCategories,
@@ -13,7 +14,9 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import * as invokeModule from "../../llm/core/invoke.ts";
+import { logger } from "../../logging/logger.ts";
 import { MemoryObjectStore, setObjectStoreForTesting } from "../../storage/object-store.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import {
   describeOne,
   describePendingCatalog,
@@ -370,6 +373,99 @@ describe("catalog.describe", () => {
     const [wf] = await ctx.db.select().from(workflows).where(eq(workflows.id, ids.workflow));
     expect(wf?.category).not.toBe("stale");
     expect(wf?.catalog_input_hash).toBeNull();
+  });
+});
+
+describe("category purpose persistence", () => {
+  async function seedPendingCategory(slug: string) {
+    const [tenant] = await ctx.db
+      .insert(tenants)
+      .values({ slug, display_name: slug })
+      .returning({ id: tenants.id });
+    if (!tenant) throw new Error("Tenant missing");
+    await ctx.db.insert(catalogCategories).values({
+      tenant_id: tenant.id,
+      name: "pending-purpose",
+      purpose_pending: true,
+    });
+    return tenant.id;
+  }
+
+  test("a temporary catalog lock retries persistence without another model call", async () => {
+    const tenantId = await seedPendingCategory("purpose-persist-retry");
+    const locked = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let holder: Promise<void> | null = null;
+    let operation: Promise<void> | null = null;
+    let generated = 0;
+    const warn = spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      operation = describePendingCategoryPurposes(tenantId, ctx.db, 1, async () => {
+        generated += 1;
+        holder = ctx.db.transaction(async (tx) => {
+          await lockCatalogVocabulary(tx, tenantId);
+          locked.resolve();
+          await release.promise;
+        });
+        await locked.promise;
+        return "A persisted purpose";
+      });
+      await waitFor(
+        () =>
+          warn.mock.calls.some(
+            ([entry]) =>
+              entry.action === "retry_transient" && entry.label === "category_purpose_catalog",
+          ),
+        { label: "category purpose persistence retry", tries: 100, sleepMs: 5 },
+      );
+      release.resolve();
+      await operation;
+      if (holder) await holder;
+    } finally {
+      release.resolve();
+      await operation?.catch(() => {});
+      warn.mockRestore();
+    }
+    expect(generated).toBe(1);
+    const [category] = await ctx.db
+      .select()
+      .from(catalogCategories)
+      .where(
+        and(
+          eq(catalogCategories.tenant_id, tenantId),
+          eq(catalogCategories.name, "pending-purpose"),
+        ),
+      );
+    expect(category?.purpose).toBe("A persisted purpose");
+    expect(category?.purpose_pending).toBe(false);
+    const audits = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.tenant_id, tenantId), eq(auditLog.action, "catalog_metadata.generated")),
+      );
+    expect(audits).toHaveLength(1);
+  });
+
+  test("a failed persistence releases its exact claim for the next pass", async () => {
+    const tenantId = await seedPendingCategory("purpose-persist-release");
+    await expect(
+      describePendingCategoryPurposes(tenantId, ctx.db, 1, async () => "x".repeat(2001)),
+    ).rejects.toThrow();
+    expect(await hasPendingCatalogDescriptions(tenantId, ctx.db)).toBe(true);
+    const [pending] = await ctx.db
+      .select()
+      .from(catalogCategories)
+      .where(
+        and(
+          eq(catalogCategories.tenant_id, tenantId),
+          eq(catalogCategories.name, "pending-purpose"),
+        ),
+      );
+    expect(pending?.purpose).toBeNull();
+    expect(pending?.purpose_attempted_at).toBeNull();
+    await describePendingCategoryPurposes(tenantId, ctx.db, 1, async () => "Recovered purpose");
+    expect(await hasPendingCatalogDescriptions(tenantId, ctx.db)).toBe(false);
   });
 });
 
