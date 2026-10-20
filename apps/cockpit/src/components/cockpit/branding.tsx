@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { installationId } from "@/app/installation-context";
+import { cockpitBasePath, installationId } from "@/app/installation-context";
 import { useSession } from "@/app/session";
 import { brandingLogo } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n-context";
@@ -14,6 +14,15 @@ export function BrandingAppearance() {
   useEffect(() => {
     const root = document.documentElement;
     const title = document.title;
+    const touchIcon = installed ? document.createElement("link") : null;
+    if (touchIcon) {
+      touchIcon.rel = "apple-touch-icon";
+      touchIcon.sizes = "512x512";
+      touchIcon.type = "image/png";
+      touchIcon.crossOrigin = "use-credentials";
+      touchIcon.href = `${cockpitBasePath()}/icon/512.png?revision=${value?.revision ?? 0}`;
+      document.head.append(touchIcon);
+    }
     if (value?.configured) {
       root.dataset.brandPalette = value.palette ?? "standard";
     }
@@ -22,6 +31,7 @@ export function BrandingAppearance() {
     return () => {
       delete root.dataset.brandPalette;
       document.title = title;
+      touchIcon?.remove();
     };
   }, [value, installed, session.tenant.id, session.tenant.display_name]);
   return null;
