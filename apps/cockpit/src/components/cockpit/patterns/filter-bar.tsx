@@ -1,5 +1,5 @@
 import { Search, SlidersHorizontal } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import {
   Select,
@@ -20,6 +20,10 @@ export interface FilterSelect {
 }
 
 export const MAX_FILTER_SELECTS = 4;
+export const FilterBarLayoutContext = createContext<{
+  presentation?: "panel" | "toolbar";
+  mobileOnly?: boolean;
+}>({});
 
 function FilterField({ select }: { select: FilterSelect }) {
   return (
@@ -54,17 +58,28 @@ export function FilterBar({
   selects = [],
   segmented,
   reset,
+  presentation,
+  mobileOnly,
 }: {
   search?: { value: string; onChange(value: string): void; placeholder: string; testId?: string };
   selects?: readonly FilterSelect[];
   segmented?: ReactNode;
   reset?: { label: string; onClick(): void };
+  presentation?: "panel" | "toolbar";
+  mobileOnly?: boolean;
 }) {
   const { t } = useI18n();
+  const layout = useContext(FilterBarLayoutContext);
+  const display = presentation ?? layout.presentation ?? "toolbar";
+  const compact = mobileOnly ?? layout.mobileOnly ?? false;
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const filters = selects;
   const keyOf = (select: FilterSelect) => select.testId ?? select.label;
+  const committed = filters.map((select) => `${keyOf(select)}=${select.value}`).join("\u0000");
+  useEffect(() => {
+    setDraft(Object.fromEntries(filters.map((select) => [keyOf(select), select.value])));
+  }, [committed]);
   const openFilters = () => {
     setDraft(Object.fromEntries(filters.map((select) => [keyOf(select), select.value])));
     setOpen(true);
@@ -76,8 +91,70 @@ export function FilterBar({
     }
     setOpen(false);
   };
+  if (display === "panel")
+    return (
+      <div data-slot="filter-panel" className="flex min-w-0 flex-col gap-5 p-5">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {t("common.filters")}
+        </h2>
+        {search ? (
+          <InputGroup className="h-9 w-full">
+            <InputGroupAddon>
+              <Search />
+            </InputGroupAddon>
+            <InputGroupInput
+              type="search"
+              value={search.value}
+              onChange={(event) => search.onChange(event.target.value)}
+              placeholder={search.placeholder}
+              aria-label={search.placeholder}
+              data-testid={search.testId ? `${search.testId}-panel` : undefined}
+            />
+          </InputGroup>
+        ) : null}
+        {segmented ? <div className="min-w-0 overflow-x-auto">{segmented}</div> : null}
+        {filters.map((select) => (
+          <FilterField
+            key={keyOf(select)}
+            select={{
+              ...select,
+              value: draft[keyOf(select)] ?? select.value,
+              onChange: (value) => setDraft((current) => ({ ...current, [keyOf(select)]: value })),
+            }}
+          />
+        ))}
+        {filters.length > 0 || reset ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+            {reset ? (
+              <button
+                type="button"
+                onClick={reset.onClick}
+                className="text-sm text-muted-foreground underline underline-offset-2"
+              >
+                {reset.label}
+              </button>
+            ) : (
+              <span />
+            )}
+            {filters.length > 0 ? (
+              <button
+                type="button"
+                onClick={applyFilters}
+                className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+                data-testid="filter-bar-panel-apply"
+              >
+                {t("common.applyFilters")}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
   return (
-    <div data-slot="filter-bar" className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+    <div
+      data-slot="filter-bar"
+      className={`flex min-w-0 flex-1 flex-wrap items-center gap-2 ${compact ? "min-[1600px]:hidden" : ""}`}
+    >
       {search ? (
         <InputGroup className="h-9 w-full sm:max-w-xs">
           <InputGroupAddon>
@@ -95,22 +172,12 @@ export function FilterBar({
       ) : null}
       {filters.length > 0 ? (
         <>
-          <div
-            className="hidden min-w-0 flex-1 flex-wrap items-end gap-2 min-[1600px]:flex"
-            data-slot="wide-filters"
-          >
-            {filters.slice(0, MAX_FILTER_SELECTS).map((select) => (
-              <div key={select.label} className="min-w-36 max-w-52 flex-1">
-                <FilterField select={select} />
-              </div>
-            ))}
-          </div>
           <button
             type="button"
             onClick={openFilters}
             aria-haspopup="dialog"
             aria-expanded={open}
-            className={`inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent ${filters.length > MAX_FILTER_SELECTS ? "" : "min-[1600px]:hidden"}`}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
             data-testid="filter-bar-open"
           >
             <SlidersHorizontal className="size-4" />
@@ -118,7 +185,7 @@ export function FilterBar({
           </button>
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetContent
-              side="right"
+              side="left"
               className="w-full max-w-full gap-0 sm:max-w-sm"
               closeLabel={t("common.close")}
               data-testid="filter-bar-sheet"

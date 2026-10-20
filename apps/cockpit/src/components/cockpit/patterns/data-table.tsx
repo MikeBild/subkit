@@ -18,8 +18,10 @@ import {
   Search,
 } from "lucide-react";
 import {
+  Children,
   createContext,
   Fragment,
+  isValidElement,
   type MouseEvent,
   type ReactNode,
   useContext,
@@ -54,6 +56,7 @@ import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
 import { useColumnToggleClaim } from "./column-toggle-claim";
 import { DataState, LOADING_ROWS } from "./data-state";
+import { FilterBar, FilterBarLayoutContext } from "./filter-bar";
 import { useRowMotion } from "./row-motion";
 import { Skeleton } from "./skeleton";
 
@@ -135,6 +138,20 @@ export function InfiniteSentinel({
 }
 
 const SKELETON_WIDTHS = ["w-3/4", "w-1/2", "w-2/3", "w-1/3", "w-2/5"] as const;
+
+function findFilterBar(node: ReactNode): ReactNode | null {
+  let found: ReactNode | null = null;
+  Children.forEach(node, (child) => {
+    if (found || !isValidElement(child)) return;
+    if (child.type === FilterBar) {
+      found = child;
+      return;
+    }
+    if (child.type === Fragment)
+      found = findFilterBar((child.props as { children?: ReactNode }).children);
+  });
+  return found;
+}
 
 export function rowLinkColumn(
   visible: readonly { id: string; interactive?: boolean; ownsRowLink?: boolean }[],
@@ -293,6 +310,7 @@ export function DataTable<TData extends RowData>({
   rowLabel,
   linkColumn,
   toolbar,
+  filterPanel,
   pending,
   error,
   emptyState,
@@ -325,6 +343,7 @@ export function DataTable<TData extends RowData>({
   rowLabel?(row: TData): string;
   linkColumn?: string;
   toolbar?: ReactNode;
+  filterPanel?: ReactNode;
   rowActions?: (row: TData, index: number) => ReactNode;
   pending?: boolean;
   error?: TableErrorState | null;
@@ -428,6 +447,7 @@ export function DataTable<TData extends RowData>({
   const empty = !showSkeleton && !error && rows.length === 0;
   const emptyCopy = hasActiveFilters ? emptyState.filtered : emptyState.zero;
   const usesDefaultSearch = collectionTier === "primary" && (showDefaultSearch ?? !toolbar);
+  const activeFilterPanel = filterPanel ?? findFilterBar(toolbar);
   const toolbarShown = usesDefaultSearch || Boolean(toolbar) || showColumnPicker;
   const cards = layout === "responsive";
   const resultCountLabel = (
@@ -483,7 +503,11 @@ export function DataTable<TData extends RowData>({
   const stateOnly = !showSkeleton && Boolean(error || empty);
   return (
     <div
-      className="@container flex min-h-0 flex-1 flex-col"
+      className={cn(
+        "@container flex min-h-0 min-w-0 flex-1 flex-col",
+        activeFilterPanel &&
+          "min-[1600px]:grid min-[1600px]:grid-cols-[280px_minmax(0,1fr)] min-[1600px]:grid-rows-[minmax(0,1fr)] min-[1920px]:grid-cols-[320px_minmax(0,1fr)]",
+      )}
       data-testid={`${collectionId}`}
       data-family-slot="list-surface"
       data-family-list-kind="table"
@@ -497,392 +521,414 @@ export function DataTable<TData extends RowData>({
             : "sort loading-state empty-state error-state"
       }
       data-family-state={pending ? "loading" : error ? "error" : empty ? "empty" : "ready"}
-      data-review-layout={groupingTabs ? "true" : undefined}
       aria-busy={pending ? true : undefined}
     >
-      {toolbarShown ? (
-        <div className="flex flex-wrap items-center gap-2 pb-2" data-family-slot="list-toolbar">
-          {usesDefaultSearch && (
-            <label htmlFor={searchInputId} className="relative min-w-52 flex-1 sm:max-w-xs">
-              <span className="sr-only">{searchLabel}</span>
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                id={searchInputId}
-                type="search"
-                value={queryText}
-                onChange={(event) => setQueryText(event.target.value)}
-                placeholder={searchLabel}
-                className="pl-8"
-                data-family-action="search"
-                data-testid={`${collectionId}-search`}
-              />
-            </label>
+      {activeFilterPanel ? (
+        <aside
+          className="hidden min-h-0 overflow-y-auto border-r bg-muted/10 min-[1600px]:block min-[1600px]:h-full"
+          data-family-slot="list-filter-panel"
+          aria-label={t("common.filters")}
+        >
+          <FilterBarLayoutContext.Provider value={{ presentation: "panel" }}>
+            {activeFilterPanel}
+          </FilterBarLayoutContext.Provider>
+        </aside>
+      ) : null}
+      <div className="@container flex min-h-0 min-w-0 flex-1 flex-col min-[1600px]:h-full min-[1600px]:px-4">
+        {toolbarShown ? (
+          <div className="flex flex-wrap items-center gap-2 pb-2" data-family-slot="list-toolbar">
+            {usesDefaultSearch && (
+              <label htmlFor={searchInputId} className="relative min-w-52 flex-1 sm:max-w-xs">
+                <span className="sr-only">{searchLabel}</span>
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id={searchInputId}
+                  type="search"
+                  value={queryText}
+                  onChange={(event) => setQueryText(event.target.value)}
+                  placeholder={searchLabel}
+                  className="pl-8"
+                  data-family-action="search"
+                  data-testid={`${collectionId}-search`}
+                />
+              </label>
+            )}
+            <FilterBarLayoutContext.Provider value={{ mobileOnly: Boolean(activeFilterPanel) }}>
+              {toolbar}
+            </FilterBarLayoutContext.Provider>
+            {resultCountLabel}
+            {showColumnPicker ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ms-auto hidden @2xl:inline-flex"
+                    data-testid={`${collectionId}-columns`}
+                  >
+                    <Columns3 data-icon="inline-start" />
+                    {columnsLabel}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>{columnsLabel}</DropdownMenuLabel>
+                  <DropdownMenuGroup>
+                    {hideableColumns.map((column) => (
+                      <DropdownMenuCheckboxItem
+                        key={column.id}
+                        checked={column.getIsVisible()}
+                        onCheckedChange={(checked) => column.toggleVisibility(Boolean(checked))}
+                      >
+                        {typeof column.columnDef.header === "string"
+                          ? column.columnDef.header
+                          : column.id}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
+        ) : (
+          resultCountLabel
+        )}
+        {groupingTabs}
+        <div
+          className={cn(
+            "@container min-h-0 overflow-auto",
+            cards ? "hidden @4xl:block" : "block",
+            stateOnly ? null : "rounded-lg border",
           )}
-          {toolbar}
-          {resultCountLabel}
-          {showColumnPicker ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="ms-auto hidden @2xl:inline-flex"
-                  data-testid={`${collectionId}-columns`}
-                >
-                  <Columns3 data-icon="inline-start" />
-                  {columnsLabel}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{columnsLabel}</DropdownMenuLabel>
-                <DropdownMenuGroup>
-                  {hideableColumns.map((column) => (
-                    <DropdownMenuCheckboxItem
-                      key={column.id}
-                      checked={column.getIsVisible()}
-                      onCheckedChange={(checked) => column.toggleVisibility(Boolean(checked))}
-                    >
-                      {typeof column.columnDef.header === "string"
-                        ? column.columnDef.header
-                        : column.id}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          data-testid={`${collectionId}-desktop`}
+        >
+          {stateOnly ? stateBlock : null}
+          <Table className={stateOnly ? "hidden" : undefined}>
+            <TableHeader className="sticky top-0 z-10 bg-background">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => {
+                    const sorted = header.column.getIsSorted();
+                    return (
+                      <TableHead
+                        key={header.id}
+                        style={{ width: widthByColumnId.get(header.column.id) }}
+                        className={cn(
+                          header.column.columnDef.meta?.width,
+                          header.column.columnDef.meta?.align === "end" && "text-right",
+                          priorityClass(header.column.columnDef.meta?.priority),
+                        )}
+                      >
+                        {header.isPlaceholder ? null : header.column.getCanSort() ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="-ml-2"
+                            onClick={header.column.getToggleSortingHandler()}
+                            data-testid={`${collectionId}-sort-${header.column.id}`}
+                          >
+                            <table.FlexRender header={header} />
+                            {sorted === "asc" ? (
+                              <ArrowUp data-icon="inline-end" />
+                            ) : sorted === "desc" ? (
+                              <ArrowDown data-icon="inline-end" />
+                            ) : (
+                              <ArrowUpDown data-icon="inline-end" />
+                            )}
+                          </Button>
+                        ) : (
+                          <table.FlexRender header={header} />
+                        )}
+                      </TableHead>
+                    );
+                  })}
+                  {hasActionColumn ? (
+                    <TableHead className="w-56" style={{ width: "14rem" }}>
+                      <span className="sr-only">{actionsLabel}</span>
+                    </TableHead>
+                  ) : null}
+                  {hasChevron ? (
+                    <TableHead className="w-8" style={{ width: "2rem" }} aria-hidden="true" />
+                  ) : null}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody
+              data-family-slot={showSkeleton ? "data-state" : undefined}
+              data-family-state={showSkeleton ? "loading" : undefined}
+              data-loading-phase={showSkeleton ? phase : undefined}
+              aria-busy={showSkeleton ? true : undefined}
+              className={arrivedContent ? "sk-fade-in" : undefined}
+            >
+              {showSkeleton ? (
+                Array.from({ length: skeletonRows }, (_, rowIndex) => (
+                  <TableRow
+                    key={rowIndex}
+                    className={cn(
+                      "h-11 hover:bg-transparent",
+                      phase === "reserve" ? "invisible" : "sk-fade-in",
+                    )}
+                    data-testid={`${collectionId}-skeleton-row-${rowIndex}`}
+                  >
+                    {visibleColumns.map((column, columnIndex) => (
+                      <TableCell
+                        key={column.id}
+                        style={{ width: widthByColumnId.get(column.id) }}
+                        className={priorityClass(column.columnDef.meta?.priority)}
+                      >
+                        <Skeleton
+                          className={cn(
+                            "h-4",
+                            SKELETON_WIDTHS[(rowIndex + columnIndex) % SKELETON_WIDTHS.length],
+                          )}
+                        />
+                      </TableCell>
+                    ))}
+                    {hasActionColumn ? (
+                      <TableCell className="w-56" style={{ width: "14rem" }} />
+                    ) : null}
+                    {hasChevron ? <TableCell className="w-8" style={{ width: "2rem" }} /> : null}
+                  </TableRow>
+                ))
+              ) : error || empty ? (
+                <TableRow>
+                  <TableCell colSpan={bodySpan}>{stateBlock}</TableCell>
+                </TableRow>
+              ) : (
+                rows.map((row, index) => {
+                  const leaving = leavingAt(index);
+                  const heading = leaving ? null : groupHeader(row.original, index);
+                  const open =
+                    onOpen && !leaving && (canOpen?.(row.original) ?? true)
+                      ? () => onOpen(row.original)
+                      : null;
+                  return (
+                    <Fragment key={row.id}>
+                      {heading ? (
+                        <TableRow
+                          data-slot="group-heading"
+                          className="bg-muted/40 hover:bg-muted/40"
+                        >
+                          <TableCell
+                            colSpan={bodySpan}
+                            className="py-2 text-xs font-semibold text-muted-foreground"
+                          >
+                            {heading}
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+                      <TableRow
+                        data-family-slot={leaving ? undefined : "list-row"}
+                        data-family-collection-row={leaving ? undefined : "true"}
+                        aria-hidden={leaving ? true : undefined}
+                        className={cn(
+                          "h-11",
+                          open && "cursor-pointer",
+                          rowMotionClass(row.original, index),
+                        )}
+                        data-testid={leaving ? undefined : `${collectionId}-row-${index}`}
+                        onClick={
+                          open
+                            ? (event) => {
+                                if (opensRow(event)) open();
+                              }
+                            : undefined
+                        }
+                      >
+                        {row.getVisibleCells().map((cell, cellIndex) => (
+                          <TableCell
+                            key={cell.id}
+                            style={{ width: widthByColumnId.get(cell.column.id) }}
+                            className={cn(
+                              "min-w-0",
+                              cell.column.columnDef.meta?.align === "end" && "text-right",
+                              priorityClass(cell.column.columnDef.meta?.priority),
+                              cellIndex === 0 ? "font-medium" : "text-muted-foreground",
+                            )}
+                          >
+                            {open && cell.column.id === linkColumnId ? (
+                              <LinkedCell
+                                owns={Boolean(cell.column.columnDef.meta?.ownsRowLink)}
+                                target={{
+                                  href: rowHref?.(row.original) ?? null,
+                                  onOpen: open,
+                                  testId: `${collectionId}-row-link-${index}`,
+                                  label: rowLabel?.(row.original),
+                                }}
+                              >
+                                <table.FlexRender cell={cell} />
+                              </LinkedCell>
+                            ) : (
+                              <table.FlexRender cell={cell} />
+                            )}
+                          </TableCell>
+                        ))}
+                        {hasActionColumn ? (
+                          <TableCell
+                            className="w-56 whitespace-nowrap"
+                            style={{ width: "14rem" }}
+                            data-slot="row-actions"
+                          >
+                            <span className="flex max-w-full flex-wrap items-center justify-end gap-1">
+                              {rowActions?.(row.original, index)}
+                            </span>
+                          </TableCell>
+                        ) : null}
+                        {hasChevron ? (
+                          <TableCell
+                            className="w-8 text-muted-foreground"
+                            style={{ width: "2rem" }}
+                            data-slot="row-chevron"
+                          >
+                            {open ? <ChevronRight aria-hidden="true" className="size-4" /> : null}
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    </Fragment>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+          {infinite && !showSkeleton && !error ? (
+            <InfiniteSentinel infinite={infinite} testId={`${collectionId}-more`} />
           ) : null}
         </div>
-      ) : (
-        resultCountLabel
-      )}
-      {groupingTabs}
-      <div
-        className={cn(
-          "@container min-h-0 overflow-auto",
-          cards ? "hidden @4xl:block" : "block",
-          stateOnly ? null : "rounded-lg border",
-        )}
-        data-testid={`${collectionId}-desktop`}
-      >
-        {stateOnly ? stateBlock : null}
-        <Table className={stateOnly ? "hidden" : undefined}>
-          <TableHeader className="sticky top-0 z-10 bg-background">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => {
-                  const sorted = header.column.getIsSorted();
-                  return (
-                    <TableHead
-                      key={header.id}
-                      style={{ width: widthByColumnId.get(header.column.id) }}
-                      className={cn(
-                        header.column.columnDef.meta?.width,
-                        header.column.columnDef.meta?.align === "end" && "text-right",
-                        priorityClass(header.column.columnDef.meta?.priority),
-                      )}
-                    >
-                      {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="-ml-2"
-                          onClick={header.column.getToggleSortingHandler()}
-                          data-testid={`${collectionId}-sort-${header.column.id}`}
-                        >
-                          <table.FlexRender header={header} />
-                          {sorted === "asc" ? (
-                            <ArrowUp data-icon="inline-end" />
-                          ) : sorted === "desc" ? (
-                            <ArrowDown data-icon="inline-end" />
-                          ) : (
-                            <ArrowUpDown data-icon="inline-end" />
-                          )}
-                        </Button>
-                      ) : (
-                        <table.FlexRender header={header} />
-                      )}
-                    </TableHead>
-                  );
-                })}
-                {hasActionColumn ? (
-                  <TableHead className="w-56" style={{ width: "14rem" }}>
-                    <span className="sr-only">{actionsLabel}</span>
-                  </TableHead>
-                ) : null}
-                {hasChevron ? (
-                  <TableHead className="w-8" style={{ width: "2rem" }} aria-hidden="true" />
-                ) : null}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody
-            data-family-slot={showSkeleton ? "data-state" : undefined}
-            data-family-state={showSkeleton ? "loading" : undefined}
-            data-loading-phase={showSkeleton ? phase : undefined}
-            aria-busy={showSkeleton ? true : undefined}
-            className={arrivedContent ? "sk-fade-in" : undefined}
+        {cards ? (
+          <div
+            className="min-h-0 overflow-y-auto @4xl:hidden"
+            data-testid={`${collectionId}-mobile`}
           >
             {showSkeleton ? (
-              Array.from({ length: skeletonRows }, (_, rowIndex) => (
-                <TableRow
-                  key={rowIndex}
-                  className={cn(
-                    "h-11 hover:bg-transparent",
-                    phase === "reserve" ? "invisible" : "sk-fade-in",
-                  )}
-                  data-testid={`${collectionId}-skeleton-row-${rowIndex}`}
-                >
-                  {visibleColumns.map((column, columnIndex) => (
-                    <TableCell
-                      key={column.id}
-                      style={{ width: widthByColumnId.get(column.id) }}
-                      className={priorityClass(column.columnDef.meta?.priority)}
-                    >
-                      <Skeleton
-                        className={cn(
-                          "h-4",
-                          SKELETON_WIDTHS[(rowIndex + columnIndex) % SKELETON_WIDTHS.length],
-                        )}
-                      />
-                    </TableCell>
-                  ))}
-                  {hasActionColumn ? (
-                    <TableCell className="w-56" style={{ width: "14rem" }} />
-                  ) : null}
-                  {hasChevron ? <TableCell className="w-8" style={{ width: "2rem" }} /> : null}
-                </TableRow>
-              ))
+              <div
+                className={cn("grid divide-y", phase === "reserve" ? "invisible" : "sk-fade-in")}
+                data-family-slot="data-state"
+                data-family-state="loading"
+                aria-busy="true"
+              >
+                {Array.from({ length: skeletonRows }, (_, cardIndex) => (
+                  <div key={cardIndex} className="grid gap-y-0.5 px-3 py-2.5">
+                    {Array.from({ length: 1 + MOBILE_CARD_FACTS }, (_, line) => (
+                      <span key={line} className="flex h-5 items-center">
+                        <Skeleton
+                          className={cn(
+                            line === 0 ? "h-3.5" : "h-3",
+                            SKELETON_WIDTHS[(cardIndex + line) % SKELETON_WIDTHS.length],
+                          )}
+                        />
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
             ) : error || empty ? (
-              <TableRow>
-                <TableCell colSpan={bodySpan}>{stateBlock}</TableCell>
-              </TableRow>
+              stateBlock
             ) : (
-              rows.map((row, index) => {
-                const leaving = leavingAt(index);
-                const heading = leaving ? null : groupHeader(row.original, index);
-                const open =
-                  onOpen && !leaving && (canOpen?.(row.original) ?? true)
-                    ? () => onOpen(row.original)
-                    : null;
-                return (
-                  <Fragment key={row.id}>
-                    {heading ? (
-                      <TableRow data-slot="group-heading" className="bg-muted/40 hover:bg-muted/40">
-                        <TableCell
-                          colSpan={bodySpan}
-                          className="py-2 text-xs font-semibold text-muted-foreground"
+              <div
+                className={cn("grid divide-y rounded-lg border", arrivedContent && "sk-fade-in")}
+              >
+                {rows.map((row, index) => {
+                  const leaving = leavingAt(index);
+                  const heading = leaving ? null : groupHeader(row.original, index);
+                  const open =
+                    onOpen && !leaving && (canOpen?.(row.original) ?? true)
+                      ? () => onOpen(row.original)
+                      : null;
+                  const all = row.getVisibleCells();
+                  const named = open
+                    ? all.find((cell) => cell.column.id === linkColumnId)
+                    : undefined;
+                  const title = named ?? all[0];
+                  const facts = all
+                    .filter(
+                      (cell) => cell !== title && cell.column.columnDef.meta?.priority !== "low",
+                    )
+                    .slice(0, MOBILE_CARD_FACTS);
+                  const actions = rowActions?.(row.original, index);
+                  return (
+                    <Fragment key={row.id}>
+                      {heading ? (
+                        <div
+                          data-slot="group-heading"
+                          className="bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground"
                         >
                           {heading}
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                    <TableRow
-                      data-family-slot={leaving ? undefined : "list-row"}
-                      data-family-collection-row={leaving ? undefined : "true"}
-                      aria-hidden={leaving ? true : undefined}
-                      className={cn(
-                        "h-11",
-                        open && "cursor-pointer",
-                        rowMotionClass(row.original, index),
-                      )}
-                      data-testid={leaving ? undefined : `${collectionId}-row-${index}`}
-                      onClick={
-                        open
-                          ? (event) => {
-                              if (opensRow(event)) open();
-                            }
-                          : undefined
-                      }
-                    >
-                      {row.getVisibleCells().map((cell, cellIndex) => (
-                        <TableCell
-                          key={cell.id}
-                          style={{ width: widthByColumnId.get(cell.column.id) }}
-                          className={cn(
-                            "min-w-0",
-                            cell.column.columnDef.meta?.align === "end" && "text-right",
-                            priorityClass(cell.column.columnDef.meta?.priority),
-                            cellIndex === 0 ? "font-medium" : "text-muted-foreground",
-                          )}
-                        >
-                          {open && cell.column.id === linkColumnId ? (
-                            <LinkedCell
-                              owns={Boolean(cell.column.columnDef.meta?.ownsRowLink)}
-                              target={{
-                                href: rowHref?.(row.original) ?? null,
-                                onOpen: open,
-                                testId: `${collectionId}-row-link-${index}`,
-                                label: rowLabel?.(row.original),
-                              }}
-                            >
-                              <table.FlexRender cell={cell} />
-                            </LinkedCell>
-                          ) : (
-                            <table.FlexRender cell={cell} />
-                          )}
-                        </TableCell>
-                      ))}
-                      {hasActionColumn ? (
-                        <TableCell
-                          className="w-56 whitespace-nowrap"
-                          style={{ width: "14rem" }}
-                          data-slot="row-actions"
-                        >
-                          <span className="flex max-w-full flex-wrap items-center justify-end gap-1">
-                            {rowActions?.(row.original, index)}
+                        </div>
+                      ) : null}
+                      <div
+                        className={cn(
+                          "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 px-3 py-2.5 text-left text-sm",
+                          open && "cursor-pointer transition-colors hover:bg-muted/50",
+                          rowMotionClass(row.original, index),
+                        )}
+                        onClick={
+                          open
+                            ? (event) => {
+                                if (opensRow(event)) open();
+                              }
+                            : undefined
+                        }
+                        aria-hidden={leaving ? true : undefined}
+                        data-testid={leaving ? undefined : `${collectionId}-mobile-row-${index}`}
+                        data-family-slot={leaving ? undefined : "list-row"}
+                        data-family-collection-row={leaving ? undefined : "true"}
+                        data-family-collection-mobile-card="true"
+                        data-action-scope="row"
+                      >
+                        {title ? (
+                          <span
+                            className="col-start-1 min-w-0 break-words font-medium"
+                            data-family-slot="card-title"
+                          >
+                            {open && title === named ? (
+                              <LinkedCell
+                                owns={Boolean(title.column.columnDef.meta?.ownsRowLink)}
+                                target={{
+                                  href: rowHref?.(row.original) ?? null,
+                                  onOpen: open,
+                                  testId: `${collectionId}-mobile-row-link-${index}`,
+                                  label: rowLabel?.(row.original),
+                                }}
+                              >
+                                <table.FlexRender cell={title} />
+                              </LinkedCell>
+                            ) : (
+                              <table.FlexRender cell={title} />
+                            )}
                           </span>
-                        </TableCell>
-                      ) : null}
-                      {hasChevron ? (
-                        <TableCell
-                          className="w-8 text-muted-foreground"
-                          style={{ width: "2rem" }}
-                          data-slot="row-chevron"
-                        >
-                          {open ? <ChevronRight aria-hidden="true" className="size-4" /> : null}
-                        </TableCell>
-                      ) : null}
-                    </TableRow>
-                  </Fragment>
-                );
-              })
+                        ) : null}
+                        {facts.map((cell) => (
+                          <span
+                            key={cell.id}
+                            className="col-start-1 min-w-0 break-words text-[13px] leading-5 text-muted-foreground"
+                            data-family-slot="card-fact"
+                          >
+                            {cell.column.columnDef.meta?.cardLabel &&
+                            typeof cell.column.columnDef.header === "string"
+                              ? `${cell.column.columnDef.header} `
+                              : null}
+                            <table.FlexRender cell={cell} />
+                          </span>
+                        ))}
+                        {actions ? (
+                          <span
+                            className="col-start-2 row-start-1 flex items-center gap-1 self-center"
+                            style={{ gridRowEnd: `span ${1 + facts.length}` }}
+                          >
+                            {actions}
+                          </span>
+                        ) : null}
+                      </div>
+                    </Fragment>
+                  );
+                })}
+              </div>
             )}
-          </TableBody>
-        </Table>
-        {infinite && !showSkeleton && !error ? (
-          <InfiniteSentinel infinite={infinite} testId={`${collectionId}-more`} />
+            {infinite && !showSkeleton && !error ? (
+              <InfiniteSentinel infinite={infinite} testId={`${collectionId}-mobile-more`} />
+            ) : null}
+          </div>
         ) : null}
       </div>
-      {cards ? (
-        <div className="min-h-0 overflow-y-auto @4xl:hidden" data-testid={`${collectionId}-mobile`}>
-          {showSkeleton ? (
-            <div
-              className={cn("grid divide-y", phase === "reserve" ? "invisible" : "sk-fade-in")}
-              data-family-slot="data-state"
-              data-family-state="loading"
-              aria-busy="true"
-            >
-              {Array.from({ length: skeletonRows }, (_, cardIndex) => (
-                <div key={cardIndex} className="grid gap-y-0.5 px-3 py-2.5">
-                  {Array.from({ length: 1 + MOBILE_CARD_FACTS }, (_, line) => (
-                    <span key={line} className="flex h-5 items-center">
-                      <Skeleton
-                        className={cn(
-                          line === 0 ? "h-3.5" : "h-3",
-                          SKELETON_WIDTHS[(cardIndex + line) % SKELETON_WIDTHS.length],
-                        )}
-                      />
-                    </span>
-                  ))}
-                </div>
-              ))}
-            </div>
-          ) : error || empty ? (
-            stateBlock
-          ) : (
-            <div className={cn("grid divide-y rounded-lg border", arrivedContent && "sk-fade-in")}>
-              {rows.map((row, index) => {
-                const leaving = leavingAt(index);
-                const heading = leaving ? null : groupHeader(row.original, index);
-                const open =
-                  onOpen && !leaving && (canOpen?.(row.original) ?? true)
-                    ? () => onOpen(row.original)
-                    : null;
-                const all = row.getVisibleCells();
-                const named = open
-                  ? all.find((cell) => cell.column.id === linkColumnId)
-                  : undefined;
-                const title = named ?? all[0];
-                const facts = all
-                  .filter(
-                    (cell) => cell !== title && cell.column.columnDef.meta?.priority !== "low",
-                  )
-                  .slice(0, MOBILE_CARD_FACTS);
-                const actions = rowActions?.(row.original, index);
-                return (
-                  <Fragment key={row.id}>
-                    {heading ? (
-                      <div
-                        data-slot="group-heading"
-                        className="bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground"
-                      >
-                        {heading}
-                      </div>
-                    ) : null}
-                    <div
-                      className={cn(
-                        "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 px-3 py-2.5 text-left text-sm",
-                        open && "cursor-pointer transition-colors hover:bg-muted/50",
-                        rowMotionClass(row.original, index),
-                      )}
-                      onClick={
-                        open
-                          ? (event) => {
-                              if (opensRow(event)) open();
-                            }
-                          : undefined
-                      }
-                      aria-hidden={leaving ? true : undefined}
-                      data-testid={leaving ? undefined : `${collectionId}-mobile-row-${index}`}
-                      data-family-slot={leaving ? undefined : "list-row"}
-                      data-family-collection-row={leaving ? undefined : "true"}
-                      data-family-collection-mobile-card="true"
-                      data-action-scope="row"
-                    >
-                      {title ? (
-                        <span
-                          className="col-start-1 min-w-0 break-words font-medium"
-                          data-family-slot="card-title"
-                        >
-                          {open && title === named ? (
-                            <LinkedCell
-                              owns={Boolean(title.column.columnDef.meta?.ownsRowLink)}
-                              target={{
-                                href: rowHref?.(row.original) ?? null,
-                                onOpen: open,
-                                testId: `${collectionId}-mobile-row-link-${index}`,
-                                label: rowLabel?.(row.original),
-                              }}
-                            >
-                              <table.FlexRender cell={title} />
-                            </LinkedCell>
-                          ) : (
-                            <table.FlexRender cell={title} />
-                          )}
-                        </span>
-                      ) : null}
-                      {facts.map((cell) => (
-                        <span
-                          key={cell.id}
-                          className="col-start-1 min-w-0 break-words text-[13px] leading-5 text-muted-foreground"
-                          data-family-slot="card-fact"
-                        >
-                          {cell.column.columnDef.meta?.cardLabel &&
-                          typeof cell.column.columnDef.header === "string"
-                            ? `${cell.column.columnDef.header} `
-                            : null}
-                          <table.FlexRender cell={cell} />
-                        </span>
-                      ))}
-                      {actions ? (
-                        <span
-                          className="col-start-2 row-start-1 flex items-center gap-1 self-center"
-                          style={{ gridRowEnd: `span ${1 + facts.length}` }}
-                        >
-                          {actions}
-                        </span>
-                      ) : null}
-                    </div>
-                  </Fragment>
-                );
-              })}
-            </div>
-          )}
-          {infinite && !showSkeleton && !error ? (
-            <InfiniteSentinel infinite={infinite} testId={`${collectionId}-mobile-more`} />
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }
