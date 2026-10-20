@@ -185,6 +185,7 @@ describe("call_connector — HTTP", () => {
       method: "GET",
       path: "/v2/droplets",
       query: { per_page: 10 },
+      response_mode: "full",
     });
     expect(result.ok).toBe(true);
     const data = result.data as {
@@ -225,6 +226,7 @@ describe("call_connector — HTTP", () => {
       method: "POST",
       path: "/v2/echo",
       body: { hello: "world", n: 42 },
+      response_mode: "full",
     });
     expect(result.ok).toBe(true);
     const data = result.data as {
@@ -250,6 +252,7 @@ describe("call_connector — HTTP", () => {
       connector_id,
       method: "GET",
       path: "/v2/large",
+      response_mode: "full",
     });
     expect(result.ok).toBe(true);
     const data = result.data as {
@@ -275,6 +278,7 @@ describe("call_connector — GraphQL", () => {
       method: "POST",
       path: "/graphql",
       body: { query: "query Q { __typename }", variables: { id: "abc" } },
+      response_mode: "full",
     });
     expect(result.ok).toBe(true);
     const data = result.data as {
@@ -451,6 +455,7 @@ describe("call_connector — Postgres", () => {
       const result = await callConnectorTool.execute(makeToolContext(), {
         connector_id,
         sql: "SELECT id, name FROM users",
+        response_mode: "full",
       });
       expect(result.ok).toBe(true);
       const data = result.data as {
@@ -543,6 +548,7 @@ describe("call_connector — S3", () => {
         connector_id,
         method: "GET",
         path: "/some-key",
+        response_mode: "full",
       });
       expect(result.ok).toBe(true);
       const data = result.data as { driver_kind: string; status: number; body: string };
