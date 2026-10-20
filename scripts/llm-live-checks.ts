@@ -245,9 +245,9 @@ export function exitCodeFor(results: LiveCheckResult[], keyPresent: boolean): 0 
 export function liveGateFailureHint(tag: string): string {
   return [
     `release:tag: refusing to tag ${tag} — the live LLM gate (bun run verify:llm-live) did not pass.`,
-    `The gate reads the Anthropic key from ./${DEFAULT_KEY_FILE} (--key-file <path>) and the OpenAI key from ./${DEFAULT_OPENAI_KEY_FILE} (--openai-key-file <path>)`,
-    "and exercises the release models; pass the deployed route as provider:model, primary first:",
-    "  bun run release:tag -- --models anthropic:<primary>,openai:<fallback>",
+    `The OpenAI-only release gate reads ./${DEFAULT_OPENAI_KEY_FILE} (--openai-key-file <path>)`,
+    "and exercises both release models; pass the deployed route, primary first:",
+    "  bun run release:tag -- --models openai:<primary>,openai:<fallback>",
     "A failing or unreachable model blocks the release; there is no bypass flag.",
   ].join("\n");
 }

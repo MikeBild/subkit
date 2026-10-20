@@ -38,11 +38,15 @@ beforeEach(async () => {
 });
 async function candidate(producer: SweepCadenceProducer) {
   const id = uuid();
-  await fixture.db
-    .insert(tenants)
-    .values({ id, slug: id, display_name: "Cadence fixture", created_at: new Date(getTestNow()) });
+  await fixture.db.insert(tenants).values({
+    id,
+    slug: id,
+    display_name: "Cadence fixture",
+    created_at: new Date(getTestNow() - 60_000),
+  });
   const page = await acquireSweepPage(producer, owner, fixture.db);
-  if (page.kind !== "claimed") throw new Error("missing cadence fixture page");
+  if (page.kind !== "claimed")
+    throw new Error(`missing cadence fixture page: ${JSON.stringify(page)}`);
   const item = page.candidates[0];
   if (!item) throw new Error("missing cadence fixture candidate");
   return { lease: { ...page.lease, producer }, item };

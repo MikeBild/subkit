@@ -6735,12 +6735,12 @@
     "description": "GitHub GraphQL API v4 — read nested repository and ProjectV2 data without relying on REST OpenAPI discovery. Query only reviewed fields and inspect pageInfo for incomplete results.",
     "category": "devops",
     "tags": ["graphql", "webhooks", "git", "efficient"],
-    "setup_instructions": "Use a token with access to the selected repositories. Add read:project only when querying private Projects; do not request project write scope for read-only workflows. Send named queries to https://api.github.com/graphql, probe the exact ProjectV2 query with the authenticated connector, and follow pageInfo.endCursor while hasNextPage is true. Monitor GraphQL errors and rate-limit cost. REST OpenAPI discovery is not required.",
+    "setup_instructions": "For a user-owned ProjectV2, use a classic PAT with read:project; fine-grained PATs cannot access user-owned Projects. A Project-only token does not need repo scope and cannot read private repository data. Use a separate fine-grained repository-read connector when both sources are needed. Do not request project write scope for read-only workflows. Send named queries to https://api.github.com/graphql, probe the exact ProjectV2 query with the authenticated connector, and follow pageInfo.endCursor while hasNextPage is true. Mark the result incomplete if a page or GraphQL field fails. Monitor GraphQL errors and rate-limit cost. REST OpenAPI discovery is not required.",
     "auth_options": [
       {
         "auth_type": "bearer",
         "label": "Personal Access Token (classic or fine-grained)",
-        "description": "Repository access permits private repository queries. Private ProjectV2 queries additionally require read:project or equivalent fine-grained read permission.",
+        "description": "User-owned ProjectV2 reads require a classic PAT with read:project. Fine-grained PATs cannot access user-owned Projects; use a separate fine-grained read token for private repositories.",
         "oauth": null
       },
       {

@@ -9,6 +9,7 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { callerFromPrincipal } from "../../execution/caller-context.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { LLM_CALL_TIMEOUT_MS } from "../../llm/core/ai-sdk-model.ts";
+import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -321,6 +322,84 @@ describe("runAuthoringPipeline — one-shot contract", () => {
       expect(fetchCalls).toBe(0);
     },
   );
+
+  tw("provider quota ends authoring after one pass with a repair hint", async () => {
+    let calls = 0;
+    const retryAt = new Date(0).toISOString();
+    getMockProvider().generateOverrides.generate = () => {
+      calls += 1;
+      throw new LlmProviderError("quota_exhausted", "API usage limit", {
+        retry_at: retryAt,
+      });
+    };
+    const toolCtx = makeCtx();
+    const result = await authorWorkflowTool.execute(toolCtx, { goal: "digest the repos" });
+    expect(result.ok).toBe(false);
+    expect(result.data).toMatchObject({
+      error_code: "llm_provider_limited",
+      attempts: 1,
+      next_best_actions: [],
+    });
+    expect(JSON.stringify(result.data)).toContain(retryAt);
+    expect(calls).toBe(1);
+    expect(toolCtx._draft.value).toBeNull();
+    expect(fetchCalls).toBe(0);
+  });
+
+  tw("tenant token budget ends authoring without a second generation pass", async () => {
+    let calls = 0;
+    getMockProvider().generateOverrides.generate = () => {
+      calls += 1;
+      throw new LlmQuotaExhausted();
+    };
+    const toolCtx = makeCtx();
+    const result = await authorWorkflowTool.execute(toolCtx, { goal: "digest the repos" });
+    expect(result.ok).toBe(false);
+    expect(result.data).toMatchObject({
+      error_code: "llm_quota_exhausted",
+      attempts: 1,
+      next_best_actions: [],
+    });
+    expect(calls).toBe(1);
+    expect(toolCtx._draft.value).toBeNull();
+    expect(fetchCalls).toBe(0);
+  });
+
+  tw("provider usage-limit text from the live error path is terminal", async () => {
+    let calls = 0;
+    getMockProvider().generateOverrides.generate = () => {
+      calls += 1;
+      throw new Error("You have reached your specified API usage limits.");
+    };
+    const toolCtx = makeCtx();
+    const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "digest the repos" });
+    expect(result).toMatchObject({
+      ok: false,
+      error_code: "llm_provider_limited",
+      attempts: 1,
+    });
+    expect(calls).toBe(1);
+    expect(toolCtx._draft.value).toBeNull();
+    expect(fetchCalls).toBe(0);
+  });
+
+  tw("a generated workflow with no executable steps never becomes a draft", async () => {
+    let calls = 0;
+    getMockProvider().generateOverrides.generate = () => {
+      calls += 1;
+      return { ...VALID_DEF, steps: [] };
+    };
+    const toolCtx = makeCtx();
+    const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "digest the repos" });
+    expect(result).toMatchObject({
+      ok: false,
+      error_code: "authoring_generation_failed",
+      attempts: MAX_GENERATION_PASSES,
+    });
+    expect(calls).toBe(MAX_GENERATION_PASSES);
+    expect(toolCtx._draft.value).toBeNull();
+    expect(fetchCalls).toBe(0);
+  });
 
   tw(
     "never-converging mock gives up after MAX_GENERATION_PASSES with authoring_definition_invalid and the previous draft untouched",

@@ -483,7 +483,7 @@
   },
   "github-graphql-basics": {
     "title": "GitHub GraphQL API Basics",
-    "body": "The GraphQL connector targets https://api.github.com/graphql. A REST token can authenticate GraphQL, but its actual permissions still control access: private repositories need repository access, and private Projects need read:project for read-only queries. Do not request the write-capable project scope just to read. Query only needed fields; check pageInfo and totalCount for completeness. A successful repository query does not prove Project access. Inspect GraphQL errors and the rate-limit cost; REST OpenAPI discovery is not required for GraphQL authoring.",
+    "body": "The GraphQL connector targets https://api.github.com/graphql. For a user-owned ProjectV2, use a classic PAT with read:project; fine-grained PATs cannot access user-owned Projects. Keep Project-only and private-repository reads in separate connectors so the Project token needs no repo scope. Do not request the write-capable project scope just to read. Query only needed fields; follow pageInfo.endCursor while hasNextPage is true and mark partial results incomplete. A successful repository query does not prove Project access. Inspect GraphQL errors and rate-limit cost; REST OpenAPI discovery is not required for GraphQL authoring.",
     "examples": [
       "query { viewer { login } } — sanity check the credential",
       "query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ issues(last:20,states:OPEN){ nodes { number title comments(last:5){ nodes { body } } labels(first:10){ nodes { name } } } } } } — 20 issues with comments and labels in one roundtrip"

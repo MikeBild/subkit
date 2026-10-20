@@ -128,9 +128,12 @@ export const authorWorkflowTool: ConversationTool = {
             ? [...PLACEHOLDER_DESTINATION_NEXT_ACTIONS]
             : result.error_code === "authoring_connectors_unresolved"
               ? ["list_connectors", "find_connector", "author_workflow"]
-              : result.error_code === "authoring_definition_invalid"
-                ? ["author_workflow"]
-                : ["author_workflow", "edit_workflow_patch"],
+              : result.error_code === "llm_provider_limited" ||
+                  result.error_code === "llm_quota_exhausted"
+                ? []
+                : result.error_code === "authoring_definition_invalid"
+                  ? ["author_workflow"]
+                  : ["author_workflow", "edit_workflow_patch"],
           extra: {
             errors: result.errors,
             attempts: result.attempts,

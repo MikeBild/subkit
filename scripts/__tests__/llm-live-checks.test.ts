@@ -278,11 +278,12 @@ describe("llm-live-checks · exitCodeFor", () => {
 });
 
 describe("llm-live-checks · liveGateFailureHint", () => {
-  test("names the tag, the key file, both overrides and the absence of a bypass", () => {
-    const hint = liveGateFailureHint("v9.7.0");
-    expect(hint).toContain("v9.7.0");
-    expect(hint).toContain("./claude-key.txt");
-    expect(hint).toContain("--key-file");
+  test("names the tag, OpenAI key override and the absence of a bypass", () => {
+    const hint = liveGateFailureHint("candidate-tag");
+    expect(hint).toContain("candidate-tag");
+    expect(hint).toContain("./openai-key.txt");
+    expect(hint).toContain("--openai-key-file");
+    expect(hint).toContain("openai:<primary>,openai:<fallback>");
     expect(hint).toContain("--models");
     expect(hint).toContain("verify:llm-live");
     expect(hint).toContain("no bypass");
