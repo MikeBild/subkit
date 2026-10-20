@@ -42,7 +42,9 @@ export function browserTenantMiddleware(): MiddlewareHandler<AppEnv> {
     if (!session?.auth_identity_id) return next();
     const expectedTenant =
       c.req.header("x-subkit-tenant") ??
-      (c.req.method === "GET" && /^\/v1\/files\/[^/]+\/content$/.test(c.req.path)
+      (c.req.method === "GET" &&
+      (/^\/v1\/files\/[^/]+\/content$/.test(c.req.path) ||
+        c.req.path === "/v1/tenant/branding/logo")
         ? c.req.query("tenant_context")
         : undefined);
     if (expectedTenant !== payload.tenant_id) {

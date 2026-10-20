@@ -307,6 +307,28 @@ the setup, nothing is stored, and the same token works for the next try.
 
 Open the Cockpit at `http://localhost:3000/cockpit`.
 
+## Cockpit branding
+
+Workspace administrators with `settings:write` and `identity:write` can change the
+signed-in Cockpit's wordmark, optional subtitle, theme-specific logos and one of
+three reviewed palette pairs under Settings → Branding. Draft previews stay local
+until saved. Reset restores the existing SubKit appearance. Configured branding
+retains an accessible “powered by SubKit” attribution; login, email and other
+clients keep their existing identity.
+
+Branding is stored in the workspace's PostgreSQL schema and counts against hosted
+storage limits. PNG, JPEG and WebP uploads are bounded to 2 MiB and 4 megapixels,
+decoded and normalized to a still PNG of at most 512 pixels per edge. Animation,
+SVG, external image addresses, scripts and arbitrary CSS are refused. New encoding
+removes source metadata. Palette selection preserves semantic status colors.
+
+Browser sessions read `GET /v1/tenant/branding` and save or reset through `PUT` or
+`DELETE` on that path. Writes require the displayed revision and browser CSRF
+protection. A conflict preserves the saved configuration; reload before retrying.
+Logo URLs are bound to the workspace and revision. API keys and MCP do not manage
+this Cockpit-only appearance contract. The generated OpenAPI defines request and
+response shapes.
+
 ## Engine operator
 
 One workspace is the engine operator: the workspace that completed first-run setup (on a

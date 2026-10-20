@@ -87,6 +87,7 @@ export const ERASED_TENANT_TABLES = [
   "skills",
   "subscriptions",
   "system_accounts",
+  "tenant_branding",
   "tenant_dlp_rules",
   "tenant_skill_overrides",
   "tool_approvals",

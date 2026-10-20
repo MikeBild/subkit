@@ -4,6 +4,7 @@ import { listMemberships, switchMembership } from "@/api/memberships";
 import { broadcastTenantSwitch } from "@/api/tenant-context";
 import { absolute } from "@/app/links";
 import { useSession } from "@/app/session";
+import { BrandingWordmark } from "./branding";
 import { WorkspaceMenu } from "./patterns/workspace-menu";
 
 export function WorkspaceSwitcher() {
@@ -30,6 +31,7 @@ export function WorkspaceSwitcher() {
       items={query.data?.items}
       tenantId={session.tenant.id}
       tenantName={session.tenant.display_name}
+      wordmark={<BrandingWordmark />}
       changing={change.isPending}
       changingTenantId={change.variables}
       loading={query.isPending}

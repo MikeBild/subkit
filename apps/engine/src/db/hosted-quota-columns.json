@@ -6935,6 +6935,57 @@
     "tenant": true
   },
   {
+    "table": "tenant_branding",
+    "columns": [
+      {
+        "name": "tenant_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "revision",
+        "type": "bigint",
+        "enum": null
+      },
+      {
+        "name": "display_name",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "subtitle",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "palette",
+        "type": "tenant_branding_palette",
+        "enum": ["standard", "indigo", "teal"]
+      },
+      {
+        "name": "logo_light",
+        "type": "bytea",
+        "enum": null
+      },
+      {
+        "name": "logo_dark",
+        "type": "bytea",
+        "enum": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      }
+    ],
+    "tenant": true
+  },
+  {
     "table": "tenant_dlp_rules",
     "columns": [
       {

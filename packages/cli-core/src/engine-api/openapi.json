@@ -4442,6 +4442,86 @@
                 "updated_at"
               ]
             }
+          },
+          "branding": {
+            "type": "object",
+            "properties": {
+              "configured": {
+                "type": "boolean"
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "display_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "subtitle": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "palette": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "standard",
+                  "indigo",
+                  "teal",
+                  null
+                ]
+              },
+              "logos": {
+                "type": "object",
+                "properties": {
+                  "light": {
+                    "type": "boolean"
+                  },
+                  "dark": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "light",
+                  "dark"
+                ]
+              },
+              "logo_urls": {
+                "type": "object",
+                "properties": {
+                  "light": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "dark": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "light",
+                  "dark"
+                ]
+              }
+            },
+            "required": [
+              "configured",
+              "revision",
+              "display_name",
+              "subtitle",
+              "palette",
+              "logos",
+              "logo_urls"
+            ]
           }
         },
         "required": [
@@ -4455,6 +4535,266 @@
           "oauth_callback_url",
           "recent_conversations"
         ]
+      },
+      "TenantBrandingResponse": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "palette": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "standard",
+              "indigo",
+              "teal",
+              null
+            ]
+          },
+          "logos": {
+            "type": "object",
+            "properties": {
+              "light": {
+                "type": "boolean"
+              },
+              "dark": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "light",
+              "dark"
+            ]
+          },
+          "logo_urls": {
+            "type": "object",
+            "properties": {
+              "light": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "dark": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "light",
+              "dark"
+            ]
+          }
+        },
+        "required": [
+          "configured",
+          "revision",
+          "display_name",
+          "subtitle",
+          "palette",
+          "logos",
+          "logo_urls"
+        ]
+      },
+      "TenantBrandingUpdate": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 160
+          },
+          "palette": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "standard",
+              "indigo",
+              "teal",
+              null
+            ]
+          },
+          "logos": {
+            "type": "object",
+            "properties": {
+              "light": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "enum": [
+                          "keep"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "operation"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "enum": [
+                          "remove"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "operation"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "enum": [
+                          "replace"
+                        ]
+                      },
+                      "mime_type": {
+                        "type": "string",
+                        "enum": [
+                          "image/png",
+                          "image/jpeg",
+                          "image/webp"
+                        ]
+                      },
+                      "content_base64": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "mime_type",
+                      "content_base64"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "dark": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "enum": [
+                          "keep"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "operation"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "enum": [
+                          "remove"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "operation"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "enum": [
+                          "replace"
+                        ]
+                      },
+                      "mime_type": {
+                        "type": "string",
+                        "enum": [
+                          "image/png",
+                          "image/jpeg",
+                          "image/webp"
+                        ]
+                      },
+                      "content_base64": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "mime_type",
+                      "content_base64"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "light",
+              "dark"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "revision",
+          "display_name",
+          "subtitle",
+          "palette",
+          "logos"
+        ],
+        "additionalProperties": false
       },
       "OAuthClientListResponse": {
         "type": "object",
@@ -36121,6 +36461,224 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/tenant/branding/logo": {
+      "get": {
+        "operationId": "getTenantBrandingLogo",
+        "tags": [
+          "identity"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "light",
+                "dark"
+              ]
+            },
+            "required": true,
+            "name": "theme",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": false,
+            "name": "revision",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "tenant_context",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Normalized logo for the current workspace and revision",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser session required"
+          },
+          "404": {
+            "description": "Logo unavailable for this workspace, theme or revision"
+          },
+          "409": {
+            "description": "Browser workspace context changed"
+          }
+        }
+      }
+    },
+    "/v1/tenant/branding": {
+      "get": {
+        "operationId": "getTenantBranding",
+        "tags": [
+          "identity"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant branding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantBrandingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Browser session required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Concurrent update"
+          },
+          "413": {
+            "description": "Request too large"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateTenantBranding",
+        "tags": [
+          "identity"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantBrandingUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tenant branding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantBrandingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Browser session required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Concurrent update"
+          },
+          "413": {
+            "description": "Request too large"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "resetTenantBranding",
+        "tags": [
+          "identity"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "revision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tenant branding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantBrandingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Browser session required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Concurrent update"
+          },
+          "413": {
+            "description": "Request too large"
           }
         }
       }

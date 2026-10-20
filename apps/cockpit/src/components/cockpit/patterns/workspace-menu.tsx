@@ -1,4 +1,5 @@
 import { Check, ChevronsUpDown, Loader2, User, Users, Workflow } from "lucide-react";
+import type { ReactNode } from "react";
 import type { Membership } from "@/api/memberships";
 import {
   DropdownMenu,
@@ -20,6 +21,7 @@ export function WorkspaceMenu({
   items,
   tenantId,
   tenantName,
+  wordmark,
   changing,
   changingTenantId,
   loading,
@@ -32,6 +34,7 @@ export function WorkspaceMenu({
   items: Membership[] | undefined;
   tenantId: string;
   tenantName: string;
+  wordmark?: ReactNode;
   changing: boolean;
   changingTenantId: string | undefined;
   loading: boolean;
@@ -55,24 +58,28 @@ export function WorkspaceMenu({
               aria-busy={changing}
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <div
-                data-testid="cockpit-wordmark-icon"
-                className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
-              >
-                <Workflow className="size-4" />
-              </div>
-              <div className="grid flex-1 text-left leading-tight">
-                <span
-                  data-testid="cockpit-wordmark-name"
-                  className="truncate text-sm font-semibold"
-                >
-                  {t("app.name")}
-                </span>
-                <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
-                  {pending ? <Loader2 className="size-3 animate-spin" /> : null}
-                  {pending?.display_name ?? tenantName}
-                </span>
-              </div>
+              {wordmark ?? (
+                <>
+                  <div
+                    data-testid="cockpit-wordmark-icon"
+                    className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
+                  >
+                    <Workflow className="size-4" />
+                  </div>
+                  <div className="grid min-w-0 flex-1 text-left leading-tight">
+                    <span
+                      data-testid="cockpit-wordmark-name"
+                      className="truncate text-sm font-semibold"
+                    >
+                      {t("app.name")}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {pending?.display_name ?? tenantName}
+                    </span>
+                  </div>
+                </>
+              )}
+              {pending ? <Loader2 className="size-3 animate-spin" /> : null}
               <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>

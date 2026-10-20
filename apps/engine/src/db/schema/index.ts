@@ -39,6 +39,7 @@ export * from "./runtime_config.ts";
 export * from "./scheduler.ts";
 export * from "./self_healing_scans.ts";
 export * from "./skills.ts";
+export * from "./tenant-branding.ts";
 export * from "./tenant-erasure.ts";
 export * from "./tool_approvals.ts";
 export * from "./transactional-mail.ts";
