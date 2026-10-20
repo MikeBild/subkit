@@ -11,7 +11,7 @@ export interface CleanupQueueBudget {
 export const CLEANUP_QUEUE_BUDGET: CleanupQueueBudget = {
   rows: 4096,
   bytes: 8 * 1024 * 1024,
-  deadline_ms: 5000,
+  deadline_ms: 15_000,
 };
 
 export interface CleanupReadAdapter {
