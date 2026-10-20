@@ -204,14 +204,22 @@ function applyTenantOverlay(global: Config, tenantId: string): Config {
   const target = getDeep(merged, ["llm", "providers", provider]);
   if (!target || typeof target !== "object") return merged;
   const fields: Record<string, unknown> = {};
+  const boundProvider = getDeep(overlay, ["llm", "provider"]);
   for (const field of ["api_key", "model"]) {
     const generic = getDeep(overlay, ["llm", field]);
     const specific = getDeep(overlay, ["llm", "providers", provider, field]);
     if (generic !== undefined && specific === undefined && field in target) {
-      fields[field] = generic;
+      if (boundProvider === provider || generic === "") fields[field] = generic;
+      else if (field === "api_key") fields[field] = "";
     }
   }
-  return deepMergeReplaceArrays(merged, { llm: { providers: { [provider]: fields } } });
+  const resolved = deepMergeReplaceArrays(merged, { llm: { providers: { [provider]: fields } } });
+  for (const field of ["api_key", "model"]) {
+    const effective = getDeep(resolved, ["llm", "providers", provider, field]);
+    if (typeof effective === "string")
+      setDeep(resolved as unknown as Record<string, unknown>, ["llm", field], effective);
+  }
+  return resolved;
 }
 
 function serialize(config: Config): string {

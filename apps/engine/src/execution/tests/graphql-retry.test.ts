@@ -152,6 +152,66 @@ describe("graphql cursor collection", () => {
     ).toHaveLength(3);
   });
 
+  test("fails the workflow when a required nested connection has another page", async () => {
+    mockHandler = (_, res) => {
+      jsonResponse(res, 200, {
+        data: {
+          project: {
+            items: {
+              totalCount: 1,
+              nodes: [
+                {
+                  id: "one",
+                  fieldValues: {
+                    totalCount: 2,
+                    nodes: [{ id: "field-one" }],
+                    pageInfo: { hasNextPage: true, endCursor: "field-next" },
+                  },
+                },
+              ],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        },
+      });
+    };
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "incomplete-nested-graphql-connection",
+      steps: [
+        {
+          kind: "request",
+          id: "gql",
+          connector_id: connectorId,
+          graphql: {
+            operation: "query",
+            query:
+              "query Items($after: String) { project { items(after: $after) { totalCount nodes { id fieldValues { totalCount nodes { id } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } } }",
+            cursor_pagination: {
+              connection_path: "project.items",
+              cursor_variable: "after",
+              items_field: "nodes",
+              required_connection_paths: ["fieldValues"],
+              max_pages: 2,
+              max_items: 10,
+            },
+          },
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("failed");
+    expect(requestCount).toBe(1);
+    expect((result.steps[0]?.error as { code?: string } | undefined)?.code).toBe(
+      "graphql_pagination_incomplete",
+    );
+    expect(result.output).toBeUndefined();
+  });
+
   test("rejects a mutation before any cursor request", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "reject-cursor-mutation",

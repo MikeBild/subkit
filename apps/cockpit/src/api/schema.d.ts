@@ -22893,6 +22893,7 @@ export interface components {
                      * @enum {string}
                      */
                     items_field: "nodes" | "edges";
+                    required_connection_paths?: string[];
                     max_pages: number;
                     max_items: number;
                 };

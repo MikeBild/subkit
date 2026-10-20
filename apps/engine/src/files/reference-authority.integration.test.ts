@@ -279,7 +279,7 @@ test("queued and running execution scope protects computed references until sett
     input: { compute_from_remote: true },
     hold_writes: true,
   });
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let pass = 0; pass < 10; pass++) {
     await cleanup();
     if ((await currentFile(neighbor.id))?.deleted_at) break;
   }

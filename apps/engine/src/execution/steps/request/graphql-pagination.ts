@@ -4,6 +4,7 @@ export interface GraphqlCursorPagination {
   connection_path: string;
   cursor_variable: string;
   items_field: "nodes" | "edges";
+  required_connection_paths?: string[] | undefined;
   max_pages: number;
   max_items: number;
 }
@@ -29,6 +30,19 @@ function incomplete(reason: string, last: StepResult | null, started: number): S
     error: { code: "graphql_pagination_incomplete", message: reason },
     ...(last?.request_meta ? { request_meta: last.request_meta } : {}),
   };
+}
+
+function nodeOf(item: unknown, itemsField: GraphqlCursorPagination["items_field"]): unknown {
+  if (itemsField === "nodes") return item;
+  if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+  return (item as Record<string, unknown>).node;
+}
+
+function idOf(item: unknown, itemsField: GraphqlCursorPagination["items_field"]): unknown {
+  const node = nodeOf(item, itemsField);
+  return node && typeof node === "object" && !Array.isArray(node)
+    ? (node as Record<string, unknown>).id
+    : undefined;
 }
 
 export async function runGraphqlCursorPages(p: {
@@ -83,6 +97,44 @@ export async function runGraphqlCursorPages(p: {
         started,
       );
     }
+    if (spec.items_field === "edges" && pageItems.some((item) => nodeOf(item, "edges") == null)) {
+      return incomplete("The connection contains an edge without a node.", last, started);
+    }
+    for (const item of pageItems) {
+      const node = nodeOf(item, spec.items_field);
+      for (const path of spec.required_connection_paths ?? []) {
+        const nested = connectionAt(node, path);
+        const nestedPageInfo = nested?.pageInfo;
+        const nestedItems = nested?.nodes ?? nested?.edges;
+        if (
+          !nested ||
+          !Array.isArray(nestedItems) ||
+          !nestedPageInfo ||
+          typeof nestedPageInfo !== "object" ||
+          typeof (nestedPageInfo as Record<string, unknown>).hasNextPage !== "boolean"
+        ) {
+          return incomplete(
+            `The response lacks the required nested connection ${path} or its pageInfo.`,
+            last,
+            started,
+          );
+        }
+        if ((nestedPageInfo as Record<string, unknown>).hasNextPage) {
+          return incomplete(
+            `The nested connection ${path} has more pages; read it separately or increase its page size.`,
+            last,
+            started,
+          );
+        }
+        if (typeof nested.totalCount === "number" && nested.totalCount !== nestedItems.length) {
+          return incomplete(
+            `The nested connection ${path} item count differs from totalCount.`,
+            last,
+            started,
+          );
+        }
+      }
+    }
     bytes += Buffer.byteLength(JSON.stringify(pageItems));
     if (items.length + pageItems.length > spec.max_items || bytes > MAX_ACCUMULATED_BYTES) {
       return incomplete(
@@ -105,11 +157,7 @@ export async function runGraphqlCursorPages(p: {
           started,
         );
       }
-      const ids = items.map((item) =>
-        item && typeof item === "object" && !Array.isArray(item)
-          ? (item as Record<string, unknown>).id
-          : undefined,
-      );
+      const ids = items.map((item) => idOf(item, spec.items_field));
       if (ids.every((id) => typeof id === "string") && new Set(ids).size !== ids.length) {
         return incomplete("Duplicate item IDs prevent a complete snapshot.", last, started);
       }

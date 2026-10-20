@@ -98,6 +98,7 @@ type GraphQLConfig = {
         connection_path: string;
         cursor_variable: string;
         items_field: "nodes" | "edges";
+        required_connection_paths?: string[] | undefined;
         max_pages: number;
         max_items: number;
       }
@@ -114,6 +115,10 @@ const GraphQLConfigSchema: z.ZodType<GraphQLConfig> = z
         connection_path: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/),
         cursor_variable: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
         items_field: z.enum(["nodes", "edges"]).default("nodes"),
+        required_connection_paths: z
+          .array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/))
+          .max(16)
+          .optional(),
         max_pages: z.number().int().min(1).max(100),
         max_items: z.number().int().min(1).max(10_000),
       })
