@@ -164,16 +164,12 @@ export async function createHttpTestServer(
   if (!sysAcct) throw new Error("seed system_account failed");
 
   const key = generateApiKey();
-  const [apiKey] = await testDb.db
-    .insert(apiKeys)
-    .values({
-      tenant_id: tenant.id,
-      user_id: user.id,
-      prefix: key.prefix,
-      token_sha256: key.hash,
-      scopes: ["*"],
-    })
-    .returning();
+  const {
+    rows: [apiKey],
+  } = await testDb.pool.query<{ id: string }>(
+    "INSERT INTO subkit.api_keys (tenant_id, user_id, prefix, token_sha256, scopes) VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING id",
+    [tenant.id, user.id, key.prefix, key.hash, JSON.stringify(["*"])],
+  );
   if (!apiKey) throw new Error("seed api_key failed");
 
   const registry = buildDefaultRegistry(testDb.db);

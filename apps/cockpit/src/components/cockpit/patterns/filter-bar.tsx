@@ -58,6 +58,7 @@ export function FilterBar({
   selects = [],
   segmented,
   reset,
+  onApply,
   presentation,
   mobileOnly,
 }: {
@@ -65,6 +66,7 @@ export function FilterBar({
   selects?: readonly FilterSelect[];
   segmented?: ReactNode;
   reset?: { label: string; onClick(): void };
+  onApply?: (changes: Record<string, string>) => void;
   presentation?: "panel" | "toolbar";
   mobileOnly?: boolean;
 }) {
@@ -85,10 +87,17 @@ export function FilterBar({
     setOpen(true);
   };
   const applyFilters = () => {
+    const changes: Record<string, string> = {};
     for (const select of filters) {
       const next = draft[keyOf(select)];
-      if (next !== undefined && next !== select.value) select.onChange(next);
+      if (next !== undefined && next !== select.value) changes[keyOf(select)] = next;
     }
+    if (onApply && Object.keys(changes).length > 0) onApply(changes);
+    else if (!onApply)
+      for (const select of filters) {
+        const next = changes[keyOf(select)];
+        if (next !== undefined) select.onChange(next);
+      }
     setOpen(false);
   };
   if (display === "panel")

@@ -586,6 +586,16 @@ export function CatalogPage({
                   testId: "catalog-search",
                 }}
                 selects={selects}
+                onApply={(changes) => {
+                  const patch: Partial<CatalogState> = {};
+                  if (changes["catalog-kind-filter"])
+                    patch.kind = changes["catalog-kind-filter"] as CatalogState["kind"];
+                  if (changes["catalog-category-filter"])
+                    patch.category = changes["catalog-category-filter"];
+                  if (changes["catalog-status-filter"])
+                    patch.status = changes["catalog-status-filter"] as WorkflowStatusFilter;
+                  if (Object.keys(patch).length > 0) setState(patch);
+                }}
                 reset={{ label: t("catalog.clearFilters"), onClick: resetFilters }}
               />
               {resource === "connectors" && state.health === "not_ok" ? (
