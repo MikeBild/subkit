@@ -991,7 +991,7 @@ export function classifyHttpProbeStatus(
   return { code: "unknown_upstream_error" };
 }
 
-function resolveProbeEndpointConfig(connector: ConnectorView): ProbeEndpoint | null {
+export function resolveProbeEndpointConfig(connector: ConnectorView): ProbeEndpoint | null {
   const raw = getConnectorProbeEndpoint(connector);
   if (raw === null || raw === undefined) return null;
   const parsed = ProbeEndpointSchema.safeParse(raw);
@@ -1002,10 +1002,24 @@ function resolveProbeEndpointConfig(connector: ConnectorView): ProbeEndpoint | n
     );
   }
   const config = parsed.data;
-  if (connector.template_slug !== "notion") return config;
-  const headers = { ...(config.headers ?? {}) };
-  const hasVersion = Object.keys(headers).some((name) => name.toLowerCase() === "notion-version");
-  if (!hasVersion) headers["Notion-Version"] = "2022-06-28";
+  const templateRaw = getConnectorProbeEndpoint({
+    ...connector,
+    config: {},
+  });
+  const template = ProbeEndpointSchema.safeParse(templateRaw);
+  if (
+    !template.success ||
+    template.data.method !== config.method ||
+    template.data.path !== config.path ||
+    !template.data.headers
+  )
+    return config;
+  const headers = { ...template.data.headers };
+  for (const [name, value] of Object.entries(config.headers ?? {})) {
+    const inherited = Object.keys(headers).find((key) => key.toLowerCase() === name.toLowerCase());
+    if (inherited) delete headers[inherited];
+    headers[name] = value;
+  }
   return { ...config, headers };
 }
 

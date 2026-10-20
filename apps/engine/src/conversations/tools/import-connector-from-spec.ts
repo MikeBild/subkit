@@ -149,10 +149,6 @@ export const importConnectorFromSpecTool: ConversationTool = {
     "Import an API specification (an API request collection, HAR, OpenAPI or Google Discovery inline/URL up to 50 MiB, GraphQL SDL, GraphQL introspection endpoint, or a curl command) into a connector draft. Specification metadata seeds the base URL and authentication. Auto-matches a built-in template when the base URL is recognised; otherwise produces a manual HTTP connector draft with sampled endpoints attached.",
   use_case:
     "Use when the operator brings an existing API spec, request collection, curl command, or a GraphQL endpoint URL. Faster than manually describing the connector.",
-  example_input: {
-    source: "curl",
-    content: "curl -H 'Authorization: Bearer sk_test_xxx' https://api.stripe.com/v1/customers",
-  },
   inputSchema,
   category: "tenant_write",
   async execute(ctx, rawArgs): Promise<ToolResult> {
