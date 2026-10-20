@@ -1,18 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { ForbiddenError, UnauthorizedError } from "../../http/errors.ts";
 import { requireAuth } from "../../http/middleware/auth.ts";
 import type { AppEnv } from "../../http/openapi.ts";
 import { logger } from "../../logging/logger.ts";
-import {
-  recordUsageEvent,
-  type TrafficClass,
-  trafficClassFromHeader,
-} from "../../stats/usage-events.ts";
+import { recordUsageEvent, trafficClassFromHeader } from "../../stats/usage-events.ts";
 import { now } from "../../utils/clock.ts";
 import { createMcpServer } from "../server.ts";
 import { validateMcpStreamableHttpRequest } from "./guards.ts";
@@ -234,6 +228,7 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         enableJsonResponse: false,
+        maxRequestBodySize: 6 * 1024 * 1024,
         onsessioninitialized: (sid) => {
           if (!lease) {
             logger.warn({

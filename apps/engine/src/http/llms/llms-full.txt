@@ -323,6 +323,39 @@ the setup, nothing is stored, and the same token works for the next try.
 
 Open the Cockpit at `http://localhost:3000/cockpit`.
 
+## Cockpit branding
+
+Workspace administrators with `settings:write` and `identity:write` can change the
+signed-in Cockpit's wordmark, optional subtitle, theme-specific logos and one of
+three reviewed palette pairs under Settings → Branding. Draft previews stay local
+until saved. Reset restores the existing SubKit appearance. Configured branding
+retains an accessible “powered by SubKit” attribution; login, email and other
+clients keep their existing identity.
+
+Branding is stored in the workspace's PostgreSQL schema and counts against hosted
+storage limits. PNG, JPEG and WebP uploads are bounded to 2 MiB and 4 megapixels,
+decoded and normalized to a still PNG of at most 512 pixels per edge. Animation,
+SVG, external image addresses, scripts and arbitrary CSS are refused. New encoding
+removes source metadata. Palette selection preserves semantic status colors.
+
+HTTP, sk CLI, MCP and Cockpit share the same tenant-owned branding contract,
+normalization, permissions and optimistic revisions. Authenticated callers read
+`GET /v1/tenant/branding`, save with `PUT` and reset with `DELETE`. Writes require
+both `settings:write` and `identity:write`; scoped API keys retain their permission
+ceiling. Browser writes additionally retain CSRF protection. A conflict preserves
+the saved configuration; reload before retrying. Logo reads are bound to the
+workspace and revision and apply the same single-logo fallback in every client.
+
+The CLI provides `sk branding get`, `sk branding update <json-file|->`,
+`sk branding reset <revision>` and `sk branding logo <light|dark> --output <file>`.
+MCP exposes `get_tenant_branding`, `update_tenant_branding`,
+`reset_tenant_branding` and `get_tenant_branding_logo`. MCP mutations retain the
+normal authenticated human approval path; both write permissions are checked
+before requesting approval. Ordinary reads contain metadata, while the explicit
+logo operation returns normalized PNG bytes. The generated OpenAPI and MCP input
+schemas derive from the shared request contract. Visual branding remains limited
+to the signed-in Cockpit.
+
 ## Engine operator
 
 One workspace is the engine operator: the workspace that completed first-run setup (on a
@@ -1140,6 +1173,7 @@ every API call.
 | `sk attach` | `file:write` | Upload a file and link it to a conversation (shortcut) | — |
 | `sk audit` | `audit:read` | Query the append-only audit log | `export`, `query`, `show` |
 | `sk auth` | `connector:write` | Start a connector's browser sign-in and print the URL to open. Works for every connector that signs in with an account — a web service or an MCP server; the engine names the route. | — |
+| `sk branding` | — | Read, update, reset, or download tenant branding | `get`, `logo`, `reset`, `update` |
 | `sk categories` | `workflow:read` | Show and rename the catalog categories shared by every kind | `list`, `rename` |
 | `sk chat` | `chat_workspace:read` | Manage external chat spaces (Google Chat / Slack) | `install-space`, `remove-space`, `spaces` |
 | `sk clipper` | — | Install the Chrome clipping extension | `install` |
@@ -1339,6 +1373,52 @@ Start a connector's browser sign-in and print the URL to open. Works for every c
 
 - `--connector-id` (string, required) — Connector to reauthenticate
 - `--json` — Emit the full response as JSON
+
+
+### `sk branding`
+
+Read, update, reset, or download tenant branding
+
+#### `sk branding get`
+
+Read tenant branding
+
+- `--engine-url` (string)
+- `--api-key` (string)
+- `--profile` (string)
+- `--json`
+
+#### `sk branding logo`
+
+Download normalized branding logo PNG
+
+- `<theme>` (positional, required) — light or dark
+- `--output` (string) — Output file, defaults to stdout
+- `--revision` (string)
+- `--engine-url` (string)
+- `--api-key` (string)
+- `--profile` (string)
+- `--json`
+
+#### `sk branding reset`
+
+Reset branding at an expected revision
+
+- `<revision>` (positional, required)
+- `--engine-url` (string)
+- `--api-key` (string)
+- `--profile` (string)
+- `--json`
+
+#### `sk branding update`
+
+Replace branding from canonical JSON body (file or - for stdin)
+
+- `<input>` (positional, required) — JSON file or -
+- `--engine-url` (string)
+- `--api-key` (string)
+- `--profile` (string)
+- `--json`
 
 
 ### `sk categories`

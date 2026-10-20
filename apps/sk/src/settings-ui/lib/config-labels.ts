@@ -3,6 +3,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "log.format": "Log format",
 
   "server.port": "HTTP port",
+  "server.root_redirect_to_cockpit": "Redirect root to Cockpit",
   "server.hosted_rate_limit.tenant_per_month": "Hosted requests per tenant and UTC month",
   "server.hosted_rate_limit.principal_per_minute": "Hosted requests per principal and minute",
   "server.hosted_rate_limit.peer_per_minute": "Hosted requests per peer and minute",

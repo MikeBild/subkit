@@ -14,15 +14,19 @@ export function SaveBar({
   count,
   line,
   notice,
+  description,
   discard,
   save,
+  secondary,
   testId,
 }: {
   count: number;
   line?: string;
   notice?: ReactNode;
+  description?: ReactNode;
   discard: BarAction;
   save: BarAction;
+  secondary?: ReactNode;
   testId?: string;
 }) {
   const { t } = useI18n();
@@ -38,9 +42,10 @@ export function SaveBar({
           {line ??
             t(count === 1 ? "pattern.saveBar.unsaved.one" : "pattern.saveBar.unsaved", { count })}
         </p>
+        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
         {notice ? <div className="text-xs text-destructive">{notice}</div> : null}
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button
           variant="ghost"
           disabled={discard.disabled || save.pending}
@@ -49,6 +54,7 @@ export function SaveBar({
         >
           {discard.label ?? t("common.discard")}
         </Button>
+        {secondary}
         <Button
           pending={save.pending}
           disabled={save.disabled}

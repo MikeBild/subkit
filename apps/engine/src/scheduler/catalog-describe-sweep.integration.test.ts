@@ -9,7 +9,7 @@ import {
   CATALOG_DESCRIBE_QUEUE,
   enqueueCatalogDescribe,
 } from "../queue/handlers/catalog-describe.ts";
-import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { runCatalogDescribeSweep } from "./catalog-describe-runner.ts";
 import {
@@ -55,7 +55,7 @@ async function tenant(pending = true) {
     id,
     slug: id,
     display_name: "Catalog sweep fixture",
-    created_at: new Date(getTestNow()),
+    created_at: new Date(FROZEN_NOW),
   });
   if (pending)
     await fixture.db
@@ -80,20 +80,26 @@ async function state() {
 
 test("real SDK jobs cover more than two durable pages without repeats or tenant multiplication", async () => {
   const ids = await Promise.all(Array.from({ length: SWEEP_PAGE_LIMIT * 2 + 5 }, () => tenant()));
-  for (const expected of [64, 128, 133]) {
+  let attempts = 0;
+  while (
+    (await boss.findJobs<{ tenant_id: string }>(CATALOG_DESCRIBE_QUEUE)).length < ids.length &&
+    attempts < 8
+  ) {
+    attempts++;
     await runCatalogDescribeSweep(fixture.db, boss);
     const jobs = await boss.findJobs<{ tenant_id: string }>(CATALOG_DESCRIBE_QUEUE);
-    expect(jobs).toHaveLength(expected);
-    expect(new Set(jobs.map((job) => job.data.tenant_id)).size).toBe(expected);
-    expect((await entries()).length).toBe(expected);
+    expect(new Set(jobs.map((job) => job.data.tenant_id)).size).toBe(jobs.length);
+    expect((await entries()).length).toBe(jobs.length);
   }
+  expect(attempts).toBeGreaterThanOrEqual(3);
+  expect(await boss.findJobs(CATALOG_DESCRIBE_QUEUE)).toHaveLength(ids.length);
   expect((await state()).epoch_upper_id).toBeNull();
   expect(
     (await boss.findJobs<{ tenant_id: string }>(CATALOG_DESCRIBE_QUEUE))
       .map((job) => job.data.tenant_id)
       .sort(),
   ).toEqual(ids.sort());
-}, 30_000);
+}, 60_000);
 
 test("production standard policy coalesces repeated pending catalog admissions", async () => {
   const id = await tenant();

@@ -80,6 +80,7 @@ import {
   useRestartOffer,
 } from "@/pages/settings-restart";
 import { restartOfferAfterSave, restartSaveNote } from "@/pages/settings-restart-model";
+import { BrandingSettings } from "./branding";
 
 type ApiKeyProviderSetting = {
   protocol: "api_key";
@@ -1119,10 +1120,15 @@ function SystemSettings() {
       ? publicBaseUrlItem.value
       : (globalThis.location?.origin ?? ""));
   const listMode = filter === "changed";
-  const nav = useMemo(
-    () => settingNavigation([...new Set(allItems.map((item) => settingSectionOf(item.path)))]),
-    [allItems],
-  );
+  const nav = useMemo(() => {
+    const groups = settingNavigation([
+      ...new Set(allItems.map((item) => settingSectionOf(item.path))),
+    ]);
+    const interfaceGroup = groups.find((group) => group.id === "sk");
+    if (interfaceGroup) interfaceGroup.sections.unshift("branding");
+    else groups.push({ id: "sk", label: "settings.group.sk", sections: ["branding"] });
+    return groups;
+  }, [allItems]);
   const orderedSections = useMemo(() => nav.flatMap((group) => group.sections), [nav]);
   const hits = useMemo(
     () => (listMode ? allItems.filter((item) => settingIsChanged(item)) : []),
@@ -1359,7 +1365,7 @@ function SystemSettings() {
 
   return (
     <div data-testid="settings-system" className="flex flex-col gap-4">
-      {settingsView === "ready" ? (
+      {settingsView === "ready" && selectedSection !== "branding" ? (
         <SettingsSummary
           total={allItems.length}
           changed={changedCount}
@@ -1382,7 +1388,7 @@ function SystemSettings() {
         />
       ) : (
         <div className="@container/settings grid gap-5 pb-20" data-testid="settings-list">
-          <SettingsReadOnlyNotice canWrite={canWrite} />
+          {selectedSection !== "branding" ? <SettingsReadOnlyNotice canWrite={canWrite} /> : null}
           <SettingsAttentionLine
             attention={attention}
             onOpenLeaf={openLeaf}
@@ -1478,6 +1484,8 @@ function SystemSettings() {
                       })}
                   </div>
                 )
+              ) : selectedSection === "branding" ? (
+                <BrandingSettings />
               ) : (
                 <SettingsSection
                   section={selectedSection}
