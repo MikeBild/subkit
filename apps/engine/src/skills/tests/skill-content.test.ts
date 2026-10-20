@@ -124,6 +124,7 @@ describe("github-graphql-basics — private project guidance", () => {
     expect(body).toContain("ProjectV2.items");
     expect(body).toContain("hasNextPage");
     expect(body).toContain("graphql.cursor_pagination");
+    expect(body).toContain("required_connection_paths");
     expect(body).toContain("fail without a partial snapshot");
   });
 });
