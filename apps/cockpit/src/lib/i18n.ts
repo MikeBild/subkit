@@ -54,6 +54,7 @@ const EN = {
   "audit.timeline.resourceSearch": "Search by name or enter an ID",
   "audit.timeline.selectResource": "Select a resource result or enter its exact ID and type.",
   "audit.timeline.invalidId": "Enter a valid identifier.",
+  "audit.timeline.invalidCorrelationId": "Enter a 32-character lowercase hexadecimal operation ID.",
   "audit.timeline.sourceFilter": "Entry point",
   "audit.timeline.action": "Action",
   "audit.timeline.trace": "Recorded technical trace ID (unverified)",
@@ -5032,6 +5033,8 @@ const DE: Record<TranslationKey, string> = {
   "audit.timeline.selectResource":
     "Ressource aus den Treffern auswählen oder genaue ID und Typ eingeben.",
   "audit.timeline.invalidId": "Eine gültige Kennung eingeben.",
+  "audit.timeline.invalidCorrelationId":
+    "Eine Vorgangs-ID mit 32 kleinen Hexadezimalzeichen eingeben.",
   "audit.timeline.sourceFilter": "Einstiegspunkt",
   "audit.timeline.action": "Aktion",
   "audit.timeline.trace": "Erfasste technische Trace-ID (nicht verifiziert)",

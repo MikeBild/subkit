@@ -52,6 +52,7 @@ import {
   utcChoiceForInstant,
   utcChoicesForLocalInput,
   utcFromLocalInputPreservingInstant,
+  validAuditCorrelationId,
 } from "./audit-timeline-model";
 
 type Source =
@@ -280,7 +281,7 @@ function FilterForm({
   const { t } = useI18n();
   const [identityOpen, setIdentityOpen] = useState(false);
   const [originOpen, setOriginOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(() => !validAuditCorrelationId(draft.correlationId));
   const set = (key: keyof FilterState, value: string) =>
     setDraft((current) => ({
       ...current,
@@ -644,7 +645,14 @@ function FilterForm({
                 className={inputClass}
                 value={draft.correlationId}
                 onChange={(event) => set("correlationId", event.target.value)}
+                aria-invalid={!validAuditCorrelationId(draft.correlationId)}
+                data-testid="audit-correlation-id"
               />
+              {!validAuditCorrelationId(draft.correlationId) && (
+                <p role="alert" className="text-xs text-destructive">
+                  {t("audit.timeline.invalidCorrelationId")}
+                </p>
+              )}
             </Field>
             <Field label={t("audit.timeline.execution")}>
               <input
@@ -989,7 +997,9 @@ export function AuditTimelinePage() {
   const [draft, setDraft] = useState<FilterState>(fromUrl);
   const [filter, setFilter] = useState<FilterState>(fromUrl);
   const [filterError, setFilterError] = useState<string | null>(null);
-  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(
+    () => !validAuditCorrelationId(fromUrl().correlationId),
+  );
   const [group, setGroup] = useState<AuditGroup>("day");
   const [selectedId, setSelectedId] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get("entry"),
@@ -1044,6 +1054,7 @@ export function AuditTimelinePage() {
     ],
     [people.data, accounts.data],
   );
+  const invalidAppliedCorrelation = !validAuditCorrelationId(filter.correlationId);
   const params = useMemo<ListParams>(
     () => ({
       ...auditScopeParams(filter.scope),
@@ -1087,12 +1098,14 @@ export function AuditTimelinePage() {
     }),
     [filter, zone],
   );
-  const list = useInfiniteList<TimelineEntry>("/v1/audit-log", params, { enabled: allowed });
+  const list = useInfiniteList<TimelineEntry>("/v1/audit-log", params, {
+    enabled: allowed && !invalidAppliedCorrelation,
+  });
   useEffect(() => {
-    if (!allowed || liveStatus.status === "live") return;
+    if (!allowed || invalidAppliedCorrelation || liveStatus.status === "live") return;
     const timer = window.setInterval(() => void list.query.refetch(), 60_000);
     return () => window.clearInterval(timer);
-  }, [allowed, liveStatus.status, list.query.refetch]);
+  }, [allowed, invalidAppliedCorrelation, liveStatus.status, list.query.refetch]);
   const rows = list.items;
   const filterKey = JSON.stringify(params);
   useLayoutEffect(() => {
@@ -1151,6 +1164,10 @@ export function AuditTimelinePage() {
     );
   }, []);
   const apply = useCallback(() => {
+    if (!validAuditCorrelationId(draft.correlationId)) {
+      setFilterError(null);
+      return;
+    }
     const selectedResourceId =
       draft.resourceId ||
       (draft.resourceType && UUID.test(draft.resourceQuery.trim())
@@ -1483,7 +1500,11 @@ export function AuditTimelinePage() {
                   testId="audit-refresh-failed"
                 />
               )}
-              {list.query.isPending ? (
+              {invalidAppliedCorrelation ? (
+                <p className="py-12 text-center text-sm text-destructive">
+                  {t("audit.timeline.invalidCorrelationId")}
+                </p>
+              ) : list.query.isPending ? (
                 <TimelineSkeleton />
               ) : list.query.isError && rows.length === 0 ? (
                 <DataState

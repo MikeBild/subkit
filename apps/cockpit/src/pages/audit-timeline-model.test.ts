@@ -9,6 +9,7 @@ import {
   utcChoicesForLocalInput,
   utcFromLocalInput,
   utcFromLocalInputPreservingInstant,
+  validAuditCorrelationId,
 } from "./audit-timeline-model";
 
 function entry(id: string, ts: string, overrides: Partial<TimelineEntry> = {}): TimelineEntry {
@@ -196,5 +197,16 @@ describe("Audit time boundary", () => {
         "",
       ),
     ).toBe("2026-10-25T00:30:00.000Z");
+  });
+});
+
+describe("Audit operation filter", () => {
+  test("accepts only the API's lowercase 32-character correlation ID format", () => {
+    expect(validAuditCorrelationId("")).toBe(true);
+    expect(validAuditCorrelationId("a".repeat(32))).toBe(true);
+    expect(validAuditCorrelationId("A".repeat(32))).toBe(false);
+    expect(validAuditCorrelationId("a".repeat(31))).toBe(false);
+    expect(validAuditCorrelationId("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")).toBe(false);
+    expect(validAuditCorrelationId("g".repeat(32))).toBe(false);
   });
 });

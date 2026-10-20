@@ -45,6 +45,10 @@ export const AUDIT_GROUPS: readonly AuditGroup[] = [
   "result",
 ];
 
+export function validAuditCorrelationId(value: string): boolean {
+  return value === "" || /^[0-9a-f]{32}$/.test(value);
+}
+
 export function localTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
