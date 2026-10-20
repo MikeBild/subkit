@@ -46,6 +46,7 @@ export async function runProactiveDriftScanForTenant(
   let candidates_created = 0;
   let unanchored_detected = 0;
   let errorText: string | null = null;
+  let signalFailures = 0;
   try {
     await auditAwait(
       {
@@ -63,6 +64,7 @@ export async function runProactiveDriftScanForTenant(
     try {
       await sweepUndecidableCandidates(db, tenant_id);
     } catch (err) {
+      errorText = "undecidable-candidate sweep failed";
       logger.error({
         module: "scheduler",
         action: "drift_scan.sweep_failed",
@@ -101,6 +103,7 @@ export async function runProactiveDriftScanForTenant(
           recordProactiveDriftCandidate({ tenant_id, classification: result.classification });
         }
       } catch (err) {
+        signalFailures++;
         logger.error({
           module: "scheduler",
           action: "drift_scan.signal_failed",
@@ -111,6 +114,10 @@ export async function runProactiveDriftScanForTenant(
           ...errorFields(err),
         });
       }
+    }
+    if (signalFailures > 0) {
+      const signalError = `${signalFailures} drift signal(s) failed`;
+      errorText = errorText ? `${errorText}; ${signalError}` : signalError;
     }
   } catch (err) {
     errorText = err instanceof Error ? err.message : String(err);
