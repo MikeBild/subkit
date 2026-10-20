@@ -1016,8 +1016,8 @@ export function AuditTimelinePage() {
     () => !validAuditCorrelationId(fromUrl().correlationId),
   );
   const [group, setGroup] = useState<AuditGroup>("day");
-  const [selectedId, setSelectedId] = useState<string | null>(() =>
-    new URLSearchParams(window.location.search).get("entry"),
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => validUrlUuid(new URLSearchParams(window.location.search).get("entry")) || null,
   );
   const [manualClose, setManualClose] = useState(false);
   const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1600px)").matches);

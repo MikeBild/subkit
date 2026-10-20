@@ -44,7 +44,9 @@ export type RecordValue = Record<string, unknown>;
 
 export function catalogSelectedId(search: string): string | null {
   const id = new URLSearchParams(search).get("selected");
-  return id && id.length <= 200 ? id : null;
+  return id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    ? id
+    : null;
 }
 
 export function catalogSelectionHref(path: string, search: string, id: string | null): string {

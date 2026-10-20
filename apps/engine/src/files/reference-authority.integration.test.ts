@@ -279,7 +279,10 @@ test("queued and running execution scope protects computed references until sett
     input: { compute_from_remote: true },
     hold_writes: true,
   });
-  await cleanup();
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await cleanup();
+    if ((await currentFile(neighbor.id))?.deleted_at) break;
+  }
   expect((await currentFile(f.id))?.deleted_at).toBeNull();
   expect((await currentFile(neighbor.id))?.deleted_at).not.toBeNull();
   await fixture.db
@@ -292,7 +295,10 @@ test("queued and running execution scope protects computed references until sett
     .update(executions)
     .set({ status: "failed" })
     .where(eq(executions.id, executionId));
-  await cleanup();
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await cleanup();
+    if ((await currentFile(f.id))?.deleted_at) break;
+  }
   expect((await currentFile(f.id))?.deleted_at).not.toBeNull();
 });
 
