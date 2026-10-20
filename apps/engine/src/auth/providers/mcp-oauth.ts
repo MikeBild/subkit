@@ -10,6 +10,7 @@ import {
   users,
 } from "../../db/schema/index.ts";
 import { sha256Hex } from "../../identity/api-key.ts";
+import { withContext } from "../../logging/context.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { recordAuthFailure } from "../failed-auth-tracker.ts";
 import { clientLivenessRefusal, userLivenessRefusal } from "../liveness.ts";
@@ -49,6 +50,7 @@ async function maybeFlushLastUsed(
   tenantId: string,
   prefix: string,
   userId: string,
+  clientId: string,
 ): Promise<void> {
   const now = Date.now();
   const last = lastFlush.get(tokenId) ?? 0;
@@ -69,23 +71,25 @@ async function maybeFlushLastUsed(
       });
     });
 
-  audit(
-    {
-      tenant_id: tenantId,
-      actor_type: "user",
-      actor_id: userId,
-      action: AuditAction.MCP_OAUTH_TOKEN_USED,
-      resource_type: "mcp_oauth_token",
-      resource_id: tokenId,
-      result: "success",
-      metadata: {
-        request_source: "mcp",
-        prefix,
-        sampled: true,
-        window_ms: FLUSH_INTERVAL_MS,
+  withContext({ audit_access_type: "mcp_oauth", audit_oauth_client_id: clientId }, () =>
+    audit(
+      {
+        tenant_id: tenantId,
+        actor_type: "user",
+        actor_id: userId,
+        action: AuditAction.MCP_OAUTH_TOKEN_USED,
+        resource_type: "mcp_oauth_token",
+        resource_id: tokenId,
+        result: "success",
+        metadata: {
+          request_source: "mcp",
+          prefix,
+          sampled: true,
+          window_ms: FLUSH_INTERVAL_MS,
+        },
       },
-    },
-    db,
+      db,
+    ),
   );
 }
 
@@ -250,7 +254,7 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         oauth_client_id: row.client_id,
       });
 
-      await maybeFlushLastUsed(db, row.id, row.tenant_id, prefix, row.user_id);
+      await maybeFlushLastUsed(db, row.id, row.tenant_id, prefix, row.user_id, row.client_id);
 
       return principal;
     },
