@@ -19,6 +19,7 @@ import {
   GroupingTabs,
   Page,
   PageHeader,
+  RecordOpenLink,
   RecordSheet,
   StatusBadge,
 } from "@/components/cockpit/patterns";
@@ -686,14 +687,10 @@ export function CatalogPage({
         subtitle={selected.data ? <CatalogMetadataSummary record={selected.data} /> : undefined}
         action={
           selectedId && selected.data ? (
-            <Button asChild variant="outline" size="sm">
-              <a
-                href={absolute(recordHref(resource, selectedId))}
-                data-testid="catalog-open-detail"
-              >
-                {t("common.open")}
-              </a>
-            </Button>
+            <RecordOpenLink
+              href={absolute(recordHref(resource, selectedId))}
+              testId="catalog-open-detail"
+            />
           ) : undefined
         }
         loading={selected.isPending && !selected.error}

@@ -40,6 +40,7 @@ import {
   Input,
   Page,
   PageHeader,
+  RecordOpenLink,
   RecordSheet,
   RowName,
   Section,
@@ -390,14 +391,10 @@ function KnowledgeSourceSheet({ id, onClose }: { id: string; onClose(): void }) 
       subtitle={source ? <CatalogMetadataSummary record={source} /> : undefined}
       action={
         source ? (
-          <Button asChild variant="outline" size="sm">
-            <a
-              href={absolute(recordHref("knowledge", source.id))}
-              data-testid="knowledge-sheet-open"
-            >
-              {t("common.open")}
-            </a>
-          </Button>
+          <RecordOpenLink
+            href={absolute(recordHref("knowledge", source.id))}
+            testId="knowledge-sheet-open"
+          />
         ) : null
       }
       testId="knowledge-source-sheet"

@@ -39,6 +39,7 @@ import {
   Input,
   Page,
   PageHeader,
+  RecordOpenLink,
   RecordSheet,
   SaveBar,
   Section,
@@ -437,11 +438,10 @@ function SkillSheet({ id, onClose }: { id: string; onClose(): void }) {
       subtitle={skill ? <CatalogMetadataSummary record={skill} /> : undefined}
       action={
         skill ? (
-          <Button asChild variant="outline" size="sm">
-            <a href={absolute(recordHref("skills", skill.id))} data-testid="skill-sheet-open">
-              {t("common.open")}
-            </a>
-          </Button>
+          <RecordOpenLink
+            href={absolute(recordHref("skills", skill.id))}
+            testId="skill-sheet-open"
+          />
         ) : null
       }
       testId="skill-sheet"

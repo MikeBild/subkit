@@ -274,38 +274,32 @@ interface IdentityOption {
   id: string;
   label: string;
 }
-function FilterForm({
+type DraftSetter = React.Dispatch<React.SetStateAction<FilterState>>;
+function setDraftField(setDraft: DraftSetter, key: keyof FilterState, value: string) {
+  setDraft((current) => ({
+    ...current,
+    [key]: value,
+    ...(key === "scope" && value === "decisions" ? { action: "" } : {}),
+    ...(key === "scope" && value === "operations" ? { actorType: "" } : {}),
+    ...(key === "from" ? { fromChoice: "", fromInstant: "" } : {}),
+    ...(key === "to" ? { toChoice: "", toInstant: "" } : {}),
+    ...(key === "fromChoice" ? { fromInstant: "" } : {}),
+    ...(key === "toChoice" ? { toInstant: "" } : {}),
+  }));
+}
+function FocusFields({
   draft,
   setDraft,
-  apply,
-  clear,
-  error,
   zone,
-  identities,
+  compact = false,
 }: {
   draft: FilterState;
-  setDraft: React.Dispatch<React.SetStateAction<FilterState>>;
-  apply(): void;
-  clear(): void;
-  error: string | null;
+  setDraft: DraftSetter;
   zone: string;
-  identities: readonly IdentityOption[];
+  compact?: boolean;
 }) {
   const { t } = useI18n();
-  const [identityOpen, setIdentityOpen] = useState(false);
-  const [originOpen, setOriginOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(() => !validAuditCorrelationId(draft.correlationId));
-  const set = (key: keyof FilterState, value: string) =>
-    setDraft((current) => ({
-      ...current,
-      [key]: value,
-      ...(key === "scope" && value === "decisions" ? { action: "" } : {}),
-      ...(key === "scope" && value === "operations" ? { actorType: "" } : {}),
-      ...(key === "from" ? { fromChoice: "", fromInstant: "" } : {}),
-      ...(key === "to" ? { toChoice: "", toInstant: "" } : {}),
-      ...(key === "fromChoice" ? { fromInstant: "" } : {}),
-      ...(key === "toChoice" ? { toInstant: "" } : {}),
-    }));
+  const set = (key: keyof FilterState, value: string) => setDraftField(setDraft, key, value);
   const fromChoices = draft.from ? utcChoicesForLocalInput(draft.from, zone) : [];
   const toChoices = draft.to ? utcChoicesForLocalInput(draft.to, zone) : [];
   const resourceSearch = useDebouncedValue(draft.resourceQuery);
@@ -333,75 +327,63 @@ function FilterForm({
         : current,
     );
   }, [draft.resourceId, draft.resourceQuery, draft.resourceType, resources.data, setDraft]);
+  const testPrefix = compact ? "audit-quick" : "audit";
   return (
-    <form
-      className="flex flex-col gap-5 p-5"
-      onSubmit={(event) => {
-        event.preventDefault();
-        apply();
-      }}
-      data-testid="audit-filters"
-    >
-      <div className="space-y-3">
-        <SectionHeading className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {t("audit.timeline.focus")}
-        </SectionHeading>
-        <Field label={t("audit.timeline.resourceId")}>
-          <div className="relative">
-            <Search
-              aria-hidden
-              className="absolute left-2.5 top-2.5 size-4 text-muted-foreground"
-            />
-            <input
-              className={`${inputClass} pl-9`}
-              value={draft.resourceQuery}
-              onChange={(event) =>
+    <div className="space-y-3">
+      <Field label={t("audit.timeline.resourceId")}>
+        <div className="relative">
+          <Search aria-hidden className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+          <input
+            className={`${inputClass} pl-9`}
+            value={draft.resourceQuery}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                resourceQuery: event.target.value,
+                resourceId: "",
+              }))
+            }
+            placeholder={t("audit.timeline.resourceSearch")}
+            data-testid={`${testPrefix}-resource-search`}
+          />
+        </div>
+      </Field>
+      {!draft.resourceId && resources.data?.items?.length ? (
+        <div
+          className="max-h-40 overflow-y-auto rounded-md border"
+          data-testid={`${testPrefix}-resource-suggestions`}
+        >
+          {resources.data.items.map((item) => (
+            <button
+              type="button"
+              data-testid={`${testPrefix}-resource-suggestion`}
+              key={`${item.resource_type}:${item.resource_id}`}
+              className="block w-full border-b px-3 py-2 text-left text-sm last:border-b-0 hover:bg-muted"
+              onClick={() =>
                 setDraft((current) => ({
                   ...current,
-                  resourceQuery: event.target.value,
-                  resourceId: "",
+                  resourceType: item.resource_type,
+                  resourceId: item.resource_id,
+                  resourceQuery: item.resource_name || item.resource_id,
                 }))
               }
-              placeholder={t("audit.timeline.resourceSearch")}
-              data-testid="audit-resource-search"
-            />
-          </div>
-        </Field>
-        {!draft.resourceId && resources.data?.items?.length ? (
-          <div
-            className="max-h-40 overflow-y-auto rounded-md border"
-            data-testid="audit-resource-suggestions"
-          >
-            {resources.data.items.map((item) => (
-              <button
-                type="button"
-                data-testid="audit-resource-suggestion"
-                key={`${item.resource_type}:${item.resource_id}`}
-                className="block w-full border-b px-3 py-2 text-left text-sm last:border-b-0 hover:bg-muted"
-                onClick={() =>
-                  setDraft((current) => ({
-                    ...current,
-                    resourceType: item.resource_type,
-                    resourceId: item.resource_id,
-                    resourceQuery: item.resource_name || item.resource_id,
-                  }))
-                }
-              >
-                <span className="block font-medium">{item.resource_name || item.resource_id}</span>
-                <span className="block text-xs text-muted-foreground">
-                  {auditResourceLabel(item.resource_type, t).text} · {item.resource_id}
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : null}
+            >
+              <span className="block font-medium">{item.resource_name || item.resource_id}</span>
+              <span className="block text-xs text-muted-foreground">
+                {auditResourceLabel(item.resource_type, t).text} · {item.resource_id}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className={compact ? "grid gap-3 min-[420px]:grid-cols-2" : "space-y-3"}>
         <Field label={`${t("audit.timeline.from")} · ${zone}`}>
           <input
             type="datetime-local"
             className={inputClass}
             value={draft.from}
             onChange={(event) => set("from", event.target.value)}
-            data-testid="audit-from"
+            data-testid={`${testPrefix}-from`}
           />
         </Field>
         {fromChoices.length > 1 && (
@@ -426,7 +408,7 @@ function FilterForm({
             className={inputClass}
             value={draft.to}
             onChange={(event) => set("to", event.target.value)}
-            data-testid="audit-to"
+            data-testid={`${testPrefix}-to`}
           />
         </Field>
         {toChoices.length > 1 && (
@@ -445,6 +427,46 @@ function FilterForm({
             </select>
           </Field>
         )}
+      </div>
+    </div>
+  );
+}
+function FilterForm({
+  draft,
+  setDraft,
+  apply,
+  clear,
+  error,
+  zone,
+  identities,
+}: {
+  draft: FilterState;
+  setDraft: React.Dispatch<React.SetStateAction<FilterState>>;
+  apply(): void;
+  clear(): void;
+  error: string | null;
+  zone: string;
+  identities: readonly IdentityOption[];
+}) {
+  const { t } = useI18n();
+  const [identityOpen, setIdentityOpen] = useState(false);
+  const [originOpen, setOriginOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(() => !validAuditCorrelationId(draft.correlationId));
+  const set = (key: keyof FilterState, value: string) => setDraftField(setDraft, key, value);
+  return (
+    <form
+      className="flex flex-col gap-5 p-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        apply();
+      }}
+      data-testid="audit-filters"
+    >
+      <div className="space-y-3">
+        <SectionHeading className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {t("audit.timeline.focus")}
+        </SectionHeading>
+        <FocusFields draft={draft} setDraft={setDraft} zone={zone} />
       </div>
       <div className="border-t pt-3">
         <button
@@ -1117,10 +1139,10 @@ export function AuditTimelinePage() {
     enabled: allowed && !invalidAppliedCorrelation,
   });
   useEffect(() => {
-    if (!allowed || invalidAppliedCorrelation || liveStatus.status === "live") return;
+    if (!allowed || invalidAppliedCorrelation) return;
     const timer = window.setInterval(() => void list.query.refetch(), 60_000);
     return () => window.clearInterval(timer);
-  }, [allowed, invalidAppliedCorrelation, liveStatus.status, list.query.refetch]);
+  }, [allowed, invalidAppliedCorrelation, list.query.refetch]);
   const rows = list.items;
   const filterKey = JSON.stringify(params);
   useLayoutEffect(() => {
@@ -1468,20 +1490,47 @@ export function AuditTimelinePage() {
           />
         </aside>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="flex shrink-0 items-center gap-3 border-b px-4 py-2 min-[1600px]:hidden">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setFilterOpen(true)}
-              data-testid="audit-filter-open"
+          <div className="flex shrink-0 flex-col gap-3 border-b px-4 py-3 min-[1600px]:hidden">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setFilterOpen(true)}
+                data-testid="audit-filter-open"
+              >
+                <Filter className="size-4" />
+                {t("audit.timeline.filters")}
+              </Button>
+              <span className="truncate text-xs text-muted-foreground">
+                <CalendarDays className="mr-1 inline size-3" />
+                {zone}
+              </span>
+              <Button
+                className="ml-auto sm:hidden"
+                size="sm"
+                type="submit"
+                form="audit-quick-filters"
+                data-testid="audit-quick-apply"
+              >
+                {t("audit.timeline.apply")}
+              </Button>
+            </div>
+            <form
+              id="audit-quick-filters"
+              className="sm:hidden"
+              data-testid="audit-quick-filters"
+              onSubmit={(event) => {
+                event.preventDefault();
+                apply();
+              }}
             >
-              <Filter className="size-4" />
-              {t("audit.timeline.filters")}
-            </Button>
-            <span className="truncate text-xs text-muted-foreground">
-              <CalendarDays className="mr-1 inline size-3" />
-              {zone}
-            </span>
+              <FocusFields draft={draft} setDraft={setDraft} zone={zone} compact />
+              {filterError && (
+                <p role="alert" className="mt-3 text-xs text-destructive">
+                  {filterError}
+                </p>
+              )}
+            </form>
           </div>
           <TimelineGroupingTabs
             value={group}
@@ -1570,7 +1619,7 @@ export function AuditTimelinePage() {
                         aria-hidden
                         className="absolute -left-[9px] top-0 size-4 rounded-full border-[3px] border-background bg-slate-400"
                       />
-                      <SectionHeading className="mb-4 pl-6 text-sm font-semibold text-muted-foreground sm:pl-8">
+                      <SectionHeading className="mb-4 flex flex-wrap items-baseline gap-2 pl-6 text-sm font-semibold text-muted-foreground sm:pl-8">
                         {groupLabel(
                           bucket.key,
                           group,
@@ -1580,6 +1629,11 @@ export function AuditTimelinePage() {
                           directory,
                           t,
                           names,
+                        )}
+                        {list.infinite.hasNextPage && (
+                          <span className="text-xs font-normal">
+                            {t("audit.timeline.groupPartial")}
+                          </span>
                         )}
                       </SectionHeading>
                       {bucket.entries.map((entry) => (

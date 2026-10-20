@@ -45,7 +45,7 @@ export { type GroupingOption, GroupingTabs } from "./grouping-tabs";
 export { Page, type PageKind, type PageSurface, pageColumn, READING_COLUMN } from "./page";
 export { BackLink, PageHeader } from "./page-header";
 export { type PageTab, PageTabs, searchWithTab, tabFromSearch } from "./page-tabs";
-export { RecordSheet, type SheetSize, sheetWidthClass } from "./record-sheet";
+export { RecordOpenLink, RecordSheet, type SheetSize, sheetWidthClass } from "./record-sheet";
 export { activeRouteTab, type RouteTab, RouteTabs } from "./route-tabs";
 export { SaveBar } from "./save-bar";
 export { CollapsibleSection, SECTION_LABEL, Section, SectionHeading } from "./section";

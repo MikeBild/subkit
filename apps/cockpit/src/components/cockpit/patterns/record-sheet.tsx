@@ -2,6 +2,7 @@ import { ChevronLeft, XIcon } from "lucide-react";
 import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "@/components/cockpit/icon-button";
+import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useI18n } from "@/lib/i18n-context";
 import { useInspectorDock } from "./responsive-workspace";
@@ -66,7 +67,7 @@ function RecordBody({
 }: RecordSheetProps & { titleId?: string }) {
   return (
     <>
-      <SheetHeader className="gap-1 pr-10">
+      <SheetHeader className="gap-1 pr-14">
         {back ? (
           <button
             type="button"
@@ -211,7 +212,7 @@ function DockableRecordSheet(props: RecordSheetProps) {
               <RecordBody {...props} titleId={titleId} />
               <IconButton
                 variant="ghost"
-                className="absolute top-3 right-3"
+                className="absolute top-4 right-3"
                 size="icon-sm"
                 label={t("common.close")}
                 data-testid={closeTestId ?? `${testId}-close`}
@@ -234,7 +235,7 @@ export function RecordSheet(props: RecordSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        className={`overflow-y-auto data-[side=right]:w-full ${sheetWidthClass(size)}`}
+        className={`overflow-y-auto data-[side=right]:w-full [&>[data-slot=sheet-close]]:top-4 ${sheetWidthClass(size)}`}
         closeLabel={t("common.close")}
         closeTestId={closeTestId}
         data-testid={testId}
@@ -244,5 +245,16 @@ export function RecordSheet(props: RecordSheetProps) {
         <RecordBody {...props} />
       </SheetContent>
     </Sheet>
+  );
+}
+
+export function RecordOpenLink({ href, testId }: { href: string; testId: string }) {
+  const { t } = useI18n();
+  return (
+    <Button asChild variant="outline" size="sm">
+      <a href={href} data-testid={testId}>
+        {t("common.open")}
+      </a>
+    </Button>
   );
 }
