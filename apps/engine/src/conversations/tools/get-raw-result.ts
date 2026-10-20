@@ -1,10 +1,17 @@
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool } from "./index.ts";
-import { getRawResult } from "./truncate.ts";
+import type { RawResultScope } from "./truncate.ts";
+import { getRawResult, rememberRaw, withRawResultScope } from "./truncate.ts";
 
 const MAX_INLINE_CHARS = 12_000;
 const DEFAULT_CHUNK_LIMIT = 24_000;
 const MAX_CHUNK_LIMIT = 32_000;
+const REF_ONLY_CHUNK_CHARS = 4_000;
+const STREAM_CURSOR = Symbol("raw-result-stream-cursor");
+
+type StreamCursor = {
+  [STREAM_CURSOR]: { source_ref: string; offset: number };
+};
 
 const Input = z
   .object({
@@ -80,24 +87,35 @@ function tooLarge(value: unknown, path: Array<string | number>, totalChars: numb
   };
 }
 
+function streamCursor(value: unknown): StreamCursor[typeof STREAM_CURSOR] | null {
+  if (value === null || typeof value !== "object") return null;
+  return STREAM_CURSOR in value ? (value as StreamCursor)[STREAM_CURSOR] : null;
+}
+
+function rememberInScope(value: unknown, scope: RawResultScope | null): string {
+  return scope ? withRawResultScope(scope, () => rememberRaw(value)) : rememberRaw(value);
+}
+
 export const getRawResultTool: ConversationTool = {
   name: "get_raw_result",
   description:
-    "Retrieve a prior tool result by its `raw_ref`. Small results are returned whole. For a large result, read a listed field a section at a time with path, offset, and limit, continuing until next_offset is null. Summarize the useful findings for the user in plain language; do not expose retrieval details.",
+    "Retrieve a prior tool result by its `raw_ref`. Small results are returned whole. For a large result, either read a field with path, offset, and limit or follow the returned next_ref with ref-only calls until next_ref is null. Summarize the useful findings for the user in plain language; do not expose retrieval details.",
   inputSchema: Input,
   category: "tenant_read",
   async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
-    const raw = getRawResult(
-      args.ref,
+    const scope =
       ctx.tenant_id && (ctx.raw_result_scope_id ?? ctx.conversation_id)
         ? {
             tenant_id: ctx.tenant_id,
             conversation_id: ctx.raw_result_scope_id ?? ctx.conversation_id,
             actor_id: ctx.principal?.id ?? ctx.actor_id ?? null,
           }
-        : null,
-    );
+        : null;
+    const stored = getRawResult(args.ref, scope);
+    const cursor = streamCursor(stored);
+    const sourceRef = cursor?.source_ref ?? args.ref;
+    const raw = cursor ? getRawResult(sourceRef, scope) : stored;
     if (raw === undefined) {
       return {
         ok: false,
@@ -110,6 +128,40 @@ export const getRawResultTool: ConversationTool = {
 
     const offset = args.offset ?? 0;
     const limit = args.limit ?? DEFAULT_CHUNK_LIMIT;
+    if (args.path === undefined && sizeOf(raw) > MAX_INLINE_CHARS) {
+      const serialized = JSON.stringify(raw);
+      const characters = Array.from(serialized);
+      const streamOffset = args.offset ?? cursor?.offset ?? 0;
+      if (streamOffset > characters.length) {
+        return {
+          ok: false,
+          data: {
+            error: "raw_result_offset_out_of_range",
+            offset: streamOffset,
+            total_chars: characters.length,
+          },
+        };
+      }
+      const chunk = characters.slice(streamOffset, streamOffset + REF_ONLY_CHUNK_CHARS).join("");
+      const nextOffset = streamOffset + Array.from(chunk).length;
+      const nextRef =
+        nextOffset < characters.length
+          ? rememberInScope(
+              { [STREAM_CURSOR]: { source_ref: sourceRef, offset: nextOffset } },
+              scope,
+            )
+          : null;
+      return {
+        ok: true,
+        data: {
+          raw: chunk,
+          encoding: "json_fragment",
+          offset: streamOffset,
+          total_chars: characters.length,
+          next_ref: nextRef,
+        },
+      };
+    }
     const selected = args.path === undefined ? raw : atPath(raw, args.path);
     if (selected === undefined) {
       return {

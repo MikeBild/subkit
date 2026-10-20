@@ -40,19 +40,51 @@ describe("get_raw_result", () => {
     expect(result).toEqual({ ok: true, data: { raw: value } });
   });
 
-  it("requires a path for oversized results instead of returning them whole", async () => {
+  it("streams oversized results through scoped reference-only chunks", async () => {
     const ref = rememberRaw({ item: { body: "a".repeat(320_000) } });
 
-    const result = await getRawResultTool.execute({} as never, { ref });
+    const first = await getRawResultTool.execute({} as never, { ref });
 
-    expect(result).toMatchObject({
-      ok: false,
+    expect(first).toMatchObject({
+      ok: true,
       data: {
-        error: "raw_result_too_large",
-        fields: [{ path: ["item", "body"], chars: 320_000 }],
+        encoding: "json_fragment",
+        offset: 0,
       },
     });
-    expect(JSON.stringify(result).length).toBeLessThan(1_000);
+    const nextRef = (first.data as { next_ref: string }).next_ref;
+    const second = await getRawResultTool.execute({} as never, { ref: nextRef });
+    expect(second).toMatchObject({
+      ok: true,
+      data: { encoding: "json_fragment", offset: 4_000 },
+    });
+    expect(JSON.stringify(first).length).toBeLessThan(8_500);
+  });
+
+  it("reconstructs a complete result with only ref and keeps continuation scoped", async () => {
+    const scope = {
+      tenant_id: "tenant-a",
+      conversation_id: "conversation-a",
+      actor_id: "actor-a",
+    };
+    const value = { rows: Array.from({ length: 1_000 }, (_, id) => ({ id, title: `Row ${id}` })) };
+    let ref: string | null = withRawResultScope(scope, () => rememberRaw(value));
+    let serialized = "";
+    while (ref !== null) {
+      const result = await getRawResultTool.execute(scope as never, { ref });
+      expect(result.ok).toBe(true);
+      const data = result.data as { raw: string; next_ref: string | null };
+      serialized += data.raw;
+      if (data.next_ref) {
+        expect(
+          await getRawResultTool.execute({ ...scope, actor_id: "actor-b" } as never, {
+            ref: data.next_ref,
+          }),
+        ).toMatchObject({ ok: false, data: { error: "raw_ref_not_found" } });
+      }
+      ref = data.next_ref;
+    }
+    expect(JSON.parse(serialized)).toEqual(value);
   });
 
   it("returns bounded Unicode string chunks with the next offset", async () => {
@@ -145,18 +177,22 @@ describe("get_raw_result", () => {
     });
   });
 
-  it("points to a large field inside an array instead of returning the whole item", async () => {
+  it("keeps path-based reads available for large fields inside arrays", async () => {
     const ref = rememberRaw([{ title: "Large", body: "a".repeat(320_000) }]);
 
-    const result = await getRawResultTool.execute({} as never, { ref });
+    const result = await getRawResultTool.execute({} as never, {
+      ref,
+      path: [0, "body"],
+      limit: 100,
+    });
 
     expect(result).toMatchObject({
-      ok: false,
+      ok: true,
       data: {
-        error: "raw_result_too_large",
-        fields: [{ path: [0, "body"], chars: 320_000 }],
+        raw: "a".repeat(100),
+        total_chars: 320_000,
+        next_offset: 100,
       },
     });
-    expect(JSON.stringify(result).length).toBeLessThan(1_000);
   });
 });
