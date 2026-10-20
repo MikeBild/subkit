@@ -12,6 +12,12 @@ export type TimelineEntry = components["schemas"]["AuditEntry"] & {
   }>;
   api_key_id?: string | null;
   session_id?: string | null;
+  recorded_api_key_id?: string | null;
+  recorded_session_id?: string | null;
+  access_type?: string | null;
+  oauth_client_id?: string | null;
+  credential_origin?: string | null;
+  reason_redacted?: boolean;
 };
 
 export type AuditGroup =
@@ -124,7 +130,10 @@ export function auditGroupKey(entry: TimelineEntry, group: AuditGroup, zone: str
         ? `${entry.actor_type}:${entry.actor_id}`
         : entry.actor_type || "unknown";
     case "access":
-      return entry.api_key_id ?? "unknown";
+      if (entry.api_key_id) return `api_key:${entry.api_key_id}`;
+      if (entry.session_id) return `session:${entry.session_id}`;
+      if (entry.oauth_client_id) return `oauth_client:${entry.oauth_client_id}`;
+      return entry.access_type ? `access_type:${entry.access_type}` : "unknown";
     case "resourceType":
       return entry.resource_type || "unknown";
     case "resource":
@@ -167,4 +176,14 @@ export function groupLoadedAudit(
 
 export function auditInitiatingSource(entry: TimelineEntry): string | null {
   return entry.origin_source ?? null;
+}
+
+export function auditRecordedAccess(entry: TimelineEntry): {
+  apiKeyId: string | null;
+  sessionId: string | null;
+} {
+  return {
+    apiKeyId: entry.api_key_id ? null : entry.recorded_api_key_id || null,
+    sessionId: entry.session_id ? null : entry.recorded_session_id || null,
+  };
 }

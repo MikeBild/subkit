@@ -26,6 +26,15 @@ export type LogContext = {
   actor_id?: string;
   api_key_id?: string;
   session_id?: string;
+  audit_access_type?:
+    | "api_key"
+    | "browser_session"
+    | "mcp_oauth"
+    | "token_exchange"
+    | "external_bearer"
+    | "portal_token";
+  audit_oauth_client_id?: string;
+  audit_credential_origin?: "cli_oauth_session";
   auth_via?: "token_exchange" | undefined;
 };
 

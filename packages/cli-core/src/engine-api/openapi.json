@@ -28916,6 +28916,50 @@
             ],
             "format": "uuid"
           },
+          "recorded_api_key_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "recorded_session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "access_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "api_key",
+              "browser_session",
+              "mcp_oauth",
+              "token_exchange",
+              "external_bearer",
+              "portal_token",
+              null
+            ]
+          },
+          "oauth_client_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "credential_origin": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "cli_oauth_session"
+            ]
+          },
           "request_source": {
             "type": [
               "string",
@@ -29087,6 +29131,9 @@
               "null"
             ]
           },
+          "reason_redacted": {
+            "type": "boolean"
+          },
           "metadata": {
             "type": "object",
             "additionalProperties": {}
@@ -29100,6 +29147,11 @@
           "actor_id",
           "api_key_id",
           "session_id",
+          "recorded_api_key_id",
+          "recorded_session_id",
+          "access_type",
+          "oauth_client_id",
+          "credential_origin",
           "request_source",
           "origin_source",
           "execution_source",
@@ -29118,6 +29170,7 @@
           "ip",
           "user_agent",
           "reason",
+          "reason_redacted",
           "metadata"
         ]
       },
@@ -54992,19 +55045,49 @@
           {
             "schema": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "description": "Matches verified use or historical recorded metadata; inspect the returned field to distinguish provenance."
             },
             "required": false,
+            "description": "Matches verified use or historical recorded metadata; inspect the returned field to distinguish provenance.",
             "name": "api_key_id",
             "in": "query"
           },
           {
             "schema": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "description": "Matches verified use or historical recorded metadata; inspect the returned field to distinguish provenance."
             },
             "required": false,
+            "description": "Matches verified use or historical recorded metadata; inspect the returned field to distinguish provenance.",
             "name": "session_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "api_key",
+                "browser_session",
+                "mcp_oauth",
+                "token_exchange",
+                "external_bearer",
+                "portal_token"
+              ]
+            },
+            "required": false,
+            "name": "access_type",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^[a-zA-Z0-9._:-]+$"
+            },
+            "required": false,
+            "name": "oauth_client_id",
             "in": "query"
           },
           {

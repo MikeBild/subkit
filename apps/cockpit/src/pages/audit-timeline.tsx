@@ -44,6 +44,7 @@ import {
   AUDIT_GROUPS,
   type AuditGroup,
   auditInitiatingSource,
+  auditRecordedAccess,
   groupLoadedAudit,
   localDateTimeInput,
   localTimeZone,
@@ -96,6 +97,23 @@ const GROUP_KEYS: Record<AuditGroup, TranslationKey> = {
   operation: "audit.timeline.operation",
   result: "audit.timeline.result",
 };
+const ACCESS_TYPES = [
+  "api_key",
+  "browser_session",
+  "mcp_oauth",
+  "token_exchange",
+  "external_bearer",
+  "portal_token",
+] as const;
+type AccessType = (typeof ACCESS_TYPES)[number];
+const ACCESS_KEYS: Record<AccessType, TranslationKey> = {
+  api_key: "audit.timeline.accessType.apiKey",
+  browser_session: "audit.timeline.accessType.browserSession",
+  mcp_oauth: "audit.timeline.accessType.mcpOAuth",
+  token_exchange: "audit.timeline.accessType.tokenExchange",
+  external_bearer: "audit.timeline.accessType.externalBearer",
+  portal_token: "audit.timeline.accessType.portalToken",
+};
 interface FilterState {
   scope: AuditScope;
   resourceType: string;
@@ -105,6 +123,8 @@ interface FilterState {
   actorId: string;
   apiKeyId: string;
   sessionId: string;
+  accessType: string;
+  oauthClientId: string;
   originSource: string;
   executionSource: string;
   executionId: string;
@@ -123,6 +143,8 @@ function fromUrl(): FilterState {
   const search = typeof window === "undefined" ? "" : window.location.search;
   const linked = initialAuditFilter(search, Date.now());
   const params = new URLSearchParams(search);
+  const accessType = params.get("access_type") ?? "";
+  const oauthClientId = params.get("oauth_client_id") ?? "";
   return {
     scope: linked.scope ?? "all",
     resourceType: linked.resourceType ?? "",
@@ -132,6 +154,8 @@ function fromUrl(): FilterState {
     actorId: params.get("actor_id") ?? "",
     apiKeyId: params.get("api_key_id") ?? "",
     sessionId: params.get("session_id") ?? "",
+    accessType: ACCESS_TYPES.some((access) => access === accessType) ? accessType : "",
+    oauthClientId: /^[a-zA-Z0-9._:-]{1,128}$/.test(oauthClientId) ? oauthClientId : "",
     originSource: params.get("origin_source") ?? "",
     executionSource: params.get("execution_source") ?? "",
     executionId: params.get("execution_id") ?? "",
@@ -156,6 +180,8 @@ const EMPTY: FilterState = {
   actorId: "",
   apiKeyId: "",
   sessionId: "",
+  accessType: "",
+  oauthClientId: "",
   originSource: "",
   executionSource: "",
   executionId: "",
@@ -176,6 +202,14 @@ function sourceLabel(
 ): string {
   return source && Object.hasOwn(SOURCE_KEYS, source)
     ? t(SOURCE_KEYS[source as Source])
+    : t("audit.timeline.notRecorded");
+}
+function accessLabel(
+  access: string | null | undefined,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  return access && Object.hasOwn(ACCESS_KEYS, access)
+    ? t(ACCESS_KEYS[access as AccessType])
     : t("audit.timeline.notRecorded");
 }
 function actionLabel(action: string, t: ReturnType<typeof useI18n>["t"]): string {
@@ -468,6 +502,27 @@ function FilterForm({
                 onChange={(event) => set("sessionId", event.target.value)}
               />
             </Field>
+            <Field label={t("audit.timeline.accessType")}>
+              <select
+                className={inputClass}
+                value={draft.accessType}
+                onChange={(event) => set("accessType", event.target.value)}
+              >
+                <option value="">{t("audit.scope.all")}</option>
+                {ACCESS_TYPES.map((access) => (
+                  <option key={access} value={access}>
+                    {t(ACCESS_KEYS[access])}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t("audit.timeline.oauthClient")}>
+              <input
+                className={inputClass}
+                value={draft.oauthClientId}
+                onChange={(event) => set("oauthClientId", event.target.value)}
+              />
+            </Field>
           </div>
         )}
       </div>
@@ -665,7 +720,20 @@ function groupLabel(
     }).format(new Date(entry.ts));
   if (group === "actor")
     return auditActorName(entry, directory, t)?.text ?? t("audit.timeline.notRecorded");
-  if (group === "access") return entry.api_key_id ?? t("audit.timeline.notRecorded");
+  if (group === "access") {
+    if (entry.api_key_id) {
+      const access =
+        entry.credential_origin === "cli_oauth_session"
+          ? t("audit.timeline.credentialOrigin.cliOAuthSession")
+          : accessLabel(entry.access_type || "api_key", t);
+      return `${access} · ${entry.api_key_id}`;
+    }
+    if (entry.session_id)
+      return `${accessLabel(entry.access_type || "browser_session", t)} · ${entry.session_id}`;
+    if (entry.oauth_client_id)
+      return `${accessLabel(entry.access_type || "mcp_oauth", t)} · ${entry.oauth_client_id}`;
+    return accessLabel(entry.access_type, t);
+  }
   if (group === "resourceType") return auditResourceLabel(entry.resource_type, t).text;
   if (group === "resource")
     return `${auditObjectName(entry, names, t)} · ${auditResourceLabel(entry.resource_type, t).text}`;
@@ -773,6 +841,7 @@ function AuditDetail({
   const missing = t("audit.timeline.notRecorded");
   const actor = auditActorName(current, directory, t)?.text ?? missing;
   const reason = auditReasonLabel(current.reason, t);
+  const recordedAccess = auditRecordedAccess(current);
   const facts = [
     { label: t("audit.timeline.actionCode"), value: current.action },
     { label: t("audit.timeline.local"), value: `${dateTime(current.ts)} · ${zone}` },
@@ -784,8 +853,23 @@ function AuditDetail({
       value: current.actor_type ? actorTypeLabel(current.actor_type, t).text : missing,
     },
     { label: t("audit.timeline.actorId"), value: current.actor_id || missing },
+    { label: t("audit.timeline.accessType"), value: accessLabel(current.access_type, t) },
     { label: t("audit.timeline.apiKey"), value: current.api_key_id || missing },
+    ...(recordedAccess.apiKeyId
+      ? [{ label: t("audit.timeline.recordedApiKey"), value: recordedAccess.apiKeyId }]
+      : []),
     { label: t("audit.timeline.session"), value: current.session_id || missing },
+    ...(recordedAccess.sessionId
+      ? [{ label: t("audit.timeline.recordedSession"), value: recordedAccess.sessionId }]
+      : []),
+    { label: t("audit.timeline.oauthClient"), value: current.oauth_client_id || missing },
+    {
+      label: t("audit.timeline.credentialOrigin"),
+      value:
+        current.credential_origin === "cli_oauth_session"
+          ? t("audit.timeline.credentialOrigin.cliOAuthSession")
+          : missing,
+    },
     { label: t("audit.timeline.execution"), value: current.execution_id || missing },
     { label: t("audit.timeline.conversation"), value: current.conversation_id || missing },
     { label: t("audit.timeline.workflow"), value: current.workflow_id || missing },
@@ -800,7 +884,13 @@ function AuditDetail({
     { label: t("audit.column.result"), value: auditResultLabel(current.result, t).text },
     {
       label: t("audit.column.reason"),
-      value: reason ? (reason.machine ? t("audit.timeline.otherReason") : reason.text) : missing,
+      value: reason
+        ? reason.machine
+          ? t("audit.timeline.otherReason")
+          : reason.text
+        : current.reason_redacted
+          ? t("audit.timeline.otherReason")
+          : missing,
     },
     { label: t("audit.timeline.trace"), value: current.trace_id || missing },
     { label: t("audit.timeline.operation"), value: current.correlation_id || missing },
@@ -953,6 +1043,8 @@ export function AuditTimelinePage() {
       ...(filter.actorId ? { actor_id: filter.actorId } : {}),
       ...(filter.apiKeyId ? { api_key_id: filter.apiKeyId } : {}),
       ...(filter.sessionId ? { session_id: filter.sessionId } : {}),
+      ...(filter.accessType ? { access_type: filter.accessType } : {}),
+      ...(filter.oauthClientId ? { oauth_client_id: filter.oauthClientId } : {}),
       ...(filter.originSource ? { origin_source: filter.originSource } : {}),
       ...(filter.executionSource ? { execution_source: filter.executionSource } : {}),
       ...(filter.executionId ? { execution_id: filter.executionId } : {}),
@@ -1045,6 +1137,10 @@ export function AuditTimelinePage() {
       setFilterError(t("audit.timeline.invalidId"));
       return;
     }
+    if (draft.oauthClientId && !/^[a-zA-Z0-9._:-]{1,128}$/.test(draft.oauthClientId)) {
+      setFilterError(t("audit.timeline.invalidOAuthClient"));
+      return;
+    }
     const from = draft.from ? utcFromLocalInput(draft.from, zone, draft.fromChoice) : null;
     const to = draft.to ? utcFromLocalInput(draft.to, zone, draft.toChoice) : null;
     if ((draft.from && !from) || (draft.to && !to)) {
@@ -1069,6 +1165,8 @@ export function AuditTimelinePage() {
       "actor_id",
       "api_key_id",
       "session_id",
+      "access_type",
+      "oauth_client_id",
       "origin_source",
       "execution_source",
       "execution_id",
@@ -1090,6 +1188,8 @@ export function AuditTimelinePage() {
       actor_id: draft.actorId,
       api_key_id: draft.apiKeyId,
       session_id: draft.sessionId,
+      access_type: draft.accessType,
+      oauth_client_id: draft.oauthClientId,
       origin_source: draft.originSource,
       execution_source: draft.executionSource,
       execution_id: draft.executionId,
@@ -1127,6 +1227,8 @@ export function AuditTimelinePage() {
       "actor_id",
       "api_key_id",
       "session_id",
+      "access_type",
+      "oauth_client_id",
       "origin_source",
       "execution_source",
       "execution_id",
@@ -1217,6 +1319,8 @@ export function AuditTimelinePage() {
       "actor_id",
       "api_key_id",
       "session_id",
+      "access_type",
+      "oauth_client_id",
       "origin_source",
       "execution_source",
       "execution_id",

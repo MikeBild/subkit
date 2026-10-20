@@ -20152,8 +20152,12 @@ export interface paths {
                     action?: string;
                     actor_id?: string;
                     actor_type?: "user" | "system_account" | "system" | "unknown";
+                    /** @description Matches verified use or historical recorded metadata; inspect the returned field to distinguish provenance. */
                     api_key_id?: string;
+                    /** @description Matches verified use or historical recorded metadata; inspect the returned field to distinguish provenance. */
                     session_id?: string;
+                    access_type?: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | "external_bearer" | "portal_token";
+                    oauth_client_id?: string;
                     request_source?: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue";
                     origin_source?: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue";
                     execution_source?: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue";
@@ -27860,6 +27864,15 @@ export interface components {
             api_key_id: string | null;
             /** Format: uuid */
             session_id: string | null;
+            /** Format: uuid */
+            recorded_api_key_id: string | null;
+            /** Format: uuid */
+            recorded_session_id: string | null;
+            /** @enum {string|null} */
+            access_type: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | "external_bearer" | "portal_token" | null;
+            oauth_client_id: string | null;
+            /** @enum {string|null} */
+            credential_origin: "cli_oauth_session" | null;
             /** @enum {string|null} */
             request_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue" | null;
             /** @enum {string|null} */
@@ -27891,6 +27904,7 @@ export interface components {
             before?: unknown;
             after?: unknown;
             reason: string | null;
+            reason_redacted: boolean;
             metadata: {
                 [key: string]: unknown;
             };

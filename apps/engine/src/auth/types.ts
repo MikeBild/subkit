@@ -2,6 +2,8 @@ export type PrincipalKind = "user" | "system_account";
 
 export type AllowList = string[] | "all";
 
+export type CredentialOrigin = "cli_oauth_session";
+
 export type ExecutionAuthSource =
   | { kind: "api_key"; api_key_id: string; credential_version: string }
   | { kind: "browser_session"; session_id: string }
@@ -29,6 +31,7 @@ export interface ResolvedPrincipal {
   product_id?: string;
   roles: string[];
   api_key_id?: string;
+  credential_origin?: CredentialOrigin | null;
   session_id?: string;
   installation_id?: string;
   oauth_client_id?: string;

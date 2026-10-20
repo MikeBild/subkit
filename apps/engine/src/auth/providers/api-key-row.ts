@@ -182,6 +182,7 @@ export async function resolvePrincipalFromApiKeyRow(
     tenant_id: row.tenant_id,
     roles,
     api_key_id: row.id,
+    credential_origin: row.credential_origin,
     auth_source: {
       kind: "api_key",
       api_key_id: row.id,

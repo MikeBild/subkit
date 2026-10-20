@@ -3,7 +3,11 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { mcpOauthAccessTokens, mcpOauthClients, users } from "../../db/schema/index.ts";
-import { assertTenantActive, issueApiKey, SelfServiceIdentityError } from "../../identity/index.ts";
+import {
+  assertTenantActive,
+  issueCliOAuthSessionApiKey,
+  SelfServiceIdentityError,
+} from "../../identity/index.ts";
 import { revokeOAuthRefreshTokenFamily } from "./refresh-token-revocation.ts";
 import { CLI_LOGIN_SCOPE, oauthResource } from "./resources.ts";
 import { constantTimeHexEquals, parseMcpToken } from "./tokens.ts";
@@ -107,7 +111,7 @@ export async function consumeCliLoginToken(input: {
         return { ok: false as const, error: "invalid_token" as const };
       }
 
-      const issued = await issueApiKey(
+      const issued = await issueCliOAuthSessionApiKey(
         {
           issuer: { kind: "login" },
           tenant_id: tokenRow.tenant_id,

@@ -575,7 +575,13 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
         origin_source: event.origin,
         execution_source: event.execution,
         audit_trace_id: id(`archive-trace-${Math.floor(index / 2)}`).replaceAll("-", ""),
-        ...(index === 2 ? { api_key_id: id("audit-demo-key") } : {}),
+        ...(index === 2
+          ? {
+              audit_used_api_key_id: id("audit-demo-key"),
+              audit_access_type: "api_key",
+              audit_credential_origin: "cli_oauth_session",
+            }
+          : {}),
       },
     });
   });

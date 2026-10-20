@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   auditInitiatingSource,
+  auditRecordedAccess,
   groupLoadedAudit,
   localDateTimeInput,
   type TimelineEntry,
@@ -59,6 +60,30 @@ describe("Audit timeline groups", () => {
     expect(groupLoadedAudit(rows, "resource", "UTC")).toHaveLength(2);
   });
 
+  test("separates browser sessions, OAuth clients and verified access types", () => {
+    const rows = [
+      entry("a", "2026-10-19T13:00:00.000Z", { api_key_id: "shared-id", access_type: "api_key" }),
+      entry("b", "2026-10-19T12:00:00.000Z", {
+        session_id: "shared-id",
+        access_type: "browser_session",
+      }),
+      entry("c", "2026-10-19T11:00:00.000Z", {
+        oauth_client_id: "shared-id",
+        access_type: "mcp_oauth",
+      }),
+      entry("d", "2026-10-19T10:00:00.000Z", { access_type: "external_bearer" }),
+      entry("e", "2026-10-19T09:00:00.000Z", { access_type: "external_bearer" }),
+      entry("f", "2026-10-19T08:00:00.000Z", { metadata: { access_type: "api_key" } }),
+    ];
+    expect(groupLoadedAudit(rows, "access", "UTC").map((group) => group.key)).toEqual([
+      "api_key:shared-id",
+      "session:shared-id",
+      "oauth_client:shared-id",
+      "access_type:external_bearer",
+      "unknown",
+    ]);
+  });
+
   test("does not infer mutation origin from an untrusted recorded source", () => {
     expect(
       auditInitiatingSource(entry("a", "2026-10-19T09:00:00Z", { request_source: "cli" })),
@@ -66,6 +91,27 @@ describe("Audit timeline groups", () => {
     expect(
       auditInitiatingSource(entry("b", "2026-10-19T09:00:00Z", { origin_source: "mcp" })),
     ).toBe("mcp");
+  });
+
+  test("shows historical credential references only without a verified ID of the same kind", () => {
+    expect(
+      auditRecordedAccess(
+        entry("a", "2026-10-19T09:00:00Z", {
+          recorded_api_key_id: "legacy-key",
+          recorded_session_id: "legacy-session",
+        }),
+      ),
+    ).toEqual({ apiKeyId: "legacy-key", sessionId: "legacy-session" });
+    expect(
+      auditRecordedAccess(
+        entry("b", "2026-10-19T09:00:00Z", {
+          api_key_id: "verified-key",
+          session_id: "verified-session",
+          recorded_api_key_id: "legacy-key",
+          recorded_session_id: "legacy-session",
+        }),
+      ),
+    ).toEqual({ apiKeyId: null, sessionId: null });
   });
 
   test("groups trusted origin and recorded execution IDs without consulting free metadata", () => {

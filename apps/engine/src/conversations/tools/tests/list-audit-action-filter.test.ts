@@ -70,6 +70,8 @@ describe("list_audit action filter", () => {
       actor_type: "user",
       api_key_id: apiKeyId,
       session_id: sessionId,
+      access_type: "mcp_oauth",
+      oauth_client_id: "verified-client:one",
       request_source: "cli",
       origin_source: "mcp",
       execution_source: "queue",
@@ -82,6 +84,8 @@ describe("list_audit action filter", () => {
       actor_type: "user",
       api_key_id: apiKeyId,
       session_id: sessionId,
+      access_type: "mcp_oauth",
+      oauth_client_id: "verified-client:one",
       request_source: "cli",
       origin_source: "mcp",
       execution_source: "queue",
@@ -90,6 +94,19 @@ describe("list_audit action filter", () => {
       ts_from: new Date(start),
       ts_to: new Date(end),
     });
+  });
+
+  test("validates access and OAuth client filters at the tool boundary", () => {
+    expect(
+      queryAuditTool.inputSchema.safeParse({
+        access_type: "mcp_oauth",
+        oauth_client_id: "verified-client:one",
+      }).success,
+    ).toBe(true);
+    expect(queryAuditTool.inputSchema.safeParse({ access_type: "invented" }).success).toBe(false);
+    expect(
+      queryAuditTool.inputSchema.safeParse({ oauth_client_id: "client with spaces" }).success,
+    ).toBe(false);
   });
 });
 

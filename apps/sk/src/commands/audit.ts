@@ -28,6 +28,8 @@ const queryCmd = defineCommand({
     "actor-type": { type: "string", description: "Actor kind" },
     "api-key-id": { type: "string", description: "Recorded API key id" },
     "session-id": { type: "string", description: "Recorded session id" },
+    "access-type": { type: "string", description: "Verified access type" },
+    "oauth-client-id": { type: "string", description: "Verified OAuth client id" },
     "request-source": { type: "string", description: "Legacy recorded source (not verified)" },
     "origin-source": { type: "string", description: "Verified initiating source" },
     "execution-source": { type: "string", description: "Immediate server execution step" },
@@ -69,7 +71,16 @@ const queryCmd = defineCommand({
       }
       emitList(
         false,
-        ["id", "ts", "action", "actor_id", "origin_source", "execution_source", "result"],
+        [
+          "id",
+          "ts",
+          "action",
+          "actor_id",
+          "access_type",
+          "origin_source",
+          "execution_source",
+          "result",
+        ],
         result.items as Record<string, unknown>[],
       );
     } catch (err) {
@@ -101,6 +112,8 @@ const exportCmd = defineCommand({
     "actor-type": { type: "string", description: "Actor kind" },
     "api-key-id": { type: "string", description: "Recorded API key id" },
     "session-id": { type: "string", description: "Recorded session id" },
+    "access-type": { type: "string", description: "Verified access type" },
+    "oauth-client-id": { type: "string", description: "Verified OAuth client id" },
     "request-source": { type: "string", description: "Legacy recorded source (not verified)" },
     "origin-source": { type: "string", description: "Verified initiating source" },
     "execution-source": { type: "string", description: "Immediate server execution step" },

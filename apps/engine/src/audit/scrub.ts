@@ -9,6 +9,15 @@ export function scrubAuditEntry(entry: AuditEntry): AuditEntry {
   if (typeof entry.metadata?.api_key_id === "string" && UUID_RE.test(entry.metadata.api_key_id)) {
     metadata.api_key_id = entry.metadata.api_key_id;
   }
+  if (
+    typeof entry.metadata?.audit_used_api_key_id === "string" &&
+    UUID_RE.test(entry.metadata.audit_used_api_key_id)
+  ) {
+    metadata.audit_used_api_key_id = entry.metadata.audit_used_api_key_id;
+  }
+  if (entry.metadata?.audit_credential_origin === "cli_oauth_session") {
+    metadata.audit_credential_origin = "cli_oauth_session";
+  }
   return {
     ...entry,
     before: (entry.before === undefined || entry.before === null

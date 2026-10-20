@@ -222,6 +222,7 @@ export const apiKeys = pgTable(
     system_account_id: uuid("system_account_id"),
     creator_kind: auditActorKindEnum("creator_kind"),
     creator_id: uuid("creator_id"),
+    credential_origin: text("credential_origin").$type<"cli_oauth_session">(),
     prefix: text("prefix").notNull(),
     token_sha256: text("token_sha256").notNull(),
     name: text("name"),
@@ -241,6 +242,10 @@ export const apiKeys = pgTable(
     check(
       "api_keys_creator_identity_check",
       sql`(${t.creator_kind} is null and ${t.creator_id} is null) or (${t.creator_kind} is not null and ${t.creator_kind} = 'system' and ${t.creator_id} is null) or (${t.creator_kind} is not null and ${t.creator_kind} in ('user', 'system_account') and ${t.creator_id} is not null)`,
+    ),
+    check(
+      "api_keys_credential_origin_check",
+      sql`${t.credential_origin} is null or ${t.credential_origin} = 'cli_oauth_session'`,
     ),
     index("api_keys_tenant_revoked_idx").on(t.tenant_id, t.revoked_at),
     index("api_keys_rotating_out_at_idx").on(t.rotating_out_at),

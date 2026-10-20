@@ -2,7 +2,7 @@ import { and, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
-import type { PrincipalKind } from "../auth/types.ts";
+import type { CredentialOrigin, PrincipalKind } from "../auth/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import {
@@ -475,6 +475,21 @@ export async function issueApiKey(
   input: IssueApiKeyInput,
   exec?: Executor,
 ): Promise<IssueApiKeyResult> {
+  return issueApiKeyInternal(input, null, exec);
+}
+
+export async function issueCliOAuthSessionApiKey(
+  input: IssueApiKeyInput,
+  exec?: Executor,
+): Promise<IssueApiKeyResult> {
+  return issueApiKeyInternal(input, "cli_oauth_session", exec);
+}
+
+async function issueApiKeyInternal(
+  input: IssueApiKeyInput,
+  credentialOrigin: CredentialOrigin | null,
+  exec?: Executor,
+): Promise<IssueApiKeyResult> {
   const db = exec ?? getDb();
   const actor = resolveApiKeyCreator(input.actor, input.actor_id);
   const actorId = apiKeyActorId(input.actor);
@@ -491,6 +506,7 @@ export async function issueApiKey(
         system_account_id: input.owner_kind === "system_account" ? input.owner_id : null,
         creator_kind: actor?.kind ?? null,
         creator_id: actor?.kind === "system" ? null : (actor?.id ?? null),
+        credential_origin: credentialOrigin,
         prefix: key.prefix,
         token_sha256: key.hash,
         name: input.name ?? null,
@@ -579,6 +595,7 @@ export async function rotateApiKey(
         system_account_id: existing.system_account_id ?? null,
         creator_kind: actor?.kind ?? null,
         creator_id: actor?.kind === "system" ? null : (actor?.id ?? null),
+        credential_origin: existing.credential_origin,
         prefix: key.prefix,
         token_sha256: key.hash,
         name: existing.name ?? null,

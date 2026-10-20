@@ -20,8 +20,10 @@ const entry: AuditEntry = {
   reason: "free text private-reason-canary",
   metadata: {
     request_source: "ui",
-    api_key_id: "55555555-5555-4555-8555-555555555555",
-    session_id: "66666666-6666-4666-8666-666666666666",
+    audit_used_api_key_id: "55555555-5555-4555-8555-555555555555",
+    audit_used_session_id: "66666666-6666-4666-8666-666666666666",
+    audit_access_type: "api_key",
+    audit_credential_origin: "cli_oauth_session",
     execution_id: "77777777-7777-4777-8777-777777777777",
     payload: "private-metadata-canary",
   },
@@ -30,8 +32,10 @@ const entry: AuditEntry = {
 test("audit read projection exposes only recorded safe evidence", () => {
   const projected = projectAuditEntry(entry);
   expect(projected.request_source).toBe("ui");
-  expect(projected.api_key_id).toBe(entry.metadata.api_key_id);
-  expect(projected.session_id).toBe(entry.metadata.session_id);
+  expect(projected.api_key_id).toBe(entry.metadata.audit_used_api_key_id);
+  expect(projected.session_id).toBe(entry.metadata.audit_used_session_id);
+  expect(projected.access_type).toBe("api_key");
+  expect(projected.credential_origin).toBe("cli_oauth_session");
   expect(projected.execution_id).toBe(entry.metadata.execution_id);
   expect(projected.resource_name).toBe("Vertragsarchiv");
   expect(projected.changed_fields).toEqual(["status"]);
@@ -41,6 +45,7 @@ test("audit read projection exposes only recorded safe evidence", () => {
   expect(projected.ip).toBeNull();
   expect(projected.user_agent).toBeNull();
   expect(projected.reason).toBeNull();
+  expect(projected.reason_redacted).toBe(true);
   const wire = JSON.stringify(projected);
   for (const privateValue of [
     "private-ip-canary",
@@ -54,6 +59,17 @@ test("audit read projection exposes only recorded safe evidence", () => {
   }
 });
 
+test("known reason is retained and legacy credential metadata is not treated as proof", () => {
+  const projected = projectAuditEntry({
+    ...entry,
+    reason: "manual_re_issue",
+    metadata: { api_key_id: "55555555-5555-4555-8555-555555555555" },
+  });
+  expect(projected.reason).toBe("manual_re_issue");
+  expect(projected.reason_redacted).toBe(false);
+  expect(projected.api_key_id).toBeNull();
+});
+
 test("missing source and private directory names are not invented", () => {
   const projected = projectAuditEntry({
     ...entry,
@@ -64,5 +80,20 @@ test("missing source and private directory names are not invented", () => {
   expect(projected.resource_name).toBeNull();
   expect(projected.request_source).toBeNull();
   expect(projected.api_key_id).toBeNull();
+  expect(projected.recorded_api_key_id).toBeNull();
   expect(JSON.stringify(projected)).not.toContain("private-email-canary");
+});
+
+test("historical credential IDs remain visible only as unverified recorded values", () => {
+  const projected = projectAuditEntry({
+    ...entry,
+    metadata: {
+      api_key_id: "55555555-5555-4555-8555-555555555555",
+      session_id: "66666666-6666-4666-8666-666666666666",
+    },
+  });
+  expect(projected.api_key_id).toBeNull();
+  expect(projected.session_id).toBeNull();
+  expect(projected.recorded_api_key_id).toBe("55555555-5555-4555-8555-555555555555");
+  expect(projected.recorded_session_id).toBe("66666666-6666-4666-8666-666666666666");
 });

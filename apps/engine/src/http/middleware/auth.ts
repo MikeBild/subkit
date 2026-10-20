@@ -62,6 +62,17 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
             audit_execution_source: auditSource,
             ...(principal.api_key_id ? { api_key_id: principal.api_key_id } : {}),
             ...(principal.session_id ? { session_id: principal.session_id } : {}),
+            ...(principal.auth_source
+              ? { audit_access_type: principal.auth_source.kind }
+              : principal.provider === "portal_token"
+                ? { audit_access_type: "portal_token" as const }
+                : {}),
+            ...(principal.oauth_client_id
+              ? { audit_oauth_client_id: principal.oauth_client_id }
+              : {}),
+            ...(principal.credential_origin
+              ? { audit_credential_origin: principal.credential_origin }
+              : {}),
             ...(principal.via ? { auth_via: principal.via } : {}),
           },
           async () => {

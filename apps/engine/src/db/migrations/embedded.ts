@@ -153,6 +153,7 @@ import sql0132ConversationTurnGuards from "./0132_conversation_turn_guards.sql" 
 import sql0133YummyStardust from "./0133_yummy_stardust.sql" with { type: "text" };
 import sql0134WetGreymalkin from "./0134_wet_greymalkin.sql" with { type: "text" };
 import sql0135SilkySwarm from "./0135_silky_swarm.sql" with { type: "text" };
+import sql0136BoringGlorian from "./0136_boring_glorian.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -313,6 +314,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0133_yummy_stardust": sql0133YummyStardust,
   "0134_wet_greymalkin": sql0134WetGreymalkin,
   "0135_silky_swarm": sql0135SilkySwarm,
+  "0136_boring_glorian": sql0136BoringGlorian,
 };
 
 const journal = journalMeta as unknown as Journal;

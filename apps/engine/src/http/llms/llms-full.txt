@@ -1405,6 +1405,8 @@ Stream audit log as NDJSON to stdout or a file
 - `--actor-type` (string) — Actor kind
 - `--api-key-id` (string) — Recorded API key id
 - `--session-id` (string) — Recorded session id
+- `--access-type` (string) — Verified access type
+- `--oauth-client-id` (string) — Verified OAuth client id
 - `--request-source` (string) — Legacy recorded source (not verified)
 - `--origin-source` (string) — Verified initiating source
 - `--execution-source` (string) — Immediate server execution step
@@ -1430,6 +1432,8 @@ Filter the audit log
 - `--actor-type` (string) — Actor kind
 - `--api-key-id` (string) — Recorded API key id
 - `--session-id` (string) — Recorded session id
+- `--access-type` (string) — Verified access type
+- `--oauth-client-id` (string) — Verified OAuth client id
 - `--request-source` (string) — Legacy recorded source (not verified)
 - `--origin-source` (string) — Verified initiating source
 - `--execution-source` (string) — Immediate server execution step

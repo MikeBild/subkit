@@ -14,6 +14,8 @@ export interface AuditQueryFilters {
   actor_type?: AuditActorType;
   api_key_id?: string;
   session_id?: string;
+  access_type?: string;
+  oauth_client_id?: string;
   request_source?: RequestSource;
   origin_source?: RequestSource;
   execution_source?: RequestSource;
@@ -90,11 +92,21 @@ function buildWhere(filters: AuditQueryFilters, before?: AuditKeysetCursor) {
   if (filters.actor_id) tenantConds.push(eq(auditLog.actor_id, filters.actor_id));
   if (filters.actor_type) tenantConds.push(eq(auditLog.actor_type, filters.actor_type));
   if (filters.api_key_id) {
-    tenantConds.push(sql`${auditLog.metadata}->>'api_key_id' = ${filters.api_key_id}`);
+    tenantConds.push(
+      sql`(${auditLog.metadata}->>'audit_used_api_key_id' = ${filters.api_key_id} OR (${auditLog.metadata}->>'audit_access_type' IS NULL AND ${auditLog.metadata}->>'api_key_id' = ${filters.api_key_id}))`,
+    );
   }
   if (filters.session_id) {
-    tenantConds.push(sql`${auditLog.metadata}->>'session_id' = ${filters.session_id}`);
+    tenantConds.push(
+      sql`(${auditLog.metadata}->>'audit_used_session_id' = ${filters.session_id} OR (${auditLog.metadata}->>'audit_access_type' IS NULL AND ${auditLog.metadata}->>'session_id' = ${filters.session_id}))`,
+    );
   }
+  if (filters.access_type)
+    tenantConds.push(sql`${auditLog.metadata}->>'audit_access_type' = ${filters.access_type}`);
+  if (filters.oauth_client_id)
+    tenantConds.push(
+      sql`${auditLog.metadata}->>'audit_oauth_client_id' = ${filters.oauth_client_id}`,
+    );
   if (filters.request_source) {
     tenantConds.push(sql`${auditLog.metadata}->>'request_source' = ${filters.request_source}`);
   }

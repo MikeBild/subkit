@@ -26,6 +26,20 @@ const AuditEntrySchema = z
     actor_id: z.string().nullable(),
     api_key_id: z.string().uuid().nullable(),
     session_id: z.string().uuid().nullable(),
+    recorded_api_key_id: z.string().uuid().nullable(),
+    recorded_session_id: z.string().uuid().nullable(),
+    access_type: z
+      .enum([
+        "api_key",
+        "browser_session",
+        "mcp_oauth",
+        "token_exchange",
+        "external_bearer",
+        "portal_token",
+      ])
+      .nullable(),
+    oauth_client_id: z.string().nullable(),
+    credential_origin: z.literal("cli_oauth_session").nullable(),
     request_source: RequestSourceSchema.nullable(),
     origin_source: RequestSourceSchema.nullable(),
     execution_source: RequestSourceSchema.nullable(),
@@ -54,6 +68,7 @@ const AuditEntrySchema = z
     before: z.unknown().nullable(),
     after: z.unknown().nullable(),
     reason: z.string().nullable(),
+    reason_redacted: z.boolean(),
     metadata: z.record(z.string(), z.unknown()),
   })
   .openapi("AuditEntry");
@@ -65,8 +80,29 @@ const FilterQuery = z
     action: z.string().optional(),
     actor_id: z.string().uuid().optional(),
     actor_type: z.enum(["user", "system_account", "system", "unknown"]).optional(),
-    api_key_id: z.string().uuid().optional(),
-    session_id: z.string().uuid().optional(),
+    api_key_id: z.string().uuid().optional().openapi({
+      description:
+        "Matches verified use or historical recorded metadata; inspect the returned field to distinguish provenance.",
+    }),
+    session_id: z.string().uuid().optional().openapi({
+      description:
+        "Matches verified use or historical recorded metadata; inspect the returned field to distinguish provenance.",
+    }),
+    access_type: z
+      .enum([
+        "api_key",
+        "browser_session",
+        "mcp_oauth",
+        "token_exchange",
+        "external_bearer",
+        "portal_token",
+      ])
+      .optional(),
+    oauth_client_id: z
+      .string()
+      .max(128)
+      .regex(/^[a-zA-Z0-9._:-]+$/)
+      .optional(),
     request_source: RequestSourceSchema.optional(),
     origin_source: RequestSourceSchema.optional(),
     execution_source: RequestSourceSchema.optional(),
@@ -179,6 +215,15 @@ interface RawFilterQuery {
   actor_type?: "user" | "system_account" | "system" | "unknown" | undefined;
   api_key_id?: string | undefined;
   session_id?: string | undefined;
+  access_type?:
+    | "api_key"
+    | "browser_session"
+    | "mcp_oauth"
+    | "token_exchange"
+    | "external_bearer"
+    | "portal_token"
+    | undefined;
+  oauth_client_id?: string | undefined;
   request_source?: z.infer<typeof RequestSourceSchema> | undefined;
   origin_source?: z.infer<typeof RequestSourceSchema> | undefined;
   execution_source?: z.infer<typeof RequestSourceSchema> | undefined;
@@ -203,6 +248,8 @@ function filtersFromQuery(tenant_id: string, q: RawFilterQuery): AuditQueryFilte
   if (q.actor_type) f.actor_type = q.actor_type as AuditActorType;
   if (q.api_key_id) f.api_key_id = q.api_key_id;
   if (q.session_id) f.session_id = q.session_id;
+  if (q.access_type) f.access_type = q.access_type;
+  if (q.oauth_client_id) f.oauth_client_id = q.oauth_client_id;
   if (q.request_source) f.request_source = q.request_source;
   if (q.origin_source) f.origin_source = q.origin_source;
   if (q.execution_source) f.execution_source = q.execution_source;

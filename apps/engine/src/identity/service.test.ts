@@ -28,6 +28,7 @@ import {
   deleteSystemAccount,
   getApiKey,
   issueApiKey,
+  issueCliOAuthSessionApiKey,
   issuePortalToken,
   listApiKeys,
   listPortalTokens,
@@ -179,6 +180,63 @@ describe("service — system accounts", () => {
 });
 
 describe("service — api keys", () => {
+  test("ordinary keys have no CLI credential origin and the field cannot be backfilled", async () => {
+    const issued = await issueApiKey(
+      {
+        issuer: { kind: "system" },
+        tenant_id: tenantId,
+        owner_kind: "user",
+        owner_id: userId,
+        actor: { kind: "user", id: userId },
+      },
+      testDb.db,
+    );
+    const [stored] = await testDb.db
+      .select({ credential_origin: apiKeys.credential_origin })
+      .from(apiKeys)
+      .where(and(eq(apiKeys.tenant_id, tenantId), eq(apiKeys.id, issued.view.id)));
+    expect(stored?.credential_origin).toBeNull();
+    await expect(
+      testDb.db
+        .update(apiKeys)
+        .set({ credential_origin: "cli_oauth_session" })
+        .where(and(eq(apiKeys.tenant_id, tenantId), eq(apiKeys.id, issued.view.id)))
+        .execute(),
+    ).rejects.toMatchObject({ cause: { code: "23514" } });
+  });
+
+  test("rotation preserves a CLI session credential origin", async () => {
+    const issued = await issueCliOAuthSessionApiKey(
+      {
+        issuer: { kind: "login" },
+        tenant_id: tenantId,
+        owner_kind: "user",
+        owner_id: userId,
+        actor: { kind: "user", id: userId },
+      },
+      testDb.db,
+    );
+    const rotated = await rotateApiKey(
+      {
+        issuer: { kind: "system" },
+        tenant_id: tenantId,
+        id: issued.view.id,
+        actor: { kind: "user", id: userId },
+      },
+      testDb.db,
+    );
+    const rows = await testDb.db
+      .select({ id: apiKeys.id, credential_origin: apiKeys.credential_origin })
+      .from(apiKeys)
+      .where(eq(apiKeys.tenant_id, tenantId));
+    expect(rows.find((row) => row.id === issued.view.id)?.credential_origin).toBe(
+      "cli_oauth_session",
+    );
+    expect(rows.find((row) => row.id === rotated?.new.id)?.credential_origin).toBe(
+      "cli_oauth_session",
+    );
+  });
+
   test("issueApiKey returns plaintext + writes audit entry", async () => {
     const result = await issueApiKey(
       {

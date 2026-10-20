@@ -4,6 +4,8 @@ type AuditFilterArg =
   | "actor-type"
   | "api-key-id"
   | "session-id"
+  | "access-type"
+  | "oauth-client-id"
   | "request-source"
   | "origin-source"
   | "execution-source"
@@ -26,6 +28,8 @@ export function auditFilterQuery(args: AuditFilterArgs): Record<string, string> 
     ["actor-type", "actor_type"],
     ["api-key-id", "api_key_id"],
     ["session-id", "session_id"],
+    ["access-type", "access_type"],
+    ["oauth-client-id", "oauth_client_id"],
     ["request-source", "request_source"],
     ["origin-source", "origin_source"],
     ["execution-source", "execution_source"],

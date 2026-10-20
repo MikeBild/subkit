@@ -14,6 +14,21 @@ const QueryInput = z
     actor_type: z.enum(["user", "system_account", "system", "unknown"]).optional(),
     api_key_id: z.string().uuid().optional(),
     session_id: z.string().uuid().optional(),
+    access_type: z
+      .enum([
+        "api_key",
+        "browser_session",
+        "mcp_oauth",
+        "token_exchange",
+        "external_bearer",
+        "portal_token",
+      ])
+      .optional(),
+    oauth_client_id: z
+      .string()
+      .max(128)
+      .regex(/^[a-zA-Z0-9._:-]+$/)
+      .optional(),
     request_source: RequestSourceSchema.optional(),
     origin_source: RequestSourceSchema.optional(),
     execution_source: RequestSourceSchema.optional(),
@@ -37,7 +52,7 @@ const GetInput = z.object({ id: z.string().uuid() }).openapi("GetAuditEntryToolI
 export const queryAuditTool: ConversationTool = {
   name: "list_audit",
   description:
-    "Query the tenant audit log, newest first. `origin_source` is the trusted initiating channel and `execution_source` the immediate server step. Legacy `request_source` is only a recorded value and may be client-declared. Filter by actor, API key/session, resource, result, trace/correlation, run/conversation/workflow ID and UTC time bounds. `ts_to` is exclusive. Missing provenance is not inferred. Pass `next_cursor` back verbatim for the next page.",
+    "Query the tenant audit log, newest first. `origin_source` is the trusted initiating channel and `execution_source` the immediate server step. Legacy `request_source` is only a recorded value and may be client-declared. Filter by actor, API key/session, access type, OAuth client, resource, result, trace/correlation, run/conversation/workflow ID and UTC time bounds. `ts_to` is exclusive. Missing provenance is not inferred. Pass `next_cursor` back verbatim for the next page.",
   inputSchema: QueryInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof QueryInput>) {
@@ -60,6 +75,8 @@ export const queryAuditTool: ConversationTool = {
     if (args.actor_type) filters.actor_type = args.actor_type;
     if (args.api_key_id) filters.api_key_id = args.api_key_id;
     if (args.session_id) filters.session_id = args.session_id;
+    if (args.access_type) filters.access_type = args.access_type;
+    if (args.oauth_client_id) filters.oauth_client_id = args.oauth_client_id;
     if (args.request_source) filters.request_source = args.request_source;
     if (args.origin_source) filters.origin_source = args.origin_source;
     if (args.execution_source) filters.execution_source = args.execution_source;

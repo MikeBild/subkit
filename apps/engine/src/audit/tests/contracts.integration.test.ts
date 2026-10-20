@@ -334,6 +334,8 @@ describe("request-source attribution", () => {
       session_id: sessionId,
       resource_id: resourceId,
     });
+    expect(entry.metadata.audit_used_api_key_id).toBe(apiKeyId);
+    expect(entry.metadata.audit_used_session_id).toBe(sessionId);
     expect(filtered.items.map((item) => item.id)).toContain(entry.id);
     const found = filtered.items.find((item) => item.id === entry.id);
     if (!found) throw new Error("filtered audit entry missing");
@@ -346,6 +348,63 @@ describe("request-source attribution", () => {
       api_key_id: apiKeyId,
     });
     expect(otherTenant.items).toEqual([]);
+  });
+
+  test("event metadata cannot forge the credential used for a request", async () => {
+    const forgedKeyId = uuid();
+    const realSessionId = uuid();
+    const entry = await withContext(
+      { session_id: realSessionId, audit_access_type: "browser_session" },
+      () =>
+        auditAwait(
+          {
+            tenant_id: tenantA,
+            action: "knowledge_source.updated",
+            resource_type: "knowledge_source",
+            resource_id: uuid(),
+            metadata: {
+              api_key_id: forgedKeyId,
+              audit_used_api_key_id: forgedKeyId,
+              audit_access_type: "api_key",
+              audit_credential_origin: "cli_oauth_session",
+            },
+          },
+          testDb.db,
+        ),
+    );
+    const found = await getAuditRowById(testDb.db, tenantA, entry.id);
+    if (!found) throw new Error("audit entry missing");
+    const projected = serializeAuditEntry(found);
+    expect(projected.api_key_id).toBeNull();
+    expect(projected.session_id).toBe(realSessionId);
+    expect(projected.access_type).toBe("browser_session");
+    expect(projected.credential_origin).toBeNull();
+    const forgedFilter = await queryAuditLog(testDb.db, {
+      tenant_id: tenantA,
+      api_key_id: forgedKeyId,
+    });
+    expect(forgedFilter.items.map((item) => item.id)).not.toContain(entry.id);
+  });
+
+  test("historical recorded credential IDs remain searchable without becoming verified", async () => {
+    const recordedKeyId = uuid();
+    const entry = await auditAwait(
+      {
+        tenant_id: tenantA,
+        action: "knowledge_source.updated",
+        resource_type: "knowledge_source",
+        resource_id: uuid(),
+        metadata: { api_key_id: recordedKeyId },
+      },
+      testDb.db,
+    );
+    const found = await queryAuditLog(testDb.db, { tenant_id: tenantA, api_key_id: recordedKeyId });
+    expect(found.items.map((item) => item.id)).toContain(entry.id);
+    const historical = found.items.find((item) => item.id === entry.id);
+    if (!historical) throw new Error("historical audit entry missing");
+    const projected = serializeAuditEntry(historical);
+    expect(projected.api_key_id).toBeNull();
+    expect(projected.recorded_api_key_id).toBe(recordedKeyId);
   });
 });
 

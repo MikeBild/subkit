@@ -36,12 +36,24 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
   delete metadata.origin_source;
   delete metadata.execution_source;
   delete metadata.audit_trace_id;
+  delete metadata.audit_used_api_key_id;
+  delete metadata.audit_used_session_id;
+  delete metadata.audit_access_type;
+  delete metadata.audit_oauth_client_id;
+  delete metadata.audit_credential_origin;
   if (ctx.audit_origin_source) metadata.origin_source = ctx.audit_origin_source;
   if (ctx.audit_execution_source) metadata.execution_source = ctx.audit_execution_source;
   if (ctx.audit_trace_id) metadata.audit_trace_id = ctx.audit_trace_id;
   if (ctx.conversation_id) metadata.conversation_id = ctx.conversation_id;
   if (ctx.api_key_id) metadata.api_key_id = ctx.api_key_id;
   if (ctx.session_id) metadata.session_id = ctx.session_id;
+  if (ctx.api_key_id && UUID_RE.test(ctx.api_key_id))
+    metadata.audit_used_api_key_id = ctx.api_key_id;
+  if (ctx.session_id && UUID_RE.test(ctx.session_id))
+    metadata.audit_used_session_id = ctx.session_id;
+  if (ctx.audit_access_type) metadata.audit_access_type = ctx.audit_access_type;
+  if (ctx.audit_oauth_client_id) metadata.audit_oauth_client_id = ctx.audit_oauth_client_id;
+  if (ctx.audit_credential_origin) metadata.audit_credential_origin = ctx.audit_credential_origin;
   const scrubbed = scrubAuditEntry({
     id: entry.id ?? crypto.randomUUID(),
     ts: entry.ts ?? new Date(),
@@ -62,7 +74,15 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
   });
   if (ctx.api_key_id && UUID_RE.test(ctx.api_key_id)) {
     scrubbed.metadata.api_key_id = ctx.api_key_id;
+    scrubbed.metadata.audit_used_api_key_id = ctx.api_key_id;
   }
+  if (ctx.session_id && UUID_RE.test(ctx.session_id))
+    scrubbed.metadata.audit_used_session_id = ctx.session_id;
+  if (ctx.audit_access_type) scrubbed.metadata.audit_access_type = ctx.audit_access_type;
+  if (ctx.audit_oauth_client_id)
+    scrubbed.metadata.audit_oauth_client_id = ctx.audit_oauth_client_id;
+  if (ctx.audit_credential_origin)
+    scrubbed.metadata.audit_credential_origin = ctx.audit_credential_origin;
   return scrubbed;
 }
 

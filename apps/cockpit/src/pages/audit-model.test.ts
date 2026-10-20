@@ -43,6 +43,11 @@ const ENTRY: AuditEntry = {
   actor_id: "018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa",
   api_key_id: null,
   session_id: null,
+  recorded_api_key_id: null,
+  recorded_session_id: null,
+  access_type: null,
+  oauth_client_id: null,
+  credential_origin: null,
   request_source: null,
   origin_source: null,
   execution_source: null,
@@ -63,6 +68,7 @@ const ENTRY: AuditEntry = {
   before: null,
   after: null,
   reason: null,
+  reason_redacted: false,
   metadata: {},
 };
 
