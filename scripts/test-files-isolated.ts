@@ -59,10 +59,8 @@ if (targets.length === 0) {
     "usage: bun run scripts/test-files-isolated.ts [--list] [--shard <index>/<count>] [--start-after <file>] <file-or-directory> [...]",
   );
 }
-if (workers > 1 && !workerChild && (listOnly || startAfter !== undefined || shardCount !== 1)) {
-  throw new Error("SUBKIT_TEST_WORKERS cannot be combined with --list, --start-after, or --shard");
-}
-if (workers > 1 && !workerChild) {
+const hasExplicitSelection = listOnly || startAfter !== undefined || shardCount !== 1;
+if (workers > 1 && !workerChild && !hasExplicitSelection) {
   const exits = await Promise.all(
     Array.from({ length: workers }, async (_, index) => {
       const child = Bun.spawn(

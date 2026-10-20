@@ -54,10 +54,10 @@ describe("test-files-isolated workers", () => {
     expect(await new Response(child.stdout).text()).not.toContain("shard=");
   });
 
-  test("rejects worker mode with selection options", async () => {
+  test("uses serial selection when explicit controls are present", async () => {
     fixtures();
     const child = await run("2", "--list", "scripts/__tests__/test-files-isolated-worker-fixtures");
-    expect(await child.exited).toBe(1);
-    expect(await new Response(child.stderr).text()).toContain("cannot be combined");
+    expect(await child.exited).toBe(0);
+    expect(await new Response(child.stdout).text()).not.toContain("shard=");
   });
 });
