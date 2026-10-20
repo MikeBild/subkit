@@ -1,0 +1,25 @@
+import { expect, test } from "bun:test";
+import { describeRunWorkflowError } from "./run-workflow-error.ts";
+
+test("preserves sensitive conversation refusal and gives a safe repair path", () => {
+  const error = Object.assign(
+    new Error("Sensitive execution is unavailable on conversation surfaces."),
+    {
+      code: "sensitive_execution_unsupported",
+    },
+  );
+  const result = describeRunWorkflowError(error);
+  expect(result.error_code).toBe("sensitive_execution_unsupported");
+  expect(result.message).toContain("authenticated non-chat run");
+  expect(result.message).toContain("execution_privacy=sensitive");
+  expect(result.recoverable).toBe(false);
+});
+
+test("keeps version failures distinct from other run failures", () => {
+  const version = describeRunWorkflowError(
+    Object.assign(new Error("version changed"), { code: "workflow_version_invalid" }),
+  );
+  expect(version.error_code).toBe("workflow_version_invalid");
+  expect(version.recommended_mode).toBe("workflow");
+  expect(describeRunWorkflowError(new Error("network failure")).error_code).toBe("run_failed");
+});
