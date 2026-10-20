@@ -63,6 +63,7 @@ const safeFailureCodes = new Set([
   "sensitive_execution_unsupported",
   "graphql_pagination_incomplete",
   "graphql_pagination_not_read_only",
+  "data_selector_error",
   "input_schema_violation",
   "invalid",
   "caller_required",
@@ -97,7 +98,9 @@ export function sensitiveFailure(code?: string) {
         ? "GraphQL pages are incomplete. Check pageInfo, totalCount, cursor continuity and configured limits before retrying."
         : safeCode === "graphql_pagination_not_read_only"
           ? "Cursor pagination requires a read-only GraphQL query. Remove mutations from this step."
-          : "Sensitive execution failed.",
+          : safeCode === "data_selector_error"
+            ? "The step data selector failed. Check its expression against the connector response structure and validate the workflow before retrying."
+            : "Sensitive execution failed.",
   };
 }
 

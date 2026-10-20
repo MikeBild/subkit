@@ -40,6 +40,20 @@ test("sensitive cursor failures keep fixed repair guidance without response data
   expect(JSON.stringify([incomplete, mutation])).not.toContain("PRIVATE_CONTENT_CANARY");
 });
 
+test("sensitive data selector failures retain a fixed repair hint without response data", () => {
+  const result = sensitiveFailure("data_selector_error");
+  expect(result).toEqual({
+    code: "data_selector_error",
+    message:
+      "The step data selector failed. Check its expression against the connector response structure and validate the workflow before retrying.",
+  });
+  expect(JSON.stringify(result)).not.toContain("PRIVATE_CONTENT_CANARY");
+  expect(sensitiveFailure("PRIVATE_CONTENT_CANARY")).toEqual({
+    code: "sensitive_execution_failure",
+    message: "Sensitive execution failed.",
+  });
+});
+
 test("actual isolated runtime and syntax failures expose no source or input", async () => {
   for (const [code, expected] of [
     ["throw new Error(input.value);", "sandbox_runtime"],
