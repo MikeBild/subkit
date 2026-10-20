@@ -153,7 +153,11 @@ export function WorkspaceMenu({
               );
             })}
             {currentOnly ? (
-              <DropdownMenuItem disabled className="gap-2 p-2 data-[disabled]:opacity-100">
+              <DropdownMenuItem
+                disabled
+                className="gap-2 p-2 data-[disabled]:opacity-100"
+                data-testid="workspace-current"
+              >
                 <div className="flex size-6 items-center justify-center rounded-md border">
                   <Workflow className="size-3.5" />
                 </div>

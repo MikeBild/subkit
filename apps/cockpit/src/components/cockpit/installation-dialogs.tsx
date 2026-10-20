@@ -5,8 +5,8 @@ import { createCockpitInstallation } from "@/api/cockpit-installations";
 import { cockpitApiHref, installationId } from "@/app/installation-context";
 import { useInstallation } from "@/app/installation-provider";
 import { useSession } from "@/app/session";
-import { Button, FormDialog } from "@/components/cockpit/patterns";
-import { Switch } from "@/components/ui/switch";
+import { IconButton } from "@/components/cockpit/icon-button";
+import { Button, FormDialog, Switch } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 
 interface DeferredInstallPrompt extends Event {
@@ -162,15 +162,16 @@ export function InstallationNotificationControl() {
   if (!installationId()) return null;
   return (
     <>
-      <Button
+      <IconButton
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label={t("installation.notifications")}
+        label={t("installation.notifications")}
+        data-testid="installation-notifications"
         onClick={() => setOpen(true)}
       >
         <Bell />
-      </Button>
+      </IconButton>
       <InstallationNotificationsDialog open={open} onOpenChange={setOpen} />
     </>
   );
@@ -240,11 +241,19 @@ export function InstallationInputActions({
         size="sm"
         onClick={onClipboard}
         disabled={disabled || !capabilities.clipboard}
+        data-testid="installation-import-clipboard"
       >
         <Upload />
         {t("installation.clipboard")}
       </Button>
-      <Button type="button" variant="outline" size="sm" onClick={chooseFiles} disabled={disabled}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={chooseFiles}
+        disabled={disabled}
+        data-testid="installation-import-file"
+      >
         <Upload />
         {t("installation.openFile")}
       </Button>
