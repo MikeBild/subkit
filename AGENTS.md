@@ -45,7 +45,7 @@
 - Run focused checks for affected behavior. Use existing API, security, domain, invariant, drift and build automation.
 - No Playwright suites, screenshot tests or visual matrices. Browser acceptance uses browser-use with Codex or Claude Code.
 - Pre-push checks and `bun run verify` are the gates; there is no CI replacement.
-- Release tags additionally require fail-closed `bun run verify:llm-live` through `bun run release:tag -- --models anthropic:<primary>,openai:<fallback>`. Keys stay in gitignored local key files.
+- Release tags additionally require fail-closed `bun run verify:llm-live` through `bun run release:tag -- --models openai:<primary>,openai:<fallback>` using the deployed OpenAI-only route. Keys stay in gitignored local key files.
 - Before handing over a changed local demo, run `bun run demo:local:verify`; also verify navigation, persistence, permissions, approval handoffs and a real provider response in the browser.
 - Simulations, current code checks, connected-channel runs, hardware, legal/human acceptance, release and PROD evidence are separate. Report gaps and skipped validation explicitly.
 - A documentation migration does not authorize release, deployment, Store submission or product opening.
