@@ -101,6 +101,13 @@ export function requireCockpitInstallation(): MiddlewareHandler<AppEnv> {
       c.get("principal"),
     );
     if (!context) {
+      if (c.req.method === "GET" && canonical === "/v1/tool-approvals/decide") {
+        const target = `${c.req.path}${new URL(c.req.url).search}`;
+        return c.redirect(
+          `/cockpit/i/${installationId}/api/v1/identity/cockpit-login?return_to=${encodeURIComponent(target)}`,
+          302,
+        );
+      }
       return c.json(
         {
           code: "installation_session_required",

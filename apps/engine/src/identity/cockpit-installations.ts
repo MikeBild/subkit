@@ -2,6 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
+import { hostedControlReceiptId } from "../db/hosted-control-receipt.ts";
 import { cockpitInstallations } from "../db/schema/cockpit-installations.ts";
 import { sessions } from "../db/schema/identity.ts";
 
@@ -115,12 +116,37 @@ export async function revokeCockpitInstallation(
       )
       .returning({ id: cockpitInstallations.id });
     if (rows.length === 0) return false;
-    await tx
+    const revokedSessions = await tx
       .update(sessions)
       .set({ revoked_at: new Date() })
-      .where(and(eq(sessions.installation_id, installationId), isNull(sessions.revoked_at)));
+      .where(
+        and(
+          eq(sessions.tenant_id, tenantId),
+          eq(sessions.installation_id, installationId),
+          isNull(sessions.revoked_at),
+        ),
+      )
+      .returning({ id: sessions.id });
+    for (const session of revokedSessions) {
+      await auditAwait(
+        {
+          id: hostedControlReceiptId(tenantId, "session", session.id),
+          tenant_id: tenantId,
+          actor_type: "user",
+          actor_id: ownerUserId,
+          action: AuditAction.SESSION_REVOKED,
+          resource_type: "session",
+          resource_id: session.id,
+          result: "success",
+          reason: "installation_revoked",
+          metadata: { installation_id: installationId },
+        },
+        tx,
+      );
+    }
     await auditAwait(
       {
+        id: hostedControlReceiptId(tenantId, "cockpit_installation", installationId),
         tenant_id: tenantId,
         actor_type: "user",
         actor_id: ownerUserId,
@@ -128,7 +154,7 @@ export async function revokeCockpitInstallation(
         resource_type: "cockpit_installation",
         resource_id: installationId,
         result: "success",
-        metadata: {},
+        metadata: { revoked_session_count: revokedSessions.length },
       },
       tx,
     );

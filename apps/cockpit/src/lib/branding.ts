@@ -22,6 +22,7 @@ export function brandingDraft(value: TenantBranding): TenantBrandingUpdate {
     subtitle: value.subtitle,
     palette: value.palette,
     logos: { light: { operation: "keep" }, dark: { operation: "keep" } },
+    app_icon: { operation: "keep" },
   };
 }
 
@@ -49,6 +50,18 @@ export function brandingPreviewLogo(
   );
 }
 
+export function brandingDraftAppIcon(
+  draft: TenantBrandingUpdate,
+  saved: TenantBranding,
+): string | null {
+  const change = draft.app_icon ?? { operation: "keep" as const };
+  if (change.operation === "remove") return null;
+  if (change.operation === "replace")
+    return `data:${change.mime_type};base64,${change.content_base64}`;
+  const source = saved.app_icon_urls.icon_512 ?? saved.app_icon_urls.icon_192;
+  return source ? cockpitApiHref(source) : null;
+}
+
 export async function readBrandingLogo(file: File) {
   if (file.size > 2 * 1024 * 1024 || !["image/png", "image/jpeg", "image/webp"].includes(file.type))
     throw new Error("branding_image_invalid");
@@ -68,6 +81,32 @@ export async function readBrandingLogo(file: File) {
   return {
     operation: "replace" as const,
     mime_type: file.type as "image/png" | "image/jpeg" | "image/webp",
+    content_base64: data.slice(data.indexOf(",") + 1),
+  };
+}
+
+export async function readBrandingAppIcon(file: File) {
+  if (file.size > 2 * 1024 * 1024 || file.type !== "image/png")
+    throw new Error("branding_image_invalid");
+  const bitmap = await createImageBitmap(file);
+  const valid =
+    bitmap.width === bitmap.height &&
+    bitmap.width >= 512 &&
+    bitmap.width * bitmap.height <= 4_000_000;
+  bitmap.close();
+  if (!valid) throw new Error("branding_image_invalid");
+  const data = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("branding_image_invalid"));
+    reader.onload = () =>
+      typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("branding_image_invalid"));
+    reader.readAsDataURL(file);
+  });
+  return {
+    operation: "replace" as const,
+    mime_type: "image/png" as const,
     content_base64: data.slice(data.indexOf(",") + 1),
   };
 }

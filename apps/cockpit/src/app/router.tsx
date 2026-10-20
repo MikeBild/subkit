@@ -90,6 +90,11 @@ const filesRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/files", component: FilesPage }),
   createRoute({
     getParentRoute: () => rootRoute,
+    path: "/incoming/files",
+    component: FilesPage,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
     path: "/files/$resourceId",
     component: FilesPage,
   }),

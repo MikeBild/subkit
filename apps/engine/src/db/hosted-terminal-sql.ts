@@ -1,17 +1,17 @@
-export function renderHostedTerminalSql(): string[] {
-  return [
-    `CREATE OR REPLACE FUNCTION subkit.hosted_control_receipt_id(p_tenant uuid,p_type text,p_resource uuid) RETURNS uuid LANGUAGE sql IMMUTABLE AS $$
+const receipt = `CREATE OR REPLACE FUNCTION subkit.hosted_control_receipt_id(p_tenant uuid,p_type text,p_resource uuid) RETURNS uuid LANGUAGE sql IMMUTABLE AS $$
  SELECT overlay(overlay(substr(encode(public.digest('hosted-resource-control:'||p_tenant::text||':'||p_type||':'||p_resource::text,'sha256'),'hex'),1,32) placing '5' from 13 for 1) placing '8' from 17 for 1)::uuid
-$$`,
-    `CREATE OR REPLACE FUNCTION subkit.hosted_content_quota_terminal(p_table text,j jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
+$$`;
+
+const terminal = `CREATE OR REPLACE FUNCTION subkit.hosted_content_quota_terminal(p_table text,j jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
  SELECT COALESCE(CASE WHEN p_table='executions' THEN
   j->>'status'='failed' AND j->>'finished_at' IS NOT NULL AND j#>>'{failure,error_code}' IN ('hosted_storage_quota_exhausted','hosted_resource_count_exhausted')
   AND j->'failure'=jsonb_build_object('step_id',NULL,'error_code',j#>>'{failure,error_code}','error_message','Workspace resource allowance exhausted.')
  WHEN p_table='mcp_tasks' THEN
   j->>'failure_reason' IN ('hosted_storage_quota_exhausted','hosted_resource_count_exhausted') AND j->>'result' IS NULL AND j->>'cancelled_at' IS NULL
  ELSE false END,false)
-$$`,
-    `CREATE OR REPLACE FUNCTION subkit.hosted_singleton_control_receipt(j jsonb) RETURNS boolean LANGUAGE plpgsql IMMUTABLE AS $$
+$$`;
+
+const singleton = `CREATE OR REPLACE FUNCTION subkit.hosted_singleton_control_receipt(j jsonb) RETURNS boolean LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE kind text:=j->>'resource_type'; resource uuid; tenant uuid;
 BEGIN
  IF NOT COALESCE(j->>'resource_id' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',false) THEN RETURN false; END IF;
@@ -31,8 +31,9 @@ BEGIN
    AND j#>>'{metadata,operator_tenant_id}' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',false);
  END IF;
  RETURN false;
-END $$`,
-    `CREATE OR REPLACE FUNCTION subkit.hosted_singleton_control_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+END $$`;
+
+const guard = `CREATE OR REPLACE FUNCTION subkit.hosted_singleton_control_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE valid boolean:=false;
 BEGIN
  IF NOT subkit.hosted_singleton_control_receipt(to_jsonb(NEW)) THEN RETURN NEW; END IF;
@@ -49,8 +50,9 @@ BEGIN
  IF NOT valid THEN RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='hosted_quota_control_receipt_invalid'; END IF;
  RETURN NEW;
 END $$;
-CREATE TRIGGER hosted_singleton_control_guard BEFORE INSERT OR UPDATE ON subkit.audit_log FOR EACH ROW EXECUTE FUNCTION subkit.hosted_singleton_control_guard()`,
-    `CREATE OR REPLACE FUNCTION subkit.hosted_terminal_receipt_required() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE TRIGGER hosted_singleton_control_guard BEFORE INSERT OR UPDATE ON subkit.audit_log FOR EACH ROW EXECUTE FUNCTION subkit.hosted_singleton_control_guard()`;
+
+const required = `CREATE OR REPLACE FUNCTION subkit.hosted_terminal_receipt_required() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE j jsonb; kind text;
 BEGIN
  IF TG_TABLE_NAME='executions' THEN
@@ -65,6 +67,34 @@ BEGIN
  RETURN NULL;
 END $$;
 CREATE CONSTRAINT TRIGGER hosted_terminal_receipt_required AFTER INSERT OR UPDATE ON subkit.executions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION subkit.hosted_terminal_receipt_required();
-CREATE CONSTRAINT TRIGGER hosted_terminal_receipt_required AFTER INSERT OR UPDATE ON subkit.mcp_tasks DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION subkit.hosted_terminal_receipt_required()`,
+CREATE CONSTRAINT TRIGGER hosted_terminal_receipt_required AFTER INSERT OR UPDATE ON subkit.mcp_tasks DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION subkit.hosted_terminal_receipt_required()`;
+
+export function renderHostedTerminalSql(options: { cockpitControls?: boolean } = {}): string[] {
+  if (!options.cockpitControls) return [receipt, terminal, singleton, guard, required];
+  return [
+    receipt,
+    terminal,
+    singleton.replace(
+      " IF kind='hosted_storage_object' THEN",
+      () => ` IF kind='session' THEN
+  RETURN COALESCE(j->>'actor_type'='user' AND j->>'actor_id' IS NOT NULL AND j->>'result'='success' AND j->>'action'='session.revoked' AND j->>'reason'='installation_revoked' AND (j->'metadata')-ARRAY['installation_id']='{}'::jsonb AND j#>>'{metadata,installation_id}' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',false);
+ END IF;
+ IF kind='cockpit_installation' THEN
+  RETURN COALESCE(j->>'actor_type'='user' AND j->>'actor_id' IS NOT NULL AND j->>'result'='success' AND j->>'action'='cockpit_installation.revoked' AND j->>'reason' IS NULL AND (j->'metadata')-ARRAY['revoked_session_count']='{}'::jsonb AND j#>>'{metadata,revoked_session_count}' ~ '^(0|[1-9][0-9]{0,8})$',false);
+ END IF;
+ IF kind='hosted_storage_object' THEN`,
+    ),
+    guard.replace(
+      " ELSE\n  PERFORM 1 FROM subkit.hosted_storage_objects",
+      () => ` ELSIF NEW.resource_type='session' THEN
+  PERFORM 1 FROM subkit.sessions s JOIN subkit.cockpit_installations i ON i.id=s.installation_id WHERE s.tenant_id=NEW.tenant_id AND s.id=NEW.resource_id::uuid AND s.installation_id=(NEW.metadata->>'installation_id')::uuid AND s.revoked_at IS NOT NULL AND i.tenant_id=NEW.tenant_id AND i.owner_user_id=NEW.actor_id AND i.revoked_at IS NOT NULL FOR KEY SHARE OF s,i;
+  valid:=FOUND;
+ ELSIF NEW.resource_type='cockpit_installation' THEN
+  PERFORM 1 FROM subkit.cockpit_installations i WHERE i.tenant_id=NEW.tenant_id AND i.id=NEW.resource_id::uuid AND i.owner_user_id=NEW.actor_id AND i.revoked_at IS NOT NULL FOR KEY SHARE;
+  valid:=FOUND;
+ ELSE
+  PERFORM 1 FROM subkit.hosted_storage_objects`,
+    ),
+    required,
   ];
 }

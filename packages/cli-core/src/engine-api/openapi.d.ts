@@ -5410,7 +5410,46 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Read the current browser owner's active workspace installation */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Current installation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            installation: {
+                                /** Format: uuid */
+                                id: string;
+                                start_url: string;
+                                manifest_url: string;
+                            } | null;
+                        };
+                    };
+                };
+                /** @description Root browser session required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
+            };
+        };
         put?: never;
         /** Create or reuse the current browser user's Cockpit installation */
         post: {

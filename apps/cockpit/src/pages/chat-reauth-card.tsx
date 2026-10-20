@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { contextualHref } from "@/app/installation-context";
 import { Button, ChatCard } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import type { ChatReauth } from "./chat-reauth";
@@ -44,7 +45,7 @@ export function ChatReauthCard({
         ) : (
           <Button asChild>
             <a
-              href={action.href}
+              href={contextualHref(action.href)}
               target="_blank"
               rel="noopener noreferrer"
               data-testid="chat-reauth-open"

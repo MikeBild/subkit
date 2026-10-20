@@ -291,6 +291,7 @@ export function negotiatedPageResponse(html: string, status: number): Response {
 }
 
 export type SignInError =
+  | "installation_login_requires_oidc"
   | "state_expired"
   | "grant_denied"
   | "account_not_assigned"
@@ -302,6 +303,8 @@ export type SignInError =
 
 const SIGN_IN_ERRORS: Record<AuthLocale, Record<SignInError, string>> = {
   en: {
+    installation_login_requires_oidc:
+      "Installed apps require an existing OIDC account to sign in again. API-key sign-in is available in the regular Cockpit. Open it in the browser to renew this workspace app.",
     state_expired: "This sign-in attempt expired or was already used. Please sign in again.",
     account_not_assigned:
       "This company account is not assigned to SubKit. Contact an administrator.",
@@ -316,6 +319,8 @@ const SIGN_IN_ERRORS: Record<AuthLocale, Record<SignInError, string>> = {
     provider_unavailable: "The sign-in provider is temporarily unavailable. Please try again.",
   },
   de: {
+    installation_login_requires_oidc:
+      "Installierte Apps benötigen für die erneute Anmeldung ein bestehendes OIDC-Konto. Mit einem API-Schlüssel kannst du dich im normalen Cockpit anmelden und die Workspace-App dort erneut öffnen.",
     state_expired:
       "Dieser Anmeldeversuch ist abgelaufen oder wurde schon verwendet. Melde dich erneut an.",
     account_not_assigned:
@@ -347,11 +352,17 @@ export function renderErrorPage(error: SignInError, retryHref: string, look: Pag
           ? "Registrierung geschlossen"
           : "Registration closed"
         : copy.signInFailed;
+  const action =
+    error === "installation_login_requires_oidc"
+      ? look.locale === "de"
+        ? "Cockpit im Browser öffnen"
+        : "Open Cockpit in browser"
+      : copy.signInAgain;
   return renderSinglePage({
     look,
     surface: "auth",
     context: copy.oauthContext,
-    body: `<div class="stack" role="alert">${pageHead({ title, slot: "auth-heading", line: SIGN_IN_ERRORS[look.locale][error] })}</div>${pageActions(linkButton(retryHref, copy.signInAgain, "primary", ' data-testid="auth-retry"'))}`,
+    body: `<div class="stack" role="alert">${pageHead({ title, slot: "auth-heading", line: SIGN_IN_ERRORS[look.locale][error] })}</div>${pageActions(linkButton(retryHref, action, "primary", ' data-testid="auth-retry"'))}`,
   });
 }
 

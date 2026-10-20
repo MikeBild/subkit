@@ -19,11 +19,13 @@ import { SectionHeading } from "@/components/cockpit/patterns/section";
 import {
   BRANDING_PALETTES,
   BRANDING_SWATCHES,
+  brandingDraftAppIcon,
   brandingDraftLogo,
   brandingPreviewLogo,
 } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
+import { BrandingIconUpload } from "./branding-icon-upload";
 
 export function BrandingForm({
   draft,
@@ -31,12 +33,14 @@ export function BrandingForm({
   disabled,
   onChange,
   onUpload,
+  onIconUpload,
 }: {
   draft: TenantBrandingUpdate;
   saved: TenantBranding;
   disabled: boolean;
   onChange(value: Partial<TenantBrandingUpdate>): void;
   onUpload(theme: "light" | "dark", file: File): void;
+  onIconUpload(file: File): void;
 }) {
   const { t } = useI18n();
   return (
@@ -74,7 +78,14 @@ export function BrandingForm({
             />
             <FieldDescription className="text-xs">{t("branding.subtitleHint")}</FieldDescription>
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-4">
+            <BrandingIconUpload
+              change={draft.app_icon ?? { operation: "keep" }}
+              src={brandingDraftAppIcon(draft, saved)}
+              disabled={disabled}
+              onUpload={onIconUpload}
+              onRemove={() => onChange({ app_icon: { operation: "remove" } })}
+            />
             {(["light", "dark"] as const).map((theme) => (
               <LogoUpload
                 key={theme}
@@ -211,7 +222,8 @@ function BrandingPreview({ draft, saved }: { draft: TenantBrandingUpdate; saved:
     draft.subtitle !== null ||
     draft.palette !== null ||
     brandingDraftLogo(draft, saved, "light") !== null ||
-    brandingDraftLogo(draft, saved, "dark") !== null;
+    brandingDraftLogo(draft, saved, "dark") !== null ||
+    brandingDraftAppIcon(draft, saved) !== null;
   return (
     <section aria-labelledby="branding-preview-title">
       <div className="mb-2">

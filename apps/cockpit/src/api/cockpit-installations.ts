@@ -7,6 +7,12 @@ export interface CockpitInstallation {
   created: boolean;
 }
 
+export function getCurrentCockpitInstallation(): Promise<{
+  installation: Omit<CockpitInstallation, "created"> | null;
+}> {
+  return apiRequest("/v1/cockpit/installations");
+}
+
 export function createCockpitInstallation(): Promise<CockpitInstallation> {
   return apiRequest("/v1/cockpit/installations", { method: "POST", body: "{}" });
 }

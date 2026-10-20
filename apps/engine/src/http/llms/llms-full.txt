@@ -364,6 +364,9 @@ normal browser CSRF token. It returns the installation address and manifest addr
 and issues an independent browser session for that installation. The existing root
 Cockpit session remains active. An installation is unique per active workspace and
 owner on the current host; another workspace has its own installation identity.
+`GET /v1/cockpit/installations` reads that owner's current installation without
+issuing a session. The root Cockpit offers installation revocation through
+`DELETE /v1/cockpit/installations/{id}`.
 
 Each app uses `/cockpit/i/{installationId}/` and a separate HttpOnly, SameSite=Lax
 cookie with that exact path. HTTPS cookies are Secure. Its API facade under
@@ -375,7 +378,8 @@ streams recheck the session before delivering each chunk. Logout revokes only th
 presented app session. Revoking the installation from the root Cockpit invalidates
 all its sessions; recreation produces a new identity and does not revive old links.
 OIDC reauthentication requires the exact existing owner identity and never provisions
-or links an account by email.
+or links an account by email. API-key sign-in cannot renew an installed session;
+open the normal Cockpit and reopen the workspace app instead.
 
 The authenticated manifest has a distinct ID, scope and start address and uses the
 saved workspace name, palette and optional square app icon. Icons are normalized to

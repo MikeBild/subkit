@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import { contextualHref } from "@/app/installation-context";
 import { useI18n } from "@/lib/i18n-context";
 import { SIGN_IN_LINK_PATH } from "./chat-reauth";
 
@@ -17,7 +18,7 @@ export function ChatMessageLink({ href, children, ...props }: ComponentProps<"a"
       {...props}
       className="font-medium text-primary underline underline-offset-4"
       data-testid="message-link"
-      href={signIn ? "#chat-account-connection" : href}
+      href={signIn ? "#chat-account-connection" : href ? contextualHref(href) : href}
       onClick={
         signIn
           ? (event) => {

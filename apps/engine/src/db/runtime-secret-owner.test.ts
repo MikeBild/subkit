@@ -41,7 +41,7 @@ test("owner migration and embedded SQL match while initial quota installation re
     new URL(`./migrations/${initial.tag}.sql`, import.meta.url),
     "utf8",
   );
-  expect(baseline).toBe(renderHostedQuotaSql());
+  expect(baseline).toBe(renderHostedQuotaSql({ cockpitControls: false }));
   expect(baseline).not.toContain("hosted_meter_runtime_secret_versions");
 });
 test("forward upgrade binds historical revoked token ciphertext and adds only its exact retained usage", async () => {

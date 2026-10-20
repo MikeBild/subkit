@@ -4,6 +4,7 @@ import { browserSessionForPrincipal, issueBrowserSession } from "../../auth/inde
 import { sessions } from "../../db/schema/identity.ts";
 import {
   createOrReuseCockpitInstallation,
+  getActiveCockpitInstallation,
   revokeCockpitInstallation,
 } from "../../identity/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -16,6 +17,29 @@ const InstallationResponse = z.object({
   start_url: z.string(),
   manifest_url: z.string(),
   created: z.boolean(),
+});
+const currentInstallationRoute = createRoute({
+  method: "get",
+  path: "/v1/cockpit/installations",
+  tags: ["cockpit"],
+  summary: "Read the current browser owner's active workspace installation",
+  security: [{ browserSession: [] }],
+  responses: {
+    200: {
+      description: "Current installation",
+      content: {
+        "application/json": {
+          schema: z.object({
+            installation: InstallationResponse.omit({ created: true }).nullable(),
+          }),
+        },
+      },
+    },
+    401: {
+      description: "Root browser session required",
+      content: { "application/json": { schema: InstallationFailure } },
+    },
+  },
 });
 const createInstallationRoute = createRoute({
   method: "post",
@@ -56,6 +80,35 @@ const revokeInstallationRoute = createRoute({
 });
 
 export function registerCockpitInstallationRoutes(app: OpenAPIHono<AppEnv>): void {
+  app.openapi(currentInstallationRoute, async (c) => {
+    const principal = requireAuth(c);
+    const session = await browserSessionForPrincipal(c.req.raw, principal);
+    if (
+      principal.provider !== "browser_session" ||
+      principal.kind !== "user" ||
+      !session ||
+      session.installation_id
+    )
+      return c.json({ code: "browser_session_required" }, 401);
+    const installation = await getActiveCockpitInstallation(
+      c.get("db"),
+      principal.tenant_id,
+      principal.id,
+    );
+    return c.json(
+      {
+        installation: installation
+          ? {
+              id: installation.id,
+              start_url: `/cockpit/i/${installation.id}/`,
+              manifest_url: `/cockpit/i/${installation.id}/manifest.webmanifest`,
+            }
+          : null,
+      },
+      200,
+      { "cache-control": "private, no-store", vary: "Cookie" },
+    );
+  });
   app.openapi(createInstallationRoute, async (c) => {
     const principal = requireAuth(c);
     const session = await browserSessionForPrincipal(c.req.raw, principal);

@@ -20,7 +20,21 @@ export function cockpitApiHref(path: string, pathname = currentPathname()): stri
   return id ? `/cockpit/i/${id}/api${path}` : path;
 }
 
-export function contextualHref(path: string, pathname = currentPathname()): string {
+export function contextualHref(
+  path: string,
+  pathname = currentPathname(),
+  origin = typeof window === "undefined" ? "https://subkit.invalid" : window.location.origin,
+): string {
+  if (/^(?:https?:)?\/\//i.test(path)) {
+    if (!installationId(pathname)) return path;
+    try {
+      const url = new URL(path, origin);
+      if (url.origin !== origin || url.username || url.password) return path;
+      return contextualHref(`${url.pathname}${url.search}${url.hash}`, pathname, origin);
+    } catch {
+      return path;
+    }
+  }
   if (/^\/v1(?:\/|\?|$)/.test(path)) return cockpitApiHref(path, pathname);
   const base = cockpitBasePath(pathname);
   if (path === "/cockpit") return base;

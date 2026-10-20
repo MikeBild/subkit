@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { TenantBranding } from "@/api/tenant-branding";
-import { BRANDING_SWATCHES, brandingDraft, brandingLogo, brandingPreviewLogo } from "./branding";
+import {
+  BRANDING_SWATCHES,
+  brandingDraft,
+  brandingDraftAppIcon,
+  brandingLogo,
+  brandingPreviewLogo,
+} from "./branding";
 
 const branding: TenantBranding = {
   configured: true,
@@ -9,8 +15,8 @@ const branding: TenantBranding = {
   subtitle: null,
   palette: "indigo",
   logos: { light: true, dark: false },
-  app_icon: false,
-  app_icon_urls: { icon_192: null, icon_512: null },
+  app_icon: true,
+  app_icon_urls: { icon_192: "/icon-192?revision=7", icon_512: "/icon-512?revision=7" },
   logo_urls: { light: "/logo?tenant_context=example&revision=7", dark: null },
 };
 
@@ -39,12 +45,22 @@ describe("tenant branding client contracts", () => {
     expect(brandingLogo(undefined, "dark")).toBeNull();
   });
 
-  test("editing text preserves both stored logos and the reviewed revision", () => {
+  test("editing text preserves stored logos, the app icon and the reviewed revision", () => {
     expect(brandingDraft(branding)).toMatchObject({
       revision: 7,
       logos: { light: { operation: "keep" }, dark: { operation: "keep" } },
+      app_icon: { operation: "keep" },
     });
     expect(brandingDraft(branding)).not.toHaveProperty("logo_urls");
+  });
+
+  test("the app icon draft previews its canonical large icon and clears locally", () => {
+    const draft = brandingDraft(branding);
+    expect(brandingDraftAppIcon(draft, branding)).toContain("/icon-512?revision=7");
+    draft.app_icon = { operation: "remove" };
+    expect(brandingDraftAppIcon(draft, branding)).toBeNull();
+    draft.app_icon = { operation: "replace", mime_type: "image/png", content_base64: "aGVsbG8=" };
+    expect(brandingDraftAppIcon(draft, branding)).toBe("data:image/png;base64,aGVsbG8=");
   });
 
   test("local removals and replacements affect only the preview until saved", () => {

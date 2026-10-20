@@ -77,7 +77,11 @@ function browserStateError(
 ): Response {
   if (wantsJson(c)) return c.json({ code }, status);
   return authHtmlResponse(
-    renderErrorPage("state_expired", retryHref, resolvePageLook(c.req.raw.headers)),
+    renderErrorPage(
+      code === "installation_login_requires_oidc" ? code : "state_expired",
+      code === "installation_login_requires_oidc" ? "/cockpit" : retryHref,
+      resolvePageLook(c.req.raw.headers),
+    ),
     status,
   );
 }

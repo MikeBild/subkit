@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { contextualHref } from "@/app/installation-context";
 import { Button, ChatCard, ContextHelp, Spinner } from "@/components/cockpit/patterns";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -91,7 +92,7 @@ export function ChatApprovalCard({
       {approval.authorizationUrl && !expired && (
         <Button asChild variant="outline" className="w-fit">
           <a
-            href={approval.authorizationUrl}
+            href={contextualHref(approval.authorizationUrl)}
             target="_blank"
             rel="noopener noreferrer"
             data-testid={`${testId}-sign-in`}

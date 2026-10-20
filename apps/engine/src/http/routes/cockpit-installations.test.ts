@@ -167,3 +167,41 @@ test("concurrent creation produces one active installation", async () => {
   );
   expect(new Set(bodies.map((body) => body.id)).size).toBe(1);
 });
+
+test("an expired app approval navigation hands off to its own login without granting root access", async () => {
+  const rootHeaders = await browserSessionHeaders(server, server.userId);
+  const response = await createInstallation(rootHeaders);
+  const { id } = (await response.json()) as { id: string };
+  const target = `/cockpit/i/${id}/api/v1/tool-approvals/decide?grant=opaque-review-fixture`;
+  const approval = await fetch(`${server.baseUrl}${target}`, {
+    headers: rootHeaders,
+    redirect: "manual",
+  });
+  expect(approval.status).toBe(302);
+  const login = new URL(approval.headers.get("location") ?? "", server.baseUrl);
+  expect(login.pathname).toBe(`/cockpit/i/${id}/api/v1/identity/cockpit-login`);
+  expect(login.searchParams.get("return_to")).toBe(target);
+  expect(approval.headers.get("set-cookie")).toBeNull();
+});
+
+test("current installation management is private, owner-scoped and never issues a session on GET", async () => {
+  const root = await browserSessionHeaders(server, server.userId);
+  const created = await createInstallation(root);
+  const { id } = (await created.json()) as { id: string };
+  const response = await fetch(`${server.baseUrl}/v1/cockpit/installations`, { headers: root });
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(response.headers.get("set-cookie")).toBeNull();
+  expect(await response.json()).toMatchObject({ installation: { id } });
+  const apiKey = await fetch(`${server.baseUrl}/v1/cockpit/installations`, {
+    headers: { authorization: `Bearer ${server.apiKey}` },
+  });
+  expect(apiKey.status).toBe(401);
+  const revoked = await fetch(`${server.baseUrl}/v1/cockpit/installations/${id}`, {
+    method: "DELETE",
+    headers: root,
+  });
+  expect(revoked.status).toBe(204);
+  const empty = await fetch(`${server.baseUrl}/v1/cockpit/installations`, { headers: root });
+  expect(await empty.json()).toEqual({ installation: null });
+});

@@ -49,6 +49,7 @@ test("retains exact uploaded file reference and idempotency key across an intake
   const paths: string[] = [];
   const requests: unknown[] = [];
   let fail = true;
+  const uncategorized = { ...destination, category: "" };
   const request: typeof apiRequest = async <T>(path: string, init: RequestInit = {}) => {
     paths.push(path);
     if (path === "/v1/files/inline") return { id: "stored-file" } as T;
@@ -59,16 +60,20 @@ test("retains exact uploaded file reference and idempotency key across an intake
     }
     return { id: "collected-file" } as T;
   };
-  await expect(confirmInstallationImport(draft, destination, request)).rejects.toThrow(
+  await expect(confirmInstallationImport(draft, uncategorized, request)).rejects.toThrow(
     "temporary failure",
   );
-  expect(await confirmInstallationImport(draft, destination, request)).toEqual({
+  await expect(confirmInstallationImport(draft, destination, request)).rejects.toThrow(
+    "incoming_destination_changed",
+  );
+  expect(await confirmInstallationImport(draft, uncategorized, request)).toEqual({
     itemIds: ["collected-file"],
     fileIds: ["stored-file"],
   });
   expect(paths).toEqual(["/v1/files/inline", "/v1/intake/items", "/v1/intake/items"]);
   expect(requests[0]).toEqual(requests[1]);
   expect(requests[1]).toMatchObject({
+    category: "",
     source_url: "https://app.example.test/v1/files/stored-file/content?tenant_context=tenant",
     original_snapshot: { origin: "capture", body: "Review source" },
   });

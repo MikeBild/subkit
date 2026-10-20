@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
-import { cockpitInstallationIdFromPath } from "../../auth/index.ts";
+import { cockpitInstallationIdFromPath, signLoginState } from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { completeApprovalBackedElicitation } from "../../conversations/index.ts";
 import type { Db } from "../../db/client.ts";
@@ -121,8 +121,16 @@ async function redirectToSignIn(
   const apiPrefix = installationId ? `/cockpit/i/${installationId}/api` : "";
   const back = new URL(`${apiPrefix}${APPROVAL_PORTAL_PATH}`, publicBaseUrl);
   back.searchParams.set("grant", grant);
-  const loginUrl = new URL(`${apiPrefix}/v1/identity/cockpit-login`, publicBaseUrl);
-  loginUrl.searchParams.set("return_to", back.toString());
+  const loginUrl = new URL(
+    installationId ? `${apiPrefix}/v1/identity/cockpit-login` : "/v1/identity/login/start",
+    publicBaseUrl,
+  );
+  if (installationId) loginUrl.searchParams.set("return_to", `${back.pathname}${back.search}`);
+  else
+    loginUrl.searchParams.set(
+      "login_state",
+      await signLoginState({ redirect_to: back.toString() }),
+    );
   return Response.redirect(loginUrl.toString(), 302);
 }
 

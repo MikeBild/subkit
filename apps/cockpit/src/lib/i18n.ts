@@ -17,6 +17,9 @@ const EN = {
   "branding.lightLogo": "Light logo",
   "branding.darkLogo": "Dark logo",
   "branding.upload": "Upload PNG, WebP or JPEG",
+  "branding.appIcon": "App icon (1:1)",
+  "branding.appIconHint": "Upload a square PNG",
+  "branding.removeAppIcon": "Remove app icon",
   "branding.imageHint":
     "Up to 2 MiB and 4 megapixels. One logo is used for both themes until a second is added.",
   "branding.removeLogo": "Remove logo",
@@ -4836,6 +4839,35 @@ const EN = {
   "intake.proposal.archives": "Archived after confirmation: {skills}.",
   "intake.proposal.stale":
     "This suggestion changed. Review the current content before confirming it.",
+  "installation.install": "Install this workspace",
+  "installation.installTitle": "Install {name}",
+  "installation.installDescription":
+    "Open this workspace as a separate app for quick access and native system integration.",
+  "installation.installAction": "Install app",
+  "installation.installHint":
+    "This option is available in browsers that support web app installation.",
+  "installation.unavailableTitle": "Installation unavailable",
+  "installation.unavailable":
+    "Installation is not currently available in this browser. You can continue using the Cockpit in the browser.",
+  "installation.notifications": "Notifications",
+  "installation.notificationsEnable": "Enable neutral notifications",
+  "installation.notificationsHint": "Alerts contain no workspace or workflow details.",
+  "installation.notificationsDenied":
+    "Browser permission was denied. Allow notifications in your browser settings.",
+  "installation.importTitle": "Add to {category}",
+  "installation.importHint":
+    "Review files before adding them. This does not admit anything as knowledge.",
+  "installation.importAction": "Add to {category}",
+  "installation.importPartial":
+    "Some files are already stored in this workspace. Retry continues the same entries.",
+  "installation.importFailed": "Could not add every item. Your review draft is preserved.",
+  "installation.clipboard": "Paste clipboard text",
+  "installation.openFile": "Choose file",
+  "installation.retry": "Retry",
+  "installation.revoke": "Revoke installation",
+  "installation.revokeConsequence":
+    "This signs this installed workspace out on its devices. You can install it again later.",
+  "installation.permission": "Your current access does not allow this import.",
 } as const;
 
 export type TranslationKey = keyof typeof EN;
@@ -4852,6 +4884,9 @@ const DE: Record<TranslationKey, string> = {
   "branding.lightLogo": "Light logo",
   "branding.darkLogo": "Dark logo",
   "branding.upload": "PNG, WebP oder JPEG hochladen",
+  "branding.appIcon": "App-Icon (1:1)",
+  "branding.appIconHint": "Quadratisches PNG hochladen",
+  "branding.removeAppIcon": "App-Icon entfernen",
   "branding.imageHint":
     "Wird nur ein Logo hochgeladen, verwendet SubKit es für beide Themes, bis das zweite Logo ergänzt wird.",
   "branding.removeLogo": "Logo entfernen",
@@ -9780,6 +9815,36 @@ const DE: Record<TranslationKey, string> = {
   "intake.proposal.archives": "Nach der Bestätigung archiviert: {skills}.",
   "intake.proposal.stale":
     "Dieser Vorschlag hat sich geändert. Prüfe den aktuellen Inhalt, bevor du bestätigst.",
+  "installation.install": "Workspace installieren",
+  "installation.installTitle": "Installiere {name}",
+  "installation.installDescription":
+    "Öffnen Sie diesen Workspace als eigenständige App für schnellen Zugriff und native Systemintegration.",
+  "installation.installAction": "App installieren",
+  "installation.installHint":
+    "Diese Option ist in Browsern verfügbar, die die Installation von Web-Apps unterstützen.",
+  "installation.unavailableTitle": "Installation nicht möglich",
+  "installation.unavailable":
+    "Die Installation ist in diesem Browser derzeit nicht verfügbar. Sie können das Cockpit weiterhin im Browser verwenden.",
+  "installation.notifications": "Benachrichtigungen",
+  "installation.notificationsEnable": "Neutrale Benachrichtigungen aktivieren",
+  "installation.notificationsHint": "Alerts enthalten keine Workspace- oder Workflow-Details.",
+  "installation.notificationsDenied":
+    "Browser-Berechtigung verweigert. Bitte in den Einstellungen erlauben.",
+  "installation.importTitle": "Hinzufügen zu {category}",
+  "installation.importHint":
+    "Dateien vor dem Hinzufügen prüfen. Es wird nichts automatisch als Wissen übernommen.",
+  "installation.importAction": "Zu {category} hinzufügen",
+  "installation.importPartial":
+    "Einige Dateien sind bereits in diesem Workspace gespeichert. Wiederholen führt mit denselben Einträgen fort.",
+  "installation.importFailed":
+    "Nicht alle Einträge konnten hinzugefügt werden. Ihr Prüfdraft bleibt erhalten.",
+  "installation.clipboard": "Zwischenablage einfügen",
+  "installation.openFile": "Datei auswählen",
+  "installation.retry": "Wiederholen",
+  "installation.revoke": "Installation widerrufen",
+  "installation.revokeConsequence":
+    "Dadurch wird dieser installierte Workspace auf seinen Geräten abgemeldet. Sie können ihn später erneut installieren.",
+  "installation.permission": "Ihre aktuellen Rechte erlauben diesen Import nicht.",
 };
 
 export const CATALOGS: Record<Locale, Record<TranslationKey, string>> = {
