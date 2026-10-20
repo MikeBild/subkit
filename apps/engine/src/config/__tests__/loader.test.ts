@@ -104,10 +104,10 @@ describe("loadConfig", () => {
       cfgPath,
       JSON.stringify({
         database: { url: "postgres://x" },
-        llm: { api_key: "global-key" },
+        llm: { provider: "anthropic", api_key: "global-key" },
         tenants: {
           "tenant-a": {
-            llm: { api_key: "tenant-a-key" },
+            llm: { provider: "anthropic", api_key: "tenant-a-key" },
             server: { port: 9999 },
           },
         },
