@@ -129,4 +129,39 @@ describe("bounded auto authoring policy", () => {
       ).toBe("confirm_before_execution");
     }
   });
+
+  test("bounded read probes run autonomously while full responses require confirmation", () => {
+    for (const tool of ["call_connector", "probe_connector", "probe_connector_draft"]) {
+      expect(
+        decideToolMode({
+          tool,
+          category: "tenant_read",
+          input: { method: "GET", response_mode: "full" },
+          overrides: {},
+          permission_mode: "yolo",
+          connector_trust: true,
+        }).mode,
+      ).toBe("confirm_before_execution");
+      for (const response_mode of ["shape", "sample"] as const) {
+        expect(
+          decideToolMode({
+            tool,
+            category: "tenant_read",
+            input: { method: "GET", environment: "prod", response_mode },
+            overrides: {},
+            permission_mode: "auto",
+          }).mode,
+        ).toBe("no_confirm");
+      }
+      expect(
+        decideToolMode({
+          tool,
+          category: "tenant_read",
+          input: { method: "GET", environment: "prod", response_mode: "full" },
+          overrides: { [tool]: "no_confirm" },
+          permission_mode: "auto",
+        }).mode,
+      ).toBe("confirm_before_execution");
+    }
+  });
 });

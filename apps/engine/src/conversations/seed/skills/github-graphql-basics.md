@@ -53,7 +53,7 @@ query($after: String) {
 }
 ```
 
-For ordinary workflows, drive the cursor with a bounded loop. The GraphQL step exposes the unwrapped response at `$scope.<step>.data.repository.issues`; stop when `hasNextPage` is false. Sensitive workflows currently reject pagination and persistent loop state. In that case, use a fixed, reviewable page bound only when the data fits; expose `hasNextPage` or a truncation flag and mark the snapshot incomplete when more pages remain. Do not claim completeness from the first page.
+For sensitive workflows, keep pages inside one read-only GraphQL request step with `graphql.cursor_pagination`. Set `connection_path` to the path inside GraphQL `data`, such as `repository.issues`, `cursor_variable` to `after`, `items_field` to `nodes` or `edges`, and explicit `max_pages` and `max_items` limits. Request `pageInfo { endCursor hasNextPage }` and, when available, `totalCount`. The step returns the merged connection only after all pages pass completeness checks; limit exhaustion, repeated cursors, partial GraphQL errors, or a count mismatch fail without a partial snapshot. Ordinary workflows may also use a bounded loop. Never claim completeness from a first page with `hasNextPage: true`.
 
 For Projects, query `ProjectV2.items(first: ..., after: ...)` and read its `pageInfo` and `totalCount`. Probe the exact query with the authenticated connector; a working repository query does not prove Project access. GitHub's REST OpenAPI discovery is not required for a GraphQL query.
 

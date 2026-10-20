@@ -124,6 +124,8 @@ export const runWorkflowTool: ConversationTool = {
     }
     const wf = await ctx.engineClient.workflows.get(workflowId);
     if (!wf) return { ok: false, data: withStatus({ error: "workflow_not_found" }, "failed") };
+    const requestSource = ctx.direct_mcp_invocation === true ? "mcp" : "chat";
+    const sensitive = (wf.definition as WorkflowDef).execution_privacy === "sensitive";
     if (
       args.expected_workflow_version_id &&
       args.expected_workflow_version_id !== wf.current_version_id
@@ -340,7 +342,7 @@ export const runWorkflowTool: ConversationTool = {
         principal: ctx.principal,
         workflow_id: workflowId,
         workflow_slug: wf.slug,
-        request_source: "chat",
+        request_source: requestSource,
         tool: "run_workflow",
       });
       if (!rbac.allow) {
@@ -371,7 +373,7 @@ export const runWorkflowTool: ConversationTool = {
             ? { expected_workflow_version_id: args.expected_workflow_version_id }
             : {}),
           execution_environment: environment,
-          request_source: "chat",
+          request_source: requestSource,
           input: suppliedInput,
           ...(args.idempotency_key ? { idempotency_key: args.idempotency_key } : {}),
           ...(args.execute_writes === false ? { hold_writes: true } : {}),
@@ -420,7 +422,7 @@ export const runWorkflowTool: ConversationTool = {
         },
         input: admitted ? admitted.input : suppliedInput,
         options: {
-          request_source: "chat",
+          request_source: requestSource,
           trace_id: null,
           principal: ctx.principal,
           execution_mode: environment,
@@ -777,7 +779,7 @@ export const runWorkflowTool: ConversationTool = {
               : {}),
             ...(hasWarnings ? { warnings: result.warnings } : {}),
             ...(includeStepTrace ? { step_trace: stepTraceEntries } : {}),
-            ...(args.include_step_results
+            ...(args.include_step_results && !sensitive
               ? { step_results: buildRawStepResults(result.steps) }
               : {}),
             suggested_command: `/workflows run ${wf.slug}`,

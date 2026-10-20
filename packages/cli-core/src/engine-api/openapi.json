@@ -8480,6 +8480,43 @@
                   "variables": {
                     "type": "object",
                     "additionalProperties": {}
+                  },
+                  "cursor_pagination": {
+                    "type": "object",
+                    "properties": {
+                      "connection_path": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                      },
+                      "cursor_variable": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                      },
+                      "items_field": {
+                        "type": "string",
+                        "enum": [
+                          "nodes",
+                          "edges"
+                        ],
+                        "default": "nodes"
+                      },
+                      "max_pages": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100
+                      },
+                      "max_items": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10000
+                      }
+                    },
+                    "required": [
+                      "connection_path",
+                      "cursor_variable",
+                      "max_pages",
+                      "max_items"
+                    ]
                   }
                 },
                 "required": [

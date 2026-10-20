@@ -22805,6 +22805,17 @@ export interface components {
                 variables?: {
                     [key: string]: unknown;
                 };
+                cursor_pagination?: {
+                    connection_path: string;
+                    cursor_variable: string;
+                    /**
+                     * @default nodes
+                     * @enum {string}
+                     */
+                    items_field: "nodes" | "edges";
+                    max_pages: number;
+                    max_items: number;
+                };
             } | string;
             /**
              * @default none

@@ -101,6 +101,93 @@ describe("graphql retry · HTTP 429", () => {
   });
 });
 
+describe("graphql cursor collection", () => {
+  test("collects every page before returning a complete connection", async () => {
+    mockHandler = (_, res) => {
+      const first = requestCount === 1;
+      jsonResponse(res, 200, {
+        data: {
+          project: {
+            items: {
+              totalCount: 3,
+              nodes: first ? [{ id: "one" }, { id: "two" }] : [{ id: "three" }],
+              pageInfo: { hasNextPage: first, endCursor: first ? "next" : null },
+            },
+          },
+        },
+      });
+    };
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "complete-graphql-connection",
+      steps: [
+        {
+          kind: "request",
+          id: "gql",
+          connector_id: connectorId,
+          graphql: {
+            operation: "query",
+            query:
+              "query Items($after: String) { project { items(first: 2, after: $after) { totalCount nodes { id } pageInfo { hasNextPage endCursor } } } }",
+            cursor_pagination: {
+              connection_path: "project.items",
+              cursor_variable: "after",
+              items_field: "nodes",
+              max_pages: 3,
+              max_items: 3,
+            },
+          },
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("succeeded");
+    expect(requestCount).toBe(2);
+    expect(
+      (result.output as { project: { items: { nodes: unknown[] } } }).project.items.nodes,
+    ).toHaveLength(3);
+  });
+
+  test("rejects a mutation before any cursor request", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "reject-cursor-mutation",
+      steps: [
+        {
+          kind: "request",
+          id: "gql",
+          connector_id: connectorId,
+          graphql: {
+            operation: "mutation",
+            query: "mutation Change($after: String) { change(after: $after) { id } }",
+            cursor_pagination: {
+              connection_path: "change",
+              cursor_variable: "after",
+              items_field: "nodes",
+              max_pages: 2,
+              max_items: 10,
+            },
+          },
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("failed");
+    expect(requestCount).toBe(0);
+    expect((result.steps[0]?.error as { code?: string } | undefined)?.code).toBe(
+      "graphql_pagination_not_read_only",
+    );
+  });
+});
+
 describe("graphql retry · transient body error", () => {
   test("retries on transient extensions.code and succeeds", async () => {
     // allow-wall-clock: this test exercises real-time polling or freshness windows.

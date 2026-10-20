@@ -30,6 +30,16 @@ test("arbitrary errors cannot supply a sensitive sandbox class", () => {
   }
 });
 
+test("sensitive cursor failures keep fixed repair guidance without response data", () => {
+  const incomplete = sensitiveFailure("graphql_pagination_incomplete");
+  expect(incomplete.code).toBe("graphql_pagination_incomplete");
+  expect(incomplete.message).toContain("pageInfo");
+  const mutation = sensitiveFailure("graphql_pagination_not_read_only");
+  expect(mutation.code).toBe("graphql_pagination_not_read_only");
+  expect(mutation.message).toContain("read-only");
+  expect(JSON.stringify([incomplete, mutation])).not.toContain("PRIVATE_CONTENT_CANARY");
+});
+
 test("actual isolated runtime and syntax failures expose no source or input", async () => {
   for (const [code, expected] of [
     ["throw new Error(input.value);", "sandbox_runtime"],

@@ -86,7 +86,9 @@ Step variables pattern for the first page (omit `after`):
 }
 ```
 
-For subsequent pages, pass the cursor from the previous step:
+For a standard Relay connection, `graphql.cursor_pagination` can collect pages inside one request step. Set `connection_path` relative to GraphQL `data`, `cursor_variable` to `after`, `items_field` to `nodes` or `edges`, and explicit `max_pages` and `max_items`. It fails without partial output when pages, cursors, counts, or limits cannot establish completeness. This works for sensitive execution without persisting intermediate pages. A mutation cannot use it.
+
+For a workflow loop instead, pass the cursor from the previous step:
 
 ```json
 { "first": 50, "after": "${scope.<prev_step_id>.data.items.pageInfo.endCursor}" }

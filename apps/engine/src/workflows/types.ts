@@ -93,6 +93,15 @@ type GraphQLConfig = {
   operation?: "query" | "mutation" | "subscription" | undefined;
   query: string;
   variables?: Record<string, unknown> | undefined;
+  cursor_pagination?:
+    | {
+        connection_path: string;
+        cursor_variable: string;
+        items_field: "nodes" | "edges";
+        max_pages: number;
+        max_items: number;
+      }
+    | undefined;
 };
 
 const GraphQLConfigSchema: z.ZodType<GraphQLConfig> = z
@@ -100,6 +109,15 @@ const GraphQLConfigSchema: z.ZodType<GraphQLConfig> = z
     operation: z.enum(["query", "mutation", "subscription"]).optional(),
     query: z.string().min(1),
     variables: z.record(z.string(), z.unknown()).optional(),
+    cursor_pagination: z
+      .object({
+        connection_path: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/),
+        cursor_variable: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+        items_field: z.enum(["nodes", "edges"]).default("nodes"),
+        max_pages: z.number().int().min(1).max(100),
+        max_items: z.number().int().min(1).max(10_000),
+      })
+      .optional(),
   })
   .or(
     z
