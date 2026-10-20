@@ -257,17 +257,17 @@ describe("detectPlaceholderDestinations · tier tokens (always invalid)", () => 
       name: "repository-briefing",
       steps: [
         {
-          id: "todo_doc",
+          id: "source_doc",
           kind: "request",
           method: "GET",
           connector_id: CONNECTOR_ID,
-          path: "/repos/MikeBild/subkit/contents/docs/TODO.md",
+          path: "/repos/MikeBild/subkit/contents/LICENSE",
         },
         {
           id: "snapshot",
           kind: "transform",
           language: "javascript",
-          expression: 'return { todo_path: "docs/TODO.md", content: input.scope.todo_doc.data };',
+          expression: 'return { source_path: "LICENSE", content: input.scope.source_doc.data };',
         },
       ],
     });

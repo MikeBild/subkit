@@ -24,7 +24,7 @@ test("long authoring history preserves the full opening request and later restri
     .values({ tenant_id: tenant, status: "active" })
     .returning();
   if (!row) throw new Error("missing conversation");
-  const goal = `${"A detailed weekly report. ".repeat(20)}Use only GitHub LAUNCH.md. Monday 08:00 Europe/Berlin. Never send an email.`;
+  const goal = `${"A detailed weekly report. ".repeat(20)}Use only GitHub https://github.com/MikeBild/subkit/wiki/launch. Monday 08:00 Europe/Berlin. Never send an email.`;
   const correction = "Retain all five existing steps. Save an inactive draft only.";
   const base = Date.parse("2026-04-01T00:00:00Z");
   const messages = [
