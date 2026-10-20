@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
+import { z } from "zod";
+import { auditLog } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
@@ -161,7 +164,7 @@ describe("journey: audit completeness over mutation routes", () => {
     expect(auditBody.items.some((r) => r.action === "credential.rotated")).toBe(false);
   });
 
-  test("AC7b: credential.created with mode=aws_sigv4 records a credential digest, never raw keys", async () => {
+  test("AC7b: credential.created records the mode internally without exposing raw keys", async () => {
     const mk = await journeyFetch(ctx, "/v1/connectors", {
       method: "POST",
       body: JSON.stringify({
@@ -192,13 +195,25 @@ describe("journey: audit completeness over mutation routes", () => {
       `/v1/audit-log?action=${encodeURIComponent("credential.created")}&ts_from=${encodeURIComponent(start)}&limit=10`,
     );
     expect(auditRes.status).toBe(200);
+    const rawRows = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.action, "credential.created")));
+    const rawRow = rawRows.find((row) => {
+      const metadata = z.object({ connector_id: z.string() }).safeParse(row.metadata);
+      return metadata.success && metadata.data.connector_id === target;
+    });
+    expect(z.object({ mode: z.literal("aws_sigv4") }).safeParse(rawRow?.metadata).success).toBe(
+      true,
+    );
+    expect(JSON.stringify(rawRow)).not.toContain("secretFAKE/0000000FAKE000000FAKE/000000FAKE");
     const auditBody = (await auditRes.json()) as {
-      items: Array<{ action: string; metadata: { mode?: string }; details_json?: unknown }>;
+      items: Array<{ resource_id: string; metadata: Record<string, unknown> }>;
     };
-    const sigv4Row = auditBody.items.find((r) => r.metadata?.mode === "aws_sigv4");
-    expect(sigv4Row).toBeDefined();
-    const serialised = JSON.stringify(sigv4Row);
-    expect(serialised.includes("secretFAKE/0000000FAKE000000FAKE/000000FAKE")).toBe(false);
+    const publicRow = auditBody.items.find((row) => row.resource_id === rawRow?.resource_id);
+    expect(publicRow).toBeDefined();
+    expect(publicRow?.metadata.mode).toBeUndefined();
+    expect(JSON.stringify(publicRow)).not.toContain("secretFAKE/0000000FAKE000000FAKE/000000FAKE");
   });
 
   test("AC6: DELETE /v1/connectors/:id → connector.deleted", async () => {
