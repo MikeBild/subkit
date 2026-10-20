@@ -11,6 +11,7 @@
 
 ## Work
 
+- The engine has 48 directories under `apps/engine/src/`; keep this navigation count aligned with the tree.
 - Work on main. Secure existing tracked and untracked work before `git pull --ff-only origin main`; preserve and restore unrelated changes.
 - Read touched code and the nearest AGENTS: engine, sk and shared-package guides override this one.
 - Verify checkout and actual running engine versions independently.
