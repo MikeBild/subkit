@@ -151,7 +151,9 @@ describe("consumer read-back per subsystem", () => {
         },
       },
       tenants: {
-        "tenant-generic": { llm: { api_key: "tenant-key" } },
+        "tenant-generic": {
+          llm: { api_key: "tenant-key", providers: { anthropic: { api_key: "tenant-key" } } },
+        },
         "tenant-explicit": {
           llm: { api_key: "generic-key", providers: { anthropic: { api_key: "explicit-key" } } },
         },
@@ -185,6 +187,48 @@ describe("consumer read-back per subsystem", () => {
     expect(getConfig("tenant-a").llm.api_key).toBe("");
     expect(getConfig("tenant-a").llm.providers.openai.api_key).toBe("");
     expect(getConfig("tenant-a").llm.providers.anthropic.api_key).toBe("tenant-ant-key");
+  });
+
+  test("global provider switch never maps an old tenant key to the new provider", async () => {
+    await setConfigKey("llm.provider", "anthropic", { force: true });
+    await setConfigKey("llm.api_key", "global-ant-key", { force: true });
+    await setConfigKey("llm.api_key", "tenant-ant-key", {
+      tenantId: "tenant-a",
+      force: true,
+    });
+    await setConfigKey("llm.providers.openai.api_key", "global-openai-key", { force: true });
+    await setConfigKey("llm.provider", "openai", { force: true });
+
+    expect(getConfig("tenant-a").llm.providers.anthropic.api_key).toBe("tenant-ant-key");
+    expect(getConfig("tenant-a").llm.providers.openai.api_key).toBe("");
+    expect(getConfig("tenant-a").llm.api_key).toBe("");
+    expect(getConfig().llm.providers.openai.api_key).toBe("global-openai-key");
+
+    await setConfigKey("llm.providers.openai.api_key", "tenant-openai-key", {
+      tenantId: "tenant-a",
+      force: true,
+    });
+    expect(getConfig("tenant-a").llm.providers.openai.api_key).toBe("tenant-openai-key");
+    expect(getConfig("tenant-a").llm.api_key).toBe("tenant-openai-key");
+  });
+
+  test("unbound legacy tenant keys fail closed after provider selection", () => {
+    const global = getConfig();
+    installRuntimeConfig({
+      ...global,
+      llm: {
+        ...global.llm,
+        provider: "openai",
+        providers: {
+          ...global.llm.providers,
+          openai: { ...global.llm.providers.openai, api_key: "global-openai-key" },
+        },
+      },
+      tenants: { "tenant-unbound": { llm: { api_key: "old-unbound-key" } } },
+    });
+    expect(getConfig("tenant-unbound").llm.providers.openai.api_key).toBe("");
+    expect(getConfig("tenant-unbound").llm.api_key).toBe("");
+    expect(getConfig().llm.providers.openai.api_key).toBe("global-openai-key");
   });
 
   test("switching provider does not leak the previous provider's generic key", async () => {
