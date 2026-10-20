@@ -51,6 +51,8 @@ export interface AuditResourceMatch {
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
+const RESOURCE_SEARCH_PAGE_SIZE = 100;
+const RESOURCE_SEARCH_MAX_PAGES = 20;
 
 interface AuditKeysetCursor {
   ts: string;
@@ -218,11 +220,11 @@ export async function searchAuditResources(
 ): Promise<AuditResourceMatch[]> {
   const escaped = search.replace(/[\\%_]/g, "\\$&");
   const pattern = `%${escaped}%`;
-  const pageSize = 100;
   const maximum = Math.max(1, Math.min(limit, 30));
   const found: AuditResourceMatch[] = [];
   const needle = search.toLocaleLowerCase();
-  for (let offset = 0; found.length < maximum; offset += pageSize) {
+  for (let page = 0; page < RESOURCE_SEARCH_MAX_PAGES && found.length < maximum; page++) {
+    const offset = page * RESOURCE_SEARCH_PAGE_SIZE;
     const result = await db.execute(sql`
     WITH matches AS (
       SELECT a.resource_type, a.resource_id, max(a.ts) AS last_seen_at,
@@ -254,7 +256,7 @@ export async function searchAuditResources(
         AND (a.resource_id ILIKE ${pattern} OR historical.resource_name ILIKE ${pattern})
       GROUP BY a.resource_type, a.resource_id
       ORDER BY max(a.ts) DESC, a.resource_type, a.resource_id
-      LIMIT ${pageSize} OFFSET ${offset}
+      LIMIT ${RESOURCE_SEARCH_PAGE_SIZE} OFFSET ${offset}
     )
     SELECT matches.resource_type, matches.resource_id, latest.resource_name,
       matches.matching_names, matches.last_seen_at
@@ -317,7 +319,7 @@ export async function searchAuditResources(
       });
       if (found.length === maximum) break;
     }
-    if (result.rows.length < pageSize) break;
+    if (result.rows.length < RESOURCE_SEARCH_PAGE_SIZE) break;
   }
   return found;
 }

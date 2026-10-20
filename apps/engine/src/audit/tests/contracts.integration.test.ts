@@ -204,6 +204,85 @@ describe("tenant scoping on reads", () => {
       resourceId,
     );
   });
+
+  test("resource search reaches safe names after multiple pages of discarded secret matches", async () => {
+    const [tenant] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "audit-cn-search-late", display_name: "Audit Search Late" })
+      .returning();
+    if (!tenant) throw new Error("late search tenant missing");
+    const visibleId = uuid();
+    await testDb.db.insert(auditLog).values({
+      id: uuid(),
+      ts: new Date(FROZEN_NOW),
+      tenant_id: tenant.id,
+      actor_type: "system",
+      action: "knowledge_source.created",
+      resource_type: "knowledge_source",
+      resource_id: visibleId,
+      result: "success",
+      after: { name: "Archive AAAAAAA" },
+      metadata: {},
+    });
+    await testDb.db.insert(auditLog).values(
+      Array.from({ length: 150 }, (_, index) => ({
+        id: uuid(),
+        ts: new Date(FROZEN_NOW + (index + 1) * 1000),
+        tenant_id: tenant.id,
+        actor_type: "system",
+        action: "knowledge_source.created",
+        resource_type: "knowledge_source",
+        resource_id: uuid(),
+        result: "success",
+        after: { name: `Archive ghp_${"A".repeat(32)} ${index}` },
+        metadata: {},
+      })),
+    );
+    const matches = await searchAuditResources(testDb.db, tenant.id, "AAAAAAA", undefined, 1);
+    expect(matches.map((match) => match.resource_id)).toEqual([visibleId]);
+    expect(matches[0]?.resource_name).toBe("Archive AAAAAAA");
+  });
+
+  test("resource search stops after a bounded number of discarded candidates", async () => {
+    const [tenant] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "audit-cn-search-cap", display_name: "Audit Search Cap" })
+      .returning();
+    if (!tenant) throw new Error("search cap tenant missing");
+    const visibleId = uuid();
+    await testDb.db.insert(auditLog).values({
+      id: uuid(),
+      ts: new Date(FROZEN_NOW),
+      tenant_id: tenant.id,
+      actor_type: "system",
+      action: "knowledge_source.created",
+      resource_type: "knowledge_source",
+      resource_id: visibleId,
+      result: "success",
+      after: { name: "Archive BBBBBBB" },
+      metadata: {},
+    });
+    for (let start = 0; start < 2_100; start += 250) {
+      await testDb.db.insert(auditLog).values(
+        Array.from({ length: Math.min(250, 2_100 - start) }, (_, index) => ({
+          id: uuid(),
+          ts: new Date(FROZEN_NOW + (start + index + 1) * 1000),
+          tenant_id: tenant.id,
+          actor_type: "system",
+          action: "knowledge_source.created",
+          resource_type: "knowledge_source",
+          resource_id: uuid(),
+          result: "success",
+          after: { name: `Archive ghp_${"B".repeat(32)} ${start + index}` },
+          metadata: {},
+        })),
+      );
+    }
+    expect(await searchAuditResources(testDb.db, tenant.id, "BBBBBBB", undefined, 1)).toEqual([]);
+    expect((await searchAuditResources(testDb.db, tenant.id, visibleId))[0]?.resource_id).toBe(
+      visibleId,
+    );
+  }, 30_000);
 });
 
 describe("transactional rollback", () => {

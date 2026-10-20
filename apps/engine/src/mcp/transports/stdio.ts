@@ -1,9 +1,44 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { closeDb, getDb } from "../../db/client.ts";
-import { newTraceId, withContext } from "../../logging/context.ts";
+import { newTraceId, withContext, withIsolatedContext } from "../../logging/context.ts";
 import { logger } from "../../logging/logger.ts";
 import { resolveStdioPrincipal } from "../auth.ts";
 import { createMcpServer } from "../server.ts";
+
+export function bindStdioPrincipalContext(
+  transport: StdioServerTransport,
+  principal: ResolvedPrincipal,
+): void {
+  const dispatch = transport.onmessage;
+  if (!dispatch) throw new Error("stdio MCP transport has no message handler");
+  const authSource = principal.auth_source;
+  const apiKeyId =
+    authSource?.kind === "api_key" || authSource?.kind === "token_exchange"
+      ? authSource.api_key_id
+      : undefined;
+  transport.onmessage = (message) =>
+    withIsolatedContext(
+      {
+        trace_id: newTraceId(),
+        tenant_id: principal.tenant_id,
+        actor_id: principal.id,
+        request_source: "cli",
+        audit_origin_source: "mcp",
+        audit_execution_source: "mcp",
+        ...(apiKeyId ? { api_key_id: apiKeyId } : {}),
+        ...(authSource ? { audit_access_type: authSource.kind } : {}),
+        ...(apiKeyId && principal.oauth_client_id
+          ? { audit_oauth_client_id: principal.oauth_client_id }
+          : {}),
+        ...(apiKeyId && principal.credential_origin
+          ? { audit_credential_origin: principal.credential_origin }
+          : {}),
+        ...(principal.via ? { auth_via: principal.via } : {}),
+      },
+      () => dispatch(message),
+    );
+}
 
 async function main(): Promise<void> {
   const apiKey = process.env.SUBKIT_API_KEY;
@@ -21,6 +56,7 @@ async function main(): Promise<void> {
   const server = await createMcpServer({ db, principal, transport: "stdio" });
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  bindStdioPrincipalContext(transport, principal);
 
   logger.info({
     module: "mcp",
