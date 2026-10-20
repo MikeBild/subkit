@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { getBuiltinTemplate } from "../templates.ts";
 import type { ConnectorView } from "../types.ts";
 import {
   classifyHttpProbeStatus,
   deriveAppliedAuthMethod,
   HttpRequestInvalidError,
+  resolveProbeEndpointConfig,
   validateOutboundHeaders,
 } from "./http.ts";
 import { resolveUrl } from "./resolve-url.ts";
@@ -23,6 +25,50 @@ function makeConnector(overrides: Partial<ConnectorView> = {}): ConnectorView {
     ...overrides,
   } as unknown as ConnectorView;
 }
+
+describe("resolveProbeEndpointConfig", () => {
+  test("inherits the saved template's headers for the same endpoint", () => {
+    const template = getBuiltinTemplate("notion");
+    if (!template?.probe_endpoint) throw new Error("expected a probe template fixture");
+    const config = resolveProbeEndpointConfig(
+      makeConnector({
+        template_slug: "notion",
+        template_snapshot: {
+          ...template,
+          probe_endpoint: {
+            ...template.probe_endpoint,
+            headers: { "Notion-Version": "snapshot-value" },
+          },
+        },
+        config: { probe_endpoint: { method: "GET", path: "/users/me" } },
+      }),
+    );
+    expect(config?.headers?.["Notion-Version"]).toBe("snapshot-value");
+  });
+
+  test("honors a case-insensitive override and does not inherit for a different endpoint", () => {
+    const overridden = resolveProbeEndpointConfig(
+      makeConnector({
+        template_slug: "notion",
+        config: {
+          probe_endpoint: {
+            method: "GET",
+            path: "/users/me",
+            headers: { "notion-version": "custom-value" },
+          },
+        },
+      }),
+    );
+    expect(overridden?.headers).toEqual({ "notion-version": "custom-value" });
+    const differentPath = resolveProbeEndpointConfig(
+      makeConnector({
+        template_slug: "notion",
+        config: { probe_endpoint: { method: "GET", path: "/healthz" } },
+      }),
+    );
+    expect(differentPath?.headers).toBeUndefined();
+  });
+});
 
 describe("resolveUrl — additional edge cases", () => {
   test("empty base_url with an absolute path uses the absolute URL directly", () => {

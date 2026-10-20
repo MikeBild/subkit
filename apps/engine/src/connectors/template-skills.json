@@ -483,13 +483,13 @@
   },
   "github-graphql-basics": {
     "title": "GitHub GraphQL API Basics",
-    "body": "The GraphQL connector targets https://api.github.com/graphql and reuses the same PAT or OAuth token as the REST connector (scopes repo + read:org). One query can fetch nested data (repo → issues → comments → labels) that would cost many REST roundtrips. Cost, not request count, is the rate-limit budget — observe the X-RateLimit-Cost and X-RateLimit-Remaining response headers.",
+    "body": "The GraphQL connector targets https://api.github.com/graphql. A REST token can authenticate GraphQL, but its actual permissions still control access: private repositories need repository access, and private Projects need read:project for read-only queries. Do not request the write-capable project scope just to read. Query only needed fields; check pageInfo and totalCount for completeness. A successful repository query does not prove Project access. Inspect GraphQL errors and the rate-limit cost; REST OpenAPI discovery is not required for GraphQL authoring.",
     "examples": [
       "query { viewer { login } } — sanity check the credential",
       "query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ issues(last:20,states:OPEN){ nodes { number title comments(last:5){ nodes { body } } labels(first:10){ nodes { name } } } } } } — 20 issues with comments and labels in one roundtrip"
     ],
     "best_practices": [
-      "Page large lists with pageInfo.endCursor + first:50 rather than fetching everything at once",
+      "Page large lists with pageInfo.endCursor + first:50 in ordinary workflows; sensitive workflows must report truncation when their supported bounded read cannot traverse every page",
       "Request only the fields you consume — every extra field increases the query cost",
       "Use named operations (query MyOp { ... }) so request_meta.operation_name is human-readable in traces"
     ],
@@ -497,7 +497,11 @@
       "Write operations in GraphQL are incomplete — organisation-admin mutations often don't exist. Fall back to the REST connector (github) for those.",
       "Subscriptions are not supported by the subkit graphql driver — plan for webhook-based push instead"
     ],
-    "doc_refs": ["https://docs.github.com/en/graphql"]
+    "doc_refs": [
+      "https://docs.github.com/en/graphql",
+      "https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects",
+      "https://docs.github.com/en/graphql/guides/using-pagination-in-the-graphql-api"
+    ]
   },
   "vercel-basics": {
     "title": "Vercel REST API Basics",

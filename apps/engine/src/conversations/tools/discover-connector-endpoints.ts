@@ -49,7 +49,6 @@ export const discoverConnectorEndpointsTool: ConversationTool = {
     "Network-bounded to 30s. On failure, the tool returns a structured error with `next_best_actions` so the agent can fall back to `fetch_connector_docs` or `ask_user_*`.",
     "Provide exactly one of `template_id`, `ingestion_url`, or `base_url`. If you have a template in scope, prefer `template_id`.",
   ],
-  example_input: { template_id: "digitalocean" },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     try {

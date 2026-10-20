@@ -65,10 +65,6 @@ export const authorWorkflowTool: ConversationTool = {
     "No live HTTP fires inside this call; generation cost rides the tenant token budget (≤2 generation passes + bounded expression repair).",
   ],
   requires_skill: "workflow-authoring",
-  example_input: {
-    goal: "Every weekday at 9am, email me the name and droplet specs of every DigitalOcean project",
-    connector_slugs: ["digitalocean", "gmail"],
-  },
   inputSchema,
   category: "draft_write",
   authoring_resource: "workflow",

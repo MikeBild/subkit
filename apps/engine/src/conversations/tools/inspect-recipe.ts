@@ -4,14 +4,8 @@ import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
   .object({
-    template_slug: z
-      .string()
-      .min(1)
-      .describe("Connector template slug (e.g. `stripe`, `github`, `postgres`)."),
-    recipe_slug: z
-      .string()
-      .min(1)
-      .describe("Recipe slug from the template (e.g. `list-customers`)."),
+    template_slug: z.string().min(1).describe("Connector template slug from the template roster."),
+    recipe_slug: z.string().min(1).describe("Recipe slug from the selected template."),
   })
   .openapi("InspectRecipeToolInput");
 
@@ -48,7 +42,7 @@ export const inspectRecipeTool: ConversationTool = {
   description:
     "Inspect a recipe in depth before cloning. Returns description, prerequisites, sample_input, expected_output_preview, and a per-step shape summary. Use when the per-turn recipe roster lists 2+ candidates and you need to pick one.",
   use_case:
-    'Operator says "show me my recent Stripe customers" → roster lists `list-customers` and `list-charges` → call `inspect_recipe(template_slug="stripe", recipe_slug="list-customers")` → confirm match → then `start_workflow_from_recipe(...)`.',
+    "When the template lists several recipes, inspect their descriptions and step shapes before cloning the matching one.",
   important_notes: [
     "Read-only. No draft mutation, no clone. Use `start_workflow_from_recipe` to actually clone.",
     "Returns step shapes (kind + method/url) but never the full workflow body — the cloned draft is the editable surface.",

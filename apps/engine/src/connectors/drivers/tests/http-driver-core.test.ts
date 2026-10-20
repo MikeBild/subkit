@@ -543,7 +543,7 @@ describe("probeHttpConnector", () => {
     });
   });
 
-  test("historical Notion probes add Notion-Version while saved credentials supply auth", async () => {
+  test("historical probes inherit matching template headers while saved credentials supply auth", async () => {
     const conn = await makeConnector({
       auth_type: "bearer",
       template_slug: "notion",

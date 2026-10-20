@@ -10,15 +10,12 @@ import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
   .object({
-    template_slug: z
-      .string()
-      .min(1)
-      .describe("Connector template slug (e.g. `stripe`, `github`, `postgres`)."),
+    template_slug: z.string().min(1).describe("Connector template slug from the template roster."),
     recipe_slug: z
       .string()
       .min(1)
       .describe(
-        "Recipe slug from the template (e.g. `list-customers`). Use `match_connector_template_by_url` or list the template to discover available recipes.",
+        "Recipe slug from the selected template. Use `match_connector_template_by_url` or list the template to discover available recipes.",
       ),
     name: z
       .string()
@@ -55,7 +52,7 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
   description:
     "Clone a per-template executable recipe into a workflow draft. Use this before authoring from scratch — recipes carry guaranteed-valid step shapes (auth, paths, pagination) so the saved workflow does not need edit_workflow_patch rework loops.",
   use_case:
-    'Operator says "list my last 10 Stripe customers" → call `start_workflow_from_recipe(template_slug="stripe", recipe_slug="list-customers")` and edit the draft instead of authoring from prose + OpenAPI.',
+    "When a template recipe matches the requested operation, clone it into a draft and edit only the requested fields.",
   important_notes: [
     "The cloned draft validates as-is under WorkflowDefSchema. Only override fields the user explicitly customized.",
     "Recipes are READ ONLY in templates.json. Edits land on the draft, not on the template.",

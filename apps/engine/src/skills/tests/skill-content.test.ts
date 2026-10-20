@@ -107,6 +107,24 @@ describe("workflow-authoring — recipe coverage", () => {
     expect(body).toContain("data_selector");
     expect(body).toContain("transform");
   });
+
+  test("separates sensitive draft validation from forbidden chat preview", () => {
+    const body = loadAll().get("workflow-authoring")!.body;
+    expect(body).toContain('execution_privacy: "sensitive"');
+    expect(body).toContain("without a chat preview");
+    expect(body).toContain("green judged preview for ordinary workflows");
+  });
+});
+
+describe("github-graphql-basics — private project guidance", () => {
+  test("requires read-only Project access and reports incomplete pages", () => {
+    const body = loadAll().get("github-graphql-basics")!.body;
+    expect(body).toContain("read:project");
+    expect(body).toContain("Do not request the write-capable `project` scope");
+    expect(body).toContain("ProjectV2.items");
+    expect(body).toContain("hasNextPage");
+    expect(body).toContain("Sensitive workflows currently reject pagination");
+  });
 });
 
 describe("data-handling — envelope rule enforced", () => {

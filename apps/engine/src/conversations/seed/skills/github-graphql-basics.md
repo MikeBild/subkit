@@ -13,7 +13,7 @@ version: 3
 
 # GitHub GraphQL API Basics
 
-The `github-graphql` connector targets the GitHub GraphQL v4 endpoint at `https://api.github.com/graphql`. It uses the same PAT or OAuth token as the REST connector (scopes `repo` + `read:org`), so operators don't need to re-issue credentials.
+The `github-graphql` connector targets `https://api.github.com/graphql`. A REST token can also authenticate GraphQL, but access still depends on its permissions. Private repository reads need repository access; private Projects also need `read:project` for read-only access. Check the token's actual scopes before authoring Project queries. Do not request the write-capable `project` scope merely to read a Project.
 
 Prefer GraphQL over REST when a workflow reads nested data (repo → issues → comments → labels) that would otherwise require many REST roundtrips. Prefer REST for write operations — GitHub's GraphQL mutations are incomplete, especially for organisation-admin calls.
 
@@ -53,7 +53,9 @@ query($after: String) {
 }
 ```
 
-Drive the cursor with a `loop` step whose body reads `$prev.data.repository.issues.pageInfo.endCursor` as `$after` and exits when `hasNextPage` is `false`.
+For ordinary workflows, drive the cursor with a bounded loop. The GraphQL step exposes the unwrapped response at `$scope.<step>.data.repository.issues`; stop when `hasNextPage` is false. Sensitive workflows currently reject pagination and persistent loop state. In that case, use a fixed, reviewable page bound only when the data fits; expose `hasNextPage` or a truncation flag and mark the snapshot incomplete when more pages remain. Do not claim completeness from the first page.
+
+For Projects, query `ProjectV2.items(first: ..., after: ...)` and read its `pageInfo` and `totalCount`. Probe the exact query with the authenticated connector; a working repository query does not prove Project access. GitHub's REST OpenAPI discovery is not required for a GraphQL query.
 
 ## Rate-limit budget
 
@@ -70,3 +72,10 @@ A workflow that polls every minute with `cost=30` will exhaust the 5000/h budget
 - Subscriptions are not supported by the sk `graphql` driver. Use webhooks for push.
 - Under-requested fields can break downstream steps silently — explicitly list every field the workflow consumes.
 - Variables are stricter than REST query strings: type them in the query header (`$owner: String!`) or the request fails before the wire.
+- A GraphQL query uses HTTP POST but is read-only only when the reviewed document contains no mutation. Keep the effect review and the caller's approval boundary intact.
+
+## Sources
+
+- https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects
+- https://docs.github.com/en/graphql/guides/using-pagination-in-the-graphql-api
+- https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api
