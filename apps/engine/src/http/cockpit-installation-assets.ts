@@ -31,7 +31,7 @@ export function registerCockpitInstallationAssets(app: OpenAPIHono<AppEnv>): voi
     const branding = await getTenantBranding(context.tenant_id, c.get("db"));
     const base = `/cockpit/i/${context.installation_id}/`;
     const tenant = await getTenant(context.tenant_id, c.get("db"));
-    const name = branding.display_name || tenant?.display_name || "SubKit";
+    const name = tenant?.display_name || "SubKit";
     const icons = ([192, 512] as const).map((size) => ({
       src: `${base}icon/${size}.png?revision=${branding.revision}`,
       sizes: `${size}x${size}`,

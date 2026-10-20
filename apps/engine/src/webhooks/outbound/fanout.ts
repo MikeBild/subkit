@@ -17,6 +17,7 @@ import {
   dispatchEvent as dispatchNotifications,
 } from "../../notifications/service.ts";
 import { matchEventPattern } from "../events/catalog.ts";
+import { shouldDispatchCockpitPushAttention } from "./cockpit-push-attention.ts";
 import { WEBHOOK_DELIVER_QUEUE, type WebhookDeliverJob } from "./delivery-worker.ts";
 
 const OUTBOX_EVENT_NS = "9f1c2e4a-6b3d-5c7e-8a9b-0c1d2e3f4a5b";
@@ -185,7 +186,8 @@ export async function fanoutEvent(input: FanoutInput): Promise<FanoutStats> {
     });
   }
 
-  await dispatchCockpitPushAttention(db, tenant_id);
+  if (shouldDispatchCockpitPushAttention(event_type, payload))
+    await dispatchCockpitPushAttention(db, tenant_id);
 
   logger.debug({
     module: "webhooks.outbound",

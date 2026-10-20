@@ -123,9 +123,11 @@ export function AppShell() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const groups = visibleNavigation(session.permissions);
   const active = navigationItem(pathname.slice(cockpitBasePath().length) || "/");
-  const brandName = session.branding?.configured
-    ? session.branding.display_name || session.tenant.display_name
-    : t("app.name");
+  const brandName = installationId()
+    ? session.tenant.display_name
+    : session.branding?.configured
+      ? session.branding.display_name || session.tenant.display_name
+      : t("app.name");
 
   return (
     <LiveEventsProvider>
@@ -137,7 +139,9 @@ export function AppShell() {
       >
         <Sidebar
           collapsible="icon"
-          mobileTitle={session.branding?.configured ? brandName : t("app.cockpit")}
+          mobileTitle={
+            installationId() || session.branding?.configured ? brandName : t("app.cockpit")
+          }
           mobileDescription={t("nav.mobileDescription")}
           mobileCloseLabel={t("common.close")}
           mobileCloseTestId="cockpit-sidebar-mobile-close"

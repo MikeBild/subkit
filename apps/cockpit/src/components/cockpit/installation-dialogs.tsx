@@ -28,7 +28,7 @@ export function InstallationDialog({
   const [prompt, setPrompt] = useState<DeferredInstallPrompt | null>(null);
   const [creating, setCreating] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
-  const appName = session.branding?.display_name || tenantName;
+  const appName = tenantName;
   const appIcon = cockpitApiHref(
     session.branding?.app_icon_urls.icon_512 ?? "/cockpit/app-icon-192.png",
   );
@@ -88,6 +88,7 @@ export function InstallationDialog({
           if (!next) onOpenChange(false);
         }}
         title={t("installation.unavailableTitle")}
+        cancelLabel={t("common.close")}
         testId="installation-unavailable-dialog"
       >
         <p className="text-sm text-muted-foreground">{t("installation.unavailable")}</p>
@@ -129,6 +130,7 @@ export function InstallationNotificationsDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t("installation.notifications")}
+      cancelLabel={t("common.close")}
       testId="installation-notifications-dialog"
     >
       <div className="flex items-center justify-between gap-4 py-1">

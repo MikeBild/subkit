@@ -29,6 +29,19 @@ async function createInstallation(headers: Record<string, string>): Promise<{
 describe("Cockpit installation assets", () => {
   test("keeps tenant manifest and icon private while the app shell and worker stay neutral", async () => {
     const rootHeaders = await browserSessionHeaders(server, server.userId);
+    const branding = await fetch(`${server.baseUrl}/v1/tenant/branding`, {
+      method: "PUT",
+      headers: rootHeaders,
+      body: JSON.stringify({
+        revision: 0,
+        display_name: "Workspace Brand",
+        subtitle: null,
+        palette: "indigo",
+        logos: { light: { operation: "keep" }, dark: { operation: "keep" } },
+        app_icon: { operation: "keep" },
+      }),
+    });
+    expect(branding.status).toBe(200);
     const installation = await createInstallation(rootHeaders);
 
     const manifest = await fetch(`${server.baseUrl}${installation.manifest_url}`, {
@@ -39,10 +52,12 @@ describe("Cockpit installation assets", () => {
     expect(manifest.headers.get("vary")).toBe("Cookie");
     const body = (await manifest.json()) as {
       name: string;
+      short_name: string;
       scope: string;
       icons: Array<{ src: string }>;
     };
     expect(body.name).toBe("Test cockpit-installation-assets");
+    expect(body.short_name).toBe(body.name);
     expect(body.scope).toBe(`/cockpit/i/${installation.id}/`);
     expect(body.icons).toHaveLength(2);
 
