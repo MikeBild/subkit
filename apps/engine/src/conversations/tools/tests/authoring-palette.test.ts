@@ -369,6 +369,7 @@ describe("authoringSkillsForTurn — authoring palette only on intent or an acti
     { name: "dry_run_workflow" },
     { name: "save_workflow_draft" },
     { name: "start_connector_from_description" },
+    { name: "start_connector_from_template" },
     { name: "probe_connector_draft" },
     { name: "save_connector_draft" },
   ] as const;
@@ -459,12 +460,16 @@ describe("authoringSkillsForTurn — authoring palette only on intent or an acti
     for (const message of [
       "create a connector for the Stripe API",
       "Erstelle einen Connector für unser CRM",
+      "Erstelle einen eigenständigen PROD-Connector-Entwurf aus dem eingebauten Template.",
       "add an integration for HubSpot",
       "Connect our Metabase MCP server for reporting",
       "subkit engine onboarding",
     ]) {
       expect(paletteFor(createEmptyDraftDocument(), message)).toContain(
         "start_connector_from_description",
+      );
+      expect(paletteFor(createEmptyDraftDocument(), message, "mcp")).toContain(
+        "start_connector_from_template",
       );
     }
     expect(paletteFor(createEmptyDraftDocument(), "list my connectors")).toEqual([]);

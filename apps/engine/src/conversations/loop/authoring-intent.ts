@@ -98,6 +98,7 @@ const CONNECTOR_VERBS = [
 ] as const;
 
 const CONNECTOR_NOUN = String.raw`connectors?|integrations?|konnektoren?|integrationen?|mcp[\s-]?servers?`;
+const CONNECTOR_MODIFIERS = String.raw`(?:(?!\b(?:${AUTHORING_NOUN})\b)[^.;!?\n]){0,80}`;
 
 const ONBOARDING_REQUEST = /\bonboarding\b/i;
 
@@ -107,11 +108,11 @@ const CONNECTOR_ENUMERATION_REJECT = new RegExp(
 );
 
 const CONNECTOR_VERB_TO_NOUN = new RegExp(
-  String.raw`\b(?:${CONNECTOR_VERBS.join("|")})\b[^.;!?\n]{0,${PROXIMITY_WINDOW}}\b(?:${CONNECTOR_NOUN})\b`,
+  String.raw`\b(?:${CONNECTOR_VERBS.join("|")})\b${CONNECTOR_MODIFIERS}\b(?:${CONNECTOR_NOUN})\b`,
   "i",
 );
 const CONNECTOR_NOUN_TO_VERB = new RegExp(
-  String.raw`\b(?:${CONNECTOR_NOUN})\b[^.;!?\n]{0,${PROXIMITY_WINDOW}}\b(?:${CONNECTOR_VERBS.join("|")})\b`,
+  String.raw`\b(?:${CONNECTOR_NOUN})\b${CONNECTOR_MODIFIERS}\b(?:${CONNECTOR_VERBS.join("|")})\b`,
   "i",
 );
 

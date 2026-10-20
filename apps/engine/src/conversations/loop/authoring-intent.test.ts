@@ -141,6 +141,16 @@ describe("detectConnectorAuthoringIntent", () => {
     expect(detectConnectorAuthoringIntent("set up a new integration for HubSpot")).toBe(true);
     expect(detectConnectorAuthoringIntent("Erstelle einen Connector für unser CRM")).toBe(true);
     expect(detectConnectorAuthoringIntent("richte eine Integration für Jira ein")).toBe(true);
+    expect(
+      detectConnectorAuthoringIntent(
+        "Erstelle einen eigenständigen PROD-Connector-Entwurf aus dem eingebauten Template.",
+      ),
+    ).toBe(true);
+    expect(
+      detectConnectorAuthoringIntent(
+        "Create a separate production connector for our Project reporting.",
+      ),
+    ).toBe(true);
   });
 
   it("treats an external MCP server as a connector and onboarding as connector-first", () => {
@@ -158,6 +168,12 @@ describe("detectConnectorAuthoringIntent", () => {
     expect(detectConnectorAuthoringIntent("list my connectors")).toBe(false);
     expect(detectConnectorAuthoringIntent("welche Connectors habe ich?")).toBe(false);
     expect(detectConnectorAuthoringIntent("do not create a connector, just run it")).toBe(false);
+    expect(detectConnectorAuthoringIntent("Erstelle keinen eigenständigen PROD-Connector.")).toBe(
+      false,
+    );
+    expect(
+      detectConnectorAuthoringIntent("Create a workflow that reads through an existing connector"),
+    ).toBe(false);
     expect(detectConnectorAuthoringIntent("why did the report fail?")).toBe(false);
     expect(detectConnectorAuthoringIntent(null)).toBe(false);
   });
