@@ -185,7 +185,6 @@ export async function reconcileHostedObjectAfterReviewedRemoteStop(
           storage_namespace: z.string().regex(/^[0-9a-f]{64}$/),
           operator_tenant_id: z.uuid(),
         })
-        .strict()
         .safeParse(receipt.metadata);
       if (
         receipt.action !== AuditAction.HOSTED_STORAGE_OBJECT_RECONCILED ||
