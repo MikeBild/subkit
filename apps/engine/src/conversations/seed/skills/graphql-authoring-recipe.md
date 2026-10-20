@@ -88,6 +88,8 @@ Step variables pattern for the first page (omit `after`):
 
 For a standard Relay connection, `graphql.cursor_pagination` can collect pages inside one request step. Set `connection_path` relative to GraphQL `data`, `cursor_variable` to `after`, `items_field` to `nodes` or `edges`, and explicit `max_pages` and `max_items`. It fails without partial output when pages, cursors, counts, or limits cannot establish completeness. This works for sensitive execution without persisting intermediate pages. A mutation cannot use it.
 
+When each item must contain a complete nested connection, list its path relative to the item node in `required_connection_paths`, for example `["fieldValues"]`. A nested `hasNextPage: true`, missing `pageInfo`, or mismatched `totalCount` fails the step without output. Increase that nested query's page size within its limit or read each item separately; the outer cursor cannot continue an inner connection.
+
 For a workflow loop instead, pass the cursor from the previous step:
 
 ```json
