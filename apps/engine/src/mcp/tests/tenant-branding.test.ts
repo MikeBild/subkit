@@ -199,6 +199,44 @@ describe("MCP tenant branding tools", () => {
     expect(JSON.stringify(audits)).not.toContain(content_base64);
   });
 
+  test("accepts two valid logos when the MCP request exceeds four MiB", async () => {
+    const { plaintext } = await suite.issueApiKey([
+      "mcp:admin",
+      "identity:write",
+      "settings:write",
+    ]);
+    const client = await suite.connectWithApiKey(plaintext);
+    const pixels = new Uint8Array(768 * 768 * 3);
+    let state = 0x9e3779b9;
+    for (let index = 0; index < pixels.length; index += 1) {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      pixels[index] = state >>> 24;
+    }
+    const source = await sharp(pixels, { raw: { width: 768, height: 768, channels: 3 } })
+      .png()
+      .toBuffer();
+    expect(source.byteLength).toBeLessThanOrEqual(2 * 1024 * 1024);
+    const content_base64 = source.toString("base64");
+    expect(content_base64.length * 2).toBeGreaterThan(4 * 1024 * 1024);
+
+    const pending = await client.callTool({
+      name: "update_tenant_branding",
+      arguments: {
+        ...update,
+        revision: 3,
+        logos: {
+          light: { operation: "replace", mime_type: "image/png", content_base64 },
+          dark: { operation: "replace", mime_type: "image/png", content_base64 },
+        },
+      },
+    });
+    expect(pending.isError).toBeFalsy();
+    expect(body(pending)).toMatchObject({
+      status: "needs_confirm",
+      tool: "update_tenant_branding",
+    });
+  });
+
   test("missing settings:write denies before an MCP approval is created", async () => {
     const { plaintext } = await suite.issueApiKey(["mcp:admin", "identity:write"]);
     const client = await suite.connectWithApiKey(plaintext);
