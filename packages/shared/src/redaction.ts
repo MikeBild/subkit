@@ -216,6 +216,32 @@ export function scrubString(value: string): string {
   return out;
 }
 
+export interface SecretShapeRedaction {
+  text: string;
+  count: number;
+}
+
+export function redactSecretShapes(value: string): SecretShapeRedaction {
+  let count = 0;
+  let out =
+    value.indexOf("?") === -1
+      ? value
+      : value.replace(PRESIGN_QUERY_RE, (match) => {
+          const q = match.indexOf("?");
+          if (q === -1) return match;
+          count++;
+          return `${match.slice(0, q)}${PRESIGN_REDACTED_QUERY}`;
+        });
+  for (const { kind, regex } of SECRET_PATTERNS) {
+    out = out.replace(regex, (match) => {
+      if (isPresentableToken(match)) return match;
+      count++;
+      return REDACTED(kind);
+    });
+  }
+  return { text: out, count };
+}
+
 export interface SecretSpan {
   start: number;
   end: number;

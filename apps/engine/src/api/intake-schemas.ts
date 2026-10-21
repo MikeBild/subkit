@@ -106,6 +106,7 @@ const SnapshotFields = {
   published_at: z.string().optional(),
   captured_at: z.string().datetime(),
   body: z.string(),
+  redactions: z.number().int().positive().optional(),
 };
 
 export const IntakeItemSnapshotSchema = z

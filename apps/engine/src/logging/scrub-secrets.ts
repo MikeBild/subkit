@@ -4,6 +4,7 @@ export {
   findSecretSpans,
   isAlreadyRedacted,
   isLogSensitiveKey,
+  redactSecretShapes,
   referencesKeyMaterialPath,
   SECRET_PATTERNS,
   SENSITIVE_KEY_PATTERN,

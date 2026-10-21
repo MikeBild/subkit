@@ -127,6 +127,73 @@ describe.skipIf(skip)("knowledge intake", () => {
     expect(afterEditRetry.id).toBe(first.id);
   });
 
+  test("redacts secrets from a collected clip and keeps prose, code and URLs intact", async () => {
+    const pat = `ghp_${"a1B2".repeat(9)}`;
+    const bearer = "Bearer fixture.token_value-123456";
+    const privateKey =
+      "-----BEGIN PRIVATE KEY-----\nZml4dHVyZS1rZXktbWF0ZXJpYWw=\n-----END PRIVATE KEY-----";
+    const prose =
+      "Bearer authentication is described at https://example.test/Understanding-OAuth2-And-OpenID-Connect-In-2024-Guide?page=2. const total = items.reduce((a, b) => a + b, 0);";
+    const requestId = nextUuid();
+    const params = {
+      client_request_id: requestId,
+      title: `Deploy notes ${pat}`,
+      body: `${prose}\nAuthorization: ${bearer}\n${privateKey}`,
+      note: `token ${pat}`,
+    };
+    const item = await createClip(params);
+    const stored = JSON.stringify(item);
+    expect(stored).not.toContain(pat);
+    expect(stored).not.toContain("fixture.token_value-123456");
+    expect(stored).not.toContain("Zml4dHVyZS1rZXktbWF0ZXJpYWw=");
+    expect(item.title).toBe("Deploy notes ***REDACTED:pat***");
+    expect(item.note).toBe("token ***REDACTED:pat***");
+    expect(item.body).toContain(prose);
+    expect(item.original_snapshot.body).toBe(item.body);
+    expect(item.original_snapshot).toMatchObject({
+      title: item.title,
+      source_url: "https://example.test/tape",
+      source_author: "Author",
+      captured_at: "2026-10-10T07:00:00.000Z",
+      redactions: 4,
+    });
+    expect(item.collected_by).toEqual(actor);
+
+    const repeated = await createClip(params);
+    expect(repeated.id).toBe(item.id);
+    await expect(createClip({ ...params, body: "Different" })).rejects.toBeInstanceOf(
+      IntakeConflictError,
+    );
+
+    const [audit] = await ctx.testDb.db
+      .select({ metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "intake_item.collected"),
+          eq(auditLog.resource_id, item.id),
+        ),
+      );
+    expect(audit?.metadata).toMatchObject({ redactions: 4 });
+    expect(JSON.stringify(audit?.metadata)).not.toContain(pat);
+
+    const clean = await createClip();
+    expect(clean.original_snapshot).not.toHaveProperty("redactions");
+
+    const edited = await patchIntakeItem(
+      {
+        tenant_id: ctx.tenantId,
+        actor,
+        id: clean.id,
+        expected_version: clean.version,
+        body: `pasted again ${pat}`,
+      },
+      ctx.testDb.db,
+    );
+    expect(edited?.body).toBe("pasted again ***REDACTED:pat***");
+  });
+
   test("renaming or moving an intake item never makes it searchable knowledge", async () => {
     const item = await createClip();
     const moved = await patchIntakeItem(

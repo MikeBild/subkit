@@ -34,6 +34,7 @@ interface IntakeSnapshotFields {
   published_at?: string | undefined;
   captured_at: string;
   body: string;
+  redactions?: number | undefined;
 }
 
 export interface IntakeCaptureSnapshot extends IntakeSnapshotFields {

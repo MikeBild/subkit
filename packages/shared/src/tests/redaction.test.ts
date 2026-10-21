@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   findSecretSpans,
+  redactSecretShapes,
   redactWithMaxDepth,
   scrubSecrets,
   scrubString,
@@ -428,5 +429,31 @@ describe("prompt-key net — the body half collapses strings, not carriers", () 
     expect(out.messages).toBe("***REDACTED:prompt***");
     expect(out.prompt).toBe("***REDACTED:prompt***");
     expect(out.instructions).toBe("***REDACTED:prompt***");
+  });
+});
+
+describe("redactSecretShapes", () => {
+  test("redacts known secret shapes and counts them", () => {
+    const pat = `ghp_${"a1B2".repeat(9)}`;
+    const key = "-----BEGIN PRIVATE KEY-----\nZml4dHVyZQ==\n-----END PRIVATE KEY-----";
+    const out = redactSecretShapes(`a ${pat} b Bearer fixture.token_value-123456 c ${key}`);
+    expect(out.count).toBe(3);
+    expect(out.text).toBe("a ***REDACTED:pat*** b ***REDACTED:bearer*** c ***REDACTED:generic***");
+  });
+
+  test("leaves prose, code, long slugs and plain URLs untouched", () => {
+    const text = [
+      "Bearer authentication is a scheme.",
+      "const total = items.reduce((a, b) => a + b, 0);",
+      "https://example.test/Understanding-OAuth2-And-OpenID-Connect-In-2024-Guide?page=2",
+      "sha 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    ].join("\n");
+    expect(redactSecretShapes(text)).toEqual({ text, count: 0 });
+  });
+
+  test("strips signatures from presigned URLs", () => {
+    const out = redactSecretShapes("https://files.example.test/a.pdf?X-Amz-Signature=abc123&x=1");
+    expect(out.count).toBe(1);
+    expect(out.text).toBe("https://files.example.test/a.pdf?<presign-redacted>");
   });
 });

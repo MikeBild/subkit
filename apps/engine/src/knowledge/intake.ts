@@ -10,6 +10,7 @@ import {
   intakeProposalRevisions,
   intakeProposals,
 } from "../db/schema/intake.ts";
+import { redactSecretShapes } from "../logging/scrub-secrets.ts";
 import { proposalDigest, requestDigest } from "./intake-digest.ts";
 import { IntakeConflictError, IntakeProposalConflictError } from "./intake-errors.ts";
 import {
@@ -40,7 +41,36 @@ import type {
 } from "./intake-types.ts";
 import { finishKnowledgeWrite } from "./service.ts";
 
-function snapshot(p: CreateIntakeItemParams): IntakeCaptureSnapshot {
+function redactCollected(p: CreateIntakeItemParams): {
+  params: CreateIntakeItemParams;
+  redactions: number;
+} {
+  let redactions = 0;
+  const clean = (value: string): string => {
+    const r = redactSecretShapes(value);
+    redactions += r.count;
+    return r.text;
+  };
+  const cleanOptional = (value: string | undefined): string | undefined =>
+    value === undefined ? undefined : clean(value);
+  const source = p.original_snapshot;
+  const params: CreateIntakeItemParams = {
+    ...p,
+    title: clean(p.title),
+    body: clean(p.body),
+    source_author: cleanOptional(p.source_author),
+    note: cleanOptional(p.note),
+    original_snapshot: source && {
+      ...source,
+      title: cleanOptional(source.title),
+      body: cleanOptional(source.body),
+      source_author: cleanOptional(source.source_author),
+    },
+  };
+  return { params, redactions };
+}
+
+function snapshot(p: CreateIntakeItemParams, redactions = 0): IntakeCaptureSnapshot {
   const source = p.original_snapshot;
   return {
     title: source?.title ?? p.title,
@@ -54,6 +84,7 @@ function snapshot(p: CreateIntakeItemParams): IntakeCaptureSnapshot {
     captured_at: source?.captured_at ?? p.captured_at,
     body: source?.body ?? p.body,
     origin: source?.origin ?? "capture",
+    ...(redactions > 0 ? { redactions } : {}),
   };
 }
 
@@ -152,6 +183,7 @@ export async function createIntakeItem(
       ? parseIntakeCategory(p.category)
       : await defaultIntakeCategory(tx, p.tenant_id, p.actor);
     const digest = itemRequestDigest(p, intakeCategory);
+    const { params: clean, redactions } = redactCollected(p);
     const previous = await tx
       .select()
       .from(intakeItems)
@@ -174,10 +206,10 @@ export async function createIntakeItem(
         category: intakeCategory,
         client_request_id: p.client_request_id,
         creation_request_digest: digest,
-        original_snapshot: snapshot(p),
-        title: p.title,
-        body: p.body,
-        note: p.note ?? "",
+        original_snapshot: snapshot(clean, redactions),
+        title: clean.title,
+        body: clean.body,
+        note: clean.note ?? "",
         collected_by_type: p.actor.kind,
         collected_by_id: p.actor.id,
       })
@@ -210,7 +242,11 @@ export async function createIntakeItem(
       AuditAction.INTAKE_ITEM_COLLECTED,
       "intake_item",
       row.id,
-      { category: intakeCategory, source_url: row.original_snapshot.source_url },
+      {
+        category: intakeCategory,
+        source_url: row.original_snapshot.source_url,
+        redactions: row.original_snapshot.redactions ?? 0,
+      },
     );
     return intakeItemView(row);
   });
@@ -330,6 +366,16 @@ export async function patchIntakeItem(
       throw new IntakeConflictError("intake item has changed");
     if (existing.state === "admitted" && p.state !== undefined)
       throw new IntakeConflictError("an admitted intake item cannot change processing state");
+    let redactions = 0;
+    const clean = (value: string | undefined): string | undefined => {
+      if (value === undefined) return undefined;
+      const r = redactSecretShapes(value);
+      redactions += r.count;
+      return r.text;
+    };
+    const title = clean(p.title);
+    const body = clean(p.body);
+    const note = clean(p.note);
     const contentChanged =
       p.title !== undefined ||
       p.body !== undefined ||
@@ -340,9 +386,9 @@ export async function patchIntakeItem(
       .update(intakeItems)
       .set({
         ...(p.category !== undefined ? { category: parseIntakeCategory(p.category) } : {}),
-        ...(p.title !== undefined ? { title: p.title } : {}),
-        ...(p.body !== undefined ? { body: p.body } : {}),
-        ...(p.note !== undefined ? { note: p.note } : {}),
+        ...(title !== undefined ? { title } : {}),
+        ...(body !== undefined ? { body } : {}),
+        ...(note !== undefined ? { note } : {}),
         ...(p.state !== undefined ? { state: p.state } : {}),
         ...(contentChanged ? { version: existing.version + 1 } : {}),
         updated_at: new Date(),
@@ -370,6 +416,7 @@ export async function patchIntakeItem(
       {
         version: row.version,
         ...(p.category !== undefined ? { category: row.category } : {}),
+        ...(redactions > 0 ? { redactions } : {}),
       },
     );
     return intakeItemView(row);
