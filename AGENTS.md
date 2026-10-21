@@ -42,9 +42,12 @@
 
 ## Validation
 
-- Run focused checks for affected behavior. Use existing API, security, domain, invariant, drift and build automation.
+- Choose checks by changed behavior and risk, not by line count. Run the smallest meaningful focused test plus relevant type, lint, drift or build checks; even a tiny semantic change needs a focused regression check. Documentation-only and similarly low-impact changes do not need a full test suite.
+- Reuse a successful verification result when it covers the exact current code, dependencies, configuration and relevant runtime. Do not rerun checks just because of a status request or an unrelated small change.
+- Run the full `bun run verify` once for a release candidate or when the changed behavior warrants the full gate. If `bun run release:tag` is running, do not start a second `bun run verify`; the release command runs it itself. Never run duplicate full verifications concurrently.
+- Capture full-gate output to a readable log. When a gate fails, identify and fix the specific failure, then rerun the failed check; rerun the full gate only if code or relevant environment changed, or the previous run did not complete reliably.
 - No Playwright suites, screenshot tests or visual matrices. Browser acceptance uses browser-use with Codex or Claude Code.
-- Pre-push checks and `bun run verify` are the gates; there is no CI replacement.
+- Required pre-push checks and release gates remain mandatory; CI is not a replacement. Run each gate at the point it is required, not for every small edit.
 - Release tags additionally require fail-closed `bun run verify:llm-live` through `bun run release:tag -- --models openai:<primary>,openai:<fallback>` using the deployed OpenAI-only route. Keys stay in gitignored local key files.
 - Before handing over a changed local demo, run `bun run demo:local:verify`; also verify navigation, persistence, permissions, approval handoffs and a real provider response in the browser.
 - Simulations, current code checks, connected-channel runs, hardware, legal/human acceptance, release and PROD evidence are separate. Report gaps and skipped validation explicitly.
