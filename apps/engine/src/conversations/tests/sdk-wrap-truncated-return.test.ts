@@ -5,10 +5,11 @@ import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
+import { getRawResultTool } from "../tools/get-raw-result.ts";
 import type { ConversationTool, ToolContext } from "../tools/index.ts";
 import { wrapOne } from "../tools/sdk-wrap/invoke.ts";
 import type { TurnSignals } from "../tools/sdk-wrap/state.ts";
-import { getRawResult } from "../tools/truncate.ts";
+import { getRawResult, TRUNCATE_INTERNALS } from "../tools/truncate.ts";
 import type { TurnEvent } from "../types.ts";
 
 let ctx: LlmTestCtx;
@@ -97,7 +98,7 @@ async function invokeWrapped(payload: unknown): Promise<Record<string, unknown>>
   )) as Record<string, unknown>;
 }
 
-describe("sdk-wrap — truncated view goes back to the model, full payload persists", () => {
+describe("sdk-wrap — truncated view goes back to the model, full payload persists below the cap", () => {
   test("an oversized payload returns truncated with recovery markers; the DB row keeps it whole", async () => {
     const payload = {
       big: "x".repeat(60_000),
@@ -125,6 +126,45 @@ describe("sdk-wrap — truncated view goes back to the model, full payload persi
     const persisted = rowDb?.output as typeof payload;
     expect(persisted.big.length).toBe(60_000);
     expect(persisted.rows).toHaveLength(50);
+  });
+
+  test("a payload above the persistence cap is stored bounded while get_raw_result keeps it whole", async () => {
+    const payload = {
+      ok: true,
+      error_code: null,
+      big: "x".repeat(300_000),
+      rows: Array.from({ length: 600 }, (_, i) => ({ i, blob: "y".repeat(500) })),
+      summary: "done",
+    };
+    const result = await invokeWrapped(payload);
+    const data = result.data as Record<string, unknown>;
+    const rawRef = data._raw_ref as string;
+
+    const [rowDb] = await ctx.testDb.db
+      .select({ output: conversationToolCalls.output })
+      .from(conversationToolCalls)
+      .where(eq(conversationToolCalls.conversation_id, conversation_id))
+      .orderBy(desc(conversationToolCalls.created_at))
+      .limit(1);
+    const persisted = rowDb?.output as Record<string, unknown>;
+    expect(JSON.stringify(persisted).length).toBeLessThanOrEqual(
+      TRUNCATE_INTERNALS.MAX_PERSISTED_JSON_CHARS + 1_000,
+    );
+    expect(persisted._truncated).toBe(true);
+    expect(persisted._raw_ref).toBe(rawRef);
+    expect(typeof persisted._note).toBe("string");
+    expect(persisted.summary).toBe("done");
+    expect(persisted.ok).toBe(true);
+
+    const raw = getRawResult(rawRef) as typeof payload;
+    expect(raw.big.length).toBe(300_000);
+    expect(raw.rows).toHaveLength(600);
+    const page = await getRawResultTool.execute({} as never, {
+      ref: rawRef,
+      path: ["rows"],
+      offset: 590,
+    });
+    expect(page).toMatchObject({ ok: true, data: { total_items: 600, next_offset: null } });
   });
 
   test("control-flow markers survive truncation (stop conditions + stall fingerprint)", async () => {

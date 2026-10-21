@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { PendingElicitationBlockedError } from "../conversations/service/shared.ts";
 import type { ToolResultPause } from "../conversations/tools/index.ts";
 import type { ConfirmEnvelope, ToolEnvelope } from "../tools/types.ts";
 import { envelopeToMcpResponse } from "./adapter.ts";
+import { mcpErrorCodeOf, toMcpErrorText } from "./error-adapter.ts";
 
 const confirm: ConfirmEnvelope = {
   tool: "call_connector",
@@ -91,5 +93,32 @@ describe("envelopeToMcpResponse — not_available_on_surface rendering", () => {
     expect(res._meta?.subkit).toEqual({
       not_available_on_surface: { reason: "this tool needs a live conversation draft" },
     });
+  });
+});
+
+describe("toMcpErrorText — conversation turn errors", () => {
+  test("a pending dialog renders as a coded text", () => {
+    const err = new PendingElicitationBlockedError({
+      id: "elicitation-1",
+      tool_name: "ask_user_confirm",
+      summary: "confirm proceed",
+    });
+    expect(toMcpErrorText(err)).toBe(
+      "pending_elicitation_blocked: resolve the pending dialog before sending another prompt",
+    );
+    expect(mcpErrorCodeOf(err)).toBe("pending_elicitation_blocked");
+  });
+
+  test.each(["conversation_turn_superseded", "conversation_cancelled"])(
+    "a bare %s abort reason renders as a stable aborted text",
+    (reason) => {
+      expect(toMcpErrorText(reason)).toBe(`conversation_turn_aborted: ${reason}`);
+      expect(mcpErrorCodeOf(reason)).toBe(reason);
+    },
+  );
+
+  test("an unknown string stays verbatim", () => {
+    expect(toMcpErrorText("something else")).toBe("something else");
+    expect(mcpErrorCodeOf("something else")).toBeUndefined();
   });
 });

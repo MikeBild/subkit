@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  boundForPersistence,
   clearRawStore,
   getRawResult,
   rememberRaw,
@@ -296,5 +297,73 @@ describe("truncateForLlm protected root keys", () => {
     expect((data.bulk as string).startsWith("[omitted:")).toBe(true);
     expect(data.judge).toEqual(payload.judge);
     expect(data.warnings).toEqual(payload.warnings);
+  });
+});
+
+describe("boundForPersistence", () => {
+  const executionOutput = {
+    inspected: { execution_id: "e1" },
+    execution: {
+      id: "e1",
+      execution_id: "e1",
+      status: "succeeded",
+      workflow_id: "w1",
+      version: 3,
+      steps: Array.from({ length: 4 }, (_, index) => ({
+        id: `s${index}`,
+        kind: "request",
+        status: "succeeded",
+        output: "x".repeat(300_000),
+      })),
+    },
+    outcome: { kind: "succeeded" },
+  };
+
+  it("passes outputs within the cap through unchanged", () => {
+    const small = { execution: { id: "e1" } };
+    expect(boundForPersistence(small, "raw_x")).toBe(small);
+  });
+
+  it("keeps execution identity and structure while bounding large leaves", () => {
+    const bounded = boundForPersistence(executionOutput, "raw_x") as Record<string, unknown>;
+    const execution = bounded.execution as Record<string, unknown>;
+    const steps = execution.steps as Array<Record<string, unknown>>;
+
+    expect(JSON.stringify(bounded).length).toBeLessThanOrEqual(
+      TRUNCATE_INTERNALS.MAX_PERSISTED_JSON_CHARS,
+    );
+    expect(execution).toMatchObject({
+      id: "e1",
+      execution_id: "e1",
+      status: "succeeded",
+      workflow_id: "w1",
+      version: 3,
+    });
+    expect(bounded.inspected).toEqual({ execution_id: "e1" });
+    expect(bounded.outcome).toEqual({ kind: "succeeded" });
+    expect(steps).toHaveLength(4);
+    expect(steps[0]).toMatchObject({ id: "s0", kind: "request", status: "succeeded" });
+    expect(steps[0]?.output).toContain('get_raw_result(ref="raw_x")');
+    expect(bounded).toMatchObject({ _truncated: true, _raw_ref: "raw_x" });
+  });
+
+  it("cuts over-long arrays to their first items with a marker", () => {
+    const rows = Array.from({ length: 5_000 }, (_, index) => ({
+      id: `r${index}`,
+      body: "y".repeat(200),
+    }));
+    const bounded = boundForPersistence({ ok: true, rows }, "raw_x") as Record<string, unknown>;
+    const kept = bounded.rows as unknown[];
+
+    expect(bounded.ok).toBe(true);
+    expect(kept.length).toBeLessThan(rows.length);
+    expect(kept[0]).toEqual(rows[0]);
+    expect(String(kept.at(-1))).toContain(`of ${rows.length} items`);
+  });
+
+  it("registers the full payload when no reference exists yet", () => {
+    clearRawStore();
+    const bounded = boundForPersistence(executionOutput) as Record<string, unknown>;
+    expect(getRawResult(bounded._raw_ref as string)).toBe(executionOutput);
   });
 });

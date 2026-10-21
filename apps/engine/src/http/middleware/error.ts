@@ -7,6 +7,7 @@ import {
   ConversationNotFoundError,
   ElicitationNotFoundError,
 } from "../../conversations/service/elicit.ts";
+import { PendingElicitationBlockedError } from "../../conversations/service/shared.ts";
 import {
   describeTurnFailure,
   timeoutPhaseOf,
@@ -178,6 +179,11 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
   return null;
 }
 
+const CONVERSATION_TURN_ABORT_MESSAGES: Record<string, string> = {
+  conversation_turn_superseded: "The conversation turn was superseded by a newer turn.",
+  conversation_cancelled: "The conversation turn was cancelled.",
+};
+
 export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Response | null {
   let databaseError = err;
   for (let depth = 0; depth < 4 && databaseError instanceof Error; depth++) {
@@ -210,6 +216,15 @@ export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Respons
     );
   if (err instanceof ConversationTurnInProgressError)
     return envelope(c, 409, err.code, err.message);
+  if (err instanceof PendingElicitationBlockedError)
+    return envelope(c, 409, err.code, err.message, {
+      details: {
+        conversation_status: "awaiting_input",
+        pending_elicitation: err.pending_elicitation,
+      },
+    });
+  if (typeof err === "string" && Object.hasOwn(CONVERSATION_TURN_ABORT_MESSAGES, err))
+    return envelope(c, 409, err, CONVERSATION_TURN_ABORT_MESSAGES[err] ?? err);
   if (err instanceof ElicitationNotFoundError || err instanceof ConversationNotFoundError)
     return envelope(c, 404, "not_found", "Conversation or question not found.");
   if (err instanceof HttpError) {

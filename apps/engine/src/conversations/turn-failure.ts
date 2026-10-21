@@ -7,6 +7,7 @@ import {
 import { LlmError, LlmProviderError } from "../llm/errors.ts";
 import { isToolSchemaError, toLlmProviderError } from "../llm/provider-errors.ts";
 import { isDatabaseQueryError } from "../logging/index.ts";
+import { now } from "../utils/clock.ts";
 import { ConversationTurnInProgressError } from "./turns.ts";
 
 export type TurnFailureCode =
@@ -19,6 +20,7 @@ export type TurnFailureCode =
   | "llm_quota_exhausted"
   | "llm_timeout"
   | "conversation_turn_in_progress"
+  | "worker_expired"
   | "internal";
 
 export type TimeoutPhase = "total" | "first_chunk" | "step" | "chunk";
@@ -79,6 +81,14 @@ function providerFailure(error: LlmProviderError, at: string): TurnFailure {
     at,
     kind: error.kind,
     ...(typeof retryAt === "string" ? { retry_at: retryAt } : {}),
+  };
+}
+
+export function workerExpiredTurnFailure(at: Date = new Date(now())): TurnFailure {
+  return {
+    code: "worker_expired",
+    message: "The background worker stopped before the turn finished.",
+    at: at.toISOString(),
   };
 }
 

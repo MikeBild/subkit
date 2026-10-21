@@ -55,7 +55,12 @@ import {
   type ToolPermissionResult,
 } from "../permission-gate.ts";
 import { normalizeToolResultPayload, toolCallOutcome } from "../result-payload.ts";
-import { truncateForLlm } from "../truncate.ts";
+import {
+  boundForPersistence,
+  type TruncatedOutput,
+  truncateForLlm,
+  withTruncationMarkers,
+} from "../truncate.ts";
 import { buildCapAlternatives } from "./error-recovery-hints.ts";
 import { prepareGate } from "./gate-subjects.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
@@ -1082,7 +1087,19 @@ export function wrapOne(
           output: resultPayload,
           status: result.ok ? "success" : "error",
         });
-        await updateToolCallOutput(db, toolCallId, resultPayload, toolCallOutcome(result));
+        const skipTruncate = inner.name === "get_raw_result";
+        const truncated: TruncatedOutput = skipTruncate
+          ? { truncated: false, data: resultPayload }
+          : truncateForLlm(resultPayload);
+        const modelVisibleOutput = truncated.truncated
+          ? withTruncationMarkers(truncated)
+          : resultPayload;
+        await updateToolCallOutput(
+          db,
+          toolCallId,
+          boundForPersistence(resultPayload, truncated.raw_ref),
+          toolCallOutcome(result),
+        );
         await autoloadForResultDiagnoses(db, ctx, inner.name, resultPayload);
 
         if (
@@ -1113,27 +1130,6 @@ export function wrapOne(
           }
         }
 
-        const skipTruncate = inner.name === "get_raw_result";
-        const truncated = skipTruncate
-          ? ({ truncated: false, data: resultPayload } as const)
-          : truncateForLlm(resultPayload);
-        const modelVisibleOutput = truncated.truncated
-          ? truncated.data !== null &&
-            typeof truncated.data === "object" &&
-            !Array.isArray(truncated.data)
-            ? {
-                ...(truncated.data as Record<string, unknown>),
-                _truncated: true,
-                _raw_ref: truncated.raw_ref,
-                _note: truncated.note,
-              }
-            : {
-                data: truncated.data,
-                _truncated: true,
-                _raw_ref: truncated.raw_ref,
-                _note: truncated.note,
-              }
-          : resultPayload;
         events.push({
           type: "tool_result",
           call_id: toolCallId,

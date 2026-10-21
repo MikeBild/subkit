@@ -99,6 +99,7 @@ export interface PendingElicitationSummary {
 }
 
 export class PendingElicitationBlockedError extends Error {
+  readonly code = "pending_elicitation_blocked";
   readonly pending_elicitation: PendingElicitationSummary;
 
   constructor(pending: PendingElicitationSummary) {

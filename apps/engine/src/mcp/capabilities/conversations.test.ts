@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +23,7 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createIntakeItem } from "../../knowledge/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { logger } from "../../logging/logger.ts";
 import { startBoss, stopBoss } from "../../queue/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -328,6 +329,57 @@ describe("conversation_append", () => {
       .from(mcpTasks)
       .where(eq(mcpTasks.conversation_id, conversation_id));
     expect(taskRows.length).toBe(2);
+  });
+
+  test("a pending dialog blocks the append with a coded error and a logged cause", async () => {
+    const started = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_start",
+      args: { message: "list users" },
+    });
+    const conversation_id = (
+      JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
+    ).conversation_id;
+    await finishQueuedConversation(conversation_id);
+    await testDb.db.insert(conversationElicitations).values({
+      tenant_id: principal.tenant_id,
+      conversation_id,
+      tool_name: "ask_user_confirm",
+      summary: "confirm proceed",
+      input: { kind: "generic" },
+      status: "pending",
+    });
+
+    const warnings: Array<Record<string, unknown>> = [];
+    const spy = spyOn(logger, "warn").mockImplementation((entry: unknown) => {
+      warnings.push(entry as Record<string, unknown>);
+    });
+    let appended: Awaited<ReturnType<typeof handleConversationTool>>;
+    try {
+      appended = await handleConversationTool({
+        db: testDb.db,
+        principal,
+        name: "conversation_append",
+        args: { conversation_id, message: "another message" },
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(appended.isError).toBe(true);
+    expect(appended.content[0]?.text).toBe(
+      "pending_elicitation_blocked: resolve the pending dialog before sending another prompt",
+    );
+    const failure = warnings.find((entry) => entry.action === "mcp.conversation_tool.failed");
+    expect(failure).toMatchObject({
+      module: "mcp",
+      tool: "conversation_append",
+      conversation_id,
+      error_name: "PendingElicitationBlockedError",
+      error_code: "pending_elicitation_blocked",
+      error: "resolve the pending dialog before sending another prompt",
+    });
+    expect(JSON.stringify(failure)).not.toContain("another message");
   });
 });
 

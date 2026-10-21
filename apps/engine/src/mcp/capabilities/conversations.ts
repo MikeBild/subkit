@@ -20,7 +20,7 @@ import { enqueueConversationRunTurn } from "../../queue/handlers/conversation-ru
 import { getBoss } from "../../queue/index.ts";
 import { can } from "../../rbac/evaluator.ts";
 import { MCP_ELICITATION_BLURB } from "../../tools/policy.ts";
-import { toMcpErrorText } from "../error-adapter.ts";
+import { mcpErrorCodeOf, toMcpErrorText } from "../error-adapter.ts";
 import { zodToJsonSchema7 } from "../json-schema.ts";
 import {
   insertMcpTask,
@@ -556,6 +556,20 @@ export async function handleConversationTool(
 
     return errorText(`unknown conversation tool: ${name}`);
   } catch (err) {
+    const conversationId =
+      typeof args.conversation_id === "string" ? args.conversation_id : undefined;
+    logger.warn({
+      module: "mcp",
+      action: "mcp.conversation_tool.failed",
+      msg: "conversation tool call failed",
+      tool: name,
+      ...(conversationId ? { conversation_id: conversationId } : {}),
+      tenant_id: principal.tenant_id,
+      principal_id: principal.id,
+      error_name: err instanceof Error ? err.name : typeof err,
+      error_code: mcpErrorCodeOf(err),
+      error: err instanceof Error ? err.message : String(err),
+    });
     return errorText(toMcpErrorText(err));
   }
 }

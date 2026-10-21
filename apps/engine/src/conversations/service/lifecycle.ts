@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } fr
 import { auditAwait } from "../../audit/audit.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction, ConversationDeletedMetadataSchema } from "../../audit/types.ts";
-import type { Db } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import {
   connectors,
   conversationElicitations,
@@ -524,7 +524,7 @@ export async function patchConversation(
 }
 
 export async function recordConversationTurnFailure(
-  exec: Db,
+  exec: Executor,
   tenant_id: string,
   conversation_id: string,
   failure: TurnFailure,
@@ -536,7 +536,7 @@ export async function recordConversationTurnFailure(
 }
 
 export async function clearConversationTurnFailure(
-  exec: Db,
+  exec: Executor,
   tenant_id: string,
   conversation_id: string,
 ): Promise<void> {

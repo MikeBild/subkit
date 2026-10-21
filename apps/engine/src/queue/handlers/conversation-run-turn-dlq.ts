@@ -2,10 +2,16 @@ import type { Job, PgBoss } from "pg-boss";
 import { auditAwait } from "../../audit/audit.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { recordConversationTurnFailure } from "../../conversations/service.ts";
+import { workerExpiredTurnFailure } from "../../conversations/turn-failure.ts";
 import { stopConversationTaskTurn } from "../../conversations/turns.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
-import { getMcpTask, setMcpTaskFailureIfNotTerminal } from "../../mcp/tasks/store.ts";
+import {
+  getMcpTask,
+  laterTurnCompleted,
+  setMcpTaskFailureIfNotTerminal,
+} from "../../mcp/tasks/store.ts";
 import { recordUsageEvent } from "../../stats/usage-events.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_DLQ, type ConversationRunTurnJob } from "../queues.ts";
@@ -64,6 +70,17 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
       },
       tx,
     );
+    if (
+      conversationId &&
+      !(task && (await laterTurnCompleted(data.tenant_id, conversationId, task.turn_seq, tx)))
+    ) {
+      await recordConversationTurnFailure(
+        tx,
+        data.tenant_id,
+        conversationId,
+        workerExpiredTurnFailure(),
+      );
+    }
     return true;
   });
   if (data.turn_id && data.attempt_id && data.conversation_id) {

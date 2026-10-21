@@ -6,6 +6,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, loadConfig } from "../../config/loader.ts";
 import { createElicitation } from "../../conversations/elicitations.ts";
+import { deriveConversationOutcome } from "../../conversations/lifecycle-view.ts";
 import { _setConverseFirstChunkTimeoutMsForTests } from "../../conversations/loop.ts";
 import * as svc from "../../conversations/service.ts";
 import {
@@ -159,6 +160,24 @@ async function seedConversationAndTask(
     queue.testDb.db,
   );
   return { conversation_id: created.conversation.id, mcp_task_id: taskId };
+}
+
+async function conversationFailure(conversation_id: string) {
+  const [row] = await queue.testDb.db
+    .select({ status: conversations.status, last_turn_error: conversations.last_turn_error })
+    .from(conversations)
+    .where(and(eq(conversations.tenant_id, tenantId), eq(conversations.id, conversation_id)));
+  if (!row) throw new Error("conversation missing");
+  return {
+    last_turn_error: row.last_turn_error,
+    outcome: deriveConversationOutcome({
+      status: row.status,
+      last_message_role: "user",
+      last_activity_at: null,
+      last_turn_error: row.last_turn_error,
+      now: 0,
+    }),
+  };
 }
 
 describe("conversation.run-turn worker", () => {
@@ -442,6 +461,34 @@ describe("conversation.run-turn worker — failure path", () => {
     expect(audits[0]?.result).toBe("error");
     expect(audits[0]?.reason).toContain("overloaded");
     expect((audits[0]!.metadata as { mcp_task_id?: string }).mcp_task_id).toBe(mcp_task_id);
+
+    const conversation = await conversationFailure(conversation_id);
+    expect(conversation.outcome).toBe("failed");
+    expect(conversation.last_turn_error?.code).toBe("llm_provider_unavailable");
+    expect(conversation.last_turn_error?.message).toBe(row?.failure_reason ?? undefined);
+  }, 45_000);
+
+  test("a later successful queued turn clears the recorded turn failure", async () => {
+    resetMockProvider();
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("recover after failure");
+    await svc.recordConversationTurnFailure(queue.testDb.db, tenantId, conversation_id, {
+      code: "worker_expired",
+      message: "The background worker stopped before the turn finished.",
+      at: new Date(getTestNow()).toISOString(),
+    });
+    expect((await conversationFailure(conversation_id)).outcome).toBe("failed");
+
+    await enqueueConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      kind: "start",
+    });
+    await waitForTerminal(mcp_task_id);
+
+    expect((await getMcpTask(tenantId, mcp_task_id, queue.testDb.db))?.result).toBeTruthy();
+    expect((await conversationFailure(conversation_id)).last_turn_error).toBeNull();
   }, 45_000);
 
   test("a normal failure uses persisted task caller instead of an unverified queued actor_id", async () => {

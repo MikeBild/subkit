@@ -9,6 +9,8 @@ const MAX_STEP_PREVIEW_CHARS = 1500;
 
 const SHAPE_STUB_MIN_CHARS = 1024;
 
+const MAX_PERSISTED_JSON_CHARS = 256_000;
+
 const RAW_REF_TTL_MS = 30 * 60_000;
 const RAW_REF_MAX_ENTRIES = 512;
 
@@ -304,6 +306,116 @@ export function truncateForLlm(
   };
 }
 
+export function withTruncationMarkers(truncated: TruncatedOutput): unknown {
+  const markers = { _truncated: true, _raw_ref: truncated.raw_ref, _note: truncated.note };
+  return truncated.data !== null &&
+    typeof truncated.data === "object" &&
+    !Array.isArray(truncated.data)
+    ? { ...(truncated.data as Record<string, unknown>), ...markers }
+    : { data: truncated.data, ...markers };
+}
+
+const PERSISTED_IDENTITY_KEYS = new Set([
+  "id",
+  "execution_id",
+  "status",
+  "kind",
+  "ok",
+  "error_code",
+  "workflow_id",
+  "version",
+]);
+
+const PERSIST_BOUND_PASSES = [
+  { chars: 8_000, items: 200, keys: 1_000 },
+  { chars: 2_000, items: 50, keys: 200 },
+  { chars: 500, items: 10, keys: 50 },
+  { chars: 100, items: 3, keys: 10 },
+] as const;
+
+type PersistBoundLimits = (typeof PERSIST_BOUND_PASSES)[number];
+
+function boundLeaves(
+  value: unknown,
+  limits: PersistBoundLimits,
+  rawRef: string,
+  key?: string,
+): unknown {
+  const plain =
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as { toJSON?: unknown }).toJSON === "function"
+      ? (value as { toJSON: () => unknown }).toJSON()
+      : value;
+  if (typeof plain === "string") {
+    if ((key !== undefined && PERSISTED_IDENTITY_KEYS.has(key)) || plain.length <= limits.chars)
+      return plain;
+    return `${plain.slice(0, limits.chars)}… [omitted: ${plain.length - limits.chars} chars — get_raw_result(ref="${rawRef}")]`;
+  }
+  if (plain === null || typeof plain !== "object") return plain;
+  if (Array.isArray(plain)) {
+    const kept = plain.slice(0, limits.items).map((entry) => boundLeaves(entry, limits, rawRef));
+    return plain.length > limits.items
+      ? [
+          ...kept,
+          `[omitted: ${plain.length - limits.items} of ${plain.length} items — get_raw_result(ref="${rawRef}")]`,
+        ]
+      : kept;
+  }
+  const entries = Object.entries(plain as Record<string, unknown>);
+  const identity = entries.filter(([entryKey]) => PERSISTED_IDENTITY_KEYS.has(entryKey));
+  const rest = entries.filter(([entryKey]) => !PERSISTED_IDENTITY_KEYS.has(entryKey));
+  const bounded = Object.fromEntries(
+    [...identity, ...rest.slice(0, limits.keys)].map(([entryKey, entry]) => [
+      entryKey,
+      boundLeaves(entry, limits, rawRef, entryKey),
+    ]),
+  );
+  return rest.length > limits.keys
+    ? { ...bounded, _omitted_keys: rest.length - limits.keys }
+    : bounded;
+}
+
+function identityFields(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(
+      ([key, entry]) =>
+        PERSISTED_IDENTITY_KEYS.has(key) && (entry === null || typeof entry !== "object"),
+    ),
+  );
+}
+
+export function boundForPersistence(output: unknown, rawRef?: string): unknown {
+  const originalLen = approxJsonLength(output);
+  if (originalLen <= MAX_PERSISTED_JSON_CHARS) return output;
+  const ref = rawRef ?? rememberRaw(output);
+  let fitting: unknown;
+  for (const limits of PERSIST_BOUND_PASSES) {
+    const candidate = boundLeaves(output, limits, ref);
+    if (approxJsonLength(candidate) > MAX_PERSISTED_JSON_CHARS) continue;
+    fitting = candidate;
+    break;
+  }
+  const data = fitting ?? identityFields(output);
+  logger.info({
+    module: "conversation_tool",
+    action: "persist.output_bounded",
+    msg: "tool output bounded before persistence",
+    cap: MAX_PERSISTED_JSON_CHARS,
+    original_chars: originalLen,
+    bounded_chars: approxJsonLength(data),
+    structure_kept: fitting !== undefined,
+    raw_ref: ref,
+  });
+  return withTruncationMarkers({
+    truncated: true,
+    data,
+    raw_ref: ref,
+    note: `stored tool output bounded from ${originalLen} chars; call get_raw_result(ref="${ref}") and follow its bounded field retrieval instructions`,
+  });
+}
+
 export function truncateStepPreviewForLlm(value: unknown): TruncatedOutput {
   return truncateForLlm(value, MAX_STEP_PREVIEW_CHARS);
 }
@@ -406,6 +518,7 @@ export const TRUNCATE_INTERNALS = {
   MAX_ARRAY_LEN,
   MAX_NESTED_ARRAY_LEN,
   MAX_STEP_PREVIEW_CHARS,
+  MAX_PERSISTED_JSON_CHARS,
   RAW_REF_TTL_MS,
   RAW_REF_MAX_ENTRIES,
 };

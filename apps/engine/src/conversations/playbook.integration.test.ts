@@ -38,6 +38,7 @@ import { getConversation } from "./service/get.ts";
 import type { ToolContext } from "./tools/index.ts";
 import type { TurnSignals } from "./tools/sdk-wrap/state.ts";
 import { wrapTools } from "./tools/sdk-wrap.ts";
+import { boundForPersistence } from "./tools/truncate.ts";
 
 let fixture: TestDb;
 let tenantId: string;
@@ -198,6 +199,59 @@ describe("persisted playbook evidence and lifecycle", () => {
     expect(view?.steps[0]?.evidence.map(({ id, label, href }) => ({ id, label, href }))).toEqual([
       { id: evidenceId, label: "Ausführung gelesen", href: `/cockpit/?run=${run.id}` },
     ]);
+    expect(view?.steps[0]?.status).toBe("verified");
+  });
+
+  test("binds an inspected execution whose stored output was bounded", async () => {
+    const context = await scope();
+    const [workflow] = await fixture.db
+      .insert(workflows)
+      .values({
+        tenant_id: tenantId,
+        slug: `inspect-bounded-${++sequence}`,
+        name: "Bounded run",
+        lifecycle: "active",
+        created_at: timestamp(),
+        updated_at: timestamp(),
+      })
+      .returning();
+    if (!workflow) throw new Error("missing workflow");
+    const [run] = await fixture.db
+      .insert(executions)
+      .values({
+        tenant_id: tenantId,
+        workflow_id: workflow.id,
+        status: "failed",
+        request_source: "chat",
+        execution_mode: "dev",
+        started_at: timestamp(100),
+        finished_at: timestamp(200),
+        created_at: timestamp(100),
+      })
+      .returning();
+    if (!run) throw new Error("missing execution");
+    const evidenceId = await call(
+      context,
+      "inspect_execution",
+      boundForPersistence(
+        {
+          inspected: { execution_id: run.id },
+          execution: {
+            execution_id: run.id,
+            status: "failed",
+            steps: [{ id: "request", output: "x".repeat(300_000) }],
+          },
+        },
+        "raw_bounded",
+      ),
+    );
+    const view = await updatePlaybook(fixture.db, context, {
+      expected_revision: 0,
+      plan: plan([
+        step({ kind: "resource_observed", resource: { type: "execution", id: run.id } }),
+      ]),
+    });
+    expect(view?.steps[0]?.evidence.map(({ id }) => id)).toEqual([evidenceId]);
     expect(view?.steps[0]?.status).toBe("verified");
   });
 

@@ -292,6 +292,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       });
       return;
     }
+    await svc.clearConversationTurnFailure(db, data.tenant_id, data.conversation_id);
 
     const principal = await rehydrateExecutionPrincipal(
       db,
@@ -545,7 +546,8 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
         });
       }
     }
-    const failureReason = describeTurnFailure(err).message;
+    const turnFailure = describeTurnFailure(err);
+    const failureReason = turnFailure.message;
     const failureStored = await storeAttemptFailure(data, failureAttemptId, failureReason, db);
     if (!failureStored) {
       log.queue.job.completed({
@@ -557,6 +559,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       });
       return;
     }
+    await svc.recordConversationTurnFailure(db, data.tenant_id, data.conversation_id, turnFailure);
     recordUsageEvent(db, {
       tenantId: data.tenant_id,
       surface: "conversations",

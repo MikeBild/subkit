@@ -4,9 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { getConfig, loadConfig } from "../../config/loader.ts";
+import { deriveConversationOutcome } from "../../conversations/lifecycle-view.ts";
 import * as svc from "../../conversations/service.ts";
-import { auditLog, systemAccounts, tenants, users } from "../../db/schema/index.ts";
-import { getMcpTask, insertMcpTask, setMcpTaskCancelled } from "../../mcp/tasks/store.ts";
+import { auditLog, conversations, systemAccounts, tenants, users } from "../../db/schema/index.ts";
+import {
+  getMcpTask,
+  insertMcpTask,
+  setMcpTaskCancelled,
+  setMcpTaskResult,
+} from "../../mcp/tasks/store.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
@@ -80,7 +86,105 @@ async function seedConversationAndTask(
   return { conversation_id: created.conversation.id, mcp_task_id: taskId };
 }
 
+async function conversationState(conversation_id: string) {
+  const [row] = await queue.testDb.db
+    .select({ status: conversations.status, last_turn_error: conversations.last_turn_error })
+    .from(conversations)
+    .where(and(eq(conversations.tenant_id, tenantId), eq(conversations.id, conversation_id)));
+  if (!row) throw new Error("conversation missing");
+  return {
+    last_turn_error: row.last_turn_error,
+    outcome: deriveConversationOutcome({
+      status: row.status,
+      last_message_role: "user",
+      last_activity_at: null,
+      last_turn_error: row.last_turn_error,
+      now: 0,
+    }),
+  };
+}
+
+async function turnFailedAudits(conversation_id: string) {
+  return await queue.testDb.db
+    .select({ id: auditLog.id })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, tenantId),
+        eq(auditLog.action, "conversation.turn_failed"),
+        eq(auditLog.resource_id, conversation_id),
+      ),
+    );
+}
+
 describe("conversation.run-turn.dlq consumer", () => {
+  test("a dead-lettered turn records worker_expired on the conversation so its outcome is failed", async () => {
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("worker expired");
+    expect((await conversationState(conversation_id)).outcome).toBe("in_progress");
+    const envelope = {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      kind: "start",
+    };
+
+    await queue.boss.send(CONVERSATION_RUN_TURN_DLQ, envelope);
+    await waitFor(async () => Boolean((await conversationState(conversation_id)).last_turn_error), {
+      tries: 80,
+      sleepMs: 250,
+      label: "conversation last_turn_error",
+    });
+
+    const first = await conversationState(conversation_id);
+    expect(first.outcome).toBe("failed");
+    expect(first.last_turn_error?.code).toBe("worker_expired");
+    expect(await turnFailedAudits(conversation_id)).toHaveLength(1);
+
+    await queue.boss.send(CONVERSATION_RUN_TURN_DLQ, envelope);
+    await waitFor(async () => true, { tries: 12, sleepMs: 250, label: "dlq redelivery window" });
+
+    expect(await conversationState(conversation_id)).toEqual(first);
+    expect(await turnFailedAudits(conversation_id)).toHaveLength(1);
+  }, 30_000);
+
+  test("a dead-lettered turn the conversation already outran keeps the later success", async () => {
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("outran expiry");
+    const laterId = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id,
+        kind: "append",
+        actor: { kind: "user", id: userId },
+        request_source: "mcp",
+        user_message_id: null,
+      },
+      queue.testDb.db,
+    );
+    await setMcpTaskResult(
+      tenantId,
+      laterId,
+      { conversation_id, status: "active", events: [] },
+      queue.testDb.db,
+    );
+
+    await queue.boss.send(CONVERSATION_RUN_TURN_DLQ, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      kind: "start",
+    });
+    await waitFor(
+      async () =>
+        (await getMcpTask(tenantId, mcp_task_id, queue.testDb.db))?.failure_reason ?? null,
+      { tries: 80, sleepMs: 250, label: "outran dlq failure" },
+    );
+
+    expect((await conversationState(conversation_id)).last_turn_error).toBeNull();
+    expect(await turnFailedAudits(conversation_id)).toHaveLength(1);
+  }, 30_000);
+
   test("B1: a dead-lettered job marks the non-terminal mcp_tasks row failed/worker_expired + writes the audit row", async () => {
     const { conversation_id, mcp_task_id } = await seedConversationAndTask("worker dies mid-turn");
     const before = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
@@ -248,6 +352,7 @@ describe("conversation.run-turn.dlq consumer", () => {
     const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
     expect(row?.cancelled_at).toBeInstanceOf(Date);
     expect(row?.failure_reason).toBeNull();
+    expect((await conversationState(conversation_id)).last_turn_error).toBeNull();
     const audits = await queue.testDb.db
       .select()
       .from(auditLog)

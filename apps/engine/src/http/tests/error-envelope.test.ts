@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type ServerType, serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { PendingElicitationBlockedError } from "../../conversations/service/shared.ts";
 import { LlmTimeoutError } from "../../conversations/turn-failure.ts";
 import { BadRequestError, ConflictError, HttpError, UnprocessableEntityError } from "../errors.ts";
-import { mapKnownErrorResponse } from "../middleware/error.ts";
+import { errorMiddleware, mapKnownErrorResponse } from "../middleware/error.ts";
 import type { AppEnv } from "../openapi.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -183,5 +184,71 @@ describe("error envelope wire — a model that timed out", () => {
     expect(body.code).toBe("llm_timeout");
     expect(body.message).toBe("Timed out after 5 s");
     expect(body.details).toEqual({ phase: "step", timeout_ms: 5000 });
+  });
+});
+
+describe("error envelope wire — conversation turn conflicts", () => {
+  let server: ServerType;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const app = new Hono<AppEnv>();
+    app.use("*", errorMiddleware());
+    app.onError((err, c) => {
+      const known = mapKnownErrorResponse(c, err);
+      if (known) return known;
+      return c.json({ code: "internal_error", message: String(err) }, 500);
+    });
+    app.get("/__test__/throw-pending-elicitation", () => {
+      throw new PendingElicitationBlockedError({
+        id: "elicitation-1",
+        tool_name: "ask_user_confirm",
+        summary: "confirm proceed",
+      });
+    });
+    app.get("/__test__/throw-abort/:reason", (c) => {
+      throw c.req.param("reason");
+    });
+    server = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
+    const addr = (server as unknown as { address: () => { port: number } | null }).address();
+    if (!addr || typeof addr !== "object") throw new Error("test server address resolution failed");
+    baseUrl = `http://127.0.0.1:${addr.port}`;
+  });
+
+  afterAll(() => {
+    server?.close();
+  });
+
+  test("a pending dialog is a 409 with its code and the pending dialog", async () => {
+    const res = await fetch(`${baseUrl}/__test__/throw-pending-elicitation`);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as ErrorBody;
+    expect(body.code).toBe("pending_elicitation_blocked");
+    expect(body.message).toBe("resolve the pending dialog before sending another prompt");
+    expect(body.details).toEqual({
+      conversation_status: "awaiting_input",
+      pending_elicitation: {
+        id: "elicitation-1",
+        tool_name: "ask_user_confirm",
+        summary: "confirm proceed",
+      },
+    });
+  });
+
+  test.each(["conversation_turn_superseded", "conversation_cancelled"])(
+    "a bare %s abort reason is a 409 with that code",
+    async (reason) => {
+      const res = await fetch(`${baseUrl}/__test__/throw-abort/${reason}`);
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as ErrorBody;
+      expect(body.code).toBe(reason);
+    },
+  );
+
+  test("an unknown bare string stays an internal error", async () => {
+    const res = await fetch(`${baseUrl}/__test__/throw-abort/something_else`);
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as ErrorBody;
+    expect(body.code).toBe("internal_error");
   });
 });

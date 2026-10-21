@@ -16,12 +16,18 @@ import {
   type DiscoveryResult,
   type DiscoveryStrategy,
   type DiscoveryStrategyOptions,
+  type DiscoveryWarning,
 } from "./types.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_SIZE_BYTES = 16 * 1024 * 1024;
 const MAX_SCHEMA_DEPTH = 3;
-const MAX_SCHEMA_NODES = 1_500;
+const MAX_SCHEMA_NODES = 3_000;
+const MAX_TOTAL_SCHEMA_NODES = 200_000;
+const MAX_ENDPOINTS = 1_000;
+const MAX_SDL_SOURCE_BYTES = 4 * 1024 * 1024;
+const EXPANSION_BATCH_SIZE = 25;
+const DEFS_POINTER = "#/$defs/";
 
 interface TypeRef {
   kind: string;
@@ -92,120 +98,173 @@ function isRequired(t: TypeRef): boolean {
   return t.kind === "NON_NULL";
 }
 
-interface ExpansionBudget {
-  remaining: number;
-  truncated: boolean;
+interface TypeDefinition {
+  schema: Record<string, unknown>;
+  nodes: number;
+  refs: string[];
 }
 
-const newBudget = (): ExpansionBudget => ({ remaining: MAX_SCHEMA_NODES, truncated: false });
+interface ExpansionBudget {
+  remaining: number;
+}
+
+interface ExpansionContext {
+  typesByName: Map<string, NamedType>;
+  definitions: Map<string, TypeDefinition>;
+  collisions: Set<string>;
+  truncatedFields: Set<string>;
+}
+
+const isExpandable = (named: NamedType | undefined): boolean =>
+  named?.kind === "INPUT_OBJECT" || named?.kind === "OBJECT" || named?.kind === "INTERFACE";
+
+function countSchemaNodes(value: unknown): number {
+  if (Array.isArray(value)) return 1 + value.reduce((sum, item) => sum + countSchemaNodes(item), 0);
+  if (value !== null && typeof value === "object") {
+    return 1 + Object.values(value).reduce<number>((sum, item) => sum + countSchemaNodes(item), 0);
+  }
+  return 1;
+}
 
 function typeToJsonSchema(
   t: TypeRef | null | undefined,
   typesByName: Map<string, NamedType>,
-  seen: Set<string>,
-  budget: ExpansionBudget,
-  depth = 0,
+  refs: Set<string>,
 ): unknown {
   if (!t) return null;
-  if (t.kind === "NON_NULL") {
-    return typeToJsonSchema(t.ofType ?? null, typesByName, seen, budget, depth);
-  }
+  if (t.kind === "NON_NULL") return typeToJsonSchema(t.ofType ?? null, typesByName, refs);
   if (t.kind === "LIST") {
-    return {
-      type: "array",
-      items: typeToJsonSchema(t.ofType ?? null, typesByName, seen, budget, depth),
-    };
+    return { type: "array", items: typeToJsonSchema(t.ofType ?? null, typesByName, refs) };
   }
   const leaf = t.name;
   if (!leaf) return null;
-  if (seen.has(leaf)) return { $ref: leaf };
   const named = typesByName.get(leaf);
-  if (!named) return { type: leaf };
-  if (named.kind === "SCALAR" || named.kind === "ENUM") {
-    return { type: leaf };
+  if (named?.kind === "UNION") {
+    return { oneOf: (named.possibleTypes ?? []).map((p) => ({ type: p.name ?? "object" })) };
   }
-  if (named.kind === "UNION") {
-    return {
-      oneOf: (named.possibleTypes ?? []).map((p) => ({ type: p.name ?? "object" })),
-    };
+  if (!isExpandable(named)) return { type: leaf };
+  refs.add(leaf);
+  return { $ref: `${DEFS_POINTER}${leaf}` };
+}
+
+function definitionFor(name: string, ctx: ExpansionContext): TypeDefinition | null {
+  const cached = ctx.definitions.get(name);
+  if (cached) return cached;
+  const named = ctx.typesByName.get(name);
+  if (!named || !isExpandable(named)) return null;
+  const refs = new Set<string>();
+  const isInput = named.kind === "INPUT_OBJECT";
+  const members = isInput ? (named.inputFields ?? []) : (named.fields ?? []);
+  const properties = Object.fromEntries(
+    members.map((member) => [member.name, typeToJsonSchema(member.type, ctx.typesByName, refs)]),
+  );
+  const required = isInput ? members.filter((f) => isRequired(f.type)).map((f) => f.name) : [];
+  const schema = { type: "object", properties, ...(required.length > 0 ? { required } : {}) };
+  const definition = { schema, nodes: countSchemaNodes(schema), refs: [...refs] };
+  ctx.definitions.set(name, definition);
+  return definition;
+}
+
+function collectDefinitions(
+  rootRefs: Iterable<string>,
+  ctx: ExpansionContext,
+  budget: ExpansionBudget,
+): { defs: Record<string, unknown>; truncated: boolean } {
+  const defs: Record<string, unknown> = {};
+  const visited = new Set<string>();
+  const queue: [string, number][] = [...rootRefs].map((name) => [name, 0]);
+  let truncated = false;
+  for (let index = 0; index < queue.length; index += 1) {
+    const [name, distance] = queue[index] as [string, number];
+    if (visited.has(name)) continue;
+    visited.add(name);
+    const definition = definitionFor(name, ctx);
+    if (!definition) continue;
+    if (distance >= MAX_SCHEMA_DEPTH || definition.nodes > budget.remaining) {
+      truncated = true;
+      continue;
+    }
+    budget.remaining -= definition.nodes;
+    defs[name] = definition.schema;
+    for (const ref of definition.refs) {
+      if (!visited.has(ref)) queue.push([ref, distance + 1]);
+    }
   }
-  if (named.kind !== "INPUT_OBJECT" && named.kind !== "OBJECT" && named.kind !== "INTERFACE") {
-    return { type: leaf };
-  }
-  if (depth >= MAX_SCHEMA_DEPTH || budget.remaining <= 0) {
-    budget.truncated = true;
-    return { $ref: leaf };
-  }
-  seen.add(leaf);
-  const members = named.kind === "INPUT_OBJECT" ? (named.inputFields ?? []) : (named.fields ?? []);
-  const properties: Record<string, unknown> = {};
-  for (const member of members) {
-    budget.remaining -= 1;
-    properties[member.name] = typeToJsonSchema(member.type, typesByName, seen, budget, depth + 1);
-  }
-  seen.delete(leaf);
-  if (named.kind !== "INPUT_OBJECT") return { type: "object", properties };
-  const required = (named.inputFields ?? []).filter((f) => isRequired(f.type)).map((f) => f.name);
-  return { type: "object", properties, ...(required.length > 0 ? { required } : {}) };
+  return { defs, truncated };
+}
+
+function withDefinitions(
+  schema: Record<string, unknown>,
+  rootRefs: Set<string>,
+  ctx: ExpansionContext,
+  budget: ExpansionBudget,
+): { schema: Record<string, unknown>; truncated: boolean } {
+  if (rootRefs.size === 0) return { schema, truncated: false };
+  const { defs, truncated } = collectDefinitions(rootRefs, ctx, budget);
+  return {
+    schema: Object.keys(defs).length > 0 ? { ...schema, $defs: defs } : schema,
+    truncated,
+  };
 }
 
 function fieldToEndpoint(
   field: Field,
   rootKind: "query" | "mutation" | "subscription",
-  typesByName: Map<string, NamedType>,
-  collisions: Set<string>,
-  truncatedFields: Set<string>,
+  ctx: ExpansionContext,
+  budget: ExpansionBudget,
 ): DiscoveredEndpoint {
-  const expand = (type: TypeRef): unknown => {
-    const budget = newBudget();
-    const schema = typeToJsonSchema(type, typesByName, new Set(), budget);
-    if (budget.truncated) truncatedFields.add(field.name);
-    return schema;
-  };
+  const requestRefs = new Set<string>();
+  const responseRefs = new Set<string>();
   const params: DiscoveredEndpointParam[] = field.args.map((arg) => ({
     name: arg.name,
     in: "body" as const,
     required: isRequired(arg.type),
     type: formatTypeRef(arg.type),
   }));
-  const variableProps: Record<string, unknown> = {};
-  const variableRequired: string[] = [];
-  for (const arg of field.args) {
-    variableProps[arg.name] = expand(arg.type);
-    if (isRequired(arg.type)) variableRequired.push(arg.name);
-  }
-  const requestBodySchema = {
-    type: "object",
-    properties: {
-      query: { type: "string" },
-      operationName: { type: "string" },
-      variables: {
-        type: "object",
-        properties: variableProps,
-        ...(variableRequired.length > 0 ? { required: variableRequired } : {}),
-      },
-    },
-    required: ["query"],
-  };
-  const responseSchema = {
-    type: "object",
-    properties: {
-      data: {
-        type: "object",
-        properties: {
-          [field.name]: expand(field.type),
-        },
-      },
-      errors: {
-        type: "array",
-        items: {
+  const variableProps = Object.fromEntries(
+    field.args.map((arg) => [arg.name, typeToJsonSchema(arg.type, ctx.typesByName, requestRefs)]),
+  );
+  const variableRequired = field.args.filter((arg) => isRequired(arg.type)).map((arg) => arg.name);
+  const request = withDefinitions(
+    {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        operationName: { type: "string" },
+        variables: {
           type: "object",
-          properties: { message: { type: "string" } },
+          properties: variableProps,
+          ...(variableRequired.length > 0 ? { required: variableRequired } : {}),
+        },
+      },
+      required: ["query"],
+    },
+    requestRefs,
+    ctx,
+    budget,
+  );
+  const response = withDefinitions(
+    {
+      type: "object",
+      properties: {
+        data: {
+          type: "object",
+          properties: {
+            [field.name]: typeToJsonSchema(field.type, ctx.typesByName, responseRefs),
+          },
+        },
+        errors: {
+          type: "array",
+          items: { type: "object", properties: { message: { type: "string" } } },
         },
       },
     },
-  };
-  const operationId = collisions.has(field.name) ? `${rootKind}.${field.name}` : field.name;
+    responseRefs,
+    ctx,
+    budget,
+  );
+  if (request.truncated || response.truncated) ctx.truncatedFields.add(field.name);
+  const operationId = ctx.collisions.has(field.name) ? `${rootKind}.${field.name}` : field.name;
   return {
     method: "POST",
     path: "/graphql",
@@ -214,12 +273,54 @@ function fieldToEndpoint(
     operation_id: operationId,
     scopes: [],
     params,
-    request_body_schema: requestBodySchema,
+    request_body_schema: request.schema,
     request_content_type: "application/json",
-    response_schemas: { "200": responseSchema },
+    response_schemas: { "200": response.schema },
     pagination_hint: null,
     deprecated: field.isDeprecated ?? false,
   };
+}
+
+const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new DiscoveryError("aborted", "discovery aborted");
+}
+
+interface RootField {
+  field: Field;
+  rootKind: "query" | "mutation" | "subscription";
+}
+
+interface BoundedExpansion {
+  endpoints: DiscoveredEndpoint[];
+  schemaNodes: number;
+}
+
+async function expandRootFields(
+  rootFields: RootField[],
+  ctx: ExpansionContext,
+  signal: AbortSignal | undefined,
+): Promise<BoundedExpansion> {
+  const global: ExpansionBudget = { remaining: MAX_TOTAL_SCHEMA_NODES };
+  const endpoints: DiscoveredEndpoint[] = [];
+  let schemaNodes = 0;
+  for (const [index, { field, rootKind }] of rootFields.entries()) {
+    if (index > 0 && index % EXPANSION_BATCH_SIZE === 0) {
+      await yieldToEventLoop();
+      throwIfAborted(signal);
+    }
+    const share = Math.floor(Math.max(global.remaining, 0) / (rootFields.length - index));
+    const budget: ExpansionBudget = { remaining: Math.min(MAX_SCHEMA_NODES, share) };
+    const endpoint = fieldToEndpoint(field, rootKind, ctx, budget);
+    const nodes =
+      countSchemaNodes(endpoint.request_body_schema) +
+      countSchemaNodes(endpoint.response_schemas["200"]);
+    global.remaining -= nodes;
+    schemaNodes += nodes;
+    endpoints.push(endpoint);
+  }
+  return { endpoints, schemaNodes };
 }
 
 export function looksLikeGraphQLUrl(url: string): boolean {
@@ -238,6 +339,7 @@ export function looksLikeGraphQLUrl(url: string): boolean {
 interface IntrospectionFetchResult {
   schema: IntrospectionSchema;
   rawData: IntrospectionQuery;
+  bytes: number;
 }
 
 async function postIntrospection(
@@ -331,6 +433,7 @@ async function postIntrospection(
     return {
       schema: schema as IntrospectionSchema,
       rawData: obj.data as unknown as IntrospectionQuery,
+      bytes: buf.byteLength,
     };
   } finally {
     clearTimeout(timer);
@@ -366,7 +469,10 @@ class GraphQLIntrospectStrategy implements DiscoveryStrategy {
       url: scrubUrl(url),
     });
     try {
-      const { schema, rawData } = await postIntrospection(url, opts);
+      throwIfAborted(opts.signal);
+      const { schema, rawData, bytes } = await postIntrospection(url, opts);
+      throwIfAborted(opts.signal);
+      const startedAt = performance.now();
       const typesByName = new Map<string, NamedType>();
       for (const t of schema.types ?? []) {
         if (t?.name) typesByName.set(t.name, t);
@@ -391,31 +497,67 @@ class GraphQLIntrospectStrategy implements DiscoveryStrategy {
       trackCollisions(mutationType?.fields);
       trackCollisions(subscriptionType?.fields);
 
-      const truncatedFields = new Set<string>();
-      const endpoints: DiscoveredEndpoint[] = [
-        ...(queryType?.fields ?? []).map((f) =>
-          fieldToEndpoint(f, "query", typesByName, collisions, truncatedFields),
-        ),
-        ...(mutationType?.fields ?? []).map((f) =>
-          fieldToEndpoint(f, "mutation", typesByName, collisions, truncatedFields),
-        ),
-        ...(subscriptionType?.fields ?? []).map((f) =>
-          fieldToEndpoint(f, "subscription", typesByName, collisions, truncatedFields),
-        ),
+      const allRootFields: RootField[] = [
+        ...(queryType?.fields ?? []).map((field) => ({ field, rootKind: "query" as const })),
+        ...(mutationType?.fields ?? []).map((field) => ({ field, rootKind: "mutation" as const })),
+        ...(subscriptionType?.fields ?? []).map((field) => ({
+          field,
+          rootKind: "subscription" as const,
+        })),
       ];
-      if (truncatedFields.size > 0) {
+      const rootFields = allRootFields.slice(0, MAX_ENDPOINTS);
+      const ctx: ExpansionContext = {
+        typesByName,
+        definitions: new Map(),
+        collisions,
+        truncatedFields: new Set(),
+      };
+      const { endpoints, schemaNodes } = await expandRootFields(rootFields, ctx, opts.signal);
+      const warnings: DiscoveryWarning[] = [];
+      if (allRootFields.length > rootFields.length) {
+        warnings.push({
+          code: "endpoints_truncated",
+          message: `kept ${rootFields.length} of ${allRootFields.length} root fields`,
+        });
+      }
+      if (ctx.truncatedFields.size > 0) {
+        warnings.push({
+          code: "schema_truncated",
+          message: `${ctx.truncatedFields.size} endpoint schemas reference types without inlined definitions`,
+        });
         log.warn({
           module: "connector",
           action: "discovery.graphql.schema_truncated",
           strategy: this.name,
           url: scrubUrl(url),
-          truncated_endpoints: truncatedFields.size,
+          truncated_endpoints: ctx.truncatedFields.size,
           max_depth: MAX_SCHEMA_DEPTH,
           max_nodes: MAX_SCHEMA_NODES,
+          max_total_nodes: MAX_TOTAL_SCHEMA_NODES,
         });
       }
+      log.info({
+        module: "connector",
+        action: "discovery.graphql.expansion_bounded",
+        strategy: this.name,
+        url: scrubUrl(url),
+        endpoints: endpoints.length,
+        root_fields: allRootFields.length,
+        definitions: ctx.definitions.size,
+        schema_nodes: schemaNodes,
+        bytes,
+        duration_ms: Math.round(performance.now() - startedAt),
+      });
 
-      const sdl = tryPrintSDL(rawData);
+      await yieldToEventLoop();
+      throwIfAborted(opts.signal);
+      const sdl = bytes <= MAX_SDL_SOURCE_BYTES ? tryPrintSDL(rawData) : null;
+      if (bytes > MAX_SDL_SOURCE_BYTES) {
+        warnings.push({
+          code: "sdl_skipped",
+          message: `introspection result of ${bytes} bytes exceeds ${MAX_SDL_SOURCE_BYTES} bytes for SDL rendering`,
+        });
+      }
 
       log.info({
         module: "connector",
@@ -438,7 +580,7 @@ class GraphQLIntrospectStrategy implements DiscoveryStrategy {
         servers: [url],
         auth_schemes: [],
         endpoints,
-        warnings: [],
+        warnings,
         text_corpus: sdl,
       };
     } catch (err) {

@@ -370,6 +370,157 @@ function countSchemaNodes(value: unknown): number {
   return 1;
 }
 
+type SchemaWithDefs = { $defs?: Record<string, unknown> };
+
+function unresolvedRefs(schema: SchemaWithDefs): string[] {
+  const refs = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) value.forEach(visit);
+    else if (value !== null && typeof value === "object") {
+      for (const [key, item] of Object.entries(value)) {
+        if (key === "$ref" && typeof item === "string") refs.add(item);
+        else visit(item);
+      }
+    }
+  };
+  visit(schema);
+  return [...refs].filter((ref) => !(ref.replace("#/$defs/", "") in (schema.$defs ?? {})));
+}
+
+const scalar = (name: string) => ({ kind: "SCALAR", name, ofType: null });
+const nonNull = (ofType: unknown) => ({ kind: "NON_NULL", name: null, ofType });
+const listOf = (ofType: unknown) => ({ kind: "LIST", name: null, ofType });
+const namedRef = (kind: string, name: string) => ({ kind, name, ofType: null });
+
+function largeMutationSchema(mutationCount: number) {
+  const indexes = Array.from({ length: mutationCount }, (_, index) => index);
+  const levels = Array.from({ length: 8 }, (_, level) => level);
+  const recordNames = Array.from({ length: 30 }, (_, index) => `Record${index}`);
+  const levelInputs = levels.map((level) => ({
+    kind: "INPUT_OBJECT",
+    name: `Level${level}Input`,
+    inputFields: [
+      { name: "label", type: nonNull(scalar("String")) },
+      { name: "weight", type: scalar("Int") },
+      ...(level < levels.length - 1
+        ? [
+            { name: "child", type: namedRef("INPUT_OBJECT", `Level${level + 1}Input`) },
+            { name: "children", type: listOf(namedRef("INPUT_OBJECT", `Level${level + 1}Input`)) },
+          ]
+        : []),
+    ],
+  }));
+  const sharedInput = {
+    kind: "INPUT_OBJECT",
+    name: "SharedInput",
+    inputFields: [
+      { name: "root", type: nonNull(namedRef("INPUT_OBJECT", "Level0Input")) },
+      { name: "tags", type: listOf(nonNull(scalar("String"))) },
+    ],
+  };
+  const records = recordNames.map((name) => ({
+    kind: "OBJECT",
+    name,
+    interfaces: [],
+    fields: [
+      { name: "id", args: [], type: nonNull(scalar("ID")), isDeprecated: false },
+      ...recordNames.map((target) => ({
+        name: `to${target}`,
+        args: [],
+        type: listOf(namedRef("OBJECT", target)),
+        isDeprecated: false,
+      })),
+    ],
+  }));
+  const inputs = indexes.map((index) => ({
+    kind: "INPUT_OBJECT",
+    name: `Mutation${index}Input`,
+    inputFields: [
+      { name: "clientMutationId", type: scalar("String") },
+      { name: "shared", type: nonNull(namedRef("INPUT_OBJECT", "SharedInput")) },
+    ],
+  }));
+  const payloads = indexes.map((index) => ({
+    kind: "OBJECT",
+    name: `Mutation${index}Payload`,
+    interfaces: [],
+    fields: [
+      {
+        name: "record",
+        args: [],
+        type: namedRef("OBJECT", recordNames[index % recordNames.length] ?? "Record0"),
+        isDeprecated: false,
+      },
+    ],
+  }));
+  const mutationType = {
+    kind: "OBJECT",
+    name: "Mutation",
+    interfaces: [],
+    fields: indexes.map((index) => ({
+      name: `mutation${index}`,
+      args: [{ name: "input", type: nonNull(namedRef("INPUT_OBJECT", `Mutation${index}Input`)) }],
+      type: namedRef("OBJECT", `Mutation${index}Payload`),
+      isDeprecated: false,
+    })),
+  };
+  const queryType = {
+    kind: "OBJECT",
+    name: "Query",
+    interfaces: [],
+    fields: [
+      { name: "record", args: [], type: namedRef("OBJECT", "Record0"), isDeprecated: false },
+    ],
+  };
+  return {
+    data: {
+      __schema: {
+        queryType: { name: "Query" },
+        mutationType: { name: "Mutation" },
+        subscriptionType: null,
+        types: [
+          queryType,
+          mutationType,
+          sharedInput,
+          ...levelInputs,
+          ...records,
+          ...inputs,
+          ...payloads,
+          { kind: "SCALAR", name: "String" },
+          { kind: "SCALAR", name: "ID" },
+          { kind: "SCALAR", name: "Int" },
+        ],
+      },
+    },
+  };
+}
+
+function wideQuerySchema(fieldCount: number) {
+  return {
+    data: {
+      __schema: {
+        queryType: { name: "Query" },
+        mutationType: null,
+        subscriptionType: null,
+        types: [
+          {
+            kind: "OBJECT",
+            name: "Query",
+            interfaces: [],
+            fields: Array.from({ length: fieldCount }, (_, index) => ({
+              name: `field${index}`,
+              args: [],
+              type: scalar("String"),
+              isDeprecated: false,
+            })),
+          },
+          { kind: "SCALAR", name: "String" },
+        ],
+      },
+    },
+  };
+}
+
 function chunkedBody(totalChunks: number, chunkBytes: number) {
   const state = { pulled: 0, cancelled: false };
   const chunk = new Uint8Array(chunkBytes).fill(32);
@@ -420,13 +571,108 @@ describe("graphqlIntrospectStrategy resource bounds", () => {
     expect(JSON.stringify(again.endpoints)).toBe(first);
   });
 
-  seamTest("keeps the first levels of a small schema fully expanded", async () => {
+  seamTest("resolves every reference of a small schema through local definitions", async () => {
     fetchSpy.mockResolvedValue(new Response(JSON.stringify(SAMPLE_SCHEMA), { status: 200 }));
 
     const result = await graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {});
 
     const viewer = result.endpoints.find((e) => e.operation_id === "viewer");
-    expect(JSON.stringify(viewer?.response_schemas["200"])).not.toContain('"$ref"');
+    const response = viewer?.response_schemas["200"] as SchemaWithDefs;
+    expect(response.$defs?.User).toEqual({
+      type: "object",
+      properties: { login: { type: "String" } },
+    });
+    expect(unresolvedRefs(response)).toEqual([]);
+    const createIssue = result.endpoints.find((e) => e.operation_id === "createIssue");
+    const request = createIssue?.request_body_schema as SchemaWithDefs;
+    expect(request.$defs?.CreateIssueInput).toMatchObject({ required: ["repositoryId", "title"] });
+    expect(unresolvedRefs(request)).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  seamTest("bounds a large mutation schema and shares each definition", async () => {
+    const introspection = largeMutationSchema(400);
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify(introspection), { status: 200 }));
+
+    const startedAt = performance.now();
+    const result = await graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {});
+    const durationMs = performance.now() - startedAt;
+
+    expect(result.endpoints).toHaveLength(401);
+    expect(countSchemaNodes(result.endpoints)).toBeLessThan(260_000);
+    expect(durationMs).toBeLessThan(5_000);
+    expect(result.warnings.map((w) => w.code)).toContain("schema_truncated");
+    const definitionInstances = new Map<string, unknown>();
+    for (const endpoint of result.endpoints) {
+      for (const schema of [endpoint.request_body_schema, endpoint.response_schemas["200"]]) {
+        for (const [name, definition] of Object.entries((schema as SchemaWithDefs).$defs ?? {})) {
+          const known = definitionInstances.get(name);
+          if (known) expect(definition).toBe(known);
+          else definitionInstances.set(name, definition);
+        }
+      }
+    }
+    expect(definitionInstances.has("SharedInput")).toBe(true);
+    const first = result.endpoints.find((e) => e.operation_id === "mutation0");
+    const firstRequest = first?.request_body_schema as SchemaWithDefs;
+    expect(Object.keys(firstRequest.$defs ?? {})).toContain("Mutation0Input");
+    expect(JSON.stringify(firstRequest).split('"Mutation0Input":{').length).toBe(2);
+  });
+
+  seamTest("caps the number of endpoints and reports the truncation", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify(wideQuerySchema(1_100)), { status: 200 }),
+    );
+
+    const result = await graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {});
+
+    expect(result.endpoints).toHaveLength(1_000);
+    expect(result.warnings.map((w) => w.code)).toContain("endpoints_truncated");
+  });
+
+  seamTest("skips SDL rendering for an oversized introspection result", async () => {
+    const padded = structuredClone(SAMPLE_SCHEMA);
+    const types = padded.data.__schema.types as { description?: string }[];
+    const firstType = types[0];
+    if (firstType) firstType.description = "x".repeat(5 * 1024 * 1024);
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify(padded), { status: 200 }));
+
+    const result = await graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {});
+
+    expect(result.endpoints).toHaveLength(3);
+    expect(result.text_corpus).toBeNull();
+    expect(result.warnings.map((w) => w.code)).toContain("sdl_skipped");
+  });
+
+  seamTest("stops discovery before any request when the signal is already aborted", async () => {
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify(SAMPLE_SCHEMA), { status: 200 }));
+    const controller = new AbortController();
+    controller.abort();
+
+    const caught = await caughtDiscoveryError(() =>
+      graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {
+        signal: controller.signal,
+      }),
+    );
+
+    expect(caught?.code).toBe("aborted");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  seamTest("stops expansion when the signal aborts during discovery", async () => {
+    const controller = new AbortController();
+    fetchSpy.mockImplementation((async () => {
+      setImmediate(() => controller.abort());
+      return new Response(JSON.stringify(largeMutationSchema(400)), { status: 200 });
+    }) as unknown as typeof fetch);
+
+    const caught = await caughtDiscoveryError(() =>
+      graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {
+        signal: controller.signal,
+      }),
+    );
+
+    expect(caught).toBeInstanceOf(DiscoveryError);
   });
 
   seamTest(
