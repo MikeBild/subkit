@@ -1,7 +1,7 @@
 export type ReleaseNotes = { version: string; notes: string[] };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: string[] } = {
-  "source": "c0adcee18c220acce6253814690b44c471650255",
+  "source": "6ee2d6ff95b34398e1e288a2ea5a3ff2a9d533d1",
   "releases": [
     {
       "version": "v1.0.0",
@@ -1376,9 +1376,13 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
       "notes": [
         "add guided playbooks to multi-step conversations"
       ]
+    },
+    {
+      "version": "v10.3.0",
+      "notes": [
+        "align all pages to one left edge and tidy the sidebar footer"
+      ]
     }
   ],
-  "unpublished": [
-    "align all pages to one left edge and tidy the sidebar footer"
-  ]
+  "unpublished": []
 };
