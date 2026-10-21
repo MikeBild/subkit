@@ -1,7 +1,7 @@
 export type ReleaseNotes = { version: string; notes: string[] };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: string[] } = {
-  "source": "6ee2d6ff95b34398e1e288a2ea5a3ff2a9d533d1",
+  "source": "d77a3b9592a1d3fa6fe948d226af7a0a5b7e566a",
   "releases": [
     {
       "version": "v1.0.0",
@@ -1382,6 +1382,14 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
       "notes": [
         "align all pages to one left edge and tidy the sidebar footer"
       ]
+    },
+    {
+      "version": "v10.3.1",
+      "notes": []
+    },
+    {
+      "version": "v10.4.0",
+      "notes": []
     }
   ],
   "unpublished": []
