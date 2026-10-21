@@ -6879,8 +6879,8 @@
       },
       {
         "slug": "user-project-items",
-        "title": "List user Project items completely",
-        "description": "Read every item and its single-select and text field values from a user-owned ProjectV2 with checked cursor pagination.",
+        "title": "List user Project items with bounded field values",
+        "description": "Read every item from a user-owned ProjectV2 with checked cursor pagination and up to 20 field values per item. The workflow fails closed if a nested fieldValues connection has more pages; query that item's field values separately with bounded cursor pagination to read them completely.",
         "intent_keywords": ["github project items", "projectv2 graphql", "user project status"],
         "derived_from_skill": "github-graphql-basics",
         "category": "devops",
@@ -6897,7 +6897,7 @@
         "deprecated": null,
         "workflow": {
           "name": "github-graphql-user-project-items",
-          "description": "Read every item and its single-select and text field values from a user-owned ProjectV2 with checked cursor pagination.",
+          "description": "Read every item from a user-owned ProjectV2 with checked cursor pagination and up to 20 field values per item. The workflow fails closed if a nested fieldValues connection has more pages; query that item's field values separately with bounded cursor pagination to read them completely.",
           "input_schema": {
             "type": "object",
             "required": ["login", "number"],
