@@ -21,10 +21,12 @@ export function FactList({
   items,
   loading,
   testId,
+  layout = "default",
 }: {
   items: readonly Fact[];
   loading?: boolean | number;
   testId?: string;
+  layout?: "default" | "stacked";
 }) {
   const phase = useLoadingPhase(loading !== undefined && loading !== false);
   if (phase !== "content") {
@@ -51,21 +53,22 @@ export function FactList({
       </div>
     );
   }
+  const stacked = layout === "stacked";
   const single = items.length === 1;
   return (
     <dl
       data-slot="fact-list"
       data-testid={testId}
-      data-shape={single ? "line" : "box"}
-      className={single ? LINE : BOX}
+      data-shape={stacked ? "stacked" : single ? "line" : "box"}
+      className={stacked ? "space-y-3" : single ? LINE : BOX}
     >
       {items.map((item, index) => (
         <div
           key={item.testId ?? index}
-          className={single ? "contents" : ROW}
+          className={stacked ? undefined : single ? "contents" : ROW}
           data-testid={item.testId}
         >
-          <dt className="flex items-center gap-1 text-muted-foreground">
+          <dt className={cn("flex items-center gap-1 text-muted-foreground", stacked && "text-xs")}>
             {item.label}
             {item.help ? (
               <ContextHelp
@@ -76,7 +79,15 @@ export function FactList({
               </ContextHelp>
             ) : null}
           </dt>
-          <dd className={single ? "min-w-0 break-words" : "min-w-0 font-medium break-words"}>
+          <dd
+            className={cn(
+              stacked
+                ? "mt-1 min-w-0 break-words"
+                : single
+                  ? "min-w-0 break-words"
+                  : "min-w-0 font-medium break-words",
+            )}
+          >
             {item.value}
           </dd>
         </div>
