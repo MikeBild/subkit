@@ -30,6 +30,7 @@ import {
   rehydrateExecutionPrincipal,
 } from "../../execution/authorization-context.ts";
 import { callerFromPrincipal } from "../../execution/caller-context.ts";
+import { getContext, type LogContext, withContext } from "../../logging/context.ts";
 import { log } from "../../logging/logger.ts";
 import {
   type ConversationTurnEnvelope,
@@ -45,6 +46,7 @@ import {
   setMcpTaskResultIfCurrentAttempt,
 } from "../../mcp/tasks/store.ts";
 import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
+import { RequestSourceSchema } from "../../observability/service-metadata.ts";
 import { can } from "../../rbac/evaluator.ts";
 import { recordUsageEvent } from "../../stats/usage-events.ts";
 import {
@@ -614,53 +616,75 @@ export async function registerConversationRunTurnHandler(
     },
     async (jobs: Job<ConversationRunTurnJob>[]) => {
       for (const job of jobs) {
+        let settlementContext: LogContext | undefined;
         try {
-          await withActiveTenantJobContext(job.data, db, () =>
-            withHostedWork(db, job.data.tenant_id, "chat", () => handleOne(job, db, boss), {
-              queue: CONVERSATION_RUN_TURN_QUEUE,
-              id: job.id,
-            }),
-          );
+          await withActiveTenantJobContext(job.data, db, async () => {
+            const task = await getMcpTask(job.data.tenant_id, job.data.mcp_task_id, db);
+            const originSource = RequestSourceSchema.safeParse(task?.origin_source);
+            return withContext(
+              {
+                audit_origin_source: originSource.success ? originSource.data : undefined,
+                audit_trace_id: task?.audit_trace_id ?? undefined,
+              },
+              () => {
+                settlementContext = { ...getContext() };
+                return withHostedWork(
+                  db,
+                  job.data.tenant_id,
+                  "chat",
+                  () => handleOne(job, db, boss),
+                  {
+                    queue: CONVERSATION_RUN_TURN_QUEUE,
+                    id: job.id,
+                  },
+                );
+              },
+            );
+          });
         } catch (error) {
           const quotaCode = hostedContentQuotaCode(error);
           if (quotaCode) {
-            const finalized = await finalizeHostedContentQuota(db, {
-              tenantId: job.data.tenant_id,
-              resourceType: "mcp_task",
-              resourceId: job.data.mcp_task_id,
-              code: quotaCode,
-              expectedJobId: job.data.attempt_id ?? job.id,
-            });
+            const finalized = await withContext(settlementContext ?? {}, () =>
+              finalizeHostedContentQuota(db, {
+                tenantId: job.data.tenant_id,
+                resourceType: "mcp_task",
+                resourceId: job.data.mcp_task_id,
+                code: quotaCode,
+                expectedJobId: job.data.attempt_id ?? job.id,
+              }),
+            );
             if (finalized !== "unmatched") continue;
           }
           if (error instanceof HostedWorkQuotaError) {
-            await ifHostedJobStillPending(
-              db,
-              job.data.tenant_id,
-              CONVERSATION_RUN_TURN_QUEUE,
-              job.id,
-              async (tx) => {
-                const changed = await setMcpTaskFailureIfNotTerminal(
-                  job.data.tenant_id,
-                  job.data.mcp_task_id,
-                  error.code,
-                  tx,
-                  job.data.attempt_id,
-                );
-                if (changed)
-                  await auditAwait(
-                    {
-                      tenant_id: job.data.tenant_id,
-                      action: AuditAction.CONVERSATION_TURN_FAILED,
-                      actor_type: "system",
-                      resource_type: "conversation",
-                      resource_id: job.data.conversation_id,
-                      result: "error",
-                      reason: error.code,
-                    },
+            await withContext(settlementContext ?? {}, () =>
+              ifHostedJobStillPending(
+                db,
+                job.data.tenant_id,
+                CONVERSATION_RUN_TURN_QUEUE,
+                job.id,
+                async (tx) => {
+                  const changed = await setMcpTaskFailureIfNotTerminal(
+                    job.data.tenant_id,
+                    job.data.mcp_task_id,
+                    error.code,
                     tx,
+                    job.data.attempt_id,
                   );
-              },
+                  if (changed)
+                    await auditAwait(
+                      {
+                        tenant_id: job.data.tenant_id,
+                        action: AuditAction.CONVERSATION_TURN_FAILED,
+                        actor_type: "system",
+                        resource_type: "conversation",
+                        resource_id: job.data.conversation_id,
+                        result: "error",
+                        reason: error.code,
+                      },
+                      tx,
+                    );
+                },
+              ),
             );
           }
           throw error;

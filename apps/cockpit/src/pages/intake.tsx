@@ -43,6 +43,7 @@ import {
   FilterBar,
   type FilterSelect,
   FormDialog,
+  GroupingTabs,
   Page,
   PageHeader,
   RecordSheet,
@@ -588,7 +589,15 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
   }, [requestedCategory]);
   const [editingClip, setEditingClip] = useState<IntakeClip | null>(null);
   const [detailClip, setDetailClip] = useState<IntakeClip | null>(null);
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1600px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1600px)");
+    const update = () => setWide(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const [sorting, setSorting] = useState<SortingState>([{ id: "captured_at", desc: true }]);
+  const [groupMode, setGroupMode] = useState("all");
   const [settingDefaultCategory, setSettingDefaultCategory] = useState(false);
   const [state, setState] = useState<"all" | (typeof INTAKE_STATES)[number]>("all");
   const [origin, setOrigin] = useState<"all" | IntakeOrigin>("all");
@@ -852,6 +861,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
           }
         />
         <RecordSheet
+          dock={wide}
           open={detailClip !== null}
           onOpenChange={(open) => {
             if (!open) setDetailClip(null);
@@ -1120,6 +1130,32 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
             <DataTable<IntakeClip>
               columns={clipColumns}
               data={visibleClips}
+              groupingTabs={
+                <GroupingTabs
+                  label={t("common.groupBy")}
+                  value={groupMode}
+                  onChange={setGroupMode}
+                  options={[
+                    { value: "all", label: t("common.all") },
+                    { value: "category", label: t("intake.category") },
+                    { value: "state", label: t("resource.field.status") },
+                    { value: "origin", label: t("intake.origin") },
+                  ]}
+                  testId="intake-grouping"
+                />
+              }
+              grouping={
+                groupMode === "all"
+                  ? undefined
+                  : {
+                      getKey: (clip) =>
+                        groupMode === "category"
+                          ? humanizeCategory(clip.category, t("catalog.categoryOther"))
+                          : groupMode === "state"
+                            ? t(intakeStateLabelKey(clip.state))
+                            : t(intakeOriginLabelKey(intakeOrigin(clip.original_snapshot))),
+                    }
+              }
               getRowId={(clip) => clip.id}
               toolbar={
                 <FilterBar
@@ -1169,6 +1205,14 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                       },
                     ] satisfies FilterSelect[]
                   }
+                  reset={{
+                    label: t("catalog.clearFilters"),
+                    onClick: () => {
+                      setCategory(null);
+                      setState("all");
+                      setOrigin("all");
+                    },
+                  }}
                 />
               }
               pending={false}

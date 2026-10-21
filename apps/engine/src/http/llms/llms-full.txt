@@ -1399,6 +1399,26 @@ Query the append-only audit log
 Stream audit log as NDJSON to stdout or a file
 
 - `--since` (string) — Lower bound — ISO-8601 timestamp
+- `--to` (string) — Exclusive UTC upper bound (ISO-8601)
+- `--action` (string) — Action name filter
+- `--actor` (string) — Actor id filter
+- `--actor-type` (string) — Actor kind
+- `--api-key-id` (string) — Recorded API key id
+- `--session-id` (string) — Recorded session id
+- `--access-type` (string) — Verified access type
+- `--oauth-client-id` (string) — Verified OAuth client id
+- `--request-source` (string) — Legacy recorded source (not verified)
+- `--origin-source` (string) — Verified initiating source
+- `--execution-source` (string) — Immediate server execution step
+- `--correlation-id` (string) — Trusted audit correlation id
+- `--resource-type` (string) — Resource type
+- `--resource-types` (string) — Comma-separated resource types
+- `--resource-id` (string) — Resource id
+- `--result` (string) — success, denied or error
+- `--trace-id` (string) — Trace id
+- `--execution-id` (string) — Recorded execution id
+- `--conversation-id` (string) — Recorded conversation id
+- `--workflow-id` (string) — Recorded workflow id
 - `--output` (string) — Output file path (default: stdout)
 
 #### `sk audit query`
@@ -1409,7 +1429,24 @@ Filter the audit log
 - `--since` (string) — Lower bound — ISO-8601 timestamp or relative (e.g. 10m, 1h, 7d)
 - `--action` (string) — Action name filter
 - `--actor` (string) — Actor id filter
+- `--actor-type` (string) — Actor kind
+- `--api-key-id` (string) — Recorded API key id
+- `--session-id` (string) — Recorded session id
+- `--access-type` (string) — Verified access type
+- `--oauth-client-id` (string) — Verified OAuth client id
+- `--request-source` (string) — Legacy recorded source (not verified)
+- `--origin-source` (string) — Verified initiating source
+- `--execution-source` (string) — Immediate server execution step
+- `--correlation-id` (string) — Trusted audit correlation id
+- `--resource-type` (string) — Resource type
+- `--resource-types` (string) — Comma-separated resource types
 - `--resource-id` (string) — Filter by resource id
+- `--result` (string) — success, denied or error
+- `--trace-id` (string) — Trace id
+- `--execution-id` (string) — Recorded execution id
+- `--conversation-id` (string) — Recorded conversation id
+- `--workflow-id` (string) — Recorded workflow id
+- `--to` (string) — Exclusive UTC upper bound (ISO-8601)
 - `--cursor` (string) — Continue after a previous page (its next_cursor)
 - `--json` — JSON output
 

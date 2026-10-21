@@ -1,9 +1,17 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import * as discoveryService from "../../connectors/discovery/service.ts";
-import { connectors, conversations, credentials, tenants } from "../../db/schema/index.ts";
+import {
+  auditLog,
+  connectors,
+  conversations,
+  credentials,
+  tenants,
+} from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { tenantWorkSnapshot } from "../../execution/tenant-work.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import {
   withConnectorInspection,
@@ -338,6 +346,22 @@ describe("saveConnectorAtomic — cognito_user_password cache fallback for oauth
         );
       expect(cred).toHaveLength(1);
       expect(cred[0]!.mode).toBe("oauth2");
+      await waitFor(() => tenantWorkSnapshot(tenant_id).in_flight === 0, {
+        tries: 5000,
+        sleepMs: 2,
+        label: "connector discovery audit",
+      });
+      const discoveryReceipts = await ctx.db
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, tenant_id),
+            eq(auditLog.resource_id, conn[0]!.id),
+            eq(auditLog.action, "connector.discovered"),
+          ),
+        );
+      expect(discoveryReceipts).toHaveLength(1);
     });
   });
 

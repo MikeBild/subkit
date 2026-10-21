@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -7,7 +7,7 @@ import { ApiError, apiRequest } from "@/api/client";
 import { listIntakeClips } from "@/api/intake";
 import { loadKnowledgeChunks } from "@/api/knowledge";
 import type { components } from "@/api/schema";
-import { absolute, chatNewHref, recordHref, workflowHref } from "@/app/links";
+import { absolute, chatNewHref, recordHref, uuidParam, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
 import {
@@ -36,9 +36,11 @@ import {
   FilePreview,
   FilterBar,
   FormDialog,
+  GroupingTabs,
   Input,
   Page,
   PageHeader,
+  RecordOpenLink,
   RecordSheet,
   RowName,
   Section,
@@ -52,6 +54,7 @@ import { bytes, MISSING, tableColumns } from "@/components/cockpit/table-columns
 import { ForbiddenState, queryView } from "@/components/failure-state";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
@@ -139,10 +142,13 @@ function sectionsLine(t: Translate, count: number): string {
 export function KnowledgeSourcesPage({ permissions }: { permissions: readonly string[] }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
+  const searchStr = useRouterState({ select: (state) => state.location.searchStr });
+  const selectedId = uuidParam(new URLSearchParams(searchStr), "item");
   const canRead = permissions.includes("knowledge:read");
   const canWrite = permissions.includes("knowledge:write");
   const canChat = permissions.includes("conversation:write");
   const [search, setSearch] = useState("");
+  const [groupMode, setGroupMode] = useState("all");
   const q = useDebouncedValue(search).trim();
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
@@ -274,6 +280,30 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         <DataTable
           columns={columns}
           data={rows}
+          groupingTabs={
+            <GroupingTabs
+              label={t("common.groupBy")}
+              value={groupMode}
+              onChange={setGroupMode}
+              options={[
+                { value: "all", label: t("common.all") },
+                { value: "kind", label: t("knowledge.column.kind") },
+                { value: "status", label: t("resource.field.status") },
+              ]}
+              testId="knowledge-grouping"
+              note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+            />
+          }
+          grouping={
+            groupMode === "all"
+              ? undefined
+              : {
+                  getKey: (row) =>
+                    groupMode === "kind"
+                      ? t(KIND_KEYS[sourceKind(row.source_type)])
+                      : statusLabel(t, row.status),
+                }
+          }
           infinite={list.infinite}
           total={list.total}
           getRowId={(row) => row.id}
@@ -286,6 +316,14 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
                 testId: "knowledge-search",
               }}
               selects={categoryFilter.select ? [categoryFilter.select] : []}
+              reset={{
+                label: t("catalog.clearFilters"),
+                onClick: () => {
+                  setSearch("");
+                  categoryFilter.select?.onChange("all");
+                  origin.setValue("all");
+                },
+              }}
             />
           }
           pending={pending}
@@ -315,16 +353,109 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
           hasActiveFilters={Boolean(q || categoryFilter.category || origin.active)}
           sorting={sorting}
           onSortingChange={setSorting}
-          onOpen={(row) => void navigate({ to: recordHref("knowledge", row.id) })}
-          rowHref={(row) => recordHref("knowledge", row.id)}
+          onOpen={(row) => void navigate({ to: "/knowledge", search: { item: row.id } })}
+          rowHref={(row) => `/knowledge?item=${encodeURIComponent(row.id)}`}
           rowLabel={(row) => row.name}
           columnsLabel={t("catalog.columns")}
           actionsLabel={t("common.actions")}
           collectionId="knowledge-sources"
         />
       </div>
+      {selectedId ? (
+        <KnowledgeSourceSheet
+          id={selectedId}
+          onClose={() => void navigate({ to: "/knowledge", search: {} })}
+        />
+      ) : null}
       {canWrite ? <AddSourceDialog open={adding} onOpenChange={setAdding} /> : null}
     </Page>
+  );
+}
+
+function KnowledgeSourceSheet({ id, onClose }: { id: string; onClose(): void }) {
+  const { t, dateTime } = useI18n();
+  const live = useLiveQueryOptions();
+  const query = useQuery({
+    queryKey: ["knowledge-source", id],
+    queryFn: () => apiRequest<KnowledgeSource>(`${ENDPOINT}/${encodeURIComponent(id)}`),
+    ...live,
+  });
+  const source = query.data;
+  const kind = source ? sourceKind(source.source_type) : null;
+  return (
+    <RecordSheet
+      dock
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={source?.name ?? t("nav.knowledgeSources")}
+      subtitle={source ? <CatalogMetadataSummary record={source} /> : undefined}
+      action={
+        source ? (
+          <RecordOpenLink
+            href={absolute(recordHref("knowledge", source.id))}
+            testId="knowledge-sheet-open"
+          />
+        ) : null
+      }
+      testId="knowledge-source-sheet"
+      closeTestId="knowledge-sheet-close"
+      titleTestId="knowledge-sheet-title"
+      loading={query.isPending}
+    >
+      {query.error ? (
+        <DataState
+          state="error"
+          line={t("detail.loadFailed")}
+          onRetry={() => void query.refetch()}
+          testId="knowledge-sheet-error"
+        />
+      ) : source && kind ? (
+        <>
+          <StatusStrip
+            tone={source.status === "error" ? "error" : source.status === "active" ? "ok" : "warn"}
+            line={statusLabel(t, source.status)}
+            help={source.last_error ?? undefined}
+            testId="knowledge-sheet-status"
+          />
+          <FactList
+            testId="knowledge-sheet-facts"
+            items={[
+              { label: t("knowledge.column.kind"), value: t(KIND_KEYS[kind]) },
+              {
+                label: t("knowledge.column.size"),
+                value: `${sectionsLine(t, source.chunk_count)} · ${bytes(source.bytes_total)}`,
+              },
+              {
+                label: t("knowledge.column.read"),
+                value: dateTime(source.last_refreshed_at ?? source.updated_at),
+              },
+              ...(kind === "url" || kind === "discovered"
+                ? [
+                    {
+                      label: t("knowledge.field.url"),
+                      value: (
+                        <span className="break-all font-mono text-xs">{source.source_uri}</span>
+                      ),
+                    },
+                  ]
+                : []),
+              ...(kind === "url"
+                ? [{ label: t("knowledge.field.refresh"), value: rhythmLabel(t, source) }]
+                : []),
+            ]}
+          />
+          <CollapsibleSection label={t("knowledge.technical")} testId="knowledge-sheet-technical">
+            <FactList
+              items={[
+                { label: t("knowledge.fact.slug"), value: source.slug },
+                { label: t("knowledge.fact.mime"), value: source.mime_type ?? MISSING },
+                { label: t("knowledge.fact.created"), value: dateTime(source.created_at) },
+              ]}
+            />
+          </CollapsibleSection>
+        </>
+      ) : null}
+    </RecordSheet>
   );
 }
 

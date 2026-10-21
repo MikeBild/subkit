@@ -1,10 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
 import { runHeadless } from "../../../../sk/src/headless.ts";
+import { auditLog } from "../../db/schema/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
 interface AuditRow {
+  id: string;
   action: string;
   actor_id: string | null;
   resource_type: string;
@@ -59,8 +62,13 @@ describe("journey: sk-cli admin golden path", () => {
     });
     const latest = rows[0];
     expect(latest?.resource_id).toBe(conversationId);
-    expect((latest!.metadata as { owner_id?: string }).owner_id).toBe(ctx.userId);
-    expect((latest!.metadata as { memory_included?: boolean }).memory_included).toBe(false);
+    const [stored] = await ctx.db
+      .select({ metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(and(eq(auditLog.id, latest!.id), eq(auditLog.tenant_id, ctx.tenantId)));
+    const evidence = stored?.metadata as Record<string, unknown> | undefined;
+    expect(evidence?.owner_id).toBe(ctx.userId);
+    expect(evidence?.memory_included).toBe(false);
   });
 
   test("AC2: memory injection emits CONVERSATION_MEMORY_INJECTED", async () => {

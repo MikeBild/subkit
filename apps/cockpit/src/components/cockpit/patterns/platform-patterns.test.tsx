@@ -8,6 +8,7 @@ import { FactList } from "./fact-list";
 import { FileDrop } from "./file-drop";
 import { fileRefusal, formatBytes, parseCsv, previewKind } from "./file-kinds";
 import { FilePreview } from "./file-preview";
+import { FilterBar } from "./filter-bar";
 import { PageHeader } from "./page-header";
 import { rowChange, withLeaving } from "./row-motion";
 import { StatusStrip } from "./status-strip";
@@ -45,6 +46,70 @@ function table(props: Partial<Parameters<typeof DataTable<Row>>[0]> = {}) {
 }
 
 describe("DataTable", () => {
+  test("a primary list reserves a real left filter column and keeps grouping in the list", () => {
+    const html = table({
+      toolbar: (
+        <FilterBar
+          search={{ value: "", onChange() {}, placeholder: "Suchen" }}
+          selects={[
+            {
+              label: "Status",
+              value: "all",
+              onChange() {},
+              options: [{ value: "all", label: "Alle" }],
+            },
+          ]}
+        />
+      ),
+      groupingTabs: <span>Gruppierung</span>,
+    });
+    expect(html).toContain('data-family-slot="list-filter-panel"');
+    expect(html).toContain("min-[1600px]:grid-cols-[280px_minmax(0,1fr)]");
+    expect(html).toContain('data-slot="filter-panel"');
+    expect(html).toContain('data-slot="filter-bar"');
+    expect(html).toContain("Gruppierung");
+    expect(html.indexOf('data-family-slot="list-filter-panel"')).toBeLessThan(
+      html.indexOf("Gruppierung"),
+    );
+  });
+
+  test("an embedded list also keeps its controls beside a narrowing filter column", () => {
+    const html = table({
+      collectionTier: "embedded",
+      toolbar: (
+        <>
+          <FilterBar search={{ value: "", onChange() {}, placeholder: "Suchen" }} />
+          <button type="button" data-testid="embedded-extra-action">
+            Weitere Aktion
+          </button>
+        </>
+      ),
+    });
+    expect(html).toContain('data-family-slot="list-filter-panel"');
+    expect(html).toContain('data-slot="filter-panel"');
+    expect(html).toContain("Weitere Aktion");
+  });
+
+  test("groups loaded rows on desktop and mobile without changing within-group order", () => {
+    const html = table({
+      data: [
+        { id: "a", name: "Alpha", owner: "x" },
+        { id: "b", name: "Beta", owner: "y" },
+        { id: "c", name: "Gamma", owner: "x" },
+      ],
+      grouping: { getKey: (row) => row.owner },
+      groupingTabs: <span>Group choices</span>,
+    });
+    const desktop = html.slice(
+      html.indexOf('data-testid="t-desktop"'),
+      html.indexOf('data-testid="t-mobile"'),
+    );
+    expect(desktop.indexOf("Alpha")).toBeLessThan(desktop.indexOf("Gamma"));
+    expect(desktop.indexOf("Gamma")).toBeLessThan(desktop.indexOf("Beta"));
+    expect((html.match(/data-slot="group-heading"/g) ?? []).length).toBe(4);
+    expect(html).toContain("Group choices");
+  });
+
   test("has no pager and no visible record count", () => {
     const html = table();
     expect(html).not.toContain('data-family-slot="pagination"');

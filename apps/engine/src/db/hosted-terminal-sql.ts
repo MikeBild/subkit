@@ -69,18 +69,47 @@ END $$;
 CREATE CONSTRAINT TRIGGER hosted_terminal_receipt_required AFTER INSERT OR UPDATE ON subkit.executions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION subkit.hosted_terminal_receipt_required();
 CREATE CONSTRAINT TRIGGER hosted_terminal_receipt_required AFTER INSERT OR UPDATE ON subkit.mcp_tasks DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION subkit.hosted_terminal_receipt_required()`;
 
-export function renderHostedTerminalSql(options: { cockpitControls?: boolean } = {}): string[] {
-  if (!options.cockpitControls) return [receipt, terminal, singleton, guard, required];
+function replaceSingletonExact(source: string, before: string, after: string): string {
+  const index = source.indexOf(before);
+  if (index < 0 || source.indexOf(before, index + before.length) >= 0)
+    throw new Error("hosted_singleton_sql_drift");
+  return source.replace(before, after);
+}
+
+export function renderHostedTerminalSql(
+  options: { cockpitControls?: boolean; auditProvenance?: boolean } = {},
+): string[] {
+  const singletonSql = options.auditProvenance
+    ? replaceSingletonExact(
+        replaceSingletonExact(
+          replaceSingletonExact(
+            replaceSingletonExact(
+              singleton,
+              " resource uuid; tenant uuid;",
+              " resource uuid; tenant uuid; metadata jsonb;",
+            ),
+            " IF kind IN ('execution','mcp_task') THEN",
+            " metadata:=subkit.hosted_audit_metadata_without_provenance(j->'metadata');\n IF metadata IS NULL THEN RETURN false; END IF;\n IF kind IN ('execution','mcp_task') THEN",
+          ),
+          "AND j->'metadata'=jsonb_build_object('code',j->>'reason')",
+          "AND metadata=jsonb_build_object('code',j->>'reason')",
+        ),
+        "(j->'metadata')-ARRAY['storage_namespace','evidence_sha256','operator_tenant_id']",
+        "(metadata)-ARRAY['storage_namespace','evidence_sha256','operator_tenant_id']",
+      )
+    : singleton;
+  const resolvedSingleton = singletonSql;
+  if (!options.cockpitControls) return [receipt, terminal, resolvedSingleton, guard, required];
   return [
     receipt,
     terminal,
-    singleton.replace(
+    resolvedSingleton.replace(
       " IF kind='hosted_storage_object' THEN",
       () => ` IF kind='session' THEN
-  RETURN COALESCE(j->>'actor_type'='user' AND j->>'actor_id' IS NOT NULL AND j->>'result'='success' AND j->>'action'='session.revoked' AND j->>'reason'='installation_revoked' AND (j->'metadata')-ARRAY['installation_id']='{}'::jsonb AND j#>>'{metadata,installation_id}' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',false);
+  RETURN COALESCE(j->>'actor_type'='user' AND j->>'actor_id' IS NOT NULL AND j->>'result'='success' AND j->>'action'='session.revoked' AND j->>'reason'='installation_revoked' AND (${options.auditProvenance ? "metadata" : "j->'metadata'"})-ARRAY['installation_id']='{}'::jsonb AND j#>>'{metadata,installation_id}' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',false);
  END IF;
  IF kind='cockpit_installation' THEN
-  RETURN COALESCE(j->>'actor_type'='user' AND j->>'actor_id' IS NOT NULL AND j->>'result'='success' AND j->>'action'='cockpit_installation.revoked' AND j->>'reason' IS NULL AND (j->'metadata')-ARRAY['revoked_session_count']='{}'::jsonb AND j#>>'{metadata,revoked_session_count}' ~ '^(0|[1-9][0-9]{0,8})$',false);
+  RETURN COALESCE(j->>'actor_type'='user' AND j->>'actor_id' IS NOT NULL AND j->>'result'='success' AND j->>'action'='cockpit_installation.revoked' AND j->>'reason' IS NULL AND (${options.auditProvenance ? "metadata" : "j->'metadata'"})-ARRAY['revoked_session_count']='{}'::jsonb AND j#>>'{metadata,revoked_session_count}' ~ '^(0|[1-9][0-9]{0,8})$',false);
  END IF;
  IF kind='hosted_storage_object' THEN`,
     ),

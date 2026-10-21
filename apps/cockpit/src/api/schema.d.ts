@@ -20152,12 +20152,26 @@ export interface paths {
                     action?: string;
                     actor_id?: string;
                     actor_type?: "user" | "system_account" | "system" | "unknown";
+                    /** @description Matches verified use or historical recorded metadata; inspect the returned field to distinguish provenance. */
+                    api_key_id?: string;
+                    /** @description Matches verified use or historical recorded metadata; inspect the returned field to distinguish provenance. */
+                    session_id?: string;
+                    access_type?: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | "external_bearer" | "portal_token";
+                    oauth_client_id?: string;
+                    request_source?: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue";
+                    origin_source?: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue";
+                    execution_source?: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue";
+                    execution_id?: string;
+                    conversation_id?: string;
+                    workflow_id?: string;
                     resource_type?: string;
                     resource_types?: string;
                     resource_id?: string;
                     result?: "success" | "denied" | "error";
                     trace_id?: string;
+                    correlation_id?: string;
                     ts_from?: string;
+                    /** @description Exclusive UTC upper bound. Events at this instant are excluded. */
                     ts_to?: string;
                     limit?: number;
                     cursor?: string;
@@ -20175,6 +20189,72 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["AuditLogListResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/audit-log/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Find resources by recorded audit names or stable ID */
+        get: {
+            parameters: {
+                query: {
+                    search: string;
+                    resource_type?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Matching recorded resource names and IDs */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: {
+                                resource_type: string;
+                                resource_id: string;
+                                resource_name: string | null;
+                                /** Format: date-time */
+                                last_seen_at: string;
+                            }[];
+                        };
                     };
                 };
                 /** @description Unauthorized */
@@ -27781,6 +27861,37 @@ export interface components {
             /** @enum {string} */
             actor_type: "user" | "system_account" | "system" | "unknown";
             actor_id: string | null;
+            /** Format: uuid */
+            api_key_id: string | null;
+            /** Format: uuid */
+            session_id: string | null;
+            /** Format: uuid */
+            recorded_api_key_id: string | null;
+            /** Format: uuid */
+            recorded_session_id: string | null;
+            /** @enum {string|null} */
+            access_type: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | "external_bearer" | "portal_token" | null;
+            oauth_client_id: string | null;
+            /** @enum {string|null} */
+            credential_origin: "cli_oauth_session" | null;
+            /** @enum {string|null} */
+            request_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue" | null;
+            /** @enum {string|null} */
+            origin_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue" | null;
+            /** @enum {string|null} */
+            execution_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue" | null;
+            /** Format: uuid */
+            execution_id: string | null;
+            /** Format: uuid */
+            conversation_id: string | null;
+            /** Format: uuid */
+            workflow_id: string | null;
+            changed_fields: string[];
+            changes: {
+                field: string;
+                before: string | boolean;
+                after: string | boolean;
+            }[];
             action: string;
             resource_type: string;
             resource_id: string | null;
@@ -27788,11 +27899,13 @@ export interface components {
             resource_name: string | null;
             result: string;
             trace_id: string | null;
+            correlation_id: string | null;
             ip: string | null;
             user_agent: string | null;
             before?: unknown;
             after?: unknown;
             reason: string | null;
+            reason_redacted: boolean;
             metadata: {
                 [key: string]: unknown;
             };

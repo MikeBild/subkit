@@ -2,10 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { components } from "@/api/schema";
-import { type ActorDirectory, actorDirectory, actorKey } from "@/app/actor-directory-model";
 import { ALL_ROUTE_PATHS } from "@/app/route-table";
 import { type Locale, type TranslationKey, translate } from "@/lib/i18n";
-import { buildNameIndex } from "@/lib/name-index";
 import {
   actorTypeLabel,
   auditActionLabel,
@@ -28,6 +26,7 @@ import {
   isAuditEntry,
   isAuditScope,
   LINKED_RESOURCE_TYPES,
+  normalizedAuditScope,
   searchedActionParams,
   shortIdentifier,
 } from "@/pages/audit-model";
@@ -41,6 +40,22 @@ const ENTRY: AuditEntry = {
   tenant_id: "018f4b4a-6d33-7b3a-9c2d-123456789abc",
   actor_type: "user",
   actor_id: "018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa",
+  api_key_id: null,
+  session_id: null,
+  recorded_api_key_id: null,
+  recorded_session_id: null,
+  access_type: null,
+  oauth_client_id: null,
+  credential_origin: null,
+  request_source: null,
+  origin_source: null,
+  execution_source: null,
+  execution_id: null,
+  conversation_id: null,
+  workflow_id: null,
+  changed_fields: [],
+  changes: [],
+  correlation_id: null,
   action: "settings.changed",
   resource_type: "settings",
   resource_id: null,
@@ -52,6 +67,7 @@ const ENTRY: AuditEntry = {
   before: null,
   after: null,
   reason: null,
+  reason_redacted: false,
   metadata: {},
 };
 
@@ -266,6 +282,10 @@ describe("the two halves of the log", () => {
     expect(auditScopeParams("decisions")).toHaveProperty("action");
     expect(auditScopeParams("operations")).toEqual({ actor_type: "system" });
     expect(auditScopeParams("all")).toEqual({});
+    expect(normalizedAuditScope("decisions", "workflow.deleted", "")).toBe("decisions");
+    expect(normalizedAuditScope("decisions", "workflow.created", "")).toBe("all");
+    expect(normalizedAuditScope("operations", "", "user")).toBe("all");
+    expect(normalizedAuditScope("operations", "", "system")).toBe("operations");
   });
 
   test("the decision scope carries the verbs a person answers for", () => {
@@ -466,7 +486,9 @@ describe("what one record says about itself", () => {
     expect(labelled(facts, "audit.detail.resourceId")?.value).toBe(
       "018f4b4a-6d33-7b3a-9c2d-bbbbbbbbbbbb",
     );
-    expect(labelled(facts, "audit.column.actor")?.value).toBe(de("audit.actor.user"));
+    expect(labelled(facts, "audit.column.actor")?.value).toBe(
+      `${de("audit.actor.user")} · 018f4b4a…aaaaaaaaaaaa`,
+    );
     expect(labelled(facts, "audit.column.resource")?.value).toBe(de("nav.settings"));
   });
 
@@ -659,73 +681,74 @@ describe("the narrowing a link brings to the log", () => {
 });
 
 describe("who caused a row (§15.2 Verursacher)", () => {
-  test("colliding user and service identifiers keep their own names", () => {
-    const colliding = actorDirectory(
-      { items: [{ id: "same", email: "person@example.com" }] },
-      { items: [{ id: "same", name: "Service" }] },
+  test("colliding user and service identifiers keep their recorded actor types", () => {
+    expect(auditActorName({ actor_type: "user", actor_id: "same" }, deText)?.text).toBe(
+      `${deText("audit.actor.user")} · same`,
     );
-    expect(auditActorName({ actor_type: "user", actor_id: "same" }, colliding, deText)?.text).toBe(
-      "person@example.com",
+    expect(auditActorName({ actor_type: "system_account", actor_id: "same" }, deText)?.text).toBe(
+      `${deText("audit.actor.systemAccount")} · same`,
     );
-    expect(
-      auditActorName({ actor_type: "system_account", actor_id: "same" }, colliding, deText)?.text,
-    ).toBe("Service");
-    expect(auditActorName({ actor_type: "unknown", actor_id: null }, colliding, deText)).toEqual({
+    expect(auditActorName({ actor_type: "unknown", actor_id: null }, deText)).toEqual({
       text: deText("audit.actor.unknown"),
       machine: false,
     });
   });
-  const directory: ActorDirectory = new Map([
-    [actorKey("user", "018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa"), "operator@example.com"],
-    [actorKey("system_account", "018f4b4a-6d33-7b3a-9c2d-bbbbbbbbbbbb"), "Reporting bot"],
-  ]);
 
-  test("a person or system account by name", () => {
+  test("a person or system account by stable ID without present-day directory names", () => {
     expect(
       auditActorName(
         { actor_type: "user", actor_id: "018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa" },
-        directory,
         deText,
       ),
-    ).toEqual({ text: "operator@example.com", machine: false });
+    ).toEqual({
+      text: `${deText("audit.actor.user")} · 018f4b4a…aaaaaaaaaaaa`,
+      machine: false,
+    });
     expect(
       auditActorName(
         { actor_type: "system_account", actor_id: "018f4b4a-6d33-7b3a-9c2d-bbbbbbbbbbbb" },
-        directory,
         deText,
       ),
-    ).toEqual({ text: "Reporting bot", machine: false });
+    ).toEqual({
+      text: `${deText("audit.actor.systemAccount")} · 018f4b4a…bbbbbbbbbbbb`,
+      machine: false,
+    });
   });
 
-  test("an actor the directory cannot name is its kind — never its id", () => {
+  test("actors with the same UUID prefix remain distinct in timeline labels", () => {
     const label = auditActorName(
       { actor_type: "user", actor_id: "018f4b4a-6d33-7b3a-9c2d-cccccccccccc" },
-      directory,
       deText,
     );
-    expect(label).toEqual({ text: deText("audit.actor.user"), machine: false });
-    expect(label?.text).not.toContain("018f4b4a");
-    expect(auditActorName({ actor_type: "system", actor_id: null }, directory, deText)).toEqual({
+    expect(label).toEqual({
+      text: `${deText("audit.actor.user")} · 018f4b4a…cccccccccccc`,
+      machine: false,
+    });
+    expect(auditActorName({ actor_type: "system", actor_id: null }, deText)).toEqual({
       text: deText("audit.actor.system"),
       machine: false,
     });
   });
 
   test("unavailable actor provenance is labeled unknown", () => {
-    expect(auditActorName({ actor_type: "unknown", actor_id: null }, directory, deText)).toEqual({
+    expect(auditActorName({ actor_type: "unknown", actor_id: null }, deText)).toEqual({
       text: deText("audit.actor.unknown"),
       machine: false,
     });
   });
 
-  test("the detail sheet names the same person the row does", () => {
+  test("the detail sheet keeps the full recorded actor ID as its own fact", () => {
     const facts = auditDetailFacts(
       entry({ actor_type: "user", actor_id: "018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa" }),
       deText,
       absoluteTime,
-      directory,
     );
-    expect(factFor(facts, "audit.column.actor")?.value).toBe("operator@example.com");
+    expect(factFor(facts, "audit.column.actor")?.value).toBe(
+      `${deText("audit.actor.user")} · 018f4b4a…aaaaaaaaaaaa`,
+    );
+    expect(factFor(facts, "audit.detail.actorId")?.value).toBe(
+      "018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa",
+    );
   });
 });
 
@@ -833,19 +856,14 @@ describe("the engine's audited resource types", () => {
 describe("the additional details of one record", () => {
   const t = (key: TranslationKey, values?: Record<string, string | number>) =>
     translate("de", key, values);
-  const names = buildNameIndex(
-    [{ id: "6f1d6c2e-0000-4000-8000-000000000001", name: "Wochenbericht" }],
-    [],
-  );
 
-  test("a workflow it names reads as the workflow's name and opens it", () => {
+  test("a workflow reference uses its ID rather than the workflow's current name", () => {
     const { facts, rest } = auditMetadataFacts(
       { workflow_id: "6f1d6c2e-0000-4000-8000-000000000001", version: 4 },
       t,
-      names,
     );
     expect(facts.map((fact) => [fact.label, fact.value])).toEqual([
-      ["Workflow", "Wochenbericht"],
+      ["Workflow", "Workflow öffnen · 6f1d6c2e-0000-4000-8000-000000000001"],
       ["Version", "4"],
     ]);
     expect(facts[0]?.href).toContain("6f1d6c2e-0000-4000-8000-000000000001");
@@ -853,27 +871,22 @@ describe("the additional details of one record", () => {
     expect(rest).toBeNull();
   });
 
-  test("an unknown workflow still opens, without its identifier as the text", () => {
+  test("an unknown workflow reference still opens with its identifier visible", () => {
     const { facts } = auditMetadataFacts(
       { workflow_id: "6f1d6c2e-0000-4000-8000-0000000000ff" },
       t,
-      names,
     );
-    expect(facts[0]?.value).toBe("Workflow öffnen");
+    expect(facts[0]?.value).toBe("Workflow öffnen · 6f1d6c2e-0000-4000-8000-0000000000ff");
   });
 
   test("what has no reading of its own stays technical", () => {
-    const { facts, rest } = auditMetadataFacts(
-      { request_source: "cockpit", details: { a: 1 } },
-      t,
-      names,
-    );
+    const { facts, rest } = auditMetadataFacts({ request_source: "cockpit", details: { a: 1 } }, t);
     expect(facts).toEqual([]);
     expect(rest).toContain("request_source");
   });
 
   test("an empty record has no additional details", () => {
-    expect(auditMetadataFacts({}, t, names)).toEqual({ facts: [], rest: null });
+    expect(auditMetadataFacts({}, t)).toEqual({ facts: [], rest: null });
   });
 });
 
@@ -956,36 +969,32 @@ test("audit areas select resource types on the server without changing actor ide
   });
 });
 
-test("audit names prefer historical evidence and never guess from an identifier", () => {
-  const names = buildNameIndex([{ id: "wf", name: "Current name" }], []);
+test("audit names use recorded event-time evidence and stable IDs, not current names", () => {
   const t = (key: TranslationKey) => translate("de", key);
   expect(
     auditObjectName(
       { resource_type: "workflow", resource_id: "wf", resource_name: "Deleted name" },
-      names,
       t,
     ),
   ).toBe("Deleted name");
   expect(
-    auditObjectName(
-      { resource_type: "workflow", resource_id: "wf", resource_name: null },
-      names,
-      t,
-    ),
-  ).toBe("Current name");
+    auditObjectName({ resource_type: "workflow", resource_id: "wf", resource_name: null }, t),
+  ).toBe(`${t("audit.resource.workflow")} · wf`);
   expect(
-    auditObjectName(
-      { resource_type: "workflow", resource_id: "unknown", resource_name: null },
-      names,
-      t,
-    ),
-  ).toBe(t("audit.resource.workflow"));
+    auditObjectName({ resource_type: "workflow", resource_id: "unknown", resource_name: null }, t),
+  ).toBe(`${t("audit.resource.workflow")} · unknown`);
 });
 
 test("audit defaults to thirty days but keeps linked operation history unrestricted", () => {
   const now = Date.parse("2026-01-31T00:00:00Z");
   expect(initialAuditFilter("", now).tsFrom).toBe("2026-01-01T00:00:00.000Z");
   expect(initialAuditFilter("?trace_id=operation", now).tsFrom).toBeNull();
+  expect(
+    initialAuditFilter("?correlation_id=0123456789abcdef0123456789abcdef", now).tsFrom,
+  ).toBeNull();
+  expect(initialAuditFilter("?correlation_id=invalid", now).tsFrom).toBe(
+    "2026-01-01T00:00:00.000Z",
+  );
   expect(initialAuditFilter("?ts_from=2025-01-01T00:00:00Z", now).tsFrom).toBe(
     "2025-01-01T00:00:00.000Z",
   );
@@ -1000,4 +1009,7 @@ test("audit count names the implicit thirty-day window and preserves linked-rang
   const linked = initialAuditFilter("?ts_from=2025-01-01T00:00:00Z", 1_760_000_000_000);
   expect(auditCountKey("?ts_from=2025-01-01T00:00:00Z", linked, 2, false)).toBe("audit.count");
   expect(auditCountKey("", { ...implicit, tsFrom: null }, 2, false)).toBe("audit.count");
+  expect(
+    auditCountKey("?correlation_id=0123456789abcdef0123456789abcdef", implicit, 2, false),
+  ).toBe("audit.count");
 });

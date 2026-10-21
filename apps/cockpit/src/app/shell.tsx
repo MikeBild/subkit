@@ -53,7 +53,6 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -70,7 +69,12 @@ import { RunOverlays } from "@/pages/runs";
 import { cockpitBasePath } from "./installation-context";
 import { LiveEventsProvider, useLiveStatus } from "./live-events";
 import { LiveIndicator } from "./live-indicator";
-import { navigationItem, visibleNavigation } from "./navigation";
+import {
+  type NavigationItem,
+  navigationItem,
+  visibleAccountNavigation,
+  visiblePrimaryNavigation,
+} from "./navigation";
 import { pageOf, useRouteEntrance } from "./route-entrance";
 import { useSession } from "./session";
 import {
@@ -117,11 +121,37 @@ function localizedRole(role: string, t: ReturnType<typeof useI18n>["t"]): string
   return role;
 }
 
+function PrimaryNavigationLink({
+  item,
+  label,
+  active,
+}: {
+  item: NavigationItem;
+  label: string;
+  active: boolean;
+}) {
+  const { isMobile, setOpenMobile } = useSidebar();
+  return (
+    <SidebarMenuButton asChild tooltip={label} isActive={active}>
+      <Link
+        to={item.path}
+        data-testid={item.path === "/" ? "nav-overview" : `nav-${item.path.slice(1)}`}
+        onClick={() => {
+          if (isMobile) setOpenMobile(false);
+        }}
+      >
+        <item.icon data-icon="inline-start" />
+        <span>{label}</span>
+      </Link>
+    </SidebarMenuButton>
+  );
+}
+
 export function AppShell() {
   const session = useSession();
   const { t } = useI18n();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const groups = visibleNavigation(session.permissions);
+  const groups = visiblePrimaryNavigation(session.permissions);
   const active = navigationItem(pathname.slice(cockpitBasePath().length) || "/");
   const brandName = installationId()
     ? session.tenant.display_name
@@ -150,13 +180,14 @@ export function AppShell() {
         >
           <SidebarHeader data-testid="cockpit-sidebar-header">
             {!installationId() ? (
-              <WorkspaceSwitcher />
+              <WorkspaceSwitcher attention={<AttentionCounter />} />
             ) : (
               <SidebarMenu>
                 <SidebarMenuItem data-testid="cockpit-wordmark">
                   <SidebarMenuButton asChild size="lg" tooltip={brandName}>
                     <Link to="/" data-testid="cockpit-home-link">
                       <BrandingWordmark />
+                      <AttentionCounter />
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -175,18 +206,11 @@ export function AppShell() {
                         const label = t(item.labelKey);
                         return (
                           <SidebarMenuItem key={item.path}>
-                            <SidebarMenuButton asChild tooltip={label} isActive={active === item}>
-                              <Link
-                                to={item.path}
-                                data-testid={
-                                  item.path === "/" ? "nav-overview" : `nav-${item.path.slice(1)}`
-                                }
-                              >
-                                <item.icon data-icon="inline-start" />
-                                <span>{label}</span>
-                              </Link>
-                            </SidebarMenuButton>
-                            {item.path === "/" && <AttentionCounter />}
+                            <PrimaryNavigationLink
+                              item={item}
+                              label={label}
+                              active={active === item}
+                            />
                           </SidebarMenuItem>
                         );
                       })}
@@ -285,24 +309,27 @@ function ShellContent() {
   );
 }
 
+function DesktopSidebarToggle() {
+  const isMobile = useIsMobile();
+  return isMobile ? null : <SidebarToggle className="shrink-0" />;
+}
+
 function AttentionCounter() {
   const session = useSession();
   const { query, badge } = useAttention(session.permissions);
-  if (query.isError || badge === null) return null;
+  if (query.isError || badge === null || badge.count === 0) return null;
   return (
-    <SidebarMenuBadge
-      className={badge.stopped ? "text-destructive" : undefined}
+    <span
+      className={cn(
+        "ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-sidebar-accent px-1.5 text-[11px] font-medium tabular-nums group-data-[collapsible=icon]:hidden",
+        badge.stopped && "text-destructive",
+      )}
       data-testid="nav-overview-count"
       data-attention-stopped={String(badge.stopped)}
     >
       {badge.count}
-    </SidebarMenuBadge>
+    </span>
   );
-}
-
-function DesktopSidebarToggle() {
-  const isMobile = useIsMobile();
-  return isMobile ? null : <SidebarToggle className="shrink-0" />;
 }
 
 function ShellLiveIndicator() {
@@ -314,10 +341,15 @@ function AccountMenu() {
   const session = useSession();
   const { t, preference, setPreference } = useI18n();
   const { theme, setTheme } = useTheme();
+  const isMobile = useIsMobile();
+  const { setOpenMobile } = useSidebar();
   const [signingOut, setSigningOut] = useState(false);
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
   const identity = session.principal.email || session.principal.role_name || t("common.member");
   const role = localizedRole(session.principal.role_name || "member", t);
+  const accountNavigation = visibleAccountNavigation(session.permissions);
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const active = navigationItem(pathname.slice(cockpitBasePath().length) || "/");
 
   async function signOut(): Promise<void> {
     setSigningOut(true);
@@ -356,12 +388,39 @@ function AccountMenu() {
           </SidebarMenuButton>
         </DropdownMenuTrigger>
 
-        <DropdownMenuContent side="right" align="end" className="w-64" data-testid="account-menu">
+        <DropdownMenuContent
+          side={isMobile ? "top" : "right"}
+          align="end"
+          className="w-64 max-h-[min(80vh,640px)] overflow-y-auto"
+          data-testid="account-menu"
+        >
           <DropdownMenuLabel data-testid="account-summary">
             <span className="block truncate text-sm font-medium text-foreground">{identity}</span>
             <span className="block truncate font-normal">{session.tenant.display_name}</span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
+
+          {accountNavigation.map((item) => (
+            <DropdownMenuItem
+              key={item.path}
+              asChild
+              className={active === item ? "bg-accent text-accent-foreground" : undefined}
+              data-testid={`account-nav-${item.path.slice(1)}`}
+            >
+              <Link
+                to={item.path}
+                data-testid={`account-link-${item.path.slice(1)}`}
+                aria-current={active === item ? "page" : undefined}
+                onClick={() => {
+                  if (isMobile) setOpenMobile(false);
+                }}
+              >
+                <item.icon data-icon="inline-start" />
+                {t(item.labelKey)}
+              </Link>
+            </DropdownMenuItem>
+          ))}
+          {accountNavigation.length > 0 ? <DropdownMenuSeparator /> : null}
 
           <DropdownMenuItem
             onSelect={() => setReleaseNotesOpen(true)}

@@ -70,7 +70,7 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     }
   });
 
-  it("draft probes require confirmation before a development write", () => {
+  it("draft probes with a write method require approval", () => {
     expect(
       decideToolMode({
         tool: "probe_connector_draft",

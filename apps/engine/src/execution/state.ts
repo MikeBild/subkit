@@ -6,8 +6,10 @@ import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { executionSteps, executions, workflowVersions } from "../db/schema/index.ts";
+import { getContext } from "../logging/context.ts";
 import { logger } from "../logging/logger.ts";
 import { recordExecutionTerminal } from "../observability/instrumentation.ts";
+import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import type { ExecutionAuthorizationContext } from "./authorization-context.ts";
 import {
   markBillableStep,
@@ -104,6 +106,8 @@ export async function createExecution(
   if (caller && caller.tenantId !== params.tenant_id)
     throw Object.assign(new Error("caller_tenant_mismatch"), { code: "caller_tenant_mismatch" });
   const callerOrigin = resolveExecutionCallerOrigin(params.tenant_id, caller, params.caller_origin);
+  const originSource = RequestSourceSchema.safeParse(getContext().audit_origin_source);
+  const auditTraceId = getContext().audit_trace_id ?? null;
   const id = await db.transaction(async (tx) => {
     await lockCatalogVocabulary(tx, params.tenant_id);
     const [version] = params.workflow_version_id
@@ -143,6 +147,8 @@ export async function createExecution(
         authorization_context: params.authorization_context ?? null,
         status: "queued",
         request_source: params.request_source,
+        origin_source: originSource.success ? originSource.data : null,
+        audit_trace_id: auditTraceId,
         execution_mode: params.execution_mode ?? "dev",
         parent_execution_id: params.parent_execution_id ?? null,
         authority_root_execution_id: params.authority_link?.root_execution_id ?? null,

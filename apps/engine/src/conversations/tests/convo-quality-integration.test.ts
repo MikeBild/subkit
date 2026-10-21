@@ -108,10 +108,11 @@ describe("convo-quality integration chain", () => {
     expect(result.ok).toBe(true);
     const out = result.data as {
       status_code: number;
-      body: { fields: Array<{ path: string }> };
+      body: { fields: { path: string; type: string }[] };
     };
     expect(out.status_code).toBe(200);
-    expect(out.body.fields.some((field) => field.path === "data[0].id")).toBe(true);
+    expect(out.body.fields).toContainEqual({ path: "data", type: "array[2]" });
+    expect(out.body.fields).toContainEqual({ path: "data[0].id", type: "string" });
     expect(seenAuth).toContain(`Bearer ${CANARY_TOKEN}`);
   });
 

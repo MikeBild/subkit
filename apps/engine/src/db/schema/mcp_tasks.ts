@@ -16,6 +16,8 @@ export const mcpTasks = pgTable(
     kind: text("kind").notNull().$type<"start" | "append" | "respond_elicitation">(),
     job_id: text("job_id"),
     request_source: text("request_source"),
+    origin_source: text("origin_source"),
+    audit_trace_id: text("audit_trace_id"),
     actor_id: uuid("actor_id"),
     actor_kind: auditActorKindEnum("actor_kind"),
     user_message_id: uuid("user_message_id").references(() => conversationMessages.id, {

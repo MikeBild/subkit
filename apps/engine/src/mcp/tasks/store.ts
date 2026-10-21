@@ -3,6 +3,8 @@ import type { Actor } from "../../audit/actor.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import { conversationToolCalls, mcpTasks } from "../../db/schema/index.ts";
+import { getContext } from "../../logging/context.ts";
+import { RequestSourceSchema } from "../../observability/service-metadata.ts";
 
 export interface ConversationTurnEnvelope {
   turn_id?: string;
@@ -32,6 +34,8 @@ export interface McpTaskRow {
   actor_id: string | null;
   actor_kind: "user" | "system_account" | null;
   request_source: string;
+  origin_source: string | null;
+  audit_trace_id: string | null;
   user_message_id: string | null;
   result: ConversationTurnEnvelope | null;
   failure_reason: string | null;
@@ -46,6 +50,8 @@ export interface McpTaskRow {
 }
 
 export async function insertMcpTask(p: InsertMcpTaskParams, db: Db): Promise<string> {
+  const originSource = RequestSourceSchema.safeParse(getContext().audit_origin_source);
+  const auditTraceId = getContext().audit_trace_id ?? null;
   const [row] = await db
     .insert(mcpTasks)
     .values({
@@ -55,6 +61,8 @@ export async function insertMcpTask(p: InsertMcpTaskParams, db: Db): Promise<str
       actor_id: p.actor?.id ?? null,
       actor_kind: p.actor?.kind ?? null,
       request_source: p.request_source,
+      origin_source: originSource.success ? originSource.data : null,
+      audit_trace_id: auditTraceId,
       user_message_id: p.user_message_id,
       turn_seq: sql<number>`(
         SELECT COALESCE(MAX(${mcpTasks.turn_seq}), 0) + 1

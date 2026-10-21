@@ -11,6 +11,7 @@ import { connectors, tenants } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
 import { backfillEmbeddings } from "../embeddings/backfill.ts";
 import { admitSystemWorkflowExecution } from "../execution/authority-admission.ts";
+import { withContext } from "../logging/context.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { enqueueApprovalElicitationResume } from "../queue/approval-resume.ts";
@@ -740,6 +741,27 @@ export class SchedulerReconciler {
   }
 
   private async fireWorkflowSchedule(
+    key: string,
+    payload: ExecutionRunJob,
+    audit: {
+      tenant_id: string;
+      schedule_id: string;
+      tz: string;
+      occurrence_after: Date;
+      claimed_at: Date;
+    },
+  ): Promise<void> {
+    return withContext(
+      {
+        audit_origin_source: "scheduler",
+        audit_execution_source: "scheduler",
+        audit_trace_id: crypto.randomUUID().replace(/-/g, ""),
+      },
+      () => this.fireWorkflowScheduleTrusted(key, payload, audit),
+    );
+  }
+
+  private async fireWorkflowScheduleTrusted(
     key: string,
     payload: ExecutionRunJob,
     audit: {

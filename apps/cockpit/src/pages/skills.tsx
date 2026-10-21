@@ -8,7 +8,7 @@ import { listProposedSkillCandidates, type SkillCandidate } from "@/api/decision
 import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
 import { type ActorDirectory, actorLabel } from "@/app/actor-directory-model";
-import { absolute, chatNewHref, recordHref, routerTarget } from "@/app/links";
+import { absolute, chatNewHref, recordHref, uuidParam } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
 import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
@@ -35,9 +35,12 @@ import {
   FieldLabel,
   FilePreview,
   FilterBar,
+  GroupingTabs,
   Input,
   Page,
   PageHeader,
+  RecordOpenLink,
+  RecordSheet,
   SaveBar,
   Section,
   SegmentedControl,
@@ -96,7 +99,7 @@ function rowTitle(row: SkillRow): string {
 }
 
 function rowAddress(row: SkillRow): string | null {
-  return row.kind === "skill" ? recordHref("skills", row.skill.id) : null;
+  return row.kind === "skill" ? `/skills?item=${encodeURIComponent(row.skill.id)}` : null;
 }
 
 function rowScope(row: SkillRow): string {
@@ -116,6 +119,8 @@ function proposalLine(candidate: SkillCandidate, directory: ActorDirectory, t: T
 export function SkillsPage({ permissions }: { permissions: readonly string[] }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
+  const searchStr = useRouterState({ select: (state) => state.location.searchStr });
+  const selectedId = uuidParam(new URLSearchParams(searchStr), "item");
   const client = useQueryClient();
   const live = useLiveQueryOptions();
   const canRead = permissions.includes("skill:read");
@@ -123,6 +128,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   const canChat = permissions.includes("conversation:write");
   const [proposalId, setProposalId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [groupMode, setGroupMode] = useState("all");
   const q = useDebouncedValue(search).trim();
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
@@ -301,6 +307,32 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
           <DataTable
             columns={columns}
             data={rows}
+            groupingTabs={
+              <GroupingTabs
+                label={t("common.groupBy")}
+                value={groupMode}
+                onChange={setGroupMode}
+                options={[
+                  { value: "all", label: t("common.all") },
+                  { value: "status", label: t("resource.field.status") },
+                  { value: "scope", label: t("skills.column.scope") },
+                ]}
+                testId="skills-grouping"
+                note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+              />
+            }
+            grouping={
+              groupMode === "all"
+                ? undefined
+                : {
+                    getKey: (row) =>
+                      groupMode === "scope"
+                        ? t(skillScopeKey(rowScope(row)))
+                        : row.kind === "skill"
+                          ? t(skillStateLabelKey(row.skill.status))
+                          : t("skills.state.proposed"),
+                  }
+            }
             infinite={list.infinite}
             total={list.total}
             getRowId={(row) =>
@@ -315,6 +347,14 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
                   testId: "skills-search",
                 }}
                 selects={categoryFilter.select ? [categoryFilter.select] : []}
+                reset={{
+                  label: t("catalog.clearFilters"),
+                  onClick: () => {
+                    setSearch("");
+                    categoryFilter.select?.onChange("all");
+                    origin.setValue("all");
+                  },
+                }}
               />
             }
             pending={pending}
@@ -349,7 +389,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
             onSortingChange={setSorting}
             onOpen={(row) => {
               if (row.kind === "proposal") setProposalId(row.candidate.id);
-              else void navigate(routerTarget(recordHref("skills", row.skill.id)));
+              else void navigate({ to: "/skills", search: { item: row.skill.id } });
             }}
             rowHref={rowAddress}
             rowLabel={(row) =>
@@ -378,7 +418,85 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         onClose={() => setProposalId(null)}
         onDecided={decided}
       />
+      {selectedId && selectedId !== "new" ? (
+        <SkillSheet id={selectedId} onClose={() => void navigate({ to: "/skills", search: {} })} />
+      ) : null}
     </Page>
+  );
+}
+
+function SkillSheet({ id, onClose }: { id: string; onClose(): void }) {
+  const { t, dateTime } = useI18n();
+  const query = useSkill(id, true);
+  const skill = query.data;
+  return (
+    <RecordSheet
+      dock
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={skill?.title ?? t("nav.skills")}
+      subtitle={skill ? <CatalogMetadataSummary record={skill} /> : undefined}
+      action={
+        skill ? (
+          <RecordOpenLink
+            href={absolute(recordHref("skills", skill.id))}
+            testId="skill-sheet-open"
+          />
+        ) : null
+      }
+      testId="skill-sheet"
+      closeTestId="skill-sheet-close"
+      titleTestId="skill-sheet-title"
+      loading={query.isPending}
+    >
+      {query.error ? (
+        <DataState
+          state="error"
+          line={t("detail.loadFailed")}
+          onRetry={() => void query.refetch()}
+          testId="skill-sheet-error"
+        />
+      ) : skill ? (
+        <>
+          <StatusStrip
+            tone={skill.status === "active" ? "ok" : "warn"}
+            line={t(
+              skill.status === "active"
+                ? "skills.strip.active"
+                : skill.status === "draft"
+                  ? "skills.strip.draft"
+                  : "skills.strip.disabled",
+            )}
+            testId="skill-sheet-status"
+          />
+          <FactList
+            testId="skill-sheet-facts"
+            items={[
+              { label: t("skills.column.scope"), value: t(skillScopeKey(skill.scope)) },
+              { label: t("skills.column.where"), value: t(skillWhereKey(skill.applies_to)) },
+              { label: t("skills.column.changed"), value: dateTime(skill.updated_at) },
+            ]}
+          />
+          <Section label={t("skills.editor.body")} testId="skill-sheet-content">
+            <FilePreview
+              name=""
+              mimeType="text/markdown"
+              text={documentUnderTitle(skill.body, skill.title)}
+              testId="skill-sheet-preview"
+            />
+          </Section>
+          <CollapsibleSection label={t("knowledge.technical")} testId="skill-sheet-technical">
+            <FactList
+              items={[
+                { label: t("skills.fact.slug"), value: skill.slug ?? MISSING },
+                { label: t("skills.fact.version"), value: String(skill.version) },
+                { label: t("skills.fact.created"), value: dateTime(skill.created_at) },
+              ]}
+            />
+          </CollapsibleSection>
+        </>
+      ) : null}
+    </RecordSheet>
   );
 }
 

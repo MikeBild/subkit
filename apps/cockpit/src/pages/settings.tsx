@@ -596,12 +596,23 @@ export function SettingsSummary({
 }) {
   const { t } = useI18n();
   return (
-    <SummaryLine
-      testId="settings-summary"
-      text={t("settings.summary", { count: String(total), changed: String(changed) })}
-      help={t("settings.storage.body")}
-      aside={<SettingsFilterToggle filter={filter} onChange={onFilter} />}
-    />
+    <div className="flex flex-col gap-4">
+      <SummaryLine
+        testId="settings-summary"
+        text={t("settings.summary", { count: String(total), changed: String(changed) })}
+        help={t("settings.storage.body")}
+      />
+      <div
+        data-family-slot="filters"
+        data-testid="settings-filters"
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b pb-3"
+      >
+        <span className="text-xs font-medium text-muted-foreground">
+          {t("settings.filter.label")}
+        </span>
+        <SettingsFilterToggle filter={filter} onChange={onFilter} />
+      </div>
+    </div>
   );
 }
 

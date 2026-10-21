@@ -18,6 +18,7 @@ import {
   users,
 } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import { withContext } from "../../logging/context.ts";
 import {
   getMcpTask,
   insertMcpTask,
@@ -161,6 +162,19 @@ async function seedConversationAndTask(
 }
 
 describe("conversation.run-turn worker", () => {
+  test("task stores trusted origin and trace independently of request source", async () => {
+    const { mcp_task_id } = await withContext(
+      { audit_origin_source: "ui", audit_trace_id: "server-trace-conversation" },
+      () => seedConversationAndTask("record trusted provenance"),
+    );
+    const task = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    expect(task).toMatchObject({
+      request_source: "mcp",
+      origin_source: "ui",
+      audit_trace_id: "server-trace-conversation",
+    });
+  });
+
   test("missing queued principal uses the persisted task caller for audit attribution", async () => {
     const { conversation_id, mcp_task_id } =
       await seedConversationAndTask("deny missing principal");

@@ -3,6 +3,8 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
+import { _drainAuditWritesForTests } from "../../audit/audit.ts";
+import { queryAuditLog, serializeAuditEntry } from "../../audit/query.ts";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { mcpOauthAccessTokens, mcpOauthClients, tenants, users } from "../../db/schema/index.ts";
@@ -120,6 +122,21 @@ describe("createMcpOAuthAuthProvider — happy path", () => {
     const principal = await provider.resolve(makeRequest(plaintext));
 
     expect(principal?.oauth_client_id).toBe(clientId);
+  });
+
+  test("first token use is filterable by its verified OAuth client", async () => {
+    const { plaintext, tokenId, clientId } = await seedAccessToken();
+    const provider = createMcpOAuthAuthProvider({ db, resetThrottle: true });
+    expect(await provider.resolve(makeRequest(plaintext))).not.toBeNull();
+    await _drainAuditWritesForTests(db);
+    const receipts = await queryAuditLog(db, {
+      tenant_id: tenantId,
+      oauth_client_id: clientId,
+      actions: ["mcp_oauth.token_used"],
+    });
+    expect(receipts.items.map((item) => item.resource_id)).toContain(tokenId);
+    const receipt = receipts.items.find((item) => item.resource_id === tokenId);
+    expect(serializeAuditEntry(receipt!).oauth_client_id).toBe(clientId);
   });
 
   test("two clients authorised by the same user resolve to different registrations", async () => {

@@ -13,6 +13,7 @@ import { listResolvedConnectorTemplates } from "../../connectors/template-resolv
 import type { ConnectorView, UpdateConnectorInput } from "../../connectors/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
+import { withTenantWork } from "../../execution/tenant-work.ts";
 import { analyzeConversationAttachments } from "../../llm/flows/analyze-conversation-attachments.ts";
 import { logger } from "../../logging/logger.ts";
 import { now } from "../../utils/clock.ts";
@@ -484,60 +485,60 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   const skipGraphqlDiscovery =
     p.skipBackgroundDiscovery === true ||
     (saved.auth_type === "oauth2" && credential_persisted !== true);
-  if (saved.driver === "graphql" && saved.base_url && !skipGraphqlDiscovery) {
+  const discoveryBaseUrl = saved.base_url;
+  if (saved.driver === "graphql" && discoveryBaseUrl && !skipGraphqlDiscovery) {
     const actor_type = ctx.principal?.kind ?? ctx.engineClient.context.actor_type;
-    void runDiscoveryCached(
-      {
-        db: ctx.db as Db,
+    void withTenantWork(ctx.tenant_id, async () => {
+      const out = await runDiscoveryCached(
+        {
+          db: ctx.db as Db,
+          tenant_id: ctx.tenant_id,
+          ...(actor_type ? { actor_type } : {}),
+          actor_id: ctx.actor_id,
+        },
+        {
+          connector_id: saved.id,
+          base_url: discoveryBaseUrl,
+          environment: saved.environment,
+        },
+      );
+      await recordConnectorDiscovered({
         tenant_id: ctx.tenant_id,
-        ...(actor_type ? { actor_type } : {}),
-        actor_id: ctx.actor_id,
-      },
-      {
+        ...auditActorFromToolContext(ctx),
+        executor: ctx.db,
         connector_id: saved.id,
-        base_url: saved.base_url,
-        environment: saved.environment,
-      },
-    )
-      .then((out) => {
-        void recordConnectorDiscovered({
-          tenant_id: ctx.tenant_id,
-          ...auditActorFromToolContext(ctx),
-          executor: ctx.db,
-          connector_id: saved.id,
-          strategy: out.result.strategy,
-          cache_key: out.cache_key,
-          source: out.source,
-          endpoint_count: out.result.endpoints.length,
-          warnings: (out.result.warnings ?? []).map((w) => ({
-            code: w.code,
-            message: w.message,
-          })),
-        });
-      })
-      .catch((err) => {
-        const message = err instanceof Error ? err.message : String(err);
-        const code =
-          err && typeof err === "object" && "code" in err
-            ? String((err as { code: unknown }).code)
-            : null;
-        const introspectionDisabled =
-          code === "introspection_disabled" ||
-          /introspection.*not allowed|introspection.*disabled/i.test(message);
-        logger[introspectionDisabled ? "info" : "warn"]({
-          module: "conversation_persistence",
-          action: introspectionDisabled
-            ? "post_save.graphql_introspection_disabled"
-            : "post_save.graphql_discovery_failed",
-          msg: introspectionDisabled
-            ? "GraphQL connector saved without auto-discovery — upstream refuses introspection"
-            : "auto-discovery after GraphQL connector save failed (non-fatal)",
-          tenant_id: ctx.tenant_id,
-          connector_id: saved.id,
-          ...(code ? { code } : {}),
-          error: message,
-        });
+        strategy: out.result.strategy,
+        cache_key: out.cache_key,
+        source: out.source,
+        endpoint_count: out.result.endpoints.length,
+        warnings: (out.result.warnings ?? []).map((w) => ({
+          code: w.code,
+          message: w.message,
+        })),
       });
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code: unknown }).code)
+          : null;
+      const introspectionDisabled =
+        code === "introspection_disabled" ||
+        /introspection.*not allowed|introspection.*disabled/i.test(message);
+      logger[introspectionDisabled ? "info" : "warn"]({
+        module: "conversation_persistence",
+        action: introspectionDisabled
+          ? "post_save.graphql_introspection_disabled"
+          : "post_save.graphql_discovery_failed",
+        msg: introspectionDisabled
+          ? "GraphQL connector saved without auto-discovery — upstream refuses introspection"
+          : "auto-discovery after GraphQL connector save failed (non-fatal)",
+        tenant_id: ctx.tenant_id,
+        connector_id: saved.id,
+        ...(code ? { code } : {}),
+        error: message,
+      });
+    });
   }
 
   if (p.forceSave === true && requiresProbe && connector.latest_probe?.ok !== true) {

@@ -75,6 +75,8 @@ export const executions = pgTable(
     sensitive_result: jsonb("sensitive_result"),
     status: executionStatusEnum("status").notNull(),
     request_source: text("request_source").notNull(),
+    origin_source: text("origin_source"),
+    audit_trace_id: text("audit_trace_id"),
     execution_mode: executionModeEnum("execution_mode").notNull(),
     parent_execution_id: uuid("parent_execution_id"),
     authority_root_execution_id: uuid("authority_root_execution_id"),

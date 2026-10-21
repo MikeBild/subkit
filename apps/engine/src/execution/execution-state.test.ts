@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { auditLog, executionSteps, executions, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { withContext } from "../logging/context.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import type { CallerContext } from "./caller-context.ts";
 import { runExecution } from "./engine.ts";
@@ -63,6 +64,40 @@ describe("finalizeExecution — compare-and-set", () => {
 
     await finalizeExecution(db, tenantId, id, "failed", null);
     expect(await statusOf(id)).toBe("succeeded");
+  });
+});
+
+describe("execution audit provenance", () => {
+  test("persists trusted context independently from declared request source", async () => {
+    const id = await withContext(
+      { audit_origin_source: "ui", audit_trace_id: "server-trace-execution" },
+      () => newQueued(null, "cli"),
+    );
+    const [row] = await db
+      .select({
+        origin_source: executions.origin_source,
+        audit_trace_id: executions.audit_trace_id,
+        request_source: executions.request_source,
+      })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, tenantId), eq(executions.id, id)));
+    expect(row).toEqual({
+      origin_source: "ui",
+      audit_trace_id: "server-trace-execution",
+      request_source: "cli",
+    });
+  });
+
+  test("leaves provenance unknown without a trusted context", async () => {
+    const id = await newQueued();
+    const [row] = await db
+      .select({
+        origin_source: executions.origin_source,
+        audit_trace_id: executions.audit_trace_id,
+      })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, tenantId), eq(executions.id, id)));
+    expect(row).toEqual({ origin_source: null, audit_trace_id: null });
   });
 });
 

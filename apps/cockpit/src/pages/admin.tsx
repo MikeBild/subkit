@@ -35,6 +35,7 @@ import {
   FieldLabel,
   FilterBar,
   FormDialog,
+  GroupingTabs,
   type InfiniteRows,
   InfiniteSentinel,
   Input,
@@ -64,6 +65,7 @@ import { isAppUserEmail } from "@/lib/app-user";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
+import { statusLabel } from "@/lib/status-label";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import {
   assignableRoles,
@@ -311,6 +313,8 @@ function AdminTable<T extends RowData>({
   onOpen,
   rowLabel,
   toolbar,
+  grouping,
+  groupingTabs,
   filtered = false,
   onReset,
   infinite,
@@ -321,6 +325,8 @@ function AdminTable<T extends RowData>({
   onOpen(row: T): void;
   rowLabel(row: T): string;
   toolbar?: ReactNode;
+  grouping?: { getKey(row: T): string };
+  groupingTabs?: ReactNode;
   filtered?: boolean;
   onReset?(): void;
   infinite?: InfiniteRows;
@@ -335,6 +341,8 @@ function AdminTable<T extends RowData>({
       onOpen={onOpen}
       rowLabel={rowLabel}
       toolbar={toolbar}
+      grouping={grouping}
+      groupingTabs={groupingTabs}
       emptyState={{
         zero: { title: "" },
         filtered: {
@@ -935,6 +943,7 @@ function PeopleTab({ action }: { action: ReactNode }) {
   const [openedId, setOpenedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [groupMode, setGroupMode] = useState("all");
   const items = people.items;
   const count = people.total ?? items.length;
   const opened = items.find((item) => item.id === openedId) ?? null;
@@ -1036,6 +1045,30 @@ function PeopleTab({ action }: { action: ReactNode }) {
           collectionId="people-list"
           columns={columns}
           data={shown}
+          groupingTabs={
+            <GroupingTabs
+              label={t("common.groupBy")}
+              value={groupMode}
+              onChange={setGroupMode}
+              options={[
+                { value: "all", label: t("common.all") },
+                { value: "role", label: t("people.role") },
+                { value: "status", label: t("resource.field.status") },
+              ]}
+              testId="people-grouping"
+              note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+            />
+          }
+          grouping={
+            groupMode === "all"
+              ? undefined
+              : {
+                  getKey: (row) =>
+                    groupMode === "role"
+                      ? roleName(row.role, roleItems, t).text
+                      : statusLabel(t, row.status),
+                }
+          }
           infinite={people.infinite}
           onOpen={(row) => setOpenedId(row.id)}
           rowLabel={(row) =>

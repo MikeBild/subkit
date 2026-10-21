@@ -4,6 +4,7 @@ import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { apiKeys, roles as rolesTable, systemAccounts, users } from "../../db/schema/index.ts";
 import { sha256Hex } from "../../identity/api-key.ts";
+import { withContext } from "../../logging/context.ts";
 import { log, logger } from "../../logging/logger.ts";
 import type { AllowList, ResolvedPrincipal } from "../types.ts";
 
@@ -55,17 +56,19 @@ async function maybeFlushLastUsed(
       });
     });
 
-  audit(
-    {
-      tenant_id: tenantId,
-      actor_type: "system",
-      action: AuditAction.API_KEY_USED,
-      resource_type: "api_key",
-      resource_id: keyId,
-      result: "success",
-      metadata: { prefix, sampled: true, window_ms: FLUSH_INTERVAL_MS },
-    },
-    db,
+  withContext({ api_key_id: keyId, audit_access_type: "api_key" }, () =>
+    audit(
+      {
+        tenant_id: tenantId,
+        actor_type: "system",
+        action: AuditAction.API_KEY_USED,
+        resource_type: "api_key",
+        resource_id: keyId,
+        result: "success",
+        metadata: { prefix, sampled: true, window_ms: FLUSH_INTERVAL_MS },
+      },
+      db,
+    ),
   );
 }
 
@@ -182,6 +185,7 @@ export async function resolvePrincipalFromApiKeyRow(
     tenant_id: row.tenant_id,
     roles,
     api_key_id: row.id,
+    credential_origin: row.credential_origin,
     auth_source: {
       kind: "api_key",
       api_key_id: row.id,
