@@ -11,13 +11,14 @@ Sammle jetzt Seiten und Ideen und entscheide später, was zu Wissen oder zu eine
 Du kannst jederzeit eine andere Standardkategorie wählen.
 Der Ablauf bleibt gleich: **sammeln → im Chat prüfen → bestätigen → Wissen oder Skill**.
 Erkenntnisse aus Sitzungen mit Coding-Agents gelangen als gesammelte Einträge mit Herkunft
-`session` in denselben Ablauf; Intake zeigt die Herkunft als Filter und Badge.
+`session` in denselben Ablauf; der Eingang zeigt die Herkunft als Filter und Badge.
 
 Führe `sk clipper install` aus, um die in der CLI mitgelieferte Chrome-Erweiterung zu entpacken.
 Öffne in Chrome `chrome://extensions`, aktiviere den Entwicklermodus, wähle **Load unpacked**
 und wähle den Ordner, den der Befehl ausgibt. Der Installer füllt die Engine-URL
-aus deinem aktiven Profil vor. Gib in den Einstellungen der Erweiterung einen separaten API-Schlüssel mit
-`intake:read`- und `intake:write`-Zugriff ein und erlaube den Zugriff auf deinen Engine-Host.
+aus deinem aktiven Profil vor. Öffne im Cockpit **API-Zugang**, erstelle einen Schlüssel mit der
+Vorlage **Web Clipper** (genau `intake:read` und `intake:write`) und füge ihn in den Einstellungen
+der Erweiterung ein. Erlaube den Zugriff auf deinen Engine-Host.
 Der Clipper braucht keine Berechtigung, um Wissen aufzunehmen. Du kannst die Engine-URL
 in seinen Einstellungen ändern; in die Erweiterung ist keine Serveradresse eingebaut.
 
@@ -27,9 +28,9 @@ automatisch erfasst. Prüfe die Vorschau, ergänze optional, warum es wichtig is
 Deine Standardkategorie ist vorausgewählt, anfangs Inbox. Du kannst eine bestehende Kategorie wählen oder
 eine neue eingeben. Kategorien werden mit dem Rest von SubKit geteilt; der Bearbeitungsstatus bleibt getrennt.
 Die Standardkategorie gehört zur authentifizierten Identität; ein gemeinsam genutzter API-Schlüssel teilt diese Identität.
-Die Sichtbarkeit in Intake folgt den Berechtigungen deines Mandanten, statt Kategorien privat zu machen.
+Die Sichtbarkeit im Eingang folgt den Berechtigungen deines Mandanten, statt Kategorien privat zu machen.
 
-Öffne im Cockpit **Intake**, um gesammelte Einträge mit derselben Tabelle und denselben
+Öffne im Cockpit **Eingang**, um gesammelte Einträge mit derselben Tabelle und denselben
 Kategoriesteuerungen wie bei den Knowledge Sources zu prüfen und zu ordnen. Öffne einen Eintrag, um seinen Inhalt
 und die Originalquelle zu sehen, seinen Titel, Inhalt oder seine Kategorie zu bearbeiten oder einen Prüf-Chat zu starten.
 Bearbeitungen erhalten das erfasste Original und erfordern eine erneute Prüfung jedes betroffenen Vorschlags.
@@ -45,11 +46,12 @@ mit dem genauen Inhalt, den Originalquellen und dem Ziel vor. Du prüfst ihn und
 **Confirm as knowledge** oder **Confirm as skill**. Erst dann kann die gewöhnliche Wissensabfrage
 das Ergebnis nutzen oder können Agent-Briefings den Skill tragen. Ein Skill als Ziel legt einen aktiven Skill an oder
 aktualisiert ihn und archiviert die Skills, die er ersetzt, im selben Schritt; der Vorschlag
-zeigt jede Änderung. Das Bestätigen erfordert eine angemeldete Browsersitzung und die Rechte des
+zeigt jede Änderung. Das Bestätigen erfordert eine angemeldete Browsersitzung, das Recht `intake:confirm` und die Rechte des
 Ziels: `knowledge:write` für Wissen, `skill:write` und `skill:activate` für einen Skill,
 dazu `skill:archive` für jeden ersetzten Skill. API-Schlüssel und MCP-Clients können nicht bestätigen.
 Einen Skill aufzunehmen ist eine inhaltliche Entscheidung, getrennt von der Konnektor- oder
 Ausführungsfreigabe einer Umgebung.
+Bevor ein Clip gespeichert wird, ersetzt SubKit darin erkennbare Geheimnisse (API-Schlüssel, Tokens, private Schlüssel, Signaturen signierter Links) durch eine Markierung und hält nur fest, wie viele ersetzt wurden. Die entfernten Werte werden nie gespeichert; Quelle, Autor und Zeitangaben bleiben wie erfasst.
 Du kannst einen nicht benötigten Clip während der Prüfung verwerfen und später wiederherstellen; das Verwerfen
 erhält seine Originalquelle und macht ihn nie zu Wissen oder zu einem Skill.
 Das Ändern des Vorschlags oder seiner Quellen erfordert eine weitere Prüfung. Der ursprüngliche Clip bleibt
@@ -81,6 +83,6 @@ im Antwort-Header `x-subkit-sha256`. HTTPS-Engines und lokale HTTP-Engines auf
 `localhost`, `127.0.0.1` oder `[::1]` werden unterstützt, einschließlich eines optionalen URL-Pfadpräfixes.
 Das Ändern der Engine-Adresse erfordert die Eingabe des Schlüssels für diese Engine; ein bestehender
 Entwurf bleibt seiner ursprünglichen Engine zugeordnet. Ältere Engines benötigen ein Update, um
-Intake zu unterstützen; der Clipper schreibt nie ersatzweise direkt in das Wissen.
+das Sammeln zu unterstützen; der Clipper schreibt nie ersatzweise direkt in das Wissen.
 Bestehende Knowledge Sources bleiben unverändert, und alte lokale Entwürfe können ausdrücklich
-in Intake gesammelt werden, ohne zu behaupten, dass bearbeitete Entwürfe Originalerfassungen der Seite sind.
+im Eingang gesammelt werden, ohne zu behaupten, dass bearbeitete Entwürfe Originalerfassungen der Seite sind.

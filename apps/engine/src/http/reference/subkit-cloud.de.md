@@ -109,12 +109,12 @@ Einen API-Schlüssel musst du dafür nicht kopieren.
 
 ### Den Web-Clipper verwenden
 
-Der Web-Clipper sammelt Webseiten in **Intake**. So nutzt du ihn mit der Cloud:
+Der Web-Clipper sammelt Webseiten im **Eingang**. So nutzt du ihn mit der Cloud:
 
 1. Melde dich zuerst mit der sk-CLI an, wie oben beschrieben.
 2. Führe `sk clipper install` aus. Der Befehl übernimmt die Cloud-Adresse aus deinem sk-Profil.
 3. Lade die Erweiterung in Chrome, wie im Kapitel „Web Clipper“ beschrieben.
-4. Öffne im Cockpit **API-Zugang**, wähle **Schlüssel erstellen** und gib dem Schlüssel `intake:read` und `intake:write`.
+4. Öffne im Cockpit **API-Zugang**, wähle **Schlüssel erstellen** und nimm die Vorlage **Web Clipper**.
 5. Trage diesen Schlüssel in den Einstellungen der Erweiterung ein und erlaube den Zugriff auf `subkit-cloud.mikebild.info`.
 
 Zeigt der Clipper eine andere Adresse, ändere sie in seinen Einstellungen auf `https://subkit-cloud.mikebild.info`.

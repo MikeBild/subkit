@@ -109,12 +109,12 @@ You do not need to copy an API key for this.
 
 ### Use the web clipper
 
-The web clipper collects web pages into **Intake**. To use it with the cloud:
+The web clipper collects web pages into the **Inbox**. To use it with the cloud:
 
 1. Sign in with the sk CLI first, as shown above.
 2. Run `sk clipper install`. It fills in the cloud address from your sk profile.
 3. Load the extension in Chrome, as described in the chapter "Web Clipper".
-4. In the Cockpit, open **API access**, choose **Create key** and give the key `intake:read` and `intake:write`.
+4. In the Cockpit, open **API access**, choose **Create key** and pick the preset **Web Clipper**.
 5. Enter that key in the extension settings and allow access to `subkit-cloud.mikebild.info`.
 
 If the clipper shows another address, change it to `https://subkit-cloud.mikebild.info` in its settings.

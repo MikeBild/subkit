@@ -86,16 +86,16 @@ Deine Verbindungseinstellungen bleiben erhalten.
 
 Der Clipper meldet sich mit einem API-Schlüssel an. Lege dafür einen eigenen Schlüssel an.
 
-1. Öffne im Cockpit **API-Zugang** und erstelle einen Schlüssel.
-   Die Vorlage **Ausführen** enthält `intake:write`, wenn dein Konto dieses Recht hat.
-   Der Schlüssel braucht `intake:read` und `intake:write`.
+1. Öffne im Cockpit **API-Zugang**, erstelle einen neuen Schlüssel und wähle die Vorlage
+   **Web Clipper**. Sie vergibt genau `intake:read` und `intake:write`.
    Fehlt deinem Konto eines davon, nennt die Seite das fehlende Recht.
-2. Öffne den Clipper und klicke auf das Zahnrad (⚙). Die Einstellungen öffnen
+2. Kopiere den Schlüssel.
+3. Öffne den Clipper und klicke auf das Zahnrad (⚙). Die Einstellungen öffnen
    sich in einem neuen Tab.
-3. Prüfe die **Engine-Adresse**, zum Beispiel `https://engine.example.com`.
-4. Füge den Schlüssel unter **API-Schlüssel** ein.
-5. Wähle deine Sprache.
-6. Klicke auf **Verbindung speichern**. Chrome fragt nach Zugriff auf die Adresse
+4. Prüfe die **Engine-Adresse**, zum Beispiel `https://engine.example.com`.
+5. Füge den Schlüssel unter **API-Schlüssel** ein.
+6. Wähle deine Sprache.
+7. Klicke auf **Verbindung speichern**. Chrome fragt nach Zugriff auf die Adresse
    deiner Engine. Erlaube ihn.
 
 Danach prüft der Clipper die Verbindung. Er lädt deine Kategorien und bestätigt, dass der
@@ -142,8 +142,9 @@ Wenn derselbe Clip zweimal gesendet wird, entsteht kein zweiter Eintrag.
    des Eintrags im Eingang. Der Chat bewertet den Clip und bereitet einen Vorschlag vor:
    den genauen Inhalt, seine Quellen und das Ziel, Wissen oder Skill.
 3. **Ein Mensch bestätigt ihn.** Nur eine Person, die im Browser am Cockpit angemeldet ist,
-   kann einen Vorschlag als **Wissen** oder als **Skill** bestätigen. Sie braucht außerdem
-   die Rechte des Ziels, zum Beispiel `knowledge:write` für Wissen. API-Schlüssel,
+   kann einen Vorschlag als **Wissen** oder als **Skill** bestätigen. Sie braucht das Recht
+   `intake:confirm` und das Recht des Ziels: `knowledge:write` für Wissen oder
+   `skill:write` und `skill:activate` für einen Skill. API-Schlüssel,
    MCP-Clients und der Clipper selbst können nicht bestätigen.
 
 Solange niemand bestätigt, ist ein Clip kein Wissen. Die normale Wissenssuche findet ihn
@@ -158,9 +159,12 @@ Vorschlag, muss er erneut geprüft werden.
 - **Originale bleiben:** Die Engine bewahrt den ursprünglich erfassten Stand auf. Spätere
   Änderungen überschreiben ihn nicht. Der Clip bleibt mit dem Wissen oder Skill verknüpft,
   das daraus entsteht.
-- **Keine Schwärzung:** Clips werden so gespeichert, wie sie erfasst wurden. Der Clipper
-  entfernt weder Geheimnisse noch personenbezogene Daten. Sammle keine Seiten, die
-  Passwörter, Schlüssel, Tokens oder andere Geheimnisse zeigen.
+- **Geheimnisse werden ersetzt:** Bevor ein Clip gespeichert wird, ersetzt SubKit darin
+  erkennbare Geheimnisse (API-Schlüssel, Tokens, private Schlüssel, Signaturen
+  signierter Links) durch eine Markierung und hält nur fest, wie viele ersetzt wurden.
+  Die entfernten Werte werden nie gespeichert; Quelle, Autor und Zeitangaben bleiben
+  wie erfasst. Personenbezogene Daten werden nicht entfernt. Sammle trotzdem keine Seiten,
+  die Passwörter, Schlüssel, Tokens oder andere Geheimnisse zeigen.
 - **Dein API-Schlüssel** liegt in der Browser-Erweiterung auf diesem Gerät. Nutze für den
   Clipper einen eigenen Schlüssel und widerrufe ihn im Cockpit, wenn du ihn nicht mehr brauchst.
 - **Sichtbarkeit:** Gesammelte Einträge folgen den Berechtigungen deines Mandanten.
@@ -177,9 +181,9 @@ in den Einstellungen öffnest du dieses Kapitel auf deiner Engine.
 | --- | --- |
 | „Lege zuerst eine Engine-Adresse und einen API-Schlüssel fest.“ | Öffne die Einstellungen über das Zahnrad, trage beides ein und speichere. |
 | „Lege vor dem Erfassen eine Engine-Adresse fest.“ | Die Einstellungen öffnen sich von selbst. Trage die Engine-Adresse ein und speichere. |
-| „Der API-Schlüssel ist ungültig oder abgelaufen. …“ | Erstelle unter **API-Zugang** einen neuen Schlüssel und speichere ihn in den Einstellungen. |
-| „Dem API-Schlüssel fehlt intake:read. …“ | Nutze einen Schlüssel mit `intake:read`. |
-| „Die Verbindung steht, aber dem API-Schlüssel fehlt intake:write. …“ | Erstelle unter **API-Zugang** einen Schlüssel mit der Vorlage **Ausführen**; sie enthält `intake:write`. Dein Entwurf bleibt erhalten. |
+| „Der API-Schlüssel ist ungültig oder abgelaufen. …“ | Erstelle unter **API-Zugang** einen neuen Schlüssel mit der Vorlage **Web Clipper** und speichere ihn in den Einstellungen. |
+| „Dem API-Schlüssel fehlt intake:read. …“ | Erstelle unter **API-Zugang** einen Schlüssel mit der Vorlage **Web Clipper**. |
+| „Die Verbindung steht, aber dem API-Schlüssel fehlt intake:write. …“ | Erstelle unter **API-Zugang** einen Schlüssel mit der Vorlage **Web Clipper**. Dein Entwurf bleibt erhalten. |
 | „Die SubKit-API ist nicht erreichbar. …“ | Prüfe Engine-Adresse und Internetverbindung. Stelle sicher, dass Chrome auf die Adresse der Engine zugreifen darf. |
 | „Nutze HTTPS oder HTTP auf localhost.“ | Nutze `https://` oder `http://` nur mit `localhost`, `127.0.0.1` oder `[::1]`. Die Adresse darf keinen Benutzernamen, kein Passwort, keine `?query` und kein `#fragment` enthalten. |
 | „Erlaube den Zugriff auf diese Engine, um die Verbindung zu speichern.“ | Speichere erneut und erlaube den Zugriff, wenn Chrome fragt. |

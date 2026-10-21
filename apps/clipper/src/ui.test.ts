@@ -155,12 +155,18 @@ function cockpitLabels(key: string): { en: string; de: string } {
 }
 
 test("missing intake write names the Cockpit key preset and page labels", () => {
-  const preset = cockpitLabels("apiKeys.preset.run");
+  const preset = cockpitLabels("apiKeys.preset.clipper");
   const page = cockpitLabels("nav.apiAccess");
-  expect(copy.de.missingIntakeWritePermission).toContain(`„${preset.de}“`);
-  expect(copy.de.missingIntakeWritePermission).toContain(`„${page.de}“`);
-  expect(copy.en.missingIntakeWritePermission).toContain(`“${preset.en}”`);
-  expect(copy.en.missingIntakeWritePermission).toContain(`“${page.en}”`);
+  for (const key of [
+    "invalidApiKey",
+    "missingIntakeReadPermission",
+    "missingIntakeWritePermission",
+  ] as const) {
+    expect(copy.de[key]).toContain(`„${preset.de}“`);
+    expect(copy.de[key]).toContain(`„${page.de}“`);
+    expect(copy.en[key]).toContain(`“${preset.en}”`);
+    expect(copy.en[key]).toContain(`“${page.en}”`);
+  }
 });
 
 test("help link follows the configured engine address", () => {

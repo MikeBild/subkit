@@ -138,11 +138,11 @@ export const copy: Record<"de" | "en", Copy> = {
     needsClipApi: "Sammeln ist hier noch nicht verfügbar.",
     intakeUnavailable: "Sammeln ist gerade nicht verfügbar. Dein Entwurf bleibt gespeichert.",
     invalidApiKey:
-      "Der API-Schlüssel ist ungültig oder abgelaufen. Öffne über das Zahnrad die Verbindungseinstellungen und speichere einen gültigen Schlüssel.",
+      "Der API-Schlüssel ist ungültig oder abgelaufen. Lege unter „API-Zugang“ im Cockpit einen Schlüssel mit der Vorlage „Web Clipper“ an. Speichere ihn über das Zahnrad in den Verbindungseinstellungen.",
     missingIntakeReadPermission:
-      "Dem API-Schlüssel fehlt intake:read. Öffne über das Zahnrad die Verbindungseinstellungen und verwende einen Schlüssel mit diesem Recht.",
+      "Dem API-Schlüssel fehlt intake:read. Lege unter „API-Zugang“ im Cockpit einen Schlüssel mit der Vorlage „Web Clipper“ an. Speichere ihn über das Zahnrad in den Verbindungseinstellungen.",
     missingIntakeWritePermission:
-      "Die Verbindung steht, aber dem API-Schlüssel fehlt intake:write. Erstelle im Cockpit unter „API-Zugang“ einen Schlüssel mit der Vorlage „Ausführen“ und speichere ihn hier. Dein Entwurf bleibt erhalten.",
+      "Die Verbindung steht, aber dem API-Schlüssel fehlt intake:write. Lege unter „API-Zugang“ im Cockpit einen Schlüssel mit der Vorlage „Web Clipper“ an und speichere ihn hier. Dein Entwurf bleibt erhalten.",
     connectionFailed:
       "Die SubKit-API ist nicht erreichbar. Prüfe Engine-Adresse, Internetverbindung und den Chrome-Zugriff auf diese Adresse.",
     apiResponseFailed: "Die SubKit-API hat die Anfrage abgelehnt.",
@@ -242,11 +242,11 @@ export const copy: Record<"de" | "en", Copy> = {
     needsClipApi: "Collecting is not available here.",
     intakeUnavailable: "Collecting is currently unavailable. Your draft remains saved.",
     invalidApiKey:
-      "The API key is invalid or expired. Open connection settings with the gear and save a valid key.",
+      "The API key is invalid or expired. Create a key with the “Web Clipper” preset under “API access” in the Cockpit. Save it in the connection settings with the gear.",
     missingIntakeReadPermission:
-      "The API key lacks intake:read. Open connection settings with the gear and use a key with this permission.",
+      "The API key lacks intake:read. Create a key with the “Web Clipper” preset under “API access” in the Cockpit. Save it in the connection settings with the gear.",
     missingIntakeWritePermission:
-      "The connection works, but the API key lacks intake:write. Create a key with the “Run” preset under “API access” in Cockpit, then save it here. Your draft remains available.",
+      "The connection works, but the API key lacks intake:write. Create a key with the “Web Clipper” preset under “API access” in the Cockpit, then save it here. Your draft remains available.",
     connectionFailed:
       "The SubKit API could not be reached. Check the engine address, internet connection, and Chrome access to this address.",
     apiResponseFailed: "The SubKit API rejected the request.",

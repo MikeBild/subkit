@@ -81,15 +81,15 @@ reload icon of the SubKit Clipper on `chrome://extensions`. Your connection sett
 
 The clipper signs in with an API key. Create a separate key for it.
 
-1. In the Cockpit, open **API access** and create a key.
-   The **Run** preset includes `intake:write` when your account has that permission.
-   The key must have `intake:read` and `intake:write`.
+1. In the Cockpit, open **API access**, create a new key and choose the preset
+   **Web Clipper**. It grants exactly `intake:read` and `intake:write`.
    If your account lacks one of them, the page tells you which one is missing.
-2. Open the clipper and click the gear icon (⚙). The settings open in a new tab.
-3. Check the **Engine address**, for example `https://engine.example.com`.
-4. Paste the key into **API key**.
-5. Choose your language.
-6. Click **Save connection**. Chrome asks for access to your engine's address. Allow it.
+2. Copy the key.
+3. Open the clipper and click the gear icon (⚙). The settings open in a new tab.
+4. Check the **Engine address**, for example `https://engine.example.com`.
+5. Paste the key into **API key**.
+6. Choose your language.
+7. Click **Save connection**. Chrome asks for access to your engine's address. Allow it.
 
 The clipper then checks the connection. It loads your categories and confirms that
 the key may save clips.
@@ -133,8 +133,9 @@ create a second item.
    action in the Inbox. The chat assesses the clip and prepares a proposal: the exact content,
    its sources and the destination, knowledge or skill.
 3. **A person confirms it.** Only a person signed in to the Cockpit in the browser can
-   confirm a proposal as **knowledge** or as a **skill**. They also need the rights of
-   the destination, for example `knowledge:write` for knowledge. API keys, MCP clients
+   confirm a proposal as **knowledge** or as a **skill**. They need the right
+   `intake:confirm` and the right of the destination: `knowledge:write` for knowledge,
+   or `skill:write` and `skill:activate` for a skill. API keys, MCP clients
    and the clipper itself cannot confirm.
 
 Until someone confirms it, a clip is not knowledge. Ordinary knowledge search does not
@@ -148,8 +149,11 @@ it must be reviewed again.
   to read the transcript.
 - **Originals stay:** the engine keeps the original captured snapshot. Your later edits
   do not overwrite it. The clip stays linked to the knowledge or skill made from it.
-- **No redaction:** clips are stored as captured. The clipper does not remove secrets
-  or personal data. Do not clip pages that show passwords, keys, tokens or other secrets.
+- **Secrets are replaced:** before a clip is saved, SubKit replaces recognizable secrets
+  in it (API keys, tokens, private keys, signed-link signatures) with a marker and
+  records only how many were replaced. The removed values are never stored, and the
+  source, author and timestamps stay as captured. Personal data is not removed.
+  Still, do not clip pages that show passwords, keys, tokens or other secrets.
 - **Your API key** is stored in the browser extension on this device. Use a separate key
   for the clipper and revoke it in the Cockpit when you no longer need it.
 - **Visibility:** collected items follow your tenant's permissions. Categories are shared,
@@ -166,9 +170,9 @@ settings opens this chapter on your engine.
 | --- | --- |
 | "Set an engine address and API key first." | Open the settings with the gear icon, enter both and save. |
 | "Set an engine address before capturing." | The settings open automatically. Enter the engine address and save. |
-| "The API key is invalid or expired. …" | Create a new key under **API access** and save it in the settings. |
-| "The API key lacks intake:read. …" | Use a key that has `intake:read`. |
-| "The connection works, but the API key lacks intake:write. …" | Create a key with the **Run** preset under **API access**; it includes `intake:write`. Your draft stays. |
+| "The API key is invalid or expired. …" | Create a new key with the **Web Clipper** preset under **API access** and save it in the settings. |
+| "The API key lacks intake:read. …" | Create a key with the **Web Clipper** preset under **API access**. |
+| "The connection works, but the API key lacks intake:write. …" | Create a key with the **Web Clipper** preset under **API access**. Your draft stays. |
 | "The SubKit API could not be reached. …" | Check the engine address and your internet connection. Make sure Chrome may access the engine's address. |
 | "Use an HTTPS address or HTTP on localhost." | Use `https://`, or `http://` only with `localhost`, `127.0.0.1` or `[::1]`. The address must not contain a user name, a password, a `?query` or a `#fragment`. |
 | "Allow access to this engine to save the connection." | Save again and allow access when Chrome asks. |
