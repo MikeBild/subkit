@@ -263,13 +263,13 @@ const resourceOutput: Record<PlaybookResource["type"], string> = {
   file: "",
   intake: "item",
 };
-const resourcePath: Record<PlaybookResource["type"], string> = {
-  connector: "connectors",
-  workflow: "workflows",
-  execution: "executions",
-  knowledge: "knowledge",
-  file: "files",
-  intake: "intake",
+const resourceHref: Record<PlaybookResource["type"], (id: string) => string> = {
+  connector: (id) => `/cockpit/connectors/${id}`,
+  workflow: (id) => `/cockpit/workflows/${id}`,
+  execution: (id) => `/cockpit/?run=${id}`,
+  knowledge: (id) => `/cockpit/knowledge/${id}`,
+  file: (id) => `/cockpit/files/${id}`,
+  intake: (id) => `/cockpit/intake?item=${encodeURIComponent(id)}`,
 };
 
 export async function resolvePlaybookEvidence(
@@ -447,12 +447,7 @@ export async function resolvePlaybookEvidence(
         resource_id: resource.id,
         observed_at: call.created_at.toISOString(),
         freshness: fresh ? "fresh" : "stale",
-        href:
-          resource.type === "execution"
-            ? `/cockpit/?run=${resource.id}`
-            : resource.type === "intake"
-              ? `/cockpit/intake?item=${encodeURIComponent(resource.id)}`
-              : `/cockpit/${resourcePath[resource.type]}/${resource.id}`,
+        href: resourceHref[resource.type](resource.id),
       },
     };
   }
