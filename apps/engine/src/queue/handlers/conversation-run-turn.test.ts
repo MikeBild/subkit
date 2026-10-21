@@ -522,16 +522,25 @@ describe("conversation.run-turn worker — failure path", () => {
       kind: "start",
     });
     await waitForTerminal(mcp_task_id);
-    const [audit] = await queue.testDb.db
-      .select()
-      .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.tenant_id, tenantId),
-          eq(auditLog.action, "conversation.turn_failed"),
-          eq(auditLog.resource_id, created.conversation.id),
-        ),
-      );
+    const findFailureAudit = async () => {
+      const [audit] = await queue.testDb.db
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, tenantId),
+            eq(auditLog.action, "conversation.turn_failed"),
+            eq(auditLog.resource_id, created.conversation.id),
+          ),
+        );
+      return audit;
+    };
+    await waitFor(async () => Boolean(await findFailureAudit()), {
+      tries: 80,
+      sleepMs: 250,
+      label: "system-account conversation.turn_failed audit row",
+    });
+    const audit = await findFailureAudit();
     expect(audit?.actor_type).toBe("system_account");
     expect(audit?.actor_id).toBe(account.id);
   }, 45_000);
