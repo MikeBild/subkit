@@ -6,6 +6,7 @@ import {
 } from "graphql";
 import { log } from "../../logging/logger.ts";
 import { getDriverFetch } from "../drivers/fetch-seam.ts";
+import { HttpRequestInvalidError, readBodyBytesCapped } from "../drivers/response-body.ts";
 import { scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
 import {
@@ -19,6 +20,8 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_SIZE_BYTES = 16 * 1024 * 1024;
+const MAX_SCHEMA_DEPTH = 3;
+const MAX_SCHEMA_NODES = 1_500;
 
 interface TypeRef {
   kind: string;
@@ -89,17 +92,29 @@ function isRequired(t: TypeRef): boolean {
   return t.kind === "NON_NULL";
 }
 
+interface ExpansionBudget {
+  remaining: number;
+  truncated: boolean;
+}
+
+const newBudget = (): ExpansionBudget => ({ remaining: MAX_SCHEMA_NODES, truncated: false });
+
 function typeToJsonSchema(
   t: TypeRef | null | undefined,
   typesByName: Map<string, NamedType>,
   seen: Set<string>,
+  budget: ExpansionBudget,
+  depth = 0,
 ): unknown {
   if (!t) return null;
   if (t.kind === "NON_NULL") {
-    return typeToJsonSchema(t.ofType ?? null, typesByName, seen);
+    return typeToJsonSchema(t.ofType ?? null, typesByName, seen, budget, depth);
   }
   if (t.kind === "LIST") {
-    return { type: "array", items: typeToJsonSchema(t.ofType ?? null, typesByName, seen) };
+    return {
+      type: "array",
+      items: typeToJsonSchema(t.ofType ?? null, typesByName, seen, budget, depth),
+    };
   }
   const leaf = t.name;
   if (!leaf) return null;
@@ -109,32 +124,29 @@ function typeToJsonSchema(
   if (named.kind === "SCALAR" || named.kind === "ENUM") {
     return { type: leaf };
   }
-  if (named.kind === "INPUT_OBJECT") {
-    seen.add(leaf);
-    const properties: Record<string, unknown> = {};
-    const required: string[] = [];
-    for (const f of named.inputFields ?? []) {
-      properties[f.name] = typeToJsonSchema(f.type, typesByName, seen);
-      if (isRequired(f.type)) required.push(f.name);
-    }
-    seen.delete(leaf);
-    return { type: "object", properties, ...(required.length > 0 ? { required } : {}) };
-  }
-  if (named.kind === "OBJECT" || named.kind === "INTERFACE") {
-    seen.add(leaf);
-    const properties: Record<string, unknown> = {};
-    for (const f of named.fields ?? []) {
-      properties[f.name] = typeToJsonSchema(f.type, typesByName, seen);
-    }
-    seen.delete(leaf);
-    return { type: "object", properties };
-  }
   if (named.kind === "UNION") {
     return {
       oneOf: (named.possibleTypes ?? []).map((p) => ({ type: p.name ?? "object" })),
     };
   }
-  return { type: leaf };
+  if (named.kind !== "INPUT_OBJECT" && named.kind !== "OBJECT" && named.kind !== "INTERFACE") {
+    return { type: leaf };
+  }
+  if (depth >= MAX_SCHEMA_DEPTH || budget.remaining <= 0) {
+    budget.truncated = true;
+    return { $ref: leaf };
+  }
+  seen.add(leaf);
+  const members = named.kind === "INPUT_OBJECT" ? (named.inputFields ?? []) : (named.fields ?? []);
+  const properties: Record<string, unknown> = {};
+  for (const member of members) {
+    budget.remaining -= 1;
+    properties[member.name] = typeToJsonSchema(member.type, typesByName, seen, budget, depth + 1);
+  }
+  seen.delete(leaf);
+  if (named.kind !== "INPUT_OBJECT") return { type: "object", properties };
+  const required = (named.inputFields ?? []).filter((f) => isRequired(f.type)).map((f) => f.name);
+  return { type: "object", properties, ...(required.length > 0 ? { required } : {}) };
 }
 
 function fieldToEndpoint(
@@ -142,7 +154,14 @@ function fieldToEndpoint(
   rootKind: "query" | "mutation" | "subscription",
   typesByName: Map<string, NamedType>,
   collisions: Set<string>,
+  truncatedFields: Set<string>,
 ): DiscoveredEndpoint {
+  const expand = (type: TypeRef): unknown => {
+    const budget = newBudget();
+    const schema = typeToJsonSchema(type, typesByName, new Set(), budget);
+    if (budget.truncated) truncatedFields.add(field.name);
+    return schema;
+  };
   const params: DiscoveredEndpointParam[] = field.args.map((arg) => ({
     name: arg.name,
     in: "body" as const,
@@ -152,7 +171,7 @@ function fieldToEndpoint(
   const variableProps: Record<string, unknown> = {};
   const variableRequired: string[] = [];
   for (const arg of field.args) {
-    variableProps[arg.name] = typeToJsonSchema(arg.type, typesByName, new Set());
+    variableProps[arg.name] = expand(arg.type);
     if (isRequired(arg.type)) variableRequired.push(arg.name);
   }
   const requestBodySchema = {
@@ -174,7 +193,7 @@ function fieldToEndpoint(
       data: {
         type: "object",
         properties: {
-          [field.name]: typeToJsonSchema(field.type, typesByName, new Set()),
+          [field.name]: expand(field.type),
         },
       },
       errors: {
@@ -260,13 +279,20 @@ async function postIntrospection(
         `POST ${scrubUrl(url)} returned ${res.status}`,
       );
     }
-    const buf = await res.arrayBuffer();
-    if (buf.byteLength > MAX_SIZE_BYTES) {
-      throw new DiscoveryError(
-        "spec_too_large",
-        `introspection result at ${scrubUrl(url)} exceeds ${MAX_SIZE_BYTES} bytes`,
-      );
-    }
+    const buf = await readBodyBytesCapped(
+      res,
+      MAX_SIZE_BYTES,
+      scrubUrl(url),
+      controller.signal,
+    ).catch((err: unknown) => {
+      if (err instanceof HttpRequestInvalidError) {
+        throw new DiscoveryError(
+          "spec_too_large",
+          `introspection result at ${scrubUrl(url)} exceeds ${MAX_SIZE_BYTES} bytes`,
+        );
+      }
+      throw err;
+    });
     const text = new TextDecoder().decode(buf);
     let parsed: unknown;
     try {
@@ -365,15 +391,28 @@ class GraphQLIntrospectStrategy implements DiscoveryStrategy {
       trackCollisions(mutationType?.fields);
       trackCollisions(subscriptionType?.fields);
 
-      const endpoints: DiscoveredEndpoint[] = [];
-      for (const f of queryType?.fields ?? []) {
-        endpoints.push(fieldToEndpoint(f, "query", typesByName, collisions));
-      }
-      for (const f of mutationType?.fields ?? []) {
-        endpoints.push(fieldToEndpoint(f, "mutation", typesByName, collisions));
-      }
-      for (const f of subscriptionType?.fields ?? []) {
-        endpoints.push(fieldToEndpoint(f, "subscription", typesByName, collisions));
+      const truncatedFields = new Set<string>();
+      const endpoints: DiscoveredEndpoint[] = [
+        ...(queryType?.fields ?? []).map((f) =>
+          fieldToEndpoint(f, "query", typesByName, collisions, truncatedFields),
+        ),
+        ...(mutationType?.fields ?? []).map((f) =>
+          fieldToEndpoint(f, "mutation", typesByName, collisions, truncatedFields),
+        ),
+        ...(subscriptionType?.fields ?? []).map((f) =>
+          fieldToEndpoint(f, "subscription", typesByName, collisions, truncatedFields),
+        ),
+      ];
+      if (truncatedFields.size > 0) {
+        log.warn({
+          module: "connector",
+          action: "discovery.graphql.schema_truncated",
+          strategy: this.name,
+          url: scrubUrl(url),
+          truncated_endpoints: truncatedFields.size,
+          max_depth: MAX_SCHEMA_DEPTH,
+          max_nodes: MAX_SCHEMA_NODES,
+        });
       }
 
       const sdl = tryPrintSDL(rawData);

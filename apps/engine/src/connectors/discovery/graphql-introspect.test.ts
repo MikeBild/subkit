@@ -307,3 +307,155 @@ describe("graphqlIntrospectStrategy", () => {
     expect(result.endpoints).toHaveLength(3);
   });
 });
+
+const objectRef = (name: string) => ({
+  kind: "NON_NULL",
+  name: null,
+  ofType: {
+    kind: "LIST",
+    name: null,
+    ofType: { kind: "OBJECT", name, ofType: null },
+  },
+});
+
+function denselyConnectedSchema(typeCount: number) {
+  const names = Array.from({ length: typeCount }, (_, index) => `Node${index}`);
+  const nodeTypes = names.map((name) => ({
+    kind: "OBJECT",
+    name,
+    interfaces: [],
+    fields: [
+      {
+        name: "id",
+        args: [],
+        type: { kind: "SCALAR", name: "ID", ofType: null },
+        isDeprecated: false,
+      },
+      ...names.map((target) => ({
+        name: `to${target}`,
+        args: [],
+        type: objectRef(target),
+        isDeprecated: false,
+      })),
+    ],
+  }));
+  const queryType = {
+    kind: "OBJECT",
+    name: "Query",
+    interfaces: [],
+    fields: names.slice(0, 3).map((target) => ({
+      name: `root${target}`,
+      args: [],
+      type: { kind: "OBJECT", name: target, ofType: null },
+      isDeprecated: false,
+    })),
+  };
+  return {
+    data: {
+      __schema: {
+        queryType: { name: "Query" },
+        mutationType: null,
+        subscriptionType: null,
+        types: [queryType, ...nodeTypes],
+      },
+    },
+  };
+}
+
+function countSchemaNodes(value: unknown): number {
+  if (Array.isArray(value)) return 1 + value.reduce((sum, item) => sum + countSchemaNodes(item), 0);
+  if (value !== null && typeof value === "object") {
+    return 1 + Object.values(value).reduce<number>((sum, item) => sum + countSchemaNodes(item), 0);
+  }
+  return 1;
+}
+
+function chunkedBody(totalChunks: number, chunkBytes: number) {
+  const state = { pulled: 0, cancelled: false };
+  const chunk = new Uint8Array(chunkBytes).fill(32);
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        state.pulled += 1;
+        controller.enqueue(chunk);
+        if (state.pulled >= totalChunks) controller.close();
+      },
+      cancel() {
+        state.cancelled = true;
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  return { state, body };
+}
+
+async function caughtDiscoveryError(run: () => Promise<unknown>): Promise<DiscoveryError | null> {
+  try {
+    await run();
+    return null;
+  } catch (e) {
+    return e instanceof DiscoveryError ? e : null;
+  }
+}
+
+describe("graphqlIntrospectStrategy resource bounds", () => {
+  seamTest("bounds response schema expansion on a densely connected schema", async () => {
+    fetchSpy.mockImplementation(
+      (async () =>
+        new Response(JSON.stringify(denselyConnectedSchema(8)), {
+          status: 200,
+        })) as unknown as typeof fetch,
+    );
+
+    const result = await graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {});
+
+    expect(result.endpoints).toHaveLength(3);
+    for (const endpoint of result.endpoints) {
+      const nodes = countSchemaNodes(endpoint.response_schemas["200"]);
+      expect(nodes).toBeLessThan(8_000);
+      expect(JSON.stringify(endpoint.response_schemas["200"])).toContain('"$ref"');
+    }
+    const first = JSON.stringify(result.endpoints);
+    const again = await graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {});
+    expect(JSON.stringify(again.endpoints)).toBe(first);
+  });
+
+  seamTest("keeps the first levels of a small schema fully expanded", async () => {
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify(SAMPLE_SCHEMA), { status: 200 }));
+
+    const result = await graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {});
+
+    const viewer = result.endpoints.find((e) => e.operation_id === "viewer");
+    expect(JSON.stringify(viewer?.response_schemas["200"])).not.toContain('"$ref"');
+  });
+
+  seamTest(
+    "stops reading an oversized introspection body as soon as the cap is exceeded",
+    async () => {
+      const { state, body } = chunkedBody(64, 1024 * 1024);
+      fetchSpy.mockResolvedValue(new Response(body, { status: 200 }));
+
+      const caught = await caughtDiscoveryError(() =>
+        graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {}),
+      );
+
+      expect(caught?.code).toBe("spec_too_large");
+      expect(state.pulled).toBeLessThanOrEqual(18);
+      expect(state.cancelled).toBe(true);
+    },
+  );
+
+  seamTest("rejects a declared oversized body without reading it", async () => {
+    const { state, body } = chunkedBody(4, 1024);
+    fetchSpy.mockResolvedValue(
+      new Response(body, { status: 200, headers: { "content-length": String(32 * 1024 * 1024) } }),
+    );
+
+    const caught = await caughtDiscoveryError(() =>
+      graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {}),
+    );
+
+    expect(caught?.code).toBe("spec_too_large");
+    expect(state.pulled).toBe(0);
+  });
+});
