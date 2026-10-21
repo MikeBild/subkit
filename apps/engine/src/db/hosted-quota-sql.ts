@@ -7,13 +7,16 @@ import {
 } from "./hosted-quota-catalog.ts";
 import { renderHostedTerminalSql } from "./hosted-terminal-sql.ts";
 
-const existingControlAudit = (row: string) => {
-  const metadata = `(CASE WHEN ${row}.metadata->>'via'='token_exchange' THEN ${row}.metadata-'via' ELSE ${row}.metadata END)-'auth_via'`;
+const existingControlAudit = (row: string, auditProvenance: boolean) => {
+  const validatedMetadata = auditProvenance
+    ? `subkit.hosted_audit_metadata_without_provenance(${row}.metadata)`
+    : `${row}.metadata`;
+  const metadata = `(CASE WHEN ${validatedMetadata}->>'via'='token_exchange' THEN ${validatedMetadata}-'via' ELSE ${validatedMetadata} END)-'auth_via'`;
   return `(
  ${row}.actor_type IN ('system','user')
  AND ${row}.before IS NULL AND ${row}.after IS NULL AND ${row}.user_agent IS NULL
  AND ${row}.resource_id ~ '^[0-9a-f-]{36}$'
- AND COALESCE(length(${row}.ip),0)<=64 AND COALESCE(length(${row}.trace_id),0)<=128
+ AND COALESCE(length(${row}.ip),0)<=64 AND COALESCE(length(${row}.trace_id),0)<=128${auditProvenance ? `\n AND ${validatedMetadata} IS NOT NULL` : ""}
  AND (NOT (${row}.metadata ? 'auth_via') OR ${row}.metadata->>'auth_via'='token_exchange')
  AND (
  (${metadata}->>'execution_privacy'='sensitive' AND ${metadata}-ARRAY['execution_privacy','execution_id']='{}'::jsonb AND (NOT (${metadata} ? 'execution_id') OR ${metadata}->>'execution_id' ~ '^[0-9a-f-]{36}$') AND (${row}.reason IS NULL OR ${row}.reason='sensitive_execution') AND ((${row}.resource_type='hosted_work' AND ${row}.action IN ('hosted_work.admitted','hosted_work.started','hosted_work.finished','hosted_work.reconciled')) OR (${row}.resource_type='llm_budget' AND ${row}.action IN ('llm.budget.reserved','llm.budget.settled'))))
@@ -40,13 +43,18 @@ const existingControlAudit = (row: string) => {
  ))`;
 };
 
-const controlAudit = (row: string) =>
-  `(subkit.hosted_singleton_control_receipt(to_jsonb(${row})) OR ${existingControlAudit(row)})`;
+export const renderHostedControlAuditPredicate = (row: string, auditProvenance: boolean) =>
+  `(subkit.hosted_singleton_control_receipt(to_jsonb(${row})) OR ${existingControlAudit(row, auditProvenance)})`;
 
-export function renderHostedQuotaSql(options: { cockpitControls?: boolean } = {}): string {
+export function renderHostedQuotaSql(
+  options: { cockpitControls?: boolean; auditProvenance?: boolean } = {},
+): string {
   const resources = hostedQuotaResources(baselineColumns);
   const parts = [
-    ...renderHostedTerminalSql({ cockpitControls: options.cockpitControls ?? true }),
+    ...renderHostedTerminalSql({
+      cockpitControls: options.cockpitControls ?? true,
+      auditProvenance: options.auditProvenance ?? false,
+    }),
     `CREATE OR REPLACE FUNCTION subkit.hosted_apply_usage(p_tenant uuid,p_resource text,p_bytes bigint,p_count bigint) RETURNS void LANGUAGE plpgsql VOLATILE AS $$
 DECLARE v_origin text; v_document jsonb; v_limit bigint; v_rows bigint; v_usage bigint; v_count bigint;
 BEGIN
@@ -78,7 +86,8 @@ END $$;
 CREATE TRIGGER hosted_initialize_usage AFTER INSERT ON subkit.tenants FOR EACH ROW EXECUTE FUNCTION subkit.hosted_initialize_usage();
 INSERT INTO subkit.hosted_tenant_usage(tenant_id) SELECT id FROM subkit.tenants WHERE origin='self_service' ON CONFLICT DO NOTHING;`,
   ];
-  for (const table of resources) parts.push(...renderHostedQuotaResourceSql(table));
+  for (const table of resources)
+    parts.push(...renderHostedQuotaResourceSql(table, options.auditProvenance ?? false));
   for (const [child, relation] of Object.entries(HOSTED_INDIRECT_RESOURCES)) {
     const table = resources.find((resource) => resource.table === child);
     if (!table) throw new Error("hosted_indirect_resource_missing");
@@ -100,6 +109,7 @@ CREATE TRIGGER hosted_cascade_${child} BEFORE DELETE ON subkit."${relation.paren
 
 export function renderHostedQuotaResourceSql(
   table: ReturnType<typeof hostedQuotaResources>[number],
+  auditProvenance = false,
 ): string[] {
   const parts: string[] = [];
   const name = table.table;
@@ -112,10 +122,12 @@ export function renderHostedQuotaResourceSql(
         : `${row}.tenant_id`;
   const bytes = (row: string) =>
     name === "audit_log"
-      ? `CASE WHEN COALESCE(${controlAudit(row)},false) THEN 0 ELSE ${hostedRowBytes(table, row)} END`
+      ? `CASE WHEN COALESCE(${renderHostedControlAuditPredicate(row, auditProvenance)},false) THEN 0 ELSE ${hostedRowBytes(table, row)} END`
       : hostedRowBytes(table, row);
   const count = (row: string) =>
-    name === "audit_log" ? `CASE WHEN COALESCE(${controlAudit(row)},false) THEN 0 ELSE 1 END` : "1";
+    name === "audit_log"
+      ? `CASE WHEN COALESCE(${renderHostedControlAuditPredicate(row, auditProvenance)},false) THEN 0 ELSE 1 END`
+      : "1";
   parts.push(`CREATE OR REPLACE FUNCTION subkit.hosted_meter_${name}() RETURNS trigger LANGUAGE plpgsql VOLATILE AS $$
 DECLARE v_old uuid; v_new uuid; v_bytes bigint:=0; v_count bigint:=0;
 BEGIN

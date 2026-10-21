@@ -1,13 +1,20 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { withContext } from "../../logging/context.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import * as auditModule from "../audit.ts";
 import { auditAwait } from "../audit.ts";
-import { getAuditRowById, queryAuditLog, serializeAuditEntry, streamAuditLog } from "../query.ts";
+import {
+  getAuditRowById,
+  queryAuditLog,
+  searchAuditResources,
+  serializeAuditEntry,
+  streamAuditLog,
+} from "../query.ts";
 import { recordExecutionCrashRecovered } from "../recorders/execution.ts";
 import { recordKnowledgeSourceCandidatesSynthesized } from "../recorders/knowledge.ts";
 import { AuditAction } from "../types.ts";
@@ -118,6 +125,164 @@ describe("tenant scoping on reads", () => {
     expect(collected.every((t) => t === tenantA)).toBe(true);
     expect(collected.length).toBeGreaterThan(0);
   });
+
+  test("resource search returns one current label per resource and keeps limit fair", async () => {
+    const firstId = uuid();
+    const secondId = uuid();
+    const renamed = await auditAwait(
+      {
+        tenant_id: tenantA,
+        action: "knowledge_source.updated",
+        resource_type: "knowledge_source",
+        resource_id: firstId,
+        before: { name: "Vertragsarchiv" },
+        after: { name: "Archiv 2026" },
+      },
+      testDb.db,
+    );
+    await auditAwait(
+      {
+        tenant_id: tenantA,
+        ts: new Date(renamed.ts.getTime() + 1000),
+        action: "catalog_metadata.generated",
+        resource_type: "knowledge_source",
+        resource_id: firstId,
+      },
+      testDb.db,
+    );
+    await auditAwait(
+      {
+        tenant_id: tenantA,
+        action: "knowledge_source.created",
+        resource_type: "knowledge_source",
+        resource_id: secondId,
+        after: { name: "Vertragsarchiv" },
+      },
+      testDb.db,
+    );
+    await auditAwait(
+      {
+        tenant_id: tenantB,
+        action: "knowledge_source.created",
+        resource_type: "knowledge_source",
+        resource_id: uuid(),
+        after: { name: "Vertragsarchiv" },
+      },
+      testDb.db,
+    );
+    const matches = await searchAuditResources(testDb.db, tenantA, "Vertragsarchiv", undefined, 2);
+    expect(matches.map((match) => match.resource_id).sort()).toEqual([firstId, secondId].sort());
+    expect(matches.find((match) => match.resource_id === firstId)?.resource_name).toBe(
+      "Archiv 2026",
+    );
+    expect(matches.find((match) => match.resource_id === secondId)?.resource_name).toBe(
+      "Vertragsarchiv",
+    );
+    const byId = await searchAuditResources(testDb.db, tenantA, firstId);
+    expect(byId).toHaveLength(1);
+    expect(byId[0]?.resource_name).toBe("Archiv 2026");
+  });
+
+  test("resource search cannot probe a secret hidden by the response projection", async () => {
+    const resourceId = uuid();
+    const event = await auditAwait(
+      {
+        tenant_id: tenantA,
+        action: "knowledge_source.created",
+        resource_type: "knowledge_source",
+        resource_id: resourceId,
+        after: { name: "Safe archive" },
+      },
+      testDb.db,
+    );
+    await testDb.db
+      .update(auditLog)
+      .set({ after: { name: `Safe archive ghp_${"A".repeat(32)}` } })
+      .where(and(eq(auditLog.tenant_id, tenantA), eq(auditLog.id, event.id)));
+    expect(await searchAuditResources(testDb.db, tenantA, "AAAAAAA")).toEqual([]);
+    expect((await searchAuditResources(testDb.db, tenantA, "Safe archive"))[0]?.resource_id).toBe(
+      resourceId,
+    );
+  });
+
+  test("resource search reaches safe names after multiple pages of discarded secret matches", async () => {
+    const [tenant] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "audit-cn-search-late", display_name: "Audit Search Late" })
+      .returning();
+    if (!tenant) throw new Error("late search tenant missing");
+    const visibleId = uuid();
+    await testDb.db.insert(auditLog).values({
+      id: uuid(),
+      ts: new Date(FROZEN_NOW),
+      tenant_id: tenant.id,
+      actor_type: "system",
+      action: "knowledge_source.created",
+      resource_type: "knowledge_source",
+      resource_id: visibleId,
+      result: "success",
+      after: { name: "Archive AAAAAAA" },
+      metadata: {},
+    });
+    await testDb.db.insert(auditLog).values(
+      Array.from({ length: 150 }, (_, index) => ({
+        id: uuid(),
+        ts: new Date(FROZEN_NOW + (index + 1) * 1000),
+        tenant_id: tenant.id,
+        actor_type: "system",
+        action: "knowledge_source.created",
+        resource_type: "knowledge_source",
+        resource_id: uuid(),
+        result: "success",
+        after: { name: `Archive ghp_${"A".repeat(32)} ${index}` },
+        metadata: {},
+      })),
+    );
+    const matches = await searchAuditResources(testDb.db, tenant.id, "AAAAAAA", undefined, 1);
+    expect(matches.map((match) => match.resource_id)).toEqual([visibleId]);
+    expect(matches[0]?.resource_name).toBe("Archive AAAAAAA");
+  });
+
+  test("resource search stops after a bounded number of discarded candidates", async () => {
+    const [tenant] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "audit-cn-search-cap", display_name: "Audit Search Cap" })
+      .returning();
+    if (!tenant) throw new Error("search cap tenant missing");
+    const visibleId = uuid();
+    await testDb.db.insert(auditLog).values({
+      id: uuid(),
+      ts: new Date(FROZEN_NOW),
+      tenant_id: tenant.id,
+      actor_type: "system",
+      action: "knowledge_source.created",
+      resource_type: "knowledge_source",
+      resource_id: visibleId,
+      result: "success",
+      after: { name: "Archive BBBBBBB" },
+      metadata: {},
+    });
+    for (let start = 0; start < 2_100; start += 250) {
+      await testDb.db.insert(auditLog).values(
+        Array.from({ length: Math.min(250, 2_100 - start) }, (_, index) => ({
+          id: uuid(),
+          ts: new Date(FROZEN_NOW + (start + index + 1) * 1000),
+          tenant_id: tenant.id,
+          actor_type: "system",
+          action: "knowledge_source.created",
+          resource_type: "knowledge_source",
+          resource_id: uuid(),
+          result: "success",
+          after: { name: `Archive ghp_${"B".repeat(32)} ${start + index}` },
+          metadata: {},
+        })),
+      );
+    }
+    expect(await searchAuditResources(testDb.db, tenant.id, "BBBBBBB", undefined, 1)).toEqual([]);
+    expect((await searchAuditResources(testDb.db, tenant.id, visibleId))[0]?.resource_id).toBe(
+      visibleId,
+    );
+  }, 30_000);
 });
 
 describe("transactional rollback", () => {
@@ -262,6 +427,122 @@ describe("request-source attribution", () => {
       expect((fetched!.metadata as { request_source?: string }).request_source).toBe(source);
     });
   }
+
+  test("trusted request context persists source and credential identity for filtering", async () => {
+    const apiKeyId = uuid();
+    const sessionId = uuid();
+    const resourceId = uuid();
+    const entry = await withContext(
+      { request_source: "ui", api_key_id: apiKeyId, session_id: sessionId },
+      () =>
+        auditAwait(
+          {
+            tenant_id: tenantA,
+            action: "knowledge_source.updated",
+            resource_type: "knowledge_source",
+            resource_id: resourceId,
+            result: "success",
+          },
+          testDb.db,
+        ),
+    );
+    const filtered = await queryAuditLog(testDb.db, {
+      tenant_id: tenantA,
+      request_source: "ui",
+      api_key_id: apiKeyId,
+      session_id: sessionId,
+      resource_id: resourceId,
+    });
+    expect(entry.metadata.audit_used_api_key_id).toBe(apiKeyId);
+    expect(entry.metadata.audit_used_session_id).toBe(sessionId);
+    expect(filtered.items.map((item) => item.id)).toContain(entry.id);
+    const found = filtered.items.find((item) => item.id === entry.id);
+    if (!found) throw new Error("filtered audit entry missing");
+    const projected = serializeAuditEntry(found);
+    expect(projected.request_source).toBe("ui");
+    expect(projected.api_key_id).toBe(apiKeyId);
+    expect(projected.session_id).toBe(sessionId);
+    const otherTenant = await queryAuditLog(testDb.db, {
+      tenant_id: tenantB,
+      api_key_id: apiKeyId,
+    });
+    expect(otherTenant.items).toEqual([]);
+  });
+
+  test("event metadata cannot forge the credential used for a request", async () => {
+    const forgedKeyId = uuid();
+    const realSessionId = uuid();
+    const entry = await withContext(
+      { session_id: realSessionId, audit_access_type: "browser_session" },
+      () =>
+        auditAwait(
+          {
+            tenant_id: tenantA,
+            action: "knowledge_source.updated",
+            resource_type: "knowledge_source",
+            resource_id: uuid(),
+            metadata: {
+              api_key_id: forgedKeyId,
+              audit_used_api_key_id: forgedKeyId,
+              audit_access_type: "api_key",
+              audit_credential_origin: "cli_oauth_session",
+            },
+          },
+          testDb.db,
+        ),
+    );
+    const found = await getAuditRowById(testDb.db, tenantA, entry.id);
+    if (!found) throw new Error("audit entry missing");
+    const projected = serializeAuditEntry(found);
+    expect(projected.api_key_id).toBeNull();
+    expect(projected.session_id).toBe(realSessionId);
+    expect(projected.access_type).toBe("browser_session");
+    expect(projected.credential_origin).toBeNull();
+    const forgedFilter = await queryAuditLog(testDb.db, {
+      tenant_id: tenantA,
+      api_key_id: forgedKeyId,
+    });
+    expect(forgedFilter.items.map((item) => item.id)).not.toContain(entry.id);
+  });
+
+  test("historical recorded credential IDs remain searchable without becoming verified", async () => {
+    const recordedKeyId = uuid();
+    const entry = await auditAwait(
+      {
+        tenant_id: tenantA,
+        action: "knowledge_source.updated",
+        resource_type: "knowledge_source",
+        resource_id: uuid(),
+        metadata: { api_key_id: recordedKeyId },
+      },
+      testDb.db,
+    );
+    const found = await queryAuditLog(testDb.db, { tenant_id: tenantA, api_key_id: recordedKeyId });
+    expect(found.items.map((item) => item.id)).toContain(entry.id);
+    const historical = found.items.find((item) => item.id === entry.id);
+    if (!historical) throw new Error("historical audit entry missing");
+    const projected = serializeAuditEntry(historical);
+    expect(projected.api_key_id).toBeNull();
+    expect(projected.recorded_api_key_id).toBe(recordedKeyId);
+  });
+
+  test("API-key use receipts remain searchable by their resource ID", async () => {
+    const apiKeyId = uuid();
+    const receipt = await auditAwait(
+      {
+        tenant_id: tenantA,
+        action: AuditAction.API_KEY_USED,
+        resource_type: "api_key",
+        resource_id: apiKeyId,
+        metadata: { sampled: true },
+      },
+      testDb.db,
+    );
+    const found = await queryAuditLog(testDb.db, { tenant_id: tenantA, api_key_id: apiKeyId });
+    expect(found.items.map((item) => item.id)).toContain(receipt.id);
+    const foreign = await queryAuditLog(testDb.db, { tenant_id: tenantB, api_key_id: apiKeyId });
+    expect(foreign.items.map((item) => item.id)).not.toContain(receipt.id);
+  });
 });
 
 describe("query filter coverage", () => {
@@ -394,6 +675,33 @@ describe("query filter coverage", () => {
     ).toBe(false);
   });
 
+  test("ts_to excludes an event exactly at the upper boundary", async () => {
+    const boundary = new Date(FROZEN_NOW);
+    const resourceId = uuid();
+    const entry = await auditAwait(
+      {
+        tenant_id: tenantA,
+        ts: boundary,
+        action: "knowledge_source.updated",
+        resource_type: "knowledge_source",
+        resource_id: resourceId,
+      },
+      testDb.db,
+    );
+    const excluded = await queryAuditLog(testDb.db, {
+      tenant_id: tenantA,
+      resource_id: resourceId,
+      ts_to: boundary,
+    });
+    expect(excluded.items.some((item) => item.id === entry.id)).toBe(false);
+    const included = await queryAuditLog(testDb.db, {
+      tenant_id: tenantA,
+      resource_id: resourceId,
+      ts_from: boundary,
+    });
+    expect(included.items.some((item) => item.id === entry.id)).toBe(true);
+  });
+
   test("limit + cursor walks pages newest-first", async () => {
     const first = await queryAuditLog(testDb.db, { tenant_id: tenantA }, { limit: 1 });
     expect(first.items.length).toBe(1);
@@ -404,6 +712,29 @@ describe("query filter coverage", () => {
     if (first.items[0] && second.items[0]) {
       expect(first.items[0].ts.getTime()).toBeGreaterThanOrEqual(second.items[0].ts.getTime());
     }
+  });
+
+  test("an exactly full final page has no continuation cursor", async () => {
+    const resourceId = uuid();
+    for (const offset of [0, 1]) {
+      await auditAwait(
+        {
+          tenant_id: tenantA,
+          action: AuditAction.SYSTEM_STARTUP,
+          resource_type: "system",
+          resource_id: resourceId,
+          ts: new Date(Date.UTC(2026, 0, 1, 0, 0, offset)),
+        },
+        testDb.db,
+      );
+    }
+    const page = await queryAuditLog(
+      testDb.db,
+      { tenant_id: tenantA, resource_id: resourceId },
+      { limit: 2 },
+    );
+    expect(page.items).toHaveLength(2);
+    expect(page.next_cursor).toBeNull();
   });
 
   test("limit caps at MAX_LIMIT (500) silently", async () => {

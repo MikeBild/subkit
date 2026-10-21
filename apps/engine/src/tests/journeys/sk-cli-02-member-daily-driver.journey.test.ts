@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
-import { apiKeys, users } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { _drainAuditWritesForTests } from "../../audit/audit.ts";
+import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -97,7 +99,17 @@ describe("journey: sk-cli member daily driver", () => {
   test("AC3: member is denied GET /v1/audit-log with policy.denied row", async () => {
     const res = await memberFetch("/v1/audit-log");
     expect(res.status).toBe(403);
-    const denials = await findAudit("policy.denied", { actor_id: memberId });
+    await _drainAuditWritesForTests(ctx.db);
+    const denials = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.actor_id, memberId),
+          eq(auditLog.action, "policy.denied"),
+        ),
+      );
     const auditDenial = denials.find(
       (r) =>
         (r.metadata as { permission?: string }).permission === "audit:read" ||

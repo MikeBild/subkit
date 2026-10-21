@@ -21,7 +21,9 @@ import {
   Field,
   FieldGroup,
   FieldLabel,
+  FilterBar,
   FormDialog,
+  GroupingTabs,
   Input,
   Page,
   PageHeader,
@@ -212,6 +214,8 @@ function KeysSection({
   const [rotating, setRotating] = useState<ApiKeyItem | null>(null);
   const [revoking, setRevoking] = useState<ApiKeyItem | null>(null);
   const [opened, setOpened] = useState<ApiKeyItem | null>(null);
+  const [search, setSearch] = useState("");
+  const [groupBy, setGroupBy] = useState("all");
   const refresh = () => client.invalidateQueries({ queryKey: API_KEYS_QUERY });
 
   const rotate = useMutation({
@@ -313,6 +317,22 @@ function KeysSection({
   }, [t, locale, nowMs]);
 
   const groups = groupApiKeys(query.data?.items ?? []);
+  const needle = search.trim().toLocaleLowerCase();
+  const matches = (key: ApiKeyItem) =>
+    !needle ||
+    [
+      key.name ?? "",
+      apiKeyOwnerLabel(key, directory, t),
+      apiKeyCreatorLabel(key.creator, directory, t),
+    ].some((value) => value.toLocaleLowerCase().includes(needle));
+  const filteredActive = groups.active.filter(matches);
+  const filteredRevoked = groups.revoked.filter(matches);
+  const keyGrouping =
+    groupBy === "owner"
+      ? { getKey: (key: ApiKeyItem) => apiKeyOwnerLabel(key, directory, t) }
+      : groupBy === "creator"
+        ? { getKey: (key: ApiKeyItem) => apiKeyCreatorLabel(key.creator, directory, t) }
+        : undefined;
   const keyMenu = (key: ApiKeyItem, prefix: string) => {
     const items: ActionMenuItem[] = [];
     if (key.revoked_at) return items;
@@ -356,7 +376,33 @@ function KeysSection({
       <ListTable
         id="api-keys"
         columns={columns}
-        rows={groups.active}
+        rows={filteredActive}
+        toolbar={
+          <FilterBar
+            search={{
+              value: search,
+              onChange: setSearch,
+              placeholder: t("resource.search", { resource: t("apiAccess.section.keys") }),
+              testId: "api-keys-search",
+            }}
+          />
+        }
+        groupingTabs={
+          <GroupingTabs
+            label={t("common.groupBy")}
+            value={groupBy}
+            onChange={setGroupBy}
+            options={[
+              { value: "all", label: t("common.all") },
+              { value: "owner", label: t("apiKeys.owner") },
+              { value: "creator", label: t("apiKeys.creator") },
+            ]}
+            testId="api-keys-grouping"
+          />
+        }
+        grouping={keyGrouping}
+        hasActiveFilters={Boolean(needle)}
+        onReset={() => setSearch("")}
         pending={query.isPending}
         failed={query.isError}
         resource={t("apiAccess.section.keys")}
@@ -376,7 +422,10 @@ function KeysSection({
           <ListTable
             id="api-keys-revoked-list"
             columns={columns}
-            rows={groups.revoked}
+            rows={filteredRevoked}
+            grouping={keyGrouping}
+            hasActiveFilters={Boolean(needle)}
+            onReset={() => setSearch("")}
             pending={false}
             failed={false}
             resource={t("apiAccess.section.keys")}
@@ -604,6 +653,8 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
   const canRevoke = session.permissions.includes("mcp_oauth_client:revoke");
   const [revoking, setRevoking] = useState<ConnectedClientItem | null>(null);
   const [opened, setOpened] = useState<ConnectedClientItem | null>(null);
+  const [search, setSearch] = useState("");
+  const [groupBy, setGroupBy] = useState("all");
   const revoke = useMutation({
     mutationFn: (clientId: string) =>
       apiRequest<void>(`/v1/oauth/clients/${encodeURIComponent(clientId)}`, { method: "DELETE" }),
@@ -670,6 +721,20 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
   }, [t, dateTime]);
 
   const groups = groupConnectedClients(query.data?.items ?? []);
+  const needle = search.trim().toLocaleLowerCase();
+  const matches = (item: ConnectedClientItem) =>
+    !needle ||
+    [
+      item.client_name ?? "",
+      ...connectedClientHistory(item.connected_by, t).map((line) => line.person),
+    ].some((value) => value.toLocaleLowerCase().includes(needle));
+  const clientGrouping =
+    groupBy === "name"
+      ? {
+          getKey: (item: ConnectedClientItem) =>
+            (item.client_name?.trim().charAt(0) || t("common.unknown")).toLocaleUpperCase(),
+        }
+      : undefined;
   const openedHistory = opened ? connectedClientHistory(opened.connected_by, t) : [];
   const rowLabel = (item: ConnectedClientItem) =>
     t("connectedClients.openRow", { name: item.client_name || t("connectedClients.unnamed") });
@@ -677,7 +742,36 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
     <ListTable<ConnectedClientItem>
       id={id}
       columns={columns}
-      rows={rows}
+      rows={rows.filter(matches)}
+      toolbar={
+        id === "connected-clients" ? (
+          <FilterBar
+            search={{
+              value: search,
+              onChange: setSearch,
+              placeholder: t("resource.search", { resource: t("apiAccess.section.clients") }),
+              testId: "connected-clients-search",
+            }}
+          />
+        ) : undefined
+      }
+      groupingTabs={
+        id === "connected-clients" ? (
+          <GroupingTabs
+            label={t("common.groupBy")}
+            value={groupBy}
+            onChange={setGroupBy}
+            options={[
+              { value: "all", label: t("common.all") },
+              { value: "name", label: t("apiAccess.column.name") },
+            ]}
+            testId="connected-clients-grouping"
+          />
+        ) : undefined
+      }
+      grouping={clientGrouping}
+      hasActiveFilters={Boolean(needle)}
+      onReset={() => setSearch("")}
       pending={query.isPending}
       failed={query.isError}
       resource={t("apiAccess.section.clients")}

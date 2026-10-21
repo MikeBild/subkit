@@ -151,7 +151,7 @@ describe("P5 SummaryLine", () => {
 });
 
 describe("P7 FilterBar", () => {
-  test("a search and at most two selects", () => {
+  test("the wide panel exposes search, every filter, grouping context and apply", () => {
     const select = (label: string) => ({
       value: "all",
       onChange() {},
@@ -160,12 +160,16 @@ describe("P7 FilterBar", () => {
     });
     const html = render(
       <FilterBar
+        presentation="panel"
         search={{ value: "", onChange() {}, placeholder: "Suchen", testId: "search" }}
         selects={[select("A"), select("B"), select("C")]}
+        segmented={<span>Zeitraum</span>}
       />,
     );
-    expect(html).toContain('data-testid="search"');
-    expect(count(html, /role="combobox"/g)).toBe(2);
+    expect(html).toContain('data-testid="search-panel"');
+    expect(count(html, /role="combobox"/g)).toBe(3);
+    expect(html).toContain("Zeitraum");
+    expect(html).toContain('data-testid="filter-bar-panel-apply"');
   });
 });
 
@@ -241,6 +245,7 @@ describe("P11 StatusBadge", () => {
     expect(statusTone("succeeded")).toBe("ok");
     expect(statusTone("RUNNING")).toBe("warn");
     expect(statusTone("needs_reauth")).toBe("error");
+    expect(statusTone("denied")).toBe("error");
     expect(statusTone("draft")).toBe("neutral");
   });
 });

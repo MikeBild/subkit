@@ -1,22 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { Bot } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
 import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
-import { CatalogNameCell } from "@/components/cockpit/catalog-metadata";
+import { CatalogMetadataSummary, CatalogNameCell } from "@/components/cockpit/catalog-metadata";
 import { CreateAction } from "@/components/cockpit/create-choice";
 import {
   Button,
   type CockpitColumn,
+  DataState,
   DataTable,
+  FactList,
   FilterBar,
   type FilterSelect,
+  GroupingTabs,
   Page,
   PageHeader,
+  RecordOpenLink,
+  RecordSheet,
   StatusBadge,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
@@ -32,7 +36,10 @@ import {
   CATALOG_WORKFLOW_FILTER_STATUSES,
   catalogListParams,
   catalogOperatingStatus,
+  catalogSelectedId,
+  catalogSelectionHref,
   OPERATING_STATUS_KEYS,
+  recordTitle,
   type WorkflowStatusFilter,
 } from "@/pages/catalog-model";
 import { driverLabel } from "@/pages/connector-detail-model";
@@ -145,28 +152,36 @@ function parseState(config: CatalogConfig): CatalogState {
 
 function useCatalogState(config: CatalogConfig) {
   const [state, setStateValue] = useState<CatalogState>(() => parseState(config));
+  const stateRef = useRef(state);
   useEffect(() => {
-    const onPopState = () => setStateValue(parseState(config));
+    const onPopState = () => {
+      const next = parseState(config);
+      stateRef.current = next;
+      setStateValue(next);
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, [config]);
   const setState = useCallback(
     (patch: Partial<CatalogState>) => {
-      setStateValue((current) => {
-        const next = { ...current, ...patch };
-        const params = new URLSearchParams();
-        if (next.q) params.set("q", next.q);
-        if (next.kind !== "all") params.set("kind", next.kind);
-        if (next.status !== "all") params.set("operating_status", next.status);
-        if (next.category !== "all") params.set("category", next.category);
-        if (next.connector) params.set("connector", next.connector);
-        if (next.health) params.set("health", next.health);
-        if (next.sort !== config.defaultSort) params.set("sort", next.sort);
-        if (next.order !== "desc") params.set("order", next.order);
-        const suffix = params.size > 0 ? `?${params}` : "";
-        window.history.pushState({}, "", `${window.location.pathname}${suffix}`);
-        return next;
-      });
+      const next = { ...stateRef.current, ...patch };
+      stateRef.current = next;
+      const params = new URLSearchParams();
+      if (next.q) params.set("q", next.q);
+      if (next.kind !== "all") params.set("kind", next.kind);
+      if (next.status !== "all") params.set("operating_status", next.status);
+      if (next.category !== "all") params.set("category", next.category);
+      if (next.connector) params.set("connector", next.connector);
+      if (next.health) params.set("health", next.health);
+      if (next.sort !== config.defaultSort) params.set("sort", next.sort);
+      if (next.order !== "desc") params.set("order", next.order);
+      const selected = catalogSelectedId(window.location.search);
+      if (selected) params.set("selected", selected);
+      const suffix = params.size > 0 ? `?${params}` : "";
+      const href = `${window.location.pathname}${suffix}`;
+      if (href !== `${window.location.pathname}${window.location.search}`)
+        window.history.pushState({}, "", href);
+      setStateValue(next);
     },
     [config.defaultSort],
   );
@@ -307,10 +322,36 @@ export function CatalogPage({
   permissions: readonly string[];
 }) {
   const { t, dateTime, locale } = useI18n();
-  const navigate = useNavigate();
   const config = CONFIG[resource];
   const [state, setState] = useCatalogState(config);
   const [search, setSearch] = useState(state.q);
+  const [groupMode, setGroupMode] = useState("all");
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    catalogSelectedId(window.location.search),
+  );
+  useEffect(() => setGroupMode("all"), [resource]);
+  useEffect(() => setSelectedId(catalogSelectedId(window.location.search)), [resource]);
+  useEffect(() => {
+    const onPopState = () => setSelectedId(catalogSelectedId(window.location.search));
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+  const selectRecord = useCallback((id: string | null) => {
+    if (id) {
+      window.history.pushState(
+        {},
+        "",
+        catalogSelectionHref(window.location.pathname, window.location.search, id),
+      );
+    } else {
+      window.history.replaceState(
+        {},
+        "",
+        catalogSelectionHref(window.location.pathname, window.location.search, null),
+      );
+    }
+    setSelectedId(id);
+  }, []);
   const origin = useCatalogOrigin();
   const debouncedSearch = useDebouncedValue(search);
   useEffect(() => setSearch(state.q), [state.q]);
@@ -328,6 +369,12 @@ export function CatalogPage({
     queryKey: ["catalog", resource, params],
   });
   const query = list.query;
+  const selected = useQuery({
+    queryKey: ["catalog-detail", resource, selectedId],
+    enabled: permissions.includes(config.permission) && Boolean(selectedId),
+    queryFn: () =>
+      apiRequest<CatalogRow>(`${config.endpoint}/${encodeURIComponent(selectedId ?? "")}`),
+  });
 
   const canReadWorkflows = permissions.includes("workflow:read");
   const workflowIndex = useQuery({
@@ -359,9 +406,31 @@ export function CatalogPage({
   );
   const sorting: SortingState = [{ id: state.sort, desc: state.order === "desc" }];
   const rows = list.items;
+  const selectedRow = rows.find((row) => row.id === selectedId);
+  const selectedOperatingStatus = catalogOperatingStatus(
+    selectedRow?.operating_status ?? selected.data?.operating_status,
+  );
   const total = list.total ?? rows.length;
   const categories = useMemo(() => list.first?.categories ?? [], [list.first]);
   const title = t(config.titleKey);
+  const grouping =
+    groupMode === "all"
+      ? undefined
+      : {
+          getKey: (row: CatalogRow) => {
+            if (resource === "workflows") {
+              if (groupMode === "trigger")
+                return t(
+                  triggerLabelKey(row.effective_trigger as WorkflowListItem["effective_trigger"]),
+                );
+              return t(OPERATING_STATUS_KEYS[catalogOperatingStatus(row.operating_status)]);
+            }
+            if (groupMode === "kind") return driverLabel(stringField(row, "driver"), t) || MISSING;
+            return row.enabled === false
+              ? statusLabel(t, "disabled")
+              : statusLabel(t, stringField(row, "health_state") ?? "unknown");
+          },
+        };
   const hasActiveFilters =
     Boolean(state.q) ||
     state.status !== "all" ||
@@ -491,6 +560,29 @@ export function CatalogPage({
         <DataTable
           columns={columns}
           data={rows}
+          groupingTabs={
+            <GroupingTabs
+              label={t("common.groupBy")}
+              value={groupMode}
+              onChange={setGroupMode}
+              options={
+                resource === "workflows"
+                  ? [
+                      { value: "all", label: t("common.all") },
+                      { value: "status", label: t("catalog.status") },
+                      { value: "trigger", label: t("catalog.trigger") },
+                    ]
+                  : [
+                      { value: "all", label: t("common.all") },
+                      { value: "kind", label: t("catalog.kind") },
+                      { value: "health", label: t("catalog.status") },
+                    ]
+              }
+              testId={`catalog-${resource}-grouping`}
+              note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+            />
+          }
+          grouping={grouping}
           toolbar={
             <>
               <FilterBar
@@ -501,6 +593,17 @@ export function CatalogPage({
                   testId: "catalog-search",
                 }}
                 selects={selects}
+                onApply={(changes) => {
+                  const patch: Partial<CatalogState> = {};
+                  if (changes["catalog-kind-filter"])
+                    patch.kind = changes["catalog-kind-filter"] as CatalogState["kind"];
+                  if (changes["catalog-category-filter"])
+                    patch.category = changes["catalog-category-filter"];
+                  if (changes["catalog-status-filter"])
+                    patch.status = changes["catalog-status-filter"] as WorkflowStatusFilter;
+                  if (Object.keys(patch).length > 0) setState(patch);
+                }}
+                reset={{ label: t("catalog.clearFilters"), onClick: resetFilters }}
               />
               {resource === "connectors" && state.health === "not_ok" ? (
                 <Button
@@ -559,9 +662,13 @@ export function CatalogPage({
           }}
           onOpen={(row) => {
             const id = row.id;
-            if (typeof id === "string") void navigate({ to: recordHref(resource, id) });
+            if (typeof id === "string") selectRecord(id);
           }}
-          rowHref={(row) => (typeof row.id === "string" ? recordHref(resource, row.id) : null)}
+          rowHref={(row) =>
+            typeof row.id === "string"
+              ? catalogSelectionHref(window.location.pathname, window.location.search, row.id)
+              : null
+          }
           total={total}
           infinite={list.infinite}
           columnsLabel={t("catalog.columns")}
@@ -570,6 +677,108 @@ export function CatalogPage({
           actionsLabel={t("common.actions")}
         />
       </div>
+      <RecordSheet
+        dock
+        open={Boolean(selectedId)}
+        onOpenChange={(open) => {
+          if (!open) selectRecord(null);
+        }}
+        title={selected.data ? recordTitle(selected.data) : t("common.details")}
+        subtitle={selected.data ? <CatalogMetadataSummary record={selected.data} /> : undefined}
+        action={
+          selectedId && selected.data ? (
+            <RecordOpenLink
+              href={absolute(recordHref(resource, selectedId))}
+              testId="catalog-open-detail"
+            />
+          ) : undefined
+        }
+        loading={selected.isPending && !selected.error}
+        testId="catalog-detail-sheet"
+        closeTestId="catalog-detail-close"
+      >
+        {selected.error ? (
+          <DataState
+            state="error"
+            line={t("detail.loadFailed")}
+            onRetry={() => void selected.refetch()}
+            testId="catalog-detail-error"
+          />
+        ) : selected.data ? (
+          <FactList
+            testId="catalog-detail-facts"
+            items={
+              resource === "workflows"
+                ? [
+                    {
+                      label: t("catalog.status"),
+                      value: (
+                        <StatusBadge
+                          state={selectedOperatingStatus}
+                          label={t(OPERATING_STATUS_KEYS[selectedOperatingStatus])}
+                        />
+                      ),
+                    },
+                    {
+                      label: t("catalog.trigger"),
+                      value:
+                        selected.data.effective_trigger &&
+                        typeof selected.data.effective_trigger === "object" &&
+                        "kind" in selected.data.effective_trigger
+                          ? t(
+                              triggerLabelKey(
+                                selected.data
+                                  .effective_trigger as WorkflowListItem["effective_trigger"],
+                              ),
+                            )
+                          : MISSING,
+                    },
+                    {
+                      label: t("catalog.version"),
+                      value:
+                        typeof selected.data.current_version === "number"
+                          ? `v${selected.data.current_version}`
+                          : MISSING,
+                    },
+                    {
+                      label: t("catalog.lastRun"),
+                      value: stringField(selected.data, "last_executed_at")
+                        ? dateTime(stringField(selected.data, "last_executed_at") ?? "")
+                        : MISSING,
+                    },
+                  ]
+                : [
+                    {
+                      label: t("catalog.kind"),
+                      value: driverLabel(stringField(selected.data, "driver"), t) || MISSING,
+                    },
+                    {
+                      label: t("catalog.status"),
+                      value: (
+                        <StatusBadge
+                          state={
+                            selected.data.enabled === false
+                              ? "disabled"
+                              : (stringField(selected.data, "health_state") ?? "unknown")
+                          }
+                        />
+                      ),
+                    },
+                    {
+                      label: t("catalog.tested"),
+                      value: stringField(selected.data, "last_tested_at")
+                        ? dateTime(stringField(selected.data, "last_tested_at") ?? "")
+                        : MISSING,
+                    },
+                    {
+                      label: t("resource.field.slug"),
+                      value: stringField(selected.data, "slug") ?? MISSING,
+                    },
+                  ]
+            }
+          />
+        ) : null}
+      </RecordSheet>
     </Page>
   );
 }

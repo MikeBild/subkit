@@ -40,6 +40,9 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
           c.req.header("x-subkit-client") === "cockpit" &&
           Boolean(await browserSessionForPrincipal(c.req.raw, principal));
         if (cockpitRequest) c.set("request_source", "ui");
+        const requestSource = cockpitRequest ? "ui" : (c.get("request_source") ?? "api");
+        const auditSource =
+          cockpitRequest && c.req.path.startsWith("/v1/conversations") ? "chat" : requestSource;
         c.set(
           "service_metadata",
           buildServiceMetadata({
@@ -47,14 +50,29 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
             tenant_id: principal.tenant_id,
             actor_id: principal.id,
             actor_email: principal.email ?? null,
-            request_source: cockpitRequest ? "ui" : (c.get("request_source") ?? "api"),
+            request_source: requestSource,
           }),
         );
         await withContext(
           {
             tenant_id: principal.tenant_id,
             actor_id: principal.id,
-            request_source: cockpitRequest ? "ui" : (c.get("request_source") ?? "api"),
+            request_source: requestSource,
+            audit_origin_source: auditSource,
+            audit_execution_source: auditSource,
+            ...(principal.api_key_id ? { api_key_id: principal.api_key_id } : {}),
+            ...(principal.session_id ? { session_id: principal.session_id } : {}),
+            ...(principal.auth_source
+              ? { audit_access_type: principal.auth_source.kind }
+              : principal.provider === "portal_token"
+                ? { audit_access_type: "portal_token" as const }
+                : {}),
+            ...(principal.oauth_client_id
+              ? { audit_oauth_client_id: principal.oauth_client_id }
+              : {}),
+            ...(principal.credential_origin
+              ? { audit_credential_origin: principal.credential_origin }
+              : {}),
             ...(principal.via ? { auth_via: principal.via } : {}),
           },
           async () => {

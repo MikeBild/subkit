@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { Check, ChevronsUpDown, Download, Loader2, User, Users, Workflow } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Membership } from "@/api/memberships";
@@ -22,6 +23,7 @@ export function WorkspaceMenu({
   tenantId,
   tenantName,
   wordmark,
+  attention,
   changing,
   changingTenantId,
   loading,
@@ -38,6 +40,7 @@ export function WorkspaceMenu({
   tenantId: string;
   tenantName: string;
   wordmark?: ReactNode;
+  attention?: ReactNode;
   changing: boolean;
   changingTenantId: string | undefined;
   loading: boolean;
@@ -51,42 +54,56 @@ export function WorkspaceMenu({
   onRevoke?(): void;
 }) {
   const { t } = useI18n();
-  const { isMobile } = useSidebar();
+  const { isMobile, setOpenMobile } = useSidebar();
   const pending = items?.find((item) => changing && item.tenant_id === changingTenantId);
   return (
     <SidebarMenu>
-      <SidebarMenuItem data-testid="cockpit-wordmark">
+      <SidebarMenuItem
+        data-testid="cockpit-wordmark"
+        className="flex min-w-0 items-center gap-1 group-data-[collapsible=icon]:flex-col"
+        onClick={(event) => {
+          if (
+            isMobile &&
+            (event.target as HTMLElement).closest('[data-testid="cockpit-home-link"]')
+          )
+            setOpenMobile(false);
+        }}
+      >
+        <SidebarMenuButton asChild size="lg" className="min-w-0 flex-1" tooltip={tenantName}>
+          <Link to="/" data-testid="cockpit-home-link" aria-label={tenantName}>
+            {wordmark ?? (
+              <>
+                <div
+                  data-testid="cockpit-wordmark-icon"
+                  className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
+                >
+                  <Workflow className="size-4" />
+                </div>
+                <div className="grid min-w-0 flex-1 text-left leading-tight">
+                  <span
+                    data-testid="cockpit-wordmark-name"
+                    className="truncate text-sm font-semibold"
+                  >
+                    {t("app.name")}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {pending?.display_name ?? tenantName}
+                  </span>
+                </div>
+              </>
+            )}
+            {pending ? <Loader2 className="size-3 animate-spin" /> : null}
+            {attention}
+          </Link>
+        </SidebarMenuButton>
         <DropdownMenu open={open} onOpenChange={onOpenChange}>
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
-              size="lg"
               aria-label={t("workspace.switch")}
               aria-busy={changing}
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="size-8 shrink-0 justify-center data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              {wordmark ?? (
-                <>
-                  <div
-                    data-testid="cockpit-wordmark-icon"
-                    className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
-                  >
-                    <Workflow className="size-4" />
-                  </div>
-                  <div className="grid min-w-0 flex-1 text-left leading-tight">
-                    <span
-                      data-testid="cockpit-wordmark-name"
-                      className="truncate text-sm font-semibold"
-                    >
-                      {t("app.name")}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {pending?.display_name ?? tenantName}
-                    </span>
-                  </div>
-                </>
-              )}
-              {pending ? <Loader2 className="size-3 animate-spin" /> : null}
-              <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
+              <ChevronsUpDown className="size-4 text-muted-foreground" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent

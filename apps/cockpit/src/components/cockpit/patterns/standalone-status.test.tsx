@@ -3,7 +3,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { FormDialog } from "./form-dialog";
 import { StandaloneStatus } from "./standalone-status";
-import { render } from "./test-utils";
+import { render, renderInRouter } from "./test-utils";
 import { WorkspaceConfirmation } from "./workspace-confirmation";
 import { WorkspaceMenu } from "./workspace-menu";
 
@@ -57,8 +57,8 @@ test("reading status preserves its column, icon, variant and notice markup", () 
   );
 });
 
-test("workspace menu retains the sidebar trigger, busy state and visible caller content", () => {
-  const html = render(
+test("workspace menu retains the sidebar trigger, busy state and visible caller content", async () => {
+  const html = await renderInRouter(
     <SidebarProvider>
       <WorkspaceMenu
         items={[]}

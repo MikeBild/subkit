@@ -4,6 +4,8 @@ import {
   type CatalogQueryState,
   catalogListParams,
   catalogOperatingStatus,
+  catalogSelectedId,
+  catalogSelectionHref,
 } from "./catalog-model";
 
 const EXPECTED_WORKFLOW_FILTER_STATUSES = [
@@ -47,4 +49,16 @@ test("missing operating evidence never falls back to a lifecycle success state",
   expect(catalogOperatingStatus("archived")).toBe("unknown");
   expect(catalogOperatingStatus("failing")).toBe("failing");
   expect(catalogOperatingStatus("active")).toBe("active");
+});
+
+test("catalogue selection preserves filters and remains a shareable list URL", () => {
+  const id = "457df8bc-2fe7-4a44-8dba-0acfa31821c5";
+  const selected = catalogSelectionHref("/cockpit/workflows", "?q=archive&status=active", id);
+  expect(selected).toBe(`/cockpit/workflows?q=archive&status=active&selected=${id}`);
+  expect(catalogSelectedId(new URL(selected, "https://example.test").search)).toBe(id);
+  expect(catalogSelectionHref("/cockpit/workflows", `?q=archive&selected=${id}`, null)).toBe(
+    "/cockpit/workflows?q=archive",
+  );
+  expect(catalogSelectedId("?selected=invalid")).toBeNull();
+  expect(catalogSelectedId(`?selected=${"x".repeat(201)}`)).toBeNull();
 });

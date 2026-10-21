@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
+import { auditLog } from "../../apps/engine/src/db/schema/index.ts";
 import { grantScheduleAuthorityFixture } from "../../apps/engine/src/scheduler/tests/authority-fixture.ts";
 import { seedWorkflow } from "./_helpers/factories.ts";
 import { apiClient } from "./_helpers/http.ts";
@@ -49,7 +51,21 @@ describe("workflow schedule fan-out", () => {
     const audit = await api.get<unknown>("/v1/audit-log?limit=50");
     expect(audit.status).toBe(200);
     expect(JSON.stringify(audit.body)).toContain("schedule.trigger.fired");
-    expect(JSON.stringify(audit.body)).toContain(authority.id);
+    expect(JSON.stringify(audit.body)).not.toContain(authority.id);
+    const [fired] = await env.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, env.tenantId),
+          eq(auditLog.action, "schedule.trigger.fired"),
+          eq(auditLog.resource_id, schedule.id),
+        ),
+      );
+    expect(fired?.metadata).toMatchObject({
+      execution_authority_id: authority.id,
+      origin_source: "scheduler",
+    });
   }, 60_000);
 
   test("a due schedule without an execution authority creates no run", async () => {

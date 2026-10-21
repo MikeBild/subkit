@@ -33,6 +33,11 @@
         "enum": null
       },
       {
+        "name": "credential_origin",
+        "type": "text",
+        "enum": null
+      },
+      {
         "name": "prefix",
         "type": "text",
         "enum": null
@@ -3194,6 +3199,16 @@
         "enum": null
       },
       {
+        "name": "origin_source",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "audit_trace_id",
+        "type": "text",
+        "enum": null
+      },
+      {
         "name": "execution_mode",
         "type": "execution_mode",
         "enum": ["dev", "prod"]
@@ -5063,6 +5078,16 @@
       },
       {
         "name": "request_source",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "origin_source",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "audit_trace_id",
         "type": "text",
         "enum": null
       },

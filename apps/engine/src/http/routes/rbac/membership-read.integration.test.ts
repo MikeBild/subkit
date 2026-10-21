@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 import { EMBEDDED_MIGRATIONS } from "../../../db/migrations/embedded.ts";
 import {
   groupMembers,
@@ -27,6 +28,7 @@ beforeAll(async () => {
   server = await createHttpTestServer("membership-read", {
     testDbOptions: { upToIdx: migration.idx - 1 },
   });
+  await server.db.execute(sql`ALTER TABLE subkit.api_keys ADD COLUMN credential_origin text`);
   const [foreignTenant] = await server.db
     .insert(tenants)
     .values({ slug: "membership-foreign", display_name: "Foreign" })

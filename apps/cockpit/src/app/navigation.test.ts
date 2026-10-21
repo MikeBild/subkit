@@ -4,7 +4,9 @@ import {
   ATTENTION_READ_PERMISSIONS,
   NAVIGATION,
   navigationItem,
+  visibleAccountNavigation,
   visibleNavigation,
+  visiblePrimaryNavigation,
 } from "./navigation";
 
 const paths = (permissions: string[]) =>
@@ -13,6 +15,20 @@ const paths = (permissions: string[]) =>
     .map((item) => item.path);
 
 describe("cockpit navigation contract", () => {
+  test("the tenant opens Overview, Chat leads the sidebar, and admin links live in the account menu", () => {
+    const permissions = ["stats:read", "conversation:read", "workflow:read", "audit:read"];
+    expect(
+      visiblePrimaryNavigation(permissions).flatMap((group) =>
+        group.items.map((item) => item.path),
+      ),
+    ).toEqual(["/chat", "/workflows"]);
+    expect(visibleAccountNavigation(permissions).map((item) => item.path)).toEqual([
+      "/usage",
+      "/audit",
+    ]);
+    expect(navigationItem("/")?.labelKey).toBe("nav.overview");
+  });
+
   test("does not render entries without their effective permission", () => {
     const groups = visibleNavigation(["conversation:read", "workflow:read"]);
     expect(groups.flatMap((group) => group.items).map((item) => item.labelKey)).toEqual([

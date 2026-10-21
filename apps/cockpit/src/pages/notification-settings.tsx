@@ -14,7 +14,9 @@ import {
   Field,
   FieldGroup,
   FieldLabel,
+  FilterBar,
   FormDialog,
+  GroupingTabs,
   Input,
   RecordSheet,
   Section,
@@ -188,6 +190,10 @@ export function NotificationSettings({
   const canWrite = session.permissions.includes("notification:write");
   const [ruleOpen, setRuleOpen] = useState<NotificationRuleItem | null>(null);
   const [channelOpen, setChannelOpen] = useState<NotificationChannelItem | null>(null);
+  const [ruleSearch, setRuleSearch] = useState("");
+  const [channelSearch, setChannelSearch] = useState("");
+  const [ruleGroup, setRuleGroup] = useState("all");
+  const [channelGroup, setChannelGroup] = useState("all");
   const live = useLiveQueryOptions();
   const rules = useQuery({
     queryKey: RULES_QUERY,
@@ -201,6 +207,24 @@ export function NotificationSettings({
   });
   const ruleItems = rules.data?.items ?? [];
   const channelItems = channels.data?.items ?? [];
+  const ruleNeedle = ruleSearch.trim().toLocaleLowerCase();
+  const channelNeedle = channelSearch.trim().toLocaleLowerCase();
+  const visibleRules = ruleItems.filter(
+    (rule) =>
+      !ruleNeedle ||
+      [
+        ruleNameLabel(rule, t),
+        ruleTargetText(t, rule, channelItems),
+        severityWord(t, rule.severity),
+      ].some((value) => value.toLocaleLowerCase().includes(ruleNeedle)),
+  );
+  const visibleChannels = channelItems.filter(
+    (channel) =>
+      !channelNeedle ||
+      [platformLabel(channel.platform, t).text, channelTargetLabel(channel, t)].some((value) =>
+        value.toLocaleLowerCase().includes(channelNeedle),
+      ),
+  );
   const now = Date.now();
 
   const ruleColumns = useMemo<CockpitColumn<NotificationRuleItem>[]>(() => {
@@ -331,7 +355,42 @@ export function NotificationSettings({
         <ListTable<NotificationRuleItem>
           id="notifications-rules-table"
           columns={ruleColumns}
-          rows={ruleItems}
+          rows={visibleRules}
+          toolbar={
+            <FilterBar
+              search={{
+                value: ruleSearch,
+                onChange: setRuleSearch,
+                placeholder: t("resource.search", { resource: t("notifications.rules") }),
+                testId: "notifications-rules-search",
+              }}
+            />
+          }
+          groupingTabs={
+            <GroupingTabs
+              label={t("common.groupBy")}
+              value={ruleGroup}
+              onChange={setRuleGroup}
+              options={[
+                { value: "all", label: t("common.all") },
+                { value: "state", label: t("notifications.column.state") },
+                { value: "severity", label: t("notifications.column.severity") },
+              ]}
+              testId="notifications-rules-grouping"
+            />
+          }
+          grouping={
+            ruleGroup === "state"
+              ? {
+                  getKey: (rule) =>
+                    t(rule.active ? "notifications.active" : "notifications.paused"),
+                }
+              : ruleGroup === "severity"
+                ? { getKey: (rule) => severityWord(t, rule.severity) }
+                : undefined
+          }
+          hasActiveFilters={Boolean(ruleNeedle)}
+          onReset={() => setRuleSearch("")}
           pending={rules.isPending}
           failed={rules.isError}
           resource={t("notifications.rules")}
@@ -345,7 +404,42 @@ export function NotificationSettings({
         <ListTable<NotificationChannelItem>
           id="notifications-channels-table"
           columns={channelColumns}
-          rows={channelItems}
+          rows={visibleChannels}
+          toolbar={
+            <FilterBar
+              search={{
+                value: channelSearch,
+                onChange: setChannelSearch,
+                placeholder: t("resource.search", { resource: t("notifications.channels") }),
+                testId: "notifications-channels-search",
+              }}
+            />
+          }
+          groupingTabs={
+            <GroupingTabs
+              label={t("common.groupBy")}
+              value={channelGroup}
+              onChange={setChannelGroup}
+              options={[
+                { value: "all", label: t("common.all") },
+                { value: "state", label: t("notifications.column.state") },
+                { value: "platform", label: t("notifications.column.channel") },
+              ]}
+              testId="notifications-channels-grouping"
+            />
+          }
+          grouping={
+            channelGroup === "state"
+              ? {
+                  getKey: (channel) =>
+                    t(channel.active ? "notifications.active" : "notifications.paused"),
+                }
+              : channelGroup === "platform"
+                ? { getKey: (channel) => platformLabel(channel.platform, t).text }
+                : undefined
+          }
+          hasActiveFilters={Boolean(channelNeedle)}
+          onReset={() => setChannelSearch("")}
           pending={channels.isPending}
           failed={channels.isError}
           resource={t("notifications.channels")}

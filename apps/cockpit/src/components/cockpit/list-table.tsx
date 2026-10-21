@@ -17,6 +17,11 @@ export function ListTable<TData extends RowData>({
   rowLabel,
   rowActions,
   layout,
+  toolbar,
+  groupingTabs,
+  grouping,
+  hasActiveFilters = false,
+  onReset = onRetry,
 }: {
   id: string;
   columns: CockpitColumn<TData>[];
@@ -31,6 +36,11 @@ export function ListTable<TData extends RowData>({
   rowLabel?(row: TData): string;
   rowActions?: (row: TData, index: number) => ReactNode;
   layout?: "responsive" | "rows";
+  toolbar?: ReactNode;
+  groupingTabs?: ReactNode;
+  grouping?: { getKey(row: TData): string; label?(key: string): string };
+  hasActiveFilters?: boolean;
+  onReset?(): void;
 }) {
   const { t } = useI18n();
   return (
@@ -44,6 +54,9 @@ export function ListTable<TData extends RowData>({
         onOpen={onOpen}
         rowLabel={rowLabel}
         rowActions={rowActions}
+        toolbar={toolbar}
+        groupingTabs={groupingTabs}
+        grouping={grouping}
         pending={pending}
         error={
           failed
@@ -61,10 +74,10 @@ export function ListTable<TData extends RowData>({
             title: t("resource.noMatches"),
             description: t("resource.broaderSearch"),
             resetLabel: t("catalog.clearFilters"),
-            onReset: onRetry,
+            onReset,
           },
         }}
-        hasActiveFilters={false}
+        hasActiveFilters={hasActiveFilters}
         sorting={[] as SortingState}
         onSortingChange={() => {}}
         total={rows.length}

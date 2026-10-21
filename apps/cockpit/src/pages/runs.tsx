@@ -20,6 +20,7 @@ import {
   type Fact,
   FactList,
   FilterBar,
+  GroupingTabs,
   RecordSheet,
   RowName,
   RowsSkeleton,
@@ -52,6 +53,7 @@ import {
   type OutcomeSentence,
   payloadEvidence,
   previewText,
+  REQUEST_SOURCES,
   RUN_STATUSES,
   RUNS_FILTER_KEYS,
   type RunFact,
@@ -728,6 +730,7 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
   const [initial] = useState(() => initialRunsFilter(window.location.search, Date.now()));
   const [statusFilter, setStatusFilter] = useState<string>(initial.status);
   const [sourceFilter, setSourceFilter] = useState<string>(initial.source);
+  const [groupMode, setGroupMode] = useState("all");
   const [search, setSearch] = useState(initial.q);
   const [workflowFilter, setWorkflowFilter] = useState<string | null>(initial.workflowId);
   const [startedWindow, setStartedWindow] = useState<{ from: string | null; to: string | null }>({
@@ -887,6 +890,30 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
         <DataTable
           columns={columns}
           data={rows}
+          groupingTabs={
+            <GroupingTabs
+              label={t("common.groupBy")}
+              value={groupMode}
+              onChange={setGroupMode}
+              options={[
+                { value: "all", label: t("common.all") },
+                { value: "status", label: t("resource.field.status") },
+                { value: "source", label: t("runs.column.source") },
+              ]}
+              testId="runs-grouping"
+              note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+            />
+          }
+          grouping={
+            groupMode === "all"
+              ? undefined
+              : {
+                  getKey: (run) =>
+                    groupMode === "status"
+                      ? statusLabel(t, run.status)
+                      : requestSourceLabel(run.request_source, t).text,
+                }
+          }
           toolbar={
             <FilterBar
               search={{
@@ -906,6 +933,19 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
                     ...RUN_STATUSES.map((status) => ({
                       value: status,
                       label: statusLabel(t, status),
+                    })),
+                  ],
+                },
+                {
+                  value: sourceFilter,
+                  onChange: setSourceFilter,
+                  label: t("runs.filterSource"),
+                  testId: "runs-source-filter",
+                  options: [
+                    { value: "all", label: t("common.all") },
+                    ...REQUEST_SOURCES.map((source) => ({
+                      value: source,
+                      label: requestSourceLabel(source, t).text,
                     })),
                   ],
                 },

@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { and, eq, inArray } from "drizzle-orm";
+import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
+import { auditLog } from "../../db/schema/audit.ts";
+import { apiKeys } from "../../db/schema/index.ts";
 import { TEST_DB_HOOK_TIMEOUT } from "../../db/tests/setup.ts";
 import type { HttpTestServer } from "../../http/tests/setup.ts";
+import { createApiKeyProvider } from "../providers/api-key.ts";
 import {
   CODE_CHALLENGE,
   CODE_VERIFIER,
@@ -121,6 +126,48 @@ describe("CLI OAuth authorization-code flow", () => {
     const credential = (await exchange.json()) as { api_key: string; context_id: string };
     expect(credential.api_key).toMatch(/^wf_live_/);
     expect(credential.context_id).toBe(ctx.tenantId);
+    const exchangeAudit = await db
+      .select({ action: auditLog.action, metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          inArray(auditLog.action, [AuditAction.API_KEY_ISSUED, AuditAction.SK_CLI_LOGIN]),
+        ),
+      );
+    for (const action of [AuditAction.API_KEY_ISSUED, AuditAction.SK_CLI_LOGIN]) {
+      const event = exchangeAudit.find((entry) => entry.action === action);
+      expect(event?.metadata).toMatchObject({
+        audit_access_type: "token_exchange",
+        audit_oauth_client_id: clientId,
+        audit_credential_origin: "cli_oauth_session",
+        origin_source: "cli",
+      });
+    }
+    const [issued] = await db
+      .select({ id: apiKeys.id, credential_origin: apiKeys.credential_origin })
+      .from(apiKeys)
+      .where(
+        and(
+          eq(apiKeys.tenant_id, ctx.tenantId),
+          eq(apiKeys.prefix, credential.api_key.slice(0, 12)),
+        ),
+      );
+    expect(issued?.credential_origin).toBe("cli_oauth_session");
+    const principal = await createApiKeyProvider({ db }).resolve(
+      new Request(`${ctx.baseUrl}/v1/identity/me`, {
+        headers: { authorization: `Bearer ${credential.api_key}` },
+      }),
+    );
+    expect(principal?.credential_origin).toBe("cli_oauth_session");
+    expect(principal?.api_key_id).toBe(issued?.id);
+    await expect(
+      db
+        .update(apiKeys)
+        .set({ credential_origin: null })
+        .where(and(eq(apiKeys.tenant_id, ctx.tenantId), eq(apiKeys.id, issued?.id ?? "")))
+        .execute(),
+    ).rejects.toMatchObject({ cause: { code: "23514" } });
 
     const replay = await fetch(`${ctx.baseUrl}/v1/identity/cli-session`, {
       method: "POST",

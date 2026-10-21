@@ -3,17 +3,16 @@ import { JSDOM } from "jsdom";
 import { opensRow, rowLinkColumn, tableColumnWidths } from "./data-table";
 
 describe("data table column allocation", () => {
-  test("reserves action and navigation space from declared column proportions", () => {
+  test("reserves action space from declared column proportions", () => {
     const widths = tableColumnWidths(["w-[36%]", "w-[14%]", "w-[14%]", "w-[18%]", "w-[18%]"], {
       actions: true,
-      chevron: true,
     });
     expect(widths).toEqual([
-      "calc(36.0000cqw - 5.7600rem)",
-      "calc(14.0000cqw - 2.2400rem)",
-      "calc(14.0000cqw - 2.2400rem)",
-      "calc(18.0000cqw - 2.8800rem)",
-      "calc(18.0000cqw - 2.8800rem)",
+      "calc(36.0000cqw - 5.0400rem)",
+      "calc(14.0000cqw - 1.9600rem)",
+      "calc(14.0000cqw - 1.9600rem)",
+      "calc(18.0000cqw - 2.5200rem)",
+      "calc(18.0000cqw - 2.5200rem)",
     ]);
   });
 
@@ -21,10 +20,9 @@ describe("data table column allocation", () => {
     expect(
       tableColumnWidths(["w-[70%]", "w-[70%]"], {
         actions: false,
-        chevron: false,
       }),
     ).toEqual(["calc(50.0000cqw - 0.0000rem)", "calc(50.0000cqw - 0.0000rem)"]);
-    expect(tableColumnWidths([undefined, undefined], { actions: false, chevron: false })).toEqual([
+    expect(tableColumnWidths([undefined, undefined], { actions: false })).toEqual([
       "calc(50.0000cqw - 0.0000rem)",
       "calc(50.0000cqw - 0.0000rem)",
     ]);

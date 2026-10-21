@@ -8,10 +8,11 @@ import { useSession } from "@/app/session";
 import {
   type CockpitColumn,
   DataTable,
+  FilterBar,
+  GroupingTabs,
   Page,
   PageHeader,
   Section,
-  SegmentedControl,
   SummaryLine,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
@@ -78,6 +79,7 @@ export function UsagePage() {
   const live = useLiveQueryOptions();
   const allowed = session.permissions.includes("stats:read");
   const title = t("resource.usage.title");
+  const [groupBy, setGroupBy] = useState<"origin" | "workflow" | "model">("origin");
   const [bounds, setBounds] = useState<WindowBounds>(() =>
     windowBounds(usageWindowFromUrl(window.location.search)),
   );
@@ -321,22 +323,49 @@ export function UsagePage() {
     ];
   }, [t, dateTime, percent, number]);
 
-  const header = (
-    <PageHeader
-      title={title}
-      secondary={
-        <SegmentedControl
-          label={t("resource.usage.windowPicker")}
-          testId="usage-window"
-          value={span}
-          onValueChange={chooseWindow}
-          options={STATS_WINDOWS.map((candidate) => ({
-            value: candidate,
-            label: t(WINDOW_OPTION[candidate]),
-            testId: `usage-window-${candidate}`,
-          }))}
-        />
-      }
+  const header = <PageHeader title={title} />;
+  const windowFilter = [
+    {
+      label: t("resource.usage.windowPicker"),
+      value: span,
+      onChange: chooseWindow,
+      options: STATS_WINDOWS.map((candidate) => ({
+        value: candidate,
+        label: t(WINDOW_OPTION[candidate]),
+      })),
+      testId: "usage-window",
+    },
+  ];
+  const filterPanel = (
+    <div data-testid="usage-filters">
+      <FilterBar
+        presentation="panel"
+        selects={windowFilter}
+        reset={{ label: t("catalog.clearFilters"), onClick: () => chooseWindow("7d") }}
+      />
+    </div>
+  );
+  const filterToolbar = (
+    <FilterBar
+      presentation="toolbar"
+      mobileOnly
+      selects={windowFilter}
+      reset={{ label: t("catalog.clearFilters"), onClick: () => chooseWindow("7d") }}
+    />
+  );
+  const groupingTabs = (
+    <GroupingTabs
+      label={t("common.groupBy")}
+      value={groupBy}
+      onChange={(value) => {
+        if (value === "origin" || value === "workflow" || value === "model") setGroupBy(value);
+      }}
+      options={[
+        { value: "origin", label: t("resource.usage.byOrigin") },
+        { value: "workflow", label: t("resource.usage.byWorkflow") },
+        { value: "model", label: t("resource.usage.byModel") },
+      ]}
+      testId="usage-grouping"
     />
   );
 
@@ -376,7 +405,7 @@ export function UsagePage() {
       title: t("resource.noMatches"),
       description: t("resource.broaderSearch"),
       resetLabel: t("catalog.clearFilters"),
-      onReset: () => {},
+      onReset: () => chooseWindow("7d"),
     },
   };
   const tableError = (retry: () => void) => ({
@@ -388,7 +417,7 @@ export function UsagePage() {
 
   return (
     <Page kind="list" surface="collection" testId="resource-usage" scroll="page" header={header}>
-      <div className="flex min-w-0 flex-col gap-8">
+      <div className="flex min-w-0 flex-col gap-3">
         <SummaryLine
           testId="usage-cap-line"
           text={
@@ -411,17 +440,20 @@ export function UsagePage() {
           help={t("resource.usage.consumptionDescription")}
         />
 
-        <div className="grid min-w-0 grid-cols-1 gap-8 2xl:grid-cols-2">
-          <Section label={t("resource.usage.byOrigin")} testId="usage-origins">
+        {groupBy === "origin" ? (
+          <Section testId="usage-origins">
             <DataTable
               collectionId="usage-origin-table"
               collectionTier="embedded"
+              groupingTabs={groupingTabs}
+              filterPanel={filterPanel}
+              toolbar={filterToolbar}
               columns={originColumns}
               data={origins}
               pending={byFlow.isPending}
               error={byFlow.error ? tableError(() => void byFlow.refetch()) : null}
               emptyState={emptyState}
-              hasActiveFilters={false}
+              hasActiveFilters={span !== "7d"}
               sorting={[] as SortingState}
               onSortingChange={() => {}}
               columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byOrigin")}`}
@@ -429,17 +461,22 @@ export function UsagePage() {
               actionsLabel={t("common.actions")}
             />
           </Section>
+        ) : null}
 
-          <Section label={t("resource.usage.byModel")} testId="usage-models">
+        {groupBy === "model" ? (
+          <Section testId="usage-models">
             <DataTable
               collectionId="usage-model-table"
               collectionTier="embedded"
+              groupingTabs={groupingTabs}
+              filterPanel={filterPanel}
+              toolbar={filterToolbar}
               columns={modelColumns}
               data={modelRows}
               pending={byModel.isPending}
               error={byModel.error ? tableError(() => void byModel.refetch()) : null}
               emptyState={emptyState}
-              hasActiveFilters={false}
+              hasActiveFilters={span !== "7d"}
               sorting={[] as SortingState}
               onSortingChange={() => {}}
               columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byModel")}`}
@@ -447,13 +484,16 @@ export function UsagePage() {
               actionsLabel={t("common.actions")}
             />
           </Section>
-        </div>
+        ) : null}
 
-        {byWorkflow.isPending || byWorkflow.error || attributedRows.length > 0 ? (
-          <Section label={t("resource.usage.byWorkflow")} testId="usage-breakdown">
+        {groupBy === "workflow" ? (
+          <Section testId="usage-breakdown">
             <DataTable
               collectionId="usage-consumption-table"
               collectionTier="embedded"
+              groupingTabs={groupingTabs}
+              filterPanel={filterPanel}
+              toolbar={filterToolbar}
               columns={workflowColumns}
               data={attributedRows}
               canOpen={(row) => workflowName.get(row.key)?.kind === "named"}
@@ -464,7 +504,7 @@ export function UsagePage() {
               pending={byWorkflow.isPending}
               error={byWorkflow.error ? tableError(() => void byWorkflow.refetch()) : null}
               emptyState={emptyState}
-              hasActiveFilters={false}
+              hasActiveFilters={span !== "7d"}
               sorting={[] as SortingState}
               onSortingChange={() => {}}
               columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byWorkflow")}`}

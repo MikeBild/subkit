@@ -3,6 +3,7 @@ import { type Tool, tool } from "ai";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
+import { withContext } from "../../../logging/context.ts";
 import { log, logger } from "../../../logging/logger.ts";
 import { stampMcpTaskProgress } from "../../../mcp/tasks/store.ts";
 import {
@@ -1009,7 +1010,10 @@ export function wrapOne(
           result =
             pregateRefusal ??
             (permCheck.allow
-              ? await inner.execute(perCallCtx, resolvedArgs)
+              ? await withContext(
+                  { audit_execution_source: "tool-chain", conversation_id: ctx.conversation_id },
+                  () => inner.execute(perCallCtx, resolvedArgs),
+                )
               : permissionRefusal(inner, permCheck));
         } catch (err) {
           await langfuseSpan.finish({ status: "error", error: err });
