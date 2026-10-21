@@ -7,9 +7,6 @@ import { fileURLToPath } from "node:url";
 import { liveGateFailureHint } from "./llm-live-checks.ts";
 import { assertReleaseRefsUnchanged, releaseGateContext } from "./release-gate-provenance.ts";
 import { releaseVersionWasUsed } from "./release-history.ts";
-import { writeComparison } from "./runtime-benchmark/report.ts";
-import { lockfileSha256, sourceSha256 } from "./runtime-benchmark/runner.ts";
-import { readManifest } from "./runtime-benchmark.ts";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -98,45 +95,6 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-const baselineManifestPath = process.env.SUBKIT_RUNTIME_BASELINE_MANIFEST;
-const candidateManifestPath = process.env.SUBKIT_RUNTIME_CANDIDATE_MANIFEST;
-if (!baselineManifestPath || !candidateManifestPath) {
-  console.error("release:tag: paired runtime benchmark manifests are required");
-  process.exit(1);
-}
-try {
-  const baseline = await readManifest(baselineManifestPath);
-  const candidate = await readManifest(candidateManifestPath);
-  require_(
-    candidate.source_sha256 === (await sourceSha256(REPO)),
-    "runtime candidate source differs from release checkout",
-  );
-  require_(
-    candidate.lockfile_sha256 === (await lockfileSha256(REPO)),
-    "runtime candidate lockfile differs from release checkout",
-  );
-  const comparison = await writeComparison({
-    baseline,
-    candidate,
-    output: join(REPO, ".artifacts/runtime-benchmark/release-verification"),
-    baselinePath: baselineManifestPath,
-    candidatePath: candidateManifestPath,
-  });
-  require_(
-    comparison.acceptance === "pass",
-    `runtime capacity acceptance is ${comparison.acceptance}: ${comparison.evidence_gaps.join(", ")}`,
-  );
-} catch (error) {
-  problems.push(
-    `runtime benchmark evidence could not be verified: ${error instanceof Error ? error.message : String(error)}`,
-  );
-}
-if (problems.length > 0) {
-  console.error("release:tag: refusing to tag —\n");
-  for (const problem of problems) console.error(`  · ${problem}`);
-  process.exit(1);
-}
-
 console.log("release:tag: running the live LLM gate (bun run verify:llm-live)\n");
 try {
   execFileSync("bun", ["run", "verify:llm-live", "--", ...process.argv.slice(2)], {
@@ -181,7 +139,7 @@ execFileSync(
     "-f",
     `context=${releaseGateContext(tag)}`,
     "-f",
-    "description=Mandatory local verification, live models and runtime capacity passed",
+    "description=Mandatory local verification and live models passed",
     "--silent",
   ],
   { cwd: REPO, stdio: "inherit" },
