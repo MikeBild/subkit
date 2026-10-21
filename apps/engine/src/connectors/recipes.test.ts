@@ -109,7 +109,15 @@ describe("GraphQL and AWS recipe coverage", () => {
         };
       };
     };
+    expect(project.title).toBe("List user Project items with bounded field values");
+    expect(project.description).toContain("up to 20 field values per item");
+    expect(project.description).toContain(
+      "fails closed if a nested fieldValues connection has more pages",
+    );
+    expect(project.description).toContain("query that item's field values separately");
     expect(projectStep.graphql?.query).toContain("projectV2(number: $number)");
+    expect(projectStep.graphql?.query).toContain("fieldValues(first: 20)");
+    expect(projectStep.graphql?.query).toContain("pageInfo { hasNextPage }");
     expect(projectStep.graphql?.cursor_pagination).toMatchObject({
       connection_path: "user.projectV2.items",
       required_connection_paths: ["fieldValues"],
