@@ -317,6 +317,7 @@ export function applyExecutionToolGate(
   if (decision.exposeExecution) return 0;
   let removed = 0;
   for (const name of Object.keys(tools)) {
+    if (name === "dry_run_step" && decision.reason === "authoring_no_target") continue;
     if (isExecutionToolName(name, syntheticWorkflowSlugs)) {
       delete tools[name];
       removed += 1;

@@ -5,7 +5,7 @@ import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import type { Db } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
-import { conversationElicitations, conversations, mcpTasks } from "../schema/index.ts";
+import { conversationElicitations, mcpTasks } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
@@ -82,10 +82,13 @@ beforeAll(async () => {
   const user = userResult.rows[0] as { id: string } | undefined;
   if (!user) throw new Error("seed user failed");
   userId = user.id;
-  const [conversation] = await ctx.db
-    .insert(conversations)
-    .values({ tenant_id: tenantId, status: "active", draft: {} })
-    .returning({ id: conversations.id });
+  const {
+    rows: [conversation],
+  } = await ctx.db.execute<{ id: string }>(sql`
+    INSERT INTO conversations (tenant_id, status, draft)
+    VALUES (${tenantId}, 'active', '{}'::jsonb)
+    RETURNING id
+  `);
   if (!conversation) throw new Error("seed conversation failed");
   conversationId = conversation.id;
   seeded.decidedByUser = await seedElicitation(userId);
