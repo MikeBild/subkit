@@ -120,14 +120,19 @@ export function ChatPlaybookSummary({
         {readable(playbook.title)}
       </div>
       <FactList
+        layout="stacked"
         items={[
           {
             label: t("chat.playbook.status"),
-            value: <span role="status">{t(playbookStatusKey(playbook))}</span>,
+            value: (
+              <span className="font-semibold" role="status">
+                {t(playbookStatusKey(playbook))}
+              </span>
+            ),
           },
           {
             label: t("chat.playbook.why"),
-            value: readable(playbook.summary),
+            value: <span className="leading-relaxed">{readable(playbook.summary)}</span>,
           },
           ...(playbook.next_action
             ? [

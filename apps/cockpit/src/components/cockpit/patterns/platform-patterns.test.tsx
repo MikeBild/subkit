@@ -253,6 +253,9 @@ describe("loading shapes", () => {
   test("content without loading renders as before", () => {
     expect(render(<StatusStrip tone="ok" line="fine" />)).toContain("fine");
     expect(render(<FactList items={[{ label: "a", value: "b" }]} />)).toContain("<dl");
+    const stacked = render(<FactList layout="stacked" items={[{ label: "a", value: "b" }]} />);
+    expect(stacked).toContain('data-shape="stacked"');
+    expect(stacked).toContain('class="space-y-3"');
   });
 
   test("Button keeps its label in place and shows a spinner", () => {
