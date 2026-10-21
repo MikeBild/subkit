@@ -41,6 +41,7 @@ RUN NODE_ENV=production bunx vite build --config apps/cockpit/vite.config.ts \
       /out/notice-cockpit/assets/*.map > /out/THIRD_PARTY_NOTICES.txt
 
 FROM builder AS generated-cli
+RUN bun scripts/install-rcodesign.ts /usr/local/bin
 RUN set -eux; \
     VERSION="${ENGINE_VERSION:-$(bun -e 'console.log(require("./package.json").version)')}"; \
     bun scripts/stage-cli-binaries.ts --dir /out/binaries --version "$VERSION"

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildClipper } from "./build-clipper.ts";
 
@@ -126,6 +126,49 @@ async function compileTarget(
   }
 }
 
+export type DarwinSigner = "codesign-script" | "rcodesign";
+
+export function darwinSigner(hostPlatform: string, rcodesignPath: string | null): DarwinSigner {
+  if (hostPlatform === "darwin") return "codesign-script";
+  if (rcodesignPath) return "rcodesign";
+  throw new Error(
+    `cannot ad-hoc sign macOS binaries on ${hostPlatform}: rcodesign not found (set RCODESIGN or run scripts/install-rcodesign.ts)`,
+  );
+}
+
+export function hasAdHocSignature(signatureInfo: string): boolean {
+  return /adhoc/i.test(signatureInfo);
+}
+
+async function run(cmd: string[]): Promise<{ code: number; out: string }> {
+  const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
+  const [out, err] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  const code = await proc.exited;
+  return { code, out: out + err };
+}
+
+async function signDarwinBinary(file: string): Promise<void> {
+  const rcodesign = process.env.RCODESIGN || Bun.which("rcodesign");
+  const signer = darwinSigner(process.platform, rcodesign ?? null);
+  if (signer === "codesign-script") {
+    const signed = await run(["sh", join(REPO_ROOT, "scripts/codesign-macos.sh"), file]);
+    if (signed.code !== 0) throw new Error(`codesign failed for ${file}: ${signed.out}`);
+    return;
+  }
+  const tmp = `${file}.signed`;
+  const signed = await run([rcodesign as string, "sign", file, tmp]);
+  if (signed.code !== 0) throw new Error(`rcodesign sign failed for ${file}: ${signed.out}`);
+  await rename(tmp, file);
+  await chmod(file, 0o755);
+  const info = await run([rcodesign as string, "print-signature-info", file]);
+  if (info.code !== 0 || !hasAdHocSignature(info.out)) {
+    throw new Error(`${file} does not carry an ad-hoc signature after signing: ${info.out}`);
+  }
+}
+
 async function sha256(path: string): Promise<string> {
   const buf = await readFile(path);
   return createHash("sha256").update(buf).digest("hex");
@@ -144,6 +187,10 @@ async function main(): Promise<void> {
     const outFile = join(dir, filename);
     console.log(`  building ${filename} (${target.bunTarget})`);
     await compileTarget(target, outFile, version);
+    if (target.os === "darwin") {
+      console.log(`  signing ${filename}`);
+      await signDarwinBinary(outFile);
+    }
     const hash = await sha256(outFile);
     sumsLines.push(`${hash}  ${filename}`);
   }
