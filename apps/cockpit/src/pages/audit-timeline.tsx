@@ -523,6 +523,10 @@ function FilterForm({
                       : ""
                   }
                   onChange={(event) => {
+                    if (!event.target.value) {
+                      setDraft((current) => ({ ...current, actorType: "", actorId: "" }));
+                      return;
+                    }
                     const choice = identities.find(
                       (option) => `${option.kind}:${option.id}` === event.target.value,
                     );
