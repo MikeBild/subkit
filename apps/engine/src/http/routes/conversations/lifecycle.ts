@@ -6,6 +6,7 @@ import { hasBuiltinAdminRole } from "../../../rbac/index.ts";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { conversationLocale } from "./locale.ts";
 import {
   CompactConversationBody,
   CompactConversationResponse,
@@ -262,7 +263,13 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const snapshot = await svc.getContextSnapshot(principal.tenant_id, id, db);
+    const snapshot = await svc.getContextSnapshot(
+      principal.tenant_id,
+      id,
+      db,
+      principal,
+      conversationLocale(c.req.header("cookie"), c.req.header("accept-language")),
+    );
     if (!snapshot) throw new NotFoundError("conversation");
     return c.json(snapshot, 200);
   });

@@ -7,6 +7,7 @@ import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations, fileLinks } from "../../db/schema/index.ts";
 import { linkStoredFile } from "../../files/links.ts";
 import { log } from "../../logging/logger.ts";
+import { forkPlaybookDocument } from "../playbook.ts";
 import type { ConversationRecord } from "../types.ts";
 import { rowToRecord } from "./shared.ts";
 
@@ -54,6 +55,7 @@ export async function forkConversation(
   const anchorIdx = allMessages.findIndex((m) => m.id === p.anchor_message_id);
   if (anchorIdx < 0) return null;
 
+  const playbook = source.playbook_mode === "off" ? null : forkPlaybookDocument(source.playbook);
   const forkTitle = p.title ?? `fork — ${source.title ?? source.id.slice(0, 8)}`;
   const [row] = await exec
     .insert(conversations)
@@ -65,6 +67,9 @@ export async function forkConversation(
       origin_client: source.origin_client ?? null,
       surface: source.surface ?? null,
       draft: source.draft,
+      playbook_mode: source.playbook_mode,
+      playbook,
+      playbook_revision: playbook ? 1 : 0,
       owner_id: p.actor_id ?? source.owner_id ?? null,
       loaded_skills: source.loaded_skills,
       turn_count: source.turn_count,

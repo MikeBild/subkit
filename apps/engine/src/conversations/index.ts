@@ -35,6 +35,7 @@ export {
   clearDraftCredential,
   setDraftCredential,
 } from "./persistence/draft-credential-cache.ts";
+export { PlaybookViewSchema } from "./playbook-contract.ts";
 export { ResumeFormFieldSchema } from "./resume-form.ts";
 export * from "./service.ts";
 export { keepResolvableCitations } from "./source-faithful.ts";

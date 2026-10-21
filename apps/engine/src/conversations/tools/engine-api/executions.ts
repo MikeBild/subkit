@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { executionStartTraceId } from "../../../audit/index.ts";
+import { KEYSET_CURSOR_PATTERN } from "../../../db/keyset-cursor.ts";
 import { executionStatusEnum, executions } from "../../../db/schema/index.ts";
 import {
   describeExecutionEvidence,
@@ -13,10 +14,30 @@ import type { ConversationTool } from "../index.ts";
 const ListInput = z
   .object({
     limit: z.number().int().min(1).max(200).optional(),
-    cursor: z.string().min(1).max(128).optional(),
+    cursor: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(
+        KEYSET_CURSOR_PATTERN,
+        "Invalid cursor. Omit cursor for the first page; for later pages copy next_cursor from the previous result without changing it. Keep the same filters.",
+      )
+      .optional()
+      .describe(
+        "Omit for the first page. For later pages use only the previous result's non-null next_cursor verbatim, with unchanged filters. Never invent a cursor or use a page number.",
+      ),
     workflow_id: z.string().uuid().optional(),
-    status: z.enum(executionStatusEnum.enumValues).optional(),
-    request_source: z.string().min(1).optional(),
+    status: z
+      .enum(executionStatusEnum.enumValues)
+      .optional()
+      .describe("Filter by outcome only when the task requires it; omit to inspect all outcomes."),
+    request_source: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Filter by the run's recorded start channel only when requested, not the current chat channel.",
+      ),
     started_from: z
       .string()
       .datetime({ offset: true })
@@ -34,8 +55,9 @@ const GetInput = z.object({ id: z.string().uuid() }).openapi("GetExecutionToolIn
 export const listExecutionsTool: ConversationTool = {
   name: "list_executions",
   description:
-    "List recent executions for the tenant (newest first, paged — executions are an unbounded history). When the user names a workflow, first resolve it with get_workflow/find_workflow and pass workflow_id; never treat the tenant-wide latest execution as evidence for a named workflow. started_from/started_to narrow to a window on the start time (the window `get_operating_figures` counts over), status to one outcome. `total` is the exact count under the given filters; while `has_more` is true, pass `next_cursor` back verbatim as `cursor` for the next page.",
+    "List recent executions for the tenant (newest first, paged — executions are an unbounded history). Omit cursor on the first page. Use only filters justified by the task; do not invent status, channel or date bounds. When the user names a workflow, first resolve it with get_workflow/find_workflow and pass workflow_id; never treat the tenant-wide latest execution as evidence for a named workflow. started_from/started_to narrow to a window on the start time (the window `get_operating_figures` counts over), status to one outcome. `total` is the exact count under the given filters; while `has_more` is true, pass `next_cursor` back verbatim as `cursor` with unchanged filters for the next page. A failed read is missing evidence, not an empty history.",
   inputSchema: ListInput,
+  strict: false,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof ListInput>) {
     if (!ctx.principal) return { ok: false, data: { error: "principal_required" } };

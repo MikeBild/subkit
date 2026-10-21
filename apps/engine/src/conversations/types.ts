@@ -518,6 +518,7 @@ export interface ConversationResumeSummary {
 }
 
 export interface ConversationDetail {
+  playbook?: import("./playbook-contract.ts").PlaybookView | null;
   conversation: ConversationRecord;
   messages: ConversationMessageRecord[];
   tool_calls: ConversationToolCallRecord[];

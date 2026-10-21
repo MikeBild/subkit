@@ -69,6 +69,11 @@ export async function wrapTools(
         loadedSkillSet,
       );
   for (const t of visibleTools) {
+    if (
+      ctx.playbook_mode === "off" &&
+      (t.name === "inspect_playbook" || t.name === "update_playbook")
+    )
+      continue;
     out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies, permissionMode, loadedSkills);
   }
   if (principal) {

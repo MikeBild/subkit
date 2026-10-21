@@ -156,6 +156,9 @@ import sql0135SilkySwarm from "./0135_silky_swarm.sql" with { type: "text" };
 import sql0136BoringGlorian from "./0136_boring_glorian.sql" with { type: "text" };
 import sql0137HostedAuditProvenance from "./0137_hosted_audit_provenance.sql" with { type: "text" };
 import sql0138HostedControlReceiptIds from "./0138_hosted_control_receipt_ids.sql" with { type: "text" };
+import sql0139LushClintBarton from "./0139_lush_clint_barton.sql" with { type: "text" };
+import sql0140LastBenParker from "./0140_last_ben_parker.sql" with { type: "text" };
+import sql0141SteepMorlun from "./0141_steep_morlun.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -319,6 +322,9 @@ const SQL_BY_TAG: Record<string, string> = {
   "0136_boring_glorian": sql0136BoringGlorian,
   "0137_hosted_audit_provenance": sql0137HostedAuditProvenance,
   "0138_hosted_control_receipt_ids": sql0138HostedControlReceiptIds,
+  "0139_lush_clint_barton": sql0139LushClintBarton,
+  "0140_last_ben_parker": sql0140LastBenParker,
+  "0141_steep_morlun": sql0141SteepMorlun,
 };
 
 const journal = journalMeta as unknown as Journal;

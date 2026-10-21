@@ -26211,6 +26211,8 @@ export interface components {
             permission_mode?: "auto" | "ask" | "plan" | "yolo";
             step_budget?: number;
             playground?: boolean;
+            /** @enum {string} */
+            playbook_mode?: "off" | "auto";
             intake_item_ids?: string[];
             references?: components["schemas"]["ConversationReference"][];
         };
@@ -26228,6 +26230,7 @@ export interface components {
             messages: components["schemas"]["UIMessage"][];
             tool_calls: components["schemas"]["ConversationToolCall"][];
             draft?: unknown;
+            playbook?: components["schemas"]["ConversationPlaybook"] | null;
             resume_summary?: {
                 active_target: {
                     /** @enum {string} */
@@ -26320,6 +26323,57 @@ export interface components {
             approved_at: string | null;
             /** @enum {string|null} */
             outcome: "ok" | "error" | "denied" | "pending" | null;
+        };
+        ConversationPlaybook: {
+            id: string;
+            title: string;
+            goal: string;
+            revision: number;
+            /** @enum {string} */
+            status: "open" | "in_progress" | "waiting_for_input" | "blocked" | "prepared" | "completed" | "cancelled";
+            summary: string;
+            steps: {
+                id: string;
+                label: string;
+                criterion: string;
+                depends_on: string[];
+                /** @enum {string} */
+                status: "open" | "in_progress" | "waiting_for_input" | "blocked" | "verified" | "assessment_ready" | "stale" | "not_applicable";
+                reason: string;
+                /** @enum {string} */
+                assurance: "technical" | "human" | "assessment";
+                evidence: {
+                    id: string;
+                    /** @enum {string} */
+                    kind: "tool_call" | "execution" | "decision";
+                    label: string;
+                    resource_type: string | null;
+                    resource_id: string | null;
+                    observed_at: string | null;
+                    /** @enum {string} */
+                    freshness: "fresh" | "stale" | "unavailable";
+                    href: string | null;
+                }[];
+                next_action: {
+                    label: string;
+                    owner: string | null;
+                    /** Format: uuid */
+                    elicitation_id: string | null;
+                } | null;
+            }[];
+            next_action: {
+                label: string;
+                owner: string | null;
+                /** Format: uuid */
+                elicitation_id: string | null;
+            } | null;
+            completion: {
+                /** @enum {string} */
+                status: "open" | "verified";
+                label: string;
+                reason: string;
+            };
+            updated_at: string;
         };
         ConversationUsage: {
             tokens: number;
@@ -26425,6 +26479,7 @@ export interface components {
             deleted: true;
         };
         ContextSnapshot: {
+            playbook?: components["schemas"]["ConversationPlaybook"] | null;
             conversation_id: string;
             connector_id: string | null;
             workflow_id: string | null;

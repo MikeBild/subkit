@@ -11,6 +11,7 @@ import { HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { streamTenantSSE as streamSSE } from "../../tenant-stream.ts";
+import { conversationLocale } from "./locale.ts";
 import {
   ElicitationParam,
   errorFrame,
@@ -91,6 +92,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         elicitation_id,
         actor_id: principal.id,
         principal,
+        locale: conversationLocale(c.req.header("cookie"), c.req.header("accept-language")),
         answer_actor: humanChatAnswer(principal),
         output: body.output,
         turn_abort_ctrl: turnAbortCtrl,
@@ -203,6 +205,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         elicitation_id: elicit.id,
         actor_id: principal.id,
         principal,
+        locale: conversationLocale(c.req.header("cookie"), c.req.header("accept-language")),
         answer_actor: humanChatAnswer(principal),
         output: body.output,
         turn_abort_ctrl: turnAbortCtrl,

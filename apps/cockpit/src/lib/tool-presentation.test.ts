@@ -31,6 +31,22 @@ describe("toolLabel", () => {
       },
     });
     expect(toolLabel("run_workflow")).toEqual({ kind: "key", key: "tool.name.runWorkflow" });
+    expect(toolLabel("inspect_playbook")).toEqual({
+      kind: "background",
+      words: {
+        active: "tool.background.inspectPlaybook.active",
+        past: "tool.background.inspectPlaybook.past",
+      },
+    });
+    expect(toolLabel("update_playbook")).toEqual({
+      kind: "background",
+      words: {
+        active: "tool.background.updatePlaybook.active",
+        past: "tool.background.updatePlaybook.past",
+      },
+    });
+    expect(translate("de", "tool.background.updatePlaybook.past")).toBe("Playbook aktualisiert");
+    expect(translate("en", "tool.background.inspectPlaybook.past")).toBe("Playbook reviewed");
   });
 
   test("labels a skill write by its outcome, so a queued proposal never reads as created", () => {

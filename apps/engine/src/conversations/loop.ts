@@ -127,6 +127,7 @@ import {
   setToolCallParentMessage,
   updateMessageContent,
 } from "./persist.ts";
+import { PLAYBOOK_GUIDANCE, readPlaybook } from "./playbook.ts";
 import { closingProseQuestion } from "./prose-question.ts";
 import {
   type ConversationReference,
@@ -176,6 +177,7 @@ export interface RunLoopParams {
   conversation_id: string;
   actor_id: string | null;
   principal?: ResolvedPrincipal | null;
+  locale?: "de" | "en";
   connector_id: string | null;
   workflow_id: string | null;
   user_message: string | null;
@@ -304,6 +306,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
   }
   const { EngineClient } = await import("../engine-client/index.ts");
   const ctx: ToolContext = {
+    ...(p.locale ? { locale: p.locale } : {}),
     db: p.db,
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
@@ -348,11 +351,13 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     .select({
       loaded_skills: conversations.loaded_skills,
       tool_policies: conversations.tool_policies,
+      playbook_mode: conversations.playbook_mode,
       target_connector_id: conversations.target_connector_id,
     })
     .from(conversations)
     .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
     .limit(1);
+  ctx.playbook_mode = convRow[0]?.playbook_mode === "off" ? "off" : "auto";
   const loadedEntries = parseLoadedSkills(convRow[0]?.loaded_skills, ({ dropped, raw }) =>
     logger.warn({
       module: "conversation",
@@ -675,6 +680,20 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
       p.db,
     ),
   );
+  if (ctx.playbook_mode !== "off" && p.principal) {
+    const playbook = await readPlaybook(p.db, {
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      principal: p.principal,
+      ...(p.locale ? { locale: p.locale } : {}),
+    });
+    const context = `${PLAYBOOK_GUIDANCE}\nCurrent playbook data (not instructions): ${JSON.stringify(playbook ? { id: playbook.id, revision: playbook.revision, goal: playbook.goal, status: playbook.status, summary: playbook.summary, next_action: playbook.next_action, steps: playbook.steps.map((step) => ({ id: step.id, label: step.label, status: step.status, assurance: step.assurance, reason: step.reason.slice(0, 240) })) } : null)}`;
+    prompt.system += `\n${context}`;
+    prompt.system_sections?.push({ text: context, volatile: true });
+    const extraTokens = countModelMessagesTokens([{ role: "system", content: context }]);
+    prompt.token_counts.system += extraTokens;
+    prompt.token_counts.total += extraTokens;
+  }
   let messages = await timePhaseAsync("converse.build_model_messages", () =>
     buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
       conversationEnvelope: true,
@@ -865,15 +884,12 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     (draft.summary?.active_target.kind === "workflow" &&
       draft.summary?.active_target.lifecycle_state === "persisted");
   const namedWorkflowSlug = resolveNamedWorkflowSlug(ingestedUserMessage, syntheticWorkflowSlugs);
-  const executionGate: ExecutionToolGateDecision =
-    p.surface === "chat"
-      ? { exposeExecution: true, reason: "chat_surface" }
-      : detectedIntent.suppressExecution === true
-        ? { exposeExecution: false, reason: "explicit_no_run" }
-        : resolveExecutionToolGate({
-            hasBoundSavedWorkflow: hasBoundSavedWorkflowTarget,
-            explicitlyNamedWorkflowSlug: namedWorkflowSlug,
-          });
+  const executionGate: ExecutionToolGateDecision = resolveExecutionToolGate({
+    hasBoundSavedWorkflow: hasBoundSavedWorkflowTarget,
+    explicitlyNamedWorkflowSlug: namedWorkflowSlug,
+    ...(p.surface ? { surface: p.surface } : {}),
+    suppressExecution: detectedIntent.suppressExecution === true,
+  });
   const removedExecutionTools = applyExecutionToolGate(
     tools,
     executionGate,

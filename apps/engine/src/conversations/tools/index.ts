@@ -43,6 +43,7 @@ import { listSkillSuggestionsTool } from "./list-skill-suggestions.ts";
 import { listSkillsTool } from "./list-skills.ts";
 import { matchConnectorTemplateByUrlTool } from "./match-connector-template-by-url.ts";
 import { openWorkflowDraftTool } from "./open-workflow-draft.ts";
+import { inspectPlaybookTool, updatePlaybookTool } from "./playbook.ts";
 import { previewAttachmentTool } from "./preview-attachment.ts";
 import { probeConnectorTool } from "./probe-connector.ts";
 import { probeConnectorDraftTool } from "./probe-connector-draft.ts";
@@ -64,6 +65,8 @@ import { validateConnectorDraftTool } from "./validate-connector-draft.ts";
 import { validateDraftTool } from "./validate-draft.ts";
 
 export interface ToolContext {
+  locale?: "de" | "en";
+  playbook_mode?: "off" | "auto";
   direct_connector_approval?: import("../../tools/direct-connector-binding.ts").DirectConnectorApproval;
   db: Db;
   tenant_id: string;
@@ -150,6 +153,7 @@ export interface ConversationTool {
   readonly requires_skill?: string;
   readonly visible_when_readonly?: boolean;
   readonly inert_proposal?: boolean;
+  readonly captures_draft_snapshot?: boolean;
   readonly authoring_only?: boolean;
   readonly example_input?: Readonly<Record<string, unknown>>;
   readonly strict?: boolean;
@@ -179,6 +183,8 @@ function register(tool: ConversationTool): void {
   registry.set(sealed.name, sealed);
 }
 
+register(inspectPlaybookTool);
+register(updatePlaybookTool);
 register(listSkillsTool);
 register(fetchConnectorDocsTool);
 register(fetchConnectorSelfDescriptionTool);

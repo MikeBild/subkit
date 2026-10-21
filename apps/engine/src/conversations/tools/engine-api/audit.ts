@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import type { AuditQueryFilters } from "../../../audit/index.ts";
-import { serializeAuditEntry } from "../../../audit/index.ts";
+import { AUDIT_CURSOR_PATTERN, serializeAuditEntry } from "../../../audit/index.ts";
 import { RequestSourceSchema } from "../../../observability/service-metadata.ts";
 import type { ConversationTool } from "../index.ts";
 
@@ -44,7 +44,18 @@ const QueryInput = z
     ts_from: z.string().datetime().optional(),
     ts_to: z.string().datetime().optional(),
     limit: z.number().int().min(1).max(500).optional(),
-    cursor: z.string().min(1).max(128).optional(),
+    cursor: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(
+        AUDIT_CURSOR_PATTERN,
+        "Invalid cursor. Omit cursor for the first page; for later pages copy next_cursor from the previous result without changing it. Keep the same filters.",
+      )
+      .optional()
+      .describe(
+        "Omit for the first page. For later pages use only the previous result's non-null next_cursor verbatim, with unchanged filters. Never invent a cursor or use a page number.",
+      ),
   })
   .openapi("QueryAuditToolInput");
 const GetInput = z.object({ id: z.string().uuid() }).openapi("GetAuditEntryToolInput");
@@ -52,8 +63,9 @@ const GetInput = z.object({ id: z.string().uuid() }).openapi("GetAuditEntryToolI
 export const queryAuditTool: ConversationTool = {
   name: "list_audit",
   description:
-    "Query the tenant audit log, newest first. `origin_source` is the trusted initiating channel and `execution_source` the immediate server step. Legacy `request_source` is only a recorded value and may be client-declared. Filter by actor, API key/session, access type, OAuth client, resource, result, trace/correlation, run/conversation/workflow ID and UTC time bounds. `ts_to` is exclusive. Missing provenance is not inferred. Pass `next_cursor` back verbatim for the next page.",
+    "Query the tenant audit log, newest first. Omit cursor on the first page. Use only filters justified by the task; do not invent action, result, channel or date bounds. `origin_source` is the trusted initiating channel and `execution_source` the immediate server step. Legacy `request_source` is only a recorded value and may be client-declared. Filter by actor, API key/session, access type, OAuth client, resource, result, trace/correlation, run/conversation/workflow ID and UTC time bounds. `ts_to` is exclusive. Missing provenance is not inferred. Pass a non-null `next_cursor` back verbatim with unchanged filters for the next page. A failed read is missing evidence, not an empty history.",
   inputSchema: QueryInput,
+  strict: false,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof QueryInput>) {
     const filters: Partial<Omit<AuditQueryFilters, "tenant_id">> = {};
