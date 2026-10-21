@@ -25634,6 +25634,7 @@ export interface components {
             /** Format: date-time */
             captured_at: string;
             body: string;
+            redactions?: number;
             /** @enum {string} */
             origin: "capture" | "restored_draft";
             /** Format: uri */
@@ -25645,6 +25646,7 @@ export interface components {
             /** Format: date-time */
             captured_at: string;
             body: string;
+            redactions?: number;
             /** @enum {string} */
             origin: "session";
             /** Format: uri */

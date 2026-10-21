@@ -121,12 +121,12 @@ You do not need to copy an API key for this.
 
 ### Use the web clipper
 
-The web clipper collects web pages into **Intake**. To use it with the cloud:
+The web clipper collects web pages into the **Inbox**. To use it with the cloud:
 
 1. Sign in with the sk CLI first, as shown above.
 2. Run `sk clipper install`. It fills in the cloud address from your sk profile.
 3. Load the extension in Chrome, as described in the chapter "Web Clipper".
-4. In the Cockpit, open **API access**, choose **Create key** and give the key `intake:read` and `intake:write`.
+4. In the Cockpit, open **API access**, choose **Create key** and pick the preset **Web Clipper**.
 5. Enter that key in the extension settings and allow access to `subkit-cloud.mikebild.info`.
 
 If the clipper shows another address, change it to `https://subkit-cloud.mikebild.info` in its settings.
@@ -630,7 +630,7 @@ MCP registration is a one-time machine setup. In each repository, run `sk agent 
 
 Run `sk status`, then `sk agent briefing --json` from the repository to verify the declaration, credentials, engine connection and returned briefing. Use the JSON fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens` to inspect the result. Empty `knowledge_sources` or `skills_full` means the briefing works but those items are not assigned to the declared domain. Put knowledge and skills in the domain's catalog category or tag them `domain:<slug>`.
 
-Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation. The briefing only counts collected clips and session learnings in the project's categories and never includes their content. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex hooks are enabled by default; no `config.toml` edit is normally needed. Review and trust new or changed SubKit hooks in `/hooks`. If hooks are disabled, inspect the effective feature setting and administrator policy before changing settings; see the [official Codex hook guide](https://learn.chatgpt.com/docs/hooks). Both clients send a transcript at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. The engine keeps only practices and facts a person taught or confirmed, drops events, status updates and anything credential-related, and collects the rest in Intake with origin `session`, in the project's shared category or your default category. The same learning from a later session adds evidence to the existing item instead of a duplicate. Collected learnings are not knowledge and not skills until a person confirms a proposal in the Cockpit; `sk intake list` shows what is waiting.
+Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation. The briefing only counts collected clips and session learnings in the project's categories and never includes their content. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex hooks are enabled by default; no `config.toml` edit is normally needed. Review and trust new or changed SubKit hooks in `/hooks`. If hooks are disabled, inspect the effective feature setting and administrator policy before changing settings; see the [official Codex hook guide](https://learn.chatgpt.com/docs/hooks). Both clients send a transcript at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. The engine keeps only practices and facts a person taught or confirmed, drops events, status updates and anything credential-related, and collects the rest in the Inbox with origin `session`, in the project's shared category or your default category. The same learning from a later session adds evidence to the existing item instead of a duplicate. Collected learnings are not knowledge and not skills until a person confirms a proposal in the Cockpit; `sk intake list` shows what is waiting.
 
 For open-ended check-ins, the briefing uses the current project's matched domain together with shared SubKit context, plus connected sources that best answer the question. It distinguishes live service state from repository changes and static knowledge, prioritizes blocked or failing work and imminent deadlines, and gives up to three specific next steps in the user's language. Maintenance suggestions must be grounded in repository instructions, explicit plans or TODOs, and observed issues such as failing checks or generated-file drift. Relevant knowledge sources and workflows from the folder's domain are recommended by name when they help with a concrete task. It reports when a relevant source is unavailable.
 
@@ -768,15 +768,15 @@ reload icon of the SubKit Clipper on `chrome://extensions`. Your connection sett
 
 The clipper signs in with an API key. Create a separate key for it.
 
-1. In the Cockpit, open **API access** and create a key.
-   The **Run** preset includes `intake:write` when your account has that permission.
-   The key must have `intake:read` and `intake:write`.
+1. In the Cockpit, open **API access**, create a new key and choose the preset
+   **Web Clipper**. It grants exactly `intake:read` and `intake:write`.
    If your account lacks one of them, the page tells you which one is missing.
-2. Open the clipper and click the gear icon (⚙). The settings open in a new tab.
-3. Check the **Engine address**, for example `https://engine.example.com`.
-4. Paste the key into **API key**.
-5. Choose your language.
-6. Click **Save connection**. Chrome asks for access to your engine's address. Allow it.
+2. Copy the key.
+3. Open the clipper and click the gear icon (⚙). The settings open in a new tab.
+4. Check the **Engine address**, for example `https://engine.example.com`.
+5. Paste the key into **API key**.
+6. Choose your language.
+7. Click **Save connection**. Chrome asks for access to your engine's address. Allow it.
 
 The clipper then checks the connection. It loads your categories and confirms that
 the key may save clips.
@@ -820,8 +820,9 @@ create a second item.
    action in the Inbox. The chat assesses the clip and prepares a proposal: the exact content,
    its sources and the destination, knowledge or skill.
 3. **A person confirms it.** Only a person signed in to the Cockpit in the browser can
-   confirm a proposal as **knowledge** or as a **skill**. They also need the rights of
-   the destination, for example `knowledge:write` for knowledge. API keys, MCP clients
+   confirm a proposal as **knowledge** or as a **skill**. They need the right
+   `intake:confirm` and the right of the destination: `knowledge:write` for knowledge,
+   or `skill:write` and `skill:activate` for a skill. API keys, MCP clients
    and the clipper itself cannot confirm.
 
 Until someone confirms it, a clip is not knowledge. Ordinary knowledge search does not
@@ -835,8 +836,11 @@ it must be reviewed again.
   to read the transcript.
 - **Originals stay:** the engine keeps the original captured snapshot. Your later edits
   do not overwrite it. The clip stays linked to the knowledge or skill made from it.
-- **No redaction:** clips are stored as captured. The clipper does not remove secrets
-  or personal data. Do not clip pages that show passwords, keys, tokens or other secrets.
+- **Secrets are replaced:** before a clip is saved, SubKit replaces recognizable secrets
+  in it (API keys, tokens, private keys, signed-link signatures) with a marker and
+  records only how many were replaced. The removed values are never stored, and the
+  source, author and timestamps stay as captured. Personal data is not removed.
+  Still, do not clip pages that show passwords, keys, tokens or other secrets.
 - **Your API key** is stored in the browser extension on this device. Use a separate key
   for the clipper and revoke it in the Cockpit when you no longer need it.
 - **Visibility:** collected items follow your tenant's permissions. Categories are shared,
@@ -853,9 +857,9 @@ settings opens this chapter on your engine.
 | --- | --- |
 | "Set an engine address and API key first." | Open the settings with the gear icon, enter both and save. |
 | "Set an engine address before capturing." | The settings open automatically. Enter the engine address and save. |
-| "The API key is invalid or expired. …" | Create a new key under **API access** and save it in the settings. |
-| "The API key lacks intake:read. …" | Use a key that has `intake:read`. |
-| "The connection works, but the API key lacks intake:write. …" | Create a key with the **Run** preset under **API access**; it includes `intake:write`. Your draft stays. |
+| "The API key is invalid or expired. …" | Create a new key with the **Web Clipper** preset under **API access** and save it in the settings. |
+| "The API key lacks intake:read. …" | Create a key with the **Web Clipper** preset under **API access**. |
+| "The connection works, but the API key lacks intake:write. …" | Create a key with the **Web Clipper** preset under **API access**. Your draft stays. |
 | "The SubKit API could not be reached. …" | Check the engine address and your internet connection. Make sure Chrome may access the engine's address. |
 | "Use an HTTPS address or HTTP on localhost." | Use `https://`, or `http://` only with `localhost`, `127.0.0.1` or `[::1]`. The address must not contain a user name, a password, a `?query` or a `#fragment`. |
 | "Allow access to this engine to save the connection." | Save again and allow access when Chrome asks. |
@@ -893,13 +897,14 @@ Collect pages and ideas now; decide later what becomes knowledge or a skill. Use
 You can choose another default category at any time.
 The process stays the same: **collect → review in chat → confirm → knowledge or skill**.
 Learnings from coding-agent sessions enter the same process as collected items with origin
-`session`; Intake shows the origin as a filter and badge.
+`session`; the Inbox shows the origin as a filter and badge.
 
 Run `sk clipper install` to unpack the Chrome extension shipped inside the CLI.
 In Chrome, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
 and select the folder printed by the command. The installer prefills the engine URL
-from your active profile. In the extension settings, enter a separate API key with
-`intake:read` and `intake:write` access and allow access to your engine host.
+from your active profile. In the Cockpit, open **API access**, create a key with the
+**Web Clipper** preset (exactly `intake:read` and `intake:write`) and paste it into the
+extension settings. Allow access to your engine host.
 The clipper needs no permission to admit knowledge. You can change the engine URL
 in its settings; no server address is built into the extension.
 
@@ -909,9 +914,9 @@ Review the preview, optionally add why it matters, and press **Collect**. Your d
 category is selected, initially Inbox. You can choose an existing category or enter
 a new one. Categories are shared with the rest of SubKit; processing status stays separate.
 The default belongs to the authenticated identity; a shared API key shares that identity.
-Intake visibility follows your tenant's permissions, rather than making categories private.
+Inbox visibility follows your tenant's permissions, rather than making categories private.
 
-In the Cockpit, open **Intake** to review and organize collected items using the same
+In the Cockpit, open **Inbox** to review and organize collected items using the same
 table and category controls as Knowledge Sources. Open an item to see its content
 and original source, edit its title, content or category, or start a review chat.
 Edits preserve the captured original and require reviewing any affected proposal again.
@@ -927,11 +932,12 @@ with the exact content, original sources, and destination. You review it and exp
 confirm **Confirm as knowledge** or **Confirm as skill**. Only then can ordinary knowledge
 retrieval use the result, or agent briefings carry the skill. A skill destination creates or
 updates an active skill and archives the skills it replaces in the same step; the proposal
-shows each change. Confirming needs a signed-in browser session and the rights of the
+shows each change. Confirming needs a signed-in browser session, the right `intake:confirm` and the rights of the
 destination: `knowledge:write` for knowledge, `skill:write` and `skill:activate` for a skill,
 plus `skill:archive` for every replaced skill. API keys and MCP clients cannot confirm.
 Admitting a skill is a content decision, separate from an environment's connector or
 execution approval.
+Before a clip is saved, SubKit replaces recognizable secrets in it (API keys, tokens, private keys, signed-link signatures) with a marker and records only how many were replaced. The removed values are never stored, and the source, author and timestamps stay as captured.
 You can discard an unneeded clip during review and restore it later; discarding
 preserves its original source and never turns it into knowledge or a skill.
 Changing the proposal or its sources requires another review. The original clip remains
@@ -963,9 +969,9 @@ in the `x-subkit-sha256` response header. HTTPS engines and local HTTP engines o
 `localhost`, `127.0.0.1`, or `[::1]` are supported, including an optional URL path prefix.
 Changing the engine address requires entering the key for that engine; an existing
 draft stays associated with its original engine. Older engines require an update to
-support intake; the clipper never falls back to writing directly into knowledge.
+support collecting; the clipper never falls back to writing directly into knowledge.
 Existing knowledge sources remain unchanged, and old local drafts can be explicitly
-collected into intake without claiming that edited drafts are original page captures.
+collected into the Inbox without claiming that edited drafts are original page captures.
 
 ## Use the HTTP API
 
@@ -1869,7 +1875,7 @@ MCP registration is a one-time machine setup. In each repository, run `sk agent 
 
 Run `sk status`, then `sk agent briefing --json` from the repository to verify the declaration, credentials, engine connection and returned briefing. Use the JSON fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens` to inspect the result. Empty `knowledge_sources` or `skills_full` means the briefing works but those items are not assigned to the declared domain. Put knowledge and skills in the domain's catalog category or tag them `domain:<slug>`.
 
-Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation. The briefing only counts collected clips and session learnings in the project's categories and never includes their content. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex hooks are enabled by default; no `config.toml` edit is normally needed. Review and trust new or changed SubKit hooks in `/hooks`. If hooks are disabled, inspect the effective feature setting and administrator policy before changing settings; see the [official Codex hook guide](https://learn.chatgpt.com/docs/hooks). Both clients send a transcript at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. The engine keeps only practices and facts a person taught or confirmed, drops events, status updates and anything credential-related, and collects the rest in Intake with origin `session`, in the project's shared category or your default category. The same learning from a later session adds evidence to the existing item instead of a duplicate. Collected learnings are not knowledge and not skills until a person confirms a proposal in the Cockpit; `sk intake list` shows what is waiting.
+Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation. The briefing only counts collected clips and session learnings in the project's categories and never includes their content. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex hooks are enabled by default; no `config.toml` edit is normally needed. Review and trust new or changed SubKit hooks in `/hooks`. If hooks are disabled, inspect the effective feature setting and administrator policy before changing settings; see the [official Codex hook guide](https://learn.chatgpt.com/docs/hooks). Both clients send a transcript at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. The engine keeps only practices and facts a person taught or confirmed, drops events, status updates and anything credential-related, and collects the rest in the Inbox with origin `session`, in the project's shared category or your default category. The same learning from a later session adds evidence to the existing item instead of a duplicate. Collected learnings are not knowledge and not skills until a person confirms a proposal in the Cockpit; `sk intake list` shows what is waiting.
 
 For open-ended check-ins, the briefing uses the current project's matched domain together with shared SubKit context, plus connected sources that best answer the question. It distinguishes live service state from repository changes and static knowledge, prioritizes blocked or failing work and imminent deadlines, and gives up to three specific next steps in the user's language. Maintenance suggestions must be grounded in repository instructions, explicit plans or TODOs, and observed issues such as failing checks or generated-file drift. Relevant knowledge sources and workflows from the folder's domain are recommended by name when they help with a concrete task. It reports when a relevant source is unavailable.
 
