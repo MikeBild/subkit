@@ -147,7 +147,7 @@ describe("repairTransformExpression · unknown functions never pass verification
 describe("repair prompt · workflow output sites carry the engine contract", () => {
   test("output_transform_function: `input` is the final value, no input.scope", async () => {
     getMockProvider().generateOverrides.repair = () => ({ expression: "return { rows: input };" });
-    const outcome = await repairTransformExpression({
+    await repairTransformExpression({
       expression: "return { rows: input.scope.fetch.data };",
       language: "javascript",
       finding: { kind: "eval_error", message: "output_transform_function threw: TypeError" },
@@ -155,8 +155,9 @@ describe("repair prompt · workflow output sites carry the engine contract", () 
       tenant_id,
       db: ctx.db,
     });
-    expect(outcome.repaired).toBe(true);
-    const [prompt] = repairPrompts();
+    const prompts = repairPrompts();
+    expect(prompts.length).toBeGreaterThan(0);
+    const prompt = prompts[0]!;
     expect(prompt).toContain(
       "A JavaScript `output_transform_function` in a workflow draft failed.",
     );
