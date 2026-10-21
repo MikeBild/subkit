@@ -450,7 +450,9 @@ export async function resolvePlaybookEvidence(
         href:
           resource.type === "execution"
             ? `/cockpit/?run=${resource.id}`
-            : `/cockpit/${resourcePath[resource.type]}/${resource.id}`,
+            : resource.type === "intake"
+              ? `/cockpit/intake?item=${encodeURIComponent(resource.id)}`
+              : `/cockpit/${resourcePath[resource.type]}/${resource.id}`,
       },
     };
   }

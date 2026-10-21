@@ -303,6 +303,10 @@ describe("persisted playbook evidence and lifecycle", () => {
         ]),
       ]),
     });
+    const authorizedView = await readPlaybook(fixture.db, context);
+    expect(authorizedView?.steps[0]?.evidence[0]?.href).toBe(
+      `/cockpit/intake?item=${encodeURIComponent(item.id)}`,
+    );
     const view = await readPlaybook(fixture.db, {
       ...context,
       principal: { ...principal, scopes: ["conversation:read", "knowledge:read"] },
