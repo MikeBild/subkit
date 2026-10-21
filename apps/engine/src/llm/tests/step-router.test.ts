@@ -682,6 +682,31 @@ describe("an inert proposal survives every narrowed stage", () => {
   });
 });
 
+describe("playbook tools survive narrowed authoring stages without proposal semantics", () => {
+  const withPlaybook: Record<string, ConversationTool> = {
+    ...TOOLS,
+    inspect_playbook: fakeTool("inspect_playbook", "tenant_read")[1],
+    update_playbook: fakeTool("update_playbook", "draft_write")[1],
+  };
+
+  test.each([
+    "connector_targeted",
+    "workflow_targeted",
+    "connector_draft_started",
+    "workflow_previewed",
+    "diagnosing",
+  ] as const)("%s keeps playbook tools but withholds unrelated tenant writes", (stage) => {
+    const active = prepareStep(
+      baseParams({ toolsByName: withPlaybook, signals: { stage } }),
+    )?.activeTools;
+    expect(active).toBeDefined();
+    expect(active).toContain("inspect_playbook");
+    expect(active).toContain("update_playbook");
+    expect(active).not.toContain("delete_workflow");
+    expect(active).not.toContain("save_workflow_draft");
+  });
+});
+
 describe("a review decision survives every narrowed stage", () => {
   const withDecision: Record<string, ConversationTool> = {
     ...TOOLS,
