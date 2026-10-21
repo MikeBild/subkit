@@ -1,3 +1,4 @@
+import { apiUrl } from "./clipper.ts";
 import type { CaptureDiagnostic } from "./types.ts";
 
 export interface Copy {
@@ -83,6 +84,11 @@ export interface Copy {
   notKnowledge: string;
   savedForReview: string;
   retryPending: string;
+  help: string;
+  helpLabel: string;
+  intro: string;
+  languageField: string;
+  settingsTitle: string;
 }
 
 export const copy: Record<"de" | "en", Copy> = {
@@ -136,7 +142,7 @@ export const copy: Record<"de" | "en", Copy> = {
     missingIntakeReadPermission:
       "Dem API-Schlüssel fehlt intake:read. Öffne über das Zahnrad die Verbindungseinstellungen und verwende einen Schlüssel mit diesem Recht.",
     missingIntakeWritePermission:
-      "Die Verbindung steht, aber dem API-Schlüssel fehlt intake:write. Erstelle im Cockpit unter API-Zugriff einen Schlüssel mit „Ausführen & sammeln“ und speichere ihn hier. Dein Entwurf bleibt erhalten.",
+      "Die Verbindung steht, aber dem API-Schlüssel fehlt intake:write. Erstelle im Cockpit unter „API-Zugang“ einen Schlüssel mit der Vorlage „Ausführen“ und speichere ihn hier. Dein Entwurf bleibt erhalten.",
     connectionFailed:
       "Die SubKit-API ist nicht erreichbar. Prüfe Engine-Adresse, Internetverbindung und den Chrome-Zugriff auf diese Adresse.",
     apiResponseFailed: "Die SubKit-API hat die Anfrage abgelehnt.",
@@ -185,6 +191,11 @@ export const copy: Record<"de" | "en", Copy> = {
     words: "Wörter",
     characters: "Zeichen",
     reopenCapture: "Öffne den Clipper über die Symbolleiste auf dieser Seite erneut.",
+    help: "Hilfe",
+    helpLabel: "Hilfe zum Web Clipper öffnen",
+    intro: "Deine Zugangsdaten bleiben in dieser Browser-Erweiterung.",
+    languageField: "Sprache",
+    settingsTitle: "SubKit Clipper – Einstellungen",
   },
   en: {
     title: "Collect in SubKit",
@@ -235,7 +246,7 @@ export const copy: Record<"de" | "en", Copy> = {
     missingIntakeReadPermission:
       "The API key lacks intake:read. Open connection settings with the gear and use a key with this permission.",
     missingIntakeWritePermission:
-      "The connection works, but the API key lacks intake:write. Create a key with “Run & collect” under API Access in Cockpit, then save it here. Your draft remains available.",
+      "The connection works, but the API key lacks intake:write. Create a key with the “Run” preset under “API access” in Cockpit, then save it here. Your draft remains available.",
     connectionFailed:
       "The SubKit API could not be reached. Check the engine address, internet connection, and Chrome access to this address.",
     apiResponseFailed: "The SubKit API rejected the request.",
@@ -282,6 +293,11 @@ export const copy: Record<"de" | "en", Copy> = {
     words: "words",
     characters: "characters",
     reopenCapture: "Open the clipper from the toolbar on this page again.",
+    help: "Help",
+    helpLabel: "Open Web Clipper help",
+    intro: "Your credentials stay in this browser extension.",
+    languageField: "Language",
+    settingsTitle: "SubKit Clipper settings",
   },
 } as const;
 
@@ -298,7 +314,77 @@ export function applyText(values: Copy): void {
     const key = element.dataset.i18n as keyof Copy | undefined;
     if (key) element.textContent = values[key];
   });
+  document.querySelectorAll<HTMLElement>("[data-i18n-label]").forEach((element) => {
+    const key = element.dataset.i18nLabel as keyof Copy | undefined;
+    if (key) element.setAttribute("aria-label", values[key]);
+  });
 }
+
+export const helpPath = "/cockpit/docs/web-clipper";
+
+export function helpUrl(engineUrl: string | undefined): string | undefined {
+  return engineUrl ? apiUrl(engineUrl, helpPath) : undefined;
+}
+
+export function showHelpLink(link: HTMLAnchorElement | null, engineUrl: string | undefined): void {
+  if (!link) return;
+  const url = helpUrl(engineUrl);
+  link.hidden = !url;
+  link.href = url || "about:blank";
+}
+
+export function offersHelp(values: Copy, message: string): boolean {
+  return [
+    values.invalidApiKey,
+    values.missingIntakeReadPermission,
+    values.missingIntakeWritePermission,
+    values.connectionFailed,
+    values.apiResponseFailed,
+    values.intakeUnavailable,
+  ].some((troubleshooting) => message.startsWith(troubleshooting));
+}
+
+export interface WorkerCopy {
+  page: string;
+  selection: string;
+  engineRequired: string;
+  captureFailed: string;
+  noActiveTab: string;
+  draftMissing: string;
+  draftIdentityChanged: string;
+  draftInvalid: string;
+  pageChanged: string;
+  engineChanged: string;
+}
+
+export const workerCopy: Record<Language, WorkerCopy> = {
+  de: {
+    page: "Seite in SubKit sichern",
+    selection: "Auswahl in SubKit sichern",
+    engineRequired: "Lege vor dem Erfassen eine Engine-Adresse fest.",
+    captureFailed: "Die Seite konnte nicht erfasst werden.",
+    noActiveTab: "Es ist kein aktiver Tab verfügbar.",
+    draftMissing: "Der Entwurf ist nicht mehr verfügbar.",
+    draftIdentityChanged: "Der Entwurf gehört nicht mehr zu dieser Seite oder Engine.",
+    draftInvalid: "Der Entwurf ist ungültig.",
+    pageChanged: "Die Seite hat sich während der Erfassung geändert. Erfasse sie erneut.",
+    engineChanged:
+      "Die Engine-Adresse hat sich während der Erfassung geändert. Erfasse die Seite erneut.",
+  },
+  en: {
+    page: "Save page to SubKit",
+    selection: "Save selection to SubKit",
+    engineRequired: "Set an engine address before capturing.",
+    captureFailed: "The page could not be captured.",
+    noActiveTab: "No active tab is available.",
+    draftMissing: "The draft is no longer available.",
+    draftIdentityChanged: "The draft identity changed.",
+    draftInvalid: "The draft is invalid.",
+    pageChanged: "The page changed while it was being captured. Capture it again.",
+    engineChanged:
+      "The engine address changed while the page was being captured. Capture it again.",
+  },
+};
 
 export function intakeReviewPrompt(values: Copy, collection: string): string {
   return values.reviewPrompt.replace("{collection}", collection);

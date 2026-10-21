@@ -42,9 +42,24 @@ export { FilterBar, type FilterSelect, MAX_FILTER_SELECTS } from "./filter-bar";
 export { FilterSheet } from "./filter-sheet";
 export { type DialogSize, dialogWidthClass, FormDialog } from "./form-dialog";
 export { type GroupingOption, GroupingTabs } from "./grouping-tabs";
-export { Page, type PageKind, type PageSurface, pageColumn, READING_COLUMN } from "./page";
+export {
+  Page,
+  type PageKind,
+  type PageSurface,
+  pageColumn,
+  pageGutter,
+  READING_COLUMN,
+} from "./page";
 export { BackLink, PageHeader } from "./page-header";
 export { type PageTab, PageTabs, searchWithTab, tabFromSearch } from "./page-tabs";
+export {
+  CollapsibleCard,
+  READING_MEASURE,
+  ReadingCompanion,
+  ReadingLayout,
+  ReadingScroll,
+  ReadingSkeleton,
+} from "./reading";
 export { RecordOpenLink, RecordSheet, type SheetSize, sheetWidthClass } from "./record-sheet";
 export { activeRouteTab, type RouteTab, RouteTabs } from "./route-tabs";
 export { SaveBar } from "./save-bar";

@@ -14,7 +14,9 @@ import {
   isCapturablePageUrl,
   isSourceWindow,
   language,
+  offersHelp,
   previewBlocks,
+  showHelpLink,
 } from "./ui.ts";
 
 const captureErrorKey = "captureError";
@@ -34,6 +36,8 @@ const content = document.querySelector<HTMLTextAreaElement>("#content");
 const status = document.querySelector<HTMLElement>("#status");
 const checkConnection = document.querySelector<HTMLButtonElement>("#check-connection");
 const setup = document.querySelector<HTMLButtonElement>("#setup");
+const help = document.querySelector<HTMLAnchorElement>("#help");
+const statusHelp = document.querySelector<HTMLAnchorElement>("#status-help");
 const discard = document.querySelector<HTMLButtonElement>("#discard");
 const captureAgain = document.querySelector<HTMLButtonElement>("#capture-again");
 const draftPicker = document.querySelector<HTMLSelectElement>("#draft-picker");
@@ -62,6 +66,7 @@ let categoriesState: "idle" | "loading" | "ready" | "error" = "idle";
 let categoryLoad = 0;
 let connectionReady = false;
 let connectionFailure: unknown;
+let engineUrl: string | undefined;
 
 function connectionFailureMessage(error: unknown): string {
   return connectionErrorMessage(error, text);
@@ -84,6 +89,10 @@ function setStatus(message: string, isError = false, showConnection = false): vo
     status.dataset.error = isError ? "true" : "false";
   }
   if (checkConnection) checkConnection.hidden = !showConnection;
+  showHelpLink(
+    statusHelp,
+    isError && (showConnection || offersHelp(text, message)) ? engineUrl : undefined,
+  );
 }
 
 function clearSavedClip(): void {
@@ -594,6 +603,8 @@ async function initialize(): Promise<void> {
   text = copy[language(settings.language)];
   document.documentElement.lang = language(settings.language);
   applyText(text);
+  engineUrl = settings.engineUrl;
+  showHelpLink(help, engineUrl);
   const stored = await chromeApi.storage.local.get(captureErrorKey);
   const captureError = stored[captureErrorKey] as CaptureError | undefined;
   const draftId = new URL(location.href).searchParams.get("draft");

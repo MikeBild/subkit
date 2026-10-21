@@ -6,6 +6,7 @@ import { AuditPage } from "@/pages/audit";
 import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
+import { DocsArticlePage, DocsIndexPage } from "@/pages/docs";
 import { FilesPage } from "@/pages/files";
 import { IntakePage } from "@/pages/intake";
 import { KnowledgeSourcePage, KnowledgeSourcesPage } from "@/pages/knowledge-sources";
@@ -100,6 +101,11 @@ const filesRoutes = [
   }),
 ];
 
+const docsRoutes = [
+  createRoute({ getParentRoute: () => rootRoute, path: "/docs", component: DocsIndexPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/docs/$slug", component: DocsArticlePage }),
+];
+
 const CATALOG_PAGES = ["workflows", "connectors"] as const satisfies readonly DetailResource[];
 
 const catalogRoutes = CATALOG_PAGES.flatMap((resource) => [
@@ -128,6 +134,7 @@ const routeTree = rootRoute.addChildren([
   ...catalogRoutes,
   ...knowledgeRoutes,
   ...filesRoutes,
+  ...docsRoutes,
 ]);
 
 export const router = createRouter({

@@ -25,7 +25,7 @@ Run focused tests while iterating. Release, deployment and human acceptance are 
 
 ## Technical references
 
-- [Setup and operating contract](apps/engine/src/http/reference/setup.md)
+- [Setup and operating contract](apps/engine/src/http/reference)
 - [Agent rules](AGENTS.md)
 - API, CLI, settings and LLM references are generated from code and the technical setup source.
 - `bun run gen:llms-txt` updates the shipped LLM references.

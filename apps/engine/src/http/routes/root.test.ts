@@ -6,6 +6,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { LLMS_PAGE_PATHS } from "@shared/llms-index.ts";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import type { AppEnv } from "../openapi.ts";
+import { createApp } from "../server.ts";
 import { COMPOSE_YAML, registerComposeRoute } from "./compose.ts";
 import { registerInstallSkillRoute } from "./install-skill.ts";
 import { registerLlmsTxtRoutes } from "./llms-txt.ts";
@@ -97,6 +98,17 @@ describe("what the entry point promises", () => {
       expect(res.status).toBe(200);
       expect((await res.text()).length).toBeGreaterThan(0);
     }
+  });
+
+  test("the full engine serves the documentation bundle to an anonymous caller", async () => {
+    expect(ROOT_ENTRY_PATHS).toContain("/docs.json");
+    const app = createApp({ rateLimit: { max: 10_000, windowMs: 60_000 } });
+    const res = await app.request("http://127.0.0.1/docs.json");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const bundle = (await res.json()) as { locales: string[]; pages: unknown[] };
+    expect(bundle.locales).toEqual(["en", "de"]);
+    expect(bundle.pages.length).toBeGreaterThan(0);
   });
 
   test("the Compose file it points at is the one embedded here", async () => {

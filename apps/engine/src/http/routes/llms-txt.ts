@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { type LlmsPage, renderLlmsIndex } from "@shared/llms-index.ts";
+import {
+  DocsBundleSchema,
+  LLMS_PAGE_PATHS,
+  type LlmsPage,
+  renderLlmsIndex,
+} from "@shared/llms-index.ts";
 import type { Context } from "hono";
 import { getConfig } from "../../config/loader.ts";
+import docsJson from "../llms/docs.json" with { type: "text" };
 import llmsFullTxt from "../llms/llms-full.txt" with { type: "text" };
-import manifest from "../llms/manifest.json" with { type: "json" };
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 import { COMPOSE_YAML } from "./compose.ts";
 import { SKILL_MD } from "./install-skill.ts";
@@ -14,7 +19,20 @@ const RESPONSE_HEADERS = {
   "cache-control": "public, max-age=3600",
 } as const;
 
-const pages: LlmsPage[] = manifest.pages;
+const DOCS_JSON_HEADERS = {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "public, max-age=3600",
+} as const;
+
+const docsJsonText = String(docsJson);
+
+const docs = DocsBundleSchema.parse(JSON.parse(docsJsonText));
+
+const pages: LlmsPage[] = LLMS_PAGE_PATHS.map((path) => {
+  const page = docs.pages.find((p) => p.llms_path === path);
+  if (!page) throw new Error(`docs bundle has no page for ${path}`);
+  return { path, title: page.locales.en.title, summary: page.locales.en.summary };
+});
 
 function buildSectionMap(full: string): Map<string, string> {
   const map = new Map<string, string>();
@@ -117,10 +135,29 @@ const descriptorRoute = createRoute({
   },
 });
 
+const docsJsonRoute = createRoute({
+  method: "get",
+  path: "/docs.json",
+  tags: ["docs"],
+  summary: "Every documentation chapter in English and German, in one fetch",
+  description:
+    "The documentation bundle this binary embeds: the reading sections with their English and German titles and descriptions, and each chapter with its audience, section, order within the section, headings, images, a sha256 and the Markdown body per locale. The engine version travels in the service descriptor and the x-sk-docs-version header, never in the body.",
+  responses: {
+    200: {
+      description: "Documentation bundle",
+      content: { "application/json": { schema: DocsBundleSchema } },
+    },
+  },
+});
+
 export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(indexRoute, (c) => c.text(renderIndex(c), 200, RESPONSE_HEADERS));
   app.openapi(wellKnownRoute, (c) => c.text(renderIndex(c), 200, RESPONSE_HEADERS));
   app.openapi(fullRoute, (c) => c.text(llmsFullTxt, 200, RESPONSE_HEADERS));
+  app.openAPIRegistry.registerPath(docsJsonRoute);
+  app.get(docsJsonRoute.path, (c) =>
+    c.body(docsJsonText, 200, { ...DOCS_JSON_HEADERS, "x-sk-docs-version": OPENAPI_INFO.version }),
+  );
   app.openapi(descriptorRoute, (c) => {
     const origin = resolveOrigin(c);
     const sha = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -133,6 +170,11 @@ export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
         llms_full_txt: {
           url: `${origin}/llms-full.txt`,
           sha256: sha(llmsFullTxt),
+          updated_at: null,
+        },
+        docs_json: {
+          url: `${origin}/docs.json`,
+          sha256: sha(docsJsonText),
           updated_at: null,
         },
         compose: {
@@ -152,6 +194,7 @@ export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
         "metrics",
         "openapi",
         "llms-txt",
+        "docs",
         "mcp",
         "descriptor",
         "compose",

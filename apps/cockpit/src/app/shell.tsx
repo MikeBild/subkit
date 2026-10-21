@@ -1,5 +1,6 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
+  BookText,
   ChevronsUpDown,
   History,
   Languages,
@@ -362,7 +363,9 @@ function AccountMenu() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const active = navigationItem(pathname.slice(cockpitBasePath().length) || "/");
+  const current = pathname.slice(cockpitBasePath().length) || "/";
+  const active = navigationItem(current);
+  const docsActive = current === "/docs" || current.startsWith("/docs/");
 
   async function signOut(): Promise<void> {
     setSigningOut(true);
@@ -444,6 +447,24 @@ function AccountMenu() {
             </DropdownMenuItem>
           ))}
           {accountNavigation.length > 0 ? <DropdownMenuSeparator /> : null}
+
+          <DropdownMenuItem
+            asChild
+            className={docsActive ? "bg-accent text-accent-foreground" : undefined}
+            data-testid="account-nav-docs"
+          >
+            <Link
+              to="/docs"
+              data-testid="account-link-docs"
+              aria-current={docsActive ? "page" : undefined}
+              onClick={() => {
+                if (isMobile) setOpenMobile(false);
+              }}
+            >
+              <BookText data-icon="inline-start" />
+              {t("docs.menu")}
+            </Link>
+          </DropdownMenuItem>
 
           <DropdownMenuItem
             onSelect={() => setReleaseNotesOpen(true)}

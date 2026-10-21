@@ -5,13 +5,17 @@ import {
   contentSummary,
   copy,
   generatedSectionSelection,
+  helpUrl,
   intakeItemReviewParams,
   intakeItemReviewPrompt,
   intakeReviewPrompt,
   isCapturablePageUrl,
   isSourceWindow,
+  offersHelp,
   previewBlocks,
   previewText,
+  showHelpLink,
+  workerCopy,
 } from "./ui.ts";
 
 const clipperStyles = readFileSync(join(import.meta.dir, "../public/clipper.css"), "utf8");
@@ -101,4 +105,96 @@ test("restored edited video Markdown does not select generated sections", () => 
   expect(
     generatedSectionSelection("## Description\n\nA description\n\nMy note", sections),
   ).toBeUndefined();
+});
+
+test("help opens the Web Clipper chapter on the configured engine", () => {
+  expect(helpUrl("https://engine.example")).toBe("https://engine.example/cockpit/docs/web-clipper");
+  expect(helpUrl("https://engine.example/base")).toBe(
+    "https://engine.example/base/cockpit/docs/web-clipper",
+  );
+  expect(helpUrl(undefined)).toBeUndefined();
+  expect(helpUrl("")).toBeUndefined();
+});
+
+test("troubleshooting messages offer help and ordinary hints do not", () => {
+  for (const text of [copy.de, copy.en]) {
+    expect(offersHelp(text, text.invalidApiKey)).toBe(true);
+    expect(offersHelp(text, text.missingIntakeReadPermission)).toBe(true);
+    expect(offersHelp(text, text.connectionFailed)).toBe(true);
+    expect(offersHelp(text, `${text.apiResponseFailed} (HTTP 500)`)).toBe(true);
+    expect(offersHelp(text, text.contentChanged)).toBe(false);
+    expect(offersHelp(text, text.emptyPreview)).toBe(false);
+  }
+});
+
+test("every clipper text exists in German and English", () => {
+  for (const values of [copy, workerCopy]) {
+    expect(Object.keys(values.de).sort()).toEqual(Object.keys(values.en).sort());
+    for (const language of ["de", "en"] as const) {
+      for (const value of Object.values(values[language])) expect(value.trim()).not.toBe("");
+    }
+  }
+});
+
+test("German clipper text addresses the reader informally", () => {
+  const formal = /\b(Sie|Ihr|Ihre|Ihren|Ihrem|Ihrer|Ihnen)\b/;
+  for (const value of [...Object.values(copy.de), ...Object.values(workerCopy.de)]) {
+    expect(value).not.toMatch(formal);
+  }
+  for (const page of ["popup.html", "options.html"]) {
+    expect(readFileSync(join(import.meta.dir, "../public", page), "utf8")).not.toMatch(formal);
+  }
+});
+
+function cockpitLabels(key: string): { en: string; de: string } {
+  const source = readFileSync(join(import.meta.dir, "../../cockpit/src/lib/i18n.ts"), "utf8");
+  const pattern = new RegExp(`"${key.replaceAll(".", "\\.")}":\\s*"([^"]+)"`, "g");
+  const [en, de] = [...source.matchAll(pattern)].map((match) => match[1] ?? "");
+  if (!en || !de) throw new Error(`Cockpit label ${key} is missing`);
+  return { en, de };
+}
+
+test("missing intake write names the Cockpit key preset and page labels", () => {
+  const preset = cockpitLabels("apiKeys.preset.run");
+  const page = cockpitLabels("nav.apiAccess");
+  expect(copy.de.missingIntakeWritePermission).toContain(`„${preset.de}“`);
+  expect(copy.de.missingIntakeWritePermission).toContain(`„${page.de}“`);
+  expect(copy.en.missingIntakeWritePermission).toContain(`“${preset.en}”`);
+  expect(copy.en.missingIntakeWritePermission).toContain(`“${page.en}”`);
+});
+
+test("help link follows the configured engine address", () => {
+  const link = { hidden: true, href: "about:blank" } as HTMLAnchorElement;
+  showHelpLink(link, "https://engine.example");
+  expect(link.hidden).toBe(false);
+  expect(link.href).toBe("https://engine.example/cockpit/docs/web-clipper");
+  showHelpLink(link, undefined);
+  expect(link.hidden).toBe(true);
+  expect(link.href).toBe("about:blank");
+  showHelpLink(link, "");
+  expect(link.hidden).toBe(true);
+  expect(() => showHelpLink(null, "https://engine.example")).not.toThrow();
+});
+
+test("help links start hidden next to the gear and under the settings intro", () => {
+  const popup = readFileSync(join(import.meta.dir, "../public/popup.html"), "utf8");
+  const options = readFileSync(join(import.meta.dir, "../public/options.html"), "utf8");
+  const masthead = popup.match(/<header class="masthead">([\s\S]*?)<\/header>/)?.[1] ?? "";
+  expect(masthead).toMatch(/<a id="help"[^>]*\bhidden\b[^>]*>[^<]*<\/a>\s*<button id="setup"/);
+  expect(options).toMatch(
+    /<p class="intro" data-i18n="intro">[^<]*<\/p>\s*<a id="help"[^>]*\bhidden\b[^>]*>[^<]*<\/a>/,
+  );
+  for (const page of [popup, options]) {
+    for (const link of page.match(/<a [^>]*data-i18n="help"[^>]*>/g) ?? []) {
+      expect(link).toContain('target="_blank"');
+      expect(link).toContain('rel="noreferrer"');
+    }
+  }
+});
+
+test("service worker messages come from the translated worker copy", () => {
+  const worker = readFileSync(join(import.meta.dir, "service-worker.ts"), "utf8");
+  expect(worker).not.toMatch(/new Error\(\s*["'`]/);
+  expect(workerCopy.de.pageChanged).toContain("Erfasse");
+  expect(workerCopy.en.pageChanged).toContain("Capture it again");
 });

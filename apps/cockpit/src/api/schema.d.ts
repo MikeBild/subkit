@@ -3055,6 +3055,107 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/docs.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every documentation chapter in English and German, in one fetch
+         * @description The documentation bundle this binary embeds: the reading sections with their English and German titles and descriptions, and each chapter with its audience, section, order within the section, headings, images, a sha256 and the Markdown body per locale. The engine version travels in the service descriptor and the x-sk-docs-version header, never in the body.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Documentation bundle */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            locales: [
+                                "en",
+                                "de"
+                            ];
+                            sections: {
+                                /** @enum {string} */
+                                id: "start" | "work" | "operate" | "reference";
+                                locales: {
+                                    en: {
+                                        title: string;
+                                        description: string;
+                                    };
+                                    de: {
+                                        title: string;
+                                        description: string;
+                                    };
+                                };
+                            }[];
+                            pages: {
+                                slug: string;
+                                llms_path: string | null;
+                                /** @enum {string} */
+                                audience: "public" | "operator";
+                                /** @enum {string} */
+                                section: "start" | "work" | "operate" | "reference";
+                                order: number;
+                                generated: boolean;
+                                path_choice?: string;
+                                locales: {
+                                    en: {
+                                        title: string;
+                                        summary: string;
+                                        headings: {
+                                            depth: number;
+                                            text: string;
+                                            anchor: string;
+                                        }[];
+                                        images: {
+                                            src: string;
+                                            alt: string;
+                                        }[];
+                                        sha256: string;
+                                        body: string;
+                                    };
+                                    de: {
+                                        title: string;
+                                        summary: string;
+                                        headings: {
+                                            depth: number;
+                                            text: string;
+                                            anchor: string;
+                                        }[];
+                                        images: {
+                                            src: string;
+                                            alt: string;
+                                        }[];
+                                        sha256: string;
+                                        body: string;
+                                    };
+                                };
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/.well-known/service-descriptor.json": {
         parameters: {
             query?: never;

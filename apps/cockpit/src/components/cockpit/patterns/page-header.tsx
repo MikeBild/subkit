@@ -19,6 +19,7 @@ export function PageHeader({
   menu,
   loading,
   testId,
+  rhythm = "compact",
 }: {
   title: string;
   eyebrow?: string;
@@ -30,6 +31,7 @@ export function PageHeader({
   menu?: ReactNode;
   loading?: boolean;
   testId?: string;
+  rhythm?: "compact" | "reading";
 }) {
   const ownsTrigger = usePageFrameTrigger();
   const isMobile = useIsMobile();
@@ -37,21 +39,29 @@ export function PageHeader({
   const arrived = useArrived(phase);
   const actions = secondary || menu || action;
   const loadingRow = phase !== "content";
+  const reading = rhythm === "reading";
   return (
     <header
       data-family-slot="page-header"
       data-slot="page-header"
       data-testid={testId}
+      data-header-rhythm={rhythm}
       data-loading-phase={loadingRow ? phase : undefined}
       aria-busy={loadingRow ? true : undefined}
-      className="flex flex-col gap-1 pt-6 pb-4"
+      className={reading ? "flex flex-col pt-10 pb-6" : "flex flex-col gap-1 pt-6 pb-4"}
     >
-      {back ? <BackLink to={back.to} label={back.label} /> : null}
+      {back && reading ? (
+        <div className="mb-6">
+          <BackLink to={back.to} label={back.label} />
+        </div>
+      ) : back ? (
+        <BackLink to={back.to} label={back.label} />
+      ) : null}
       {eyebrow ? (
         <p
           data-slot="page-eyebrow"
           data-testid="page-eyebrow"
-          className="text-xs leading-4 font-medium text-muted-foreground"
+          className={cn("text-xs leading-4 font-medium text-muted-foreground", reading && "mb-2")}
         >
           {eyebrow}
         </p>

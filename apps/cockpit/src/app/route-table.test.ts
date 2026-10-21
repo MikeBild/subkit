@@ -75,7 +75,7 @@ describe("cockpit route table", () => {
 
   test("names the routes no menu links to, which is why they are here", () => {
     const linked = new Set(NAVIGATION.flatMap((group) => group.items).map((item) => item.path));
-    for (const path of ["/chat/new", "/chat/$conversationId"]) {
+    for (const path of ["/chat/new", "/chat/$conversationId", "/docs", "/docs/$slug"]) {
       expect(ALL_ROUTE_PATHS).toContain(path);
       expect(linked.has(path)).toBe(false);
     }

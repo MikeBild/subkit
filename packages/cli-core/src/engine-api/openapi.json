@@ -3,7 +3,7 @@
   "info": {
     "title": "subkit engine",
     "version": "10.3.1",
-    "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
+    "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org, and on /docs.json (every chapter in English and German as one JSON bundle)."
   },
   "components": {
     "securitySchemes": {
@@ -34504,6 +34504,302 @@
               "text/markdown": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/docs.json": {
+      "get": {
+        "tags": [
+          "docs"
+        ],
+        "summary": "Every documentation chapter in English and German, in one fetch",
+        "description": "The documentation bundle this binary embeds: the reading sections with their English and German titles and descriptions, and each chapter with its audience, section, order within the section, headings, images, a sha256 and the Markdown body per locale. The engine version travels in the service descriptor and the x-sk-docs-version header, never in the body.",
+        "responses": {
+          "200": {
+            "description": "Documentation bundle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "locales": {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "en"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "de"
+                          ]
+                        }
+                      ]
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "enum": [
+                              "start",
+                              "work",
+                              "operate",
+                              "reference"
+                            ]
+                          },
+                          "locales": {
+                            "type": "object",
+                            "properties": {
+                              "en": {
+                                "type": "object",
+                                "properties": {
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "title",
+                                  "description"
+                                ]
+                              },
+                              "de": {
+                                "type": "object",
+                                "properties": {
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "title",
+                                  "description"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "en",
+                              "de"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "locales"
+                        ]
+                      }
+                    },
+                    "pages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "llms_path": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "audience": {
+                            "type": "string",
+                            "enum": [
+                              "public",
+                              "operator"
+                            ]
+                          },
+                          "section": {
+                            "type": "string",
+                            "enum": [
+                              "start",
+                              "work",
+                              "operate",
+                              "reference"
+                            ]
+                          },
+                          "order": {
+                            "type": "integer"
+                          },
+                          "generated": {
+                            "type": "boolean"
+                          },
+                          "path_choice": {
+                            "type": "string",
+                            "pattern": "^[a-z][a-z0-9-]*$"
+                          },
+                          "locales": {
+                            "type": "object",
+                            "properties": {
+                              "en": {
+                                "type": "object",
+                                "properties": {
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "summary": {
+                                    "type": "string"
+                                  },
+                                  "headings": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "depth": {
+                                          "type": "integer"
+                                        },
+                                        "text": {
+                                          "type": "string"
+                                        },
+                                        "anchor": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "depth",
+                                        "text",
+                                        "anchor"
+                                      ]
+                                    }
+                                  },
+                                  "images": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "src": {
+                                          "type": "string"
+                                        },
+                                        "alt": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "src",
+                                        "alt"
+                                      ]
+                                    }
+                                  },
+                                  "sha256": {
+                                    "type": "string"
+                                  },
+                                  "body": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "title",
+                                  "summary",
+                                  "headings",
+                                  "images",
+                                  "sha256",
+                                  "body"
+                                ]
+                              },
+                              "de": {
+                                "type": "object",
+                                "properties": {
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "summary": {
+                                    "type": "string"
+                                  },
+                                  "headings": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "depth": {
+                                          "type": "integer"
+                                        },
+                                        "text": {
+                                          "type": "string"
+                                        },
+                                        "anchor": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "depth",
+                                        "text",
+                                        "anchor"
+                                      ]
+                                    }
+                                  },
+                                  "images": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "src": {
+                                          "type": "string"
+                                        },
+                                        "alt": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "src",
+                                        "alt"
+                                      ]
+                                    }
+                                  },
+                                  "sha256": {
+                                    "type": "string"
+                                  },
+                                  "body": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "title",
+                                  "summary",
+                                  "headings",
+                                  "images",
+                                  "sha256",
+                                  "body"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "en",
+                              "de"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "llms_path",
+                          "audience",
+                          "section",
+                          "order",
+                          "generated",
+                          "locales"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "locales",
+                    "sections",
+                    "pages"
+                  ]
                 }
               }
             }

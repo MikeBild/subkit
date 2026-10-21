@@ -2,7 +2,7 @@ import { connectionErrorMessage, IntakeApi } from "./api.ts";
 import { chromeApi } from "./chrome-api.ts";
 import { loadSettings, normalizeEngineUrl, parseInstallConfig, saveSettings } from "./clipper.ts";
 import type { Copy } from "./ui.ts";
-import { applyText, copy, language as resolveLanguage } from "./ui.ts";
+import { applyText, copy, language as resolveLanguage, showHelpLink } from "./ui.ts";
 
 const form = document.querySelector<HTMLFormElement>("#settings-form");
 const engineUrl = document.querySelector<HTMLInputElement>("#engine-url");
@@ -10,6 +10,7 @@ const apiKey = document.querySelector<HTMLInputElement>("#api-key");
 const language = document.querySelector<HTMLSelectElement>("#language");
 const status = document.querySelector<HTMLElement>("#status");
 const clearKey = document.querySelector<HTMLButtonElement>("#clear-key");
+const help = document.querySelector<HTMLAnchorElement>("#help");
 let initialEngineUrl = "";
 let text: Copy = copy.de;
 
@@ -17,6 +18,13 @@ function setStatus(message: string, isError = false): void {
   if (!status) return;
   status.textContent = message;
   status.dataset.error = isError ? "true" : "false";
+}
+
+function applyLanguage(value: string | undefined): void {
+  const selectedLanguage = resolveLanguage(value);
+  text = copy[selectedLanguage];
+  document.documentElement.lang = selectedLanguage;
+  applyText(text);
 }
 
 async function installUrl(): Promise<string | undefined> {
@@ -32,10 +40,8 @@ async function initialize(): Promise<void> {
   if (engineUrl) engineUrl.value = initialUrl || "";
   if (apiKey) apiKey.value = settings.apiKey || "";
   if (language) language.value = settings.language || "de";
-  const selectedLanguage = resolveLanguage(settings.language);
-  text = copy[selectedLanguage];
-  document.documentElement.lang = selectedLanguage;
-  applyText(text);
+  applyLanguage(settings.language);
+  showHelpLink(help, initialUrl);
   if (settings.engineUrl && settings.apiKey) {
     await verifyConnection(settings.engineUrl, settings.apiKey);
   }
@@ -85,6 +91,8 @@ form?.addEventListener("submit", async (event) => {
       });
     }
     initialEngineUrl = nextUrl;
+    applyLanguage(language?.value === "en" ? "en" : "de");
+    showHelpLink(help, nextUrl);
     await chromeApi.runtime.sendMessage({ type: "settings-updated" });
     await verifyConnection(nextUrl, enteredKey || oldSettings.apiKey || "");
   } catch (error) {

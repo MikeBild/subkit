@@ -10,29 +10,15 @@ import {
   saveDraft,
 } from "./clipper.ts";
 import type { CapturedClip, CaptureError, CaptureMode, Draft } from "./types.ts";
+import { type WorkerCopy, workerCopy } from "./ui.ts";
 
 const captureErrorKey = "captureError";
 const storageAccess = chromeApi.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
 let draftWrites = Promise.resolve();
 
-const menuText = {
-  de: {
-    page: "Seite in SubKit sichern",
-    selection: "Auswahl in SubKit sichern",
-    engineRequired: "Lege vor dem Erfassen eine Engine-Adresse fest.",
-    captureFailed: "Die Seite konnte nicht erfasst werden.",
-  },
-  en: {
-    page: "Save page to SubKit",
-    selection: "Save selection to SubKit",
-    engineRequired: "Set an engine address before capturing.",
-    captureFailed: "The page could not be captured.",
-  },
-};
-
-async function workerText(): Promise<(typeof menuText)["de"]> {
+async function workerText(): Promise<WorkerCopy> {
   const settings = await loadSettings(chromeApi.storage.local);
-  return menuText[settings.language === "en" ? "en" : "de"];
+  return workerCopy[settings.language === "en" ? "en" : "de"];
 }
 
 function popupRoute(sender: { url?: string }): { draftId?: string; tabId?: number } | undefined {
@@ -64,7 +50,7 @@ function isExtensionUi(sender: { id?: string; url?: string }): boolean {
 async function activeTabId(): Promise<number> {
   const tabs = await chromeApi.tabs.query({ active: true, currentWindow: true });
   const id = tabs[0]?.id;
-  if (id === undefined) throw new Error("No active tab is available.");
+  if (id === undefined) throw new Error((await workerText()).noActiveTab);
   return id;
 }
 
@@ -101,13 +87,13 @@ function queueDraftWrite(operation: () => Promise<void>): Promise<void> {
 
 async function savePopupDraft(next: Draft): Promise<void> {
   const existing = await loadDraft(chromeApi.storage.local, next.id);
-  if (!existing) throw new Error("The draft is no longer available.");
+  if (!existing) throw new Error((await workerText()).draftMissing);
   if (
     existing.engineUrl !== next.engineUrl ||
     existing.captureUrl !== next.captureUrl ||
     existing.createdAt !== next.createdAt
   ) {
-    throw new Error("The draft identity changed.");
+    throw new Error((await workerText()).draftIdentityChanged);
   }
   const existingRevision = existing.writeRevision || 0;
   if (next.writeRevision !== undefined && next.writeRevision <= existingRevision) return;
@@ -116,6 +102,27 @@ async function savePopupDraft(next: Draft): Promise<void> {
     writeRevision: next.writeRevision || existingRevision + 1,
     originalCapture: existing.originalCapture,
   });
+}
+
+async function tabUrl(tabId: number): Promise<string | undefined> {
+  try {
+    const tab = await chromeApi.tabs.get(tabId);
+    return tab.url ? normalizeSourceUrl(tab.url) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function capturePage(tabId: number, mode: CaptureMode): Promise<CapturedClip> {
+  const urlAtStart = await tabUrl(tabId);
+  try {
+    await chromeApi.scripting.executeScript({ target: { tabId }, files: ["capture.js"] });
+    return (await chromeApi.tabs.sendMessage(tabId, { type: "capture", mode })) as CapturedClip;
+  } catch {
+    const text = await workerText();
+    const urlAfter = await tabUrl(tabId);
+    throw new Error(urlAtStart && urlAfter !== urlAtStart ? text.pageChanged : text.captureFailed);
+  }
 }
 
 async function captureFromTab(
@@ -131,21 +138,15 @@ async function captureFromTab(
     await chromeApi.runtime.openOptionsPage();
     throw new Error((await workerText()).engineRequired);
   }
-  await chromeApi.scripting.executeScript({ target: { tabId }, files: ["capture.js"] });
-  const result = (await chromeApi.tabs.sendMessage(tabId, {
-    type: "capture",
-    mode,
-  })) as CapturedClip;
+  const result = await capturePage(tabId, mode);
   const capturedUrl = normalizeSourceUrl(result.metadata.sourceUrl);
   const tab = await chromeApi.tabs.get(tabId);
   if (!tab.url || normalizeSourceUrl(tab.url) !== capturedUrl) {
-    throw new Error("The page changed while it was being captured. Capture it again.");
+    throw new Error((await workerText()).pageChanged);
   }
   const settings = await loadSettings(chromeApi.storage.local);
   if (settings.engineUrl !== settingsAtStart.engineUrl) {
-    throw new Error(
-      "The engine address changed while the page was being captured. Capture it again.",
-    );
+    throw new Error((await workerText()).engineChanged);
   }
   const existing = await findDraft(chromeApi.storage.local, settingsAtStart.engineUrl, capturedUrl);
   if (existing && existing.id !== replaceDraftId) {
@@ -269,7 +270,9 @@ chromeApi.runtime.onMessage.addListener((message: unknown, sender) => {
       : route?.tabId;
   if (request.type === "settings-updated") return registerMenus();
   if (request.type === "save-draft") {
-    if (!isDraft(request.draft)) return Promise.reject(new Error("The draft is invalid."));
+    if (!isDraft(request.draft)) {
+      return workerText().then((text) => Promise.reject(new Error(text.draftInvalid)));
+    }
     const draft = request.draft;
     return queueDraftWrite(() => savePopupDraft(draft));
   }

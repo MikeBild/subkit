@@ -12,7 +12,7 @@ type FixtureState = {
   captureError?: Error;
   executed: number[];
   extensionOrigin: string;
-  onCapture?: (values: Record<string, unknown>) => void;
+  onCapture?: (values: Record<string, unknown>, tabUrls: Map<number, string>) => void;
   opened: string[];
   tabUrls: Map<number, string>;
   values: Record<string, unknown>;
@@ -66,8 +66,8 @@ const chromeBridge = {
     },
     sendMessage: async () => {
       if (!current) throw new Error("No worker fixture is active.");
+      current.onCapture?.(current.values, current.tabUrls);
       if (current.captureError) throw current.captureError;
-      current.onCapture?.(current.values);
       return current.capture;
     },
   },
@@ -102,9 +102,9 @@ async function workerFixture(options: {
   activeTabId?: number;
   capture: CapturedClip;
   captureError?: Error;
-  settings?: { engineUrl?: string };
+  settings?: { engineUrl?: string; language?: string };
   tabUrls?: Record<number, string>;
-  onCapture?: (values: Record<string, unknown>) => void;
+  onCapture?: (values: Record<string, unknown>, tabUrls: Map<number, string>) => void;
 }) {
   const fixture: FixtureState = {
     activeTabId: options.activeTabId || 99,
@@ -171,6 +171,46 @@ test("background failures open a standalone popup bound to the source tab", asyn
   expect(fixture.opened).toEqual([`${fixture.extensionOrigin}/popup.html?tab=7`]);
 });
 
+test("background failures store a translated capture message instead of the raw page error", async () => {
+  for (const [language, expected] of [
+    ["de", "Die Seite konnte nicht erfasst werden."],
+    ["en", "The page could not be captured."],
+  ] as const) {
+    const fixture = await workerFixture({
+      capture: captured("https://example.test/failure"),
+      captureError: new Error("Cannot access contents of the page."),
+      settings: { engineUrl: "https://engine.test", language },
+      tabUrls: { 7: "https://example.test/failure" },
+    });
+    if (!contextMenuListener) throw new Error("Context menu listener was not installed.");
+    contextMenuListener({ menuItemId: "clip-page" }, { id: 7 });
+    await waitFor(() => fixture.opened.length > 0);
+    expect(fixture.values.captureError).toEqual({ message: expected });
+  }
+});
+
+test("a page that navigates during capture reports the translated page change", async () => {
+  const fixture = await workerFixture({
+    capture: captured("https://example.test/before"),
+    captureError: new Error("The page changed before capture completed."),
+    tabUrls: { 7: "https://example.test/before" },
+    onCapture: (_values, tabUrls) => {
+      tabUrls.set(7, "https://example.test/after");
+    },
+  });
+  await expect(
+    fixture.send(
+      { type: "start-capture", mode: "article" },
+      {
+        id: "clipper",
+        url: `${fixture.extensionOrigin}/popup.html`,
+        tab: { id: 7, url: "https://example.test/before" },
+      },
+    ),
+  ).rejects.toThrow("Die Seite hat sich während der Erfassung geändert. Erfasse sie erneut.");
+  expect(await listDrafts(fixture.storage)).toEqual([]);
+});
+
 test("does not save a capture after the page changed", async () => {
   const fixture = await workerFixture({
     capture: captured("https://example.test/before"),
@@ -185,7 +225,7 @@ test("does not save a capture after the page changed", async () => {
         tab: { id: 7, url: "https://example.test/after" },
       },
     ),
-  ).rejects.toThrow("page changed");
+  ).rejects.toThrow("Seite hat sich während der Erfassung geändert");
   expect(await listDrafts(fixture.storage)).toEqual([]);
 });
 
@@ -206,7 +246,7 @@ test("does not save a capture under a different engine after settings change", a
         tab: { id: 7, url: "https://example.test/page" },
       },
     ),
-  ).rejects.toThrow("engine address changed");
+  ).rejects.toThrow("Engine-Adresse hat sich während der Erfassung geändert");
   expect(await listDrafts(fixture.storage)).toEqual([]);
 });
 

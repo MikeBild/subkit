@@ -50,7 +50,9 @@ function isInternalUsageRoute(path: string): boolean {
     path === "/openapi.json" ||
     path === "/docs" ||
     path === "/llms.txt" ||
-    path === "/llms-full.txt"
+    path === "/llms-full.txt" ||
+    path === "/docs.json" ||
+    path.startsWith("/llms/")
   );
 }
 

@@ -284,6 +284,19 @@ textarea:disabled {
   background: var(--muted);
 }
 
+.help-link {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 17px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.masthead .help-link {
+  margin-left: auto;
+}
+
 .masthead .quiet {
   width: 32px;
   min-height: 32px;
@@ -292,6 +305,10 @@ textarea:disabled {
   border: 0;
   color: var(--muted-foreground);
   font-size: 17px;
+}
+
+.masthead .help-link:not([hidden]) + .quiet {
+  margin-left: 0;
 }
 
 .journey {
@@ -492,6 +509,7 @@ details[open] summary {
 }
 
 .status-action {
+  flex: none;
   min-height: 17px;
   padding: 0;
   color: var(--accent);
@@ -562,6 +580,11 @@ details[open] summary {
   color: var(--muted-foreground);
   font-size: 13px;
   line-height: 20px;
+}
+
+.intro + .help-link:not([hidden]) {
+  display: inline-block;
+  margin: -10px 0 18px;
 }
 
 #settings-form {

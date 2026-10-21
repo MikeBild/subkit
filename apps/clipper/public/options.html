@@ -3,17 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SubKit Clipper settings</title>
+    <title data-i18n="settingsTitle">SubKit Clipper – Einstellungen</title>
     <link rel="stylesheet" href="clipper.css" />
   </head>
   <body class="settings-page">
     <main class="settings clipper">
       <header class="masthead"><span class="mark" aria-hidden="true">S</span><div class="masthead-copy"><p class="eyebrow">SubKit <span class="clipper-version">v@@SUBKIT_VERSION@@</span></p><h1 data-i18n="connection">Verbindung</h1></div></header>
-      <p class="intro">Die Zugangsdaten bleiben in dieser Browser-Erweiterung.</p>
+      <p class="intro" data-i18n="intro">Deine Zugangsdaten bleiben in dieser Browser-Erweiterung.</p>
+      <a id="help" class="help-link" href="about:blank" target="_blank" rel="noreferrer" hidden data-i18n="help" data-i18n-label="helpLabel">Hilfe</a>
       <form id="settings-form">
         <label><span data-i18n="engine">Engine-Adresse</span> <input id="engine-url" type="url" placeholder="https://engine.example" required /></label>
         <label><span data-i18n="key">API-Schlüssel</span> <input id="api-key" type="password" autocomplete="off" required /></label>
-        <label>Sprache <select id="language"><option value="de">Deutsch</option><option value="en">English</option></select></label>
+        <label><span data-i18n="languageField">Sprache</span> <select id="language"><option value="de">Deutsch</option><option value="en">English</option></select></label>
         <p id="status" class="status" aria-live="polite"></p>
         <button class="primary" type="submit" data-i18n="saveConnection">Verbindung speichern</button>
         <button id="clear-key" class="quiet" type="button" data-i18n="clearKey">API-Schlüssel löschen</button>

@@ -22,6 +22,8 @@
       "!assets/cockpit",
       "!apps/cockpit/src/api/schema.d.ts",
       "!apps/cockpit/src/app/release-notes.generated.ts",
+      "!apps/cockpit/src/app/docs.generated.ts",
+      "!apps/engine/src/http/llms/docs.json",
       "!apps/engine/src/http/cockpit-embedded.ts",
       "!contract/cockpit-ui.css",
       "!apps/engine/src/db/migrations/embedded.ts",

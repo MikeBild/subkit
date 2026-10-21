@@ -65,6 +65,8 @@ test("every address a link builder produces resolves to one of the cockpit's pag
     }),
     chatNew: links.chatNewHref({ prompt: "p", workflowId: id }),
     apiAccess: links.apiAccessHref("keys"),
+    docs: links.docsHref(),
+    docsChapter: links.docsHref("web-clipper"),
   };
   const dead = Object.entries(built)
     .filter(([, href]) => !resolves(href))

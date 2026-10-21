@@ -23,6 +23,10 @@ const ENTRIES: ReadonlyArray<Entry> = [
     what: "Setup, CLI, settings and connectors, generated from the code — indexed",
   },
   { path: "/llms-full.txt", what: "Those same pages in one fetch, for a model" },
+  {
+    path: "/docs.json",
+    what: "Every documentation chapter in English and German, as one JSON bundle",
+  },
   { path: "/openapi.json", what: "The full API surface" },
   { path: "/docs", what: "That API surface as a browsable reference" },
   { path: "/cockpit", what: "The web interface" },

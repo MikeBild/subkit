@@ -19,7 +19,7 @@ export function pageColumn(kind: PageKind): string {
   return kind === "list" ? "w-full max-w-[1760px]" : "w-full max-w-[1440px]";
 }
 
-function gutter(kind: PageKind): string {
+export function pageGutter(kind: PageKind): string {
   return kind === "workspace" ? "" : "px-4 sm:px-6";
 }
 
@@ -41,7 +41,7 @@ export function Page({
   children: ReactNode;
 }) {
   const column = pageColumn(kind);
-  const pad = gutter(kind);
+  const pad = pageGutter(kind);
   return (
     <ColumnToggleScope>
       <main

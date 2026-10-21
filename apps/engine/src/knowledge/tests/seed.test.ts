@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { knowledgeSources, tenants } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import { loadEmbeddedSkillSeeds } from "../../skills/seed.ts";
+import { EMBEDDED_KNOWLEDGE_SEEDS } from "../embedded-seeds.ts";
 import {
   applyKnowledgeSeeds,
   applyKnowledgeSeedsForAllTenants,
@@ -83,10 +84,11 @@ describe("loadEmbeddedKnowledgeSeeds — all 8 embedded files", () => {
     }
   });
 
-  test("all 7 expected slugs are present", () => {
+  test("all 8 expected slugs are present", () => {
     const r = loadEmbeddedKnowledgeSeeds();
     const slugs = new Set(r.knowledge.map((k) => k.slug));
     const expected = [
+      "sk-ref-coding-agents",
       "sk-ref-chat",
       "sk-ref-mcp-tools",
       "sk-ref-rest-api",
@@ -110,6 +112,16 @@ describe("loadEmbeddedKnowledgeSeeds — all 8 embedded files", () => {
     expect(cli!.body).not.toContain("@subkit/cli");
     expect(cli!.body).not.toContain("raw.githubusercontent.com");
     expect(cli!.body).not.toContain("github.com");
+  });
+
+  test("sk-ref-coding-agents seed is generated from the coding-agent chapter", () => {
+    const seed = EMBEDDED_KNOWLEDGE_SEEDS.find((s) => s.file === "coding-agents.md");
+    expect(seed?.content).toMatch(/^---\n[\s\S]*^generated: true$[\s\S]*?\n---\n/m);
+    const r = loadEmbeddedKnowledgeSeeds();
+    const coding = r.knowledge.find((k) => k.slug === "sk-ref-coding-agents");
+    expect(coding?.scope).toBe("global");
+    expect(coding?.body.startsWith("# Use sk from a coding agent\n")).toBe(true);
+    expect(coding?.tags).toContain("coding-agents");
   });
 
   test("every embedded seed has a non-empty name, description, body, and tags array", () => {

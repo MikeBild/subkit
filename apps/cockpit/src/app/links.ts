@@ -121,6 +121,11 @@ export function conversationHref(id: string): string {
   return record("chat", id);
 }
 
+export function docsHref(slug?: string | null, anchor?: string | null): string {
+  const path = slug ? record("docs", slug) : "/docs";
+  return anchor ? `${path}#${encodeURIComponent(anchor)}` : path;
+}
+
 export function attentionHref(filter: { review?: string | null } = {}): string {
   return filter.review ? `/?review=${filter.review}` : "/";
 }

@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { DocsBundleSchema } from "@shared/llms-index.ts";
 import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
-import type { AppEnv } from "../openapi.ts";
+import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 import { registerLlmsTxtRoutes } from "./llms-txt.ts";
 
 const ORIGIN = "https://docs.example.test";
@@ -87,5 +89,66 @@ describe("GET /llms-full.txt", () => {
     expect(body.startsWith("# sk\n")).toBe(true);
     expect(body).toContain("<!-- Source: setup.md -->");
     expect(body.length).toBeGreaterThan(20_000);
+  });
+});
+
+describe("GET /docs.json", () => {
+  test("serves the embedded bundle with both locales as application/json", async () => {
+    const res = await buildApp().request("/docs.json");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/^application\/json/);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=3600");
+    expect(res.headers.get("x-sk-docs-version")).toBe(OPENAPI_INFO.version);
+    const bundle = DocsBundleSchema.parse(await res.json());
+    expect(bundle.locales).toEqual(["en", "de"]);
+    expect(bundle.pages.length).toBeGreaterThan(0);
+    expect(bundle.sections.map((s) => s.id)).toEqual(["start", "work", "operate", "reference"]);
+    expect(new Set(bundle.pages.map((p) => p.section))).toEqual(
+      new Set(["start", "work", "operate", "reference"]),
+    );
+    expect(bundle.pages[0]?.slug).toBe("intro");
+    for (const page of bundle.pages) {
+      expect(page.locales.en.body.length).toBeGreaterThan(0);
+      expect(page.locales.de.body.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("matches the descriptor sha256 and keeps the version out of the body", async () => {
+    const app = buildApp();
+    const body = await (await app.request("/docs.json")).text();
+    const descriptor = (await (
+      await app.request("/.well-known/service-descriptor.json")
+    ).json()) as {
+      version: string;
+      artifacts: { docs_json: { url: string; sha256: string } };
+      capabilities: string[];
+    };
+    expect(descriptor.artifacts.docs_json.url).toBe(`${ORIGIN}/docs.json`);
+    expect(descriptor.artifacts.docs_json.sha256).toBe(
+      createHash("sha256").update(body).digest("hex"),
+    );
+    expect(descriptor.version).toBe(OPENAPI_INFO.version);
+    expect(descriptor.capabilities).toContain("docs");
+    expect(Object.keys(JSON.parse(body)).sort()).toEqual(["locales", "pages", "sections"]);
+  });
+
+  test("documents /docs.json in the OpenAPI spec and leaves /docs to the API reference", async () => {
+    const app = buildApp();
+    const spec = app.getOpenAPI31Document({
+      openapi: "3.1.0",
+      info: { title: "t", version: "0" },
+    });
+    expect(spec.paths?.["/docs.json"]?.get).toBeDefined();
+    expect(spec.paths?.["/docs"]).toBeUndefined();
+    expect((await app.request("/docs")).status).toBe(404);
+  });
+
+  test("keeps the llms drill-down and full corpus unchanged", async () => {
+    const app = buildApp();
+    const setup = await app.request("/llms/setup.md");
+    expect(setup.status).toBe(200);
+    expect(setup.headers.get("content-type")).toMatch(/^text\/markdown/);
+    const full = await app.request("/llms-full.txt");
+    expect((await full.text()).startsWith("# sk\n")).toBe(true);
   });
 });
