@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import type { AuthoringSummary, ConnectorDraftDocument, WorkflowDraftDocument } from "../types.ts";
 import { createEmptyState } from "./normalize.ts";
-import { computeBlockedBy } from "./summary.ts";
+import { computeBlockedBy, computeNextAction, computeReadiness } from "./summary.ts";
 
 function activeConnector(): AuthoringSummary["active_target"] {
   return {
@@ -46,6 +46,44 @@ function freshen<
     };
   }
   return state;
+}
+
+function workflowDraft(
+  execution_privacy?: WorkflowDraftDocument["execution_privacy"],
+): WorkflowDraftDocument {
+  return {
+    name: "github-briefing",
+    ...(execution_privacy ? { execution_privacy } : {}),
+    steps: [{ id: "read", kind: "transform", expression: "return {};", language: "javascript" }],
+  };
+}
+
+function freshenWorkflow(
+  state: ReturnType<typeof createEmptyState>,
+  ...keys: Array<"workflow_inspected" | "workflow_validated">
+) {
+  for (const key of keys) {
+    state.checkpoints[key] = {
+      key,
+      mutation_seq: state.workflow_mutation_seq,
+      verified_at: new Date(FROZEN_NOW).toISOString(),
+      verified_by_tool: "test",
+      ok: true,
+      summary: null,
+    };
+  }
+  return state;
+}
+
+function activeWorkflow(): AuthoringSummary["active_target"] {
+  return {
+    kind: "workflow",
+    name: "github-briefing",
+    slug: "github-briefing",
+    id: null,
+    environment: "prod",
+    lifecycle_state: "draft_only",
+  };
 }
 
 describe("computeBlockedBy — OAuth2 lifecycle ordering", () => {
@@ -102,5 +140,50 @@ describe("computeBlockedBy — OAuth2 lifecycle ordering", () => {
     const blocked = computeBlockedBy(state, draft, emptyWorkflow(), null, activeConnector());
     expect(blocked).toContain("ask_user_form");
     expect(blocked).toContain("probe_connector_draft");
+  });
+});
+
+describe("computeBlockedBy — sensitive workflow persistence", () => {
+  it("allows an inspected and validated sensitive draft to save without a preview", () => {
+    const state = freshenWorkflow(
+      createEmptyState("workflow"),
+      "workflow_inspected",
+      "workflow_validated",
+    );
+    const draft = workflowDraft("sensitive");
+    const active = activeWorkflow();
+    const blocked = computeBlockedBy(state, null, draft, null, active);
+
+    expect(blocked).not.toContain("dry_run_workflow");
+    expect(blocked).toEqual([]);
+    expect(computeReadiness(active, blocked)).toBe("ready_to_save");
+    expect(computeNextAction(state, active, blocked, draft)).toContain(
+      "runtime verification remains not performed",
+    );
+  });
+
+  it("keeps inspection and validation freshness gates for sensitive drafts", () => {
+    const state = freshenWorkflow(createEmptyState("workflow"), "workflow_inspected");
+    const blocked = computeBlockedBy(
+      state,
+      null,
+      workflowDraft("sensitive"),
+      null,
+      activeWorkflow(),
+    );
+
+    expect(blocked).toContain("validate_draft");
+    expect(blocked).not.toContain("dry_run_workflow");
+  });
+
+  it("continues to require preview for ordinary workflow drafts", () => {
+    const state = freshenWorkflow(
+      createEmptyState("workflow"),
+      "workflow_inspected",
+      "workflow_validated",
+    );
+    const blocked = computeBlockedBy(state, null, workflowDraft(), null, activeWorkflow());
+
+    expect(blocked).toContain("dry_run_workflow");
   });
 });
