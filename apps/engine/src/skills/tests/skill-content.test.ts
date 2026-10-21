@@ -126,6 +126,8 @@ describe("github-graphql-basics — private project guidance", () => {
     expect(body).toContain("graphql.cursor_pagination");
     expect(body).toContain("required_connection_paths");
     expect(body).toContain("fail without a partial snapshot");
+    expect(body).toContain("syntactically valid GraphQL document containing an operation");
+    expect(body).toContain("schema evidence only");
   });
 });
 

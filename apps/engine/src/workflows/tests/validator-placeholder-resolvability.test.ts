@@ -154,4 +154,48 @@ describe("validateWorkflowDef — addressing-surface placeholder resolvability",
     expect(err).toBeDefined();
     expect(err?.message).toContain("${scope.whoami}");
   });
+
+  test("a malformed GraphQL document is rejected before a workflow can be saved", () => {
+    const res = validateWorkflowDef(
+      defWithSteps([
+        {
+          id: "project_items",
+          kind: "request",
+          method: "GET",
+          connector_id: "7a1c3e5d-2b4f-4a6c-9d8e-1f2a3b4c5d6e",
+          graphql: {
+            query: "query ProjectItems { viewer { repositories(first: 10) { nodes { name } }",
+            cursor_pagination: {
+              connection_path: "viewer.repositories",
+              cursor_variable: "after",
+              items_field: "nodes",
+              max_pages: 10,
+              max_items: 100,
+            },
+          },
+        },
+      ]),
+    );
+    expect(res.ok).toBe(false);
+    expect(res.errors).toContainEqual({
+      path: "steps.project_items.graphql.query",
+      message: "graphql.query must be a valid GraphQL document containing an operation",
+    });
+  });
+
+  test("an invalid request data selector is rejected before a workflow can be saved", () => {
+    const res = validateWorkflowDef(
+      defWithSteps([
+        {
+          id: "issues",
+          kind: "request",
+          method: "GET",
+          url: "https://api.example.com/issues",
+          data_selector: "unknown",
+        },
+      ]),
+    );
+    expect(res.ok).toBe(false);
+    expect(res.errors.some((error) => error.path === "steps.issues.data_selector")).toBe(true);
+  });
 });

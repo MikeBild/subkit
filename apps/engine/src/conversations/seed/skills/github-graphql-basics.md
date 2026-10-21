@@ -8,7 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [connector, github, graphql]
-version: 3
+version: 4
 ---
 
 # GitHub GraphQL API Basics
@@ -58,6 +58,8 @@ For sensitive workflows, keep pages inside one read-only GraphQL request step wi
 For `ProjectV2.items` with selected `fieldValues`, set `required_connection_paths: ["fieldValues"]` and request `fieldValues { totalCount nodes { ... } pageInfo { hasNextPage } }`. If its `hasNextPage` is true, the outer items cursor cannot finish it; query that item's field values separately before reporting a complete project snapshot.
 
 For Projects, query `ProjectV2.items(first: ..., after: ...)` and read its `pageInfo` and `totalCount`. Probe the exact query with the authenticated connector; a working repository query does not prove Project access. GitHub's REST OpenAPI discovery is not required for a GraphQL query.
+
+Before saving, validate the exact query as a syntactically valid GraphQL document containing an operation, then probe that query against the authenticated API with bounded fields. An HTTP 200 or a shape/sample response proves only that the probed fields resolved; it does not prove that every page or nested connection was read. Verify the returned item counts and that pagination ends with `hasNextPage: false`. Treat sample and shape probes as schema evidence only, never as complete workflow-run evidence.
 
 ## Rate-limit budget
 

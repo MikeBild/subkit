@@ -1,3 +1,4 @@
+import { inferGraphqlOperation } from "@shared/index.ts";
 import type { ConnectorHeaderPolicy } from "../connectors/index.ts";
 import { compileJsonSchemaContract } from "../execution/index.ts";
 import { compileOutputContractSchema } from "../execution/output-contract.ts";
@@ -130,6 +131,12 @@ export function validateWorkflowDef(
       }
     }
     if (step.kind === "request") {
+      if (step.graphql && inferGraphqlOperation(step.graphql.query) === null) {
+        errors.push({
+          path: `steps.${step.id}.graphql.query`,
+          message: "graphql.query must be a valid GraphQL document containing an operation",
+        });
+      }
       if (step.url !== undefined) {
         const isAbsolute = /^https?:\/\//.test(step.url);
         const isConnectorBaseUrlPlaceholder = /^\$\{connector\.[a-z0-9_-]+\.base_url\}(\/|$)/.test(
