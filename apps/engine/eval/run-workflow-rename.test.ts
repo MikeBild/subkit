@@ -34,12 +34,14 @@ describe("run_workflow tool — field rename: workflow not workflow_id", () => {
     expect(desc).not.toContain("workflow_id=");
   });
 
-  test("run_workflow distinguishes held preparation from a live one-shot", () => {
+  test("run_workflow documents when a new run is allowed and what it does", () => {
     expect(runWorkflowTool).toBeDefined();
     const desc = runWorkflowTool!.description ?? "";
-    expect(desc).toContain("execute_writes: false");
-    expect(desc).toContain("Do not use wf_<slug> for preparation");
-    expect(desc).toContain("one-shot human decision");
+    expect(desc).toContain("Use only when the user requests a new run or preview");
+    expect(desc).toContain("execute_writes: false still starts a DEV run");
+    expect(desc).toContain("Never call this tool when the user says not to run");
+    expect(desc).toContain("To verify a DRAFT, use `dry_run_workflow`");
+    expect(desc).toContain("one-shot live execution decision");
   });
 });
 
