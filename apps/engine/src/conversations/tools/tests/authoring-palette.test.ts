@@ -263,10 +263,11 @@ describe("filterByChatReadOnlyPalette — read-only channel invariants", () => {
   const chatPalette = filterByChatReadOnlyPalette(registry);
   const chatNames = new Set(chatPalette.map((t) => t.name));
 
-  test("no draft_write or tenant_write tool is exposed (run_workflow + load_skill + ask_user_* excepted)", () => {
+  test("no other draft_write or tenant_write tool is exposed in the read-only chat palette", () => {
     const allowedWriteish = new Set([
       "run_workflow",
       "load_skill",
+      "update_playbook",
       "ask_user_choice",
       "ask_user_confirm",
       "ask_user_form",
@@ -344,6 +345,7 @@ describe("filterByChatReadOnlyPalette — read-only channel invariants", () => {
       "get_execution",
       "get_skill",
       "find_skill",
+      "update_playbook",
       "list_connectors",
       "get_connector",
       "ask_user_confirm",

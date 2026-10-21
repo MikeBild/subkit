@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { skills } from "../../db/schema/index.ts";
+import { contextCapFor } from "../accounting/index.ts";
 import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
 
@@ -11,11 +12,15 @@ let ctx: LlmTestCtx;
 beforeAll(async () => {
   if (skip) return;
   ctx = await createLlmTestCtx("skill-body-trim");
-  const longBody = `${"X".repeat(40000)}\nstructured content`;
+  const longBody = `${Array.from({ length: 8_000 }, (_, index) => `skill-token-${index}`).join(" ")}\nstructured content`;
   await ctx.testDb.db
     .update(skills)
-    .set({ slug: "long-skill", body: longBody, seed_source: "test-fixture" })
-    .where(eq(skills.id, ctx.skill_ids.global));
+    .set({ slug: "long-skill", title: "long-skill", body: longBody })
+    .where(eq(skills.id, ctx.skill_ids.connector));
+  await ctx.testDb.db
+    .update(skills)
+    .set({ slug: "loaded-long-skill", title: "loaded-long-skill", body: longBody })
+    .where(eq(skills.id, ctx.skill_ids.workflow));
 }, 60_000);
 
 afterAll(async () => {
@@ -51,6 +56,7 @@ describe.skipIf(skip)("context-assembler skill-body trim", () => {
     const prompt = await assembleEnhancedPrompt(
       {
         tenant_id: ctx.tenant_id,
+        connector_id: ctx.connector_id,
         flow: "converse",
         user_turns: [{ role: "user", content: "anything" }],
         max_tokens: 50_000,
@@ -58,10 +64,10 @@ describe.skipIf(skip)("context-assembler skill-body trim", () => {
       },
       ctx.testDb.db,
     );
-    expect(prompt.included_skill_ids).toContain(ctx.skill_ids.global);
-    expect(prompt.system).toMatch(/long-skill|load_skill/);
-    expect(prompt.system.length).toBeLessThan(40_000);
-    expect(prompt.system).not.toMatch(/X{1000,}/);
+    expect(prompt.included_skill_ids).toContain(ctx.skill_ids.connector);
+    expect(prompt.system).toContain("prefer-get-for-lists");
+    expect(prompt.token_counts.total).toBeLessThanOrEqual(contextCapFor("mock"));
+    expect(prompt.system).not.toContain("skill-token-7999");
   });
 
   test("explicit load_skill inlines the full body, then trim path activates under cap", async () => {
@@ -70,13 +76,16 @@ describe.skipIf(skip)("context-assembler skill-body trim", () => {
         tenant_id: ctx.tenant_id,
         flow: "converse",
         user_turns: [{ role: "user", content: "anything" }],
-        max_tokens: 30_000,
+        max_tokens: 9_500,
         model: "mock",
-        loaded_skill_slugs: ["long-skill"],
+        loaded_skill_slugs: ["loaded-long-skill"],
       },
       ctx.testDb.db,
     );
-    expect(prompt.included_skill_ids).toContain(ctx.skill_ids.global);
-    expect(prompt.system.length).toBeLessThan(40_000);
+    expect(prompt.included_skill_ids).toContain(ctx.skill_ids.workflow);
+    expect(prompt.dropped_sections).toContain("loaded_skill_body_trimmed");
+    expect(prompt.token_counts.total).toBeLessThanOrEqual(9_500);
+    expect(prompt.token_counts.total).toBeLessThanOrEqual(contextCapFor("mock"));
+    expect(prompt.system).not.toContain("skill-token-7999");
   });
 });
