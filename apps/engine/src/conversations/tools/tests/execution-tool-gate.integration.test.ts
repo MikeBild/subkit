@@ -3,9 +3,15 @@ import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Db } from "../../../db/client.ts";
 import { tenants } from "../../../db/schema/identity.ts";
-import { conversations, workflows, workflowVersions } from "../../../db/schema/index.ts";
+import {
+  conversations,
+  executions,
+  workflows,
+  workflowVersions,
+} from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { detectUserIntent } from "../../intent-detector.ts";
 import type { TurnEvent } from "../../types.ts";
 import {
   applyExecutionToolGate,
@@ -59,7 +65,7 @@ async function seedTool(slug: string): Promise<void> {
   await tdb.db.update(workflows).set({ current_version_id: v.id }).where(eq(workflows.id, wf.id));
 }
 
-async function buildRealPalette(): Promise<Record<string, unknown>> {
+async function buildRealPalette(recentUserMessage?: string): Promise<Record<string, unknown>> {
   const db = tdb.db as unknown as Db;
   const events: TurnEvent[] = [];
   const engineClient = new EngineClient({
@@ -75,6 +81,7 @@ async function buildRealPalette(): Promise<Record<string, unknown>> {
     actor_id: null,
     connector_id: null,
     workflow_id: null,
+    ...(recentUserMessage ? { recentUserMessage } : {}),
     engineClient,
     getDraft: () => ({ workflow: { name: "", steps: [] } as never }),
     setDraft: async () => {},
@@ -189,5 +196,42 @@ describe("execution-tool gate against a real palette", () => {
     expect(removed).toBe(0);
     expect(palette.run_workflow).toBeDefined();
     expect(palette[`wf_${LOOKALIKE_SLUG}`]).toBeDefined();
+  });
+
+  test("explicit no-run wording hides execution on chat even when a workflow is named", async () => {
+    const palette = await buildRealPalette();
+    const slugs = collectSyntheticWorkflowSlugs(Object.keys(palette));
+    const message =
+      "Untersuche den gespeicherten fehlgeschlagenen Lauf. Ändere nichts und führe keinen Lauf aus.";
+    const intent = detectUserIntent(message);
+    const gate = resolveExecutionToolGate({
+      hasBoundSavedWorkflow: true,
+      explicitlyNamedWorkflowSlug: resolveNamedWorkflowSlug(message, slugs),
+      surface: "chat",
+      suppressExecution: intent.suppressExecution === true,
+    });
+    const removed = applyExecutionToolGate(palette, gate, slugs);
+    expect(gate).toEqual({ exposeExecution: false, reason: "explicit_no_run" });
+    expect(removed).toBeGreaterThanOrEqual(2);
+    expect(palette.run_workflow).toBeUndefined();
+    expect(palette[`wf_${LOOKALIKE_SLUG}`]).toBeUndefined();
+    expect(palette.dry_run_workflow).toBeUndefined();
+    expect(palette.dry_run_step).toBeUndefined();
+    expect(palette.list_executions).toBeDefined();
+  });
+
+  test("a direct run_workflow tool call is denied before execution on an explicit no-run turn", async () => {
+    const palette = await buildRealPalette("Ändere nichts und führe keinen Lauf aus.");
+    const runTool = palette.run_workflow as {
+      execute?: (
+        args: Record<string, unknown>,
+      ) => Promise<{ ok: boolean; data: Record<string, unknown> }>;
+    };
+    expect(runTool.execute).toBeDefined();
+    const before = await tdb.db.select().from(executions);
+    const output = await runTool.execute?.({ workflow: LOOKALIKE_SLUG, execute_writes: false });
+    const after = await tdb.db.select().from(executions);
+    expect(output?.data.error_code).toBe("explicit_no_run");
+    expect(after).toHaveLength(before.length);
   });
 });

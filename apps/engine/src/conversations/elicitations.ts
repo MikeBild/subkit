@@ -13,6 +13,7 @@ import {
 import { logger } from "../logging/logger.ts";
 import { APPROVAL_TTL_MS } from "../tools/approval.ts";
 import { type DecidedBy, decidedByAuditActor } from "./decided-by.ts";
+import { humanConfirmationContextFingerprint } from "./playbook-evidence.ts";
 import {
   approvalHandleFromElicitationInput,
   isWorkflowInputForm,
@@ -193,6 +194,23 @@ async function insertElicitation(
   protocolNative: boolean,
   exec: Executor,
 ): Promise<ElicitationRecord> {
+  const input =
+    p.input && typeof p.input === "object" && !Array.isArray(p.input)
+      ? (p.input as Record<string, unknown>)
+      : {};
+  let playbookContextFingerprint: string | null = null;
+  if (p.tool_name === "ask_user_confirm" && !input.commit_intent) {
+    const [conversation] = await exec
+      .select({ draft: conversations.draft, playbook: conversations.playbook })
+      .from(conversations)
+      .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
+      .limit(1);
+    playbookContextFingerprint = humanConfirmationContextFingerprint(
+      conversation?.playbook,
+      input.question,
+      conversation?.draft,
+    );
+  }
   const stale = await exec
     .select()
     .from(conversationElicitations)
@@ -242,6 +260,7 @@ async function insertElicitation(
       input: (p.input ?? {}) as Record<string, unknown>,
       status: "pending",
       protocol_native: protocolNative,
+      playbook_context_fingerprint: playbookContextFingerprint,
       expires_at: p.expires_at ?? elicitationExpiry(p.input, new Date()),
     })
     .returning();
@@ -463,6 +482,8 @@ export async function resolveElicitation(
     .select({
       tool_name: conversationElicitations.tool_name,
       input: conversationElicitations.input,
+      conversation_id: conversationElicitations.conversation_id,
+      playbook_context_fingerprint: conversationElicitations.playbook_context_fingerprint,
     })
     .from(conversationElicitations)
     .where(
@@ -475,6 +496,40 @@ export async function resolveElicitation(
   const persistedOutput = pendingRow
     ? redactElicitationOutput(pendingRow.tool_name, pendingRow.input, p.output ?? null)
     : (p.output ?? null);
+  let playbookContextFingerprint: string | null = null;
+  if (
+    status === "resolved" &&
+    pendingRow?.tool_name === "ask_user_confirm" &&
+    p.decided_by?.kind === "user" &&
+    interpretConfirmDecision(p.output) === "confirmed"
+  ) {
+    const input =
+      pendingRow.input && typeof pendingRow.input === "object" && !Array.isArray(pendingRow.input)
+        ? (pendingRow.input as Record<string, unknown>)
+        : {};
+    if (!input.commit_intent) {
+      const [conversation] = await exec
+        .select({ draft: conversations.draft, playbook: conversations.playbook })
+        .from(conversations)
+        .where(
+          and(
+            eq(conversations.tenant_id, p.tenant_id),
+            eq(conversations.id, pendingRow.conversation_id),
+          ),
+        )
+        .limit(1);
+      const currentContextFingerprint = humanConfirmationContextFingerprint(
+        conversation?.playbook,
+        input.question,
+        conversation?.draft,
+      );
+      playbookContextFingerprint =
+        pendingRow.playbook_context_fingerprint !== null &&
+        pendingRow.playbook_context_fingerprint === currentContextFingerprint
+          ? pendingRow.playbook_context_fingerprint
+          : null;
+    }
+  }
   const [row] = await exec
     .update(conversationElicitations)
     .set({
@@ -483,6 +538,7 @@ export async function resolveElicitation(
       decided_by: p.decided_by?.id ?? null,
       decided_by_kind: p.decided_by?.kind ?? null,
       decided_at: new Date(),
+      playbook_context_fingerprint: playbookContextFingerprint,
       decision_reason: p.reason ?? null,
       updated_at: new Date(),
     })

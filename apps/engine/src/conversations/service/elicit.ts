@@ -46,6 +46,7 @@ export interface RespondElicitationParams {
   turn_abort_ctrl: AbortController;
   elicitationBridge?: ElicitationBridge;
   surface?: Parameters<typeof runLoop>[0]["surface"];
+  locale?: "de" | "en";
 }
 
 export class ElicitationActorMismatchError extends Error {
@@ -395,6 +396,7 @@ async function driveElicitation(
     user_message: null,
     turn_abort_ctrl: p.turn_abort_ctrl,
     ...(p.surface ? { surface: p.surface } : {}),
+    ...(p.locale ? { locale: p.locale } : {}),
     ...(effectivePermissionMode ? { permission_mode: effectivePermissionMode } : {}),
     ...(p.onEvent ? { onEvent: p.onEvent } : {}),
     ...(p.elicitationBridge ? { elicitationBridge: p.elicitationBridge } : {}),

@@ -1,13 +1,23 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { conversations, tenants } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import {
+  conversationMessages,
+  conversations,
+  conversationToolCalls,
+  tenants,
+} from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createElicitation, getElicitation } from "../elicitations.ts";
+import { PlaybookDocumentSchema } from "../playbook-contract.ts";
 import { ElicitationValidationError } from "../service/elicit.ts";
 import { respondElicitationForTest } from "./setup.ts";
 
 let testDb: TestDb;
 let tenant_id: string;
+const uuid = createDeterministicUuidFactory(0x9e1_1c17);
 
 beforeAll(async () => {
   process.env.LLM_PROVIDER = "mock";
@@ -134,6 +144,106 @@ describe("respondElicitation — validation re-prompt", () => {
     }
 
     expect(threw).not.toBeInstanceOf(ElicitationValidationError);
+  });
+
+  test("localized elicitation response keeps its locale in the returned playbook projection", async () => {
+    const conversation_id = await freshConversation();
+    const now = new Date(FROZEN_NOW).toISOString();
+    const playbook = PlaybookDocumentSchema.parse({
+      id: uuid(),
+      created_at: now,
+      updated_at: now,
+      evidence_fingerprints: {},
+      plan: {
+        title: "Review source",
+        goal: "Confirm source access",
+        steps: [
+          {
+            id: "read_source",
+            label: "Read source",
+            criterion: {
+              kind: "resource_observed",
+              resource: { type: "file", id: uuid() },
+            },
+            depends_on: [],
+            evidence_ids: [],
+            note: null,
+            progress: "open",
+            next_action: null,
+          },
+        ],
+        cancelled: false,
+        completion_step_id: null,
+      },
+    });
+    await testDb.db
+      .update(conversations)
+      .set({ playbook, playbook_revision: 1 })
+      .where(eq(conversations.id, conversation_id));
+    await testDb.db.insert(conversationMessages).values({
+      tenant_id,
+      conversation_id,
+      role: "user",
+      content: "Please review the source access.",
+    });
+    const principal = {
+      id: "00000000-0000-4000-8000-000000000101",
+      kind: "user" as const,
+      tenant_id,
+      roles: ["admin"],
+      provider: "test",
+    };
+
+    const elicitation = await createElicitation(
+      {
+        tenant_id,
+        conversation_id,
+        tool_call_id: null,
+        tool_name: "ask_user_form",
+        summary: "Enter your name",
+        input: {
+          question: "Name",
+          fields: [{ name: "name", label: "Name", type: "text", required: true }],
+        },
+        actor_id: null,
+      },
+      testDb.db,
+    );
+    getMockProvider().setConversePlan(conversation_id, [
+      { tool: "inspect_playbook", args: {} },
+      { text: "Source review remains open." },
+    ]);
+
+    const outcome = await respondElicitationForTest(
+      {
+        tenant_id,
+        conversation_id,
+        elicitation_id: elicitation.id,
+        actor_id: null,
+        principal,
+        locale: "en",
+        output: { values: { name: "Alice" } },
+      },
+      testDb.db,
+    );
+
+    expect(outcome.result.status).toBe("active");
+    const [inspection] = await testDb.db
+      .select({ output: conversationToolCalls.output })
+      .from(conversationToolCalls)
+      .where(
+        and(
+          eq(conversationToolCalls.tenant_id, tenant_id),
+          eq(conversationToolCalls.conversation_id, conversation_id),
+          eq(conversationToolCalls.tool, "inspect_playbook"),
+        ),
+      );
+    const result = inspection?.output as
+      | { playbook?: { steps?: Array<{ criterion?: string }> } }
+      | undefined;
+    expect(result?.playbook?.steps?.[0]?.criterion).toContain(
+      "The referenced resource was actually read",
+    );
   });
 
   test("decline {confirmed:false} bypasses validation and resolves the row", async () => {

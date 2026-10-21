@@ -38,6 +38,9 @@ export const conversations = pgTable(
     target_workflow_id: uuid("target_workflow_id"),
     target_connector_id: uuid("target_connector_id"),
     draft: jsonb("draft"),
+    playbook: jsonb("playbook"),
+    playbook_mode: text("playbook_mode").notNull().default("auto"),
+    playbook_revision: integer("playbook_revision").notNull().default(0),
     status: conversationStatusEnum("status").notNull(),
     last_turn_error: jsonb("last_turn_error").$type<{
       code: string;

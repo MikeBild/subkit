@@ -21,6 +21,7 @@ import { HttpError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { streamTenantSSE as streamSSE } from "../../tenant-stream.ts";
+import { conversationLocale } from "./locale.ts";
 import {
   AppendMessageBody,
   buildRuntimeContextFromRequest,
@@ -138,6 +139,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
             conversation_id: id,
             actor_id: principal.id,
             principal,
+            locale: conversationLocale(c.req.header("cookie"), c.req.header("accept-language")),
             user_message: appended.message,
             ...(appended.references ? { user_references: appended.references } : {}),
             answer_actor: humanChatAnswer(principal),
@@ -313,6 +315,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
           conversation_id: id,
           actor_id: principal.id,
           principal,
+          locale: conversationLocale(c.req.header("cookie"), c.req.header("accept-language")),
           user_message: appended.message,
           answer_actor: humanChatAnswer(principal),
           user_memory: appended.user_memory,

@@ -13,16 +13,27 @@ import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { streamTenantSSE as streamSSE } from "../../tenant-stream.ts";
+import { conversationLocale } from "./locale.ts";
 
 export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
   app.get("/v1/conversations/:id/stream", async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
     const id = c.req.param("id");
-    const detail = await svc.getConversation(principal.tenant_id, id, db);
+    const detail = await svc.getConversation(
+      principal.tenant_id,
+      id,
+      db,
+      principal,
+      conversationLocale(c.req.header("cookie"), c.req.header("accept-language")),
+    );
     if (!detail) throw new NotFoundError("conversation");
 
     return streamSSE(c, async (stream) => {
+      if (detail.playbook)
+        await stream.writeSSE(
+          serializeEvent({ type: "data_part", data_type: "playbook", payload: detail.playbook }),
+        );
       const { listElicitationsForConversation } = await import(
         "../../../conversations/elicitations.ts"
       );

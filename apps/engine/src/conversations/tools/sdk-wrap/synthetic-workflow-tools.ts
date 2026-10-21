@@ -23,6 +23,7 @@ import {
   openHeldWritesApproval,
 } from "../../confirmation.ts";
 import { createElicitation } from "../../elicitations.ts";
+import { detectUserIntent } from "../../intent-detector.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import type { PermissionMode, ToolPolicies } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
@@ -66,7 +67,7 @@ function buildOneSyntheticWorkflowTool(
   const { entry, signals } = p;
   return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
     toModelOutput: jsonSafeModelOutput,
-    description: `${entry.description} — perform this saved workflow now. For inspection, repair verification, preview, or preparation for recurring operation use run_workflow with execute_writes: false instead; this tool may pause for a one-shot live execution decision. Dispatches /workflows run ${entry.slug}. Uses a matching local execution authority when one exists and respects stricter approval settings; otherwise write steps resolve without dispatching. If it reports writes_held, nothing was written and the turn pauses for the operator. Do not re-run to bypass that decision.`,
+    description: `${entry.description} — perform this saved workflow now. For inspection of an existing run use read-only execution history, get_execution, inspect_execution_step or diagnose_latest_execution. For a new preview use run_workflow with execute_writes: false; this still starts a DEV run. Do not use this tool or any preview tool when the user says not to run, execute, test-run or start a workflow. This tool may pause for a one-shot live execution decision. Dispatches /workflows run ${entry.slug}. Uses a matching local execution authority when one exists and respects stricter approval settings; otherwise write steps resolve without dispatching. If it reports writes_held, nothing was written and the turn pauses for the operator. Do not re-run to bypass that decision.`,
     inputSchema: jsonSchema(entry.inputSchema as Parameters<typeof jsonSchema>[0]),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
       const prevChain = signals.toolChain;
@@ -88,6 +89,16 @@ async function executeSyntheticRun(
   p: BuildOneParams & { rawArgs: Record<string, unknown> },
 ): Promise<WrappedToolOutput> {
   const { entry, ctx, signals, events, db, name, principal, rawArgs } = p;
+  if (detectUserIntent(ctx.recentUserMessage).suppressExecution === true) {
+    return {
+      ok: false,
+      data: {
+        error_code: "explicit_no_run",
+        message:
+          "The user explicitly asked not to start a workflow run. No execution was started; use read-only execution history or diagnosis tools for existing runs.",
+      },
+    };
+  }
   if (ctx.tenant_id !== principal.tenant_id) {
     throw new Error(
       `synthetic wf_<slug> dispatch: ctx.tenant_id (${ctx.tenant_id}) !== principal.tenant_id (${principal.tenant_id})`,

@@ -23,6 +23,7 @@ import { requireAuth } from "../../middleware/auth.ts";
 import { ensurePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { streamTenantSSE as streamSSE } from "../../tenant-stream.ts";
+import { conversationLocale } from "./locale.ts";
 import {
   buildRuntimeContextFromRequest,
   ConversationDetailSchema,
@@ -187,6 +188,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(body.model ? { model: body.model } : {}),
       ...(body.title ? { title: body.title } : {}),
       ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+      ...(body.playbook_mode ? { playbook_mode: body.playbook_mode } : {}),
       ...(body.playground ? { playground: body.playground } : {}),
       ...(intakeItemIds.length ? { intake_item_ids: intakeItemIds } : {}),
       ...(body.references && body.references.length > 0 ? { references: body.references } : {}),
@@ -211,6 +213,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
             conversation_id: created.conversation.id,
             actor_id: principal.id,
             principal,
+            locale: conversationLocale(c.req.header("cookie"), c.req.header("accept-language")),
             user_message: created.initial_message ?? "",
             ...(created.references ? { user_references: created.references } : {}),
             answer_actor: humanChatAnswer(principal),
@@ -285,7 +288,13 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const detail = await svc.getConversation(principal.tenant_id, id, db);
+    const detail = await svc.getConversation(
+      principal.tenant_id,
+      id,
+      db,
+      principal,
+      conversationLocale(c.req.header("cookie"), c.req.header("accept-language")),
+    );
     if (!detail) throw new NotFoundError("conversation");
     const messages = buildMessages(detail.messages, detail.tool_calls);
     const usage = await svc.readConversationUsage(db, principal.tenant_id, id);
@@ -304,6 +313,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
         messages,
         tool_calls: detail.tool_calls,
         draft: detail.draft,
+        playbook: detail.playbook ?? null,
         ...(detail.resume_summary ? { resume_summary: detail.resume_summary } : {}),
         usage,
       },

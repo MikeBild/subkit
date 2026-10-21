@@ -1,10 +1,13 @@
 import { and, asc, eq } from "drizzle-orm";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { getConversationBudgetReport } from "../../llm/core/conversation-budget-report.ts";
 import { computeGroundingStatus } from "../grounding-staleness.ts";
+import type { PlaybookView } from "../playbook-contract.ts";
 import { getConversation } from "./get.ts";
 
 export interface ContextSnapshot {
+  playbook?: PlaybookView | null;
   conversation_id: string;
   connector_id: string | null;
   workflow_id: string | null;
@@ -124,8 +127,10 @@ export async function getContextSnapshot(
   tenant_id: string,
   conversation_id: string,
   exec: Db,
+  principal?: ResolvedPrincipal,
+  locale: "de" | "en" = "de",
 ): Promise<ContextSnapshot | null> {
-  const detail = await getConversation(tenant_id, conversation_id, exec);
+  const detail = await getConversation(tenant_id, conversation_id, exec, principal, locale);
   if (!detail) return null;
 
   const { retrieveApplicableSkills } = await import("../../skills/service.ts");
@@ -221,6 +226,7 @@ export async function getContextSnapshot(
 
   return {
     conversation_id,
+    playbook: detail.playbook ?? null,
     connector_id: detail.conversation.target_connector_id,
     workflow_id: detail.conversation.target_workflow_id,
     draft_mode: detail.draft?.mode ?? "onboarding",

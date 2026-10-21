@@ -8,6 +8,7 @@ import { tenants } from "../../../db/schema/identity.ts";
 import {
   conversationElicitations,
   conversations,
+  executions,
   webhooksInbound,
   workflows,
   workflowsSchedules,
@@ -215,6 +216,35 @@ describe("buildSyntheticWorkflowTools — catalog shape", () => {
 });
 
 describe("buildSyntheticWorkflowTools — execute happy path", () => {
+  test("a direct synthetic tool call cannot start a run after an explicit no-run request", async () => {
+    await seedTool("no-run-test");
+    const ctx = makeCtx({
+      recentUserMessage:
+        "Untersuche den gespeicherten Lauf. Ändere nichts und führe keinen Lauf aus.",
+    });
+    const tools = await buildSyntheticWorkflowTools({
+      db: tdb.db,
+      principal: makePrincipal(),
+      ctx,
+      signals: makeTurnSignals(),
+      events: [],
+    });
+    const before = await tdb.db.select({ id: executions.id }).from(executions);
+
+    const result = await tools["wf_no-run-test"]!.execute!(
+      {},
+      { toolCallId: "no-run-call", messages: [], context: {} },
+    );
+
+    const after = await tdb.db.select({ id: executions.id }).from(executions);
+    expect(result).toMatchObject({
+      ok: false,
+      data: { error_code: "explicit_no_run" },
+    });
+    expect(after).toHaveLength(before.length);
+    expect(requests).toBe(0);
+  });
+
   test("execute returns an envelope with suggested_command", async () => {
     await seedTool("suggest-test");
     const logMessages: string[] = [];

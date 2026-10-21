@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { CONVERSATION_REFERENCE_TYPES } from "@shared/conversation-reference.ts";
 import { SUGGEST_NEXT_KINDS, SUGGEST_NEXT_REASONS } from "@shared/suggest-next-reasons.ts";
 import type * as svc from "../../../conversations/index.ts";
-import { ResumeFormFieldSchema } from "../../../conversations/index.ts";
+import { PlaybookViewSchema, ResumeFormFieldSchema } from "../../../conversations/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 
 export function buildRuntimeContextFromRequest(
@@ -151,6 +151,7 @@ export const ConversationDetailSchema = z
     messages: z.array(UIMessageSchema),
     tool_calls: z.array(ConversationToolCallSchema),
     draft: z.unknown(),
+    playbook: z.union([PlaybookViewSchema, z.null()]).optional(),
     resume_summary: z
       .object({
         active_target: z.object({
@@ -252,6 +253,7 @@ export const CreateBody = z
     permission_mode: PermissionModeSchema.optional(),
     step_budget: z.number().int().min(1).max(64).optional(),
     playground: z.boolean().optional(),
+    playbook_mode: z.enum(["off", "auto"]).optional(),
     intake_item_ids: z.array(z.string().uuid()).min(1).max(100).optional(),
     references: ReferencesField,
   })
@@ -361,6 +363,7 @@ export type RunOutcomeJson = {
 
 export const ContextSnapshotSchema = z
   .object({
+    playbook: z.union([PlaybookViewSchema, z.null()]).optional(),
     conversation_id: z.string(),
     connector_id: z.string().nullable(),
     workflow_id: z.string().nullable(),

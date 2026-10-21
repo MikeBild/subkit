@@ -10,6 +10,14 @@ interface BackgroundWords {
 }
 
 const BACKGROUND_TOOLS: Record<string, BackgroundWords> = {
+  inspect_playbook: {
+    active: "tool.background.inspectPlaybook.active",
+    past: "tool.background.inspectPlaybook.past",
+  },
+  update_playbook: {
+    active: "tool.background.updatePlaybook.active",
+    past: "tool.background.updatePlaybook.past",
+  },
   list_workflows: {
     active: "tool.background.listWorkflows.active",
     past: "tool.background.listWorkflows.past",

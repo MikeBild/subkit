@@ -77,6 +77,16 @@ describe("resolveExecutionToolGate", () => {
     expect(d.exposeExecution).toBe(false);
     expect(d.reason).toBe("authoring_no_target");
   });
+
+  test("explicit no-run suppresses execution even on the chat surface and with a bound workflow", () => {
+    const d = resolveExecutionToolGate({
+      hasBoundSavedWorkflow: true,
+      explicitlyNamedWorkflowSlug: "saved-flow",
+      surface: "chat",
+      suppressExecution: true,
+    });
+    expect(d).toEqual({ exposeExecution: false, reason: "explicit_no_run" });
+  });
 });
 
 describe("isExecutionToolName", () => {
@@ -84,6 +94,12 @@ describe("isExecutionToolName", () => {
 
   test("the literal run_workflow tool is an execution tool", () => {
     expect(isExecutionToolName("run_workflow", catalog)).toBe(true);
+  });
+
+  test("workflow run and step preview tools count as executions for an explicit no-run boundary", () => {
+    for (const name of ["dry_run_workflow", "dry_run_step"]) {
+      expect(isExecutionToolName(name, catalog)).toBe(true);
+    }
   });
 
   test("a wf_<slug> peer in the catalog is an execution tool", () => {
@@ -98,7 +114,7 @@ describe("isExecutionToolName", () => {
   test("authoring tools are not execution tools", () => {
     expect(isExecutionToolName("edit_workflow_patch", catalog)).toBe(false);
     expect(isExecutionToolName("author_workflow", catalog)).toBe(false);
-    expect(isExecutionToolName("dry_run_workflow", catalog)).toBe(false);
+    expect(isExecutionToolName("dry_run_transform", catalog)).toBe(false);
   });
 });
 
