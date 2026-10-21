@@ -8,6 +8,8 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createElicitation, getElicitation } from "../elicitations.ts";
 import { PlaybookDocumentSchema } from "../playbook-contract.ts";
 import { ElicitationValidationError } from "../service/elicit.ts";
@@ -15,6 +17,7 @@ import { respondElicitationForTest } from "./setup.ts";
 
 let testDb: TestDb;
 let tenant_id: string;
+const uuid = createDeterministicUuidFactory(0x9e1_1c17);
 
 beforeAll(async () => {
   process.env.LLM_PROVIDER = "mock";
@@ -145,9 +148,9 @@ describe("respondElicitation — validation re-prompt", () => {
 
   test("localized elicitation response keeps its locale in the returned playbook projection", async () => {
     const conversation_id = await freshConversation();
-    const now = new Date().toISOString();
+    const now = new Date(FROZEN_NOW).toISOString();
     const playbook = PlaybookDocumentSchema.parse({
-      id: crypto.randomUUID(),
+      id: uuid(),
       created_at: now,
       updated_at: now,
       evidence_fingerprints: {},
@@ -160,7 +163,7 @@ describe("respondElicitation — validation re-prompt", () => {
             label: "Read source",
             criterion: {
               kind: "resource_observed",
-              resource: { type: "file", id: crypto.randomUUID() },
+              resource: { type: "file", id: uuid() },
             },
             depends_on: [],
             evidence_ids: [],
