@@ -1,7 +1,7 @@
 export type ReleaseNotes = { version: string; notes: string[] };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: string[] } = {
-  "source": "f9b2d84c62776561c9d52771cf5576d51eacd3a1",
+  "source": "b9de131bbbfba6f6394a0b56b8f344d1d3930439",
   "releases": [
     {
       "version": "v1.0.0",
@@ -1393,6 +1393,10 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     },
     {
       "version": "v10.4.1",
+      "notes": []
+    },
+    {
+      "version": "v10.4.3",
       "notes": []
     }
   ],
