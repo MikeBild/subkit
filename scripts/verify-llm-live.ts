@@ -85,9 +85,12 @@ function liveModel(target: LiveTarget, check: LiveCheckName): AiSdkModel {
   });
 }
 
+const LIVE_WORKFLOW_NAME = "User count";
+const LIVE_WORKFLOW_SLUG = "live-gate-user-count";
+
 const GENERATE_GOAL = [
   "Produce the SubKit workflow definition for this goal as the object the schema describes.",
-  'Return a flat top-level object with name "User count", slug exactly "live-gate-user-count", and steps. Do not wrap it in a workflow or definition object.',
+  `Return a flat top-level object with name ${JSON.stringify(LIVE_WORKFLOW_NAME)}, slug exactly ${JSON.stringify(LIVE_WORKFLOW_SLUG)}, and steps. Do not wrap it in a workflow or definition object.`,
   "Goal: fetch the user list from https://jsonplaceholder.typicode.com/users and return how many users there are.",
   'Use exactly two steps: first a request step with id "fetch_users" (kind "request", method "GET", url "https://jsonplaceholder.typicode.com/users"),',
   'then a transform step with id "count_users" (kind "transform", language "javascript", expression "return input.scope.fetch_users.data.length;").',
@@ -127,6 +130,12 @@ async function checkGenerateWorkflow(target: LiveTarget): Promise<string> {
   }
   if (parsed.data.steps.length !== 2) {
     throw new Error(`expected exactly 2 steps, got ${parsed.data.steps.length}`);
+  }
+  if (parsed.data.name !== LIVE_WORKFLOW_NAME) {
+    throw new Error(`expected workflow name ${JSON.stringify(LIVE_WORKFLOW_NAME)}`);
+  }
+  if (parsed.data.slug !== LIVE_WORKFLOW_SLUG) {
+    throw new Error(`expected workflow slug ${JSON.stringify(LIVE_WORKFLOW_SLUG)}`);
   }
   return `model_used=${out.model_used} steps=2 output_tokens=${out.usage.output_tokens}`;
 }
