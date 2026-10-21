@@ -842,6 +842,23 @@ describe("conversation.run-turn worker — respond_elicitation surface threading
       spy.mockRestore();
     }
 
+    await waitFor(
+      async () => {
+        const [row] = await queue.testDb.db
+          .select({ id: auditLog.id })
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.tenant_id, tenantId),
+              eq(auditLog.action, "conversation.turn_failed"),
+              eq(auditLog.resource_id, created.conversation.id),
+            ),
+          );
+        return Boolean(row);
+      },
+      { tries: 80, sleepMs: 25, label: "portal failure audit row" },
+    );
+
     const [audit] = await queue.testDb.db
       .select()
       .from(auditLog)
