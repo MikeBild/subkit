@@ -522,6 +522,8 @@ test("key presets never grant permissions the issuer does not hold", () => {
     "intake:write",
     "rbac:write",
   ]);
+  expect(keyPresetScopes("clipper", held)).toEqual(["intake:read", "intake:write"]);
+  expect(keyPresetScopes("clipper", ["workflow:read", "intake:read"])).toEqual(["intake:read"]);
   expect(keyPresetScopes("manage", [])).toEqual([]);
   expect(keyPresetScopes("manage", ["*"])).toEqual([]);
   expect(ROTATE_OVERLAP_MINUTES).toBe(24 * 60);

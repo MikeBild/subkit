@@ -156,7 +156,7 @@ export function AppShell() {
     select: (state) => state.location.pathname,
   });
   const groups = visiblePrimaryNavigation(session.permissions);
-  const active = navigationItem(pathname.slice(cockpitBasePath().length) || "/");
+  const active = navigationItem(pathname);
   const brandName = installationId()
     ? session.tenant.display_name
     : session.branding?.configured
@@ -363,7 +363,7 @@ function AccountMenu() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const current = pathname.slice(cockpitBasePath().length) || "/";
+  const current = pathname;
   const active = navigationItem(current);
   const docsActive = current === "/docs" || current.startsWith("/docs/");
 

@@ -296,6 +296,9 @@ const EN = {
   "apiKeys.preset.manage": "Manage",
   "apiKeys.preset.run": "Run",
   "apiKeys.preset.read": "Read",
+  "apiKeys.preset.clipper": "Web Clipper",
+  "apiKeys.preset.clipperDescription":
+    "For collecting pages with the Web Clipper: read and write the Inbox.",
   "apiKeys.rotateConsequenceHours":
     "The previous key stays valid for {hours} hours. Replace it in connected applications during this time.",
   "apiKeys.owner": "Belongs to",
@@ -5356,6 +5359,9 @@ const DE: Record<TranslationKey, string> = {
   "apiKeys.preset.manage": "Verwalten",
   "apiKeys.preset.run": "Ausführen",
   "apiKeys.preset.read": "Lesen",
+  "apiKeys.preset.clipper": "Web Clipper",
+  "apiKeys.preset.clipperDescription":
+    "Zum Sammeln von Seiten mit dem Web Clipper: Eingang lesen und schreiben.",
   "apiKeys.rotateConsequenceHours":
     "Der bisherige Schlüssel bleibt {hours} Stunden gültig. Ersetze ihn in verbundenen Anwendungen während dieser Zeit.",
   "apiKeys.owner": "Gehört zu",

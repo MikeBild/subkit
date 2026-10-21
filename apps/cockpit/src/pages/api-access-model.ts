@@ -284,14 +284,16 @@ export function keyStateText(state: KeyState, t: Translate): string {
   }
 }
 
-export type KeyScopePreset = "read" | "run" | "manage";
+export type KeyScopePreset = "read" | "run" | "manage" | "clipper";
 
 export function keyPresetScopes(preset: KeyScopePreset, permissions: readonly string[]): string[] {
   return [...new Set(permissions)].filter(
     (scope) =>
       scope.includes(":") &&
-      (preset === "manage" ||
-        scopeRisk(scope) === "reads" ||
-        (preset === "run" && (scope === "workflow:run" || scope === "intake:write"))),
+      (preset === "clipper"
+        ? scope === "intake:read" || scope === "intake:write"
+        : preset === "manage" ||
+          scopeRisk(scope) === "reads" ||
+          (preset === "run" && (scope === "workflow:run" || scope === "intake:write"))),
   );
 }

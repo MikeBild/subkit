@@ -586,7 +586,8 @@ function CreateKeyDialog({
           <SegmentedControl
             value={preset}
             onValueChange={(value) => {
-              if (value === "read" || value === "run" || value === "manage") setPreset(value);
+              if (value === "read" || value === "run" || value === "manage" || value === "clipper")
+                setPreset(value);
             }}
             label={t("apiKeys.scopes")}
             testId="api-key-create-scopes"
@@ -594,11 +595,17 @@ function CreateKeyDialog({
               { value: "read", label: t("apiKeys.preset.read") },
               { value: "run", label: t("apiKeys.preset.run") },
               { value: "manage", label: t("apiKeys.preset.manage") },
+              { value: "clipper", label: t("apiKeys.preset.clipper") },
             ]}
           />
           <p className="text-sm text-muted-foreground" data-testid="api-key-preset-permissions">
             {scopeWords(picked, t)}
           </p>
+          {preset === "clipper" ? (
+            <p className="text-sm text-muted-foreground" data-testid="api-key-preset-clipper-hint">
+              {t("apiKeys.preset.clipperDescription")}
+            </p>
+          ) : null}
           {missingIntakeScopes.length > 0 ? (
             <p
               className="text-sm text-destructive"

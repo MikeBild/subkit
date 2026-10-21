@@ -128,3 +128,15 @@ describe("cockpit navigation contract", () => {
     expect(navigationItem("/settings")?.permission).toBe("settings:read");
   });
 });
+
+describe("active navigation entry", () => {
+  test("the current page and its nested routes resolve to their own entry", () => {
+    for (const path of ["/files", "/files/abc", "/workflows", "/workflows/abc", "/chat"]) {
+      const item = navigationItem(path);
+      expect(item).toBeDefined();
+      expect(item?.path).not.toBe("/");
+    }
+    expect(navigationItem("/files/abc")).toBe(navigationItem("/files"));
+    expect(navigationItem("/workflows/abc")).toBe(navigationItem("/workflows"));
+  });
+});
