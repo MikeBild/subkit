@@ -100,6 +100,15 @@ describe("detectUserIntent", () => {
     expect(res.reason).toBe("explicit_no_run_intent");
   });
 
+  test("German negated object and split verb suppress a saved-run request", () => {
+    const res = detectUserIntent(
+      "Untersuche den gespeicherten fehlgeschlagenen Lauf. Ändere nichts und führe keinen Lauf aus.",
+    );
+    expect(res.forceTool).toBeUndefined();
+    expect(res.suppressExecution).toBe(true);
+    expect(res.reason).toBe("explicit_no_run_intent");
+  });
+
   test("German and English prefix negations suppress execution", () => {
     expect(detectUserIntent("Den Workflow nicht ausführen, sondern nur validieren.")).toMatchObject(
       { suppressExecution: true, reason: "explicit_no_run_intent" },

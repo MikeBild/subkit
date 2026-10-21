@@ -37,6 +37,7 @@ export interface CreateConversationParams {
   origin_client?: string | null;
   surface?: ConversationSurface | null;
   playground?: boolean;
+  playbook_mode?: "off" | "auto";
   intake_item_ids?: string[] | null;
 }
 
@@ -167,6 +168,7 @@ export async function createConversation(
       target_workflow_id: targetWorkflowId,
       status: "active",
       draft: initialDraft,
+      playbook_mode: p.playbook_mode ?? "auto",
       owner_id: p.actor_id ?? null,
       origin_client: p.origin_client ?? null,
       surface: p.surface ?? null,

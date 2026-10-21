@@ -49,6 +49,7 @@ export const conversationElicitations = pgTable(
     decided_by: uuid("decided_by"),
     decided_by_kind: auditActorKindEnum("decided_by_kind"),
     decided_at: timestamp("decided_at", { withTimezone: true }),
+    playbook_context_fingerprint: text("playbook_context_fingerprint"),
     decision_reason: text("decision_reason"),
     expires_at: timestamp("expires_at", { withTimezone: true })
       .notNull()

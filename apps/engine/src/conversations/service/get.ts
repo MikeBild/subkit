@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Executor } from "../../db/client.ts";
 import {
   conversationElicitations,
@@ -9,6 +10,7 @@ import {
 } from "../../db/schema/index.ts";
 import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
 import { loadDraft } from "../draft.ts";
+import { readPlaybook } from "../playbook.ts";
 import { resolvedChoiceAnswer, resolvedTextAnswer } from "../prose-question-answer.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import { interpretConfirmDecision } from "../tools/ask-user/interpret-confirm.ts";
@@ -40,10 +42,16 @@ function approvedCallOutcome(
   return stored === "ok" || stored === "error" ? stored : null;
 }
 
+function historySafeToolPayload(tool: string, value: unknown): unknown {
+  return tool === "inspect_playbook" || tool === "update_playbook" ? { redacted: true } : value;
+}
+
 export async function getConversation(
   tenant_id: string,
   id: string,
   exec: Executor,
+  principal?: ResolvedPrincipal,
+  locale: "de" | "en" = "de",
 ): Promise<ConversationDetail | null> {
   const rows = await exec
     .select()
@@ -240,7 +248,7 @@ export async function getConversation(
         id: c.id,
         conversation_id: c.conversation_id,
         tool: c.tool,
-        input: c.input,
+        input: historySafeToolPayload(c.tool, c.input),
         output:
           closedForms.has(c.id) &&
           (c.tool === "ask_user_form" ||
@@ -265,7 +273,7 @@ export async function getConversation(
                           : confirmations.get(c.id)?.status,
                       elicitation_id: confirmations.get(c.id)?.id,
                     }
-                  : c.output,
+                  : historySafeToolPayload(c.tool, c.output),
         approval_required: c.approval_required,
         created_at: c.created_at.toISOString(),
         parent_message_id: c.parent_message_id,
@@ -292,6 +300,9 @@ export async function getConversation(
       }),
     ),
     draft,
+    playbook: principal
+      ? await readPlaybook(exec, { tenant_id, conversation_id: id, principal, locale })
+      : null,
     resume_summary: resumeSummary,
   };
 }

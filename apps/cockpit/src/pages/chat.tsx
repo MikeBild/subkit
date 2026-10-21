@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Info, PanelRight, Paperclip, SendHorizontal, X } from "lucide-react";
+import { BookOpen, FileText, Info, PanelRight, Paperclip, SendHorizontal, X } from "lucide-react";
 import { Fragment, type MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -180,6 +180,8 @@ import {
   modeSuffixKey,
 } from "./chat-mode";
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
+import { type PlaybookAction, playbookActionTarget } from "./chat-playbook";
+import { ChatPlaybookPanel, ChatPlaybookSummary } from "./chat-playbook-panel";
 import { type ChatReauth, chatReauth } from "./chat-reauth";
 import { ChatReauthCard } from "./chat-reauth-card";
 import { collectReferencedResources, namedResources, referencesFromPart } from "./chat-references";
@@ -1444,6 +1446,9 @@ export function ChatPage() {
           )
       : Promise.resolve(false);
   const onTurnEvent = (event: { type: string; [key: string]: unknown }) => {
+    if (event.type === "tool_result" && event.tool === "update_playbook" && activeId) {
+      void queryClient.invalidateQueries({ queryKey: ["conversation", activeId], exact: true });
+    }
     if (event.type === "text_delta" && typeof event.text === "string") {
       setStreamedText((currentText) => currentText + event.text);
       return;
@@ -1837,6 +1842,7 @@ export function ChatPage() {
   };
   const messages = detail.data?.messages ?? [];
   const resume = detail.data?.resume_summary;
+  const playbook = detail.data?.playbook ?? null;
   const openQuestionId = resume?.pending_approval?.id ?? null;
   const seenQuestionId = useRef(openQuestionId);
   useEffect(() => {
@@ -1849,7 +1855,8 @@ export function ChatPage() {
   const pendingForm = useMemo(() => chatForm(detail.data), [detail.data]);
   const pendingText = useMemo(() => chatText(detail.data), [detail.data]);
   const [clock, setClock] = useState(Date.now);
-  const lockingId = pendingDecision?.id ?? pendingChoice?.id ?? pendingForm?.id ?? null;
+  const lockingId =
+    pendingDecision?.id ?? pendingChoice?.id ?? pendingForm?.id ?? pendingText?.id ?? null;
   useEffect(() => {
     if (!lockingId) return;
     const timer = window.setInterval(() => setClock(Date.now()), 1000);
@@ -1860,6 +1867,38 @@ export function ChatPage() {
   const choiceOpen = open(pendingChoice);
   const formOpen = open(pendingForm);
   const anyQuestion = Boolean(pendingDecision || pendingChoice || pendingForm || pendingText);
+  const playbookQuestions = [pendingDecision, pendingChoice, pendingForm, pendingText].filter(
+    (question): question is NonNullable<typeof question> => question !== null,
+  );
+  const playbookActionTargetFor = (action: PlaybookAction | null) =>
+    busy ? null : playbookActionTarget(action, playbookQuestions, clock);
+  const openPlaybookQuestion = (id: string) => {
+    if (!playbookQuestions.some((question) => question.id === id && open(question))) return;
+    const kind =
+      pendingDecision?.id === id
+        ? "approval"
+        : pendingChoice?.id === id
+          ? "choice"
+          : pendingForm?.id === id
+            ? "form"
+            : "text";
+    chatWorkspace.setOpen(false);
+    requestAnimationFrame(() => {
+      const target =
+        kind === "text"
+          ? document.querySelector<HTMLElement>('[data-testid="chat-composer-input"]')
+          : document.querySelector<HTMLElement>(
+              `[data-testid="chat-${kind}"], [data-testid^="chat-message-"][data-testid$="-${kind}"]`,
+            );
+      target?.scrollIntoView({ block: "center" });
+      if (target && kind !== "text") target.setAttribute("tabindex", "-1");
+      target?.focus();
+    });
+  };
+  const showPlaybookDetails = () => {
+    chatWorkspace.setOpen(true);
+    requestAnimationFrame(() => contextContainer.querySelector<HTMLElement>("summary")?.focus());
+  };
   const answerMessageIds = useMemo(
     () =>
       new Set(
@@ -2184,7 +2223,7 @@ export function ChatPage() {
           {t("chat.conversations")}
         </Button>
         <IconButton
-          label={t("chat.toggleContext")}
+          label={t(playbook ? "chat.playbook.title" : "chat.toggleContext")}
           ref={contextToggle}
           data-testid="chat-context-toggle"
           aria-expanded={chatWorkspace.open}
@@ -2192,7 +2231,7 @@ export function ChatPage() {
           disabled={!current}
           onClick={() => chatWorkspace.setOpen(!chatWorkspace.open)}
         >
-          <PanelRight />
+          {playbook ? <BookOpen /> : <PanelRight />}
         </IconButton>
         {menuItems.length > 0 ? <ActionMenu items={menuItems} testId="chat-menu" /> : null}
       </div>
@@ -2397,7 +2436,29 @@ export function ChatPage() {
 
   const contextContent = (
     <div id="chat-context-content" className="min-w-0">
-      {contextFacts.length > 0 ? (
+      {playbook ? (
+        <>
+          <ChatPlaybookPanel
+            key={playbook.id}
+            playbook={playbook}
+            actionTarget={playbookActionTargetFor}
+            onOpenQuestion={openPlaybookQuestion}
+          />
+          {detail.isRefetchError ? (
+            <StatusStrip tone="warn" line={t("chat.playbook.refreshFailed")} />
+          ) : null}
+          {contextFacts.length > 0 ? (
+            <details className="mt-5 border-t pt-3">
+              <summary className="cursor-pointer text-xs text-muted-foreground">
+                {t("chat.playbook.context")}
+              </summary>
+              <div className="pt-3">
+                <FactList items={contextFacts} testId="chat-context-facts" />
+              </div>
+            </details>
+          ) : null}
+        </>
+      ) : contextFacts.length > 0 ? (
         <FactList items={contextFacts} testId="chat-context-facts" />
       ) : (
         <DataState state="empty" line={t("chat.context.empty")} testId="chat-context-empty" />
@@ -2714,6 +2775,18 @@ export function ChatPage() {
                       </Message>
                     </MessageScrollerItem>
                   )}
+                  {playbook && !conversationFailed ? (
+                    <MessageScrollerItem key={`playbook-${playbook.id}`}>
+                      <ChatPlaybookSummary
+                        playbook={playbook}
+                        actionTarget={playbookActionTargetFor}
+                        onOpenQuestion={openPlaybookQuestion}
+                        onShowDetails={showPlaybookDetails}
+                        refreshing={sendPending || decidePending}
+                        refreshFailed={detail.isRefetchError}
+                      />
+                    </MessageScrollerItem>
+                  ) : null}
                   <MessageScrollerItem data-testid="chat-next-action">
                     {unanchoredDecision && (
                       <ChatApprovalCard
@@ -2964,7 +3037,7 @@ export function ChatPage() {
                 id="chat-context-title"
                 className="min-w-0 flex-1 text-sm font-semibold"
               >
-                {t("chat.context.title")}
+                {t(playbook ? "chat.playbook.title" : "chat.context.title")}
               </SectionHeading>
               <IconButton
                 label={t("common.close")}
@@ -2986,7 +3059,7 @@ export function ChatPage() {
       <RecordSheet
         open={!chatWorkspace.docked && chatWorkspace.open}
         onOpenChange={chatWorkspace.setOpen}
-        title={t("chat.context.title")}
+        title={t(playbook ? "chat.playbook.title" : "chat.context.title")}
         testId="chat-context"
         closeTestId="chat-context-close"
       >

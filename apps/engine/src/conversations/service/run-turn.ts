@@ -32,6 +32,7 @@ export interface RunConversationTurnParams {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
+  locale?: "de" | "en";
   user_message: string;
   answer_actor: AnswerActor;
   user_references?: ConversationReference[] | null;
@@ -89,7 +90,13 @@ async function driveConversationTurn(
   p: RunConversationTurnParams,
   exec: Db,
 ): Promise<ConversationTurnOutcome> {
-  const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
+  const conv = await getConversation(
+    p.tenant_id,
+    p.conversation_id,
+    exec,
+    p.principal ?? undefined,
+    p.locale,
+  );
   if (!conv) throw new Error("conversation not found");
   const effectivePermissionMode = p.permission_mode ?? getStoredPermissionMode(conv.draft);
 
@@ -98,7 +105,13 @@ async function driveConversationTurn(
     if (p.onEvent) {
       for (const ev of result.events) p.onEvent(ev);
     }
-    const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
+    const updated = await getConversation(
+      p.tenant_id,
+      p.conversation_id,
+      exec,
+      p.principal ?? undefined,
+      p.locale,
+    );
     if (!updated) throw new Error("conversation disappeared");
     return { conversation: updated.conversation, result };
   }
@@ -125,7 +138,13 @@ async function driveConversationTurn(
           ? { pending_elicitation_id: hit.pending_elicitation_id }
           : {}),
       };
-      const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
+      const updated = await getConversation(
+        p.tenant_id,
+        p.conversation_id,
+        exec,
+        p.principal ?? undefined,
+        p.locale,
+      );
       if (!updated) throw new Error("conversation disappeared");
       return { conversation: updated.conversation, result: fastResult };
     }
@@ -137,6 +156,7 @@ async function driveConversationTurn(
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
     ...(p.principal ? { principal: p.principal } : {}),
+    ...(p.locale ? { locale: p.locale } : {}),
     connector_id: conv.conversation.target_connector_id,
     workflow_id: conv.conversation.target_workflow_id,
     user_message: p.user_message,
@@ -157,7 +177,13 @@ async function driveConversationTurn(
     ...(p.elicitationBridge ? { elicitationBridge: p.elicitationBridge } : {}),
   });
 
-  const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
+  const updated = await getConversation(
+    p.tenant_id,
+    p.conversation_id,
+    exec,
+    p.principal ?? undefined,
+    p.locale,
+  );
   if (!updated) throw new Error("conversation disappeared");
 
   const [turnRow] = await exec

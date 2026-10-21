@@ -24,6 +24,8 @@ const ALWAYS_VISIBLE: ReadonlySet<string> = new Set([
   "fetch_connector_docs",
   "get_raw_result",
   "inspect_authoring_context",
+  "inspect_playbook",
+  "update_playbook",
   "list_attachments",
   "list_skills",
   "load_skill",
@@ -104,6 +106,12 @@ const WORKFLOW_PERSISTENCE: ReadonlySet<string> = new Set(["save_workflow_draft"
 const DIAGNOSIS_TOOLS: ReadonlySet<string> = new Set(["diagnose_latest_execution"]);
 
 const ALWAYS_AVAILABLE_EXECUTION: ReadonlySet<string> = new Set(["run_workflow"]);
+const WORKFLOW_EXECUTION_TOOLS: ReadonlySet<string> = new Set([
+  "run_workflow",
+  "rerun_execution",
+  "dry_run_workflow",
+  "dry_run_step",
+]);
 
 export const REVIEW_DECISIONS: ReadonlySet<string> = new Set([
   "approve_skill_candidate",
@@ -178,6 +186,8 @@ export function authoringSkillsForTurn(signals: AuthoringTurnSignals): string[] 
 }
 
 export const CHAT_READONLY_TOOLS: ReadonlySet<string> = new Set([
+  "inspect_playbook",
+  "update_playbook",
   "ask_user_choice",
   "ask_user_confirm",
   "ask_user_form",
@@ -221,6 +231,8 @@ export function filterByChatReadOnlyPalette<T extends { name: string }>(tools: r
 export interface ExecutionToolGateState {
   hasBoundSavedWorkflow: boolean;
   explicitlyNamedWorkflowSlug: string | null;
+  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
+  suppressExecution?: boolean;
 }
 
 export interface ExecutionToolGateDecision {
@@ -234,6 +246,12 @@ export interface ExecutionToolGateDecision {
 }
 
 export function resolveExecutionToolGate(state: ExecutionToolGateState): ExecutionToolGateDecision {
+  if (state.suppressExecution) {
+    return { exposeExecution: false, reason: "explicit_no_run" };
+  }
+  if (state.surface === "chat") {
+    return { exposeExecution: true, reason: "chat_surface" };
+  }
   if (state.hasBoundSavedWorkflow) {
     return { exposeExecution: true, reason: "bound_saved_workflow" };
   }
@@ -247,9 +265,13 @@ export function isExecutionToolName(
   name: string,
   syntheticWorkflowSlugs: ReadonlySet<string>,
 ): boolean {
-  if (name === "run_workflow") return true;
+  if (WORKFLOW_EXECUTION_TOOLS.has(name)) return true;
   if (!name.startsWith(WORKFLOW_TOOL_PREFIX)) return false;
   return syntheticWorkflowSlugs.has(name.slice(WORKFLOW_TOOL_PREFIX.length));
+}
+
+export function isWorkflowExecutionTool(name: string): boolean {
+  return WORKFLOW_EXECUTION_TOOLS.has(name) || name.startsWith(WORKFLOW_TOOL_PREFIX);
 }
 
 const MIN_SINGLE_TOKEN_SLUG_LENGTH = 6;

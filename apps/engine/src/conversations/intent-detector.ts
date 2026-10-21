@@ -19,6 +19,7 @@ const RUN_WORKFLOW_PATTERNS = [
 
 const NEGATED_RUN_PATTERNS = [
   /\b(?:führe|fuehre)\b.{0,80}\b(?:nicht|niemals|keinesfalls)\b.{0,24}\baus\b/i,
+  /\b(?:führe|fuehre|starte)\b.{0,80}\b(?:keinen?|keine|keins)\b.{0,48}\b(?:neuen?\s+)?(?:lauf|workflow|tool|pipeline)\b.{0,24}\b(?:aus|starten)\b/i,
   /\b(?:nicht|niemals|keinesfalls)\b.{0,32}\b(?:ausführen|ausfuehren|starten|triggern|dispatchen|runnen)\b/i,
   /\b(?:do\s+not|don't|never|must\s+not)\b.{0,32}\b(?:run|execute|dispatch|trigger|start)\b/i,
 ];

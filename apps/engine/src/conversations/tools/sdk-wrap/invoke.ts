@@ -24,6 +24,7 @@ import {
 import { recordTransition, runConfirmGate } from "../../confirmation.ts";
 import { createDraftSnapshot } from "../../draft-checkpoints.ts";
 import { createElicitation } from "../../elicitations.ts";
+import { detectUserIntent } from "../../intent-detector.ts";
 import { parseLoadedSkills } from "../../loop/skill-recency.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import { findPriorSaveWorkflowApproval } from "../../persistence/save-workflow-approval.ts";
@@ -45,6 +46,7 @@ import { assertConversationTurn } from "../../turns.ts";
 import type { DraftDocument, TurnEvent } from "../../types.ts";
 import { withApprovalHandle, withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { decodeAskUserPromptEscapes } from "../ask-user/decode-prompt-escapes.ts";
+import { isWorkflowExecutionTool } from "../authoring-palette.ts";
 import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
 import {
@@ -188,7 +190,7 @@ export function wrapOne(
     description: compileDescription(inner),
     inputSchema,
     toModelOutput: jsonSafeModelOutput,
-    ...(inner.strict ? { strict: true as const } : {}),
+    ...(inner.strict !== undefined ? { strict: inner.strict } : {}),
     ...toInputExamples(inner.example_input),
     async execute(modelArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
       const rawArgs = decodeAskUserPromptEscapes(inner.name, modelArgs);
@@ -200,6 +202,19 @@ export function wrapOne(
       await prevChain;
       const executeBody = async (): Promise<WrappedToolOutput> => {
         await assertConversationTurn(ctx.abortSignal);
+        if (
+          isWorkflowExecutionTool(inner.name) &&
+          detectUserIntent(ctx.recentUserMessage).suppressExecution === true
+        ) {
+          return {
+            ok: false,
+            data: {
+              error_code: "explicit_no_run",
+              message:
+                "The user explicitly asked not to start a workflow run. No execution was started; use read-only execution history or diagnosis tools for existing runs.",
+            },
+          };
+        }
         if (intakeReviewBlocksWrite(ctx.getDraft(), inner.name)) {
           return {
             ok: false,
@@ -1070,7 +1085,11 @@ export function wrapOne(
         await updateToolCallOutput(db, toolCallId, resultPayload, toolCallOutcome(result));
         await autoloadForResultDiagnoses(db, ctx, inner.name, resultPayload);
 
-        if (result.ok && inner.category === "draft_write") {
+        if (
+          result.ok &&
+          inner.category === "draft_write" &&
+          inner.captures_draft_snapshot !== false
+        ) {
           try {
             const draftAfter = ctx.getDraft();
             await createDraftSnapshot(

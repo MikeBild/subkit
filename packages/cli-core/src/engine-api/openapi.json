@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "10.1.6",
+    "version": "10.2.0",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -21597,6 +21597,13 @@
           "playground": {
             "type": "boolean"
           },
+          "playbook_mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "auto"
+            ]
+          },
           "intake_item_ids": {
             "type": "array",
             "items": {
@@ -21673,6 +21680,16 @@
             }
           },
           "draft": {},
+          "playbook": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationPlaybook"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "resume_summary": {
             "type": [
               "object",
@@ -22130,6 +22147,265 @@
           "outcome"
         ]
       },
+      "ConversationPlaybook": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "in_progress",
+              "waiting_for_input",
+              "blocked",
+              "prepared",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "criterion": {
+                  "type": "string"
+                },
+                "depends_on": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "in_progress",
+                    "waiting_for_input",
+                    "blocked",
+                    "verified",
+                    "assessment_ready",
+                    "stale",
+                    "not_applicable"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "assurance": {
+                  "type": "string",
+                  "enum": [
+                    "technical",
+                    "human",
+                    "assessment"
+                  ]
+                },
+                "evidence": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "tool_call",
+                          "execution",
+                          "decision"
+                        ]
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "resource_type": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "resource_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "observed_at": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "freshness": {
+                        "type": "string",
+                        "enum": [
+                          "fresh",
+                          "stale",
+                          "unavailable"
+                        ]
+                      },
+                      "href": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "label",
+                      "resource_type",
+                      "resource_id",
+                      "observed_at",
+                      "freshness",
+                      "href"
+                    ]
+                  }
+                },
+                "next_action": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 600
+                    },
+                    "owner": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "minLength": 1,
+                      "maxLength": 600
+                    },
+                    "elicitation_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "owner",
+                    "elicitation_id"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "label",
+                "criterion",
+                "depends_on",
+                "status",
+                "reason",
+                "assurance",
+                "evidence",
+                "next_action"
+              ]
+            }
+          },
+          "next_action": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 600
+              },
+              "owner": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "maxLength": 600
+              },
+              "elicitation_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "label",
+              "owner",
+              "elicitation_id"
+            ]
+          },
+          "completion": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "verified"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "label",
+              "reason"
+            ]
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "goal",
+          "revision",
+          "status",
+          "summary",
+          "steps",
+          "next_action",
+          "completion",
+          "updated_at"
+        ]
+      },
       "ConversationUsage": {
         "type": "object",
         "properties": {
@@ -22544,6 +22820,16 @@
       "ContextSnapshot": {
         "type": "object",
         "properties": {
+          "playbook": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationPlaybook"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "conversation_id": {
             "type": "string"
           },
