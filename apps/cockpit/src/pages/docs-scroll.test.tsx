@@ -130,7 +130,9 @@ async function mount(initial: string): Promise<Harness> {
   let root: Root | undefined;
   const settle = () =>
     act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      for (let round = 0; round < 8; round++) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
     });
   await router.load();
   root = createRoot(dom.window.document.getElementById("root") as HTMLElement);
