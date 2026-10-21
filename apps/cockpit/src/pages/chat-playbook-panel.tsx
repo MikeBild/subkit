@@ -1,6 +1,12 @@
 import { BookOpen, Check, CircleMinus, LoaderCircle } from "lucide-react";
 import { useId } from "react";
-import { Button, StatusBadge, StatusStrip } from "@/components/cockpit/patterns";
+import {
+  Button,
+  FactList,
+  SectionHeading,
+  StatusBadge,
+  StatusStrip,
+} from "@/components/cockpit/patterns";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
@@ -105,26 +111,26 @@ export function ChatPlaybookSummary({
         <BookOpen className="size-4" aria-hidden="true" />
         {readable(playbook.title)}
       </div>
-      <dl className="space-y-3">
-        <div>
-          <dt className="text-xs text-muted-foreground">{t("chat.playbook.status")}</dt>
-          <dd className="mt-1 font-semibold" role="status">
-            {t(playbookStatusKey(playbook))}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">{t("chat.playbook.why")}</dt>
-          <dd className="mt-1 leading-relaxed">{readable(playbook.summary)}</dd>
-        </div>
-        {playbook.next_action ? (
-          <div>
-            <dt className="mb-1 text-xs text-muted-foreground">{t("chat.playbook.next")}</dt>
-            <dd>
-              <NextAction action={playbook.next_action} {...actions} />
-            </dd>
-          </div>
-        ) : null}
-      </dl>
+      <FactList
+        items={[
+          {
+            label: t("chat.playbook.status"),
+            value: <span role="status">{t(playbookStatusKey(playbook))}</span>,
+          },
+          {
+            label: t("chat.playbook.why"),
+            value: readable(playbook.summary),
+          },
+          ...(playbook.next_action
+            ? [
+                {
+                  label: t("chat.playbook.next"),
+                  value: <NextAction action={playbook.next_action} {...actions} />,
+                },
+              ]
+            : []),
+        ]}
+      />
       {refreshFailed ? <StatusStrip tone="warn" line={t("chat.playbook.refreshFailed")} /> : null}
       {refreshing ? (
         <p className="text-xs text-muted-foreground">{t("chat.playbook.refreshing")}</p>
@@ -153,7 +159,9 @@ export function ChatPlaybookPanel({
       <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
         <div className="border-b bg-muted/30 p-4">
           <p className="text-xs text-muted-foreground">{t("chat.playbook.title")}</p>
-          <h3 className="mt-1 text-sm font-semibold">{readable(playbook.title)}</h3>
+          <SectionHeading className="mt-1 text-sm font-semibold">
+            {readable(playbook.title)}
+          </SectionHeading>
         </div>
         <div className="space-y-6 p-4">
           <div>
