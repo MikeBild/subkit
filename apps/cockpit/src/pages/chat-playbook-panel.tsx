@@ -43,7 +43,11 @@ function NextAction({
           : t("chat.playbook.ownerUnknown")}
       </p>
       {target ? (
-        <Button variant="outline" onClick={() => onOpenQuestion(target)}>
+        <Button
+          variant="outline"
+          onClick={() => onOpenQuestion(target)}
+          data-testid="chat-playbook-next-action"
+        >
           {t("chat.playbook.answer")}
         </Button>
       ) : null}
@@ -61,7 +65,11 @@ function Evidence({ evidence }: { evidence: PlaybookEvidence }) {
   return (
     <li className="space-y-1 rounded-lg bg-muted/50 p-3 text-xs">
       {href ? (
-        <a href={href} className="break-words text-accent underline underline-offset-4">
+        <a
+          href={href}
+          className="break-words text-accent underline underline-offset-4"
+          data-testid="chat-playbook-evidence-link"
+        >
           {label.startsWith("@") ? label : `@${label}`}
         </a>
       ) : (
