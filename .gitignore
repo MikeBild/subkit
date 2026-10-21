@@ -36,6 +36,7 @@ apps/engine/src/connectors/template-audit-report.json
 /openai-key.txt
 /gh-key.txt
 /upraft-key.txt
+/upraft-git-token-key.txt
 /creds.txt
 .devtools
 docs/
