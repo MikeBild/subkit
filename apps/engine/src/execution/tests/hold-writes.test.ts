@@ -17,6 +17,7 @@ import { eq } from "drizzle-orm";
 import { closeAllPools, getPoolForConnector } from "../../connectors/drivers/postgres.ts";
 import { getConnector } from "../../connectors/index.ts";
 import { connectors, executionSteps } from "../../db/schema/index.ts";
+import { validateTenantWorkflowDef } from "../../workflows/tenant-validator.ts";
 import { runExecution } from "../engine.ts";
 import type { HeldRequest } from "../types.ts";
 import {
@@ -902,6 +903,58 @@ describe("hold-writes · postgres", () => {
 });
 
 describe("hold-writes · graphql", () => {
+  test("a graphql block on an http connector is refused before save and never dispatched", async () => {
+    const [http] = await ctx.testDb.db
+      .insert(connectors)
+      .values({
+        tenant_id: ctx.tenantId,
+        slug: "http-gql-mismatch",
+        display_name: "HTTP gql mismatch",
+        driver: "http",
+        environment: "dev",
+        auth_type: "none",
+        base_url: mock.baseUrl,
+        config: {},
+      })
+      .returning();
+    const step = (connector_id: string) => ({
+      kind: "request",
+      id: "project_items",
+      connector_id,
+      method: "GET",
+      graphql: { operation: "query", query: "query Items { things { id } }" },
+    });
+    const refused = await validateTenantWorkflowDef(
+      { name: "gql-on-http", steps: [step(http!.id)] },
+      ctx.tenantId,
+      ctx.testDb.db,
+    );
+    expect(refused.ok).toBe(false);
+    expect(refused.errors.map((entry) => entry.path)).toContain("steps.project_items.graphql");
+    const accepted = await validateTenantWorkflowDef(
+      { name: "gql-on-gql", steps: [step(gqlConnectorId)] },
+      ctx.tenantId,
+      ctx.testDb.db,
+    );
+    expect(accepted.ok).toBe(true);
+
+    hits.length = 0;
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "gql-on-http-run",
+      steps: [step(http!.id)],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    const items = result.steps.find((entry) => entry.step_key === "project_items");
+    expect(items?.status).toBe("failed");
+    expect((items?.error as { code?: string })?.code).toBe("connector_driver_mismatch");
+    expect(hits).toHaveLength(0);
+  });
+
   test("query labels and read overrides cannot dispatch a mutation during preview", async () => {
     hits.length = 0;
     const queries = [

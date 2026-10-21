@@ -56,6 +56,7 @@ export interface ValidationError {
 export interface ValidateOptions {
   allowForwardRefs?: boolean;
   connectorHeaderPolicies?: ReadonlyMap<string, ConnectorHeaderPolicy>;
+  connectorDrivers?: ReadonlyMap<string, ReadonlyArray<string>>;
   destinationTier?: PlaceholderTier;
 }
 
@@ -135,6 +136,17 @@ export function validateWorkflowDef(
         errors.push({
           path: `steps.${step.id}.graphql.query`,
           message: "graphql.query must be a valid GraphQL document containing an operation",
+        });
+      }
+      const foreignDriver = step.graphql
+        ? options.connectorDrivers
+            ?.get(step.connector_id ?? "")
+            ?.find((driver) => driver !== "graphql")
+        : undefined;
+      if (foreignDriver) {
+        errors.push({
+          path: `steps.${step.id}.graphql`,
+          message: `a graphql block needs a graphql connector, but connector ${step.connector_id} is driver '${foreignDriver}' — such a step is held as a write in previews and refused at run time. Point connector_id at a graphql connector whose base_url is the GraphQL endpoint (for GitHub https://api.github.com/graphql); \`method\` and \`path\` are not used for a graphql block, which is always sent as POST.`,
         });
       }
       if (step.url !== undefined) {

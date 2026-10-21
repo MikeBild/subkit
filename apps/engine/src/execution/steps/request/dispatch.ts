@@ -1051,6 +1051,17 @@ async function dispatchRequestStep(
       }
       if (connector.driver === "graphql" || p.step.graphql) {
         clearTimeout(timer);
+        if (connector.driver !== "graphql") {
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: {
+              code: "connector_driver_mismatch",
+              message: `request step carries a \`graphql\` block but connector '${connector.slug}' is driver '${connector.driver}'`,
+            },
+          };
+        }
         if (!p.step.graphql) {
           return {
             status: "failed",
