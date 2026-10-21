@@ -117,6 +117,19 @@ describe("DataTable", () => {
     expect(html).toContain("Group choices");
   });
 
+  test("grouping tabs keep one spacing step above the table, empty states and cards", () => {
+    const grouped = table({ groupingTabs: <span>Group choices</span> });
+    expect(grouped).toContain('<div class="shrink-0 pb-3" data-family-slot="list-grouping">');
+    const slot = grouped.indexOf('data-family-slot="list-grouping"');
+    expect(slot).toBeLessThan(grouped.indexOf("Group choices"));
+    expect(grouped.indexOf("Group choices")).toBeLessThan(
+      grouped.indexOf('data-testid="t-desktop"'),
+    );
+    const empty = table({ data: [], groupingTabs: <span>Group choices</span> });
+    expect(empty.indexOf('data-family-slot="list-grouping"')).toBeLessThan(empty.indexOf(">none<"));
+    expect(table()).not.toContain('data-family-slot="list-grouping"');
+  });
+
   test("has no pager and no visible record count", () => {
     const html = table();
     expect(html).not.toContain('data-family-slot="pagination"');

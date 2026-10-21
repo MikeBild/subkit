@@ -588,7 +588,11 @@ export function DataTable<TData extends RowData>({
         ) : (
           resultCountLabel
         )}
-        {groupingTabs}
+        {groupingTabs ? (
+          <div className="shrink-0 pb-3" data-family-slot="list-grouping">
+            {groupingTabs}
+          </div>
+        ) : null}
         <div
           className={cn(
             "@container min-h-0 overflow-auto",
