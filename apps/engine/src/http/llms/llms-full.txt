@@ -4037,7 +4037,7 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 | `repository-issues` | Fetch issues for an owner/repo pair with labels, assignees, and cursor metadata. | request | — |
 | `repository-pull-requests` | Fetch recent pull requests with review status signals and cursor metadata. | request | — |
 | `search-repositories` | Run a GitHub GraphQL search query and return repository nodes plus rate-limit cost. | request | — |
-| `user-project-items` | Read every item from a user-owned ProjectV2 with checked cursor pagination and up to 20 field values per item. | request | — |
+| `user-project-items` | Read every item and up to 20 Text and SingleSelect field values per item from a user-owned ProjectV2 with checked cursor pagination. | request | — |
 | `viewer` | Fetch the authenticated viewer and current GraphQL rate-limit state. | request | — |
 
 ### Google Analytics 4 (`google-analytics`)
