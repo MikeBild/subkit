@@ -78,6 +78,7 @@ import {
 import { pageOf, useRouteEntrance } from "./route-entrance";
 import { useSession } from "./session";
 import {
+  ACCOUNT_TRIGGER,
   CHAT_COLUMN,
   ShellHeaderProvider,
   SidebarToggle,
@@ -150,7 +151,9 @@ function PrimaryNavigationLink({
 export function AppShell() {
   const session = useSession();
   const { t } = useI18n();
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
   const groups = visiblePrimaryNavigation(session.permissions);
   const active = navigationItem(pathname.slice(cockpitBasePath().length) || "/");
   const brandName = installationId()
@@ -223,20 +226,26 @@ export function AppShell() {
 
           <SidebarFooter
             data-testid="cockpit-sidebar-footer"
-            className={session.branding?.configured ? "border-t border-sidebar-border" : undefined}
+            className={cn(
+              "gap-2",
+              session.branding?.configured && "border-t border-sidebar-border",
+            )}
           >
-            <BrandingAttribution />
-            <ShellLiveIndicator />
-            <InstallationNotificationControl />
-            <InstallationFollowupPrompt tenantName={session.tenant.display_name} />
-            <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
-              <SidebarMenu className="min-w-0 flex-1">
-                <SidebarMenuItem>
-                  <AccountMenu />
-                </SidebarMenuItem>
-              </SidebarMenu>
+            <div
+              className="flex min-h-8 items-center justify-between gap-2 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-1"
+              data-slot="footer-status"
+            >
+              <ShellLiveIndicator />
               <DesktopSidebarToggle />
             </div>
+            <InstallationNotificationControl />
+            <InstallationFollowupPrompt tenantName={session.tenant.display_name} />
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <AccountMenu />
+              </SidebarMenuItem>
+            </SidebarMenu>
+            <BrandingAttribution />
           </SidebarFooter>
           <SidebarRail
             aria-label={t("nav.toggle")}
@@ -258,7 +267,9 @@ export function AppShell() {
 
 function ShellContent() {
   const { isMobile } = useSidebar();
-  const page = useRouterState({ select: (state) => pageOf(state.location.pathname) });
+  const page = useRouterState({
+    select: (state) => pageOf(state.location.pathname),
+  });
   const content = useRef<HTMLDivElement>(null);
   useRouteEntrance(content, page);
   const header = useShellHeaderState();
@@ -278,7 +289,7 @@ function ShellContent() {
       {owner === "bar" &&
         (chat ? (
           <header
-            className="scrollbar-thin shrink-0 overflow-hidden border-b px-4 py-2 sm:px-6 [scrollbar-gutter:stable_both-edges]"
+            className="scrollbar-thin shrink-0 overflow-hidden border-b px-4 py-2 sm:px-6 [scrollbar-gutter:stable]"
             data-testid="cockpit-header"
             data-cockpit-header="chat"
           >
@@ -289,7 +300,7 @@ function ShellContent() {
           </header>
         ) : (
           <header
-            className="flex h-12 shrink-0 items-center gap-3 border-b px-4"
+            className="flex h-12 shrink-0 items-center gap-3 border-b px-4 sm:px-6"
             data-testid="cockpit-header"
           >
             <SidebarToggle className="-ml-1" />
@@ -348,7 +359,9 @@ function AccountMenu() {
   const identity = session.principal.email || session.principal.role_name || t("common.member");
   const role = localizedRole(session.principal.role_name || "member", t);
   const accountNavigation = visibleAccountNavigation(session.permissions);
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
   const active = navigationItem(pathname.slice(cockpitBasePath().length) || "/");
 
   async function signOut(): Promise<void> {
@@ -370,21 +383,29 @@ function AccountMenu() {
         <DropdownMenuTrigger asChild>
           <SidebarMenuButton
             size="lg"
+            className={ACCOUNT_TRIGGER}
+            title={identity}
             data-testid="account-menu-trigger"
             tooltip={t("account.menu")}
           >
             <Avatar>
               <AvatarFallback>{initials(identity)}</AvatarFallback>
             </Avatar>
-            <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium" data-testid="account-name">
+            <span className="grid min-w-0 flex-1 gap-0.5 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+              <span
+                className="font-medium whitespace-normal [overflow-wrap:anywhere]"
+                data-testid="account-name"
+              >
                 {identity}
               </span>
-              <span className="truncate text-xs text-muted-foreground" data-testid="account-role">
+              <span className="text-xs text-muted-foreground" data-testid="account-role">
                 {role}
               </span>
             </span>
-            <ChevronsUpDown data-icon="inline-end" className="ml-auto" />
+            <ChevronsUpDown
+              data-icon="inline-end"
+              className="ml-auto shrink-0 group-data-[collapsible=icon]:hidden"
+            />
           </SidebarMenuButton>
         </DropdownMenuTrigger>
 
@@ -395,7 +416,9 @@ function AccountMenu() {
           data-testid="account-menu"
         >
           <DropdownMenuLabel data-testid="account-summary">
-            <span className="block truncate text-sm font-medium text-foreground">{identity}</span>
+            <span className="block text-sm font-medium whitespace-normal text-foreground [overflow-wrap:anywhere]">
+              {identity}
+            </span>
             <span className="block truncate font-normal">{session.tenant.display_name}</span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />

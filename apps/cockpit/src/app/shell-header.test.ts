@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { triggerOwner } from "./shell-header";
+import { ACCOUNT_TRIGGER, CHAT_COLUMN, triggerOwner } from "./shell-header";
 
 describe("triggerOwner", () => {
   const wide = { mobile: false, chatHeader: false, pageFrames: 1 };
@@ -18,5 +18,18 @@ describe("triggerOwner", () => {
 
   test("a page without a header still gets a toggle, in the bar", () => {
     expect(triggerOwner({ ...wide, pageFrames: 0 })).toBe("bar");
+  });
+});
+
+describe("CHAT_COLUMN", () => {
+  test("starts at the gutter like every page instead of centering", () => {
+    expect(CHAT_COLUMN).not.toContain("mx-auto");
+  });
+});
+
+describe("ACCOUNT_TRIGGER", () => {
+  test("drops the expanded minimum height in icon mode so the trigger stays square", () => {
+    expect(ACCOUNT_TRIGGER).toContain("min-h-12");
+    expect(ACCOUNT_TRIGGER).toContain("group-data-[collapsible=icon]:min-h-0");
   });
 });

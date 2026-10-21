@@ -525,7 +525,12 @@ export function DataTable<TData extends RowData>({
           </FilterBarLayoutContext.Provider>
         </aside>
       ) : null}
-      <div className="@container flex min-h-0 min-w-0 flex-1 flex-col min-[1600px]:h-full min-[1600px]:px-4">
+      <div
+        className={cn(
+          "@container flex min-h-0 min-w-0 flex-1 flex-col min-[1600px]:h-full",
+          activeFilterPanel && "min-[1600px]:pl-4",
+        )}
+      >
         {toolbarShown ? (
           <div className="flex flex-wrap items-center gap-2 pb-2" data-family-slot="list-toolbar">
             {usesDefaultSearch && (
@@ -613,7 +618,7 @@ export function DataTable<TData extends RowData>({
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="-ml-2"
+                            className="-ml-2.5"
                             onClick={header.column.getToggleSortingHandler()}
                             data-testid={`${collectionId}-sort-${header.column.id}`}
                           >
@@ -633,8 +638,12 @@ export function DataTable<TData extends RowData>({
                     );
                   })}
                   {hasActionColumn ? (
-                    <TableHead className="w-56" style={{ width: "14rem" }}>
-                      <span className="sr-only">{actionsLabel}</span>
+                    <TableHead
+                      className="w-56 text-right"
+                      style={{ width: "14rem" }}
+                      data-slot="row-actions-head"
+                    >
+                      {actionsLabel}
                     </TableHead>
                   ) : null}
                 </TableRow>

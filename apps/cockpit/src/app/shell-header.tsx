@@ -10,7 +10,10 @@ import {
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useI18n } from "@/lib/i18n-context";
 
-export const CHAT_COLUMN = "mx-auto w-full min-w-0 max-w-[80rem]";
+export const CHAT_COLUMN = "w-full min-w-0 max-w-[80rem]";
+
+export const ACCOUNT_TRIGGER =
+  "h-auto min-h-12 items-center py-2 group-data-[collapsible=icon]:min-h-0";
 
 export type TriggerOwner = "bar" | "page";
 
@@ -56,7 +59,14 @@ export function useShellHeaderState(): {
     setChatHeaders((count) => count + 1);
     return () => setChatHeaders((count) => count - 1);
   }, []);
-  return { pageFrames, chatHeaders, slot, setSlot, claimPageFrame, claimChatHeader };
+  return {
+    pageFrames,
+    chatHeaders,
+    slot,
+    setSlot,
+    claimPageFrame,
+    claimChatHeader,
+  };
 }
 
 export function ShellHeaderProvider({

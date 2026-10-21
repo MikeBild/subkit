@@ -292,7 +292,7 @@ function ReadingColumn({
   return (
     <div
       className={cn(
-        "scrollbar-thin overflow-hidden px-4 [scrollbar-gutter:stable_both-edges]",
+        "scrollbar-thin overflow-hidden px-4 sm:px-6 [scrollbar-gutter:stable]",
         className,
       )}
       data-testid={testId}
@@ -2591,8 +2591,8 @@ export function ChatPage() {
             <FollowSubmittedTurn submittedAt={Math.max(send.submittedAt, decide.submittedAt)} />
             <MessageScroller className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
               <MessageScrollerViewport
-                className="px-4 py-6"
-                style={{ scrollbarGutter: "stable both-edges" }}
+                className="px-4 py-6 sm:px-6"
+                style={{ scrollbarGutter: "stable" }}
               >
                 <MessageScrollerContent className={CHAT_COLUMN}>
                   {conversationFailed ? (
@@ -2934,7 +2934,7 @@ export function ChatPage() {
           </MessageScrollerProvider>
 
           <div
-            className="scrollbar-thin shrink-0 overflow-y-auto px-4 bg-background/95 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable_both-edges]"
+            className="scrollbar-thin shrink-0 overflow-y-auto px-4 sm:px-6 bg-background/95 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable]"
             data-testid="chat-composer-area"
             hidden={conversationFailed}
           >

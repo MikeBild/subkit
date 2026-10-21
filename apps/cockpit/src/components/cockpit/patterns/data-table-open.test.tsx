@@ -66,6 +66,14 @@ test("only available records expose row navigation on desktop and mobile", () =>
   expect(document.querySelector('[data-slot="row-actions"] span')?.className).toContain(
     "flex-wrap",
   );
+  const actionsHead = document.querySelector('[data-slot="row-actions-head"]');
+  expect(actionsHead?.textContent).toBe("Actions");
+  expect(actionsHead?.className).toContain("text-right");
+  expect(actionsHead?.className).not.toContain("sr-only");
+  expect(actionsHead?.querySelector(".sr-only")).toBeNull();
+  expect(document.querySelector('[data-testid="availability-sort-name"]')?.className).toContain(
+    "-ml-2.5",
+  );
   const statusCell = document.querySelectorAll(
     '[data-testid="availability-row-0"] [data-slot="table-cell"]',
   )[1];

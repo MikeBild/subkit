@@ -10,7 +10,7 @@ import { DataState } from "./data-state";
 import { FactList } from "./fact-list";
 import { FilterBar } from "./filter-bar";
 import { dialogWidthClass } from "./form-dialog";
-import { Page } from "./page";
+import { Page, READING_COLUMN } from "./page";
 import { PageHeader } from "./page-header";
 import { searchWithTab, tabFromSearch } from "./page-tabs";
 import { sheetWidthClass } from "./record-sheet";
@@ -25,7 +25,7 @@ import { render, renderInRouter } from "./test-utils";
 const count = (html: string, pattern: RegExp) => [...html.matchAll(pattern)].length;
 
 describe("P1 Page", () => {
-  test("lists and records use centered responsive measures", () => {
+  test("lists and records start at the page gutter, left-aligned", () => {
     for (const [kind, width] of [
       ["list", "max-w-[1760px]"],
       ["settings", "max-w-[1440px]"],
@@ -38,9 +38,22 @@ describe("P1 Page", () => {
       );
       expect(html).toContain(`data-page-kind="${kind}"`);
       expect(count(html, new RegExp(width.replace(/[[\]]/g, "\\$&"), "g"))).toBe(2);
-      expect(count(html, /mx-auto/g)).toBe(2);
+      expect(count(html, /mx-auto/g)).toBe(0);
+      expect(html).toContain("px-4 sm:px-6");
       expect(html).toContain('data-family-slot="scroll-region"');
     }
+    expect(READING_COLUMN).not.toContain("mx-auto");
+  });
+
+  test("a workspace spans the full width without a gutter", () => {
+    const html = render(
+      <Page kind="workspace" scroll="page" testId="p" header={<div>head</div>}>
+        body
+      </Page>,
+    );
+    expect(html).toContain("w-full");
+    expect(html).not.toContain("px-4");
+    expect(html).not.toContain("mx-auto");
   });
 
   test("a body that owns its scroll gets no scroll region; the toolbar gets the filters slot", () => {

@@ -75,7 +75,7 @@ export function BrandingAttribution() {
   if (!session.branding?.configured) return null;
   return (
     <p
-      className="px-2 text-[11px] text-muted-foreground group-data-[collapsible=icon]:sr-only"
+      className="px-2 text-xs leading-4 text-muted-foreground group-data-[collapsible=icon]:sr-only"
       data-testid="branding-attribution"
     >
       powered by <span className="font-medium text-foreground">SubKit</span>

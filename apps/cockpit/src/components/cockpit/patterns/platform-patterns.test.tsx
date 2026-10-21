@@ -65,12 +65,19 @@ describe("DataTable", () => {
     });
     expect(html).toContain('data-family-slot="list-filter-panel"');
     expect(html).toContain("min-[1600px]:grid-cols-[280px_minmax(0,1fr)]");
+    expect(html).toContain("min-[1600px]:pl-4");
     expect(html).toContain('data-slot="filter-panel"');
     expect(html).toContain('data-slot="filter-bar"');
     expect(html).toContain("Gruppierung");
     expect(html.indexOf('data-family-slot="list-filter-panel"')).toBeLessThan(
       html.indexOf("Gruppierung"),
     );
+  });
+
+  test("a list without a filter panel sits flush with its section", () => {
+    const html = table();
+    expect(html).not.toContain("min-[1600px]:px-4");
+    expect(html).not.toContain("min-[1600px]:pl-4");
   });
 
   test("an embedded list also keeps its controls beside a narrowing filter column", () => {

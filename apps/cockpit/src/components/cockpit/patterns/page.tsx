@@ -16,7 +16,7 @@ export type PageSurface =
 
 export function pageColumn(kind: PageKind): string {
   if (kind === "workspace") return "w-full";
-  return kind === "list" ? "mx-auto w-full max-w-[1760px]" : "mx-auto w-full max-w-[1440px]";
+  return kind === "list" ? "w-full max-w-[1760px]" : "w-full max-w-[1440px]";
 }
 
 function gutter(kind: PageKind): string {
@@ -90,4 +90,4 @@ export function Page({
   );
 }
 
-export const READING_COLUMN = "mx-auto w-full max-w-3xl";
+export const READING_COLUMN = "w-full max-w-3xl";
