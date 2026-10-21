@@ -192,6 +192,8 @@ const ALWAYS_AVAILABLE: ReadonlySet<string> = new Set([
   "fetch_connector_docs",
   "get_raw_result",
   "inspect_authoring_context",
+  "inspect_playbook",
+  "update_playbook",
 ]);
 
 function activeToolsForStage(

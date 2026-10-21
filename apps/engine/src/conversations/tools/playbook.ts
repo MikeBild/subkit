@@ -77,7 +77,6 @@ export const updatePlaybookTool: ConversationTool = {
   inputSchema: PlaybookUpdateSchema,
   strict: false,
   category: "draft_write",
-  inert_proposal: true,
   captures_draft_snapshot: false,
   visible_when_readonly: true,
   permission: {

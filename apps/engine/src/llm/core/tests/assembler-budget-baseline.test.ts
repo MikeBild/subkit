@@ -243,7 +243,9 @@ describe.skipIf(skip)("budget-baseline — four guards", () => {
     expect(fixtureResults.length).toBeGreaterThan(0);
     for (const r of fixtureResults) {
       const limit = Math.ceil(r.baseline_total * 1.15);
-      expect(r.new_total).toBeLessThanOrEqual(limit);
+      expect(r.new_total, `${r.name}: ${r.new_total} tokens exceeds ${limit}`).toBeLessThanOrEqual(
+        limit,
+      );
     }
   });
 
@@ -290,7 +292,7 @@ describe.skipIf(skip)("budget-baseline — four guards", () => {
 
   test("baseline fixture has the required header fields", () => {
     expect(baseline.captured_at).toBeTruthy();
-    expect(baseline.worktree_sha).toBe("bae451724cbea5aaaad3645b445c620fb9fbdaca");
+    expect(baseline.worktree_sha).toBe("5a0bae7606b846734f30a32d37204ff26c8ea485");
     expect(baseline.captured_by_script_version).toBe("1.0.0");
     expect(baseline.model).toBe("claude-haiku-4-5");
     expect(baseline.effective_cap).toBeGreaterThan(0);

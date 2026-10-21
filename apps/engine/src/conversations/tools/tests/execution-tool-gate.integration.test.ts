@@ -146,6 +146,38 @@ describe("execution-tool gate against a real palette", () => {
     expect(palette.list_workflows).toBeDefined();
   });
 
+  test("fresh build-new turn keeps single-step draft preview available", async () => {
+    const palette = await buildRealPalette();
+    const slugs = collectSyntheticWorkflowSlugs(Object.keys(palette));
+    palette.dry_run_step = {};
+    const gate = resolveExecutionToolGate({
+      hasBoundSavedWorkflow: false,
+      explicitlyNamedWorkflowSlug: null,
+    });
+
+    const removed = applyExecutionToolGate(palette, gate, slugs);
+
+    expect(removed).toBe(2);
+    expect(palette.dry_run_step).toBeDefined();
+    expect(palette.run_workflow).toBeUndefined();
+    expect(palette[`wf_${LOOKALIKE_SLUG}`]).toBeUndefined();
+  });
+
+  test("explicit no-run request removes single-step draft preview", async () => {
+    const palette = await buildRealPalette();
+    const slugs = collectSyntheticWorkflowSlugs(Object.keys(palette));
+    palette.dry_run_step = {};
+    const gate = resolveExecutionToolGate({
+      hasBoundSavedWorkflow: false,
+      explicitlyNamedWorkflowSlug: null,
+      suppressExecution: true,
+    });
+
+    applyExecutionToolGate(palette, gate, slugs);
+
+    expect(palette.dry_run_step).toBeUndefined();
+  });
+
   test("naming the saved-workflow slug keeps execution exposed (legitimate run)", async () => {
     const palette = await buildRealPalette();
     const slugs = collectSyntheticWorkflowSlugs(Object.keys(palette));

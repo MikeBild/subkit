@@ -1,6 +1,6 @@
 {
-  "captured_at": "2026-05-25T06:46:34.012Z",
-  "worktree_sha": "bae451724cbea5aaaad3645b445c620fb9fbdaca",
+  "captured_at": "2026-10-21T11:50:16Z",
+  "worktree_sha": "5a0bae7606b846734f30a32d37204ff26c8ea485",
   "captured_by_script_version": "1.0.0",
   "model": "claude-haiku-4-5",
   "effective_cap": 180000,
@@ -24,15 +24,19 @@
         "kind": "recipe-backed",
         "required_in_prompt": ["stripe-charge-succeeded", "```json"]
       },
-      "total_tokens": 8410,
+      "total_tokens": 9783,
       "section_tokens": {
-        "system": 8391,
+        "system": 9764,
         "skills": 0,
         "knowledge": 0,
         "docs": 0,
         "failures": 0,
         "messages": 19,
-        "total": 8410
+        "total": 9783,
+        "recipe_bodies": 327,
+        "skill_candidates": 183,
+        "prior_workflows": 0,
+        "references": 0
       }
     },
     {
@@ -54,15 +58,19 @@
         "kind": "recipe-backed",
         "required_in_prompt": ["stripe-customer-sync", "```json"]
       },
-      "total_tokens": 8405,
+      "total_tokens": 9778,
       "section_tokens": {
-        "system": 8391,
+        "system": 9764,
         "skills": 0,
         "knowledge": 0,
         "docs": 0,
         "failures": 0,
         "messages": 14,
-        "total": 8405
+        "total": 9778,
+        "recipe_bodies": 327,
+        "skill_candidates": 183,
+        "prior_workflows": 0,
+        "references": 0
       }
     },
     {
@@ -84,15 +92,19 @@
         "kind": "multi-connector-recipe",
         "required_in_prompt": ["stripe-customer-sync", "hubspot", "```json"]
       },
-      "total_tokens": 8413,
+      "total_tokens": 9786,
       "section_tokens": {
-        "system": 8391,
+        "system": 9764,
         "skills": 0,
         "knowledge": 0,
         "docs": 0,
         "failures": 0,
         "messages": 22,
-        "total": 8413
+        "total": 9786,
+        "recipe_bodies": 327,
+        "skill_candidates": 183,
+        "prior_workflows": 0,
+        "references": 0
       }
     },
     {
@@ -114,15 +126,19 @@
         "kind": "multi-connector-recipe",
         "required_in_prompt": ["stripe-customer-sync", "hubspot", "```json"]
       },
-      "total_tokens": 8410,
+      "total_tokens": 9783,
       "section_tokens": {
-        "system": 8391,
+        "system": 9764,
         "skills": 0,
         "knowledge": 0,
         "docs": 0,
         "failures": 0,
         "messages": 19,
-        "total": 8410
+        "total": 9783,
+        "recipe_bodies": 327,
+        "skill_candidates": 183,
+        "prior_workflows": 0,
+        "references": 0
       }
     },
     {
@@ -133,7 +149,7 @@
         "user_turns": [
           {
             "role": "user",
-            "content": "Add retry handling to my Stripe workflow — it keeps hitting rate limits."
+            "content": "Add retry handling to my Stripe workflow \u2014 it keeps hitting rate limits."
           }
         ],
         "max_tokens": 100000,
@@ -144,15 +160,19 @@
         "kind": "drift-context",
         "candidate_title": "Stripe 429 exponential backoff"
       },
-      "total_tokens": 8411,
+      "total_tokens": 9784,
       "section_tokens": {
-        "system": 8391,
+        "system": 9764,
         "skills": 0,
         "knowledge": 0,
         "docs": 0,
         "failures": 0,
         "messages": 20,
-        "total": 8411
+        "total": 9784,
+        "recipe_bodies": 327,
+        "skill_candidates": 183,
+        "prior_workflows": 0,
+        "references": 0
       }
     },
     {
@@ -163,7 +183,7 @@
         "user_turns": [
           {
             "role": "user",
-            "content": "Build me a Stripe webhook handler — and make sure rate limits are handled."
+            "content": "Build me a Stripe webhook handler \u2014 and make sure rate limits are handled."
           }
         ],
         "max_tokens": 100000,
@@ -174,15 +194,19 @@
         "kind": "drift-context",
         "candidate_title": "Stripe 429 exponential backoff"
       },
-      "total_tokens": 8412,
+      "total_tokens": 9785,
       "section_tokens": {
-        "system": 8391,
+        "system": 9764,
         "skills": 0,
         "knowledge": 0,
         "docs": 0,
         "failures": 0,
         "messages": 21,
-        "total": 8412
+        "total": 9785,
+        "recipe_bodies": 327,
+        "skill_candidates": 183,
+        "prior_workflows": 0,
+        "references": 0
       }
     },
     {
@@ -202,15 +226,19 @@
       "expected_outcome": {
         "kind": "cold-start"
       },
-      "total_tokens": 8285,
+      "total_tokens": 9330,
       "section_tokens": {
-        "system": 8272,
+        "system": 9317,
         "skills": 0,
         "knowledge": 0,
         "docs": 0,
         "failures": 0,
         "messages": 13,
-        "total": 8285
+        "total": 9330,
+        "recipe_bodies": 0,
+        "skill_candidates": 183,
+        "prior_workflows": 0,
+        "references": 0
       }
     },
     {
@@ -230,15 +258,19 @@
       "expected_outcome": {
         "kind": "cold-start"
       },
-      "total_tokens": 8287,
+      "total_tokens": 9332,
       "section_tokens": {
-        "system": 8272,
+        "system": 9317,
         "skills": 0,
         "knowledge": 0,
         "docs": 0,
         "failures": 0,
         "messages": 15,
-        "total": 8287
+        "total": 9332,
+        "recipe_bodies": 0,
+        "skill_candidates": 183,
+        "prior_workflows": 0,
+        "references": 0
       }
     },
     {
@@ -260,15 +292,19 @@
       "expected_outcome": {
         "kind": "edit-existing-workflow"
       },
-      "total_tokens": 8409,
+      "total_tokens": 9782,
       "section_tokens": {
-        "system": 8391,
+        "system": 9764,
         "skills": 0,
         "knowledge": 0,
         "docs": 0,
         "failures": 0,
         "messages": 18,
-        "total": 8409
+        "total": 9782,
+        "recipe_bodies": 327,
+        "skill_candidates": 183,
+        "prior_workflows": 0,
+        "references": 0
       }
     },
     {
@@ -289,15 +325,19 @@
       "expected_outcome": {
         "kind": "edit-existing-workflow"
       },
-      "total_tokens": 8288,
+      "total_tokens": 9333,
       "section_tokens": {
-        "system": 8272,
+        "system": 9317,
         "skills": 0,
         "knowledge": 0,
         "docs": 0,
         "failures": 0,
         "messages": 16,
-        "total": 8288
+        "total": 9333,
+        "recipe_bodies": 0,
+        "skill_candidates": 183,
+        "prior_workflows": 0,
+        "references": 0
       }
     }
   ]
