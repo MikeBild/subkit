@@ -1974,6 +1974,11 @@
         "enum": null
       },
       {
+        "name": "playbook_context_fingerprint",
+        "type": "text",
+        "enum": null
+      },
+      {
         "name": "decision_reason",
         "type": "text",
         "enum": null
@@ -2236,6 +2241,21 @@
       {
         "name": "draft",
         "type": "jsonb",
+        "enum": null
+      },
+      {
+        "name": "playbook",
+        "type": "jsonb",
+        "enum": null
+      },
+      {
+        "name": "playbook_mode",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "playbook_revision",
+        "type": "integer",
         "enum": null
       },
       {
