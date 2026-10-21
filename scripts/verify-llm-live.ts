@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { generateText, jsonSchema, tool } from "ai";
+import type { ZodIssue } from "zod";
 import { GeneratedWorkflowSchema } from "../apps/engine/src/conversations/authoring-pipeline.ts";
 import { JudgeVerdictSchema } from "../apps/engine/src/conversations/preview-judge.ts";
 import { toInputExamples } from "../apps/engine/src/conversations/tools/sdk-wrap/invoke.ts";
@@ -86,11 +87,22 @@ function liveModel(target: LiveTarget, check: LiveCheckName): AiSdkModel {
 
 const GENERATE_GOAL = [
   "Produce the SubKit workflow definition for this goal as the object the schema describes.",
+  'Return a flat top-level object with name "User count", slug exactly "live-gate-user-count", and steps. Do not wrap it in a workflow or definition object.',
   "Goal: fetch the user list from https://jsonplaceholder.typicode.com/users and return how many users there are.",
   'Use exactly two steps: first a request step with id "fetch_users" (kind "request", method "GET", url "https://jsonplaceholder.typicode.com/users"),',
   'then a transform step with id "count_users" (kind "transform", language "javascript", expression "return input.scope.fetch_users.data.length;").',
-  'Use the slug "live-gate-user-count". Add no trigger and no schemas beyond what the goal needs.',
+  "Add no trigger and no schemas beyond what the goal needs.",
 ].join("\n");
+
+function describeSchemaIssues(issues: ZodIssue[]): string {
+  return issues
+    .slice(0, 3)
+    .map(
+      (issue) =>
+        `${issue.path.length > 0 ? issue.path.join(".") : "<root>"} [${issue.code}]: ${issue.message}`,
+    )
+    .join("; ");
+}
 
 async function checkGenerateWorkflow(target: LiveTarget): Promise<string> {
   const out = await liveModel(target, "generate_workflow").generateObject<unknown>({
@@ -110,7 +122,7 @@ async function checkGenerateWorkflow(target: LiveTarget): Promise<string> {
   const parsed = GeneratedWorkflowSchema.safeParse(out.response);
   if (!parsed.success) {
     throw new Error(
-      `object does not parse as GeneratedWorkflowSchema: ${parsed.error.issues[0]?.message ?? "unknown issue"}`,
+      `object does not parse as GeneratedWorkflowSchema: ${describeSchemaIssues(parsed.error.issues)}`,
     );
   }
   if (parsed.data.steps.length !== 2) {
@@ -144,7 +156,7 @@ async function checkJudgeVerdict(target: LiveTarget): Promise<string> {
   const parsed = JudgeVerdictSchema.safeParse(out.response);
   if (!parsed.success) {
     throw new Error(
-      `object does not parse as JudgeVerdictSchema: ${parsed.error.issues[0]?.message ?? "unknown issue"}`,
+      `object does not parse as JudgeVerdictSchema: ${describeSchemaIssues(parsed.error.issues)}`,
     );
   }
   return `model_used=${out.model_used} verdict=${parsed.data.verdict}`;
