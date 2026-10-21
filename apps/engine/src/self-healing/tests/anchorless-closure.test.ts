@@ -140,7 +140,7 @@ describe("anchorless candidates", () => {
               method: "GET",
               connector_id: ctx.connector_id,
               path: "/users/1",
-              data_selector: "data.id",
+              data_selector: "$.data.id",
             },
           ],
         },

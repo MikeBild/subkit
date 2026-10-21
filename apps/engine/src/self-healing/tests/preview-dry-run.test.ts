@@ -53,8 +53,8 @@ afterAll(async () => {
 
 describe("diffStepPaths", () => {
   test("flags only the keys that changed, sorted", () => {
-    const before = { id: "s1", kind: "request" as const, data_selector: "data.id" };
-    const after = { id: "s1", kind: "request" as const, data_selector: "data.result.id" };
+    const before = { id: "s1", kind: "request" as const, data_selector: "$.data.id" };
+    const after = { id: "s1", kind: "request" as const, data_selector: "$.data.result.id" };
     expect(diffStepPaths(before, after)).toEqual(["data_selector"]);
   });
   test("identical steps yield no paths", () => {
@@ -76,8 +76,8 @@ describe("previewPatchCandidate", () => {
     expect(preview!.status).toBe("proposed");
     expect(preview!.proposal).not.toBeNull();
     expect(typeof preview!.drift_summary).toBe("string");
-    expect(preview!.before_step?.data_selector).toBe("data.id");
-    expect(preview!.after_step?.data_selector).toBe("data.result.id");
+    expect(preview!.before_step?.data_selector).toBe("$.data.id");
+    expect(preview!.after_step?.data_selector).toBe("$.data.result.id");
     expect(preview!.changed_paths).toEqual(["data_selector"]);
   });
 
@@ -107,7 +107,7 @@ describe("previewPatchCandidate", () => {
 
     const preview = await previewPatchCandidate(ctx.tenant_id, row.id, ctx.testDb.db);
     expect(preview!.before_step?.data_selector).toBe(SEED_DATA_SELECTOR);
-    expect(preview!.after_step?.data_selector).toBe("data.result.id");
+    expect(preview!.after_step?.data_selector).toBe("$.data.result.id");
     expect(preview!.changed_paths).toEqual(["data_selector"]);
   });
 

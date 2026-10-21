@@ -78,7 +78,7 @@ describe("self-healing/loop — direct call", () => {
     expect(versions[0]?.version).toBe(2);
     const newDag = (versions[0]!.dag as Record<string, unknown>) ?? {};
     const steps = newDag.steps as Record<string, unknown>[];
-    expect(steps.find((s) => s.id === SEED_STEP_ID)?.data_selector).toBe("data.result.id");
+    expect(steps.find((s) => s.id === SEED_STEP_ID)?.data_selector).toBe("$.data.result.id");
     expect(newDag.__self_healing).toMatchObject({
       step_id: SEED_STEP_ID,
       changed_paths: ["data_selector"],

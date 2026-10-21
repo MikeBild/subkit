@@ -240,7 +240,7 @@ describe("approvePatchCandidate", () => {
     )[0];
     if (!newVersion) throw new Error("new workflow version missing");
     const steps = (newVersion.dag as { steps: Record<string, unknown>[] }).steps;
-    expect(steps.find((s) => s.id === SEED_STEP_ID)?.data_selector).toBe("data.result.id");
+    expect(steps.find((s) => s.id === SEED_STEP_ID)?.data_selector).toBe("$.data.result.id");
 
     const wf = (await db.select().from(workflows).where(eq(workflows.id, ctx.workflow_id)))[0];
     expect(wf?.current_version_id).toBe(newVersionId!);

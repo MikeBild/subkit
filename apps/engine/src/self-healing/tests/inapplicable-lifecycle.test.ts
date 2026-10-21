@@ -48,7 +48,7 @@ async function healStepInPlace(): Promise<void> {
       dag: {
         ...dag,
         steps: dag.steps.map((s) =>
-          s.id === SEED_STEP_ID ? { ...s, data_selector: "data.result.id" } : s,
+          s.id === SEED_STEP_ID ? { ...s, data_selector: "$.data.result.id" } : s,
         ),
       },
     })
@@ -198,7 +198,7 @@ describe("inapplicable lifecycle", () => {
               method: "GET",
               connector_id: ctx.connector_id,
               path: "/users/1",
-              data_selector: "data.id",
+              data_selector: "$.data.id",
             },
           ],
         },

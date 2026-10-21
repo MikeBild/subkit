@@ -7,7 +7,7 @@ const input = {
   status: "proposed",
   version_id: "version-a",
   step_key: "read",
-  dag: { steps: [{ id: "read", kind: "request", data_selector: "data.id" }] },
+  dag: { steps: [{ id: "read", kind: "request", data_selector: "$.data.id" }] },
   proposal: {
     kind: "update_field_path",
     classification: "safe",
@@ -46,7 +46,7 @@ test("review binds tenant, candidate, exact base and proposed content", () => {
   expect(
     evaluatePatchReadiness({
       ...input,
-      dag: { steps: [{ data_selector: "data.id", kind: "request", id: "read" }] },
+      dag: { steps: [{ data_selector: "$.data.id", kind: "request", id: "read" }] },
     }).review_digest,
   ).toBe(digest);
 });

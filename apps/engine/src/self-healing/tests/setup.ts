@@ -27,7 +27,7 @@ export interface SelfHealingTestCtx {
 
 export const SEED_STEP_ID = "req-1";
 
-export const SEED_DATA_SELECTOR = "data.id";
+export const SEED_DATA_SELECTOR = "$.data.id";
 
 function buildSeedDag(label: string, connector_id: string) {
   return {

@@ -90,7 +90,7 @@ async function statusOf(id: string) {
 }
 
 test("readiness is read under the workflow lock, against the version current when it is taken", async () => {
-  await saveVersion(ctx.testDb.db, 2, "data.result.id");
+  await saveVersion(ctx.testDb.db, 2, "$.data.result.id");
   const candidateId = await proposeMove();
 
   let release!: () => void;
@@ -105,7 +105,7 @@ test("readiness is read under the workflow lock, against the version current whe
     await lockWorkflowForVersionWrite(tx, ctx.tenant_id, ctx.workflow_id);
     held();
     await gate;
-    await saveVersion(tx as unknown as typeof ctx.testDb.db, 3, "data.id");
+    await saveVersion(tx as unknown as typeof ctx.testDb.db, 3, "$.data.id");
   });
   await lockHeld;
 
@@ -131,7 +131,7 @@ test("readiness is read under the workflow lock, against the version current whe
 });
 
 test("a row whose close fails is skipped, the rest close, and the drift scan still succeeds", async () => {
-  await saveVersion(ctx.testDb.db, 4, "data.result.id");
+  await saveVersion(ctx.testDb.db, 4, "$.data.result.id");
   const bad = await proposeMove();
   const good = await proposeMove();
   await ctx.testDb.db.execute(

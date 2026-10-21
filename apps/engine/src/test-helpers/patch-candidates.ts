@@ -4,7 +4,7 @@ import { workflows, workflowVersions } from "../db/schema/index.ts";
 
 export const PATCHABLE_STEP_ID = "read";
 
-export function patchableDag(dataSelector = "data.id") {
+export function patchableDag(dataSelector = "$.data.id") {
   return { steps: [{ id: PATCHABLE_STEP_ID, kind: "request", data_selector: dataSelector }] };
 }
 
@@ -28,7 +28,7 @@ export async function addWorkflowVersion(
   tenant_id: string,
   workflow_id: string,
   version: number,
-  dataSelector = "data.id",
+  dataSelector = "$.data.id",
 ): Promise<string> {
   const [ver] = await db
     .insert(workflowVersions)

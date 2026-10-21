@@ -94,7 +94,7 @@ async function fixture(baseUrl = "https://example.test/api", repairable = false)
         steps: [
           {
             id: "send",
-            ...(repairable ? { data_selector: "data.id" } : {}),
+            ...(repairable ? { data_selector: "$.data.id" } : {}),
             kind: "request",
             connector_id: connector.id,
             method: "POST",

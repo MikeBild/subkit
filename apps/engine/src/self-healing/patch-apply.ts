@@ -1,3 +1,4 @@
+import { compileSelector } from "../execution/selectors.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { applyGateFixOps, GateFixPatchSchema, replanGateFix } from "../workflows/gate-fix.ts";
@@ -48,6 +49,16 @@ export function applyRewriteToSlots<T extends ProjectionSlots>(
     next.expression = next.expression.split(rewrite.from).join(rewrite.to);
   }
   return next;
+}
+
+function compilesAsSelector(selector: unknown): boolean {
+  if (typeof selector !== "string") return false;
+  try {
+    compileSelector(selector);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function diffStepPaths(
@@ -127,6 +138,8 @@ export function applyPatchToWorkflowDag(
   >;
   const changed_paths = diffStepPaths(before, after);
   if (changed_paths.length === 0) return { ok: false, reason: "no_change" };
+  if (changed_paths.includes("data_selector") && !compilesAsSelector(after.data_selector))
+    return { ok: false, reason: "patch_not_applicable" };
 
   const nextSteps = [...steps];
   nextSteps[index] = after;

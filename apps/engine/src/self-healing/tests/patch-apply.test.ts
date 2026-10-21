@@ -71,45 +71,45 @@ describe("applyRewriteToSlots", () => {
 
 describe("applyPatchToWorkflowDag", () => {
   test("rewrites the addressed step and reports the changed path", () => {
-    const before = dag({ data_selector: "data.id" });
+    const before = dag({ data_selector: "$.data.id" });
     const out = applyPatchToWorkflowDag(before, "req-1", proposal());
     expect(out.ok).toBe(true);
     if (!out.ok) return;
-    expect((out.dag.steps as Record<string, unknown>[])[0]?.data_selector).toBe("data.result.id");
+    expect((out.dag.steps as Record<string, unknown>[])[0]?.data_selector).toBe("$.data.result.id");
     expect(out.changed_paths).toEqual(["data_selector"]);
-    expect((before.steps[0] as Record<string, unknown>).data_selector).toBe("data.id");
+    expect((before.steps[0] as Record<string, unknown>).data_selector).toBe("$.data.id");
   });
 
   test("keeps every other step and every other field", () => {
     const before = {
       name: "wf",
       steps: [
-        { kind: "request", id: "req-0", data_selector: "data.id", method: "GET" },
-        { kind: "request", id: "req-1", data_selector: "data.id", method: "POST" },
+        { kind: "request", id: "req-0", data_selector: "$.data.id", method: "GET" },
+        { kind: "request", id: "req-1", data_selector: "$.data.id", method: "POST" },
       ],
     };
     const out = applyPatchToWorkflowDag(before, "req-1", proposal());
     expect(out.ok).toBe(true);
     if (!out.ok) return;
     const steps = out.dag.steps as Record<string, unknown>[];
-    expect(steps[0]?.data_selector).toBe("data.id");
+    expect(steps[0]?.data_selector).toBe("$.data.id");
     expect(steps[1]?.method).toBe("POST");
     expect(out.dag.name).toBe("wf");
   });
 
   test("no step anchor — refused", () => {
-    const out = applyPatchToWorkflowDag(dag({ data_selector: "data.id" }), null, proposal());
+    const out = applyPatchToWorkflowDag(dag({ data_selector: "$.data.id" }), null, proposal());
     expect(out).toEqual({ ok: false, reason: "no_step_anchor" });
   });
 
   test("anchor no longer in the definition — refused", () => {
-    const out = applyPatchToWorkflowDag(dag({ data_selector: "data.id" }), "gone", proposal());
+    const out = applyPatchToWorkflowDag(dag({ data_selector: "$.data.id" }), "gone", proposal());
     expect(out).toEqual({ ok: false, reason: "step_not_found" });
   });
 
   test("a kind the engine cannot perform — refused, not applied", () => {
     const out = applyPatchToWorkflowDag(
-      dag({ data_selector: "data.id" }),
+      dag({ data_selector: "$.data.id" }),
       "req-1",
       proposal({ kind: "add_header" }),
     );
@@ -127,11 +127,48 @@ describe("applyPatchToWorkflowDag", () => {
 
   test("a rewrite that changes nothing — refused", () => {
     const out = applyPatchToWorkflowDag(
-      dag({ data_selector: "data.result.id" }),
+      dag({ data_selector: "$.data.result.id" }),
       "req-1",
       proposal({ patch: { op: "replace", path: "/nowhere", value: "data/result/id" } }),
     );
     expect(out).toEqual({ ok: false, reason: "no_change" });
+  });
+
+  test("a schema-type value never becomes a request data selector", () => {
+    const out = applyPatchToWorkflowDag(
+      dag({ method: "GET", path: "/repos/o/r/issues" }),
+      "req-1",
+      proposal({
+        patch: {
+          path: "response_schema.items.properties.pull_request.properties.merged_at.type",
+          value: "unknown",
+          operation: "update_field_path",
+        },
+      }),
+    );
+    expect(out).toEqual({ ok: false, reason: "patch_not_applicable" });
+  });
+
+  test("a rewrite that leaves an uncompilable data selector — refused", () => {
+    const out = applyPatchToWorkflowDag(
+      dag({ data_selector: "$.data.id" }),
+      "req-1",
+      proposal({
+        patch: { path: "$.data.id", value: "data id" },
+      }),
+    );
+    expect(out).toEqual({ ok: false, reason: "patch_not_applicable" });
+  });
+
+  test("a compilable selector is introduced on a step that had none", () => {
+    const out = applyPatchToWorkflowDag(
+      dag({ method: "GET" }),
+      "req-1",
+      proposal({ patch: { path: "/data/id", value: "$.data.result.id" } }),
+    );
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect((out.dag.steps as Record<string, unknown>[])[0]?.data_selector).toBe("$.data.result.id");
   });
 
   test("a DAG with no steps array — refused", () => {
