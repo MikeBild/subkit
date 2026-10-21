@@ -12,6 +12,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "no API key was issued because this conversation has no authenticated issuer. Continue from Cockpit's API access page with the person's signed-in session. Do not retry in this conversation, fabricate an issuer, or use owner_id as a substitute for the issuer.",
   caller_saved_workflow_required:
     "this product identity may run only a saved workflow matching its product. Select an authorized saved workflow; do not submit a draft or standalone step, self-declare a product, or switch tools to bypass the restriction.",
+  explicit_no_run:
+    "the user explicitly asked not to run, execute, test-run or start a workflow, so execution tools are hidden and attempts are refused. Respect that instruction and use only read-only inspection or authoring tools until the user asks to run.",
   draft_write_held:
     "the draft probe held an external write before credential lookup or dispatch. Validate the draft with a read-only probe, save the connector, then use call_connector for the exact write with human approval. Do not retry the write through a draft probe or bypass the approval gate.",
   workflow_activation_required:
@@ -126,6 +128,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the draft shows ***redacted*** where the saved connector keeps a secret, and that mask stands for the stored secret only while the draft points where the saved connector does. The host, endpoint or connection string was changed (or the saved connector is gone), so nothing was sent. Either restore the saved destination with update_connector_draft, or collect the real value for the new destination with ask_user_form(sensitive:true). Never type the mask as a value.",
   connector_disabled:
     "the connector is switched off by an operator, so nothing was sent — the same refusal a workflow step on it gets. Do not retry, and do not look for another route to the same system. Tell the user which connector and environment is disabled (see `details`) and that it has to be enabled before it can be called; enabling it is their decision.",
+  playbooks_disabled:
+    "this conversation has playbooks turned off, so its plan cannot be updated. Continue with ordinary conversation; do not retry the playbook tool or change the conversation mode without the user's instruction.",
   connector_not_found:
     "the connector id is unknown — call find_connector or list_connectors to discover the correct id",
   connector_has_no_base_url:
