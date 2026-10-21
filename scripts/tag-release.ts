@@ -148,11 +148,11 @@ try {
   process.exit(1);
 }
 
-console.log("release:tag: running the full local gate (bun run verify)\n");
+console.log("release:tag: running the release gate (bun run verify:gate)\n");
 try {
-  execFileSync("bun", ["run", "verify"], { cwd: REPO, stdio: "inherit" });
+  execFileSync("bun", ["run", "verify:gate"], { cwd: REPO, stdio: "inherit" });
 } catch {
-  console.error(`release:tag: refusing to tag ${tag} — bun run verify failed`);
+  console.error(`release:tag: refusing to tag ${tag} — bun run verify:gate failed`);
   process.exit(1);
 }
 

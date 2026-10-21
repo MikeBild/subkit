@@ -70,6 +70,8 @@ jobs:
           context: .
           platforms: linux/amd64
           load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: ENGINE_VERSION=${{ env.VERSION }}
           tags: subkit:release
           labels: |

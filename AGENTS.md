@@ -44,7 +44,7 @@
 
 - Choose checks by changed behavior and risk, not by line count. Run the smallest meaningful focused test plus relevant type, lint, drift or build checks; even a tiny semantic change needs a focused regression check. Documentation-only and similarly low-impact changes do not need a full test suite.
 - Reuse a successful verification result when it covers the exact current code, dependencies, configuration and relevant runtime. Do not rerun checks just because of a status request or an unrelated small change.
-- Run the full `bun run verify` once for a release candidate or when the changed behavior warrants the full gate. If `bun run release:tag` is running, do not start a second `bun run verify`; the release command runs it itself. Never run duplicate full verifications concurrently.
+- `bun run release:tag` runs the essential release gate `bun run verify:gate` (static checks, drift checks, contract and determinism tests) plus the live LLM gate. Run the full `bun run verify` manually when the changed behavior warrants it. If `bun run release:tag` is running, do not start a second gate. Never run duplicate full verifications concurrently.
 - Capture full-gate output to a readable log. When a gate fails, identify and fix the specific failure, then rerun the failed check; rerun the full gate only if code or relevant environment changed, or the previous run did not complete reliably.
 - No Playwright suites, screenshot tests or visual matrices. Browser acceptance uses browser-use with Codex or Claude Code.
 - Required pre-push checks and release gates remain mandatory; CI is not a replacement. Run each gate at the point it is required, not for every small edit.
