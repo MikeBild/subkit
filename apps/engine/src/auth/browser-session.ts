@@ -19,6 +19,7 @@ export interface BrowserSessionPayload {
   user_id: string;
   tenant_id: string;
   installation_id?: string;
+  login_provider?: string;
 }
 
 const INSTALLATION_PATH = /^\/cockpit\/i\/([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})(?:\/|$)/i;
@@ -87,6 +88,9 @@ export async function verifyBrowserSession(jwt: string): Promise<BrowserSessionP
       tenant_id: payload.tenant_id,
       ...(typeof payload.installation_id === "string"
         ? { installation_id: payload.installation_id }
+        : {}),
+      ...(typeof payload.login_provider === "string"
+        ? { login_provider: payload.login_provider }
         : {}),
     };
   } catch {

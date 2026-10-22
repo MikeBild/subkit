@@ -109,6 +109,10 @@ describe("oidc provider — real flow", () => {
 
     const cookie = parseSetCookie(finishRes.headers.get("set-cookie"));
     expect(cookie).not.toBeNull();
+    const claims = JSON.parse(
+      Buffer.from(decodeURIComponent(cookie ?? "").split(".")[1] ?? "", "base64url").toString(),
+    );
+    expect(typeof claims.login_provider).toBe("string");
 
     const sessionRows = await testDb.db
       .select()

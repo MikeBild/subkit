@@ -6,6 +6,7 @@ import {
   respondToChatForm,
   sendConversationTurn,
 } from "./client";
+import { tenantContextHeaders } from "./tenant-context";
 
 const originalFetch = globalThis.fetch;
 
@@ -305,7 +306,8 @@ describe("logout", () => {
       const path = String(input);
       calls.push({ path, csrf: new Headers(init?.headers).get("x-subkit-csrf") });
       if (path.endsWith("/v1/cockpit/bootstrap")) {
-        return Response.json({ tenant: { id: "tenant-1" }, csrf_token: "fresh-token" });
+        const tenant = tenantContextHeaders()["x-subkit-tenant"] ?? "tenant-1";
+        return Response.json({ tenant: { id: tenant }, csrf_token: "fresh-token" });
       }
       logoutAttempts += 1;
       if (logoutAttempts === 1) {
@@ -318,6 +320,22 @@ describe("logout", () => {
 
     expect(logoutAttempts).toBe(2);
     expect(calls.at(-1)?.csrf).toBe("fresh-token");
+  });
+
+  test("returns the identity provider's logout URL when the engine names one", async () => {
+    globalThis.fetch = mock(async () =>
+      Response.json({ end_session_url: "https://idp.example/oauth/logout?client_id=c" }),
+    ) as unknown as typeof fetch;
+    expect(await logout()).toEqual({
+      endSessionUrl: "https://idp.example/oauth/logout?client_id=c",
+    });
+  });
+
+  test("ignores a logout URL that is not https", async () => {
+    globalThis.fetch = mock(async () =>
+      Response.json({ end_session_url: "javascript:alert(1)" }),
+    ) as unknown as typeof fetch;
+    expect(await logout()).toEqual({ endSessionUrl: null });
   });
 
   test("does not retry a write rejected for another reason", async () => {

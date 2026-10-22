@@ -45,6 +45,7 @@ export async function startMockOidc(): Promise<MockOidcHandle> {
           token_endpoint: `${issuer}/token`,
           userinfo_endpoint: `${issuer}/userinfo`,
           jwks_uri: `${issuer}/jwks`,
+          end_session_endpoint: `${issuer}/logout`,
           response_types_supported: ["code"],
           subject_types_supported: ["public"],
           id_token_signing_alg_values_supported: ["RS256"],

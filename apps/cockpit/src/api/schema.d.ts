@@ -29083,14 +29083,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Logged out */
+            /** @description Logged out; end_session_url signs the browser out at the identity provider that issued the session */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Completed */
+            /** @description Logged out; the session came from no identity provider with a logout endpoint */
             204: {
                 headers: {
                     [name: string]: unknown;

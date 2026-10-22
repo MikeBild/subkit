@@ -35,6 +35,7 @@ import {
 } from "../identity-link.ts";
 import { createMcpOAuthProvider } from "../oauth/server-provider.ts";
 import type { AuthProvider } from "../types.ts";
+import { loadOidcConfiguration } from "./oidc-discovery.ts";
 import {
   findActiveCockpitInstallation,
   findActiveCockpitInstallationForTenant,
@@ -74,35 +75,6 @@ export interface OidcProviderOptions {
   signupPolicy?: "existing_tenant" | "invite_only" | "self_service";
   membershipInviteId?: string;
   installationId?: string;
-}
-
-async function loadConfig(
-  issuerUrl: string,
-  clientId: string,
-  clientSecret: string | undefined,
-): Promise<oauth.Configuration> {
-  const url = new URL(issuerUrl);
-  if (url.protocol === "http:") {
-    if (process.env.NODE_ENV === "production") {
-      logger.warn({
-        msg: "OIDC issuer uses insecure HTTP — authorization codes may be intercepted",
-        issuer: issuerUrl,
-      });
-    }
-  }
-  const discoveryOptions: oauth.DiscoveryRequestOptions =
-    url.protocol === "http:" ? { execute: [oauth.allowInsecureRequests] } : {};
-  const configuration = await oauth.discovery(
-    url,
-    clientId,
-    clientSecret,
-    undefined,
-    discoveryOptions,
-  );
-  if (url.protocol === "http:") {
-    oauth.allowInsecureRequests(configuration);
-  }
-  return configuration;
 }
 
 function httpError(status: number, code: string, message: string): Response {
@@ -294,7 +266,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
       let configuration: oauth.Configuration;
       try {
-        configuration = await loadConfig(issuerUrl, clientId, clientSecretInput);
+        configuration = await loadOidcConfiguration(issuerUrl, clientId, clientSecretInput);
       } catch (err) {
         logger.error({
           module: "auth",
@@ -478,7 +450,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
       let configuration: oauth.Configuration;
       try {
-        configuration = await loadConfig(issuerUrl, clientId, clientSecretInput);
+        configuration = await loadOidcConfiguration(issuerUrl, clientId, clientSecretInput);
       } catch (err) {
         logger.error({
           module: "auth",
@@ -863,6 +835,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         session_id: sessionRow.id,
         user_id: userRow.id,
         tenant_id: tenantId,
+        login_provider: adapterId,
       });
 
       if (createdUser) {

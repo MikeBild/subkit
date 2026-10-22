@@ -370,8 +370,8 @@ function AccountMenu() {
   async function signOut(): Promise<void> {
     setSigningOut(true);
     try {
-      await logout();
-      window.location.assign(cockpitBasePath());
+      const { endSessionUrl } = await logout();
+      window.location.assign(endSessionUrl ?? cockpitBasePath());
     } catch {
       toast.error(t("account.signOutFailed"), {
         description: t("account.signOutFailedDescription"),

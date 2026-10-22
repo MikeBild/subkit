@@ -55,7 +55,7 @@ export function parseCookies(header: string | null): Record<string, string> {
 
 export async function signSessionCookie(
   secret: Uint8Array,
-  payload: { session_id: string; user_id: string; tenant_id: string },
+  payload: { session_id: string; user_id: string; tenant_id: string; login_provider?: string },
 ): Promise<string> {
   return await new jose.SignJWT(payload)
     .setProtectedHeader({ alg: JWS_ALG })

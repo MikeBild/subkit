@@ -8,6 +8,7 @@ import {
   createOidcProvider,
   isSafeBrowserRedirect,
   issueBrowserSession,
+  oidcEndSessionUrl,
   revokeBrowserSession,
   signLoginState,
   verifyLoginState,
@@ -221,13 +222,25 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
   app.post("/v1/identity/logout", async (c) => {
     const payload = await browserSessionFromRequest(c.req.raw);
     await revokeBrowserSession(c.get("db"), payload, "user_logout");
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "set-cookie": clearBrowserSessionCookieForRequest(c.req.raw),
-        "cache-control": "no-store",
-      },
-    });
+    const headers = {
+      "set-cookie": clearBrowserSessionCookieForRequest(c.req.raw),
+      "cache-control": "no-store",
+    };
+    const loginProvider = payload?.installation_id
+      ? undefined
+      : oidcProviders().find((provider) => provider.id === payload?.login_provider);
+    const endSessionUrl = loginProvider
+      ? await oidcEndSessionUrl({
+          issuerUrl: loginProvider.issuer_url,
+          clientId: loginProvider.client_id,
+          postLogoutRedirectUri: `${getConfig().server.public_base_url}${DEFAULT_LOGIN_REDIRECT}`,
+        })
+      : null;
+    if (!endSessionUrl) return new Response(null, { status: 204, headers });
+    return Response.json(
+      { end_session_url: endSessionUrl },
+      { status: 200, headers: { ...headers, "content-type": "application/json" } },
+    );
   });
 }
 

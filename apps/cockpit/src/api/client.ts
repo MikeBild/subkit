@@ -457,8 +457,12 @@ export function respondToToolCall(
   );
 }
 
-export function logout(): Promise<void> {
-  return apiRequest("/v1/identity/logout", { method: "POST" });
+export async function logout(): Promise<{ endSessionUrl: string | null }> {
+  const result = await apiRequest<{ end_session_url?: unknown } | null>("/v1/identity/logout", {
+    method: "POST",
+  });
+  const url = result?.end_session_url;
+  return { endSessionUrl: typeof url === "string" && /^https:\/\//.test(url) ? url : null };
 }
 
 export function respondToChatForm(

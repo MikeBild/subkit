@@ -11,6 +11,7 @@ export * from "./policy.ts";
 export * from "./providers/api-key.ts";
 export * from "./providers/mcp-oauth.ts";
 export * from "./providers/oidc.ts";
+export { oidcEndSessionUrl } from "./providers/oidc-discovery.ts";
 export * from "./providers/portal-token.ts";
 export * from "./scopes.ts";
 export * from "./types.ts";

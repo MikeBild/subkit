@@ -216,6 +216,15 @@ export function registerRawMcpAuthOpenApi(app: OpenAPIHono<AppEnv>): void {
     "/v1/identity/logout",
     "logoutIdentitySession",
     "Revoke the browser operator session",
-    { 200: { description: "Logged out" }, 204: { description: "Completed" } },
+    {
+      200: {
+        description:
+          "Logged out; end_session_url signs the browser out at the identity provider that issued the session",
+      },
+      204: {
+        description:
+          "Logged out; the session came from no identity provider with a logout endpoint",
+      },
+    },
   );
 }
