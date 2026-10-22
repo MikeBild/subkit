@@ -464,3 +464,91 @@ describe("listWorkflowToolsForTenant — outputSchema", () => {
     expect(item?.outputSchema).toBeUndefined();
   });
 });
+
+describe("listWorkflowToolsForTenant — dispatchable aliases only", () => {
+  const productBoundDag = {
+    name: "Product round",
+    slug: "product-round",
+    product_id: "tekit",
+    required_caller_kind: "user",
+    execution_privacy: "sensitive",
+    input_schema: {
+      type: "object",
+      properties: { purpose: { type: "string" } },
+      required: ["purpose"],
+      additionalProperties: false,
+      oneOf: [
+        { properties: { purpose: { const: "round" } } },
+        { properties: { purpose: { const: "classify" } } },
+      ],
+    },
+    steps: [{ id: "s1", kind: "request", url: "https://example.test/round" }],
+  };
+
+  test("a cockpit user on chat sees only workflows that chat can run", async () => {
+    await seedWorkflow({ slug: "product-round", dag: productBoundDag });
+    await seedWorkflow({ slug: "plain-tool" });
+    const principal = makePrincipal();
+    const palette = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal,
+      request_source: "chat",
+    });
+    const slugs = await listWorkflowToolSlugs({ db: tdb.db, principal, request_source: "chat" });
+    expect(palette.map((entry) => entry.slug)).toEqual(["plain-tool"]);
+    expect([...slugs]).toEqual(["plain-tool"]);
+  });
+
+  test("a sensitive workflow keeps its alias on mcp and loses it on chat", async () => {
+    await seedWorkflow({
+      slug: "sensitive-tool",
+      dag: {
+        name: "Sensitive tool",
+        slug: "sensitive-tool",
+        execution_privacy: "sensitive",
+        steps: [{ id: "s1", kind: "request", url: "https://example.test/sensitive" }],
+      },
+    });
+    await seedWorkflow({ slug: "plain-tool" });
+    const principal = makePrincipal();
+    const onMcp = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal,
+      request_source: "mcp",
+    });
+    const onChat = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal,
+      request_source: "chat",
+    });
+    expect(onMcp.map((entry) => entry.slug)).toEqual(["plain-tool", "sensitive-tool"]);
+    expect(onChat.map((entry) => entry.slug)).toEqual(["plain-tool"]);
+  });
+
+  test("a product-bound workflow stays out of mcp for a caller without that product", async () => {
+    await seedWorkflow({ slug: "product-round", dag: productBoundDag });
+    await seedWorkflow({ slug: "plain-tool" });
+    const onMcp = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal: makePrincipal(),
+      request_source: "mcp",
+    });
+    expect(onMcp.map((entry) => entry.slug)).toEqual(["plain-tool"]);
+  });
+
+  test("non-dispatchable aliases do not consume palette slots", async () => {
+    await seedWorkflow({
+      slug: "product-round",
+      dag: productBoundDag,
+      last_executed_at: new Date("2026-03-01T00:00:00Z"),
+    });
+    await seedWorkflow({ slug: "plain-tool", last_executed_at: new Date("2026-01-01T00:00:00Z") });
+    const palette = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal: makePrincipal(),
+      request_source: "chat",
+      limit: 1,
+    });
+    expect(palette.map((entry) => entry.slug)).toEqual(["plain-tool"]);
+  });
+});

@@ -10,7 +10,7 @@ import { JsonValueSchema } from "../workflows/types.ts";
 import { admitAuthorizedWorkflowExecution } from "./authority-admission.ts";
 import { authorizationContextFromPrincipal } from "./authorization-context.ts";
 import { bindCallerBudget, reserveCallerBudget } from "./caller-budget.ts";
-import { callerFromPrincipal } from "./caller-context.ts";
+import { assertExecutionPrivacySupported, callerFromPrincipal } from "./caller-context.ts";
 import { validateAgainstJsonSchema } from "./engine/envelope.ts";
 import { resolveDefinition } from "./resolve-definition.ts";
 import { recoverExecutionPayload } from "./sensitive-payload.ts";
@@ -67,11 +67,7 @@ export async function admitWorkflowRun(
     resolved.def.product_id,
     resolved.def.required_caller_kind,
   );
-  if (input.request_source === "chat" && resolved.def.execution_privacy === "sensitive")
-    fail(
-      "sensitive_execution_unsupported",
-      "Sensitive execution is unavailable on conversation surfaces.",
-    );
+  assertExecutionPrivacySupported(input.request_source, resolved.def.execution_privacy);
   if (input.hold_writes === true && input.execution_authority_id) {
     fail(
       "execution_boundary_mismatch",

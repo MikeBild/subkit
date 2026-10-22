@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import type { ResolvedPrincipal } from "../auth/types.ts";
+import type { RequestSource } from "../observability/service-metadata.ts";
 
 export const CallerContextSchema = z
   .object({
@@ -60,6 +61,42 @@ export function callerFromPrincipal(
     productId: principal.product_id ?? null,
     ...(principal.subject && principal.product_id ? { subject: principal.subject } : {}),
   });
+}
+
+export function assertExecutionPrivacySupported(
+  requestSource: RequestSource,
+  executionPrivacy: string | null | undefined,
+): void {
+  if (requestSource === "chat" && executionPrivacy === "sensitive")
+    throw Object.assign(new Error("Sensitive execution is unavailable on conversation surfaces."), {
+      code: "sensitive_execution_unsupported",
+    });
+}
+
+export type WorkflowDispatchRefusal =
+  | "caller_kind_mismatch"
+  | "caller_product_mismatch"
+  | "sensitive_execution_unsupported";
+
+export interface WorkflowDispatchBoundary {
+  product_id?: string | null;
+  required_caller_kind?: string | null;
+  execution_privacy?: string | null;
+}
+
+export function workflowDispatchRefusal(
+  boundary: WorkflowDispatchBoundary,
+  principal: Pick<ResolvedPrincipal, "kind" | "product_id">,
+  requestSource?: RequestSource,
+): WorkflowDispatchRefusal | null {
+  const productId = boundary.product_id ?? undefined;
+  if (boundary.required_caller_kind && principal.kind !== boundary.required_caller_kind)
+    return "caller_kind_mismatch";
+  if (principal.product_id && principal.product_id !== productId) return "caller_product_mismatch";
+  if (productId && principal.product_id !== productId) return "caller_product_mismatch";
+  if (requestSource === "chat" && boundary.execution_privacy === "sensitive")
+    return "sensitive_execution_unsupported";
+  return null;
 }
 
 export function assertCallerMatches(

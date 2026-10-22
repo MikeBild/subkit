@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createServer } from "node:http";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../../audit/types.ts";
@@ -16,11 +16,13 @@ import {
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { resetMockProvider } from "../../../llm/mock-provider.ts";
+import { logger } from "../../../logging/logger.ts";
 import { workflowExecutionEnvironment } from "../../../workflows/execution-environment.ts";
 import { humanChatAnswer } from "../../answer-actor.ts";
 import { maybeAutoPersistFromElicitation } from "../../persistence/auto-persist.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
+import { wrapTools } from "../sdk-wrap.ts";
 import type { TurnSignals } from "./state.ts";
 import { buildSyntheticWorkflowTools } from "./synthetic-workflow-tools.ts";
 
@@ -656,4 +658,76 @@ test("production preparation pauses in chat and human approval dispatches once i
   const repeated = await maybeAutoPersistFromElicitation(answer);
   expect(repeated.synthetic_result?.ok).toBe(false);
   expect(requests).toBe(1);
+});
+
+async function seedProductBoundTool(slug: string): Promise<void> {
+  const [wf] = await tdb.db
+    .insert(workflows)
+    .values({ tenant_id: tenantId, slug, name: slug, lifecycle: "active", is_tool: true })
+    .returning();
+  if (!wf) throw new Error("workflow seed failed");
+  const [v] = await tdb.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: tenantId,
+      workflow_id: wf.id,
+      version: 1,
+      dag: {
+        name: slug,
+        slug,
+        product_id: "tekit",
+        required_caller_kind: "user",
+        execution_privacy: "sensitive",
+        input_schema: {
+          type: "object",
+          properties: { purpose: { type: "string" } },
+          required: ["purpose"],
+          additionalProperties: false,
+          oneOf: [
+            { properties: { purpose: { const: "round" } } },
+            { properties: { purpose: { const: "classify" } } },
+          ],
+        },
+        steps: [{ id: "s1", kind: "request", url: requestUrl }],
+      },
+    })
+    .returning();
+  if (!v) throw new Error("version seed failed");
+  await tdb.db.update(workflows).set({ current_version_id: v.id }).where(eq(workflows.id, wf.id));
+}
+
+test("a product-bound sensitive workflow never reaches the conversation palette", async () => {
+  await seedProductBoundTool("product-round");
+  await seedTool("plain-tool");
+  const principal = makePrincipal();
+  const tools = await buildSyntheticWorkflowTools({
+    db: tdb.db,
+    principal,
+    ctx: makeCtx(),
+    signals: makeTurnSignals(),
+    events: [],
+  });
+  expect(Object.keys(tools).sort()).toEqual(["wf_plain-tool"]);
+
+  const warnSpy = spyOn(logger, "warn");
+  try {
+    const wrapped = await wrapTools(
+      makeCtx(),
+      makeTurnSignals(),
+      [],
+      tdb.db,
+      [],
+      {},
+      null,
+      principal,
+    );
+    expect("wf_product-round" in wrapped).toBe(false);
+    expect("wf_plain-tool" in wrapped).toBe(true);
+    const schemaWarns = warnSpy.mock.calls.filter(
+      ([entry]) => (entry as { action?: string }).action === "tool.schema_incompatible",
+    );
+    expect(schemaWarns).toEqual([]);
+  } finally {
+    warnSpy.mockRestore();
+  }
 });

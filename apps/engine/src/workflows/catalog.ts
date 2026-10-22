@@ -2,7 +2,9 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
+import { workflowDispatchRefusal } from "../execution/caller-context.ts";
 import { logger } from "../logging/logger.ts";
+import type { RequestSource } from "../observability/service-metadata.ts";
 import { catalogVisibility } from "../rbac/evaluator.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
 import { WorkflowDefSchema } from "./types.ts";
@@ -55,6 +57,7 @@ export interface ListWorkflowToolsParams {
   db: Db;
   principal: ResolvedPrincipal;
   limit?: number;
+  request_source?: RequestSource;
 }
 
 interface WorkflowToolRow {
@@ -65,6 +68,9 @@ interface WorkflowToolRow {
   category: string;
   current_version_id: string;
   last_executed_at: Date | null;
+  product_id: string | null;
+  required_caller_kind: string | null;
+  execution_privacy: string | null;
 }
 
 async function selectWorkflowToolRows(p: ListWorkflowToolsParams): Promise<WorkflowToolRow[]> {
@@ -85,8 +91,20 @@ async function selectWorkflowToolRows(p: ListWorkflowToolsParams): Promise<Workf
         category: workflows.category,
         current_version_id: workflows.current_version_id,
         last_executed_at: workflows.last_executed_at,
+        product_id: sql<string | null>`${workflowVersions.dag} ->> 'product_id'`,
+        required_caller_kind: sql<
+          string | null
+        >`${workflowVersions.dag} ->> 'required_caller_kind'`,
+        execution_privacy: sql<string | null>`${workflowVersions.dag} ->> 'execution_privacy'`,
       })
       .from(workflows)
+      .leftJoin(
+        workflowVersions,
+        and(
+          eq(workflowVersions.id, workflows.current_version_id),
+          eq(workflowVersions.tenant_id, workflows.tenant_id),
+        ),
+      )
       .where(
         and(
           eq(workflows.tenant_id, principal.tenant_id),
@@ -107,6 +125,19 @@ async function selectWorkflowToolRows(p: ListWorkflowToolsParams): Promise<Workf
       principal.allowed_workflows !== "all" &&
       !principal.allowed_workflows.includes(row.id)
     ) {
+      return false;
+    }
+    const refusal = workflowDispatchRefusal(row, principal, p.request_source);
+    if (refusal) {
+      logger.debug({
+        module: "workflows",
+        action: "catalog.alias_not_dispatchable",
+        msg: "workflow alias left out of the palette because this caller and surface cannot run it",
+        tenant_id: principal.tenant_id,
+        workflow_id: row.id,
+        reason: refusal,
+        ...(p.request_source ? { request_source: p.request_source } : {}),
+      });
       return false;
     }
     return true;

@@ -317,7 +317,7 @@ export async function assembleEnhancedPrompt(
       ? renderTenantSummaryBlock(
           ...(await Promise.all([
             loadTenantSummary(p.principal, db),
-            listWorkflowToolSlugs({ db, principal: p.principal }),
+            listWorkflowToolSlugs({ db, principal: p.principal, request_source: "chat" }),
           ])),
         )
       : null;

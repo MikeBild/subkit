@@ -1,4 +1,7 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
+import { workflows, workflowVersions } from "../../db/schema/index.ts";
+import { logger } from "../../logging/logger.ts";
 import { assembleCatalog, listWorkflowTools, resolveMcpMode } from "../../mcp/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
@@ -60,6 +63,85 @@ describe("GET /v1/mcp/tools", () => {
       "save_workflow_draft",
     ]) {
       expect(names).not.toContain(retired);
+    }
+  });
+
+  test("a product-bound alias stays out of a non-product listing without a schema warning", async () => {
+    const slug = "mcp-product-round";
+    const [wf] = await ctx.db
+      .insert(workflows)
+      .values({ tenant_id: ctx.tenantId, slug, name: slug, lifecycle: "active", is_tool: true })
+      .returning({ id: workflows.id });
+    if (!wf) throw new Error("workflow seed failed");
+    try {
+      const [version] = await ctx.db
+        .insert(workflowVersions)
+        .values({
+          tenant_id: ctx.tenantId,
+          workflow_id: wf.id,
+          version: 1,
+          dag: {
+            name: slug,
+            slug,
+            product_id: "tekit",
+            required_caller_kind: "user",
+            execution_privacy: "sensitive",
+            input_schema: {
+              type: "object",
+              properties: { purpose: { type: "string" } },
+              required: ["purpose"],
+              additionalProperties: false,
+              oneOf: [
+                { properties: { purpose: { const: "round" } } },
+                { properties: { purpose: { const: "classify" } } },
+              ],
+            },
+            steps: [{ id: "s1", kind: "request", url: "https://example.test/round" }],
+          },
+        })
+        .returning({ id: workflowVersions.id });
+      if (!version) throw new Error("version seed failed");
+      await ctx.db
+        .update(workflows)
+        .set({ current_version_id: version.id })
+        .where(and(eq(workflows.tenant_id, ctx.tenantId), eq(workflows.id, wf.id)));
+
+      const principal = {
+        provider: "test",
+        id: ctx.userId,
+        tenant_id: ctx.tenantId,
+        kind: "user" as const,
+        roles: ["admin"],
+      };
+      const warnSpy = spyOn(logger, "warn");
+      try {
+        const listed = await listWorkflowTools({ db: ctx.db, principal });
+        expect(listed.map((entry) => entry.name)).not.toContain(`wf_${slug}`);
+        const schemaWarns = warnSpy.mock.calls.filter(
+          ([entry]) => (entry as { action?: string }).action === "tool.schema_incompatible",
+        );
+        expect(schemaWarns).toEqual([]);
+      } finally {
+        warnSpy.mockRestore();
+      }
+      const { names } = await fetchRouteNames();
+      expect(names).not.toContain(`wf_${slug}`);
+    } finally {
+      await ctx.db
+        .update(workflows)
+        .set({ current_version_id: null })
+        .where(and(eq(workflows.tenant_id, ctx.tenantId), eq(workflows.id, wf.id)));
+      await ctx.db
+        .delete(workflowVersions)
+        .where(
+          and(
+            eq(workflowVersions.tenant_id, ctx.tenantId),
+            eq(workflowVersions.workflow_id, wf.id),
+          ),
+        );
+      await ctx.db
+        .delete(workflows)
+        .where(and(eq(workflows.tenant_id, ctx.tenantId), eq(workflows.id, wf.id)));
     }
   });
 

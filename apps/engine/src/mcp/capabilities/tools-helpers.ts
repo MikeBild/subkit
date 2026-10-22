@@ -35,6 +35,7 @@ export async function listWorkflowTools({
   const catalog = await listWorkflowToolsForTenant({
     db,
     principal,
+    request_source: "mcp",
     ...(limit !== undefined ? { limit } : {}),
   });
   return catalog

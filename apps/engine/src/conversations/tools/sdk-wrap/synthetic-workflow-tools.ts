@@ -47,7 +47,11 @@ export interface BuildSyntheticWorkflowToolsParams {
 export async function buildSyntheticWorkflowTools(
   p: BuildSyntheticWorkflowToolsParams,
 ): Promise<Record<string, Tool<Record<string, unknown>, WrappedToolOutput>>> {
-  const catalog = await listWorkflowToolsForTenant({ db: p.db, principal: p.principal });
+  const catalog = await listWorkflowToolsForTenant({
+    db: p.db,
+    principal: p.principal,
+    request_source: "chat",
+  });
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
   for (const entry of catalog) {
     const name = `${TOOL_PREFIX}${entry.slug}`;
