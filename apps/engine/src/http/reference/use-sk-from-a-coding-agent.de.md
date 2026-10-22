@@ -135,6 +135,6 @@ Ein Briefing enthält:
 | `knowledge_sources` oder `skills_full` sind leer | Das Briefing funktioniert, aber nichts ist der Domäne zugeordnet. Lege Wissen und Skills in der Kategorie der Domäne ab oder nutze das Tag `domain:<slug>`. |
 | Der Client zeigt eine Warnung zum Briefing | Die Engine ist nicht erreichbar. Die Sitzung läuft weiter. Prüfe mit `sk status` Anmeldung und Verbindung. |
 | Keine Briefings in Claude Code oder Codex | Öffne `/hooks`, prüfe, ob die SubKit-Hooks aktiv sind, und vertraue neuen oder geänderten Hooks. |
-| `/hooks` in Codex zeigt die SubKit-Hooks als deaktiviert | Folge dem [Codex-Hook-Leitfaden](https://learn.chatgpt.com/docs/hooks). |
+| `/hooks` in Codex zeigt die SubKit-Hooks als deaktiviert | Codex-Hooks sind standardmäßig aktiv, eine Änderung an `config.toml` ist normalerweise nicht nötig. Prüfe zuerst die wirksame Feature-Einstellung und die Administratorrichtlinie, dann folge dem [Codex-Hook-Leitfaden](https://learn.chatgpt.com/docs/hooks). |
 | Der Hinweis auf gesammelte Einträge fehlt | Dir fehlt die Berechtigung `intake:read`. Bitte eine Administratorin oder einen Administrator darum. |
 | Ein Vorschlag lässt sich nicht bestätigen | Bestätigen kann nur eine angemeldete Person mit `intake:confirm` und `knowledge:write`, nicht ein API-Schlüssel. Öffne den Cockpit-Link. |
