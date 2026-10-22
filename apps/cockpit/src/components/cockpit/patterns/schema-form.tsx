@@ -1,5 +1,6 @@
 import { Plus, X } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
+import { IconButton } from "@/components/cockpit/icon-button";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -134,16 +135,14 @@ function SchemaField({
                 }
                 data-testid={`${id}-item-${index}`}
               />
-              <Button
+              <IconButton
                 type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("schemaForm.removeItem")}
+                label={t("schemaForm.removeItem")}
                 onClick={() => onChange(items.filter((_, at) => at !== index))}
                 data-testid={`${id}-remove-${index}`}
               >
                 <X />
-              </Button>
+              </IconButton>
             </div>
           ))}
           <Button
@@ -217,6 +216,7 @@ function SchemaField({
           value={text}
           aria-invalid={invalid}
           onChange={(event) => onChange(event.target.value)}
+          data-testid={`${id}-input`}
         />
       ) : (
         <Input
@@ -227,6 +227,7 @@ function SchemaField({
           value={text}
           aria-invalid={invalid}
           onChange={(event) => onChange(event.target.value)}
+          data-testid={`${id}-input`}
         />
       )}
       {description}

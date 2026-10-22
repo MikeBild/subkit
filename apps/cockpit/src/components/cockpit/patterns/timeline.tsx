@@ -80,6 +80,7 @@ function Entry({ item }: { item: TimelineItem }) {
           type="button"
           onClick={item.onOpen}
           aria-label={item.label}
+          data-testid={item.testId ? `${item.testId}-open` : undefined}
           className="group flex w-full items-center gap-3 rounded-lg text-left focus-visible:outline-none"
         >
           {body}

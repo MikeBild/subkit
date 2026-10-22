@@ -393,6 +393,7 @@ export function ConnectorAccounts({
             size="sm"
             className="h-auto p-0"
             onClick={() => void query.refetch()}
+            data-testid="connector-accounts-retry"
           >
             {t("session.retry")}
           </Button>
