@@ -86,6 +86,7 @@ export function useGrantContext(workflowId: string, open: boolean) {
       workflow.data?.webhooks_active,
     ),
     activeVersion: workflow.data?.current_version ?? null,
+    webhooksActive: (workflow.data?.webhooks_active ?? 0) > 0,
   };
 }
 

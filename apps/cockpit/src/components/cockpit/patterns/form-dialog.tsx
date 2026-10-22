@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -43,6 +43,8 @@ export function FormDialog({
   cancelTestId,
   cancelLabel,
   size = "default",
+  hint,
+  cancelHint,
   testId,
   children,
 }: {
@@ -56,6 +58,7 @@ export function FormDialog({
     disabled?: boolean;
     destructive?: boolean;
     testId?: string;
+    hint?: string;
   };
   onSubmit?(): void | Promise<void>;
   error?: string | null;
@@ -67,11 +70,20 @@ export function FormDialog({
   cancelTestId?: string;
   cancelLabel?: string;
   size?: DialogSize;
+  hint?: string;
+  cancelHint?: string;
   testId: string;
   children: ReactNode;
 }) {
   const { t } = useI18n();
   const pending = Boolean(submit?.pending);
+  const [shownHint, setShownHint] = useState<string | null>(null);
+  const pointHint = (target: EventTarget) =>
+    setShownHint(
+      target instanceof Element
+        ? (target.closest("[data-hint]")?.getAttribute("data-hint") ?? null)
+        : null,
+    );
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
@@ -134,13 +146,36 @@ export function FormDialog({
               {error}
             </p>
           ) : null}
-          <DialogFooter className={DIALOG_FOOT}>
+          <DialogFooter
+            className={cn(
+              DIALOG_FOOT,
+              hint !== undefined && "max-sm:flex-col-reverse max-sm:items-stretch",
+            )}
+            {...(hint !== undefined
+              ? {
+                  onMouseOver: (event) => pointHint(event.target),
+                  onFocus: (event) => pointHint(event.target),
+                  onMouseLeave: () => setShownHint(null),
+                  onBlur: () => setShownHint(null),
+                }
+              : {})}
+          >
+            {hint !== undefined ? (
+              <p
+                className="mr-auto self-center text-xs text-muted-foreground max-sm:mr-0"
+                aria-live="polite"
+                data-testid={`${testId}-hint`}
+              >
+                {shownHint ?? hint}
+              </p>
+            ) : null}
             <Button
               type="button"
               variant="ghost"
               disabled={pending}
               onClick={() => onOpenChange(false)}
               data-testid={cancelTestId ?? `${testId}-cancel`}
+              {...(cancelHint ? { title: cancelHint, "data-hint": cancelHint } : {})}
             >
               {cancelLabel ?? t("common.cancel")}
             </Button>
@@ -151,6 +186,7 @@ export function FormDialog({
                 disabled={pending || submit.disabled}
                 className={submit.destructive ? FILLED_DESTRUCTIVE : undefined}
                 data-testid={submit.testId ?? `${testId}-submit`}
+                {...(submit.hint ? { title: submit.hint, "data-hint": submit.hint } : {})}
               >
                 {submit.label}
               </Button>

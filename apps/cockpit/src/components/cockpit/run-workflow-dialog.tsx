@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { absolute, runHref } from "@/app/links";
@@ -171,6 +171,7 @@ export function RunWorkflowDialog({
   approvedVersion,
   triggerLabel,
   triggerTestId = "workflow-run-open",
+  openRequest,
 }: {
   quiet?: boolean;
   disabled?: boolean;
@@ -178,6 +179,7 @@ export function RunWorkflowDialog({
   approvedVersion?: number | null;
   triggerLabel?: string;
   triggerTestId?: string;
+  openRequest?: number;
   workflowId: string;
   workflowName: string;
   liveEnvironment: RunEnvironment | null | undefined;
@@ -185,6 +187,12 @@ export function RunWorkflowDialog({
   const { t } = useI18n();
   const sheets = useOpenRunSheet();
   const [open, setOpen] = useState(false);
+  const requested = useRef(openRequest);
+  useEffect(() => {
+    if (openRequest === undefined || openRequest === requested.current) return;
+    requested.current = openRequest;
+    if (!disabled) setOpen(true);
+  }, [openRequest, disabled]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [failure, setFailure] = useState<Failure | null>(null);
 
@@ -284,13 +292,15 @@ export function RunWorkflowDialog({
         if (!next) setFailure(null);
       }}
       trigger={
-        <Button
-          variant={quiet || disabled ? "outline" : "default"}
-          disabled={disabled}
-          data-testid={triggerTestId}
-        >
-          {triggerLabel ?? t("run.action")}
-        </Button>
+        openRequest === undefined ? (
+          <Button
+            variant={quiet || disabled ? "outline" : "default"}
+            disabled={disabled}
+            data-testid={triggerTestId}
+          >
+            {triggerLabel ?? t("run.action")}
+          </Button>
+        ) : undefined
       }
       title={t("run.title", { name: workflowName })}
       description={
