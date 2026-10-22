@@ -6,7 +6,14 @@ section: start
 order: 1
 audience: public
 ---
-# Was ist SubKit?
+## Was ist SubKit?
 
-sk ist eine selbst betreibbare Engine für kontrollierte Workflows: Beschreibe die Arbeit in einfacher Sprache, genehmige, was sie berühren darf, und jeder Lauf wird aufgezeichnet.
+SubKit führt deine Geschäftsaufgaben als kontrollierte Workflows aus.
+Du beschreibst die Arbeit in einfacher Sprache. Du gibst frei, was sie berühren darf. Jeder Lauf wird aufgezeichnet.
 
+Nutze SubKit Cloud oder betreibe deine eigene Engine:
+
+- „SubKit Cloud nutzen“: SubKit läuft für dich, und du meldest dich im Browser an.
+- „Die Engine betreiben“: Du betreibst SubKit auf deinem eigenen Server.
+
+Danach baust du mit „Dein erster Workflow“ deinen ersten Workflow.

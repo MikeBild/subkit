@@ -7,148 +7,146 @@ audience: public
 ---
 ## Use the HTTP API
 
-In this chapter you call SubKit from your own program or script.
-You create an API key, check it, list your workflows, start a run and read its result.
+Start workflows from your own program or script and read their result.
 Every example uses `curl`, so you can try it in a terminal first.
-
 It works the same in SubKit Cloud and on a self-hosted engine.
 
 ### What you need
 
-- The address of your engine.
-  - Cloud: `https://subkit-cloud.mikebild.info`
+- Your engine address.
+  - Cloud: `https://subkit-cloud.mikebild.info` (without `/cockpit`)
   - Self-hosted: `https://<your-engine>`
-- The sk CLI, signed in to that engine. See the chapter **Use the sk CLI on your machine**.
-- A workflow that is active and approved. See the chapter **Your first workflow**.
+- An API key with `workflow:read`, `workflow:run` and `execution:read`. Create it with the sk CLI, as shown in this chapter, or in the Cockpit under **API access**. For the CLI, sign in as described in "Use the sk CLI on your machine".
+- A workflow that is active and approved. See "Your first workflow".
 - `curl` in your terminal.
 
-### How the API is organized
+### Reach the engine
 
-- Every API route starts with `/v1`, for example `/v1/workflows`.
-- You send your API key in the `Authorization` header as a bearer token.
-- Requests and responses use JSON.
-- `/openapi.json` describes every route, field and status code (OpenAPI 3.1).
-- `/docs` shows the same description as a browsable reference.
+`/health` needs no key.
 
-Open `https://<your-engine>/docs` in your browser to look up any route from this chapter.
+1. Set the address as a variable:
 
-### Step 1: Reach the engine
+   ```bash
+   export SK_URL=https://<your-engine>
+   ```
 
-`/health` needs no key. Use it to check the address.
+2. Call `/health`:
 
-```bash
-export SK_URL=https://<your-engine>
-curl -s "$SK_URL/health"
-```
+   ```bash
+   curl -s "$SK_URL/health"
+   ```
 
-```json
-{ "status": "ok", "service": "subkit", "version": "<version>" }
-```
+   ```json
+   { "status": "ok", "service": "subkit", "version": "<version>" }
+   ```
 
-### Step 2: Create an API key
+### Create and check an API key
 
-1. Create a key with the sk CLI. Give it a name and only the permissions this chapter needs:
+1. Create a key with exactly the permissions this chapter needs:
 
    ```bash
    sk apikeys create --name http-api-test --scopes workflow:read,workflow:run,execution:read
    ```
 
-2. The answer is JSON. Copy the value of `plaintext_key`.
-   The key is shown only once. Store it in a password manager or a secret store.
-3. Put the key into a variable for the next steps:
+2. Copy `plaintext_key` from the JSON response. It is shown only once, so keep it in a password manager.
+3. Put the key in a variable:
 
    ```bash
    export SK_KEY=<api-key>
    ```
 
-Without `--scopes`, the key gets the same scopes as your own credential.
-`sk apikeys revoke <key-id>` revokes the key when you no longer need it.
+4. Ask the engine who you are:
 
-### Step 3: Check the key
+   ```bash
+   curl -s "$SK_URL/v1/identity/whoami" \
+     -H "Authorization: Bearer $SK_KEY"
+   ```
 
-Ask the engine who you are:
+   The answer names your account, your workspace and the key's scopes (shortened):
 
-```bash
-curl -s "$SK_URL/v1/identity/whoami" \
-  -H "Authorization: Bearer $SK_KEY"
-```
+   ```json
+   {
+     "id": "<user-id>",
+     "kind": "user",
+     "tenant_slug": "<workspace>",
+     "role_name": "admin",
+     "scopes": ["workflow:read", "workflow:run", "execution:read"]
+   }
+   ```
 
-The answer names your account, your workspace and the scopes of the key (abridged):
+Without `--scopes`, the key gets the same scopes as your own access.
+`sk apikeys revoke <key-id>` revokes the key.
 
-```json
-{
-  "id": "<user-id>",
-  "kind": "user",
-  "tenant_slug": "<workspace>",
-  "role_name": "admin",
-  "scopes": ["workflow:read", "workflow:run", "execution:read"]
-}
-```
+### List your workflows
 
-If you get `401`, the key is wrong or revoked. See **If something does not work**.
+1. Fetch the active workflows:
 
-### Step 4: List your workflows
+   ```bash
+   curl -s "$SK_URL/v1/workflows?status=active&limit=20" \
+     -H "Authorization: Bearer $SK_KEY"
+   ```
 
-```bash
-curl -s "$SK_URL/v1/workflows?status=active&limit=20" \
-  -H "Authorization: Bearer $SK_KEY"
-```
+   Each entry in `items` carries, among others, `id`, `slug`, `name`, `lifecycle` and `operating_status` (shortened):
 
-The answer has `items`, `total` and `categories`. Each item carries, among others,
-`id`, `slug`, `name`, `lifecycle` and `operating_status` (abridged):
+   ```json
+   {
+     "items": [
+       {
+         "id": "<workflow-id>",
+         "slug": "daily-report",
+         "name": "Daily report",
+         "lifecycle": "active",
+         "operating_status": "active"
+       }
+     ],
+     "total": 1,
+     "categories": [{ "category": "reporting", "count": 1 }]
+   }
+   ```
 
-```json
-{
-  "items": [
-    {
-      "id": "<workflow-id>",
-      "slug": "daily-report",
-      "name": "Daily report",
-      "lifecycle": "active",
-      "operating_status": "active"
-    }
-  ],
-  "total": 1,
-  "categories": [{ "category": "reporting", "count": 1 }]
-}
-```
+2. Copy the `id`. Runs need the ID; a slug is not accepted.
 
-Copy the `id`. Runs need this id; a slug is not accepted.
 `q=<text>` searches name, slug, description and category.
 
-### Step 5: Start a run
+### Start a run
 
-Send the workflow id and its input to `/v1/executions`:
+- Send the workflow ID and its input to `/v1/executions`:
 
-```bash
-curl -s -X POST "$SK_URL/v1/executions" \
-  -H "Authorization: Bearer $SK_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"source":"saved","workflow_id":"<workflow-id>","input":{}}'
-```
+  ```bash
+  curl -s -X POST "$SK_URL/v1/executions" \
+    -H "Authorization: Bearer $SK_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"source":"saved","workflow_id":"<workflow-id>","input":{}}'
+  ```
 
-- `input` must match the input of the workflow. `GET /v1/workflows/<workflow-id>/input-schema` shows what it expects.
-- Without `async`, the call waits until the run has finished. It answers `200` with
-  `execution_id`, `status`, `output` and `steps`.
+  The call waits for the run and answers `200` with `execution_id`, `status`, `output` and `steps`.
 
-For longer runs, start them in the background:
+`input` must match the workflow's input. `GET /v1/workflows/<workflow-id>/input-schema` shows what it expects.
 
-```bash
-curl -s -X POST "$SK_URL/v1/executions" \
-  -H "Authorization: Bearer $SK_KEY" \
-  -H "Content-Type: application/json" \
-  -H "Idempotency-Key: daily-report-2026-10-21" \
-  -d '{"source":"saved","workflow_id":"<workflow-id>","input":{},"async":true}'
-```
+### Start a long run in the background
 
-```json
-{ "execution_id": "<execution-id>", "status": "queued", "hold_writes": false }
-```
+1. Send the run with `"async":true`. Optional: add an `Idempotency-Key` header:
 
-The answer is `202`. The `Idempotency-Key` header is optional (1 to 200 characters).
-If you send the same key again, no second run starts. The answer carries the first run's id and `"idempotent_replay": true`.
+   ```bash
+   curl -s -X POST "$SK_URL/v1/executions" \
+     -H "Authorization: Bearer $SK_KEY" \
+     -H "Content-Type: application/json" \
+     -H "Idempotency-Key: daily-report-<date>" \
+     -d '{"source":"saved","workflow_id":"<workflow-id>","input":{},"async":true}'
+   ```
 
-### Step 6: Check the result
+   The engine answers `202` right away:
+
+   ```json
+   { "execution_id": "<execution-id>", "status": "queued", "hold_writes": false }
+   ```
+
+2. Copy `execution_id` and read the result as described in the next section.
+
+- The `Idempotency-Key` header takes 1 to 200 characters.
+- If you send the same key again, no second run starts. The answer carries the first run's ID and `"idempotent_replay": true`.
+
+### Read the result
 
 1. Read the run:
 
@@ -157,40 +155,51 @@ If you send the same key again, no second run starts. The answer carries the fir
      -H "Authorization: Bearer $SK_KEY"
    ```
 
-2. Look at `status`. `queued` and `running` mean the run is not finished yet; ask again a little later.
-   `succeeded` means the run finished. `failed`, `timed_out` and `aborted` mean it stopped.
-3. `outcome.kind` sums the run up, for example `succeeded`, `failed` or `held`.
-   For a failed run, `outcome.failed_step` names the step and `error` holds the cause.
-4. Read the output of each step:
+2. Check `status`.
+3. On a failure, read `outcome.failed_step` for the step and `error` for the cause.
+4. Read each step's output:
 
    ```bash
    curl -s "$SK_URL/v1/executions/<execution-id>/steps" \
      -H "Authorization: Bearer $SK_KEY"
    ```
 
-   Each item has `step_key`, `status` and a preview of its output in `output_preview` or `result_preview`.
-   The last step usually holds the result of the workflow.
+   Each entry has `step_key`, `status` and a preview in `output_preview` or `result_preview`. The last step usually holds the workflow's result.
 
+| `status` | Meaning |
+| --- | --- |
+| `queued`, `running` | The run is still working. |
+| `succeeded` | The run is done. |
+| `failed`, `timed_out`, `aborted` | The run stopped early. |
+
+`outcome.kind` summarizes the run, for example `succeeded`, `failed` or `held`.
 `sk executions result <execution-id>` shows the same result in your terminal.
 
-### Pagination
+### Page through lists
 
 Lists return one page at a time. `total` counts all matches.
 
 | List | Page size | Next page |
 | --- | --- | --- |
 | `GET /v1/workflows` | `limit` (up to 200) | `offset`: skip that many entries |
-| `GET /v1/executions` | `limit` (up to 200) | `cursor`: the `next_cursor` of the previous page |
+| `GET /v1/executions` | `limit` (up to 200) | `cursor`: the previous page's `next_cursor` |
 
-Runs are listed newest first. Pass `next_cursor` back exactly as you got it.
-When `next_cursor` is `null`, you have reached the last page.
+Runs come newest first. Pass `next_cursor` back exactly as you received it. When it is `null`, you are on the last page.
 
 ```bash
 curl -s "$SK_URL/v1/executions?workflow_id=<workflow-id>&status=failed,timed_out&limit=50" \
   -H "Authorization: Bearer $SK_KEY"
 ```
 
-`status` accepts several values separated by commas.
+`status` takes several values, separated by commas.
+
+### How the API is organized
+
+- Every route starts with `/v1`, for example `/v1/workflows`.
+- You send your API key in the `Authorization` header as a bearer token.
+- Requests and responses are JSON.
+- `/openapi.json` describes every route, field and status code in OpenAPI format.
+- `/docs` shows the same description as a searchable reference. Open `https://<your-engine>/docs` in a browser.
 
 ### Errors and status codes
 
@@ -211,12 +220,12 @@ Branch on `code` in your program, not on `message`. Keep `trace_id` when you rep
 | --- | --- | --- |
 | `200` | | Done. |
 | `202` | | Accepted. The run continues in the background. |
-| `400` | `bad_request` | The request is invalid. `details` lists the fields. |
-| `401` | `unauthorized` | The key is missing, wrong, expired or revoked. |
-| `403` | `forbidden` | The key or your role may not do this. |
-| `404` | `not_found` | The id does not exist in your workspace. |
-| `409` | `conflict` | The current state does not allow it, for example no approved version. |
-| `429` | `rate_limit_exceeded`, `rate_limited` | A limit is reached. Wait as long as the `Retry-After` header says, if it is set. |
+| `400` | `bad_request` | The request is invalid. `details` names the fields. |
+| `401` | `unauthorized` | The key is missing, wrong, expired or revoked. Check `Authorization: Bearer <api-key>`, or create a new key. |
+| `403` | `forbidden` | The key lacks a scope or your role lacks the permission. Create a key with `workflow:read`, `workflow:run` and `execution:read`. |
+| `404` | `not_found` | The ID does not exist in your workspace. |
+| `409` | `conflict` | The current state does not allow it. For a run: no active version, or the approval is missing or used up. |
+| `429` | `rate_limit_exceeded`, `rate_limited` | A limit is reached. Wait as long as the `Retry-After` header says, then retry with the same `Idempotency-Key`. |
 | `500` | `internal_error` | An error in the engine. Report the `trace_id`. |
 
 ### If something does not work
@@ -224,14 +233,6 @@ Branch on `code` in your program, not on `message`. Keep `trace_id` when you rep
 | What you see | What to do |
 | --- | --- |
 | `404 Not Found` as plain text | The path does not exist. Check that it starts with `/v1`. |
-| `401` with `unauthorized` | Check the `Authorization: Bearer <api-key>` header. Create a new key if it was revoked. |
-| `403` with `forbidden` | The key lacks a scope, or your role lacks the permission. Create a key with the scopes from step 2. |
-| `400` with `request validation failed` | Read `details`. Often `workflow_id` is not a UUID or `source` is missing. |
-| The run answers `"hold_writes": true` | The version has no approval for this environment. Nothing was written. Approve it as in **Your first workflow**, step 4. |
-| `409` when you start a run | Read `message` and `details`. The workflow has no active version, or its approval is missing or used up. |
-| `429` | Wait as long as `Retry-After` says, or until the limit resets, then try again with the same `Idempotency-Key`. |
-
-### Next
-
-You can now start and check workflows from any program. Continue with the chapter
-**Onboard an app** to let the users of your own app call SubKit with their sign-in.
+| `400` with `request validation failed` | Read `details`. Often `workflow_id` is not a UUID or `input` does not match the input schema. |
+| The run answers with `"hold_writes": true` | The version has no approval for this environment. Nothing was written. Approve it as described in "Your first workflow". |
+| Any other error status | Look up the status in "Errors and status codes" and read `message` and `details`. |

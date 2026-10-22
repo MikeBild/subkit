@@ -7,82 +7,72 @@ audience: public
 ---
 ## Ideen sammeln und in Wissen oder Skills verwandeln
 
-Sammle jetzt Seiten und Ideen und entscheide später, was zu Wissen oder zu einem Skill wird. Nutze die gemeinsamen Kategorien, um Clips zu ordnen; Inbox ist deine persönliche Standardkategorie zum Start.
-Du kannst jederzeit eine andere Standardkategorie wählen.
-Der Ablauf bleibt gleich: **sammeln → im Chat prüfen → bestätigen → Wissen oder Skill**.
-Erkenntnisse aus Sitzungen mit Coding-Agents gelangen als gesammelte Einträge mit Herkunft
-`session` in denselben Ablauf; der Eingang zeigt die Herkunft als Filter und Badge.
+Sammle jetzt Seiten und Ideen und entscheide später, was zu Wissen oder einem Skill wird. Nichts Gesammeltes ist Wissen, bis eine angemeldete Person es im Cockpit bestätigt.
 
-Führe `sk clipper install` aus, um die in der CLI mitgelieferte Chrome-Erweiterung zu entpacken.
-Öffne in Chrome `chrome://extensions`, aktiviere den Entwicklermodus, wähle **Load unpacked**
-und wähle den Ordner, den der Befehl ausgibt. Der Installer füllt die Engine-URL
-aus deinem aktiven Profil vor. Öffne im Cockpit **API-Zugang**, erstelle einen Schlüssel mit der
-Vorlage **Web Clipper** (genau `intake:read` und `intake:write`) und füge ihn in den Einstellungen
-der Erweiterung ein. Erlaube den Zugriff auf deinen Engine-Host.
-Der Clipper braucht keine Berechtigung, um Wissen aufzunehmen. Du kannst die Engine-URL
-in seinen Einstellungen ändern; in die Erweiterung ist keine Serveradresse eingebaut.
+Der Weg ist immer gleich: **sammeln → im Chat prüfen → bestätigen → Wissen oder Skill**.
 
-Nutze die Symbolleiste, das Kontextmenü der Seite oder ein unter `chrome://extensions/shortcuts`
-konfiguriertes Tastenkürzel, um einen Artikel oder markierten Text zu sammeln. Die Quelladresse wird
-automatisch erfasst. Prüfe die Vorschau, ergänze optional, warum es wichtig ist, und drücke **Collect**.
-Deine Standardkategorie ist vorausgewählt, anfangs Inbox. Du kannst eine bestehende Kategorie wählen oder
-eine neue eingeben. Kategorien werden mit dem Rest von SubKit geteilt; der Bearbeitungsstatus bleibt getrennt.
-Die Standardkategorie gehört zur authentifizierten Identität; ein gemeinsam genutzter API-Schlüssel teilt diese Identität.
-Die Sichtbarkeit im Eingang folgt den Berechtigungen deines Mandanten, statt Kategorien privat zu machen.
+### Was du brauchst
 
-Öffne im Cockpit **Eingang**, um gesammelte Einträge mit derselben Tabelle und denselben
-Kategoriesteuerungen wie bei den Knowledge Sources zu prüfen und zu ordnen. Öffne einen Eintrag, um seinen Inhalt
-und die Originalquelle zu sehen, seinen Titel, Inhalt oder seine Kategorie zu bearbeiten oder einen Prüf-Chat zu starten.
-Bearbeitungen erhalten das erfasste Original und erfordern eine erneute Prüfung jedes betroffenen Vorschlags.
-Der Chat verlinkt
-auf den Vorschlag des Eintrags zur Bestätigung; abgeschlossene Entscheidungen bleiben in seinem Verlauf.
-In einem neuen Chat hilft der kategoriebezogene Prüfvorschlag, neue Einträge gemeinsam
-zu prüfen. Die Chat-Aktion eines Eintrags prüft dagegen nur diesen ausgewählten Eintrag, mit einem sichtbaren
-`@`-Verweis. Chat-Aktionen für bestehende Workflows, Konnektoren, Läufe, Quellen und Skills
-tragen ebenfalls einen Verweis auf den ausgewählten Datensatz. Du kannst auch fragen:
-„Sieh meine neuen Research-Einträge durch. Welche sind
-für uns nützlich? Schlage vor, was wir behalten sollten, als Wissen oder als Skill.“ Der Chat bereitet einen Vorschlag
-mit dem genauen Inhalt, den Originalquellen und dem Ziel vor. Du prüfst ihn und bestätigst ausdrücklich
-**Confirm as knowledge** oder **Confirm as skill**. Erst dann kann die gewöhnliche Wissensabfrage
-das Ergebnis nutzen oder können Agent-Briefings den Skill tragen. Ein Skill als Ziel legt einen aktiven Skill an oder
-aktualisiert ihn und archiviert die Skills, die er ersetzt, im selben Schritt; der Vorschlag
-zeigt jede Änderung. Das Bestätigen erfordert eine angemeldete Browsersitzung, das Recht `intake:confirm` und die Rechte des
-Ziels: `knowledge:write` für Wissen, `skill:write` und `skill:activate` für einen Skill,
-dazu `skill:archive` für jeden ersetzten Skill. API-Schlüssel und MCP-Clients können nicht bestätigen.
-Einen Skill aufzunehmen ist eine inhaltliche Entscheidung, getrennt von der Konnektor- oder
-Ausführungsfreigabe einer Umgebung.
-Bevor ein Clip gespeichert wird, ersetzt SubKit darin erkennbare Geheimnisse (API-Schlüssel, Tokens, private Schlüssel, Signaturen signierter Links) durch eine Markierung und hält nur fest, wie viele ersetzt wurden. Die entfernten Werte werden nie gespeichert; Quelle, Autor und Zeitangaben bleiben wie erfasst.
-Du kannst einen nicht benötigten Clip während der Prüfung verwerfen und später wiederherstellen; das Verwerfen
-erhält seine Originalquelle und macht ihn nie zu Wissen oder zu einem Skill.
-Das Ändern des Vorschlags oder seiner Quellen erfordert eine weitere Prüfung. Der ursprüngliche Clip bleibt
-mit dem entstandenen Wissen oder Skill verknüpft. Das Verschieben von Clips oder Umbenennen einer Kategorie nimmt ihre Clips nie auf. Kategorieänderungen, die
-einen Vorschlag betreffen, erfordern dessen erneute Prüfung.
+- Den Web Clipper in Chrome, installiert und verbunden. Installation, Updates und Fehlerbehebung des Web Clippers stehen im Kapitel „Webseiten mit dem Web Clipper sammeln“.
+- Zum Sammeln: ein Konto mit `intake:read` und `intake:write`.
+- Zum Bestätigen: eine Browsersitzung im Cockpit mit `intake:confirm`, dazu `knowledge:write` für Wissen oder `skill:write` und `skill:activate` für einen Skill. Wer Skills ersetzt, braucht zusätzlich `skill:archive` für jeden ersetzten Skill.
 
-Der Clipper führt für jede Seite und jede Engine getrennte lokale Entwürfe, einschließlich ungesendeter Notizen.
-Das Öffnen einer anderen Seite erfasst diese Seite; nutze die Entwurfsauswahl, um ungesendete Änderungen fortzusetzen.
-Ein geöffneter Clipper folgt URL-Änderungen und Tab-Wechseln in seinem Quellfenster. Wenn Chrome
-Zugriff auf eine neue Website verlangt, öffne den Clipper über das Symbolleistensymbol dieser Website. Fehlgeschlagene
-Erfassungen bleiben lokal für einen erneuten Versuch; eine wiederholte Anfrage legt keinen weiteren Eintrag an.
-Autor und Veröffentlichungszeit der Originalquelle bleiben getrennt davon, wer die Seite gesammelt hat
-und wann. Nicht verfügbare Quellmetadaten bleiben unbekannt.
+### Etwas sammeln
 
-Auf YouTube extrahiert der Clipper Videometadaten, Beschreibung und ein verfügbares Original-Transkript.
-Beschreibung und Transkript können unter Details getrennt einbezogen werden.
-Die Verfügbarkeit hängt vom Video und vom Zugriff auf Untertitel ab. Die Extraktion entfernt Navigation
-und Empfehlungen, ohne den Inhalt zusammenzufassen. Kann kein Hauptinhalt erkannt werden, meldet
-der Clipper das, statt die gesamte Seite zu sammeln. Markdown ist bearbeitbar;
-der ursprünglich erfasste Text bleibt erhalten. Bildlinks bleiben erhalten; Bilddateien
-werden nicht hochgeladen.
+1. Öffne die Seite.
+2. Optional: Markiere den Text, den du als Ausschnitt willst.
+3. Wähle in der Symbolleiste das Symbol des Web Clippers („SubKit Clipper“).
+4. Prüfe die Vorschau. Die Quelladresse wird automatisch erfasst.
+5. Optional: Ergänze, warum es wichtig ist.
+6. Wähle eine Kategorie. Deine Standardkategorie ist vorausgewählt, anfangs `inbox`.
+7. Wähle **Sammeln**.
 
-Führe nach einem Update der CLI `sk clipper install` aus und lade die Erweiterung in Chrome neu.
-Mit `sk clipper install --dir <directory> --no-open` wählst du ein Verzeichnis und verhinderst das
-Öffnen von Chrome. Das Aktualisieren einer bestehenden Installation erhält ihre Verbindungseinstellungen.
-Bei einer Neuinstallation überschreibt `--engine-url <url>` die Adresse des aktiven Profils.
-Die Engine liefert dasselbe eingebettete Archiv unter `/install/clipper.zip` aus, mit seinem SHA-256
-im Antwort-Header `x-subkit-sha256`. HTTPS-Engines und lokale HTTP-Engines auf
-`localhost`, `127.0.0.1` oder `[::1]` werden unterstützt, einschließlich eines optionalen URL-Pfadpräfixes.
-Das Ändern der Engine-Adresse erfordert die Eingabe des Schlüssels für diese Engine; ein bestehender
-Entwurf bleibt seiner ursprünglichen Engine zugeordnet. Ältere Engines benötigen ein Update, um
-das Sammeln zu unterstützen; der Clipper schreibt nie ersatzweise direkt in das Wissen.
-Bestehende Knowledge Sources bleiben unverändert, und alte lokale Entwürfe können ausdrücklich
-im Eingang gesammelt werden, ohne zu behaupten, dass bearbeitete Entwürfe Originalerfassungen der Seite sind.
+Erkenntnisse aus Sitzungen mit Coding-Agenten landen als Einträge mit der Herkunft `session` im selben Eingang. Der Eingang zeigt die Herkunft als Filter und Badge.
+
+### Einträge prüfen und ordnen
+
+1. Öffne im Cockpit **Eingang**.
+2. Öffne einen Eintrag, um Inhalt und Originalquelle zu sehen.
+3. Optional: Bearbeite Titel, Inhalt oder Kategorie. Das erfasste Original bleibt erhalten.
+4. Optional: Verschiebe, verwirf oder stelle den Eintrag wieder her.
+
+Die Sichtbarkeit im Eingang folgt den Berechtigungen deines Arbeitsbereichs. Kategorien sind nicht privat.
+
+### Im Chat prüfen
+
+Einen Eintrag prüfen:
+
+1. Öffne den Eintrag im **Eingang**.
+2. Wähle **Im Chat prüfen**. Der Chat zeigt den Eintrag als `@`-Verweis.
+
+Eine ganze Kategorie prüfen:
+
+- Starte in einem neuen Chat den Prüfvorschlag der Kategorie oder frag: „Sieh meine neuen Research-Einträge durch und schlag vor, was wir behalten.“
+
+Der Chat bereitet einen Vorschlag mit Inhalt, Quellen und Ziel vor und verlinkt ihn. Abgeschlossene Entscheidungen bleiben im Verlauf des Chats.
+
+### Einen Vorschlag bestätigen
+
+Du brauchst eine Browsersitzung im Cockpit, `intake:confirm` und das Recht des Ziels. API-Schlüssel, MCP-Clients und der Web Clipper können nicht bestätigen.
+
+1. Prüfe den Vorschlag: Inhalt, Quellen und Ziel.
+2. Wähle **Als Wissen bestätigen** oder **Als Skill bestätigen**.
+
+Erst danach kann die gewöhnliche Wissensabfrage das Ergebnis nutzen oder können Agenten-Briefings den Skill tragen. Bei einem Skill archiviert das Bestätigen auch die Skills, die er ersetzt. Der Vorschlag zeigt jede Änderung.
+
+Gut zu wissen:
+
+- Verschieben, Bearbeiten oder Verwerfen macht einen Eintrag nie zu Wissen.
+- Ändert sich ein Vorschlag oder seine Quellen, prüfst du ihn erneut.
+- SubKit ersetzt Geheimnisse wie API-Schlüssel und Tokens, bevor ein Clip gespeichert wird.
+- Der Original-Clip bleibt mit dem Wissen oder Skill verknüpft.
+
+### Wenn etwas nicht klappt
+
+| Was du siehst | Was du tust |
+| --- | --- |
+| Der Web Clipper meldet keine Verbindung oder einen ungültigen Schlüssel | Folge „Wenn etwas nicht klappt“ im Kapitel „Webseiten mit dem Web Clipper sammeln“. |
+| Ein Eintrag fehlt im **Eingang** | Prüfe Kategorie und Herkunftsfilter. |
+| Beim Vorschlag steht „Zum Bestätigen nötig: …“ | Bitte eine Administratorin oder einen Administrator um die genannten Rechte. |
+| „Dieser Vorschlag hat sich geändert. Prüfe den aktuellen Inhalt, bevor du bestätigst.“ | Lies den aktuellen Inhalt und bestätige dann erneut. |
+| „Ein Skill, auf den sich dieser Vorschlag bezieht, lässt sich nicht mehr laden. …“ | Überarbeite den Vorschlag im Chat, bevor du bestätigst. |

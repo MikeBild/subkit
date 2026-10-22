@@ -1,84 +1,140 @@
 ---
 slug: use-sk-from-a-coding-agent
-summary: Gib einem Coding-Agent sk-Tools und Briefings aus dem gemeinsamen Gedächtnis für dein Repository.
+summary: Gib einem Coding-Agenten sk-Tools und Briefings aus dem gemeinsamen Gedächtnis für dein Repository.
 section: work
 order: 3
 audience: public
 ---
-## sk aus einem Coding-Agent verwenden
+## sk aus einem Coding-Agenten verwenden
+
+Mit MCP bekommt dein Coding-Agent die freigegebenen sk-Tools.
+Mit `sk agent init` bekommt jede Sitzung in Claude Code und Codex ein Briefing aus dem gemeinsamen Gedächtnis für dein Repository.
+Gesammeltes Material folgt einem Weg: **sammeln → mit dem Agenten prüfen → im Cockpit bestätigen → Wissen**.
+
+### Was du brauchst
+
+- Die sk-CLI, angemeldet an deiner Engine. In der Cloud nutzt du dafür `sk login --engine-url https://subkit-cloud.mikebild.info` und **Mit Firmenkonto anmelden**. Das Briefing nutzt dieses angemeldete Profil.
+- Die MCP-Adresse deiner Engine, `https://<deine-engine>/mcp`. In SubKit Cloud ist das `https://subkit-cloud.mikebild.info/mcp`.
+- Claude Code, Codex oder beide.
+- Ein Repository, in dem die Briefings erscheinen sollen.
+
+### Die sk-Tools einmal pro Rechner einrichten
+
+1. Öffne im Cockpit **API-Zugang** und erstelle einen Schlüssel.
+2. Lege den Schlüssel in `SK_API_KEY` ab.
+3. Trage sk mit dem passenden Befehl in deinem Client ein.
+
+Claude Code:
 
 ```bash
-claude mcp add --transport http --scope user sk http://localhost:3000/mcp --header "Authorization: Bearer ${SK_API_KEY}"
-codex mcp add sk --url http://localhost:3000/mcp --bearer-token-env-var SK_API_KEY
-sk agent init --domains <category>   # in a repository: briefs each Claude Code and Codex session on that domain
+claude mcp add --transport http --scope user sk https://<deine-engine>/mcp --header "Authorization: Bearer ${SK_API_KEY}"
 ```
 
-Nutze MCP für freigegebene sk-Tools; führe `sk agent init` aus, um Repository-Domänen zu deklarieren und die Hooks für Claude Code und Codex zu installieren, die Briefings aus dem gemeinsamen Gedächtnis liefern. Hooks können einen aktuellen Ordnernamen auf bekannte Domänen abbilden, wenn keine ausdrückliche Deklaration existiert. Beide verwenden dasselbe authentifizierte sk-Profil wie die CLI.
+Codex:
 
-### Briefings einrichten und verifizieren
+```bash
+codex mcp add sk --url https://<deine-engine>/mcp --bearer-token-env-var SK_API_KEY
+```
 
-Die MCP-Registrierung ist eine einmalige Einrichtung pro Rechner. Führe in jedem Repository `sk agent init --domains <category>[,<category>]` aus und committe `.sk/agent.json`, damit jeder Checkout dieselben Domänen verwendet. Eine Domäne kann eine Katalogkategorie oder ein Tag `domain:<slug>` sein. `init` führt die angeforderten Domänen zusammen, ohne bestehende Domänen oder Einstellungen zu entfernen, und verdrahtet die Hooks SessionStart, UserPromptSubmit und SessionEnd für Claude Code und Codex. Die Transkripterfassung von Codex läuft asynchron, um in sein Hook-Limit von drei Sekunden zu passen. Beide Clients und die sk-REPL teilen sich ein Briefing-Budget von 1.800 Token und eine harte Grenze von 9.500 Zeichen. `--skip-claude` und `--skip-codex` lassen die Einstellungen des jeweiligen Clients unberührt.
+Ohne Schlüssel anmelden: siehe „KI-Clients per MCP anbinden“.
 
-Führe `sk status` und dann `sk agent briefing --json` im Repository aus, um Deklaration, Zugangsdaten, Engine-Verbindung und das zurückgegebene Briefing zu verifizieren. Nutze die JSON-Felder `domains`, `knowledge_sources`, `skills_full` und `used_tokens`, um das Ergebnis zu prüfen. Leere `knowledge_sources` oder `skills_full` bedeuten, dass das Briefing funktioniert, diese Einträge aber der deklarierten Domäne nicht zugeordnet sind. Lege Wissen und Skills in der Katalogkategorie der Domäne ab oder versieh sie mit dem Tag `domain:<slug>`.
+### Briefings in einem Repository einrichten
 
-Hooks lesen zuerst `.sk/agent.json`, sofern vorhanden. Andernfalls gleichen sie den normalisierten Namen des aktuellen Ordners exakt mit lesbaren Projektkategorien ab. Ein eindeutiger Treffer legt `.sk/agent.json` mit diesem Projektbereich und, wenn verfügbar, gemeinsamem SubKit-Kontext an. Passt kein eindeutiger Projektbereich, ist aber gemeinsamer SubKit-Kontext verfügbar, legt der Hook eine reine Shared-Deklaration an und fragt, welche Projekt-Knowledge-Sources und Workflows dort hingehören, wenn das Setup relevant ist. Ist keines von beiden verfügbar, fragt er nach, bevor er rät oder eine Deklaration anlegt. Vom Hook angelegte Deklarationen bleiben als abgeleitet markiert, sodass spätere Sitzungen den Ordnernamen weiter prüfen, während sich der lesbare Katalog ändert. Behandle `inferred` und `inferred_folder_domain` als vom Hook verwaltete Felder. Um eine abgeleitete Deklaration explizit zu machen und selbst zu pflegen, entferne beide Felder und bearbeite `domains`; ältere abgeleitete Deklarationen werden migriert, indem die erste Domäne außer `subkit` als abgeleitete Ordnerdomäne behandelt wird. Ein Prompt kann weitere passende Domänen hinzufügen, wenn sich die Aufgabe ändert. Das funktioniert mit oder ohne Git-Metadaten. Das Briefing sagt dem Agent, welche Deklaration er angelegt hat. Jedes erfolgreiche Briefing gibt dem Modell begrenzten Domänenkontext und zeigt einen kurzen, sprachneutralen Status; zu großer Kontext wird mit sichtbarer Warnung gekürzt. Das Modell kann relevante Prüfungen in der Sprache deiner Unterhaltung anbieten. Das Briefing zählt nur gesammelte Clips und Sitzungserkenntnisse in den Kategorien des Projekts und enthält nie deren Inhalt. Ist das Briefing nicht verfügbar, zeigt der Client eine einfache Warnung und setzt die Sitzung fort. Nutze `/hooks` in Claude Code oder Codex, um zu sehen, ob Hooks aktiv sind. Codex-Hooks sind standardmäßig aktiviert; normalerweise ist keine Änderung an `config.toml` nötig. Prüfe neue oder geänderte SubKit-Hooks in `/hooks` und vertraue ihnen. Sind Hooks deaktiviert, prüfe die wirksame Feature-Einstellung und die Administratorrichtlinie, bevor du Einstellungen änderst; siehe den [offiziellen Codex-Hook-Leitfaden](https://learn.chatgpt.com/docs/hooks). Beide Clients senden bei SessionEnd ein Transkript. Die Codex-Erfassung läuft in einem abgekoppelten Prozess, weil seine Hook-Frist drei Sekunden beträgt. Die Engine behält nur Praktiken und Fakten, die eine Person gelehrt oder bestätigt hat, verwirft Ereignisse, Statusmeldungen und alles, was mit Zugangsdaten zu tun hat, und sammelt den Rest im Eingang mit Herkunft `session`, in der gemeinsamen Kategorie des Projekts oder in deiner Standardkategorie. Dieselbe Erkenntnis aus einer späteren Sitzung ergänzt den bestehenden Eintrag um Belege, statt ein Duplikat anzulegen. Gesammelte Erkenntnisse sind weder Wissen noch Skills, bis eine Person im Cockpit einen Vorschlag bestätigt; `sk intake list` zeigt, was wartet.
+1. Lege im Repository die Domänen fest:
 
-Bei offenen Check-ins nutzt das Briefing die passende Domäne des aktuellen Projekts zusammen mit gemeinsamem SubKit-Kontext sowie verbundene Quellen, die die Frage am besten beantworten. Es unterscheidet den Live-Zustand von Diensten von Repository-Änderungen und statischem Wissen, priorisiert blockierte oder fehlschlagende Arbeit und anstehende Fristen und nennt bis zu drei konkrete nächste Schritte in der Sprache des Benutzers. Wartungsvorschläge müssen in Repository-Anweisungen, ausdrücklichen Plänen oder TODOs und beobachteten Problemen wie fehlschlagenden Prüfungen oder Abweichungen bei generierten Dateien begründet sein. Relevante Knowledge Sources und Workflows aus der Domäne des Ordners werden namentlich empfohlen, wenn sie bei einer konkreten Aufgabe helfen. Es meldet, wenn eine relevante Quelle nicht verfügbar ist.
+   ```bash
+   sk agent init --domains <category>
+   ```
 
-### Gesammeltes Material mit deinem Coding-Agent prüfen
+   Mehrere Domänen trennst du mit Kommas: `--domains <category>[,<category>]`.
+2. Committe `.sk/agent.json`, damit jeder Checkout dieselben Domänen nutzt.
+3. Führe in Claude Code oder Codex `/hooks` aus und prüfe, ob die SubKit-Hooks aktiv sind.
+4. Vertraue neuen oder geänderten SubKit-Hooks.
 
-Gesammelte Seiten bleiben Material, das geprüft werden muss. Mit `intake:read` ergänzt das Briefing
-eine kurze mandantenweite Zählung gesammelter Einträge und offener Wissensvorschläge.
-Es lädt deren Text nicht, behandelt ihn nicht als Anweisung und behauptet nicht, dass er zur
-Domäne des Repositorys gehört. Ohne diese Berechtigung entfällt der Hinweis.
+### Das Briefing prüfen
 
-Frag: „Sieh die neuen Einträge in Research durch. Welche sind nützlich? Schlage vor, was wir
-als Wissen behalten sollten.“ Die Prüfung nutzt eine gespeicherte SubKit-Konversation. MCP-Clients starten
-sie über `conversation_start`; `intake_item_ids` wählt bestimmte Clips aus und
-hält diese Auswahl fest. Der zurückgegebene Cockpit-Link setzt dieselbe Prüfung fort.
-Werkzeuge zum Lesen von Einträgen und zu Vorschlägen benötigen diese gespeicherte Konversation und können nicht als
-eigenständige MCP-Aufrufe laufen. Der API-Schlüssel des Clippers braucht nur Intake-Lese-/Schreibrechte;
-die Person, die einen Vorschlag bestätigt, benötigt `intake:confirm` und `knowledge:write`.
+1. Führe im Repository `sk status` aus.
+2. Führe `sk agent briefing --json` aus.
+3. Prüfe die Felder `domains`, `knowledge_sources`, `skills_full` und `used_tokens`.
 
-Im Terminal zeigt `sk intake list` gesammelte Einträge in deiner Standardkategorie. Nutze
-`sk intake list --category research`, um gesammelte Einträge zu sehen, und
-`sk intake review --category research`, um deren Prüfung zu starten. Ohne
-Auswahl nutzt die Prüfung deine Standardkategorie. `--items <comma-separated-ids>`
-wählt bestimmte Einträge aus; `--json` liefert maschinenlesbare Ergebnisse. Der Befehl
-gibt den Cockpit-Link aus, um die Konversation fortzusetzen und Vorschläge zu prüfen.
-Nutze `sk intake default --category research`, um deine persönliche Standardkategorie zu ändern,
-`sk intake move --item <id> --category research`, um einen Eintrag zu ordnen, und
-`sk intake discard --item <id>` oder `sk intake restore --item <id>`, um seinen
-Prüfstatus zu ändern. Diese Aktionen erhalten den Original-Clip und nehmen nie Wissen auf.
+### Gesammeltes Material mit deinem Coding-Agenten prüfen
 
-Der Vorschlag zeigt seine Quellen, den genauen Text und das Wissensziel. Ein bestehendes
-Ziel behält seine Themenzuordnung. Nimm bei einem neuen Ziel die Themenkategorie
-oder das Tag `domain:<slug>` in den geprüften Vorschlag auf, damit das entstehende Wissen
-im vorgesehenen Repository-Briefing erscheinen kann. Das Ändern dieser Zuordnung erfordert
-die Prüfung des geänderten Vorschlags. Führe nach der Bestätigung `sk agent briefing --json` aus,
-um `knowledge_sources` zu prüfen, und suche dann nach dem übernommenen Material. Der Original-Clip
-bleibt verknüpft. Eine neue Sitzung lädt das aktualisierte Briefing.
+Dein Agent kann eine Prüfung gesammelter Einträge starten. Das Ergebnis bestätigst du im Cockpit.
 
-### Eine installierte Intake-API verifizieren
+1. Frag deinen Agenten: „Sieh die neuen Einträge in Research durch. Welche sind nützlich? Schlage vor, was wir als Wissen behalten sollten.“
+2. Öffne den Cockpit-Link, den der Agent zurückgibt.
+3. Prüfe Quellen, genauen Text und Wissensziel des Vorschlags.
+4. Wähle **Als Wissen bestätigen**.
+5. Führe `sk agent briefing --json` aus und prüfe `knowledge_sources`.
 
-Während der Intake-Entwicklung führt `bun run verify:intake` die fokussierten Prüfungen für Typen,
-Domäne, HTTP, Briefing, MCP und CLI aus, einschließlich eines echten lokalen
-PostgreSQL/API-Smoke-Ablaufs. Es vermeidet die Test-Suite des gesamten Repositorys. Nutze browser-use
-mit Codex oder Claude Code für Browser-Abläufe; die visuelle Abnahme erfolgt manuell.
+Eine neue Sitzung lädt das aktualisierte Briefing.
 
-`bun run verify:intake-live` prüft einen gewählten Server über seine öffentliche API.
-Setze `SK_ENGINE_URL` und `SK_INTAKE_TEST_KEY` außerhalb des Repositorys. Der Standardlauf
-ist schreibgeschützt und meldet Kompatibilität, Bereitschaft und das ausgelieferte Archiv.
-Er ist vom lokalen Gate `bun run verify` getrennt.
+Gut zu wissen:
 
-Nutze für eine synthetische Schreibprüfung einen eigenen Testmandanten und dessen Benutzerschlüssel:
-füge `--allow-writes --test-tenant-id <uuid> --run-id <unique-run-name>
---json <report-path>` hinzu. Der Mandant muss zur authentifizierten Identität passen. Die
-Prüfung sammelt in einer eigenen Kategorie, testet den Ausschluss vor der Bestätigung und den
-genauen Vorschlag und verifiziert, dass der API-Schlüssel ihn nicht bestätigen kann. Der Wert
-`handoff.review_url` des Berichts öffnet den Vorschlag im Cockpit, wo eine Person dieses
-Mandanten ihn bestätigt. Führe dann denselben Befehl mit `--after-confirm --proposal-id <id>` aus,
-um die einmalige Aufnahme, die Herkunft, die Suche und das Domänen-Briefing zu prüfen.
-Er meldet Zeiten und behaltene Ressourcen-IDs. Intake hat keine Lösch-API, daher
-bleiben Testdatensätze zur Prüfung erhalten. Diese API-Prüfung misst weder das Urteil des Modells
-noch ersetzt sie eine echte Browser-/Chat-Verifikation. Sie deployt nie Code.
+- Nur eine angemeldete Person mit `intake:confirm` und `knowledge:write` bestätigt einen Vorschlag. Ein API-Schlüssel, ein MCP-Client oder der Web Clipper tut das nie.
+- Der Schlüssel des Web Clippers nutzt die Vorlage **Web Clipper** (`intake:read` und `intake:write`).
+- Der Original-Clip bleibt mit dem Wissen verknüpft, das aus ihm entsteht.
+- Verschieben, Bearbeiten oder Verwerfen nimmt einen Eintrag nie als Wissen auf.
+
+### Gesammeltes Material im Terminal prüfen
+
+| Befehl | Was er tut |
+| --- | --- |
+| `sk intake list` | Zeigt gesammelte Einträge in deiner Standardkategorie. |
+| `sk intake list --category research` | Zeigt gesammelte Einträge einer Kategorie. |
+| `sk intake review --category research` | Startet die Prüfung und gibt den Cockpit-Link aus. |
+| `sk intake review --items <comma-separated-ids>` | Prüft nur bestimmte Einträge. |
+| `sk intake default --category research` | Ändert deine persönliche Standardkategorie. |
+| `sk intake move --item <id> --category research` | Ordnet einen Eintrag einer Kategorie zu. |
+| `sk intake discard --item <id>` | Verwirft einen Eintrag. |
+| `sk intake restore --item <id>` | Stellt einen verworfenen Eintrag wieder her. |
+
+- Ohne Auswahl nutzt `review` deine Standardkategorie.
+- `--json` liefert maschinenlesbare Ergebnisse.
+- Diese Aktionen erhalten den Original-Clip und nehmen nie Wissen auf.
+
+### So funktionieren Briefings
+
+**Domänen.** Eine Domäne ist eine Katalogkategorie oder ein Tag `domain:<slug>`.
+
+- `sk agent init` ergänzt die angeforderten Domänen und entfernt nichts Bestehendes.
+- Ohne `.sk/agent.json` gleichen die Hooks den Ordnernamen mit deinen Projektkategorien ab. Bei einem eindeutigen Treffer legen sie `.sk/agent.json` für dich an. Sonst fragen sie nach, bevor sie raten.
+- Um die Domänen selbst festzulegen, bearbeite `domains` in `.sk/agent.json` und entferne `inferred` und `inferred_folder_domain`.
+- Ein Prompt kann weitere passende Domänen hinzufügen, wenn sich die Aufgabe ändert.
+
+**Hooks.** `init` richtet die Hooks SessionStart, UserPromptSubmit und SessionEnd für Claude Code und Codex ein. `--skip-claude` und `--skip-codex` lassen die Einstellungen des jeweiligen Clients unberührt.
+
+**Inhalt.** Budget: 1.800 Token, höchstens 9.500 Zeichen, gemeinsam für beide Clients und die sk-REPL.
+Zu großer Kontext wird mit sichtbarer Warnung gekürzt.
+
+Ein Briefing enthält:
+
+- Domänenkontext und einen kurzen Status, blockierte Arbeit und Fristen zuerst.
+- Bis zu drei konkrete nächste Schritte in deiner Sprache.
+- Relevante Wissensquellen und Workflows der Ordner-Domäne, namentlich genannt, wenn sie bei einer Aufgabe helfen.
+- Eine Zählung gesammelter Clips und Sitzungserkenntnisse, nie deren Inhalt. Mit `intake:read` zusätzlich eine Zählung gesammelter Einträge und offener Vorschläge im ganzen Arbeitsbereich.
+
+**Sitzungserkenntnisse.** Am Sitzungsende senden beide Clients das Transkript.
+
+- Die Engine behält nur Praktiken und Fakten, die eine Person gelehrt oder bestätigt hat.
+- Die Engine verwirft Ereignisse, Statusmeldungen und alles, was mit Zugangsdaten zu tun hat.
+- Der Rest landet im Eingang mit Herkunft `session`, in der gemeinsamen Kategorie des Projekts oder in deiner Standardkategorie. Eine wiederholte Erkenntnis ergänzt den bestehenden Eintrag um Belege.
+- Erkenntnisse sind weder Wissen noch Skills, bis eine Person sie im Cockpit bestätigt. `sk intake list` zeigt, was wartet.
+
+**Prüfungen mit einem Agenten.** Die Prüfung läuft in einer gespeicherten SubKit-Konversation.
+
+- MCP-Clients starten sie mit `conversation_start`. `intake_item_ids` wählt bestimmte Clips aus und hält die Auswahl fest.
+- Tools, die Einträge lesen oder Vorschläge vorbereiten, arbeiten nur in dieser Konversation.
+- Nimm bei einem neuen Ziel die Themenkategorie oder das Tag `domain:<slug>` in den Vorschlag auf. Ein geänderter Vorschlag muss erneut geprüft werden.
+
+### Wenn etwas nicht klappt
+
+| Was du siehst | Was du tust |
+| --- | --- |
+| `sk agent briefing: no domains …` | Es gibt keine Deklaration. Übergib `--domains` oder führe `sk agent init --domains <category>` aus. |
+| `knowledge_sources` oder `skills_full` sind leer | Das Briefing funktioniert, aber nichts ist der Domäne zugeordnet. Lege Wissen und Skills in der Kategorie der Domäne ab oder nutze das Tag `domain:<slug>`. |
+| Der Client zeigt eine Warnung zum Briefing | Die Engine ist nicht erreichbar. Die Sitzung läuft weiter. Prüfe mit `sk status` Anmeldung und Verbindung. |
+| Keine Briefings in Claude Code oder Codex | Öffne `/hooks`, prüfe, ob die SubKit-Hooks aktiv sind, und vertraue neuen oder geänderten Hooks. |
+| `/hooks` in Codex zeigt die SubKit-Hooks als deaktiviert | Folge dem [Codex-Hook-Leitfaden](https://learn.chatgpt.com/docs/hooks). |
+| Der Hinweis auf gesammelte Einträge fehlt | Dir fehlt die Berechtigung `intake:read`. Bitte eine Administratorin oder einen Administrator darum. |
+| Ein Vorschlag lässt sich nicht bestätigen | Bestätigen kann nur eine angemeldete Person mit `intake:confirm` und `knowledge:write`, nicht ein API-Schlüssel. Öffne den Cockpit-Link. |

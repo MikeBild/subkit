@@ -7,86 +7,84 @@ audience: public
 ---
 ## Your first workflow
 
-In this chapter you go from signing in to your first successful run.
-You describe a task in the chat, SubKit builds the workflow, you approve
-what it may touch, you start it, and you read the result in the history.
-
+Go from signing in to your first successful run.
+You describe a task in the chat, save the workflow, approve it, start it and read the result.
 It works the same in SubKit Cloud and on a self-hosted engine.
 
 ### What you need
 
 - A SubKit account in a workspace.
-  - Cloud: `https://subkit-cloud.mikebild.info/cockpit`
+  - Cloud: `https://subkit-cloud.mikebild.info`
   - Self-hosted: `https://<your-engine>/cockpit`
 - Permission to create and run workflows. Ask your administrator if a button is missing.
 - An AI provider. Cloud provides one. A self-hosted engine uses the provider you chose in `sk init`.
 
-> Trying a self-hosted engine without an AI account? `sk init --llm-provider mock --llm-api-key mock`
-> sets up a mock provider. It is good for checking the installation and the Cockpit.
-> The chat only answers with "Acknowledged: … (mock)" and builds no workflow.
-> For this chapter, use a real provider.
-
-### Step 1: Sign in
+### Sign in
 
 1. Open the Cockpit.
-2. Cloud: sign in with your password or a sign-in link by email.
-   Self-hosted without an identity provider: sign in with an API key.
-3. You land on **Overview** in your workspace.
+2. Select **Sign in with work account**.
 
-### Step 2: Describe the task in the chat
+You land on **Overview** in your workspace.
+Self-hosted without an identity provider? Select **Sign in with API key** instead and enter your key.
 
-1. Open **Chat** in the navigation.
-2. Choose **New conversation**.
-3. Describe the task in plain words. Say what goes in, what should happen and what comes out.
+### Describe the task
+
+1. In the navigation, open **Chat**.
+2. Select **New conversation**.
+3. Describe the task in plain words: what goes in, what should happen, what comes out.
    Example: "Fetch the open issues of my GitHub repository and give me a short list with title and link."
 4. Answer the questions SubKit asks. If the task needs a service, SubKit asks you to connect it
    or to sign in to it.
 
-Tip: one small task is easier to check than a large one. You can extend the workflow later in the same chat.
+Good to know: a small task is easier to check. You can extend the workflow later in the same chat.
 
-### Step 3: Save the workflow
+### Save the workflow
 
 When the workflow is ready, SubKit shows a card **Save workflow draft**.
 
 1. Open **What will change** and read which steps and targets are included.
-2. Choose **Save inactive version**.
+2. Select **Save inactive version**.
 
 Saving starts nothing. The workflow now appears under **Workflows**.
 
-### Step 4: Approve what it may touch
+### Approve what it may touch
 
 A new version does not touch anything outside SubKit until a person approves it.
 Without an approval, a run starts only as a preview without effects.
 
 1. Open **Workflows** and select your workflow.
-2. The status line shows **Waiting for approval** or **Not approved**. Choose **Approve…**.
-3. Check the dialog:
-   - **Environment**: where the runs are allowed, for example **Production**.
-   - **Operations and external targets**: which services and addresses the workflow reaches.
-   - **Maximum runs** and the time window: how long and how often the approval applies.
+   The status line shows **Waiting for approval** or **Not approved**.
+2. In the status line, select **Approve…**.
+3. Check **Environment**, **Operations and external targets** and **Maximum runs**.
 4. Confirm with **Allow 1 run** or **Allow … runs**.
 
-Approving starts no run. An approval covers one version, one environment and a duration.
+Approving starts no run. An approval covers one environment and a duration.
+It also follows a new version whose boundary does not grow.
 You can revoke it at any time in the **Approvals** tab.
+You can also approve from the chat: select **Review saved change** and then **Use change and allow runs**.
 
-The chat can also take you there. Choose **Review saved change** and then **Use change and allow runs**.
+| Field | What it controls |
+| --- | --- |
+| **Environment** | Where the runs are allowed, for example **Production**. |
+| **Operations and external targets** | Which services and addresses the workflow reaches. |
+| **Maximum runs** and the time window | How often and how long the approval applies. |
 
-### Step 5: Run it
+### Run the workflow
 
-1. On the workflow page, choose **Run**.
+1. On the workflow page, select **Run**.
 2. Fill in the inputs if the workflow asks for any.
-3. The dialog says **Starts a run of the approved version.** Confirm with **Run**.
+3. Select **Run** to confirm. The dialog says **Starts a run of the approved version.**
 
 You see **Run started**. If the button is unavailable, the hint says why, for example
 **Enable the workflow before running it.**
 
-### Step 6: Check the result
+### Check the result
 
-1. Open the **History** tab on the workflow page.
-2. The newest run is at the top, with its status. **Succeeded** means the run finished.
-3. Open the run. You see every step with its output.
-   A failed step shows **Error in step "…"** with the cause.
-4. **In the audit trail** shows who started and approved what.
+1. On the workflow page, open the **History** tab.
+   The newest run is at the top, with its status. **Succeeded** means the run finished.
+2. Open the run.
+   You see every step with its output. A failed step shows **Error in step "…"** with the cause.
+3. Optional: Select **In the audit trail** to see who started and approved the run.
 
 You can check the same with the sk CLI:
 
@@ -102,8 +100,7 @@ sk executions result <run-id>
 
 | What you see | What to do |
 | --- | --- |
-| The chat only answers "Acknowledged: … (mock)" | The engine uses the mock provider. Set up a real AI provider. |
-| The run result is headed **Preview — not written** | The version has no approval yet. Do step 4. |
+| The run result is headed **Preview — not written** | The version has no approval yet. Follow "Approve what it may touch". |
 | "Not started (…): no valid approval covers this run." | The approval is missing, expired or used up. Approve again or extend it. |
 | "… must be reconnected" | Sign in to the connector again under **Connectors**. |
 | **You do not have permission to run this workflow.** | Ask your administrator for a role that may run workflows. |

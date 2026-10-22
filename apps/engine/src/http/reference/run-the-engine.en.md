@@ -63,8 +63,6 @@ The default API and database bindings are loopback-only. Complete first-run setu
 locally before exposing the API. Remote access requires HTTPS and access controls;
 do not expose the database or object store publicly.
 
-From a checkout, `bun run start:local` starts the stack and completes first-run setup with the `mock` LLM provider.
-
 Connector discovery in the supplied container supports HTTP-based documentation
 sources. Optional Playwright crawling is not available out of the box. For documentation
 that requires JavaScript rendering, provide an accessible OpenAPI specification or

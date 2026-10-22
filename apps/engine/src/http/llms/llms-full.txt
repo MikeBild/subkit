@@ -5,90 +5,101 @@
 
 ## Pages
 
-- [What is SubKit?](llms/setup.md): sk is a self-hostable engine for governed workflows: describe the work in plain language, approve what it may touch, and every run is recorded.
-- [Use sk from a coding agent](llms/coding-agents.md): Use MCP for approved sk tools; run sk agent init to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings.
+- [What is SubKit?](llms/setup.md): SubKit runs your business tasks as governed workflows.
+- [Use sk from a coding agent](llms/coding-agents.md): MCP gives your coding agent the approved sk tools.
 - [sk CLI reference](llms/cli.md): Every sk command and argument — and the surface authoring runs through: creating or changing a workflow, connector, knowledge source or skill is a definition edit, and definition edits belong here, where the change is a file you can read and a command you can re-run.
 - [subkit runtime settings](llms/settings.md): Every value below lives in canonical runtime configuration and is editable via the Cockpit, HTTP/MCP settings APIs, sk settings configure, or sk settings set.
 - [Connector & recipe catalog](llms/connectors.md): What ships in the box: 61 connector templates across 16 categories, carrying 248 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page.
-- [Transactional email replies](llms/transactional-email.md): A Gmail request step may use the explicit transactional_delivery profile to reply to the address in an original signed request.
+- [Reply by email to a signed request](llms/transactional-email.md): A workflow can send one plain-text Gmail reply to the person who submitted a form, for example an access request.
 
 <!-- Source: setup.md -->
 
-# What is SubKit?
+## What is SubKit?
 
-sk is a self-hostable engine for governed workflows: describe the work in plain language, approve what it may touch, and every run is recorded.
+SubKit runs your business tasks as governed workflows.
+You describe the work in plain language. You approve what it may touch. Every run is recorded.
 
+Use it as SubKit Cloud or run your own engine:
+
+- "Use SubKit Cloud": SubKit runs for you, and you sign in from the browser.
+- "Run the engine": you run SubKit on your own server.
+
+Then build your first workflow with "Your first workflow".
 ## Use SubKit Cloud
 
 > Cloud (hosted beta, by invitation)
 
-SubKit Cloud is SubKit run for you, so you do not install or operate an engine yourself.
-It lives at `https://subkit-cloud.mikebild.info`. The Cockpit is at
-`https://subkit-cloud.mikebild.info/cockpit`.
+SubKit Cloud is SubKit run for you, so you do not install or operate an engine.
+You sign in from the browser and work in the Cockpit of your workspace.
 
-The cloud is a beta. You can only join by invitation. There is no public sign-up.
+### What you need
+
+- An invitation from a workspace administrator. There is no public sign-up.
+- The address `https://subkit-cloud.mikebild.info`. It takes you straight to the Cockpit.
 
 ### Get access
 
-An administrator of a workspace invites you. You need nothing beforehand.
+An administrator invites you from **People & access** > **Invite person**.
 
-1. The administrator opens **People & access** in the Cockpit and chooses **Invite person**.
-2. You receive an email from "Upraft Auth".
-3. Open the link in that email and set a password.
-4. Open the Cockpit at `https://subkit-cloud.mikebild.info/cockpit`.
+1. Open the email from "Upraft Auth".
+2. Select the link and set a password.
+3. Sign in as described in "Sign in".
 
-Sign in with the same email address the invitation was sent to.
-A different address does not accept the invitation.
+Use the email address the invitation was sent to. A different address does not work.
 
 ### Sign in
 
-SubKit Cloud signs you in through Upraft Auth.
+1. Open `https://subkit-cloud.mikebild.info`.
+2. Select **Sign in with work account**.
+3. Sign in at Upraft Auth with your email address and password.
 
-1. Open `https://subkit-cloud.mikebild.info/cockpit`.
-2. Sign in with your password, or ask for a sign-in link by email.
-3. You land in your workspace in the Cockpit.
+The Cockpit opens in your workspace.
+Your session ends after 8 hours of inactivity, or after 24 hours at the latest.
 
-Forgot your password? Upraft Auth can send you an email to reset it.
+To build your first workflow, follow "Your first workflow".
 
-Signing in with an API key is only for self-hosted installations without an identity provider.
+### Switch accounts
 
-### Workspaces
+Signing out in the Cockpit also signs you out at Upraft Auth.
+
+1. In the Cockpit, select **Sign out**.
+2. Sign in again with the other account.
+
+### Switch workspaces
 
 A workspace holds your workflows, connectors, knowledge, skills and runs.
 People in one workspace cannot see another workspace.
 
-- You can be a member of more than one workspace.
-- Use **Switch workspace** to move between them.
-- Workspaces you own are marked **Own** and show your role as **Owner**.
-  For the others, the list shows your role, such as Administrator or Member.
-- Only the owner can delete a workspace.
+1. In the Cockpit, select **Switch workspace**.
+2. Select the workspace you want.
 
-### First steps in the Cockpit
+Workspaces you own are marked **Own** and show your role as **Owner**.
+For the others, the list shows your role, such as Administrator or Member.
 
-1. Open **Chat** and describe what SubKit should do, in plain words.
-   Example: "Every Monday, collect last week's new GitHub issues and send me a summary."
-2. Connect the services you need under **Connectors**.
-3. Review and run the workflow the chat prepares for you.
-4. Invite colleagues from **People & access**.
+### Delete a workspace
 
-### What is different from self-hosted
+> After 7 days, all workspace data is gone and cannot be restored.
 
-SubKit Cloud runs the same engine as a self-hosted installation.
-Some settings are managed by the operator instead of by you.
+Only the owner can delete a workspace.
 
-- **Models, budgets and limits.** The operator chooses the AI models, the budgets and the limits.
-  You cannot add your own AI key or change these settings for your workspace.
-- **Text models only.** The cloud uses text models. Images, audio and other
-  non-text input to the model are not supported.
-- **No native web search.** The model's built-in web search is not available.
-- **Public addresses only.** Connectors can only reach services on the public internet.
-  Addresses in a private network, such as `localhost` or an internal company server, are blocked.
-- **Slack and Google Chat are locked.** Chat workspaces on these platforms stay locked
-  until ownership of the workspace is verified. Use the chat in the Cockpit in your browser instead.
+1. In the Cockpit, open **Settings**.
+2. Select **Delete workspace**.
+3. Type the workspace name to confirm.
+4. Select **Delete**.
 
-### Use the sk CLI
+What happens next:
 
-The cloud serves the sk CLI, just like a self-hosted engine.
+- Access is suspended right away. Invited members lose their access.
+- Sessions, API keys, invitations and MCP client connections are revoked.
+- Your other workspaces are not affected.
+- For 7 days you can change your mind. Sign in again and select **Reverse deletion**.
+
+After you reverse a deletion, old keys and connections stay revoked.
+Sign in again with the sk CLI and your MCP clients. Create a new key for the Web Clipper.
+
+### Sign in with the sk CLI
+
+The `sk` CLI signs in through the browser, like the Cockpit.
 
 1. Install the CLI:
 
@@ -96,82 +107,73 @@ The cloud serves the sk CLI, just like a self-hosted engine.
    curl -fsSL https://subkit-cloud.mikebild.info/install | bash
    ```
 
-2. Sign in:
+2. Sign in. Use the address without `/cockpit`:
 
    ```bash
    sk login --engine-url https://subkit-cloud.mikebild.info
    ```
 
-3. Your browser opens. Sign in as you do in the Cockpit.
-   The CLI then receives a personal key and stores it for you.
-4. Run `sk` to start, or `sk --help` to see every command.
+3. In the browser that opens, select **Sign in with work account**.
 
-Give the address without a path. `https://subkit-cloud.mikebild.info/cockpit` does not work here.
+The CLI then stores a personal key. Run `sk` to start.
+For everything else, see "Use the sk CLI on your machine".
 
 ### Connect an MCP client
 
 AI clients such as ChatGPT, Claude or Cursor can connect to SubKit Cloud over MCP.
 
-1. In your client, add a remote MCP server with this address:
-   `https://subkit-cloud.mikebild.info/mcp`
-2. The client opens a browser sign-in.
-3. Sign in with your SubKit Cloud account and allow access.
+1. In your client, add a remote MCP server with the address `https://subkit-cloud.mikebild.info/mcp`.
+2. In the browser sign-in that opens, select **Sign in with work account**.
+3. On **Authorize access**, select **Approve**.
 
-You do not need to copy an API key for this.
+You do not need to copy an API key. For more, see "Connect AI clients via MCP".
 
-### Use the web clipper
+### Collect web pages
 
-The web clipper collects web pages into the **Inbox**. To use it with the cloud:
+The Web Clipper collects web pages into the **Inbox**.
+Set it up as described in "Collect web pages with the Web Clipper".
+For SubKit Cloud, the engine address is `https://subkit-cloud.mikebild.info`.
 
-1. Sign in with the sk CLI first, as shown above.
-2. Run `sk clipper install`. It fills in the cloud address from your sk profile.
-3. Load the extension in Chrome, as described in the chapter "Web Clipper".
-4. In the Cockpit, open **API access**, choose **Create key** and pick the preset **Web Clipper**.
-5. Enter that key in the extension settings and allow access to `subkit-cloud.mikebild.info`.
+### What is different from self-hosting
 
-If the clipper shows another address, change it to `https://subkit-cloud.mikebild.info` in its settings.
+SubKit Cloud runs the same engine as a self-hosted installation.
+Some settings are managed by the operator instead of by you.
 
-### Limits and the messages you see
+- **Models, budgets and limits.** The operator chooses them.
+  You cannot add your own AI key or change these settings for your workspace.
+- **Text models only.** Images, audio and other non-text input to the model are not supported.
+- **No native web search.** The model's built-in web search is not available.
+- **Public addresses only.** Connectors reach only services on the public internet.
+  Addresses in a private network, such as `localhost` or an internal company server, are blocked.
+- **Slack and Google Chat are locked.** Chat workspaces on these platforms stay locked
+  until ownership of the workspace is verified. Use the chat in the Cockpit instead.
+- **API keys for tools only.** API keys still work for the sk CLI, the Web Clipper, the HTTP API (Bearer)
+  and MCP clients that use a key. Signing in to the browser with an API key exists only for
+  self-hosted installations without an identity provider.
+- **No data export yet.** A workspace data export comes later.
+
+### Limits and their messages
 
 Every workspace has limits. The operator sets their values.
-When you reach one, SubKit tells you with a message.
+When you reach one, SubKit shows a message.
 
-| Limit | Message |
+| What you see | What to do |
 | --- | --- |
-| Too many requests in a short time | "Too many requests. Try again shortly." |
-| Monthly request allowance | "The monthly request allowance is exhausted." |
-| Storage for files and saved content | "The workspace storage allowance for files and saved content is exhausted. Retained content remains charged until physical cleanup succeeds." |
-| Number of resources | "The workspace resource limit is exhausted. Ask the engine operator to review retained resources." |
-| Monthly AI budget (shown in chat) | "This installation's monthly AI budget is used up." |
+| "Too many requests. Try again shortly." | You sent too many requests in a short time. Wait a moment and try again. |
+| "The monthly request allowance is exhausted." | The month's request allowance is used up. Wait for the next month or contact the operator. |
+| "The workspace storage allowance for files and saved content is exhausted. Retained content remains charged until physical cleanup succeeds." | Storage is full. Delete files and saved content you no longer need, or contact the operator. |
+| "The workspace resource limit is exhausted. Ask the engine operator to review retained resources." | Too many resources. Delete workflows or connectors you no longer need, or contact the operator. |
+| "This installation's monthly AI budget is used up." (in the chat) | Wait for the next month or contact the operator. |
 
-What to do:
+### If something does not work
 
-- For "Too many requests", wait a moment and try again.
-- For the monthly limits and the AI budget, wait for the next month or contact the operator.
-- For storage and resources, delete what you no longer need, or contact the operator.
-
-### Delete a workspace
-
-Only the owner can delete a workspace.
-
-1. Open **Settings** in the Cockpit.
-2. Choose **Delete workspace**.
-3. Type the workspace name to confirm.
-
-What happens next:
-
-- Access is suspended right away. Invited members lose their access.
-- Sessions, API keys, invitations and MCP client connections are revoked.
-- Your other workspaces are not affected.
-- You have 7 days to change your mind. Sign in again and choose **Reverse deletion**.
-- After 7 days, all data is permanently removed. It cannot be restored.
-
-After you reverse a deletion, old keys and connections stay revoked.
-Sign in again with the sk CLI and your MCP clients. Create a new key for the clipper.
-
-### Export your data
-
-A workspace data export is coming later. It is not available yet.
+| What you see | What to do |
+| --- | --- |
+| The invitation link or sign-in does not work | Use the email address the invitation was sent to. |
+| You forgot your password | Upraft Auth sends you an email to reset it. |
+| You want to use a different account | Follow "Switch accounts". |
+| You are signed out unexpectedly | Your session ended after 8 hours of inactivity or 24 hours. Sign in again. |
+| `sk login` or the MCP client cannot connect | Use `https://subkit-cloud.mikebild.info` and `https://subkit-cloud.mikebild.info/mcp`, without `/cockpit`. |
 ## Run the engine
 
 Requires Docker with Compose, OpenSSL and a POSIX shell. Use `docker-compose.yml`
@@ -228,8 +230,6 @@ Test restoration in a separate installation before relying on a backup or upgrad
 The default API and database bindings are loopback-only. Complete first-run setup
 locally before exposing the API. Remote access requires HTTPS and access controls;
 do not expose the database or object store publicly.
-
-From a checkout, `bun run start:local` starts the stack and completes first-run setup with the `mock` LLM provider.
 
 Connector discovery in the supplied container supports HTTP-based documentation
 sources. Optional Playwright crawling is not available out of the box. For documentation
@@ -305,7 +305,6 @@ docker compose exec engine sk init \
   --llm-api-key <your-provider-key>
 ```
 
-Use `--llm-provider mock --llm-api-key mock` to try it without an LLM account.
 `sk init` checks the key with one minimal call before it saves anything; a refused key stops
 the setup, nothing is stored, and the same token works for the next try.
 
@@ -315,86 +314,84 @@ installations without an identity provider; SubKit Cloud signs you in through Up
 
 ## Your first workflow
 
-In this chapter you go from signing in to your first successful run.
-You describe a task in the chat, SubKit builds the workflow, you approve
-what it may touch, you start it, and you read the result in the history.
-
+Go from signing in to your first successful run.
+You describe a task in the chat, save the workflow, approve it, start it and read the result.
 It works the same in SubKit Cloud and on a self-hosted engine.
 
 ### What you need
 
 - A SubKit account in a workspace.
-  - Cloud: `https://subkit-cloud.mikebild.info/cockpit`
+  - Cloud: `https://subkit-cloud.mikebild.info`
   - Self-hosted: `https://<your-engine>/cockpit`
 - Permission to create and run workflows. Ask your administrator if a button is missing.
 - An AI provider. Cloud provides one. A self-hosted engine uses the provider you chose in `sk init`.
 
-> Trying a self-hosted engine without an AI account? `sk init --llm-provider mock --llm-api-key mock`
-> sets up a mock provider. It is good for checking the installation and the Cockpit.
-> The chat only answers with "Acknowledged: … (mock)" and builds no workflow.
-> For this chapter, use a real provider.
-
-### Step 1: Sign in
+### Sign in
 
 1. Open the Cockpit.
-2. Cloud: sign in with your password or a sign-in link by email.
-   Self-hosted without an identity provider: sign in with an API key.
-3. You land on **Overview** in your workspace.
+2. Select **Sign in with work account**.
 
-### Step 2: Describe the task in the chat
+You land on **Overview** in your workspace.
+Self-hosted without an identity provider? Select **Sign in with API key** instead and enter your key.
 
-1. Open **Chat** in the navigation.
-2. Choose **New conversation**.
-3. Describe the task in plain words. Say what goes in, what should happen and what comes out.
+### Describe the task
+
+1. In the navigation, open **Chat**.
+2. Select **New conversation**.
+3. Describe the task in plain words: what goes in, what should happen, what comes out.
    Example: "Fetch the open issues of my GitHub repository and give me a short list with title and link."
 4. Answer the questions SubKit asks. If the task needs a service, SubKit asks you to connect it
    or to sign in to it.
 
-Tip: one small task is easier to check than a large one. You can extend the workflow later in the same chat.
+Good to know: a small task is easier to check. You can extend the workflow later in the same chat.
 
-### Step 3: Save the workflow
+### Save the workflow
 
 When the workflow is ready, SubKit shows a card **Save workflow draft**.
 
 1. Open **What will change** and read which steps and targets are included.
-2. Choose **Save inactive version**.
+2. Select **Save inactive version**.
 
 Saving starts nothing. The workflow now appears under **Workflows**.
 
-### Step 4: Approve what it may touch
+### Approve what it may touch
 
 A new version does not touch anything outside SubKit until a person approves it.
 Without an approval, a run starts only as a preview without effects.
 
 1. Open **Workflows** and select your workflow.
-2. The status line shows **Waiting for approval** or **Not approved**. Choose **Approve…**.
-3. Check the dialog:
-   - **Environment**: where the runs are allowed, for example **Production**.
-   - **Operations and external targets**: which services and addresses the workflow reaches.
-   - **Maximum runs** and the time window: how long and how often the approval applies.
+   The status line shows **Waiting for approval** or **Not approved**.
+2. In the status line, select **Approve…**.
+3. Check **Environment**, **Operations and external targets** and **Maximum runs**.
 4. Confirm with **Allow 1 run** or **Allow … runs**.
 
-Approving starts no run. An approval covers one version, one environment and a duration.
+Approving starts no run. An approval covers one environment and a duration.
+It also follows a new version whose boundary does not grow.
 You can revoke it at any time in the **Approvals** tab.
+You can also approve from the chat: select **Review saved change** and then **Use change and allow runs**.
 
-The chat can also take you there. Choose **Review saved change** and then **Use change and allow runs**.
+| Field | What it controls |
+| --- | --- |
+| **Environment** | Where the runs are allowed, for example **Production**. |
+| **Operations and external targets** | Which services and addresses the workflow reaches. |
+| **Maximum runs** and the time window | How often and how long the approval applies. |
 
-### Step 5: Run it
+### Run the workflow
 
-1. On the workflow page, choose **Run**.
+1. On the workflow page, select **Run**.
 2. Fill in the inputs if the workflow asks for any.
-3. The dialog says **Starts a run of the approved version.** Confirm with **Run**.
+3. Select **Run** to confirm. The dialog says **Starts a run of the approved version.**
 
 You see **Run started**. If the button is unavailable, the hint says why, for example
 **Enable the workflow before running it.**
 
-### Step 6: Check the result
+### Check the result
 
-1. Open the **History** tab on the workflow page.
-2. The newest run is at the top, with its status. **Succeeded** means the run finished.
-3. Open the run. You see every step with its output.
-   A failed step shows **Error in step "…"** with the cause.
-4. **In the audit trail** shows who started and approved what.
+1. On the workflow page, open the **History** tab.
+   The newest run is at the top, with its status. **Succeeded** means the run finished.
+2. Open the run.
+   You see every step with its output. A failed step shows **Error in step "…"** with the cause.
+3. Optional: Select **In the audit trail** to see who started and approved the run.
 
 You can check the same with the sk CLI:
 
@@ -410,87 +407,134 @@ sk executions result <run-id>
 
 | What you see | What to do |
 | --- | --- |
-| The chat only answers "Acknowledged: … (mock)" | The engine uses the mock provider. Set up a real AI provider. |
-| The run result is headed **Preview — not written** | The version has no approval yet. Do step 4. |
+| The run result is headed **Preview — not written** | The version has no approval yet. Follow "Approve what it may touch". |
 | "Not started (…): no valid approval covers this run." | The approval is missing, expired or used up. Approve again or extend it. |
 | "… must be reconnected" | Sign in to the connector again under **Connectors**. |
 | **You do not have permission to run this workflow.** | Ask your administrator for a role that may run workflows. |
 | A step failed | Open the run, read the error and describe it in the same chat. SubKit suggests a fix that you review again. |
 ## Use the sk CLI on your machine
 
-The engine serves the CLI itself. There is no npm package.
-
-```bash
-curl -fsSL http://localhost:3000/install | bash
-docker compose exec engine engine --issue-admin-key --tenant my-org   # prints an `sk login` line
-sk login --engine-url http://localhost:3000 --api-key <key>
-sk
-```
-
-`sk --help` lists every command. The engine describes itself at `/openapi.json` and `/llms.txt`.
-
-For a published public GitHub release, `bash scripts/install.sh` from a reviewed
-checkout installs the matching CLI for Linux or macOS and creates the local
-`subkit` compatibility link. It requires Bash, curl, and OpenSSL with Ed25519 support
-(for example OpenSSL 3 on your PATH). It verifies the signed checksum manifest
-against the pinned release public key, then verifies the selected binary and both
-license assets before replacing an existing installation. It installs `subkit.LICENSE`
-and `subkit.THIRD_PARTY_NOTICES.txt` beside the CLI. Missing license assets, missing signatures or unsupported cryptography
-stop installation. This path requires publicly downloadable release assets; a local
-build or a private repository is not sufficient. The engine-served installer above
-is a separate download path from your own installation. It requires the binary,
-`LICENSE`, and `THIRD_PARTY_NOTICES.txt` from the same engine bundle or explicit
-mirror and verifies each against that source's checksum manifest. Its trust boundary
-is your selected engine/mirror; it does not imply GitHub release-signature verification.
-
-The GitHub updater also requires both signed license assets. It updates the notices
-beside the binary and retains existing notices with their checksums for rollback.
-Older retained versions without notice metadata cannot reconstruct missing historical
-license files; their existing rollback behavior remains available.
-
-## Connect AI clients via MCP
-
-After this chapter, your AI client can find and run your SubKit workflows. Claude, ChatGPT,
-Cursor and Codex talk to SubKit over the Model Context Protocol (MCP). Every call is checked
-against your permissions and recorded in the audit log.
-
-Every engine has exactly one MCP address:
-
-```text
-https://<your-engine>/mcp
-```
-
-On SubKit Cloud it is `https://subkit-cloud.mikebild.info/mcp`.
+Your engine serves the CLI itself. There is no npm package.
+You install `sk` once, sign in, and then work with workflows, runs and connectors in the terminal.
 
 ### What you need
 
-- **An engine address.** SubKit Cloud, or your own engine with HTTPS.
-  Plain HTTP works only on `localhost`.
-- **An account in a workspace** whose role allows MCP access.
-  Without it, the sign-in ends with `access_denied`.
-- **An AI client** that supports remote MCP servers over HTTP.
+- The address of your engine, without a path. The examples use `http://localhost:3000`.
+  For SubKit Cloud, see "Use SubKit Cloud".
+- Bash and curl.
+- For an API key on a self-hosted engine: access to the engine host.
+
+### Install and sign in
+
+1. Install the CLI from your engine:
+
+   ```bash
+   curl -fsSL http://localhost:3000/install | bash
+   ```
+
+2. Sign in:
+
+   ```bash
+   sk login --engine-url http://localhost:3000
+   ```
+
+   Your browser opens. After you sign in, `sk` prints `sk: signed in as …` and saves the profile.
+3. Run `sk` to start. `sk --help` lists every command.
+
+The engine describes itself at `/openapi.json` and `/llms.txt`.
+
+### Sign in with an API key
+
+Use this for scripts, or for a self-hosted engine without an identity provider.
+
+1. On the engine host, issue an admin key. The command prints a ready `sk login` line:
+
+   ```bash
+   docker compose exec engine engine --issue-admin-key --tenant my-org
+   ```
+
+2. Run the printed line. It has this form:
+
+   ```bash
+   sk login --engine-url http://localhost:3000 --api-key <key>
+   ```
+
+   `sk` prints `sk: profile 'default' saved` and the engine health.
+
+### Install from a public GitHub release
+
+Use this to install a signed public release instead of the download from your engine.
+You need Bash, curl, and OpenSSL with Ed25519 support, for example OpenSSL 3 on your PATH.
+
+1. Check out the published public release and review it.
+2. In the checkout, run the installer:
+
+   ```bash
+   bash scripts/install.sh
+   ```
+
+The script installs the matching CLI for Linux or macOS and creates the local `subkit` compatibility link.
+It puts `subkit.LICENSE` and `subkit.THIRD_PARTY_NOTICES.txt` beside the CLI.
+The release assets must be publicly downloadable. A local build or a private repository is not sufficient.
+
+### What the installers check
+
+Each installer checks the files before it replaces an existing installation.
+Missing license assets, missing signatures or unsupported cryptography stop the installation.
+
+| Installer | What it checks | What it trusts |
+| --- | --- | --- |
+| `scripts/install.sh` | The signed checksum manifest, then the selected binary and both license assets | The pinned release public key |
+| `/install` from the engine | The binary, `LICENSE` and `THIRD_PARTY_NOTICES.txt` from the same engine bundle or an explicit mirror, against that source's checksum manifest | The engine or mirror you selected, not a GitHub release signature |
+| GitHub updater | Both signed license assets. It updates the notices beside the binary and keeps the existing ones with their checksums for rollback. | The pinned release public key |
+
+Older retained versions without notice metadata cannot rebuild missing historical license files.
+Their rollback still works as before.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| `sk: browser login failed` | The browser sign-in did not complete. Try again, or follow "Sign in with an API key". |
+| `sk login` cannot reach the engine | Check the `--engine-url`. Give the address without a path. |
+| `scripts/install.sh` stops with a missing license asset or signature | Use a published public release. A local build or a private repository does not work. |
+| `scripts/install.sh` stops because of unsupported cryptography | Put OpenSSL with Ed25519 support, for example OpenSSL 3, on your PATH. |
+## Connect AI clients via MCP
+
+Connect an AI client such as Claude, ChatGPT, Cursor or Codex to SubKit over MCP.
+The client can then find and run your workflows.
+Every call is checked against your permissions and recorded in the audit log.
+
+### What you need
+
+- The MCP address of your engine. Every engine has exactly one:
+
+  ```text
+  https://<your-engine>/mcp
+  ```
+
+  On SubKit Cloud it is `https://subkit-cloud.mikebild.info/mcp`, always without `/cockpit`.
+  Your own engine needs HTTPS. Plain HTTP works only on `localhost`.
+- An account in a workspace whose role allows MCP access. Without it, the sign-in ends with `access_denied`.
+- An AI client that supports remote MCP servers over HTTP.
 
 ### Choose how to sign in
 
-There are two ways. Pick one.
-
 | Way | When | What you do |
 | --- | --- | --- |
-| **Browser sign-in (OAuth)** | SubKit Cloud and engines with a sign-in provider | Enter the address. The client opens your browser. |
-| **API key** | Self-hosted engines without an identity provider | Copy a key into the client as a bearer token. |
+| **Browser sign-in (OAuth)** | SubKit Cloud and engines with an identity provider | Enter the address. The client opens your browser. In the cloud, select **Sign in with work account** there. |
+| **API key** | Clients that use a key, and engines without an identity provider | Enter a key in the client as a bearer token. |
 
 Prefer browser sign-in. You copy no secret, and the access renews itself.
 An API key is a long-lived secret on your machine.
 
 ### Connect with browser sign-in
 
-1. In your client, add a remote MCP server with the address `https://<your-engine>/mcp`.
-   Name it `sk`.
-2. The client opens your browser. Sign in as you do in the Cockpit.
-3. The page **Authorize access** shows which client wants access to which workspace.
-4. Check the boxes for what the client may do (see "What the client may do" below).
-   **Read** is always on.
-5. Click **Approve**. The browser returns to your client.
+1. In your client, add a remote MCP server with the address `https://<your-engine>/mcp` and name it `sk`.
+2. In the browser window the client opens, sign in as you do in the Cockpit.
+3. On the page **Authorize access**, check which client wants access to which workspace.
+4. Check the boxes for what the client may do. **Read** is always on.
+5. Select **Approve**. The browser returns to your client.
 
 Where you add the server depends on the client:
 
@@ -504,47 +548,45 @@ Where you add the server depends on the client:
   Then run `/mcp` in Claude Code and choose `sk` to sign in.
 - **ChatGPT and Cursor:** the client's MCP or connector settings.
 
-Menu names change between client versions. They are not verified here.
-If a step looks different, follow your client's guide for remote MCP servers.
+Menu names change between client versions. If a step looks different, follow your client's guide for remote MCP servers.
 
 ### Connect with an API key
 
-Use this only on a self-hosted engine without an identity provider.
-
-1. In the Cockpit, open **API access** and create a key.
-   The **Run** preset fits most clients.
-2. Store the key in an environment variable. Do not paste it into a file you share.
+1. In the Cockpit, open **API access** and create a key. The **Run** preset fits most clients.
+2. Store the key in an environment variable, not in a file you share:
 
    ```bash
    export SK_API_KEY=<your-key>
    ```
 
-3. Register the server.
+3. Register the server in your client with the matching command.
 
-   Claude Code:
+Claude Code:
 
-   ```bash
-   claude mcp add --transport http --scope user sk https://<your-engine>/mcp --header "Authorization: Bearer ${SK_API_KEY}"
-   ```
+```bash
+claude mcp add --transport http --scope user sk https://<your-engine>/mcp --header "Authorization: Bearer ${SK_API_KEY}"
+```
 
-   Codex:
+Codex:
 
-   ```bash
-   codex mcp add sk --url https://<your-engine>/mcp --bearer-token-env-var SK_API_KEY
-   ```
+```bash
+codex mcp add sk --url https://<your-engine>/mcp --bearer-token-env-var SK_API_KEY
+```
 
-   Other clients: send the header `Authorization: Bearer <your-key>` with every request.
+Other clients send the header `Authorization: Bearer <your-key>` with every request.
 
 A key without an MCP mode marker connects in **Read** mode.
-How keys carry `mcp:authoring` or `mcp:admin` is described in the chapter "Engine operator".
+For authoring, add `mcp:authoring` to `--scopes` when you create the key with `sk apikeys create`.
 
-### Check
+### Check the connection
 
-1. Check that the engine answers. It names its MCP address and the scopes it offers:
+1. Check that the engine answers:
 
    ```bash
    curl https://<your-engine>/.well-known/oauth-protected-resource
    ```
+
+   The answer names the MCP address and the scopes it offers:
 
    ```json
    {
@@ -554,16 +596,14 @@ How keys carry `mcp:authoring` or `mcp:admin` is described in the chapter "Engin
    }
    ```
 
-2. In your client, ask: "Call the sk tool whoami."
-   The answer names your account, your workspace and your scopes.
+2. In your client, ask: "Call the sk tool whoami." The answer names your account, your workspace and your scopes.
 3. Ask: "Find a workflow in sk." The client calls `find_workflow` and lists what it finds.
 
 If all three work, the client is connected.
 
 ### What the client may do
 
-The scope decides which tools the client sees. It never widens your permissions.
-Your role still limits every call.
+The scope decides which tools the client sees. It never widens your permissions; your role still limits every call.
 
 | On the consent page | Scope | The client can |
 | --- | --- | --- |
@@ -578,182 +618,284 @@ Your role still limits every call.
 
 ### Reads, runs and writes
 
-SubKit separates three kinds of effects.
-
-- **Reads** run right away. Example: `find_workflow`, `get_execution`, `search_knowledge`.
+- **Reads** run right away. Examples: `find_workflow`, `get_execution`, `search_knowledge`.
 - **Runs** start a saved workflow, for example with `run_workflow` or a `wf_<slug>` tool.
-  A short run answers right away. A long run answers with an `execution_id`.
-  The client follows it with `get_execution`.
+  A short run answers right away. A long run answers with an `execution_id`, which the client follows with `get_execution`.
 - **Writes** change something: send an email, change data, change the workspace.
 
 Writes always need a person. There are two checks:
 
-1. **Writes inside a workflow.** A workflow only writes for real after a person approved it
-   in the Cockpit: the exact version, its targets and its limits. Without that approval,
-   the run is a preview. Writes are held, and nothing is sent.
-2. **Write tools in the client.** A write tool can pause and return an approval link.
-   Open the link, sign in and check what will happen. Then choose **approve** or **decline**.
-   Only after your approval can the client finish the call with `confirm_tool_call`.
+- **Writes inside a workflow:** A workflow writes for real only after a person approves it in the Cockpit. The approval covers the exact version, its targets and its limits.
+  Without approval, the run is a preview: writes are held and nothing is sent.
+- **Write tools in the client:** A write tool can pause and return an approval link.
+  Open the link, sign in, check what will happen, and select **Approve** or **Decline**.
+  Only after your approval can the client finish the call with `confirm_tool_call`.
 
 The AI cannot approve anything itself. The link alone is not an approval either.
 
-### Troubleshooting
+### If something does not work
 
-| What you see | Cause | What to do |
-| --- | --- | --- |
-| `401` with `missing_or_invalid_credentials` | No or invalid sign-in. | Sign in again, or check the key and the `Authorization` header. |
-| Sign-in ends with `access_denied` | Your role has no MCP permission. | Ask an administrator for a role with MCP access. |
-| `403` "Forbidden: invalid Origin header" | The request came from a foreign web page. | Use the engine's own address. Connect from the client, not from a web page. |
-| `403` `product_caller_forbidden` | The token belongs to an app user. | App tokens have no MCP access. Use a person's sign-in or key. |
-| `400` "Unsupported protocol version" | The client speaks an MCP version the engine does not know. | Update the client. |
-| `404` "Session not found" | The session expired, for example after an engine restart. | Reconnect the server in the client. |
-| Authoring tools are missing | The access has no `mcp:authoring`. | Sign in again and check **Authoring**, or author with the sk CLI. |
-| New tools are missing after an update | claude.ai keeps its old tool list. | Remove the connector and add it again. |
-
-### Next
-
-- "Use sk from a coding agent": brief Claude Code and Codex on your repository.
-- "Use the sk CLI on your machine": author workflows as files you can review.
+| What you see | What to do |
+| --- | --- |
+| `401` with `missing_or_invalid_credentials` | Sign in again, or check the key and the `Authorization` header. |
+| Sign-in ends with `access_denied` | Your role has no MCP permission. Ask an administrator for a role with MCP access. |
+| `403` "Forbidden: invalid Origin header" | The request came from a foreign web page. Connect from the client, not from a web page, and use the engine's own address. |
+| `403` `product_caller_forbidden` | The token belongs to an app user and has no MCP access. Use a person's sign-in or key. |
+| `400` "Unsupported protocol version" | The client speaks an MCP version the engine does not know. Update the client. |
+| `404` "Session not found" | The session expired, for example after an engine restart. Reconnect the server in the client. |
+| Authoring tools are missing | The access has no `mcp:authoring`. Sign in again and check **Authoring**, or author with the sk CLI. |
+| New tools are missing after an update | claude.ai keeps its old tool list. Remove the connector and add it again. |
 ## Use sk from a coding agent
 
+MCP gives your coding agent the approved sk tools.
+`sk agent init` gives every Claude Code and Codex session a shared-memory briefing for your repository.
+Collected material follows one path: **collect → review with your agent → confirm in the Cockpit → knowledge**.
+
+### What you need
+
+- The sk CLI, signed in to your engine. In the cloud, use `sk login --engine-url https://subkit-cloud.mikebild.info` and **Sign in with work account**. The briefing uses this signed-in profile.
+- The MCP address of your engine, `https://<your-engine>/mcp`. On SubKit Cloud it is `https://subkit-cloud.mikebild.info/mcp`.
+- Claude Code, Codex or both.
+- A repository where the briefings should appear.
+
+### Set up the sk tools once per machine
+
+1. In the Cockpit, open **API access** and create a key.
+2. Store the key in `SK_API_KEY`.
+3. Register sk in your client with the matching command.
+
+Claude Code:
+
 ```bash
-claude mcp add --transport http --scope user sk http://localhost:3000/mcp --header "Authorization: Bearer ${SK_API_KEY}"
-codex mcp add sk --url http://localhost:3000/mcp --bearer-token-env-var SK_API_KEY
-sk agent init --domains <category>   # in a repository: briefs each Claude Code and Codex session on that domain
+claude mcp add --transport http --scope user sk https://<your-engine>/mcp --header "Authorization: Bearer ${SK_API_KEY}"
 ```
 
-Use MCP for approved sk tools; run `sk agent init` to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings. Hooks can resolve a current folder name to known domains when no explicit declaration exists. Both use the same authenticated sk profile as the CLI.
+Codex:
 
-### Set up and verify briefings
+```bash
+codex mcp add sk --url https://<your-engine>/mcp --bearer-token-env-var SK_API_KEY
+```
 
-MCP registration is a one-time machine setup. In each repository, run `sk agent init --domains <category>[,<category>]` and commit `.sk/agent.json` so every checkout uses the same domains. A domain can be a catalog category or a `domain:<slug>` tag. `init` merges requested domains without removing existing domains or settings, and wires Claude Code and Codex SessionStart, UserPromptSubmit and SessionEnd hooks. Codex transcript capture runs asynchronously to fit its three-second hook limit. Both clients and the sk REPL share an 1,800-token briefing budget and 9,500-character hard limit. `--skip-claude` and `--skip-codex` leave that client's settings untouched.
+To sign in without a key, see "Connect AI clients via MCP".
 
-Run `sk status`, then `sk agent briefing --json` from the repository to verify the declaration, credentials, engine connection and returned briefing. Use the JSON fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens` to inspect the result. Empty `knowledge_sources` or `skills_full` means the briefing works but those items are not assigned to the declared domain. Put knowledge and skills in the domain's catalog category or tag them `domain:<slug>`.
+### Set up briefings in a repository
 
-Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation. The briefing only counts collected clips and session learnings in the project's categories and never includes their content. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex hooks are enabled by default; no `config.toml` edit is normally needed. Review and trust new or changed SubKit hooks in `/hooks`. If hooks are disabled, inspect the effective feature setting and administrator policy before changing settings; see the [official Codex hook guide](https://learn.chatgpt.com/docs/hooks). Both clients send a transcript at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. The engine keeps only practices and facts a person taught or confirmed, drops events, status updates and anything credential-related, and collects the rest in the Inbox with origin `session`, in the project's shared category or your default category. The same learning from a later session adds evidence to the existing item instead of a duplicate. Collected learnings are not knowledge and not skills until a person confirms a proposal in the Cockpit; `sk intake list` shows what is waiting.
+1. In the repository, declare the domains:
 
-For open-ended check-ins, the briefing uses the current project's matched domain together with shared SubKit context, plus connected sources that best answer the question. It distinguishes live service state from repository changes and static knowledge, prioritizes blocked or failing work and imminent deadlines, and gives up to three specific next steps in the user's language. Maintenance suggestions must be grounded in repository instructions, explicit plans or TODOs, and observed issues such as failing checks or generated-file drift. Relevant knowledge sources and workflows from the folder's domain are recommended by name when they help with a concrete task. It reports when a relevant source is unavailable.
+   ```bash
+   sk agent init --domains <category>
+   ```
+
+   For several domains, separate them with commas: `--domains <category>[,<category>]`.
+2. Commit `.sk/agent.json` so every checkout uses the same domains.
+3. In Claude Code or Codex, run `/hooks` and check that the SubKit hooks are active.
+4. Trust new or changed SubKit hooks.
+
+### Check the briefing
+
+1. In the repository, run `sk status`.
+2. Run `sk agent briefing --json`.
+3. Check the fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens`.
 
 ### Review collected material with your coding agent
 
-Collected pages remain material to review. With `intake:read`, the briefing adds
-a short tenant-wide count of collected entries and pending knowledge proposals.
-It does not load their text, treat them as instructions, or claim they belong to
-the repository's domain. Without that permission the reminder is omitted.
+Your agent can start a review of collected entries. You confirm the result in the Cockpit.
 
-Ask: "Review the new entries in Research. Which are useful? Propose what we should
-keep as knowledge." Review uses a saved SubKit conversation. MCP clients start
-it through `conversation_start`; `intake_item_ids` selects particular clips and
-keeps that selection fixed. The returned Cockpit link continues the same review.
-Item-reading and proposal tools need this saved conversation and cannot run as
-standalone MCP calls. The clipper's API key needs only intake read/write;
-the person confirming a proposal needs `intake:confirm` and `knowledge:write`.
+1. Ask your agent: "Review the new entries in Research. Which are useful? Propose what we should keep as knowledge."
+2. Open the Cockpit link the agent returns.
+3. Check the proposal's sources, exact text and knowledge destination.
+4. Select **Confirm as knowledge**.
+5. Run `sk agent briefing --json` and check `knowledge_sources`.
 
-From the terminal, `sk intake list` shows collected items in your default category. Use
-`sk intake list --category research` to see collected items and
-`sk intake review --category research` to start their review. Without a
-selection, review uses your default category. `--items <comma-separated-ids>`
-selects particular entries; `--json` returns machine-readable results. The command
-prints the Cockpit link for continuing the conversation and reviewing proposals.
-Use `sk intake default --category research` to change your personal default,
-`sk intake move --item <id> --category research` to organize an entry, and
-`sk intake discard --item <id>` or `sk intake restore --item <id>` to change its
-review state. These actions preserve the original clip and never admit knowledge.
+A new session loads the updated briefing.
 
-The proposal shows its sources, exact text and knowledge destination. An existing
-destination keeps its topic assignment. For a new destination, include the topic
-category or `domain:<slug>` tag in the reviewed proposal so the resulting knowledge
-can appear in the intended repository briefing. Changing that assignment requires
-reviewing the changed proposal. After confirmation, run `sk agent briefing --json`
-to check `knowledge_sources`, then search for the accepted material. The original
-clip remains linked. A new session loads the updated briefing.
+Good to know:
 
-### Verify an installed intake API
+- Only a signed-in person with `intake:confirm` and `knowledge:write` confirms a proposal. An API key, an MCP client or the Web Clipper never does.
+- The Web Clipper key uses the **Web Clipper** preset (`intake:read` and `intake:write`).
+- The original clip stays linked to the knowledge it became.
+- Moving, editing or discarding an entry never admits it as knowledge.
 
-During intake development, `bun run verify:intake` runs the focused type,
-domain, HTTP, briefing, MCP, and CLI checks, including a real local
-PostgreSQL/API smoke flow. It avoids the repository-wide test suite. Use browser-use
-with Codex or Claude Code for browser journeys; visual acceptance is performed manually.
+### Review collected material in the terminal
 
-`bun run verify:intake-live` checks a selected server through its public API.
-Set `SK_ENGINE_URL` and `SK_INTAKE_TEST_KEY` outside the repository. The default
-run is read-only and reports compatibility, readiness and the delivered archive.
-It is separate from the local `bun run verify` gate.
+| Command | What it does |
+| --- | --- |
+| `sk intake list` | Shows collected items in your default category. |
+| `sk intake list --category research` | Shows collected items of one category. |
+| `sk intake review --category research` | Starts the review and prints the Cockpit link. |
+| `sk intake review --items <comma-separated-ids>` | Reviews only particular entries. |
+| `sk intake default --category research` | Changes your personal default category. |
+| `sk intake move --item <id> --category research` | Moves an entry to a category. |
+| `sk intake discard --item <id>` | Discards an entry. |
+| `sk intake restore --item <id>` | Restores a discarded entry. |
 
-For a synthetic write check, use a dedicated test tenant and its user key:
-add `--allow-writes --test-tenant-id <uuid> --run-id <unique-run-name>
---json <report-path>`. The tenant must match the authenticated identity. The
-check collects in its own category, tests exclusion before confirmation and the
-exact proposal, and verifies that the API key cannot confirm it. The report's
-`handoff.review_url` opens the proposal in the Cockpit, where a person of that
-tenant confirms it. Then run the same command with `--after-confirm --proposal-id <id>`
-to check the single admission, provenance, search and the domain briefing.
-It reports timings and retained resource IDs. Intake has no deletion API, so
-test records remain for inspection. This API check does not measure model
-judgment or replace a real browser/chat verification. It never deploys code.
+- Without a selection, `review` uses your default category.
+- `--json` returns machine-readable results.
+- These actions preserve the original clip and never admit knowledge.
 
-## Web Clipper
+### How briefings work
 
-The SubKit Clipper is a browser extension. It sends a web page, a text selection or a
-YouTube transcript to your SubKit engine. There it waits in the Cockpit **Inbox** until
-you review it. Clipping alone never turns anything into knowledge or a skill.
+**Domains.** A domain is a catalog category or a `domain:<slug>` tag.
+
+- `sk agent init` adds the requested domains and removes nothing that exists.
+- Without `.sk/agent.json`, the hooks match the folder name against your project categories. On a unique match they create `.sk/agent.json` for you. Otherwise they ask before guessing.
+- To fix the domains yourself, edit `domains` in `.sk/agent.json` and remove `inferred` and `inferred_folder_domain`.
+- A prompt can add other matching domains as the task changes.
+
+**Hooks.** `init` sets up the SessionStart, UserPromptSubmit and SessionEnd hooks for Claude Code and Codex. `--skip-claude` and `--skip-codex` leave that client's settings untouched.
+
+**Contents.** Budget: 1,800 tokens, at most 9,500 characters, shared by both clients and the sk REPL.
+Oversized context is shortened with a visible warning.
+
+A briefing contains:
+
+- Domain context and a short status, with blocked work and deadlines first.
+- Up to three specific next steps in your language.
+- Relevant knowledge sources and workflows of the folder's domain, named when they help with a task.
+- A count of collected clips and session learnings, never their content. With `intake:read`, also a workspace-wide count of collected entries and pending proposals.
+
+**Session learnings.** At session end, both clients send the transcript.
+
+- The engine keeps only practices and facts a person taught or confirmed.
+- The engine drops events, status updates and anything credential-related.
+- The rest lands in the Inbox with origin `session`, in the project's shared category or your default category. A repeated learning adds evidence to the existing entry.
+- Learnings are not knowledge and not skills until a person confirms them in the Cockpit. `sk intake list` shows what is waiting.
+
+**Reviews with an agent.** The review runs in a saved SubKit conversation.
+
+- MCP clients start it with `conversation_start`. `intake_item_ids` selects particular clips and keeps that selection fixed.
+- Tools that read entries or prepare proposals work only inside this conversation.
+- For a new destination, include the topic category or `domain:<slug>` tag in the proposal. A changed proposal must be reviewed again.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| `sk agent briefing: no domains …` | There is no declaration. Pass `--domains` or run `sk agent init --domains <category>`. |
+| `knowledge_sources` or `skills_full` are empty | The briefing works but nothing is assigned to the domain. Put knowledge and skills in the domain's category or use the `domain:<slug>` tag. |
+| The client shows a briefing warning | The engine cannot be reached. The session continues. Check sign-in and connection with `sk status`. |
+| No briefings in Claude Code or Codex | Open `/hooks`, check that the SubKit hooks are active, and trust new or changed hooks. |
+| `/hooks` in Codex shows the SubKit hooks as disabled | Follow the [Codex hooks guide](https://learn.chatgpt.com/docs/hooks). |
+| The reminder about collected entries is missing | You lack the `intake:read` permission. Ask an administrator for it. |
+| A proposal cannot be confirmed | Only a signed-in person with `intake:confirm` and `knowledge:write` can confirm, not an API key. Open the Cockpit link. |
+## Collect web pages with the Web Clipper
+
+The Web Clipper sends a web page, a text selection or a YouTube transcript to your engine.
+The item waits in the Cockpit **Inbox** until you review it.
+Collecting alone never turns anything into knowledge or a skill.
 
 The path is always the same: **collect → review in chat → confirm → knowledge or skill**.
 
-### What the clipper captures
+### What you need
 
-- **A page.** The clipper extracts the main article text and converts it to Markdown.
-  Links become absolute addresses. Navigation and recommendations are left out.
-- **A selection.** Select text on the page first. The clipper then takes only that text.
-- **A YouTube video.** On a video page, the clipper takes the title, author, publish date,
-  description and the transcript in the original audio language. You can include or
-  exclude the description and the transcript under **Details and edit content**.
+- **Google Chrome.** Other browsers are untested.
+- **The `sk` CLI**, signed in to your engine. See "Use the sk CLI on your machine".
+- **An engine address** that uses HTTPS. Plain HTTP works only on `localhost`, `127.0.0.1` or `[::1]`. In SubKit Cloud it is `https://subkit-cloud.mikebild.info`, without `/cockpit`.
+- **An account with `intake:read` and `intake:write`.** If it lacks them, ask an administrator.
 
-Along with the text, the clipper keeps the title, the source address, the source author
-and the publish date when the page provides them. Image links stay in the text.
-Image files are not uploaded. The clipper takes no screenshots.
-
-When you collect from the toolbar or with the shortcut, the clipper uses your selection
-if there is one. Otherwise it takes the whole article.
-
-### Before you start
-
-You need:
-
-- **Google Chrome.** The clipper is made for Chrome. Other browsers are untested.
-- **The `sk` CLI**, logged in to your engine. See "Use the sk CLI on your machine".
-- **An engine address** that uses HTTPS. Plain HTTP works only on `localhost`,
-  `127.0.0.1` or `[::1]`.
-- **An account with `intake:read` and `intake:write`.** If your account lacks them,
-  ask an administrator.
-
-The clipper is not available in the Chrome Web Store. You install it from the CLI.
+The Web Clipper is not in the Chrome Web Store. You install it from the CLI.
 
 ### Install the extension
 
-1. Run the installer:
+The installer copies your active profile's engine address into the extension. You only add an API key later.
 
-   ```bash
-   sk clipper install
-   ```
-
-   It unpacks the extension to `~/.sk/clipper` and prints:
+1. Run `sk clipper install`. The command unpacks the extension to `~/.sk/clipper` and tries to open Chrome's extension page.
 
    ```text
    sk: clipping extension installed to /Users/you/.sk/clipper
+   sk: in Chrome, enable Developer mode, select Load unpacked, and choose the directory above. Reload the extension there after a future install.
    ```
 
-   It also tries to open Chrome's extension page for you.
+   The output names the install folder and the next steps in Chrome.
 
 2. In Chrome, open `chrome://extensions`.
 3. Turn on **Developer mode** (top right).
-4. Click **Load unpacked** and choose the folder the command printed.
-5. Pin the SubKit Clipper to the toolbar so you can reach it quickly.
+4. Select **Load unpacked** and choose the folder the command printed.
+5. Pin the "SubKit Clipper" extension to the toolbar.
 
-The installer copies your active profile's engine address into the extension.
-You only have to add an API key.
+If Chrome does not open, the command prints `sk: could not open Chrome automatically`. Open `chrome://extensions` yourself.
 
-Useful options:
+### Update the extension
+
+After you update the `sk` CLI, install the Web Clipper again. Your connection settings stay.
+
+1. Run `sk clipper install`.
+2. On `chrome://extensions`, reload the "SubKit Clipper" extension.
+
+### Connect it to your engine
+
+The Web Clipper signs in with its own API key.
+
+1. In the Cockpit, open **API access**.
+2. Select **Create key** and pick the **Web Clipper** preset. It grants exactly `intake:read` and `intake:write`.
+3. Copy the key.
+4. In the Web Clipper, select the gear icon (⚙). The settings open in a new tab.
+5. Check the **Engine address** and paste the key into **API key**.
+6. Select **Save connection**.
+7. Allow access when Chrome asks for it.
+
+The Web Clipper checks the connection, loads your categories and confirms that the key may save clips.
+
+If the engine address changes, you also need the key for the new engine. **Clear API key** removes the stored key from the extension.
+
+### Collect a page
+
+1. In the toolbar, select the Web Clipper icon ("SubKit Clipper").
+2. Check the **Title**.
+3. Optional: fill in **Why is this interesting?**.
+4. Pick a **Category**, or select **New category**. Names use lowercase letters, digits and hyphens, up to 40 characters.
+5. Check the preview.
+6. Optional: open **Details and edit content** to see author and date and to edit the Markdown.
+7. Select **Collect**.
+
+You can also right-click and select **Save page to SubKit** or **Save selection to SubKit**, or press **Alt+Shift+K**.
+
+On success, the popup says for example "Collected: research. Not yet admitted as knowledge or a skill." Select **Review in chat** to start the review right away.
+
+Good to know:
+
+- If saving fails, your draft stays in the Web Clipper.
+- The same page is never collected twice.
+- Change the shortcut at `chrome://extensions/shortcuts`.
+
+### What happens next
+
+1. **Inbox:** in the Cockpit, open **Inbox**. There you read, edit, move or discard the item.
+2. **Review:** select **Review in chat** in the Web Clipper or on the item. The chat prepares a proposal: the exact content, its sources and the destination (knowledge or skill).
+3. **Confirm:** only a person signed in to the Cockpit in the browser confirms the proposal as **knowledge** or **skill**.
+
+To confirm, that person needs `intake:confirm` and the right of the destination:
+
+| Destination | Needed rights |
+| --- | --- |
+| Knowledge | `knowledge:write` |
+| Skill | `skill:write` and `skill:activate` |
+| Skill that replaces others | also `skill:archive` for each replaced skill |
+
+API keys, MCP clients and the Web Clipper cannot confirm.
+
+Until someone confirms it, a clip is not knowledge, and ordinary knowledge search does not find it.
+Moving or editing it does not admit it either.
+If the proposal changes, you review it again.
+The chapter "Collect ideas and turn them into knowledge or skills" walks through review and confirmation.
+
+### What the Web Clipper captures
+
+- **A page:** the main article text as Markdown, links as absolute addresses, without navigation and recommendations.
+- **A selection:** only the selected text. From the toolbar or the shortcut, the Web Clipper uses your selection if there is one, otherwise the whole article.
+- **A YouTube video:** title, author, publish date, description and the transcript in the original audio language. Include or exclude description and transcript under **Details and edit content**.
+
+It also keeps the source address, author and publish date when the page provides them. Image links stay in the text. Image files and screenshots are not uploaded.
+
+### Privacy
+
+- **Destination:** clips go only to the engine you configured. For the transcript, the Web Clipper may also load the page and captions directly from YouTube.
+- **Originals stay:** the engine keeps the original captured snapshot. Later edits do not overwrite it, and the clip stays linked to the knowledge or skill made from it.
+- **Secrets are replaced:** before saving, SubKit replaces recognizable secrets (API keys, tokens, private keys, signed-link signatures) with a marker. The values are never stored. Personal data is kept. Don't clip pages that show passwords or keys.
+- **Your API key** is stored in the extension on this device. Revoke it in the Cockpit when you no longer need it.
+- **Visibility:** items follow the permissions of your workspace. Categories are shared, not private.
+
+### Install options
 
 | Option | What it does |
 | --- | --- |
@@ -761,362 +903,258 @@ Useful options:
 | `--engine-url <url>` | Uses this engine address instead of the active profile's. |
 | `--no-open` | Does not open Chrome. |
 
-**Updating:** after you update the CLI, run `sk clipper install` again. Then click the
-reload icon of the SubKit Clipper on `chrome://extensions`. Your connection settings stay.
+### If something does not work
 
-### Connect it to your engine
+The Web Clipper shows messages in the selected language. **Help** in the popup and in the settings opens this chapter on your engine. If a capture from the context menu or the shortcut fails, the Web Clipper opens its popup in a tab and shows the error there.
 
-The clipper signs in with an API key. Create a separate key for it.
+#### Connection and key
 
-1. In the Cockpit, open **API access**, create a new key and choose the preset
-   **Web Clipper**. It grants exactly `intake:read` and `intake:write`.
-   If your account lacks one of them, the page tells you which one is missing.
-2. Copy the key.
-3. Open the clipper and click the gear icon (⚙). The settings open in a new tab.
-4. Check the **Engine address**, for example `https://engine.example.com`.
-5. Paste the key into **API key**.
-6. Choose your language.
-7. Click **Save connection**. Chrome asks for access to your engine's address. Allow it.
-
-The clipper then checks the connection. It loads your categories and confirms that
-the key may save clips.
-
-If you change the engine address later, enter the API key for the new engine as well.
-**Clear API key** removes the stored key from the extension.
-
-### Collect a page
-
-You can start a capture in three ways:
-
-- **Toolbar:** click the SubKit Clipper icon.
-- **Context menu:** right-click the page and choose **Save page to SubKit** or
-  **Save selection to SubKit**.
-- **Shortcut:** press **Alt+Shift+K**. You can change it at `chrome://extensions/shortcuts`.
-
-The popup then shows what it will send:
-
-1. Check the **Title**. You can edit it.
-2. Optionally fill in **Why is this interesting?**. This note helps you during review.
-3. Pick a **Category**. Your default category is preselected; at first that is `inbox`.
-   Choose **New category** to create one. Category names use lowercase letters, digits
-   and hyphens, for example `research` or `ai-tools`, with at most 40 characters.
-4. Check the preview. It shows the word and character count.
-   Under **Details and edit content** you can see the author and date and edit the Markdown.
-5. Click **Collect**.
-
-On success, the popup says for example
-"Collected: research. Not yet admitted as knowledge or a skill."
-Click **Review in chat** to start the review right away.
-
-The clipper keeps a local draft for each page and engine, including your note. If saving
-fails, the draft stays, and you can try again. Sending the same clip twice does not
-create a second item.
-
-### What happens next
-
-1. **The clip lands in the Inbox.** In the Cockpit, open **Inbox**. There you can open the
-   item, read its content and source, edit it, move it to another category or discard it.
-2. **You review it in chat.** Use **Review in chat** in the clipper, or the item's chat
-   action in the Inbox. The chat assesses the clip and prepares a proposal: the exact content,
-   its sources and the destination, knowledge or skill.
-3. **A person confirms it.** Only a person signed in to the Cockpit in the browser can
-   confirm a proposal as **knowledge** or as a **skill**. They need the right
-   `intake:confirm` and the right of the destination: `knowledge:write` for knowledge,
-   or `skill:write` and `skill:activate` for a skill. API keys, MCP clients
-   and the clipper itself cannot confirm.
-
-Until someone confirms it, a clip is not knowledge. Ordinary knowledge search does not
-find it. Moving or editing a clip does not admit it either. If the proposal changes,
-it must be reviewed again.
-
-### Privacy
-
-- **Where clips go:** the clipper sends clips only to the engine you configured.
-  On YouTube, it may also load the page and the captions from YouTube itself
-  to read the transcript.
-- **Originals stay:** the engine keeps the original captured snapshot. Your later edits
-  do not overwrite it. The clip stays linked to the knowledge or skill made from it.
-- **Secrets are replaced:** before a clip is saved, SubKit replaces recognizable secrets
-  in it (API keys, tokens, private keys, signed-link signatures) with a marker and
-  records only how many were replaced. The removed values are never stored, and the
-  source, author and timestamps stay as captured. Personal data is not removed.
-  Still, do not clip pages that show passwords, keys, tokens or other secrets.
-- **Your API key** is stored in the browser extension on this device. Use a separate key
-  for the clipper and revoke it in the Cockpit when you no longer need it.
-- **Visibility:** collected items follow your tenant's permissions. Categories are shared,
-  not private.
-
-### Troubleshooting
-
-The clipper shows its messages in the selected language. **Help** in the popup and in the
-settings opens this chapter on your engine.
-
-**Connection and key**
-
-| Message | What to do |
+| What you see | What to do |
 | --- | --- |
-| "Set an engine address and API key first." | Open the settings with the gear icon, enter both and save. |
-| "Set an engine address before capturing." | The settings open automatically. Enter the engine address and save. |
+| "Set an engine address and API key first." or "Set an engine address before capturing." | Enter both in the settings (⚙) and save. |
 | "The API key is invalid or expired. …" | Create a new key with the **Web Clipper** preset under **API access** and save it in the settings. |
-| "The API key lacks intake:read. …" | Create a key with the **Web Clipper** preset under **API access**. |
-| "The connection works, but the API key lacks intake:write. …" | Create a key with the **Web Clipper** preset under **API access**. Your draft stays. |
-| "The SubKit API could not be reached. …" | Check the engine address and your internet connection. Make sure Chrome may access the engine's address. |
+| "The API key lacks intake:read. …" or "… lacks intake:write. …" | Create a key with the **Web Clipper** preset under **API access**. Your draft stays. |
+| "The SubKit API could not be reached. …" | Check the engine address, your internet connection and whether Chrome may access the address. |
 | "Use an HTTPS address or HTTP on localhost." | Use `https://`, or `http://` only with `localhost`, `127.0.0.1` or `[::1]`. The address must not contain a user name, a password, a `?query` or a `#fragment`. |
 | "Allow access to this engine to save the connection." | Save again and allow access when Chrome asks. |
 | "Enter an API key for the new engine." | You changed the engine address. Paste the key for the new engine. |
-| "Categories currently unavailable" | Click **Check connection**. |
+| "Categories currently unavailable" | Select **Check connection**. |
 
-**Collecting**
+#### Capturing
 
-| Message | What to do |
+| What you see | What to do |
 | --- | --- |
-| "Saving is not confirmed yet. Retry; your draft remains available." | The network failed or the engine had an error. Click **Try again**. |
-| "SubKit rejected the clip. …" | Check the category and the content, then try again. |
-| "This clip already exists." | This clip was already collected. |
-| "Choose a valid category before collecting." or "Enter a valid category." | Use lowercase letters, digits and hyphens, at most 40 characters. |
-| "The saved category is unavailable. Choose another category." | Pick another category. |
-| "This draft belongs to a different engine." | The draft was made for another engine address. Switch back to that engine to send it. |
-
-**Capturing**
-
-| Message | What to do |
-| --- | --- |
-| "The main content could not be captured reliably. …" | Select the relevant text on the page, then choose **Capture again**. |
+| "The main content could not be captured reliably. …" | Select the relevant text, then select **Capture again**. |
 | "The content was captured as simplified text. …" | Check the preview for completeness. |
-| "No text was captured. …" | Click **Capture again**. For an excerpt, select the text first. |
-| "No transcript is available." | The clipper could not read a transcript for this video. |
-| "Open the clipper from the toolbar on this page again." | Chrome needs access to this site. Click the toolbar icon on that page. |
-| "The page changed while it was being captured. Capture it again." | The page address changed during the capture. Capture again. |
+| "No text was captured. …" | Select **Capture again**. For an excerpt, select the text first. |
+| "No transcript is available." | The Web Clipper could not read a transcript for this video. |
+| "Open the clipper from the toolbar on this page again." | Chrome needs access to this site. Select the toolbar icon on that page. |
+| "The page changed while it was being captured. Capture it again." | Capture again. |
 | "The page could not be captured." | Reload the page and try again. |
 
-If a capture from the context menu or the shortcut fails, the clipper opens its popup
-in a tab and shows the error there.
+#### Collecting
+
+| What you see | What to do |
+| --- | --- |
+| "Saving is not confirmed yet. Retry; your draft remains available." | The network or the engine failed. Select **Try again**. |
+| "SubKit rejected the clip. …" | Check the category and the content, then try again. |
+| "This clip already exists." | It was already collected. |
+| "Choose a valid category before collecting." or "Enter a valid category." | Use lowercase letters, digits and hyphens, at most 40 characters. |
+| "The saved category is unavailable. Choose another category." | Pick another category. |
+| "This draft belongs to a different engine." | Switch back to the engine it was made for to send it. |
 ## Collect ideas and turn them into knowledge or skills
 
-Collect pages and ideas now; decide later what becomes knowledge or a skill. Use the shared categories to organize clips, with Inbox as your personal starting default.
-You can choose another default category at any time.
-The process stays the same: **collect → review in chat → confirm → knowledge or skill**.
-Learnings from coding-agent sessions enter the same process as collected items with origin
-`session`; the Inbox shows the origin as a filter and badge.
+Collect pages and ideas now, and decide later what becomes knowledge or a skill. Nothing you collect is knowledge until a signed-in person confirms it in the Cockpit.
 
-Run `sk clipper install` to unpack the Chrome extension shipped inside the CLI.
-In Chrome, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
-and select the folder printed by the command. The installer prefills the engine URL
-from your active profile. In the Cockpit, open **API access**, create a key with the
-**Web Clipper** preset (exactly `intake:read` and `intake:write`) and paste it into the
-extension settings. Allow access to your engine host.
-The clipper needs no permission to admit knowledge. You can change the engine URL
-in its settings; no server address is built into the extension.
+The path is always the same: **collect → review in chat → confirm → knowledge or skill**.
 
-Use the toolbar, page context menu, or a shortcut configured at `chrome://extensions/shortcuts`
-to collect an article or selected text. The source address is captured automatically.
-Review the preview, optionally add why it matters, and press **Collect**. Your default
-category is selected, initially Inbox. You can choose an existing category or enter
-a new one. Categories are shared with the rest of SubKit; processing status stays separate.
-The default belongs to the authenticated identity; a shared API key shares that identity.
-Inbox visibility follows your tenant's permissions, rather than making categories private.
+### What you need
 
-In the Cockpit, open **Inbox** to review and organize collected items using the same
-table and category controls as Knowledge Sources. Open an item to see its content
-and original source, edit its title, content or category, or start a review chat.
-Edits preserve the captured original and require reviewing any affected proposal again.
-The chat links
-to the item's proposal for confirmation; completed decisions remain in its history.
-In a new chat, the category-aware review suggestion helps you review new entries
-together. An item's chat action instead reviews only that selected item, using a visible
-`@` reference. Chat actions for existing workflows, connectors, runs, sources and skills
-also carry a reference to the selected record. You can also ask:
-"Look through my new Research entries. Which are
-useful to us? Suggest what we should retain, as knowledge or as a skill." The chat prepares a proposal
-with the exact content, original sources, and destination. You review it and explicitly
-confirm **Confirm as knowledge** or **Confirm as skill**. Only then can ordinary knowledge
-retrieval use the result, or agent briefings carry the skill. A skill destination creates or
-updates an active skill and archives the skills it replaces in the same step; the proposal
-shows each change. Confirming needs a signed-in browser session, the right `intake:confirm` and the rights of the
-destination: `knowledge:write` for knowledge, `skill:write` and `skill:activate` for a skill,
-plus `skill:archive` for every replaced skill. API keys and MCP clients cannot confirm.
-Admitting a skill is a content decision, separate from an environment's connector or
-execution approval.
-Before a clip is saved, SubKit replaces recognizable secrets in it (API keys, tokens, private keys, signed-link signatures) with a marker and records only how many were replaced. The removed values are never stored, and the source, author and timestamps stay as captured.
-You can discard an unneeded clip during review and restore it later; discarding
-preserves its original source and never turns it into knowledge or a skill.
-Changing the proposal or its sources requires another review. The original clip remains
-linked to the resulting knowledge or skill. Moving clips or renaming a category never admits its clips. Category changes affecting
-a proposal require reviewing it again.
+- The Web Clipper in Chrome, installed and connected. To install, update or troubleshoot the Web Clipper, see "Collect web pages with the Web Clipper".
+- To collect: an account with `intake:read` and `intake:write`.
+- To confirm: a browser session in the Cockpit with `intake:confirm`, plus `knowledge:write` for knowledge, or `skill:write` and `skill:activate` for a skill. Replacing skills also needs `skill:archive` for each replaced skill.
 
-The clipper keeps separate local drafts for each page and engine, including unsent notes.
-Opening another page captures that page; use the draft selector to resume unsent edits.
-An open clipper follows URL changes and tab switches in its source window. If Chrome
-requires access to a new site, open the clipper from that site's toolbar icon. Failed
-captures remain local for retry; a repeated request does not create another item.
-Original source author and publication time stay separate from who collected the page
-and when. Unavailable source metadata remains unknown.
+### Collect something
 
-On YouTube, the clipper extracts video metadata, description, and an available original
-transcript. Description and transcript can be included separately under Details.
-Availability depends on the video and access to captions. Extraction removes navigation
-and recommendations without summarizing the content. If no main content can be identified,
-the clipper reports that instead of collecting the entire page. Markdown is editable;
-the original captured text remains preserved. Image links are retained; image files
-are not uploaded.
+1. Open the page.
+2. Optional: select the text you want as an excerpt.
+3. In the toolbar, select the Web Clipper icon ("SubKit Clipper").
+4. Check the preview. The source address is captured automatically.
+5. Optional: add why it matters.
+6. Pick a category. Your default category is preselected, at first `inbox`.
+7. Select **Collect**.
 
-Run `sk clipper install` after updating the CLI, then reload the extension in Chrome.
-Use `sk clipper install --dir <directory> --no-open` to choose a directory and skip
-opening Chrome. Updating an existing installation preserves its connection settings.
-For a new installation, `--engine-url <url>` overrides the active profile's address.
-The engine serves the same embedded archive at `/install/clipper.zip`, with its SHA-256
-in the `x-subkit-sha256` response header. HTTPS engines and local HTTP engines on
-`localhost`, `127.0.0.1`, or `[::1]` are supported, including an optional URL path prefix.
-Changing the engine address requires entering the key for that engine; an existing
-draft stays associated with its original engine. Older engines require an update to
-support collecting; the clipper never falls back to writing directly into knowledge.
-Existing knowledge sources remain unchanged, and old local drafts can be explicitly
-collected into the Inbox without claiming that edited drafts are original page captures.
+Learnings from coding-agent sessions arrive in the same Inbox as items with origin `session`. The Inbox shows the origin as a filter and badge.
 
+### Review and organize items
+
+1. In the Cockpit, open **Inbox**.
+2. Open an item to see its content and original source.
+3. Optional: edit title, content or category. The captured original is preserved.
+4. Optional: move, discard or restore the item.
+
+Inbox visibility follows the permissions of your workspace. Categories are not private.
+
+### Review in chat
+
+Review one item:
+
+1. In the **Inbox**, open the item.
+2. Select **Review in chat**. The chat shows the item as an `@` reference.
+
+Review a whole category:
+
+- In a new chat, start the category's review suggestion, or ask: "Look through my new Research entries and suggest what to keep."
+
+The chat prepares a proposal with content, sources and destination, and links to it. Completed decisions stay in the chat history.
+
+### Confirm a proposal
+
+You need a browser session in the Cockpit, `intake:confirm` and the destination right. API keys, MCP clients and the Web Clipper cannot confirm.
+
+1. Review the proposal: content, sources and destination.
+2. Select **Confirm as knowledge** or **Confirm as skill**.
+
+Only then can ordinary knowledge retrieval use the result, or agent briefings carry the skill. For a skill, confirming also archives the skills it replaces. The proposal shows each change.
+
+Good to know:
+
+- Moving, editing or discarding an item never makes it knowledge.
+- If a proposal or its sources change, you review it again.
+- SubKit replaces secrets such as API keys and tokens before saving a clip.
+- The original clip stays linked to the knowledge or skill.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| The Web Clipper reports no connection or an invalid key | Follow "If something does not work" in the chapter "Collect web pages with the Web Clipper". |
+| An item is missing in the **Inbox** | Check the category and the origin filter. |
+| The proposal says "Confirming needs: …" | Ask an administrator for the rights it names. |
+| "This suggestion changed. Review the current content before confirming it." | Read the current content, then confirm again. |
+| "A skill this suggestion refers to can no longer be loaded. …" | Revise the suggestion in the chat before you confirm. |
 ## Use the HTTP API
 
-In this chapter you call SubKit from your own program or script.
-You create an API key, check it, list your workflows, start a run and read its result.
+Start workflows from your own program or script and read their result.
 Every example uses `curl`, so you can try it in a terminal first.
-
 It works the same in SubKit Cloud and on a self-hosted engine.
 
 ### What you need
 
-- The address of your engine.
-  - Cloud: `https://subkit-cloud.mikebild.info`
+- Your engine address.
+  - Cloud: `https://subkit-cloud.mikebild.info` (without `/cockpit`)
   - Self-hosted: `https://<your-engine>`
-- The sk CLI, signed in to that engine. See the chapter **Use the sk CLI on your machine**.
-- A workflow that is active and approved. See the chapter **Your first workflow**.
+- An API key with `workflow:read`, `workflow:run` and `execution:read`. Create it with the sk CLI, as shown in this chapter, or in the Cockpit under **API access**. For the CLI, sign in as described in "Use the sk CLI on your machine".
+- A workflow that is active and approved. See "Your first workflow".
 - `curl` in your terminal.
 
-### How the API is organized
+### Reach the engine
 
-- Every API route starts with `/v1`, for example `/v1/workflows`.
-- You send your API key in the `Authorization` header as a bearer token.
-- Requests and responses use JSON.
-- `/openapi.json` describes every route, field and status code (OpenAPI 3.1).
-- `/docs` shows the same description as a browsable reference.
+`/health` needs no key.
 
-Open `https://<your-engine>/docs` in your browser to look up any route from this chapter.
+1. Set the address as a variable:
 
-### Step 1: Reach the engine
+   ```bash
+   export SK_URL=https://<your-engine>
+   ```
 
-`/health` needs no key. Use it to check the address.
+2. Call `/health`:
 
-```bash
-export SK_URL=https://<your-engine>
-curl -s "$SK_URL/health"
-```
+   ```bash
+   curl -s "$SK_URL/health"
+   ```
 
-```json
-{ "status": "ok", "service": "subkit", "version": "<version>" }
-```
+   ```json
+   { "status": "ok", "service": "subkit", "version": "<version>" }
+   ```
 
-### Step 2: Create an API key
+### Create and check an API key
 
-1. Create a key with the sk CLI. Give it a name and only the permissions this chapter needs:
+1. Create a key with exactly the permissions this chapter needs:
 
    ```bash
    sk apikeys create --name http-api-test --scopes workflow:read,workflow:run,execution:read
    ```
 
-2. The answer is JSON. Copy the value of `plaintext_key`.
-   The key is shown only once. Store it in a password manager or a secret store.
-3. Put the key into a variable for the next steps:
+2. Copy `plaintext_key` from the JSON response. It is shown only once, so keep it in a password manager.
+3. Put the key in a variable:
 
    ```bash
    export SK_KEY=<api-key>
    ```
 
-Without `--scopes`, the key gets the same scopes as your own credential.
-`sk apikeys revoke <key-id>` revokes the key when you no longer need it.
+4. Ask the engine who you are:
 
-### Step 3: Check the key
+   ```bash
+   curl -s "$SK_URL/v1/identity/whoami" \
+     -H "Authorization: Bearer $SK_KEY"
+   ```
 
-Ask the engine who you are:
+   The answer names your account, your workspace and the key's scopes (shortened):
 
-```bash
-curl -s "$SK_URL/v1/identity/whoami" \
-  -H "Authorization: Bearer $SK_KEY"
-```
+   ```json
+   {
+     "id": "<user-id>",
+     "kind": "user",
+     "tenant_slug": "<workspace>",
+     "role_name": "admin",
+     "scopes": ["workflow:read", "workflow:run", "execution:read"]
+   }
+   ```
 
-The answer names your account, your workspace and the scopes of the key (abridged):
+Without `--scopes`, the key gets the same scopes as your own access.
+`sk apikeys revoke <key-id>` revokes the key.
 
-```json
-{
-  "id": "<user-id>",
-  "kind": "user",
-  "tenant_slug": "<workspace>",
-  "role_name": "admin",
-  "scopes": ["workflow:read", "workflow:run", "execution:read"]
-}
-```
+### List your workflows
 
-If you get `401`, the key is wrong or revoked. See **If something does not work**.
+1. Fetch the active workflows:
 
-### Step 4: List your workflows
+   ```bash
+   curl -s "$SK_URL/v1/workflows?status=active&limit=20" \
+     -H "Authorization: Bearer $SK_KEY"
+   ```
 
-```bash
-curl -s "$SK_URL/v1/workflows?status=active&limit=20" \
-  -H "Authorization: Bearer $SK_KEY"
-```
+   Each entry in `items` carries, among others, `id`, `slug`, `name`, `lifecycle` and `operating_status` (shortened):
 
-The answer has `items`, `total` and `categories`. Each item carries, among others,
-`id`, `slug`, `name`, `lifecycle` and `operating_status` (abridged):
+   ```json
+   {
+     "items": [
+       {
+         "id": "<workflow-id>",
+         "slug": "daily-report",
+         "name": "Daily report",
+         "lifecycle": "active",
+         "operating_status": "active"
+       }
+     ],
+     "total": 1,
+     "categories": [{ "category": "reporting", "count": 1 }]
+   }
+   ```
 
-```json
-{
-  "items": [
-    {
-      "id": "<workflow-id>",
-      "slug": "daily-report",
-      "name": "Daily report",
-      "lifecycle": "active",
-      "operating_status": "active"
-    }
-  ],
-  "total": 1,
-  "categories": [{ "category": "reporting", "count": 1 }]
-}
-```
+2. Copy the `id`. Runs need the ID; a slug is not accepted.
 
-Copy the `id`. Runs need this id; a slug is not accepted.
 `q=<text>` searches name, slug, description and category.
 
-### Step 5: Start a run
+### Start a run
 
-Send the workflow id and its input to `/v1/executions`:
+- Send the workflow ID and its input to `/v1/executions`:
 
-```bash
-curl -s -X POST "$SK_URL/v1/executions" \
-  -H "Authorization: Bearer $SK_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"source":"saved","workflow_id":"<workflow-id>","input":{}}'
-```
+  ```bash
+  curl -s -X POST "$SK_URL/v1/executions" \
+    -H "Authorization: Bearer $SK_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"source":"saved","workflow_id":"<workflow-id>","input":{}}'
+  ```
 
-- `input` must match the input of the workflow. `GET /v1/workflows/<workflow-id>/input-schema` shows what it expects.
-- Without `async`, the call waits until the run has finished. It answers `200` with
-  `execution_id`, `status`, `output` and `steps`.
+  The call waits for the run and answers `200` with `execution_id`, `status`, `output` and `steps`.
 
-For longer runs, start them in the background:
+`input` must match the workflow's input. `GET /v1/workflows/<workflow-id>/input-schema` shows what it expects.
 
-```bash
-curl -s -X POST "$SK_URL/v1/executions" \
-  -H "Authorization: Bearer $SK_KEY" \
-  -H "Content-Type: application/json" \
-  -H "Idempotency-Key: daily-report-2026-10-21" \
-  -d '{"source":"saved","workflow_id":"<workflow-id>","input":{},"async":true}'
-```
+### Start a long run in the background
 
-```json
-{ "execution_id": "<execution-id>", "status": "queued", "hold_writes": false }
-```
+1. Send the run with `"async":true`. Optional: add an `Idempotency-Key` header:
 
-The answer is `202`. The `Idempotency-Key` header is optional (1 to 200 characters).
-If you send the same key again, no second run starts. The answer carries the first run's id and `"idempotent_replay": true`.
+   ```bash
+   curl -s -X POST "$SK_URL/v1/executions" \
+     -H "Authorization: Bearer $SK_KEY" \
+     -H "Content-Type: application/json" \
+     -H "Idempotency-Key: daily-report-<date>" \
+     -d '{"source":"saved","workflow_id":"<workflow-id>","input":{},"async":true}'
+   ```
 
-### Step 6: Check the result
+   The engine answers `202` right away:
+
+   ```json
+   { "execution_id": "<execution-id>", "status": "queued", "hold_writes": false }
+   ```
+
+2. Copy `execution_id` and read the result as described in the next section.
+
+- The `Idempotency-Key` header takes 1 to 200 characters.
+- If you send the same key again, no second run starts. The answer carries the first run's ID and `"idempotent_replay": true`.
+
+### Read the result
 
 1. Read the run:
 
@@ -1125,40 +1163,51 @@ If you send the same key again, no second run starts. The answer carries the fir
      -H "Authorization: Bearer $SK_KEY"
    ```
 
-2. Look at `status`. `queued` and `running` mean the run is not finished yet; ask again a little later.
-   `succeeded` means the run finished. `failed`, `timed_out` and `aborted` mean it stopped.
-3. `outcome.kind` sums the run up, for example `succeeded`, `failed` or `held`.
-   For a failed run, `outcome.failed_step` names the step and `error` holds the cause.
-4. Read the output of each step:
+2. Check `status`.
+3. On a failure, read `outcome.failed_step` for the step and `error` for the cause.
+4. Read each step's output:
 
    ```bash
    curl -s "$SK_URL/v1/executions/<execution-id>/steps" \
      -H "Authorization: Bearer $SK_KEY"
    ```
 
-   Each item has `step_key`, `status` and a preview of its output in `output_preview` or `result_preview`.
-   The last step usually holds the result of the workflow.
+   Each entry has `step_key`, `status` and a preview in `output_preview` or `result_preview`. The last step usually holds the workflow's result.
 
+| `status` | Meaning |
+| --- | --- |
+| `queued`, `running` | The run is still working. |
+| `succeeded` | The run is done. |
+| `failed`, `timed_out`, `aborted` | The run stopped early. |
+
+`outcome.kind` summarizes the run, for example `succeeded`, `failed` or `held`.
 `sk executions result <execution-id>` shows the same result in your terminal.
 
-### Pagination
+### Page through lists
 
 Lists return one page at a time. `total` counts all matches.
 
 | List | Page size | Next page |
 | --- | --- | --- |
 | `GET /v1/workflows` | `limit` (up to 200) | `offset`: skip that many entries |
-| `GET /v1/executions` | `limit` (up to 200) | `cursor`: the `next_cursor` of the previous page |
+| `GET /v1/executions` | `limit` (up to 200) | `cursor`: the previous page's `next_cursor` |
 
-Runs are listed newest first. Pass `next_cursor` back exactly as you got it.
-When `next_cursor` is `null`, you have reached the last page.
+Runs come newest first. Pass `next_cursor` back exactly as you received it. When it is `null`, you are on the last page.
 
 ```bash
 curl -s "$SK_URL/v1/executions?workflow_id=<workflow-id>&status=failed,timed_out&limit=50" \
   -H "Authorization: Bearer $SK_KEY"
 ```
 
-`status` accepts several values separated by commas.
+`status` takes several values, separated by commas.
+
+### How the API is organized
+
+- Every route starts with `/v1`, for example `/v1/workflows`.
+- You send your API key in the `Authorization` header as a bearer token.
+- Requests and responses are JSON.
+- `/openapi.json` describes every route, field and status code in OpenAPI format.
+- `/docs` shows the same description as a searchable reference. Open `https://<your-engine>/docs` in a browser.
 
 ### Errors and status codes
 
@@ -1179,12 +1228,12 @@ Branch on `code` in your program, not on `message`. Keep `trace_id` when you rep
 | --- | --- | --- |
 | `200` | | Done. |
 | `202` | | Accepted. The run continues in the background. |
-| `400` | `bad_request` | The request is invalid. `details` lists the fields. |
-| `401` | `unauthorized` | The key is missing, wrong, expired or revoked. |
-| `403` | `forbidden` | The key or your role may not do this. |
-| `404` | `not_found` | The id does not exist in your workspace. |
-| `409` | `conflict` | The current state does not allow it, for example no approved version. |
-| `429` | `rate_limit_exceeded`, `rate_limited` | A limit is reached. Wait as long as the `Retry-After` header says, if it is set. |
+| `400` | `bad_request` | The request is invalid. `details` names the fields. |
+| `401` | `unauthorized` | The key is missing, wrong, expired or revoked. Check `Authorization: Bearer <api-key>`, or create a new key. |
+| `403` | `forbidden` | The key lacks a scope or your role lacks the permission. Create a key with `workflow:read`, `workflow:run` and `execution:read`. |
+| `404` | `not_found` | The ID does not exist in your workspace. |
+| `409` | `conflict` | The current state does not allow it. For a run: no active version, or the approval is missing or used up. |
+| `429` | `rate_limit_exceeded`, `rate_limited` | A limit is reached. Wait as long as the `Retry-After` header says, then retry with the same `Idempotency-Key`. |
 | `500` | `internal_error` | An error in the engine. Report the `trace_id`. |
 
 ### If something does not work
@@ -1192,35 +1241,50 @@ Branch on `code` in your program, not on `message`. Keep `trace_id` when you rep
 | What you see | What to do |
 | --- | --- |
 | `404 Not Found` as plain text | The path does not exist. Check that it starts with `/v1`. |
-| `401` with `unauthorized` | Check the `Authorization: Bearer <api-key>` header. Create a new key if it was revoked. |
-| `403` with `forbidden` | The key lacks a scope, or your role lacks the permission. Create a key with the scopes from step 2. |
-| `400` with `request validation failed` | Read `details`. Often `workflow_id` is not a UUID or `source` is missing. |
-| The run answers `"hold_writes": true` | The version has no approval for this environment. Nothing was written. Approve it as in **Your first workflow**, step 4. |
-| `409` when you start a run | Read `message` and `details`. The workflow has no active version, or its approval is missing or used up. |
-| `429` | Wait as long as `Retry-After` says, or until the limit resets, then try again with the same `Idempotency-Key`. |
-
-### Next
-
-You can now start and check workflows from any program. Continue with the chapter
-**Onboard an app** to let the users of your own app call SubKit with their sign-in.
+| `400` with `request validation failed` | Read `details`. Often `workflow_id` is not a UUID or `input` does not match the input schema. |
+| The run answers with `"hold_writes": true` | The version has no approval for this environment. Nothing was written. Approve it as described in "Your first workflow". |
+| Any other error status | Look up the status in "Errors and status codes" and read `message` and `details`. |
 ## Onboard an app
 
-This checklist applies to any app that signs its users in at an identity provider and calls SubKit with that provider's access token. Hosts and ids below are placeholders (`example.test`, `<...>`). Work through it in order; the app only needs the product id and the workflow ids at the end.
+Use this checklist for an app that signs users in at its own identity provider and calls SubKit with that token.
+Work through the steps in order.
+At the end, the app needs only the product ID and the workflow IDs.
+Hosts and IDs in the examples are placeholders (`example.test`, `<...>`).
 
-### 1. Decide
+### What you need
 
-- `product_id`: a lowercase name (`^[a-z][a-z0-9-]{0,62}$`), one per app. It ties provider, workflows, budget rows and the identity binding together.
-- `issuer_url`: the provider's issuer, exactly as it appears in the token's `iss` claim. HTTPS outside localhost.
-- `audience`: the value the token's `aud` claim carries. Read it from a real token of the app; the issuer defines it, SubKit has no default.
-- `required_claims`: who may sign in. Every entry is a dot path into the verified payload with an exact value, for example `{ "path": "idp", "equals": "primary" }`. The key is required. An empty list `[]` admits every token of that issuer and audience and should be a deliberate choice.
-- Sign-up by first token: the first verified token of a subject provisions a product user with the built-in member role (see above). If every holder of a valid token may become a user, nothing more is needed. If not, narrow `required_claims` so only the intended accounts qualify.
+- The `sk` CLI, signed in to your engine. In SubKit Cloud the engine address is `https://subkit-cloud.mikebild.info`, without `/cockpit`.
+- A real access token of a test account of the app.
+- Access to the upstreams the workflows call, such as the model API.
 
-### 2. Runtime configuration
+### 1. Choose the product ID and sign-in rules
 
-`auth.providers` is replaced as a whole array. Read the current value first and send it back with the new provider added; otherwise the other providers are removed.
+Pick these values before you change any setting. Read `iss` and `aud` from a real token of the app.
+
+| Setting | What to enter | Example |
+| --- | --- | --- |
+| `product_id` | A lowercase name (`^[a-z][a-z0-9-]{0,62}$`), one per app. It ties provider, workflows, budget and identity binding together. | `<product-id>` |
+| `issuer_url` | The provider's issuer, exactly as in the token's `iss` claim. HTTPS outside localhost. | `https://idp.example.test` |
+| `audience` | The value of the token's `aud` claim. The issuer defines it; SubKit has no default. | `<audience>` |
+| `required_claims` | Who may sign in: a dot path into the verified token with an exact value. The key is required. | `[{"path":"idp","equals":"primary"}]` |
+
+The first verified token of a person creates a product user with the built-in member role.
+An empty `required_claims` list `[]` admits every token of that issuer and audience.
+If not every token holder may become a user, narrow `required_claims` to the intended accounts.
+
+### 2. Set the runtime configuration
+
+`auth.providers` and `products` are each replaced as a whole. Read each value first and write it back with your addition.
+
+1. Read the current sign-in providers.
 
 ```bash
 sk settings get auth.providers --json
+```
+
+2. Add your provider entry and write the whole list back. Keep every existing entry, or it is lost.
+
+```bash
 sk settings set auth.providers '[
   {"protocol":"api_key","id":"api-key","label":"SubKit API key"},
   {"protocol":"oidc_bearer","id":"<provider-id>","label":"<app> account",
@@ -1229,18 +1293,30 @@ sk settings set auth.providers '[
    "required_claims":[{"path":"idp","equals":"primary"}],
    "reject_anonymous":true,"clock_tolerance_s":30}
 ]'
+```
+
+3. Read the current products.
+
+```bash
 sk settings get products --json
+```
+
+4. Add your product entry and write the whole value back.
+
+```bash
 sk settings set products '{"<product-id>":{"execution_environment":"prod",
   "assistant_workflow_id":"<assistant-workflow-id>","budget_bucket":"<bucket>"}}'
 ```
 
-`products` is also replaced as a whole object. `assistant_workflow_id` must be the id you choose for the guarded workflow in step 4.
+`assistant_workflow_id` is the ID you choose for the guarded workflow in step 4. Once steps 3 to 5 are done, `sk apps show <product-id>` shows what the values add up to.
 
-`sk apps show <product-id>` shows what these values add up to once steps 3 to 5 are done; see "Inspect an app" below.
+### 3. Create the connectors
 
-### 3. Connectors
+Create one connector per upstream the workflows call: the model API, and the identity provider's admin API if the app deletes accounts.
 
-Create one connector per upstream the workflows call: the model API, and the identity provider's admin API if the app deletes accounts. Write each definition as a JSON file without any secret, then:
+1. Write each definition as a JSON file without any secret.
+2. Create the connector.
+3. Store the credential.
 
 ```bash
 sk connectors create --file connector-model.json --skip-checks
@@ -1248,15 +1324,22 @@ sk credentials set <model-connector-id> --mode bearer --token "$MODEL_API_KEY"
 sk credentials set <idp-admin-connector-id> --mode header --header "Authorization=Bearer $IDP_ADMIN_KEY,apikey=$IDP_ADMIN_KEY"
 ```
 
-`--skip-checks` is needed because a definition is probed before it is saved and the credential does not exist yet; `credentials set` probes afterwards. `bearer` sends `Authorization: Bearer <token>`; `header` sends the named headers (comma-separated `Name=Value`). Secrets come from your shell or secret store, never from a file, the app or this repository. A workflow reads its own connector's credential only as `${cred.<own-slug>.<field>}` under an approved authority.
+- `--skip-checks` is needed because the credential does not exist yet when the connector is created. `credentials set` checks it afterwards.
+- `bearer` sends `Authorization: Bearer <token>`. `header` sends the named headers (comma-separated `Name=Value`).
+- Secrets come from your shell or secret store, never from a file, the app or this repository.
+- To replace a credential with several headers in the Cockpit, fill all header fields, or leave all empty to keep them.
 
-SubKit probes every connector in the background and flags it as signed out when its configured probe answers 401 or 403; workflows that use a flagged connector are blocked until it is signed in again. Without a configured probe, SubKit sends `GET /` to the connector's base URL. Many admin APIs answer 401 or 403 there even with a valid credential, so that answer does not flag the connector: the probe reports `credential_unverified` with the warning `PROBE_AUTH_UNVERIFIED`, `sk connectors test <id>` prints the warning and exits non-zero, and the Cockpit shows "Verbunden · Anmeldung nicht geprüft" with a hint to set a probe path. To verify the credential, give the connector a cheap authenticated read as its probe, for example `"config": {"probe_endpoint": {"method": "GET", "path": "/admin/users?per_page=1", "expected_status": [200, 200]}}`, and check it with `sk connectors test <id>`.
+To verify a credential, give the connector a cheap authenticated read as its probe:
 
-To replace a stored credential, edit the connector in the Cockpit. A header credential with several headers, such as `Authorization` and `apikey` above, shows one field per header name: fill all of them to replace them together, or leave all empty to keep them. Filling only some is refused, so no header is dropped.
+```json
+"config": {"probe_endpoint": {"method": "GET", "path": "/admin/users?per_page=1", "expected_status": [200, 200]}}
+```
 
-### 4. Workflows
+Then run `sk connectors test <id>`. A connector whose probe answers 401 or 403 counts as signed out, and its workflows are blocked.
 
-Keep the definitions in the app's own repository and create them with operator-chosen ids so the app can hard-code them. A workflow definition accepts `id` (a UUID that must be unused; only an administrator may choose it).
+### 4. Create the workflows
+
+Keep the definitions in the app's own repository. Create them with fixed IDs so the app can hard-code them. Only an administrator may choose a workflow `id` (an unused UUID).
 
 ```bash
 sk workflows create --file workflows/assistant.json
@@ -1270,33 +1353,38 @@ Each product workflow sets:
 - On the metered workflow, `execution_guards.caller_daily_limit` (bucket equal to `budget_bucket`, limit, `tz`, unit path) and `execution_guards.input_bytes`.
 - On the deletion workflow, `"caller_erasure": "on_success"`.
 
-Division of responsibility. The identity provider owns the account: credentials, e-mail, sign-in methods and the account's existence. SubKit owns only its shadow records of the caller: the identity binding, budget rows, sessions and keys, the user row, the caller context stored on its executions, and the tombstone. The deletion workflow therefore runs in this order:
+The identity provider owns the account. SubKit owns only its own records of the caller. The deletion workflow therefore runs in this order:
 
-1. Delete the account at the identity provider with the admin connector, using `${caller.subject}` (bound with `{caller_bound: true}`). A 404 means the account is already gone and counts as success, so a retry is safe.
-2. Best-effort revokes at other upstreams, for example a sign-in provider token. A failure here must not block step 3.
-3. SubKit erases its own caller data last, through `caller_erasure: "on_success"` when the run succeeds. After it, tokens issued earlier are refused by the tombstone.
+1. Delete the account at the identity provider with the admin connector, using `${caller.subject}` (bound with `{caller_bound: true}`). A 404 means "already gone" and counts as success.
+2. Revoke tokens at other upstreams on a best-effort basis. A failure here must not block step 3.
+3. SubKit erases its own caller data last, through `caller_erasure: "on_success"`. Tokens issued earlier are then refused.
 
-If step 1 fails, the run fails, nothing is erased and the app retries with the same `idempotency_key`.
+If step 1 fails, the run fails and nothing is erased. The app retries with the same `idempotency_key`.
 
-### 5. Approve the execution authority
+### 5. Approve the workflows
 
-Without a live execution authority a product run answers 403. A person with write access approves each product workflow once per environment:
+Without a valid approval, a product run answers 403. A person with write access approves each product workflow once per environment.
 
-1. Open the workflow in Cockpit. A workflow that nothing starts but the app's HTTP calls (no schedule, no webhook) is checked in the environment its connectors live in, so for a production-only workflow the status line reads "Nicht freigegeben" (English: "Not approved") without a repair banner. If a step resolves to a connector in another environment, or a connector is missing, the repair state stays; fix that first.
-2. Select "Freigeben…" in the status line, or on the "Freigaben" tab, which shows the same button while no approval is live. The dialog "Freigabe prüfen" opens with that environment already selected in the "Umgebung" field ("Produktion" or "Entwicklung"). Change it only if the product's `execution_environment` is a different one.
-3. Review the effect boundary (connectors, addresses, read or write), choose open-ended or limit it by runs and time, and confirm.
+1. In the Cockpit, open the workflow.
+2. Select **Approve…** in the status line or on the **Approvals** tab. The dialog **Review permission** opens.
+3. Check that **Environment** (**Production** or **Development**) matches the product's `execution_environment`.
+4. Review the connectors, addresses and read or write access.
+5. Set **Maximum runs** and the time window.
+6. Select **Allow 1 run** or **Allow … runs**.
 
-The approval follows a newly activated version whose boundary does not grow and is asked for again when it grows. Revoke it on the "Freigaben" tab.
+A workflow that only the app's HTTP calls start is checked in the environment of its connectors. Its status line may read "Not approved" without a repair banner. If a connector is missing or lives in another environment, fix that first.
 
-### 6. Verify
+The approval follows a new version whose boundary does not grow. If the boundary grows, you approve again.
 
-Check readiness first. Every check of `sk apps show <product-id>` should read `ok`; a failing check prints its next action.
+### 6. Test the app's access
+
+Check readiness first. Every check should read `ok`. A failing check prints its next action.
 
 ```bash
 sk apps show <product-id>
 ```
 
-Use a real access token `$TOKEN` of a test account and the workflow ids from step 4. `$BAD_TOKEN` is `$TOKEN` with the last characters of its signature changed. `$BASE` is the engine URL.
+Then call the engine with a real token. `$TOKEN` is the access token of a test account. `$BAD_TOKEN` is `$TOKEN` with the last characters of its signature changed. `$BASE` is the engine URL.
 
 ```bash
 curl -s -w '\n%{http_code}\n' -H "Authorization: Bearer $BAD_TOKEN" $BASE/v1/budget
@@ -1309,17 +1397,74 @@ curl -s -X POST $BASE/v1/executions -H "Authorization: Bearer $TOKEN" -H 'conten
 Expected:
 
 - `$BAD_TOKEN`, a wrong audience, a missing required claim or an expired token answers `401 invalid bearer token`.
-- `GET /v1/health` with `ok: false` and a run answering `403` mean the authority from step 5 or a connector credential is missing.
-- Using up the daily limit answers `429 rate_limited`; a second call while a unit runs answers `409 turn_busy`; the same `idempotency_key` replays instead.
-- `sk executions` and the execution record show the caller summary and the authority used.
+- `sk executions` and the run record show the caller summary and the approval used.
 
-Secrets held in connectors can expire: provider client secrets often have a limited lifetime, and admin keys may be rotated. Record each secret's name, connector, owner and expiry date in the app's own repository (not the value), and renew it before expiry: attach the new value with `sk credentials set`, check it, then remove the old one with `sk credentials delete <credential-id>`. A probe with `sk connectors test <connector-id>` shows whether a credential still works. Cockpit and `GET /v1/health` show failing connectors.
+### Renew a connector secret
 
-Rollback: revoke the execution authority of the workflow (the app then receives 403 and nothing runs), restore the previous `auth.providers` and `products` values you read in step 2, and use `sk workflows history <id>` and `sk workflows restore <id>` for a workflow version. Removing the provider makes the app's tokens unclaimed; existing shadow records stay until the deletion workflow erases them.
+Secrets in connectors can expire, and admin keys get rotated. Record each secret's name, connector, owner and expiry date in the app's repository, never the value. Renew it before it expires.
+
+1. Store the new value with `sk credentials set`.
+2. Check it with `sk connectors test <connector-id>`.
+3. Remove the old one with `sk credentials delete <credential-id>`.
+
+The Cockpit and `GET /v1/health` show failing connectors.
+
+### Roll back an app
+
+1. Revoke the workflow approval on the **Approvals** tab. The app then gets 403 and nothing runs.
+2. Restore the `auth.providers` and `products` values you read in step 2.
+3. Restore a workflow version with `sk workflows history <id>` and `sk workflows restore <id>`.
+
+Without the provider entry, the app's tokens are no longer accepted. Existing caller records stay until the deletion workflow erases them.
+
+### Erase an app user
+
+Erasing cannot be undone.
+It removes SubKit's own data about one person for one app:
+
+- sign-in bindings
+- budget counters
+- sessions
+- API keys
+- the person's ID in past runs
+
+A new sign-in at the provider creates a new, empty app user.
+
+1. Find the user ID with `sk apps show <product-id>`.
+2. Run `sk apps erase-user <product-id> <user-id>` and confirm.
+
+```bash
+sk apps show <product-id>                          # lists the user ids of the app
+sk apps erase-user <product-id> <user-id>          # asks for confirmation
+sk apps erase-user <product-id> <user-id> --yes    # non-interactive; --json prints the result
+```
+
+Good to know:
+
+- Erasing needs `identity:write` and an admin role. Product users are refused.
+- The account at the sign-in provider stays. Deleting it is up to the app and its identity provider.
+- A person with sign-in links to another app or to SubKit itself is not erased (409).
+- In the Cockpit, the same action is on the user in the app's details, behind a confirmation dialog.
+
+| Interface | Call | Result |
+| --- | --- | --- |
+| HTTP | `DELETE /v1/apps/{id}/users/{user_id}` | `{ "user_id", "app_id", "erased": true }`, or 404 for an unknown, foreign or already erased user. |
+| HTTP | `DELETE /v1/identity/users/{id}` | Only deactivates a user. |
+| MCP (admin mode) | `list_apps`, `get_app` | Read-only. Erasing is not available. |
 
 ### Inspect an app
 
-An app is a read-only view assembled at read time from the `products` entry, the sign-in providers carrying its `product_id`, the workflows whose definition carries it, the users who signed in through it and today's caller budget. It has no storage of its own: changes go through `auth.providers`, `products` and the workflows, as in steps 2 to 5.
+An app is a read-only view.
+SubKit assembles it from five sources:
+
+- the `products` entry
+- the sign-in providers with the same `product_id`
+- the workflows with the same `product_id`
+- the signed-in users
+- today's budget
+
+The app itself stores nothing.
+You change it through `auth.providers`, `products` and the workflows (steps 2 to 5).
 
 ```bash
 sk apps list                      # app, environment, users, budget today, readiness
@@ -1328,49 +1473,69 @@ sk apps show <product-id> --json
 sk users list --app <product-id>  # users who signed in to that app
 ```
 
-In Cockpit the same view is the "Apps" tab under "People & access" (German: "Personen & Rechte"); selecting an app opens its details. It is also available as `GET /v1/apps` and `GET /v1/apps/{id}`, and in admin-mode MCP as the read-only tools `list_apps` and `get_app`. All of them need `settings:read`; product principals are always refused with 403. A workspace sees an app when one of its sign-in providers (`tenant_slug`), workflows or signed-in users carries the `product_id`, or when the app's assistant workflow belongs to it; any other id answers 404. An id without a `products` entry is still listed, with `configured: false`.
+In the Cockpit, open **People & access** > **Apps** and select an app. Over HTTP, use `GET /v1/apps` and `GET /v1/apps/{id}`. Both need `settings:read`.
 
-Readiness consists of six checks, each with a message and, when it fails, a next action: `product_configured`, `sign_in_provider`, `assistant_workflow` (exists in the workspace, carries the `product_id`, is active and valid), `execution_authority` (live for the product's environment), `credentials` (usable on every connector the assistant uses) and `budget_guard` (a `caller_daily_limit` whose bucket equals `budget_bucket`). Budget today shows the units consumed and reserved in the guard's bucket for the current local day, the audited refusals of the app's workflows since local midnight (`rate_limited`, `turn_limit`, `turn_busy`) and when the day resets. Each entry in a user record's `identities` lists provider, `product_id` and last sign-in, without the subject; the placeholder `email` of a product principal still contains it.
+Readiness consists of six checks:
 
-### Erase an app user
-
-Erasing removes SubKit's own data about one person for one app: their sign-in bindings, budget counters, sessions and API keys, and the subject in the caller context of past runs. The user record is anonymised and a tombstone makes tokens issued before the erasure be refused; a new sign-in at the provider creates a new, empty app user. A person who also has sign-in links to another app or to SubKit itself is not erased (409), because that would remove that access too. The account at the sign-in provider is not touched; deleting it stays with the app and its identity provider. Erasing is irreversible and needs an explicit confirmation by a person. It needs `identity:write` and an admin role; product principals are refused. The audit entry names the operator as actor with `source: operator_erasure`.
-
-```bash
-sk apps show <product-id>                          # lists the user ids of the app
-sk apps erase-user <product-id> <user-id>          # asks for confirmation
-sk apps erase-user <product-id> <user-id> --yes    # non-interactive; --json prints the result
-```
-
-In Cockpit the same action is on the user in the app's details, behind a confirmation dialog. Over HTTP it is `DELETE /v1/apps/{id}/users/{user_id}`, which answers `{ "user_id", "app_id", "erased": true }`, or 404 for an unknown, foreign or already erased user. Apps in MCP stay read-only. `DELETE /v1/identity/users/{id}` is unchanged and only deactivates a user.
-
-Activating a settings revision that adds, removes, reorders or changes a sign-in provider, or adds, removes or changes a `products` entry, writes an audit entry (`auth_provider.*`, `product.*`) that names the provider or product and the changed fields; the changed values are not recorded.
-
-### Generic or per app
-
-| Concern | Where it lives |
+| Check | Meaning |
 | --- | --- |
-| Token verification, binding, budgets, erasure, authority checks | Engine code, identical for every app |
+| `product_configured` | A `products` entry exists. |
+| `sign_in_provider` | A sign-in provider carries the `product_id`. |
+| `assistant_workflow` | Exists in the workspace, carries the `product_id`, is active and valid. |
+| `execution_authority` | A valid approval exists for the product's environment. |
+| `credentials` | Usable on every connector the assistant uses. |
+| `budget_guard` | A `caller_daily_limit` whose bucket equals `budget_bucket`. |
+
+Budget today shows the units used and reserved today, the refusals since local midnight (`rate_limited`, `turn_limit`, `turn_busy`) and when the day resets.
+
+### Where each setting lives
+
+| Setting | Where it lives |
+| --- | --- |
 | Provider entry, `products` entry, connectors and their credentials | Runtime configuration per deployment, set with `sk` |
-| Workflow definitions and their fixed ids | The app's own repository, created with `sk workflows create` |
-| Execution authority approvals | A person, per workflow and environment, in Cockpit |
+| Workflow definitions and their fixed IDs | The app's own repository, created with `sk workflows create` |
+| Workflow approvals | A person, per workflow and environment, in the Cockpit |
 | Secret expiry records | The app's own repository (metadata only) |
 
-## Transactional email replies
+Every change to a sign-in provider or a `products` entry writes an audit entry. It names the changed fields, not their values.
 
-A Gmail request step may use the explicit `transactional_delivery` profile to
-reply to the address in an original signed request. This is reusable for access
-requests, registrations and other requested replies. Event names and field paths
-are configurable; no website, product or applicant is built into the engine.
-Fixed-recipient `report_delivery` continues to use its existing rules.
+### If something does not work
 
-### Author the workflow
+| What you see | What to do |
+| --- | --- |
+| `401 invalid bearer token` | The token was refused. Check `issuer_url`, `audience` and `required_claims` against a real token, and whether it has expired. |
+| `403` on a product run, or `ok: false` at `GET /v1/health` | The approval from step 5 or a credential is missing. Check `sk apps show <product-id>`. |
+| `429 rate_limited` | The daily limit is used up. `sk apps show` tells when the day resets. |
+| `409 turn_busy` | A call is still running. Wait, or repeat with the same `idempotency_key`, which replays. |
+| `credential_unverified` and `PROBE_AUTH_UNVERIFIED`, or "Connected · sign-in not verified" in the Cockpit | The connector has no probe, and `GET /` gave no clear answer. Set a probe path with an authenticated read (step 3) and check with `sk connectors test <id>`. |
+| A connector counts as signed out | Its probe answered 401 or 403. Store the credential again (step 3) and check with `sk connectors test <id>`. |
+| `409` when erasing an app user | The person has sign-in links to another app or to SubKit itself and is not erased. |
+## Reply by email to a signed request
 
-Use sensitive execution privacy, a strict input schema with bounded lengths and
-one plain-text Gmail send step. Keep sender, connection and template in the
-reviewed workflow; visitor input selects only the reviewed original recipient.
-The payload must include its UUID and event type inside the signed JSON body.
-For example, an event body with `event`, `reference` and `contact.address` can use:
+A workflow can send one plain-text Gmail reply to the person who submitted a form, for example an access request.
+The reply goes only to the address in the original signed request.
+You review sender, template and limits before anything is sent.
+
+The path is always the same: **signed request → reviewed workflow → approval → one reply**.
+
+### What you need
+
+- A Gmail connection (connector) in your workspace.
+- A signed source that sends requests in the Standard Webhooks format.
+- A person who approves the workflow.
+- An operator who reviews the workflow before activation.
+
+Never skip signature verification, and never use a public API key or browser credentials for the source.
+
+### Set up the workflow
+
+1. Set `execution_privacy: sensitive` and a strict input schema with bounded lengths.
+2. Add exactly one plain-text Gmail send step. Its request body contains only `raw`.
+3. Keep sender, connection and template in the workflow. The request selects only the reviewed original recipient.
+4. On the Gmail request step, add the `transactional_delivery` profile and `max_retries: 0`.
+5. Set `max_body_bytes` from the bounded template, not the largest allowed value.
+
+The signed JSON body must contain the request UUID and the event type. Input paths start at `body`. For a body with `event`, `reference` and `contact.address`, the profile looks like this:
 
 ```json
 {
@@ -1386,82 +1551,145 @@ For example, an event body with `event`, `reference` and `contact.address` can u
 }
 ```
 
-Place the profile on the Gmail request step beside `max_retries: 0`. Its request
-body must contain only `raw`. No pagination, fan-out, generic boundary, simultaneous
-fixed-recipient profile, response selection or filtering is supported. Input paths
-start at `body`, traverse own object properties and reject prototype keys. Choose
-a request-byte ceiling from the bounded template, rather than the largest allowed
-value. The ceiling measures serialized UTF-8 Gmail JSON, including base64 overhead.
+`max_body_bytes` counts the serialized Gmail JSON, including the base64 overhead. Pagination, fan-out, a second fixed-recipient profile and response filtering are not supported in this step.
+
+You can also describe this workflow in the Cockpit chat. The chat knows this profile and its limits.
 
 ### Bind and review
 
-1. Create an active Standard Webhooks binding for this workflow in the same tenant.
-   Configure exactly the reviewed event type and a dedicated signing secret. Never
-   use skipped verification, a public API key or browser credentials.
-2. Persist the request UUID and original payload before handoff. Send the UUID in
-   both the signed body and `webhook-id`. Sign `id.timestamp.rawBody` and send the
-   matching timestamp, signature and event-type headers. The event type also has
-   to match the reviewed field inside the signed body: the header alone is unsigned.
-3. Prepare and validate the workflow normally. The operator reviews the exact
-   version, sender, connection, signed source and field paths, byte ceiling and
-   run/time limits. A signature authenticates ingress; it does not grant effects.
-   Do not force a sensitive workflow through a missing preparation or approve a
-   static report recipient while actually addressing somebody else.
-4. Activate only after those checks and the normal human execution-authority
-   review. Confirm behavior with a controlled recipient, then connect the public
-   form and verify the same request twice produces one message.
+1. In the same workspace, create an active Standard Webhooks binding for the workflow. Use exactly the reviewed event type and its own signing secret.
+2. In the source, save the request UUID and the original payload before sending.
+3. Send the UUID in the signed body and in `webhook-id`.
+4. Ask an operator to review version, sender, connection, signed source, field paths, byte limit and run limits.
+5. Activate the workflow and approve it.
 
-Separately managed inbound bindings remain independent of the definition's
-trigger. Request or schedule activation removes only reverse-bound webhook
-triggers; webhook activation updates only its own reverse-bound binding. It
-never rewrites or removes CRUD bindings, their signing secrets or event filters.
-Archiving or deleting a workflow still removes all its inbound bindings. After
-activation, verify that the reviewed signed source is still present before
-enabling a public form. A removed source requires a new binding and a normally
-reviewed workflow version referencing its actual ID; never reuse a stale ID or
-weaken signature verification.
+### Test the reply
 
-At dispatch the engine rechecks authority, source provenance, active binding,
-original input identity, actual MIME recipient/sender/type and request size. A
-payload field pretending to be provenance is ignored. On-demand calls, child
-workflows and concrete one-off tool approvals cannot substitute for the signed
-admission and reviewed recurring authority. CC/BCC and extra recipient headers
-are rejected. The outgoing request cannot follow redirects or retry automatically.
+1. Send a test request to a controlled recipient.
+2. Check that the signed source still exists after activation.
+3. Connect the public form.
+4. Send the same request twice and check that one message arrives.
 
-SubKit's existing signer uses the stored secret string verbatim as a UTF-8 HMAC
-key. Compute HMAC-SHA256 over `id.timestamp.rawBody`, Base64-encode the result and
-send `webhook-signature: v1,<base64>`. There is no automatic `whsec_` prefix removal
-or Base64 key decoding. Match those exact key bytes in an external adapter; a
-library's protocol name alone does not guarantee interoperability.
+### Compute the signature
+
+Use the secret string verbatim as the UTF-8 HMAC key. SubKit does not strip a `whsec_` prefix and does not Base64-decode the key.
+
+1. Compute HMAC-SHA256 over `id.timestamp.rawBody`.
+2. Base64-encode the result.
+3. Send `webhook-signature: v1,<base64>`.
+
+Also send matching timestamp and event-type headers. The header alone is unsigned, so the event type must also match the reviewed field in the signed body.
+
+### What happens next
+
+Before sending, the engine checks the approval, the signed source and the recipient again. CC, BCC and extra recipients are refused.
+
+Good to know:
+
+- A failed or unclear send is never resent automatically. There is no retry or reset operation.
+- Each original request gets at most one reply, across workflow versions and runs.
+- A signature only authenticates the request. Only the approval allows the workflow to send.
+- A retried handoff keeps the same payload and ID and renews only timestamp and signature. Changed content under the same ID is refused.
 
 ### Inspect outcomes
 
-`GET /v1/workflows/{id}/transactional-mail-receipts?limit=20&offset=0` requires
-`workflow:read` for that workflow. It returns request/execution/step IDs, state and
-timestamps, with no applicant address or MIME. The public OpenAPI contract includes
-this read operation. Audit also records reservation and settlement.
+`GET /v1/workflows/{id}/transactional-mail-receipts?limit=20&offset=0` requires `workflow:read` for that workflow.
 
-A reservation is written atomically before network access. Its unique key is the
-tenant, workflow and original request UUID, across workflow versions and execution
-IDs. It survives execution cleanup; workflow or tenant deletion removes it.
-`sent` requires a successful Gmail response with a message ID and confirms API
-acceptance, not inbox delivery. `attempted` and `delivery_unknown` require operator
-inspection. A crash, timeout or ambiguous response never authorizes automatic
-resend. This endpoint has no retry or reset operation. Producer handoff retries
-keep exactly the same payload and ID, renewing only timestamp/signature; changed
-content under a previously admitted signed ID is refused.
+It returns:
 
-### Model and authoring behavior
+- Request, run and step IDs
+- State and timestamps
 
-The shipped workflow-authoring skill and webhook knowledge explain this profile,
-its limits and refusal remedies. The generated agent documentation and OpenAPI
-schemas describe the same contract. Confirmation of tenant knowledge remains a
-human review step; source changes do not silently approve tenant material.
-Tool palettes, including MCP workflow aliases, validate object schemas before invoking a provider. Incompatible
-root combinators/references are omitted without weakening workflow validation;
-use the generic workflow operation. Residual schema errors are classified as
-schema incompatibility, not network/provider unavailability.
+It does not return the applicant's address or the message content.
 
+The audit records each reservation and its result.
+
+| State | Meaning |
+| --- | --- |
+| `sent` | Gmail answered with a message ID. This confirms that Gmail accepted it, not that it reached the inbox. |
+| `attempted`, `delivery_unknown` | The operator inspects the case. |
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| The state is `attempted` or `delivery_unknown` | The operator inspects the case. There is no automatic resend and no reset endpoint. |
+| A request is refused although the signature is correct | Check that the event type in the signed body matches the header and the reviewed field path, and that the UUID in the body and in `webhook-id` agree. |
+| A repeated handoff is refused | The content under that signed ID changed. Send the same payload and ID again and renew only timestamp and signature. |
+| Sending is refused because of recipient headers | Remove CC, BCC and extra recipient headers. Only the reviewed original recipient is allowed. |
+| The signed source is gone after activation | Create a new binding and activate a reviewed workflow version that references its actual ID. |
+## Cockpit as an app
+
+Install the Cockpit of a workspace as its own app in its own window.
+If you work in several workspaces, each one gets its own app with its own name, icon and colors.
+
+### What you need
+
+- Access to a workspace in SubKit Cloud at https://subkit-cloud.mikebild.info or on a self-hosted engine.
+- An account you sign in with through **Sign in with work account**. An installed app cannot sign in again with an API key.
+- A browser that supports web app installation.
+- For branding: the `settings:write` and `identity:write` permissions in the workspace.
+
+### Install the Cockpit of a workspace
+
+1. Open the Cockpit in the browser and sign in.
+2. Open the workspace menu in the sidebar and choose **Install this workspace**.
+3. Check the name and icon in the install dialog and select **Install app**.
+4. The Cockpit moves to this workspace's own address and shows the dialog again. Select **Install app** once more.
+5. Confirm the installation in your browser's dialog.
+
+The app carries the workspace name, uses the stored app icon or the SubKit icon, and takes the color of the selected color palette.
+
+### Use several workspaces as separate apps
+
+1. In the regular Cockpit, switch to the next workspace from the workspace menu.
+2. Install it as above through **Install this workspace**.
+3. Start each app on its own. Each app only ever opens its own workspace.
+
+Each app has its own sign-in. Your sign-in in the regular Cockpit stays untouched.
+
+### Sign in and sign out in the app
+
+1. To sign out, open the **User menu** in the app and choose **Sign out**.
+2. To sign in again, start the app and choose **Sign in with work account**.
+3. If that fails, sign in to the regular Cockpit and reopen the app there through **Install this workspace**.
+
+**Sign out** only signs out this app, not your other apps and not the regular Cockpit.
+
+### Set the branding of a workspace
+
+1. Open **Settings** and, under **Working with sk**, the **Tenant branding** section.
+2. Under **App icon (1:1)**, upload a square PNG with at least 512 pixels per side.
+3. Under **Color palette**, choose **Standard**, **Indigo** or **Teal**.
+4. Check the preview and select **Save changes**.
+
+Without both permissions you can only view the branding.
+The app name comes from the workspace name, not from the **Organization name** in the branding.
+**Reset branding** restores the SubKit look for all members.
+
+### Remove an installed app
+
+1. Open the regular Cockpit in the browser and switch to the app's workspace.
+2. Choose **Revoke installation** in the workspace menu and confirm. This signs the app out on all its devices.
+3. Then remove the app from your device like any other app.
+
+If you install again later, the app gets a new address. Old links stop working.
+
+### Good to know
+
+- In the app, open **Notifications** and turn on **Enable neutral notifications**. The alerts contain no workspace or workflow details.
+- Text and files you share with the app only reach the **Inbox** after you confirm them. This neither admits them to knowledge nor starts a workflow.
+- Your browser or operating system may keep showing an installed app's name and icon after you sign out.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| "Installation unavailable" | Keep using the Cockpit in the browser, or open it in a browser that can install web apps. |
+| "Installed apps require an existing OIDC account to sign in again. …" | Sign in to the regular Cockpit and reopen the app there through **Install this workspace**. |
+| "Browser permission was denied. Allow notifications in your browser settings." | Allow notifications for the Cockpit address in your browser settings. |
+| "Open the app, sign in and share again." | Start the app, sign in and share the content again. |
+| "Use a still PNG, JPEG or WebP up to 2 MiB and 4 megapixels." | Upload a square PNG of at least 512 pixels per side and at most 2 MiB as the app icon. |
 ## Cockpit branding
 
 Workspace administrators with `settings:write` and `identity:write` can change the
@@ -1861,81 +2089,137 @@ MIT
 
 # Use sk from a coding agent
 
+MCP gives your coding agent the approved sk tools.
+`sk agent init` gives every Claude Code and Codex session a shared-memory briefing for your repository.
+Collected material follows one path: **collect → review with your agent → confirm in the Cockpit → knowledge**.
+
+### What you need
+
+- The sk CLI, signed in to your engine. In the cloud, use `sk login --engine-url https://subkit-cloud.mikebild.info` and **Sign in with work account**. The briefing uses this signed-in profile.
+- The MCP address of your engine, `https://<your-engine>/mcp`. On SubKit Cloud it is `https://subkit-cloud.mikebild.info/mcp`.
+- Claude Code, Codex or both.
+- A repository where the briefings should appear.
+
+### Set up the sk tools once per machine
+
+1. In the Cockpit, open **API access** and create a key.
+2. Store the key in `SK_API_KEY`.
+3. Register sk in your client with the matching command.
+
+Claude Code:
+
 ```bash
-claude mcp add --transport http --scope user sk http://localhost:3000/mcp --header "Authorization: Bearer ${SK_API_KEY}"
-codex mcp add sk --url http://localhost:3000/mcp --bearer-token-env-var SK_API_KEY
-sk agent init --domains <category>   # in a repository: briefs each Claude Code and Codex session on that domain
+claude mcp add --transport http --scope user sk https://<your-engine>/mcp --header "Authorization: Bearer ${SK_API_KEY}"
 ```
 
-Use MCP for approved sk tools; run `sk agent init` to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings. Hooks can resolve a current folder name to known domains when no explicit declaration exists. Both use the same authenticated sk profile as the CLI.
+Codex:
 
-### Set up and verify briefings
+```bash
+codex mcp add sk --url https://<your-engine>/mcp --bearer-token-env-var SK_API_KEY
+```
 
-MCP registration is a one-time machine setup. In each repository, run `sk agent init --domains <category>[,<category>]` and commit `.sk/agent.json` so every checkout uses the same domains. A domain can be a catalog category or a `domain:<slug>` tag. `init` merges requested domains without removing existing domains or settings, and wires Claude Code and Codex SessionStart, UserPromptSubmit and SessionEnd hooks. Codex transcript capture runs asynchronously to fit its three-second hook limit. Both clients and the sk REPL share an 1,800-token briefing budget and 9,500-character hard limit. `--skip-claude` and `--skip-codex` leave that client's settings untouched.
+To sign in without a key, see "Connect AI clients via MCP".
 
-Run `sk status`, then `sk agent briefing --json` from the repository to verify the declaration, credentials, engine connection and returned briefing. Use the JSON fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens` to inspect the result. Empty `knowledge_sources` or `skills_full` means the briefing works but those items are not assigned to the declared domain. Put knowledge and skills in the domain's catalog category or tag them `domain:<slug>`.
+### Set up briefings in a repository
 
-Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation. The briefing only counts collected clips and session learnings in the project's categories and never includes their content. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex hooks are enabled by default; no `config.toml` edit is normally needed. Review and trust new or changed SubKit hooks in `/hooks`. If hooks are disabled, inspect the effective feature setting and administrator policy before changing settings; see the [official Codex hook guide](https://learn.chatgpt.com/docs/hooks). Both clients send a transcript at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. The engine keeps only practices and facts a person taught or confirmed, drops events, status updates and anything credential-related, and collects the rest in the Inbox with origin `session`, in the project's shared category or your default category. The same learning from a later session adds evidence to the existing item instead of a duplicate. Collected learnings are not knowledge and not skills until a person confirms a proposal in the Cockpit; `sk intake list` shows what is waiting.
+1. In the repository, declare the domains:
 
-For open-ended check-ins, the briefing uses the current project's matched domain together with shared SubKit context, plus connected sources that best answer the question. It distinguishes live service state from repository changes and static knowledge, prioritizes blocked or failing work and imminent deadlines, and gives up to three specific next steps in the user's language. Maintenance suggestions must be grounded in repository instructions, explicit plans or TODOs, and observed issues such as failing checks or generated-file drift. Relevant knowledge sources and workflows from the folder's domain are recommended by name when they help with a concrete task. It reports when a relevant source is unavailable.
+   ```bash
+   sk agent init --domains <category>
+   ```
+
+   For several domains, separate them with commas: `--domains <category>[,<category>]`.
+2. Commit `.sk/agent.json` so every checkout uses the same domains.
+3. In Claude Code or Codex, run `/hooks` and check that the SubKit hooks are active.
+4. Trust new or changed SubKit hooks.
+
+### Check the briefing
+
+1. In the repository, run `sk status`.
+2. Run `sk agent briefing --json`.
+3. Check the fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens`.
 
 ### Review collected material with your coding agent
 
-Collected pages remain material to review. With `intake:read`, the briefing adds
-a short tenant-wide count of collected entries and pending knowledge proposals.
-It does not load their text, treat them as instructions, or claim they belong to
-the repository's domain. Without that permission the reminder is omitted.
+Your agent can start a review of collected entries. You confirm the result in the Cockpit.
 
-Ask: "Review the new entries in Research. Which are useful? Propose what we should
-keep as knowledge." Review uses a saved SubKit conversation. MCP clients start
-it through `conversation_start`; `intake_item_ids` selects particular clips and
-keeps that selection fixed. The returned Cockpit link continues the same review.
-Item-reading and proposal tools need this saved conversation and cannot run as
-standalone MCP calls. The clipper's API key needs only intake read/write;
-the person confirming a proposal needs `intake:confirm` and `knowledge:write`.
+1. Ask your agent: "Review the new entries in Research. Which are useful? Propose what we should keep as knowledge."
+2. Open the Cockpit link the agent returns.
+3. Check the proposal's sources, exact text and knowledge destination.
+4. Select **Confirm as knowledge**.
+5. Run `sk agent briefing --json` and check `knowledge_sources`.
 
-From the terminal, `sk intake list` shows collected items in your default category. Use
-`sk intake list --category research` to see collected items and
-`sk intake review --category research` to start their review. Without a
-selection, review uses your default category. `--items <comma-separated-ids>`
-selects particular entries; `--json` returns machine-readable results. The command
-prints the Cockpit link for continuing the conversation and reviewing proposals.
-Use `sk intake default --category research` to change your personal default,
-`sk intake move --item <id> --category research` to organize an entry, and
-`sk intake discard --item <id>` or `sk intake restore --item <id>` to change its
-review state. These actions preserve the original clip and never admit knowledge.
+A new session loads the updated briefing.
 
-The proposal shows its sources, exact text and knowledge destination. An existing
-destination keeps its topic assignment. For a new destination, include the topic
-category or `domain:<slug>` tag in the reviewed proposal so the resulting knowledge
-can appear in the intended repository briefing. Changing that assignment requires
-reviewing the changed proposal. After confirmation, run `sk agent briefing --json`
-to check `knowledge_sources`, then search for the accepted material. The original
-clip remains linked. A new session loads the updated briefing.
+Good to know:
 
-### Verify an installed intake API
+- Only a signed-in person with `intake:confirm` and `knowledge:write` confirms a proposal. An API key, an MCP client or the Web Clipper never does.
+- The Web Clipper key uses the **Web Clipper** preset (`intake:read` and `intake:write`).
+- The original clip stays linked to the knowledge it became.
+- Moving, editing or discarding an entry never admits it as knowledge.
 
-During intake development, `bun run verify:intake` runs the focused type,
-domain, HTTP, briefing, MCP, and CLI checks, including a real local
-PostgreSQL/API smoke flow. It avoids the repository-wide test suite. Use browser-use
-with Codex or Claude Code for browser journeys; visual acceptance is performed manually.
+### Review collected material in the terminal
 
-`bun run verify:intake-live` checks a selected server through its public API.
-Set `SK_ENGINE_URL` and `SK_INTAKE_TEST_KEY` outside the repository. The default
-run is read-only and reports compatibility, readiness and the delivered archive.
-It is separate from the local `bun run verify` gate.
+| Command | What it does |
+| --- | --- |
+| `sk intake list` | Shows collected items in your default category. |
+| `sk intake list --category research` | Shows collected items of one category. |
+| `sk intake review --category research` | Starts the review and prints the Cockpit link. |
+| `sk intake review --items <comma-separated-ids>` | Reviews only particular entries. |
+| `sk intake default --category research` | Changes your personal default category. |
+| `sk intake move --item <id> --category research` | Moves an entry to a category. |
+| `sk intake discard --item <id>` | Discards an entry. |
+| `sk intake restore --item <id>` | Restores a discarded entry. |
 
-For a synthetic write check, use a dedicated test tenant and its user key:
-add `--allow-writes --test-tenant-id <uuid> --run-id <unique-run-name>
---json <report-path>`. The tenant must match the authenticated identity. The
-check collects in its own category, tests exclusion before confirmation and the
-exact proposal, and verifies that the API key cannot confirm it. The report's
-`handoff.review_url` opens the proposal in the Cockpit, where a person of that
-tenant confirms it. Then run the same command with `--after-confirm --proposal-id <id>`
-to check the single admission, provenance, search and the domain briefing.
-It reports timings and retained resource IDs. Intake has no deletion API, so
-test records remain for inspection. This API check does not measure model
-judgment or replace a real browser/chat verification. It never deploys code.
+- Without a selection, `review` uses your default category.
+- `--json` returns machine-readable results.
+- These actions preserve the original clip and never admit knowledge.
+
+### How briefings work
+
+**Domains.** A domain is a catalog category or a `domain:<slug>` tag.
+
+- `sk agent init` adds the requested domains and removes nothing that exists.
+- Without `.sk/agent.json`, the hooks match the folder name against your project categories. On a unique match they create `.sk/agent.json` for you. Otherwise they ask before guessing.
+- To fix the domains yourself, edit `domains` in `.sk/agent.json` and remove `inferred` and `inferred_folder_domain`.
+- A prompt can add other matching domains as the task changes.
+
+**Hooks.** `init` sets up the SessionStart, UserPromptSubmit and SessionEnd hooks for Claude Code and Codex. `--skip-claude` and `--skip-codex` leave that client's settings untouched.
+
+**Contents.** Budget: 1,800 tokens, at most 9,500 characters, shared by both clients and the sk REPL.
+Oversized context is shortened with a visible warning.
+
+A briefing contains:
+
+- Domain context and a short status, with blocked work and deadlines first.
+- Up to three specific next steps in your language.
+- Relevant knowledge sources and workflows of the folder's domain, named when they help with a task.
+- A count of collected clips and session learnings, never their content. With `intake:read`, also a workspace-wide count of collected entries and pending proposals.
+
+**Session learnings.** At session end, both clients send the transcript.
+
+- The engine keeps only practices and facts a person taught or confirmed.
+- The engine drops events, status updates and anything credential-related.
+- The rest lands in the Inbox with origin `session`, in the project's shared category or your default category. A repeated learning adds evidence to the existing entry.
+- Learnings are not knowledge and not skills until a person confirms them in the Cockpit. `sk intake list` shows what is waiting.
+
+**Reviews with an agent.** The review runs in a saved SubKit conversation.
+
+- MCP clients start it with `conversation_start`. `intake_item_ids` selects particular clips and keeps that selection fixed.
+- Tools that read entries or prepare proposals work only inside this conversation.
+- For a new destination, include the topic category or `domain:<slug>` tag in the proposal. A changed proposal must be reviewed again.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| `sk agent briefing: no domains …` | There is no declaration. Pass `--domains` or run `sk agent init --domains <category>`. |
+| `knowledge_sources` or `skills_full` are empty | The briefing works but nothing is assigned to the domain. Put knowledge and skills in the domain's category or use the `domain:<slug>` tag. |
+| The client shows a briefing warning | The engine cannot be reached. The session continues. Check sign-in and connection with `sk status`. |
+| No briefings in Claude Code or Codex | Open `/hooks`, check that the SubKit hooks are active, and trust new or changed hooks. |
+| `/hooks` in Codex shows the SubKit hooks as disabled | Follow the [Codex hooks guide](https://learn.chatgpt.com/docs/hooks). |
+| The reminder about collected entries is missing | You lack the `intake:read` permission. Ask an administrator for it. |
+| A proposal cannot be confirmed | Only a signed-in person with `intake:confirm` and `knowledge:write` can confirm, not an API key. Open the Cockpit link. |
 
 <!-- Source: cli.md -->
 
@@ -5042,21 +5326,32 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 
 <!-- Source: transactional-email.md -->
 
-# Transactional email replies
+# Reply by email to a signed request
 
-A Gmail request step may use the explicit `transactional_delivery` profile to
-reply to the address in an original signed request. This is reusable for access
-requests, registrations and other requested replies. Event names and field paths
-are configurable; no website, product or applicant is built into the engine.
-Fixed-recipient `report_delivery` continues to use its existing rules.
+A workflow can send one plain-text Gmail reply to the person who submitted a form, for example an access request.
+The reply goes only to the address in the original signed request.
+You review sender, template and limits before anything is sent.
 
-### Author the workflow
+The path is always the same: **signed request → reviewed workflow → approval → one reply**.
 
-Use sensitive execution privacy, a strict input schema with bounded lengths and
-one plain-text Gmail send step. Keep sender, connection and template in the
-reviewed workflow; visitor input selects only the reviewed original recipient.
-The payload must include its UUID and event type inside the signed JSON body.
-For example, an event body with `event`, `reference` and `contact.address` can use:
+### What you need
+
+- A Gmail connection (connector) in your workspace.
+- A signed source that sends requests in the Standard Webhooks format.
+- A person who approves the workflow.
+- An operator who reviews the workflow before activation.
+
+Never skip signature verification, and never use a public API key or browser credentials for the source.
+
+### Set up the workflow
+
+1. Set `execution_privacy: sensitive` and a strict input schema with bounded lengths.
+2. Add exactly one plain-text Gmail send step. Its request body contains only `raw`.
+3. Keep sender, connection and template in the workflow. The request selects only the reviewed original recipient.
+4. On the Gmail request step, add the `transactional_delivery` profile and `max_retries: 0`.
+5. Set `max_body_bytes` from the bounded template, not the largest allowed value.
+
+The signed JSON body must contain the request UUID and the event type. Input paths start at `body`. For a body with `event`, `reference` and `contact.address`, the profile looks like this:
 
 ```json
 {
@@ -5072,78 +5367,70 @@ For example, an event body with `event`, `reference` and `contact.address` can u
 }
 ```
 
-Place the profile on the Gmail request step beside `max_retries: 0`. Its request
-body must contain only `raw`. No pagination, fan-out, generic boundary, simultaneous
-fixed-recipient profile, response selection or filtering is supported. Input paths
-start at `body`, traverse own object properties and reject prototype keys. Choose
-a request-byte ceiling from the bounded template, rather than the largest allowed
-value. The ceiling measures serialized UTF-8 Gmail JSON, including base64 overhead.
+`max_body_bytes` counts the serialized Gmail JSON, including the base64 overhead. Pagination, fan-out, a second fixed-recipient profile and response filtering are not supported in this step.
+
+You can also describe this workflow in the Cockpit chat. The chat knows this profile and its limits.
 
 ### Bind and review
 
-1. Create an active Standard Webhooks binding for this workflow in the same tenant.
-   Configure exactly the reviewed event type and a dedicated signing secret. Never
-   use skipped verification, a public API key or browser credentials.
-2. Persist the request UUID and original payload before handoff. Send the UUID in
-   both the signed body and `webhook-id`. Sign `id.timestamp.rawBody` and send the
-   matching timestamp, signature and event-type headers. The event type also has
-   to match the reviewed field inside the signed body: the header alone is unsigned.
-3. Prepare and validate the workflow normally. The operator reviews the exact
-   version, sender, connection, signed source and field paths, byte ceiling and
-   run/time limits. A signature authenticates ingress; it does not grant effects.
-   Do not force a sensitive workflow through a missing preparation or approve a
-   static report recipient while actually addressing somebody else.
-4. Activate only after those checks and the normal human execution-authority
-   review. Confirm behavior with a controlled recipient, then connect the public
-   form and verify the same request twice produces one message.
+1. In the same workspace, create an active Standard Webhooks binding for the workflow. Use exactly the reviewed event type and its own signing secret.
+2. In the source, save the request UUID and the original payload before sending.
+3. Send the UUID in the signed body and in `webhook-id`.
+4. Ask an operator to review version, sender, connection, signed source, field paths, byte limit and run limits.
+5. Activate the workflow and approve it.
 
-Separately managed inbound bindings remain independent of the definition's
-trigger. Request or schedule activation removes only reverse-bound webhook
-triggers; webhook activation updates only its own reverse-bound binding. It
-never rewrites or removes CRUD bindings, their signing secrets or event filters.
-Archiving or deleting a workflow still removes all its inbound bindings. After
-activation, verify that the reviewed signed source is still present before
-enabling a public form. A removed source requires a new binding and a normally
-reviewed workflow version referencing its actual ID; never reuse a stale ID or
-weaken signature verification.
+### Test the reply
 
-At dispatch the engine rechecks authority, source provenance, active binding,
-original input identity, actual MIME recipient/sender/type and request size. A
-payload field pretending to be provenance is ignored. On-demand calls, child
-workflows and concrete one-off tool approvals cannot substitute for the signed
-admission and reviewed recurring authority. CC/BCC and extra recipient headers
-are rejected. The outgoing request cannot follow redirects or retry automatically.
+1. Send a test request to a controlled recipient.
+2. Check that the signed source still exists after activation.
+3. Connect the public form.
+4. Send the same request twice and check that one message arrives.
 
-SubKit's existing signer uses the stored secret string verbatim as a UTF-8 HMAC
-key. Compute HMAC-SHA256 over `id.timestamp.rawBody`, Base64-encode the result and
-send `webhook-signature: v1,<base64>`. There is no automatic `whsec_` prefix removal
-or Base64 key decoding. Match those exact key bytes in an external adapter; a
-library's protocol name alone does not guarantee interoperability.
+### Compute the signature
+
+Use the secret string verbatim as the UTF-8 HMAC key. SubKit does not strip a `whsec_` prefix and does not Base64-decode the key.
+
+1. Compute HMAC-SHA256 over `id.timestamp.rawBody`.
+2. Base64-encode the result.
+3. Send `webhook-signature: v1,<base64>`.
+
+Also send matching timestamp and event-type headers. The header alone is unsigned, so the event type must also match the reviewed field in the signed body.
+
+### What happens next
+
+Before sending, the engine checks the approval, the signed source and the recipient again. CC, BCC and extra recipients are refused.
+
+Good to know:
+
+- A failed or unclear send is never resent automatically. There is no retry or reset operation.
+- Each original request gets at most one reply, across workflow versions and runs.
+- A signature only authenticates the request. Only the approval allows the workflow to send.
+- A retried handoff keeps the same payload and ID and renews only timestamp and signature. Changed content under the same ID is refused.
 
 ### Inspect outcomes
 
-`GET /v1/workflows/{id}/transactional-mail-receipts?limit=20&offset=0` requires
-`workflow:read` for that workflow. It returns request/execution/step IDs, state and
-timestamps, with no applicant address or MIME. The public OpenAPI contract includes
-this read operation. Audit also records reservation and settlement.
+`GET /v1/workflows/{id}/transactional-mail-receipts?limit=20&offset=0` requires `workflow:read` for that workflow.
 
-A reservation is written atomically before network access. Its unique key is the
-tenant, workflow and original request UUID, across workflow versions and execution
-IDs. It survives execution cleanup; workflow or tenant deletion removes it.
-`sent` requires a successful Gmail response with a message ID and confirms API
-acceptance, not inbox delivery. `attempted` and `delivery_unknown` require operator
-inspection. A crash, timeout or ambiguous response never authorizes automatic
-resend. This endpoint has no retry or reset operation. Producer handoff retries
-keep exactly the same payload and ID, renewing only timestamp/signature; changed
-content under a previously admitted signed ID is refused.
+It returns:
 
-### Model and authoring behavior
+- Request, run and step IDs
+- State and timestamps
 
-The shipped workflow-authoring skill and webhook knowledge explain this profile,
-its limits and refusal remedies. The generated agent documentation and OpenAPI
-schemas describe the same contract. Confirmation of tenant knowledge remains a
-human review step; source changes do not silently approve tenant material.
-Tool palettes, including MCP workflow aliases, validate object schemas before invoking a provider. Incompatible
-root combinators/references are omitted without weakening workflow validation;
-use the generic workflow operation. Residual schema errors are classified as
-schema incompatibility, not network/provider unavailability.
+It does not return the applicant's address or the message content.
+
+The audit records each reservation and its result.
+
+| State | Meaning |
+| --- | --- |
+| `sent` | Gmail answered with a message ID. This confirms that Gmail accepted it, not that it reached the inbox. |
+| `attempted`, `delivery_unknown` | The operator inspects the case. |
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| The state is `attempted` or `delivery_unknown` | The operator inspects the case. There is no automatic resend and no reset endpoint. |
+| A request is refused although the signature is correct | Check that the event type in the signed body matches the header and the reviewed field path, and that the UUID in the body and in `webhook-id` agree. |
+| A repeated handoff is refused | The content under that signed ID changed. Send the same payload and ID again and renew only timestamp and signature. |
+| Sending is refused because of recipient headers | Remove CC, BCC and extra recipient headers. Only the reviewed original recipient is allowed. |
+| The signed source is gone after activation | Create a new binding and activate a reviewed workflow version that references its actual ID. |

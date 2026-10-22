@@ -9,79 +9,134 @@ seed_version: 2
 ---
 ## Use sk from a coding agent
 
+MCP gives your coding agent the approved sk tools.
+`sk agent init` gives every Claude Code and Codex session a shared-memory briefing for your repository.
+Collected material follows one path: **collect → review with your agent → confirm in the Cockpit → knowledge**.
+
+### What you need
+
+- The sk CLI, signed in to your engine. In the cloud, use `sk login --engine-url https://subkit-cloud.mikebild.info` and **Sign in with work account**. The briefing uses this signed-in profile.
+- The MCP address of your engine, `https://<your-engine>/mcp`. On SubKit Cloud it is `https://subkit-cloud.mikebild.info/mcp`.
+- Claude Code, Codex or both.
+- A repository where the briefings should appear.
+
+### Set up the sk tools once per machine
+
+1. In the Cockpit, open **API access** and create a key.
+2. Store the key in `SK_API_KEY`.
+3. Register sk in your client with the matching command.
+
+Claude Code:
+
 ```bash
-claude mcp add --transport http --scope user sk http://localhost:3000/mcp --header "Authorization: Bearer ${SK_API_KEY}"
-codex mcp add sk --url http://localhost:3000/mcp --bearer-token-env-var SK_API_KEY
-sk agent init --domains <category>   # in a repository: briefs each Claude Code and Codex session on that domain
+claude mcp add --transport http --scope user sk https://<your-engine>/mcp --header "Authorization: Bearer ${SK_API_KEY}"
 ```
 
-Use MCP for approved sk tools; run `sk agent init` to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings. Hooks can resolve a current folder name to known domains when no explicit declaration exists. Both use the same authenticated sk profile as the CLI.
+Codex:
 
-### Set up and verify briefings
+```bash
+codex mcp add sk --url https://<your-engine>/mcp --bearer-token-env-var SK_API_KEY
+```
 
-MCP registration is a one-time machine setup. In each repository, run `sk agent init --domains <category>[,<category>]` and commit `.sk/agent.json` so every checkout uses the same domains. A domain can be a catalog category or a `domain:<slug>` tag. `init` merges requested domains without removing existing domains or settings, and wires Claude Code and Codex SessionStart, UserPromptSubmit and SessionEnd hooks. Codex transcript capture runs asynchronously to fit its three-second hook limit. Both clients and the sk REPL share an 1,800-token briefing budget and 9,500-character hard limit. `--skip-claude` and `--skip-codex` leave that client's settings untouched.
+To sign in without a key, see "Connect AI clients via MCP".
 
-Run `sk status`, then `sk agent briefing --json` from the repository to verify the declaration, credentials, engine connection and returned briefing. Use the JSON fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens` to inspect the result. Empty `knowledge_sources` or `skills_full` means the briefing works but those items are not assigned to the declared domain. Put knowledge and skills in the domain's catalog category or tag them `domain:<slug>`.
+### Set up briefings in a repository
 
-Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation. The briefing only counts collected clips and session learnings in the project's categories and never includes their content. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex hooks are enabled by default; no `config.toml` edit is normally needed. Review and trust new or changed SubKit hooks in `/hooks`. If hooks are disabled, inspect the effective feature setting and administrator policy before changing settings; see the [official Codex hook guide](https://learn.chatgpt.com/docs/hooks). Both clients send a transcript at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. The engine keeps only practices and facts a person taught or confirmed, drops events, status updates and anything credential-related, and collects the rest in the Inbox with origin `session`, in the project's shared category or your default category. The same learning from a later session adds evidence to the existing item instead of a duplicate. Collected learnings are not knowledge and not skills until a person confirms a proposal in the Cockpit; `sk intake list` shows what is waiting.
+1. In the repository, declare the domains:
 
-For open-ended check-ins, the briefing uses the current project's matched domain together with shared SubKit context, plus connected sources that best answer the question. It distinguishes live service state from repository changes and static knowledge, prioritizes blocked or failing work and imminent deadlines, and gives up to three specific next steps in the user's language. Maintenance suggestions must be grounded in repository instructions, explicit plans or TODOs, and observed issues such as failing checks or generated-file drift. Relevant knowledge sources and workflows from the folder's domain are recommended by name when they help with a concrete task. It reports when a relevant source is unavailable.
+   ```bash
+   sk agent init --domains <category>
+   ```
+
+   For several domains, separate them with commas: `--domains <category>[,<category>]`.
+2. Commit `.sk/agent.json` so every checkout uses the same domains.
+3. In Claude Code or Codex, run `/hooks` and check that the SubKit hooks are active.
+4. Trust new or changed SubKit hooks.
+
+### Check the briefing
+
+1. In the repository, run `sk status`.
+2. Run `sk agent briefing --json`.
+3. Check the fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens`.
 
 ### Review collected material with your coding agent
 
-Collected pages remain material to review. With `intake:read`, the briefing adds
-a short tenant-wide count of collected entries and pending knowledge proposals.
-It does not load their text, treat them as instructions, or claim they belong to
-the repository's domain. Without that permission the reminder is omitted.
+Your agent can start a review of collected entries. You confirm the result in the Cockpit.
 
-Ask: "Review the new entries in Research. Which are useful? Propose what we should
-keep as knowledge." Review uses a saved SubKit conversation. MCP clients start
-it through `conversation_start`; `intake_item_ids` selects particular clips and
-keeps that selection fixed. The returned Cockpit link continues the same review.
-Item-reading and proposal tools need this saved conversation and cannot run as
-standalone MCP calls. The clipper's API key needs only intake read/write;
-the person confirming a proposal needs `intake:confirm` and `knowledge:write`.
+1. Ask your agent: "Review the new entries in Research. Which are useful? Propose what we should keep as knowledge."
+2. Open the Cockpit link the agent returns.
+3. Check the proposal's sources, exact text and knowledge destination.
+4. Select **Confirm as knowledge**.
+5. Run `sk agent briefing --json` and check `knowledge_sources`.
 
-From the terminal, `sk intake list` shows collected items in your default category. Use
-`sk intake list --category research` to see collected items and
-`sk intake review --category research` to start their review. Without a
-selection, review uses your default category. `--items <comma-separated-ids>`
-selects particular entries; `--json` returns machine-readable results. The command
-prints the Cockpit link for continuing the conversation and reviewing proposals.
-Use `sk intake default --category research` to change your personal default,
-`sk intake move --item <id> --category research` to organize an entry, and
-`sk intake discard --item <id>` or `sk intake restore --item <id>` to change its
-review state. These actions preserve the original clip and never admit knowledge.
+A new session loads the updated briefing.
 
-The proposal shows its sources, exact text and knowledge destination. An existing
-destination keeps its topic assignment. For a new destination, include the topic
-category or `domain:<slug>` tag in the reviewed proposal so the resulting knowledge
-can appear in the intended repository briefing. Changing that assignment requires
-reviewing the changed proposal. After confirmation, run `sk agent briefing --json`
-to check `knowledge_sources`, then search for the accepted material. The original
-clip remains linked. A new session loads the updated briefing.
+Good to know:
 
-### Verify an installed intake API
+- Only a signed-in person with `intake:confirm` and `knowledge:write` confirms a proposal. An API key, an MCP client or the Web Clipper never does.
+- The Web Clipper key uses the **Web Clipper** preset (`intake:read` and `intake:write`).
+- The original clip stays linked to the knowledge it became.
+- Moving, editing or discarding an entry never admits it as knowledge.
 
-During intake development, `bun run verify:intake` runs the focused type,
-domain, HTTP, briefing, MCP, and CLI checks, including a real local
-PostgreSQL/API smoke flow. It avoids the repository-wide test suite. Use browser-use
-with Codex or Claude Code for browser journeys; visual acceptance is performed manually.
+### Review collected material in the terminal
 
-`bun run verify:intake-live` checks a selected server through its public API.
-Set `SK_ENGINE_URL` and `SK_INTAKE_TEST_KEY` outside the repository. The default
-run is read-only and reports compatibility, readiness and the delivered archive.
-It is separate from the local `bun run verify` gate.
+| Command | What it does |
+| --- | --- |
+| `sk intake list` | Shows collected items in your default category. |
+| `sk intake list --category research` | Shows collected items of one category. |
+| `sk intake review --category research` | Starts the review and prints the Cockpit link. |
+| `sk intake review --items <comma-separated-ids>` | Reviews only particular entries. |
+| `sk intake default --category research` | Changes your personal default category. |
+| `sk intake move --item <id> --category research` | Moves an entry to a category. |
+| `sk intake discard --item <id>` | Discards an entry. |
+| `sk intake restore --item <id>` | Restores a discarded entry. |
 
-For a synthetic write check, use a dedicated test tenant and its user key:
-add `--allow-writes --test-tenant-id <uuid> --run-id <unique-run-name>
---json <report-path>`. The tenant must match the authenticated identity. The
-check collects in its own category, tests exclusion before confirmation and the
-exact proposal, and verifies that the API key cannot confirm it. The report's
-`handoff.review_url` opens the proposal in the Cockpit, where a person of that
-tenant confirms it. Then run the same command with `--after-confirm --proposal-id <id>`
-to check the single admission, provenance, search and the domain briefing.
-It reports timings and retained resource IDs. Intake has no deletion API, so
-test records remain for inspection. This API check does not measure model
-judgment or replace a real browser/chat verification. It never deploys code.
+- Without a selection, `review` uses your default category.
+- `--json` returns machine-readable results.
+- These actions preserve the original clip and never admit knowledge.
 
+### How briefings work
+
+**Domains.** A domain is a catalog category or a `domain:<slug>` tag.
+
+- `sk agent init` adds the requested domains and removes nothing that exists.
+- Without `.sk/agent.json`, the hooks match the folder name against your project categories. On a unique match they create `.sk/agent.json` for you. Otherwise they ask before guessing.
+- To fix the domains yourself, edit `domains` in `.sk/agent.json` and remove `inferred` and `inferred_folder_domain`.
+- A prompt can add other matching domains as the task changes.
+
+**Hooks.** `init` sets up the SessionStart, UserPromptSubmit and SessionEnd hooks for Claude Code and Codex. `--skip-claude` and `--skip-codex` leave that client's settings untouched.
+
+**Contents.** Budget: 1,800 tokens, at most 9,500 characters, shared by both clients and the sk REPL.
+Oversized context is shortened with a visible warning.
+
+A briefing contains:
+
+- Domain context and a short status, with blocked work and deadlines first.
+- Up to three specific next steps in your language.
+- Relevant knowledge sources and workflows of the folder's domain, named when they help with a task.
+- A count of collected clips and session learnings, never their content. With `intake:read`, also a workspace-wide count of collected entries and pending proposals.
+
+**Session learnings.** At session end, both clients send the transcript.
+
+- The engine keeps only practices and facts a person taught or confirmed.
+- The engine drops events, status updates and anything credential-related.
+- The rest lands in the Inbox with origin `session`, in the project's shared category or your default category. A repeated learning adds evidence to the existing entry.
+- Learnings are not knowledge and not skills until a person confirms them in the Cockpit. `sk intake list` shows what is waiting.
+
+**Reviews with an agent.** The review runs in a saved SubKit conversation.
+
+- MCP clients start it with `conversation_start`. `intake_item_ids` selects particular clips and keeps that selection fixed.
+- Tools that read entries or prepare proposals work only inside this conversation.
+- For a new destination, include the topic category or `domain:<slug>` tag in the proposal. A changed proposal must be reviewed again.
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| `sk agent briefing: no domains …` | There is no declaration. Pass `--domains` or run `sk agent init --domains <category>`. |
+| `knowledge_sources` or `skills_full` are empty | The briefing works but nothing is assigned to the domain. Put knowledge and skills in the domain's category or use the `domain:<slug>` tag. |
+| The client shows a briefing warning | The engine cannot be reached. The session continues. Check sign-in and connection with `sk status`. |
+| No briefings in Claude Code or Codex | Open `/hooks`, check that the SubKit hooks are active, and trust new or changed hooks. |
+| `/hooks` in Codex shows the SubKit hooks as disabled | Follow the [Codex hooks guide](https://learn.chatgpt.com/docs/hooks). |
+| The reminder about collected entries is missing | You lack the `intake:read` permission. Ask an administrator for it. |
+| A proposal cannot be confirmed | Only a signed-in person with `intake:confirm` and `knowledge:write` can confirm, not an API key. Open the Cockpit link. |

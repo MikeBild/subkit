@@ -29,7 +29,7 @@ macht alle ihre Sitzungen ungültig; eine Neuerstellung erzeugt eine neue Identi
 Links nicht wieder. Die OIDC-Neuauthentifizierung erfordert genau die bestehende Eigentümeridentität
 und legt nie ein Konto an und verknüpft nie eines per E-Mail. Die Anmeldung mit API-Schlüssel kann
 eine installierte Sitzung nicht erneuern; öffne stattdessen das normale Cockpit und öffne
-die Workspace-App erneut.
+die Arbeitsbereich-App erneut.
 
 Das authentifizierte Manifest hat eine eigene ID, einen eigenen Scope und eine eigene Startadresse
 und verwendet den gespeicherten Workspace-Namen, die Palette und das optionale quadratische

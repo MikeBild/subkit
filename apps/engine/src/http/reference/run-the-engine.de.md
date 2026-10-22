@@ -65,8 +65,6 @@ Die Standard-Bindungen von API und Datenbank sind nur auf Loopback. Schließe da
 lokal ab, bevor du die API freigibst. Fernzugriff erfordert HTTPS und Zugriffskontrollen;
 gib Datenbank oder Objektspeicher nicht öffentlich frei.
 
-Aus einem Checkout startet `bun run start:local` den Stack und schließt das erste Setup mit dem LLM-Anbieter `mock` ab.
-
 Die Konnektor-Discovery im mitgelieferten Container unterstützt HTTP-basierte Dokumentationsquellen.
 Optionales Playwright-Crawling ist standardmäßig nicht verfügbar. Für Dokumentation, die
 JavaScript-Rendering erfordert, stelle eine zugängliche OpenAPI-Spezifikation bereit oder

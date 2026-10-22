@@ -1,50 +1,44 @@
 ---
 slug: first-workflow
-summary: Baue, genehmige und starte deinen ersten Workflow im Cockpit-Chat.
+summary: Baue deinen ersten Workflow im Cockpit-Chat, gib ihn frei und starte ihn.
 order: 5
 section: start
 audience: public
 ---
 ## Dein erster Workflow
 
-In diesem Kapitel kommst du von der Anmeldung bis zu deinem ersten erfolgreichen Lauf.
-Du beschreibst eine Aufgabe im Chat, SubKit baut den Workflow, du gibst frei,
-was er berühren darf, du startest ihn und liest das Ergebnis im Verlauf.
-
+Hier kommst du von der Anmeldung zu deinem ersten erfolgreichen Lauf.
+Du beschreibst eine Aufgabe im Chat, speicherst den Workflow, gibst ihn frei, startest ihn und liest das Ergebnis.
 Das funktioniert in SubKit Cloud und auf einer selbst betriebenen Engine gleich.
 
 ### Was du brauchst
 
-- Ein SubKit-Konto in einem Workspace.
-  - Cloud: `https://subkit-cloud.mikebild.info/cockpit`
+- Ein SubKit-Konto in einem Arbeitsbereich.
+  - Cloud: `https://subkit-cloud.mikebild.info`
   - Selbst betrieben: `https://<deine-engine>/cockpit`
-- Die Berechtigung, Workflows anzulegen und auszuführen. Fehlt ein Button, frag deine Administratorin oder deinen Administrator.
+- Die Berechtigung, Workflows anzulegen und auszuführen. Fehlt ein Button, bitte eine Administratorin oder einen Administrator darum.
 - Einen KI-Anbieter. Die Cloud stellt ihn bereit. Eine selbst betriebene Engine nutzt den Anbieter, den du bei `sk init` gewählt hast.
 
-> Du willst eine selbst betriebene Engine ohne KI-Konto ausprobieren? `sk init --llm-provider mock --llm-api-key mock`
-> richtet einen Mock-Anbieter ein. Damit prüfst du die Installation und das Cockpit.
-> Der Chat antwortet dann nur mit „Acknowledged: … (mock)“ und baut keinen Workflow.
-> Für dieses Kapitel brauchst du einen echten Anbieter.
-
-### Schritt 1: Anmelden
+### Anmelden
 
 1. Öffne das Cockpit.
-2. Cloud: Melde dich mit deinem Passwort oder einem Anmeldelink per E-Mail an.
-   Selbst betrieben ohne Anmeldeanbieter: Melde dich mit einem API-Schlüssel an.
-3. Du landest in deinem Workspace auf **Übersicht**.
+2. Wähle **Mit Firmenkonto anmelden**.
 
-### Schritt 2: Die Aufgabe im Chat beschreiben
+Du landest in deinem Arbeitsbereich auf **Übersicht**.
+Selbst betrieben ohne Anmeldeanbieter? Wähle stattdessen **Mit API-Schlüssel anmelden** und gib deinen Schlüssel ein.
 
-1. Öffne **Chat** in der Navigation.
+### Die Aufgabe beschreiben
+
+1. Öffne in der Navigation **Chat**.
 2. Wähle **Neue Unterhaltung**.
-3. Beschreib die Aufgabe in einfachen Worten. Sag, was hineingeht, was passieren soll und was herauskommt.
+3. Beschreibe die Aufgabe in einfachen Worten: was hineingeht, was passieren soll, was herauskommt.
    Beispiel: „Hol die offenen Issues meines GitHub-Repositorys und gib mir eine kurze Liste mit Titel und Link.“
 4. Beantworte die Rückfragen von SubKit. Braucht die Aufgabe einen Dienst, bittet dich SubKit,
    ihn zu verbinden oder dich dort anzumelden.
 
-Tipp: Eine kleine Aufgabe lässt sich leichter prüfen als eine große. Erweitern kannst du den Workflow später im selben Chat.
+Gut zu wissen: Eine kleine Aufgabe lässt sich leichter prüfen. Erweitern kannst du den Workflow später im selben Chat.
 
-### Schritt 3: Den Workflow speichern
+### Den Workflow speichern
 
 Ist der Workflow fertig, zeigt SubKit eine Karte **Workflow-Entwurf speichern**.
 
@@ -53,40 +47,44 @@ Ist der Workflow fertig, zeigt SubKit eine Karte **Workflow-Entwurf speichern**.
 
 Speichern startet nichts. Der Workflow erscheint jetzt unter **Workflows**.
 
-### Schritt 4: Freigeben, was er berühren darf
+### Freigeben, was er berühren darf
 
 Eine neue Version berührt nichts außerhalb von SubKit, bis ein Mensch sie freigibt.
 Ohne Freigabe startet ein Lauf nur als Probelauf ohne Wirkung.
 
 1. Öffne **Workflows** und wähle deinen Workflow.
-2. Die Statuszeile zeigt **Wartet auf Freigabe** oder **Nicht freigegeben**. Wähle **Freigeben…**.
-3. Prüf den Dialog:
-   - **Umgebung**: wo die Läufe erlaubt sind, zum Beispiel **Produktion**.
-   - **Operationen und externe Ziele**: welche Dienste und Adressen der Workflow erreicht.
-   - **Maximale Läufe** und der Zeitraum: wie lange und wie oft die Freigabe gilt.
+   Die Statuszeile zeigt **Wartet auf Freigabe** oder **Nicht freigegeben**.
+2. Wähle in der Statuszeile **Freigeben…**.
+3. Prüfe **Umgebung**, **Operationen und externe Ziele** und **Maximale Läufe**.
 4. Bestätige mit **1 Lauf erlauben** oder **… Läufe erlauben**.
 
-Die Freigabe startet keinen Lauf. Eine Freigabe gilt für eine Version, eine Umgebung und eine Dauer.
+Die Freigabe startet keinen Lauf. Eine Freigabe gilt für eine Umgebung und eine Dauer.
+Auch eine neue Version, deren Grenze nicht wächst, ist davon gedeckt.
 Im Tab **Freigaben** kannst du sie jederzeit widerrufen.
+Du kannst auch im Chat freigeben: Wähle **Gespeicherte Änderung prüfen** und dann **Übernehmen und Läufe erlauben**.
 
-Auch der Chat führt dich dorthin. Wähle **Gespeicherte Änderung prüfen** und dann **Übernehmen und Läufe erlauben**.
+| Feld | Was es festlegt |
+| --- | --- |
+| **Umgebung** | Wo die Läufe erlaubt sind, zum Beispiel **Produktion**. |
+| **Operationen und externe Ziele** | Welche Dienste und Adressen der Workflow erreicht. |
+| **Maximale Läufe** und der Zeitraum | Wie oft und wie lange die Freigabe gilt. |
 
-### Schritt 5: Ausführen
+### Den Workflow ausführen
 
 1. Wähle auf der Workflow-Seite **Ausführen**.
-2. Füll die Eingaben aus, wenn der Workflow welche verlangt.
-3. Der Dialog sagt **Startet einen Lauf mit der freigegebenen Version.** Bestätige mit **Ausführen**.
+2. Fülle die Eingaben aus, wenn der Workflow welche verlangt.
+3. Wähle **Ausführen**, um zu bestätigen. Der Dialog sagt **Startet einen Lauf mit der freigegebenen Version.**
 
 Du siehst **Lauf gestartet**. Ist der Button nicht verfügbar, nennt der Hinweis den Grund, zum Beispiel
 **Aktiviere den Workflow vor dem Ausführen.**
 
-### Schritt 6: Prüfen
+### Das Ergebnis prüfen
 
 1. Öffne auf der Workflow-Seite den Tab **Verlauf**.
-2. Der neueste Lauf steht oben, mit seinem Status. **Erfolgreich** heißt, der Lauf ist durchgelaufen.
-3. Öffne den Lauf. Du siehst jeden Schritt mit seiner Ausgabe.
-   Ein fehlgeschlagener Schritt zeigt **Fehler in Schritt „…“** mit der Ursache.
-4. **Im Audit-Trail** zeigt, wer was gestartet und freigegeben hat.
+   Der neueste Lauf steht oben, mit seinem Status. **Erfolgreich** heißt, der Lauf ist durchgelaufen.
+2. Öffne den Lauf.
+   Du siehst jeden Schritt mit seiner Ausgabe. Ein fehlgeschlagener Schritt zeigt **Fehler in Schritt „…“** mit der Ursache.
+3. Optional: Wähle **Im Audit-Trail**, um zu sehen, wer den Lauf gestartet und freigegeben hat.
 
 Dasselbe prüfst du mit der sk-CLI:
 
@@ -102,9 +100,8 @@ sk executions result <run-id>
 
 | Was du siehst | Was du tust |
 | --- | --- |
-| Der Chat antwortet nur „Acknowledged: … (mock)“ | Die Engine nutzt den Mock-Anbieter. Richte einen echten KI-Anbieter ein. |
-| Das Ergebnis des Laufs ist mit **Vorschau – nicht geschrieben** überschrieben | Die Version ist noch nicht freigegeben. Mach Schritt 4. |
+| Das Ergebnis des Laufs ist mit **Vorschau – nicht geschrieben** überschrieben | Die Version ist noch nicht freigegeben. Folge „Freigeben, was er berühren darf“. |
 | „Nicht gestartet (…): Für diesen Lauf gibt es keine gültige Freigabe.“ | Die Freigabe fehlt, ist abgelaufen oder aufgebraucht. Gib erneut frei oder verlängere sie. |
 | „… muss neu verbunden werden“ | Melde dich unter **Konnektoren** erneut beim Konnektor an. |
-| **Du darfst diesen Workflow nicht ausführen.** | Bitte deine Administration um eine Rolle, die Workflows ausführen darf. |
-| Ein Schritt ist fehlgeschlagen | Öffne den Lauf, lies den Fehler und beschreib ihn im selben Chat. SubKit schlägt eine Korrektur vor, die du erneut prüfst. |
+| **Du darfst diesen Workflow nicht ausführen.** | Bitte eine Administratorin oder einen Administrator um eine Rolle, die Workflows ausführen darf. |
+| Ein Schritt ist fehlgeschlagen | Öffne den Lauf, lies den Fehler und beschreibe ihn im selben Chat. SubKit schlägt eine Korrektur vor, die du erneut prüfst. |

@@ -6249,15 +6249,15 @@ const DE: Record<TranslationKey, string> = {
   "workspace.c3":
     "Sie haben 7 Tage Zeit, die Löschung nach erneuter Anmeldung rückgängig zu machen.",
   "workspace.c4": "Nach Ablauf der Frist werden alle Daten endgültig entfernt.",
-  "workspace.c5": "Andere Arbeitsbereiche, in denen Sie Mitglied sind, sind nicht betroffen.",
-  "workspace.confirmation": "Geben Sie zur Bestätigung „{name}“ ein",
+  "workspace.c5": "Andere Arbeitsbereiche, in denen du Mitglied bist, sind nicht betroffen.",
+  "workspace.confirmation": "Gib zur Bestätigung „{name}“ ein",
   "workspace.confirmDelete": "Löschen",
   "workspace.deleting": "Wird gelöscht…",
   "workspace.scheduled": "Löschung geplant",
   "workspace.scheduledBody":
     "Der Arbeitsbereich ist gesperrt und wird am {date} zur endgültigen Löschung fällig.",
   "workspace.signIn": "Erneut anmelden",
-  "workspace.needsSignIn": "Melden Sie sich erneut an, um die Löschung rückgängig zu machen.",
+  "workspace.needsSignIn": "Melde dich erneut an, um die Löschung rückgängig zu machen.",
   "workspace.restore": "Löschung rückgängig machen",
   "workspace.restoreTitle": "Löschung rückgängig machen?",
   "workspace.restoreBody":
@@ -6275,7 +6275,7 @@ const DE: Record<TranslationKey, string> = {
   "workspace.owner": "Inhaber",
   "workspace.loading": "Arbeitsbereiche werden geladen…",
   "workspace.empty": "Keine Mitgliedschaften",
-  "workspace.single": "Sie sind nur Mitglied dieses Arbeitsbereichs.",
+  "workspace.single": "Du bist nur Mitglied dieses Arbeitsbereichs.",
   "workspace.error": "Wechsel fehlgeschlagen. Der aktuelle Arbeitsbereich bleibt aktiv.",
   "workspace.staleTitle": "Arbeitsbereich wurde geändert. Neu laden.",
   "workspace.staleBody":
@@ -7180,7 +7180,7 @@ const DE: Record<TranslationKey, string> = {
   "audit.resource.requestHook": "Anfrage-Hook",
   "audit.resource.notificationRule": "Benachrichtigungsregel",
   "audit.resource.notificationChannel": "Benachrichtigungskanal",
-  "audit.resource.cockpitInstallation": "Workspace-App",
+  "audit.resource.cockpitInstallation": "Arbeitsbereich-App",
   "audit.resource.cockpitPushKey": "Schlüssel für Benachrichtigungen",
   "audit.resource.cockpitPushSubscription": "Benachrichtigungsabonnement",
   "audit.resource.llm": "Sprachmodell",
@@ -10190,7 +10190,7 @@ const DE: Record<TranslationKey, string> = {
   "intake.proposal.archives": "Nach der Bestätigung archiviert: {skills}.",
   "intake.proposal.stale":
     "Dieser Vorschlag hat sich geändert. Prüfe den aktuellen Inhalt, bevor du bestätigst.",
-  "installation.install": "Workspace installieren",
+  "installation.install": "Arbeitsbereich installieren",
   "installation.installTitle": "Installiere {name}",
   "installation.installDescription":
     "Öffnen Sie diesen Workspace als eigenständige App für schnellen Zugriff und native Systemintegration.",
@@ -10202,7 +10202,8 @@ const DE: Record<TranslationKey, string> = {
     "Die Installation ist in diesem Browser derzeit nicht verfügbar. Sie können das Cockpit weiterhin im Browser verwenden.",
   "installation.notifications": "Benachrichtigungen",
   "installation.notificationsEnable": "Neutrale Benachrichtigungen aktivieren",
-  "installation.notificationsHint": "Alerts enthalten keine Workspace- oder Workflow-Details.",
+  "installation.notificationsHint":
+    "Alerts enthalten keine Details zu Arbeitsbereichen oder Workflows.",
   "installation.notificationsDenied":
     "Browser-Berechtigung verweigert. Bitte in den Einstellungen erlauben.",
   "installation.importTitle": "Hinzufügen zu {category}",
@@ -10219,7 +10220,7 @@ const DE: Record<TranslationKey, string> = {
   "installation.revoke": "Installation widerrufen",
   "installation.revokeConsequence":
     "Dadurch wird dieser installierte Workspace auf seinen Geräten abgemeldet. Sie können ihn später erneut installieren.",
-  "installation.permission": "Ihre aktuellen Rechte erlauben diesen Import nicht.",
+  "installation.permission": "Deine aktuellen Rechte erlauben diesen Import nicht.",
 };
 
 export const CATALOGS: Record<Locale, Record<TranslationKey, string>> = {

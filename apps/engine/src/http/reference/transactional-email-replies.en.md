@@ -5,21 +5,32 @@ section: work
 order: 8
 audience: public
 ---
-## Transactional email replies
+## Reply by email to a signed request
 
-A Gmail request step may use the explicit `transactional_delivery` profile to
-reply to the address in an original signed request. This is reusable for access
-requests, registrations and other requested replies. Event names and field paths
-are configurable; no website, product or applicant is built into the engine.
-Fixed-recipient `report_delivery` continues to use its existing rules.
+A workflow can send one plain-text Gmail reply to the person who submitted a form, for example an access request.
+The reply goes only to the address in the original signed request.
+You review sender, template and limits before anything is sent.
 
-### Author the workflow
+The path is always the same: **signed request → reviewed workflow → approval → one reply**.
 
-Use sensitive execution privacy, a strict input schema with bounded lengths and
-one plain-text Gmail send step. Keep sender, connection and template in the
-reviewed workflow; visitor input selects only the reviewed original recipient.
-The payload must include its UUID and event type inside the signed JSON body.
-For example, an event body with `event`, `reference` and `contact.address` can use:
+### What you need
+
+- A Gmail connection (connector) in your workspace.
+- A signed source that sends requests in the Standard Webhooks format.
+- A person who approves the workflow.
+- An operator who reviews the workflow before activation.
+
+Never skip signature verification, and never use a public API key or browser credentials for the source.
+
+### Set up the workflow
+
+1. Set `execution_privacy: sensitive` and a strict input schema with bounded lengths.
+2. Add exactly one plain-text Gmail send step. Its request body contains only `raw`.
+3. Keep sender, connection and template in the workflow. The request selects only the reviewed original recipient.
+4. On the Gmail request step, add the `transactional_delivery` profile and `max_retries: 0`.
+5. Set `max_body_bytes` from the bounded template, not the largest allowed value.
+
+The signed JSON body must contain the request UUID and the event type. Input paths start at `body`. For a body with `event`, `reference` and `contact.address`, the profile looks like this:
 
 ```json
 {
@@ -35,79 +46,70 @@ For example, an event body with `event`, `reference` and `contact.address` can u
 }
 ```
 
-Place the profile on the Gmail request step beside `max_retries: 0`. Its request
-body must contain only `raw`. No pagination, fan-out, generic boundary, simultaneous
-fixed-recipient profile, response selection or filtering is supported. Input paths
-start at `body`, traverse own object properties and reject prototype keys. Choose
-a request-byte ceiling from the bounded template, rather than the largest allowed
-value. The ceiling measures serialized UTF-8 Gmail JSON, including base64 overhead.
+`max_body_bytes` counts the serialized Gmail JSON, including the base64 overhead. Pagination, fan-out, a second fixed-recipient profile and response filtering are not supported in this step.
+
+You can also describe this workflow in the Cockpit chat. The chat knows this profile and its limits.
 
 ### Bind and review
 
-1. Create an active Standard Webhooks binding for this workflow in the same tenant.
-   Configure exactly the reviewed event type and a dedicated signing secret. Never
-   use skipped verification, a public API key or browser credentials.
-2. Persist the request UUID and original payload before handoff. Send the UUID in
-   both the signed body and `webhook-id`. Sign `id.timestamp.rawBody` and send the
-   matching timestamp, signature and event-type headers. The event type also has
-   to match the reviewed field inside the signed body: the header alone is unsigned.
-3. Prepare and validate the workflow normally. The operator reviews the exact
-   version, sender, connection, signed source and field paths, byte ceiling and
-   run/time limits. A signature authenticates ingress; it does not grant effects.
-   Do not force a sensitive workflow through a missing preparation or approve a
-   static report recipient while actually addressing somebody else.
-4. Activate only after those checks and the normal human execution-authority
-   review. Confirm behavior with a controlled recipient, then connect the public
-   form and verify the same request twice produces one message.
+1. In the same workspace, create an active Standard Webhooks binding for the workflow. Use exactly the reviewed event type and its own signing secret.
+2. In the source, save the request UUID and the original payload before sending.
+3. Send the UUID in the signed body and in `webhook-id`.
+4. Ask an operator to review version, sender, connection, signed source, field paths, byte limit and run limits.
+5. Activate the workflow and approve it.
 
-Separately managed inbound bindings remain independent of the definition's
-trigger. Request or schedule activation removes only reverse-bound webhook
-triggers; webhook activation updates only its own reverse-bound binding. It
-never rewrites or removes CRUD bindings, their signing secrets or event filters.
-Archiving or deleting a workflow still removes all its inbound bindings. After
-activation, verify that the reviewed signed source is still present before
-enabling a public form. A removed source requires a new binding and a normally
-reviewed workflow version referencing its actual ID; never reuse a stale ID or
-weaken signature verification.
+### Test the reply
 
-At dispatch the engine rechecks authority, source provenance, active binding,
-original input identity, actual MIME recipient/sender/type and request size. A
-payload field pretending to be provenance is ignored. On-demand calls, child
-workflows and concrete one-off tool approvals cannot substitute for the signed
-admission and reviewed recurring authority. CC/BCC and extra recipient headers
-are rejected. The outgoing request cannot follow redirects or retry automatically.
+1. Send a test request to a controlled recipient.
+2. Check that the signed source still exists after activation.
+3. Connect the public form.
+4. Send the same request twice and check that one message arrives.
 
-SubKit's existing signer uses the stored secret string verbatim as a UTF-8 HMAC
-key. Compute HMAC-SHA256 over `id.timestamp.rawBody`, Base64-encode the result and
-send `webhook-signature: v1,<base64>`. There is no automatic `whsec_` prefix removal
-or Base64 key decoding. Match those exact key bytes in an external adapter; a
-library's protocol name alone does not guarantee interoperability.
+### Compute the signature
+
+Use the secret string verbatim as the UTF-8 HMAC key. SubKit does not strip a `whsec_` prefix and does not Base64-decode the key.
+
+1. Compute HMAC-SHA256 over `id.timestamp.rawBody`.
+2. Base64-encode the result.
+3. Send `webhook-signature: v1,<base64>`.
+
+Also send matching timestamp and event-type headers. The header alone is unsigned, so the event type must also match the reviewed field in the signed body.
+
+### What happens next
+
+Before sending, the engine checks the approval, the signed source and the recipient again. CC, BCC and extra recipients are refused.
+
+Good to know:
+
+- A failed or unclear send is never resent automatically. There is no retry or reset operation.
+- Each original request gets at most one reply, across workflow versions and runs.
+- A signature only authenticates the request. Only the approval allows the workflow to send.
+- A retried handoff keeps the same payload and ID and renews only timestamp and signature. Changed content under the same ID is refused.
 
 ### Inspect outcomes
 
-`GET /v1/workflows/{id}/transactional-mail-receipts?limit=20&offset=0` requires
-`workflow:read` for that workflow. It returns request/execution/step IDs, state and
-timestamps, with no applicant address or MIME. The public OpenAPI contract includes
-this read operation. Audit also records reservation and settlement.
+`GET /v1/workflows/{id}/transactional-mail-receipts?limit=20&offset=0` requires `workflow:read` for that workflow.
 
-A reservation is written atomically before network access. Its unique key is the
-tenant, workflow and original request UUID, across workflow versions and execution
-IDs. It survives execution cleanup; workflow or tenant deletion removes it.
-`sent` requires a successful Gmail response with a message ID and confirms API
-acceptance, not inbox delivery. `attempted` and `delivery_unknown` require operator
-inspection. A crash, timeout or ambiguous response never authorizes automatic
-resend. This endpoint has no retry or reset operation. Producer handoff retries
-keep exactly the same payload and ID, renewing only timestamp/signature; changed
-content under a previously admitted signed ID is refused.
+It returns:
 
-### Model and authoring behavior
+- Request, run and step IDs
+- State and timestamps
 
-The shipped workflow-authoring skill and webhook knowledge explain this profile,
-its limits and refusal remedies. The generated agent documentation and OpenAPI
-schemas describe the same contract. Confirmation of tenant knowledge remains a
-human review step; source changes do not silently approve tenant material.
-Tool palettes, including MCP workflow aliases, validate object schemas before invoking a provider. Incompatible
-root combinators/references are omitted without weakening workflow validation;
-use the generic workflow operation. Residual schema errors are classified as
-schema incompatibility, not network/provider unavailability.
+It does not return the applicant's address or the message content.
 
+The audit records each reservation and its result.
+
+| State | Meaning |
+| --- | --- |
+| `sent` | Gmail answered with a message ID. This confirms that Gmail accepted it, not that it reached the inbox. |
+| `attempted`, `delivery_unknown` | The operator inspects the case. |
+
+### If something does not work
+
+| What you see | What to do |
+| --- | --- |
+| The state is `attempted` or `delivery_unknown` | The operator inspects the case. There is no automatic resend and no reset endpoint. |
+| A request is refused although the signature is correct | Check that the event type in the signed body matches the header and the reviewed field path, and that the UUID in the body and in `webhook-id` agree. |
+| A repeated handoff is refused | The content under that signed ID changed. Send the same payload and ID again and renew only timestamp and signature. |
+| Sending is refused because of recipient headers | Remove CC, BCC and extra recipient headers. Only the reviewed original recipient is allowed. |
+| The signed source is gone after activation | Create a new binding and activate a reviewed workflow version that references its actual ID. |

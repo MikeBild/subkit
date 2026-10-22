@@ -16,7 +16,6 @@ docker compose exec engine sk init \
   --llm-api-key <your-provider-key>
 ```
 
-Use `--llm-provider mock --llm-api-key mock` to try it without an LLM account.
 `sk init` checks the key with one minimal call before it saves anything; a refused key stops
 the setup, nothing is stored, and the same token works for the next try.
 
