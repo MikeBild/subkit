@@ -217,3 +217,93 @@ test("accepts complete selected nested connections", async () => {
   });
   expect(result.status).toBe("succeeded");
 });
+
+const graphqlMeta = {
+  driver: "graphql" as const,
+  method: "POST",
+  status: 200,
+  connector: {
+    step_key: "items",
+    connector_id: "connector",
+    connector_slug: "connector",
+    driver: "graphql",
+    requested_environment: "dev" as const,
+    resolved_environment: "dev" as const,
+    auth_method: "bearer" as const,
+  },
+};
+
+const pagedItems = (pages: number, perPage: number, total: number) => {
+  let page = 0;
+  return async () => {
+    const start = page * perPage;
+    page += 1;
+    const more = page < pages;
+    return {
+      status: "succeeded" as const,
+      retry_count: 0,
+      duration_ms: 0,
+      request_meta: graphqlMeta,
+      output: {
+        user: {
+          project: {
+            items: {
+              totalCount: total,
+              nodes: Array.from({ length: perPage }, (_, index) => ({ id: `${start + index}` })),
+              pageInfo: { hasNextPage: more, endCursor: more ? `cursor-${page}` : null },
+            },
+          },
+        },
+      },
+    };
+  };
+};
+
+test("reports a cursor pagination summary on a complete read", async () => {
+  const result = await runGraphqlCursorPages({
+    spec,
+    variables: {},
+    execute: pagedItems(3, 20, 60),
+  });
+  expect(result.status).toBe("succeeded");
+  expect(result.request_meta).toMatchObject({
+    driver: "graphql",
+    pagination: {
+      strategy: "cursor",
+      pages: 3,
+      items: 60,
+      duplicates_dropped: 0,
+      complete: true,
+      truncated: false,
+      limit: null,
+    },
+  });
+});
+
+test("reports an incomplete cursor pagination summary with the limit that stopped the read", async () => {
+  const byPages = await runGraphqlCursorPages({
+    spec: { ...spec, max_pages: 2 },
+    variables: {},
+    execute: pagedItems(3, 20, 60),
+  });
+  expect(byPages.error?.code).toBe("graphql_pagination_incomplete");
+  expect(byPages.request_meta).toMatchObject({
+    pagination: { pages: 2, items: 40, complete: false, truncated: false, limit: "max_pages" },
+  });
+  const byItems = await runGraphqlCursorPages({
+    spec: { ...spec, max_items: 30 },
+    variables: {},
+    execute: pagedItems(3, 20, 60),
+  });
+  expect(byItems.request_meta).toMatchObject({
+    pagination: { pages: 2, items: 20, complete: false, truncated: false, limit: "max_items" },
+  });
+  const byTotal = await runGraphqlCursorPages({
+    spec,
+    variables: {},
+    execute: pagedItems(1, 20, 21),
+  });
+  expect(byTotal.request_meta).toMatchObject({
+    pagination: { pages: 1, items: 20, complete: false, truncated: false, limit: null },
+  });
+});

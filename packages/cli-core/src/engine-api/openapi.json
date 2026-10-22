@@ -11571,6 +11571,9 @@
           "operation_name": {
             "type": "string"
           },
+          "pagination": {
+            "$ref": "#/components/schemas/RequestPaginationSummary"
+          },
           "extras": {
             "type": "object",
             "additionalProperties": {}

@@ -83,6 +83,7 @@ const GraphqlRequestMetaSchema = z
     status: z.number().int(),
     connector: ConnectorResolutionSummarySchema,
     operation_name: z.string().optional(),
+    pagination: RequestPaginationSummarySchema.optional(),
     extras: z.record(z.string(), z.unknown()).optional(),
   })
   .openapi("GraphqlRequestMeta");

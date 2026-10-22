@@ -157,6 +157,7 @@ export type RequestMeta =
       status: number;
       connector: ConnectorResolutionSummary;
       operation_name?: string;
+      pagination?: RequestPaginationSummary;
       extras?: Record<string, unknown>;
     }
   | {

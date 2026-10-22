@@ -155,7 +155,7 @@ function listStep(id: string, query: Record<string, string>, extra: Record<strin
 }
 
 const SUMMARY =
-  "const s = input.scope; const source = id => ({ count: Array.isArray(s[id].data) ? s[id].data.length : 0, pagination: s[id].pagination || null, error: s[id].error ? s[id].error.code : null }); const items = s.project.data ? s.project.data.user.projectV2.items : null; return { commits: source('commits'), issues: source('issues'), open: source('open'), project: { count: items ? items.nodes.length : 0, total: items ? items.totalCount : null, error: s.project.error ? s.project.error.code : null } };";
+  "const s = input.scope; const source = id => ({ count: Array.isArray(s[id].data) ? s[id].data.length : 0, pagination: s[id].pagination || null, error: s[id].error ? s[id].error.code : null }); const items = s.project.data ? s.project.data.user.projectV2.items : null; return { commits: source('commits'), issues: source('issues'), open: source('open'), project: { count: items ? items.nodes.length : 0, total: items ? items.totalCount : null, pagination: s.project.pagination || null, error: s.project.error ? s.project.error.code : null } };";
 
 function steps(commitsExtra: Record<string, unknown> = {}) {
   return [
@@ -226,7 +226,7 @@ test("a sensitive run reads every REST and GraphQL page and exposes completeness
     commits: { count: 237, pagination: complete(3, 237), error: null },
     issues: { count: 130, pagination: complete(2, 130), error: null },
     open: { count: 100, pagination: complete(2, 100), error: null },
-    project: { count: 73, total: 73, error: null },
+    project: { count: 73, total: 73, pagination: complete(2, 73), error: null },
   });
   expect(seen.filter((entry) => entry.startsWith("/repositories"))).toEqual([]);
   const order = [...seen];

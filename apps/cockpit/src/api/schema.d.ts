@@ -23958,6 +23958,7 @@ export interface components {
             status: number;
             connector: components["schemas"]["ConnectorResolutionSummary"];
             operation_name?: string;
+            pagination?: components["schemas"]["RequestPaginationSummary"];
             extras?: {
                 [key: string]: unknown;
             };
