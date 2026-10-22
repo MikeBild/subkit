@@ -111,7 +111,7 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
       expect(html).toContain("mcp-auth-ui-contract");
       expect(html).toContain("10");
       expect(html).toContain("UTC");
-      expect(html).toContain(locale === "de" ? "Handlungsgrenze" : "Decision boundary");
+      expect(html).toContain(locale === "de" ? "Bindung" : "Binding");
       expect(html).toContain(locale === "de" ? "Angefragt von" : "Requested by");
       expect(html).toContain(locale === "de" ? "Systemkonto" : "System account");
       expect(html).not.toContain(server.systemAccountId);
@@ -185,8 +185,8 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
 
     expect(html).not.toContain(SECRET_ARG_VALUE);
     expectPortalActors(html, "en");
-    expect(html).toContain('<h1 data-family-slot="auth-heading">Authorize this action once?</h1>');
-    expect(html).not.toContain("Authorize POST to");
+    expect(html).toContain('<h1 data-family-slot="auth-heading">Allow this action once?</h1>');
+    expect(html).not.toContain("Allow POST to");
     const german = await fetch(approval_url, {
       headers: { cookie: browserCookie, "accept-language": "de" },
     });
@@ -194,7 +194,7 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
     expect(german.status).toBe(200);
     expectPortalActors(germanHtml, "de");
     expect(germanHtml).toContain(
-      '<h1 data-family-slot="auth-heading">Diese Aktion einmalig freigeben?</h1>',
+      '<h1 data-family-slot="auth-heading">Diese Aktion einmal erlauben?</h1>',
     );
     expect(germanHtml).not.toContain("POST an ledger.example.test");
 
@@ -236,8 +236,8 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
       expectPortalActors(html, locale);
       expect(html).toContain(
         locale === "de"
-          ? '<h1 data-family-slot="auth-heading">POST an https://bound-ledger.example.test/entries einmalig freigeben?</h1>'
-          : '<h1 data-family-slot="auth-heading">Authorize POST to https://bound-ledger.example.test/entries once?</h1>',
+          ? '<h1 data-family-slot="auth-heading">POST an https://bound-ledger.example.test/entries einmal erlauben?</h1>'
+          : '<h1 data-family-slot="auth-heading">Allow POST to https://bound-ledger.example.test/entries once?</h1>',
       );
       expect(html).toContain("bound-ledger.example.test/entries");
       expect(html).not.toContain("caller-text");
@@ -416,9 +416,7 @@ describe("POST /v1/tool-approvals/decide", () => {
       const html = await result.value.text();
       expect(html).toContain(locale === "de" ? "Frist abgelaufen" : "Deadline expired");
       expect(html).not.toContain(
-        locale === "de"
-          ? "Freigabelink abgelaufen oder nicht verfügbar"
-          : "Approval link expired or unavailable",
+        locale === "de" ? "Link abgelaufen oder nicht verfügbar" : "Link expired or unavailable",
       );
       const row = await approvalRow(approval_id);
       expect(row?.granted_at).toBeNull();
@@ -471,9 +469,7 @@ describe("POST /v1/tool-approvals/decide", () => {
       });
       expect(submitted.status).toBe(400);
       const expected =
-        locale === "de"
-          ? "Freigabelink abgelaufen oder nicht verfügbar"
-          : "Approval link expired or unavailable";
+        locale === "de" ? "Link abgelaufen oder nicht verfügbar" : "Link expired or unavailable";
       const html = await submitted.text();
       expect(html).toContain(expected);
       expect(html).not.toContain(locale === "de" ? "Frist abgelaufen" : "Deadline expired");
@@ -559,7 +555,7 @@ describe("POST /v1/tool-approvals/decide", () => {
     const res = await decide(grant, "approve");
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("Approved");
+    expect(html).toContain("Allowed once");
 
     const row = await approvalRow(approval_id);
     expect(row?.granted_at).not.toBeNull();

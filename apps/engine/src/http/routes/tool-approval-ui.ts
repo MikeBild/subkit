@@ -85,21 +85,18 @@ export function buildApprovalDecisionHtml(
   const requesterLabel = requester
     ? `${requester.label ? `${requester.label} · ` : ""}${requester.kind === "user" ? copy.person : copy.systemAccount}${requester.kind === "user" && requester.id === approver.user_id ? ` · ${copy.ownRequest}` : ""}`
     : copy.unspecified;
-  const summary = [
+  const facts = (rows: (readonly [string, string])[]) =>
+    rows
+      .map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`)
+      .join("");
+  const bindingFacts = facts([
     [copy.tool, scrubString(view.tool)],
-    ...(view.workflow_slug ? [[copy.workflow, scrubString(view.workflow_slug)]] : []),
-    ...(binding ? [[copy.version, binding.workflow_version_id]] : []),
-    [copy.requester, scrubString(requesterLabel)],
+    ...(view.workflow_slug ? [[copy.workflow, scrubString(view.workflow_slug)] as const] : []),
+    ...(binding ? [[copy.version, binding.workflow_version_id] as const] : []),
     [copy.decider, approver.email],
-    [copy.environment, environment],
     [copy.scope, copy.once],
-    [copy.expiry, date],
     [copy.claim, copy.claimHelp.replace("{minutes}", String(APPROVAL_CLAIM_WINDOW_MS / 60_000))],
-  ]
-    .map(
-      ([label, value]) => `<dt>${escapeHtml(label ?? "")}</dt><dd>${escapeHtml(value ?? "")}</dd>`,
-    )
-    .join("");
+  ]);
   const reviews = binding?.request_reviews ?? [];
   const direct = view.preview?.direct_connector;
   const writes = [
@@ -120,6 +117,19 @@ export function buildApprovalDecisionHtml(
             .replace("{operation}", scrubString(firstBound.method ?? copy.unspecified))
             .replace("{target}", boundTarget)
         : copy.title;
+  const glance = facts([
+    ...(firstBound && boundTarget && boundRequests.length === 1
+      ? [
+          [
+            copy.targetShort,
+            `${scrubString(firstBound.method ?? copy.unspecified)} ${boundTarget}`,
+          ] as const,
+        ]
+      : []),
+    [copy.environment, environment],
+    [copy.requester, scrubString(requesterLabel)],
+    [copy.expiry, date],
+  ]);
   const effects = writes.length
     ? `<p class="muted">${direct ? copy.directEffectsHelp : copy.effectsHelp}</p><ul class="plain stack">${writes
         .map((write) => {
@@ -138,12 +148,15 @@ ${review ? `<dt>${copy.attempts}</dt><dd>${escapeHtml(copy.attemptsValue.replace
   return portalPage(
     look,
     `${pageHead({ title, slot: "auth-heading", line: copy.intro, chip: { tone: "warning", word: copy.pending } })}
-<section class="stack" aria-labelledby="boundary-title"><h2 id="boundary-title">${copy.summary}</h2><dl class="facts">${summary}</dl></section>
+<dl class="facts">${glance}</dl>${boundRequests.length === 0 ? `<p class="muted">${copy.unknownEffect}</p>` : ""}
+<details><summary>${copy.details}</summary><div class="stack">
+<p>${copy.contextNote}</p>
+<section class="stack" aria-labelledby="boundary-title"><h2 id="boundary-title">${copy.summary}</h2><dl class="facts">${bindingFacts}</dl></section>
 <section class="stack" aria-labelledby="effects-title"><h2 id="effects-title">${copy.effects}</h2>${effects}<p class="muted">${reviews.length > 0 ? copy.boundHelp : binding ? copy.versionOnlyHelp : view.preview?.direct_connector ? copy.directBoundHelp : copy.limitations}</p>${reviews.length > 0 ? `<p class="muted">${copy.attemptsHelp}</p>` : ""}</section>
-<details><summary>${copy.details}</summary><div>
-<h2>${copy.why}</h2><p>${copy.whyHelp}</p><h2>${copy.changes}</h2><p>${copy.changesHelp}</p><p>${copy.via}: <span class="mono">${visible(view.surface)}</span></p></div></details>
+<h2>${copy.why}</h2><p>${copy.whyHelp}</p><h2>${copy.changes}</h2><p>${copy.changesHelp}</p><p>${copy.via}: <span class="mono">${visible(view.surface)}</span></p>
 <p class="note" role="note"><span class="strong">${copy.outcome}.</span> ${copy.outcomeHelp}</p>
-<p>${copy.signed} <strong>${escapeHtml(approver.email)}</strong>. ${copy.attribution}</p>
+<p>${copy.attribution}</p></div></details>
+<p>${copy.signed} <strong>${escapeHtml(approver.email)}</strong>.</p>
 <form method="POST" action="${escapeHtml(actionPath)}">${hidden}<input type="hidden" name="language" value="${locale}">${pageActions(`<button class="button outline" type="submit" name="decision" value="decline">${copy.decline}</button><button class="button primary" type="submit" name="decision" value="approve">${copy.approve}</button>`)}</form>`,
     { wide: true, footer: language },
   );

@@ -200,10 +200,10 @@ test("the decision page is one wide single page with a status chip and the §8.4
   expect(html).toContain('data-family-surface="auth"');
   expect(html).toContain('<main class="card wide"');
   expect(html).toContain("<title>SubKit Cockpit</title>");
-  expect(html).toContain('<span class="dot warning"></span>Freigabe ausstehend</span>');
-  expect(html).toContain('value="approve">Freigeben</button>');
+  expect(html).toContain('<span class="dot warning"></span>Entscheidung ausstehend</span>');
+  expect(html).toContain('value="approve">Einmal erlauben</button>');
   expect(html).toContain('value="decline">Ablehnen</button>');
-  expect(html.match(/SubKit · Einzelfreigabe/g)?.length).toBe(1);
+  expect(html.match(/SubKit · Einmal erlauben/g)?.length).toBe(1);
   expect(html).not.toContain("<a ");
 });
 
@@ -275,5 +275,69 @@ for (const locale of ["de", "en"] as const) {
     expect(html).toContain(`<dt>${copy.requester}</dt><dd>${copy.unspecified}</dd>`);
     expect(html).toContain(copy.title);
     expect(html).not.toContain(copy.ownRequest);
+  });
+}
+
+function visibleText(html: string): string {
+  return html
+    .replace(/<details[\s\S]*?<\/details>/g, " ")
+    .replace(/<head[\s\S]*?<\/head>/g, " ")
+    .replace(/<(script|style)[\s\S]*?<\/\1>/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z#0-9]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+for (const locale of ["de", "en"] as const) {
+  test(`${locale} the one-time page reads like the chat card and folds the technical binding away`, () => {
+    const copy = approvalCopy(locale);
+    const prepared = buildApprovalDecisionHtml(
+      {
+        ...view,
+        preview: {
+          would_write: [],
+          prepared_workflow: {
+            schema_version: 1,
+            execution_id: "00000000-0000-4000-8000-000000000001",
+            workflow_id: "00000000-0000-4000-8000-000000000002",
+            workflow_version_id: "00000000-0000-4000-8000-000000000003",
+            execution_mode: "dev",
+            input_digest: "a".repeat(64),
+            request_proofs: [
+              { version: 1, step_key: "send", digest: "b".repeat(64), max_attempts: 5 },
+            ],
+            request_reviews: [
+              {
+                step: "send",
+                method: "POST",
+                url: "https://ledger.example.test/entries",
+                max_attempts: 5,
+                redacted_request_json: '{"message":"hello"}',
+                request_review_truncated: false,
+                opaque_payload_omitted: false,
+              },
+            ],
+          },
+        },
+      },
+      "grant",
+      { email: "operator@example.test" },
+      "csrf",
+      { locale, scheme: null },
+    );
+    for (const html of [prepared, PENDING_HTML(locale)]) {
+      const text = visibleText(html);
+      expect(text.split(" ").length).toBeLessThanOrEqual(100);
+      expect(text).toContain(locale === "de" ? "einmal erlauben?" : "once?");
+      expect(text).toContain(copy.expiry);
+      expect(text).not.toMatch(/materiali|digest/i);
+      expect(text).not.toContain(copy.boundHelp);
+      expect(text).not.toContain(copy.outcomeHelp);
+      expect(html).toContain(copy.outcomeHelp);
+    }
+    expect(visibleText(prepared)).toContain("https://ledger.example.test/entries");
+    expect(visibleText(PENDING_HTML(locale))).toContain(copy.unknownEffect);
+    expect(PENDING_HTML(locale)).toContain("ledger.example.test/entries");
   });
 }
