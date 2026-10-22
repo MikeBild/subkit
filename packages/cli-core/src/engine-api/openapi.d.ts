@@ -6715,7 +6715,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Activate a reviewed saved draft from a human browser without authorizing or starting runs */
+        /** Activate a reviewed saved draft from a human browser without authorizing runs; a run starts only when start_run is set */
         post: {
             parameters: {
                 query?: never;
@@ -6737,11 +6737,12 @@ export interface paths {
                         execution_environment: "dev" | "prod";
                         /** Format: uuid */
                         conversation_id?: string;
+                        start_run?: boolean;
                     };
                 };
             };
             responses: {
-                /** @description Activated without execution authority */
+                /** @description Activated without execution authority; no run starts unless start_run is set */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -6896,7 +6897,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Grant a reviewed finite boundary from an authenticated human browser */
+        /** Grant a reviewed finite boundary from an authenticated human browser; no run starts unless start_run is set */
         post: {
             parameters: {
                 query?: never;
@@ -6925,11 +6926,12 @@ export interface paths {
                         };
                         /** Format: uuid */
                         conversation_id?: string;
+                        start_run?: boolean;
                     };
                 };
             };
             responses: {
-                /** @description Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run */
+                /** @description Exact local authority; explicit activation promotes the reviewed draft atomically; a run starts only when start_run is set */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -7097,7 +7099,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run */
+                /** @description Exact local authority; explicit activation promotes the reviewed draft atomically; a run starts only when start_run is set */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -7183,7 +7185,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run */
+                /** @description Exact local authority; explicit activation promotes the reviewed draft atomically; a run starts only when start_run is set */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -27301,6 +27303,7 @@ export interface components {
                 };
                 /** Format: uuid */
                 conversation_id?: string;
+                start_run?: boolean;
             };
         };
         RejectPatchCandidateBody: {

@@ -173,7 +173,7 @@ const failures = Object.fromEntries(
 );
 const response = {
   description:
-    "Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run",
+    "Exact local authority; explicit activation promotes the reviewed draft atomically; a run starts only when start_run is set",
   content: { "application/json": { schema: authoritySchema } },
 };
 const preview = createRoute({
@@ -310,7 +310,7 @@ const activateDraft = createRoute({
   path: "/v1/workflows/{id}/activate-draft",
   tags: ["workflows"],
   summary:
-    "Activate a reviewed saved draft from a human browser without authorizing or starting runs",
+    "Activate a reviewed saved draft from a human browser without authorizing runs; a run starts only when start_run is set",
   security: [{ bearerAuth: [] }],
   request: {
     params: workflowParam,
@@ -318,7 +318,7 @@ const activateDraft = createRoute({
   },
   responses: {
     200: {
-      description: "Activated without execution authority",
+      description: "Activated without execution authority; no run starts unless start_run is set",
       content: {
         "application/json": {
           schema: z.object({
@@ -347,7 +347,8 @@ const grant = createRoute({
   method: "post",
   path: "/v1/workflows/{id}/execution-authorities",
   tags: ["workflows"],
-  summary: "Grant a reviewed finite boundary from an authenticated human browser",
+  summary:
+    "Grant a reviewed finite boundary from an authenticated human browser; no run starts unless start_run is set",
   security: [{ bearerAuth: [] }],
   request: {
     params: workflowParam,
@@ -615,7 +616,7 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         db: c.get("db"),
       });
       const live_test =
-        body.execution_environment === "dev" && body.conversation_id
+        body.start_run === true && body.execution_environment === "dev" && body.conversation_id
           ? await continueConversationDevLiveTest({
               db: c.get("db"),
               principal,
@@ -796,7 +797,7 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
       });
       const body = c.req.valid("json");
       const live_test =
-        body.execution_environment === "dev" && body.conversation_id
+        body.start_run === true && body.execution_environment === "dev" && body.conversation_id
           ? await continueConversationDevLiveTest({
               db: c.get("db"),
               principal,

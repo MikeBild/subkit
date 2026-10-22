@@ -49,6 +49,7 @@ export const GrantWorkflowAuthoritySchema = z
       .strict()
       .optional(),
     conversation_id: z.string().uuid().optional(),
+    start_run: z.boolean().optional(),
   })
   .strict();
 
@@ -252,6 +253,7 @@ export const ActivateWorkflowDraftSchema = z
     expected_manifest_digest: z.string().regex(/^[a-f0-9]{64}$/),
     execution_environment: z.enum(["dev", "prod"]),
     conversation_id: z.string().uuid().optional(),
+    start_run: z.boolean().optional(),
   })
   .strict();
 

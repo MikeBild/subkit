@@ -996,6 +996,113 @@ test("prod activation never continues a pending conversation live test", async (
   ).toHaveLength(0);
 });
 
+async function pendingLiveTest(f: Awaited<ReturnType<typeof fixture>>) {
+  await ctx.db
+    .update(workflows)
+    .set({ draft_version_id: f.version.id })
+    .where(eq(workflows.id, f.workflow.id));
+  const input = {};
+  const [conversation] = await ctx.db
+    .insert(conversations)
+    .values({
+      tenant_id: ctx.tenantId,
+      owner_id: ctx.userId,
+      status: "active",
+      draft: {
+        workflow: { name: "Pending test", steps: [] },
+        session: {
+          live_test: {
+            workflow_id: f.workflow.id,
+            workflow_version_id: f.version.id,
+            environment: "dev",
+            input,
+            input_digest: workflowJsonDigest(input),
+            idempotency_key: `pending:${f.workflow.id}`,
+            state: "pending",
+          },
+        },
+      },
+    })
+    .returning();
+  if (!conversation) throw new Error("missing conversation");
+  const runs = async () =>
+    (await ctx.db.select().from(executions).where(eq(executions.workflow_id, f.workflow.id)))
+      .length;
+  return { conversation_id: conversation.id, runs };
+}
+
+test("approving in a dev chat starts no run unless a run is requested", async () => {
+  for (const start_run of [undefined, false]) {
+    const activated = await fixture();
+    const activation = await pendingLiveTest(activated);
+    const response = await app.request(`${activated.base}/activate-draft`, {
+      method: "POST",
+      headers: browserHeaders,
+      body: JSON.stringify({
+        workflow_version_id: activated.version.id,
+        expected_current_version_id: null,
+        expected_manifest_digest: activated.body.expected_manifest_digest,
+        execution_environment: "dev",
+        conversation_id: activation.conversation_id,
+        ...(start_run === undefined ? {} : { start_run }),
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ live_test: { state: "not_requested" } });
+    expect(await activation.runs()).toBe(0);
+    const granted = await fixture();
+    const grant = await pendingLiveTest(granted);
+    const authority = await app.request(`${granted.base}/execution-authorities`, {
+      method: "POST",
+      headers: browserHeaders,
+      body: JSON.stringify({
+        ...granted.body,
+        activation: { expected_current_version_id: null },
+        conversation_id: grant.conversation_id,
+        ...(start_run === undefined ? {} : { start_run }),
+      }),
+    });
+    expect(authority.status).toBe(201);
+    expect(await authority.json()).toMatchObject({ live_test: { state: "not_requested" } });
+    expect(await grant.runs()).toBe(0);
+  }
+});
+
+test("an explicit run request after approval queues exactly one run", async () => {
+  const granted = await fixture();
+  const grant = await pendingLiveTest(granted);
+  const authority = await app.request(`${granted.base}/execution-authorities`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify({
+      ...granted.body,
+      activation: { expected_current_version_id: null },
+      conversation_id: grant.conversation_id,
+      start_run: true,
+    }),
+  });
+  expect(authority.status).toBe(201);
+  expect(await authority.json()).toMatchObject({ live_test: { state: "queued" } });
+  expect(await grant.runs()).toBe(1);
+  const activated = await fixture();
+  const activation = await pendingLiveTest(activated);
+  const response = await app.request(`${activated.base}/activate-draft`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify({
+      workflow_version_id: activated.version.id,
+      expected_current_version_id: null,
+      expected_manifest_digest: activated.body.expected_manifest_digest,
+      execution_environment: "dev",
+      conversation_id: activation.conversation_id,
+      start_run: true,
+    }),
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ live_test: { state: "blocked" } });
+  expect(await activation.runs()).toBe(0);
+});
+
 test("held report preparation works for a saved draft and cannot grant, activate or send", async () => {
   const f = await fixture();
   await ctx.db

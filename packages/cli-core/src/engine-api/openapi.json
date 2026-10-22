@@ -25417,6 +25417,9 @@
               "conversation_id": {
                 "type": "string",
                 "format": "uuid"
+              },
+              "start_run": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -39946,7 +39949,7 @@
         "tags": [
           "workflows"
         ],
-        "summary": "Activate a reviewed saved draft from a human browser without authorizing or starting runs",
+        "summary": "Activate a reviewed saved draft from a human browser without authorizing runs; a run starts only when start_run is set",
         "security": [
           {
             "bearerAuth": []
@@ -39994,6 +39997,9 @@
                   "conversation_id": {
                     "type": "string",
                     "format": "uuid"
+                  },
+                  "start_run": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -40009,7 +40015,7 @@
         },
         "responses": {
           "200": {
-            "description": "Activated without execution authority",
+            "description": "Activated without execution authority; no run starts unless start_run is set",
             "content": {
               "application/json": {
                 "schema": {
@@ -40239,7 +40245,7 @@
         "tags": [
           "workflows"
         ],
-        "summary": "Grant a reviewed finite boundary from an authenticated human browser",
+        "summary": "Grant a reviewed finite boundary from an authenticated human browser; no run starts unless start_run is set",
         "security": [
           {
             "bearerAuth": []
@@ -40315,6 +40321,9 @@
                   "conversation_id": {
                     "type": "string",
                     "format": "uuid"
+                  },
+                  "start_run": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -40330,7 +40339,7 @@
         },
         "responses": {
           "201": {
-            "description": "Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run",
+            "description": "Exact local authority; explicit activation promotes the reviewed draft atomically; a run starts only when start_run is set",
             "content": {
               "application/json": {
                 "schema": {
@@ -40533,7 +40542,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run",
+            "description": "Exact local authority; explicit activation promotes the reviewed draft atomically; a run starts only when start_run is set",
             "content": {
               "application/json": {
                 "schema": {
@@ -40628,7 +40637,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run",
+            "description": "Exact local authority; explicit activation promotes the reviewed draft atomically; a run starts only when start_run is set",
             "content": {
               "application/json": {
                 "schema": {
