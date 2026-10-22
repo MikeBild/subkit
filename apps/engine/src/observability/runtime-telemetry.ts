@@ -1,3 +1,4 @@
+import { DomainRefusal } from "../logging/domain-refusal.ts";
 import { errorFields, log, logger } from "../logging/logger.ts";
 import { recordProcessRssHighWater, setDbPoolStats } from "./instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
@@ -83,13 +84,27 @@ function finishErr(
   rssBefore: number,
   err: unknown,
 ): void {
+  const refused = err instanceof DomainRefusal;
   safe(() => {
     getMetrics().observe(METRIC_NAMES.OPERATION_DURATION_MS, durationMs, {
       module: opts.module,
       action: opts.action,
-      outcome: "error",
+      outcome: refused ? "refused" : "error",
     });
   });
+  if (refused) {
+    safe(() =>
+      logger.debug({
+        module: opts.module,
+        action: `${opts.action}.refused`,
+        outcome: "refused",
+        duration_ms: durationMs,
+        ...opts.fields,
+        reason_code: err.code,
+      }),
+    );
+    return;
+  }
   safe(() => {
     const fields: Record<string, unknown> = {
       module: opts.module,

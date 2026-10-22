@@ -13,6 +13,7 @@ import {
 } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
 import { assertTenantActive } from "../identity/self-service.ts";
+import { DomainRefusal } from "../logging/domain-refusal.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import { authorityLive, authorityNotExpired } from "../workflows/authority-live.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
@@ -82,7 +83,7 @@ const admissionSchema = z
   .strict();
 
 function fail(code: string, message: string): never {
-  throw Object.assign(new Error(message), { code });
+  throw new DomainRefusal(code, message);
 }
 
 export async function admitAuthorizedWorkflowExecution(

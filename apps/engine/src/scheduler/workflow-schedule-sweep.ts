@@ -6,10 +6,11 @@ import { tenantWorkBootId, withTenantWork } from "../execution/index.ts";
 import { lockActiveTenant } from "../identity/index.ts";
 import { logger } from "../logging/logger.ts";
 import type { ExecutionRunJob } from "../queue/queues.ts";
+import { inspectScheduleAutomation } from "./automation-status.ts";
 import { calendarGateSkipReason, readCalendarGates, stripCalendarGates } from "./calendar-gates.ts";
 import { isCronDue, parseCronExpression } from "./cron.ts";
 import type { EveryScheduleDefinition } from "./every-schedule-registry.ts";
-import { validateScheduleInput } from "./repo.ts";
+import { getSchedule, validateScheduleInput } from "./repo.ts";
 import { recordScheduleInputRequired } from "./schedule-admission-state.ts";
 import { isScheduleAdmissionHeldError, logScheduleFireFailure } from "./schedule-fire-failure.ts";
 import {
@@ -46,6 +47,7 @@ export async function readScheduleDescriptor(db: Executor, identity: ScheduleIde
       execution_mode: workflowsSchedules.execution_mode,
       created_at: workflowsSchedules.created_at,
       last_enqueued_at: workflowsSchedules.last_enqueued_at,
+      admission_hold: workflowsSchedules.admission_hold,
       last_exact: sql<string | null>`${workflowsSchedules.last_enqueued_at}::text`,
       updated_exact: sql<string>`${workflowsSchedules.updated_at}::text`,
     })
@@ -171,6 +173,35 @@ async function restore(db: Db, row: Descriptor, now: Date): Promise<void> {
   });
 }
 
+const HELD_AUTHORITY_STATE = {
+  execution_authority_required: "repair_required",
+  execution_authority_unavailable: "approval_required",
+} as const;
+
+async function remainsAuthorityHeld(db: Db, row: Descriptor): Promise<boolean> {
+  const reason_code = row.admission_hold?.reason_code;
+  if (
+    reason_code !== "execution_authority_required" &&
+    reason_code !== "execution_authority_unavailable"
+  )
+    return false;
+  const inspection = await boundedTransaction(db, async (tx) => {
+    const schedule = await getSchedule(tx, row.tenant_id, row.id);
+    return schedule ? inspectScheduleAutomation(schedule, tx) : null;
+  });
+  if (inspection?.state !== HELD_AUTHORITY_STATE[reason_code]) return false;
+  logger.debug({
+    module: "scheduler",
+    action: "schedule.admission_still_held",
+    msg: "scheduled occurrence stays held until its execution authority changes",
+    tenant_id: row.tenant_id,
+    workflow_id: row.workflow_id,
+    schedule_id: row.id,
+    reason_code,
+  });
+  return true;
+}
+
 async function fireCandidate(
   db: Db,
   identity: ScheduleIdentity,
@@ -228,6 +259,7 @@ async function fireCandidate(
     calendarGateSkipReason(now, row.timezone || "UTC", readCalendarGates(input)) !== null
   )
     return "visited" as const;
+  if (await remainsAuthorityHeld(db, row)) return "visited" as const;
   const stamped = lease
     ? await withLiveSweepLease(lease, db, (tx) => claim(tx, row, input, now, lease))
     : await boundedTransaction(db, (tx) => claim(tx, row, input, now));

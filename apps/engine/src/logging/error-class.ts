@@ -3,6 +3,7 @@ import { isTransientDbError } from "../db/transient.ts";
 import { HttpError } from "../http/errors.ts";
 import { LlmError } from "../llm/errors.ts";
 import { classifyProviderError } from "../llm/provider-errors.ts";
+import { DomainRefusal } from "./domain-refusal.ts";
 
 export type ErrorClass =
   | "transient"
@@ -14,6 +15,7 @@ export type ErrorClass =
   | "validation"
   | "resource"
   | "logic"
+  | "refusal"
   | "unknown";
 
 export function classifyError(err: unknown): ErrorClass {
@@ -30,6 +32,8 @@ export function classifyError(err: unknown): ErrorClass {
 
 function classifyDirect(err: unknown): ErrorClass {
   if (err === null || err === undefined) return "unknown";
+
+  if (err instanceof DomainRefusal) return "refusal";
 
   if (isTransientDbError(err)) return "transient";
 

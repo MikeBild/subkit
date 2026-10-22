@@ -1,9 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { HttpError } from "../http/errors.ts";
 import { LlmProviderError } from "../llm/errors.ts";
+import { DomainRefusal } from "./domain-refusal.ts";
 import { classifyError } from "./error-class.ts";
 
 describe("classifyError", () => {
+  test("a deliberate domain refusal is a refusal; a lookalike plain error stays unknown", () => {
+    const message = "no matching live execution authority has runs remaining";
+    expect(classifyError(new DomainRefusal("execution_authority_unavailable", message))).toBe(
+      "refusal",
+    );
+    expect(
+      classifyError(Object.assign(new Error(message), { code: "execution_authority_unavailable" })),
+    ).toBe("unknown");
+  });
+
   test("null / undefined / non-Error → unknown", () => {
     expect(classifyError(null)).toBe("unknown");
     expect(classifyError(undefined)).toBe("unknown");
