@@ -1,10 +1,14 @@
-import { graphqlOverHttpQuery } from "@shared/index.ts";
+import { graphqlOverHttpRequest } from "@shared/index.ts";
 
 export const GRAPHQL_OVER_HTTP_REPAIR =
   "The supported repair is a graphql block on a graphql connector whose base_url is the GraphQL endpoint (for GitHub https://api.github.com/graphql), keeping cursor_pagination, or a step against the REST endpoint.";
 
-export const GRAPHQL_OVER_HTTP_WARNING =
-  "Do not convert it to POST /graphql on an http connector: that drops cursor_pagination, so only the first page is read, and the request is reviewed as a write.";
+export const GRAPHQL_OVER_HTTP_LOSS =
+  "a POST /graphql request on an http connector has no cursor_pagination, so only the first page is read, and a mutation or an unparseable or runtime-assembled document is reviewed as a write";
+
+export const GRAPHQL_OVER_HTTP_WARNING = `Do not convert it to POST /graphql on an http connector: ${GRAPHQL_OVER_HTTP_LOSS}.`;
+
+export type ConnectorBaseUrls = ReadonlyMap<string, ReadonlyArray<string>>;
 
 interface StepsHolder {
   steps?: ReadonlyArray<unknown> | null | undefined;
@@ -12,49 +16,58 @@ interface StepsHolder {
 
 type StepRecord = Record<string, unknown>;
 
+const NO_BASE_URLS: ConnectorBaseUrls = new Map();
+
 function stepRecords(definition: StepsHolder): StepRecord[] {
   return (definition.steps ?? []).filter(
-    (step): step is StepRecord => step !== null && typeof step === "object",
+    (step): step is StepRecord =>
+      step !== null && typeof step === "object" && typeof (step as StepRecord).id === "string",
   );
 }
 
-export function isGraphqlOverHttpStep(step: StepRecord): boolean {
+export function isGraphqlOverHttpStep(
+  step: StepRecord,
+  baseUrls: ConnectorBaseUrls = NO_BASE_URLS,
+): boolean {
   if (step.kind !== "request" || step.graphql || step.sql || step.mcp || step.s3) return false;
   const target =
     typeof step.url === "string" ? step.url : typeof step.path === "string" ? step.path : null;
-  return (
-    graphqlOverHttpQuery({
-      method: typeof step.method === "string" ? step.method : null,
-      target,
-      body: step.body,
-    }) !== null
+  const method = typeof step.method === "string" ? step.method : null;
+  const connectorBaseUrls =
+    typeof step.connector_id === "string" ? (baseUrls.get(step.connector_id) ?? []) : [];
+  return [null, ...connectorBaseUrls].some(
+    (baseUrl) => graphqlOverHttpRequest({ method, target, body: step.body, baseUrl }) !== null,
   );
 }
 
-export function lossyGraphqlConversions(before: StepsHolder, after: StepsHolder): string[] {
-  const graphqlStepIds = new Set(
-    stepRecords(before)
-      .filter((step) => step.kind === "request" && step.graphql && typeof step.id === "string")
-      .map((step) => step.id as string),
-  );
-  return stepRecords(after)
-    .filter(
-      (step) =>
-        typeof step.id === "string" && graphqlStepIds.has(step.id) && isGraphqlOverHttpStep(step),
-    )
-    .map((step) => step.id as string);
-}
-
-export function introducedGraphqlOverHttpSteps(before: StepsHolder, after: StepsHolder): string[] {
+export function introducedGraphqlOverHttpSteps(
+  before: StepsHolder,
+  after: StepsHolder,
+  baseUrls: ConnectorBaseUrls = NO_BASE_URLS,
+): string[] {
   const existing = new Set(
     stepRecords(before)
-      .filter((step) => typeof step.id === "string" && isGraphqlOverHttpStep(step))
+      .filter((step) => isGraphqlOverHttpStep(step, baseUrls))
       .map((step) => step.id as string),
   );
   return stepRecords(after)
-    .filter(
-      (step) =>
-        typeof step.id === "string" && !existing.has(step.id) && isGraphqlOverHttpStep(step),
-    )
+    .filter((step) => !existing.has(step.id as string) && isGraphqlOverHttpStep(step, baseUrls))
     .map((step) => step.id as string);
+}
+
+export function replacedGraphqlSteps(before: StepsHolder, after: StepsHolder): string[] {
+  const afterById = new Map(stepRecords(after).map((step) => [step.id as string, step]));
+  return stepRecords(before)
+    .filter((step) => step.kind === "request" && step.graphql)
+    .filter((step) => !afterById.get(step.id as string)?.graphql)
+    .map((step) => step.id as string);
+}
+
+export function lossyGraphqlConversions(
+  before: StepsHolder,
+  after: StepsHolder,
+  baseUrls: ConnectorBaseUrls = NO_BASE_URLS,
+): string[] {
+  if (replacedGraphqlSteps(before, after).length === 0) return [];
+  return introducedGraphqlOverHttpSteps(before, after, baseUrls);
 }

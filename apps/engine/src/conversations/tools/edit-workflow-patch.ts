@@ -2,8 +2,12 @@ import { z } from "@hono/zod-openapi";
 import { log } from "../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
-import { lossyGraphqlConversions } from "../../workflows/graphql-conversion.ts";
-import { validateTenantWorkflowDef } from "../../workflows/index.ts";
+import {
+  GRAPHQL_OVER_HTTP_LOSS,
+  lossyGraphqlConversions,
+  replacedGraphqlSteps,
+} from "../../workflows/graphql-conversion.ts";
+import { loadTenantConnectorBaseUrls, validateTenantWorkflowDef } from "../../workflows/index.ts";
 import {
   describeStepReferences,
   validateUnsupportedPlaceholders,
@@ -176,7 +180,23 @@ export async function applyWorkflowPatchToDraft(
       };
     }
 
-    const lossySteps = lossyGraphqlConversions(workflowDraft, patched);
+    const replacedSteps = replacedGraphqlSteps(workflowDraft, patched);
+    const lossySteps =
+      replacedSteps.length > 0
+        ? lossyGraphqlConversions(
+            workflowDraft,
+            patched,
+            await loadTenantConnectorBaseUrls(
+              (Array.isArray(patched.steps) ? patched.steps : []).flatMap((step) =>
+                typeof (step as { connector_id?: unknown }).connector_id === "string"
+                  ? [(step as { connector_id: string }).connector_id]
+                  : [],
+              ),
+              ctx.tenant_id,
+              ctx.db,
+            ),
+          )
+        : [];
     if (lossySteps.length > 0) {
       recordAuthoringGateBlock({
         code: "graphql_conversion_lossy",
@@ -189,15 +209,20 @@ export async function applyWorkflowPatchToDraft(
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
         step_ids: lossySteps,
+        replaced_step_ids: replacedSteps,
       });
       return {
         ok: false,
         data: buildGateError(currentDraft, {
           error_code: "graphql_conversion_lossy",
-          message: `the patch converts the graphql step ${lossySteps.map((id) => `\`${id}\``).join(", ")} into a POST /graphql request on an http connector. That loses cursor pagination (only the first page is read) and the request is reviewed as a write. Nothing was changed. Instead point connector_id at a graphql connector whose base_url is the GraphQL endpoint (for GitHub https://api.github.com/graphql) and keep the graphql block with its cursor_pagination, or rewrite the step against the REST endpoint. If neither connector exists, ask the user which to use.`,
+          message: `the patch replaces the graphql step ${replacedSteps.map((id) => `\`${id}\``).join(", ")} with the POST /graphql request ${lossySteps.map((id) => `\`${id}\``).join(", ")} on an http connector. That loses cursor pagination: ${GRAPHQL_OVER_HTTP_LOSS}. Nothing was changed. Instead point connector_id at a graphql connector whose base_url is the GraphQL endpoint (for GitHub https://api.github.com/graphql) and keep the graphql block with its cursor_pagination, or rewrite the step against the REST endpoint. If neither connector exists, ask the user which to use.`,
           recommended_mode: "workflow",
           next_best_actions: ["find_connector", "inspect_workflow_draft"],
-          extra: { steps: lossySteps, patch_count: patches.length },
+          extra: {
+            steps: lossySteps,
+            replaced_steps: replacedSteps,
+            patch_count: patches.length,
+          },
         }),
       };
     }

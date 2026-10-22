@@ -1,4 +1,8 @@
-import { graphqlOverHttpQuery, inferGraphqlOperation } from "@shared/index.ts";
+import {
+  classifyGraphqlOverHttp,
+  graphqlOverHttpRequest,
+  inferGraphqlOperation,
+} from "@shared/index.ts";
 import type { ConnectorHeaderPolicy } from "../connectors/index.ts";
 import { compileJsonSchemaContract } from "../execution/index.ts";
 import { compileOutputContractSchema } from "../execution/output-contract.ts";
@@ -58,6 +62,7 @@ export interface ValidateOptions {
   allowForwardRefs?: boolean;
   connectorHeaderPolicies?: ReadonlyMap<string, ConnectorHeaderPolicy>;
   connectorDrivers?: ReadonlyMap<string, ReadonlyArray<string>>;
+  connectorBaseUrls?: ReadonlyMap<string, ReadonlyArray<string>>;
   destinationTier?: PlaceholderTier;
 }
 
@@ -150,7 +155,12 @@ export function validateWorkflowDef(
           message: `a graphql block needs a graphql connector, but connector ${step.connector_id} is driver '${foreignDriver}' — such a step is held as a write in previews and refused at run time. Point connector_id at a graphql connector whose base_url is the GraphQL endpoint (for GitHub https://api.github.com/graphql) and keep the graphql block with its cursor_pagination, or rewrite the step against the REST endpoint; \`method\` and \`path\` are not used for a graphql block, which is always sent as POST. ${GRAPHQL_OVER_HTTP_WARNING}`,
         });
       }
-      errors.push(...graphqlOverHttpErrors(step));
+      errors.push(
+        ...graphqlOverHttpErrors(
+          step,
+          options.connectorBaseUrls?.get(step.connector_id ?? "") ?? [],
+        ),
+      );
       if (step.url !== undefined) {
         const isAbsolute = /^https?:\/\//.test(step.url);
         const isConnectorBaseUrlPlaceholder = /^\$\{connector\.[a-z0-9_-]+\.base_url\}(\/|$)/.test(
@@ -369,30 +379,66 @@ function stepReferencesCanonicalItem(step: StepDef): boolean {
   return haystack.includes("${item") || /\$item\b/.test(haystack);
 }
 
-function graphqlOverHttpErrors(step: Extract<StepDef, { kind: "request" }>): ValidationError[] {
+function graphqlOverHttpErrors(
+  step: Extract<StepDef, { kind: "request" }>,
+  baseUrls: ReadonlyArray<string>,
+): ValidationError[] {
   if (step.graphql || step.sql || step.mcp || step.s3) return [];
-  const query = graphqlOverHttpQuery({
-    method: step.method,
-    target: step.url ?? step.path ?? null,
-    body: step.body,
-  });
-  if (query === null || /\$\{/.test(query)) return [];
-  const operation = inferGraphqlOperation(query);
-  if (operation === null)
+  const requests = (baseUrls.length > 0 ? baseUrls : [null]).map((baseUrl) => ({
+    baseUrl,
+    request: graphqlOverHttpRequest({
+      method: step.method,
+      target: step.url ?? step.path ?? null,
+      body: step.body,
+      baseUrl,
+    }),
+  }));
+  const documents = [
+    ...new Set(
+      requests.flatMap(({ request }) =>
+        (request?.documents ?? []).filter(
+          (document): document is string => document !== null && !/\$\{/.test(document),
+        ),
+      ),
+    ),
+  ];
+  const errors: ValidationError[] = [];
+  if (
+    requests.some(({ request }) => request?.endpoint) &&
+    documents.some((document) => inferGraphqlOperation(document) === null)
+  )
+    errors.push({
+      path: `steps.${step.id}.body.query`,
+      message: `body.query is not a valid GraphQL document containing an operation (check that every brace and parenthesis is closed). ${GRAPHQL_OVER_HTTP_REPAIR}`,
+    });
+  if (step.side_effects !== "read") return errors;
+  const changing = documents
+    .map((document) => inferGraphqlOperation(document))
+    .find((operation) => operation === "mutation" || operation === "subscription");
+  if (changing)
     return [
-      {
-        path: `steps.${step.id}.body.query`,
-        message: `body.query is not a valid GraphQL document containing an operation (check that every brace and parenthesis is closed). ${GRAPHQL_OVER_HTTP_REPAIR}`,
-      },
-    ];
-  if (operation !== "query" && step.side_effects === "read")
-    return [
+      ...errors,
       {
         path: `steps.${step.id}.side_effects`,
-        message: `body.query is a GraphQL ${operation}, which changes data; a ${operation} cannot be declared side_effects "read". Remove the label or send a query document.`,
+        message: `body.query is a GraphQL ${changing}, which changes data; a ${changing} cannot be declared side_effects "read". Remove the label or send a query document.`,
       },
     ];
-  return [];
+  const unreadable = requests.some(
+    ({ request, baseUrl }) =>
+      request?.documents.every((document) => document === null || !/\$\{/.test(document)) &&
+      classifyGraphqlOverHttp({
+        method: step.method,
+        target: step.url ?? step.path ?? null,
+        body: step.body,
+        baseUrl,
+      }) === "write",
+  );
+  if (unreadable && errors.length === 0)
+    errors.push({
+      path: `steps.${step.id}.side_effects`,
+      message: `the POSTed GraphQL request carries no query document the engine can read (a persisted query, a batch entry without query, or a body that is not JSON), so it is reviewed as a write and cannot be declared side_effects "read". Send the query document in body.query or remove the label.`,
+    });
+  return errors;
 }
 
 function collectAddressingPlaceholderErrors(

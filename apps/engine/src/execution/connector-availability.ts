@@ -51,7 +51,10 @@ export function preparedReferenceRefusalMessage(refusal: PreparedReferenceRefusa
 export const CONNECTOR_DISABLED_CODE = "connector_disabled";
 
 export function disabledConnectorRefusal(
-  connector: Pick<ConnectorView, "id" | "slug" | "display_name" | "environment" | "enabled">,
+  connector: Pick<
+    ConnectorView,
+    "id" | "slug" | "display_name" | "environment" | "enabled" | "base_url"
+  >,
   step_id: string | null,
 ): StepErrorDetail | null {
   if (connector.enabled) return null;
@@ -73,12 +76,13 @@ export function disabledConnectorRefusal(
 export const CONNECTOR_ENVIRONMENT_MISMATCH_CODE = "connector_environment_mismatch";
 
 export function environmentMismatchRefusal(
-  connector: Pick<ConnectorView, "slug" | "environment">,
+  connector: Pick<ConnectorView, "slug" | "environment" | "base_url">,
   step: RequestStep,
   execution_mode: "dev" | "prod",
 ): StepErrorDetail | null {
   if (connector.environment === execution_mode) return null;
-  if (classifyRequestStepSideEffects(step) !== "write") return null;
+  if (classifyRequestStepSideEffects(step, undefined, undefined, connector.base_url) !== "write")
+    return null;
   return {
     code: CONNECTOR_ENVIRONMENT_MISMATCH_CODE,
     message:
@@ -88,7 +92,10 @@ export function environmentMismatchRefusal(
 }
 
 export function connectorStepRefusal(
-  connector: Pick<ConnectorView, "id" | "slug" | "display_name" | "environment" | "enabled">,
+  connector: Pick<
+    ConnectorView,
+    "id" | "slug" | "display_name" | "environment" | "enabled" | "base_url"
+  >,
   step: RequestStep,
   execution_mode: "dev" | "prod",
 ): StepErrorDetail | null {

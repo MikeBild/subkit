@@ -4,6 +4,7 @@ import {
   loadConnectorSystem,
 } from "../connectors/index.ts";
 import type { Executor } from "../db/client.ts";
+import type { ConnectorBaseUrls } from "./graphql-conversion.ts";
 import { WorkflowDefSchema } from "./types.ts";
 import { type ValidateOptions, validateWorkflowDef } from "./validator.ts";
 
@@ -69,19 +70,60 @@ export async function loadTenantWorkflowGraphqlDrivers(
   return new Map(entries.filter(([, drivers]) => drivers.length > 0));
 }
 
+export async function loadTenantConnectorBaseUrls(
+  connectorIds: Iterable<string>,
+  tenantId: string,
+  db: Executor,
+): Promise<ConnectorBaseUrls> {
+  const entries = await Promise.all(
+    [...new Set(connectorIds)].map(async (id) => {
+      const systems = await Promise.all(
+        (["dev", "prod"] as const).map((environment) =>
+          loadConnectorSystem(tenantId, id, environment, db),
+        ),
+      );
+      return [
+        id,
+        [...new Set(systems.flatMap((system) => system?.connector.base_url ?? []))],
+      ] as const;
+    }),
+  );
+  return new Map(entries.filter(([, baseUrls]) => baseUrls.length > 0));
+}
+
+function readLabelledPostConnectorIds(input: unknown): string[] {
+  const parsed = WorkflowDefSchema.safeParse(input);
+  if (!parsed.success) return [];
+  return parsed.data.steps.flatMap((step) =>
+    step.kind === "request" &&
+    step.connector_id &&
+    step.side_effects === "read" &&
+    step.method?.toUpperCase() === "POST" &&
+    !step.graphql &&
+    !step.sql &&
+    !step.mcp &&
+    !step.s3 &&
+    !/^https?:\/\//i.test(step.url ?? "")
+      ? [step.connector_id]
+      : [],
+  );
+}
+
 export async function validateTenantWorkflowDef(
   input: unknown,
   tenantId: string,
   db: Executor,
   options: Pick<ValidateOptions, "allowForwardRefs" | "destinationTier"> = {},
 ) {
-  const [policies, drivers] = await Promise.all([
+  const [policies, drivers, baseUrls] = await Promise.all([
     loadTenantWorkflowHeaderPolicies(input, tenantId, db),
     loadTenantWorkflowGraphqlDrivers(input, tenantId, db),
+    loadTenantConnectorBaseUrls(readLabelledPostConnectorIds(input), tenantId, db),
   ]);
   return validateWorkflowDef(input, {
     ...options,
     connectorHeaderPolicies: policies,
     connectorDrivers: drivers,
+    connectorBaseUrls: baseUrls,
   });
 }

@@ -6,7 +6,11 @@ import { SAFE_HEADER_DENYLIST } from "../error-detail.ts";
 
 export type StepSideEffects = SideEffect;
 
-export function requestRequiresPreparationHold(step: RequestStep, driver?: string): boolean {
+export function requestRequiresPreparationHold(
+  step: RequestStep,
+  driver?: string,
+  baseUrl?: string | null,
+): boolean {
   const declaredDriver = step.mcp
     ? "mcp"
     : step.sql
@@ -19,10 +23,15 @@ export function requestRequiresPreparationHold(step: RequestStep, driver?: strin
   if (driver !== undefined && driver !== declaredDriver) return true;
   if (step.sql || driver === "postgres") return true;
   return (
-    classifyRequestStepSideEffects({
-      ...step,
-      side_effects: step.side_effects === "write" ? "write" : undefined,
-    }) === "write"
+    classifyRequestStepSideEffects(
+      {
+        ...step,
+        side_effects: step.side_effects === "write" ? "write" : undefined,
+      },
+      driver,
+      undefined,
+      baseUrl,
+    ) === "write"
   );
 }
 
@@ -30,6 +39,7 @@ export function classifyRequestStepSideEffects(
   step: RequestStep,
   driver?: string,
   method?: string,
+  baseUrl?: string | null,
 ): StepSideEffects {
   return classifyHttpSideEffect({
     override: step.side_effects ?? null,
@@ -44,6 +54,7 @@ export function classifyRequestStepSideEffects(
     mcp: step.mcp ? { operation: step.mcp.operation } : null,
     target: step.url ?? step.path ?? null,
     body: step.body,
+    baseUrl: baseUrl ?? null,
   });
 }
 

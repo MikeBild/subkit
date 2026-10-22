@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   classifyHttpSideEffect,
   classifyMcpToolSideEffect,
-  graphqlOverHttpQuery,
+  graphqlOverHttpRequest,
   httpMethodIsRead,
   inferGraphqlOperation,
   sqlIsSelect,
@@ -276,7 +276,7 @@ describe("classifyHttpSideEffect — GraphQL over plain HTTP", () => {
     expect(classifyHttpSideEffect({ method: "POST", target: "/graphql", body: {} })).toBe("write");
   });
 
-  test("detection needs POST, a GraphQL path and a string query", () => {
+  test("detection needs POST and a GraphQL endpoint or a GraphQL-shaped body", () => {
     const body = { query: "query { a }" };
     for (const target of [
       "/graphql",
@@ -287,12 +287,80 @@ describe("classifyHttpSideEffect — GraphQL over plain HTTP", () => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: authored connector placeholder
       "${connector.github.base_url}/graphql",
     ])
-      expect(graphqlOverHttpQuery({ method: "POST", target, body })).toBe("query { a }");
-    expect(graphqlOverHttpQuery({ method: "GET", target: "/graphql", body })).toBeNull();
-    expect(graphqlOverHttpQuery({ method: "POST", target: "/v1/search", body })).toBeNull();
+      expect(graphqlOverHttpRequest({ method: "POST", target, body })).toEqual({
+        endpoint: true,
+        documents: ["query { a }"],
+      });
+    expect(graphqlOverHttpRequest({ method: "GET", target: "/graphql", body })).toBeNull();
     expect(
-      graphqlOverHttpQuery({ method: "POST", target: "/graphql", body: "query { a }" }),
+      graphqlOverHttpRequest({ method: "POST", target: "/v1/search", body: { query: "x" } }),
     ).toBeNull();
-    expect(graphqlOverHttpQuery({ method: "POST", target: null, body })).toBeNull();
+    expect(graphqlOverHttpRequest({ method: "POST", target: "/v1/search", body })).toEqual({
+      endpoint: false,
+      documents: ["query { a }"],
+    });
+    expect(
+      graphqlOverHttpRequest({ method: "POST", target: "/graphql", body: "query { a }" }),
+    ).toEqual({ endpoint: true, documents: [] });
+    expect(
+      graphqlOverHttpRequest({ method: "POST", target: null, body: { query: "x" } }),
+    ).toBeNull();
+  });
+
+  describe("a read label cannot cover a GraphQL request it cannot read", () => {
+    const mutation = 'mutation { addStar(input: {starrableId: "1"}) { clientMutationId } }';
+    const read = (target: string | null, body: unknown, baseUrl?: string) =>
+      classifyHttpSideEffect({
+        method: "POST",
+        target,
+        body,
+        override: "read",
+        ...(baseUrl ? { baseUrl } : {}),
+      });
+
+    test("a batched array body is a read only when every entry is a query", () => {
+      expect(read("/graphql", [{ query: mutation }])).toBe("write");
+      expect(read("/graphql", [{ query: "query { a }" }, { query: mutation }])).toBe("write");
+      expect(read("/graphql", [{ query: "query { a }" }, { variables: {} }])).toBe("write");
+      expect(read("/graphql", [])).toBe("write");
+      expect(read("/graphql", [{ query: "query { a }" }, { query: "{ b }" }])).toBe("read");
+    });
+
+    test("a JSON string body is parsed before it is classified", () => {
+      expect(read("/graphql", JSON.stringify({ query: mutation }))).toBe("write");
+      expect(read("/graphql", JSON.stringify({ query: "query { a }" }))).toBe("read");
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
+      expect(read("/graphql", "${steps.build.output}")).toBe("write");
+    });
+
+    test("a persisted query without a document is a write", () => {
+      const persisted = {
+        operationName: "Items",
+        extensions: { persistedQuery: { version: 1, sha256Hash: "abc" } },
+      };
+      expect(read("/graphql", persisted)).toBe("write");
+      expect(read("/v1/anything", persisted)).toBe("write");
+      expect(read("/graphql", { variables: { a: 1 } })).toBe("write");
+    });
+
+    test("a connector base_url that is the GraphQL endpoint is resolved", () => {
+      const baseUrl = "https://api.github.com/graphql";
+      const unparseable = { query: "query { a " };
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored connector placeholder
+      expect(read("${connector.gh.base_url}", unparseable, baseUrl)).toBe("write");
+      expect(read(null, unparseable, baseUrl)).toBe("write");
+      expect(read("/", unparseable, baseUrl)).toBe("write");
+      expect(read(null, { query: "query { a }" }, baseUrl)).toBe("read");
+      expect(read("/v1/search", { query: "x" }, "https://api.notion.com")).toBe("read");
+      expect(read("https://api.notion.com/v1/search", { query: "x" }, baseUrl)).toBe("read");
+    });
+
+    test("a mutation document is a write wherever it is posted", () => {
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored connector placeholder
+      expect(read("${connector.gh.base_url}", { query: mutation })).toBe("write");
+      expect(read(null, { query: mutation })).toBe("write");
+      expect(read("/", JSON.stringify([{ query: mutation }]))).toBe("write");
+      expect(read("/v1/search", { query: "query { a }" })).toBe("read");
+    });
   });
 });

@@ -658,7 +658,11 @@ async function dispatchRequestStep(
     step_id: p.step.id,
     step_row_id: p.ctx.step_row_id,
     connector_id: p.step.connector_id ?? null,
-    requires_review: requestRequiresPreparationHold(p.step, activeConnector?.driver),
+    requires_review: requestRequiresPreparationHold(
+      p.step,
+      activeConnector?.driver,
+      activeConnector?.base_url,
+    ),
     request_max_attempts: max_attempts,
     ...(p.step.transactional_delivery ? { requires_transactional_authority: true } : {}),
     principal_id: p.ctx.principal?.id ?? null,
@@ -689,7 +693,12 @@ async function dispatchRequestStep(
       recordEffect(
         documentedRead
           ? "read"
-          : classifyRequestStepSideEffects(p.step, activeConnector?.driver, request?.method),
+          : classifyRequestStepSideEffects(
+              p.step,
+              activeConnector?.driver,
+              request?.method,
+              activeConnector?.base_url,
+            ),
       );
       return documentedRead ? { redirect: "manual" as const } : policy;
     } catch (error) {
@@ -710,7 +719,7 @@ async function dispatchRequestStep(
   const beforeHttpDispatch = async (request: MaterializedRequest) => {
     if (
       p.ctx.hold_writes &&
-      requestRequiresPreparationHold(p.step, activeConnector?.driver) &&
+      requestRequiresPreparationHold(p.step, activeConnector?.driver, activeConnector?.base_url) &&
       (p.step.side_effects === "write" || !isDocumentedReadOperation(request))
     ) {
       throw new RequestError(
@@ -795,7 +804,9 @@ async function dispatchRequestStep(
       },
     });
   };
-  const requestIsReadOnly = classifyRequestStepSideEffects(p.step) === "read";
+  const requestIsReadOnly = () =>
+    classifyRequestStepSideEffects(p.step, undefined, undefined, activeConnector?.base_url) ===
+    "read";
   let holdThisStep = p.ctx.hold_writes === true && requestRequiresPreparationHold(p.step);
   const max_attempts = requestMaxAttempts(p.step);
   const timeoutMs = p.step.timeout_ms ?? REQUEST_TIMEOUT_DEFAULT_MS;
@@ -998,7 +1009,8 @@ async function dispatchRequestStep(
       }
       configurationDigest = authorityConnectorDigest(connector);
       holdThisStep =
-        p.ctx.hold_writes === true && requestRequiresPreparationHold(p.step, connector.driver);
+        p.ctx.hold_writes === true &&
+        requestRequiresPreparationHold(p.step, connector.driver, connector.base_url);
       connectorResolution = {
         step_key: p.step.id,
         connector_id: connector.id,
@@ -1365,7 +1377,14 @@ async function dispatchRequestStep(
           const params: Parameters<typeof executeS3Request>[0] = {
             on_credential_use: async (snapshot) => {
               await persistCredentialUse(snapshot);
-              recordEffect(classifyRequestStepSideEffects(p.step, activeConnector?.driver));
+              recordEffect(
+                classifyRequestStepSideEffects(
+                  p.step,
+                  activeConnector?.driver,
+                  undefined,
+                  activeConnector?.base_url,
+                ),
+              );
             },
             db: p.ctx.db,
             tenant_id: p.ctx.tenant_id,
@@ -1647,7 +1666,14 @@ async function dispatchRequestStep(
                     access_token_version: null,
                     identity: null,
                   });
-                  recordEffect(classifyRequestStepSideEffects(p.step, activeConnector?.driver));
+                  recordEffect(
+                    classifyRequestStepSideEffects(
+                      p.step,
+                      activeConnector?.driver,
+                      undefined,
+                      activeConnector?.base_url,
+                    ),
+                  );
                 },
                 connector,
                 statements,
@@ -1687,7 +1713,14 @@ async function dispatchRequestStep(
                     access_token_version: null,
                     identity: null,
                   });
-                  recordEffect(classifyRequestStepSideEffects(p.step, activeConnector?.driver));
+                  recordEffect(
+                    classifyRequestStepSideEffects(
+                      p.step,
+                      activeConnector?.driver,
+                      undefined,
+                      activeConnector?.base_url,
+                    ),
+                  );
                 },
                 connector,
                 sql: sqlBlock.query,
@@ -1708,7 +1741,14 @@ async function dispatchRequestStep(
                   access_token_version: null,
                   identity: null,
                 });
-                recordEffect(classifyRequestStepSideEffects(p.step, activeConnector?.driver));
+                recordEffect(
+                  classifyRequestStepSideEffects(
+                    p.step,
+                    activeConnector?.driver,
+                    undefined,
+                    activeConnector?.base_url,
+                  ),
+                );
               },
               connector,
               sql: sqlBlock.query,
@@ -1995,7 +2035,7 @@ async function dispatchRequestStep(
   const retryCounter = { value: 0 };
   const retry_policy = resolveRetryPolicy(p.step);
   const idempotencyBase =
-    requestIsReadOnly || isIdempotent(p.step.method)
+    requestIsReadOnly() || isIdempotent(p.step.method)
       ? null
       : `${p.ctx.execution_id}:${p.ctx.step_row_id}`;
   const lastIdempotencyKey: { value: string | null } = { value: null };
@@ -2171,7 +2211,7 @@ async function dispatchRequestStep(
           connector_id: p.step.connector_id ?? null,
           connector_slug: activeConnector?.slug ?? null,
           retry_policy,
-          retry_safe: requestIsReadOnly,
+          retry_safe: requestIsReadOnly(),
           ...(effectiveExpectedStatuses
             ? { accepted_statuses: new Set(effectiveExpectedStatuses) }
             : {}),
@@ -2497,7 +2537,7 @@ async function dispatchRequestStep(
           connector_id: p.step.connector_id ?? null,
           connector_slug: activeConnector?.slug ?? null,
           retry_policy,
-          retry_safe: requestIsReadOnly,
+          retry_safe: requestIsReadOnly(),
           ...(effectiveExpectedStatuses
             ? { accepted_statuses: new Set(effectiveExpectedStatuses) }
             : {}),

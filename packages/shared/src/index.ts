@@ -66,15 +66,17 @@ export {
 export type {
   GraphqlOperation,
   GraphqlOverHttpInput,
+  GraphqlOverHttpRequest,
   McpOperation,
   McpToolAnnotationHints,
   SideEffect,
   SideEffectInput,
 } from "./side-effects.ts";
 export {
+  classifyGraphqlOverHttp,
   classifyHttpSideEffect,
   classifyMcpToolSideEffect,
-  graphqlOverHttpQuery,
+  graphqlOverHttpRequest,
   httpMethodIsRead,
   inferGraphqlOperation,
   sqlIsSelect,

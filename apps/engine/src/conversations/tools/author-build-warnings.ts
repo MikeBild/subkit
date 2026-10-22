@@ -3,6 +3,7 @@ import type { Db } from "../../db/client.ts";
 import { classifyRequestStepSideEffects } from "../../execution/steps/request/side-effects.ts";
 import { type ConnectorAccessLevel, connectorAccessLevel } from "../../rbac/evaluator.ts";
 import {
+  GRAPHQL_OVER_HTTP_LOSS,
   GRAPHQL_OVER_HTTP_REPAIR,
   introducedGraphqlOverHttpSteps,
 } from "../../workflows/graphql-conversion.ts";
@@ -20,7 +21,7 @@ export function graphqlOverHttpWarnings(before: StepsHolder, after: StepsHolder)
   return introducedGraphqlOverHttpSteps(before, after).map((stepKey) => ({
     step_key: stepKey,
     code: "graphql_over_http",
-    message: `step ${stepKey} POSTs a GraphQL document to a GraphQL endpoint over plain HTTP: it has no cursor_pagination, so only the first page is read, and an unparseable document is reviewed as a write. ${GRAPHQL_OVER_HTTP_REPAIR}`,
+    message: `step ${stepKey} POSTs a GraphQL document over plain HTTP: ${GRAPHQL_OVER_HTTP_LOSS}. ${GRAPHQL_OVER_HTTP_REPAIR}`,
   }));
 }
 

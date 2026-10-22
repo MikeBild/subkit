@@ -306,6 +306,12 @@ describe("resolveForEachConcurrency · auto-selection from side-effect class", (
     expect(resolveForEachConcurrency(post({ side_effects: "read" }), 50)).toBe(8);
   });
 
+  test("a read label on a GraphQL request the engine cannot read stays sequential", () => {
+    const unparseable = post({ side_effects: "read", body: { query: "query { a " } });
+    expect(resolveForEachConcurrency(unparseable, 50, "https://api.github.com/graphql")).toBe(1);
+    expect(resolveForEachConcurrency(unparseable, 50, "https://api.notion.com")).toBe(8);
+  });
+
   test("explicit for_each_concurrency always wins, clamped to item count", () => {
     expect(resolveForEachConcurrency(get({ for_each_concurrency: 3 }), 50)).toBe(3);
     expect(resolveForEachConcurrency(transform({ for_each_concurrency: 4 }), 50)).toBe(4);

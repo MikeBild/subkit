@@ -16,12 +16,19 @@ export interface SideEffectInput {
   mcp?: { operation: McpOperation } | null;
   target?: string | null;
   body?: unknown;
+  baseUrl?: string | null;
 }
 
 export interface GraphqlOverHttpInput {
   method?: string | null;
   target?: string | null;
   body?: unknown;
+  baseUrl?: string | null;
+}
+
+export interface GraphqlOverHttpRequest {
+  endpoint: boolean;
+  documents: Array<string | null>;
 }
 
 const S3_READ_METHODS = new Set(["GET", "HEAD", "LIST"]);
@@ -32,28 +39,60 @@ const LEADING_PLACEHOLDER = /^\$\{[^}]*\}/;
 
 const RUNTIME_PLACEHOLDER = /\$\{/;
 
-function absoluteTarget(target: string): string {
+function absoluteTarget(target: string, baseUrl: string): string {
   if (/^https?:\/\//i.test(target)) return target;
-  return `${RELATIVE_TARGET_ORIGIN}/${target.replace(LEADING_PLACEHOLDER, "").replace(/^\/+/, "")}`;
+  const rest = target.replace(LEADING_PLACEHOLDER, "").replace(/^\/+/, "");
+  const base = baseUrl.replace(/\/+$/, "");
+  return rest ? `${base}/${rest}` : base;
 }
 
-export function graphqlOverHttpQuery(input: GraphqlOverHttpInput): string | null {
+function parsedBody(body: unknown): unknown {
+  if (typeof body !== "string") return body;
+  try {
+    return JSON.parse(body);
+  } catch {
+    return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isPersistedQuery(entry: Record<string, unknown>): boolean {
+  return isRecord(entry.extensions) && isRecord(entry.extensions.persistedQuery);
+}
+
+export function graphqlOverHttpRequest(input: GraphqlOverHttpInput): GraphqlOverHttpRequest | null {
   if ((input.method ?? "GET").toUpperCase() !== "POST") return null;
-  const target = input.target?.trim();
-  if (!target || !looksLikeGraphQLUrl(absoluteTarget(target))) return null;
-  const body = input.body;
-  if (body === null || typeof body !== "object" || Array.isArray(body)) return null;
-  const query = (body as Record<string, unknown>).query;
-  return typeof query === "string" ? query : null;
+  const baseUrl = input.baseUrl?.trim() || RELATIVE_TARGET_ORIGIN;
+  const endpoint = looksLikeGraphQLUrl(absoluteTarget(input.target?.trim() ?? "", baseUrl));
+  const body = parsedBody(input.body);
+  const entries = Array.isArray(body) ? body : [body];
+  const records = entries.every(isRecord) ? entries : [];
+  const documents = records.map((entry) => (typeof entry.query === "string" ? entry.query : null));
+  const shaped = records.some(
+    (entry) =>
+      isPersistedQuery(entry) ||
+      (typeof entry.query === "string" && inferGraphqlOperation(entry.query) !== null),
+  );
+  return endpoint || shaped ? { endpoint, documents } : null;
 }
 
-function graphqlOverHttpEffect(input: SideEffectInput): SideEffect | null {
+export function classifyGraphqlOverHttp(input: SideEffectInput): SideEffect | null {
   if (input.graphql || input.sql || input.mcp || input.s3) return null;
-  const query = graphqlOverHttpQuery(input);
-  if (query === null) return null;
-  return !RUNTIME_PLACEHOLDER.test(query) && inferGraphqlOperation(query) === "query"
-    ? "read"
-    : "write";
+  const request = graphqlOverHttpRequest(input);
+  if (request === null) return null;
+  const everyDocumentIsQuery =
+    request.documents.length > 0 &&
+    request.documents.every(
+      (document) =>
+        document !== null &&
+        !RUNTIME_PLACEHOLDER.test(document) &&
+        inferGraphqlOperation(document) === "query",
+    );
+  if (!everyDocumentIsQuery) return "write";
+  return request.endpoint ? "read" : null;
 }
 
 export function httpMethodIsRead(method: string): boolean {
@@ -105,7 +144,7 @@ export function classifyMcpToolSideEffect(
 
 export function classifyHttpSideEffect(input: SideEffectInput): SideEffect {
   if (input.override === "write") return "write";
-  const overHttp = graphqlOverHttpEffect(input);
+  const overHttp = classifyGraphqlOverHttp(input);
   if (overHttp) return overHttp;
   if (input.override === "read" && readOverrideIsSafe(input)) return "read";
   if (input.mcp) {

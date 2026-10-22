@@ -93,11 +93,18 @@ export type { ScopeEnvelope } from "./engine/envelope.ts";
 
 const DEFAULT_FOR_EACH_CONCURRENCY = 8;
 
-export function resolveForEachConcurrency(step: StepDef, itemCount: number): number {
+export function resolveForEachConcurrency(
+  step: StepDef,
+  itemCount: number,
+  baseUrl?: string | null,
+): number {
   if (itemCount <= 1) return 1;
   const explicit = (step as { for_each_concurrency?: number }).for_each_concurrency;
   if (explicit != null && explicit >= 1) return Math.min(explicit, itemCount);
-  if (step.kind === "request" && classifyRequestStepSideEffects(step as RequestStep) === "read") {
+  if (
+    step.kind === "request" &&
+    classifyRequestStepSideEffects(step as RequestStep, undefined, undefined, baseUrl) === "read"
+  ) {
     return Math.min(itemCount, DEFAULT_FOR_EACH_CONCURRENCY);
   }
   return 1;
@@ -632,6 +639,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         ctx.signal,
       );
       let fanOutCircuitFailure: StepResult | null = null;
+      let fanOutBaseUrl: string | null = null;
       if (collectionResult.kind === "collection" && step.kind === "request" && step.connector_id) {
         const target = await getConnectorForEnvironment(
           tenant_id,
@@ -639,6 +647,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           execution_mode,
           db,
         );
+        fanOutBaseUrl = target?.base_url ?? null;
         const refusal = target ? connectorStepRefusal(target, step, execution_mode) : null;
         if (refusal) {
           fanOutCircuitFailure = {
@@ -857,7 +866,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         }
       };
 
-      const concurrency = resolveForEachConcurrency(step, items.length);
+      const concurrency = resolveForEachConcurrency(step, items.length, fanOutBaseUrl);
       if (concurrency <= 1) {
         for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
           if (signal.aborted) break;

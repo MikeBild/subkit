@@ -1,5 +1,6 @@
 import type { ManifestIssueCode } from "./effect-manifest.ts";
 import type { GateDiagnosis, GateDiagnosisCode, WorkflowDiagnosis } from "./gate-diagnosis.ts";
+import { GRAPHQL_OVER_HTTP_WARNING } from "./graphql-conversion.ts";
 import type { RequestBoundaryRefusal } from "./request-boundary.ts";
 import type { StorageBoundaryRefusal } from "./storage-boundary.ts";
 
@@ -240,9 +241,9 @@ const DRIVERLESS_REMEDIES: Partial<Record<ManifestIssueCode, string>> = {
     "changed since its binding was resolved. When the step carries a `graphql` block on an http " +
     "connector, point `connector_id` at a graphql connector whose base_url is the GraphQL " +
     "endpoint (for GitHub https://api.github.com/graphql) and keep the `graphql` block with its " +
-    "`cursor_pagination`, or rewrite the step against the REST endpoint. Never convert it to " +
-    "POST /graphql on an http connector: that drops cursor_pagination, so only the first page is " +
-    "read, and the request is reviewed as a write. If neither connector exists, ask the user " +
+    "`cursor_pagination`, or rewrite the step against the REST endpoint. " +
+    `${GRAPHQL_OVER_HTTP_WARNING} ` +
+    "If neither connector exists, ask the user " +
     "which to use. Otherwise inspect the draft again and review the current version.",
   boundary_contradicted_by_history:
     "The folder this step declares does not contain a key the step itself has already written. " +

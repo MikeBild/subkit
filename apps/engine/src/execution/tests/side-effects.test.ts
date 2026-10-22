@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type RequestStep, RequestStepSchema } from "../../workflows/types.ts";
+import { environmentMismatchRefusal } from "../connector-availability.ts";
 import {
   classifyRequestStepSideEffects,
   redactHeldRequestHeaders,
@@ -420,5 +421,66 @@ describe("classifyRequestStepSideEffects · GraphQL over plain HTTP", () => {
     });
     expect(classifyRequestStepSideEffects(request, "http")).toBe("read");
     expect(requestRequiresPreparationHold(request, "http")).toBe(true);
+  });
+});
+
+describe("classifyRequestStepSideEffects · GraphQL endpoint resolved from the connector base_url", () => {
+  const graphqlBaseUrl = "https://api.github.com/graphql";
+  const persisted = { extensions: { persistedQuery: { version: 1, sha256Hash: "abc" } } };
+
+  test("a read-labelled POST to the connector base_url without a readable document is held", () => {
+    for (const target of [
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored connector placeholder
+      { url: "${connector.github.base_url}" },
+      { path: "/" },
+      {},
+    ]) {
+      const request = step({
+        connector_id: CONNECTOR_ID,
+        method: "POST",
+        side_effects: "read",
+        body: { query: "query { viewer { login }" },
+        ...target,
+      });
+      expect(classifyRequestStepSideEffects(request, "http", undefined, graphqlBaseUrl)).toBe(
+        "write",
+      );
+      expect(requestRequiresPreparationHold(request, "http", graphqlBaseUrl)).toBe(true);
+    }
+  });
+
+  test("a persisted or batched mutation is a write even without the base_url", () => {
+    const persistedStep = step({
+      connector_id: CONNECTOR_ID,
+      method: "POST",
+      path: "/graphql",
+      side_effects: "read",
+      body: persisted,
+    });
+    const batched = step({
+      connector_id: CONNECTOR_ID,
+      method: "POST",
+      path: "/",
+      side_effects: "read",
+      body: [{ query: 'mutation { addStar(input: {starrableId: "1"}) { clientMutationId } }' }],
+    });
+    expect(classifyRequestStepSideEffects(persistedStep, "http")).toBe("write");
+    expect(classifyRequestStepSideEffects(batched, "http")).toBe("write");
+  });
+
+  test("an environment fallback refuses a read-labelled GraphQL write on the base_url", () => {
+    const request = step({
+      connector_id: CONNECTOR_ID,
+      method: "POST",
+      side_effects: "read",
+      body: persisted,
+    });
+    expect(
+      environmentMismatchRefusal(
+        { slug: "github", environment: "dev", base_url: graphqlBaseUrl },
+        request,
+        "prod",
+      )?.code,
+    ).toBe("connector_environment_mismatch");
   });
 });

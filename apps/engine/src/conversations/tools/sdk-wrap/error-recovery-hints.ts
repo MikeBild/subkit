@@ -1,3 +1,4 @@
+import { GRAPHQL_OVER_HTTP_LOSS } from "../../../workflows/graphql-conversion.ts";
 import {
   ELICITATION_ALREADY_RESOLVED,
   INVALID_ELICIT_RESPONSE,
@@ -34,8 +35,7 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "a step_patches entry named a step_id that does not resolve to exactly one step in the current draft (missing, or duplicated). Nothing was changed. The error names the workflow the draft holds: if you meant another workflow, open it with open_workflow_draft. Otherwise call inspect_workflow_draft to read the real step ids, then re-issue with the exact id — never guess an id or fall back to a numeric position.",
   draft_target_mismatch:
     "the patch was meant for another workflow than the one this conversation's draft holds. Nothing was changed. Open the intended workflow with open_workflow_draft (it starts from the saved definition), then re-issue the patch with that workflow's slug.",
-  graphql_conversion_lossy:
-    "the patch would turn a graphql step into a POST /graphql request on an http connector, which drops cursor pagination (only the first page is read) and is reviewed as a write. Nothing was changed. Find a graphql connector whose base_url is the GraphQL endpoint (for GitHub https://api.github.com/graphql) with find_connector, point the step's connector_id at it and keep the graphql block with its cursor_pagination, or rewrite the step against the REST endpoint. If neither connector exists, ask the user which to use. Never retry the same conversion.",
+  graphql_conversion_lossy: `the patch would replace a graphql step with a POST /graphql request: ${GRAPHQL_OVER_HTTP_LOSS}. Nothing was changed. Find a graphql connector whose base_url is the GraphQL endpoint (for GitHub https://api.github.com/graphql) with find_connector, point the step's connector_id at it and keep the graphql block with its cursor_pagination, or rewrite the step against the REST endpoint. If neither connector exists, ask the user which to use. Never retry the same conversion.`,
   workflow_already_exists:
     "a saved workflow already has that slug. Do not regenerate it with author_workflow: open it with open_workflow_draft and change it with edit_workflow_patch. Only pick a new slug when the user wants a separate workflow.",
   draft_has_unsaved_changes:

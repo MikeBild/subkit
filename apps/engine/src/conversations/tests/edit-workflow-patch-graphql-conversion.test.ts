@@ -3,6 +3,7 @@ import { connectors } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import {
+  convertedProjectItemsStep,
   graphqlProjectItemsStep,
   lossyConversionPatches,
   VALID_ITEMS_QUERY,
@@ -94,6 +95,34 @@ describe("edit_workflow_patch · graphql step converted to POST /graphql", () =>
     expect(data.message).toContain("REST endpoint");
     expect(data.message).toContain("project_items");
     expect(data.next_best_actions).toContain("find_connector");
+    expect(data.message).not.toContain("the request is reviewed as a write");
+    expect(JSON.stringify(draftRef.current)).toBe(before);
+  });
+
+  test("refuses removing the graphql step and adding a renamed POST to its GraphQL base_url", async () => {
+    const draftRef = { current: draftWith(graphqlConnectorId) };
+    const before = JSON.stringify(draftRef.current);
+    const result = await editWorkflowPatchTool.execute(toolCtx(draftRef), {
+      workflow: "harmoniqs-github-briefing",
+      patches: [
+        { op: "remove", path: "/steps/0" },
+        {
+          op: "add",
+          path: "/steps/-",
+          value: {
+            ...convertedProjectItemsStep(),
+            id: "project_items_http",
+            connector_id: graphqlConnectorId,
+            path: "/",
+          },
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    const data = result.data as { error_code?: string; message?: string; steps?: string[] };
+    expect(data.error_code).toBe("graphql_conversion_lossy");
+    expect(data.message).toContain("project_items_http");
+    expect(data.message).toContain("project_items");
     expect(JSON.stringify(draftRef.current)).toBe(before);
   });
 
