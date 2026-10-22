@@ -4609,6 +4609,13 @@
               "auth"
             ],
             "additionalProperties": false
+          },
+          "rebind": {
+            "type": "boolean"
+          },
+          "device": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": [
@@ -37725,7 +37732,7 @@
         "tags": [
           "identity"
         ],
-        "summary": "Read the current installed Cockpit app push subscription status",
+        "summary": "Read the push subscription status of the current Cockpit session",
         "security": [
           {
             "browserSession": []
@@ -37743,7 +37750,7 @@
             }
           },
           "401": {
-            "description": "Installation session required",
+            "description": "Cockpit browser session required",
             "content": {
               "application/json": {
                 "schema": {
@@ -37769,7 +37776,7 @@
         "tags": [
           "identity"
         ],
-        "summary": "Store a push subscription for the current installed Cockpit app session",
+        "summary": "Store or re-bind a push subscription for the current Cockpit session",
         "security": [
           {
             "browserSession": []
@@ -37811,7 +37818,28 @@
             }
           },
           "401": {
-            "description": "Installation session required",
+            "description": "Cockpit browser session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No push subscription of this user is bound to this browser",
             "content": {
               "application/json": {
                 "schema": {
@@ -37837,7 +37865,7 @@
         "tags": [
           "identity"
         ],
-        "summary": "Remove the current installed Cockpit app session push subscription",
+        "summary": "Remove the push subscription of the current Cockpit session",
         "security": [
           {
             "browserSession": []
@@ -37848,7 +37876,7 @@
             "description": "Removed"
           },
           "401": {
-            "description": "Installation session required",
+            "description": "Cockpit browser session required",
             "content": {
               "application/json": {
                 "schema": {
@@ -37876,7 +37904,7 @@
         "tags": [
           "identity"
         ],
-        "summary": "Prepare the current installed Cockpit app for explicit push opt-in",
+        "summary": "Prepare the current Cockpit session for explicit push opt-in",
         "security": [
           {
             "browserSession": []
@@ -37894,7 +37922,7 @@
             }
           },
           "401": {
-            "description": "Installation session required",
+            "description": "Cockpit browser session required",
             "content": {
               "application/json": {
                 "schema": {

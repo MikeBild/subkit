@@ -206,6 +206,18 @@ export function registerCockpitRoutes(app: OpenAPIHono<AppEnv>): void {
     return new Response(c.req.method === "HEAD" ? null : asset.body, { status: 200, headers });
   };
 
+  app.on(["GET", "HEAD"], `${COCKPIT_PREFIX}/sw.js`, (c) => {
+    const worker = cachedCockpitAsset("browser-worker.js");
+    if (!worker) return cockpitBundleMissing(c);
+    return new Response(c.req.method === "HEAD" ? null : worker.body, {
+      status: 200,
+      headers: {
+        ...securityHeaders,
+        "cache-control": "private, no-store",
+        "content-type": "application/javascript; charset=utf-8",
+      },
+    });
+  });
   app.openapi(cockpitCanonicalShellRoute, serve);
   app.openapi(cockpitShellRoute, serve);
   app.openapi(cockpitShellHeadRoute, serve);

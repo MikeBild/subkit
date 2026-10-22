@@ -67,16 +67,18 @@ async function ownerPrincipal(
     .select({ role_name: roles.name })
     .from(users)
     .leftJoin(roles, eq(roles.id, users.role_id))
-    .where(and(eq(users.tenant_id, tenantId), eq(users.id, row.owner_user_id)))
+    .where(and(eq(users.tenant_id, tenantId), eq(users.id, row.user_id)))
     .limit(1);
   if (!owner) return null;
   return {
     provider: "cockpit_push",
     kind: "user",
-    id: row.owner_user_id,
+    id: row.user_id,
     tenant_id: tenantId,
     roles: owner.role_name ? [owner.role_name] : [],
-    installation_id: row.installation_id,
+    ...(row.kind === "installation" && row.installation_id
+      ? { installation_id: row.installation_id }
+      : {}),
   };
 }
 
@@ -154,6 +156,27 @@ async function settleClaims(
       );
 }
 
+export function dedupeSameDeviceAudience(rows: readonly CockpitPushAudienceRow[]): {
+  kept: CockpitPushAudienceRow[];
+  skipped: CockpitPushAudienceRow[];
+} {
+  const installedDevices = new Set(
+    rows.flatMap((row) =>
+      row.kind === "installation" && row.device_sha256
+        ? [`${row.user_id}:${row.device_sha256}`]
+        : [],
+    ),
+  );
+  const sameDevice = (row: CockpitPushAudienceRow) =>
+    row.kind === "browser" &&
+    row.device_sha256 !== null &&
+    installedDevices.has(`${row.user_id}:${row.device_sha256}`);
+  return {
+    kept: rows.filter((row) => !sameDevice(row)),
+    skipped: rows.filter(sameDevice),
+  };
+}
+
 export async function dispatchCockpitPushAttention(
   db: Db,
   tenantId: string,
@@ -163,13 +186,11 @@ export async function dispatchCockpitPushAttention(
   const outcome: CockpitPushAttentionResult = { notified: 0, delivered: 0 };
   try {
     const audience = await listCockpitPushAudience(db, tenantId, at);
-    const installations = new Map<string, CockpitPushAudienceRow[]>();
+    const audienceByUser = new Map<string, CockpitPushAudienceRow[]>();
     for (const row of audience)
-      installations.set(row.installation_id, [
-        ...(installations.get(row.installation_id) ?? []),
-        row,
-      ]);
-    for (const [installationId, rows] of installations) {
+      audienceByUser.set(row.user_id, [...(audienceByUser.get(row.user_id) ?? []), row]);
+    for (const userRows of audienceByUser.values()) {
+      const { kept: rows, skipped } = dedupeSameDeviceAudience(userRows);
       const first = rows[0];
       if (!first) continue;
       const principal = await ownerPrincipal(db, tenantId, first);
@@ -193,9 +214,9 @@ export async function dispatchCockpitPushAttention(
         const result = await deliverCockpitPush({
           db,
           tenant_id: tenantId,
-          installation_id: installationId,
           subscription_ids: claims.map((claim) => claim.row.id),
           new_items: Math.max(...claims.map((claim) => claim.fresh)),
+          skipped_same_device: skipped.length,
           subject: opts.subject === undefined ? cockpitPushSubject() : opts.subject,
           now: at,
           ...(opts.send ? { send: opts.send } : {}),

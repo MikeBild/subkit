@@ -1,0 +1,8 @@
+ALTER TABLE "cockpit_push_subscriptions" ALTER COLUMN "installation_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "cockpit_push_subscriptions" ADD COLUMN "kind" text DEFAULT 'installation' NOT NULL;--> statement-breakpoint
+ALTER TABLE "cockpit_push_subscriptions" ADD COLUMN "user_id" uuid;--> statement-breakpoint
+ALTER TABLE "cockpit_push_subscriptions" ADD COLUMN "device_sha256" text;--> statement-breakpoint
+ALTER TABLE "cockpit_push_subscriptions" ADD CONSTRAINT "cockpit_push_subscriptions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "subkit"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "cockpit_push_subscriptions_browser_endpoint_key" ON "cockpit_push_subscriptions" USING btree ("tenant_id","endpoint_sha256") WHERE "cockpit_push_subscriptions"."kind" = 'browser';--> statement-breakpoint
+CREATE INDEX "cockpit_push_subscriptions_tenant_user_idx" ON "cockpit_push_subscriptions" USING btree ("tenant_id","user_id");--> statement-breakpoint
+ALTER TABLE "cockpit_push_subscriptions" ADD CONSTRAINT "cockpit_push_subscriptions_kind_check" CHECK (("cockpit_push_subscriptions"."kind" = 'installation' AND "cockpit_push_subscriptions"."installation_id" IS NOT NULL AND "cockpit_push_subscriptions"."user_id" IS NULL) OR ("cockpit_push_subscriptions"."kind" = 'browser' AND "cockpit_push_subscriptions"."installation_id" IS NULL AND "cockpit_push_subscriptions"."user_id" IS NOT NULL));

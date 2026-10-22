@@ -24,6 +24,42 @@ export function installationDialogMode(
   return { kind: "open", href: installation.start_url };
 }
 
+export interface NotificationDialogInput {
+  installed: boolean;
+  supported: boolean;
+  permission: NotificationPermission | null;
+  subscribed: boolean | null;
+  pending: boolean;
+  handledByApp: boolean;
+}
+
+export interface NotificationDialogState {
+  bell: boolean;
+  checked: boolean;
+  disabled: boolean;
+  note: "hint" | "denied" | "handledByApp";
+}
+
+export function notificationDialogState(input: NotificationDialogInput): NotificationDialogState {
+  const bell = input.installed || input.supported;
+  if (!input.supported) return { bell, checked: false, disabled: true, note: "hint" };
+  if (input.permission === "denied")
+    return { bell, checked: false, disabled: true, note: "denied" };
+  if (input.handledByApp && input.subscribed !== true)
+    return { bell, checked: false, disabled: true, note: "handledByApp" };
+  if (input.subscribed === null) return { bell, checked: false, disabled: true, note: "hint" };
+  return {
+    bell,
+    checked: input.subscribed && input.permission === "granted",
+    disabled: input.pending,
+    note: "hint",
+  };
+}
+
+function notificationPermission(): NotificationPermission | null {
+  return typeof Notification === "undefined" ? null : Notification.permission;
+}
+
 export function InstallationDialog({
   open,
   onOpenChange,
@@ -133,23 +169,39 @@ export function InstallationNotificationsDialog({
   onOpenChange(open: boolean): void;
 }) {
   const { t } = useI18n();
-  const { capabilities, enablePush, disablePush, pushSubscribed, refreshPushSubscription } =
-    useInstallation();
+  const {
+    available,
+    capabilities,
+    enablePush,
+    disablePush,
+    pushSubscribed,
+    handledByApp,
+    refreshPushSubscription,
+  } = useInstallation();
   const [pending, setPending] = useState(false);
-  const [denied, setDenied] = useState(false);
+  const [permission, setPermission] = useState(notificationPermission);
   useEffect(() => {
-    if (open) void refreshPushSubscription().catch(() => toast.error(t("common.actionFailed")));
+    if (!open) return;
+    setPermission(notificationPermission());
+    void refreshPushSubscription().catch(() => toast.error(t("common.actionFailed")));
   }, [open, refreshPushSubscription, t]);
+  const state = notificationDialogState({
+    installed: available,
+    supported: capabilities.push,
+    permission,
+    subscribed: pushSubscribed,
+    pending,
+    handledByApp,
+  });
   const toggle = async (checked: boolean) => {
     setPending(true);
     try {
-      if (checked) {
-        const enabled = await enablePush();
-        setDenied(!enabled && Notification.permission === "denied");
-      } else await disablePush();
+      if (checked) await enablePush();
+      else await disablePush();
     } catch {
       toast.error(t("common.actionFailed"));
     } finally {
+      setPermission(notificationPermission());
       setPending(false);
     }
   };
@@ -164,19 +216,24 @@ export function InstallationNotificationsDialog({
       <div className="flex items-center justify-between gap-4 py-1">
         <div className="min-w-0">
           <p className="text-sm font-medium">{t("installation.notificationsEnable")}</p>
-          <p className="text-xs text-muted-foreground">{t("installation.notificationsHint")}</p>
+          {state.note === "denied" ? null : (
+            <p className="text-xs text-muted-foreground">
+              {t(
+                state.note === "handledByApp"
+                  ? "installation.notificationsHandledByApp"
+                  : "installation.notificationsHint",
+              )}
+            </p>
+          )}
         </div>
         <Switch
-          checked={pushSubscribed === true}
-          disabled={pending || !capabilities.push}
+          checked={state.checked}
+          disabled={state.disabled}
           onCheckedChange={(checked) => void toggle(checked)}
           aria-label={t("installation.notificationsEnable")}
         />
       </div>
-      {denied ||
-      (capabilities.push &&
-        typeof Notification !== "undefined" &&
-        Notification.permission === "denied") ? (
+      {state.note === "denied" ? (
         <p className="flex gap-2 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
           <Bell className="size-4 shrink-0" />
           {t("installation.notificationsDenied")}
@@ -188,8 +245,9 @@ export function InstallationNotificationsDialog({
 
 export function InstallationNotificationControl() {
   const { t } = useI18n();
+  const { available, capabilities } = useInstallation();
   const [open, setOpen] = useState(false);
-  if (!installationId()) return null;
+  if (!available && !capabilities.push) return null;
   return (
     <>
       <IconButton

@@ -1,6 +1,9 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import type { ResolvedPrincipal } from "../auth/types.ts";
 import { tenants } from "../db/schema/identity.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
+import type { CockpitPushAudienceRow } from "../identity/index.ts";
+import { logger } from "../logging/logger.ts";
 import type {
   AttentionClass,
   AttentionItem,
@@ -15,7 +18,10 @@ import {
   createCockpitPushFixtures,
   recordingPushSender,
 } from "../tests/cockpit-push-fixture.ts";
-import { dispatchCockpitPushAttention } from "./cockpit-push-attention.ts";
+import {
+  dedupeSameDeviceAudience,
+  dispatchCockpitPushAttention,
+} from "./cockpit-push-attention.ts";
 
 const SUBJECT = "https://subkit.example";
 let ctx: HttpTestServer;
@@ -183,4 +189,147 @@ test("attention RBAC decides who is woken", async () => {
   });
   expect(sender.sent).toContain(admin.endpoint);
   expect(sender.sent).not.toContain(member.endpoint);
+});
+
+describe("browser tab attention push", () => {
+  function countingAttention(items: AttentionItem[]) {
+    const principals: ResolvedPrincipal[] = [];
+    return {
+      principals,
+      attention: async (principal: ResolvedPrincipal) => {
+        principals.push(principal);
+        return { items };
+      },
+    };
+  }
+
+  async function dispatchFor(tenantId: string, items: AttentionItem[]) {
+    const sender = recordingPushSender();
+    const built = countingAttention(items);
+    await dispatchCockpitPushAttention(ctx.db, tenantId, {
+      now: at,
+      subject: SUBJECT,
+      attention: built.attention,
+      send: sender.send,
+    });
+    return { sent: sender.sent, principals: built.principals };
+  }
+
+  async function isolatedTenant() {
+    const [tenant] = await ctx.db
+      .insert(tenants)
+      .values({ slug: `t-push-browser-${nextUuid()}`, display_name: "Browser push tenant" })
+      .returning();
+    if (!tenant) throw new Error("missing browser push tenant");
+    await fixtures.prepareKey(tenant.id);
+    return tenant.id;
+  }
+
+  test("a browser row is notified once per new attention item", async () => {
+    const tenantId = await isolatedTenant();
+    const browser = await fixtures.browser(tenantId);
+    const first = await dispatchFor(tenantId, [conversation]);
+    expect(first.sent).toEqual([browser.endpoint]);
+    expect(first.principals.map((principal) => principal.installation_id)).toEqual([undefined]);
+    expect(first.principals[0]).toMatchObject({
+      kind: "user",
+      id: browser.userId,
+      tenant_id: tenantId,
+    });
+    expect((await dispatchFor(tenantId, [conversation])).sent).toEqual([]);
+  });
+
+  test("one attention build per user and one push per device", async () => {
+    const tenantId = await isolatedTenant();
+    const installed = await fixtures.installation(tenantId);
+    const browser = await fixtures.browser(tenantId, { userId: installed.userId });
+    await fixtures.onDevice(installed, "11111111-1111-4111-8111-111111111111");
+    await fixtures.onDevice(browser, "22222222-2222-4222-8222-222222222222");
+    const result = await dispatchFor(tenantId, [conversation]);
+    expect(result.principals).toHaveLength(1);
+    expect(result.sent.sort()).toEqual([installed.endpoint, browser.endpoint].sort());
+  });
+
+  test("the installed app wins on a shared device and the skip is logged", async () => {
+    const tenantId = await isolatedTenant();
+    const installed = await fixtures.installation(tenantId);
+    const browser = await fixtures.browser(tenantId, {
+      userId: installed.userId,
+      device: "33333333-3333-4333-8333-333333333333",
+    });
+    await fixtures.onDevice(installed, "33333333-3333-4333-8333-333333333333");
+    const info = spyOn(logger, "info");
+    try {
+      const result = await dispatchFor(tenantId, [conversation]);
+      expect(result.sent).toEqual([installed.endpoint]);
+      expect(await fixtures.storedKeys(browser)).toBeNull();
+      const sent = info.mock.calls
+        .map((call) => call[0] as Record<string, unknown>)
+        .filter((fields) => fields.action === "cockpit_push.sent" && fields.tenant_id === tenantId);
+      expect(sent).toEqual([
+        expect.objectContaining({
+          kind: "installation",
+          installation_id: installed.installationId,
+          skipped_same_device: 1,
+        }),
+      ]);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  test("rows without a device hash are never treated as the same device", async () => {
+    const tenantId = await isolatedTenant();
+    const installed = await fixtures.installation(tenantId);
+    const browser = await fixtures.browser(tenantId, { userId: installed.userId });
+    const result = await dispatchFor(tenantId, [conversation]);
+    expect(result.sent.sort()).toEqual([installed.endpoint, browser.endpoint].sort());
+  });
+
+  test("a failed browser send restores its claim", async () => {
+    const tenantId = await isolatedTenant();
+    const browser = await fixtures.browser(tenantId);
+    const rejected = rejectingPushSender(500);
+    await dispatchCockpitPushAttention(ctx.db, tenantId, {
+      now: at,
+      subject: SUBJECT,
+      attention: async () => ({ items: [conversation] }),
+      send: rejected.send,
+    });
+    expect(rejected.sent).toEqual([browser.endpoint]);
+    expect(await fixtures.storedKeys(browser)).toBeNull();
+    expect((await dispatchFor(tenantId, [conversation])).sent).toEqual([browser.endpoint]);
+  });
+});
+
+describe("same-device dedupe", () => {
+  const row = (
+    id: string,
+    kind: "installation" | "browser",
+    userId: string,
+    device: string | null,
+  ): CockpitPushAudienceRow => ({
+    id,
+    kind,
+    installation_id: kind === "installation" ? `inst-${id}` : null,
+    user_id: userId,
+    device_sha256: device,
+    notified_attention_keys: null,
+  });
+
+  test("drops only browser rows that share a device with the same user's installation", () => {
+    const rows = [
+      row("b1", "browser", "u1", "d1"),
+      row("i1", "installation", "u1", "d1"),
+      row("b2", "browser", "u1", "d2"),
+      row("b3", "browser", "u1", null),
+      row("i2", "installation", "u1", null),
+      row("b4", "browser", "u2", "d1"),
+    ];
+    const result = dedupeSameDeviceAudience(rows);
+    expect(result.kept.map((kept) => kept.id)).toEqual(["i1", "b2", "b3", "i2", "b4"]);
+    expect(result.skipped.map((skipped) => skipped.id)).toEqual(["b1"]);
+    expect(dedupeSameDeviceAudience(rows)).toEqual(result);
+    expect(dedupeSameDeviceAudience([])).toEqual({ kept: [], skipped: [] });
+  });
 });

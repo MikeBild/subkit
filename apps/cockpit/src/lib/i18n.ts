@@ -5039,12 +5039,12 @@ const EN = {
   "installation.notificationsEnable": "Enable neutral notifications",
   "installation.notificationsHint": "Alerts contain no workspace or workflow details.",
   "installation.notificationsDenied":
-    "Browser permission was denied. Allow notifications in your browser settings.",
+    "Notifications are blocked. Allow them in your browser's site settings.",
+  "installation.notificationsHandledByApp": "The installed app already notifies on this device.",
   "installation.openApp": "Open app",
-  "installation.notificationsInApp":
-    "Notifications are available in the installed app. Open it and turn them on with the bell.",
+  "installation.notificationsInApp": "You can turn on notifications here or in the app.",
   "installation.notificationsAfterInstall":
-    "After installing, turn on neutral notifications in the app with the bell.",
+    "Notifications also work in this browser tab via the bell.",
   "installation.importTitle": "Add to {category}",
   "installation.importHint":
     "Review files before adding them. This does not admit anything as knowledge.",
@@ -10210,12 +10210,14 @@ const DE: Record<TranslationKey, string> = {
   "installation.notificationsHint":
     "Alerts enthalten keine Details zu Arbeitsbereichen oder Workflows.",
   "installation.notificationsDenied":
-    "Browser-Berechtigung verweigert. Bitte in den Einstellungen erlauben.",
+    "Benachrichtigungen sind blockiert. Erlaube sie in den Website-Einstellungen des Browsers.",
+  "installation.notificationsHandledByApp":
+    "Die installierte App benachrichtigt auf diesem Gerät bereits.",
   "installation.openApp": "App öffnen",
   "installation.notificationsInApp":
-    "Benachrichtigungen gibt es in der installierten App. Öffne sie und aktiviere sie über die Glocke.",
+    "Benachrichtigungen kannst du hier oder in der App aktivieren.",
   "installation.notificationsAfterInstall":
-    "Aktiviere nach der Installation neutrale Benachrichtigungen in der App über die Glocke.",
+    "Benachrichtigungen funktionieren auch in diesem Browser-Tab über die Glocke.",
   "installation.importTitle": "Hinzufügen zu {category}",
   "installation.importHint":
     "Dateien vor dem Hinzufügen prüfen. Es wird nichts automatisch als Wissen übernommen.",

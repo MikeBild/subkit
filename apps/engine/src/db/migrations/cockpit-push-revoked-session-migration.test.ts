@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -55,15 +55,11 @@ test(
           last_seen_at: at,
           revoked_at: revoked ? at : null,
         });
-        await ctx.db.insert(cockpitPushSubscriptions).values({
-          tenant_id: tenant.id,
-          installation_id: installationId,
-          session_id: sessionId,
-          endpoint_sha256: sessionId.replace(/-/g, ""),
-          ciphertext: Buffer.from("cipher"),
-          iv: Buffer.from("iv"),
-          auth_tag: Buffer.from("tag"),
-        });
+        await ctx.db.execute(sql`
+          insert into cockpit_push_subscriptions
+            (tenant_id, installation_id, session_id, endpoint_sha256, ciphertext, iv, auth_tag)
+          values (${tenant.id}, ${installationId}, ${sessionId}, ${sessionId.replace(/-/g, "")},
+            '\\x00'::bytea, '\\x00'::bytea, '\\x00'::bytea)`);
         return sessionId;
       };
       const loggedOut = await subscription(true);

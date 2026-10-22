@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
   browserSessionCookie,
   browserSessionForPrincipal,
@@ -101,6 +102,36 @@ describe("cockpit browser boundary", () => {
 
     expect(icon.status).toBe(200);
     expect(icon.headers.get("cache-control")).toBe("no-cache");
+  });
+
+  test("serves the browser tab push worker as an uncached script under the Cockpit policy", async () => {
+    const app = createOpenApiApp();
+    registerCockpitRoutes(app);
+    const shell = await app.request("http://subkit.test/cockpit/");
+    const source = readFileSync(
+      new URL("../../../cockpit/public/browser-worker.js", import.meta.url),
+      "utf8",
+    );
+
+    const worker = await app.request("http://subkit.test/cockpit/sw.js");
+    expect(worker.status).toBe(200);
+    expect(worker.headers.get("content-type")).toBe("application/javascript; charset=utf-8");
+    expect(worker.headers.get("cache-control")).toBe("private, no-store");
+    expect(worker.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(worker.headers.get("service-worker-allowed")).toBeNull();
+    expect(worker.headers.get("etag")).toBeNull();
+    expect(worker.headers.get("content-security-policy")).toBe(
+      shell.headers.get("content-security-policy"),
+    );
+    expect(await worker.text()).toBe(source);
+
+    const head = await app.request("http://subkit.test/cockpit/sw.js", { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(head.headers.get("content-type")).toBe("application/javascript; charset=utf-8");
+    expect(await head.text()).toBe("");
+
+    const page = await app.request("http://subkit.test/cockpit/settings");
+    expect(page.headers.get("content-type")).toBe("text/html; charset=utf-8");
   });
 
   test("serves the app icon under the cockpit base path, as an image", async () => {

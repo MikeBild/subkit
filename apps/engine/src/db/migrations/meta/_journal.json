@@ -1009,6 +1009,13 @@
       "when": 1792652291535,
       "tag": "0143_cockpit_push_revoked_session_cleanup",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1792657811892,
+      "tag": "0144_cockpit_push_browser_subscriptions",
+      "breakpoints": true
     }
   ]
 }

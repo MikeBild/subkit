@@ -50,7 +50,6 @@ test("a missing subject is logged instead of silently skipped", async () => {
   const result = await deliverCockpitPush({
     db: ctx.db,
     tenant_id: ctx.tenantId,
-    installation_id: fixture.installationId,
     subscription_ids: [fixture.subscriptionId],
     new_items: 1,
     subject: cockpitPushSubject("http://subkit.example"),
@@ -67,7 +66,6 @@ test("send failures carry the status and host without endpoint or key material",
   await deliverCockpitPush({
     db: ctx.db,
     tenant_id: ctx.tenantId,
-    installation_id: fixture.installationId,
     subscription_ids: [fixture.subscriptionId],
     new_items: 1,
     subject: "https://subkit.example",
@@ -81,6 +79,7 @@ test("send failures carry the status and host without endpoint or key material",
     .find((fields) => fields.action === "cockpit_push.send_failed");
   expect(failure).toMatchObject({
     tenant_id: ctx.tenantId,
+    kind: "installation",
     installation_id: fixture.installationId,
     status_code: 403,
     endpoint_host: "fcm.googleapis.com",
@@ -101,7 +100,6 @@ test("a delivery is logged and an empty audience logs nothing at info", async ()
   await deliverCockpitPush({
     db: ctx.db,
     tenant_id: ctx.tenantId,
-    installation_id: fixture.installationId,
     subscription_ids: [fixture.subscriptionId],
     new_items: 2,
     subject: "https://subkit.example",
@@ -117,7 +115,6 @@ test("a delivery is logged and an empty audience logs nothing at info", async ()
   await deliverCockpitPush({
     db: ctx.db,
     tenant_id: ctx.tenantId,
-    installation_id: fixture.installationId,
     subscription_ids: [],
     new_items: 0,
     subject: "https://subkit.example",
@@ -127,4 +124,44 @@ test("a delivery is logged and an empty audience logs nothing at info", async ()
   expect(actions(info.mock.calls).filter((action) => action?.startsWith("cockpit_push"))).toEqual(
     [],
   );
+});
+
+test("browser tab deliveries are logged with their kind and without an installation", async () => {
+  const warn = spy("warn");
+  const info = spy("info");
+  const delivered = await fixtures.browser(ctx.tenantId);
+  const gone = await fixtures.browser(ctx.tenantId);
+  const failed = await fixtures.browser(ctx.tenantId);
+  await deliverCockpitPush({
+    db: ctx.db,
+    tenant_id: ctx.tenantId,
+    subscription_ids: [delivered.subscriptionId, gone.subscriptionId, failed.subscriptionId],
+    new_items: 1,
+    subject: "https://subkit.example",
+    now: at,
+    send: (async (subscription: { endpoint: string }) => {
+      if (subscription.endpoint === gone.endpoint)
+        throw Object.assign(new Error("push subscription expired"), { statusCode: 410 });
+      if (subscription.endpoint === failed.endpoint)
+        throw Object.assign(new Error("push service rejected"), { statusCode: 403 });
+      return {};
+    }) as never,
+  });
+  const fields = [...info.mock.calls, ...warn.mock.calls].map(
+    (call) => call[0] as Record<string, unknown>,
+  );
+  for (const action of [
+    "cockpit_push.sent",
+    "cockpit_push.subscription_gone",
+    "cockpit_push.send_failed",
+  ])
+    expect(fields.find((entry) => entry.action === action)).toMatchObject({
+      tenant_id: ctx.tenantId,
+      kind: "browser",
+      installation_id: null,
+    });
+  expect(fields.find((entry) => entry.action === "cockpit_push.sent")).toMatchObject({
+    attempted: 3,
+    delivered: 1,
+  });
 });

@@ -10,16 +10,25 @@ import {
 } from "react";
 import {
   deletePushSubscription,
+  getCurrentCockpitInstallation,
   preparePushSubscription,
   pushSubscriptionStatus,
+  rebindPushSubscriptionBinding,
   savePushSubscription,
 } from "@/api/cockpit-installations";
 import {
+  browserPushRegistration,
   clearInstallationInput,
+  enableBrowserPush,
   installationCapabilities,
+  installationPushHandlesDevice,
+  installationWorkerController,
   mountInstallationManifest,
+  pushDeviceId,
   rebindPushSubscription,
   registerInstallationWorker,
+  releaseBrowserPush,
+  restoreBrowserPush,
   vapidApplicationServerKey,
 } from "./installation-browser";
 import { installationId } from "./installation-context";
@@ -43,7 +52,9 @@ export interface InstallationContextValue {
   incomingError: "sign-in" | "retry" | "unavailable" | null;
   stageIncoming(value: InstallationIncoming): void;
   clearIncoming(): void;
+  pushScope: "installation" | "browser";
   pushSubscribed: boolean | null;
+  handledByApp: boolean;
   refreshPushSubscription(): Promise<boolean>;
   enablePush(): Promise<boolean>;
   disablePush(): Promise<void>;
@@ -97,7 +108,8 @@ function incomingId(search = window.location.search): string | null {
 function requestIncoming(registration?: ServiceWorkerRegistration | null): boolean {
   const id = incomingId();
   if (!id) return false;
-  const worker = navigator.serviceWorker?.controller ?? registration?.active;
+  const worker =
+    installationWorkerController(navigator.serviceWorker?.controller) ?? registration?.active;
   if (!worker) return false;
   worker.postMessage({ type: "take-incoming", id });
   return true;
@@ -121,6 +133,7 @@ export function InstallationProvider({
   children: ReactNode;
 }) {
   const available = installationId() !== null;
+  const pushScope = available ? "installation" : "browser";
   const capabilities = installationCapabilities();
   const [incoming, setIncoming] = useState<InstallationIncomingReceipt | null>(null);
   const [incomingError, setIncomingError] = useState<"sign-in" | "retry" | "unavailable" | null>(
@@ -133,6 +146,7 @@ export function InstallationProvider({
     },
   );
   const [pushSubscribed, setPushSubscribed] = useState<boolean | null>(null);
+  const [handledByApp, setHandledByApp] = useState(false);
   const generation = useRef(0);
   const stageIncoming = useCallback(
     (value: InstallationIncoming) => {
@@ -146,7 +160,29 @@ export function InstallationProvider({
   useEffect(() => {
     setIncoming(null);
     setPushSubscribed(null);
+    setHandledByApp(false);
   }, [identity.tenantId, identity.userId]);
+
+  useEffect(() => {
+    if (available || !capabilities.push) return;
+    let active = true;
+    void restoreBrowserPush({
+      container: navigator.serviceWorker,
+      origin: window.location.origin,
+      pathname: window.location.pathname,
+      permission: Notification.permission,
+      status: pushSubscriptionStatus,
+      prepare: preparePushSubscription,
+      rebind: (subscription) => rebindPushSubscriptionBinding(subscription, pushDeviceId()),
+    })
+      .then((bound) => {
+        if (bound && active) setPushSubscribed(true);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [available, capabilities.push, identity.tenantId, identity.userId]);
 
   useEffect(() => {
     if (!available) return;
@@ -189,7 +225,7 @@ export function InstallationProvider({
           permission: Notification.permission,
           status: pushSubscriptionStatus,
           prepare: preparePushSubscription,
-          save: savePushSubscription,
+          save: (subscription) => savePushSubscription(subscription, { device: pushDeviceId() }),
         })
           .then((bound) => {
             if (bound && current()) setPushSubscribed(true);
@@ -226,13 +262,34 @@ export function InstallationProvider({
     clearInstallationInput();
   }, []);
   const refreshPushSubscription = useCallback(async () => {
-    if (!available) return false;
+    if (!available && !capabilities.push) return false;
     const { subscribed } = await pushSubscriptionStatus();
     setPushSubscribed(subscribed);
+    if (!available)
+      setHandledByApp(
+        !subscribed &&
+          (await getCurrentCockpitInstallation()
+            .then(({ installation }) =>
+              installationPushHandlesDevice(navigator.serviceWorker, installation?.id ?? null),
+            )
+            .catch(() => false)),
+      );
     return subscribed;
-  }, [available]);
+  }, [available, capabilities.push]);
   const enablePush = useCallback(async () => {
-    if (!available || !capabilities.push) return false;
+    if (!capabilities.push) return false;
+    if (!available) {
+      const enabled = await enableBrowserPush({
+        container: navigator.serviceWorker,
+        pathname: window.location.pathname,
+        requestPermission: () => Notification.requestPermission(),
+        prepare: preparePushSubscription,
+        save: (subscription, device) => savePushSubscription(subscription, { device }),
+        device: () => pushDeviceId(),
+      });
+      setPushSubscribed(enabled);
+      return enabled;
+    }
     const permission = await Notification.requestPermission();
     if (permission !== "granted") {
       setPushSubscribed(false);
@@ -240,15 +297,17 @@ export function InstallationProvider({
     }
     const registration = await registerInstallationWorker();
     if (!registration) return false;
+    const device = pushDeviceId();
     const rebound = await rebindPushSubscription({
       registration,
       permission,
       status: async () => ({ subscribed: false }),
       prepare: preparePushSubscription,
-      save: savePushSubscription,
+      save: (subscription) => savePushSubscription(subscription, { device }),
     });
     if (rebound) {
       setPushSubscribed(true);
+      void releaseBrowserPush(navigator.serviceWorker, window.location.origin).catch(() => false);
       return true;
     }
     const { public_key } = await preparePushSubscription();
@@ -257,24 +316,25 @@ export function InstallationProvider({
       applicationServerKey: vapidApplicationServerKey(public_key),
     });
     try {
-      await savePushSubscription(subscription);
+      await savePushSubscription(subscription, { device });
     } catch (error) {
       await subscription.unsubscribe().catch(() => {});
       throw error;
     }
     setPushSubscribed(true);
+    void releaseBrowserPush(navigator.serviceWorker, window.location.origin).catch(() => false);
     return true;
   }, [available, capabilities.push]);
   const disablePush = useCallback(async () => {
-    if (!available) return;
-    const registration = await navigator.serviceWorker?.getRegistration(
-      `${location.origin}${location.pathname}`,
-    );
+    if (!available && !capabilities.push) return;
+    const registration = available
+      ? await navigator.serviceWorker?.getRegistration(`${location.origin}${location.pathname}`)
+      : await browserPushRegistration(navigator.serviceWorker, location.origin);
     const subscription = await registration?.pushManager.getSubscription();
     await subscription?.unsubscribe();
     await deletePushSubscription();
     setPushSubscribed(false);
-  }, [available]);
+  }, [available, capabilities.push]);
   const value = useMemo<InstallationContextValue>(
     () => ({
       available,
@@ -283,7 +343,9 @@ export function InstallationProvider({
       incomingError,
       stageIncoming,
       clearIncoming,
+      pushScope,
       pushSubscribed,
+      handledByApp,
       refreshPushSubscription,
       enablePush,
       disablePush,
@@ -295,7 +357,9 @@ export function InstallationProvider({
       incomingError,
       stageIncoming,
       clearIncoming,
+      pushScope,
       pushSubscribed,
+      handledByApp,
       refreshPushSubscription,
       enablePush,
       disablePush,

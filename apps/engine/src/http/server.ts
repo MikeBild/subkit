@@ -30,7 +30,7 @@ import { browserCsrfMiddleware } from "./middleware/browser-csrf.ts";
 import { browserTenantMiddleware } from "./middleware/browser-tenant.ts";
 import {
   requireCockpitInstallation,
-  resolveCockpitInstallationContext,
+  resolveCockpitPushContext,
 } from "./middleware/cockpit-installation.ts";
 import { guardCockpitInstallationStreams } from "./middleware/cockpit-installation-stream.ts";
 import { errorMiddleware, mapKnownErrorResponse } from "./middleware/error.ts";
@@ -323,7 +323,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerLoginRoutes(app);
   registerCockpitIdentityRoutes(app);
   registerCockpitInstallationRoutes(app);
-  registerCockpitPushRoutes(app, resolveCockpitInstallationContext);
+  registerCockpitPushRoutes(app, resolveCockpitPushContext);
   registerTenantBrandingRoutes(app);
   registerMcpOAuthRoutes(app);
   registerOAuthClientAdminRoutes(app);

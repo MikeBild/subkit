@@ -1,4 +1,4 @@
-import { apiRequest } from "./client";
+import { ApiError, apiRequest } from "./client";
 
 export interface CockpitInstallation {
   id: string;
@@ -29,12 +29,33 @@ export function preparePushSubscription(): Promise<{ public_key: string }> {
   return apiRequest("/v1/cockpit/push-subscription/prepare", { method: "POST", body: "{}" });
 }
 
-export function savePushSubscription(subscription: PushSubscription): Promise<void> {
+export function savePushSubscription(
+  subscription: PushSubscription,
+  options: { rebind?: boolean; device?: string | null } = {},
+): Promise<void> {
   const value = subscription.toJSON();
   return apiRequest("/v1/cockpit/push-subscription", {
     method: "PUT",
-    body: JSON.stringify({ endpoint: value.endpoint, keys: value.keys }),
+    body: JSON.stringify({
+      endpoint: value.endpoint,
+      keys: value.keys,
+      ...(options.rebind ? { rebind: true } : {}),
+      ...(options.device ? { device: options.device } : {}),
+    }),
   });
+}
+
+export async function rebindPushSubscriptionBinding(
+  subscription: PushSubscription,
+  device: string | null,
+): Promise<boolean> {
+  try {
+    await savePushSubscription(subscription, { rebind: true, device });
+    return true;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) return false;
+    throw error;
+  }
 }
 
 export function deletePushSubscription(): Promise<void> {

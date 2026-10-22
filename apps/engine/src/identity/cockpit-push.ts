@@ -1,5 +1,19 @@
 import { createHash, ECDH } from "node:crypto";
-import { and, asc, eq, exists, gt, inArray, isNull, ne, or, type SQL, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  exists,
+  gt,
+  inArray,
+  isNull,
+  ne,
+  notInArray,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import webpush from "web-push";
 import { auditAwait } from "../audit/audit.ts";
@@ -15,6 +29,7 @@ import { now } from "../utils/clock.ts";
 const PUSH_AUDIENCE_MAX = 200;
 const PUSH_TENANTS_MAX = 200;
 const PUSH_TTL_SECONDS = 4 * 60 * 60;
+const BROWSER_PUSH_ROWS_PER_USER = 10;
 export const COCKPIT_PUSH_IDLE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
 const PUSH_ENDPOINT_HOSTS = new Set(["fcm.googleapis.com", "updates.push.services.mozilla.com"]);
 const NEUTRAL_PUSH_PAYLOAD = JSON.stringify({
@@ -29,12 +44,28 @@ export interface CockpitPushSubscriptionInput {
   keys: { p256dh: string; auth: string };
 }
 
-export interface CockpitPushContext {
-  installation_id: string;
+export type CockpitPushKind = "installation" | "browser";
+
+interface CockpitPushSessionContext {
   tenant_id: string;
   user_id: string;
   session_id: string;
   expires_at: Date | null;
+}
+
+export interface CockpitInstallationPushContext extends CockpitPushSessionContext {
+  kind: "installation";
+  installation_id: string;
+}
+
+export interface CockpitBrowserPushContext extends CockpitPushSessionContext {
+  kind: "browser";
+}
+
+export type CockpitPushContext = CockpitInstallationPushContext | CockpitBrowserPushContext;
+
+export interface CockpitPushSubscriptionOptions {
+  device?: string;
 }
 
 interface VapidKeyPair {
@@ -51,7 +82,25 @@ function endpointHash(endpoint: string): string {
 }
 
 function subscriptionAad(context: CockpitPushContext, hash: string): string {
-  return `cockpit-push-subscription:${context.tenant_id}:${context.installation_id}:${context.session_id}:${hash}`;
+  return context.kind === "browser"
+    ? `cockpit-push-browser-subscription:${context.tenant_id}:${context.user_id}:${hash}`
+    : `cockpit-push-subscription:${context.tenant_id}:${context.installation_id}:${context.session_id}:${hash}`;
+}
+
+function deviceHash(context: CockpitPushContext, device: string | undefined): string | null {
+  return device
+    ? createHash("sha256").update(`${context.tenant_id}:${context.user_id}:${device}`).digest("hex")
+    : null;
+}
+
+function contextMetadata(context: CockpitPushContext): Record<string, unknown> {
+  return context.kind === "browser"
+    ? { kind: "browser", session_id: context.session_id }
+    : {
+        kind: "installation",
+        installation_id: context.installation_id,
+        session_id: context.session_id,
+      };
 }
 
 function isPushEndpointHost(host: string): boolean {
@@ -77,22 +126,37 @@ export function parseCockpitPushEndpoint(endpoint: string): URL {
   return value;
 }
 
-function activeSessionWhere(
-  context: Pick<CockpitPushContext, "tenant_id" | "installation_id"> & { session_id?: string },
-  at: Date,
-) {
+function subscriptionScopeWhere(context: CockpitPushContext) {
+  return context.kind === "browser"
+    ? and(
+        eq(cockpitPushSubscriptions.tenant_id, context.tenant_id),
+        eq(cockpitPushSubscriptions.kind, "browser"),
+        eq(cockpitPushSubscriptions.user_id, context.user_id),
+        eq(cockpitPushSubscriptions.session_id, context.session_id),
+      )
+    : and(
+        eq(cockpitPushSubscriptions.tenant_id, context.tenant_id),
+        eq(cockpitPushSubscriptions.kind, "installation"),
+        eq(cockpitPushSubscriptions.installation_id, context.installation_id),
+        eq(cockpitPushSubscriptions.session_id, context.session_id),
+      );
+}
+
+function activeSessionWhere(context: CockpitPushContext, at: Date) {
   return and(
-    eq(cockpitPushSubscriptions.tenant_id, context.tenant_id),
-    eq(cockpitPushSubscriptions.installation_id, context.installation_id),
-    ...(context.session_id ? [eq(cockpitPushSubscriptions.session_id, context.session_id)] : []),
+    subscriptionScopeWhere(context),
     eq(sessions.tenant_id, context.tenant_id),
-    eq(sessions.installation_id, context.installation_id),
+    context.kind === "browser"
+      ? and(isNull(sessions.installation_id), eq(sessions.user_id, context.user_id))
+      : and(
+          eq(sessions.installation_id, context.installation_id),
+          eq(cockpitInstallations.tenant_id, context.tenant_id),
+          eq(cockpitInstallations.owner_user_id, sessions.user_id),
+          isNull(cockpitInstallations.revoked_at),
+        ),
     isNull(sessions.revoked_at),
     gt(sessions.expires_at, at),
     or(isNull(sessions.absolute_expires_at), gt(sessions.absolute_expires_at, at)),
-    eq(cockpitInstallations.tenant_id, context.tenant_id),
-    eq(cockpitInstallations.owner_user_id, sessions.user_id),
-    isNull(cockpitInstallations.revoked_at),
     eq(users.tenant_id, context.tenant_id),
     eq(users.id, sessions.user_id),
     eq(users.status, "active"),
@@ -103,33 +167,47 @@ function activeSessionWhere(
   );
 }
 
+const audienceUserId = sql<string>`coalesce(${cockpitPushSubscriptions.user_id}, ${cockpitInstallations.owner_user_id})`;
+
 function pushAudienceWhere(exec: Executor, tenantScope: SQL, at: Date) {
   const recentSessions = alias(sessions, "cockpit_push_recent_sessions");
   const idleCutoff = new Date(at.getTime() - COCKPIT_PUSH_IDLE_MAX_MS);
   return and(
     tenantScope,
     eq(sessions.tenant_id, cockpitPushSubscriptions.tenant_id),
-    eq(sessions.installation_id, cockpitPushSubscriptions.installation_id),
-    eq(sessions.user_id, cockpitInstallations.owner_user_id),
-    eq(cockpitInstallations.tenant_id, cockpitPushSubscriptions.tenant_id),
-    isNull(cockpitInstallations.revoked_at),
     eq(users.tenant_id, cockpitPushSubscriptions.tenant_id),
     eq(users.status, "active"),
     isNull(users.deleted_at),
     eq(tenants.status, "active"),
     isNull(tenants.deleted_at),
-    exists(
-      exec
-        .select({ one: sql`1` })
-        .from(recentSessions)
-        .where(
-          and(
-            eq(recentSessions.tenant_id, cockpitPushSubscriptions.tenant_id),
-            eq(recentSessions.installation_id, cockpitPushSubscriptions.installation_id),
-            eq(recentSessions.user_id, cockpitInstallations.owner_user_id),
-            sql`coalesce(${recentSessions.last_seen_at}, ${recentSessions.created_at}) > ${idleCutoff}`,
-          ),
+    or(
+      and(
+        eq(cockpitPushSubscriptions.kind, "installation"),
+        eq(sessions.installation_id, cockpitPushSubscriptions.installation_id),
+        eq(sessions.user_id, cockpitInstallations.owner_user_id),
+        eq(cockpitInstallations.tenant_id, cockpitPushSubscriptions.tenant_id),
+        isNull(cockpitInstallations.revoked_at),
+        exists(
+          exec
+            .select({ one: sql`1` })
+            .from(recentSessions)
+            .where(
+              and(
+                eq(recentSessions.tenant_id, cockpitPushSubscriptions.tenant_id),
+                eq(recentSessions.installation_id, cockpitPushSubscriptions.installation_id),
+                eq(recentSessions.user_id, cockpitInstallations.owner_user_id),
+                sql`coalesce(${recentSessions.last_seen_at}, ${recentSessions.created_at}) > ${idleCutoff}`,
+              ),
+            ),
         ),
+      ),
+      and(
+        eq(cockpitPushSubscriptions.kind, "browser"),
+        isNull(cockpitPushSubscriptions.installation_id),
+        isNull(sessions.installation_id),
+        eq(sessions.user_id, cockpitPushSubscriptions.user_id),
+        sql`coalesce(${sessions.last_seen_at}, ${sessions.created_at}) > ${idleCutoff}`,
+      ),
     ),
   );
 }
@@ -190,18 +268,14 @@ export async function prepareCockpitPushKey(db: Db, context: CockpitPushContext)
       resource_type: "cockpit_push_key",
       resource_id: context.tenant_id,
       result: "success",
-      metadata: { installation_id: context.installation_id, session_id: context.session_id },
+      metadata: contextMetadata(context),
     },
     db,
   );
   return keys.publicKey;
 }
 
-export async function upsertCockpitPushSubscription(
-  db: Db,
-  context: CockpitPushContext,
-  subscription: CockpitPushSubscriptionInput,
-): Promise<void> {
+function verifiedSubscription(subscription: CockpitPushSubscriptionInput): URL {
   const publicKey = Buffer.from(subscription.keys.p256dh, "base64url");
   const auth = Buffer.from(subscription.keys.auth, "base64url");
   if (
@@ -217,37 +291,213 @@ export async function upsertCockpitPushSubscription(
   } catch {
     throw new TypeError("invalid push key material");
   }
-  const endpoint = parseCockpitPushEndpoint(subscription.endpoint);
+  return parseCockpitPushEndpoint(subscription.endpoint);
+}
+
+type EncryptedSubscription = ReturnType<typeof encryptSecret>;
+
+async function upsertInstallationSubscription(
+  tx: Executor,
+  context: CockpitInstallationPushContext,
+  hash: string,
+  encrypted: EncryptedSubscription,
+  device: string | null,
+): Promise<void> {
+  const superseded = await tx
+    .delete(cockpitPushSubscriptions)
+    .where(
+      and(
+        eq(cockpitPushSubscriptions.tenant_id, context.tenant_id),
+        eq(cockpitPushSubscriptions.installation_id, context.installation_id),
+        eq(cockpitPushSubscriptions.endpoint_sha256, hash),
+        ne(cockpitPushSubscriptions.session_id, context.session_id),
+      ),
+    )
+    .returning({ notified_attention_keys: cockpitPushSubscriptions.notified_attention_keys });
+  const carried = superseded.find((row) => row.notified_attention_keys !== null);
+  await tx
+    .insert(cockpitPushSubscriptions)
+    .values({
+      tenant_id: context.tenant_id,
+      kind: "installation",
+      installation_id: context.installation_id,
+      session_id: context.session_id,
+      endpoint_sha256: hash,
+      device_sha256: device,
+      ...encrypted,
+      ...(carried ? { notified_attention_keys: carried.notified_attention_keys } : {}),
+    })
+    .onConflictDoUpdate({
+      target: [cockpitPushSubscriptions.installation_id, cockpitPushSubscriptions.session_id],
+      set: {
+        endpoint_sha256: hash,
+        device_sha256: device,
+        ...encrypted,
+        updated_at: new Date(now()),
+      },
+    });
+  await auditAwait(
+    {
+      tenant_id: context.tenant_id,
+      actor_type: "user",
+      actor_id: context.user_id,
+      action: AuditAction.COCKPIT_PUSH_SUBSCRIPTION_UPSERTED,
+      resource_type: "cockpit_push_subscription",
+      resource_id: context.session_id,
+      result: "success",
+      metadata: {
+        kind: "installation",
+        installation_id: context.installation_id,
+        superseded: superseded.length,
+      },
+    },
+    tx,
+  );
+}
+
+function tenantBrowserRowsOf(context: CockpitBrowserPushContext) {
+  return and(
+    eq(cockpitPushSubscriptions.tenant_id, context.tenant_id),
+    eq(cockpitPushSubscriptions.kind, "browser"),
+    eq(cockpitPushSubscriptions.user_id, context.user_id),
+  );
+}
+
+async function pruneBrowserSubscriptions(
+  tx: Executor,
+  context: CockpitBrowserPushContext,
+  hash: string,
+): Promise<number> {
+  const tenantOtherBrowserRows = and(
+    tenantBrowserRowsOf(context),
+    ne(cockpitPushSubscriptions.endpoint_sha256, hash),
+  );
+  const kept = tx
+    .select({ id: cockpitPushSubscriptions.id })
+    .from(cockpitPushSubscriptions)
+    .where(tenantOtherBrowserRows)
+    .orderBy(desc(cockpitPushSubscriptions.updated_at), desc(cockpitPushSubscriptions.id))
+    .limit(BROWSER_PUSH_ROWS_PER_USER - 1);
+  const pruned = await tx
+    .delete(cockpitPushSubscriptions)
+    .where(and(tenantOtherBrowserRows, notInArray(cockpitPushSubscriptions.id, kept)))
+    .returning({ id: cockpitPushSubscriptions.id });
+  return pruned.length;
+}
+
+async function upsertBrowserSubscription(
+  tx: Executor,
+  context: CockpitBrowserPushContext,
+  hash: string,
+  encrypted: EncryptedSubscription,
+  device: string | null,
+): Promise<void> {
+  const superseded = await tx
+    .delete(cockpitPushSubscriptions)
+    .where(
+      and(
+        eq(cockpitPushSubscriptions.tenant_id, context.tenant_id),
+        eq(cockpitPushSubscriptions.kind, "browser"),
+        or(
+          eq(cockpitPushSubscriptions.endpoint_sha256, hash),
+          and(
+            eq(cockpitPushSubscriptions.user_id, context.user_id),
+            eq(cockpitPushSubscriptions.session_id, context.session_id),
+          ),
+        ),
+      ),
+    )
+    .returning({
+      user_id: cockpitPushSubscriptions.user_id,
+      endpoint_sha256: cockpitPushSubscriptions.endpoint_sha256,
+      notified_attention_keys: cockpitPushSubscriptions.notified_attention_keys,
+    });
+  const carried = superseded.find(
+    (row) =>
+      row.user_id === context.user_id &&
+      row.endpoint_sha256 === hash &&
+      row.notified_attention_keys !== null,
+  );
+  const values = {
+    user_id: context.user_id,
+    session_id: context.session_id,
+    device_sha256: device,
+    ...encrypted,
+    notified_attention_keys: carried?.notified_attention_keys ?? null,
+  };
+  await tx
+    .insert(cockpitPushSubscriptions)
+    .values({ tenant_id: context.tenant_id, kind: "browser", endpoint_sha256: hash, ...values })
+    .onConflictDoUpdate({
+      target: [cockpitPushSubscriptions.tenant_id, cockpitPushSubscriptions.endpoint_sha256],
+      targetWhere: sql`${cockpitPushSubscriptions.kind} = 'browser'`,
+      set: { ...values, updated_at: new Date(now()) },
+    });
+  const pruned = await pruneBrowserSubscriptions(tx, context, hash);
+  await auditAwait(
+    {
+      tenant_id: context.tenant_id,
+      actor_type: "user",
+      actor_id: context.user_id,
+      action: AuditAction.COCKPIT_PUSH_SUBSCRIPTION_UPSERTED,
+      resource_type: "cockpit_push_subscription",
+      resource_id: context.session_id,
+      result: "success",
+      metadata: { kind: "browser", superseded: superseded.length, pruned },
+    },
+    tx,
+  );
+}
+
+export async function upsertCockpitPushSubscription(
+  db: Db,
+  context: CockpitPushContext,
+  subscription: CockpitPushSubscriptionInput,
+  options: CockpitPushSubscriptionOptions = {},
+): Promise<void> {
+  const endpoint = verifiedSubscription(subscription);
   await assertEgressAllowedResolved(endpoint, { tenant_id: context.tenant_id, exec: db });
   const hash = endpointHash(subscription.endpoint);
   const encrypted = encryptSecret(JSON.stringify(subscription), subscriptionAad(context, hash));
+  const device = deviceHash(context, options.device);
   await db.transaction(async (tx) => {
+    if (context.kind === "browser")
+      await upsertBrowserSubscription(tx, context, hash, encrypted, device);
+    else await upsertInstallationSubscription(tx, context, hash, encrypted, device);
+  });
+}
+
+export async function rebindCockpitBrowserPushSubscription(
+  db: Db,
+  context: CockpitBrowserPushContext,
+  subscription: CockpitPushSubscriptionInput,
+  options: CockpitPushSubscriptionOptions = {},
+): Promise<boolean> {
+  verifiedSubscription(subscription);
+  const hash = endpointHash(subscription.endpoint);
+  const encrypted = encryptSecret(JSON.stringify(subscription), subscriptionAad(context, hash));
+  return await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(cockpitPushSubscriptions)
+      .set({
+        session_id: context.session_id,
+        device_sha256: deviceHash(context, options.device),
+        ...encrypted,
+        updated_at: new Date(now()),
+      })
+      .where(and(tenantBrowserRowsOf(context), eq(cockpitPushSubscriptions.endpoint_sha256, hash)))
+      .returning({ id: cockpitPushSubscriptions.id });
+    if (!row) return false;
     const superseded = await tx
       .delete(cockpitPushSubscriptions)
       .where(
         and(
-          eq(cockpitPushSubscriptions.tenant_id, context.tenant_id),
-          eq(cockpitPushSubscriptions.installation_id, context.installation_id),
-          eq(cockpitPushSubscriptions.endpoint_sha256, hash),
-          ne(cockpitPushSubscriptions.session_id, context.session_id),
+          tenantBrowserRowsOf(context),
+          eq(cockpitPushSubscriptions.session_id, context.session_id),
+          ne(cockpitPushSubscriptions.id, row.id),
         ),
       )
-      .returning({ notified_attention_keys: cockpitPushSubscriptions.notified_attention_keys });
-    const carried = superseded.find((row) => row.notified_attention_keys !== null);
-    await tx
-      .insert(cockpitPushSubscriptions)
-      .values({
-        tenant_id: context.tenant_id,
-        installation_id: context.installation_id,
-        session_id: context.session_id,
-        endpoint_sha256: hash,
-        ...encrypted,
-        ...(carried ? { notified_attention_keys: carried.notified_attention_keys } : {}),
-      })
-      .onConflictDoUpdate({
-        target: [cockpitPushSubscriptions.installation_id, cockpitPushSubscriptions.session_id],
-        set: { endpoint_sha256: hash, ...encrypted, updated_at: new Date(now()) },
-      });
+      .returning({ id: cockpitPushSubscriptions.id });
     await auditAwait(
       {
         tenant_id: context.tenant_id,
@@ -257,10 +507,11 @@ export async function upsertCockpitPushSubscription(
         resource_type: "cockpit_push_subscription",
         resource_id: context.session_id,
         result: "success",
-        metadata: { installation_id: context.installation_id, superseded: superseded.length },
+        metadata: { kind: "browser", rebound: true, superseded: superseded.length },
       },
       tx,
     );
+    return true;
   });
 }
 
@@ -287,17 +538,20 @@ function endScopeWhere(exec: Executor, scope: CockpitPushEndScope) {
   if ("user_id" in scope)
     return and(
       tenantScope,
-      inArray(
-        cockpitPushSubscriptions.installation_id,
-        exec
-          .select({ id: cockpitInstallations.id })
-          .from(cockpitInstallations)
-          .where(
-            and(
-              eq(cockpitInstallations.tenant_id, scope.tenant_id),
-              eq(cockpitInstallations.owner_user_id, scope.user_id),
+      or(
+        eq(cockpitPushSubscriptions.user_id, scope.user_id),
+        inArray(
+          cockpitPushSubscriptions.installation_id,
+          exec
+            .select({ id: cockpitInstallations.id })
+            .from(cockpitInstallations)
+            .where(
+              and(
+                eq(cockpitInstallations.tenant_id, scope.tenant_id),
+                eq(cockpitInstallations.owner_user_id, scope.user_id),
+              ),
             ),
-          ),
+        ),
       ),
     );
   return tenantScope;
@@ -320,7 +574,10 @@ export async function endCockpitPushForSessions(
   const removed = await exec
     .delete(cockpitPushSubscriptions)
     .where(endScopeWhere(exec, scope))
-    .returning({ installation_id: cockpitPushSubscriptions.installation_id });
+    .returning({
+      kind: cockpitPushSubscriptions.kind,
+      installation_id: cockpitPushSubscriptions.installation_id,
+    });
   if (removed.length === 0) return 0;
   await auditAwait(
     {
@@ -334,7 +591,12 @@ export async function endCockpitPushForSessions(
       reason,
       metadata: {
         count: removed.length,
-        installation_ids: [...new Set(removed.map((row) => row.installation_id))].sort(),
+        kinds: [...new Set(removed.map((row) => row.kind))].sort(),
+        installation_ids: [
+          ...new Set(
+            removed.flatMap((row) => (row.installation_id === null ? [] : [row.installation_id])),
+          ),
+        ].sort(),
       },
     },
     exec,
@@ -348,13 +610,7 @@ export async function removeCockpitPushSubscription(
 ): Promise<boolean> {
   const removed = await db
     .delete(cockpitPushSubscriptions)
-    .where(
-      and(
-        eq(cockpitPushSubscriptions.tenant_id, context.tenant_id),
-        eq(cockpitPushSubscriptions.installation_id, context.installation_id),
-        eq(cockpitPushSubscriptions.session_id, context.session_id),
-      ),
-    )
+    .where(subscriptionScopeWhere(context))
     .returning({ id: cockpitPushSubscriptions.id });
   if (removed.length === 0) return false;
   await auditAwait(
@@ -366,7 +622,7 @@ export async function removeCockpitPushSubscription(
       resource_type: "cockpit_push_subscription",
       resource_id: context.session_id,
       result: "success",
-      metadata: { installation_id: context.installation_id },
+      metadata: contextMetadata(context),
     },
     db,
   );
@@ -381,7 +637,7 @@ export async function cockpitPushSubscriptionActive(
     .select({ id: cockpitPushSubscriptions.id })
     .from(cockpitPushSubscriptions)
     .innerJoin(sessions, eq(sessions.id, cockpitPushSubscriptions.session_id))
-    .innerJoin(
+    .leftJoin(
       cockpitInstallations,
       eq(cockpitInstallations.id, cockpitPushSubscriptions.installation_id),
     )
@@ -394,7 +650,8 @@ export async function cockpitPushSubscriptionActive(
 
 export type CockpitPushOutcome = {
   subscription_id: string;
-  installation_id: string;
+  kind: CockpitPushKind;
+  installation_id: string | null;
   endpoint_host: string;
 } & (
   | { status: "delivered" }
@@ -410,8 +667,10 @@ export interface CockpitPushSendResult {
 
 export interface CockpitPushAudienceRow {
   id: string;
-  installation_id: string;
-  owner_user_id: string;
+  kind: CockpitPushKind;
+  installation_id: string | null;
+  user_id: string;
+  device_sha256: string | null;
   notified_attention_keys: string[] | null;
 }
 
@@ -423,8 +682,10 @@ function audienceSelection(
   return exec
     .select({
       id: cockpitPushSubscriptions.id,
+      kind: cockpitPushSubscriptions.kind,
       installation_id: cockpitPushSubscriptions.installation_id,
-      owner_user_id: cockpitInstallations.owner_user_id,
+      user_id: users.id,
+      device_sha256: cockpitPushSubscriptions.device_sha256,
       session_id: cockpitPushSubscriptions.session_id,
       endpoint_sha256: cockpitPushSubscriptions.endpoint_sha256,
       ciphertext: cockpitPushSubscriptions.ciphertext,
@@ -434,11 +695,11 @@ function audienceSelection(
     })
     .from(cockpitPushSubscriptions)
     .innerJoin(sessions, eq(sessions.id, cockpitPushSubscriptions.session_id))
-    .innerJoin(
+    .leftJoin(
       cockpitInstallations,
       eq(cockpitInstallations.id, cockpitPushSubscriptions.installation_id),
     )
-    .innerJoin(users, eq(users.id, cockpitInstallations.owner_user_id))
+    .innerJoin(users, eq(users.id, audienceUserId))
     .innerJoin(tenants, eq(tenants.id, cockpitPushSubscriptions.tenant_id))
     .where(
       and(
@@ -451,7 +712,7 @@ function audienceSelection(
         pushAudienceWhere(exec, eq(cockpitPushSubscriptions.tenant_id, scope.tenant_id), at),
       ),
     )
-    .orderBy(asc(cockpitPushSubscriptions.installation_id), asc(cockpitPushSubscriptions.id));
+    .orderBy(asc(audienceUserId), asc(cockpitPushSubscriptions.id));
 }
 
 export async function listCockpitPushAudience(
@@ -462,8 +723,10 @@ export async function listCockpitPushAudience(
   const rows = await audienceSelection(exec, { tenant_id: tenantId }, at).limit(PUSH_AUDIENCE_MAX);
   return rows.map((row) => ({
     id: row.id,
+    kind: row.kind,
     installation_id: row.installation_id,
-    owner_user_id: row.owner_user_id,
+    user_id: row.user_id,
+    device_sha256: row.device_sha256,
     notified_attention_keys: row.notified_attention_keys,
   }));
 }
@@ -474,11 +737,11 @@ export async function listCockpitPushTenants(exec: Executor, at: Date): Promise<
     .selectDistinct({ tenant_id: cockpitPushSubscriptions.tenant_id })
     .from(cockpitPushSubscriptions)
     .innerJoin(sessions, eq(sessions.id, cockpitPushSubscriptions.session_id))
-    .innerJoin(
+    .leftJoin(
       cockpitInstallations,
       eq(cockpitInstallations.id, cockpitPushSubscriptions.installation_id),
     )
-    .innerJoin(users, eq(users.id, cockpitInstallations.owner_user_id))
+    .innerJoin(users, eq(users.id, audienceUserId))
     .innerJoin(tenants, eq(tenants.id, cockpitPushSubscriptions.tenant_id))
     .where(pushAudienceWhere(exec, sql`true`, at))
     .orderBy(asc(cockpitPushSubscriptions.tenant_id))
@@ -529,13 +792,17 @@ export async function sendCockpitPushNotifications(input: {
   ).limit(PUSH_AUDIENCE_MAX);
   const outcomes: CockpitPushOutcome[] = [];
   for (const row of rows) {
-    const context: CockpitPushContext = {
-      installation_id: row.installation_id,
+    const session = {
       tenant_id: input.tenant_id,
-      user_id: row.owner_user_id,
+      user_id: row.user_id,
       session_id: row.session_id,
       expires_at: null,
     };
+    const context: CockpitPushContext =
+      row.kind === "installation" && row.installation_id
+        ? { ...session, kind: "installation", installation_id: row.installation_id }
+        : { ...session, kind: "browser" };
+    const target = { kind: row.kind, installation_id: row.installation_id };
     const live = await audienceSelection(
       input.db,
       { tenant_id: input.tenant_id, subscription_ids: [row.id] },
@@ -564,7 +831,7 @@ export async function sendCockpitPushNotifications(input: {
       });
       outcomes.push({
         subscription_id: row.id,
-        installation_id: row.installation_id,
+        ...target,
         status: "delivered",
         endpoint_host: endpointHost,
       });
@@ -589,13 +856,13 @@ export async function sendCockpitPushNotifications(input: {
               resource_type: "cockpit_push_subscription",
               resource_id: row.session_id,
               result: "success",
-              metadata: { installation_id: row.installation_id, reason: "endpoint_gone" },
+              metadata: { ...target, reason: "endpoint_gone" },
             },
             input.db,
           );
         outcomes.push({
           subscription_id: row.id,
-          installation_id: row.installation_id,
+          ...target,
           status: "gone",
           status_code: statusCode,
           endpoint_host: endpointHost,
@@ -604,7 +871,7 @@ export async function sendCockpitPushNotifications(input: {
       }
       outcomes.push({
         subscription_id: row.id,
-        installation_id: row.installation_id,
+        ...target,
         status: "failed",
         ...(statusCode !== undefined ? { status_code: statusCode } : {}),
         error_name: error instanceof Error ? error.name : "unknown",

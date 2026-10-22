@@ -58,9 +58,22 @@ Inactive or deleted owners and workspaces receive no new sends. A notification i
 when a new or changed attention item appears, within about a minute; unchanged items
 do not notify again. Notifications contain only a generic SubKit attention hint and
 focus or open the app root; they contain no workspace branding, private content or
-approval actions. Already sent neutral messages may arrive after logout. The browser
-Cockpit offers the install path or opens the installed app; notifications live in the
-installed app. A browser notification permission may be shared across apps on the same
-origin and is not automatically revoked by logout. Path-bound sessions do not create
-separate browser origins or isolate browser storage and local permissions.
+approval actions. Already sent neutral messages may arrive after logout. A browser
+notification permission may be shared across apps on the same origin and is not
+automatically revoked by logout. Path-bound sessions do not create separate browser
+origins or isolate browser storage and local permissions.
+
+The normal browser Cockpit at `/cockpit/` can also receive these neutral notifications
+without an installation. The bell opens the same opt-in; turning it on asks for browser
+permission, registers the push-only worker at `/cockpit/sw.js` and binds the
+subscription to the signed-in user and workspace. The same push routes accept a root
+browser session with CSRF; API keys and bearer tokens are refused, and installation
+paths never fall back to the root session. Idle session expiry does not end it; signing
+in again re-binds the subscription to the new session without asking again. It ends on
+logout, explicit session revocation, workspace switch, user deactivation or deletion,
+workspace lifecycle, turning it off, an expired endpoint, and after 30 days without use.
+Another user or workspace in the same browser must opt in again. Each device receives at
+most one notification per attention change; where the installed app is enabled on the
+same device, the app is notified and the browser tab is skipped. Browsers without push
+support in a tab, such as Safari on iOS, offer the install path instead.
 

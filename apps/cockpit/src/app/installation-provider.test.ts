@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { rebindPushSubscription } from "./installation-browser";
+import {
+  enableBrowserPush,
+  rebindPushSubscription,
+  releaseBrowserPush,
+  restoreBrowserPush,
+} from "./installation-browser";
 import { incomingFromLaunchFiles, incomingReceiptForIdentity } from "./installation-provider";
 
 const identity = { tenantId: "tenant-a", userId: "user-a" };
@@ -139,5 +144,152 @@ describe("installation provider receipt boundary", () => {
       getFile: async () => new File(["x"], "x.txt"),
     }));
     await expect(incomingFromLaunchFiles(handles)).rejects.toThrow("incoming_too_many_files");
+  });
+});
+
+describe("browser tab push lifecycle", () => {
+  const origin = "https://app.example.test";
+  const installed = "/cockpit/i/11111111-1111-4111-8111-111111111111/";
+
+  function browserWorkers(input: { existing?: string | null; scope?: string } = {}) {
+    const log: string[] = [];
+    const registration = {
+      scope: input.scope ?? `${origin}/cockpit/`,
+      active: { state: "activated" },
+      pushManager: {
+        getSubscription: async () =>
+          input.existing ? pushSubscription(input.existing, log) : null,
+        subscribe: async (options: PushSubscriptionOptionsInit) => {
+          const key = Buffer.from(options.applicationServerKey as Uint8Array).toString("base64url");
+          log.push(`subscribe:${key}`);
+          return pushSubscription(key, log);
+        },
+      },
+    } as unknown as ServiceWorkerRegistration;
+    const container = {
+      register: async (url: string, options?: RegistrationOptions) => {
+        log.push(`register:${url}:${options?.scope}:${options?.updateViaCache}`);
+        return registration;
+      },
+      getRegistration: async (url?: string) => {
+        log.push(`getRegistration:${url}`);
+        return registration;
+      },
+    };
+    return { log, container };
+  }
+
+  test("mounting the Cockpit tab only re-binds and never registers a worker", async () => {
+    const workers = browserWorkers({ existing: currentKey });
+    const bound = await restoreBrowserPush({
+      container: workers.container,
+      origin,
+      pathname: "/cockpit/flows",
+      permission: "granted",
+      status: async () => ({ subscribed: true }),
+      prepare: async () => ({ public_key: currentKey }),
+      rebind: async () => true,
+    });
+    expect(bound).toBeTrue();
+    expect(workers.log).toEqual(["getRegistration:/cockpit/"]);
+  });
+
+  test("the installed app never touches the browser tab worker", async () => {
+    const workers = browserWorkers({ existing: currentKey });
+    expect(
+      await restoreBrowserPush({
+        container: workers.container,
+        origin,
+        pathname: installed,
+        permission: "granted",
+        status: async () => ({ subscribed: true }),
+        prepare: async () => ({ public_key: currentKey }),
+        rebind: async () => true,
+      }),
+    ).toBeFalse();
+    expect(
+      await enableBrowserPush({
+        container: workers.container,
+        pathname: installed,
+        requestPermission: async () => "granted",
+        prepare: async () => ({ public_key: currentKey }),
+        save: async () => {},
+        device: () => null,
+      }),
+    ).toBeFalse();
+    expect(workers.log).toEqual([]);
+  });
+
+  test("an explicit enable registers the /cockpit/ worker and stores the device", async () => {
+    const workers = browserWorkers();
+    const saved: Array<{ key: string; device: string | null }> = [];
+    const prompts: string[] = [];
+    expect(
+      await enableBrowserPush({
+        container: workers.container,
+        pathname: "/cockpit/",
+        requestPermission: async () => {
+          prompts.push("permission");
+          return "granted";
+        },
+        prepare: async () => ({ public_key: currentKey }),
+        save: async (subscription, device) => {
+          saved.push({ key: (subscription as PushSubscription & { key: string }).key, device });
+        },
+        device: () => "66666666-6666-4666-8666-666666666666",
+      }),
+    ).toBeTrue();
+    expect(prompts).toEqual(["permission"]);
+    expect(workers.log).toEqual([
+      "register:/cockpit/sw.js:/cockpit/:none",
+      `subscribe:${currentKey}`,
+    ]);
+    expect(saved).toEqual([{ key: currentKey, device: "66666666-6666-4666-8666-666666666666" }]);
+  });
+
+  test("a denied permission registers nothing", async () => {
+    const workers = browserWorkers();
+    expect(
+      await enableBrowserPush({
+        container: workers.container,
+        pathname: "/cockpit/",
+        requestPermission: async () => "denied",
+        prepare: async () => ({ public_key: currentKey }),
+        save: async () => {},
+        device: () => null,
+      }),
+    ).toBeFalse();
+    expect(workers.log).toEqual([]);
+  });
+
+  test("a failed save releases the new subscription", async () => {
+    const workers = browserWorkers({ existing: previousKey });
+    await expect(
+      enableBrowserPush({
+        container: workers.container,
+        pathname: "/cockpit/",
+        requestPermission: async () => "granted",
+        prepare: async () => ({ public_key: currentKey }),
+        save: async () => {
+          throw new Error("offline");
+        },
+        device: () => null,
+      }),
+    ).rejects.toThrow("offline");
+    expect(workers.log).toEqual([
+      "register:/cockpit/sw.js:/cockpit/:none",
+      `unsubscribe:${previousKey}`,
+      `subscribe:${currentKey}`,
+      `unsubscribe:${currentKey}`,
+    ]);
+  });
+
+  test("enabling the installed app releases the browser tab subscription", async () => {
+    const workers = browserWorkers({ existing: currentKey });
+    expect(await releaseBrowserPush(workers.container, origin)).toBeTrue();
+    expect(workers.log).toEqual(["getRegistration:/cockpit/", `unsubscribe:${currentKey}`]);
+    const other = browserWorkers({ existing: currentKey, scope: `${origin}${installed}` });
+    expect(await releaseBrowserPush(other.container, origin)).toBeFalse();
+    expect(other.log).toEqual(["getRegistration:/cockpit/"]);
   });
 });

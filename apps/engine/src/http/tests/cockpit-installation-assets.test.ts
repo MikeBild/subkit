@@ -88,6 +88,7 @@ describe("Cockpit installation assets", () => {
     expect(worker.headers.get("cache-control")).toBe("private, no-store");
     expect(worker.headers.get("service-worker-allowed")).toBe(`/cockpit/i/${installation.id}/`);
     expect(worker.headers.get("content-type")).toBe("application/javascript; charset=utf-8");
+    expect(await worker.text()).toContain("incoming/share");
 
     const invalid = await fetch(`${server.baseUrl}/cockpit/i/not-a-uuid/sw.js`);
     expect(invalid.status).toBe(404);

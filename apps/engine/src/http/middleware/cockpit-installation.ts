@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 import type { ResolvedPrincipal } from "../../auth/index.ts";
 import {
@@ -8,7 +8,11 @@ import {
 } from "../../auth/index.ts";
 import type { Db } from "../../db/client.ts";
 import { sessions, tenants, users } from "../../db/schema/identity.ts";
-import { getCockpitInstallation } from "../../identity/index.ts";
+import {
+  type CockpitBrowserPushContext,
+  type CockpitPushContext,
+  getCockpitInstallation,
+} from "../../identity/index.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const APP_TENANT_SWITCH_PATHS = new Set([
@@ -82,6 +86,62 @@ export async function resolveCockpitInstallationContext(
     session_id: payload.session_id,
     expires_at: session.expires_at,
   };
+}
+
+export async function resolveCockpitBrowserPushContext(
+  db: Db,
+  request: Request,
+  principal: ResolvedPrincipal | undefined,
+): Promise<CockpitBrowserPushContext | null> {
+  if (cockpitInstallationIdFromPath(new URL(request.url).pathname)) return null;
+  if (principal?.provider !== "browser_session" || principal.kind !== "user") return null;
+  const payload = await browserSessionForPrincipal(request, principal);
+  if (!payload || payload.installation_id || principal.session_id !== payload.session_id)
+    return null;
+  const now = new Date();
+  const slidingCutoff = new Date(now.getTime() - 8 * 60 * 60 * 1000);
+  const [session] = await db
+    .select({ expires_at: sessions.expires_at })
+    .from(sessions)
+    .innerJoin(users, and(eq(users.tenant_id, sessions.tenant_id), eq(users.id, sessions.user_id)))
+    .innerJoin(tenants, eq(tenants.id, sessions.tenant_id))
+    .where(
+      and(
+        eq(sessions.id, payload.session_id),
+        eq(sessions.tenant_id, principal.tenant_id),
+        eq(sessions.user_id, principal.id),
+        isNull(sessions.installation_id),
+        isNull(sessions.revoked_at),
+        gt(sessions.expires_at, now),
+        or(isNull(sessions.absolute_expires_at), gt(sessions.absolute_expires_at, now)),
+        sql`coalesce(${sessions.last_seen_at}, ${sessions.created_at}) > ${slidingCutoff}`,
+        eq(users.status, "active"),
+        isNull(users.deleted_at),
+        eq(tenants.status, "active"),
+        isNull(tenants.deleted_at),
+      ),
+    )
+    .limit(1);
+  if (!session) return null;
+  return {
+    kind: "browser",
+    tenant_id: principal.tenant_id,
+    user_id: principal.id,
+    session_id: payload.session_id,
+    expires_at: session.expires_at,
+  };
+}
+
+export async function resolveCockpitPushContext(
+  db: Db,
+  request: Request,
+  principal: ResolvedPrincipal | undefined,
+): Promise<CockpitPushContext | null> {
+  if (cockpitInstallationIdFromPath(new URL(request.url).pathname)) {
+    const installation = await resolveCockpitInstallationContext(db, request, principal);
+    return installation ? { kind: "installation", ...installation } : null;
+  }
+  return await resolveCockpitBrowserPushContext(db, request, principal);
 }
 
 export function requireCockpitInstallation(): MiddlewareHandler<AppEnv> {

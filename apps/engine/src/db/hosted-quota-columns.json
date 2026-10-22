@@ -813,7 +813,17 @@
         "enum": null
       },
       {
+        "name": "kind",
+        "type": "text",
+        "enum": null
+      },
+      {
         "name": "installation_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "user_id",
         "type": "uuid",
         "enum": null
       },
@@ -824,6 +834,11 @@
       },
       {
         "name": "endpoint_sha256",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "device_sha256",
         "type": "text",
         "enum": null
       },

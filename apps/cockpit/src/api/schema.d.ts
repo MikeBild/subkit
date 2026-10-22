@@ -5715,7 +5715,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read the current installed Cockpit app push subscription status */
+        /** Read the push subscription status of the current Cockpit session */
         get: {
             parameters: {
                 query?: never;
@@ -5734,7 +5734,7 @@ export interface paths {
                         "application/json": components["schemas"]["CockpitPushSubscriptionStatus"];
                     };
                 };
-                /** @description Installation session required */
+                /** @description Cockpit browser session required */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -5748,7 +5748,7 @@ export interface paths {
                 };
             };
         };
-        /** Store a push subscription for the current installed Cockpit app session */
+        /** Store or re-bind a push subscription for the current Cockpit session */
         put: {
             parameters: {
                 query?: never;
@@ -5781,8 +5781,20 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Installation session required */
+                /** @description Cockpit browser session required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
+                    };
+                };
+                /** @description No push subscription of this user is bound to this browser */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -5796,7 +5808,7 @@ export interface paths {
             };
         };
         post?: never;
-        /** Remove the current installed Cockpit app session push subscription */
+        /** Remove the push subscription of the current Cockpit session */
         delete: {
             parameters: {
                 query?: never;
@@ -5813,7 +5825,7 @@ export interface paths {
                     };
                     content?: never;
                 };
-                /** @description Installation session required */
+                /** @description Cockpit browser session required */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -5841,7 +5853,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Prepare the current installed Cockpit app for explicit push opt-in */
+        /** Prepare the current Cockpit session for explicit push opt-in */
         post: {
             parameters: {
                 query?: never;
@@ -5860,7 +5872,7 @@ export interface paths {
                         "application/json": components["schemas"]["CockpitPushKey"];
                     };
                 };
-                /** @description Installation session required */
+                /** @description Cockpit browser session required */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -22112,6 +22124,9 @@ export interface components {
                 p256dh: string;
                 auth: string;
             };
+            rebind?: boolean;
+            /** Format: uuid */
+            device?: string;
         };
         TenantBrandingResponse: {
             configured: boolean;

@@ -62,11 +62,24 @@ Eine Benachrichtigung wird gesendet, sobald ein neuer oder geänderter Aufmerksa
 erscheint, innerhalb von etwa einer Minute; unveränderte Punkte benachrichtigen nicht erneut.
 Benachrichtigungen enthalten nur einen generischen SubKit-Aufmerksamkeitshinweis und fokussieren
 oder öffnen die App-Wurzel; sie enthalten kein Workspace-Branding, keine privaten Inhalte und keine
-Freigabeaktionen. Bereits gesendete neutrale Nachrichten können nach der Abmeldung eintreffen. Das
-Browser-Cockpit bietet den Installationsweg an oder öffnet die installierte App; Benachrichtigungen
-gibt es in der installierten App. Eine Benachrichtigungsberechtigung des Browsers kann von Apps auf
-demselben Origin gemeinsam genutzt werden und wird durch die Abmeldung nicht automatisch
-widerrufen. Pfadgebundene Sitzungen erzeugen
+Freigabeaktionen. Bereits gesendete neutrale Nachrichten können nach der Abmeldung eintreffen. Eine
+Benachrichtigungsberechtigung des Browsers kann von Apps auf demselben Origin gemeinsam genutzt
+werden und wird durch die Abmeldung nicht automatisch widerrufen. Pfadgebundene Sitzungen erzeugen
 keine getrennten Browser-Origins und isolieren weder den Browser-Speicher noch lokale
 Berechtigungen.
+
+Das normale Browser-Cockpit unter `/cockpit/` kann diese neutralen Benachrichtigungen auch ohne
+Installation empfangen. Die Glocke öffnet dieselbe Zustimmung; das Einschalten fragt die
+Browser-Berechtigung ab, registriert den reinen Push-Worker unter `/cockpit/sw.js` und bindet das
+Abonnement an den angemeldeten Benutzer und Workspace. Dieselben Push-Routen akzeptieren eine
+Root-Browsersitzung mit CSRF; API-Schlüssel und Bearer-Tokens werden abgewiesen, und
+Installationspfade fallen nie auf die Root-Sitzung zurück. Der Ablauf einer untätigen Sitzung
+beendet es nicht; eine erneute Anmeldung bindet das Abonnement ohne erneute Nachfrage an die neue
+Sitzung. Es endet bei Abmeldung, ausdrücklichem Sitzungswiderruf, Workspace-Wechsel, Deaktivierung
+oder Löschung des Benutzers, Workspace-Lebenszyklus, Ausschalten, einem abgelaufenen Endpunkt und
+nach 30 Tagen ohne Nutzung. Ein anderer Benutzer oder Workspace im selben Browser muss erneut
+zustimmen. Jedes Gerät erhält pro Aufmerksamkeitsänderung höchstens eine Benachrichtigung; ist die
+installierte App auf demselben Gerät aktiviert, wird die App benachrichtigt und der Browser-Tab
+übersprungen. Browser ohne Push im Tab, etwa Safari auf iOS, bieten stattdessen den
+Installationsweg an.
 
