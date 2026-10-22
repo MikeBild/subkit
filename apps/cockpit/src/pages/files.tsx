@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { X } from "lucide-react";
+import { Download, FileText, ImageIcon, MessageSquare, Sheet, Workflow, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest, apiText, apiUpload } from "@/api/client";
@@ -11,19 +11,22 @@ import { actorDirectoryName } from "@/app/actor-directory-model";
 import { cockpitApiHref } from "@/app/installation-context";
 import { exportInstallationFile } from "@/app/installation-export";
 import { useInstallation } from "@/app/installation-provider";
-import { absolute, conversationHref, recordHref, workflowHref } from "@/app/links";
+import { conversationHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
 import {
+  CatalogCategoryChip,
   CatalogMetadataDialog,
-  CatalogMetadataSummary,
   CatalogNameCell,
+  CatalogPurpose,
   useCatalogMetadataActions,
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
+import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { InstallationInputActions } from "@/components/cockpit/installation-dialogs";
+import { type UsageCard, UsageCards } from "@/components/cockpit/knowledge-usage";
 import {
   ActionMenu,
   Button,
@@ -35,18 +38,18 @@ import {
   DataTable,
   DetailPage,
   FactList,
-  Field,
-  FieldLabel,
   FileDrop,
   FilePreview,
   FilterBar,
   FormDialog,
   formatBytes,
   GroupingTabs,
-  Input,
+  IconTile,
+  OnboardingFrame,
   Page,
   PageHeader,
   previewKind,
+  SectionHeading,
   TabBody,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
@@ -71,7 +74,7 @@ export function fileReference(file: Pick<StoredFile, "id" | "reference">): strin
   return file.reference ?? JSON.stringify({ $file: file.id });
 }
 
-export function fileUsageLine(
+function fileUsageParts(
   t: ReturnType<typeof useI18n>["t"],
   usage: ListedFile["usage"] | undefined,
 ): string | null {
@@ -88,7 +91,15 @@ export function fileUsageLine(
         : t("files.usage.conversations", { count: usage.conversations })
       : null,
   ].filter((part): part is string => part !== null);
-  return parts.length > 0 ? t("files.usage.line", { uses: parts.join(" · ") }) : null;
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+export function fileUsageLine(
+  t: ReturnType<typeof useI18n>["t"],
+  usage: ListedFile["usage"] | undefined,
+): string | null {
+  const uses = fileUsageParts(t, usage);
+  return uses ? t("files.usage.line", { uses }) : null;
 }
 
 const KIND_KEYS = {
@@ -250,6 +261,7 @@ export function FilesPage() {
       </div>
     ) : null;
   const allLoaded = !list.infinite.hasNextPage;
+  const onboarding = unfiltered && items.length === 0 && query.isSuccess && allLoaded;
   const totalBytes = items.reduce(
     (sum, file) => sum + (typeof file.size_bytes === "number" ? file.size_bytes : 0),
     0,
@@ -261,138 +273,136 @@ export function FilesPage() {
       surface="collection"
       testId="files-page"
       scroll="content"
-      header={
-        <PageHeader
-          eyebrow={t("nav.group.knowledge")}
-          title={t("files.title")}
-          action={hasFiles ? fileActions : undefined}
-        />
-      }
+      header={<PageHeader title={t("files.title")} action={fileActions ?? undefined} />}
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        {dragging ? (
-          <FileDrop
-            multiple
-            maxBytes={UPLOAD_MAX_BYTES}
-            label={t("files.drop")}
-            onFiles={dropOnPage}
-            testId="files-page-drop"
-          />
-        ) : null}
-        {items.length > 0 || !unfiltered ? (
-          <CatalogOriginSummary
-            testId="files-summary"
-            kind="file"
-            origin={origin}
-            text={
-              allLoaded
-                ? t(pluralKey("files.summary", total), {
-                    count: total,
-                    size: formatBytes(totalBytes, LOCALE_TAGS[locale]),
-                  })
-                : t(pluralKey("files.summaryCount", total), { count: total })
-            }
-            help={t("files.summaryHelp")}
-          />
-        ) : null}
-        <DataTable
-          collectionId="files"
-          columns={columns}
-          data={items}
-          groupingTabs={
-            <GroupingTabs
-              label={t("common.groupBy")}
-              value={groupMode}
-              onChange={setGroupMode}
-              options={[
-                { value: "all", label: t("common.all") },
-                { value: "kind", label: t("files.column.kind") },
-                { value: "date", label: t("files.column.uploaded") },
-              ]}
-              testId="files-grouping"
-              note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+      {onboarding ? (
+        <FilesOnboarding canWrite={canWrite} onFiles={dropOnPage} />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          {dragging ? (
+            <FileDrop
+              multiple
+              maxBytes={UPLOAD_MAX_BYTES}
+              label={t("files.drop")}
+              onFiles={dropOnPage}
+              testId="files-page-drop"
             />
-          }
-          grouping={
-            groupMode === "all"
-              ? undefined
-              : {
-                  getKey: (row) =>
-                    groupMode === "kind"
-                      ? fileKindLabel(t, row)
-                      : new Intl.DateTimeFormat("sv-SE", {
-                          year: "numeric",
-                          month: "2-digit",
-                          day: "2-digit",
-                        }).format(new Date(row.created_at)),
-                  label: (key) =>
-                    groupMode === "date"
-                      ? new Intl.DateTimeFormat(LOCALE_TAGS[locale], {
-                          dateStyle: "medium",
-                        }).format(new Date(`${key}T12:00:00`))
-                      : key,
-                  compareKeys:
-                    groupMode === "date" ? (left, right) => right.localeCompare(left) : undefined,
-                }
-          }
-          getRowId={(row) => row.id}
-          infinite={list.infinite}
-          total={list.total}
-          toolbar={
-            hasFiles ? (
-              <FilterBar
-                search={{
-                  value: search,
-                  onChange: setSearch,
-                  placeholder: t("files.search"),
-                  testId: "files-search",
-                }}
-                selects={categoryFilter.select ? [categoryFilter.select] : []}
-                reset={{
-                  label: t("catalog.clearFilters"),
-                  onClick: () => {
-                    setSearch("");
-                    categoryFilter.select?.onChange("all");
-                    origin.setValue("all");
-                  },
-                }}
+          ) : null}
+          {items.length > 0 || !unfiltered ? (
+            <CatalogOriginSummary
+              testId="files-summary"
+              kind="file"
+              origin={origin}
+              text={
+                allLoaded
+                  ? t(pluralKey("files.summary", total), {
+                      count: total,
+                      size: formatBytes(totalBytes, LOCALE_TAGS[locale]),
+                    })
+                  : t(pluralKey("files.summaryCount", total), { count: total })
+              }
+              help={t("files.summaryHelp")}
+            />
+          ) : null}
+          <DataTable
+            collectionId="files"
+            columns={columns}
+            data={items}
+            groupingTabs={
+              <GroupingTabs
+                label={t("common.groupBy")}
+                value={groupMode}
+                onChange={setGroupMode}
+                options={[
+                  { value: "all", label: t("common.all") },
+                  { value: "kind", label: t("files.column.kind") },
+                  { value: "date", label: t("files.column.uploaded") },
+                ]}
+                testId="files-grouping"
+                note={groupMode === "all" ? undefined : t("common.loadedOnly")}
               />
-            ) : undefined
-          }
-          pending={query.isPending && !query.failureReason}
-          error={
-            query.error
-              ? {
-                  title: t("resource.loadFailed", { resource: t("files.title") }),
-                  description: t("resource.loadFailedDescription"),
-                  retryLabel: t("session.retry"),
-                  onRetry: () => void query.refetch(),
-                }
-              : null
-          }
-          emptyState={{
-            zero: { title: t("files.empty"), action: fileActions },
-            filtered: {
-              title: t("resource.noMatches"),
-              description: t("resource.broaderSearch"),
-              resetLabel: t("catalog.clearFilters"),
-              onReset: () => {
-                setSearch("");
-                categoryFilter.select?.onChange("all");
-                origin.setValue("all");
+            }
+            grouping={
+              groupMode === "all"
+                ? undefined
+                : {
+                    getKey: (row) =>
+                      groupMode === "kind"
+                        ? fileKindLabel(t, row)
+                        : new Intl.DateTimeFormat("sv-SE", {
+                            year: "numeric",
+                            month: "2-digit",
+                            day: "2-digit",
+                          }).format(new Date(row.created_at)),
+                    label: (key) =>
+                      groupMode === "date"
+                        ? new Intl.DateTimeFormat(LOCALE_TAGS[locale], {
+                            dateStyle: "medium",
+                          }).format(new Date(`${key}T12:00:00`))
+                        : key,
+                    compareKeys:
+                      groupMode === "date" ? (left, right) => right.localeCompare(left) : undefined,
+                  }
+            }
+            getRowId={(row) => row.id}
+            infinite={list.infinite}
+            total={list.total}
+            toolbar={
+              hasFiles ? (
+                <FilterBar
+                  search={{
+                    value: search,
+                    onChange: setSearch,
+                    placeholder: t("files.search"),
+                    testId: "files-search",
+                  }}
+                  selects={categoryFilter.select ? [categoryFilter.select] : []}
+                  reset={{
+                    label: t("catalog.clearFilters"),
+                    onClick: () => {
+                      setSearch("");
+                      categoryFilter.select?.onChange("all");
+                      origin.setValue("all");
+                    },
+                  }}
+                />
+              ) : undefined
+            }
+            pending={query.isPending && !query.failureReason}
+            error={
+              query.error
+                ? {
+                    title: t("resource.loadFailed", { resource: t("files.title") }),
+                    description: t("resource.loadFailedDescription"),
+                    retryLabel: t("session.retry"),
+                    onRetry: () => void query.refetch(),
+                  }
+                : null
+            }
+            emptyState={{
+              zero: { title: t("files.empty"), action: uploadAction },
+              filtered: {
+                title: t("resource.noMatches"),
+                description: t("resource.broaderSearch"),
+                resetLabel: t("catalog.clearFilters"),
+                onReset: () => {
+                  setSearch("");
+                  categoryFilter.select?.onChange("all");
+                  origin.setValue("all");
+                },
               },
-            },
-          }}
-          hasActiveFilters={!unfiltered}
-          sorting={[]}
-          onSortingChange={() => {}}
-          onOpen={(row) => void navigate({ to: recordHref("files", row.id) })}
-          rowHref={(row) => recordHref("files", row.id)}
-          columnsLabel={t("catalog.columns")}
-          recordsLabel={t("catalog.records")}
-          actionsLabel={t("common.actions")}
-        />
-      </div>
+            }}
+            hasActiveFilters={!unfiltered}
+            sorting={[]}
+            onSortingChange={() => {}}
+            onOpen={(row) => void navigate({ to: recordHref("files", row.id) })}
+            rowHref={(row) => recordHref("files", row.id)}
+            columnsLabel={t("catalog.columns")}
+            recordsLabel={t("catalog.records")}
+            actionsLabel={t("common.actions")}
+          />
+        </div>
+      )}
       {upload ? (
         <UploadDialog
           initial={upload.files}
@@ -589,6 +599,62 @@ function UploadDialog({
   );
 }
 
+const FILE_USES = [
+  { key: "templates", icon: FileText },
+  { key: "tables", icon: Sheet },
+  { key: "images", icon: ImageIcon },
+] as const;
+
+function FilesOnboarding({
+  canWrite,
+  onFiles,
+}: {
+  canWrite: boolean;
+  onFiles(files: File[]): void;
+}) {
+  const { t, locale } = useI18n();
+  return (
+    <OnboardingFrame lead={t("files.onboarding.lead")} testId="files-onboarding">
+      {canWrite ? (
+        <FileDrop
+          multiple
+          maxBytes={UPLOAD_MAX_BYTES}
+          label={t("files.onboarding.drop")}
+          hint={t("files.onboarding.dropHint", {
+            max: formatBytes(UPLOAD_MAX_BYTES, LOCALE_TAGS[locale]),
+          })}
+          onFiles={onFiles}
+          testId="files-onboarding-drop"
+        />
+      ) : null}
+      <section className="flex flex-col gap-2" aria-labelledby="files-onboarding-uses">
+        <SectionHeading id="files-onboarding-uses">{t("files.onboarding.uses")}</SectionHeading>
+        <ul className="grid gap-3 sm:grid-cols-3">
+          {FILE_USES.map((use) => (
+            <li key={use.key} className="flex items-start gap-3 rounded-lg border p-4">
+              <IconTile>
+                <use.icon />
+              </IconTile>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">
+                  {t(`files.onboarding.${use.key}.title`)}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {t(`files.onboarding.${use.key}.line`)}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </OnboardingFrame>
+  );
+}
+
+function Mono({ children }: { children: string }) {
+  return <span className="font-mono text-xs [overflow-wrap:anywhere]">{children}</span>;
+}
+
 export function FilePage() {
   const { t, dateTime, locale } = useI18n();
   const session = useSession();
@@ -597,14 +663,11 @@ export function FilePage() {
   const canWrite = session.permissions.includes("file:write");
   const canDelete = session.permissions.includes("file:delete");
   const [replacing, setReplacing] = useState<StoredFile | null>(null);
-  const onClose = () => void navigate({ to: "/files" });
-  const onReplace = (file: StoredFile) => setReplacing(file);
   const installation = useInstallation();
   const directory = useActorDirectory(true);
   const client = useQueryClient();
   const live = useLiveQueryOptions();
-  const [renaming, setRenaming] = useState(false);
-  const [describing, setDescribing] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const fileQuery = useQuery({
@@ -617,7 +680,8 @@ export function FilePage() {
     id,
     record: fileQuery.data,
     queryKey: ["file", id],
-    onEdit: () => setDescribing(true),
+    onEdit: () => setEditing(true),
+    label: t("files.edit"),
   });
   const usageQuery = useQuery({
     queryKey: ["file", id, "usage"],
@@ -640,7 +704,7 @@ export function FilePage() {
       toast.success(t("files.deleted", { name: file?.filename ?? "" }));
       void client.invalidateQueries({ queryKey: ["catalog"] });
       setDeleting(false);
-      onClose();
+      void navigate({ to: "/files" });
     },
     onError: () => toast.error(t("common.actionFailed")),
   });
@@ -657,13 +721,10 @@ export function FilePage() {
           : t("files.deletePlain");
 
   const menuItems = [
-    ...(canWrite ? metadataActions : []),
     ...(canWrite && file
-      ? [
-          { label: t("files.replace"), onSelect: () => onReplace(file), testId: "file-replace" },
-          { label: t("files.rename"), onSelect: () => setRenaming(true), testId: "file-rename" },
-        ]
+      ? [{ label: t("files.replace"), onSelect: () => setReplacing(file), testId: "file-replace" }]
       : []),
+    ...(canWrite ? metadataActions : []),
     ...(canDelete
       ? [
           {
@@ -675,40 +736,6 @@ export function FilePage() {
         ]
       : []),
   ];
-
-  const usedBy = usage ? (
-    usage.workflows.length + usage.conversations.length + usage.other === 0 ? (
-      <span className="text-muted-foreground">{t("files.notUsed")}</span>
-    ) : (
-      <span className="flex flex-wrap gap-x-3 gap-y-1">
-        {usage.workflows.map((workflow) => (
-          <a
-            key={workflow.id}
-            href={absolute(workflowHref(workflow.id))}
-            className="underline-offset-4 hover:underline"
-            data-testid="file-used-by-workflow"
-          >
-            {workflow.name}
-          </a>
-        ))}
-        {usage.conversations.map((conversation) => (
-          <a
-            key={conversation.id}
-            href={absolute(conversationHref(conversation.id))}
-            className="underline-offset-4 hover:underline"
-            data-testid="file-used-by-conversation"
-          >
-            {conversation.title ?? t("files.untitledConversation")}
-          </a>
-        ))}
-        {usage.other > 0 ? (
-          <span className="text-muted-foreground">
-            {t("files.otherUses", { count: usage.other })}
-          </span>
-        ) : null}
-      </span>
-    )
-  ) : null;
 
   const exportFile = async () => {
     if (!file) return;
@@ -738,10 +765,12 @@ export function FilePage() {
           onClick={() => void exportFile()}
           data-testid="file-download"
         >
+          <Download aria-hidden="true" />
           {t("files.download")}
         </button>
       ) : (
         <a href={contentPath} download={file.filename} data-testid="file-download">
+          <Download aria-hidden="true" />
           {t("files.download")}
         </a>
       )}
@@ -759,6 +788,34 @@ export function FilePage() {
       testId="file-page-error"
     />
   ) : null;
+  const uploader = file?.creator
+    ? (actorDirectoryName(directory, file.creator.kind, file.creator.id) ??
+      t("runs.caller.unknown"))
+    : t("runs.caller.unknown");
+  const kindLabel = file ? fileKindLabel(t, file) : "";
+  const size = file ? sizeText(file.size_bytes, LOCALE_TAGS[locale]) : "";
+  const usedLine = usage
+    ? fileUsageParts(t, {
+        workflows: usage.workflows.length,
+        conversations: usage.conversations.length,
+      })
+    : null;
+  const usageCards: UsageCard[] = [
+    ...(usage?.workflows ?? []).map((workflow) => ({
+      id: `workflow-${workflow.id}`,
+      title: workflow.name,
+      line: t("files.usage.workflowLine"),
+      href: workflowHref(workflow.id),
+      icon: <Workflow />,
+    })),
+    ...(usage?.conversations ?? []).map((conversation) => ({
+      id: `conversation-${conversation.id}`,
+      title: conversation.title ?? t("files.untitledConversation"),
+      line: t("files.usage.conversationLine"),
+      href: conversationHref(conversation.id),
+      icon: <MessageSquare />,
+    })),
+  ];
 
   return (
     <>
@@ -766,10 +823,15 @@ export function FilePage() {
         testId="file-page"
         back={{ to: "/files", label: t("files.title") }}
         title={file?.filename ?? ""}
-        purpose={file ? <CatalogMetadataSummary record={file} /> : undefined}
+        badge={file ? <CatalogCategoryChip category={recordCategory(file)} /> : undefined}
+        purpose={file ? <CatalogPurpose record={file} /> : undefined}
         loading={fileQuery.isPending}
         action={download}
-        menu={menuItems.length > 0 ? <ActionMenu items={menuItems} testId="file-menu" /> : null}
+        menu={
+          menuItems.length > 0 ? (
+            <ActionMenu alwaysMenu items={menuItems} testId="file-menu" />
+          ) : null
+        }
         tabs={
           file
             ? [
@@ -780,24 +842,46 @@ export function FilePage() {
                   content: (
                     <TabBody
                       testId="file-preview-tab"
+                      summary={t("files.summaryLine", {
+                        kind: kindLabel,
+                        size,
+                        when: dateTime(file.created_at),
+                        name: uploader,
+                      })}
                       technical={
-                        <div className="flex flex-col gap-2" data-testid="file-reference">
-                          <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                            {t("files.reference")}
-                            <ContextHelp label={t("files.reference")} testId="file-reference-help">
-                              {t("files.referenceHelp")}
-                            </ContextHelp>
-                          </span>
-                          <CopyField
-                            labelled
-                            value={fileReference(file)}
-                            label={t("files.reference")}
-                            testId="file-reference-value"
+                        <>
+                          <div className="flex flex-col gap-2" data-testid="file-reference">
+                            <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                              {t("files.reference")}
+                              <ContextHelp
+                                label={t("files.reference")}
+                                testId="file-reference-help"
+                              >
+                                {t("files.referenceHelp")}
+                              </ContextHelp>
+                            </span>
+                            <CopyField
+                              labelled
+                              value={fileReference(file)}
+                              label={t("files.reference")}
+                              testId="file-reference-value"
+                            />
+                          </div>
+                          <FactList
+                            testId="file-technical"
+                            items={[
+                              { label: t("files.fact.id"), value: <Mono>{file.id}</Mono> },
+                              { label: t("files.fact.format"), value: file.content_type ?? "—" },
+                              {
+                                label: t("files.fact.checksum"),
+                                value: file.sha256 ? <Mono>{file.sha256}</Mono> : "—",
+                              },
+                            ]}
                           />
-                        </div>
+                        </>
                       }
                     >
-                      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+                      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px]">
                         <FilePreview
                           name={file.filename}
                           mimeType={file.content_type}
@@ -810,24 +894,10 @@ export function FilePage() {
                           testId="file-facts"
                           layout="stacked"
                           items={[
-                            { label: t("files.fact.kind"), value: fileKindLabel(t, file) },
-                            {
-                              label: t("files.fact.size"),
-                              value: sizeText(file.size_bytes, LOCALE_TAGS[locale]),
-                            },
-                            {
-                              label: t("files.fact.uploaded"),
-                              value: t("files.uploadedBy", {
-                                date: dateTime(file.created_at),
-                                name: file.creator
-                                  ? (actorDirectoryName(
-                                      directory,
-                                      file.creator.kind,
-                                      file.creator.id,
-                                    ) ?? t("runs.caller.unknown"))
-                                  : t("runs.caller.unknown"),
-                              }),
-                            },
+                            { label: t("files.fact.kind"), value: kindLabel },
+                            { label: t("files.fact.size"), value: size },
+                            { label: t("files.fact.uploaded"), value: dateTime(file.created_at) },
+                            { label: t("files.fact.by"), value: uploader },
                             ...(file.replaced_at
                               ? [
                                   {
@@ -845,13 +915,26 @@ export function FilePage() {
                 {
                   value: "usage",
                   label: t("files.tab.usage"),
+                  count: usageCards.length || undefined,
+                  loading: usageQuery.isPending,
                   testId: "file-tab-usage",
                   content: (
-                    <TabBody testId="file-usage-tab">
-                      <FactList
-                        testId="file-usage"
-                        items={[{ label: t("files.fact.usedBy"), value: usedBy ?? "…" }]}
-                      />
+                    <TabBody
+                      testId="file-usage-tab"
+                      summary={
+                        usedLine
+                          ? t("files.usage.summary", { uses: usedLine })
+                          : usage
+                            ? t("files.usage.none")
+                            : undefined
+                      }
+                    >
+                      <UsageCards items={usageCards} testId="file-usage" />
+                      {usage && usage.other > 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          {t("files.otherUses", { count: usage.other })}
+                        </p>
+                      ) : null}
                     </TabBody>
                   ),
                 },
@@ -861,15 +944,16 @@ export function FilePage() {
       >
         {failed}
       </DetailPage>
-      {file && renaming ? <RenameDialog file={file} onClose={() => setRenaming(false)} /> : null}
       {file && canWrite ? (
         <CatalogMetadataDialog
           kind="file"
           id={file.id}
           record={file}
-          open={describing}
-          onOpenChange={setDescribing}
+          open={editing}
+          onOpenChange={setEditing}
           queryKey={["file", id]}
+          nameKey="filename"
+          title={t("files.edit")}
         />
       ) : null}
       {file ? (
@@ -889,58 +973,5 @@ export function FilePage() {
         <UploadDialog initial={[]} replace={replacing} onClose={() => setReplacing(null)} />
       ) : null}
     </>
-  );
-}
-
-function RenameDialog({ file, onClose }: { file: StoredFile; onClose(): void }) {
-  const { t } = useI18n();
-  const client = useQueryClient();
-  const [name, setName] = useState(file.filename);
-  const rename = useMutation({
-    mutationFn: (filename: string) =>
-      apiRequest<StoredFile>(`/v1/files/${encodeURIComponent(file.id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ filename }),
-      }),
-    onSuccess: (updated) => {
-      client.setQueryData(["file", file.id], updated);
-      void client.invalidateQueries({ queryKey: ["catalog"] });
-      toast.success(t("files.renamed"));
-      onClose();
-    },
-    onError: () => toast.error(t("common.actionFailed")),
-  });
-  const trimmed = name.trim();
-  return (
-    <FormDialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      title={t("files.renameTitle")}
-      submit={{
-        label: t("files.rename"),
-        pending: rename.isPending,
-        disabled: trimmed === "" || trimmed === file.filename,
-      }}
-      onSubmit={() => rename.mutate(trimmed)}
-      testId="file-rename-dialog"
-    >
-      <Field>
-        <FieldLabel htmlFor="file-rename-name">{t("common.name")}</FieldLabel>
-        <Input
-          id="file-rename-name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          autoFocus
-          data-testid="file-rename-name"
-        />
-      </Field>
-      <p className="text-sm text-muted-foreground">
-        {file.reference
-          ? t("files.renameKeeps", { reference: file.reference })
-          : t("files.replaceLine")}
-      </p>
-    </FormDialog>
   );
 }

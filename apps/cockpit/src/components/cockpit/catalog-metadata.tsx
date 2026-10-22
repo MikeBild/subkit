@@ -40,12 +40,14 @@ export function useCatalogMetadataActions({
   record,
   queryKey,
   onEdit,
+  label,
 }: {
   kind: CatalogKind;
   id: string;
   record: CatalogMetadataRecord | undefined;
   queryKey: readonly unknown[];
   onEdit(): void;
+  label?: string;
 }): ActionMenuItem[] {
   const { t } = useI18n();
   const client = useQueryClient();
@@ -66,7 +68,11 @@ export function useCatalogMetadataActions({
     onError: () => toast.error(t("detail.saveFailed")),
   });
   return [
-    { label: t("catalogMeta.dialogTitle"), onSelect: onEdit, testId: "catalog-metadata-edit" },
+    {
+      label: label ?? t("catalogMeta.dialogTitle"),
+      onSelect: onEdit,
+      testId: "catalog-metadata-edit",
+    },
     ...(writtenByAssistant(record)
       ? [
           {
@@ -130,6 +136,53 @@ export function CatalogMetadataSummary({
   );
 }
 
+export function CatalogCategoryChip({
+  category,
+  testId = "catalog-category-chip",
+}: {
+  category: string | null | undefined;
+  testId?: string;
+}) {
+  const { t } = useI18n();
+  if (!category || category === UNCATEGORIZED) return null;
+  return (
+    <span
+      className="rounded-full border px-2 py-0.5 text-xs font-medium text-foreground"
+      data-slot="category-chip"
+      data-testid={testId}
+    >
+      {humanizeCategory(category, t("catalog.categoryOther"))}
+    </span>
+  );
+}
+
+export function CatalogPurpose({
+  record,
+  fallback,
+}: {
+  record: CatalogMetadataRecord | undefined;
+  fallback?: string;
+}) {
+  const { t } = useI18n();
+  const description = recordDescription(record).trim();
+  return (
+    <span data-testid="catalog-purpose">
+      <span data-testid="catalog-metadata-description">
+        {description || fallback || t("catalogMeta.empty")}
+      </span>
+      {writtenByAssistant(record) ? (
+        <span
+          className="ml-1.5 inline-flex items-center gap-1 whitespace-nowrap text-xs"
+          data-testid="catalog-metadata-by-assistant"
+        >
+          <Sparkles aria-hidden="true" className="size-3" />
+          {t("catalogMeta.byAssistant")}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export function CatalogMetadataDialog({
   kind,
   id,
@@ -137,6 +190,8 @@ export function CatalogMetadataDialog({
   open,
   onOpenChange,
   queryKey,
+  nameKey,
+  title,
 }: {
   kind: CatalogKind;
   id: string;
@@ -144,18 +199,24 @@ export function CatalogMetadataDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   queryKey: readonly unknown[];
+  nameKey?: "name" | "filename" | "title";
+  title?: string;
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
+  const rawName = nameKey ? record?.[nameKey] : undefined;
+  const currentName = typeof rawName === "string" ? rawName : "";
+  const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [choice, setChoice] = useState(UNCATEGORIZED);
   const [fresh, setFresh] = useState("");
   useEffect(() => {
     if (!open) return;
+    setName(currentName);
     setDescription(recordDescription(record));
     setChoice(recordCategory(record));
     setFresh("");
-  }, [open, record]);
+  }, [open, record, currentName]);
   const vocabulary = useQuery({
     queryKey: ["catalog-categories"],
     enabled: open,
@@ -167,7 +228,14 @@ export function CatalogMetadataDialog({
   );
   const freshCategory = choice === NEW_CATEGORY ? normalizeCategoryInput(fresh) : null;
   const category = choice === NEW_CATEGORY ? (freshCategory ?? "") : choice;
-  const patch = category ? metadataPatch(record, { description, category }) : null;
+  const renamed = nameKey && name.trim() && name.trim() !== currentName ? name.trim() : null;
+  const metadata = category ? metadataPatch(record, { description, category }) : null;
+  const patch =
+    nameKey && !name.trim()
+      ? null
+      : renamed && nameKey
+        ? { ...(metadata ?? {}), [nameKey]: renamed }
+        : metadata;
   const save = useMutation({
     mutationFn: (body: Record<string, string>) =>
       apiRequest(metadataEndpoint(kind, id), { method: "PATCH", body: JSON.stringify(body) }),
@@ -186,7 +254,7 @@ export function CatalogMetadataDialog({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={t("catalogMeta.dialogTitle")}
+      title={title ?? t("catalogMeta.dialogTitle")}
       description={[
         t(KIND_LABELS[kind]),
         typeof record?.name === "string"
@@ -213,6 +281,14 @@ export function CatalogMetadataDialog({
       cancelTestId="catalog-metadata-cancel"
       testId="catalog-metadata-dialog"
     >
+      {nameKey ? (
+        <TextField
+          id="catalog-metadata-name-input"
+          label={t("common.name")}
+          value={name}
+          onChange={setName}
+        />
+      ) : null}
       {writtenByAssistant(record) ? (
         <p className="text-sm text-muted-foreground" data-testid="catalog-metadata-assistant-hint">
           {t("catalogMeta.assistantHint")}
