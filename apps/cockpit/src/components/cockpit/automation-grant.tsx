@@ -8,6 +8,7 @@ import { useWorkflowAutomation } from "@/components/cockpit/automation-panel";
 import { GrantOpeningNotice } from "@/components/cockpit/grant-notices";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
 import { Button } from "@/components/ui/button";
+import { useAuthorityCarryOver } from "@/lib/automation-queries";
 import {
   type AutomationWorkflow,
   automationActionKey,
@@ -228,8 +229,17 @@ export function AutomationGrant({
 }) {
   const { t } = useI18n();
   const workflow = useAutomationWorkflow(workflowId);
-  if (workflow.isPending) return <p role="status">{t("chat.activation.loading")}</p>;
   const versionId = workflow.data?.draft?.version_id ?? workflow.data?.current.current_version_id;
+  const carryOver = useAuthorityCarryOver({
+    workflowId,
+    versionId,
+    environment,
+    activation: workflow.data?.draft
+      ? { expected_current_version_id: workflow.data.current.current_version_id ?? null }
+      : undefined,
+    conversationId,
+  });
+  if (workflow.isPending) return <p role="status">{t("chat.activation.loading")}</p>;
   if (workflow.error || !workflow.data || !versionId)
     return (
       <div role="status" className="flex flex-col gap-2">
@@ -245,6 +255,23 @@ export function AutomationGrant({
       </div>
     );
   const { current, draft } = workflow.data;
+  if (draft && carryOver.choice === "adopt")
+    return (
+      <div className="flex flex-col items-start gap-1">
+        <Button
+          type="button"
+          size="sm"
+          variant={triggerVariant}
+          disabled={carryOver.adopting}
+          title={t("authority.review.help.adopt")}
+          data-testid={`${testId}-adopt`}
+          onClick={carryOver.adopt}
+        >
+          {t("authority.review.adopt")}
+        </Button>
+        <p className="text-muted-foreground text-xs">{t("authority.review.help.adopt")}</p>
+      </div>
+    );
   return (
     <GrantWorkflowAuthority
       conversationId={conversationId}

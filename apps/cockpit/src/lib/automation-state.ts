@@ -46,6 +46,30 @@ export function automationActionKey(action: AutomationAction): TranslationKey {
   }
 }
 
+export interface CarryOverPreview {
+  approval_carries_over: boolean;
+  eligible_for_repeated_runs: boolean;
+  execution_shape: {
+    requests: ReadonlyArray<{
+      request_review_truncated?: boolean | null;
+      opaque_payload_omitted?: boolean | null;
+    }>;
+  };
+}
+
+export function carryOverChoice(
+  preview: CarryOverPreview | null | undefined,
+  activation: boolean,
+): "adopt" | "review" {
+  if (!preview || !activation) return "review";
+  const incomplete = preview.execution_shape.requests.some(
+    (request) => request.request_review_truncated || request.opaque_payload_omitted,
+  );
+  return preview.approval_carries_over && preview.eligible_for_repeated_runs && !incomplete
+    ? "adopt"
+    : "review";
+}
+
 export interface AutomationCard {
   titleKey: TranslationKey;
   hintKey: TranslationKey;

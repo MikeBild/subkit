@@ -43,6 +43,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { authorityIssues } from "@/lib/authority-issues";
 import { authorityReviewModel, reviewTitle } from "@/lib/authority-review-model";
 import { automationQueryKeys, invalidateWorkflowAutomation } from "@/lib/automation-queries";
+import { carryOverChoice } from "@/lib/automation-state";
 import { existingGrant, grantScopeWarnings } from "@/lib/grant-context";
 import { useI18n } from "@/lib/i18n-context";
 import { liveTestState } from "@/lib/live-test-result";
@@ -468,9 +469,7 @@ export function GrantWorkflowAuthority({
   const incomplete = review?.execution_shape.requests.some(
     (request) => request.request_review_truncated || request.opaque_payload_omitted,
   );
-  const carriesOver = Boolean(
-    activation && review?.approval_carries_over && !unsupported && !incomplete,
-  );
+  const carriesOver = carryOverChoice(review, Boolean(activation)) === "adopt";
   const boundsVisible = review && !unsupported && !incomplete && !carriesOver;
   const context = useGrantContext(workflowId, open);
   const existing =

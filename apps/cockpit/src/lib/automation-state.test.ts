@@ -12,6 +12,7 @@ import {
   automationEnvironmentUndecided,
   automationNeedsMoreApprovals,
   automationState,
+  carryOverChoice,
   EXTEND_BELOW_RUN_SHARE,
   EXTEND_WITHIN_DAYS,
   grantNeedsExtension,
@@ -1141,5 +1142,58 @@ describe("a version stored in an earlier format", () => {
     expect(CATALOGS.de[card.hintKey]).toContain("älteren Format");
     expect(CATALOGS.en[card.hintKey]).toContain("earlier format");
     expect(CATALOGS.de[AUTOMATION_STATE_KEYS.invalid]).toBe("Altes Format");
+  });
+});
+
+describe("carry-over choice", () => {
+  const preview = (
+    overrides: Partial<Parameters<typeof carryOverChoice>[0] & object> = {},
+  ): Parameters<typeof carryOverChoice>[0] => ({
+    approval_carries_over: true,
+    eligible_for_repeated_runs: true,
+    execution_shape: {
+      requests: [{ request_review_truncated: false, opaque_payload_omitted: false }],
+    },
+    ...overrides,
+  });
+
+  test("a saved change within the approved boundary is adopted in one click", () => {
+    expect(carryOverChoice(preview(), true)).toBe("adopt");
+  });
+
+  test("a grown boundary goes through the review", () => {
+    expect(carryOverChoice(preview({ approval_carries_over: false }), true)).toBe("review");
+  });
+
+  test("without a saved change there is nothing to adopt", () => {
+    expect(carryOverChoice(preview(), false)).toBe("review");
+  });
+
+  test("an unsupported or incomplete review never adopts", () => {
+    expect(carryOverChoice(preview({ eligible_for_repeated_runs: false }), true)).toBe("review");
+    expect(
+      carryOverChoice(
+        preview({
+          execution_shape: {
+            requests: [{ request_review_truncated: true, opaque_payload_omitted: false }],
+          },
+        }),
+        true,
+      ),
+    ).toBe("review");
+    expect(
+      carryOverChoice(
+        preview({
+          execution_shape: {
+            requests: [{ request_review_truncated: false, opaque_payload_omitted: true }],
+          },
+        }),
+        true,
+      ),
+    ).toBe("review");
+  });
+
+  test("a missing preview goes through the review", () => {
+    expect(carryOverChoice(null, true)).toBe("review");
   });
 });

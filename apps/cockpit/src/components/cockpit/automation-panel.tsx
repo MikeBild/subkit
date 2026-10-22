@@ -23,7 +23,11 @@ import {
   WorkflowGateDiagnosis,
   workflowDiagnosisQuery,
 } from "@/components/cockpit/workflow-diagnosis";
-import { AUTOMATION_REFRESH_MS, invalidateWorkflowAutomation } from "@/lib/automation-queries";
+import {
+  AUTOMATION_REFRESH_MS,
+  invalidateWorkflowAutomation,
+  useAuthorityCarryOver,
+} from "@/lib/automation-queries";
 import {
   type AutomationState,
   type AutomationStatusLike,
@@ -494,7 +498,15 @@ export function WorkflowStatus({
   }, []);
   const invalid = state?.state === "invalid";
   const target = state?.target ?? null;
-  const opensApproval = strip.action?.kind === "approve";
+  const carryOver = useAuthorityCarryOver({
+    workflowId: automation.workflowId,
+    versionId: target?.version_id,
+    environment: state?.environment ?? "prod",
+    activation: target?.activation,
+    enabled: automation.canWrite && !invalid && strip.action?.kind === "approve",
+  });
+  const adoptable = strip.action?.kind === "approve" && carryOver.choice === "adopt";
+  const opensApproval = strip.action?.kind === "approve" && !adoptable;
   const notice =
     opensApproval && state
       ? grantOpeningNotice({
@@ -584,7 +596,8 @@ export function WorkflowStatus({
           }),
         ]
       : []),
-    ...(notice ? [t(OPENING_NOTICE_KEYS[notice])] : []),
+    ...(notice && !adoptable ? [t(OPENING_NOTICE_KEYS[notice])] : []),
+    ...(adoptable ? [t("authority.review.help.adopt")] : []),
     ...(!automation.canWrite &&
     strip.action === null &&
     (strip.tone === "warn" || strip.tone === "error")
@@ -619,7 +632,15 @@ export function WorkflowStatus({
           onClick: () => automation.resume.run(a.scheduleIds),
         };
       case "approve":
-        return { ...base, onClick: automation.openGrant, data: OPENS_APPROVAL };
+        return adoptable
+          ? {
+              ...base,
+              label: t("authority.review.adopt"),
+              onClick: carryOver.adopt,
+              pending: carryOver.adopting,
+              testId: "workflow-automation-adopt",
+            }
+          : { ...base, onClick: automation.openGrant, data: OPENS_APPROVAL };
       case "recheck":
         return { ...base, onClick: automation.refresh, testId: "workflow-automation-recheck" };
       case "connector":
