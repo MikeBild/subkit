@@ -270,6 +270,25 @@ describe("graphql block on an http connector through path /graphql", () => {
     const failed = await run("gql-path-sensitive-failed", projectStep(), true);
     expect(failed.status).toBe("failed");
     expect(failed.error?.code).toBe("graphql_pagination_incomplete");
+    expect((failed.steps[0]?.error as { code?: string })?.code).toBe(
+      "graphql_pagination_incomplete",
+    );
+  });
+
+  test.each([
+    ["missing path", { path: undefined }, "graphql_path_required"],
+    ["foreign path", { path: "//127.0.0.2/graphql" }, "graphql_endpoint_invalid"],
+  ])("a sensitive run keeps the %s code at run and step level", async (label, extra, code) => {
+    const result = await run(
+      `gql-path-sensitive-refused-${label.replace(/\s/g, "-")}`,
+      projectStep(extra),
+      true,
+    );
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe(code);
+    expect((result.steps[0]?.error as { code?: string })?.code).toBe(code);
+    expect(JSON.stringify(result)).not.toContain("127.0.0.2");
+    expect(seen).toHaveLength(0);
   });
 });
 
