@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { inputForm } from "@/lib/workflow-inputs";
 import {
+  buildFormSchemaInput,
   buildSchemaInput,
   fieldTitle,
+  formValuesFromInput,
   initialSchemaValues,
   schemaFieldKind,
   schemaFields,
@@ -112,5 +115,61 @@ describe("schema form model", () => {
       ...input,
       skip_archived: false,
     });
+  });
+});
+
+describe("schema form for a whole workflow input", () => {
+  test("a schema without fields still runs, unwrapped from its single box", () => {
+    const form = inputForm({ type: "array", items: { type: "string" } });
+    expect(form.kind).toBe("whole");
+    const values = formValuesFromInput(form, ["a", "b"]);
+    expect(buildFormSchemaInput(form, values)).toEqual({ input: ["a", "b"], errors: [] });
+  });
+
+  test("no schema means no input at all", () => {
+    expect(buildFormSchemaInput(inputForm(null), {})).toEqual({ input: undefined, errors: [] });
+  });
+
+  test("a saved input refills the fields and an empty one keeps the defaults", () => {
+    const form = inputForm(schema);
+    const saved = formValuesFromInput(form, { org: "github", limit: 5 });
+    expect(saved.org).toBe("github");
+    expect(saved.limit).toBe("5");
+    expect(formValuesFromInput(form, {}).limit).toBe("10");
+  });
+});
+
+describe("schema form for a field that allows several types", () => {
+  const form = inputForm({
+    type: "object",
+    properties: {
+      target: { oneOf: [{ type: "string" }, { type: "integer" }] },
+      filter: { type: ["object", "array"] },
+      payload: {
+        anyOf: [{ type: "object", properties: { id: { type: "string" } } }, { items: {} }],
+      },
+    },
+  });
+
+  test("a value is sent with its JSON type, falling back to text only where text is allowed", () => {
+    const run = (values: Record<string, string>) => buildFormSchemaInput(form, values);
+    expect(run({ target: "42" }).input).toEqual({ target: 42 });
+    expect(run({ filter: '{"a":1}' }).input).toEqual({ filter: { a: 1 } });
+    expect(run({ filter: "[1,2]" }).input).toEqual({ filter: [1, 2] });
+    expect(run({ target: "north" }).input).toEqual({ target: "north" });
+    expect(run({ target: '"42"' }).input).toEqual({ target: "42" });
+  });
+
+  test("a value of a type the field does not allow is named, not sent", () => {
+    const built = buildFormSchemaInput(form, { target: "1.5", filter: "north", payload: "7" });
+    expect(built.input).toEqual({});
+    expect(built.errors.map((error) => error.path)).toEqual(["target", "filter", "payload"]);
+  });
+
+  test("a whole object input refuses a list", () => {
+    const object = inputForm({ type: "object" });
+    expect(buildFormSchemaInput(object, { input: '{"id":"a"}' }).input).toEqual({ id: "a" });
+    expect(buildFormSchemaInput(object, { input: "[1]" }).errors).toHaveLength(1);
+    expect(buildFormSchemaInput(object, {}).input).toBeUndefined();
   });
 });

@@ -13,9 +13,9 @@ import {
   DataState,
   FactList,
   FormDialog,
+  SchemaForm,
   SegmentedControl,
 } from "@/components/cockpit/patterns";
-import { InputFieldControl } from "@/components/cockpit/run-workflow-dialog";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { cronWords } from "@/lib/cron-words";
 import { LOCALE_TAGS } from "@/lib/i18n";
@@ -28,15 +28,8 @@ import {
   rhythmToCron,
   validTime,
 } from "@/lib/schedule-rhythm";
-import {
-  buildFormInput,
-  formFields,
-  type InputSchemaSource,
-  initialInputValues,
-  inputForm,
-  invalidInputs,
-  missingRequired,
-} from "@/lib/workflow-inputs";
+import { buildFormSchemaInput, formValuesFromInput, type SchemaValues } from "@/lib/schema-form";
+import { formFields, type InputSchemaSource, inputForm } from "@/lib/workflow-inputs";
 
 type ScheduleEntry = components["schemas"]["ScheduleEntry"];
 type ScheduleList = components["schemas"]["ScheduleListResponse"];
@@ -47,21 +40,6 @@ interface InputSchemaResponse {
 }
 
 const localZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-
-function valuesFromScheduleInput(
-  fields: ReturnType<typeof formFields>,
-  input: unknown,
-): Record<string, string> {
-  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
-  const record = input as Record<string, unknown>;
-  return Object.fromEntries(
-    fields.flatMap((field) => {
-      const value = record[field.name];
-      if (value === undefined || value === null) return [];
-      return [[field.name, typeof value === "string" ? value : JSON.stringify(value)]];
-    }),
-  );
-}
 
 function useWorkflowSchedule(workflowId: string) {
   const live = useLiveQueryOptions();
@@ -94,7 +72,8 @@ function ScheduleDialog({
     () => (schedule ? cronToRhythm(schedule.cron) : null) ?? DEFAULT_RHYTHM,
   );
   const [error, setError] = useState<string | null>(null);
-  const [values, setValues] = useState<Record<string, string>>(() => ({}));
+  const [values, setValues] = useState<SchemaValues | null>(null);
+  const [checked, setChecked] = useState(false);
   const zone = schedule?.timezone ?? localZone();
   const schema = useQuery({
     queryKey: ["workflow", workflowId, "input-schema"],
@@ -106,16 +85,13 @@ function ScheduleDialog({
   });
   const form = inputForm(schema.data?.schema ?? null);
   const fields = formFields(form);
-  const filled = {
-    ...initialInputValues(fields),
-    ...values,
-  };
-  const missing = missingRequired(fields, filled);
-  const invalid = invalidInputs(fields, filled);
+  const filled = values ?? formValuesFromInput(form, schedule?.input);
+  const built = buildFormSchemaInput(form, filled);
   useEffect(() => {
     if (!open) return;
-    setValues(valuesFromScheduleInput(fields, schedule?.input));
-  }, [open, schedule?.id, schedule?.input, schema.data]);
+    setValues(null);
+    setChecked(false);
+  }, [open, schedule?.id]);
   const save = useMutation({
     mutationFn: ({ cron, input }: { cron: string; input: unknown }) =>
       schedule
@@ -140,7 +116,7 @@ function ScheduleDialog({
     onSuccess: async () => {
       toast.success(t(schedule ? "schedule.saved" : "schedule.created"));
       onOpenChange(false);
-      setValues({});
+      setValues(null);
       await invalidateWorkflowAutomation(client, workflowId);
       await client.invalidateQueries({ queryKey: ["workflow-invocation", workflowId] });
     },
@@ -154,9 +130,10 @@ function ScheduleDialog({
       submit={{ label: t(schedule ? "common.save" : "schedule.create"), pending: save.isPending }}
       onSubmit={() => {
         if (!validTime(value.time)) return setError(t("schedule.timeInvalid"));
-        if (missing.length > 0 || invalid.length > 0) return setError(t("schedule.inputInvalid"));
+        setChecked(true);
+        if (built.errors.length > 0) return setError(t("schedule.inputInvalid"));
         setError(null);
-        save.mutate({ cron: rhythmToCron(value), input: buildFormInput(form, filled) });
+        save.mutate({ cron: rhythmToCron(value), input: built.input });
       }}
       error={error}
       testId="schedule-dialog"
@@ -165,31 +142,13 @@ function ScheduleDialog({
         items={[{ label: t("schedule.zone"), value: zone, help: t("schedule.zoneHelp") }]}
       />
       <ScheduleFields value={value} onChange={setValue} invalid={Boolean(error)} />
-      {fields.length > 0 ? (
-        <div className="grid gap-3" data-testid="schedule-inputs">
-          {fields.map((field, index) => (
-            <InputFieldControl
-              key={field.name}
-              field={field}
-              index={index}
-              idPrefix="schedule-input"
-              value={filled[field.name] ?? ""}
-              invalid={invalid.includes(field.name)}
-              onChange={(next) => setValues((current) => ({ ...current, [field.name]: next }))}
-            />
-          ))}
-        </div>
-      ) : null}
-      {missing.length > 0 ? (
-        <p className="text-xs text-muted-foreground" data-testid="schedule-input-missing">
-          {t("schedule.inputMissing", { fields: missing.join(", ") })}
-        </p>
-      ) : null}
-      {invalid.length > 0 ? (
-        <p className="text-destructive text-xs" data-testid="schedule-input-invalid">
-          {t("schedule.inputInvalid")}
-        </p>
-      ) : null}
+      <SchemaForm
+        fields={fields}
+        values={filled}
+        onChange={(next) => setValues(next)}
+        errors={checked ? built.errors : []}
+        testId="schedule-inputs"
+      />
     </FormDialog>
   );
 }

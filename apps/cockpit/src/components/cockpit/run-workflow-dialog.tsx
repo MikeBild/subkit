@@ -3,22 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { absolute, runHref } from "@/app/links";
-import { ActionButton, FormDialog } from "@/components/cockpit/patterns";
+import { ActionButton, FormDialog, SchemaForm } from "@/components/cockpit/patterns";
 import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -31,20 +19,8 @@ import {
   refusedConnector,
   type UnavailableConnector,
 } from "@/lib/run-availability";
-import {
-  buildFormInput,
-  formFields,
-  type InputField,
-  type InputSchemaSource,
-  initialInputValues,
-  inputControl,
-  inputForm,
-  inputItemTypeKey,
-  inputSampleText,
-  inputTypeKey,
-  invalidInputs,
-  missingRequired,
-} from "@/lib/workflow-inputs";
+import { buildFormSchemaInput, formValuesFromInput, type SchemaValues } from "@/lib/schema-form";
+import { formFields, type InputSchemaSource, inputForm } from "@/lib/workflow-inputs";
 
 interface InputSchemaResponse {
   source: InputSchemaSource;
@@ -63,103 +39,6 @@ type Failure =
   | { kind: "failed"; executionId: string | null };
 
 const ENGINE_DEFAULT_ENVIRONMENT: RunEnvironment = "dev";
-
-const UNSET = "__unset";
-
-export function InputFieldControl({
-  field,
-  index,
-  value,
-  invalid,
-  onChange,
-  idPrefix = "workflow-run-input",
-}: {
-  field: InputField;
-  index: number;
-  value: string;
-  invalid: boolean;
-  onChange: (value: string) => void;
-  idPrefix?: string;
-}) {
-  const { t } = useI18n();
-  const id = `${idPrefix}-${index}`;
-  const control = inputControl(field);
-  const sample = inputSampleText(field);
-  const item = inputItemTypeKey(field);
-  const typeWord = item
-    ? t("input.type.arrayOf", { type: t(inputTypeKey(field)), item: t(item) })
-    : t(inputTypeKey(field));
-  const options =
-    control === "boolean"
-      ? [
-          { value: "true", label: t("common.yes") },
-          { value: "false", label: t("common.no") },
-        ]
-      : (field.options ?? []).map((option) => ({ value: String(option), label: String(option) }));
-  return (
-    <Field data-invalid={invalid || undefined}>
-      <FieldLabel htmlFor={id}>
-        {field.name}
-        {field.required && <span aria-hidden="true"> *</span>}
-        <Badge variant="outline" className="ml-2 font-normal">
-          {typeWord}
-        </Badge>
-      </FieldLabel>
-      {control === "select" || control === "boolean" ? (
-        <Select
-          value={value === "" ? (field.required ? "" : UNSET) : value}
-          onValueChange={(next) => onChange(next === UNSET ? "" : next)}
-        >
-          <SelectTrigger id={id} aria-invalid={invalid} data-testid={id}>
-            <SelectValue placeholder={sample ?? ""} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {field.required ? null : (
-                <SelectItem value={UNSET} data-testid={`${id}-unset`}>
-                  {t("input.unset")}
-                </SelectItem>
-              )}
-              {options.map((option, optionIndex) => (
-                <SelectItem
-                  key={option.value}
-                  value={option.value}
-                  data-testid={`${id}-option-${optionIndex}`}
-                >
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      ) : control === "json" ? (
-        <Textarea
-          id={id}
-          rows={3}
-          className="font-mono text-xs"
-          value={value}
-          aria-invalid={invalid}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={sample ?? (field.type === "array" ? "[]" : field.union ? "" : "{}")}
-          data-testid={id}
-        />
-      ) : (
-        <Input
-          id={id}
-          type={control === "number" ? "number" : "text"}
-          inputMode={control === "number" ? "decimal" : undefined}
-          step={field.type === "integer" ? 1 : control === "number" ? "any" : undefined}
-          value={value}
-          aria-invalid={invalid}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={sample ?? ""}
-          data-testid={id}
-        />
-      )}
-      {field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
-    </Field>
-  );
-}
 
 export function RunWorkflowDialog({
   workflowId,
@@ -193,7 +72,8 @@ export function RunWorkflowDialog({
     requested.current = openRequest;
     if (!disabled) setOpen(true);
   }, [openRequest, disabled]);
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<SchemaValues | null>(null);
+  const [checked, setChecked] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
 
   const schema = useQuery({
@@ -206,9 +86,8 @@ export function RunWorkflowDialog({
   });
   const form = inputForm(schema.data?.schema ?? null);
   const fields = formFields(form);
-  const filled = { ...initialInputValues(fields), ...values };
-  const missing = missingRequired(fields, filled);
-  const invalid = invalidInputs(fields, filled);
+  const filled = values ?? formValuesFromInput(form, undefined);
+  const built = buildFormSchemaInput(form, filled);
   const environment = liveEnvironment ?? ENGINE_DEFAULT_ENVIRONMENT;
 
   const environmentWord = (value: RunEnvironment) => t(`run.environment.${value}`);
@@ -228,9 +107,7 @@ export function RunWorkflowDialog({
         body: JSON.stringify({
           source: "saved",
           workflow_id: workflowId,
-          ...(buildFormInput(form, filled) !== undefined
-            ? { input: buildFormInput(form, filled) }
-            : {}),
+          ...(built.input !== undefined ? { input: built.input } : {}),
         }),
       }),
     onSuccess: (result) => {
@@ -243,7 +120,8 @@ export function RunWorkflowDialog({
       ])
         void queryClient.invalidateQueries({ queryKey });
       setOpen(false);
-      setValues({});
+      setValues(null);
+      setChecked(false);
       toast.success(t("run.startedToast"));
       if (result.execution_id) sheets.run(result.execution_id);
     },
@@ -289,7 +167,10 @@ export function RunWorkflowDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) setFailure(null);
+        if (!next) {
+          setFailure(null);
+          setChecked(false);
+        }
       }}
       trigger={
         openRequest === undefined ? (
@@ -303,39 +184,38 @@ export function RunWorkflowDialog({
         ) : undefined
       }
       title={t("run.title", { name: workflowName })}
+      size="wide"
       description={
         liveEnvironment && approvedVersion != null
           ? t("run.consequenceVersion", { version: approvedVersion })
           : t(liveEnvironment ? "run.consequenceLive" : "run.consequencePreview")
       }
       submit={{
-        label: run.isPending ? t("run.running") : t("run.action"),
+        label: run.isPending
+          ? t("run.running")
+          : t(liveEnvironment ? "run.action" : "run.previewAction"),
         pending: run.isPending,
-        disabled:
-          liveEnvironment === undefined || missing.length > 0 || invalid.length > 0 || repeats,
+        disabled: liveEnvironment === undefined || repeats || schema.isPending,
         testId: "workflow-run-submit",
       }}
-      onSubmit={() => run.mutate()}
+      onSubmit={() => {
+        setChecked(true);
+        if (built.errors.length === 0) run.mutate();
+      }}
       cancelTestId="workflow-run-cancel"
       testId="workflow-run-dialog"
     >
-      {fields.length > 0 && (
-        <div className="grid gap-3" data-testid="workflow-run-inputs">
-          {schema.data?.source === "synthesized" && (
-            <p className="text-xs text-muted-foreground">{t("run.schemaSynthesized")}</p>
-          )}
-          {fields.map((field, index) => (
-            <InputFieldControl
-              key={field.name}
-              field={field}
-              index={index}
-              value={filled[field.name] ?? ""}
-              invalid={invalid.includes(field.name)}
-              onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))}
-            />
-          ))}
-        </div>
-      )}
+      {schema.data?.source === "synthesized" && fields.length > 0 ? (
+        <p className="text-xs text-muted-foreground">{t("run.schemaSynthesized")}</p>
+      ) : null}
+      <SchemaForm
+        fields={fields}
+        values={filled}
+        onChange={(next) => setValues(next)}
+        errors={checked ? built.errors : []}
+        empty={schema.isPending ? undefined : t("run.noInputs")}
+        testId="workflow-run-inputs"
+      />
 
       {failure && (
         <Alert variant="destructive" data-testid="workflow-run-error">
@@ -377,16 +257,6 @@ export function RunWorkflowDialog({
       {repeats && (
         <p className="text-xs text-muted-foreground" data-testid="workflow-run-repeats">
           {t("run.refusedAgain")}
-        </p>
-      )}
-      {missing.length > 0 && (
-        <p className="text-xs text-muted-foreground" data-testid="workflow-run-missing">
-          {t("run.missingInputs", { fields: missing.join(", ") })}
-        </p>
-      )}
-      {invalid.length > 0 && (
-        <p className="text-xs text-destructive" data-testid="workflow-run-invalid">
-          {t("input.invalid", { fields: invalid.join(", ") })}
         </p>
       )}
     </FormDialog>

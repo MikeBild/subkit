@@ -1,4 +1,11 @@
-import { type InputField, type InputScalar, inputFields } from "@/lib/workflow-inputs";
+import {
+  formFields,
+  type InputField,
+  type InputForm,
+  type InputScalar,
+  inputFields,
+  WHOLE_INPUT,
+} from "@/lib/workflow-inputs";
 
 export type SchemaFieldKind = "text" | "number" | "boolean" | "enum" | "group" | "list" | "json";
 
@@ -76,6 +83,23 @@ export function initialSchemaValues(fields: readonly InputField[]): SchemaValues
   return values;
 }
 
+function jsonType(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
+  return typeof value;
+}
+
+function fitsJson(field: InputField, value: unknown): boolean {
+  if (field.union) {
+    const type = jsonType(value);
+    return field.union.includes(type) || (type === "integer" && field.union.includes("number"));
+  }
+  if (field.type === "array") return Array.isArray(value);
+  if (field.type === "object") return isRecord(value);
+  return true;
+}
+
 type Read = { present: false } | { present: true; value: unknown } | { problem: SchemaProblem };
 
 function readScalar(field: InputField, text: string, itemType?: string): Read {
@@ -116,10 +140,12 @@ function readField(field: InputField, raw: SchemaValue | undefined, errors: Sche
   const text = typeof raw === "string" ? raw : "";
   if (kind === "json") {
     if (text.trim() === "") return { present: false };
+    const loose = field.union?.includes("string") ?? false;
     try {
-      return { present: true, value: JSON.parse(text) as unknown };
+      const value = JSON.parse(text) as unknown;
+      return fitsJson(field, value) ? { present: true, value } : { problem: "json" };
     } catch {
-      return { problem: "json" };
+      return loose ? { present: true, value: text } : { problem: "json" };
     }
   }
   return readScalar(field, text);
@@ -156,4 +182,26 @@ export function fieldTitle(field: InputField): string {
     .replace(/[_-]+/g, " ")
     .trim();
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : field.name;
+}
+
+export function buildFormSchemaInput(
+  form: InputForm,
+  values: SchemaValues,
+): { input: unknown; errors: SchemaError[] } {
+  if (form.kind === "none") return { input: undefined, errors: [] };
+  const built = buildSchemaInput(formFields(form), values);
+  return {
+    input: form.kind === "whole" ? built.input[WHOLE_INPUT] : built.input,
+    errors: built.errors,
+  };
+}
+
+export function formValuesFromInput(form: InputForm, input: unknown): SchemaValues {
+  const fields = formFields(form);
+  if (form.kind === "whole")
+    return input === undefined || input === null
+      ? initialSchemaValues(fields)
+      : valuesFromInput(fields, { [WHOLE_INPUT]: input });
+  if (!isRecord(input) || Object.keys(input).length === 0) return initialSchemaValues(fields);
+  return valuesFromInput(fields, input);
 }

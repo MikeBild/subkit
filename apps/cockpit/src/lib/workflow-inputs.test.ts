@@ -1,18 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
-  buildFormInput,
-  buildInput,
   flattenInputFields,
   formFields,
-  initialInputValues,
-  inputControl,
   inputFields,
   inputForm,
   inputItemTypeKey,
   inputSampleText,
   inputTypeKey,
-  invalidInputs,
-  missingRequired,
 } from "./workflow-inputs";
 
 const SCHEMA = {
@@ -147,81 +141,6 @@ describe("what a field is called and shown as", () => {
     expect(inputSampleText(field("run_id"))).toBeNull();
     expect(inputSampleText({ example: undefined, defaultValue: { a: 1 } })).toBe('{"a":1}');
   });
-
-  test("each type is filled in with its own control", () => {
-    expect(inputControl(field("run_id"))).toBe("text");
-    expect(inputControl(field("limit"))).toBe("number");
-    expect(inputControl(field("pages"))).toBe("number");
-    expect(inputControl(field("dry"))).toBe("boolean");
-    expect(inputControl(field("mode"))).toBe("select");
-    expect(inputControl(field("tags"))).toBe("json");
-    expect(inputControl(field("options"))).toBe("json");
-  });
-});
-
-describe("building the input", () => {
-  const fields = inputFields(SCHEMA);
-
-  test("the form starts with the schema's defaults", () => {
-    expect(initialInputValues(fields)).toEqual({ limit: "25" });
-  });
-
-  test("omits empty optional fields instead of sending blanks", () => {
-    expect(buildInput(fields, { run_id: "2030-08-10", limit: "", dry: "" })).toEqual({
-      run_id: "2030-08-10",
-    });
-  });
-
-  test("sends numbers, booleans and enum members in their own type", () => {
-    expect(
-      buildInput(fields, { run_id: "r", limit: "25", pages: "3", dry: "true", mode: "live" }),
-    ).toEqual({ run_id: "r", limit: 25, pages: 3, dry: true, mode: "live" });
-    const numeric = inputFields({ properties: { level: { type: "integer", enum: [1, 2] } } });
-    expect(buildInput(numeric, { level: "2" })).toEqual({ level: 2 });
-  });
-
-  test("parses structured input", () => {
-    expect(buildInput(fields, { run_id: "r", options: '{"depth":3}', tags: '["a","b"]' })).toEqual({
-      run_id: "r",
-      options: { depth: 3 },
-      tags: ["a", "b"],
-    });
-  });
-
-  test("a value of the wrong type is never sent as text under the right name", () => {
-    const values = {
-      run_id: "r",
-      limit: "many",
-      pages: "1.5",
-      dry: "maybe",
-      mode: "other",
-      tags: '{"not":"a list"}',
-      options: "{broken",
-    };
-    expect(buildInput(fields, values)).toEqual({ run_id: "r" });
-    expect(invalidInputs(fields, values)).toEqual([
-      "limit",
-      "pages",
-      "dry",
-      "mode",
-      "tags",
-      "options",
-    ]);
-  });
-
-  test("an empty field is not an invalid one", () => {
-    expect(invalidInputs(fields, { run_id: "r", limit: "  " })).toEqual([]);
-  });
-});
-
-describe("required fields", () => {
-  const fields = inputFields(SCHEMA);
-
-  test("names what is still missing", () => {
-    expect(missingRequired(fields, {})).toEqual(["run_id", "mode"]);
-    expect(missingRequired(fields, { run_id: "  ", mode: "live" })).toEqual(["run_id"]);
-    expect(missingRequired(fields, { run_id: "r", mode: "live" })).toEqual([]);
-  });
 });
 
 describe("a field that allows several types", () => {
@@ -245,31 +164,14 @@ describe("a field that allows several types", () => {
 
   test("one real type beside null is that type, with its own control", () => {
     expect(field("amount").type).toBe("number");
-    expect(inputControl(field("amount"))).toBe("number");
     expect(field("note").type).toBe("string");
-    expect(buildInput(fields, { amount: "12.5" })).toEqual({ amount: 12.5 });
   });
 
   test("several types are one JSON value, named as such", () => {
     expect(field("target")).toMatchObject({ type: "any", union: ["string", "integer"] });
     expect(field("filter")).toMatchObject({ type: "any", union: ["object", "array"] });
     expect(field("payload")).toMatchObject({ type: "any", union: ["object", "array"] });
-    expect(inputControl(field("target"))).toBe("json");
     expect(inputTypeKey(field("target"))).toBe("input.type.any");
-  });
-
-  test("a value is sent with its JSON type, never as text by default", () => {
-    expect(buildInput(fields, { target: "42" })).toEqual({ target: 42 });
-    expect(buildInput(fields, { filter: '{"a":1}' })).toEqual({ filter: { a: 1 } });
-    expect(buildInput(fields, { filter: "[1,2]" })).toEqual({ filter: [1, 2] });
-    expect(buildInput(fields, { target: "north" })).toEqual({ target: "north" });
-    expect(buildInput(fields, { target: '"42"' })).toEqual({ target: "42" });
-  });
-
-  test("a value of a type the field does not allow is named, not sent", () => {
-    const values = { target: "1.5", filter: "north", payload: "7" };
-    expect(buildInput(fields, values)).toEqual({});
-    expect(invalidInputs(fields, values)).toEqual(["target", "filter", "payload"]);
   });
 });
 
@@ -285,18 +187,7 @@ describe("an input schema that names no fields", () => {
       const form = inputForm(schema);
       expect(form.kind, JSON.stringify(schema)).toBe("whole");
       expect(formFields(form)).toHaveLength(1);
-      expect(inputControl(formFields(form)[0] ?? { type: "string", options: null })).toBe("json");
     }
-  });
-
-  test("the whole value is the run's input, not a field inside it", () => {
-    const object = inputForm({ type: "object" });
-    expect(buildFormInput(object, { input: '{"id":"a"}' })).toEqual({ id: "a" });
-    const list = inputForm({ type: "array", items: { type: "string" } });
-    expect(buildFormInput(list, { input: '["a","b"]' })).toEqual(["a", "b"]);
-    expect(buildFormInput(object, {})).toBeUndefined();
-    expect(buildFormInput(object, { input: "[1]" })).toBeUndefined();
-    expect(invalidInputs(formFields(object), { input: "[1]" })).toEqual(["input"]);
   });
 
   test("no schema, an empty one, or an object closed to any field takes nothing", () => {
@@ -308,13 +199,11 @@ describe("an input schema that names no fields", () => {
     ]) {
       const form = inputForm(schema);
       expect(form.kind, JSON.stringify(schema)).toBe("none");
-      expect(buildFormInput(form, { input: "{}" })).toBeUndefined();
     }
   });
 
   test("named fields stay named fields", () => {
     const form = inputForm(SCHEMA);
     expect(form.kind).toBe("fields");
-    expect(buildFormInput(form, { run_id: "r" })).toEqual({ run_id: "r" });
   });
 });
