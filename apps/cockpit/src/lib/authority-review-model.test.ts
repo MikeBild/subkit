@@ -419,3 +419,9 @@ test("the subtitle names the running version the review replaces, not the approv
   expect(replacedVersion({ running: null, reviewed: 13 })).toBeNull();
   expect(replacedVersion({ running: 12, reviewed: null })).toBeNull();
 });
+
+test("the pending approve button keeps the approve verb in both languages", () => {
+  expect(translate("en", "authority.review.approve")).toBe("Approve");
+  expect(translate("en", "authority.granting")).toBe("Approving…");
+  expect(translate("de", "authority.granting")).toBe("Wird freigegeben…");
+});

@@ -563,7 +563,7 @@ const EN = {
   "authority.grantFailedDescription":
     "The boundary may have changed, your session may lack permission, or the response may have been lost. Check the authority history before preparing another grant; this review is not retried automatically.",
   "authority.prepare": "Check again",
-  "authority.granting": "Granting…",
+  "authority.granting": "Approving…",
   "authority.connector": "Connector",
   "authority.directRequest": "Direct request without a connector",
   "authority.usedByRun": "Authority recorded for this run",
