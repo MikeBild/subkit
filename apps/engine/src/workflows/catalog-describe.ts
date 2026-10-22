@@ -20,7 +20,7 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
-import { retryTransient } from "../db/transient.ts";
+import { isTransientDbError, retryTransient } from "../db/transient.ts";
 import { type FileRow, resolvedFromRow } from "../files/resolver.ts";
 import {
   type CatalogDescribeInput,
@@ -422,6 +422,43 @@ const INPUT_BUILDERS: Record<
 
 export type CatalogDescribeOutcome = "described" | "unchanged" | "skipped" | "failed";
 
+const CATALOG_LOCK_RETRY = { tries: 5, startMs: 25, maxMs: 200 } as const;
+
+const isCatalogLockBusy = (error: unknown) =>
+  error instanceof CatalogVocabularyBusyError || isTransientDbError(error);
+
+function withCatalogLock<T>(
+  db: Executor,
+  tenant_id: string,
+  label: string,
+  work: (tx: Executor) => Promise<T>,
+): Promise<T> {
+  return retryTransient(
+    () =>
+      db.transaction(async (tx) => {
+        await lockCatalogVocabulary(tx, tenant_id);
+        return work(tx);
+      }),
+    { ...CATALOG_LOCK_RETRY, label, shouldRetry: isCatalogLockBusy },
+  );
+}
+
+function writeCatalogMarker(
+  db: Executor,
+  kind: CatalogKind,
+  tenant_id: string,
+  id: string,
+  marker: { catalog_input_hash?: null },
+): Promise<void> {
+  const table = TABLES[kind];
+  return withCatalogLock(db, tenant_id, "catalog_describe_marker", async (tx) => {
+    await tx
+      .update(table)
+      .set({ ...marker, catalog_described_at: sql`now()` })
+      .where(and(eq(table.tenant_id, tenant_id), eq(table.id, id)));
+  });
+}
+
 async function loadOwnership(kind: CatalogKind, tenant_id: string, id: string, db: Executor) {
   const table = TABLES[kind];
   const [row] = await db
@@ -450,20 +487,14 @@ export async function describeOne(
   if (!owned || owned.tenant_id !== p.tenant_id) return "skipped";
   const now = sql`now()`;
   if (owned.description_source === "human" && owned.category_source === "human") {
-    await db
-      .update(table)
-      .set({ catalog_described_at: now })
-      .where(and(eq(table.tenant_id, p.tenant_id), eq(table.id, p.id)));
+    await writeCatalogMarker(db, p.kind, p.tenant_id, p.id, {});
     return "skipped";
   }
   const input = await INPUT_BUILDERS[p.kind](p.tenant_id, p.id, db);
   if (!input) return "skipped";
   const hash = catalogInputHash(input);
   if (hash === owned.catalog_input_hash) {
-    await db
-      .update(table)
-      .set({ catalog_described_at: now })
-      .where(and(eq(table.tenant_id, p.tenant_id), eq(table.id, p.id)));
+    await writeCatalogMarker(db, p.kind, p.tenant_id, p.id, {});
     return "unchanged";
   }
   const vocabulary =
@@ -476,20 +507,16 @@ export async function describeOne(
     }));
   const generated = await describeCatalogObject({ tenant_id: p.tenant_id, input, vocabulary }, db);
   if (!generated) {
-    await db
-      .update(table)
-      .set({ catalog_described_at: now, catalog_input_hash: null })
-      .where(and(eq(table.tenant_id, p.tenant_id), eq(table.id, p.id)));
+    await writeCatalogMarker(db, p.kind, p.tenant_id, p.id, { catalog_input_hash: null });
     return "failed";
   }
-  const set: {
-    catalog_input_hash: string;
-    catalog_described_at: typeof now;
-    description?: string;
-    category?: string;
-  } = { catalog_input_hash: hash, catalog_described_at: now };
-  const applied = await db.transaction(async (tx) => {
-    await lockCatalogVocabulary(tx, p.tenant_id);
+  const applied = await withCatalogLock(db, p.tenant_id, "catalog_describe_apply", async (tx) => {
+    const set: {
+      catalog_input_hash: string;
+      catalog_described_at: typeof now;
+      description?: string;
+      category?: string;
+    } = { catalog_input_hash: hash, catalog_described_at: now };
     const [current] = await tx
       .select({
         description: table.description,
@@ -578,11 +605,18 @@ export async function describePendingCatalog(
         object_id: ref.id,
         ...errorFields(err),
       });
-      const table = TABLES[ref.kind];
-      await db
-        .update(table)
-        .set({ catalog_described_at: sql`now()`, catalog_input_hash: null })
-        .where(and(eq(table.id, ref.id), eq(table.tenant_id, tenant_id)));
+      await writeCatalogMarker(db, ref.kind, tenant_id, ref.id, { catalog_input_hash: null }).catch(
+        (backoffError: unknown) =>
+          logger.warn({
+            module: "catalog",
+            action: "catalog.describe_backoff_failed",
+            msg: "recording the back-off failed; the object stays pending for the next pass",
+            tenant_id,
+            kind: ref.kind,
+            object_id: ref.id,
+            ...errorFields(backoffError),
+          }),
+      );
     }
   }
   run.remaining = await hasPendingCatalogDescriptions(tenant_id, db);
