@@ -2,12 +2,26 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { classifyRequestStepSideEffects } from "../../execution/steps/request/side-effects.ts";
 import { type ConnectorAccessLevel, connectorAccessLevel } from "../../rbac/evaluator.ts";
+import {
+  GRAPHQL_OVER_HTTP_REPAIR,
+  introducedGraphqlOverHttpSteps,
+} from "../../workflows/graphql-conversion.ts";
 import type { RequestStep } from "../../workflows/types.ts";
 
 export interface BuildWarning {
   step_key: string | null;
   code: string;
   message: string;
+}
+
+type StepsHolder = Parameters<typeof introducedGraphqlOverHttpSteps>[0];
+
+export function graphqlOverHttpWarnings(before: StepsHolder, after: StepsHolder): BuildWarning[] {
+  return introducedGraphqlOverHttpSteps(before, after).map((stepKey) => ({
+    step_key: stepKey,
+    code: "graphql_over_http",
+    message: `step ${stepKey} POSTs a GraphQL document to a GraphQL endpoint over plain HTTP: it has no cursor_pagination, so only the first page is read, and an unparseable document is reviewed as a write. ${GRAPHQL_OVER_HTTP_REPAIR}`,
+  }));
 }
 
 export async function authorConnectorWriteWarnings(

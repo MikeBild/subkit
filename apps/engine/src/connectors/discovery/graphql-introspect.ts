@@ -1,3 +1,4 @@
+import { looksLikeGraphQLUrl } from "@shared/index.ts";
 import {
   buildClientSchema,
   getIntrospectionQuery,
@@ -18,6 +19,8 @@ import {
   type DiscoveryStrategyOptions,
   type DiscoveryWarning,
 } from "./types.ts";
+
+export { looksLikeGraphQLUrl };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_SIZE_BYTES = 16 * 1024 * 1024;
@@ -321,19 +324,6 @@ async function expandRootFields(
     endpoints.push(endpoint);
   }
   return { endpoints, schemaNodes };
-}
-
-export function looksLikeGraphQLUrl(url: string): boolean {
-  try {
-    const u = new URL(url);
-    const path = u.pathname.toLowerCase().replace(/\/+$/, "");
-    if (path === "/graphql") return true;
-    if (/^\/graphql\/v\d+$/.test(path)) return true;
-    if (/\/graphql$/.test(path)) return true;
-    return false;
-  } catch {
-    return false;
-  }
 }
 
 interface IntrospectionFetchResult {

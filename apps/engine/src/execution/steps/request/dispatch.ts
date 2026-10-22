@@ -69,6 +69,10 @@ import {
   inspectContentRevisionResponse,
 } from "../../../workflows/content-publication-boundary.ts";
 import {
+  GRAPHQL_OVER_HTTP_REPAIR,
+  GRAPHQL_OVER_HTTP_WARNING,
+} from "../../../workflows/graphql-conversion.ts";
+import {
   GMAIL_SEND_TARGET,
   inspectReportMessage,
   reportInspectionRecord,
@@ -1058,7 +1062,7 @@ async function dispatchRequestStep(
             duration_ms: Date.now() - start,
             error: {
               code: "connector_driver_mismatch",
-              message: `request step carries a \`graphql\` block but connector '${connector.slug}' is driver '${connector.driver}'`,
+              message: `request step carries a \`graphql\` block but connector '${connector.slug}' is driver '${connector.driver}'. ${GRAPHQL_OVER_HTTP_REPAIR} ${GRAPHQL_OVER_HTTP_WARNING}`,
             },
           };
         }

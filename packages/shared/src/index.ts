@@ -23,6 +23,7 @@ export {
   type FileLinkResourceType,
   MAX_INLINE_BYTES,
 } from "./files-constants.ts";
+export { looksLikeGraphQLUrl } from "./graphql-url.ts";
 export {
   INVOKE_ENVIRONMENTS,
   INVOKE_HEADER_NAMES,
@@ -64,6 +65,7 @@ export {
 } from "./redaction.ts";
 export type {
   GraphqlOperation,
+  GraphqlOverHttpInput,
   McpOperation,
   McpToolAnnotationHints,
   SideEffect,
@@ -72,6 +74,7 @@ export type {
 export {
   classifyHttpSideEffect,
   classifyMcpToolSideEffect,
+  graphqlOverHttpQuery,
   httpMethodIsRead,
   inferGraphqlOperation,
   sqlIsSelect,

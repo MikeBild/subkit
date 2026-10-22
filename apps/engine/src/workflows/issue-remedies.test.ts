@@ -48,6 +48,21 @@ test("guidance is joined over issues, so a storage problem carries its fix", () 
   ]);
 });
 
+test("a binding mismatch carries a repair that keeps graphql pagination", () => {
+  const guidance = repairGuidanceForIssues(
+    [{ step_id: "project_items", code: "binding_mismatch" }],
+    [{ step_id: "project_items", driver: "http", target: "https://api.github.com/" }],
+  );
+  expect(guidance).toHaveLength(1);
+  const instruction = guidance[0]?.instruction ?? "";
+  expect(instruction).toContain("graphql connector");
+  expect(instruction).toContain("https://api.github.com/graphql");
+  expect(instruction).toContain("cursor_pagination");
+  expect(instruction).toContain("REST endpoint");
+  expect(instruction).toContain("POST /graphql");
+  expect(remedyFor("binding_mismatch", null)).toBe(instruction);
+});
+
 test("a repeated code for one step is reported once", () => {
   const guidance = repairGuidanceForIssues(
     [

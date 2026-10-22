@@ -234,6 +234,16 @@ const REMEDIES: Partial<Record<ManifestIssueCode, Partial<Record<Driver, string>
 };
 
 const DRIVERLESS_REMEDIES: Partial<Record<ManifestIssueCode, string>> = {
+  binding_mismatch:
+    "The step does not match the connector it resolves to: its kind (a `graphql`, `sql`, `mcp` " +
+    "or `s3` block, or plain HTTP) must match the connector's driver, and the step must not have " +
+    "changed since its binding was resolved. When the step carries a `graphql` block on an http " +
+    "connector, point `connector_id` at a graphql connector whose base_url is the GraphQL " +
+    "endpoint (for GitHub https://api.github.com/graphql) and keep the `graphql` block with its " +
+    "`cursor_pagination`, or rewrite the step against the REST endpoint. Never convert it to " +
+    "POST /graphql on an http connector: that drops cursor_pagination, so only the first page is " +
+    "read, and the request is reviewed as a write. If neither connector exists, ask the user " +
+    "which to use. Otherwise inspect the draft again and review the current version.",
   boundary_contradicted_by_history:
     "The folder this step declares does not contain a key the step itself has already written. " +
     "This is not a guess and not a preview artefact: the key comes from a successful run of this " +

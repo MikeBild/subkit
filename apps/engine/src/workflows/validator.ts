@@ -1,4 +1,4 @@
-import { inferGraphqlOperation } from "@shared/index.ts";
+import { graphqlOverHttpQuery, inferGraphqlOperation } from "@shared/index.ts";
 import type { ConnectorHeaderPolicy } from "../connectors/index.ts";
 import { compileJsonSchemaContract } from "../execution/index.ts";
 import { compileOutputContractSchema } from "../execution/output-contract.ts";
@@ -10,6 +10,7 @@ import {
   type PlaceholderTier,
   placeholderDestinationErrors,
 } from "./destination-placeholders.ts";
+import { GRAPHQL_OVER_HTTP_REPAIR, GRAPHQL_OVER_HTTP_WARNING } from "./graphql-conversion.ts";
 import { detectReservedAuthHeaders } from "./header-policy.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
 import { jsonataSiteErrors } from "./jsonata-sites.ts";
@@ -146,9 +147,10 @@ export function validateWorkflowDef(
       if (foreignDriver) {
         errors.push({
           path: `steps.${step.id}.graphql`,
-          message: `a graphql block needs a graphql connector, but connector ${step.connector_id} is driver '${foreignDriver}' — such a step is held as a write in previews and refused at run time. Point connector_id at a graphql connector whose base_url is the GraphQL endpoint (for GitHub https://api.github.com/graphql); \`method\` and \`path\` are not used for a graphql block, which is always sent as POST.`,
+          message: `a graphql block needs a graphql connector, but connector ${step.connector_id} is driver '${foreignDriver}' — such a step is held as a write in previews and refused at run time. Point connector_id at a graphql connector whose base_url is the GraphQL endpoint (for GitHub https://api.github.com/graphql) and keep the graphql block with its cursor_pagination, or rewrite the step against the REST endpoint; \`method\` and \`path\` are not used for a graphql block, which is always sent as POST. ${GRAPHQL_OVER_HTTP_WARNING}`,
         });
       }
+      errors.push(...graphqlOverHttpErrors(step));
       if (step.url !== undefined) {
         const isAbsolute = /^https?:\/\//.test(step.url);
         const isConnectorBaseUrlPlaceholder = /^\$\{connector\.[a-z0-9_-]+\.base_url\}(\/|$)/.test(
@@ -365,6 +367,32 @@ export function validateWorkflowDef(
 function stepReferencesCanonicalItem(step: StepDef): boolean {
   const haystack = JSON.stringify(step);
   return haystack.includes("${item") || /\$item\b/.test(haystack);
+}
+
+function graphqlOverHttpErrors(step: Extract<StepDef, { kind: "request" }>): ValidationError[] {
+  if (step.graphql || step.sql || step.mcp || step.s3) return [];
+  const query = graphqlOverHttpQuery({
+    method: step.method,
+    target: step.url ?? step.path ?? null,
+    body: step.body,
+  });
+  if (query === null || /\$\{/.test(query)) return [];
+  const operation = inferGraphqlOperation(query);
+  if (operation === null)
+    return [
+      {
+        path: `steps.${step.id}.body.query`,
+        message: `body.query is not a valid GraphQL document containing an operation (check that every brace and parenthesis is closed). ${GRAPHQL_OVER_HTTP_REPAIR}`,
+      },
+    ];
+  if (operation !== "query" && step.side_effects === "read")
+    return [
+      {
+        path: `steps.${step.id}.side_effects`,
+        message: `body.query is a GraphQL ${operation}, which changes data; a ${operation} cannot be declared side_effects "read". Remove the label or send a query document.`,
+      },
+    ];
+  return [];
 }
 
 function collectAddressingPlaceholderErrors(

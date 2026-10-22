@@ -1,4 +1,5 @@
 import { Kind, parse } from "graphql";
+import { looksLikeGraphQLUrl } from "./graphql-url.ts";
 
 export type SideEffect = "read" | "write";
 
@@ -13,9 +14,47 @@ export interface SideEffectInput {
   sql?: { query: string; also?: ReadonlyArray<{ query: string }> } | null;
   s3?: boolean | null;
   mcp?: { operation: McpOperation } | null;
+  target?: string | null;
+  body?: unknown;
+}
+
+export interface GraphqlOverHttpInput {
+  method?: string | null;
+  target?: string | null;
+  body?: unknown;
 }
 
 const S3_READ_METHODS = new Set(["GET", "HEAD", "LIST"]);
+
+const RELATIVE_TARGET_ORIGIN = "https://relative-target.invalid";
+
+const LEADING_PLACEHOLDER = /^\$\{[^}]*\}/;
+
+const RUNTIME_PLACEHOLDER = /\$\{/;
+
+function absoluteTarget(target: string): string {
+  if (/^https?:\/\//i.test(target)) return target;
+  return `${RELATIVE_TARGET_ORIGIN}/${target.replace(LEADING_PLACEHOLDER, "").replace(/^\/+/, "")}`;
+}
+
+export function graphqlOverHttpQuery(input: GraphqlOverHttpInput): string | null {
+  if ((input.method ?? "GET").toUpperCase() !== "POST") return null;
+  const target = input.target?.trim();
+  if (!target || !looksLikeGraphQLUrl(absoluteTarget(target))) return null;
+  const body = input.body;
+  if (body === null || typeof body !== "object" || Array.isArray(body)) return null;
+  const query = (body as Record<string, unknown>).query;
+  return typeof query === "string" ? query : null;
+}
+
+function graphqlOverHttpEffect(input: SideEffectInput): SideEffect | null {
+  if (input.graphql || input.sql || input.mcp || input.s3) return null;
+  const query = graphqlOverHttpQuery(input);
+  if (query === null) return null;
+  return !RUNTIME_PLACEHOLDER.test(query) && inferGraphqlOperation(query) === "query"
+    ? "read"
+    : "write";
+}
 
 export function httpMethodIsRead(method: string): boolean {
   const m = method.toUpperCase();
@@ -66,6 +105,8 @@ export function classifyMcpToolSideEffect(
 
 export function classifyHttpSideEffect(input: SideEffectInput): SideEffect {
   if (input.override === "write") return "write";
+  const overHttp = graphqlOverHttpEffect(input);
+  if (overHttp) return overHttp;
   if (input.override === "read" && readOverrideIsSafe(input)) return "read";
   if (input.mcp) {
     return input.mcp.operation === "call_tool" ? "write" : "read";

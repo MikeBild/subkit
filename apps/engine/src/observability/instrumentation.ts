@@ -548,6 +548,7 @@ const AUTHORING_GATE_CODES = new Set<string>([
   "jsonata_unknown_function",
   "workflow_unsupported_placeholder",
   "ask_placeholder_destination",
+  "graphql_conversion_lossy",
 ]);
 const AUTHORING_GATE_TOOLS = new Set<string>([
   "author_workflow",

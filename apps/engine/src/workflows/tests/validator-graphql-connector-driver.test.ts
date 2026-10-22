@@ -29,6 +29,9 @@ describe("validateWorkflowDef · graphql block connector driver", () => {
     const error = result.errors.find((entry) => entry.path === "steps.project_items.graphql");
     expect(error?.message).toContain("driver 'http'");
     expect(error?.message).toContain("graphql connector");
+    expect(error?.message).toContain("REST endpoint");
+    expect(error?.message).toContain("Do not convert it to POST /graphql");
+    expect(error?.message).toContain("cursor_pagination");
   });
 
   test("accepts a graphql block on a graphql connector", () => {

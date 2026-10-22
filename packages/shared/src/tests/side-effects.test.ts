@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   classifyHttpSideEffect,
   classifyMcpToolSideEffect,
+  graphqlOverHttpQuery,
   httpMethodIsRead,
   inferGraphqlOperation,
   sqlIsSelect,
@@ -200,5 +201,98 @@ describe("classifyMcpToolSideEffect — the remote's own annotations", () => {
     expect(classifyHttpSideEffect({ mcp: { operation: "call_tool" }, override: "read" })).toBe(
       "write",
     );
+  });
+});
+
+describe("classifyHttpSideEffect — GraphQL over plain HTTP", () => {
+  const github = "https://api.github.com/graphql";
+  const unbalanced =
+    'query Items($after: String) { user(login: "x") { projectV2(number: 3) { items(first: 100, after: $after) { nodes { id } pageInfo { hasNextPage endCursor } } } }';
+
+  test("a POSTed query document to a GraphQL endpoint is a read", () => {
+    expect(
+      classifyHttpSideEffect({
+        method: "POST",
+        target: github,
+        body: { query: "query { viewer { login } }" },
+      }),
+    ).toBe("read");
+    expect(
+      classifyHttpSideEffect({
+        method: "POST",
+        target: "/graphql",
+        body: { query: "query { viewer { login } }" },
+        override: "read",
+      }),
+    ).toBe("read");
+  });
+
+  test("a POSTed mutation is a write and a read label cannot downgrade it", () => {
+    const body = { query: 'mutation { addStar(input: {starrableId: "1"}) { clientMutationId } }' };
+    expect(classifyHttpSideEffect({ method: "POST", target: github, body })).toBe("write");
+    expect(classifyHttpSideEffect({ method: "POST", target: github, body, override: "read" })).toBe(
+      "write",
+    );
+    expect(
+      classifyHttpSideEffect({
+        method: "POST",
+        target: "/graphql",
+        body: { query: "subscription { events { id } }" },
+        override: "read",
+      }),
+    ).toBe("write");
+  });
+
+  test("an unparseable or runtime-assembled document fails closed", () => {
+    expect(inferGraphqlOperation(unbalanced)).toBeNull();
+    expect(
+      classifyHttpSideEffect({
+        method: "POST",
+        target: "/graphql",
+        body: { query: unbalanced },
+        override: "read",
+      }),
+    ).toBe("write");
+    expect(
+      classifyHttpSideEffect({
+        method: "POST",
+        target: "/graphql",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
+        body: { query: "${input.document}" },
+        override: "read",
+      }),
+    ).toBe("write");
+  });
+
+  test("a read-labelled POST to a non-GraphQL path keeps its override", () => {
+    expect(
+      classifyHttpSideEffect({
+        method: "POST",
+        target: "https://api.notion.com/v1/search",
+        body: { query: "x" },
+        override: "read",
+      }),
+    ).toBe("read");
+    expect(classifyHttpSideEffect({ method: "POST", target: "/graphql", body: {} })).toBe("write");
+  });
+
+  test("detection needs POST, a GraphQL path and a string query", () => {
+    const body = { query: "query { a }" };
+    for (const target of [
+      "/graphql",
+      "/api/graphql",
+      "/graphql/v1",
+      "graphql",
+      github,
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored connector placeholder
+      "${connector.github.base_url}/graphql",
+    ])
+      expect(graphqlOverHttpQuery({ method: "POST", target, body })).toBe("query { a }");
+    expect(graphqlOverHttpQuery({ method: "GET", target: "/graphql", body })).toBeNull();
+    expect(graphqlOverHttpQuery({ method: "POST", target: "/v1/search", body })).toBeNull();
+    expect(
+      graphqlOverHttpQuery({ method: "POST", target: "/graphql", body: "query { a }" }),
+    ).toBeNull();
+    expect(graphqlOverHttpQuery({ method: "POST", target: null, body })).toBeNull();
   });
 });

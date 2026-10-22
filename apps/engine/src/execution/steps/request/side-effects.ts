@@ -42,6 +42,8 @@ export function classifyRequestStepSideEffects(
       : null,
     s3: Boolean(step.s3) || driver === "s3",
     mcp: step.mcp ? { operation: step.mcp.operation } : null,
+    target: step.url ?? step.path ?? null,
+    body: step.body,
   });
 }
 

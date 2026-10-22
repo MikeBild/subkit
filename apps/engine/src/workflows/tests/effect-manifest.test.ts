@@ -166,6 +166,23 @@ test("an author read label cannot make a POST manifest claim it has no write eff
   ).toBe("write");
 });
 
+test("a read-labelled GraphQL query over plain HTTP keeps its write manifest and digest", () => {
+  const result = compileWorkflowEffectManifest(
+    fixture({
+      path: "/graphql",
+      side_effects: "read",
+      body: {
+        query:
+          "query RadarRepositories($query:String!,$first:Int!){search(query:$query,type:REPOSITORY,first:$first){repositoryCount}}",
+        variables: { first: 50, query: "oss" },
+      },
+    }),
+  );
+  expect(result.manifest.effects[0]?.effect).toBe("write");
+  expect(result.manifest.effects[0]?.operation).toBe("POST");
+  expect(result.digest).toBe("0c461ccc188be8aadf02398f2f795a745cd6bca2fe79e786b67bbb8a05676b7d");
+});
+
 test("a child workflow without an immutable child version never inherits authority", () => {
   const input = fixture();
   input.definition = WorkflowDefSchema.parse({

@@ -381,3 +381,44 @@ test("dispatch classification uses the materialized method without lowering muta
     ),
   ).toBe("write");
 });
+
+describe("classifyRequestStepSideEffects · GraphQL over plain HTTP", () => {
+  const query =
+    "query RadarRepositories($query: String!, $first: Int!) { search(query: $query, type: REPOSITORY, first: $first) { repositoryCount } }";
+  const mutation = 'mutation { addStar(input: {starrableId: "1"}) { clientMutationId } }';
+
+  test("a read-labelled mutation in a POST body is a write and is held", () => {
+    const request = step({
+      connector_id: CONNECTOR_ID,
+      method: "POST",
+      path: "/graphql",
+      body: { query: mutation },
+      side_effects: "read",
+    });
+    expect(classifyRequestStepSideEffects(request, "http")).toBe("write");
+    expect(requestRequiresPreparationHold(request, "http")).toBe(true);
+  });
+
+  test("a POSTed query document is a read and is not held", () => {
+    const request = step({
+      connector_id: CONNECTOR_ID,
+      method: "POST",
+      path: "/graphql",
+      body: { query, variables: { query: "x", first: 5 } },
+    });
+    expect(classifyRequestStepSideEffects(request, "http")).toBe("read");
+    expect(requestRequiresPreparationHold(request, "http")).toBe(false);
+  });
+
+  test("a POST search on a non-GraphQL path stays held", () => {
+    const request = step({
+      connector_id: CONNECTOR_ID,
+      method: "POST",
+      path: "/v1/search",
+      body: { query: "SubKit" },
+      side_effects: "read",
+    });
+    expect(classifyRequestStepSideEffects(request, "http")).toBe("read");
+    expect(requestRequiresPreparationHold(request, "http")).toBe(true);
+  });
+});
