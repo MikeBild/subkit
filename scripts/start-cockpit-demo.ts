@@ -482,6 +482,7 @@ async function main(): Promise<void> {
     save(STATE_FILE, state);
   }
   await finishInitialPlatformSeed(state);
+  await api("/v1/settings/observability.deployment_environment", "PUT", { value: "development" });
   await configureProviders(identities.tenantId, state, args.has("--mock"));
   await verifyProviderConfiguration(identities.tenantId);
   await verifyLogin();

@@ -21,6 +21,15 @@ describe("ConfigSchema", () => {
     ).toBe(false);
   });
 
+  test("the deployment environment defaults to production and stays overridable", () => {
+    const base = { database: { url: "postgres://x" } };
+    expect(ConfigSchema.parse(base).observability.deployment_environment).toBe("production");
+    expect(
+      ConfigSchema.parse({ ...base, observability: { deployment_environment: "development" } })
+        .observability.deployment_environment,
+    ).toBe("development");
+  });
+
   test("database connection limits are positive, bounded, global and restart-required", () => {
     const database = ConfigSchema.parse({ database: { url: "postgres://x" } }).database;
     expect(database.pool_max).toBe(10);

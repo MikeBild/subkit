@@ -184,7 +184,7 @@
       "hmac_secret": "",
       "retention_days": 90
     },
-    "deployment_environment": "development",
+    "deployment_environment": "production",
     "field_truncation_chars": 2048,
     "predictive": {
       "pool_saturation_pct": 80,

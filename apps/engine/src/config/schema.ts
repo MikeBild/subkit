@@ -923,7 +923,7 @@ const ObservabilitySection = z
       .string()
       .min(1)
       .max(64)
-      .default("development")
+      .default("production")
       .describe(
         "Deployment identity used for the OpenTelemetry deployment.environment.name resource attribute.",
       )
