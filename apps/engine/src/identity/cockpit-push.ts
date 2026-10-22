@@ -33,12 +33,7 @@ const PUSH_TTL_SECONDS = 4 * 60 * 60;
 const BROWSER_PUSH_ROWS_PER_USER = 10;
 export const COCKPIT_PUSH_IDLE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
 const PUSH_ENDPOINT_HOSTS = new Set(["fcm.googleapis.com", "updates.push.services.mozilla.com"]);
-const NEUTRAL_PUSH_PAYLOAD = JSON.stringify({
-  title: "SubKit",
-  body: "Attention required",
-  tag: "subkit-attention",
-  data: {},
-});
+const ATTENTION_PUSH_PAYLOAD = JSON.stringify({ type: "attention" });
 
 export interface CockpitPushSubscriptionInput {
   endpoint: string;
@@ -860,7 +855,7 @@ export async function sendCockpitPushNotifications(input: {
         tenant_id: input.tenant_id,
         exec: input.db,
       });
-      await (input.send ?? webpush.sendNotification)(subscription, NEUTRAL_PUSH_PAYLOAD, {
+      await (input.send ?? webpush.sendNotification)(subscription, ATTENTION_PUSH_PAYLOAD, {
         vapidDetails: {
           subject: input.subject,
           publicKey: vapid.publicKey,

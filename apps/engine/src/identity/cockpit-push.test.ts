@@ -30,12 +30,7 @@ import { deactivateUser } from "./provisioning.ts";
 
 const HOUR_MS = 60 * 60_000;
 const SUBJECT = "https://subkit.example";
-const NEUTRAL_PAYLOAD = JSON.stringify({
-  title: "SubKit",
-  body: "Attention required",
-  tag: "subkit-attention",
-  data: {},
-});
+const NEUTRAL_PAYLOAD = JSON.stringify({ type: "attention" });
 
 let ctx: HttpTestServer;
 let at: Date;
