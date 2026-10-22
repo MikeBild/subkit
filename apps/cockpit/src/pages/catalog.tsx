@@ -8,6 +8,7 @@ import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
 import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
 import { CatalogNameCell } from "@/components/cockpit/catalog-metadata";
+import { ConnectorOnboarding } from "@/components/cockpit/connector-onboarding";
 import { CreateAction } from "@/components/cockpit/create-choice";
 import {
   Button,
@@ -406,6 +407,8 @@ export function CatalogPage({
     !query.isPending &&
     !query.error &&
     !query.failureReason;
+  const onboardsConnectors =
+    resource === "connectors" && showsZeroStateAction && permissions.includes("connector:write");
 
   const onboarding = resource === "workflows" && showsZeroStateAction;
 
@@ -507,7 +510,7 @@ export function CatalogPage({
         <PageHeader
           title={title}
           action={
-            showsZeroStateAction && !onboarding
+            showsZeroStateAction && !onboarding && !onboardsConnectors
               ? undefined
               : primaryAction("catalog-primary-action")
           }
@@ -519,6 +522,8 @@ export function CatalogPage({
           canWrite={permissions.includes("workflow:write")}
           canChat={permissions.includes("conversation:write")}
         />
+      ) : onboardsConnectors ? (
+        <ConnectorOnboarding canChat={permissions.includes("conversation:write")} />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           {rows.length > 0 || hasActiveFilters ? (
