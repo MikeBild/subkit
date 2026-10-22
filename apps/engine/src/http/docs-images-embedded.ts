@@ -52,8 +52,8 @@ export interface EmbeddedDocsImage {
 export const DOCS_IMAGES: Readonly<Record<string, EmbeddedDocsImage>> = {
   "cockpit-app-branding.de.webp": {
     path: image0CockpitAppBrandingDe,
-    sha256: "f3b9fab3838fccb6748576275c1e9e0fe5b1fcddd091334dbc8dd81639a08ebb",
-    bytes: 48482,
+    sha256: "c5e5bbfda5b24ee2da2e1d1293fe86b5508642bd1aa4f07c30dfc830f04e5d8e",
+    bytes: 54320,
   },
   "cockpit-app-branding.en.webp": {
     path: image1CockpitAppBrandingEn,
@@ -62,8 +62,8 @@ export const DOCS_IMAGES: Readonly<Record<string, EmbeddedDocsImage>> = {
   },
   "cockpit-app-install.de.webp": {
     path: image2CockpitAppInstallDe,
-    sha256: "1926eab362cc741244e279f8c5501b44d8cf78f52f7ebae8c5cf137ef440cee0",
-    bytes: 40982,
+    sha256: "a256a9ab96485d87c9b9397276017076447d9584e41f7c0ba280f7b663388201",
+    bytes: 42094,
   },
   "cockpit-app-install.en.webp": {
     path: image3CockpitAppInstallEn,
@@ -82,8 +82,8 @@ export const DOCS_IMAGES: Readonly<Record<string, EmbeddedDocsImage>> = {
   },
   "first-workflow-approval.de.webp": {
     path: image6FirstWorkflowApprovalDe,
-    sha256: "a8ce547809522eb2e0b7c9ba57517c0eef9ddeb059976cc2c37a635ae355f9bc",
-    bytes: 27872,
+    sha256: "39d2bafbd1d571073eeea04ffeff2be4c32c559515b926095ca52aa256f10b9c",
+    bytes: 29722,
   },
   "first-workflow-approval.en.webp": {
     path: image7FirstWorkflowApprovalEn,
@@ -92,8 +92,8 @@ export const DOCS_IMAGES: Readonly<Record<string, EmbeddedDocsImage>> = {
   },
   "first-workflow-run-result.de.webp": {
     path: image8FirstWorkflowRunResultDe,
-    sha256: "28fe0b0e6775ab4cbf54040b72c0986a437b39093c4ef8eaab2dfc363e2121d2",
-    bytes: 17854,
+    sha256: "1351274ba1f8e5d24aee3dab75ddb124a3c6e336fedf3b0c2a2598b57657b1d7",
+    bytes: 19074,
   },
   "first-workflow-run-result.en.webp": {
     path: image9FirstWorkflowRunResultEn,
@@ -102,8 +102,8 @@ export const DOCS_IMAGES: Readonly<Record<string, EmbeddedDocsImage>> = {
   },
   "intro-docs.de.webp": {
     path: image10IntroDocsDe,
-    sha256: "58e8ca1ccba4b85c06fb0a181179ca7f231e493afd98cf912e8f2a68d2fbc68a",
-    bytes: 40528,
+    sha256: "05ea155b889b6f19a46fde7bb858841b7f52b2d0037ec8a17441d7ed76bc620c",
+    bytes: 46020,
   },
   "intro-docs.en.webp": {
     path: image11IntroDocsEn,
@@ -112,8 +112,8 @@ export const DOCS_IMAGES: Readonly<Record<string, EmbeddedDocsImage>> = {
   },
   "intro-overview.de.webp": {
     path: image12IntroOverviewDe,
-    sha256: "d538e3ab158d12e3c4aecce05299537297d6db04e265b1584f6299910d7f7547",
-    bytes: 37284,
+    sha256: "f777470b59a2d9ee609e30f4ea24de5cc17d56063b97724aa207d647f55567a6",
+    bytes: 40828,
   },
   "intro-overview.en.webp": {
     path: image13IntroOverviewEn,
