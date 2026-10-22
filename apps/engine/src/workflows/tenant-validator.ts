@@ -1,3 +1,4 @@
+import type { GraphqlConnectorTarget } from "../connectors/drivers/graphql-endpoint.ts";
 import {
   type ConnectorHeaderPolicy,
   connectorHeaderPolicy,
@@ -45,11 +46,11 @@ export async function loadTenantWorkflowHeaderPolicies(
   return policies;
 }
 
-export async function loadTenantWorkflowGraphqlDrivers(
+export async function loadTenantWorkflowGraphqlTargets(
   input: unknown,
   tenantId: string,
   db: Executor,
-): Promise<ReadonlyMap<string, ReadonlyArray<string>>> {
+): Promise<ReadonlyMap<string, ReadonlyArray<GraphqlConnectorTarget>>> {
   const parsed = WorkflowDefSchema.safeParse(input);
   if (!parsed.success) return new Map();
   const ids = new Set(
@@ -64,7 +65,20 @@ export async function loadTenantWorkflowGraphqlDrivers(
           loadConnectorSystem(tenantId, id, environment, db),
         ),
       );
-      return [id, systems.flatMap((system) => (system ? [system.driver] : []))] as const;
+      return [
+        id,
+        systems.flatMap((system) =>
+          system
+            ? [
+                {
+                  driver: system.driver,
+                  base_url: system.connector.base_url ?? null,
+                  auth_type: system.connector.auth_type,
+                },
+              ]
+            : [],
+        ),
+      ] as const;
     }),
   );
   return new Map(entries.filter(([, drivers]) => drivers.length > 0));
@@ -115,15 +129,15 @@ export async function validateTenantWorkflowDef(
   db: Executor,
   options: Pick<ValidateOptions, "allowForwardRefs" | "destinationTier"> = {},
 ) {
-  const [policies, drivers, baseUrls] = await Promise.all([
+  const [policies, graphqlTargets, baseUrls] = await Promise.all([
     loadTenantWorkflowHeaderPolicies(input, tenantId, db),
-    loadTenantWorkflowGraphqlDrivers(input, tenantId, db),
+    loadTenantWorkflowGraphqlTargets(input, tenantId, db),
     loadTenantConnectorBaseUrls(readLabelledPostConnectorIds(input), tenantId, db),
   ]);
   return validateWorkflowDef(input, {
     ...options,
     connectorHeaderPolicies: policies,
-    connectorDrivers: drivers,
+    connectorGraphqlTargets: graphqlTargets,
     connectorBaseUrls: baseUrls,
   });
 }

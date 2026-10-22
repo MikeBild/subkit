@@ -3,6 +3,10 @@ import {
   graphqlOverHttpRequest,
   inferGraphqlOperation,
 } from "@shared/index.ts";
+import {
+  type GraphqlConnectorTarget,
+  resolveGraphqlStepEndpoint,
+} from "../connectors/drivers/graphql-endpoint.ts";
 import type { ConnectorHeaderPolicy } from "../connectors/index.ts";
 import { compileJsonSchemaContract } from "../execution/index.ts";
 import { compileOutputContractSchema } from "../execution/output-contract.ts";
@@ -14,7 +18,7 @@ import {
   type PlaceholderTier,
   placeholderDestinationErrors,
 } from "./destination-placeholders.ts";
-import { GRAPHQL_OVER_HTTP_REPAIR, GRAPHQL_OVER_HTTP_WARNING } from "./graphql-conversion.ts";
+import { GRAPHQL_OVER_HTTP_REPAIR } from "./graphql-conversion.ts";
 import { detectReservedAuthHeaders } from "./header-policy.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
 import { jsonataSiteErrors } from "./jsonata-sites.ts";
@@ -61,7 +65,7 @@ export interface ValidationError {
 export interface ValidateOptions {
   allowForwardRefs?: boolean;
   connectorHeaderPolicies?: ReadonlyMap<string, ConnectorHeaderPolicy>;
-  connectorDrivers?: ReadonlyMap<string, ReadonlyArray<string>>;
+  connectorGraphqlTargets?: ReadonlyMap<string, ReadonlyArray<GraphqlConnectorTarget>>;
   connectorBaseUrls?: ReadonlyMap<string, ReadonlyArray<string>>;
   destinationTier?: PlaceholderTier;
 }
@@ -144,17 +148,7 @@ export function validateWorkflowDef(
           message: "graphql.query must be a valid GraphQL document containing an operation",
         });
       }
-      const foreignDriver = step.graphql
-        ? options.connectorDrivers
-            ?.get(step.connector_id ?? "")
-            ?.find((driver) => driver !== "graphql")
-        : undefined;
-      if (foreignDriver) {
-        errors.push({
-          path: `steps.${step.id}.graphql`,
-          message: `a graphql block needs a graphql connector, but connector ${step.connector_id} is driver '${foreignDriver}' — such a step is held as a write in previews and refused at run time. Point connector_id at a graphql connector whose base_url is the GraphQL endpoint (for GitHub https://api.github.com/graphql) and keep the graphql block with its cursor_pagination, or rewrite the step against the REST endpoint; \`method\` and \`path\` are not used for a graphql block, which is always sent as POST. ${GRAPHQL_OVER_HTTP_WARNING}`,
-        });
-      }
+      if (step.graphql) errors.push(...graphqlTargetErrors(step, options.connectorGraphqlTargets));
       errors.push(
         ...graphqlOverHttpErrors(
           step,
@@ -377,6 +371,32 @@ export function validateWorkflowDef(
 function stepReferencesCanonicalItem(step: StepDef): boolean {
   const haystack = JSON.stringify(step);
   return haystack.includes("${item") || /\$item\b/.test(haystack);
+}
+
+function graphqlTargetErrors(
+  step: Extract<StepDef, { kind: "request" }>,
+  targets: ValidateOptions["connectorGraphqlTargets"],
+): ValidationError[] {
+  for (const target of targets?.get(step.connector_id ?? "") ?? []) {
+    const resolved = resolveGraphqlStepEndpoint({ ...target, path: step.path, url: step.url });
+    if (resolved.ok) continue;
+    if (resolved.code === "connector_driver_mismatch")
+      return [
+        {
+          path: `steps.${step.id}.graphql`,
+          message: `a graphql block needs a graphql connector or an http connector with path "/graphql", but connector ${step.connector_id} is driver '${target.driver}' — such a step is refused at run time. ${GRAPHQL_OVER_HTTP_REPAIR}`,
+        },
+      ];
+    if (resolved.code === "graphql_path_required")
+      return [{ path: `steps.${step.id}.graphql`, message: resolved.message }];
+    return [
+      {
+        path: `steps.${step.id}.${step.url !== undefined ? "url" : "path"}`,
+        message: resolved.message,
+      },
+    ];
+  }
+  return [];
 }
 
 function graphqlOverHttpErrors(

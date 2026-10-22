@@ -215,9 +215,9 @@ export async function applyWorkflowPatchToDraft(
         ok: false,
         data: buildGateError(currentDraft, {
           error_code: "graphql_conversion_lossy",
-          message: `the patch replaces the graphql step ${replacedSteps.map((id) => `\`${id}\``).join(", ")} with the POST /graphql request ${lossySteps.map((id) => `\`${id}\``).join(", ")} on an http connector. That loses cursor pagination: ${GRAPHQL_OVER_HTTP_LOSS}. Nothing was changed. Instead point connector_id at a graphql connector whose base_url is the GraphQL endpoint (for GitHub https://api.github.com/graphql) and keep the graphql block with its cursor_pagination, or rewrite the step against the REST endpoint. If neither connector exists, ask the user which to use.`,
+          message: `the patch replaces the graphql step ${replacedSteps.map((id) => `\`${id}\``).join(", ")} with the POST /graphql request ${lossySteps.map((id) => `\`${id}\``).join(", ")} on an http connector. That loses cursor pagination: ${GRAPHQL_OVER_HTTP_LOSS}. Nothing was changed. Instead keep the graphql block with its cursor_pagination and set path "/graphql" on the existing http connector (no url, no body), or point connector_id at a graphql connector whose base_url is the GraphQL endpoint, or rewrite the step against the REST endpoint.`,
           recommended_mode: "workflow",
-          next_best_actions: ["find_connector", "inspect_workflow_draft"],
+          next_best_actions: ["inspect_workflow_draft", "find_connector"],
           extra: {
             steps: lossySteps,
             replaced_steps: replacedSteps,

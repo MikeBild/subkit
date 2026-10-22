@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { GRAPHQL_OVER_HTTP_WARNING, lossyGraphqlConversions } from "../graphql-conversion.ts";
+import {
+  GRAPHQL_OVER_HTTP_REPAIR,
+  GRAPHQL_OVER_HTTP_WARNING,
+  lossyGraphqlConversions,
+} from "../graphql-conversion.ts";
 import {
   BRIEFING_CONNECTOR_ID,
   convertedProjectItemsStep,
@@ -78,5 +82,12 @@ describe("lossyGraphqlConversions", () => {
       "a mutation or an unparseable or runtime-assembled document is reviewed as a write",
     );
     expect(GRAPHQL_OVER_HTTP_WARNING).not.toContain("the request is reviewed as a write");
+    expect(GRAPHQL_OVER_HTTP_WARNING).toContain('set path "/graphql"');
+  });
+
+  test("the repair steers to path /graphql on the existing http connector first", () => {
+    expect(GRAPHQL_OVER_HTTP_REPAIR).toMatch(/^The supported repair keeps the graphql block/);
+    expect(GRAPHQL_OVER_HTTP_REPAIR).toContain('sets path "/graphql"');
+    expect(GRAPHQL_OVER_HTTP_REPAIR).toContain("cursor_pagination");
   });
 });

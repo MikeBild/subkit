@@ -8,7 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [connector, github, graphql]
-version: 5
+version: 6
 ---
 
 # GitHub GraphQL API Basics
@@ -19,7 +19,24 @@ Prefer GraphQL over REST when a workflow reads nested data (repo → issues → 
 
 ## Step shape
 
-A request step against a GraphQL connector uses the `graphql` sub-object rather than `path`/`method`:
+A request step with a `graphql` sub-object is always sent as POST. On a graphql connector the endpoint is its base_url and `path`/`method` are ignored. On an existing http connector with base_url `https://api.github.com`, keep the `graphql` block and set `"path": "/graphql"` (no `url`, no `body`): the step reuses that connector's credential and headers, keeps `cursor_pagination`, and is reviewed by its operation (a query is a read).
+
+```json
+{
+  "id": "project_items",
+  "kind": "request",
+  "connector_id": "<github-http-connector-id>",
+  "path": "/graphql",
+  "graphql": {
+    "operation": "query",
+    "query": "query ProjectItems($login:String!,$number:Int!,$after:String){ user(login:$login){ projectV2(number:$number){ items(first:100,after:$after){ totalCount nodes { id } pageInfo { hasNextPage endCursor } } } } }",
+    "variables": { "login": "octocat", "number": 1, "after": null },
+    "cursor_pagination": { "connection_path": "user.projectV2.items", "cursor_variable": "after", "items_field": "nodes", "max_pages": 20, "max_items": 2000 }
+  }
+}
+```
+
+The same block on a graphql connector:
 
 ```json
 {
@@ -63,7 +80,7 @@ Before saving, validate the exact query as a syntactically valid GraphQL documen
 
 ## Rate-limit budget
 
-Cost, not request count, is the budget. Every response carries:
+Cost, not request count, is the budget. `first`/`last` must be 1–100; a larger value fails with error type `EXCESSIVE_PAGINATION` and is not retried. Every response carries:
 
 - `X-RateLimit-Cost` — how many points this query consumed
 - `X-RateLimit-Remaining` — how many points remain in the hourly window
@@ -71,13 +88,15 @@ Cost, not request count, is the budget. Every response carries:
 
 A workflow that polls every minute with `cost=30` will exhaust the 5000/h budget in under three hours. Watch `request_meta.bytes_in` in a test run — oversized responses usually correlate with high cost.
 
+An exhausted primary limit still answers HTTP 200 with an error of type `RATE_LIMITED` and `x-ratelimit-remaining: 0`; a secondary limit answers 200 or 403, sometimes with `retry-after`. The engine waits for `retry-after`, then for `x-ratelimit-reset`, otherwise at least one minute, and fails the step with `upstream_rate_limited` without further requests when that wait passes the step deadline. Run the workflow again after the reset.
+
 ## Pitfalls
 
 - Subscriptions are not supported by the sk `graphql` driver. Use webhooks for push.
 - Under-requested fields can break downstream steps silently — explicitly list every field the workflow consumes.
 - Variables are stricter than REST query strings: type them in the query header (`$owner: String!`) or the request fails before the wire.
 - A GraphQL query uses HTTP POST but is read-only only when the reviewed document contains no mutation. Keep the effect review and the caller's approval boundary intact.
-- A `graphql` block needs a connector whose driver is `graphql`. When the step's connector is an http connector (for example base_url `https://api.github.com`), point `connector_id` at a graphql connector whose base_url is `https://api.github.com/graphql` and keep the `graphql` block with its `cursor_pagination`, or rewrite the read against the REST endpoint. Never convert the step to `POST /graphql` with a `body.query` on the http connector: that drops `cursor_pagination`, so only the first page is read, and a mutation or an unparseable or runtime-assembled document is reviewed as a write. The engine refuses that conversion; ask the user which connector to use when neither exists.
+- A `graphql` block runs on a graphql connector, or on an http connector with a fixed same-host `"path": "/graphql"` and no `url`. When the step's connector is an http connector (for example base_url `https://api.github.com`), keep the `graphql` block with its `cursor_pagination` and set `path` to `/graphql`; a separate graphql connector is not needed. A missing path, an absolute URL, `..`, a query string or a placeholder in the path is refused before anything is sent. Never convert the step to `POST /graphql` with a `body.query` on the http connector: that drops `cursor_pagination`, so only the first page is read, and a mutation or an unparseable or runtime-assembled document is reviewed as a write. The engine refuses that conversion.
 
 ## Sources
 

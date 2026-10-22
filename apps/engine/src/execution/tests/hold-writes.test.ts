@@ -18,7 +18,9 @@ import { closeAllPools, getPoolForConnector } from "../../connectors/drivers/pos
 import { getConnector } from "../../connectors/index.ts";
 import { connectors, executionSteps } from "../../db/schema/index.ts";
 import { validateTenantWorkflowDef } from "../../workflows/tenant-validator.ts";
+import type { RequestStep } from "../../workflows/types.ts";
 import { runExecution } from "../engine.ts";
+import { requestRequiresPreparationHold } from "../steps/request/side-effects.ts";
 import type { HeldRequest } from "../types.ts";
 import {
   createEngineCtx,
@@ -903,7 +905,7 @@ describe("hold-writes · postgres", () => {
 });
 
 describe("hold-writes · graphql", () => {
-  test("a graphql block on an http connector is refused before save and never dispatched", async () => {
+  test("a graphql block on an http connector without path is refused before save and never dispatched", async () => {
     const [http] = await ctx.testDb.db
       .insert(connectors)
       .values({
@@ -951,8 +953,90 @@ describe("hold-writes · graphql", () => {
     });
     const items = result.steps.find((entry) => entry.step_key === "project_items");
     expect(items?.status).toBe("failed");
-    expect((items?.error as { code?: string })?.code).toBe("connector_driver_mismatch");
+    expect((items?.error as { code?: string })?.code).toBe("graphql_path_required");
     expect(hits).toHaveLength(0);
+  });
+
+  test("path /graphql on an http connector runs a query live and holds a mutation", async () => {
+    const [http] = await ctx.testDb.db
+      .insert(connectors)
+      .values({
+        tenant_id: ctx.tenantId,
+        slug: "http-gql-path",
+        display_name: "HTTP gql path",
+        driver: "http",
+        environment: "dev",
+        auth_type: "none",
+        base_url: mock.baseUrl,
+        config: {},
+      })
+      .returning();
+    const steps = [
+      {
+        kind: "request",
+        id: "list",
+        connector_id: http!.id,
+        method: "GET",
+        path: "/graphql",
+        graphql: { operation: "query", query: "query List { things { id } }" },
+      },
+      {
+        kind: "request",
+        id: "add",
+        connector_id: http!.id,
+        path: "/graphql",
+        side_effects: "read",
+        graphql: {
+          query: "mutation Add($name: String!) { add(name: $name) { id } }",
+          variables: { name: "thing-1" },
+        },
+      },
+    ];
+    const validation = await validateTenantWorkflowDef(
+      { name: "gql-path-on-http", steps },
+      ctx.tenantId,
+      ctx.testDb.db,
+    );
+    expect(validation.errors).toEqual([]);
+    hits.length = 0;
+    const { workflow_id } = await createWorkflowRow(ctx, { name: "hold-gql-path", steps });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+      options: { hold_writes: true },
+    });
+    expect(result.status).toBe("succeeded");
+    expect(hitsFor("/graphql")).toEqual([{ method: "POST", url: "/graphql" }]);
+    const list = result.steps.find((entry) => entry.step_key === "list");
+    expect(list?.held).toBeUndefined();
+    expect(list?.output_preview).toEqual({ things: [{ id: 1 }] });
+    const add = result.steps.find((entry) => entry.step_key === "add");
+    expect(add?.held).toBe(true);
+    expect((add?.held_request as HeldRequest | undefined)?.url).toBe(`${mock.baseUrl}/graphql`);
+  });
+
+  test("the preparation hold accepts graphql on http only through a fixed path", () => {
+    const base = "https://api.github.com";
+    const query = { operation: "query" as const, query: "query List { things { id } }" };
+    const step = (extra: Record<string, unknown>) =>
+      ({ kind: "request", id: "list", method: "GET", graphql: query, ...extra }) as RequestStep;
+    expect(requestRequiresPreparationHold(step({ path: "/graphql" }))).toBe(false);
+    expect(requestRequiresPreparationHold(step({ path: "/graphql" }), "http", base)).toBe(false);
+    expect(requestRequiresPreparationHold(step({}), "http", base)).toBe(true);
+    expect(requestRequiresPreparationHold(step({ path: "//evil.example/x" }), "http", base)).toBe(
+      true,
+    );
+    expect(requestRequiresPreparationHold(step({ path: "/graphql" }), "postgres", base)).toBe(true);
+    expect(
+      requestRequiresPreparationHold(
+        step({ path: "/graphql", graphql: { query: "mutation M { add { id } }" } }),
+        "http",
+        base,
+      ),
+    ).toBe(true);
+    expect(requestRequiresPreparationHold(step({ path: "/ignored" }), "graphql", base)).toBe(false);
   });
 
   test("query labels and read overrides cannot dispatch a mutation during preview", async () => {

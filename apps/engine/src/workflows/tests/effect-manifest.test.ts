@@ -5,6 +5,79 @@ import { readPathBoundary, readPathTarget } from "../read-path-boundary.ts";
 import { requestBoundary, requestBoundaryTarget } from "../request-boundary.ts";
 import { storageBoundary, storageTarget } from "../storage-boundary.ts";
 import { WorkflowDefSchema } from "../types.ts";
+import {
+  graphqlDriverProjectItems,
+  httpProjectItems,
+  plainHttpGet,
+} from "./fixtures/graphql-path-manifest.ts";
+
+test("graphql-driver and plain REST manifests keep their pinned digests", () => {
+  expect(compileWorkflowEffectManifest(graphqlDriverProjectItems()).digest).toBe(
+    "16c311371b7ee485ed41b64e45c53f238d06e6cfb2e12d6251876b76402a1e8c",
+  );
+  expect(compileWorkflowEffectManifest(plainHttpGet()).digest).toBe(
+    "d862250287598b7e4235234d3c875ac19c211db56dbbc83d9132604fff03821b",
+  );
+});
+
+test("a graphql query on an http connector through path /graphql is an eligible read", () => {
+  const result = compileWorkflowEffectManifest(httpProjectItems());
+  expect(result.manifest.issues).toEqual([]);
+  expect(result.eligible_for_repeated_runs).toBe(true);
+  expect(result.manifest.effects[0]).toMatchObject({
+    driver: "http",
+    operation: "query",
+    effect: "read",
+    target: "https://api.github.com/graphql",
+  });
+});
+
+test("a graphql mutation on an http connector is reviewed as a write", () => {
+  const result = compileWorkflowEffectManifest(
+    httpProjectItems({
+      side_effects: undefined,
+      graphql: {
+        query:
+          "mutation Close($id: ID!) { closeIssue(input: { issueId: $id }) { clientMutationId } }",
+      },
+    }),
+  );
+  expect(result.manifest.effects[0]).toMatchObject({ operation: "mutation", effect: "write" });
+});
+
+test("an unparseable graphql document on an http connector is unknown", () => {
+  const result = compileWorkflowEffectManifest(
+    httpProjectItems({ graphql: { query: "query Broken { viewer { login }" } }),
+  );
+  expect(result.manifest.effects[0]?.effect).toBe("unknown");
+  expect(result.manifest.issues.map((issue) => issue.code)).toContain("unknown_effect");
+});
+
+test.each([
+  ["without path", { path: undefined }],
+  ["with a foreign path", { path: "//evil.example/graphql" }],
+  ["with a step url", { url: "https://evil.example/graphql" }],
+])("a graphql block on an http connector %s is not eligible", (_label, step) => {
+  const result = compileWorkflowEffectManifest(httpProjectItems(step));
+  expect(result.eligible_for_repeated_runs).toBe(false);
+  expect(result.manifest.issues.map((issue) => issue.code)).toContain("binding_mismatch");
+});
+
+test("a tampered graphql-on-http binding is still a mismatch", () => {
+  const driver = httpProjectItems();
+  driver.bindings = driver.bindings.map((binding) => ({ ...binding, driver: "s3" as const }));
+  expect(
+    compileWorkflowEffectManifest(driver).manifest.issues.map((issue) => issue.code),
+  ).toContain("binding_mismatch");
+  const digest = httpProjectItems();
+  digest.bindings = digest.bindings.map((binding) => ({
+    ...binding,
+    request_digest: "d".repeat(64),
+  }));
+  expect(
+    compileWorkflowEffectManifest(digest).manifest.issues.map((issue) => issue.code),
+  ).toContain("binding_mismatch");
+});
 
 const tenant = "00000000-0000-4000-8000-000000000001";
 const workflow = "00000000-0000-4000-8000-000000000002";

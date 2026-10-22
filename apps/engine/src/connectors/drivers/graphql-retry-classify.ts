@@ -29,12 +29,14 @@ function entryIsRetryable(entry: unknown): boolean {
     ext?.http && typeof ext.http === "object" ? (ext.http as Record<string, unknown>) : null;
   const hasStructured =
     ext?.code !== undefined ||
+    e.type !== undefined ||
     e.errorType !== undefined ||
     ext?.classification !== undefined ||
     httpExt !== null;
 
   if (hasStructured) {
     if (containsClass(ext?.code as string | undefined)) return true;
+    if (containsClass(e.type as string | undefined)) return true;
     if (containsClass(e.errorType as string | undefined)) return true;
     if (containsClass(ext?.classification as string | undefined)) return true;
     const httpStatus = httpExt?.status;
@@ -53,6 +55,55 @@ export function isGraphqlRetryable(status: number, body: unknown): boolean {
   if (!Array.isArray(errors) || errors.length === 0) return false;
 
   return errors.some(entryIsRetryable);
+}
+
+const RATE_LIMIT_MESSAGE = /\brate limit\b/i;
+
+function errorEntries(body: unknown): Record<string, unknown>[] {
+  const errors = (body as { errors?: unknown } | null | undefined)?.errors;
+  return Array.isArray(errors)
+    ? errors.filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
+    : [];
+}
+
+function entryIsRateLimited(entry: Record<string, unknown>): boolean {
+  const ext =
+    entry.extensions && typeof entry.extensions === "object"
+      ? (entry.extensions as Record<string, unknown>)
+      : null;
+  return [entry.type, ext?.code, entry.errorType].some(
+    (field) =>
+      typeof field === "string" && /RATE_?LIMIT|THROTTL|TOO_MANY/.test(field.toUpperCase()),
+  );
+}
+
+const SECONDARY_RATE_LIMIT_MESSAGE = /secondary rate limit/i;
+
+export function graphqlSecondaryRateLimited(status: number, body: unknown): boolean {
+  if (status === 403) return true;
+  const message = (body as { message?: unknown } | null | undefined)?.message;
+  return [message, ...errorEntries(body).map((entry) => entry.message)].some(
+    (text) => typeof text === "string" && SECONDARY_RATE_LIMIT_MESSAGE.test(text),
+  );
+}
+
+export function graphqlRateLimited(
+  status: number,
+  headers: Readonly<Record<string, string>>,
+  body: unknown,
+): boolean {
+  if (status === 429) return true;
+  if (status !== 200 && status !== 403) return false;
+  const entries = errorEntries(body);
+  if (entries.some(entryIsRateLimited)) return true;
+  const failed = status === 403 || entries.length > 0;
+  if (!failed) return false;
+  if (headers["x-ratelimit-remaining"] === "0") return true;
+  if (status === 403 && headers["retry-after"] !== undefined) return true;
+  const message = (body as { message?: unknown } | null | undefined)?.message;
+  return [message, ...entries.map((entry) => entry.message)].some(
+    (text) => typeof text === "string" && RATE_LIMIT_MESSAGE.test(text),
+  );
 }
 
 const SCHEMA_ERROR_CLASSES = [

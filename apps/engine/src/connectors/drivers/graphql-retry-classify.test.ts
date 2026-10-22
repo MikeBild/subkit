@@ -1,5 +1,72 @@
 import { describe, expect, test } from "bun:test";
-import { classifyGraphqlSchemaError, isGraphqlRetryable } from "./graphql-retry-classify.ts";
+import {
+  classifyGraphqlSchemaError,
+  graphqlRateLimited,
+  isGraphqlRetryable,
+} from "./graphql-retry-classify.ts";
+
+describe("GitHub GraphQL error types", () => {
+  const rateLimited = {
+    errors: [{ type: "RATE_LIMITED", message: "API rate limit exceeded for user ID 1." }],
+  };
+  const excessive = {
+    errors: [
+      {
+        type: "EXCESSIVE_PAGINATION",
+        path: ["user", "projectV2", "items"],
+        message:
+          "Requesting 101 records on the connection exceeds the `first` limit of 100 records.",
+      },
+    ],
+  };
+
+  test("type RATE_LIMITED is retryable and rate limited", () => {
+    expect(isGraphqlRetryable(200, rateLimited)).toBe(true);
+    expect(graphqlRateLimited(200, {}, rateLimited)).toBe(true);
+    expect(classifyGraphqlSchemaError(rateLimited).schema_shaped).toBe(false);
+  });
+
+  test("type EXCESSIVE_PAGINATION is neither retryable nor rate limited", () => {
+    expect(isGraphqlRetryable(200, excessive)).toBe(false);
+    expect(graphqlRateLimited(200, {}, excessive)).toBe(false);
+  });
+
+  test("a 403 with an exhausted primary budget is rate limited", () => {
+    expect(
+      graphqlRateLimited(
+        403,
+        { "x-ratelimit-remaining": "0" },
+        { message: "API rate limit exceeded" },
+      ),
+    ).toBe(true);
+  });
+
+  test("a 403 secondary limit with retry-after or only its message is rate limited", () => {
+    expect(graphqlRateLimited(403, { "retry-after": "60" }, {})).toBe(true);
+    expect(
+      graphqlRateLimited(
+        403,
+        {},
+        { message: "You have exceeded a secondary rate limit. Please wait a few minutes." },
+      ),
+    ).toBe(true);
+  });
+
+  test("a plain 403 or 401 is not rate limited", () => {
+    expect(graphqlRateLimited(403, {}, { message: "Resource not accessible by integration" })).toBe(
+      false,
+    );
+    expect(graphqlRateLimited(401, { "x-ratelimit-remaining": "0" }, {})).toBe(false);
+  });
+
+  test("a successful response with remaining 0 is not rate limited", () => {
+    expect(graphqlRateLimited(200, { "x-ratelimit-remaining": "0" }, { data: {} })).toBe(false);
+  });
+
+  test("429 is rate limited", () => {
+    expect(graphqlRateLimited(429, {}, {})).toBe(true);
+  });
+});
 
 describe("isGraphqlRetryable · HTTP status", () => {
   test("429 is retryable", () => {

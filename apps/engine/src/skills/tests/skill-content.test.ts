@@ -129,6 +129,23 @@ describe("github-graphql-basics — private project guidance", () => {
     expect(body).toContain("syntactically valid GraphQL document containing an operation");
     expect(body).toContain("schema evidence only");
   });
+
+  test("steers a graphql block on an http connector to path /graphql", () => {
+    const skills = loadAll();
+    for (const slug of [
+      "github-graphql-basics",
+      "graphql-connectors",
+      "graphql-authoring-recipe",
+    ]) {
+      const body = skills.get(slug)!.body;
+      expect(body).toContain('"path": "/graphql"');
+    }
+    const github = skills.get("github-graphql-basics")!.body;
+    expect(github).toContain("a separate graphql connector is not needed");
+    expect(github).toContain("RATE_LIMITED");
+    expect(github).toContain("EXCESSIVE_PAGINATION");
+    expect(github).toContain("upstream_rate_limited");
+  });
 });
 
 describe("data-handling — envelope rule enforced", () => {

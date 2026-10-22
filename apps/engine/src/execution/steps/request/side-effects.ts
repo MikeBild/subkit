@@ -1,4 +1,5 @@
 import { classifyHttpSideEffect, type SideEffect } from "@shared/index.ts";
+import { resolveGraphqlStepEndpoint } from "../../../connectors/drivers/graphql-endpoint.ts";
 import { scrubString, scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
 import type { HeldRequest, RequestMeta, StepResult } from "../../types.ts";
@@ -20,7 +21,11 @@ export function requestRequiresPreparationHold(
         : step.s3
           ? "s3"
           : "http";
-  if (driver !== undefined && driver !== declaredDriver) return true;
+  const graphqlOnHttp =
+    declaredDriver === "graphql" &&
+    driver === "http" &&
+    resolveGraphqlStepEndpoint({ driver, base_url: baseUrl, path: step.path, url: step.url }).ok;
+  if (driver !== undefined && driver !== declaredDriver && !graphqlOnHttp) return true;
   if (step.sql || driver === "postgres") return true;
   return (
     classifyRequestStepSideEffects(

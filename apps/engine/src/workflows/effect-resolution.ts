@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
+import { resolveGraphqlStepEndpoint } from "../connectors/drivers/graphql-endpoint.ts";
 import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
 import type { Executor } from "../db/client.ts";
@@ -272,9 +273,21 @@ async function resolveBindings(
       });
     }
     const driver = system?.driver ?? "http";
+    const graphqlOnHttp = driver === "http" && step.graphql !== undefined;
+    const restDriver = driver === "http" && !graphqlOnHttp;
     let target: string | null = null;
     try {
-      if (driver === "http")
+      if (graphqlOnHttp) {
+        const endpoint = resolveGraphqlStepEndpoint({
+          driver,
+          base_url: connector?.base_url,
+          auth_type: connector?.auth_type,
+          path: step.path,
+          url: step.url,
+        });
+        target = endpoint.ok && endpoint.url ? displayTarget(new URL(endpoint.url)) : null;
+      }
+      if (restDriver)
         target = displayTarget(
           connector
             ? resolveUrl(connector.base_url, step.path ?? step.url ?? "/")
@@ -289,12 +302,13 @@ async function resolveBindings(
     if (compiledStorage?.refusal)
       storage_refusals.push({ step_id: step.id, reason: compiledStorage.refusal });
     if (storage) target = storageTarget(storage);
-    const authoredBoundary = driver === "http" && step.boundary !== undefined;
+    const authoredBoundary = restDriver && step.boundary !== undefined;
     const readPath =
-      driver === "http" && !authoredBoundary ? readPathBoundary(step, connector?.base_url) : null;
+      restDriver && !authoredBoundary ? readPathBoundary(step, connector?.base_url) : null;
     if (readPath) target = readPathTarget(readPath);
-    const contentShape =
-      driver === "http" ? contentPublicationShape(step, connector?.base_url ?? target) : null;
+    const contentShape = restDriver
+      ? contentPublicationShape(step, connector?.base_url ?? target)
+      : null;
     contentShapes.set(step.id, contentShape);
     const contentBoundary = contentBoundaries[step.id];
     const supportedContent =
@@ -303,7 +317,7 @@ async function resolveBindings(
       supportsContentPublication(step, contentBoundary, contentShape.target);
     if (supportedContent) target = contentShape.target;
     const transactional =
-      driver === "http" && supportsTransactionalDelivery(step, target)
+      restDriver && supportsTransactionalDelivery(step, target)
         ? step.transactional_delivery
         : undefined;
     if (reportEvidence === undefined && supportsReportDelivery(step, target) && !transactional)
@@ -329,7 +343,7 @@ async function resolveBindings(
       unavailable_steps.push(step.id);
     const declaredDelivery = contradicted ? null : statedDelivery;
     let boundary: RequestBoundary | null = null;
-    if (driver === "http" && (authoredBoundary || hasRuntimeValue(step))) {
+    if (restDriver && (authoredBoundary || hasRuntimeValue(step))) {
       const stricter = supportsReportDelivery(step, target) || contentShape !== null;
       const profile = stricter
         ? contradicted

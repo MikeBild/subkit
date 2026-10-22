@@ -114,6 +114,49 @@ test("GraphQL binds its single endpoint rather than an HTTP path join", async ()
   });
 });
 
+test("a GraphQL query on an http connector binds the fixed same-host path", async () => {
+  const f = await fixture({
+    method: "GET",
+    path: "/graphql",
+    body: undefined,
+    graphql: {
+      operation: "query",
+      query:
+        "query Items($after: String) { viewer { items(first: 50, after: $after) { totalCount } } }",
+      variables: { after: null },
+      cursor_pagination: {
+        connection_path: "viewer.items",
+        cursor_variable: "after",
+        max_pages: 5,
+        max_items: 250,
+      },
+    },
+  });
+  const result = await resolveWorkflowEffectManifest(f.input, ctx.db);
+  expect(result.manifest.issues).toEqual([]);
+  expect(result.eligible_for_repeated_runs).toBe(true);
+  expect(result.manifest.effects[0]).toMatchObject({
+    driver: "http",
+    target: "https://example.test/api/v1/graphql",
+    effect: "read",
+    operation: "query",
+  });
+});
+
+test("a GraphQL block on an http connector without a fixed path is not eligible", async () => {
+  const f = await fixture({
+    path: "//other.example/graphql",
+    body: undefined,
+    graphql: { operation: "query", query: "query { viewer { login } }" },
+  });
+  const result = await resolveWorkflowEffectManifest(f.input, ctx.db);
+  expect(result.eligible_for_repeated_runs).toBe(false);
+  expect(result.manifest.effects[0]?.target).toBeNull();
+  expect(result.manifest.issues.map((issue) => issue.code)).toEqual(
+    expect.arrayContaining(["binding_mismatch", "dynamic_request"]),
+  );
+});
+
 test("tenant, workflow and deleted-workflow boundaries are enforced", async () => {
   const f = await fixture();
   const other = await fixture();

@@ -8,7 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [driver, graphql, recipe]
-version: 1
+version: 2
 ---
 
 # GraphQL Authoring Recipe
@@ -85,6 +85,8 @@ Step variables pattern for the first page (omit `after`):
   "variables": { "first": 50 }
 }
 ```
+
+When the workflow already uses an http connector for the same host, keep the `graphql` block on it and set `"path": "/graphql"` (for GitHub); no separate graphql connector is needed and pagination works the same way.
 
 For a standard Relay connection, `graphql.cursor_pagination` can collect pages inside one request step. Set `connection_path` relative to GraphQL `data`, `cursor_variable` to `after`, `items_field` to `nodes` or `edges`, and explicit `max_pages` and `max_items`. It fails without partial output when pages, cursors, counts, or limits cannot establish completeness. This works for sensitive execution without persisting intermediate pages. A mutation cannot use it.
 
@@ -164,10 +166,11 @@ selections in a single query can:
 }
 ```
 
-The driver retries automatically on HTTP 429, 5xx, and structured throttling
-codes in `extensions.code` / `extensions.errorType` / `extensions.classification`
-(classes THROTTL, RATE_LIMIT, TOO_MANY_REQUESTS, TIMEOUT, UNAVAILABLE,
-TRY_AGAIN, INTERNAL). Throttle-prone nested queries benefit from larger
+The driver retries automatically on HTTP 429, 5xx, rate limits answered as 200
+or 403, and structured throttling codes in the error `type` / `extensions.code` /
+`extensions.errorType` / `extensions.classification` (classes THROTTL,
+RATE_LIMIT, TOO_MANY_REQUESTS, TIMEOUT, UNAVAILABLE, TRY_AGAIN, INTERNAL). A
+rate-limit wait past the step deadline fails with `upstream_rate_limited`. Throttle-prone nested queries benefit from larger
 `retry_backoff_ms` values (500–2000 ms) and smaller page sizes.
 
 ## See also

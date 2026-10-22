@@ -69,10 +69,6 @@ import {
   inspectContentRevisionResponse,
 } from "../../../workflows/content-publication-boundary.ts";
 import {
-  GRAPHQL_OVER_HTTP_REPAIR,
-  GRAPHQL_OVER_HTTP_WARNING,
-} from "../../../workflows/graphql-conversion.ts";
-import {
   GMAIL_SEND_TARGET,
   inspectReportMessage,
   reportInspectionRecord,
@@ -132,6 +128,7 @@ import { RequestError } from "./errors.ts";
 import { promoteResponseToFile } from "./file-output.ts";
 import { runGraphqlCursorPages } from "./graphql-pagination.ts";
 import { runGraphqlWithRetry } from "./graphql-retry.ts";
+import { resolveGraphqlDispatchTarget } from "./graphql-target.ts";
 import { runMcpWithRetry } from "./mcp-retry.ts";
 import { redactOwnCredentials } from "./own-credentials.ts";
 import { isDocumentedReadOperation } from "./read-operations.ts";
@@ -1067,15 +1064,13 @@ async function dispatchRequestStep(
       }
       if (connector.driver === "graphql" || p.step.graphql) {
         clearTimeout(timer);
-        if (connector.driver !== "graphql") {
+        const graphqlTarget = resolveGraphqlDispatchTarget(connector, p.step);
+        if (!graphqlTarget.ok) {
           return {
             status: "failed",
             retry_count: 0,
             duration_ms: Date.now() - start,
-            error: {
-              code: "connector_driver_mismatch",
-              message: `request step carries a \`graphql\` block but connector '${connector.slug}' is driver '${connector.driver}'. ${GRAPHQL_OVER_HTTP_REPAIR} ${GRAPHQL_OVER_HTTP_WARNING}`,
-            },
+            error: graphqlTarget.error,
           };
         }
         if (!p.step.graphql) {
@@ -1129,6 +1124,9 @@ async function dispatchRequestStep(
           if (p.step.graphql.operation !== undefined) {
             args.operation = p.step.graphql.operation;
           }
+          if (graphqlTarget.pass_endpoint && graphqlTarget.endpoint !== null) {
+            args.endpoint = graphqlTarget.endpoint;
+          }
           if (Object.keys(resolvedStepHeaders).length > 0) {
             args.extra_headers = resolvedStepHeaders;
           }
@@ -1147,11 +1145,7 @@ async function dispatchRequestStep(
               },
             };
           }
-          const cfg = (connector.config ?? {}) as { endpoint?: unknown };
-          const endpointUrl =
-            typeof cfg.endpoint === "string" && cfg.endpoint.length > 0
-              ? cfg.endpoint
-              : (connector.base_url ?? null);
+          const endpointUrl = graphqlTarget.endpoint;
           if (holdThisStep) {
             return heldStepResult({
               start,
@@ -1186,6 +1180,7 @@ async function dispatchRequestStep(
               step: p.step,
               signal,
               start,
+              deadline_ms: start + timeoutMs,
               connectorResolution: graphqlConnectorResolution,
             });
           const graphqlResult = cursorPagination

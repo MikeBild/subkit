@@ -60,6 +60,10 @@ test("a binding mismatch carries a repair that keeps graphql pagination", () => 
   expect(instruction).toContain("cursor_pagination");
   expect(instruction).toContain("REST endpoint");
   expect(instruction).toContain("POST /graphql");
+  expect(instruction).toContain('set path "/graphql"');
+  expect(instruction.indexOf('path "/graphql"')).toBeLessThan(
+    instruction.indexOf("graphql connector whose base_url"),
+  );
   expect(remedyFor("binding_mismatch", null)).toBe(instruction);
 });
 

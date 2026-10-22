@@ -168,8 +168,11 @@ function readRequest(raw: Record<string, unknown>): {
       verb: text(raw.graphql.operation),
       target: firstLine(query) || null,
     };
+    const path = text(raw.path);
+    if (path) blocks.push(...code("workflow.block.request", "text", `POST ${path}`));
     blocks.push(...code("workflow.block.graphql", "graphql", raw.graphql.query));
     blocks.push(...json("workflow.block.variables", raw.graphql.variables));
+    blocks.push(...json("workflow.block.pagination", raw.graphql.cursor_pagination));
   } else if (record(raw.mcp)) {
     essence = {
       kind: "request",

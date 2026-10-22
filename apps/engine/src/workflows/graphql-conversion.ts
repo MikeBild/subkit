@@ -1,12 +1,12 @@
 import { graphqlOverHttpRequest } from "@shared/index.ts";
 
 export const GRAPHQL_OVER_HTTP_REPAIR =
-  "The supported repair is a graphql block on a graphql connector whose base_url is the GraphQL endpoint (for GitHub https://api.github.com/graphql), keeping cursor_pagination, or a step against the REST endpoint.";
+  'The supported repair keeps the graphql block with its cursor_pagination on the existing http connector and sets path "/graphql" (for GitHub the connector base_url is https://api.github.com, so the request goes to https://api.github.com/graphql with that connector\'s credential). Do not set url. A graphql connector whose base_url is the GraphQL endpoint, or a step against the REST endpoint, also works.';
 
 export const GRAPHQL_OVER_HTTP_LOSS =
-  "a POST /graphql request on an http connector has no cursor_pagination, so only the first page is read, and a mutation or an unparseable or runtime-assembled document is reviewed as a write";
+  "a POST /graphql request with a body on an http connector has no cursor_pagination, so only the first page is read, and a mutation or an unparseable or runtime-assembled document is reviewed as a write";
 
-export const GRAPHQL_OVER_HTTP_WARNING = `Do not convert it to POST /graphql on an http connector: ${GRAPHQL_OVER_HTTP_LOSS}.`;
+export const GRAPHQL_OVER_HTTP_WARNING = `Do not convert it to a POST /graphql body on an http connector: ${GRAPHQL_OVER_HTTP_LOSS}. Keep the graphql block and set path "/graphql" instead.`;
 
 export type ConnectorBaseUrls = ReadonlyMap<string, ReadonlyArray<string>>;
 

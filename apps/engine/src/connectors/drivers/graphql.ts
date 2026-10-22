@@ -1,3 +1,4 @@
+import { ConnectorOperationError } from "@shared/index.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
@@ -8,6 +9,7 @@ import { assertEgressAllowedResolved } from "../egress-guard.ts";
 import { requestUsedStoredCredential } from "../reauth.ts";
 import { connectorHeaderPolicy, requestHeaderViolations } from "../request-header-policy.ts";
 import type { ConnectorView } from "../types.ts";
+import { GRAPHQL_PATH_INVALID_MESSAGE, sameOriginEndpoint } from "./graphql-endpoint.ts";
 import {
   type AppliedAuthMethod,
   applyAuthMaterial,
@@ -72,8 +74,15 @@ export function graphqlErrorMessages(body: unknown): string[] | null {
   });
 }
 
-function parseConfig(connector: ConnectorView): GraphQLConnectorConfig {
+function parseConfig(connector: ConnectorView, endpointOverride?: string): GraphQLConnectorConfig {
   const cfg = (connector.config ?? {}) as Record<string, unknown>;
+  if (endpointOverride !== undefined) {
+    if (!sameOriginEndpoint(connector.base_url, endpointOverride))
+      throw new ConnectorOperationError("graphql_endpoint_invalid", GRAPHQL_PATH_INVALID_MESSAGE, {
+        connector_id: connector.id,
+      });
+    return { endpoint: endpointOverride };
+  }
   const endpoint = connector.base_url ?? "";
   if (!endpoint) {
     throw new Error(`graphql connector ${connector.id} missing base_url`);
@@ -100,6 +109,7 @@ export async function executeGraphQLRequest(p: {
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
+  endpoint?: string;
   op: GraphQLOperation;
   fetchImpl?: typeof fetch;
   credential_override?: DecryptedCredential | null;
@@ -125,7 +135,7 @@ export async function executeGraphQLRequest(p: {
       stored_credential_used: false,
     };
   }
-  const cfg = parseConfig(p.connector);
+  const cfg = parseConfig(p.connector, p.endpoint);
   const resolveOpts: Parameters<typeof resolveConnectorCredential>[0] = {
     db: p.db,
     tenant_id: p.tenant_id,
@@ -288,6 +298,7 @@ export async function query(p: {
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
+  endpoint?: string;
   query: string;
   variables?: Record<string, unknown>;
   operation?: "query" | "mutation" | "subscription";
@@ -306,6 +317,7 @@ export async function query(p: {
     connector: p.connector,
     op,
   };
+  if (p.endpoint !== undefined) args.endpoint = p.endpoint;
   if (p.extra_headers !== undefined) args.extra_headers = p.extra_headers;
   if (p.before_dispatch !== undefined) args.before_dispatch = p.before_dispatch;
   if (p.fetchImpl !== undefined) args.fetchImpl = p.fetchImpl;

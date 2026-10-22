@@ -1,9 +1,12 @@
+import { isConnectorOperationError } from "@shared/index.ts";
 import {
   graphqlErrorMessages,
   query as graphqlQuery,
 } from "../../../connectors/drivers/graphql.ts";
 import {
   classifyGraphqlSchemaError,
+  graphqlRateLimited,
+  graphqlSecondaryRateLimited,
   isGraphqlRetryable,
 } from "../../../connectors/drivers/graphql-retry-classify.ts";
 import {
@@ -72,12 +75,54 @@ function retryReason(status: number, body: unknown): "graphql_throttle" | "graph
   return "graphql_5xx";
 }
 
+const RATE_LIMIT_MAX_WAIT_MS = 60 * 60_000;
+const SECONDARY_RATE_LIMIT_WAIT_MS = 60_000;
+
+export function graphqlRateLimitWaitMs(p: {
+  status: number;
+  headers: Readonly<Record<string, string>>;
+  body: unknown;
+  attempt: number;
+  backoff_base_ms: number;
+  now_ms: number;
+}): number {
+  const after = parseRetryAfter(p.headers["retry-after"] ?? null);
+  if (after !== null) return after;
+  const reset = Number(p.headers["x-ratelimit-reset"]);
+  if (p.headers["x-ratelimit-remaining"] === "0" && Number.isFinite(reset))
+    return Math.max(0, reset * 1000 - p.now_ms) + 1000;
+  const backoff = backoffMs(p.attempt, p.backoff_base_ms);
+  return graphqlSecondaryRateLimited(p.status, p.body)
+    ? Math.max(SECONDARY_RATE_LIMIT_WAIT_MS, backoff)
+    : backoff;
+}
+
+function rateLimitFailure(
+  attempt: number,
+  start: number,
+  status: number,
+  connector: ConnectorResolutionSummary,
+): StepResult {
+  return {
+    status: "failed",
+    retry_count: attempt,
+    duration_ms: Date.now() - start,
+    request_meta: { driver: "graphql", method: "POST", status, connector },
+    error: {
+      code: "upstream_rate_limited",
+      message:
+        "The GraphQL endpoint rate limit is reached and does not reset before the step deadline. Run the workflow again after the provider's reset time.",
+    },
+  };
+}
+
 export interface RunGraphqlWithRetryParams {
   queryArgs: Parameters<typeof graphqlQuery>[0];
   egressInput: Omit<EgressInput, "credential_id">;
   step: Pick<RequestStep, "max_retries" | "retry_backoff_ms" | "error_policy">;
   signal: AbortSignal;
   start: number;
+  deadline_ms?: number;
   connectorResolution: ConnectorResolutionSummary;
 }
 
@@ -137,6 +182,14 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
           error: buildStepErrorDetail({ code: "request_invalid", err }),
         };
       }
+      if (isConnectorOperationError(err) && err.code === "graphql_endpoint_invalid") {
+        return {
+          status: "failed",
+          retry_count: attempt,
+          duration_ms: Date.now() - start,
+          error: { code: err.code, message: err.message },
+        };
+      }
       return {
         status: "failed",
         retry_count: attempt,
@@ -148,16 +201,35 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
     connRes = { ...connRes, auth_method: raw.auth_method };
     lastRes = raw;
 
-    if (isGraphqlRetryable(raw.status, raw.body) && attempt < max_attempts - 1) {
-      const reason = retryReason(raw.status, raw.body);
-      let wait: number;
-      if (raw.status === 429) {
-        const after = parseRetryAfter(
-          (raw.headers as Record<string, string>)["retry-after"] ?? null,
-        );
-        wait = Math.min(after ?? backoffMs(attempt, policy.backoff_base_ms), 60 * 60_000);
-      } else {
-        wait = backoffMs(attempt, policy.backoff_base_ms);
+    const rateLimited = graphqlRateLimited(raw.status, raw.headers, raw.body);
+    if ((rateLimited || isGraphqlRetryable(raw.status, raw.body)) && attempt < max_attempts - 1) {
+      const reason = rateLimited ? "graphql_throttle" : retryReason(raw.status, raw.body);
+      const now = Date.now();
+      const wait = rateLimited
+        ? graphqlRateLimitWaitMs({
+            status: raw.status,
+            headers: raw.headers,
+            body: raw.body,
+            attempt,
+            backoff_base_ms: policy.backoff_base_ms,
+            now_ms: now,
+          })
+        : backoffMs(attempt, policy.backoff_base_ms);
+      if (
+        rateLimited &&
+        (wait > RATE_LIMIT_MAX_WAIT_MS ||
+          (p.deadline_ms !== undefined && now + wait > p.deadline_ms))
+      ) {
+        logger.warn({
+          module: "execution",
+          action: "graphql.rate_limited",
+          msg: "graphql rate limit does not reset before the step deadline",
+          connector_id: egressInput.connector_id,
+          status: raw.status,
+          wait_ms: Math.round(wait),
+          attempt_no: attempt,
+        });
+        return rateLimitFailure(attempt, start, raw.status, connRes);
       }
       logger.info({
         module: "execution",
@@ -194,6 +266,8 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
     body: lastRes.body,
   });
 
+  if (graphqlRateLimited(lastRes.status, lastRes.headers, lastRes.body))
+    return rateLimitFailure(finalAttempt, start, lastRes.status, connRes);
   const gqlErrors = graphqlErrorMessages(lastRes.body);
   const httpOk = lastRes.status >= 200 && lastRes.status < 300;
   const errorPolicy = step.error_policy ?? "none";

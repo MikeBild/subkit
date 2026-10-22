@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { classifyHttpSideEffect, inferGraphqlOperation } from "@shared/index.ts";
+import { graphqlPathShapeError } from "../connectors/drivers/graphql-endpoint.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import {
   ContentPublicationBoundarySchema,
@@ -155,7 +156,8 @@ function operationOf(step: RequestStep, driver: ResolvedEffectBinding["driver"])
     return step.mcp?.operation ?? "unknown";
   }
   if (driver === "postgres") return "sql";
-  if (driver === "graphql") return inferGraphqlOperation(step.graphql?.query ?? "") ?? "unknown";
+  if (driver === "graphql" || (driver === "http" && step.graphql))
+    return inferGraphqlOperation(step.graphql?.query ?? "") ?? "unknown";
   return step.method;
 }
 
@@ -168,8 +170,16 @@ function effectOf(
     (binding.driver === "mcp" && step.mcp?.operation === "call_tool")
   )
     return "unknown";
-  if (binding.driver === "graphql" && inferGraphqlOperation(step.graphql?.query ?? "") === null)
+  if (
+    (binding.driver === "graphql" || (binding.driver === "http" && step.graphql)) &&
+    inferGraphqlOperation(step.graphql?.query ?? "") === null
+  )
     return "unknown";
+  if (binding.driver === "http" && step.graphql)
+    return classifyHttpSideEffect({
+      override: step.side_effects === "write" ? "write" : null,
+      graphql: { operation: step.graphql.operation ?? null, query: step.graphql.query },
+    });
   if ((binding.driver === "http" || binding.driver === "s3") && step.method === "DELETE")
     return "destructive";
   return classifyHttpSideEffect({
@@ -291,10 +301,15 @@ export function compileWorkflowEffectManifest(raw: unknown): {
           : step.s3
             ? "s3"
             : "http";
+    const graphqlOnHttp =
+      declaredDriver === "graphql" &&
+      binding.driver === "http" &&
+      step.url === undefined &&
+      graphqlPathShapeError(step.path) === null;
     if (
       binding.tenant_id !== input.tenant_id ||
       binding.connector_id !== (step.connector_id ?? null) ||
-      binding.driver !== declaredDriver ||
+      (binding.driver !== declaredDriver && !graphqlOnHttp) ||
       binding.request_digest !== workflowJsonDigest(step)
     )
       issue("binding_mismatch");
@@ -320,7 +335,8 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       workflowJsonDigest(readPath) === workflowJsonDigest(binding.read_path) &&
       binding.target === readPathTarget(readPath);
     if (binding.read_path && !supportedReadPath) issue("binding_mismatch");
-    const readQuery = binding.driver === "http" && !step.boundary && supportsReadQuery(step);
+    const readQuery =
+      binding.driver === "http" && !step.graphql && !step.boundary && supportsReadQuery(step);
     const recompiledBoundary =
       binding.driver === "http" && binding.boundary
         ? requestBoundary(step, binding.boundary.base_url)

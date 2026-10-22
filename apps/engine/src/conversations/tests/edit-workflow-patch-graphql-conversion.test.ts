@@ -93,6 +93,7 @@ describe("edit_workflow_patch · graphql step converted to POST /graphql", () =>
     expect(data.message).toContain("cursor pagination");
     expect(data.message).toContain("graphql connector");
     expect(data.message).toContain("REST endpoint");
+    expect(data.message).toContain('set path "/graphql" on the existing http connector');
     expect(data.message).toContain("project_items");
     expect(data.next_best_actions).toContain("find_connector");
     expect(data.message).not.toContain("the request is reviewed as a write");

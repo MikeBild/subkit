@@ -164,6 +164,34 @@ describe("request steps", () => {
     const { blocks } = read(graphql);
     expect(block(blocks, "workflow.block.graphql")?.language).toBe("graphql");
     expect(block(blocks, "workflow.block.variables")?.code).toBe('{\n  "n": 5\n}');
+    expect(block(blocks, "workflow.block.request")).toBeUndefined();
+    expect(block(blocks, "workflow.block.pagination")).toBeUndefined();
+  });
+
+  test("a GraphQL request on a fixed path shows its target and cursor pagination", () => {
+    const cursor = {
+      connection_path: "user.projectV2.items",
+      cursor_variable: "after",
+      items_field: "nodes",
+      max_pages: 40,
+      max_items: 2000,
+    };
+    const graphql = {
+      id: "project_items",
+      kind: "request",
+      method: "GET",
+      path: "/graphql",
+      connector_id: UUID,
+      graphql: {
+        operation: "query",
+        query: "query Items { viewer { login } }",
+        cursor_pagination: cursor,
+      },
+    };
+    const { blocks } = read(graphql);
+    expect(block(blocks, "workflow.block.request")?.code).toBe("POST /graphql");
+    expect(block(blocks, "workflow.block.pagination")?.code).toBe(JSON.stringify(cursor, null, 2));
+    expect(block(blocks, "workflow.block.graphql")?.language).toBe("graphql");
   });
 
   test("an object-storage request names its key", () => {

@@ -8,7 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [driver, graphql]
-version: 9
+version: 10
 ---
 
 # GraphQL Connectors
@@ -207,9 +207,15 @@ When `data` is null (total failure), the step still fails even under
 The driver retries automatically on:
 
 - HTTP 429 and 5xx responses.
-- Structured throttling or transient codes in `extensions.code`,
-  `extensions.errorType`, or `extensions.classification` — classes THROTTL,
-  RATE_LIMIT, TOO_MANY_REQUESTS, TIMEOUT, UNAVAILABLE, TRY_AGAIN, INTERNAL.
+- Structured throttling or transient codes in the error `type`,
+  `extensions.code`, `extensions.errorType`, or `extensions.classification` —
+  classes THROTTL, RATE_LIMIT, TOO_MANY_REQUESTS, TIMEOUT, UNAVAILABLE,
+  TRY_AGAIN, INTERNAL.
+- A rate limit answered as HTTP 200 or 403 (for GitHub an error of type
+  `RATE_LIMITED`, `x-ratelimit-remaining: 0`, `retry-after`, or a secondary
+  rate limit message). The wait follows `retry-after`, then
+  `x-ratelimit-reset`, otherwise at least one minute; when it passes the step
+  deadline the step fails with `upstream_rate_limited` and sends nothing more.
 
 `max_retries` (default 4) and `retry_backoff_ms` (default 200) control the
 retry budget. A `Retry-After` response header is honoured when present. Each
@@ -233,7 +239,16 @@ attempt is independently audited.
 
 GraphQL connectors use the same auth modes as `http` — `bearer`, `header`,
 `query`, `basic`, and `oauth2`. The driver posts to a single `base_url` (the
-GraphQL endpoint), so `path` is ignored. Set auth once on the connector;
+GraphQL endpoint), so `path` is ignored.
+
+An existing http connector whose host also serves GraphQL needs no second
+connector: keep the `graphql` block and set the step's `path` to the fixed
+endpoint path, for GitHub `"path": "/graphql"` on base_url
+`https://api.github.com`. The request reuses the connector's credential,
+static headers and static query, keeps `cursor_pagination`, and is reviewed by
+its operation. The path must stay on the connector host: no `url`, no absolute
+URL, no `..`, no query string, no placeholder. Request-signing (`aws_sigv4`)
+connectors cannot send a graphql block. Set auth once on the connector;
 reference credentials only if you need them inside variables (e.g. an API key
 as an input to the query).
 
