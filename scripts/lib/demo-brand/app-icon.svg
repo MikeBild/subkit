@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Brennwerk</title>
+  <rect width="512" height="512" fill="#134E4A"/>
+  <path d="M256 64C300 130 384 190 384 298C384 376 328 432 256 432C184 432 128 376 128 298C128 238 164 200 190 148C206 172 214 190 222 212C246 178 258 126 256 64Z" fill="#FB923C"/>
+  <path d="M120 400C196 400 208 316 256 316C304 316 316 232 392 232" fill="none" stroke="#5EEAD4" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="120" cy="400" r="26" fill="#5EEAD4"/>
+  <circle cx="392" cy="232" r="26" fill="#5EEAD4"/>
+</svg>

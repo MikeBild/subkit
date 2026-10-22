@@ -1,11 +1,26 @@
 const contacts = [
-  { id: "contact-anna", name: "Anna Beispiel", email: "anna@example.test", status: "active" },
-  { id: "contact-ben", name: "Ben Muster", email: "ben@example.test", status: "pending" },
-  { id: "contact-clara", name: "Clara Demodaten", email: "clara@example.test", status: "active" },
+  {
+    id: "contact-jana",
+    name: "Jana Krüger",
+    email: "jana.krueger@nordhafen.example",
+    status: "active",
+  },
+  {
+    id: "contact-tim",
+    name: "Tim Becker",
+    email: "tim.becker@rheinfracht.example",
+    status: "pending",
+  },
+  {
+    id: "contact-sara",
+    name: "Sara Yilmaz",
+    email: "sara.yilmaz@ostwind-handel.example",
+    status: "active",
+  },
 ];
 const orders = [
-  { id: "order-alpha", customer: "Anna Beispiel", total: 129.5, currency: "EUR", status: "paid" },
-  { id: "order-beta", customer: "Ben Muster", total: 42, currency: "EUR", status: "open" },
+  { id: "order-alpha", customer: "Jana Krüger", total: 129.5, currency: "EUR", status: "paid" },
+  { id: "order-beta", customer: "Tim Becker", total: 42, currency: "EUR", status: "open" },
 ];
 
 Bun.serve({
@@ -19,7 +34,7 @@ Bun.serve({
     if (path === "/orders") return Response.json({ items: orders, orders, total: orders.length });
     if (path === "/report")
       return Response.json({
-        title: "Lokaler Demo-Bericht",
+        title: "Weekly sales report",
         contacts: contacts.length,
         orders: orders.length,
         revenue: 171.5,
@@ -27,7 +42,7 @@ Bun.serve({
       });
     if (path === "/fail")
       return Response.json(
-        { code: "demo_failure", message: "Absichtlich fehlgeschlagener lokaler Testaufruf" },
+        { code: "demo_failure", message: "Status service unavailable" },
         { status: 503 },
       );
     if (path === "/echo") {

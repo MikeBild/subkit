@@ -35,6 +35,7 @@ import {
 } from "./lib/cockpit-demo-lifecycle-harness.ts";
 import {
   cockpitDemoManifest,
+  cockpitDemoOwnerSql,
   createCockpitDemoSeedSql,
   demoFiles,
 } from "./lib/cockpit-demo-seed.ts";
@@ -509,7 +510,7 @@ function seedEvidence(instance: ReturnType<typeof resolveCockpitDemoInstance>): 
     "-v",
     "ON_ERROR_STOP=1",
     "-c",
-    "SELECT t.id || '|' || u.id FROM tenants t JOIN users u ON u.tenant_id=t.id WHERE t.slug='subkit-local-demo' AND u.email='demo@localhost.test' AND u.deleted_at IS NULL;",
+    `SELECT t.id || '|' || u.id FROM tenants t JOIN users u ON u.tenant_id=t.id ${cockpitDemoOwnerSql} LIMIT 1;`,
   ])
     .split("\n")
     .filter(Boolean);

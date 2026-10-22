@@ -1,45 +1,52 @@
 import { createHash } from "node:crypto";
 
+export const cockpitDemoTenantSlug = "subkit-local-demo";
+export const cockpitDemoSetupTenantName = "SubKit Local Demo";
+export const cockpitDemoTenantName = "Brennwerk Logistik GmbH";
+export const cockpitDemoOwnerName = "Lena Hoffmann";
+export const cockpitDemoOwnerEmail = "lena@brennwerk.test";
+export const cockpitDemoOwnerSql = `JOIN roles r ON r.id=u.role_id AND r.tenant_id IS NULL AND r.name='admin' WHERE t.slug='${cockpitDemoTenantSlug}' AND u.deleted_at IS NULL ORDER BY (u.email='${cockpitDemoOwnerEmail}') DESC, u.created_at, u.id`;
+
 export const demoCategories = [
   {
     name: "demo",
-    purpose: "Beispiele zum sicheren Ausprobieren der lokalen Installation.",
-    aliases: ["Beispiele", "Übung"],
+    purpose: "Safe examples for trying out the workspace.",
+    aliases: ["Examples", "Playground"],
   },
   {
-    name: "vertrieb",
-    purpose: "Kunden, Bestellungen und Umsatzberichte gemeinsam bearbeiten.",
-    aliases: ["Kunden", "Verkauf", "Sales"],
+    name: "sales",
+    purpose: "Customers, orders and sales reports in one place.",
+    aliases: ["Customers", "Orders", "CRM"],
   },
   {
-    name: "betrieb",
-    purpose: "Freigaben, Betriebsregeln und die Bearbeitung von Fehlern.",
-    aliases: ["Administration", "Operations"],
+    name: "operations",
+    purpose: "Approvals, operating rules and incident handling.",
+    aliases: ["Administration", "Ops"],
   },
 ];
 
 export const demoFiles = [
   {
-    filename: "Willkommen-im-lokalen-Cockpit.md",
+    filename: "Getting-started.md",
     contentType: "text/markdown",
     category: "demo",
-    description: "Einstieg und manuelle Testaufgaben",
+    description: "Getting started with the Brennwerk workspace",
     content:
-      "# Lokales Cockpit\n\nAlle Beispieldaten sind synthetisch. Öffne Listen und Details, ändere Filter, erstelle einen Entwurf und prüfe Freigaben. Der Reset stellt diesen Ausgangszustand wieder her.\n",
+      "# Getting started\n\nAll records in this workspace are synthetic. Open lists and details, change filters, create a draft and review approvals. A reset restores this starting point.\n",
   },
   {
-    filename: "Kundenliste-mit-langen-Namen.csv",
+    filename: "Customer-contacts.csv",
     contentType: "text/csv",
-    category: "vertrieb",
-    description: "Kleine CSV-Datei mit Umlauten und langen Werten",
+    category: "sales",
+    description: "Customer contacts export with long company names",
     content:
-      "name,email,region\nAnna Beispiel,anna@example.test,Berlin\nBüro für nachhaltige Produktentwicklung und internationale Zusammenarbeit,team@example.test,München\n",
+      "name,email,region\nJana Krüger,jana.krueger@nordhafen.example,Hamburg\nNordhafen Kühllogistik und internationale Speditionsdienste GmbH,dispo@nordhafen.example,München\n",
   },
   {
-    filename: "Bestellungen.json",
+    filename: "Orders.json",
     contentType: "application/json",
-    category: "vertrieb",
-    description: "Strukturierte Beispieldaten für Vorschau und Download",
+    category: "sales",
+    description: "Order export for preview and download",
     content: JSON.stringify(
       {
         orders: [
@@ -52,21 +59,21 @@ export const demoFiles = [
     ),
   },
   {
-    filename: "Freigabe-und-Betriebsregeln.md",
+    filename: "Approval-and-operating-rules.md",
     contentType: "text/markdown",
-    category: "betrieb",
+    category: "operations",
     description:
-      "Langer Titel und mehrzeilige Beschreibung zur manuellen Prüfung von Listen, Detailansichten und schmalen Fenstern",
+      "Approval rules for write operations, production changes and incident handling across the dispatch, warehouse and carrier systems",
     content:
-      "# Freigaben\n\nVor einem schreibenden Lauf müssen Ziel, Wirkung und Umgebung geprüft werden. Die Demo-API verarbeitet ausschließlich synthetische Daten im lokalen Compose-Netz.\n\n## Fehler\n\nDer Fehler-Endpunkt liefert absichtlich HTTP 503.\n",
+      "# Approvals\n\nBefore a write run, review target, effect and environment. The demo API only processes synthetic data inside the local network.\n\n## Incidents\n\nThe status endpoint returns HTTP 503 on purpose.\n",
   },
   {
-    filename: "Notizen.txt",
+    filename: "Notes.txt",
     contentType: "text/plain",
     category: "demo",
-    description: "Einfacher Text mit Sonderzeichen",
+    description: "Dispatch notes with special characters",
     content:
-      "Äpfel, Öl, Grüße – 日本語 – English\nMehrzeilige Notiz für Suche, Darstellung und Download.\n",
+      "Delivery address: Grüne Straße 12, Köln – 日本語 – English\nMulti-line note for search, rendering and download.\n",
   },
 ];
 
@@ -85,9 +92,9 @@ export const cockpitDemoManifest = {
   files: demoFiles.length,
   categoryMetadata: demoCategories.length,
   limitations: [
-    "Historische Läufe und Verbrauch sind synthetisch.",
-    "Freigaben werden nicht vorgetäuscht; lokale Workflows können manuell freigegeben werden.",
-    "Externe OAuth-, MCP- und Versanddienste werden nicht eingerichtet.",
+    "Past runs and usage are synthetic.",
+    "Approvals are not faked; local workflows can be approved manually.",
+    "External OAuth, MCP and delivery services are not set up.",
   ],
 };
 
@@ -103,7 +110,11 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
   const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
   const id = (name: string) => cockpitDemoId(tenantId, name);
   const statements: string[] = [];
-  const repairs: string[] = [];
+  const repairs: string[] = [
+    `UPDATE tenants SET display_name=${quote(cockpitDemoTenantName)} WHERE id=${quote(tenantId)} AND slug=${quote(cockpitDemoTenantSlug)} AND display_name=${quote(cockpitDemoSetupTenantName)};`,
+    `UPDATE users SET email=${quote(cockpitDemoOwnerEmail)} WHERE id=${quote(adminUserId)} AND tenant_id=${quote(tenantId)} AND (email LIKE '%@localhost.test' OR email='lena@brennwerk.example') AND NOT EXISTS (SELECT 1 FROM users other WHERE other.tenant_id=${quote(tenantId)} AND other.email=${quote(cockpitDemoOwnerEmail)});`,
+    `UPDATE users SET display_name=${quote(cockpitDemoOwnerName)} WHERE id=${quote(adminUserId)} AND tenant_id=${quote(tenantId)} AND display_name IS NULL;`,
+  ];
   for (const category of demoCategories) {
     repairs.push(
       `INSERT INTO catalog_categories (tenant_id,name,purpose,purpose_source,aliases) VALUES (${quote(tenantId)},${quote(category.name)},${quote(category.purpose)},'human',${quote(JSON.stringify(category.aliases))}::jsonb) ON CONFLICT (tenant_id,name) DO UPDATE SET purpose=EXCLUDED.purpose,purpose_source=EXCLUDED.purpose_source,aliases=EXCLUDED.aliases,purpose_pending=false,revision=catalog_categories.revision+1 WHERE catalog_categories.revision=1 AND catalog_categories.purpose IS NULL AND catalog_categories.purpose_source IS NULL AND catalog_categories.redirect_to IS NULL AND catalog_categories.aliases='[]'::jsonb;`,
@@ -139,18 +150,26 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     category_source: "human",
   });
   const connectorNames = [
-    "Lokale Kontakte",
-    "Bestellungen und Umsatzberichte",
-    "Demo-Schreibziel",
-    "Absichtlich gestörter Dienst",
-    "Deaktivierte Verbindung",
-    "Verbindung mit fehlender Anmeldung",
+    "CRM contacts",
+    "Sales reporting API",
+    "Dispatch write API",
+    "Status API",
+    "Warehouse ERP",
+    "Carrier tracking API",
+  ];
+  const connectorSlugs = [
+    "crm-contacts",
+    "sales-reporting-api",
+    "dispatch-write-api",
+    "status-api",
+    "warehouse-erp",
+    "carrier-tracking-api",
   ];
   connectorNames.forEach((name, i) => {
     insert("connectors", {
       id: id(`connector-${i}`),
       tenant_id: tenantId,
-      slug: `demo-connector-${i}`,
+      slug: connectorSlugs[i],
       display_name: name,
       driver: "http",
       base_url: "http://demo-api:8080",
@@ -159,28 +178,28 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       auth_type: i === 5 ? "bearer" : "none",
       enabled: i !== 4,
       health_state: i === 5 ? "needs_reauth" : i === 3 ? "degraded" : "ok",
-      health_reason: i === 3 ? "Synthetischer HTTP-503-Fehler zur manuellen Fehlerprüfung" : null,
+      health_reason: i === 3 ? "Status endpoint answers with HTTP 503" : null,
       needs_reauth: i === 5,
-      auth_failed_reason: i === 5 ? "Synthetischer Anmeldefehler" : null,
+      auth_failed_reason: i === 5 ? "Access token expired" : null,
       ...metadata(
-        i < 3 ? "vertrieb" : "betrieb",
-        "Lokaler Beispieldienst ohne externe Daten. Für manuelle Listen-, Detail- und Fehlerprüfungen.",
+        i < 3 ? "sales" : "operations",
+        "Local demo service backed by synthetic data only.",
       ),
     });
   });
   const workflowNames = [
-    "Kontakte lesen",
-    "Umsatzbericht mit ausführlichem Namen für lange Tabellenzeilen und schmale Fenster",
-    "Bestellungen prüfen",
-    "Lokalen Schreibvorgang vorbereiten",
-    "Absichtlich fehlschlagender Abruf",
-    "Entwurf zur gemeinsamen Prüfung",
-    "Deaktiviertes Beispiel",
-    "Daten umwandeln",
-    "Kunden nach Region sortieren",
-    "Antwort mit Umlauten prüfen",
-    "Leerer Entwurf",
-    "Reparatur eines Berichts vorbereiten",
+    "CRM contact sync",
+    "Weekly sales report for all regions, carriers and key accounts",
+    "Order check",
+    "Dispatch update",
+    "Status API health check",
+    "Invoice export",
+    "Route planning",
+    "Shipment data transform",
+    "Customers by region",
+    "Delivery notice check",
+    "Returns intake",
+    "Monthly revenue report",
   ];
   workflowNames.forEach((name, i) => {
     const draft = i === 5 || i === 10;
@@ -189,15 +208,24 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       i === 10
         ? []
         : i === 7
-          ? [{ id: "demo", kind: "transform", language: "javascript", expression: "return input;" }]
+          ? [
+              {
+                id: "fetch-contacts",
+                kind: "transform",
+                language: "javascript",
+                expression: "return input;",
+              },
+            ]
           : [
               {
-                id: "demo",
+                id: "fetch-contacts",
                 kind: "request",
                 connector_id: id(`connector-${connector}`),
                 method: i === 3 ? "POST" : "GET",
                 path: i === 4 ? "/fail" : i === 3 ? "/echo" : i % 2 ? "/report" : "/contacts",
-                ...(i === 3 ? { body: { message: "Lokaler Demo-Schreibvorgang" } } : {}),
+                ...(i === 3
+                  ? { body: { message: "Dispatch update from the demo workspace" } }
+                  : {}),
               },
             ];
     insert("workflows", {
@@ -208,10 +236,10 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       lifecycle: draft ? "draft" : i === 6 ? "archived" : "active",
       last_executed_at: i < 5 ? ago(i + 0.01) : null,
       health_state: i === 11 ? "degraded" : "ok",
-      health_reason: i === 11 ? "Synthetischer Reparaturfall: Antwortstruktur prüfen" : null,
+      health_reason: i === 11 ? "Response structure changed; review the report step" : null,
       ...metadata(
-        i < 4 ? "vertrieb" : "betrieb",
-        "Synthetischer lokaler Workflow. Ausschließlich die lokale Demo-API wird verwendet; Freigaben können im Cockpit geprüft werden.",
+        i < 4 ? "sales" : "operations",
+        "Synthetic workflow that only calls the local demo API. Approvals can be reviewed in the Cockpit.",
       ),
     });
     insert("workflow_versions", {
@@ -221,7 +249,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       version: 1,
       author_user_id: adminUserId,
       dag: { name, slug: `demo-workflow-${i}`, steps },
-      note: "Lokaler Ausgangszustand für manuelle Tests",
+      note: "Initial version",
     });
     statements.push(
       `UPDATE workflows SET ${draft ? "draft_version_id" : "current_version_id"}=${quote(id(`version-${i}`))} WHERE tenant_id=${quote(tenantId)} AND id=${quote(id(`workflow-${i}`))};`,
@@ -246,9 +274,9 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       failure:
         status === "failed" || status === "timed_out"
           ? {
-              step_id: "demo",
+              step_id: "fetch-contacts",
               error_code: status === "timed_out" ? "TIMEOUT" : "HTTP_ERROR",
-              error_message: "Synthetischer lokaler Fehler für die manuelle Detailprüfung",
+              error_message: "Status API answered with HTTP 503",
             }
           : null,
     });
@@ -256,19 +284,19 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       id: id(`step-${i}`),
       tenant_id: tenantId,
       execution_id: id(`execution-${i}`),
-      step_key: "demo",
+      step_key: "fetch-contacts",
       step_index: 0,
       kind: "request",
       status,
       input_preview: { demo: true },
       output_preview: failed
         ? null
-        : { data: [{ id: "example", name: "Anna Beispiel" }], synthetic: true },
+        : { data: [{ id: "example", name: "Jana Krüger" }], synthetic: true },
       duration_ms: 125 + i * 17,
       started_at: ago(i + 0.01),
       finished_at: ago(i),
       error: failed
-        ? { code: "HTTP_ERROR", message: "Demo-Endpunkt liefert absichtlich HTTP 503" }
+        ? { code: "HTTP_ERROR", message: "Status endpoint answered with HTTP 503" }
         : null,
     });
     insert("audit_log", {
@@ -282,7 +310,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       result: failed ? "error" : "success",
       ts: ago(i),
       metadata: { source: "ui", synthetic: true },
-      reason: "Lokaler synthetischer Demodatensatz",
+      reason: "Synthetic demo record",
     });
     const created = new Date(ago(i * 7));
     insert("llm_usage", {
@@ -307,13 +335,13 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       owner_id: adminUserId,
       status: i === 1 ? "awaiting_input" : i === 6 ? "abandoned" : "active",
       title: [
-        "Willkommen: Lokale Testdaten erkunden",
-        "Bericht vorbereiten – eine Angabe fehlt",
-        "Lange Antworten und Tabellen im Chat",
-        "Kontakte gemeinsam untersuchen",
-        "Entwurf ohne Veröffentlichung",
-        "Fehlgeschlagenen Abruf verstehen",
-        "Ausgeblendete Unterhaltung",
+        "Getting started with Brennwerk",
+        "Prepare the sales report",
+        "Carrier comparison",
+        "Review CRM contacts",
+        "Invoice export draft",
+        "Why did the status check fail?",
+        "Old shipping question",
       ][i],
       surface: "cockpit",
       origin_client: "cockpit",
@@ -322,10 +350,10 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       updated_at: ago(i),
     });
     for (const [j, text] of [
-      "Bitte zeige mir, wie ich diesen lokalen Demofall ausprobieren kann.",
+      "Show me how to get started with this workspace.",
       i === 1
-        ? "Für welchen Zeitraum soll ich den Bericht vorbereiten?"
-        : "Dies ist eine synthetische Beispielunterhaltung. Du kannst hier weiterfragen.\n\n| Aufgabe | Prüfen |\n|---|---|\n| Liste öffnen | Filtern und sortieren |\n| Details ansehen | Lange Namen, Umlaute und Status |\n\nÄnderungen bleiben in der lokalen Testumgebung.",
+        ? "Which period should the sales report cover?"
+        : "This is a synthetic example conversation. You can keep asking here.\n\n| Task | Check |\n|---|---|\n| Open a list | Filter and sort |\n| Open details | Long names, umlauts and status |\n\nChanges stay in this demo workspace.",
     ].entries())
       insert("conversation_messages", {
         id: id(`message-${i}-${j}`),
@@ -342,10 +370,10 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     conversation_id: id("conversation-1"),
     parent_message_id: id("message-1-1"),
     tool_name: "ask_user_form",
-    summary: "Zeitraum für den lokalen Bericht auswählen",
+    summary: "Choose the sales report period",
     input: {
-      question: "Für welchen Zeitraum soll der Bericht vorbereitet werden?",
-      fields: [{ name: "period", label: "Zeitraum", type: "text", required: true }],
+      question: "Which period should the sales report cover?",
+      fields: [{ name: "period", label: "Period", type: "text", required: true }],
     },
     expires_at: new Date(now.getTime() + 30 * 86_400_000).toISOString(),
   });
@@ -356,14 +384,14 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
   });
   for (let i = 0; i < 6; i++) {
     const name = [
-      "Vertragsarchiv",
-      "Freigaben und sichere Ausführung",
-      "Kundenservice – Antworten auf häufige Fragen mit sehr langen Überschriften",
-      "Inaktive Wissensquelle",
-      "Quelle wird eingelesen",
-      "Absichtlich fehlerhafte Quelle",
+      "Contract archive",
+      "Approval policy",
+      "Customer service FAQ for carriers, warehouses and key accounts in all regions",
+      "Price list archive",
+      "Carrier handbook",
+      "Tariff sheet import",
     ][i] as string;
-    const content = `# ${name}\n\nDiese Wissensquelle enthält ausschließlich synthetische Demo-Inhalte.\n\n## Lokale Nutzung\nKontakte und Bestellungen stammen aus der lokalen Demo-API. Schreibende Aktionen benötigen eine passende Freigabe.\n`;
+    const content = `# ${name}\n\nThis knowledge source contains synthetic demo content only.\n\n## Usage\nContacts and orders come from the local demo API. Write actions need a matching approval.\n`;
     insert("knowledge_sources", {
       id: id(`knowledge-${i}`),
       tenant_id: tenantId,
@@ -374,12 +402,12 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       version: "1",
       status: i < 3 ? "active" : i === 3 ? "inactive" : i === 4 ? "processing" : "error",
       ...(i === 0 ? { created_at: ago(340), updated_at: ago(170) } : {}),
-      last_error: i === 5 ? "Synthetischer Einlesefehler: Quelldokument nicht verfügbar" : null,
+      last_error: i === 5 ? "Import failed: source document unavailable" : null,
       chunk_count: 2,
       bytes_total: Buffer.byteLength(content),
       ...metadata(
-        i % 2 ? "betrieb" : "demo",
-        "Lokaler Text für Quellen, Abschnitte, Suche und Wissensdetails",
+        i % 2 ? "operations" : "demo",
+        "Reference text for sources, sections, search and knowledge details",
       ),
     });
     insert("knowledge_source_versions", {
@@ -398,8 +426,8 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
         tenant_id: tenantId,
         knowledge_source_id: id(`knowledge-${i}`),
         ordinal: j,
-        title: j ? "Lokale Nutzung" : name,
-        content: `${content}\nAbschnitt ${j + 1}`,
+        title: j ? "Usage" : name,
+        content: `${content}\nSection ${j + 1}`,
         byte_size: Buffer.byteLength(content),
         fingerprint: createHash("sha256").update(`${content}:${j}`).digest("hex"),
       });
@@ -409,15 +437,18 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       scope: "global",
       pattern_kind: i % 2 ? "failure_pattern" : "success_pattern",
       title: [
-        "Lange Antworten besser strukturieren und alle fehlenden fachlichen Angaben gemeinsam erfragen",
-        "Lokale Kundendaten sind synthetisch",
-        "Bei Fehlern konkrete nächste Schritte nennen",
-        "Schreibvorgänge vor Ausführung prüfen",
-        "Angenommener Vorschlag",
-        "Verworfener Vorschlag",
+        "Structure long answers and ask for all missing business details at once",
+        "Use CRM contacts as the customer source",
+        "Name concrete next steps after a failure",
+        "Review write operations before running them",
+        "Include shipment IDs in summaries",
+        "Always answer in bullet lists",
       ][i],
-      body: "Berücksichtige diese lokale Beispielregel beim nächsten passenden Vorgang. Sie dient der manuellen Prüfung von Übernehmen und Verwerfen.",
-      evidence: { summary: "Synthetischer Mustervorschlag", conversation_id: id("conversation-0") },
+      body: "Apply this rule the next time a matching task comes up.",
+      evidence: {
+        summary: "Observed in recent conversations",
+        conversation_id: id("conversation-0"),
+      },
       confidence: i % 2 ? "medium" : "high",
       status: i === 4 ? "approved" : i === 5 ? "rejected" : "proposed",
       fingerprint: `cockpit-demo-candidate-${i}`,
@@ -433,29 +464,29 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       connector_id: i === 2 ? id("connector-0") : null,
       workflow_id: i === 3 ? id("workflow-0") : null,
       title: [
-        "Antworten verständlich zusammenfassen",
-        "Freigaben vor Schreibvorgängen prüfen",
-        "Lokale Kontakte verwenden",
-        "Kontaktbericht vorbereiten",
-        "Sehr lange Skill-Bezeichnung zur Prüfung von Spaltenbreiten und überlappenden Bedienelementen",
-        "Entwurf einer neuen Regel",
-        "Archivierte Regel",
-        "Mehrsprachige Antworten mit Ä, Ö und Ü",
+        "Summarize answers clearly",
+        "Check approvals before writes",
+        "Use CRM contacts",
+        "Prepare the contact report",
+        "Escalation rules for delayed shipments, missing customs documents and carrier disputes",
+        "Returns handling",
+        "Pricing rules",
+        "Address formats for Köln, Zürich and Graz",
       ][i],
-      body: "# Lokale Beispielregel\n\nNutze ausschließlich die vorhandenen synthetischen Demodaten. Erkläre Ergebnisse verständlich und frage nach fehlenden Angaben. Freigabegrenzen bleiben erhalten.",
+      body: "# Working rule\n\nUse only the existing synthetic demo data. Explain results clearly and ask for missing details. Approval limits stay in place.",
       lifecycle: i === 5 ? "draft" : i === 6 ? "archived" : "active",
       source: "manual",
       applies_to: i % 3 === 0 ? "chat" : i % 3 === 1 ? "authoring" : "both",
       ...metadata(
-        i % 2 ? "betrieb" : "demo",
-        "Beispielskill für Suche, Kategorien, Geltungsbereich und Bearbeitung",
+        i % 2 ? "operations" : "demo",
+        "Working rule for search, categories, scope and editing",
       ),
     });
   insert("roles", {
     id: id("reviewer-role"),
     tenant_id: tenantId,
-    name: "Demo-Prüfer",
-    description: "Lokale Leserechte für die manuelle Rollenprüfung",
+    name: "Dispatch reviewer",
+    description: "Read access to workflows, connectors, runs and knowledge",
   });
   statements.push(
     `INSERT INTO role_permissions (role_id,permission_id) SELECT ${quote(id("reviewer-role"))},id FROM permissions WHERE name IN ('workflow:read','connector:read','execution:read','knowledge:read','skill:read') ON CONFLICT DO NOTHING;`,
@@ -463,8 +494,8 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
   insert("roles", {
     id: id("archive-editor-role"),
     tenant_id: tenantId,
-    name: "Demo-Wissensbearbeiter",
-    description: "Synthetische Bearbeitung des Vertragsarchivs",
+    name: "Knowledge editor",
+    description: "Maintains the contract archive",
   });
   statements.push(
     `INSERT INTO role_permissions (role_id,permission_id) SELECT ${quote(id("archive-editor-role"))},id FROM permissions WHERE name IN ('knowledge:read','knowledge:write','audit:read') ON CONFLICT DO NOTHING;`,
@@ -473,7 +504,8 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     insert("users", {
       id: id(`user-${i}`),
       tenant_id: tenantId,
-      email: ["anna@example.test", "ben@example.test", "carla@example.test"][i],
+      email: ["jonas@brennwerk.example", "miriam@brennwerk.example", "tobias@brennwerk.example"][i],
+      display_name: ["Jonas Weber", "Miriam Schulz", "Tobias Krüger"][i],
       role_id: id(i === 0 ? "archive-editor-role" : "reviewer-role"),
       status,
       created_at: ago(400),
@@ -486,7 +518,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     prefix: `demo${tenantId.replaceAll("-", "").slice(0, 12)}`,
     token_sha256: "0".repeat(64),
     credential_origin: "cli_oauth_session",
-    name: "Lokaler Demo-Zugang",
+    name: "Jonas Weber CLI",
     scopes: ["*"],
     created_at: ago(300),
   });
@@ -495,7 +527,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     tenant_id: tenantId,
     owner_id: adminUserId,
     status: "committed",
-    title: "Vertragsarchiv wieder aktivieren",
+    title: "Reactivate the contract archive",
     surface: "mcp",
     origin_client: "mcp",
     turn_count: 1,
@@ -507,7 +539,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     tenant_id: tenantId,
     conversation_id: id("archive-conversation"),
     role: "user",
-    content: { text: "Aktiviere das synthetische Vertragsarchiv wieder." },
+    content: { text: "Reactivate the contract archive." },
     created_at: ago(171),
   });
   insert("conversation_tool_calls", {
@@ -531,7 +563,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       result: "success",
       hours: 340,
       before: null,
-      after: { name: "Vertragsarchiv", status: "processing" },
+      after: { name: "Contract archive", status: "processing" },
     },
     {
       action: "knowledge_source.ingested",
@@ -541,8 +573,8 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       execution: "queue",
       result: "success",
       hours: 338,
-      before: { name: "Vertragsarchiv", status: "processing" },
-      after: { name: "Vertragsarchiv", status: "active" },
+      before: { name: "Contract archive", status: "processing" },
+      after: { name: "Contract archive", status: "active" },
     },
     {
       action: "knowledge_source.updated",
@@ -552,8 +584,8 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       execution: "api",
       result: "success",
       hours: 290,
-      before: { name: "Vertragsarchiv", status: "active" },
-      after: { name: "Vertragsarchiv", status: "inactive" },
+      before: { name: "Contract archive", status: "active" },
+      after: { name: "Contract archive", status: "inactive" },
     },
     {
       action: "knowledge_source.refreshed",
@@ -574,8 +606,8 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       execution: "tool-chain",
       result: "success",
       hours: 170,
-      before: { name: "Vertragsarchiv", status: "inactive" },
-      after: { name: "Vertragsarchiv", status: "active" },
+      before: { name: "Contract archive", status: "inactive" },
+      after: { name: "Contract archive", status: "active" },
     },
     {
       action: "knowledge_source.analyzed",
@@ -634,15 +666,15 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
   insert("groups", {
     id: id("group"),
     tenant_id: tenantId,
-    name: "Lokales Testteam",
-    description: "Synthetische Personen und Rollen",
+    name: "Dispatch team",
+    description: "Dispatch and customer service",
   });
   insert("group_members", { group_id: id("group"), user_id: id("user-0"), added_by: adminUserId });
   insert("group_role_assignments", { group_id: id("group"), role_id: id("reviewer-role") });
   insert("notification_rules", {
     id: id("notification-rule"),
     tenant_id: tenantId,
-    name: "Demo-Fehlerhinweise (deaktiviert)",
+    name: "Failed run alerts",
     event_pattern: "execution.failed",
     severity: "warn",
     target_workspace_id: "local-demo",
@@ -673,5 +705,5 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
   repairs.push(
     `UPDATE workflows w SET last_executed_at=(SELECT max(e.started_at) FROM executions e WHERE e.tenant_id=w.tenant_id AND e.workflow_id=w.id) WHERE w.tenant_id=${quote(tenantId)} AND w.id IN (${workflowIds}) AND w.last_executed_at IS NULL AND EXISTS (SELECT 1 FROM executions e WHERE e.tenant_id=w.tenant_id AND e.workflow_id=w.id AND e.started_at IS NOT NULL);`,
   );
-  return `BEGIN;\nDO $cockpit_demo$ BEGIN\nPERFORM pg_advisory_xact_lock(hashtext('cockpit-demo'), hashtext(${quote(tenantId)}));\nIF NOT EXISTS (SELECT 1 FROM tenants WHERE id=${quote(tenantId)} AND slug='subkit-local-demo') THEN RAISE EXCEPTION 'Refusing to seed a non-demo tenant'; END IF;\nIF NOT EXISTS (SELECT 1 FROM users WHERE id=${quote(adminUserId)} AND tenant_id=${quote(tenantId)}) THEN RAISE EXCEPTION 'Demo owner does not belong to tenant'; END IF;\n${repairs.join("\n")}\nIF EXISTS (SELECT 1 FROM audit_log WHERE id=${quote(id("seed-complete"))} AND tenant_id=${quote(tenantId)}) THEN RETURN; END IF;\n${statements.join("\n")}\nEND $cockpit_demo$;\nCOMMIT;\n`;
+  return `BEGIN;\nDO $cockpit_demo$ BEGIN\nPERFORM pg_advisory_xact_lock(hashtext('cockpit-demo'), hashtext(${quote(tenantId)}));\nIF NOT EXISTS (SELECT 1 FROM tenants WHERE id=${quote(tenantId)} AND slug=${quote(cockpitDemoTenantSlug)}) THEN RAISE EXCEPTION 'Refusing to seed a non-demo tenant'; END IF;\nIF NOT EXISTS (SELECT 1 FROM users WHERE id=${quote(adminUserId)} AND tenant_id=${quote(tenantId)}) THEN RAISE EXCEPTION 'Demo owner does not belong to tenant'; END IF;\n${repairs.join("\n")}\nIF EXISTS (SELECT 1 FROM audit_log WHERE id=${quote(id("seed-complete"))} AND tenant_id=${quote(tenantId)}) THEN RETURN; END IF;\n${statements.join("\n")}\nEND $cockpit_demo$;\nCOMMIT;\n`;
 }

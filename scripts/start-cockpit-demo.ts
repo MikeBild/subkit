@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { applyCockpitDemoBranding } from "./lib/cockpit-demo-branding.ts";
 import { cockpitDemoCheckoutFingerprint } from "./lib/cockpit-demo-fingerprint.ts";
 import {
   assertCockpitDemoActionMarker,
@@ -18,6 +19,10 @@ import {
 import {
   cockpitDemoId,
   cockpitDemoManifest,
+  cockpitDemoOwnerEmail,
+  cockpitDemoOwnerSql,
+  cockpitDemoSetupTenantName,
+  cockpitDemoTenantSlug,
   createCockpitDemoSeedSql,
   demoFiles,
 } from "./lib/cockpit-demo-seed.ts";
@@ -64,6 +69,7 @@ type DemoState = {
   uploadedFiles?: Record<string, string>;
   platformSeedPending?: boolean;
   providers?: string;
+  brandingDigest?: string;
 };
 
 function run(args: string[], capture = false, input?: string) {
@@ -418,8 +424,8 @@ async function main(): Promise<void> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         token: "b".repeat(64),
-        admin_email: "demo@localhost.test",
-        tenant_name: "SubKit Local Demo",
+        admin_email: cockpitDemoOwnerEmail,
+        tenant_name: cockpitDemoSetupTenantName,
         llm_provider: "mock",
         llm_api_key: "mock",
       }),
@@ -428,7 +434,7 @@ async function main(): Promise<void> {
       fail(`Demo bootstrap failed: HTTP ${setup.status}`);
     freshSetup = setup.status === 200;
     const issued = run(
-      ["exec", "-T", "engine", "engine", "--issue-admin-key", "--tenant", "subkit-local-demo"],
+      ["exec", "-T", "engine", "engine", "--issue-admin-key", "--tenant", cockpitDemoTenantSlug],
       true,
     );
     if (issued.status !== 0) fail("Could not issue the local user-owned API key");
@@ -440,7 +446,7 @@ async function main(): Promise<void> {
   }
   const identities = JSON.parse(
     sql(
-      "SELECT json_build_object('tenantId',t.id,'adminUserId',u.id) FROM tenants t JOIN users u ON u.tenant_id=t.id WHERE t.slug='subkit-local-demo' AND u.email='demo@localhost.test' AND u.deleted_at IS NULL;",
+      `SELECT json_build_object('tenantId',t.id,'adminUserId',u.id) FROM tenants t JOIN users u ON u.tenant_id=t.id ${cockpitDemoOwnerSql} LIMIT 1;`,
     ),
   ) as { tenantId: string; adminUserId: string };
   let state = readJson<DemoState>(STATE_FILE) ?? {};
@@ -483,6 +489,11 @@ async function main(): Promise<void> {
   }
   await finishInitialPlatformSeed(state);
   await api("/v1/settings/observability.deployment_environment", "PUT", { value: "development" });
+  const brandingDigest = await applyCockpitDemoBranding(api, state.brandingDigest);
+  if (brandingDigest !== state.brandingDigest) {
+    state.brandingDigest = brandingDigest;
+    save(STATE_FILE, state);
+  }
   await configureProviders(identities.tenantId, state, args.has("--mock"));
   await verifyProviderConfiguration(identities.tenantId);
   await verifyLogin();

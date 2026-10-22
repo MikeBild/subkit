@@ -2,7 +2,16 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { tenants, users } from "../../apps/engine/src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../apps/engine/src/db/tests/setup.ts";
 import { builtinRoleId } from "../../apps/engine/src/rbac/roles.ts";
-import { cockpitDemoId, createCockpitDemoSeedSql } from "./cockpit-demo-seed.ts";
+import {
+  cockpitDemoId,
+  cockpitDemoOwnerEmail,
+  cockpitDemoOwnerName,
+  cockpitDemoOwnerSql,
+  cockpitDemoSetupTenantName,
+  cockpitDemoTenantName,
+  cockpitDemoTenantSlug,
+  createCockpitDemoSeedSql,
+} from "./cockpit-demo-seed.ts";
 
 let context: TestDb;
 let tenantId: string;
@@ -33,7 +42,10 @@ beforeAll(async () => {
   context = await createTestDb("cockpit_demo_seed");
   const [tenant] = await context.db
     .insert(tenants)
-    .values({ slug: "subkit-local-demo", display_name: "Synthetic demo" })
+    .values({
+      slug: cockpitDemoTenantSlug,
+      display_name: cockpitDemoSetupTenantName,
+    })
     .returning();
   if (!tenant) throw new Error("missing test tenant");
   tenantId = tenant.id;
@@ -41,7 +53,7 @@ beforeAll(async () => {
     .insert(users)
     .values({
       tenant_id: tenant.id,
-      email: "demo-owner@example.test",
+      email: "demo-owner@localhost.test",
       role_id: await builtinRoleId(context.db, "admin"),
     })
     .returning();
@@ -116,3 +128,64 @@ test("archive audit story has valid persisted status, actor, credential, convers
   expect(versions.rows[0]?.author_user_id).toBe(rows[0]?.actor_id);
   expect(versions.rows[0]?.created_at.getTime()).toBe(rows[1]?.ts.getTime());
 }, 60_000);
+
+test("seed presents the demo tenant and owner as a fictional customer and keeps the owner lookup", async () => {
+  await context.pool.query(createCockpitDemoSeedSql(tenantId, adminId));
+  const tenant = await context.pool.query("SELECT display_name FROM tenants WHERE id=$1", [
+    tenantId,
+  ]);
+  expect(tenant.rows[0]?.display_name).toBe(cockpitDemoTenantName);
+  const owner = await context.pool.query("SELECT email, display_name FROM users WHERE id=$1", [
+    adminId,
+  ]);
+  expect(owner.rows[0]).toEqual({
+    email: cockpitDemoOwnerEmail,
+    display_name: cockpitDemoOwnerName,
+  });
+  const lookup = await context.pool.query(
+    `SELECT t.id::text AS tenant_id, u.id::text AS user_id FROM tenants t JOIN users u ON u.tenant_id=t.id ${cockpitDemoOwnerSql} LIMIT 1`,
+  );
+  expect(lookup.rows).toEqual([{ tenant_id: tenantId, user_id: adminId }]);
+  const people = await context.pool.query(
+    "SELECT email FROM users WHERE tenant_id=$1 ORDER BY email",
+    [tenantId],
+  );
+  expect(people.rows.every((row) => /@brennwerk\.(example|test)$/.test(String(row.email)))).toBe(
+    true,
+  );
+}, 60_000);
+
+test("demo brand assets satisfy the branding image rules and apply once per content", async () => {
+  const { normalizeBrandingAppIcon, normalizeBrandingImage } = await import(
+    "../../apps/engine/src/files/branding-image.ts"
+  );
+  const { applyCockpitDemoBranding, cockpitDemoBrandingUpdate, cockpitDemoBrandingDigest } =
+    await import("./cockpit-demo-branding.ts");
+  const update = cockpitDemoBrandingUpdate(3);
+  expect(update.display_name).toBe("Brennwerk");
+  expect(update.subtitle).toBe("Logistik");
+  expect(update.palette).toBe("teal");
+  for (const logo of [update.logos.light, update.logos.dark]) {
+    expect(Buffer.from(logo.content_base64, "base64").length).toBeLessThanOrEqual(2 * 1024 * 1024);
+    expect((await normalizeBrandingImage(logo)).length).toBeGreaterThan(0);
+  }
+  expect(Buffer.from(update.app_icon.content_base64, "base64").length).toBeLessThanOrEqual(
+    2 * 1024 * 1024,
+  );
+  const icons = await normalizeBrandingAppIcon(update.app_icon);
+  expect(icons.icon_512.length).toBeGreaterThan(0);
+
+  const calls: string[][] = [];
+  const request = async (path: string, method = "GET") => {
+    calls.push([method, path]);
+    return { revision: 3 };
+  };
+  const digest = await applyCockpitDemoBranding(request, undefined);
+  expect(digest).toBe(cockpitDemoBrandingDigest());
+  expect(calls).toEqual([
+    ["GET", "/v1/tenant/branding"],
+    ["PUT", "/v1/tenant/branding"],
+  ]);
+  expect(await applyCockpitDemoBranding(request, digest)).toBe(digest);
+  expect(calls).toHaveLength(2);
+});

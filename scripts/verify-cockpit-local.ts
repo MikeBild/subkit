@@ -62,7 +62,7 @@ async function main() {
     "Dedicated local demo tenant confirmed",
   );
   const connectors = items(await request("/v1/connectors"));
-  const connector = connectors.find((row) => row.slug === "demo-connector-0");
+  const connector = connectors.find((row) => row.slug === "crm-contacts");
   assert(
     connector?.base_url === "http://demo-api:8080",
     "Workflow target is the local fixture API",
