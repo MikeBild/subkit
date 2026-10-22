@@ -2,7 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { ArrowRight, MessageSquareText, Puzzle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import {
@@ -11,7 +11,6 @@ import {
   type IntakeProposal,
   listIntakeCategories,
   listIntakeClips,
-  listIntakeProposals,
   setIntakeDefaultCategory,
 } from "@/api/intake";
 import type { components } from "@/api/schema";
@@ -52,7 +51,6 @@ import {
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
-import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useSearchParamState, writeSearchParam } from "@/lib/use-search-param-state";
@@ -392,6 +390,10 @@ export function ProposalCard({
   const { t, dateTime } = useI18n();
   const [confirming, setConfirming] = useState(false);
   const [rejecting, setRejecting] = useState(false);
+  const card = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (focused) card.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  }, [focused]);
   const proposed = proposal.revision.target;
   const skillTarget = isSkillTarget(proposed) ? proposed : null;
   const knowledgeId = "knowledge_source_id" in proposed ? proposed.knowledge_source_id : null;
@@ -504,15 +506,19 @@ export function ProposalCard({
   const open = proposal.status === "draft" || proposal.status === "stale";
   return (
     <article
+      ref={card}
       className="flex flex-col gap-3 rounded-lg border p-4"
       data-testid={`intake-proposal-${proposal.id}`}
       data-focused={focused || undefined}
       data-slot="proposal-card"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline" data-testid={`intake-proposal-${proposal.id}-kind`}>
+        <span
+          className="rounded-full border px-2 py-0.5 text-xs font-medium"
+          data-testid={`intake-proposal-${proposal.id}-kind`}
+        >
           {t(skillTarget ? "intake.proposal.kindSkill" : "intake.proposal.kindKnowledge")}
-        </Badge>
+        </span>
         {proposal.status === "draft" ? null : (
           <StatusBadge state={proposal.status} label={t(`intake.proposal.${proposal.status}`)} />
         )}
@@ -520,7 +526,7 @@ export function ProposalCard({
           {t("intake.proposal.proposedAt", { when: dateTime(proposal.created_at) })}
         </span>
       </div>
-      <h3 className="font-medium">{proposal.revision.title}</h3>
+      <p className="font-medium">{proposal.revision.title}</p>
       <p
         className="text-sm text-muted-foreground"
         data-testid={`intake-proposal-${proposal.id}-target-details`}

@@ -141,6 +141,7 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
   const open = related.filter((proposal) => !settled(proposal));
   const session = clip ? sessionSnapshot(clip.original_snapshot) : null;
   const back = { to: "/intake", label: t("nav.inbox") };
+  const focusProposalId = params.get("proposal");
   const tab = params.get("tab") ?? "content";
   const chooseTab = (next: string) =>
     router.history.replace(
@@ -249,7 +250,7 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
         key={proposal.id}
         proposal={proposal}
         permissions={permissions}
-        focused={tab === "review"}
+        focused={proposal.id === focusProposalId}
         onConfirm={() =>
           write.mutate(() =>
             confirmIntakeProposal(proposal.id, {
