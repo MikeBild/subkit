@@ -33,7 +33,7 @@ export function redirectTarget(target: string, incomingSearch: string): string {
 
 export const CHAT_ROUTES = ["/chat", "/chat/new", "/chat/$conversationId"] as const;
 
-export const INTAKE_ROUTES = ["/intake"] as const;
+export const INTAKE_ROUTES = ["/intake", "/intake/$resourceId"] as const;
 
 export const INSTALLATION_ROUTES = ["/incoming/files"] as const;
 
@@ -48,6 +48,8 @@ export const CATALOG_RESOURCES = [
 ] as const;
 
 export type CatalogResource = (typeof CATALOG_RESOURCES)[number];
+
+export type RecordResource = CatalogResource | "intake";
 
 export const ALL_ROUTE_PATHS: readonly string[] = [
   ...STANDALONE_ROUTES,

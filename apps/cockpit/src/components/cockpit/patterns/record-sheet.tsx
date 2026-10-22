@@ -2,7 +2,6 @@ import { ChevronLeft, XIcon } from "lucide-react";
 import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "@/components/cockpit/icon-button";
-import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useI18n } from "@/lib/i18n-context";
 import { useInspectorDock } from "./responsive-workspace";
@@ -245,16 +244,5 @@ export function RecordSheet(props: RecordSheetProps) {
         <RecordBody {...props} />
       </SheetContent>
     </Sheet>
-  );
-}
-
-export function RecordOpenLink({ href, testId }: { href: string; testId: string }) {
-  const { t } = useI18n();
-  return (
-    <Button asChild variant="outline" size="sm">
-      <a href={href} data-testid={testId}>
-        {t("common.open")}
-      </a>
-    </Button>
   );
 }

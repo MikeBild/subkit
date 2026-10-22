@@ -7,8 +7,9 @@ import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
 import { DocsArticlePage, DocsIndexPage } from "@/pages/docs";
-import { FilesPage } from "@/pages/files";
+import { FilePage, FilesPage } from "@/pages/files";
 import { IntakePage } from "@/pages/intake";
+import { IntakeItemPage } from "@/pages/intake-item";
 import { KnowledgeSourcePage, KnowledgeSourcesPage } from "@/pages/knowledge-sources";
 import { OverviewPage } from "@/pages/overview";
 import { SettingsPage } from "@/pages/settings";
@@ -67,6 +68,11 @@ const knowledgeRoutes = [
   }),
   createRoute({
     getParentRoute: () => rootRoute,
+    path: "/intake/$resourceId",
+    component: () => <IntakeItemPage permissions={useSession().permissions} />,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
     path: "/knowledge",
     component: () => <KnowledgeSourcesPage permissions={useSession().permissions} />,
   }),
@@ -97,7 +103,7 @@ const filesRoutes = [
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/files/$resourceId",
-    component: FilesPage,
+    component: FilePage,
   }),
 ];
 

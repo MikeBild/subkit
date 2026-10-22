@@ -33,6 +33,7 @@ import {
   CopyField,
   DataState,
   DataTable,
+  DetailPage,
   FactList,
   Field,
   FieldLabel,
@@ -46,7 +47,7 @@ import {
   Page,
   PageHeader,
   previewKind,
-  RecordSheet,
+  TabBody,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { LOCALE_TAGS, pluralKey } from "@/lib/i18n";
@@ -163,12 +164,9 @@ export function FilesPage() {
   const { t, dateTime, locale } = useI18n();
   const session = useSession();
   const navigate = useNavigate();
-  const params = useParams({ strict: false }) as { resourceId?: string };
-  const openId = params.resourceId ?? null;
   const canWrite = session.permissions.includes("file:write");
   const canIntakeWrite = session.permissions.includes("intake:write");
   const installation = useInstallation();
-  const canDelete = session.permissions.includes("file:delete");
   const [search, setSearch] = useState("");
   const [groupMode, setGroupMode] = useState("all");
   const [upload, setUpload] = useState<{ files: File[]; replace: StoredFile | null } | null>(null);
@@ -186,7 +184,7 @@ export function FilesPage() {
   const hasFiles = items.length > 0 || !unfiltered;
 
   const dropOnPage = useMemo(() => (files: File[]) => setUpload({ files, replace: null }), []);
-  const dragging = usePageDrop(canWrite && upload === null && openId === null, dropOnPage);
+  const dragging = usePageDrop(canWrite && upload === null, dropOnPage);
 
   const columns = useMemo<CockpitColumn<ListedFile>[]>(() => {
     const column = tableColumns<ListedFile>({ t, dateTime });
@@ -394,15 +392,6 @@ export function FilesPage() {
           actionsLabel={t("common.actions")}
         />
       </div>
-      {openId ? (
-        <FileSheet
-          id={openId}
-          canWrite={canWrite}
-          canDelete={canDelete}
-          onClose={() => void navigate({ to: "/files" })}
-          onReplace={(file) => setUpload({ files: [], replace: file })}
-        />
-      ) : null}
       {upload ? (
         <UploadDialog
           initial={upload.files}
@@ -599,20 +588,16 @@ function UploadDialog({
   );
 }
 
-function FileSheet({
-  id,
-  canWrite,
-  canDelete,
-  onClose,
-  onReplace,
-}: {
-  id: string;
-  canWrite: boolean;
-  canDelete: boolean;
-  onClose(): void;
-  onReplace(file: StoredFile): void;
-}) {
+export function FilePage() {
   const { t, dateTime, locale } = useI18n();
+  const session = useSession();
+  const navigate = useNavigate();
+  const { resourceId: id = "" } = useParams({ strict: false }) as { resourceId?: string };
+  const canWrite = session.permissions.includes("file:write");
+  const canDelete = session.permissions.includes("file:delete");
+  const [replacing, setReplacing] = useState<StoredFile | null>(null);
+  const onClose = () => void navigate({ to: "/files" });
+  const onReplace = (file: StoredFile) => setReplacing(file);
   const installation = useInstallation();
   const directory = useActorDirectory(true);
   const client = useQueryClient();
@@ -743,104 +728,138 @@ function FileSheet({
     }
   };
 
+  const download = file ? (
+    <Button asChild>
+      {installation.available ? (
+        <button
+          type="button"
+          disabled={exporting}
+          onClick={() => void exportFile()}
+          data-testid="file-download"
+        >
+          {t("files.download")}
+        </button>
+      ) : (
+        <a href={contentPath} download={file.filename} data-testid="file-download">
+          {t("files.download")}
+        </a>
+      )}
+    </Button>
+  ) : null;
+  const failed = fileQuery.error ? (
+    <DataState
+      state="error"
+      line={
+        fileQuery.error instanceof ApiError && fileQuery.error.status === 404
+          ? t("files.notFound")
+          : t("resource.loadFailed", { resource: t("files.title") })
+      }
+      onRetry={() => void fileQuery.refetch()}
+      testId="file-page-error"
+    />
+  ) : null;
+
   return (
     <>
-      <RecordSheet
-        dock
-        open
-        onOpenChange={(open) => {
-          if (!open) onClose();
-        }}
+      <DetailPage
+        testId="file-page"
+        back={{ to: "/files", label: t("files.title") }}
         title={file?.filename ?? ""}
-        subtitle={file ? <CatalogMetadataSummary record={file} /> : undefined}
-        testId="file-sheet"
-        closeTestId="file-sheet-close"
-        titleTestId="file-sheet-title"
+        purpose={file ? <CatalogMetadataSummary record={file} /> : undefined}
         loading={fileQuery.isPending}
-        action={
-          file ? (
-            <Button variant="outline" asChild>
-              {installation.available ? (
-                <button
-                  type="button"
-                  disabled={exporting}
-                  onClick={() => void exportFile()}
-                  data-testid="file-download"
-                >
-                  {t("files.download")}
-                </button>
-              ) : (
-                <a href={contentPath} download={file.filename} data-testid="file-download">
-                  {t("files.download")}
-                </a>
-              )}
-            </Button>
-          ) : null
-        }
+        action={download}
         menu={menuItems.length > 0 ? <ActionMenu items={menuItems} testId="file-menu" /> : null}
+        tabs={
+          file
+            ? [
+                {
+                  value: "preview",
+                  label: t("files.tab.preview"),
+                  testId: "file-tab-preview",
+                  content: (
+                    <TabBody
+                      testId="file-preview-tab"
+                      technical={
+                        <div className="flex flex-col gap-2" data-testid="file-reference">
+                          <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                            {t("files.reference")}
+                            <ContextHelp label={t("files.reference")} testId="file-reference-help">
+                              {t("files.referenceHelp")}
+                            </ContextHelp>
+                          </span>
+                          <CopyField
+                            labelled
+                            value={fileReference(file)}
+                            label={t("files.reference")}
+                            testId="file-reference-value"
+                          />
+                        </div>
+                      }
+                    >
+                      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+                        <FilePreview
+                          name={file.filename}
+                          mimeType={file.content_type}
+                          size={typeof file.size_bytes === "number" ? file.size_bytes : undefined}
+                          url={textual ? undefined : contentPath}
+                          text={textual ? (textQuery.data ?? undefined) : undefined}
+                          testId="file-preview"
+                        />
+                        <FactList
+                          testId="file-facts"
+                          layout="stacked"
+                          items={[
+                            { label: t("files.fact.kind"), value: fileKindLabel(t, file) },
+                            {
+                              label: t("files.fact.size"),
+                              value: sizeText(file.size_bytes, LOCALE_TAGS[locale]),
+                            },
+                            {
+                              label: t("files.fact.uploaded"),
+                              value: t("files.uploadedBy", {
+                                date: dateTime(file.created_at),
+                                name: file.creator
+                                  ? (actorDirectoryName(
+                                      directory,
+                                      file.creator.kind,
+                                      file.creator.id,
+                                    ) ?? t("runs.caller.unknown"))
+                                  : t("runs.caller.unknown"),
+                              }),
+                            },
+                            ...(file.replaced_at
+                              ? [
+                                  {
+                                    label: t("files.fact.replaced"),
+                                    value: dateTime(file.replaced_at),
+                                  },
+                                ]
+                              : []),
+                          ]}
+                        />
+                      </div>
+                    </TabBody>
+                  ),
+                },
+                {
+                  value: "usage",
+                  label: t("files.tab.usage"),
+                  testId: "file-tab-usage",
+                  content: (
+                    <TabBody testId="file-usage-tab">
+                      <FactList
+                        testId="file-usage"
+                        items={[{ label: t("files.fact.usedBy"), value: usedBy ?? "…" }]}
+                      />
+                    </TabBody>
+                  ),
+                },
+              ]
+            : undefined
+        }
       >
-        {fileQuery.error ? (
-          <DataState
-            state="error"
-            line={
-              fileQuery.error instanceof ApiError && fileQuery.error.status === 404
-                ? t("files.notFound")
-                : t("resource.loadFailed", { resource: t("files.title") })
-            }
-            onRetry={() => void fileQuery.refetch()}
-            testId="file-sheet-error"
-          />
-        ) : file ? (
-          <>
-            <FilePreview
-              name={file.filename}
-              mimeType={file.content_type}
-              size={typeof file.size_bytes === "number" ? file.size_bytes : undefined}
-              url={textual ? undefined : contentPath}
-              text={textual ? (textQuery.data ?? undefined) : undefined}
-              testId="file-preview"
-            />
-            <div className="flex flex-col gap-2" data-testid="file-reference">
-              <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                {t("files.reference")}
-                <ContextHelp label={t("files.reference")} testId="file-reference-help">
-                  {t("files.referenceHelp")}
-                </ContextHelp>
-              </span>
-              <CopyField
-                labelled
-                value={fileReference(file)}
-                label={t("files.reference")}
-                testId="file-reference-value"
-              />
-            </div>
-            <FactList
-              testId="file-facts"
-              items={[
-                { label: t("files.fact.kind"), value: fileKindLabel(t, file) },
-                {
-                  label: t("files.fact.size"),
-                  value: sizeText(file.size_bytes, LOCALE_TAGS[locale]),
-                },
-                {
-                  label: t("files.fact.uploaded"),
-                  value: t("files.uploadedBy", {
-                    date: dateTime(file.created_at),
-                    name: file.creator
-                      ? (actorDirectoryName(directory, file.creator.kind, file.creator.id) ??
-                        t("runs.caller.unknown"))
-                      : t("runs.caller.unknown"),
-                  }),
-                },
-                ...(file.replaced_at
-                  ? [{ label: t("files.fact.replaced"), value: dateTime(file.replaced_at) }]
-                  : []),
-                { label: t("files.fact.usedBy"), value: usedBy ?? "…" },
-              ]}
-            />
-          </>
-        ) : null}
-      </RecordSheet>
+        {failed}
+      </DetailPage>
       {file && renaming ? <RenameDialog file={file} onClose={() => setRenaming(false)} /> : null}
       {file && canWrite ? (
         <CatalogMetadataDialog
@@ -864,6 +883,9 @@ function FileSheet({
           onConfirm={() => remove.mutateAsync().then(() => undefined)}
           testId="file-delete-dialog"
         />
+      ) : null}
+      {replacing ? (
+        <UploadDialog initial={[]} replace={replacing} onClose={() => setReplacing(null)} />
       ) : null}
     </>
   );

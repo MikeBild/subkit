@@ -276,7 +276,7 @@ function resourceHref(resource: PlaybookResource): string {
     case "file":
       return `/cockpit/files/${resource.id}`;
     case "intake":
-      return `/cockpit/intake?item=${encodeURIComponent(resource.id)}`;
+      return `/cockpit/intake/${encodeURIComponent(resource.id)}`;
   }
 }
 

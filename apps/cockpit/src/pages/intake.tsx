@@ -1,28 +1,20 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouterState } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { MessageSquare } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import {
-  confirmIntakeProposal,
-  getIntakeClip,
   getIntakeDefaultCategory,
   type IntakeClip,
   type IntakeProposal,
   listIntakeCategories,
   listIntakeClips,
   listIntakeProposals,
-  setIntakeClipState,
   setIntakeDefaultCategory,
-  updateIntakeClip,
 } from "@/api/intake";
 import type { components } from "@/api/schema";
-import { useActorDirectory } from "@/app/actor-directory";
-import { actorLabel } from "@/app/actor-directory-model";
-import { contextualHref } from "@/app/installation-context";
-import { absolute, chatNewHref, recordHref } from "@/app/links";
+import { absolute, recordHref } from "@/app/links";
 import { CatalogCategories } from "@/components/cockpit/catalog-categories";
 import {
   categoryChoices,
@@ -38,7 +30,6 @@ import {
   ConfirmDialog,
   DataState,
   DataTable,
-  FactList,
   FilePreview,
   FilterBar,
   type FilterSelect,
@@ -46,7 +37,6 @@ import {
   GroupingTabs,
   Page,
   PageHeader,
-  RecordSheet,
   Section,
   StatusBadge,
   SummaryLine,
@@ -62,32 +52,27 @@ import {
   type IntakeOrigin,
   intakeCategoryFromSearch,
   intakeConfirmPermissions,
-  intakeItemChatPrompt,
   intakeOrigin,
   intakeOriginLabelKey,
   intakeStateLabelKey,
   isSkillTarget,
   mayConfirmIntakeProposal,
   newSkillLine,
-  publishedDate,
   type ReferencedSkill,
-  sessionLabel,
-  sessionPlace,
-  sessionSnapshot,
   skillBodyChange,
   skillTargetIds,
 } from "./intake-model";
 
-const CATEGORIES_KEY = ["intake", "categories"] as const;
-const DEFAULT_CATEGORY_KEY = ["intake", "default-category"] as const;
-const CLIPS_KEY = ["intake", "clips"] as const;
+export const CATEGORIES_KEY = ["intake", "categories"] as const;
+export const DEFAULT_CATEGORY_KEY = ["intake", "default-category"] as const;
+export const CLIPS_KEY = ["intake", "clips"] as const;
 const NEW_CATEGORY = "__new__";
 
-function invalidateIntake(queryClient: ReturnType<typeof useQueryClient>): Promise<unknown> {
+export function invalidateIntake(queryClient: ReturnType<typeof useQueryClient>): Promise<unknown> {
   return queryClient.invalidateQueries({ queryKey: ["intake"] });
 }
 
-function IntakeEditDialog({
+export function IntakeEditDialog({
   clip,
   categories,
   open,
@@ -489,7 +474,7 @@ export function ProposalCard({
             <li key={item.id}>
               <a
                 className="text-accent underline-offset-4 hover:underline"
-                href={absolute(`/intake?item=${encodeURIComponent(item.id)}`)}
+                href={absolute(recordHref("intake", item.id))}
                 data-testid={`intake-proposal-${proposal.id}-source-${item.id}`}
               >
                 {item.title}
@@ -576,32 +561,21 @@ export function ProposalCard({
 export function IntakePage({ permissions }: { permissions: readonly string[] }) {
   const { t, dateTime } = useI18n();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const intakeSearch = useRouterState({ select: (router) => router.location.search });
-  const focusItemId = new URLSearchParams(intakeSearch).get("item");
   const focusProposalId = new URLSearchParams(intakeSearch).get("proposal");
   const requestedCategory = intakeCategoryFromSearch(intakeSearch);
   const canRead = permissions.includes("intake:read");
   const canWrite = permissions.includes("intake:write");
-  const canChat = permissions.includes("conversation:write");
   const [category, setCategory] = useState<string | "all" | null>(requestedCategory);
   useEffect(() => {
     if (requestedCategory !== null) setCategory(requestedCategory);
   }, [requestedCategory]);
-  const [editingClip, setEditingClip] = useState<IntakeClip | null>(null);
-  const [detailClip, setDetailClip] = useState<IntakeClip | null>(null);
-  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1600px)").matches);
-  useEffect(() => {
-    const media = window.matchMedia("(min-width: 1600px)");
-    const update = () => setWide(media.matches);
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
   const [sorting, setSorting] = useState<SortingState>([{ id: "captured_at", desc: true }]);
   const [groupMode, setGroupMode] = useState("all");
   const [settingDefaultCategory, setSettingDefaultCategory] = useState(false);
   const [state, setState] = useState<"all" | (typeof INTAKE_STATES)[number]>("all");
   const [origin, setOrigin] = useState<"all" | IntakeOrigin>("all");
-  const directory = useActorDirectory(canRead && detailClip !== null);
   const categories = useQuery({
     queryKey: CATEGORIES_KEY,
     queryFn: listIntakeCategories,
@@ -623,11 +597,6 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
       }),
     enabled: canRead,
   });
-  const focusedClip = useQuery({
-    queryKey: [...CLIPS_KEY, "item", focusItemId],
-    queryFn: () => getIntakeClip(focusItemId ?? ""),
-    enabled: canRead && Boolean(focusItemId),
-  });
   const categoryClips = useQuery({
     queryKey: [...CLIPS_KEY, effectiveCategory, "all"],
     queryFn: () => listIntakeClips(effectiveCategory ? { category: effectiveCategory } : {}),
@@ -641,15 +610,14 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
   const proposalFocusItemId =
     proposals.data?.items.find((proposal) => proposal.id === focusProposalId)?.revision.items[0]
       ?.id ?? null;
-  const proposalFocusedClip = useQuery({
-    queryKey: [...CLIPS_KEY, "proposal", focusProposalId],
-    queryFn: () => getIntakeClip(proposalFocusItemId ?? ""),
-    enabled: canRead && Boolean(proposalFocusItemId),
-  });
   useEffect(() => {
-    if (focusedClip.data) setDetailClip(focusedClip.data);
-    else if (proposalFocusedClip.data) setDetailClip(proposalFocusedClip.data);
-  }, [focusedClip.data, proposalFocusedClip.data]);
+    if (!focusProposalId || !proposalFocusItemId) return;
+    void navigate({
+      to: recordHref("intake", proposalFocusItemId),
+      search: { tab: "review", proposal: focusProposalId },
+      replace: true,
+    });
+  }, [focusProposalId, proposalFocusItemId, navigate]);
   const categoryValues = useMemo(
     () => [
       ...new Set([
@@ -662,39 +630,10 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
   const clipItems = (clips.data?.items ?? []).filter(
     (clip) => origin === "all" || intakeOrigin(clip.original_snapshot) === origin,
   );
-  const detailProposals = detailClip
-    ? (proposals.data?.items ?? []).filter((proposal) =>
-        proposal.revision.items.some((item) => item.id === detailClip.id),
-      )
-    : [];
-  const detailSession = detailClip ? sessionSnapshot(detailClip.original_snapshot) : null;
-  const detailEvidence = useQuery({
-    queryKey: [...CLIPS_KEY, "evidence", detailClip?.id, detailClip?.version],
-    queryFn: () => getIntakeClip(detailClip?.id ?? ""),
-    enabled: canRead && detailSession !== null,
-  });
-  const evidenceRows = detailEvidence.data?.evidence ?? [];
-  const evidenceHidden = (detailEvidence.data?.evidence_total ?? 0) - evidenceRows.length;
-  const visibleClips =
-    focusedClip.data && !clipItems.some((clip) => clip.id === focusedClip.data?.id)
-      ? [...clipItems, focusedClip.data]
-      : clipItems;
-  useEffect(() => {
-    if (!focusItemId || !visibleClips.some((clip) => clip.id === focusItemId)) return;
-    const target = Array.from(
-      document.querySelectorAll<HTMLElement>(`[data-testid="intake-clip-${focusItemId}"]`),
-    ).find((element) => element.offsetParent !== null);
-    target?.focus();
-    target?.scrollIntoView({ block: "center" });
-  }, [focusItemId, visibleClips]);
   const write = useMutation({
     mutationFn: async (run: () => Promise<unknown>) => run(),
     onSuccess: async () => {
       await invalidateIntake(queryClient);
-      if (detailClip) {
-        const refreshed = await getIntakeClip(detailClip.id);
-        setDetailClip((current) => (current?.id === refreshed.id ? refreshed : current));
-      }
     },
     onError: () => toast.error(t("common.actionFailed")),
   });
@@ -715,19 +654,14 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
     defaultCategory.isPending ||
     clips.isPending ||
     (state !== "all" && categoryClips.isPending) ||
-    (Boolean(focusItemId) && focusedClip.isPending) ||
-    (Boolean(focusProposalId) &&
-      (proposals.isPending || (Boolean(proposalFocusItemId) && proposalFocusedClip.isPending)));
+    (Boolean(focusProposalId) && (proposals.isPending || Boolean(proposalFocusItemId)));
   const failed = Boolean(
     categories.error ||
       defaultCategory.error ||
       clips.error ||
       (state !== "all" && categoryClips.error) ||
-      (Boolean(focusItemId) && focusedClip.error) ||
       (Boolean(focusProposalId) &&
-        (proposals.error ||
-          proposalFocusedClip.error ||
-          (proposals.isSuccess && !proposalFocusItemId))),
+        (proposals.error || (proposals.isSuccess && !proposalFocusItemId))),
   );
   const clipColumns = (() => {
     const column = tableColumns<IntakeClip>({ t, dateTime });
@@ -822,292 +756,6 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
             })
           }
         />
-        <IntakeEditDialog
-          clip={editingClip}
-          categories={categoryValues}
-          open={editingClip !== null}
-          pending={write.isPending}
-          error={
-            write.error instanceof ApiError && write.error.status === 409
-              ? t("intake.editConflict")
-              : write.isError
-                ? t("common.actionFailed")
-                : null
-          }
-          conflict={write.error instanceof ApiError && write.error.status === 409}
-          onReload={() => {
-            if (!editingClip) return;
-            void getIntakeClip(editingClip.id)
-              .then((clip) => {
-                write.reset();
-                setDetailClip(clip);
-                setEditingClip(clip);
-              })
-              .catch(() => toast.error(t("common.actionFailed")));
-          }}
-          onOpenChange={(open) => {
-            if (!open) {
-              write.reset();
-              setEditingClip(null);
-            }
-          }}
-          onSave={(clip, input) =>
-            write.mutate(() => updateIntakeClip(clip.id, input), {
-              onSuccess: (updated) => {
-                setDetailClip(updated as IntakeClip);
-                setEditingClip(null);
-              },
-            })
-          }
-        />
-        <RecordSheet
-          dock={wide}
-          open={detailClip !== null}
-          onOpenChange={(open) => {
-            if (!open) setDetailClip(null);
-          }}
-          title={detailClip?.title ?? ""}
-          badge={
-            detailClip ? (
-              <StatusBadge
-                state={detailClip.state}
-                label={t(intakeStateLabelKey(detailClip.state))}
-              />
-            ) : undefined
-          }
-          testId="intake-detail"
-        >
-          {detailClip ? (
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-end gap-2">
-                {detailClip && canChat ? (
-                  <Button asChild size="sm">
-                    <a
-                      href={absolute(
-                        chatNewHref({
-                          prompt: intakeItemChatPrompt(t),
-                          intakeItemIds: [detailClip.id],
-                          references: [{ type: "intake_item", id: detailClip.id }],
-                        }),
-                      )}
-                      data-testid="intake-detail-review-chat"
-                    >
-                      <MessageSquare />
-                      {t("intake.reviewChat")}
-                    </a>
-                  </Button>
-                ) : undefined}
-                {detailClip && canWrite ? (
-                  <ActionMenu
-                    alwaysMenu
-                    testId="intake-detail-actions"
-                    items={[
-                      ...(detailClip.state === "discarded"
-                        ? [
-                            {
-                              label: t("intake.restore"),
-                              onSelect: () =>
-                                write.mutate(
-                                  () =>
-                                    setIntakeClipState(detailClip.id, {
-                                      state: "collected",
-                                      expected_version: detailClip.version,
-                                    }),
-                                  { onSuccess: (clip) => setDetailClip(clip as IntakeClip) },
-                                ),
-                              testId: "intake-detail-restore",
-                            },
-                          ]
-                        : detailClip.state === "admitted"
-                          ? []
-                          : [
-                              {
-                                label: t("intake.discard"),
-                                destructive: true,
-                                onSelect: () =>
-                                  write.mutate(
-                                    () =>
-                                      setIntakeClipState(detailClip.id, {
-                                        state: "discarded",
-                                        expected_version: detailClip.version,
-                                      }),
-                                    { onSuccess: (clip) => setDetailClip(clip as IntakeClip) },
-                                  ),
-                                testId: "intake-detail-discard",
-                              },
-                            ]),
-                      {
-                        label: t("intake.editItem"),
-                        onSelect: () => {
-                          write.reset();
-                          setEditingClip(detailClip);
-                        },
-                        testId: "intake-detail-edit",
-                      },
-                    ]}
-                  />
-                ) : undefined}
-              </div>
-              <FactList
-                testId="intake-detail-facts"
-                items={[
-                  {
-                    label: t("intake.category"),
-                    value: humanizeCategory(detailClip.category, t("catalog.categoryOther")),
-                  },
-                  {
-                    label: t("intake.origin"),
-                    value: t(intakeOriginLabelKey(intakeOrigin(detailClip.original_snapshot))),
-                  },
-                  {
-                    label: t("resource.field.createdAt"),
-                    value: dateTime(detailClip.original_snapshot.captured_at),
-                  },
-                  ...(detailSession
-                    ? [
-                        { label: t("intake.session.agent"), value: detailSession.agent },
-                        {
-                          label: t("intake.session.id"),
-                          value: sessionLabel(detailSession.session_id, t),
-                        },
-                        ...(sessionPlace(detailSession)
-                          ? [
-                              {
-                                label: t("intake.session.place"),
-                                value: sessionPlace(detailSession),
-                              },
-                            ]
-                          : []),
-                      ]
-                    : []),
-                  ...(detailClip.original_snapshot.source_author
-                    ? [
-                        {
-                          label: t("intake.sourceAuthorLabel"),
-                          value: detailClip.original_snapshot.source_author,
-                        },
-                      ]
-                    : []),
-                  ...(detailClip.original_snapshot.published_at
-                    ? [
-                        {
-                          label: t("intake.sourcePublished"),
-                          value: publishedDate(detailClip.original_snapshot.published_at, dateTime),
-                        },
-                      ]
-                    : []),
-                  {
-                    label: t("intake.collector"),
-                    value: actorLabel(directory, detailClip.collected_by, t),
-                  },
-                ]}
-              />
-              {!detailSession && detailClip.original_snapshot.source_url ? (
-                <a
-                  className="break-words text-sm text-accent underline-offset-4 hover:underline"
-                  href={contextualHref(detailClip.original_snapshot.source_url)}
-                  data-testid="intake-original-source-link"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {detailClip.original_snapshot.source_url}
-                </a>
-              ) : null}
-              <FilePreview
-                name=""
-                mimeType="text/markdown"
-                text={detailClip.body}
-                testId="intake-current-body"
-              />
-              {detailSession && (evidenceRows.length || detailSession.evidence_excerpt.trim()) ? (
-                <CollapsibleSection
-                  label={t("intake.session.evidence")}
-                  testId="intake-session-evidence"
-                >
-                  {evidenceRows.length ? (
-                    <ul className="grid gap-3">
-                      {evidenceRows.map((row) => (
-                        <li key={row.id} data-testid="intake-session-evidence-row">
-                          <p className="mb-1 text-sm text-muted-foreground">
-                            {[
-                              row.agent,
-                              sessionLabel(row.session_id, t),
-                              row.repo,
-                              dateTime(row.captured_at),
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                          <FilePreview
-                            name=""
-                            mimeType="text/markdown"
-                            text={row.excerpt}
-                            testId="intake-session-evidence-row-body"
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <FilePreview
-                      name=""
-                      mimeType="text/markdown"
-                      text={detailSession.evidence_excerpt}
-                      testId="intake-session-evidence-body"
-                    />
-                  )}
-                  {evidenceHidden > 0 ? (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {t("intake.session.evidenceMore", { count: evidenceHidden })}
-                    </p>
-                  ) : null}
-                </CollapsibleSection>
-              ) : null}
-              {detailClip.body !== detailClip.original_snapshot.body ? (
-                <CollapsibleSection label={t("intake.originalSource")} testId="intake-original">
-                  <FilePreview
-                    name=""
-                    mimeType="text/markdown"
-                    text={detailClip.original_snapshot.body}
-                    testId="intake-original-body"
-                  />
-                </CollapsibleSection>
-              ) : null}
-              {([false, true] as const).map((history) => {
-                const items = detailProposals.filter(
-                  (proposal) =>
-                    (proposal.status === "confirmed" || proposal.status === "rejected") === history,
-                );
-                return items.length ? (
-                  <CollapsibleSection
-                    key={`${detailClip.id}-${history}-${focusProposalId ?? ""}`}
-                    label={t(history ? "intake.proposalHistory" : "intake.proposals")}
-                    testId={history ? "intake-proposal-history" : "intake-detail-proposals"}
-                    defaultOpen={
-                      !history || items.some((proposal) => proposal.id === focusProposalId)
-                    }
-                  >
-                    {items.map((proposal) => (
-                      <ProposalCard
-                        key={proposal.id}
-                        proposal={proposal}
-                        permissions={permissions}
-                        focused={proposal.id === focusProposalId}
-                        onConfirm={() =>
-                          write.mutate(() =>
-                            confirmIntakeProposal(proposal.id, {
-                              expected_revision: proposal.revision.revision,
-                              digest: proposal.revision.digest,
-                            }),
-                          )
-                        }
-                      />
-                    ))}
-                  </CollapsibleSection>
-                ) : null;
-              })}
-            </div>
-          ) : null}
-        </RecordSheet>
         {loading ? <DataState state="loading" testId="intake-loading" /> : null}
         {failed ? (
           <DataState
@@ -1122,14 +770,14 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
             <SummaryLine
               text={
                 <>
-                  {visibleClips.length} · <CatalogCategories kind="intake" />
+                  {clipItems.length} · <CatalogCategories kind="intake" />
                 </>
               }
               testId="intake-summary"
             />
             <DataTable<IntakeClip>
               columns={clipColumns}
-              data={visibleClips}
+              data={clipItems}
               groupingTabs={
                 <GroupingTabs
                   label={t("common.groupBy")}
@@ -1232,7 +880,8 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
               hasActiveFilters={category !== null || state !== "all" || origin !== "all"}
               sorting={sorting}
               onSortingChange={setSorting}
-              onOpen={setDetailClip}
+              onOpen={(clip) => void navigate({ to: recordHref("intake", clip.id) })}
+              rowHref={(clip) => recordHref("intake", clip.id)}
               rowLabel={(clip) => clip.title}
               columnsLabel={t("catalog.columns")}
               actionsLabel={t("common.actions")}

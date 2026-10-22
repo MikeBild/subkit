@@ -1,5 +1,5 @@
 import { cockpitBasePath } from "./installation-context";
-import type { CatalogResource } from "./route-table";
+import type { RecordResource } from "./route-table";
 
 export function absolute(path: string): string {
   const BASE = cockpitBasePath();
@@ -104,7 +104,7 @@ export function connectorsHref(filter: { health?: "not_ok" | null } = {}): strin
   return withQuery("/connectors", { health: filter.health });
 }
 
-export function recordHref(resource: CatalogResource, id: string): string {
+export function recordHref(resource: RecordResource, id: string): string {
   return record(resource, id);
 }
 

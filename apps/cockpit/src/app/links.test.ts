@@ -64,6 +64,19 @@ describe("router-relative, and absolute only on request", () => {
     }
   });
 
+  test("every record, intake items included, has its own page address", () => {
+    for (const resource of [
+      "workflows",
+      "connectors",
+      "knowledge",
+      "skills",
+      "files",
+      "intake",
+    ] as const)
+      expect(recordHref(resource, ID)).toBe(`/${resource}/${ID}`);
+    expect(recordHref("intake", "a b")).toBe("/intake/a%20b");
+  });
+
   test("absolute adds the base exactly once", () => {
     expect(absolute("/runs")).toBe("/cockpit/runs");
     expect(absolute(absolute("/runs"))).toBe("/cockpit/runs");

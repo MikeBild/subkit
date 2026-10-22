@@ -70,7 +70,7 @@ export {
   ReadingScroll,
   ReadingSkeleton,
 } from "./reading";
-export { RecordOpenLink, RecordSheet, type SheetSize, sheetWidthClass } from "./record-sheet";
+export { RecordSheet, type SheetSize, sheetWidthClass } from "./record-sheet";
 export { activeRouteTab, type RouteTab, RouteTabs } from "./route-tabs";
 export { SaveBar } from "./save-bar";
 export { SchemaForm } from "./schema-form";

@@ -313,7 +313,7 @@ function catalogHref(kind: string, id: string): string {
   if (kind === "execution") return absolute(runHref(id));
   if (kind === "skill") return absolute(recordHref("skills", id));
   if (kind === "knowledge_source") return absolute(recordHref("knowledge", id));
-  if (kind === "intake_item") return absolute(`/intake?item=${encodeURIComponent(id)}`);
+  if (kind === "intake_item") return absolute(recordHref("intake", id));
   return absolute(kind === "workflow" ? workflowHref(id) : connectorHref(id));
 }
 

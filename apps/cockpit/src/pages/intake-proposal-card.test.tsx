@@ -210,7 +210,7 @@ describe("intake proposal card", () => {
 
   test("source items open the collected item inside the cockpit", () => {
     const html = render(newSkill, SKILL_WRITER);
-    expect(html).toContain(`/intake?item=${ITEM}`);
+    expect(html).toContain(`/intake/${ITEM}`);
     expect(html).not.toContain('target="_blank"');
   });
 

@@ -67,10 +67,23 @@ describe("cockpit route table", () => {
     }
   });
 
-  test("keeps intake as one review surface with query deep links", () => {
-    expect(INTAKE_ROUTES).toEqual(["/intake"]);
+  test("gives every intake item its own page next to the intake list", () => {
+    expect(INTAKE_ROUTES).toEqual(["/intake", "/intake/$resourceId"]);
     expect(ALL_ROUTE_PATHS).toContain("/intake");
-    expect(ALL_ROUTE_PATHS).not.toContain("/intake/$resourceId");
+    expect(ALL_ROUTE_PATHS).toContain("/intake/$resourceId");
+  });
+
+  test("a row opens the record's own page, files and intake items included", () => {
+    const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
+    expect(source).toMatch(/path: "\/files\/\$resourceId",\s*component: FilePage/);
+    expect(source).toMatch(/path: "\/intake\/\$resourceId",\s*component: \(\) => <IntakeItemPage/);
+    for (const page of ["catalog", "knowledge-sources", "skills", "files", "intake"]) {
+      const code = readFileSync(new URL(`../pages/${page}.tsx`, import.meta.url), "utf8");
+      expect(code, `${page} still previews rows in a sheet`).not.toMatch(
+        /search: \{ item:|\?item=|RecordOpenLink/,
+      );
+      expect(code, `${page} rows do not link their page`).toContain("recordHref(");
+    }
   });
 
   test("names the routes no menu links to, which is why they are here", () => {
