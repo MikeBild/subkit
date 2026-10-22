@@ -76,6 +76,8 @@ For `ProjectV2.items` with selected `fieldValues`, set `required_connection_path
 
 For Projects, query `ProjectV2.items(first: ..., after: ...)` and read its `pageInfo` and `totalCount`. Probe the exact query with the authenticated connector; a working repository query does not prove Project access. GitHub's REST OpenAPI discovery is not required for a GraphQL query.
 
+GitHub sometimes answers `ProjectV2.items` with an empty connection (`totalCount: 0`, no nodes, no `errors`, HTTP 200) for a project that has items; the REST project items list shows the same. Use `first: 100` so a project needs as few pages as possible. For a project known to have items, set `cursor_pagination.expected_items` to `{ "min": 1 }`, `reread_on_empty` to `2` and the step's `retry_backoff_ms` to about `1000`. Different item counts from two tokens are not proof of missing scopes; repeat the same query before concluding that access differs. Treat a project snapshot as complete only when its item count matches `totalCount` from an independent read of the same query.
+
 Before saving, validate the exact query as a syntactically valid GraphQL document containing an operation, then probe that query against the authenticated API with bounded fields. An HTTP 200 or a shape/sample response proves only that the probed fields resolved; it does not prove that every page or nested connection was read. Verify the returned item counts and that pagination ends with `hasNextPage: false`. Treat sample and shape probes as schema evidence only, never as complete workflow-run evidence.
 
 ## Rate-limit budget
