@@ -46,7 +46,7 @@ describe("browser logout and session expiry", () => {
     const headers = await browserSessionHeaders(ctx, ctx.userId);
     await ctx.db
       .update(sessions)
-      .set({ revoked_at: new Date() })
+      .set({ revoked_at: new Date() }) // allow-wall-clock: live browser fixture
       .where(eq(sessions.id, sessionIdFrom(headers)));
     const res = await fetch(`${ctx.baseUrl}/v1/identity/logout`, { method: "POST", headers });
     expect(res.status).toBe(204);
