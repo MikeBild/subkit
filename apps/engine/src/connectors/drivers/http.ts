@@ -13,6 +13,7 @@ import { fetchWithEgressGuard } from "../egress-fetch.ts";
 import { assertEgressAllowedResolved, assertRobotsAllowed } from "../egress-guard.ts";
 import { requestUsedStoredCredential } from "../reauth.ts";
 import { connectorHeaderPolicy, requestHeaderViolations } from "../request-header-policy.ts";
+import { scraperUserAgent } from "../scraper-user-agent.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import { type ProbeEndpoint, ProbeEndpointSchema } from "../templates.ts";
 import type { ConnectorView } from "../types.ts";
@@ -461,11 +462,7 @@ export async function buildRequestPlan(
         ? p.connector.config.respect_robots
         : cfg.respect_robots;
     if (respectRobots) {
-      const userAgent =
-        typeof p.connector.config.user_agent === "string" &&
-        p.connector.config.user_agent.length > 0
-          ? p.connector.config.user_agent
-          : cfg.user_agent;
+      const userAgent = scraperUserAgent(p.tenant_id, p.connector.config.user_agent);
       headers["User-Agent"] = userAgent;
       await assertRobotsAllowed(url, { tenant_id: p.tenant_id, exec: p.db, userAgent });
     }

@@ -1399,9 +1399,10 @@ const WebScraperRuntime = z
       .meta(tenant()),
     user_agent: z
       .string()
-      .min(1)
-      .default("sk-web-scraper/1.0 (+https://github.com/MikeBild/subkit)")
-      .describe("User-Agent header on every fetch; passed to robots-parser matching.")
+      .default("")
+      .describe(
+        "User-Agent header on every fetch; passed to robots-parser matching. Empty means sk-web-scraper/<version> (+<server.public_base_url>/bot), or the project URL when no public base URL is set.",
+      )
       .meta(tenant()),
     max_pages: z
       .number()

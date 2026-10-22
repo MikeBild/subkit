@@ -2,7 +2,12 @@ import { z } from "@hono/zod-openapi";
 import { getConfig } from "../../config/loader.ts";
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import { assertEgressAllowedResolved, EgressBlockedError } from "../../connectors/egress-guard.ts";
-import { getRobotsVerification, guardedFetch, readBodyCapped } from "../../connectors/index.ts";
+import {
+  getRobotsVerification,
+  guardedFetch,
+  readBodyCapped,
+  scraperUserAgent,
+} from "../../connectors/index.ts";
 import { logger } from "../../logging/logger.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -99,7 +104,7 @@ export const analyzeScrapeTargetTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const cfg = getConfig(ctx.tenant_id).connectors.web_scraper;
-    const userAgent = cfg.runtime.user_agent;
+    const userAgent = scraperUserAgent(ctx.tenant_id);
     const target = new URL(args.target_url);
     const sitemapUrl = args.sitemap_url ?? `${target.origin}/sitemap.xml`;
 

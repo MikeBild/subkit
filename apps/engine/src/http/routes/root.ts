@@ -32,6 +32,7 @@ const ENTRIES: ReadonlyArray<Entry> = [
   { path: "/cockpit", what: "The web interface" },
   { path: "/health", what: "Liveness" },
   { path: "/ready", what: "Readiness, with its checks" },
+  { path: "/bot", what: "What the web scraper is and how to stop it" },
   {
     path: "/.well-known/service-descriptor.json",
     what: "All of the above, listed with checksums",

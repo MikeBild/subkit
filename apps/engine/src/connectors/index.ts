@@ -30,6 +30,7 @@ export * from "./recipe-binding.ts";
 export * from "./request-header-policy.ts";
 export { getRobotsVerification, type RobotsVerification } from "./robots-cache.ts";
 export * from "./runtime.ts";
+export { SCRAPER_PROJECT_URL, scraperUserAgent } from "./scraper-user-agent.ts";
 export * from "./service.ts";
 export * from "./services/call-connector.ts";
 export * from "./sign-in.ts";
