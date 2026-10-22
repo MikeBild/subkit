@@ -1,4 +1,10 @@
 export * from "./apply-boundary-proposals.ts";
+export {
+  type AuthorityEffectChange,
+  AuthorityEffectChangeSchema,
+  AuthorityEffectChangesBaseSchema,
+  effectChanges,
+} from "./authority-changes.ts";
 export { AuthorityExecutionShapeSchema } from "./authority-execution-shape.ts";
 export { type BoundaryGrowth, BoundaryGrowthSchema } from "./authority-growth.ts";
 export {
@@ -20,7 +26,7 @@ export {
 export * from "./destination-placeholders.ts";
 export * from "./draft-schemas.ts";
 export * from "./drafts.ts";
-export { WorkflowEffectManifestSchema } from "./effect-manifest.ts";
+export { type WorkflowEffectManifest, WorkflowEffectManifestSchema } from "./effect-manifest.ts";
 export {
   ActivateWorkflowDraftSchema,
   activateWorkflowDraft,

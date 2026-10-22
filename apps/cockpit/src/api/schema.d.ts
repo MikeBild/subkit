@@ -22685,6 +22685,8 @@ export interface components {
             }[];
             execution_shape: components["schemas"]["AuthorityExecutionShape"];
             boundary_growth?: components["schemas"]["AuthorityBoundaryGrowth"][];
+            effect_changes?: components["schemas"]["AuthorityEffectChange"][];
+            effect_changes_base?: components["schemas"]["AuthorityEffectChangesBase"];
             approval_carries_over: boolean;
             schedules: {
                 cron: string;
@@ -22748,6 +22750,26 @@ export interface components {
             target: string | null;
             /** @enum {string} */
             effect: "read" | "write" | "unknown" | "destructive";
+        };
+        AuthorityEffectChange: {
+            step_id: string;
+            call_path?: string[];
+            /** @enum {string} */
+            change: "added" | "widened" | "unchanged" | "removed";
+            /** @enum {string} */
+            effect: "read" | "write" | "unknown" | "destructive";
+            subject: string | null;
+            previous?: {
+                /** @enum {string} */
+                effect: "read" | "write" | "unknown" | "destructive";
+                max_calls: number | null;
+                max_requests: number | null;
+            };
+        };
+        AuthorityEffectChangesBase: {
+            /** Format: uuid */
+            workflow_version_id: string;
+            version: number;
         };
         TransactionalMailReceipt: {
             /** Format: uuid */

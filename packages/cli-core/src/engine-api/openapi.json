@@ -6795,6 +6795,15 @@
               "$ref": "#/components/schemas/AuthorityBoundaryGrowth"
             }
           },
+          "effect_changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorityEffectChange"
+            }
+          },
+          "effect_changes_base": {
+            "$ref": "#/components/schemas/AuthorityEffectChangesBase"
+          },
           "approval_carries_over": {
             "type": "boolean"
           },
@@ -7093,6 +7102,97 @@
           "connector_id",
           "target",
           "effect"
+        ]
+      },
+      "AuthorityEffectChange": {
+        "type": "object",
+        "properties": {
+          "step_id": {
+            "type": "string"
+          },
+          "call_path": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "added",
+              "widened",
+              "unchanged",
+              "removed"
+            ]
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "unknown",
+              "destructive"
+            ]
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "type": "object",
+            "properties": {
+              "effect": {
+                "type": "string",
+                "enum": [
+                  "read",
+                  "write",
+                  "unknown",
+                  "destructive"
+                ]
+              },
+              "max_calls": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "max_requests": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "effect",
+              "max_calls",
+              "max_requests"
+            ]
+          }
+        },
+        "required": [
+          "step_id",
+          "change",
+          "effect",
+          "subject"
+        ]
+      },
+      "AuthorityEffectChangesBase": {
+        "type": "object",
+        "properties": {
+          "workflow_version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "workflow_version_id",
+          "version"
         ]
       },
       "TransactionalMailReceipt": {

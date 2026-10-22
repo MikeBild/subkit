@@ -232,6 +232,64 @@ test("an approval until revoked reads as open-ended; the next preview names no g
   expect(await again.json()).toMatchObject({ boundary_growth: [], approval_carries_over: true });
 });
 
+test("the preview compares each effect with the approved version", async () => {
+  const f = await fixture();
+  const granted = await app.request(`${f.base}/execution-authorities`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify(f.body),
+  });
+  expect(granted.status).toBe(201);
+  const [next] = await ctx.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      version: 2,
+      dag: {
+        name: f.workflow.slug,
+        steps: [
+          {
+            id: "send",
+            kind: "request",
+            connector_id: f.connector.id,
+            method: "POST",
+            path: "/messages/urgent",
+            body: { recipient: "reviewed@example.test" },
+          },
+          {
+            id: "fetch",
+            kind: "request",
+            connector_id: f.connector.id,
+            method: "GET",
+            path: "/status",
+          },
+        ],
+      },
+    })
+    .returning();
+  if (!next) throw new Error("missing second version");
+  const preview = await app.request(`${f.base}/versions/${next.id}/authority-preview`, {
+    headers: browserHeaders,
+  });
+  expect(preview.status).toBe(200);
+  const body = (await preview.json()) as {
+    effect_changes?: Array<{ step_id: string; change: string; effect: string }>;
+    effect_changes_base?: { workflow_version_id: string; version: number };
+  };
+  expect(
+    body.effect_changes?.map(({ step_id, change, effect }) => [step_id, change, effect]),
+  ).toEqual([
+    ["send", "widened", "write"],
+    ["fetch", "added", "read"],
+  ]);
+  expect(body.effect_changes_base).toEqual({ workflow_version_id: f.version.id, version: 1 });
+  const own = (await (await app.request(f.previewPath, { headers: browserHeaders })).json()) as {
+    effect_changes?: unknown;
+  };
+  expect(own.effect_changes).toBeUndefined();
+});
+
 test("missing CSRF and a changed reviewed connector are rejected", async () => {
   const f = await fixture();
   const noCsrf = await app.request(`${f.base}/execution-authorities`, {

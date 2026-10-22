@@ -7,6 +7,7 @@ import {
   workflowExecutionAuthorities,
   workflows,
   workflowsSchedules,
+  workflowVersions,
 } from "../../db/schema/index.ts";
 import { getBoss } from "../../queue/index.ts";
 import { can } from "../../rbac/index.ts";
@@ -18,12 +19,15 @@ import {
 } from "../../scheduler/index.ts";
 import {
   ActivateWorkflowDraftSchema,
+  AuthorityEffectChangeSchema,
+  AuthorityEffectChangesBaseSchema,
   AuthorityExecutionShapeSchema,
   activateWorkflowDraft,
   approvalWouldCarry,
   BoundaryGrowthSchema,
   boundaryGrowth,
   contentPublicationLabels,
+  effectChanges,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
   JsonValueSchema,
@@ -34,6 +38,7 @@ import {
   referenceApprovedManifest,
   revokeWorkflowAuthority,
   suggestAuthorityBounds,
+  type WorkflowEffectManifest,
   WorkflowEffectManifestSchema,
 } from "../../workflows/index.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
@@ -133,6 +138,8 @@ const previewSchema = z
       .optional(),
     execution_shape: AuthorityExecutionShapeSchema,
     boundary_growth: z.array(BoundaryGrowthSchema).optional(),
+    effect_changes: z.array(AuthorityEffectChangeSchema).optional(),
+    effect_changes_base: AuthorityEffectChangesBaseSchema.optional(),
     approval_carries_over: z.boolean(),
     schedules: z.array(
       z.object({ cron: z.string(), timezone: z.string(), next_run_at: z.string().nullable() }),
@@ -430,6 +437,59 @@ function translate(error: unknown): never {
   throw error;
 }
 
+async function reviewEffectChanges(
+  db: Db,
+  reviewed: {
+    tenant_id: string;
+    workflow_id: string;
+    workflow_version_id: string;
+    execution_environment: "dev" | "prod";
+  },
+  reference: WorkflowEffectManifest | null,
+  manifest: WorkflowEffectManifest,
+) {
+  const fallback = async () => {
+    const [workflow] = await db
+      .select({ current: workflows.current_version_id })
+      .from(workflows)
+      .where(
+        and(eq(workflows.tenant_id, reviewed.tenant_id), eq(workflows.id, reviewed.workflow_id)),
+      )
+      .limit(1);
+    if (!workflow?.current || workflow.current === reviewed.workflow_version_id) return null;
+    try {
+      return (
+        await previewWorkflowAuthority({ ...reviewed, workflow_version_id: workflow.current }, db)
+      ).manifest;
+    } catch {
+      return null;
+    }
+  };
+  const base = reference ?? (await fallback());
+  if (!base || base.workflow_version_id === reviewed.workflow_version_id) return null;
+  const [version] = await db
+    .select({ version: workflowVersions.version })
+    .from(workflowVersions)
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, reviewed.tenant_id),
+        eq(workflowVersions.id, base.workflow_version_id),
+      ),
+    )
+    .limit(1);
+  return {
+    effect_changes: effectChanges(base, manifest),
+    ...(version
+      ? {
+          effect_changes_base: {
+            workflow_version_id: base.workflow_version_id,
+            version: version.version,
+          },
+        }
+      : {}),
+  };
+}
+
 async function readAuthority(db: Db, tenant_id: string, workflow_id: string, authority_id: string) {
   const [row] = await db
     .select()
@@ -693,6 +753,7 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
             boundaryGrowth(reference, result.manifest),
           )
         : null;
+      const changes = await reviewEffectChanges(c.get("db"), reviewed, reference, result.manifest);
       const approval_carries_over = await approvalWouldCarry(c.get("db"), {
         tenant_id: principal.tenant_id,
         workflow_id: id,
@@ -703,6 +764,7 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         {
           ...result,
           ...(boundary_growth ? { boundary_growth } : {}),
+          ...(changes ?? {}),
           approval_carries_over,
           execution_shape: result.execution_shape,
           content_items: contentPublicationLabels(
