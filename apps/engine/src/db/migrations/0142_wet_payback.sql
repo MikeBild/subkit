@@ -1,0 +1,2 @@
+ALTER TABLE "cockpit_push_subscriptions" ADD COLUMN "notified_attention_keys" text[];--> statement-breakpoint
+ALTER TABLE "cockpit_push_subscriptions" ADD COLUMN "notified_at" timestamp with time zone;

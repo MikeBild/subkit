@@ -15,6 +15,7 @@ import {
 } from "../db/schema/index.ts";
 import { now } from "../utils/clock.ts";
 import { type BrowserMembershipContext, browserMembershipIdentity } from "./browser-memberships.ts";
+import { endCockpitPushForSessions } from "./cockpit-push.ts";
 
 const deletionInput = z
   .object({
@@ -79,6 +80,12 @@ export async function requestOwnedTenantDeletion(
       .update(sessions)
       .set({ revoked_at: timestamp })
       .where(and(eq(sessions.tenant_id, input.tenant_id), isNull(sessions.revoked_at)));
+    await endCockpitPushForSessions(
+      tx,
+      { tenant_id: input.tenant_id, tenant: true },
+      "tenant_lifecycle",
+      { actor_type: "user", actor_id: input.user_id },
+    );
     await tx
       .update(apiKeys)
       .set({ revoked_at: timestamp })

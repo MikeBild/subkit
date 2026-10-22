@@ -74,3 +74,37 @@ export function vapidApplicationServerKey(value: string): Uint8Array<ArrayBuffer
   if (bytes.byteLength !== 65 || bytes[0] !== 4) throw new Error("invalid_push_key");
   return bytes;
 }
+
+function sameServerKey(current: ArrayBuffer | null | undefined, expected: Uint8Array): boolean {
+  if (!current) return false;
+  const bytes = new Uint8Array(current);
+  return (
+    bytes.byteLength === expected.byteLength &&
+    bytes.every((byte, index) => byte === expected[index])
+  );
+}
+
+export async function rebindPushSubscription(input: {
+  registration: Pick<ServiceWorkerRegistration, "pushManager">;
+  permission: NotificationPermission;
+  status(): Promise<{ subscribed: boolean }>;
+  prepare(): Promise<{ public_key: string }>;
+  save(subscription: PushSubscription): Promise<void>;
+}): Promise<boolean> {
+  if (input.permission !== "granted") return false;
+  const existing = await input.registration.pushManager.getSubscription();
+  if (!existing) return false;
+  const serverKey = vapidApplicationServerKey((await input.prepare()).public_key);
+  if (sameServerKey(existing.options.applicationServerKey, serverKey)) {
+    if ((await input.status()).subscribed) return true;
+    await input.save(existing);
+    return true;
+  }
+  await existing.unsubscribe();
+  const renewed = await input.registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: serverKey,
+  });
+  await input.save(renewed);
+  return true;
+}

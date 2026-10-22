@@ -1,4 +1,4 @@
-import { index, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { bytea, tenantId, timestamps } from "./_common.ts";
 import { cockpitInstallations } from "./cockpit-installations.ts";
 import { sessions, tenants } from "./identity.ts";
@@ -28,6 +28,8 @@ export const cockpitPushSubscriptions = pgTable(
     ciphertext: bytea("ciphertext").notNull(),
     iv: bytea("iv").notNull(),
     auth_tag: bytea("auth_tag").notNull(),
+    notified_attention_keys: text("notified_attention_keys").array(),
+    notified_at: timestamp("notified_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [

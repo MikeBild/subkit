@@ -11,6 +11,7 @@ import {
   userIdentities,
   users,
 } from "../db/schema/index.ts";
+import { endCockpitPushForSessions } from "./cockpit-push.ts";
 
 export interface ErasableCaller {
   tenantId: string;
@@ -106,6 +107,13 @@ export async function eraseProductCaller(
         isNull(sessions.revoked_at),
       ),
     );
+  const pushActor = erasureAudit({ ...caller, productId: caller.productId }, context);
+  await endCockpitPushForSessions(
+    tx,
+    { tenant_id: caller.tenantId, user_id: caller.principalId },
+    "erasure",
+    { actor_type: pushActor.actor_type, actor_id: pushActor.actor_id },
+  );
   await tx
     .update(apiKeys)
     .set({ revoked_at: now })

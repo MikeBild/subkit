@@ -18,6 +18,7 @@ import {
   clearInstallationInput,
   installationCapabilities,
   mountInstallationManifest,
+  rebindPushSubscription,
   registerInstallationWorker,
   vapidApplicationServerKey,
 } from "./installation-browser";
@@ -177,12 +178,26 @@ export function InstallationProvider({
         setIncomingError("unavailable");
     };
     navigator.serviceWorker?.addEventListener("message", receive);
+    const current = () => active && generation.current === currentGeneration;
     void registerInstallationWorker()
       .then((registration) => {
-        if (active && generation.current === currentGeneration) takeIncoming(registration);
+        if (!current()) return;
+        takeIncoming(registration);
+        if (!registration || !installationCapabilities().push) return;
+        void rebindPushSubscription({
+          registration,
+          permission: Notification.permission,
+          status: pushSubscriptionStatus,
+          prepare: preparePushSubscription,
+          save: savePushSubscription,
+        })
+          .then((bound) => {
+            if (bound && current()) setPushSubscribed(true);
+          })
+          .catch(() => {});
       })
       .catch(() => {
-        if (active && generation.current === currentGeneration) setIncomingError("unavailable");
+        if (current()) setIncomingError("unavailable");
       });
     takeIncoming();
     const launchQueue = window as LaunchQueueWindow;
@@ -225,20 +240,26 @@ export function InstallationProvider({
     }
     const registration = await registerInstallationWorker();
     if (!registration) return false;
-    let subscription = await registration.pushManager.getSubscription();
-    let created = false;
-    if (!subscription) {
-      const { public_key } = await preparePushSubscription();
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: vapidApplicationServerKey(public_key),
-      });
-      created = true;
+    const rebound = await rebindPushSubscription({
+      registration,
+      permission,
+      status: async () => ({ subscribed: false }),
+      prepare: preparePushSubscription,
+      save: savePushSubscription,
+    });
+    if (rebound) {
+      setPushSubscribed(true);
+      return true;
     }
+    const { public_key } = await preparePushSubscription();
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: vapidApplicationServerKey(public_key),
+    });
     try {
       await savePushSubscription(subscription);
     } catch (error) {
-      if (created) await subscription.unsubscribe().catch(() => {});
+      await subscription.unsubscribe().catch(() => {});
       throw error;
     }
     setPushSubscribed(true);

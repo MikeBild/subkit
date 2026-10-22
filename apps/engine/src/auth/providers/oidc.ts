@@ -16,6 +16,7 @@ import {
 import {
   acceptVerifiedMembershipInvite,
   assertTenantActive,
+  endCockpitPushForSessions,
   IdentityRecoveryError,
   issueIdentityRecovery,
   MembershipInviteError,
@@ -934,6 +935,12 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         .where(eq(sessions.id, payload.session_id))
         .returning();
       if (row) {
+        await endCockpitPushForSessions(
+          exec,
+          { tenant_id: row.tenant_id, session_ids: [row.id] },
+          "session_logout",
+          { actor_type: "user", actor_id: row.user_id },
+        );
         await auditAwait(
           {
             tenant_id: row.tenant_id,

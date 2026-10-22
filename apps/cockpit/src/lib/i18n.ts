@@ -5040,6 +5040,11 @@ const EN = {
   "installation.notificationsHint": "Alerts contain no workspace or workflow details.",
   "installation.notificationsDenied":
     "Browser permission was denied. Allow notifications in your browser settings.",
+  "installation.openApp": "Open app",
+  "installation.notificationsInApp":
+    "Notifications are available in the installed app. Open it and turn them on with the bell.",
+  "installation.notificationsAfterInstall":
+    "After installing, turn on neutral notifications in the app with the bell.",
   "installation.importTitle": "Add to {category}",
   "installation.importHint":
     "Review files before adding them. This does not admit anything as knowledge.",
@@ -10206,6 +10211,11 @@ const DE: Record<TranslationKey, string> = {
     "Alerts enthalten keine Details zu Arbeitsbereichen oder Workflows.",
   "installation.notificationsDenied":
     "Browser-Berechtigung verweigert. Bitte in den Einstellungen erlauben.",
+  "installation.openApp": "App öffnen",
+  "installation.notificationsInApp":
+    "Benachrichtigungen gibt es in der installierten App. Öffne sie und aktiviere sie über die Glocke.",
+  "installation.notificationsAfterInstall":
+    "Aktiviere nach der Installation neutrale Benachrichtigungen in der App über die Glocke.",
   "installation.importTitle": "Hinzufügen zu {category}",
   "installation.importHint":
     "Dateien vor dem Hinzufügen prüfen. Es wird nichts automatisch als Wissen übernommen.",

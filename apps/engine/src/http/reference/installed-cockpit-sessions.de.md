@@ -53,13 +53,20 @@ Benutzeraktion; kein Datei- oder Verzeichnis-Handle wird dauerhaft gespeichert.
 
 Push erfordert eine separate Zustimmung für App und Gerät. Die ausdrückliche Vorbereitungsoperation
 erstellt ein mandanteneigenes, verschlüsseltes VAPID-Schlüsselpaar; Abonnements sind verschlüsselt
-und an die Installationssitzung gebunden. Abgelaufene, widerrufene, inaktive oder gelöschte
-Eigentümer und Workspaces erhalten keine neuen Sendungen. Benachrichtigungen enthalten nur einen
-generischen SubKit-Aufmerksamkeitshinweis und öffnen die App-Wurzel zur Authentifizierung; sie
-enthalten kein Workspace-Branding, keine privaten Inhalte und keine Freigabeaktionen. Bereits
-gesendete neutrale Nachrichten können nach der Abmeldung eintreffen. Eine
-Benachrichtigungsberechtigung des Browsers kann von Apps auf demselben Origin gemeinsam genutzt
-werden und wird durch die Abmeldung nicht automatisch widerrufen. Pfadgebundene Sitzungen erzeugen
+und an die Installation und ihren Eigentümer gebunden. Der Ablauf einer untätigen Sitzung beendet
+Push nicht; beim erneuten Öffnen der App wird das bestehende Geräteabonnement an die neue Sitzung
+gebunden. Push endet bei Abmeldung, jedem ausdrücklichen Sitzungswiderruf, Widerruf der
+Installation, Deaktivierung des Eigentümers, Workspace-Wechsel oder -Löschung sowie nach 30 Tagen
+ohne App-Nutzung. Inaktive oder gelöschte Eigentümer und Workspaces erhalten keine neuen Sendungen.
+Eine Benachrichtigung wird gesendet, sobald ein neuer oder geänderter Aufmerksamkeitspunkt
+erscheint, innerhalb von etwa einer Minute; unveränderte Punkte benachrichtigen nicht erneut.
+Benachrichtigungen enthalten nur einen generischen SubKit-Aufmerksamkeitshinweis und fokussieren
+oder öffnen die App-Wurzel; sie enthalten kein Workspace-Branding, keine privaten Inhalte und keine
+Freigabeaktionen. Bereits gesendete neutrale Nachrichten können nach der Abmeldung eintreffen. Das
+Browser-Cockpit bietet den Installationsweg an oder öffnet die installierte App; Benachrichtigungen
+gibt es in der installierten App. Eine Benachrichtigungsberechtigung des Browsers kann von Apps auf
+demselben Origin gemeinsam genutzt werden und wird durch die Abmeldung nicht automatisch
+widerrufen. Pfadgebundene Sitzungen erzeugen
 keine getrennten Browser-Origins und isolieren weder den Browser-Speicher noch lokale
 Berechtigungen.
 

@@ -5,6 +5,7 @@ import type { Db } from "../db/client.ts";
 import { hostedControlReceiptId } from "../db/hosted-control-receipt.ts";
 import { cockpitInstallations } from "../db/schema/cockpit-installations.ts";
 import { sessions } from "../db/schema/identity.ts";
+import { endCockpitPushForSessions } from "./cockpit-push.ts";
 
 export interface CockpitInstallation {
   id: string;
@@ -127,6 +128,12 @@ export async function revokeCockpitInstallation(
         ),
       )
       .returning({ id: sessions.id });
+    await endCockpitPushForSessions(
+      tx,
+      { tenant_id: tenantId, installation_id: installationId },
+      "installation_revoked",
+      { actor_type: "user", actor_id: ownerUserId },
+    );
     for (const session of revokedSessions) {
       await auditAwait(
         {

@@ -10,6 +10,7 @@ import { builtinRoleId } from "../rbac/roles.ts";
 import { authorizeRequestedScopes, type ScopeIssuer } from "../rbac/scope-issuance.ts";
 import { now } from "../utils/clock.ts";
 import { constantTimeHexEquals } from "./api-key.ts";
+import { endCockpitPushForSessions } from "./cockpit-push.ts";
 import { generateInviteToken, parseInviteToken } from "./invite.ts";
 import { assertAdminRemains } from "./last-admin.ts";
 import { revokeConnectionsForUser } from "./oauth-connections.ts";
@@ -191,6 +192,12 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
         ),
       )
       .returning();
+    await endCockpitPushForSessions(
+      tx,
+      { tenant_id: input.tenant_id, user_id: input.user_id },
+      "user_deactivated",
+      auditActor(input.actor_kind, input.actor_id),
+    );
 
     for (const session of revokedSessions) {
       await auditAwait(

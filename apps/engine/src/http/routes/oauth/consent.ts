@@ -15,6 +15,7 @@ import {
 } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import { roles as rolesTable, sessions, tenants, users } from "../../../db/schema/index.ts";
+import { endCockpitPushForSessions } from "../../../identity/index.ts";
 import { logger } from "../../../logging/index.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { resolveAuthorizationMembership } from "./membership.ts";
@@ -484,6 +485,12 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
             eq(sessions.tenant_id, sessionPayload.tenant_id),
           ),
         );
+      await endCockpitPushForSessions(
+        db,
+        { tenant_id: sessionPayload.tenant_id, session_ids: [sessionPayload.session_id] },
+        "session_replaced",
+        { actor_type: "user", actor_id: sessionPayload.user_id },
+      );
       await auditAwait(
         {
           tenant_id: sessionPayload.tenant_id,

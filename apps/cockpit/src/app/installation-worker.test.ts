@@ -8,11 +8,38 @@ const source = readFileSync(
 );
 const scope = "https://app.example.test/cockpit/i/11111111-1111-4111-8111-111111111111/";
 
-function worker(authenticated = true) {
+interface WindowClientFixture {
+  url: string;
+  focused: boolean;
+  navigated: string[];
+  focus(): Promise<WindowClientFixture>;
+  navigate(url: string): Promise<WindowClientFixture>;
+}
+
+function windowClient(url: string): WindowClientFixture {
+  const client: WindowClientFixture = {
+    url,
+    focused: false,
+    navigated: [],
+    focus: async () => {
+      client.focused = true;
+      return client;
+    },
+    navigate: async (target: string) => {
+      client.navigated.push(target);
+      client.url = target;
+      return client;
+    },
+  };
+  return client;
+}
+
+function worker(authenticated = true, windows: WindowClientFixture[] = []) {
   const handlers = new Map<string, (event: Record<string, unknown>) => void>();
   const sent: unknown[] = [];
   const notifications: unknown[] = [];
   const opened: unknown[] = [];
+  const matchAllOptions: unknown[] = [];
   let clientUrl = scope;
   vm.runInNewContext(source, {
     URL,
@@ -32,7 +59,14 @@ function worker(authenticated = true) {
       clients: {
         claim: () => {},
         get: async () => ({ url: clientUrl, postMessage: (value: unknown) => sent.push(value) }),
-        openWindow: (url: unknown) => opened.push(url),
+        openWindow: async (url: unknown) => {
+          opened.push(url);
+          return null;
+        },
+        matchAll: async (options: unknown) => {
+          matchAllOptions.push(options);
+          return windows;
+        },
       },
       addEventListener: (name: string, handler: (event: Record<string, unknown>) => void) =>
         handlers.set(name, handler),
@@ -42,6 +76,7 @@ function worker(authenticated = true) {
     sent,
     notifications,
     opened,
+    matchAllOptions,
     client: (url: string) => {
       clientUrl = url;
     },
@@ -133,12 +168,31 @@ describe("installation worker privacy boundary", () => {
           body: "SubKit needs your attention.",
           icon: "/cockpit/app-icon-192.png",
           tag: new URL(scope).pathname,
-          renotify: false,
+          renotify: true,
         },
       ],
     ]);
     await app.dispatch("notificationclick", { notification: { close: () => {} } });
     expect(app.opened).toEqual([scope]);
+  });
+  test("a notification click focuses the open app instead of opening another window", async () => {
+    const foreign = windowClient("https://app.example.test/cockpit/");
+    const app = windowClient(`${scope}runs`);
+    const opened = worker(true, [foreign, app]);
+    await opened.dispatch("notificationclick", { notification: { close: () => {} } });
+    expect(app.focused).toBeTrue();
+    expect(foreign.focused).toBeFalse();
+    expect(opened.opened).toEqual([]);
+    expect(opened.matchAllOptions).toEqual([{ type: "window", includeUncontrolled: true }]);
+  });
+  test("a notification click opens the app scope when no app window is open", async () => {
+    const foreign = windowClient(
+      "https://app.example.test/cockpit/i/22222222-2222-4222-8222-222222222222/",
+    );
+    const opened = worker(true, [foreign]);
+    await opened.dispatch("notificationclick", { notification: { close: () => {} } });
+    expect(foreign.focused).toBeFalse();
+    expect(opened.opened).toEqual([scope]);
   });
   test("rejects oversized input before it reaches an app", async () => {
     const app = worker();

@@ -1,7 +1,7 @@
 import { Bell, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { createCockpitInstallation } from "@/api/cockpit-installations";
+import { type CockpitInstallation, createCockpitInstallation } from "@/api/cockpit-installations";
 import { cockpitApiHref, installationId } from "@/app/installation-context";
 import { useInstallation } from "@/app/installation-provider";
 import { useSession } from "@/app/session";
@@ -14,16 +14,29 @@ interface DeferredInstallPrompt extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
+export type InstallationDialogMode = { kind: "install" } | { kind: "open"; href: string };
+
+export function installationDialogMode(
+  currentInstallationId: string | null,
+  installation: Pick<CockpitInstallation, "start_url"> | null,
+): InstallationDialogMode {
+  if (currentInstallationId || !installation) return { kind: "install" };
+  return { kind: "open", href: installation.start_url };
+}
+
 export function InstallationDialog({
   open,
   onOpenChange,
   tenantName,
+  installation = null,
 }: {
   open: boolean;
   onOpenChange(open: boolean): void;
   tenantName: string;
+  installation?: Pick<CockpitInstallation, "start_url"> | null;
 }) {
   const { t } = useI18n();
+  const mode = installationDialogMode(installationId(), installation);
   const session = useSession();
   const [prompt, setPrompt] = useState<DeferredInstallPrompt | null>(null);
   const [creating, setCreating] = useState(false);
@@ -41,6 +54,10 @@ export function InstallationDialog({
     return () => window.removeEventListener("beforeinstallprompt", listener);
   }, []);
   const install = async () => {
+    if (mode.kind === "open") {
+      window.location.assign(mode.href);
+      return;
+    }
     if (installationId() && !prompt) {
       setUnavailable(true);
       return;
@@ -68,7 +85,10 @@ export function InstallationDialog({
         onOpenChange={onOpenChange}
         title={t("installation.installTitle", { name: appName })}
         description={t("installation.installDescription")}
-        submit={{ label: t("installation.installAction"), pending: creating }}
+        submit={{
+          label: t(mode.kind === "open" ? "installation.openApp" : "installation.installAction"),
+          pending: creating,
+        }}
         onSubmit={install}
         testId="installation-dialog"
       >
@@ -79,7 +99,15 @@ export function InstallationDialog({
             <p className="truncate text-xs text-muted-foreground">{window.location.host}</p>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">{t("installation.installHint")}</p>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            mode.kind === "open"
+              ? "installation.notificationsInApp"
+              : installationId()
+                ? "installation.installHint"
+                : "installation.notificationsAfterInstall",
+          )}
+        </p>
       </FormDialog>
       <FormDialog
         open={unavailable}

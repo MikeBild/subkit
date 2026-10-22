@@ -159,6 +159,7 @@ import sql0138HostedControlReceiptIds from "./0138_hosted_control_receipt_ids.sq
 import sql0139LushClintBarton from "./0139_lush_clint_barton.sql" with { type: "text" };
 import sql0140LastBenParker from "./0140_last_ben_parker.sql" with { type: "text" };
 import sql0141SteepMorlun from "./0141_steep_morlun.sql" with { type: "text" };
+import sql0142WetPayback from "./0142_wet_payback.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -325,6 +326,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0139_lush_clint_barton": sql0139LushClintBarton,
   "0140_last_ben_parker": sql0140LastBenParker,
   "0141_steep_morlun": sql0141SteepMorlun,
+  "0142_wet_payback": sql0142WetPayback,
 };
 
 const journal = journalMeta as unknown as Journal;

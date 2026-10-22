@@ -843,6 +843,16 @@
         "enum": null
       },
       {
+        "name": "notified_attention_keys",
+        "type": "text[]",
+        "enum": null
+      },
+      {
+        "name": "notified_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
         "name": "created_at",
         "type": "timestamp with time zone",
         "enum": null

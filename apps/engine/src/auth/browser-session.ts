@@ -7,7 +7,11 @@ import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { cockpitInstallations } from "../db/schema/cockpit-installations.ts";
 import { sessions } from "../db/schema/index.ts";
-import { assertTenantActive, SelfServiceIdentityError } from "../identity/index.ts";
+import {
+  assertTenantActive,
+  endCockpitPushForSessions,
+  SelfServiceIdentityError,
+} from "../identity/index.ts";
 import type { ResolvedPrincipal } from "./types.ts";
 
 export const BROWSER_SESSION_COOKIE = "subkit_session";
@@ -370,6 +374,12 @@ export async function revokeBrowserSession(
     .where(and(eq(sessions.id, payload.session_id), isNull(sessions.revoked_at)))
     .returning();
   if (!row) return;
+  await endCockpitPushForSessions(
+    db,
+    { tenant_id: row.tenant_id, session_ids: [row.id] },
+    "session_logout",
+    { actor_type: "user", actor_id: row.user_id },
+  );
   await auditAwait(
     {
       tenant_id: row.tenant_id,

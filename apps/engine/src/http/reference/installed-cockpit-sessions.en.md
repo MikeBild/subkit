@@ -50,11 +50,17 @@ an explicit user action; no file or directory handle is persisted.
 
 Push requires a separate opt-in for the app and device. The explicit preparation
 operation creates a tenant-owned encrypted VAPID key pair; subscriptions are encrypted
-and bound to the installation session. Expired, revoked, inactive or deleted owners and
-workspaces receive no new sends. Notifications contain only a generic SubKit attention
-hint and open the app root for authentication; they contain no workspace branding,
-private content or approval actions. Already sent neutral messages may arrive after
-logout. A browser notification permission may be shared across apps on the same
+and bound to the installation and its owner. Idle session expiry does not end push;
+reopening the app re-binds the existing device subscription to the new session. Push
+ends on logout, any explicit session revocation, installation revocation, owner
+deactivation, workspace switch or deletion, and after 30 days without app use.
+Inactive or deleted owners and workspaces receive no new sends. A notification is sent
+when a new or changed attention item appears, within about a minute; unchanged items
+do not notify again. Notifications contain only a generic SubKit attention hint and
+focus or open the app root; they contain no workspace branding, private content or
+approval actions. Already sent neutral messages may arrive after logout. The browser
+Cockpit offers the install path or opens the installed app; notifications live in the
+installed app. A browser notification permission may be shared across apps on the same
 origin and is not automatically revoked by logout. Path-bound sessions do not create
 separate browser origins or isolate browser storage and local permissions.
 

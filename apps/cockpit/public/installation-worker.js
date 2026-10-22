@@ -113,11 +113,17 @@ self.addEventListener("push", (event) => {
       body: "SubKit needs your attention.",
       icon: "/cockpit/app-icon-192.png",
       tag: scope.pathname,
-      renotify: false,
+      renotify: true,
     }),
   );
 });
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  event.waitUntil(self.clients.openWindow(scope.href));
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const client = windows.find(matchingClient);
+      return client ? client.focus() : self.clients.openWindow(scope.href);
+    })(),
+  );
 });

@@ -6,6 +6,7 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { sessions, users } from "../db/schema/index.ts";
 import { now } from "../utils/clock.ts";
+import { endCockpitPushForSessions } from "./cockpit-push.ts";
 import { getMembershipForIdentity, SelfServiceIdentityError } from "./self-service.ts";
 
 export interface BrowserMembershipContext {
@@ -89,6 +90,12 @@ export async function rotateTenantSession(
           eq(sessions.user_id, input.user_id),
         ),
       );
+    await endCockpitPushForSessions(
+      tx,
+      { tenant_id: input.tenant_id, session_ids: [input.session_id] },
+      "session_replaced",
+      { actor_type: "user", actor_id: input.user_id },
+    );
     const [session] = await tx
       .insert(sessions)
       .values({

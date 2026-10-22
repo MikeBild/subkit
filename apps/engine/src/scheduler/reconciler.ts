@@ -22,6 +22,7 @@ import { getObjectStore } from "../storage/object-store.ts";
 import { runTenantCadenceSweep } from "./cadence-sweep.ts";
 import { runCatalogDescribeSweep } from "./catalog-describe-runner.ts";
 import { runChatDedupCleanup } from "./chat-dedup-cleanup-runner.ts";
+import { runCockpitPushAttention } from "./cockpit-push-attention-runner.ts";
 import {
   runConnectorReauthScanForTenant,
   runOAuth2RefreshKeepAliveForTenant,
@@ -60,6 +61,8 @@ const ELICITATION_EXPIRY_CADENCE_MS = 5 * 60 * 1000;
 
 const RISK_SIGNAL_EDGE_CADENCE_MS = 60 * 1000;
 
+export const COCKPIT_PUSH_ATTENTION_CADENCE_MS = 60 * 1000;
+
 const EMBEDDING_BACKFILL_CADENCE_MS = 5 * 60 * 1000;
 
 const CONNECTOR_SELF_DESCRIPTION_CADENCE_MS = 24 * 60 * 60 * 1000;
@@ -72,6 +75,7 @@ export interface ReconcilerOptions {
   intervalMs?: number;
   discoveryRunner?: typeof runDiscoveryCached;
   probeRunner?: typeof probeAllSelfDescriptionLinks;
+  cockpitPushAttentionRunner?: typeof runCockpitPushAttention;
 }
 
 export { isCronDue } from "./cron.ts";
@@ -122,6 +126,8 @@ export class SchedulerReconciler {
   private lastElicitationExpiryAt: Date | null = null;
 
   private lastRiskSignalEdgesAt: Date | null = null;
+
+  private lastCockpitPushAttentionAt: Date | null = null;
 
   private lastEmbeddingBackfillAt: Date | null = null;
 
@@ -417,6 +423,16 @@ export class SchedulerReconciler {
           ...errorFields(err),
         });
       });
+      await retryTransient(() => this.reconcileCockpitPushAttention(), {
+        label: "cockpit_push_attention",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "cockpit_push_attention_failed",
+          msg: "scheduler cockpit push attention pass failed",
+          ...errorFields(err),
+        });
+      });
       await retryTransient(() => this.reconcileEmbeddingBackfill(), {
         label: "embedding_backfill",
       }).catch((err) => {
@@ -552,6 +568,15 @@ export class SchedulerReconciler {
     }
     await runRiskSignalEdges(this.opts.db);
     this.lastRiskSignalEdgesAt = now;
+  }
+
+  async reconcileCockpitPushAttention(now: Date = new Date()): Promise<void> {
+    if (this.lastCockpitPushAttentionAt !== null) {
+      const elapsed = now.getTime() - this.lastCockpitPushAttentionAt.getTime();
+      if (elapsed < COCKPIT_PUSH_ATTENTION_CADENCE_MS) return;
+    }
+    this.lastCockpitPushAttentionAt = now;
+    await (this.opts.cockpitPushAttentionRunner ?? runCockpitPushAttention)(this.opts.db, now);
   }
 
   async reconcileMcpOAuthCleanup(now: Date = new Date()): Promise<void> {

@@ -100,6 +100,7 @@ export function WorkspaceSwitcher({ attention }: { attention?: ReactNode }) {
         open={installing}
         onOpenChange={setInstalling}
         tenantName={session.tenant.display_name}
+        installation={currentInstallation}
       />
     </>
   );

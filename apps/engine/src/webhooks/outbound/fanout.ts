@@ -10,14 +10,16 @@ import { withTenantWork } from "../../execution/tenant-work.ts";
 import type { RequestSource } from "../../execution/types.ts";
 import { assertTenantActive } from "../../identity/self-service.ts";
 import { logger } from "../../logging/logger.ts";
-import { dispatchCockpitPushAttention } from "../../notifications/cockpit-push.ts";
 import type { NotificationEvent, NotificationSeverity } from "../../notifications/matcher.ts";
 import {
   type AdapterResolver,
   dispatchEvent as dispatchNotifications,
 } from "../../notifications/service.ts";
 import { matchEventPattern } from "../events/catalog.ts";
-import { shouldDispatchCockpitPushAttention } from "./cockpit-push-attention.ts";
+import {
+  shouldDispatchCockpitPushAttention,
+  triggerCockpitPushAttention,
+} from "./cockpit-push-attention.ts";
 import { WEBHOOK_DELIVER_QUEUE, type WebhookDeliverJob } from "./delivery-worker.ts";
 
 const OUTBOX_EVENT_NS = "9f1c2e4a-6b3d-5c7e-8a9b-0c1d2e3f4a5b";
@@ -187,7 +189,7 @@ export async function fanoutEvent(input: FanoutInput): Promise<FanoutStats> {
   }
 
   if (shouldDispatchCockpitPushAttention(event_type, payload))
-    await dispatchCockpitPushAttention(db, tenant_id);
+    void withTenantWork(tenant_id, () => triggerCockpitPushAttention(db, tenant_id));
 
   logger.debug({
     module: "webhooks.outbound",
