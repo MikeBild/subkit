@@ -135,16 +135,14 @@ describe("the self-description set", () => {
     const index = await (await get("/llms.txt")).text();
     expect(index).toContain("[Use sk from a coding agent](http://127.0.0.1/llms/coding-agents.md)");
     const page = await (await get("/llms/coding-agents.md")).text();
-    expect(page).toContain(
-      "In each repository, run `sk agent init --domains <category>[,<category>]`",
-    );
-    expect(page).toContain("Run `sk status`, then `sk agent briefing --json`");
-    expect(page).toContain("Hooks first read `.sk/agent.json` when present.");
-    expect(page).toContain(
-      "Codex hooks are enabled by default; no `config.toml` edit is normally needed.",
-    );
-    expect(page).toContain("Review and trust new or changed SubKit hooks in `/hooks`.");
-    expect(page).toContain("inspect the effective feature setting and administrator policy");
+    expect(page).toContain("sk agent init --domains <category>");
+    expect(page).toContain("`--domains <category>[,<category>]`");
+    expect(page).toContain("In the repository, run `sk status`.");
+    expect(page).toContain("Run `sk agent briefing --json`.");
+    expect(page).toContain("Without `.sk/agent.json`, the hooks match the folder name");
+    expect(page).toContain("check that the SubKit hooks are active");
+    expect(page).toContain("Trust new or changed SubKit hooks.");
+    expect(page).toContain("`/hooks` in Codex shows the SubKit hooks as disabled");
   });
 
   test("no served page links to a page the binary does not carry", async () => {
