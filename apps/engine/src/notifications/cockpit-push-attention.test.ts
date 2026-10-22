@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { tenants } from "../db/schema/identity.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
-import type { AttentionClass, AttentionItem, AttentionReason } from "../operator/attention.ts";
+import type {
+  AttentionClass,
+  AttentionItem,
+  AttentionReason,
+  AttentionV1,
+} from "../operator/attention.ts";
 import type { Candidate } from "../operator/attention-readers.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
@@ -44,14 +49,24 @@ async function dispatch(
   fixture: CockpitPushFixture,
   items: AttentionItem[],
   send = recordingPushSender(),
+  options: { sources?: Partial<AttentionV1["sources"]>; subject?: string | null } = {},
 ) {
   await dispatchCockpitPushAttention(ctx.db, fixture.tenantId, {
     now: at,
-    subject: SUBJECT,
-    attention: async () => ({ items }),
+    subject: options.subject === undefined ? SUBJECT : options.subject,
+    attention: async () => ({ items, ...(options.sources ? { sources: options.sources } : {}) }),
     send: send.send,
   });
   return send.sent.filter((endpoint) => endpoint === fixture.endpoint).length;
+}
+
+function rejectingPushSender(statusCode: number) {
+  const sent: string[] = [];
+  const send = async (subscription: { endpoint: string }) => {
+    sent.push(subscription.endpoint);
+    throw Object.assign(new Error("push service unavailable"), { statusCode });
+  };
+  return { sent, send: send as never };
 }
 
 beforeAll(async () => {
@@ -86,6 +101,37 @@ describe("attention-driven cockpit push", () => {
     expect(keys).toHaveLength(2);
     for (const key of keys ?? []) expect(key).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(keys)).not.toContain("conv-1");
+  });
+
+  test("a failed attention source keeps its items notified until it recovers", async () => {
+    expect(await dispatch(fixture, [conversation, authority])).toBe(1);
+    expect(
+      await dispatch(fixture, [conversation], recordingPushSender(), {
+        sources: { conversations: "answered", schedules: "failed" },
+      }),
+    ).toBe(0);
+    expect(await dispatch(fixture, [conversation, authority])).toBe(0);
+    expect(
+      await dispatch(fixture, [conversation, authority, failing], recordingPushSender(), {
+        sources: { conversations: "failed" },
+      }),
+    ).toBe(1);
+  });
+
+  test("a rejected push is retried on the next pass", async () => {
+    const rejected = rejectingPushSender(500);
+    expect(await dispatch(fixture, [conversation], rejected)).toBe(1);
+    expect(await fixtures.storedKeys(fixture)).toBeNull();
+    expect(await dispatch(fixture, [conversation])).toBe(1);
+    expect(await dispatch(fixture, [conversation])).toBe(0);
+  });
+
+  test("an unavailable push subject keeps the attention pending", async () => {
+    expect(await dispatch(fixture, [conversation], recordingPushSender(), { subject: null })).toBe(
+      0,
+    );
+    expect(await fixtures.storedKeys(fixture)).toBeNull();
+    expect(await dispatch(fixture, [conversation])).toBe(1);
   });
 
   test("an empty attention list sends nothing", async () => {

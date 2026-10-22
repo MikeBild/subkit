@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
 import type webpush from "web-push";
 import { z } from "zod";
 import type { ResolvedPrincipal } from "../auth/types.ts";
@@ -25,7 +25,9 @@ const NotifiedKeys = z
 export interface CockpitPushAttentionOptions {
   now?: Date;
   readers?: AttentionReaderOverrides;
-  attention?: (principal: ResolvedPrincipal) => Promise<Pick<AttentionV1, "items">>;
+  attention?: (
+    principal: ResolvedPrincipal,
+  ) => Promise<Pick<AttentionV1, "items"> & { sources?: Partial<AttentionV1["sources"]> }>;
   send?: typeof webpush.sendNotification;
   subject?: string | null;
 }
@@ -78,37 +80,78 @@ async function ownerPrincipal(
   };
 }
 
+function keysMatch(value: string[] | null): SQL {
+  return value === null
+    ? isNull(cockpitPushSubscriptions.notified_attention_keys)
+    : sql`${cockpitPushSubscriptions.notified_attention_keys} = ${textArrayLiteral(value)}::text[]`;
+}
+
+interface AttentionClaim {
+  row: CockpitPushAudienceRow;
+  keys: string[];
+  fresh: number;
+}
+
 async function claimNewAttention(
   db: Db,
   tenantId: string,
   row: CockpitPushAudienceRow,
-  keys: string[],
-  at: Date,
-): Promise<number> {
+  current: string[],
+  partial: boolean,
+): Promise<AttentionClaim | null> {
   const previous = storedKeys(row.notified_attention_keys);
   const known = new Set(previous);
-  const fresh = keys.filter((key) => !known.has(key)).length;
-  if (fresh === 0 && previous.length === keys.length && row.notified_attention_keys !== null)
-    return 0;
-  const unchanged =
-    row.notified_attention_keys === null
-      ? isNull(cockpitPushSubscriptions.notified_attention_keys)
-      : sql`${cockpitPushSubscriptions.notified_attention_keys} = ${textArrayLiteral(row.notified_attention_keys)}::text[]`;
+  const fresh = current.filter((key) => !known.has(key)).length;
+  const keys = partial
+    ? [...new Set([...previous, ...current])].sort().slice(0, ATTENTION_KEYS_MAX)
+    : current;
+  if (fresh === 0 && previous.join() === keys.join() && row.notified_attention_keys !== null)
+    return null;
   const claimed = await db
     .update(cockpitPushSubscriptions)
-    .set({
-      notified_attention_keys: keys,
-      ...(fresh > 0 ? { notified_at: at } : {}),
-    })
+    .set({ notified_attention_keys: keys })
     .where(
       and(
         eq(cockpitPushSubscriptions.tenant_id, tenantId),
         eq(cockpitPushSubscriptions.id, row.id),
-        unchanged,
+        keysMatch(row.notified_attention_keys),
       ),
     )
     .returning({ id: cockpitPushSubscriptions.id });
-  return claimed.length > 0 ? fresh : 0;
+  return claimed.length > 0 && fresh > 0 ? { row, keys, fresh } : null;
+}
+
+async function settleClaims(
+  db: Db,
+  tenantId: string,
+  claims: AttentionClaim[],
+  settled: Set<string>,
+  at: Date,
+): Promise<void> {
+  const settledIds = claims
+    .filter((claim) => settled.has(claim.row.id))
+    .map((claim) => claim.row.id);
+  if (settledIds.length > 0)
+    await db
+      .update(cockpitPushSubscriptions)
+      .set({ notified_at: at })
+      .where(
+        and(
+          eq(cockpitPushSubscriptions.tenant_id, tenantId),
+          inArray(cockpitPushSubscriptions.id, settledIds),
+        ),
+      );
+  for (const claim of claims.filter((pending) => !settled.has(pending.row.id)))
+    await db
+      .update(cockpitPushSubscriptions)
+      .set({ notified_attention_keys: claim.row.notified_attention_keys })
+      .where(
+        and(
+          eq(cockpitPushSubscriptions.tenant_id, tenantId),
+          eq(cockpitPushSubscriptions.id, claim.row.id),
+          keysMatch(claim.keys),
+        ),
+      );
 }
 
 export async function dispatchCockpitPushAttention(
@@ -138,27 +181,32 @@ export async function dispatchCockpitPushAttention(
             ...(opts.readers ? { readers: opts.readers } : {}),
           });
       const keys = cockpitPushAttentionKeys(attention.items);
-      const claimed: string[] = [];
-      let newItems = 0;
+      const partial = Object.values(attention.sources ?? {}).includes("failed");
+      const claims: AttentionClaim[] = [];
       for (const row of rows) {
-        const fresh = await claimNewAttention(db, tenantId, row, keys, at);
-        if (fresh === 0) continue;
-        claimed.push(row.id);
-        newItems = Math.max(newItems, fresh);
+        const claim = await claimNewAttention(db, tenantId, row, keys, partial);
+        if (claim) claims.push(claim);
       }
-      if (claimed.length === 0) continue;
-      const result = await deliverCockpitPush({
-        db,
-        tenant_id: tenantId,
-        installation_id: installationId,
-        subscription_ids: claimed,
-        new_items: newItems,
-        subject: opts.subject === undefined ? cockpitPushSubject() : opts.subject,
-        now: at,
-        ...(opts.send ? { send: opts.send } : {}),
-      });
-      outcome.notified += claimed.length;
-      outcome.delivered += result?.delivered ?? 0;
+      if (claims.length === 0) continue;
+      const settled = new Set<string>();
+      try {
+        const result = await deliverCockpitPush({
+          db,
+          tenant_id: tenantId,
+          installation_id: installationId,
+          subscription_ids: claims.map((claim) => claim.row.id),
+          new_items: Math.max(...claims.map((claim) => claim.fresh)),
+          subject: opts.subject === undefined ? cockpitPushSubject() : opts.subject,
+          now: at,
+          ...(opts.send ? { send: opts.send } : {}),
+        });
+        for (const sent of result?.outcomes ?? [])
+          if (sent.status !== "failed") settled.add(sent.subscription_id);
+        outcome.delivered += result?.delivered ?? 0;
+      } finally {
+        await settleClaims(db, tenantId, claims, settled, at);
+      }
+      outcome.notified += claims.length;
     }
   } catch (error) {
     logCockpitPushDispatchFailure(tenantId, error);
