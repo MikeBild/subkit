@@ -15,7 +15,7 @@ const data = id => ok(id) ? s[id].data : null;
 const rows = id => Array.isArray(data(id)) ? data(id) : [];
 const errorCode = id => s[id] && s[id].error && s[id].error.code || (s[id] && s[id].status_code ? 'http_' + s[id].status_code : 'request_error');
 const incompleteCodes = ['graphql_pagination_incomplete', 'pagination_limit_reached', 'pagination_short_page', 'pagination_link_loop', 'pagination_link_unsupported', 'pagination_link_foreign'];
-const reasonText = { limit_reached: 'eingestellte Seitengrenze erreicht', incomplete: 'Seiten oder Verbindungen unvollständig', rate_limited: 'Abrufgrenze des Anbieters erreicht', not_available: 'nicht abrufbar', unverified: 'Vollständigkeit vom Abruf nicht bestätigt' };
+const reasonText = { limit_reached: 'eingestellte Seitengrenze erreicht', incomplete: 'Seiten oder Verbindungen unvollständig', rate_limited: 'Abrufgrenze des Anbieters erreicht', not_available: 'nicht abrufbar', unverified: 'Vollständigkeit vom Abruf nicht bestätigt', inconsistent: 'Anzahl weicht von der Repository-Zählung offener Einträge ab' };
 const failedReason = id => {
   const code = s[id] && s[id].error && s[id].error.code;
   return code === 'upstream_rate_limited' ? 'rate_limited' : incompleteCodes.includes(code) ? 'incomplete' : 'not_available';
@@ -57,12 +57,14 @@ const issueRows = issueSourceRows.filter(row => !row.pull_request);
 const prRows = issueSourceRows.filter(row => Boolean(row.pull_request));
 const milestoneRows = uniqueBy(rows('milestones'), 'id');
 const runRows = uniqueBy(rows('actions'), 'id');
+const repoOpenCount = ok('repo') && typeof data('repo').open_issues_count === 'number' ? data('repo').open_issues_count : null;
+const openConsistency = entry => !entry.complete || repoOpenCount === null || uniqueBy(rows('issues_open'), 'id').length === repoOpenCount ? entry : Object.assign({}, entry, { complete: false, reason: 'inconsistent' });
 const completeness = [
   restSource('repo', ok('repo') ? 1 : 0, false),
   restSource('main_ref', ok('main_ref') ? 1 : 0, false),
   restSource('commits', commits.length, true),
   restSource('issues', rows('issues').length, true),
-  restSource('issues_open', rows('issues_open').length, true),
+  openConsistency(restSource('issues_open', rows('issues_open').length, true)),
   restSource('actions', runRows.length, true),
   restSource('milestones', milestoneRows.length, true),
   projectSource(),

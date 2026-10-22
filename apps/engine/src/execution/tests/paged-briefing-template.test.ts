@@ -280,6 +280,60 @@ test("second-precision provider timestamps fall into the half-open window of the
   });
 });
 
+test("issues read by update time count only openings and completions inside each window", async () => {
+  const scope = baseScope();
+  scope.windows = read({
+    mode: "daily",
+    now: "2026-03-10T08:00:00.000Z",
+    current_start: "2026-03-09T08:00:00.000Z",
+    previous_start: "2026-03-08T08:00:00.000Z",
+  });
+  const rows = [
+    issue(30, { updated_at: "2026-03-09T12:00:00Z" }),
+    issue(31, { state: "closed", closed_at: OLD, updated_at: "2026-03-09T12:00:00Z" }),
+    issue(32, {
+      state: "closed",
+      created_at: "2026-03-08T12:00:00Z",
+      closed_at: "2026-03-09T12:00:00Z",
+      updated_at: "2026-03-09T12:00:00Z",
+    }),
+    issue(33, { created_at: "2026-03-09T09:00:00Z", updated_at: "2026-03-09T09:00:00Z" }),
+  ];
+  scope.issues = read(rows, summary(rows.length));
+  scope.issues_open = read([], summary(0));
+  scope.commits = read([], summary(0));
+  scope.actions = read([], summary(0));
+  const output = await brief(scope);
+  expect(output.changes_since_previous_period.current).toMatchObject({
+    issues_opened: 1,
+    issues_completed: 1,
+  });
+  expect(output.changes_since_previous_period.previous).toMatchObject({
+    issues_opened: 1,
+    issues_completed: 0,
+  });
+});
+
+test.each([
+  [3, true, null],
+  [4, false, "inconsistent"],
+])(
+  "open items listed against a repository open count of %d stay complete=%p",
+  async (openCount, complete, reason) => {
+    const scope = baseScope();
+    scope.repo = read({ full_name: "acme/app", open_issues_count: openCount });
+    const output = await brief(scope);
+    const entry = output.changes_since_previous_period.completeness.find(
+      (item) => item.source === "issues_open",
+    );
+    expect(entry).toMatchObject({ complete, reason, count: 3 });
+    expect(output.changes_since_previous_period.possible_truncation).toBe(!complete);
+    expect(output.missing_evidence.some((item) => item.message.includes("issues_open"))).toBe(
+      !complete,
+    );
+  },
+);
+
 test.each(PAGED)(
   "a paged %s read without a pagination summary is never reported complete",
   async (source) => {
