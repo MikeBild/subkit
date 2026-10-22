@@ -471,13 +471,13 @@ export function renderConsentPage(opts: {
   const signedIn = de ? "Angemeldet als" : "Signed in as";
   const can = de ? "Es darf dann:" : "It will be able to:";
   const deny = de ? "Ablehnen" : "Deny";
-  const approve = de ? "Freigeben" : "Approve";
+  const approve = de ? "Erlauben" : "Allow";
   const switchAccount = de ? "Anderes Konto verwenden" : "Use another account";
   return renderSinglePage({
     look: opts.look,
     surface: "auth",
     context: PAGE_COPY[opts.look.locale].oauthContext,
-    body: `${pageHead({ title: de ? "Zugriff freigeben" : "Authorize access", slot: "auth-heading", lineHtml: asks })}${clientUri}<p class="muted">${signedIn} ${escapeHtml(opts.userEmail)}</p><form method="POST" action="/v1/oauth/authorize/decision"><p class="muted">${can}</p><ul class="scopes">${scopeItems}</ul>${hidden}${pageActions(`<button name="decision" value="deny" class="button outline">${deny}</button><button name="decision" value="approve" class="button primary">${approve}</button>`)}<button name="decision" value="switch_account" class="link">${switchAccount}</button></form>`,
+    body: `${pageHead({ title: de ? "Zugriff erlauben" : "Allow access", slot: "auth-heading", lineHtml: asks })}${clientUri}<p class="muted">${signedIn} ${escapeHtml(opts.userEmail)}</p><form method="POST" action="/v1/oauth/authorize/decision"><p class="muted">${can}</p><ul class="scopes">${scopeItems}</ul>${hidden}${pageActions(`<button name="decision" value="deny" class="button outline">${deny}</button><button name="decision" value="approve" class="button primary">${approve}</button>`)}<button name="decision" value="switch_account" class="link">${switchAccount}</button></form>`,
   });
 }
 

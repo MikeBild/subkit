@@ -38,9 +38,9 @@ Ein API-Schlüssel ist ein langlebiges Geheimnis auf deinem Rechner.
 
 1. Füge in deinem Client einen entfernten MCP-Server mit der Adresse `https://<deine-engine>/mcp` hinzu und nenne ihn `sk`.
 2. Melde dich in dem Browserfenster, das der Client öffnet, an wie im Cockpit.
-3. Prüfe auf der Seite **Zugriff freigeben**, welcher Client auf welchen Arbeitsbereich zugreifen will.
+3. Prüfe auf der Seite **Zugriff erlauben**, welcher Client auf welchen Arbeitsbereich zugreifen will.
 4. Hake an, was der Client darf. **Lesen** ist immer an.
-5. Wähle **Freigeben**. Der Browser kehrt zu deinem Client zurück.
+5. Wähle **Erlauben**. Der Browser kehrt zu deinem Client zurück.
 
 Wo du den Server einträgst, hängt vom Client ab:
 
@@ -111,14 +111,14 @@ Klappen alle drei, ist der Client verbunden.
 
 Der Scope bestimmt, welche Tools der Client sieht. Er erweitert nie deine Rechte, deine Rolle begrenzt weiterhin jeden Aufruf.
 
-| Auf der Freigabeseite | Scope | Der Client kann |
+| Auf der Zugriffsseite | Scope | Der Client kann |
 | --- | --- | --- |
 | **Lesen** | `mcp:read` | Workflows, Läufe, Konnektoren und Wissen lesen und gespeicherte Workflows starten. |
 | **Bearbeiten** | `mcp:authoring` | Zusätzlich Workflows und Konnektoren in einer geführten Konversation bauen. |
 | **Verwalten** | `mcp:admin` | Zusätzlich im Arbeitsbereich anlegen, ändern und löschen. |
 | **Betriebszähler** | `metrics:read` | Die Betriebszähler lesen, sonst nichts. |
 
-- Die Freigabeseite bietet nur an, was deine Rolle erlaubt.
+- Die Zugriffsseite bietet nur an, was deine Rolle erlaubt.
 - Ein Schlüssel mit `*` enthält kein Bearbeiten. Dafür braucht es bewusst `mcp:authoring`.
 - Eine Engine mit `mcp.read_only` blendet alle schreibenden Tools aus, auch mit `mcp:admin`.
 
@@ -133,11 +133,11 @@ Schreiben braucht immer einen Menschen. Es gibt zwei Prüfungen:
 
 - **Schreiben in einem Workflow:** Ein Workflow schreibt erst wirklich, wenn eine Person ihn im Cockpit freigegeben hat. Die Freigabe gilt für die genaue Version, ihre Ziele und ihre Grenzen.
   Ohne Freigabe ist der Lauf eine Vorschau: Schreibzugriffe werden zurückgehalten, nichts wird gesendet.
-- **Schreibende Tools im Client:** Ein schreibendes Tool kann anhalten und einen Freigabe-Link liefern.
-  Öffne den Link, melde dich an, prüfe, was passieren wird, und wähle **Freigeben** oder **Ablehnen**.
-  Erst nach deiner Freigabe kann der Client den Aufruf mit `confirm_tool_call` abschließen.
+- **Schreibende Tools im Client:** Ein schreibendes Tool kann anhalten und einen Link zum einmaligen Erlauben liefern.
+  Öffne den Link, melde dich an, prüfe, was passieren wird, und wähle **Einmal erlauben** oder **Ablehnen**.
+  Erst wenn du es erlaubt hast, kann der Client den Aufruf mit `confirm_tool_call` abschließen.
 
-Die KI kann nichts selbst freigeben. Auch der Link allein ist keine Freigabe.
+Die KI kann nichts selbst freigeben oder erlauben. Auch der Link allein erlaubt nichts.
 
 ### Wenn etwas nicht klappt
 

@@ -105,7 +105,7 @@ AI clients such as ChatGPT, Claude or Cursor can connect to SubKit Cloud over MC
 
 1. In your client, add a remote MCP server with the address `https://subkit-cloud.mikebild.info/mcp`.
 2. In the browser sign-in that opens, select **Sign in with work account**.
-3. On **Authorize access**, select **Approve**.
+3. On **Allow access**, select **Allow**.
 
 You do not need to copy an API key. For more, see "Connect AI clients via MCP".
 

@@ -284,17 +284,19 @@ describe("sign-in pages", () => {
     expect(response.headers.get("content-security-policy")).toContain("img-src 'self'");
   });
 
-  test("consent in German names the decision Freigeben and Ablehnen", () => {
+  test("consent in German names the decision Erlauben and Ablehnen", () => {
     const html = consent(DE, "https://probe.example");
     expect(html).toContain('<html lang="de">');
-    expect(html).toContain("Zugriff freigeben");
+    expect(html).toContain("Zugriff erlauben");
+    expect(html).not.toContain("freigeben");
     expect(html).toContain('möchte auf <span class="strong">Example</span> zugreifen');
     expect(html).toContain('data-testid="auth-client-uri"');
-    expect(html).toContain('value="approve" class="button primary">Freigeben<');
+    expect(html).toContain('value="approve" class="button primary">Erlauben<');
     expect(html).toContain('value="deny" class="button outline">Ablehnen<');
     expect(html).toContain("Bearbeiten · mcp:authoring");
     expect(consent(EN)).not.toContain("auth-client-uri");
-    expect(consent(EN)).toContain("Authorize access");
+    expect(consent(EN)).toContain("Allow access");
+    expect(consent(EN)).toContain('value="approve" class="button primary">Allow<');
   });
 
   test("the provider chooser puts SSO first and carries the family identity", () => {

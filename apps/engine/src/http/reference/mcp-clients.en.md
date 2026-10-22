@@ -38,9 +38,9 @@ An API key is a long-lived secret on your machine.
 
 1. In your client, add a remote MCP server with the address `https://<your-engine>/mcp` and name it `sk`.
 2. In the browser window the client opens, sign in as you do in the Cockpit.
-3. On the page **Authorize access**, check which client wants access to which workspace.
+3. On the page **Allow access**, check which client wants access to which workspace.
 4. Check the boxes for what the client may do. **Read** is always on.
-5. Select **Approve**. The browser returns to your client.
+5. Select **Allow**. The browser returns to your client.
 
 Where you add the server depends on the client:
 
@@ -133,11 +133,11 @@ Writes always need a person. There are two checks:
 
 - **Writes inside a workflow:** A workflow writes for real only after a person approves it in the Cockpit. The approval covers the exact version, its targets and its limits.
   Without approval, the run is a preview: writes are held and nothing is sent.
-- **Write tools in the client:** A write tool can pause and return an approval link.
-  Open the link, sign in, check what will happen, and select **Approve** or **Decline**.
-  Only after your approval can the client finish the call with `confirm_tool_call`.
+- **Write tools in the client:** A write tool can pause and return a link to allow it once.
+  Open the link, sign in, check what will happen, and select **Allow once** or **Decline**.
+  Only after you allow it can the client finish the call with `confirm_tool_call`.
 
-The AI cannot approve anything itself. The link alone is not an approval either.
+The AI cannot approve or allow anything itself. The link alone allows nothing either.
 
 ### If something does not work
 

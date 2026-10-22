@@ -199,7 +199,7 @@ describe("GET /v1/oauth/authorize", () => {
     );
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("Authorize access");
+    expect(html).toContain("Allow access");
   });
 
   test("DCR without scope registers the full supported set (not bare mcp:read)", async () => {

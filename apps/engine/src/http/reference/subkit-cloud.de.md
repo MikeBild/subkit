@@ -105,7 +105,7 @@ KI-Clients wie ChatGPT, Claude oder Cursor können sich über MCP mit SubKit Clo
 
 1. Füge in deinem Client einen entfernten MCP-Server mit der Adresse `https://subkit-cloud.mikebild.info/mcp` hinzu.
 2. Wähle in der Browser-Anmeldung, die sich öffnet, **Mit Firmenkonto anmelden**.
-3. Wähle auf **Zugriff freigeben** den Button **Freigeben**.
+3. Wähle auf **Zugriff erlauben** den Button **Erlauben**.
 
 Einen API-Schlüssel musst du nicht kopieren. Mehr dazu im Kapitel „KI-Clients per MCP anbinden“.
 
