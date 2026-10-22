@@ -16,6 +16,10 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the user explicitly asked not to run, execute, test-run or start a workflow, so execution tools are hidden and attempts are refused. Respect that instruction and use only read-only inspection or authoring tools until the user asks to run.",
   explicit_no_live_effects:
     "the user asked not to activate anything or cause live effects, so live runs (run_workflow, rerun_execution, wf_ tools) are hidden and refused. Inspection, review_workflow_automation and held-write previews stay allowed: preview a saved inactive draft with dry_run_workflow (writes held, nothing activated). Never ask the user to lift the instruction to get a live run.",
+  invalid_id:
+    "the id is not a uuid, so nothing was looked up. Omit id and search with a short query instead; never invent an id or use a placeholder such as * or the nil uuid.",
+  tool_execution_failed:
+    "the lookup failed inside the engine, so no result is available. Check the arguments against the tool schema and retry once with corrected values; if it fails again, tell the user the lookup is unavailable instead of guessing.",
   draft_write_held:
     "the draft probe held an external write before credential lookup or dispatch. Validate the draft with a read-only probe, save the connector, then use call_connector for the exact write with human approval. Do not retry the write through a draft probe or bypass the approval gate.",
   workflow_activation_required:

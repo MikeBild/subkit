@@ -3,14 +3,39 @@ import { setConfigKey } from "../../config/loader.ts";
 import { conversationElicitations, conversations, toolApprovals } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import {
+  createEmptyDraftDocument,
+  withLatestPreview,
+  withWorkflowDraft,
+  withWorkflowInspection,
+  withWorkflowValidation,
+} from "../authoring-state.ts";
+import {
   approvalHandleFromElicitationInput,
   elicitationInputForClient,
 } from "../tools/ask-user/commit-intent.ts";
 import { askUserConfirmTool } from "../tools/ask-user/confirm.ts";
 import type { ToolContext } from "../tools/index.ts";
+import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
 let ctx: ConversationTestCtx;
+
+const readyDraft: DraftDocument = withLatestPreview(
+  withWorkflowValidation(
+    withWorkflowInspection(
+      withWorkflowDraft(createEmptyDraftDocument(), {
+        name: "Canary",
+        slug: "canary",
+        steps: [
+          { id: "shape", kind: "transform", language: "javascript", expression: "return 1;" },
+        ],
+      }),
+    ),
+    true,
+    "Workflow draft valid.",
+  ),
+  { ok: true, summary: "Preview ok.", warnings: [] },
+);
 
 beforeAll(async () => {
   process.env.MASTER_KEY = "a".repeat(64);
@@ -53,10 +78,7 @@ describe("direct MCP ask_user_confirm browser fallback", () => {
         actor_type: "user",
         db: ctx.testDb.db,
       }),
-      getDraft: () => ({
-        mode: "workflow_authoring",
-        workflow: { name: "Canary", slug: "canary", steps: [] },
-      }),
+      getDraft: () => readyDraft,
       setDraft: async () => undefined,
     };
 
@@ -117,10 +139,7 @@ describe("direct MCP ask_user_confirm browser fallback", () => {
         actor_type: "system",
         db: ctx.testDb.db,
       }),
-      getDraft: () => ({
-        mode: "workflow_authoring",
-        workflow: { name: "Anonymous canary", slug: "anonymous-canary", steps: [] },
-      }),
+      getDraft: () => readyDraft,
       setDraft: async () => undefined,
     };
 

@@ -91,6 +91,7 @@ import type { ElicitationBridge } from "./elicitation-bridge.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
 import { turnExecutionSuppression } from "./execution-suppression.ts";
+import { handoffSummary, inferReplyLocale, turnHandoff } from "./handoff-summary.ts";
 import {
   detectMultiArtifactIntent,
   detectUserIntent,
@@ -115,6 +116,7 @@ import {
   abstainedStopCondition,
   automationReviewStopCondition,
   committedStopCondition,
+  isAutomationReviewCard,
   noProgressRepairStopCondition,
   pausedStopCondition,
 } from "./loop/stop-conditions.ts";
@@ -851,6 +853,8 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     lastAssistantText: "",
     lastExecutionSuccess: null,
   };
+  let lastStepHadText = false;
+  let handoffSummaryOnly = false;
   const wrappedTools = await wrapTools(
     ctx,
     signals,
@@ -1403,6 +1407,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
             completion_tokens: u.outputTokens,
           });
           const hasText = !!step.text && step.text.length > 0;
+          lastStepHadText = hasText;
           const hasPendingChildren =
             signals.pendingChildToolCallIds.length > 0 ||
             signals.pendingChildElicitationIds.length > 0;
@@ -1703,6 +1708,55 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     }
   }
 
+  const lastToolResult = events.findLast((event) => event.type === "tool_result");
+  const handoff = turnHandoff(
+    signals.pendingElicitation,
+    lastToolResult?.type === "tool_result" &&
+      lastToolResult.tool === "review_workflow_automation" &&
+      isAutomationReviewCard(lastToolResult.output),
+  );
+  if (
+    handoff &&
+    !lastStepHadText &&
+    !cancelled &&
+    !signals.committed &&
+    !turnAbortCtrl.signal.aborted
+  ) {
+    const locale = p.locale ?? inferReplyLocale(ingestedUserMessage);
+    const closing = handoffSummary({
+      locale,
+      handoff: handoff.handoff,
+      evidence: handoff.evidence,
+    });
+    handoffSummaryOnly = !signals.lastAssistantText;
+    const closingMessageId = await appendMessage(
+      p.db,
+      p.tenant_id,
+      p.conversation_id,
+      "assistant",
+      { text: closing, _synthetic: true, _reason: "handoff_summary" },
+    );
+    events.push({
+      type: "message",
+      role: "assistant",
+      content: { text: closing },
+      id: closingMessageId,
+      parent_message_id: closingMessageId,
+    });
+    signals.lastAssistantText = closing;
+    signals.lastAssistantMessageId = closingMessageId;
+    log.info({
+      module: "conversation",
+      action: "loop.handoff_summary_synthesized",
+      msg: "turn ended on a hand-off without assistant text — added a short result and next step",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      handoff: handoff.handoff,
+      preview_evidence: handoff.evidence?.preview ?? null,
+      locale,
+    });
+  }
+
   if (signals.lastAssistantText) {
     const palette = new Set(Object.keys(tools));
     const verdict = detectToolHallucinatedAbsence({
@@ -1724,7 +1778,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
   }
 
   const harvestedCitations: Citation[] =
-    !cancelled && signals.lastAssistantText ? harvestCitations(events) : [];
+    !cancelled && signals.lastAssistantText && !handoffSummaryOnly ? harvestCitations(events) : [];
   let citations: Citation[] = harvestedCitations;
   if (harvestedCitations.length > 0) {
     try {
@@ -1743,7 +1797,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
   }
 
   let criticVerdict: CriticVerdict | undefined;
-  if (!cancelled && (signals.committed || signals.lastAssistantText)) {
+  if (!cancelled && (signals.committed || (signals.lastAssistantText && !handoffSummaryOnly))) {
     const activeKind = draft.summary?.active_target.kind;
     const resourceKind: "connector" | "workflow" | null =
       activeKind === "connector" || activeKind === "workflow" ? activeKind : null;

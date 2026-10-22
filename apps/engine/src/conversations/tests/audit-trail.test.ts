@@ -126,8 +126,17 @@ describe("conversations/audit-trail", () => {
     const rolesPause = messagesPause.map((m) => m.role);
     expect(rolesPause[0]).toBe("user");
     expect(rolesPause.filter((r) => r === "tool").length).toBe(toolCallsAfterPause.length);
-    const assistantMessages = messagesPause.filter((message) => message.role === "assistant");
+    const engineAuthored = (message: (typeof messagesPause)[number]) =>
+      (message.content as { _synthetic?: boolean } | null)?._synthetic === true;
+    const assistantMessages = messagesPause.filter(
+      (message) => message.role === "assistant" && !engineAuthored(message),
+    );
     expect(assistantMessages.length).toBeGreaterThan(0);
+    expect(
+      messagesPause
+        .filter((message) => message.role === "assistant" && engineAuthored(message))
+        .map((message) => (message.content as { _reason?: string })._reason),
+    ).toEqual(["handoff_summary"]);
     const billedModels = new Set(
       usagePause.map((usage) => answeringModelLabel("mock", usage.model)),
     );

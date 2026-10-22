@@ -6,6 +6,7 @@ import {
   type ConfirmIntent,
   intentHasDistinguishingAction,
 } from "../../intent-fingerprint.ts";
+import { checkWorkflowSaveReadiness } from "../../persistence/commit-workflow.ts";
 import type { ConversationTool, ToolResult } from "../index.ts";
 import { resolveConversationPrincipal } from "../permission-gate.ts";
 import type { ModelCommitIntent } from "./commit-intent.ts";
@@ -181,6 +182,15 @@ export const askUserConfirmTool: ConversationTool = {
             ? describePatchOps(proposedCommitIntent.payload.patches)
             : undefined))
         : undefined;
+    const saveReadiness =
+      proposedCommitIntent?.kind === "save_workflow_draft"
+        ? await checkWorkflowSaveReadiness({
+            ctx,
+            forceCommit: proposedCommitIntent.payload.force_commit === true,
+          })
+        : null;
+    if (saveReadiness && !saveReadiness.ok) return saveReadiness.result;
+    const saveVerification = saveReadiness?.ok ? saveReadiness.verification : null;
     const approvalBacked = await approvalBackedMcpIntent(ctx, proposedCommitIntent);
     if (!approvalBacked.ok) {
       return {
@@ -195,6 +205,7 @@ export const askUserConfirmTool: ConversationTool = {
     }
     const effectiveCommitIntent = approvalBacked.intent;
     const input: Record<string, unknown> = { ...args };
+    if (saveVerification) input.verification = saveVerification;
     if (effectiveCommitIntent !== undefined) input.commit_intent = effectiveCommitIntent;
     if (approvalBacked.approval_url !== undefined) {
       input.approval_url = approvalBacked.approval_url;

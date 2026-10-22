@@ -1,0 +1,127 @@
+import { describe, expect, test } from "bun:test";
+import {
+  withLatestPreview,
+  withWorkflowDraft,
+  withWorkflowInspection,
+  withWorkflowValidation,
+} from "./authoring-state.ts";
+import {
+  type HandoffKind,
+  handoffSummary,
+  inferReplyLocale,
+  type SavePreviewEvidence,
+  saveVerificationEvidence,
+} from "./handoff-summary.ts";
+import type { DraftDocument } from "./types.ts";
+
+const PROD_PROMPT =
+  "Bereite diesen Ablauf für den automatischen Betrieb vor. Prüfe den bestehenden Zeitplan und die Ziele; ändere sie nur auf meinen Wunsch. Übernimm die erlaubten Prüfungen selbst und speichere die vorbereiteten Änderungen, soweit erlaubt. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen. Erkläre Ergebnis und nächsten Schritt kurz.";
+
+const PREVIEWS: SavePreviewEvidence[] = [
+  "passed",
+  "failed",
+  "unavailable_sensitive",
+  "skipped_by_user",
+  "missing",
+];
+const OTHER_KINDS: HandoffKind[] = ["confirm", "choice", "input", "review"];
+
+function sentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!])\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+}
+
+function expectBrief(text: string): void {
+  expect(text.trim().length).toBeGreaterThan(0);
+  expect(sentences(text).length).toBeLessThanOrEqual(2);
+  expect(text).not.toMatch(/\b[a-z]+_[a-z_]+\b/);
+  expect(text).not.toContain("?");
+  expect(text).not.toMatch(/https?:\/\//);
+}
+
+function draftFor(privacy: "sensitive" | null): DraftDocument {
+  const base: DraftDocument = {
+    mode: "workflow_authoring",
+    workflow: {
+      name: "briefing",
+      steps: [{ id: "s1", kind: "transform", language: "javascript", expression: "return 1;" }],
+      ...(privacy ? { execution_privacy: privacy } : {}),
+    },
+  } as DraftDocument;
+  return withWorkflowValidation(withWorkflowInspection(base), true, "valid");
+}
+
+describe("handoff summary", () => {
+  for (const locale of ["de", "en"] as const) {
+    for (const preview of PREVIEWS) {
+      test(`${locale} save confirmation with preview ${preview} states result and next step`, () => {
+        const text = handoffSummary({ locale, handoff: "save_confirm", evidence: { preview } });
+        expectBrief(text);
+        expect(text).toMatch(locale === "de" ? /Nächster Schritt/ : /Next step/);
+      });
+    }
+    for (const handoff of OTHER_KINDS) {
+      test(`${locale} ${handoff} hand-off states result and next step`, () => {
+        const text = handoffSummary({ locale, handoff });
+        expectBrief(text);
+        expect(text).toMatch(locale === "de" ? /Nächster Schritt/ : /Next step/);
+      });
+    }
+  }
+
+  test("German sensitive save says a test run without effect is not possible and nothing is activated", () => {
+    const text = handoffSummary({
+      locale: "de",
+      handoff: "save_confirm",
+      evidence: { preview: "unavailable_sensitive" },
+    });
+    expect(text).toContain("Testlauf");
+    expect(text).toContain("nicht möglich");
+    expect(text).toContain("aktiviert wird dabei nichts");
+  });
+
+  test("the reply locale follows the PROD prompt language", () => {
+    expect(inferReplyLocale(PROD_PROMPT)).toBe("de");
+    expect(
+      inferReplyLocale("Prepare this workflow and save the changes, do not activate it."),
+    ).toBe("en");
+    expect(inferReplyLocale(null)).toBe("de");
+  });
+});
+
+describe("save verification evidence", () => {
+  test("a sensitive draft cannot be previewed in chat", () => {
+    expect(saveVerificationEvidence(draftFor("sensitive"), false).preview).toBe(
+      "unavailable_sensitive",
+    );
+  });
+
+  test("a fresh green preview passes", () => {
+    const draft = withLatestPreview(draftFor(null), { ok: true, summary: "3 rows", warnings: [] });
+    expect(saveVerificationEvidence(draft, false)).toEqual({
+      preview: "passed",
+      summary: "3 rows",
+    });
+  });
+
+  test("a green preview of an earlier draft does not count for the changed draft", () => {
+    const previewed = withLatestPreview(draftFor(null), { ok: true, summary: "ok", warnings: [] });
+    const changed = withWorkflowDraft(previewed, {
+      ...(previewed.workflow as NonNullable<DraftDocument["workflow"]>),
+      steps: [{ id: "s1", kind: "transform", language: "javascript", expression: "return 2;" }],
+    });
+    expect(saveVerificationEvidence(changed, false).preview).toBe("missing");
+  });
+
+  test("a failed preview is reported as failed", () => {
+    const draft = withLatestPreview(draftFor(null), { ok: false, summary: "boom", warnings: [] });
+    expect(saveVerificationEvidence(draft, false).preview).toBe("failed");
+  });
+
+  test("a missing preview is skipped only when the user forbade test runs", () => {
+    expect(saveVerificationEvidence(draftFor(null), false).preview).toBe("missing");
+    expect(saveVerificationEvidence(draftFor(null), true).preview).toBe("skipped_by_user");
+  });
+});

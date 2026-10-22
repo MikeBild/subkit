@@ -6,10 +6,12 @@ import {
   WorkflowDefSchema,
 } from "../../workflows/types.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
+import { turnExecutionSuppression } from "../execution-suppression.ts";
+import { type SaveVerificationEvidence, saveVerificationEvidence } from "../handoff-summary.ts";
 import { buildGateError, missingFreshCheckpoints } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { placeholderDestinationGateResult } from "../tools/placeholder-destination-gate.ts";
-import type { WorkflowDraftDocument } from "../types.ts";
+import type { DraftDocument, WorkflowDraftDocument } from "../types.ts";
 import { persistAuthoringWorkflowDraft } from "./persist-authoring-workflow-draft.ts";
 import { classifyPreviewFailure } from "./preview-failure-class.ts";
 import { findPriorSaveWorkflowApproval } from "./save-workflow-approval.ts";
@@ -71,10 +73,78 @@ export function commitGateBypassedByAutoMode(p: {
   return !p.skipPriorApprovalCheck && p.permission_mode === "auto";
 }
 
+type SaveGauntletMode = "commit" | "proposal";
+
+interface SaveGauntletFacts {
+  fullDraft: DraftDocument;
+  sensitiveDraft: boolean;
+  forceClearsPreview: boolean;
+  runtimeDataFailure: boolean;
+  previewFailureClass: ReturnType<typeof classifyPreviewFailure> | null;
+  verification: SaveVerificationEvidence;
+}
+
+type SaveGauntletOutcome =
+  | { blocked: ToolResult; facts: null }
+  | { blocked: null; facts: SaveGauntletFacts };
+
+export async function previewsForbiddenByUser(ctx: ToolContext): Promise<boolean> {
+  const suppression = await turnExecutionSuppression({
+    db: ctx.db,
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    recent_user_message: ctx.recentUserMessage ?? null,
+  });
+  return suppression.all;
+}
+
+export async function resolveSaveVerification(
+  ctx: ToolContext,
+  draft: DraftDocument,
+): Promise<SaveVerificationEvidence> {
+  const evidence = saveVerificationEvidence(draft, false);
+  if (evidence.preview !== "missing") return evidence;
+  return saveVerificationEvidence(draft, await previewsForbiddenByUser(ctx));
+}
+
+export async function checkWorkflowSaveReadiness(p: {
+  ctx: ToolContext;
+  forceCommit?: boolean;
+}): Promise<
+  { ok: true; verification: SaveVerificationEvidence } | { ok: false; result: ToolResult }
+> {
+  const outcome = await runSaveGauntlet(
+    { ctx: p.ctx, ...(p.forceCommit !== undefined ? { forceCommit: p.forceCommit } : {}) },
+    "proposal",
+  );
+  if (outcome.blocked) {
+    logger.info({
+      module: "conversation_persistence",
+      action: "save_proposal.refused",
+      msg: "save proposal refused before any confirmation card — the draft is not ready to save",
+      tenant_id: p.ctx.tenant_id,
+      conversation_id: p.ctx.conversation_id,
+      error_code: outcome.blocked.ok ? null : (outcome.blocked.error_code ?? null),
+    });
+    return { ok: false, result: outcome.blocked };
+  }
+  return { ok: true, verification: outcome.facts.verification };
+}
+
 export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promise<ToolResult> {
+  const outcome = await runSaveGauntlet(p, "commit");
+  if (outcome.blocked) return outcome.blocked;
+  return persistAfterGauntlet(p, outcome.facts);
+}
+
+async function runSaveGauntlet(
+  p: CommitWorkflowAtomicParams,
+  mode: SaveGauntletMode,
+): Promise<SaveGauntletOutcome> {
   const { ctx } = p;
   const fullDraft = ctx.getDraft();
   const sensitiveDraft = getWorkflowDraft(fullDraft).execution_privacy === "sensitive";
+  const verification = await resolveSaveVerification(ctx, fullDraft);
   const latestPreview = fullDraft.latest_preview;
   const latestExecution = fullDraft.state?.latest_execution ?? null;
   const latestPreviewClearedRepair =
@@ -87,11 +157,14 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
 
   if (sensitiveDraft && p.forceCommit === true) {
     return {
-      ok: false,
-      error_code: "sensitive_save_override_forbidden",
-      message:
-        "Sensitive definitions may only be saved as inspected, validated inactive drafts. Preview overrides are forbidden; runtime verification remains unavailable in chat.",
-      next_best_actions: ["inspect_workflow_draft", "validate_draft", "save_workflow_draft"],
+      blocked: {
+        ok: false,
+        error_code: "sensitive_save_override_forbidden",
+        message:
+          "Sensitive definitions may only be saved as inspected, validated inactive drafts. Preview overrides are forbidden; runtime verification remains unavailable in chat.",
+        next_best_actions: ["inspect_workflow_draft", "validate_draft", "save_workflow_draft"],
+      },
+      facts: null,
     };
   }
 
@@ -313,8 +386,34 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     return null;
   };
 
+  const gateProposalPreviewFresh = async (): Promise<ToolResult | null> => {
+    if (mode !== "proposal" || verification.preview !== "missing" || previewMissing) return null;
+    return {
+      ok: false,
+      error_code: "workflow_not_ready",
+      message:
+        "the latest dry_run_workflow preview predates the current draft change — run dry_run_workflow on the changed draft (writes held, nothing activated) before proposing to save",
+      next_best_actions: ["dry_run_workflow"],
+      data: buildGateError(fullDraft, {
+        error_code: "workflow_not_ready",
+        message: "save proposal is blocked until the changed draft has a fresh held preview",
+        stale_checkpoints: ["workflow_previewed"],
+        recommended_mode: "workflow",
+        next_best_actions: ["dry_run_workflow"],
+        extra: {
+          latest_preview: latestPreview ?? null,
+          preparation_required: true,
+          recommended_action: "dry_run_workflow",
+          recovery_guidance:
+            "Run the supported hold-writes preview of the changed draft with grounded inputs within current permissions. This is routine preparation, not a user choice. Report its outcome with the save proposal.",
+        },
+      }),
+    };
+  };
+
   const gatePreview = async (): Promise<ToolResult | null> => {
     if (sensitiveDraft) return null;
+    if (verification.preview === "skipped_by_user") return null;
     if ((previewMissing || previewFailed) && !forceClearsPreview) {
       const configInvalid = previewFailureClass === "config_invalid";
       const recovery = configInvalid
@@ -364,18 +463,46 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
 
   const commitGauntlet: CommitGate[] = [
     { name: "playground_no_persist", run: gatePlayground },
-    { name: "prior_approval", run: gatePriorApproval },
+    ...(mode === "commit" ? [{ name: "prior_approval", run: gatePriorApproval }] : []),
     { name: "inspect_validate_fresh", run: gateInspectValidate },
     { name: "placeholder_destination", run: gatePlaceholderDestinations },
     { name: "partial_success", run: gatePartialSuccess },
     { name: "warnings_unacknowledged", run: gateWarnings },
     { name: "no_meaningful_change", run: gateNoMeaningfulChange },
     { name: "preview", run: gatePreview },
+    { name: "proposal_preview_fresh", run: gateProposalPreviewFresh },
   ];
   for (const gate of commitGauntlet) {
     const blocked = await gate.run();
-    if (blocked) return blocked;
+    if (blocked) return { blocked, facts: null };
   }
+  return {
+    blocked: null,
+    facts: {
+      fullDraft,
+      sensitiveDraft,
+      forceClearsPreview,
+      runtimeDataFailure,
+      previewFailureClass,
+      verification,
+    },
+  };
+}
+
+async function persistAfterGauntlet(
+  p: CommitWorkflowAtomicParams,
+  facts: SaveGauntletFacts,
+): Promise<ToolResult> {
+  const { ctx } = p;
+  const {
+    fullDraft,
+    sensitiveDraft,
+    forceClearsPreview,
+    runtimeDataFailure,
+    previewFailureClass,
+    verification,
+  } = facts;
+  const previewSkippedByUser = verification.preview === "skipped_by_user";
 
   if (forceClearsPreview && runtimeDataFailure) {
     logger.info({
@@ -426,7 +553,8 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       ...p.extraAuditMetadata,
       reason: p.reason ?? "authoring_draft_saved",
       source: p.emitAutoPersistAudit ? "harness_auto_persist" : "tool_call",
-      ...(sensitiveDraft ? { runtime_verification: "not_performed" } : {}),
+      ...(sensitiveDraft || previewSkippedByUser ? { runtime_verification: "not_performed" } : {}),
+      ...(previewSkippedByUser ? { preview_skipped: "explicit_no_run" } : {}),
       ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
       ...(forceClearsPreview && runtimeDataFailure
         ? { forced_over_runtime_data: true, preview_failure_class: previewFailureClass }
@@ -434,7 +562,19 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     },
     ...(p.target_workflow_id ? { explicitTarget: p.target_workflow_id } : {}),
   });
-  if (!sensitiveDraft || !result.ok) return result;
+  if (!result.ok) return result;
+  if (previewSkippedByUser && !sensitiveDraft) {
+    return {
+      ...result,
+      data: {
+        ...(typeof result.data === "object" && result.data !== null ? result.data : {}),
+        runtime_verification: "not_performed",
+        verification_guidance:
+          "Only the inactive definition was saved. The user excluded test runs, so no held preview ran; verify it with dry_run_workflow once the user allows a test run.",
+      },
+    };
+  }
+  if (!sensitiveDraft) return result;
   return {
     ...result,
     data: {

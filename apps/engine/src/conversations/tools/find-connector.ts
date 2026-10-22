@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { listedDescription } from "../../api/catalog-metadata.ts";
 import { rankedPage } from "./catalog-rank.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { invalidLookupId, normalizeLookupCategory, normalizeLookupId } from "./lookup-id.ts";
 
 const inputSchema = z
   .object({
@@ -12,7 +13,13 @@ const inputSchema = z
       .describe(
         'Free-text query. Matches id/slug/display_name/description/category/template_slug/driver/base_url. Use "*" or omit to list all.',
       ),
-    id: z.string().min(1).optional().describe("Exact connector id; takes precedence over query."),
+    id: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        'Exact connector uuid; takes precedence over query. Omit it to search by query; "*" counts as omitted.',
+      ),
     environment: z
       .enum(["dev", "prod"])
       .optional()
@@ -101,14 +108,18 @@ export const findConnectorTool: ConversationTool = {
   category: "tenant_read",
   permission: { action: "connector:read", resourceType: "connector", resourceIdArg: "id" },
   async execute(ctx, rawArgs): Promise<ToolResult> {
-    const args = inputSchema.parse(rawArgs);
-    if (args.id) {
-      const c = await ctx.engineClient.connectors.get(args.id);
+    const parsed = inputSchema.parse(rawArgs);
+    const lookupId = normalizeLookupId(parsed.id);
+    if (lookupId.kind === "invalid") return invalidLookupId("connector", "find_connector");
+    const category = normalizeLookupCategory(parsed.category);
+    const args = { ...parsed, category };
+    if (lookupId.kind === "uuid") {
+      const c = await ctx.engineClient.connectors.get(lookupId.id);
       if (!c) {
         return {
           ok: false,
           error_code: "connector_not_found",
-          message: `no connector with id \`${args.id}\``,
+          message: `no connector with id \`${lookupId.id}\``,
           next_best_actions: ["find_connector", "list_connectors"],
         };
       }

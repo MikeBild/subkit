@@ -5,6 +5,7 @@ import { skills as skillsTable } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
 import {
+  checkWorkflowSaveReadiness,
   commitGateBypassedByAutoMode,
   commitWorkflowAtomic,
 } from "../persistence/commit-workflow.ts";
@@ -53,6 +54,11 @@ export const saveWorkflowDraftTool: ConversationTool = {
   inputSchema,
   category: "draft_write" as const,
   authoring_resource: "workflow",
+  async precheck(ctx, rawArgs) {
+    const args = inputSchema.parse(rawArgs);
+    const readiness = await checkWorkflowSaveReadiness({ ctx, forceCommit: args.force_commit });
+    return readiness.ok ? { ok: true } : { ok: false, result: readiness.result };
+  },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     logger.info({

@@ -6,12 +6,15 @@ import {
 } from "../../conversations/abort.ts";
 import * as conversationsSvc from "../../conversations/service.ts";
 import type { Db } from "../../db/client.ts";
+import { type ConverseMockStep, getMockProvider } from "../../llm/mock-provider.ts";
 
 async function createConversationAndRunTurn(
   params: conversationsSvc.CreateConversationParams,
   db: Db,
+  plan?: ConverseMockStep[],
 ): Promise<conversationsSvc.ConversationTurnOutcome> {
   const created = await conversationsSvc.createConversation(params, db);
+  if (plan) getMockProvider().setConversePlan(created.conversation.id, plan);
   if (!created.initial_message) {
     return { conversation: created.conversation, result: { events: [], status: "active" } };
   }
@@ -72,6 +75,12 @@ describe("journey 53: approve, loop and gate status", () => {
         initial_message: "list users from jsonplaceholder",
       },
       ctx.db,
+      [
+        {
+          tool: "ask_user_confirm",
+          args: { question: "Use the jsonplaceholder users endpoint?", kind: "generic" },
+        },
+      ],
     );
     const conversationId = outcome.conversation.id;
     const [elicit] = await ctx.db

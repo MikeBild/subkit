@@ -219,6 +219,17 @@ describe("rbac evaluator", () => {
     expect(d.source).toBe("resource_grant");
   });
 
+  test("a wildcard resource id is evaluated without querying the uuid grant column", async () => {
+    const d = await can(db, {
+      tenant_id: tenantId,
+      principal: mkPrincipal(memberUserId, "member"),
+      permission: "connector:read",
+      resource: { type: "connector", id: "*" },
+    });
+    expect(d.allow).toBe(true);
+    expect(d.source).toBe("role");
+  });
+
   test("resource_grant does not leak to other resources", async () => {
     const d = await can(db, {
       tenant_id: tenantId,

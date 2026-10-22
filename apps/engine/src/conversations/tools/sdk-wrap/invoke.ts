@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { withContext } from "../../../logging/context.ts";
-import { log, logger } from "../../../logging/logger.ts";
+import { errorFields, isDatabaseQueryError, log, logger } from "../../../logging/logger.ts";
 import { stampMcpTaskProgress } from "../../../mcp/tasks/store.ts";
 import {
   recordConversationToolCall,
@@ -25,8 +25,10 @@ import { recordTransition, runConfirmGate } from "../../confirmation.ts";
 import { createDraftSnapshot } from "../../draft-checkpoints.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { executionSuppressionRefusal } from "../../execution-suppression.ts";
+import { saveEvidenceLabel } from "../../handoff-summary.ts";
 import { parseLoadedSkills } from "../../loop/skill-recency.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
+import { resolveSaveVerification } from "../../persistence/commit-workflow.ts";
 import { findPriorSaveWorkflowApproval } from "../../persistence/save-workflow-approval.ts";
 import { resolveScopeFactsForConversation } from "../../scope-facts.ts";
 import {
@@ -726,7 +728,17 @@ export function wrapOne(
 
         if (gate.kind === "needs_confirm") {
           const pendingOutput = preparedGate.pending_output;
+          const saveVerification =
+            inner.name === "save_workflow_draft"
+              ? await resolveSaveVerification(perCallCtx, ctx.getDraft())
+              : null;
           const buildPolicyGateSummary = (): string => {
+            if (saveVerification) {
+              const draft = ctx.getDraft();
+              const wfName =
+                draft.summary?.active_target?.name ?? draft.workflow?.name ?? "(unnamed)";
+              return `Save inactive draft "${wfName}" · test run without effect: ${saveEvidenceLabel(saveVerification)}`;
+            }
             if (inner.name === "run_workflow") {
               const draft = ctx.getDraft();
               const explicitWorkflow =
@@ -784,6 +796,7 @@ export function wrapOne(
                 : `Policy requires confirmation before running ${inner.name}. Proceed?`,
             target: { tool: inner.name, args: rawArgs },
             ...(gatedEffect ? { effect: gatedEffect } : {}),
+            ...(saveVerification ? { verification: saveVerification } : {}),
             ...confirmationMetadataForTool(inner.name, rawArgs),
             ...(pendingOutput ? { pending_output: pendingOutput } : {}),
             ...(policyCommitIntent ? { commit_intent: policyCommitIntent } : {}),
@@ -1033,9 +1046,19 @@ export function wrapOne(
                 )
               : permissionRefusal(inner, permCheck));
         } catch (err) {
-          await langfuseSpan.finish({ status: "error", error: err });
-          const msg = err instanceof Error ? err.message : String(err);
-          const output = { error: msg };
+          const databaseFailure = isDatabaseQueryError(err);
+          await langfuseSpan.finish({
+            status: "error",
+            error: databaseFailure ? new Error("database query failed") : err,
+          });
+          const msg = databaseFailure
+            ? "the lookup failed; check the arguments"
+            : err instanceof Error
+              ? err.message
+              : String(err);
+          const output: Record<string, unknown> = databaseFailure
+            ? { ok: false, error_code: "tool_execution_failed", error: msg }
+            : { error: msg };
           await updateToolCallOutput(db, toolCallId, output, "error");
           events.push({
             type: "tool_result",
@@ -1063,7 +1086,7 @@ export function wrapOne(
           log.conversation.tool.failed({
             conversation_id: ctx.conversation_id,
             tool: inner.name,
-            error: msg,
+            ...errorFields(err),
             duration_ms: Date.now() - startedAt,
           });
           return { ok: false, data: output };

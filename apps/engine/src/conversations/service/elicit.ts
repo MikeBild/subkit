@@ -285,7 +285,7 @@ async function driveElicitation(
     approval_id: p.elicitation_id,
     actor_id: p.actor_id,
   };
-  if (resolved.status === "resolved") {
+  if (resolved.status === "resolved" && interpretConfirmDecision(output) !== "declined") {
     log.conversation.approval.approved(decisionLog);
   } else {
     log.conversation.approval.rejected({ ...decisionLog, reason: p.reason });

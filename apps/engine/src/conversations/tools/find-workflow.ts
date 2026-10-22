@@ -8,6 +8,7 @@ import {
 import type { WorkflowTrigger } from "../../workflows/types.ts";
 import { rankedPage } from "./catalog-rank.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { invalidLookupId, normalizeLookupCategory, normalizeLookupId } from "./lookup-id.ts";
 
 const inputSchema = z
   .object({
@@ -18,7 +19,13 @@ const inputSchema = z
       .describe(
         'Free-text query, a few distinctive words. Ranked by category, then slug and name, then description, then connectors and step ids; each match lists the `reasons` it matched on. Use "*" or omit to list all.',
       ),
-    id: z.string().min(1).optional().describe("Exact workflow id; takes precedence over query."),
+    id: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        'Exact workflow uuid; takes precedence over query. Omit it to search by query; "*" counts as omitted.',
+      ),
     category: z
       .string()
       .optional()
@@ -107,14 +114,18 @@ export const findWorkflowTool: ConversationTool = {
   inputSchema,
   category: "tenant_read",
   async execute(ctx, rawArgs): Promise<ToolResult> {
-    const args = inputSchema.parse(rawArgs);
-    if (args.id) {
-      const wf = await ctx.engineClient.workflows.get(args.id);
+    const parsed = inputSchema.parse(rawArgs);
+    const lookupId = normalizeLookupId(parsed.id);
+    if (lookupId.kind === "invalid") return invalidLookupId("workflow", "find_workflow");
+    const category = normalizeLookupCategory(parsed.category);
+    const args = { ...parsed, category };
+    if (lookupId.kind === "uuid") {
+      const wf = await ctx.engineClient.workflows.get(lookupId.id);
       if (!wf) {
         return {
           ok: false,
           error_code: "workflow_not_found",
-          message: `no workflow with id \`${args.id}\``,
+          message: `no workflow with id \`${lookupId.id}\``,
           next_best_actions: ["find_workflow", "list_workflows"],
         };
       }
