@@ -12,10 +12,7 @@ import {
   useWorkflowAutomation,
   WorkflowStatus,
 } from "@/components/cockpit/automation-panel";
-import {
-  CatalogMetadataDialog,
-  useCatalogMetadataActions,
-} from "@/components/cockpit/catalog-metadata";
+import { useCatalogMetadataActions } from "@/components/cockpit/catalog-metadata";
 import {
   recordCategory,
   recordDescription,
@@ -215,8 +212,7 @@ export function WorkflowPage({
   permissions: readonly string[];
 }) {
   const { t, tn } = useI18n();
-  const [renaming, setRenaming] = useState(false);
-  const [describing, setDescribing] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState<"disable" | "delete" | null>(null);
   const [offersApproval, setOffersApproval] = useState(false);
   const navigate = useNavigate();
@@ -315,14 +311,14 @@ export function WorkflowPage({
     id,
     record,
     queryKey: ["catalog-detail", "workflows", id],
-    onEdit: () => setDescribing(true),
-  });
+    onEdit: () => setEditing(true),
+  }).filter((item) => item.testId !== "catalog-metadata-edit");
 
   const menu: ActionMenuItem[] = [
     ...(canChat
       ? [
           {
-            label: t("catalog.conversations.ask"),
+            label: t("workflowPage.changeInChat"),
             href: absolute(chatNewHref({ workflowId: id, references: [{ type: "workflow", id }] })),
             testId: "workflow-menu-ask",
           },
@@ -331,9 +327,9 @@ export function WorkflowPage({
     ...(canWrite
       ? [
           {
-            label: t("detail.editMetadata"),
-            onSelect: () => setRenaming(true),
-            testId: "workflow-menu-rename",
+            label: t("workflowPage.edit"),
+            onSelect: () => setEditing(true),
+            testId: "workflow-menu-edit",
           },
           ...metadataActions,
           disabled
@@ -634,7 +630,7 @@ export function WorkflowPage({
         <PageTabs tabs={tabs} param="tab" testId="workflow-tabs" />
       </div>
       {canWrite ? (
-        <MetadataDialog id={id} title={title} open={renaming} onOpenChange={setRenaming} />
+        <MetadataDialog id={id} record={record} open={editing} onOpenChange={setEditing} />
       ) : null}
       <ConfirmDialog
         open={confirming === "disable"}
@@ -661,16 +657,6 @@ export function WorkflowPage({
         }}
         testId="workflow-delete-confirm"
       />
-      {canWrite ? (
-        <CatalogMetadataDialog
-          kind="workflow"
-          id={id}
-          record={record}
-          open={describing}
-          onOpenChange={setDescribing}
-          queryKey={["catalog-detail", "workflows", id]}
-        />
-      ) : null}
     </Page>
   );
 }
