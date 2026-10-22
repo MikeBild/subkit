@@ -63,6 +63,15 @@ const safeFailureCodes = new Set([
   "sensitive_execution_unsupported",
   "graphql_pagination_incomplete",
   "graphql_pagination_not_read_only",
+  "pagination_limit_reached",
+  "pagination_link_foreign",
+  "pagination_link_unsupported",
+  "pagination_link_loop",
+  "pagination_short_page",
+  "pagination_truncated",
+  "upstream_rate_limited",
+  "graphql_endpoint_invalid",
+  "graphql_path_required",
   "data_selector_error",
   "input_schema_violation",
   "invalid",
@@ -89,18 +98,37 @@ const safeFailureCodes = new Set([
   "sandbox_input_action_url",
 ]);
 
+const SAFE_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
+  graphql_pagination_incomplete:
+    "GraphQL pages are incomplete. Check pageInfo, totalCount, cursor continuity and configured limits before retrying.",
+  graphql_pagination_not_read_only:
+    "Cursor pagination requires a read-only GraphQL query. Remove mutations from this step.",
+  data_selector_error:
+    "The step data selector failed. Check its expression against the connector response structure and validate the workflow before retrying.",
+  pagination_limit_reached:
+    "Pagination reached its configured page, item or size limit before the endpoint ended. Raise the limit or narrow the request.",
+  pagination_link_foreign:
+    "The next-page link pointed to another host. Nothing was sent there; check the endpoint before retrying.",
+  pagination_link_unsupported:
+    "The next-page link changed the request beyond the declared paging parameters. Check link_params before retrying.",
+  pagination_link_loop:
+    "The next-page link repeated an earlier page. Check the endpoint's paging before retrying.",
+  pagination_short_page:
+    "The server returned fewer items than requested while more pages exist. Lower page_size to the vendor maximum.",
+  upstream_rate_limited:
+    "The vendor's rate limit did not reset within the step's time. Retry after the limit resets.",
+  graphql_endpoint_invalid:
+    "The GraphQL address must be a fixed path on the connector's own host, for example /graphql.",
+  graphql_path_required: "A GraphQL step on an HTTP connector needs a fixed path such as /graphql.",
+  pagination_truncated:
+    "Pagination stopped at its configured limit, so this step's result is incomplete.",
+};
+
 export function sensitiveFailure(code?: string) {
   const safeCode = code && safeFailureCodes.has(code) ? code : "sensitive_execution_failure";
   return {
     code: safeCode,
-    message:
-      safeCode === "graphql_pagination_incomplete"
-        ? "GraphQL pages are incomplete. Check pageInfo, totalCount, cursor continuity and configured limits before retrying."
-        : safeCode === "graphql_pagination_not_read_only"
-          ? "Cursor pagination requires a read-only GraphQL query. Remove mutations from this step."
-          : safeCode === "data_selector_error"
-            ? "The step data selector failed. Check its expression against the connector response structure and validate the workflow before retrying."
-            : "Sensitive execution failed.",
+    message: SAFE_FAILURE_MESSAGES[safeCode] ?? "Sensitive execution failed.",
   };
 }
 

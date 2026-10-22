@@ -283,12 +283,12 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     const unsafe = def.steps.some(
       (step) =>
         step.kind === "wait_for_event" ||
-        (step.kind === "request" && (step.state_write || step.state_read || step.pagination)),
+        (step.kind === "request" && (step.state_write || step.state_read)),
     );
     if (unsafe || opts.tool_approval_id || opts.step_output_fixtures)
       throw Object.assign(
         new Error(
-          "Sensitive execution does not support persistent state, event waits, pagination or prepared fixture replay.",
+          "Sensitive execution does not support persistent state, event waits or prepared fixture replay.",
         ),
         { code: "sensitive_execution_unsupported" },
       );
@@ -1857,13 +1857,29 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       output_preview: null,
       raw_preview: null,
       request_meta: null,
-      error: step.error ? sensitiveFailure() : null,
+      error: step.error ? sensitiveFailure(stepErrorCode(step.error)) : null,
     }));
+    const safeWarnings = warningsAccum
+      .filter((warning) => SENSITIVE_WARNING_CODES.has(warning.code))
+      .map((warning) => ({
+        code: warning.code,
+        step_key: warning.step_key,
+        message: sensitiveFailure(warning.code).message,
+      }));
+    if (safeWarnings.length > 0) runResult.warnings = safeWarnings;
     return runResult;
   }
   if (resolutions.length > 0) runResult.connector_resolutions = resolutions;
   if (warningsAccum.length > 0) runResult.warnings = warningsAccum;
   return runResult;
+}
+
+const SENSITIVE_WARNING_CODES: ReadonlySet<string> = new Set(["pagination_truncated"]);
+
+function stepErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
 }
 
 async function runsUnderExecutionAuthority(

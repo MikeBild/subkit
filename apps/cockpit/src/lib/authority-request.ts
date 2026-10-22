@@ -38,6 +38,7 @@ export const CLASS_KEYS: Record<string, TranslationKey> = {
   integer: "authority.boundary.class.integer",
   date: "authority.boundary.class.date",
   timestamp: "authority.boundary.class.timestamp",
+  timestamp_range: "authority.boundary.class.timestamp_range",
   file_name: "authority.boundary.class.file_name",
   path: "authority.boundary.class.path",
 };

@@ -47,6 +47,12 @@ export const ResponseFilterSchema = z
   })
   .openapi("ResponseFilter");
 
+const paginationLimits = {
+  max_items: z.number().int().positive().max(1_000_000).optional(),
+  on_limit: z.enum(["fail", "truncate"]).optional(),
+  unique_by: z.string().min(1).max(200).optional(),
+};
+
 export const PaginationSchema = z
   .union([
     z.object({
@@ -59,6 +65,7 @@ export const PaginationSchema = z
       items_path: z.string().optional(),
       stop_when_empty_path: z.string().optional(),
       max_pages: z.number().int().positive().max(1000).optional(),
+      ...paginationLimits,
     }),
     z.object({
       strategy: z.literal("page"),
@@ -70,6 +77,7 @@ export const PaginationSchema = z
       output_mode: z.enum(["items", "pages"]).optional(),
       items_path: z.string().optional(),
       max_pages: z.number().int().positive().max(1000).optional(),
+      ...paginationLimits,
     }),
     z.object({
       strategy: z.literal("cursor"),
@@ -81,8 +89,39 @@ export const PaginationSchema = z
       output_mode: z.enum(["items", "pages"]).optional(),
       items_path: z.string().optional(),
       max_pages: z.number().int().positive().max(1000).optional(),
+      ...paginationLimits,
     }),
+    z
+      .object({
+        strategy: z.literal("link"),
+        link_params: z.array(z.string().min(1).max(64)).min(1).max(3),
+        page_size: z.number().int().positive().max(100_000).optional(),
+        limit_param: z.string().min(1).optional(),
+        items_path: z.string().optional(),
+        output_mode: z.enum(["items", "pages"]).optional(),
+        max_pages: z.number().int().positive().max(1000).optional(),
+        ...paginationLimits,
+      })
+      .strict()
+      .refine((spec) => spec.limit_param === undefined || spec.page_size !== undefined, {
+        message: "link pagination with limit_param needs page_size",
+        path: ["page_size"],
+      })
+      .refine((spec) => !spec.limit_param || !spec.link_params.includes(spec.limit_param), {
+        message: "limit_param must not be one of link_params",
+        path: ["limit_param"],
+      }),
   ])
+  .superRefine((spec, ctx) => {
+    if (spec.output_mode !== "pages") return;
+    for (const key of ["max_items", "unique_by"] as const)
+      if (spec[key] !== undefined)
+        ctx.addIssue({
+          code: "custom",
+          path: [key],
+          message: `${key} counts items and cannot be combined with output_mode "pages"`,
+        });
+  })
   .openapi("Pagination");
 
 const onError = z.enum(["fail", "continue"]).default("fail");

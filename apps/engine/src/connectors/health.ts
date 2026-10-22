@@ -29,18 +29,35 @@ export function parseDeprecation(headers?: Record<string, string>): DeprecationS
   };
 }
 
+export interface LinkRelation {
+  url: string;
+  rels: string[];
+}
+
+export function parseLinkHeader(link: string | undefined | null): LinkRelation[] {
+  if (!link) return [];
+  return [...link.matchAll(/<([^>]+)>\s*;([^,]*)/g)].map((match) => ({
+    url: match[1]!.trim(),
+    rels: (/rel\s*=\s*"?([^";]+)"?/.exec(match[2]!.toLowerCase())?.[1] ?? "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean),
+  }));
+}
+
 function parseDeprecationLink(link: string | undefined): string | null {
-  if (!link) return null;
   let docsUri: string | null = null;
-  for (const match of link.matchAll(/<([^>]+)>\s*;([^,]*)/g)) {
-    const uri = match[1]!;
-    const params = match[2]!.toLowerCase();
-    const rel = /rel\s*=\s*"?([^";]+)"?/.exec(params)?.[1] ?? "";
-    const tokens = rel.split(/\s+/);
-    if (tokens.includes("successor-version")) return uri;
-    if (tokens.includes("deprecation")) docsUri = uri;
+  for (const relation of parseLinkHeader(link)) {
+    if (relation.rels.includes("successor-version")) return relation.url;
+    if (relation.rels.includes("deprecation")) docsUri = relation.url;
   }
   return docsUri;
+}
+
+export function isRateLimitedResponse(status: number, headers?: Record<string, string>): boolean {
+  if (status === 429) return true;
+  if (status !== 403 || !headers) return false;
+  return headers["x-ratelimit-remaining"]?.trim() === "0" || Boolean(headers["retry-after"]);
 }
 
 export function classifyConnectorHealth(
@@ -51,6 +68,7 @@ export function classifyConnectorHealth(
   if (seraph?.toUpperCase().includes(SERAPH_AUTH_FAILED)) {
     return "auth_failed";
   }
+  if (isRateLimitedResponse(status, headers)) return "rate_limited";
   if (status === 401 || status === 403) return "auth_failed";
   if (status === 410) return "endpoint_gone";
   if (status === 404) return "not_found";
@@ -133,7 +151,7 @@ export function connectorHealthHint(
       return {
         error_code: "rate_limited",
         suggestion:
-          `Connector '${slug}' is rate-limited (429).` +
+          `Connector '${slug}' is rate-limited by the vendor.` +
           (ctx?.retry_after_s != null
             ? ` The vendor asked to retry after ${ctx.retry_after_s}s.`
             : "") +

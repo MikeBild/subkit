@@ -72,6 +72,7 @@ import {
   runsSummaryText,
   runsWindowSummaryText,
   runTraceEvidence,
+  runTruncationSentence,
   runVerdict,
   SOURCE_KIND_KEYS,
   stepConnectorId,
@@ -79,6 +80,7 @@ import {
   stepEffectKind,
   stepGuidance,
   stoppingStep,
+  truncatedStepKeys,
 } from "@/pages/runs-model";
 
 export { formatRunDuration, RUN_STATUSES, requestSourceLabel, runDurationMs, runName };
@@ -194,13 +196,19 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   const errorEvidence = failing ? previewText(failing.error) : null;
   const payload = payloadEvidence(stepItems, current.status, outcome);
   const statusWord = (status: string) => statusLabel(t, status);
-  const verdict = runVerdict(current.status, outcome, t, statusWord);
+  const truncated = truncatedStepKeys(stepItems);
+  const verdict = runVerdict(current.status, outcome, t, statusWord, truncated);
   const failed = verdict.tone !== null;
-  const sentence = outcome
-    ? runOutcomeSentence(outcome, t)
-    : failed
-      ? runStatusSentence(statusWord(current.status), t)
-      : null;
+  const truncatedRun =
+    truncated.length > 0 &&
+    (outcome ? outcome.kind === "succeeded" : current.status === "succeeded");
+  const sentence = truncatedRun
+    ? runTruncationSentence(truncated, t)
+    : outcome
+      ? runOutcomeSentence(outcome, t)
+      : failed
+        ? runStatusSentence(statusWord(current.status), t)
+        : null;
 
   const canReadWorkflows = session.permissions.includes("workflow:read");
   const executionAuthority = useQuery({

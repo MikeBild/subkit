@@ -403,11 +403,11 @@ describe("the sentence", () => {
       "Der Workflow „Monatsbericht“ braucht dich (quota_frozen) — seit 3 Tagen.",
     );
     const unknownCause = attentionSentence(
-      item({ cause_class: "rate_limited" as AttentionItem["cause_class"] }),
+      item({ cause_class: "provider_paused" as AttentionItem["cause_class"] }),
       de,
       NOW,
     );
-    expect(unknownCause.machine).toBe("rate_limited");
+    expect(unknownCause.machine).toBe("provider_paused");
     const signal = attentionSentence(
       item({ reason: "risk_critical", kind: "disk_full", subject: null }),
       de,

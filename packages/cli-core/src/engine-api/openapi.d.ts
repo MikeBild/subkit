@@ -22591,7 +22591,7 @@ export interface components {
                             enum: string[];
                         } | {
                             /** @enum {string} */
-                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "file_name" | "path";
+                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                         } | {
                             /** @enum {boolean} */
                             caller_bound: true;
@@ -23059,7 +23059,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "file_name" | "path";
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -23248,6 +23248,10 @@ export interface components {
             items_path?: string;
             stop_when_empty_path?: string;
             max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
         } | {
             /** @enum {string} */
             strategy: "page";
@@ -23265,6 +23269,10 @@ export interface components {
             output_mode?: "items" | "pages";
             items_path?: string;
             max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
         } | {
             /** @enum {string} */
             strategy: "cursor";
@@ -23278,6 +23286,24 @@ export interface components {
             output_mode?: "items" | "pages";
             items_path?: string;
             max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+        } | {
+            /** @enum {string} */
+            strategy: "link";
+            link_params: string[];
+            page_size?: number;
+            limit_param?: string;
+            items_path?: string;
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
         };
         MultipartPart: {
             name: string;
@@ -23885,6 +23911,7 @@ export interface components {
             resumed_from_page?: number;
             resumed_accumulated_count?: number;
             pagination_checkpoint?: components["schemas"]["PaginationCheckpoint"];
+            pagination?: components["schemas"]["RequestPaginationSummary"];
             unresolved_placeholders?: string[];
             extras?: {
                 [key: string]: unknown;
@@ -23912,6 +23939,17 @@ export interface components {
             page_idx: number;
             accumulated_count: number;
             signature: string;
+        };
+        RequestPaginationSummary: {
+            /** @enum {string} */
+            strategy: "offset" | "page" | "cursor" | "link";
+            pages: number;
+            items: number;
+            duplicates_dropped: number;
+            complete: boolean;
+            truncated: boolean;
+            /** @enum {string|null} */
+            limit: "max_pages" | "max_items" | "max_bytes" | null;
         };
         GraphqlRequestMeta: {
             /** @enum {string} */
@@ -23978,6 +24016,7 @@ export interface components {
             resumed_from_page?: number;
             resumed_accumulated_count?: number;
             pagination_checkpoint?: components["schemas"]["PaginationCheckpoint"];
+            pagination?: components["schemas"]["RequestPaginationSummary"];
             extras?: {
                 [key: string]: unknown;
             };
@@ -24137,7 +24176,7 @@ export interface components {
             failure: {
                 step_key: string | null;
                 /** @enum {string|null} */
-                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | null;
+                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | null;
                 /** @enum {string|null} */
                 refusal_reason: "not_json_raw" | "not_base64url" | "not_utf8" | "header_control_byte" | "header_folded" | "header_not_allowed" | "header_duplicate" | "missing_headers" | "sender_invalid" | "recipient_invalid" | "extra_recipients" | "multipart_unsupported" | "content_type_unsupported" | "transfer_encoding_unsupported" | "body_not_base64" | "recipient_differs" | "sender_differs" | "content_type_differs" | null;
                 connector: {
@@ -24205,7 +24244,7 @@ export interface components {
                 kind: string;
             } | null;
             /** @enum {string|null} */
-            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | null;
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | null;
             error_code: string | null;
             /** @enum {string|null} */
             refusal_reason: "not_json_raw" | "not_base64url" | "not_utf8" | "header_control_byte" | "header_folded" | "header_not_allowed" | "header_duplicate" | "missing_headers" | "sender_invalid" | "recipient_invalid" | "extra_recipients" | "multipart_unsupported" | "content_type_unsupported" | "transfer_encoding_unsupported" | "body_not_base64" | "recipient_differs" | "sender_differs" | "content_type_differs" | null;
@@ -25286,7 +25325,7 @@ export interface components {
                 /** @description Low-cardinality failure code: the status class (`4xx_auth`, `5xx`, …), `network_error` for a call with no status, `remote_error` for an MCP tool that answered with an error. */
                 code: string;
                 /** @enum {string} */
-                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown";
+                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited";
             } | null;
             /** @description Whether this connector's driver records every call in the audit log. False means the absence of calls says nothing. */
             recorded: boolean;
@@ -26211,7 +26250,7 @@ export interface components {
             step_key: string;
             error_kind: string;
             /** @enum {string} */
-            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown";
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited";
             count: number;
             lookback_days: number;
         };
@@ -27270,7 +27309,7 @@ export interface components {
             guidance: string | null;
         };
         /** @enum {string} */
-        FailureCauseClass: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown";
+        FailureCauseClass: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited";
         OperatorDigestPatch: {
             id: string;
             workflow_id: string | null;
@@ -27372,7 +27411,7 @@ export interface components {
                 execution_id: string | null;
             };
             /** @enum {string|null} */
-            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | null;
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | null;
             counts: {
                 patches?: number;
                 failures?: number;
@@ -27582,7 +27621,7 @@ export interface components {
                         /** @description Residual engine free text (a failing group's cause, a connector's health reason), or null. Show it as the engine's wording. */
                         detail: string | null;
                         /** @enum {string|null} */
-                        cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | null;
+                        cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | null;
                         drilldown: {
                             path: string;
                             label_id: string;

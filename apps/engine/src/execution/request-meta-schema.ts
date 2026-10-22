@@ -16,6 +16,18 @@ const PaginationCheckpointSchema = z
   })
   .openapi("PaginationCheckpoint");
 
+const RequestPaginationSummarySchema = z
+  .object({
+    strategy: z.enum(["offset", "page", "cursor", "link"]),
+    pages: z.number().int().min(0),
+    items: z.number().int().min(0),
+    duplicates_dropped: z.number().int().min(0),
+    complete: z.boolean(),
+    truncated: z.boolean(),
+    limit: z.enum(["max_pages", "max_items", "max_bytes"]).nullable(),
+  })
+  .openapi("RequestPaginationSummary");
+
 const ConnectorResolutionSummarySchema = z
   .object({
     step_key: z.string(),
@@ -58,6 +70,7 @@ const HttpRequestMetaSchema = z
     resumed_from_page: z.number().int().min(0).optional(),
     resumed_accumulated_count: z.number().int().min(0).optional(),
     pagination_checkpoint: PaginationCheckpointSchema.optional(),
+    pagination: RequestPaginationSummarySchema.optional(),
     unresolved_placeholders: z.array(z.string()).optional(),
     extras: z.record(z.string(), z.unknown()).optional(),
   })
@@ -127,6 +140,7 @@ const ConnectorlessRequestMetaSchema = z
     resumed_from_page: z.number().int().min(0).optional(),
     resumed_accumulated_count: z.number().int().min(0).optional(),
     pagination_checkpoint: PaginationCheckpointSchema.optional(),
+    pagination: RequestPaginationSummarySchema.optional(),
     extras: z.record(z.string(), z.unknown()).optional(),
   })
   .openapi("ConnectorlessRequestMeta");

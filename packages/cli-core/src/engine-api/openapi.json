@@ -6355,6 +6355,7 @@
                                   "integer",
                                   "date",
                                   "timestamp",
+                                  "timestamp_range",
                                   "file_name",
                                   "path"
                                 ]
@@ -8251,6 +8252,7 @@
                             "integer",
                             "date",
                             "timestamp",
+                            "timestamp_range",
                             "file_name",
                             "path"
                           ]
@@ -8931,6 +8933,23 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 1000
+              },
+              "max_items": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "on_limit": {
+                "type": "string",
+                "enum": [
+                  "fail",
+                  "truncate"
+                ]
+              },
+              "unique_by": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
               }
             },
             "required": [
@@ -8986,6 +9005,23 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 1000
+              },
+              "max_items": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "on_limit": {
+                "type": "string",
+                "enum": [
+                  "fail",
+                  "truncate"
+                ]
+              },
+              "unique_by": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
               }
             },
             "required": [
@@ -9036,6 +9072,23 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 1000
+              },
+              "max_items": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "on_limit": {
+                "type": "string",
+                "enum": [
+                  "fail",
+                  "truncate"
+                ]
+              },
+              "unique_by": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
               }
             },
             "required": [
@@ -9043,6 +9096,73 @@
               "cursor_request_param",
               "cursor_response_path"
             ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "strategy": {
+                "type": "string",
+                "enum": [
+                  "link"
+                ]
+              },
+              "link_params": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "minItems": 1,
+                "maxItems": 3
+              },
+              "page_size": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 100000
+              },
+              "limit_param": {
+                "type": "string",
+                "minLength": 1
+              },
+              "items_path": {
+                "type": "string"
+              },
+              "output_mode": {
+                "type": "string",
+                "enum": [
+                  "items",
+                  "pages"
+                ]
+              },
+              "max_pages": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000
+              },
+              "max_items": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "on_limit": {
+                "type": "string",
+                "enum": [
+                  "fail",
+                  "truncate"
+                ]
+              },
+              "unique_by": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "strategy",
+              "link_params"
+            ],
+            "additionalProperties": false
           }
         ]
       },
@@ -11243,6 +11363,9 @@
           "pagination_checkpoint": {
             "$ref": "#/components/schemas/PaginationCheckpoint"
           },
+          "pagination": {
+            "$ref": "#/components/schemas/RequestPaginationSummary"
+          },
           "unresolved_placeholders": {
             "type": "array",
             "items": {
@@ -11369,6 +11492,59 @@
           "page_idx",
           "accumulated_count",
           "signature"
+        ]
+      },
+      "RequestPaginationSummary": {
+        "type": "object",
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "offset",
+              "page",
+              "cursor",
+              "link"
+            ]
+          },
+          "pages": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duplicates_dropped": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "max_pages",
+              "max_items",
+              "max_bytes",
+              null
+            ]
+          }
+        },
+        "required": [
+          "strategy",
+          "pages",
+          "items",
+          "duplicates_dropped",
+          "complete",
+          "truncated",
+          "limit"
         ]
       },
       "GraphqlRequestMeta": {
@@ -11587,6 +11763,9 @@
           },
           "pagination_checkpoint": {
             "$ref": "#/components/schemas/PaginationCheckpoint"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/RequestPaginationSummary"
           },
           "extras": {
             "type": "object",
@@ -12012,6 +12191,8 @@
                       "driver_error",
                       "preview_unsupported",
                       "unknown",
+                      "incomplete_read",
+                      "rate_limited",
                       null
                     ]
                   },
@@ -12381,6 +12562,8 @@
               "driver_error",
               "preview_unsupported",
               "unknown",
+              "incomplete_read",
+              "rate_limited",
               null
             ]
           },
@@ -16755,7 +16938,9 @@
                   "payload_invalid",
                   "driver_error",
                   "preview_unsupported",
-                  "unknown"
+                  "unknown",
+                  "incomplete_read",
+                  "rate_limited"
                 ]
               }
             },
@@ -20608,7 +20793,9 @@
               "payload_invalid",
               "driver_error",
               "preview_unsupported",
-              "unknown"
+              "unknown",
+              "incomplete_read",
+              "rate_limited"
             ]
           },
           "count": {
@@ -25304,7 +25491,9 @@
           "payload_invalid",
           "driver_error",
           "preview_unsupported",
-          "unknown"
+          "unknown",
+          "incomplete_read",
+          "rate_limited"
         ]
       },
       "OperatorDigestPatch": {
@@ -25774,6 +25963,8 @@
               "driver_error",
               "preview_unsupported",
               "unknown",
+              "incomplete_read",
+              "rate_limited",
               null
             ]
           },
@@ -26754,6 +26945,8 @@
                             "driver_error",
                             "preview_unsupported",
                             "unknown",
+                            "incomplete_read",
+                            "rate_limited",
                             null
                           ]
                         },

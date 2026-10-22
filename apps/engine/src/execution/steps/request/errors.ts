@@ -10,7 +10,13 @@ export class RequestError extends Error {
       | "connection"
       | "filter_fail"
       | "authority_invalid"
-      | "request_invalid",
+      | "request_invalid"
+      | "pagination_limit_reached"
+      | "pagination_link_foreign"
+      | "pagination_link_unsupported"
+      | "pagination_link_loop"
+      | "pagination_short_page"
+      | "upstream_rate_limited",
     public readonly status?: number,
     public readonly meta?: Record<string, unknown>,
   ) {

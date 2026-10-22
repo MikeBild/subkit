@@ -601,6 +601,8 @@ const EN = {
   "authority.boundary.class.date": "{name} may be any date written YYYY-MM-DD.",
   "authority.boundary.class.timestamp":
     "{name} may be any UTC time written like 2026-01-31T23:59:59Z.",
+  "authority.boundary.class.timestamp_range":
+    "{name} may be any lower time bound written like >=2026-01-31T23:59:59Z.",
   "authority.boundary.class.file_name":
     "{name} may be any single file name — letters, digits, \u201c_\u201d and \u201c-\u201d, then one dot and a short extension. It cannot contain \u201c/\u201d, so it stays in this one folder.",
   "authority.boundary.class.path":
@@ -3385,6 +3387,8 @@ const EN = {
   "cause.driver_error": "Error in the external system",
   "cause.preview_unsupported": "Not runnable in a preview",
   "cause.unknown": "Not classified",
+  "cause.incomplete_read": "Not read completely",
+  "cause.rate_limited": "Provider rate limit reached",
   "remedy.reviewRepair": "Review the repair",
   "remedy.reauth": "Sign in again",
   "remedy.chat": "Fix it in the chat",
@@ -3430,6 +3434,7 @@ const EN = {
   "decisions.workflowFilter": "One workflow only — clear",
   "runs.state.held": "Prepared",
   "runs.state.partial": "Partly completed",
+  "runs.outcome.truncatedStep": "{step}: page limit reached, result incomplete.",
   "runs.detail.preview": "Preview — not written",
   "runs.outcome.statusOnly": "This run ended as “{status}”; the engine reported no cause with it.",
   "runs.rerun.refused.versionUnavailable":
@@ -5680,6 +5685,8 @@ const DE: Record<TranslationKey, string> = {
   "authority.boundary.class.date": "{name} darf jedes Datum in der Form JJJJ-MM-TT sein.",
   "authority.boundary.class.timestamp":
     "{name} darf jeder UTC-Zeitpunkt in der Form 2026-01-31T23:59:59Z sein.",
+  "authority.boundary.class.timestamp_range":
+    "{name} darf jede untere Zeitgrenze in der Form >=2026-01-31T23:59:59Z sein.",
   "authority.boundary.class.file_name":
     "{name} darf jeder einzelne Dateiname sein \u2014 Buchstaben, Ziffern, \u201e_\u201c und \u201e-\u201c, dann ein Punkt und eine kurze Endung. Ein \u201e/\u201c ist nicht m\u00f6glich, der Wert bleibt also in diesem einen Ordner.",
   "authority.boundary.class.path":
@@ -8515,6 +8522,8 @@ const DE: Record<TranslationKey, string> = {
   "cause.driver_error": "Fehler im Fremdsystem",
   "cause.preview_unsupported": "In der Vorschau nicht ausführbar",
   "cause.unknown": "Nicht eingeordnet",
+  "cause.incomplete_read": "Nicht vollständig gelesen",
+  "cause.rate_limited": "Abrufgrenze des Anbieters erreicht",
   "remedy.reviewRepair": "Reparatur prüfen",
   "remedy.reauth": "Neu anmelden",
   "remedy.chat": "Im Chat beheben",
@@ -8563,6 +8572,7 @@ const DE: Record<TranslationKey, string> = {
   "decisions.workflowFilter": "Nur ein Workflow — aufheben",
   "runs.state.held": "Vorbereitet",
   "runs.state.partial": "Teilweise gelaufen",
+  "runs.outcome.truncatedStep": "{step}: Seitenlimit erreicht, Ergebnis unvollständig.",
   "runs.detail.preview": "Vorschau – nicht geschrieben",
   "runs.outcome.statusOnly":
     "Dieser Lauf endete als „{status}“; eine Ursache hat die Engine nicht mitgeliefert.",

@@ -29,8 +29,15 @@ export function requestFailureEvidence(err: unknown, step_timed_out: boolean): C
       return "answered";
     case "abort":
       return step_timed_out ? "unavailable" : "none";
+    case "upstream_rate_limited":
+      return "answered";
     case "authority_invalid":
     case "request_invalid":
+    case "pagination_limit_reached":
+    case "pagination_link_foreign":
+    case "pagination_link_unsupported":
+    case "pagination_link_loop":
+    case "pagination_short_page":
       return "none";
   }
 }

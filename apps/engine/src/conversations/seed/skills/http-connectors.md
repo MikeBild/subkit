@@ -8,7 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [driver, http, rest]
-version: 4
+version: 5
 ---
 
 # HTTP Connectors
@@ -283,6 +283,43 @@ below live in the workflow version and can be changed without an engine deploy.
 }
 ```
 
+### Link (GitHub-style `Link: <…>; rel="next"`)
+
+Use this for APIs that announce the next page in a `Link` response header,
+such as the GitHub REST API. The engine follows `rel="next"` until it is
+absent, keeps the authored path and query, and carries only the parameters
+named in `link_params` (plus `limit_param`) from the next link. Never put
+`page`, `per_page`, `after` or `before` into the step's own `query`.
+
+```json
+{
+  "id": "issues",
+  "kind": "request",
+  "method": "GET",
+  "side_effects": "read",
+  "connector_id": "<github_connector_id>",
+  "path": "/repos/OWNER/REPO/issues",
+  "query": { "state": "all", "since": "${scope.windows.data.previous_start}" },
+  "pagination": {
+    "strategy": "link",
+    "link_params": ["after", "page"],
+    "limit_param": "per_page",
+    "page_size": 100,
+    "max_pages": 20,
+    "on_limit": "truncate",
+    "unique_by": "id"
+  }
+}
+```
+
+A next link fails the step closed when it points to another host
+(`pagination_link_foreign`), adds or changes any other query parameter
+(`pagination_link_unsupported`), repeats an earlier page
+(`pagination_link_loop`) or lowers `per_page` because the vendor capped it
+(`pagination_short_page`; set `page_size` to the vendor maximum — 100 for
+GitHub). Use `items_path` when the list is wrapped, e.g. `workflow_runs` for
+GitHub Actions runs.
+
 ### POST body offset
 
 Use this shape for APIs such as search/report endpoints whose pagination
@@ -316,9 +353,28 @@ each unmodified response body, for example to hash and archive raw source pages
 before normalization. In that mode `data` is the ordered array of response
 bodies; `items_path` still controls termination. `status_code` reflects the
 last page's status. `max_pages` is workflow-configurable and has a hard ceiling
-of 1000. Reaching either the page limit or the engine's memory-safety ceiling
-before the endpoint terminates fails the step; SubKit never reports a bounded
-prefix as a complete collection.
+of 1000. Reaching `max_pages`, `max_items` or the engine's memory-safety ceiling
+before the endpoint terminates fails the step with `pagination_limit_reached`;
+SubKit never reports a bounded prefix as a complete collection.
+
+- `on_limit: "truncate"` keeps the prefix instead, adds a
+  `pagination_truncated` warning and marks the result incomplete. Use it only
+  when the workflow reports the gap itself.
+- `max_items` stops after that many items; `unique_by` (a dot path such as
+  `id` or `sha`) drops repeated rows across pages, first one wins.
+- Every paginated step's envelope carries
+  `pagination: {pages, items, duplicates_dropped, complete, truncated}`; read
+  `$scope.<id>.pagination.complete` in a transform to report completeness
+  instead of guessing from row counts.
+- A page-number or offset read that receives a short page while the response
+  still announces `rel="next"` fails with `pagination_short_page`.
+- A step with a `boundary` must set `max_pages`; the reviewed boundary admits
+  exactly the paging parameters (for `link`: `link_params` plus `limit_param`)
+  and counts `max_pages` as its request limit. A lower time bound such as
+  GitHub's `created=>=2026-01-01T00:00:00Z` uses the value class
+  `timestamp_range`.
+- Sensitive workflows may paginate. Their runs keep no paging checkpoint and
+  log no query values or cursors.
 
 ## Retries and 429
 
@@ -349,6 +405,13 @@ Override per step:
 The driver honors `Retry-After` on 429 (seconds or HTTP-date) — it overrides
 `retry_backoff_ms` for that one wait. `retry_on_status` adds extra status
 codes on top of the defaults.
+
+A 403 or 429 that is a rate limit (GitHub primary or secondary limits) is
+retried within `max_retries`: `Retry-After` first, then
+`x-ratelimit-remaining: 0` waits until `x-ratelimit-reset`, otherwise at least
+one minute, doubling per attempt. When the wait would outlast the step's
+`timeout_ms` (or one hour) the step fails with `upstream_rate_limited` and the
+connector is marked rate limited, never as an authentication failure.
 
 Workflow-level error policy is `on_error: "fail" | "continue"` directly on
 the step (defaults to `fail`). `continue` keeps the run going past a failed

@@ -26,6 +26,30 @@ export interface ScopeEnvelope {
   error: { code: string; message: string; details?: unknown } | null;
   held?: true;
   held_request?: HeldRequest;
+  pagination?: EnvelopePagination;
+}
+
+export interface EnvelopePagination {
+  pages: number;
+  items: number;
+  duplicates_dropped: number;
+  complete: boolean;
+  truncated: boolean;
+}
+
+function envelopePagination(value: unknown): EnvelopePagination | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const { pages, items, duplicates_dropped, complete, truncated } = record;
+  if (
+    typeof pages !== "number" ||
+    typeof items !== "number" ||
+    typeof duplicates_dropped !== "number" ||
+    typeof complete !== "boolean" ||
+    typeof truncated !== "boolean"
+  )
+    return null;
+  return { pages, items, duplicates_dropped, complete, truncated };
 }
 
 export function wrapEnvelope(params: {
@@ -45,6 +69,8 @@ export function wrapEnvelope(params: {
     if (rm.headers && typeof rm.headers === "object") {
       env.headers = rm.headers as Record<string, string>;
     }
+    const pagination = envelopePagination(rm.pagination);
+    if (pagination) env.pagination = pagination;
   }
   return env;
 }

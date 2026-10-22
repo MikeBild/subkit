@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isTransientRunResult } from "./classify.ts";
+import { classifyFailure, isTransientRunResult, PREVIEW_CLASSIFICATIONS } from "./classify.ts";
 import type { RunResult } from "./types.ts";
 
 function failedRun(code: string, status: "failed" | "timed_out" = "failed"): RunResult {
@@ -95,5 +95,48 @@ describe("isTransientRunResult — deterministic failures (not retryable)", () =
       steps: [],
     };
     expect(isTransientRunResult(run)).toBe(false);
+  });
+});
+
+describe("classifyFailure — incomplete reads and rate limits by code", () => {
+  const failed = (code: string, message: string) =>
+    classifyFailure({ status: "failed", retry_count: 0, duration_ms: 0, error: { code, message } });
+
+  test("pagination codes are incomplete reads, not driver errors or timeouts", () => {
+    for (const code of [
+      "pagination_limit_reached",
+      "pagination_link_foreign",
+      "pagination_link_unsupported",
+      "pagination_link_loop",
+      "pagination_short_page",
+      "graphql_pagination_incomplete",
+    ])
+      expect(failed(code, "pagination reached max_items exceeded before the end")).toBe(
+        "incomplete_read",
+      );
+  });
+
+  test("rate-limit codes are rate limits even when the message mentions 403 or exceeded", () => {
+    expect(failed("upstream_rate_limited", "http 403: API rate limit exceeded")).toBe(
+      "rate_limited",
+    );
+    expect(failed("http_429", "http 429")).toBe("rate_limited");
+  });
+
+  test("an unknown code with a rate-limit message is never a timeout or an auth failure", () => {
+    const verdict = failed("http_4xx", "API rate limit exceeded for user ID 1");
+    expect(verdict).not.toBe("timeout");
+    expect(verdict).not.toBe("auth_failed");
+    expect(verdict).toBe("rate_limited");
+  });
+
+  test("ordinary timeouts and auth failures keep their classes", () => {
+    expect(failed("http_4xx", "http 401 unauthorized")).toBe("auth_failed");
+    expect(failed("connection", "operation timed out")).toBe("timeout");
+  });
+
+  test("the new classes are part of the published vocabulary", () => {
+    expect(PREVIEW_CLASSIFICATIONS).toContain("incomplete_read");
+    expect(PREVIEW_CLASSIFICATIONS).toContain("rate_limited");
   });
 });

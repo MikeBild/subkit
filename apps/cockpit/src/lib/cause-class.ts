@@ -22,6 +22,8 @@ const CAUSE_CLASS_KEYS = {
   driver_error: "cause.driver_error",
   preview_unsupported: "cause.preview_unsupported",
   unknown: "cause.unknown",
+  incomplete_read: "cause.incomplete_read",
+  rate_limited: "cause.rate_limited",
 } as const satisfies Record<CauseClass, TranslationKey>;
 
 export function causeClassKey(value: string): TranslationKey | undefined {

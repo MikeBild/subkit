@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
-import { canonicalWorkflowJson } from "./canonical-json.ts";
+import { canonicalWorkflowJson, workflowJsonDigest } from "./canonical-json.ts";
 import {
   assertRequestBoundary,
   compileRequestBoundary,
@@ -11,7 +11,7 @@ import {
   requestBoundaryViolation,
   VALUE_CLASSES,
 } from "./request-boundary.ts";
-import { RequestStepSchema } from "./types.ts";
+import { RequestStepSchema, WorkflowDefSchema } from "./types.ts";
 
 const CONNECTOR = "00000000-0000-4000-8000-000000000001";
 const BASE = "https://api.example.test/v2";
@@ -268,6 +268,7 @@ test("the class patterns are pinned: a live approval must never change meaning",
     integer: "^(0|[1-9][0-9]{0,18})$",
     date: "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
     timestamp: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    timestamp_range: "^>=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
     file_name: "^[A-Za-z0-9_-]{1,200}\\.[A-Za-z0-9]{1,16}$",
     path: "^(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})*(?:\\/(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})*)*$",
   });
@@ -770,4 +771,157 @@ test("a boundary approved before this class existed parses to the same bytes", (
   };
   const parsed = RequestBoundarySchema.parse(stored);
   expect(canonicalWorkflowJson(parsed)).toBe(canonicalWorkflowJson(stored));
+});
+
+const linked = (over: Record<string, unknown> = {}) =>
+  step({
+    method: "GET",
+    path: "/repos/MikeBild/subkit/issues",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+    query: { state: "all", since: "${scope.windows.data.previous_start}" },
+    pagination: {
+      strategy: "link",
+      link_params: ["page", "after"],
+      limit_param: "per_page",
+      page_size: 100,
+      max_pages: 20,
+    },
+    boundary: {
+      variables: { "scope.windows.data.previous_start": { class: "timestamp" } },
+      max_body_bytes: 0,
+      max_calls: 20,
+    },
+    ...over,
+  });
+
+test("a link-paginated read reviews its sorted link and page-size parameters", () => {
+  const { boundary, refusal } = compileRequestBoundary(linked(), "https://api.github.com");
+  expect(refusal).toBeUndefined();
+  expect(boundary?.pagination).toEqual({ params: ["after", "page", "per_page"], max_requests: 20 });
+  const url = (extra: string) =>
+    `https://api.github.com/repos/MikeBild/subkit/issues?state=all&since=2026-10-15T00:00:00Z&per_page=100${extra}`;
+  for (const extra of ["", "&page=2", "&after=Y3Vyc29y&page=3", "&after=Y3Vyc29y"]) {
+    expect(
+      requestBoundaryViolation(boundary!, {
+        method: "GET",
+        url: url(extra),
+        headers: {},
+        body: null,
+      }),
+    ).toBeNull();
+  }
+});
+
+test("a link parameter that is also an authored query key is refused", () => {
+  for (const query of [{ page: "1" }, { per_page: "100" }, { after: "x" }]) {
+    expect(
+      compileRequestBoundary(
+        linked({ query, boundary: { variables: {}, max_body_bytes: 0, max_calls: 20 } }),
+        "https://api.github.com",
+      ).refusal,
+    ).toBe("pagination_param_conflict");
+  }
+});
+
+test("a page-number read with page in its own query is refused", () => {
+  expect(
+    compileRequestBoundary(
+      step({
+        method: "GET",
+        path: "/repos/a/b/commits",
+        query: { page: "1" },
+        pagination: {
+          strategy: "page",
+          page_param: "page",
+          limit_param: "per_page",
+          page_size: 100,
+          max_pages: 10,
+        },
+        boundary: { variables: {}, max_body_bytes: 0, max_calls: 10 },
+      }),
+      "https://api.github.com",
+    ).refusal,
+  ).toBe("pagination_param_conflict");
+});
+
+test("timestamp_range admits a lower-bounded ISO timestamp only", () => {
+  expect(VALUE_CLASSES.timestamp_range.test(">=2026-10-08T00:00:00.000Z")).toBe(true);
+  expect(VALUE_CLASSES.timestamp_range.test(">=2026-10-08T00:00:00Z")).toBe(true);
+  for (const value of [
+    ">=x",
+    "a..b",
+    "2026-10-08T00:00:00Z",
+    ">=2026-10-08",
+    "<=2026-10-08T00:00:00Z",
+  ])
+    expect(VALUE_CLASSES.timestamp_range.test(value)).toBe(false);
+  const { boundary, refusal } = compileRequestBoundary(
+    step({
+      method: "GET",
+      path: "/repos/a/b/actions/runs",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+      query: { created: "${scope.windows.data.actions_created}" },
+      pagination: {
+        strategy: "link",
+        link_params: ["page"],
+        limit_param: "per_page",
+        page_size: 100,
+        items_path: "workflow_runs",
+        max_pages: 10,
+      },
+      boundary: {
+        variables: { "scope.windows.data.actions_created": { class: "timestamp_range" } },
+        max_body_bytes: 0,
+        max_calls: 10,
+      },
+    }),
+    "https://api.github.com",
+  );
+  expect(refusal).toBeUndefined();
+  const at = (created: string) => ({
+    method: "GET",
+    url: `https://api.github.com/repos/a/b/actions/runs?created=${encodeURIComponent(created)}&per_page=100`,
+    headers: {},
+    body: null,
+  });
+  expect(requestBoundaryViolation(boundary!, at(">=2026-10-08T00:00:00.000Z"))).toBeNull();
+  expect(requestBoundaryViolation(boundary!, at("2026-01-01..2026-12-31"))).not.toBeNull();
+});
+
+test("existing paging definitions and their reviewed boundaries keep their digests", () => {
+  const pinned = {
+    page: [
+      {
+        strategy: "page",
+        page_size: 100,
+        limit_param: "per_page",
+        max_pages: 10,
+      },
+      "4ae4092173acc57dfce4141f1fe23b0ac80d12215b2bc682b2761a55a3f26576",
+      "3234dd0eb87430d0207b2f6ba20280c7c9684e17feecb49ccd49b129d9b24b13",
+    ],
+  } as const;
+  for (const [pagination, definitionDigest, boundaryDigest] of Object.values(pinned)) {
+    const definition = WorkflowDefSchema.parse({
+      name: "paged commits",
+      steps: [
+        {
+          id: "commits",
+          kind: "request",
+          connector_id: "00000000-0000-4000-8000-000000000004",
+          method: "GET",
+          path: "/repos/o/r/commits",
+          query: { sha: "main" },
+          pagination,
+          boundary: { variables: {}, max_body_bytes: 0, max_calls: 10 },
+        },
+      ],
+    });
+    expect(workflowJsonDigest(definition)).toBe(definitionDigest);
+    const step = definition.steps[0];
+    if (step?.kind !== "request") throw new Error("request step expected");
+    expect(workflowJsonDigest(compileRequestBoundary(step, "https://api.github.com"))).toBe(
+      boundaryDigest,
+    );
+  }
 });

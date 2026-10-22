@@ -442,12 +442,58 @@ export interface RunVerdict {
   tone: "critical" | "warning" | null;
 }
 
+function hasTruncationWarning(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const warnings = (value as { warnings?: unknown }).warnings;
+  return (
+    Array.isArray(warnings) &&
+    warnings.some(
+      (warning) =>
+        warning !== null &&
+        typeof warning === "object" &&
+        (warning as { code?: unknown }).code === "pagination_truncated",
+    )
+  );
+}
+
+function hasTruncatedPagination(meta: unknown): boolean {
+  if (!meta || typeof meta !== "object") return false;
+  const pagination = (meta as { pagination?: unknown }).pagination;
+  return (
+    pagination !== null &&
+    typeof pagination === "object" &&
+    (pagination as { truncated?: unknown }).truncated === true
+  );
+}
+
+export function truncatedStepKeys(steps: readonly StepLike[]): string[] {
+  return [
+    ...new Set(
+      steps
+        .filter(
+          (step) =>
+            hasTruncationWarning(step.output_preview) || hasTruncatedPagination(step.request_meta),
+        )
+        .map((step) => step.step_key),
+    ),
+  ];
+}
+
+export function runTruncationSentence(steps: readonly string[], t: Translate): OutcomeSentence {
+  const plain = steps.map((step) => t("runs.outcome.truncatedStep", { step })).join(" ");
+  return { lead: plain, cause: null, tail: "", plain };
+}
+
 export function runVerdict(
   status: string,
   outcome: ExecutionOutcome | null,
   t: Translate,
   statusWord: (status: string) => string,
+  truncatedSteps: readonly string[] = [],
 ): RunVerdict {
+  const finishedCleanly = outcome ? outcome.kind === "succeeded" : status === "succeeded";
+  if (finishedCleanly && truncatedSteps.length > 0)
+    return { label: t("runs.state.partial"), tone: "warning" };
   if (outcome) {
     switch (outcome.kind) {
       case "held":

@@ -96,6 +96,7 @@ import {
   PAGE_PROGRESS_INTERVAL,
   PAGINATION_CHECKPOINT_INTERVAL,
   type PaginationCheckpoint,
+  PaginationError,
   type PaginationSpec,
   paginationSignature,
   readPaginationCheckpoint,
@@ -112,8 +113,10 @@ import { isConfirmedTransactionalMail, settleTransactionalMail } from "../../tra
 import type {
   ConnectorResolutionSummary,
   RequestMeta,
+  RequestPaginationSummary,
   StepResult,
   StepRunContext,
+  StepWarning,
 } from "../../types.ts";
 import { buildStepErrorDetail } from "../error-detail.ts";
 import {
@@ -131,6 +134,7 @@ import { runGraphqlWithRetry } from "./graphql-retry.ts";
 import { resolveGraphqlDispatchTarget } from "./graphql-target.ts";
 import { runMcpWithRetry } from "./mcp-retry.ts";
 import { redactOwnCredentials } from "./own-credentials.ts";
+import { rateLimitDelayMs, rateLimitNow, rateLimitSleepOverride } from "./rate-limit.ts";
 import { isDocumentedReadOperation } from "./read-operations.ts";
 import {
   backoffMs,
@@ -272,6 +276,7 @@ interface DoOnePageParams {
   idempotency_key_base?: string;
   last_idempotency_key?: { value: string | null };
   capture_binary?: boolean;
+  deadline_ms: number;
 }
 
 function healthHintMeta(
@@ -281,9 +286,10 @@ function healthHintMeta(
     slug?: string | null | undefined;
     url?: string | undefined;
     retry_after_s?: number | null | undefined;
+    rate_limited?: boolean;
   },
 ): Record<string, unknown> | undefined {
-  const health = classifyConnectorHealth(status, headers);
+  const health = opts.rate_limited ? "rate_limited" : classifyConnectorHealth(status, headers);
   if (health === "ok" || health === "deprecated") return undefined;
   let path: string | null = null;
   if (opts.url) {
@@ -376,38 +382,71 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         return res;
       }
       const is_additional_retry_status = p.retry_policy.additional_retry_statuses.has(res.status);
-      if (res.status === 429) {
+      const rateLimit =
+        res.status === 403 || res.status === 429
+          ? rateLimitDelayMs({
+              status: res.status,
+              headers: res.headers,
+              body: res.body,
+              attempt,
+              now_ms: rateLimitNow(),
+              backoff_base_ms: p.retry_policy.backoff_base_ms,
+              deadline_ms: p.deadline_ms,
+            })
+          : ({ kind: "none" } as const);
+      if (rateLimit.kind !== "none") {
         const after = parseRetryAfter(res.headers["retry-after"] ?? null);
-        const wait = Math.min(
-          after ?? backoffMs(attempt, p.retry_policy.backoff_base_ms),
-          60 * 60_000,
-        );
+        const health_hint = healthHintMeta(res.status, res.headers, {
+          slug: p.connector_slug,
+          url: p.url,
+          retry_after_s: after != null ? Math.round(after / 1000) : null,
+          rate_limited: true,
+        });
+        if (rateLimit.kind === "fail" || (attempt >= p.max_attempts && res.status !== 429)) {
+          logger.warn({
+            module: "execution",
+            action: "request.rate_limited",
+            msg: "upstream rate limit outlasts the step; stopping without further requests",
+            reason: rateLimit.reason,
+            attempt_no: attempt,
+            delay_ms: Math.round(rateLimit.delay_ms),
+            status: res.status,
+            connector_id: p.connector_id ?? null,
+          });
+          throw new RequestError(
+            `upstream rate limit (http ${res.status}) did not reset within the step's time`,
+            "upstream_rate_limited",
+            res.status,
+            { health_hint },
+          );
+        }
         if (attempt >= p.max_attempts) {
           throw new RequestError(`http 429`, "http_429", 429, {
             headers: res.headers,
-            health_hint: healthHintMeta(429, res.headers, {
-              slug: p.connector_slug,
-              url: p.url,
-              retry_after_s: after != null ? Math.round(after / 1000) : null,
-            }),
+            health_hint,
           });
         }
+        const wait = rateLimit.delay_ms;
         logger.info({
           module: "execution",
           action: "request.retry",
-          msg: `retrying after http 429 in ${Math.round(wait)}ms`,
-          reason: "http_429",
+          msg: `retrying after http ${res.status} rate limit in ${Math.round(wait)}ms`,
+          reason: res.status === 429 ? "http_429" : "rate_limit",
+          rate_limit_reason: rateLimit.reason,
           attempt_no: attempt,
           total_attempts: p.max_attempts,
           delay_ms: Math.round(wait),
-          next_attempt_at: new Date(Date.now() + wait).toISOString(),
+          next_attempt_at: new Date(rateLimitNow() + wait).toISOString(),
           status: res.status,
           retry_after_header: after ?? null,
           connector_id: p.connector_id ?? null,
         });
-        recordRequestRetry({ connector_id: p.connector_id ?? null, reason: "http_429" });
+        recordRequestRetry({
+          connector_id: p.connector_id ?? null,
+          reason: res.status === 429 ? "http_429" : "rate_limit",
+        });
         p.retry_total_ms.value += wait;
-        await sleep(wait, p.signal);
+        await (rateLimitSleepOverride() ?? sleep)(wait, p.signal);
         continue;
       }
       if (res.status >= 500) {
@@ -497,6 +536,7 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         if (err.cause_kind === "request_invalid") throw err;
         if (err.cause_kind === "authority_invalid") throw err;
         if (err.cause_kind === "timeout") throw err;
+        if (err.cause_kind === "upstream_rate_limited") throw err;
         if (attempt >= p.max_attempts) throw err;
         continue;
       }
@@ -535,6 +575,16 @@ export interface ResolvedMultipartPart {
   value?: string;
   filename?: string;
   content_type?: string;
+}
+
+function uniqueKeyOf(entry: unknown, path: string): string | undefined {
+  let value: unknown = entry;
+  for (const part of path.split(".")) {
+    if (!value || typeof value !== "object") return undefined;
+    value = (value as Record<string, unknown>)[part];
+  }
+  if (value === undefined || value === null) return undefined;
+  return typeof value === "string" ? `s:${value}` : `j:${JSON.stringify(value)}`;
 }
 
 function materializePaginatedBody(
@@ -808,6 +858,7 @@ async function dispatchRequestStep(
   const max_attempts = requestMaxAttempts(p.step);
   const timeoutMs = p.step.timeout_ms ?? REQUEST_TIMEOUT_DEFAULT_MS;
   const timeoutCtrl = new AbortController();
+  const rateLimitDeadline = rateLimitNow() + timeoutMs;
 
   const resolvedScope = await resolveScopeForJsonata(
     p.ctx.db,
@@ -2191,6 +2242,7 @@ async function dispatchRequestStep(
       }
       const callDoOnePage = () =>
         doOnePage({
+          deadline_ms: rateLimitDeadline,
           db: p.ctx.db,
           before_dispatch: beforeHttpDispatch,
           ...(signedJwt ? { signed_jwt: signedJwt } : {}),
@@ -2457,6 +2509,7 @@ async function dispatchRequestStep(
         request_meta: last_meta,
       };
     }
+    const sensitiveRun = p.ctx.execution_privacy === "sensitive";
     const requestSignature = paginationSignature({
       base_url: baseUrl.origin + baseUrl.pathname,
       path_or_url: p.step.path ?? p.step.url ?? "/",
@@ -2464,31 +2517,40 @@ async function dispatchRequestStep(
       body: resolvedStepBody ?? null,
       pagination: p.step.pagination,
     });
-    try {
-      const existing = await readPaginationCheckpoint(p.ctx.tenant_id, p.ctx.step_row_id, p.ctx.db);
-      if (existing && existing.signature === requestSignature) {
-        logger.info({
+    if (!sensitiveRun) {
+      try {
+        const existing = await readPaginationCheckpoint(
+          p.ctx.tenant_id,
+          p.ctx.step_row_id,
+          p.ctx.db,
+        );
+        if (existing && existing.signature === requestSignature) {
+          logger.info({
+            module: "pagination",
+            action: "restart_from_origin",
+            msg: "pagination restarts from page 1 to preserve a complete result",
+            execution_id: p.ctx.execution_id,
+            step_id: p.step.id,
+            prior_page: existing.page_idx,
+            prior_accumulated_count: existing.accumulated_count,
+          });
+        }
+      } catch (err) {
+        logger.warn({
           module: "pagination",
-          action: "restart_from_origin",
-          msg: "pagination restarts from page 1 to preserve a complete result",
+          action: "resume_read_failed",
           execution_id: p.ctx.execution_id,
           step_id: p.step.id,
-          prior_page: existing.page_idx,
-          prior_accumulated_count: existing.accumulated_count,
+          error: err instanceof Error ? err.message : String(err),
         });
       }
-    } catch (err) {
-      logger.warn({
-        module: "pagination",
-        action: "resume_read_failed",
-        execution_id: p.ctx.execution_id,
-        step_id: p.step.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
     }
     const paginationSpec = p.step.pagination as PaginationSpec;
+    const pagingLimits = p.step.pagination;
     const strat = makeStrategy(paginationSpec, { baseUrl, baseQuery: {} });
     const acc: unknown[] = [];
+    const seenKeys = new Set<string>();
+    let duplicatesDropped = 0;
     let prev: unknown = null;
     let pageIdx = 0;
     let pages_fetched = 0;
@@ -2497,15 +2559,46 @@ async function dispatchRequestStep(
     let lastPageHeaders: Record<string, string> = {};
     let latestCheckpoint: PaginationCheckpoint | null = null;
     const maxPages = paginationSpec.max_pages ?? MAX_PAGES;
-    while (pageIdx < maxPages) {
-      const next = strat.next(prev, pageIdx);
-      if (next.done) break;
-      if (accBytes >= ACC_BYTE_CAP) {
-        throw new RequestError(
-          `pagination exceeded the ${Math.round(ACC_BYTE_CAP / (1024 * 1024))}MB in-memory byte cap before the endpoint terminated`,
-          "request_invalid",
-        );
+    const maxItems = pagingLimits.max_items;
+    let limitHit: RequestPaginationSummary["limit"] = null;
+    const paginationSummary = (
+      complete: boolean,
+      truncated: boolean,
+    ): RequestPaginationSummary => ({
+      strategy: paginationSpec.strategy,
+      pages: pages_fetched,
+      items: acc.length,
+      duplicates_dropped: duplicatesDropped,
+      complete,
+      truncated,
+      limit: limitHit,
+    });
+    const paginationNext = (body: unknown, idx: number, pageHeaders: Record<string, string>) => {
+      try {
+        return strat.next(body, idx, pageHeaders);
+      } catch (err) {
+        if (err instanceof PaginationError) {
+          last_meta = { ...last_meta, pagination: paginationSummary(false, false) } as RequestMeta;
+          throw new RequestError(err.message, err.code);
+        }
+        throw err;
       }
+    };
+    let next = paginationNext(null, 0, {});
+    while (!next.done) {
+      if (pageIdx >= maxPages) {
+        limitHit = "max_pages";
+        break;
+      }
+      if (maxItems !== undefined && acc.length >= maxItems) {
+        limitHit = "max_items";
+        break;
+      }
+      if (accBytes >= ACC_BYTE_CAP) {
+        limitHit = "max_bytes";
+        break;
+      }
+      const pageUrl = next.url;
       const pageBody = materializePaginatedBody(resolvedStepBody, next.body_parameters);
       if (effectiveBodySchema && pageBody !== undefined && pageBody !== null) {
         const bodyErrs = checkRequired(pageBody, effectiveBodySchema);
@@ -2518,10 +2611,11 @@ async function dispatchRequestStep(
       }
       const callPage = () =>
         doOnePage({
+          deadline_ms: rateLimitDeadline,
           db: p.ctx.db,
           before_dispatch: beforeHttpDispatch,
           ...(signedJwt ? { signed_jwt: signedJwt } : {}),
-          url: next.url,
+          url: pageUrl,
           method: p.step.method,
           headers,
           body: pageBody ?? null,
@@ -2550,7 +2644,7 @@ async function dispatchRequestStep(
             driver: "http" as const,
             credential_id: activeCredentialId,
             operation: p.step.method,
-            url: next.url,
+            url: pageUrl,
             source: "execution" as const,
             execution_id: p.ctx.execution_id,
             workflow_id: p.ctx.workflow_id,
@@ -2572,7 +2666,15 @@ async function dispatchRequestStep(
         }
         throw err;
       }
-      strat.merge(acc, body);
+      for (const entry of strat.merge([], body)) {
+        const key = pagingLimits.unique_by ? uniqueKeyOf(entry, pagingLimits.unique_by) : undefined;
+        if (key !== undefined && seenKeys.has(key)) {
+          duplicatesDropped += 1;
+          continue;
+        }
+        if (key !== undefined) seenKeys.add(key);
+        acc.push(entry);
+      }
       prev = body;
       lastPageHeaders = res.headers;
       accBytes += res.bytes_in;
@@ -2593,7 +2695,7 @@ async function dispatchRequestStep(
       last_meta = connectorResolution
         ? {
             driver: "http",
-            url: next.url,
+            url: pageUrl,
             method: p.step.method ?? "GET",
             status: res.status,
             ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
@@ -2604,7 +2706,7 @@ async function dispatchRequestStep(
           }
         : {
             driver: "connectorless",
-            url: next.url,
+            url: pageUrl,
             method: p.step.method ?? "GET",
             status: res.status,
             ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
@@ -2622,7 +2724,7 @@ async function dispatchRequestStep(
           pages_fetched,
         });
       }
-      if (logicalPageIdx % PAGINATION_CHECKPOINT_INTERVAL === 0) {
+      if (!sensitiveRun && logicalPageIdx % PAGINATION_CHECKPOINT_INTERVAL === 0) {
         const snapshot = strat.snapshot(prev);
         const checkpoint: PaginationCheckpoint = {
           state: snapshot,
@@ -2648,12 +2750,40 @@ async function dispatchRequestStep(
           });
         });
       }
+      if (maxItems !== undefined && acc.length > maxItems) {
+        acc.length = maxItems;
+        limitHit = "max_items";
+        break;
+      }
+      next = paginationNext(body, pageIdx, res.headers);
     }
-    if (pageIdx >= maxPages && !strat.next(prev, pageIdx).done) {
-      throw new RequestError(
-        `pagination reached max_pages=${maxPages} before the endpoint terminated`,
-        "request_invalid",
-      );
+    const pageWarnings: StepWarning[] = [];
+    if (limitHit) {
+      const limitMessage =
+        limitHit === "max_pages"
+          ? `pagination reached max_pages=${maxPages} before the endpoint terminated`
+          : limitHit === "max_items"
+            ? `pagination reached max_items=${maxItems} before the endpoint terminated`
+            : `pagination exceeded the ${Math.round(ACC_BYTE_CAP / (1024 * 1024))}MB in-memory byte cap before the endpoint terminated`;
+      if (pagingLimits.on_limit !== "truncate") {
+        last_meta = { ...last_meta, pagination: paginationSummary(false, false) } as RequestMeta;
+        throw new RequestError(limitMessage, "pagination_limit_reached");
+      }
+      pageWarnings.push({
+        code: "pagination_truncated",
+        message: `${limitMessage}; the result holds only the pages read so far`,
+        details: { pages: pages_fetched, items: acc.length, limit: limitHit },
+      });
+      logger.warn({
+        module: "execution",
+        action: "request.pagination_truncated",
+        msg: "pagination stopped at its configured limit; result is incomplete",
+        execution_id: p.ctx.execution_id,
+        step_id: p.step.id,
+        pages_fetched,
+        items: acc.length,
+        limit: limitHit,
+      });
     }
     if (inFlightCheckpoint) await inFlightCheckpoint;
     if (
@@ -2722,7 +2852,9 @@ async function dispatchRequestStep(
       request_meta: {
         ...last_meta,
         pages_fetched,
+        pagination: paginationSummary(limitHit === null, limitHit !== null),
       } as RequestMeta,
+      ...(pageWarnings.length > 0 ? { warnings: pageWarnings } : {}),
     };
   } catch (err) {
     const duration_ms = Date.now() - start;

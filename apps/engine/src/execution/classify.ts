@@ -22,6 +22,8 @@ export const PREVIEW_CLASSIFICATIONS = [
   "driver_error",
   "preview_unsupported",
   "unknown",
+  "incomplete_read",
+  "rate_limited",
 ] as const;
 
 export type PreviewClassification = (typeof PREVIEW_CLASSIFICATIONS)[number];
@@ -114,6 +116,12 @@ export function isTransientRunResult(run: RunResult): boolean {
   return code != null && TRANSIENT_RUN_CODES.has(code);
 }
 
+const RATE_LIMIT_CODES: ReadonlySet<string> = new Set([
+  "upstream_rate_limited",
+  "http_429",
+  "graphql_throttle",
+]);
+
 export function classifyFailure(result: StepResult): PreviewClassification {
   if (result.status === "aborted") return "aborted";
   if (result.status === "skipped") return "aborted";
@@ -132,6 +140,10 @@ export function classifyFailure(result: StepResult): PreviewClassification {
   if (code === "llm_quota_exhausted" || code === "llm_budget_exceeded") return "budget_exhausted";
   if (code === "missing_graphql" || code === "unknown_step_kind") return "driver_error";
   if (code === "data_selector_error") return "schema_mismatch";
+  if (code.startsWith("pagination_") || code === "graphql_pagination_incomplete")
+    return "incomplete_read";
+  if (RATE_LIMIT_CODES.has(code)) return "rate_limited";
+  if (/rate limit/i.test(message)) return "rate_limited";
   if (/unresolved|placeholder/.test(message) || code === "placeholder_unresolved") {
     return "placeholder_unresolved";
   }
@@ -207,6 +219,10 @@ export function humanizeClassification(
       return `This step kind cannot be run in isolation yet.`;
     case "driver_error":
       return `The step driver failed: ${message}`;
+    case "incomplete_read":
+      return `The ${kind} step stopped before every page was read, so its result would be incomplete: ${message}`;
+    case "rate_limited":
+      return `The vendor's rate limit stopped the ${kind} step; retry after the limit resets.`;
     default:
       return message || "Step failed.";
   }

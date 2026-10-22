@@ -36,6 +36,7 @@ export const VALUE_CLASSES = {
   integer: /^(0|[1-9][0-9]{0,18})$/,
   date: /^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/,
   timestamp: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$/,
+  timestamp_range: /^>=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$/,
   file_name: /^[A-Za-z0-9_-]{1,200}\.[A-Za-z0-9]{1,16}$/,
   path: /^(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})*(?:\/(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})*)*$/,
 } as const;
@@ -48,6 +49,7 @@ const CLASS_SAMPLE: Record<ValueClass, string> = {
   integer: "0",
   date: "2000-01-01",
   timestamp: "2000-01-01T00:00:00Z",
+  timestamp_range: ">=2000-01-01T00:00:00Z",
   file_name: "a.a",
   path: "a",
 };
@@ -191,6 +193,14 @@ function authoredSegments(
 function paginationShape(
   pagination: NonNullable<RequestStep["pagination"]>,
 ): { params: string[]; max_requests: number } | null | "unbounded" {
+  if (pagination.strategy === "link") {
+    const params = [
+      ...pagination.link_params,
+      ...(pagination.limit_param ? [pagination.limit_param] : []),
+    ];
+    if (pagination.max_pages === undefined) return "unbounded";
+    return { params: [...new Set(params)].sort(), max_requests: pagination.max_pages };
+  }
   if (pagination.parameter_location === "body") return null;
   const params =
     pagination.strategy === "cursor"

@@ -121,6 +121,16 @@ export interface PaginationCheckpoint {
   signature: string;
 }
 
+export interface RequestPaginationSummary {
+  strategy: "offset" | "page" | "cursor" | "link";
+  pages: number;
+  items: number;
+  duplicates_dropped: number;
+  complete: boolean;
+  truncated: boolean;
+  limit: "max_pages" | "max_items" | "max_bytes" | null;
+}
+
 export type RequestMeta =
   | {
       driver: "http";
@@ -137,6 +147,7 @@ export type RequestMeta =
       resumed_from_page?: number;
       resumed_accumulated_count?: number;
       pagination_checkpoint?: PaginationCheckpoint;
+      pagination?: RequestPaginationSummary;
       extras?: Record<string, unknown>;
     }
   | {
@@ -190,6 +201,7 @@ export type RequestMeta =
       resumed_from_page?: number;
       resumed_accumulated_count?: number;
       pagination_checkpoint?: PaginationCheckpoint;
+      pagination?: RequestPaginationSummary;
       extras?: Record<string, unknown>;
     }
   | {
