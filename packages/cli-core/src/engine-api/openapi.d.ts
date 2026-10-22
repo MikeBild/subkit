@@ -23895,7 +23895,7 @@ export interface components {
             request_meta?: components["schemas"]["RequestMeta"];
             held?: boolean;
         };
-        RequestMeta: components["schemas"]["HttpRequestMeta"] | components["schemas"]["GraphqlRequestMeta"] | components["schemas"]["PostgresRequestMeta"] | components["schemas"]["S3RequestMeta"] | components["schemas"]["McpRequestMeta"] | components["schemas"]["ConnectorlessRequestMeta"] | components["schemas"]["ErrorRequestMeta"] | null;
+        RequestMeta: components["schemas"]["HttpRequestMeta"] | components["schemas"]["GraphqlRequestMeta"] | components["schemas"]["PostgresRequestMeta"] | components["schemas"]["S3RequestMeta"] | components["schemas"]["McpRequestMeta"] | components["schemas"]["ConnectorlessRequestMeta"] | components["schemas"]["ErrorRequestMeta"] | components["schemas"]["SensitiveRequestMeta"] | null;
         HttpRequestMeta: {
             /** @enum {string} */
             driver: "http";
@@ -24028,6 +24028,14 @@ export interface components {
             url?: string | null;
             unresolved_placeholders?: string[];
             digest?: components["schemas"]["RequestDigest"];
+            extras?: {
+                [key: string]: unknown;
+            };
+        };
+        SensitiveRequestMeta: {
+            /** @enum {string} */
+            driver: "sensitive";
+            pagination: components["schemas"]["RequestPaginationSummary"];
             extras?: {
                 [key: string]: unknown;
             };

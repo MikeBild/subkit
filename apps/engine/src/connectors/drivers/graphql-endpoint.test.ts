@@ -101,8 +101,23 @@ describe("resolveGraphqlStepEndpoint", () => {
     ).toMatchObject({ ok: false, code: "connector_driver_mismatch" });
   });
 
-  test("accepts nested fixed paths", () => {
-    expect(graphqlPathShapeError("/api/graphql")).toBeNull();
-    expect(graphqlPathShapeError("/v1/graph-ql_~x.y")).toBeNull();
+  test("accepts nested graphql endpoint paths", () => {
+    for (const path of ["/graphql", "/api/graphql", "/v1/GraphQL", "/graphql/v2"])
+      expect(graphqlPathShapeError(path)).toBeNull();
+  });
+
+  test.each([
+    "/admin/cache/purge",
+    "/repos/o/r/dispatches",
+    "/v1/graph-ql_~x.y",
+    "/graphql/admin",
+    "/graphqlx",
+    "/api/graphql/v1",
+  ])("refuses the non-graphql endpoint path %p", (path) => {
+    expect(graphqlPathShapeError(path)).not.toBeNull();
+    expect(resolveGraphqlStepEndpoint({ ...github, path })).toMatchObject({
+      ok: false,
+      code: "graphql_endpoint_invalid",
+    });
   });
 });

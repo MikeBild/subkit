@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
+import type { RequestMeta } from "./types.ts";
 
 const SensitivePayloadSchema = z
   .object({
@@ -118,7 +119,7 @@ const SAFE_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
   upstream_rate_limited:
     "The vendor's rate limit did not reset within the step's time. Retry after the limit resets.",
   graphql_endpoint_invalid:
-    "The GraphQL address must be a fixed path on the connector's own host, for example /graphql.",
+    "The GraphQL address must be a fixed GraphQL endpoint path ending in /graphql on the connector's own host, for example /graphql.",
   graphql_path_required: "A GraphQL step on an HTTP connector needs a fixed path such as /graphql.",
   pagination_truncated:
     "Pagination stopped at its configured limit, so this step's result is incomplete.",
@@ -129,6 +130,16 @@ export function sensitiveFailure(code?: string) {
   return {
     code: safeCode,
     message: SAFE_FAILURE_MESSAGES[safeCode] ?? "Sensitive execution failed.",
+  };
+}
+
+export function sensitiveRequestMeta(meta: RequestMeta | null | undefined): RequestMeta | null {
+  const pagination = meta && "pagination" in meta ? meta.pagination : undefined;
+  if (!pagination) return null;
+  const { strategy, pages, items, duplicates_dropped, complete, truncated, limit } = pagination;
+  return {
+    driver: "sensitive",
+    pagination: { strategy, pages, items, duplicates_dropped, complete, truncated, limit },
   };
 }
 

@@ -87,15 +87,56 @@ describe("rateLimitDelayMs", () => {
     }
   });
 
-  test("GraphQL RATE_LIMITED errors on 200 are rate limits", () => {
+  test("a 200 response is a rate limit only when the caller's predicate says so", () => {
+    const body = { errors: [{ type: "RATE_LIMITED", message: "API rate limit exceeded" }] };
+    expect(rateLimitDelayMs({ ...base, status: 200, headers: {}, body })).toEqual({
+      kind: "none",
+    });
     expect(
       rateLimitDelayMs({
         ...base,
         status: 200,
         headers: { "retry-after": "1" },
-        body: { errors: [{ type: "RATE_LIMITED", message: "API rate limit exceeded" }] },
+        body,
+        limited: true,
       }),
     ).toEqual({ kind: "wait", delay_ms: 1000, reason: "retry_after" });
+    expect(rateLimitDelayMs({ ...base, status: 403, headers: {}, body, limited: false })).toEqual({
+      kind: "none",
+    });
+  });
+
+  test("one secondary-limit rule: at least one minute, doubling per attempt", () => {
+    const deadline_ms = NOW + 60 * 60_000;
+    const secondary = { message: "You have exceeded a secondary rate limit." };
+    const waits = [1, 2, 3].map((attempt) =>
+      rateLimitDelayMs({
+        ...base,
+        deadline_ms,
+        attempt,
+        status: 403,
+        headers: {},
+        body: secondary,
+      }),
+    );
+    expect(waits).toEqual(
+      [60_000, 120_000, 240_000].map((delay_ms) => ({
+        kind: "wait",
+        delay_ms,
+        reason: "secondary_backoff",
+      })),
+    );
+    expect(
+      rateLimitDelayMs({
+        ...base,
+        deadline_ms,
+        attempt: 2,
+        status: 200,
+        headers: {},
+        body: { errors: [{ message: "You have exceeded a secondary rate limit." }] },
+        limited: true,
+      }),
+    ).toEqual({ kind: "wait", delay_ms: 120_000, reason: "secondary_backoff" });
   });
 
   test("a wait past the deadline or one hour fails", () => {

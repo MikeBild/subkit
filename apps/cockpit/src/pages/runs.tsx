@@ -80,7 +80,7 @@ import {
   stepEffectKind,
   stepGuidance,
   stoppingStep,
-  truncatedStepKeys,
+  truncatedSteps,
 } from "@/pages/runs-model";
 
 export { formatRunDuration, RUN_STATUSES, requestSourceLabel, runDurationMs, runName };
@@ -196,13 +196,10 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   const errorEvidence = failing ? previewText(failing.error) : null;
   const payload = payloadEvidence(stepItems, current.status, outcome);
   const statusWord = (status: string) => statusLabel(t, status);
-  const truncated = truncatedStepKeys(stepItems);
+  const truncated = truncatedSteps(stepItems);
   const verdict = runVerdict(current.status, outcome, t, statusWord, truncated);
   const failed = verdict.tone !== null;
-  const truncatedRun =
-    truncated.length > 0 &&
-    (outcome ? outcome.kind === "succeeded" : current.status === "succeeded");
-  const sentence = truncatedRun
+  const sentence = verdict.truncated
     ? runTruncationSentence(truncated, t)
     : outcome
       ? runOutcomeSentence(outcome, t)

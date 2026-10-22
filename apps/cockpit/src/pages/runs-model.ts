@@ -440,47 +440,66 @@ export const FAILED_RUN_STATUSES: ReadonlySet<string> = new Set(["failed", "time
 export interface RunVerdict {
   label: string;
   tone: "critical" | "warning" | null;
+  truncated?: true;
 }
 
-function hasTruncationWarning(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  const warnings = (value as { warnings?: unknown }).warnings;
-  return (
-    Array.isArray(warnings) &&
-    warnings.some(
-      (warning) =>
-        warning !== null &&
-        typeof warning === "object" &&
-        (warning as { code?: unknown }).code === "pagination_truncated",
+export type PaginationLimit = "max_pages" | "max_items" | "max_bytes";
+
+export interface TruncatedStep {
+  step: string;
+  limit: PaginationLimit | null;
+}
+
+const PAGINATION_LIMITS: ReadonlySet<unknown> = new Set(["max_pages", "max_items", "max_bytes"]);
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function knownLimit(value: unknown): PaginationLimit | null {
+  return PAGINATION_LIMITS.has(value) ? (value as PaginationLimit) : null;
+}
+
+function truncationOf(step: StepLike): TruncatedStep | null {
+  const pagination = record(record(step.request_meta)?.pagination);
+  if (pagination?.truncated === true)
+    return { step: step.step_key, limit: knownLimit(pagination.limit) };
+  const warnings = record(step.output_preview)?.warnings;
+  const warning = Array.isArray(warnings)
+    ? warnings.map(record).find((entry) => entry?.code === "pagination_truncated")
+    : undefined;
+  return warning
+    ? { step: step.step_key, limit: knownLimit(record(warning.details)?.limit) }
+    : null;
+}
+
+export function truncatedSteps(steps: readonly StepLike[]): TruncatedStep[] {
+  const seen = new Set<string>();
+  return steps.flatMap((step) => {
+    const truncation = truncationOf(step);
+    if (!truncation || seen.has(truncation.step)) return [];
+    seen.add(truncation.step);
+    return [truncation];
+  });
+}
+
+const TRUNCATION_KEYS: Record<PaginationLimit, TranslationKey> = {
+  max_pages: "runs.outcome.truncated.pages",
+  max_items: "runs.outcome.truncated.items",
+  max_bytes: "runs.outcome.truncated.bytes",
+};
+
+export function runTruncationSentence(
+  steps: readonly TruncatedStep[],
+  t: Translate,
+): OutcomeSentence {
+  const plain = steps
+    .map(({ step, limit }) =>
+      t(limit ? TRUNCATION_KEYS[limit] : "runs.outcome.truncated.unknown", { step }),
     )
-  );
-}
-
-function hasTruncatedPagination(meta: unknown): boolean {
-  if (!meta || typeof meta !== "object") return false;
-  const pagination = (meta as { pagination?: unknown }).pagination;
-  return (
-    pagination !== null &&
-    typeof pagination === "object" &&
-    (pagination as { truncated?: unknown }).truncated === true
-  );
-}
-
-export function truncatedStepKeys(steps: readonly StepLike[]): string[] {
-  return [
-    ...new Set(
-      steps
-        .filter(
-          (step) =>
-            hasTruncationWarning(step.output_preview) || hasTruncatedPagination(step.request_meta),
-        )
-        .map((step) => step.step_key),
-    ),
-  ];
-}
-
-export function runTruncationSentence(steps: readonly string[], t: Translate): OutcomeSentence {
-  const plain = steps.map((step) => t("runs.outcome.truncatedStep", { step })).join(" ");
+    .join(" ");
   return { lead: plain, cause: null, tail: "", plain };
 }
 
@@ -489,11 +508,11 @@ export function runVerdict(
   outcome: ExecutionOutcome | null,
   t: Translate,
   statusWord: (status: string) => string,
-  truncatedSteps: readonly string[] = [],
+  truncated: readonly TruncatedStep[] = [],
 ): RunVerdict {
   const finishedCleanly = outcome ? outcome.kind === "succeeded" : status === "succeeded";
-  if (finishedCleanly && truncatedSteps.length > 0)
-    return { label: t("runs.state.partial"), tone: "warning" };
+  if (finishedCleanly && truncated.length > 0)
+    return { label: t("runs.state.partial"), tone: "warning", truncated: true };
   if (outcome) {
     switch (outcome.kind) {
       case "held":

@@ -77,16 +77,6 @@ function entryIsRateLimited(entry: Record<string, unknown>): boolean {
   );
 }
 
-const SECONDARY_RATE_LIMIT_MESSAGE = /secondary rate limit/i;
-
-export function graphqlSecondaryRateLimited(status: number, body: unknown): boolean {
-  if (status === 403) return true;
-  const message = (body as { message?: unknown } | null | undefined)?.message;
-  return [message, ...errorEntries(body).map((entry) => entry.message)].some(
-    (text) => typeof text === "string" && SECONDARY_RATE_LIMIT_MESSAGE.test(text),
-  );
-}
-
 export function graphqlRateLimited(
   status: number,
   headers: Readonly<Record<string, string>>,

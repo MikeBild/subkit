@@ -26,6 +26,7 @@ import {
   isSensitivePayload,
   protectExecutionPayload,
   sensitiveFailure,
+  sensitiveRequestMeta,
 } from "./sensitive-payload.ts";
 import {
   type ExecutionMode,
@@ -547,7 +548,7 @@ export async function finalizeStepRow(
     if (persisted && isSensitivePayload(persisted.input)) {
       result = {
         ...result,
-        request_meta: null,
+        request_meta: sensitiveRequestMeta(result.request_meta),
         error: result.error ? sensitiveFailure(result.error.code) : null,
       };
       options = {

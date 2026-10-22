@@ -3,7 +3,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
 import { upsertCredential } from "../../credentials/service.ts";
 import { auditLog, connectors } from "../../db/schema/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { runExecution } from "../engine.ts";
+import { withRateLimitClockForTests } from "../steps/request/rate-limit.ts";
 import {
   createEngineCtx,
   createMockServer,
@@ -250,6 +252,8 @@ describe("graphql block on an http connector through path /graphql", () => {
     ["missing path", { path: undefined }, "graphql_path_required"],
     ["foreign path", { path: "//127.0.0.2/graphql" }, "graphql_endpoint_invalid"],
     ["step url", { url: "http://127.0.0.2/graphql" }, "graphql_endpoint_invalid"],
+    ["non-graphql path", { path: "/admin/cache/purge" }, "graphql_endpoint_invalid"],
+    ["dispatch path", { path: "/repos/o/r/dispatches" }, "graphql_endpoint_invalid"],
   ])("%s is refused before any request", async (label, extra, code) => {
     const result = await run(`gql-path-refused-${label.replace(/\s/g, "-")}`, projectStep(extra));
     expect(result.status).toBe("failed");
@@ -323,6 +327,45 @@ describe("GitHub GraphQL rate limits through path /graphql", () => {
     const result = await run("gql-path-secondary-limit", projectStep());
     expect(result.status).toBe("succeeded");
     expect(seen).toHaveLength(4);
+  });
+
+  test("secondary limits wait on the shared clock, one minute doubling per attempt", async () => {
+    const now = getTestNow();
+    const waits: number[] = [];
+    answer = (after, call) =>
+      call <= 2
+        ? {
+            status: 403,
+            headers: {},
+            body: { message: "You have exceeded a secondary rate limit." },
+          }
+        : { status: 200, body: page(after) };
+    const result = await withRateLimitClockForTests(
+      { now: () => now, sleep: async (ms) => void waits.push(ms) },
+      () =>
+        run("gql-path-secondary-clock", projectStep({ timeout_ms: 10 * 60_000, max_retries: 3 })),
+    );
+    expect(result.status).toBe("succeeded");
+    expect(waits).toEqual([60_000, 120_000]);
+    expect(items(result.output)).toHaveLength(5);
+  });
+
+  test("a secondary limit past the deadline on the shared clock fails without sleeping", async () => {
+    const now = getTestNow();
+    const waits: number[] = [];
+    answer = () => ({
+      status: 403,
+      headers: {},
+      body: { message: "You have exceeded a secondary rate limit." },
+    });
+    const result = await withRateLimitClockForTests(
+      { now: () => now, sleep: async (ms) => void waits.push(ms) },
+      () => run("gql-path-secondary-deadline", projectStep({ timeout_ms: 30_000, max_retries: 3 })),
+    );
+    expect(result.status).toBe("failed");
+    expect((result.steps[0]?.error as { code?: string })?.code).toBe("upstream_rate_limited");
+    expect(waits).toEqual([]);
+    expect(seen).toHaveLength(1);
   });
 
   test("a limit past the step deadline fails without further requests", async () => {

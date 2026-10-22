@@ -3434,7 +3434,10 @@ const EN = {
   "decisions.workflowFilter": "One workflow only — clear",
   "runs.state.held": "Prepared",
   "runs.state.partial": "Partly completed",
-  "runs.outcome.truncatedStep": "{step}: page limit reached, result incomplete.",
+  "runs.outcome.truncated.pages": "{step}: page limit reached, result incomplete.",
+  "runs.outcome.truncated.items": "{step}: item limit reached, result incomplete.",
+  "runs.outcome.truncated.bytes": "{step}: size limit reached, result incomplete.",
+  "runs.outcome.truncated.unknown": "{step}: paging stopped early, result incomplete.",
   "runs.detail.preview": "Preview — not written",
   "runs.outcome.statusOnly": "This run ended as “{status}”; the engine reported no cause with it.",
   "runs.rerun.refused.versionUnavailable":
@@ -8572,7 +8575,10 @@ const DE: Record<TranslationKey, string> = {
   "decisions.workflowFilter": "Nur ein Workflow — aufheben",
   "runs.state.held": "Vorbereitet",
   "runs.state.partial": "Teilweise gelaufen",
-  "runs.outcome.truncatedStep": "{step}: Seitenlimit erreicht, Ergebnis unvollständig.",
+  "runs.outcome.truncated.pages": "{step}: Seitenlimit erreicht, Ergebnis unvollständig.",
+  "runs.outcome.truncated.items": "{step}: Eintragslimit erreicht, Ergebnis unvollständig.",
+  "runs.outcome.truncated.bytes": "{step}: Größenlimit erreicht, Ergebnis unvollständig.",
+  "runs.outcome.truncated.unknown": "{step}: Abruf vorzeitig beendet, Ergebnis unvollständig.",
   "runs.detail.preview": "Vorschau – nicht geschrieben",
   "runs.outcome.statusOnly":
     "Dieser Lauf endete als „{status}“; eine Ursache hat die Engine nicht mitgeliefert.",

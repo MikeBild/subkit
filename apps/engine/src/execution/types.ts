@@ -211,6 +211,11 @@ export type RequestMeta =
       unresolved_placeholders?: string[];
       digest?: RequestDigest;
       extras?: Record<string, unknown>;
+    }
+  | {
+      driver: "sensitive";
+      pagination: RequestPaginationSummary;
+      extras?: Record<string, unknown>;
     };
 
 export interface StepErrorDetail {

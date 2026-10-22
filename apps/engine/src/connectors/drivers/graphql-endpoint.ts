@@ -1,3 +1,4 @@
+import { looksLikeGraphQLUrl } from "@shared/index.ts";
 import { resolveUrl } from "./resolve-url.ts";
 
 export type GraphqlEndpointCode =
@@ -26,7 +27,7 @@ export const GRAPHQL_PATH_REQUIRED_MESSAGE =
   'A graphql block on an http connector needs path "/graphql" (the GraphQL endpoint path on the connector host). Keep the graphql block with its cursor_pagination and set path "/graphql"; method is ignored, the request is always sent as POST.';
 
 export const GRAPHQL_PATH_INVALID_MESSAGE =
-  'The address must be a fixed path on the connector host, for example path "/graphql" without url, query, placeholders or "..".';
+  'The address must be a fixed GraphQL endpoint path on the connector host ending in "/graphql", for example path "/graphql" without url, query, placeholders or "..".';
 
 const SIGNED_MESSAGE =
   "A graphql block cannot be sent through a request-signing http connector. Use a graphql connector for this endpoint.";
@@ -41,7 +42,11 @@ const fail = (code: GraphqlEndpointCode, message: string): GraphqlEndpoint => ({
 });
 
 export function graphqlPathShapeError(path: unknown): string | null {
-  return typeof path === "string" && FIXED_PATH.test(path) ? null : GRAPHQL_PATH_INVALID_MESSAGE;
+  return typeof path === "string" &&
+    FIXED_PATH.test(path) &&
+    looksLikeGraphQLUrl(`https://graphql.invalid${path}`)
+    ? null
+    : GRAPHQL_PATH_INVALID_MESSAGE;
 }
 
 function webOrigin(value: string): string | null {
@@ -75,7 +80,12 @@ export function resolveGraphqlStepEndpoint(address: GraphqlStepAddress): Graphql
   } catch {
     return fail("graphql_endpoint_invalid", GRAPHQL_PATH_INVALID_MESSAGE);
   }
-  if (resolved.origin !== origin || resolved.search || resolved.hash)
+  if (
+    resolved.origin !== origin ||
+    resolved.search ||
+    resolved.hash ||
+    !looksLikeGraphQLUrl(resolved.href)
+  )
     return fail("graphql_endpoint_invalid", GRAPHQL_PATH_INVALID_MESSAGE);
   return { ok: true, url: `${resolved.origin}${resolved.pathname}`, via_path: true };
 }

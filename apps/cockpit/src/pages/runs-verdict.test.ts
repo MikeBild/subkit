@@ -12,7 +12,7 @@ import {
   runStatusSentence,
   runTruncationSentence,
   runVerdict,
-  truncatedStepKeys,
+  truncatedSteps,
 } from "@/pages/runs-model";
 
 const tr =
@@ -95,41 +95,84 @@ describe("the run's verdict", () => {
 });
 
 describe("a truncated read is not shown as a plain success", () => {
+  const paging = (limit: string | null, truncated = true) => ({
+    strategy: "link",
+    pages: 3,
+    items: 6,
+    duplicates_dropped: 0,
+    complete: !truncated,
+    truncated,
+    limit,
+  });
+  const sealed = { $sensitive: true, ciphertext: "x", iv: "y", auth_tag: "z" };
   const steps = [
     {
       step_key: "commits",
+      output_preview: sealed,
+      request_meta: { driver: "sensitive", pagination: paging("max_pages") },
+      result_preview: null,
+    },
+    {
+      step_key: "issues",
+      output_preview: null,
+      request_meta: { driver: "http", method: "GET", url: null, pagination: paging("max_items") },
+      result_preview: null,
+    },
+    {
+      step_key: "actions",
       output_preview: {
         value: [],
-        warnings: [{ code: "pagination_truncated", message: "limit reached" }],
+        warnings: [
+          { code: "pagination_truncated", message: "limit", details: { limit: "max_bytes" } },
+        ],
       },
       result_preview: null,
     },
-    { step_key: "issues", request_meta: { pagination: { truncated: true } }, result_preview: null },
-    { step_key: "repo", output_preview: { id: 1 }, result_preview: null },
+    {
+      step_key: "milestones",
+      output_preview: { value: [], warnings: [{ code: "pagination_truncated", message: "x" }] },
+      result_preview: null,
+    },
+    {
+      step_key: "repo",
+      output_preview: sealed,
+      request_meta: { driver: "sensitive", pagination: paging(null, false) },
+      result_preview: null,
+    },
   ];
 
-  test("only steps with a truncation warning or truncated paging are named", () => {
-    expect(truncatedStepKeys(steps)).toEqual(["commits", "issues"]);
-    expect(truncatedStepKeys([steps[2]!])).toEqual([]);
+  test("stored sensitive, offloaded and inline step shapes name the limit that stopped them", () => {
+    expect(truncatedSteps(steps)).toEqual([
+      { step: "commits", limit: "max_pages" },
+      { step: "issues", limit: "max_items" },
+      { step: "actions", limit: "max_bytes" },
+      { step: "milestones", limit: null },
+    ]);
+    expect(truncatedSteps([steps[4]!])).toEqual([]);
   });
 
   test("a succeeded run with truncated steps reads as partly completed", () => {
-    const keys = truncatedStepKeys(steps);
-    expect(runVerdict("succeeded", outcome("succeeded"), de, word, keys)).toEqual({
+    const truncated = truncatedSteps(steps);
+    expect(runVerdict("succeeded", outcome("succeeded"), de, word, truncated)).toEqual({
       label: "Teilweise gelaufen",
       tone: "warning",
+      truncated: true,
     });
-    expect(runVerdict("succeeded", null, de, word, keys).tone).toBe("warning");
-    expect(runVerdict("succeeded", outcome("succeeded"), de, word, []).tone).toBeNull();
-    expect(runVerdict("failed", outcome("failed"), de, word, keys).tone).toBe("critical");
+    expect(runVerdict("succeeded", null, de, word, truncated).truncated).toBe(true);
+    expect(runVerdict("succeeded", outcome("succeeded"), de, word, []).truncated).toBeUndefined();
+    expect(runVerdict("failed", outcome("failed"), de, word, truncated)).toMatchObject({
+      tone: "critical",
+    });
+    expect(runVerdict("failed", outcome("failed"), de, word, truncated).truncated).toBeUndefined();
   });
 
-  test("one short line per affected step, in both languages", () => {
-    expect(runTruncationSentence(["commits", "issues"], de).plain).toBe(
-      "commits: Seitenlimit erreicht, Ergebnis unvollständig. issues: Seitenlimit erreicht, Ergebnis unvollständig.",
+  test("one short line per affected step names its limit, in both languages", () => {
+    const truncated = truncatedSteps(steps);
+    expect(runTruncationSentence(truncated, de).plain).toBe(
+      "commits: Seitenlimit erreicht, Ergebnis unvollständig. issues: Eintragslimit erreicht, Ergebnis unvollständig. actions: Größenlimit erreicht, Ergebnis unvollständig. milestones: Abruf vorzeitig beendet, Ergebnis unvollständig.",
     );
-    expect(runTruncationSentence(["commits"], tr("en")).plain).toBe(
-      "commits: page limit reached, result incomplete.",
+    expect(runTruncationSentence(truncated, tr("en")).plain).toBe(
+      "commits: page limit reached, result incomplete. issues: item limit reached, result incomplete. actions: size limit reached, result incomplete. milestones: paging stopped early, result incomplete.",
     );
   });
 });

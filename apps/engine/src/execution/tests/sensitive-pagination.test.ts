@@ -2,8 +2,10 @@ import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import type { ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
 import { auditLog, connectors, executionSteps } from "../../db/schema/index.ts";
+import { serializeStep } from "../../http/routes/executions/schemas.ts";
 import { logRing } from "../../observability/log-ring.ts";
 import { runExecution } from "../engine.ts";
+import { RequestMetaSchema } from "../request-meta-schema.ts";
 import { sensitiveFailure } from "../sensitive-payload.ts";
 import {
   createEngineCtx,
@@ -190,6 +192,54 @@ test("a sensitive truncation surfaces as a fixed warning in the run result", asy
   ]);
   expect(JSON.stringify(result)).not.toContain(CURSOR);
   expect(JSON.stringify(result)).not.toContain(QUERY_VALUE);
+});
+
+test("a sensitive truncation is kept on the stored step and in the execution detail", async () => {
+  const { result, rows } = await runSensitive("sensitive-pages-truncate-detail", [
+    pagedStep({ max_pages: 3, on_limit: "truncate" }),
+  ]);
+  const expected = {
+    driver: "sensitive" as const,
+    pagination: {
+      strategy: "link" as const,
+      pages: 3,
+      items: 6,
+      duplicates_dropped: 0,
+      complete: false,
+      truncated: true,
+      limit: "max_pages" as const,
+    },
+  };
+  expect(rows).toHaveLength(1);
+  const detail = serializeStep(rows[0]!);
+  expect(detail.request_meta).toEqual(expected);
+  expect(RequestMetaSchema.parse(detail.request_meta)).toEqual(expected);
+  expect(result.steps[0]?.request_meta).toEqual(expected);
+  expect(JSON.stringify(detail)).not.toContain(CURSOR);
+  expect(JSON.stringify(detail)).not.toContain(QUERY_VALUE);
+  expect(JSON.stringify(detail)).not.toContain(mock.baseUrl);
+  expect(JSON.stringify(detail)).not.toContain("PRIVATE-ROW");
+});
+
+test("a complete sensitive paged read stores only its page counts", async () => {
+  const { rows } = await runSensitive("sensitive-pages-complete-detail", [
+    pagedStep({ max_pages: 60 }),
+    { id: "noop", kind: "transform", language: "javascript", expression: "return 1;" },
+  ]);
+  const meta = Object.fromEntries(rows.map((row) => [row.step_key, row.request_meta]));
+  expect(meta.items).toEqual({
+    driver: "sensitive",
+    pagination: {
+      strategy: "link",
+      pages: PAGES,
+      items: PAGES * 2,
+      duplicates_dropped: 0,
+      complete: true,
+      truncated: false,
+      limit: null,
+    },
+  });
+  expect(meta.noop ?? null).toBeNull();
 });
 
 test("sensitive runs still refuse persistent state", async () => {

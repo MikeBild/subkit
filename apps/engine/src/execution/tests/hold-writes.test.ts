@@ -1028,6 +1028,9 @@ describe("hold-writes · graphql", () => {
     expect(requestRequiresPreparationHold(step({ path: "//evil.example/x" }), "http", base)).toBe(
       true,
     );
+    expect(requestRequiresPreparationHold(step({ path: "/admin/cache/purge" }), "http", base)).toBe(
+      true,
+    );
     expect(requestRequiresPreparationHold(step({ path: "/graphql" }), "postgres", base)).toBe(true);
     expect(
       requestRequiresPreparationHold(

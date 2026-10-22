@@ -88,7 +88,7 @@ Cost, not request count, is the budget. `first`/`last` must be 1–100; a larger
 
 A workflow that polls every minute with `cost=30` will exhaust the 5000/h budget in under three hours. Watch `request_meta.bytes_in` in a test run — oversized responses usually correlate with high cost.
 
-An exhausted primary limit still answers HTTP 200 with an error of type `RATE_LIMITED` and `x-ratelimit-remaining: 0`; a secondary limit answers 200 or 403, sometimes with `retry-after`. The engine waits for `retry-after`, then for `x-ratelimit-reset`, otherwise at least one minute, and fails the step with `upstream_rate_limited` without further requests when that wait passes the step deadline. Run the workflow again after the reset.
+An exhausted primary limit still answers HTTP 200 with an error of type `RATE_LIMITED` and `x-ratelimit-remaining: 0`; a secondary limit answers 200 or 403, sometimes with `retry-after`. The engine waits for `retry-after`, then for `x-ratelimit-reset`, otherwise at least one minute, doubling per attempt, and fails the step with `upstream_rate_limited` without further requests when that wait passes the step's `timeout_ms` (or one hour). Run the workflow again after the reset.
 
 ## Pitfalls
 

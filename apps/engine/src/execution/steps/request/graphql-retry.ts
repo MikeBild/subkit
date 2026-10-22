@@ -6,7 +6,6 @@ import {
 import {
   classifyGraphqlSchemaError,
   graphqlRateLimited,
-  graphqlSecondaryRateLimited,
   isGraphqlRetryable,
 } from "../../../connectors/drivers/graphql-retry-classify.ts";
 import {
@@ -25,7 +24,8 @@ import { GOVERNANCE_REFUSALS } from "../../state.ts";
 import type { ConnectorResolutionSummary, StepResult, StepWarning } from "../../types.ts";
 import { buildStepErrorDetail } from "../error-detail.ts";
 import { RequestError } from "./errors.ts";
-import { backoffMs, parseRetryAfter, requestMaxAttempts, resolveRetryPolicy } from "./retry.ts";
+import { rateLimitDelayMs, rateLimitNow, rateLimitSleepOverride } from "./rate-limit.ts";
+import { backoffMs, requestMaxAttempts, resolveRetryPolicy } from "./retry.ts";
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   if (ms <= 0) return Promise.resolve();
@@ -73,28 +73,6 @@ function retryReason(status: number, body: unknown): "graphql_throttle" | "graph
     }
   }
   return "graphql_5xx";
-}
-
-const RATE_LIMIT_MAX_WAIT_MS = 60 * 60_000;
-const SECONDARY_RATE_LIMIT_WAIT_MS = 60_000;
-
-export function graphqlRateLimitWaitMs(p: {
-  status: number;
-  headers: Readonly<Record<string, string>>;
-  body: unknown;
-  attempt: number;
-  backoff_base_ms: number;
-  now_ms: number;
-}): number {
-  const after = parseRetryAfter(p.headers["retry-after"] ?? null);
-  if (after !== null) return after;
-  const reset = Number(p.headers["x-ratelimit-reset"]);
-  if (p.headers["x-ratelimit-remaining"] === "0" && Number.isFinite(reset))
-    return Math.max(0, reset * 1000 - p.now_ms) + 1000;
-  const backoff = backoffMs(p.attempt, p.backoff_base_ms);
-  return graphqlSecondaryRateLimited(p.status, p.body)
-    ? Math.max(SECONDARY_RATE_LIMIT_WAIT_MS, backoff)
-    : backoff;
 }
 
 function rateLimitFailure(
@@ -201,36 +179,39 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
     connRes = { ...connRes, auth_method: raw.auth_method };
     lastRes = raw;
 
-    const rateLimited = graphqlRateLimited(raw.status, raw.headers, raw.body);
-    if ((rateLimited || isGraphqlRetryable(raw.status, raw.body)) && attempt < max_attempts - 1) {
-      const reason = rateLimited ? "graphql_throttle" : retryReason(raw.status, raw.body);
-      const now = Date.now();
-      const wait = rateLimited
-        ? graphqlRateLimitWaitMs({
-            status: raw.status,
-            headers: raw.headers,
-            body: raw.body,
-            attempt,
-            backoff_base_ms: policy.backoff_base_ms,
-            now_ms: now,
-          })
-        : backoffMs(attempt, policy.backoff_base_ms);
-      if (
-        rateLimited &&
-        (wait > RATE_LIMIT_MAX_WAIT_MS ||
-          (p.deadline_ms !== undefined && now + wait > p.deadline_ms))
-      ) {
+    const rateLimit = graphqlRateLimited(raw.status, raw.headers, raw.body)
+      ? rateLimitDelayMs({
+          status: raw.status,
+          headers: raw.headers,
+          body: raw.body,
+          attempt: attempt + 1,
+          now_ms: rateLimitNow(),
+          backoff_base_ms: policy.backoff_base_ms,
+          deadline_ms: p.deadline_ms ?? Number.POSITIVE_INFINITY,
+          limited: true,
+        })
+      : ({ kind: "none" } as const);
+    if (
+      (rateLimit.kind !== "none" || isGraphqlRetryable(raw.status, raw.body)) &&
+      attempt < max_attempts - 1
+    ) {
+      const reason =
+        rateLimit.kind !== "none" ? "graphql_throttle" : retryReason(raw.status, raw.body);
+      if (rateLimit.kind === "fail") {
         logger.warn({
           module: "execution",
           action: "graphql.rate_limited",
           msg: "graphql rate limit does not reset before the step deadline",
           connector_id: egressInput.connector_id,
           status: raw.status,
-          wait_ms: Math.round(wait),
+          reason: rateLimit.reason,
+          wait_ms: Math.round(rateLimit.delay_ms),
           attempt_no: attempt,
         });
         return rateLimitFailure(attempt, start, raw.status, connRes);
       }
+      const wait =
+        rateLimit.kind === "wait" ? rateLimit.delay_ms : backoffMs(attempt, policy.backoff_base_ms);
       logger.info({
         module: "execution",
         action: "request.retry",
@@ -239,12 +220,12 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
         attempt_no: attempt,
         total_attempts: max_attempts,
         delay_ms: Math.round(wait),
-        next_attempt_at: new Date(Date.now() + wait).toISOString(),
+        next_attempt_at: new Date(rateLimitNow() + wait).toISOString(),
         status: raw.status,
         connector_id: egressInput.connector_id,
       });
       recordRequestRetry({ connector_id: egressInput.connector_id, reason });
-      await sleep(wait, signal);
+      await (rateLimitSleepOverride() ?? sleep)(wait, signal);
       continue;
     }
     break;

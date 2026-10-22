@@ -11307,6 +11307,9 @@
             "$ref": "#/components/schemas/ErrorRequestMeta"
           },
           {
+            "$ref": "#/components/schemas/SensitiveRequestMeta"
+          },
+          {
             "type": "null"
           }
         ]
@@ -11812,6 +11815,28 @@
         },
         "required": [
           "driver"
+        ]
+      },
+      "SensitiveRequestMeta": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string",
+            "enum": [
+              "sensitive"
+            ]
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/RequestPaginationSummary"
+          },
+          "extras": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "driver",
+          "pagination"
         ]
       },
       "CallerBudgetRefusal": {

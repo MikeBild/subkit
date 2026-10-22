@@ -133,6 +133,18 @@ describe("RequestMeta · driver-discriminated union", () => {
       },
       { driver: "connectorless", method: "GET", url: null },
       { driver: "error" },
+      {
+        driver: "sensitive",
+        pagination: {
+          strategy: "link",
+          pages: 1,
+          items: 2,
+          duplicates_dropped: 0,
+          complete: true,
+          truncated: false,
+          limit: null,
+        },
+      },
     ];
     let count = 0;
     for (const v of variants) {
@@ -144,6 +156,7 @@ describe("RequestMeta · driver-discriminated union", () => {
         case "mcp":
         case "connectorless":
         case "error":
+        case "sensitive":
           count++;
           break;
         default: {
@@ -152,7 +165,7 @@ describe("RequestMeta · driver-discriminated union", () => {
         }
       }
     }
-    expect(count).toBe(7);
+    expect(count).toBe(8);
   });
 });
 

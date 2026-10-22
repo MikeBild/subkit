@@ -20,6 +20,7 @@ export interface RateLimitInput {
   now_ms: number;
   backoff_base_ms: number;
   deadline_ms: number;
+  limited?: boolean;
 }
 
 const RATE_LIMIT_MESSAGE = /secondary rate limit|rate limit exceeded|abuse detection/i;
@@ -38,20 +39,6 @@ function bodyMessages(body: unknown): string[] {
   return messages;
 }
 
-function graphqlRateLimited(body: unknown): boolean {
-  if (!body || typeof body !== "object") return false;
-  const errors = (body as { errors?: unknown }).errors;
-  return (
-    Array.isArray(errors) &&
-    errors.some(
-      (entry) =>
-        entry !== null &&
-        typeof entry === "object" &&
-        (entry as { type?: unknown }).type === "RATE_LIMITED",
-    )
-  );
-}
-
 export function rateLimitDelayMs(input: RateLimitInput): RateLimitVerdict {
   const retryAfter = parseRetryAfter(input.headers["retry-after"] ?? null);
   const exhausted = input.headers["x-ratelimit-remaining"]?.trim() === "0";
@@ -59,9 +46,9 @@ export function rateLimitDelayMs(input: RateLimitInput): RateLimitVerdict {
     RATE_LIMIT_MESSAGE.test(message),
   );
   const limited =
-    input.status === 429 ||
-    (input.status === 403 && (retryAfter !== null || exhausted || messageSignal)) ||
-    (input.status === 200 && graphqlRateLimited(input.body));
+    input.limited ??
+    (input.status === 429 ||
+      (input.status === 403 && (retryAfter !== null || exhausted || messageSignal)));
   if (!limited) return { kind: "none" };
   const resetSeconds = Number.parseInt(input.headers["x-ratelimit-reset"] ?? "", 10);
   const [delay_ms, reason]: [number, RateLimitReason] =
@@ -69,7 +56,7 @@ export function rateLimitDelayMs(input: RateLimitInput): RateLimitVerdict {
       ? [retryAfter, "retry_after"]
       : exhausted && Number.isFinite(resetSeconds)
         ? [Math.max(0, resetSeconds * 1000 - input.now_ms) + RESET_MARGIN_MS, "primary_reset"]
-        : messageSignal || input.status === 403 || input.status === 200
+        : messageSignal || input.status === 403
           ? [SECONDARY_MIN_WAIT_MS * 2 ** Math.max(0, input.attempt - 1), "secondary_backoff"]
           : [backoffMs(input.attempt, input.backoff_base_ms), "backoff"];
   const tooLong = delay_ms > RATE_LIMIT_MAX_WAIT_MS || input.now_ms + delay_ms >= input.deadline_ms;

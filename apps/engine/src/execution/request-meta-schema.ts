@@ -156,6 +156,14 @@ const ErrorRequestMetaSchema = z
   })
   .openapi("ErrorRequestMeta");
 
+const SensitiveRequestMetaSchema = z
+  .object({
+    driver: z.literal("sensitive"),
+    pagination: RequestPaginationSummarySchema,
+    extras: z.record(z.string(), z.unknown()).optional(),
+  })
+  .openapi("SensitiveRequestMeta");
+
 export const RequestMetaSchema = z
   .discriminatedUnion("driver", [
     HttpRequestMetaSchema,
@@ -165,5 +173,6 @@ export const RequestMetaSchema = z
     McpRequestMetaSchema,
     ConnectorlessRequestMetaSchema,
     ErrorRequestMetaSchema,
+    SensitiveRequestMetaSchema,
   ])
   .openapi("RequestMeta");

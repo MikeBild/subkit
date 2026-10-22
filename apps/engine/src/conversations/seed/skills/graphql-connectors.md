@@ -214,8 +214,9 @@ The driver retries automatically on:
 - A rate limit answered as HTTP 200 or 403 (for GitHub an error of type
   `RATE_LIMITED`, `x-ratelimit-remaining: 0`, `retry-after`, or a secondary
   rate limit message). The wait follows `retry-after`, then
-  `x-ratelimit-reset`, otherwise at least one minute; when it passes the step
-  deadline the step fails with `upstream_rate_limited` and sends nothing more.
+  `x-ratelimit-reset`, otherwise at least one minute, doubling per attempt;
+  when it passes the step's `timeout_ms` (or one hour) the step fails with
+  `upstream_rate_limited` and sends nothing more.
 
 `max_retries` (default 4) and `retry_backoff_ms` (default 200) control the
 retry budget. A `Retry-After` response header is honoured when present. Each

@@ -53,13 +53,15 @@ describe("validateWorkflowDef · graphql block connector driver", () => {
     "/graphql?x=1",
     // biome-ignore lint/suspicious/noTemplateCurlyInString: refused placeholder shape
     "/${input.host}",
+    "/admin/purge",
+    "/repos/o/r/dispatches",
   ])("refuses the path %p at steps.<id>.path without echoing it", (path) => {
     const result = validateWorkflowDef(definition({ path }), {
       connectorGraphqlTargets: new Map([[connectorId, [githubHttp]]]),
     });
     const errors = stepErrors(result).filter((entry) => entry.path === "steps.project_items.path");
     expect(errors).toHaveLength(1);
-    expect(errors[0]?.message).toContain("fixed path on the connector host");
+    expect(errors[0]?.message).toContain("fixed GraphQL endpoint path on the connector host");
     expect(errors[0]?.message).not.toContain("evil");
   });
 

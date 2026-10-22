@@ -63,7 +63,7 @@ import { checkOutputContract, summarizeViolations } from "./output-contract.ts";
 import { capturePreparedWorkflowReferences } from "./prepared-workflow-references.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
 import { applyResponseFilters } from "./response-filter.ts";
-import { isSensitivePayload, sensitiveFailure } from "./sensitive-payload.ts";
+import { isSensitivePayload, sensitiveFailure, sensitiveRequestMeta } from "./sensitive-payload.ts";
 import { settleTerminalOutcome } from "./settle-terminal.ts";
 import {
   createExecution,
@@ -1856,7 +1856,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       ...step,
       output_preview: null,
       raw_preview: null,
-      request_meta: null,
+      request_meta: sensitiveRequestMeta(step.request_meta),
       error: step.error ? sensitiveFailure(stepErrorCode(step.error)) : null,
     }));
     const safeWarnings = warningsAccum

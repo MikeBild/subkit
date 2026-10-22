@@ -54,7 +54,7 @@ function parseDeprecationLink(link: string | undefined): string | null {
   return docsUri;
 }
 
-export function isRateLimitedResponse(status: number, headers?: Record<string, string>): boolean {
+function isRateLimitedResponse(status: number, headers?: Record<string, string>): boolean {
   if (status === 429) return true;
   if (status !== 403 || !headers) return false;
   return headers["x-ratelimit-remaining"]?.trim() === "0" || Boolean(headers["retry-after"]);

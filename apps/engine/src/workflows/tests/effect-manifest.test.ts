@@ -57,6 +57,8 @@ test.each([
   ["without path", { path: undefined }],
   ["with a foreign path", { path: "//evil.example/graphql" }],
   ["with a step url", { url: "https://evil.example/graphql" }],
+  ["with a non-graphql path", { path: "/admin/purge" }],
+  ["with a dispatch path", { path: "/repos/o/r/dispatches" }],
 ])("a graphql block on an http connector %s is not eligible", (_label, step) => {
   const result = compileWorkflowEffectManifest(httpProjectItems(step));
   expect(result.eligible_for_repeated_runs).toBe(false);

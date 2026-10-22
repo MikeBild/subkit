@@ -1231,7 +1231,7 @@ async function dispatchRequestStep(
               step: p.step,
               signal,
               start,
-              deadline_ms: start + timeoutMs,
+              deadline_ms: rateLimitDeadline,
               connectorResolution: graphqlConnectorResolution,
             });
           const graphqlResult = cursorPagination
