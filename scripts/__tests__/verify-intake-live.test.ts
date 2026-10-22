@@ -272,7 +272,7 @@ describe("verify intake production smoke contract checks", () => {
     ]);
     expect(report.handoff).toEqual({
       proposal_id: "proposal-1",
-      review_url: "https://test.example/cockpit/intake?proposal=proposal-1",
+      review_url: "https://test.example/cockpit/intake/item-1?tab=review&proposal=proposal-1",
     });
     expect(mock.redirects.filter((redirect) => redirect === "error").length).toBeGreaterThan(0);
     expect(report.retained_resource_ids).toEqual(["item-1", "proposal-1"]);

@@ -58,7 +58,7 @@ describe("intake live smoke against the public local API", () => {
     ]);
     const proposalId = proposed.handoff?.proposal_id ?? "";
     expect(proposed.handoff?.review_url).toBe(
-      `${ctx.baseUrl}/cockpit/intake?proposal=${proposalId}`,
+      `${ctx.baseUrl}/cockpit/intake/${proposed.retained_resource_ids[0]}?tab=review&proposal=${proposalId}`,
     );
     expect(proposed.retained_resource_ids).toHaveLength(2);
 

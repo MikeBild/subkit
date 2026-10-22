@@ -128,19 +128,27 @@ function actor(ctx: Parameters<ConversationTool["execute"]>[0]) {
   return toolActor(ctx);
 }
 
-export function proposalReviewUrl(publicBaseUrl: string | null, id: string): string | null {
-  if (!publicBaseUrl) return null;
-  return `${publicBaseUrl.endsWith("/") ? publicBaseUrl.slice(0, -1) : publicBaseUrl}/cockpit/intake?proposal=${encodeURIComponent(id)}`;
+export function proposalReviewPath(itemId: string, id: string): string {
+  return `/cockpit/intake/${encodeURIComponent(itemId)}?tab=review&proposal=${encodeURIComponent(id)}`;
 }
 
-function proposalHandoff(id: string) {
-  const review_url = proposalReviewUrl(resolvePublicBaseUrl(), id);
+export function proposalReviewUrl(
+  publicBaseUrl: string | null,
+  itemId: string,
+  id: string,
+): string | null {
+  if (!publicBaseUrl) return null;
+  return `${publicBaseUrl.endsWith("/") ? publicBaseUrl.slice(0, -1) : publicBaseUrl}${proposalReviewPath(itemId, id)}`;
+}
+
+function proposalHandoff(itemId: string, id: string) {
+  const review_url = proposalReviewUrl(resolvePublicBaseUrl(), itemId, id);
   return {
-    review_path: `/cockpit/intake?proposal=${encodeURIComponent(id)}`,
+    review_path: proposalReviewPath(itemId, id),
     ...(review_url ? { review_url } : {}),
     next_action: review_url
       ? "The person must review the exact proposal, sources, and destination in Cockpit before deciding whether to admit it. No knowledge or skill has been admitted."
-      : "The proposal remains unconfirmed. In Cockpit, open Intake and select this draft proposal for review before any admission. No knowledge or skill has been admitted.",
+      : "The proposal remains unconfirmed. In Cockpit, open the collected item and its review tab before any admission. No knowledge or skill has been admitted.",
   };
 }
 
@@ -569,7 +577,10 @@ export const createIntakeProposalTool: ConversationTool = {
         },
         ctx.db,
       );
-      return { ok: true, data: { proposal, ...proposalHandoff(proposal.id) } };
+      return {
+        ok: true,
+        data: { proposal, ...proposalHandoff(item_ids[0] as string, proposal.id) },
+      };
     } catch (error) {
       return {
         ok: false,
@@ -608,7 +619,10 @@ export const reviseIntakeProposalTool: ConversationTool = {
         ctx.db,
       );
       return proposal
-        ? { ok: true, data: { proposal, ...proposalHandoff(proposal.id) } }
+        ? {
+            ok: true,
+            data: { proposal, ...proposalHandoff(args.item_ids[0] as string, proposal.id) },
+          }
         : { ok: false, data: { error: "intake_proposal_not_found" } };
     } catch (error) {
       return {

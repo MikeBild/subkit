@@ -42,11 +42,11 @@ describe("installation URL context", () => {
     ).toBe(`${app}/api/v1/tool-approvals/decide?grant=opaque`);
     expect(
       contextualHref(
-        "https://app.example.test/cockpit/intake?item=record",
+        "https://app.example.test/cockpit/intake/record",
         app,
         "https://app.example.test",
       ),
-    ).toBe(`${app}/intake?item=record`);
+    ).toBe(`${app}/intake/record`);
     expect(
       contextualHref(
         "https://identity.example.test/v1/authorize?state=opaque",

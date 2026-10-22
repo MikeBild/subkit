@@ -483,15 +483,18 @@ describe("intake review execution boundary", () => {
       },
     });
     const proposalData = proposal.data as Record<string, unknown>;
-    expect(proposalData.review_path).toMatch(/^\/cockpit\/intake\?proposal=/);
+    expect(proposalData.review_path).toMatch(
+      /^\/cockpit\/intake\/[0-9a-f-]{36}\?tab=review&proposal=/,
+    );
   });
 
   test("builds an authenticated Cockpit proposal link only from the configured public URL", () => {
     const id = "8c510342-b19d-4cb8-8a7f-8ef3c57d8ea8";
-    expect(proposalReviewUrl("https://subkit.example/", id)).toBe(
-      `https://subkit.example/cockpit/intake?proposal=${id}`,
+    const itemId = "5b0e8f3a-2a52-4c41-9f0e-0c7a3d1e6b21";
+    expect(proposalReviewUrl("https://subkit.example/", itemId, id)).toBe(
+      `https://subkit.example/cockpit/intake/${itemId}?tab=review&proposal=${id}`,
     );
-    expect(proposalReviewUrl(null, id)).toBeNull();
+    expect(proposalReviewUrl(null, itemId, id)).toBeNull();
   });
 
   test("proposal tools use canonical knowledge category validation", () => {

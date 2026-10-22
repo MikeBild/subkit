@@ -508,7 +508,7 @@ class IntakeLiveRunner {
       proposal_id: proposalId,
       review_url: endpoint(
         this.args.engineUrl,
-        `/cockpit/intake?proposal=${encodeURIComponent(proposalId)}`,
+        `/cockpit/intake/${encodeURIComponent(itemId)}?tab=review&proposal=${encodeURIComponent(proposalId)}`,
       ),
     };
     this.checks.push({
