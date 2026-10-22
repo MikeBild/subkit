@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { PlaybookStepIdSchema } from "../../playbook-contract.ts";
 import type { ConversationTool, ToolResult } from "../index.ts";
 import { pauseForUserInput } from "./common.ts";
 
@@ -16,6 +17,9 @@ const inputSchema = z
       .min(2)
       .max(7),
     default: z.string().optional(),
+    playbook_step_id: PlaybookStepIdSchema.optional().describe(
+      "The playbook step id this decision belongs to, when a playbook step waits for it. The answer is recorded on that step.",
+    ),
   })
   .superRefine((input, ctx) => {
     if (input.default !== undefined && !input.options.some((o) => o.value === input.default)) {

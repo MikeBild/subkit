@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 
 const Text = z.string().trim().min(1).max(600);
 const Id = z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/);
+export const PlaybookStepIdSchema = Id;
 export const PlaybookResourceSchema = z.object({
   type: z.enum(["connector", "workflow", "execution", "knowledge", "file", "intake"]),
   id: z.string().uuid(),

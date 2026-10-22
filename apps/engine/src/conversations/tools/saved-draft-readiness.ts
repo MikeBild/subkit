@@ -7,6 +7,8 @@ export interface SavedDraftReadiness {
   issues?: Array<{ step_id: string; code: string }>;
   repair_guidance?: Array<{ step_id: string; code: string; instruction: string }>;
   unavailable_steps?: string[];
+  environment?: "dev" | "prod";
+  environment_source?: string;
 }
 
 export async function savedDraftReadiness(
@@ -21,11 +23,27 @@ export async function savedDraftReadiness(
   }
   if (!review) return null;
   if (review.schedules.length === 0) {
-    if (!review.saved_change) return null;
+    const savedChange = review.saved_change;
+    if (!savedChange) return null;
+    const eligible = savedChange.review.eligible_for_repeated_runs === true;
+    const issues = savedChange.review.issues ?? [];
+    const environmentSource =
+      "environment_source" in savedChange ? savedChange.environment_source : null;
     return {
-      eligible_for_repeated_runs: review.saved_change.review.eligible_for_repeated_runs === true,
+      eligible_for_repeated_runs: eligible,
       message:
         "The saved change is not applied yet: nothing runs it until a person applies it. Hand over with `review_workflow_automation` — its card is where they apply it and allow bounded runs. Do not call `run_workflow` first, and never offer an API call or command instead.",
+      environment: savedChange.environment,
+      ...(typeof environmentSource === "string" ? { environment_source: environmentSource } : {}),
+      ...(!eligible && issues.length > 0
+        ? {
+            issues: issues.map((issue) => ({ step_id: issue.step_id, code: issue.code })),
+            repair_guidance: savedChange.review.repair_guidance ?? [],
+          }
+        : {}),
+      ...((savedChange.review.unavailable_steps ?? []).length > 0
+        ? { unavailable_steps: savedChange.review.unavailable_steps }
+        : {}),
     };
   }
   const reviews = review.schedules.map((schedule) => schedule.review);

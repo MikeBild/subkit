@@ -113,6 +113,20 @@ export function persistedWorkflowResource(state: AuthoringState): PersistedResou
   };
 }
 
+export function pendingInactiveDraft(state: AuthoringState): boolean {
+  const resource = persistedResourceForKind(state, "workflow");
+  if (resource?.persistence_kind !== "draft") return false;
+  const pendingVersion = resource.version_id ?? resource.draft_version_id ?? null;
+  return !resource.current_version_id || pendingVersion !== resource.current_version_id;
+}
+
+function savedDraftPreviewed(
+  state: AuthoringState,
+  latest_preview: DraftDocument["latest_preview"],
+): boolean {
+  return checkpointStatus(state, "workflow_previewed") === "fresh" && latest_preview?.ok === true;
+}
+
 export function computeConnectorMissingFields(connector: ConnectorDraftDocument | null): string[] {
   if (!connector) return [];
   const missing: string[] = [];
@@ -283,6 +297,14 @@ export function computeBlockedBy(
       }
     }
     if (
+      active.lifecycle_state === "persisted" &&
+      workflow.execution_privacy !== "sensitive" &&
+      pendingInactiveDraft(state) &&
+      !savedDraftPreviewed(state, latest_preview)
+    ) {
+      blocked.push("dry_run_workflow");
+    }
+    if (
       state.latest_execution?.diagnosis_available &&
       checkpointStatus(state, "workflow_diagnosed") !== "fresh"
     ) {
@@ -300,7 +322,11 @@ export function computeReadiness(
   active: AuthoringSummary["active_target"],
   blocked_by: string[],
 ): AuthoringSummary["readiness"] {
-  if (active.lifecycle_state === "persisted") return "saved";
+  if (active.lifecycle_state === "persisted") {
+    return active.kind === "workflow" && blocked_by.includes("dry_run_workflow")
+      ? "ready_to_probe"
+      : "saved";
+  }
   if (blocked_by.some((item) => item.startsWith("missing:"))) return "needs_input";
   if (active.kind === "connector") {
     return blocked_by.includes("probe_connector_draft") ? "ready_to_probe" : "ready_to_save";
@@ -392,7 +418,9 @@ function nextActionForBlocked(
     case "validate_draft":
       return "Validate the workflow draft again before committing.";
     case "dry_run_workflow":
-      return "Preview the workflow successfully before committing it.";
+      return active.lifecycle_state === "persisted"
+        ? "Preview the saved inactive draft with held writes; nothing is activated and live effects remain a human decision."
+        : "Preview the workflow successfully before committing it.";
     case "diagnose_latest_execution":
       return "Inspect the latest execution in diagnosis mode before editing the workflow.";
     default:
@@ -443,6 +471,13 @@ export function computeNextAction(
   if (
     active.kind === "workflow" &&
     active.lifecycle_state === "persisted" &&
+    pendingInactiveDraft(state)
+  ) {
+    return "Hand over the saved change for human review; activation and live effects remain a human decision.";
+  }
+  if (
+    active.kind === "workflow" &&
+    active.lifecycle_state === "persisted" &&
     !state.latest_execution
   ) {
     return "Run the saved workflow to verify the persisted version.";
@@ -480,6 +515,10 @@ export function computeNextSuggestedTool(
   if (active.kind === "workflow" && active.lifecycle_state === "draft_only") {
     return "save_workflow_draft";
   }
+  const inactiveDraft = pendingInactiveDraft(state);
+  if (active.kind === "workflow" && active.lifecycle_state === "persisted" && inactiveDraft) {
+    return "review_workflow_automation";
+  }
   if (
     active.kind === "workflow" &&
     active.lifecycle_state === "persisted" &&
@@ -490,7 +529,7 @@ export function computeNextSuggestedTool(
   if (state.latest_execution?.diagnosis_available && !state.latest_diagnosis) {
     return "diagnose_latest_execution";
   }
-  if (state.latest_execution && active.kind === "workflow") {
+  if (state.latest_execution && active.kind === "workflow" && !inactiveDraft) {
     return "run_workflow";
   }
   return null;

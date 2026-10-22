@@ -52,9 +52,10 @@ export function projectPlaybook(
     if (unavailable) inaccessible.add(step.id);
     const stale = resolutions.some((item) => item.evidence.freshness === "stale");
     const delivered = step.criterion.kind === "assessment" && step.criterion.result !== null;
+    const heldByModel = step.progress === "blocked" || step.progress === "waiting_for_input";
     const status = !dependenciesMet
       ? "blocked"
-      : delivered
+      : delivered && !heldByModel
         ? "assessment_ready"
         : !assessment && accepted
           ? "verified"
@@ -124,7 +125,9 @@ export function projectPlaybook(
         ? "waiting_for_input"
         : steps.some((step) => step.status === "blocked")
           ? "blocked"
-          : ready.size === steps.length
+          : ready.size === steps.length &&
+              verified.size > 0 &&
+              steps.every((step) => step.next_action === null)
             ? "prepared"
             : steps.some((step) => step.status === "in_progress" || ready.has(step.id))
               ? "in_progress"
@@ -155,9 +158,11 @@ export function projectPlaybook(
         : leadingBlocker?.reason;
   const actionableSummary = leadingBlocker
     ? `${leadingBlocker.label}: ${blockerReason}`
-    : en
-      ? `${verified.size} checks evidenced; ${ready.size - verified.size} assessments available; ${steps.length - ready.size} steps open.`
-      : `${verified.size} Prüfschritte belegt; ${ready.size - verified.size} Einschätzungen liegen vor; ${steps.length - ready.size} Schritte offen.`;
+    : assessmentSummary
+      ? assessmentSummary
+      : en
+        ? `${verified.size} checks evidenced; ${ready.size - verified.size} assessments available; ${steps.length - ready.size} steps open.`
+        : `${verified.size} Prüfschritte belegt; ${ready.size - verified.size} Einschätzungen liegen vor; ${steps.length - ready.size} Schritte offen.`;
   if (inaccessible.size > 0) {
     return {
       id: document.id,

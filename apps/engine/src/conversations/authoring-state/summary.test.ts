@@ -1,8 +1,18 @@
 import { describe, expect, it } from "bun:test";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
-import type { AuthoringSummary, ConnectorDraftDocument, WorkflowDraftDocument } from "../types.ts";
+import type {
+  AuthoringSummary,
+  ConnectorDraftDocument,
+  WorkflowDraftDocument,
+  WorkflowDraftPreviewSummary,
+} from "../types.ts";
 import { createEmptyState } from "./normalize.ts";
-import { computeBlockedBy, computeNextAction, computeReadiness } from "./summary.ts";
+import {
+  computeBlockedBy,
+  computeNextAction,
+  computeNextSuggestedTool,
+  computeReadiness,
+} from "./summary.ts";
 
 function activeConnector(): AuthoringSummary["active_target"] {
   return {
@@ -185,5 +195,120 @@ describe("computeBlockedBy — sensitive workflow persistence", () => {
     const blocked = computeBlockedBy(state, null, workflowDraft(), null, activeWorkflow());
 
     expect(blocked).toContain("dry_run_workflow");
+  });
+});
+
+const workflowId = "00000000-0000-4000-8000-000000000011";
+const draftVersionId = "00000000-0000-4000-8000-000000000012";
+const activeVersionId = "00000000-0000-4000-8000-000000000013";
+
+function persistedWorkflowState(
+  persistence_kind: "draft" | "active",
+  options: { previewed?: boolean; executed?: boolean } = {},
+) {
+  const state = createEmptyState("workflow");
+  const verified_at = new Date(FROZEN_NOW).toISOString();
+  state.persisted_resources = [
+    {
+      kind: "workflow",
+      id: workflowId,
+      slug: "github-briefing",
+      name: "github-briefing",
+      version_id: persistence_kind === "draft" ? draftVersionId : activeVersionId,
+      version: 2,
+      environment: null,
+      saved_at: verified_at,
+      draft_version_id: persistence_kind === "draft" ? draftVersionId : null,
+      current_version_id: activeVersionId,
+      persistence_kind,
+    },
+  ];
+  state.checkpoints.workflow_persisted = {
+    key: "workflow_persisted",
+    mutation_seq: state.workflow_mutation_seq,
+    verified_at,
+    verified_by_tool: "test",
+    ok: true,
+    summary: null,
+  };
+  if (options.previewed) {
+    state.checkpoints.workflow_previewed = {
+      key: "workflow_previewed",
+      mutation_seq: state.workflow_mutation_seq,
+      verified_at,
+      verified_by_tool: "dry_run_workflow",
+      ok: true,
+      summary: null,
+    };
+  }
+  if (options.executed) {
+    state.latest_execution = {
+      execution_id: "00000000-0000-4000-8000-000000000014",
+      workflow_id: workflowId,
+      workflow_version_id: activeVersionId,
+      status: "succeeded",
+      environment: "prod",
+      warnings_count: 0,
+      recorded_at: verified_at,
+      diagnosis_available: false,
+    };
+  }
+  return state;
+}
+
+function persistedTarget(): AuthoringSummary["active_target"] {
+  return { ...activeWorkflow(), id: workflowId, lifecycle_state: "persisted" };
+}
+
+const greenPreview: WorkflowDraftPreviewSummary = { ok: true, summary: "held", step_traces: [] };
+
+describe("saved inactive workflow drafts", () => {
+  it("steers to a held-write preview instead of a run", () => {
+    const state = persistedWorkflowState("draft");
+    const active = persistedTarget();
+    const draft = workflowDraft();
+    const blocked = computeBlockedBy(state, null, draft, null, active);
+
+    expect(blocked).toContain("dry_run_workflow");
+    expect(computeReadiness(active, blocked)).toBe("ready_to_probe");
+    expect(computeNextSuggestedTool(state, active, blocked, draft)).toBe("dry_run_workflow");
+    expect(computeNextAction(state, active, blocked, draft)).not.toContain(
+      "Run the saved workflow",
+    );
+  });
+
+  it("hands a previewed inactive draft to human review", () => {
+    const state = persistedWorkflowState("draft", { previewed: true });
+    const active = persistedTarget();
+    const draft = workflowDraft();
+    const blocked = computeBlockedBy(state, null, draft, greenPreview, active);
+
+    expect(blocked).not.toContain("dry_run_workflow");
+    expect(computeReadiness(active, blocked)).toBe("saved");
+    expect(computeNextSuggestedTool(state, active, blocked, draft)).toBe(
+      "review_workflow_automation",
+    );
+    expect(computeNextAction(state, active, blocked, draft)).toContain("human");
+  });
+
+  it("never suggests a run for an inactive draft after an earlier execution", () => {
+    const state = persistedWorkflowState("draft", { previewed: true, executed: true });
+    const active = persistedTarget();
+    const draft = workflowDraft();
+    const blocked = computeBlockedBy(state, null, draft, greenPreview, active);
+
+    expect(computeNextSuggestedTool(state, active, blocked, draft)).not.toBe("run_workflow");
+    expect(computeNextAction(state, active, blocked, draft)).not.toContain("Run the saved");
+  });
+
+  it("keeps verifying an active saved workflow by running it", () => {
+    const state = persistedWorkflowState("active");
+    const active = persistedTarget();
+    const draft = workflowDraft();
+    const blocked = computeBlockedBy(state, null, draft, null, active);
+
+    expect(blocked).toEqual([]);
+    expect(computeReadiness(active, blocked)).toBe("saved");
+    expect(computeNextSuggestedTool(state, active, blocked, draft)).toBe("run_workflow");
   });
 });

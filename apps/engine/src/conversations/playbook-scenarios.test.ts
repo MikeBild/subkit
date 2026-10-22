@@ -244,19 +244,95 @@ describe("playbook scenario projections with resolved evidence", () => {
     expect(view.completion.status).toBe("open");
   });
 
-  test("a delivered decision brief is prepared without claiming factual verification", () => {
+  test("a delivered decision brief alone stays in progress without claiming factual verification", () => {
     const result =
       "Die Quelle enthält die Lieferbedingungen. Herkunft und Nutzungsrechte sind vor der Aufnahme zu bestätigen.";
     const doc = document("Entscheidungsvorlage liefern", [
       step("brief", { kind: "assessment", description: "Entscheidungsvorlage", result }),
     ]);
     const view = project(doc);
-    expect(view.status).toBe("prepared");
+    expect(view.status).toBe("in_progress");
     expect(view.steps[0]?.status).toBe("assessment_ready");
     expect(view.steps[0]?.assurance).toBe("assessment");
     expect(view.steps[0]?.reason).toBe(result);
     expect(view.summary).toBe(result);
     expect(view.completion.status).toBe("open");
+  });
+
+  test("a model-declared blocker is not hidden by a delivered assessment", () => {
+    const result = "Alle Schritte sind an eine PROD-Verbindung gebunden; ein Schritt passt nicht.";
+    const view = project(
+      document("Automatik vorbereiten", [
+        step("review", { kind: "assessment", description: "Prüfung", result }),
+        step(
+          "binding",
+          { kind: "assessment", description: "Bindung", result: `${result} Bindung offen.` },
+          { progress: "blocked", note: "Bindung passt nicht zum Treiber." },
+        ),
+      ]),
+    );
+    expect(view.steps[1]?.status).toBe("blocked");
+    expect(view.steps[1]?.reason).toBe(`${result} Bindung offen.`);
+    expect(view.status).toBe("blocked");
+    expect(view.summary).toContain(`${result} Bindung offen.`);
+    expect(view.summary).not.toBe(result);
+  });
+
+  test("assessed steps with an open next action are not prepared", () => {
+    const result = "Die Betriebsumgebung ist noch nicht fachlich festgelegt worden.";
+    const view = project(
+      document("Automatik vorbereiten", [
+        step(
+          "target",
+          { kind: "assessment", description: "Umgebung", result },
+          {
+            evidence_ids: [],
+            next_action: {
+              label: "Gewünschte Betriebsumgebung fachlich festlegen",
+              owner: "Betreiber",
+              elicitation_id: null,
+            },
+          },
+        ),
+      ]),
+    );
+    expect(view.status).not.toBe("prepared");
+    expect(view.next_action?.label).toBe("Gewünschte Betriebsumgebung fachlich festlegen");
+  });
+
+  test("a plan of assessments only is in progress", () => {
+    const view = project(
+      document("Automatik vorbereiten", [
+        step("one", {
+          kind: "assessment",
+          description: "Eins",
+          result: "Die erste Einschätzung liegt vollständig vor.",
+        }),
+        step("two", {
+          kind: "assessment",
+          description: "Zwei",
+          result: "Die zweite Einschätzung liegt vollständig vor.",
+        }),
+      ]),
+    );
+    expect(view.status).toBe("in_progress");
+    expect(view.steps.every((item) => item.status === "assessment_ready")).toBe(true);
+  });
+
+  test("a technically evidenced check with ready assessments is prepared", () => {
+    const view = project(
+      document("Automatik vorbereiten", [
+        observed("inspect", "workflow"),
+        step("brief", {
+          kind: "assessment",
+          description: "Vorlage",
+          result: "Die Prüfung des gespeicherten Entwurfs ist abgeschlossen.",
+        }),
+      ]),
+      [["inspect", evidence()]],
+    );
+    expect(view.steps[0]?.status).toBe("verified");
+    expect(view.status).toBe("prepared");
   });
 
   test("long assessment summaries are visibly shortened", () => {

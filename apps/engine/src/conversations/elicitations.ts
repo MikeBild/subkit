@@ -13,6 +13,7 @@ import {
 import { logger } from "../logging/logger.ts";
 import { APPROVAL_TTL_MS } from "../tools/approval.ts";
 import { type DecidedBy, decidedByAuditActor } from "./decided-by.ts";
+import { applyPlaybookDecision } from "./playbook.ts";
 import { humanConfirmationContextFingerprint } from "./playbook-evidence.ts";
 import {
   approvalHandleFromElicitationInput,
@@ -465,16 +466,45 @@ export interface ElicitationResolveAuditMetadata {
   [k: string]: unknown;
 }
 
+interface ResolveElicitationInput {
+  tenant_id: string;
+  id: string;
+  output: unknown;
+  decided_by: DecidedBy | null;
+  reason?: string;
+  status?: "resolved" | "cancelled" | "timeout";
+  transport?: ElicitationTransportOutcome;
+}
+
 export async function resolveElicitation(
-  p: {
-    tenant_id: string;
-    id: string;
-    output: unknown;
-    decided_by: DecidedBy | null;
-    reason?: string;
-    status?: "resolved" | "cancelled" | "timeout";
-    transport?: ElicitationTransportOutcome;
-  },
+  p: ResolveElicitationInput,
+  exec: Executor,
+): Promise<ResolveElicitationResult> {
+  return exec.transaction((tx) => resolveElicitationWithin(p, tx));
+}
+
+function selectedChoiceLabel(input: unknown, output: unknown): string | null {
+  const value =
+    output && typeof output === "object" && !Array.isArray(output)
+      ? (output as { value?: unknown }).value
+      : null;
+  const options =
+    input && typeof input === "object" && !Array.isArray(input)
+      ? (input as { options?: unknown }).options
+      : null;
+  if (typeof value !== "string" || !Array.isArray(options)) return null;
+  const option = options.find(
+    (item): item is { value: string; label: string } =>
+      item !== null &&
+      typeof item === "object" &&
+      (item as { value?: unknown }).value === value &&
+      typeof (item as { label?: unknown }).label === "string",
+  );
+  return option?.label ?? null;
+}
+
+async function resolveElicitationWithin(
+  p: ResolveElicitationInput,
   exec: Executor,
 ): Promise<ResolveElicitationResult> {
   const status: ElicitationStatus = p.status ?? "resolved";
@@ -564,8 +594,13 @@ export async function resolveElicitation(
     if (!existing) return { kind: "not_found" };
     return { kind: "already_resolved", existing: rowToRecord(existing) };
   }
-  if (row.tool_name === "ask_user_confirm" && row.tool_call_id) {
-    const accepted = status === "resolved" && interpretConfirmDecision(p.output) === "confirmed";
+  if (
+    (row.tool_name === "ask_user_confirm" || row.tool_name === "ask_user_choice") &&
+    row.tool_call_id
+  ) {
+    const accepted =
+      status === "resolved" &&
+      (row.tool_name === "ask_user_choice" || interpretConfirmDecision(p.output) === "confirmed");
     await exec
       .update(conversationToolCalls)
       .set({ outcome: accepted ? "ok" : "denied" })
@@ -576,6 +611,41 @@ export async function resolveElicitation(
           eq(conversationToolCalls.outcome, "pending"),
         ),
       );
+  }
+  if (row.tool_name === "ask_user_choice" && status === "resolved") {
+    const input =
+      row.input && typeof row.input === "object" && !Array.isArray(row.input)
+        ? (row.input as { question?: unknown; playbook_step_id?: unknown })
+        : {};
+    const answerLabel = selectedChoiceLabel(row.input, p.output);
+    if (answerLabel && typeof input.question === "string") {
+      const revision = await applyPlaybookDecision(
+        exec,
+        {
+          tenant_id: p.tenant_id,
+          conversation_id: row.conversation_id,
+          actor: decidedByAuditActor(p.decided_by),
+          request_source: row.protocol_native ? "mcp" : "ui",
+        },
+        {
+          elicitation_id: row.id,
+          step_id: typeof input.playbook_step_id === "string" ? input.playbook_step_id : null,
+          question: input.question,
+          answer_label: answerLabel,
+        },
+      );
+      if (revision !== null) {
+        logger.info({
+          module: "conversation",
+          action: "playbook.decision_applied",
+          msg: "answered choice recorded on its playbook step",
+          tenant_id: p.tenant_id,
+          conversation_id: row.conversation_id,
+          elicitation_id: row.id,
+          revision,
+        });
+      }
+    }
   }
   const metadata: ElicitationResolveAuditMetadata = {
     conversation_id: row.conversation_id,
