@@ -201,7 +201,7 @@ export function useSolutionFlow(
       clear();
       await refreshLookups(client);
       await client.invalidateQueries({ queryKey: SOLUTIONS_KEY });
-      void navigate({ to: `${workflowHref(draft.workflow_id)}?tab=structure` });
+      void navigate({ to: `${workflowHref(draft.workflow_id)}?tab=overview` });
     },
     onError: (failure) => {
       fail(refusal(failure));

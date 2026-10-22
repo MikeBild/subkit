@@ -1,10 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { ChevronRight, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
+import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
-import { absolute, chatNewHref, connectorHref } from "@/app/links";
+import { absolute, chatNewHref, connectorHref, workflowHref } from "@/app/links";
 import {
   useWaitingConnector,
   useWorkflowAutomation,
@@ -12,16 +14,20 @@ import {
 } from "@/components/cockpit/automation-panel";
 import {
   CatalogMetadataDialog,
-  CatalogMetadataSummary,
   useCatalogMetadataActions,
 } from "@/components/cockpit/catalog-metadata";
+import {
+  recordCategory,
+  recordDescription,
+  writtenByAssistant,
+} from "@/components/cockpit/catalog-metadata-model";
 import { useConnectorRecords } from "@/components/cockpit/connector-names";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
 import {
-  ActionButton,
   ActionMenu,
   type ActionMenuItem,
+  CodeBlock,
   CollapsibleSection,
   ConfirmDialog,
   type Fact,
@@ -30,7 +36,9 @@ import {
   PageHeader,
   type PageTab,
   PageTabs,
-  SummaryLine,
+  STATUS_DOT,
+  statusTone,
+  TabBody,
 } from "@/components/cockpit/patterns";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { MISSING } from "@/components/cockpit/table-columns";
@@ -39,29 +47,36 @@ import { WorkflowApprovals } from "@/components/cockpit/workflow-grants";
 import { WorkflowInvocation } from "@/components/cockpit/workflow-invocation";
 import { WorkflowInputOutput } from "@/components/cockpit/workflow-io";
 import { WorkflowRuns } from "@/components/cockpit/workflow-runs";
+import { StepSaveBar, useStepDraft } from "@/components/cockpit/workflow-step-editor";
 import {
-  StepDialog,
-  StepSaveBar,
-  stepId,
-  useStepDraft,
-} from "@/components/cockpit/workflow-step-editor";
-import {
+  type FlowTrigger,
+  stepConnector,
   useBuildVersion,
   useWorkflowSteps,
-  WorkflowStepsList,
+  WorkflowFlow,
   WorkflowTestResult,
   WorkflowTestRun,
 } from "@/components/cockpit/workflow-steps-list";
 import { useCurrentVersionDag, WorkflowVersions } from "@/components/cockpit/workflow-versions";
+import { cronWords } from "@/lib/cron-words";
+import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
+import { cn } from "@/lib/utils";
+import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
+import { resultPhrase, type TriggerKind, triggerKindOf } from "@/lib/workflow-flow";
 import { workflowPreviewDefinition } from "@/lib/workflow-preview";
 import { removalConsequenceKeys } from "@/lib/workflow-removal";
 import { deletedConnectorReference } from "@/lib/workflow-strip";
 import { workflowVersionAuthor } from "@/lib/workflow-versions";
 import { definitionProductId } from "@/pages/apps-model";
+import { formatRunDuration, runDurationMs } from "@/pages/runs-model";
+import { triggerLabelKey } from "@/pages/workflows-model";
 
 type RecordValue = Record<string, unknown>;
+type EffectiveTrigger = components["schemas"]["EffectiveTrigger"];
+type ScheduleBinding = components["schemas"]["WorkflowScheduleBinding"];
+type Execution = components["schemas"]["Execution"];
 
 const text = (record: RecordValue, key: string): string | null => {
   const value = record[key];
@@ -120,6 +135,74 @@ function useTechnicalFacts(record: RecordValue): Fact[] {
   ];
 }
 
+function useFlowTrigger(record: RecordValue): FlowTrigger {
+  const { t, locale } = useI18n();
+  const effective = (
+    record.effective_trigger && typeof record.effective_trigger === "object"
+      ? record.effective_trigger
+      : { kind: "request", source: "default", state: "active" }
+  ) as EffectiveTrigger;
+  const schedule = (record.schedule ?? null) as ScheduleBinding;
+  const kind: TriggerKind = triggerKindOf(effective);
+  const label = t(triggerLabelKey(effective));
+  const line =
+    kind === "schedule"
+      ? schedule?.cron
+        ? cronWords(schedule.cron, t, LOCALE_TAGS[locale])
+        : t("workflowFlow.trigger.scheduleLine")
+      : kind === "webhook"
+        ? t("workflowFlow.trigger.webhookLine")
+        : t("workflowFlow.trigger.requestLine");
+  return { kind, label, line };
+}
+
+function LastRunLine({ workflowId, run }: { workflowId: string; run: Execution | null }) {
+  const { t, dateTime, locale } = useI18n();
+  if (!run)
+    return (
+      <p className="text-sm text-muted-foreground" data-testid="workflow-last-run-none">
+        {t("workflowFlow.lastRun.none")}
+      </p>
+    );
+  const tone = statusTone(run.status);
+  const duration = runDurationMs(run);
+  const when = run.started_at ?? run.created_at;
+  return (
+    <a
+      href={absolute(`${workflowHref(workflowId)}?tab=history`)}
+      className="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-testid="workflow-last-run"
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "size-2 shrink-0 rounded-full",
+          tone === "neutral" ? "bg-muted-foreground/40" : STATUS_DOT[tone],
+        )}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="font-medium">
+          {t(
+            tone === "error"
+              ? "workflowFlow.lastRun.failed"
+              : tone === "ok"
+                ? "workflowFlow.lastRun.ok"
+                : "workflowFlow.lastRun.other",
+          )}
+        </span>{" "}
+        <span className="text-muted-foreground">
+          · {dateTime(when)}
+          {duration === null ? "" : ` · ${formatRunDuration(locale, duration)}`}
+        </span>
+      </span>
+      <span className="hidden text-xs text-muted-foreground sm:inline">
+        {t("workflowFlow.lastRun.all")}
+      </span>
+      <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+    </a>
+  );
+}
+
 export function WorkflowPage({
   id,
   record,
@@ -131,10 +214,9 @@ export function WorkflowPage({
   title: string;
   permissions: readonly string[];
 }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [renaming, setRenaming] = useState(false);
   const [describing, setDescribing] = useState(false);
-  const [adding, setAdding] = useState(false);
   const [confirming, setConfirming] = useState<"disable" | "delete" | null>(null);
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -197,6 +279,8 @@ export function WorkflowPage({
   const waitingConnector =
     deletedConnectorReference(record.connector_references) ?? waitingForCredentials;
   const technical = useTechnicalFacts(record);
+  const flowTrigger = useFlowTrigger(record);
+  const result = resultPhrase(record.output_schema);
   const lifecycle = useOptimisticAction({
     queryKey: ["catalog-detail", "workflows", id],
     mutationFn: (next: "active" | "archived") =>
@@ -299,47 +383,42 @@ export function WorkflowPage({
       t("workflowPage.calledOnRequest")
     )
   ) : null;
-  const connectors = new Map<string, { label: string; href: string | null }>();
+  const services = new Map<string, { label: string; href: string | null }>();
   for (const view of steps.views) {
-    const { connector, connectorId } = view.definition;
-    const known = connectorRecords.find((item) =>
-      connectorId ? item.id === connectorId : item.slug === connector,
-    );
-    const label = known?.display_name ?? connector;
-    if (!label || connectors.has(label)) continue;
-    const id = known?.id ?? connectorId ?? null;
-    connectors.set(label, { label, href: id ? absolute(connectorHref(id)) : null });
+    const connector = stepConnector(view.definition, connectorRecords);
+    if (!connector?.name || services.has(connector.name)) continue;
+    services.set(connector.name, {
+      label: connector.name,
+      href: connector.id ? absolute(connectorHref(connector.id)) : null,
+    });
   }
-  const buildSummary = (
+  const overviewSummary = (
     <span className="flex flex-wrap items-center gap-x-1 gap-y-1">
       {[
-        build.version === null
-          ? null
-          : t("automation.fact.version", { version: `v${build.version}` }),
-        build.pending
-          ? null
-          : t(steps.views.length === 1 ? "workflowPage.steps.one" : "workflowPage.steps.other", {
-              count: steps.views.length,
-            }),
+        flowTrigger.kind === "schedule"
+          ? `${flowTrigger.label} · ${flowTrigger.line}`
+          : flowTrigger.label,
+        build.pending ? null : tn("workflowPage.steps", steps.views.length),
+        services.size === 0 ? t("workflowFlow.noServices") : null,
       ]
         .filter(Boolean)
         .join(" · ")}
-      {[...connectors.values()].map((entry, index) =>
-        entry.href ? (
-          <a
-            key={entry.label}
-            href={entry.href}
-            className="rounded-md border px-1.5 py-0.5 text-xs text-foreground underline-offset-4 hover:underline"
-            data-testid={`workflow-build-connector-${index}`}
-          >
-            {entry.label}
-          </a>
-        ) : (
-          <span key={entry.label} className="rounded-md border px-1.5 py-0.5 text-xs">
-            {entry.label}
-          </span>
-        ),
-      )}
+      {[...services.values()].map((entry, index) => (
+        <span key={entry.label} className="inline-flex items-center gap-1">
+          {index === 0 ? "· " : null}
+          {entry.href ? (
+            <a
+              href={entry.href}
+              className="rounded-md border px-1.5 py-0.5 text-xs text-foreground underline-offset-4 hover:underline"
+              data-testid={`workflow-build-connector-${index}`}
+            >
+              {entry.label}
+            </a>
+          ) : (
+            <span className="rounded-md border px-1.5 py-0.5 text-xs">{entry.label}</span>
+          )}
+        </span>
+      ))}
     </span>
   );
 
@@ -361,14 +440,104 @@ export function WorkflowPage({
     workflowName: title,
     liveEnvironment: automation.runEnvironment,
   };
+  const canPreview =
+    canRun && Boolean(previewDefinition) && previewDefinition?.execution_privacy !== "sensitive";
+  const category = recordCategory(record);
+  const description = recordDescription(record).trim();
 
   const tabs: PageTab[] = [
+    {
+      value: "overview",
+      label: t("workflowPage.tab.overview"),
+      content: (
+        <TabBody
+          testId="workflow-overview"
+          summary={
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <span className="min-w-0 flex-1" data-testid="workflow-build-summary">
+                {overviewSummary}
+              </span>
+              {canRun && previewDefinition && (build.saved || editor.dirty) ? (
+                <WorkflowTestRun
+                  steps={steps}
+                  definition={workflowPreviewDefinition(
+                    previewDefinition,
+                    editor.steps as RecordValue[],
+                  )}
+                />
+              ) : null}
+            </div>
+          }
+          more={
+            <>
+              <WorkflowVersions
+                workflowId={id}
+                workflowName={title}
+                ids={versionIds}
+                access={{
+                  canRestore: permissions.includes("workflow:restore"),
+                  archived: disabled,
+                }}
+                onRestored={automation.refresh}
+              />
+              {permissions.includes("skill:read") ? (
+                <WorkflowDraftingContext workflowId={id} activeVersionId={versionId} />
+              ) : null}
+            </>
+          }
+          technical={
+            <>
+              <FactList items={technical} testId="workflow-technical-facts" />
+              {build.definition ? (
+                <CodeBlock
+                  label={t("workflowFlow.definition")}
+                  code={JSON.stringify(build.definition, null, 2)}
+                  lang="json"
+                  testId="workflow-technical-definition"
+                />
+              ) : null}
+            </>
+          }
+        >
+          <WorkflowTestResult steps={steps} visible={build.saved || editor.dirty} />
+          <WorkflowFlow
+            key={`${id}:${build.versionId ?? "none"}`}
+            steps={steps}
+            trigger={flowTrigger}
+            result={t(result.key, result.values)}
+            workflowName={title}
+            canRun={canPreview}
+            {...(canWrite && !legacy ? { editor } : {})}
+          />
+          {canWrite ? <StepSaveBar workflowId={id} record={record} draft={editor} /> : null}
+          {permissions.includes("execution:read") ? (
+            <LastRunLine workflowId={id} run={steps.lastRun} />
+          ) : null}
+        </TabBody>
+      ),
+    },
     {
       value: "use",
       label: t("workflowPage.tab.use"),
       content: (
-        <>
-          {useSummary ? <SummaryLine text={useSummary} testId="workflow-use-summary" /> : null}
+        <TabBody
+          testId="workflow-use"
+          summary={useSummary ?? undefined}
+          more={
+            <>
+              <CollapsibleSection label={t("workflowPage.io")} testId="workflow-io-section">
+                <WorkflowInputOutput
+                  workflowId={id}
+                  byWebhook={effectiveTrigger === "webhook" || webhooksActive > 0}
+                  draftDefinition={versionId ? null : build.definition}
+                />
+              </CollapsibleSection>
+              {permissions.includes("conversation:read") ? (
+                <ConversationsAbout target={{ workflow_id: id }} />
+              ) : null}
+            </>
+          }
+        >
           <WorkflowInvocation
             workflowId={id}
             workflowName={title}
@@ -377,14 +546,7 @@ export function WorkflowPage({
             effectiveTrigger={effectiveTrigger}
             approvedEnvironment={state?.state === "approved" ? state.environment : null}
           />
-          <CollapsibleSection label={t("workflowPage.io")} testId="workflow-io-section">
-            <WorkflowInputOutput
-              workflowId={id}
-              byWebhook={effectiveTrigger === "webhook" || webhooksActive > 0}
-              draftDefinition={versionId ? null : build.definition}
-            />
-          </CollapsibleSection>
-        </>
+        </TabBody>
       ),
     },
     ...(permissions.includes("execution:read")
@@ -398,6 +560,7 @@ export function WorkflowPage({
                 emptyAction={
                   <RunWorkflowDialog
                     {...runProps}
+                    quiet
                     triggerLabel={t("workflowRuns.runNow")}
                     triggerTestId="workflow-runs-run"
                   />
@@ -407,81 +570,6 @@ export function WorkflowPage({
           },
         ]
       : []),
-    {
-      value: "structure",
-      label: t("workflowPage.tab.build"),
-      content: (
-        <>
-          {steps.views.length > 0 ? (
-            <SummaryLine
-              text={buildSummary}
-              aside={
-                <span className="flex items-center gap-2">
-                  {canRun && previewDefinition && (build.saved || editor.dirty) ? (
-                    <WorkflowTestRun
-                      steps={steps}
-                      definition={workflowPreviewDefinition(
-                        previewDefinition,
-                        editor.steps as RecordValue[],
-                      )}
-                    />
-                  ) : null}
-                  {canWrite && !legacy && editor.steps.length > 0 ? (
-                    <ActionButton size="sm" onClick={() => setAdding(true)} testId="step-add">
-                      {t("stepEditor.addTitle")}
-                    </ActionButton>
-                  ) : null}
-                </span>
-              }
-              testId="workflow-build-summary"
-            />
-          ) : null}
-          <WorkflowTestResult steps={steps} visible={build.saved || editor.dirty} />
-          <WorkflowStepsList
-            key={`${id}:${build.versionId ?? "none"}`}
-            steps={steps}
-            workflowName={title}
-            canRun={
-              canRun &&
-              Boolean(previewDefinition) &&
-              previewDefinition?.execution_privacy !== "sensitive"
-            }
-            {...(canWrite && !legacy
-              ? {
-                  editor,
-                  emptyAction: (
-                    <ActionButton size="sm" onClick={() => setAdding(true)} testId="step-add">
-                      {t("stepEditor.addTitle")}
-                    </ActionButton>
-                  ),
-                }
-              : {})}
-          />
-          {canWrite ? <StepSaveBar workflowId={id} record={record} draft={editor} /> : null}
-          <div className="flex flex-col gap-2">
-            <WorkflowVersions
-              workflowId={id}
-              workflowName={title}
-              ids={versionIds}
-              access={{ canRestore: permissions.includes("workflow:restore"), archived: disabled }}
-              onRestored={automation.refresh}
-            />
-            <CollapsibleSection
-              label={t("connectorDetail.technical.title")}
-              testId="workflow-technical"
-            >
-              <FactList items={technical} />
-            </CollapsibleSection>
-            {permissions.includes("skill:read") ? (
-              <WorkflowDraftingContext workflowId={id} activeVersionId={versionId} />
-            ) : null}
-            {permissions.includes("conversation:read") ? (
-              <ConversationsAbout target={{ workflow_id: id }} />
-            ) : null}
-          </div>
-        </>
-      ),
-    },
     {
       value: "approvals",
       label: t("workflowPage.tab.approvals"),
@@ -499,7 +587,32 @@ export function WorkflowPage({
         <PageHeader
           back={{ to: "/workflows", label: t("nav.workflows") }}
           title={title}
-          purpose={<CatalogMetadataSummary record={record} />}
+          badge={
+            category !== UNCATEGORIZED ? (
+              <span
+                className="rounded-md border px-1.5 py-0.5 text-xs text-foreground"
+                data-testid="catalog-metadata-chip"
+              >
+                {humanizeCategory(category, t("catalog.categoryOther"))}
+              </span>
+            ) : undefined
+          }
+          purpose={
+            <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span data-testid="catalog-metadata-description">
+                {description || t("catalogMeta.empty")}
+              </span>
+              {writtenByAssistant(record) ? (
+                <span
+                  className="inline-flex items-center gap-1 text-xs"
+                  data-testid="catalog-metadata-by-assistant"
+                >
+                  <Sparkles aria-hidden="true" className="size-3" />
+                  {t("catalogMeta.byAssistant")}
+                </span>
+              ) : null}
+            </span>
+          }
           menu={menu.length > 0 ? <ActionMenu items={menu} testId="workflow-menu" /> : undefined}
           action={<RunWorkflowDialog {...runProps} />}
         />
@@ -521,15 +634,6 @@ export function WorkflowPage({
       </div>
       {canWrite ? (
         <MetadataDialog id={id} title={title} open={renaming} onOpenChange={setRenaming} />
-      ) : null}
-      {canWrite ? (
-        <StepDialog
-          open={adding}
-          onOpenChange={setAdding}
-          step={null}
-          taken={editor.steps.map(stepId)}
-          onApply={editor.add}
-        />
       ) : null}
       <ConfirmDialog
         open={confirming === "disable"}

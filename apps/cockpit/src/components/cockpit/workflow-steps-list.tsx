@@ -1,36 +1,61 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ArrowDown,
+  ArrowRight,
+  Bell,
+  Bot,
+  CalendarClock,
+  Clock,
+  Code,
+  Flag,
+  GitBranch,
+  Hand,
+  type LucideIcon,
+  Plug,
+  Plus,
+  Repeat,
+  Shuffle,
+  Split,
+  Webhook,
+  Workflow,
+} from "lucide-react";
+import { Fragment, type ReactNode, useCallback, useEffect, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, workflowHref } from "@/app/links";
-import { useConnectorNames } from "@/components/cockpit/connector-names";
+import { absolute, connectorHref, workflowHref } from "@/app/links";
+import { type ConnectorRecord, useConnectorRecords } from "@/components/cockpit/connector-names";
 import {
+  ActionButton,
   ActionMenu,
-  type CockpitColumn,
+  type ActionMenuItem,
   CodeBlock,
-  CollapsibleSection,
   ContextHelp,
   type Fact,
   FactList,
+  IconTile,
   RecordSheet,
   Section,
+  STATUS_DOT,
   StatusBadge,
+  statusTone,
+  TechnicalDetails,
 } from "@/components/cockpit/patterns";
-import { RecordTable } from "@/components/cockpit/record-table";
-import { tableColumns } from "@/components/cockpit/table-columns";
 import { StepDialog, type StepDraft, stepId } from "@/components/cockpit/workflow-step-editor";
 import { useI18n } from "@/lib/i18n-context";
+import { cn } from "@/lib/utils";
+import { type Phrase, stepPhrase, stepWrites, type TriggerKind } from "@/lib/workflow-flow";
 import { type WorkflowPreviewSource, workflowPreviewRequest } from "@/lib/workflow-preview";
 import {
   type BuildVersion,
   buildVersion,
-  connectorNameOf,
   type ExecutionStep,
+  formatDuration,
   joinStepsWithLastRun,
+  maskIdentifiers,
   previewSummary,
   type SavedDraft,
-  stepEssenceText,
   stepResultPreview,
+  type WorkflowStepDefinition,
   type WorkflowStepView,
   workflowStepKindKey,
 } from "@/lib/workflow-steps";
@@ -94,7 +119,7 @@ export function useWorkflowSteps({
         `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&limit=1`,
       ),
   });
-  const lastRun = lastExecution.data?.items[0];
+  const lastRun = lastExecution.data?.items[0] ?? null;
   const executionId = versionId && lastRun?.workflow_version_id === versionId ? lastRun.id : null;
   const runSteps = useQuery({
     queryKey: ["execution", executionId, "steps"],
@@ -134,6 +159,7 @@ export function useWorkflowSteps({
   }, []);
   return {
     views: joinStepsWithLastRun(steps, runSteps.data?.items ?? []),
+    lastRun,
     pending: lastExecution.isPending,
     results,
     running,
@@ -169,6 +195,7 @@ export function WorkflowTestRun({
   return (
     <span className="flex items-center gap-1">
       <ActionMenu
+        size="sm"
         label={t("workflow.testRun")}
         testId="workflow-test-run"
         items={(modes ?? [null]).map((selectedMode) => ({
@@ -234,15 +261,6 @@ function PreviewCard({
               },
             ]
           : []),
-        ...(summary.stoppedAt
-          ? [
-              {
-                label: t("workflow.preview.stoppedAt"),
-                value: <span className="font-mono text-xs">{summary.stoppedAt}</span>,
-                testId: `${testId}-stopped`,
-              },
-            ]
-          : []),
       ]
     : [];
   const failure = summary ? summary.error : result.failure;
@@ -253,186 +271,288 @@ function PreviewCard({
         aside={<StatusBadge state={summary?.status ?? "failed"} testId={`${testId}-status`} />}
       >
         {facts.length > 0 ? <FactList items={facts} /> : null}
-        {summary ? (
-          <CollapsibleSection label={t("workflow.preview.output")} testId={`${testId}-output`}>
-            {summary.output === undefined || summary.output === null ? (
-              <p className="text-sm text-muted-foreground">{t("workflow.preview.noOutput")}</p>
-            ) : (
+        {summary || failure ? (
+          <TechnicalDetails testId={`${testId}-technical`}>
+            {summary?.stoppedAt ? (
+              <FactList
+                items={[
+                  {
+                    label: t("workflow.preview.stoppedAt"),
+                    value: <span className="font-mono text-xs">{summary.stoppedAt}</span>,
+                    testId: `${testId}-stopped`,
+                  },
+                ]}
+              />
+            ) : null}
+            {summary ? (
+              summary.output === undefined || summary.output === null ? (
+                <p className="text-sm text-muted-foreground">{t("workflow.preview.noOutput")}</p>
+              ) : (
+                <Copyable>
+                  <CodeBlock
+                    label={t("workflow.preview.output")}
+                    code={JSON.stringify(summary.output, null, 2)}
+                    lang="json"
+                    testId={`${testId}-output`}
+                  />
+                </Copyable>
+              )
+            ) : null}
+            {failure ? (
               <Copyable>
-                <CodeBlock code={JSON.stringify(summary.output, null, 2)} lang="json" />
+                <CodeBlock
+                  label={t("workflow.preview.error")}
+                  code={failure}
+                  lang="text"
+                  testId={`${testId}-error`}
+                />
               </Copyable>
-            )}
-          </CollapsibleSection>
-        ) : null}
-        {failure ? (
-          <CollapsibleSection label={t("workflow.preview.error")} testId={`${testId}-error`}>
-            <Copyable>
-              <CodeBlock code={failure} lang="text" />
-            </Copyable>
-          </CollapsibleSection>
+            ) : null}
+          </TechnicalDetails>
         ) : null}
       </Section>
     </div>
   );
 }
 
-export function WorkflowStepsList({
+const KIND_ICONS: Record<string, LucideIcon> = {
+  request: Plug,
+  transform: Shuffle,
+  branch: GitBranch,
+  loop: Repeat,
+  parallel: Split,
+  call: Workflow,
+  wait: Clock,
+  wait_for_event: Bell,
+};
+
+function stepIcon(definition: WorkflowStepDefinition): LucideIcon {
+  if (definition.essence.kind === "request" && definition.essence.via === "mcp") return Bot;
+  if (definition.essence.kind === "transform" && definition.essence.language === "javascript")
+    return Code;
+  return KIND_ICONS[definition.kind] ?? Workflow;
+}
+
+const TRIGGER_ICONS: Record<TriggerKind, LucideIcon> = {
+  schedule: CalendarClock,
+  webhook: Webhook,
+  request: Hand,
+};
+
+export function stepConnector(
+  definition: WorkflowStepDefinition,
+  records: readonly ConnectorRecord[],
+): { id: string | null; name: string } | null {
+  if (!definition.connectorId && !definition.connector) return null;
+  const known = records.find((item) =>
+    definition.connectorId
+      ? item.id === definition.connectorId
+      : item.slug === definition.connector,
+  );
+  if (known) return { id: known.id, name: known.display_name || known.slug };
+  return definition.connectorId ? { id: definition.connectorId, name: "" } : null;
+}
+
+function useStepPhrase(): (definition: WorkflowStepDefinition, service: string | null) => string {
+  const { t } = useI18n();
+  return (definition, service) => {
+    const phrase: Phrase = stepPhrase(definition, service);
+    return t(phrase.key, phrase.values);
+  };
+}
+
+const CARD =
+  "flex w-full min-w-0 flex-col justify-start gap-1.5 self-stretch rounded-lg border bg-card p-3 text-left transition-colors hover:border-foreground/20 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:min-w-[150px] lg:flex-1";
+
+function FlowArrow() {
+  return (
+    <div
+      aria-hidden="true"
+      className="flex shrink-0 items-center justify-center py-0.5 text-muted-foreground/50 lg:w-8 [&_svg]:size-4"
+    >
+      <ArrowDown className="lg:hidden" />
+      <ArrowRight className="hidden lg:block" />
+    </div>
+  );
+}
+
+function FlowPlus({ label, onClick, testId }: { label: string; onClick(): void; testId: string }) {
+  return (
+    <div className="flex shrink-0 items-center justify-center lg:w-8">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        title={label}
+        data-testid={testId}
+        className="inline-grid size-6 place-items-center rounded-full border border-dashed text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-3.5"
+      >
+        <Plus aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+export interface FlowTrigger {
+  kind: TriggerKind;
+  label: string;
+  line: string;
+}
+
+export function WorkflowFlow({
   steps,
+  trigger,
+  result,
   workflowName,
   canRun,
   editor,
-  emptyAction,
 }: {
   steps: WorkflowSteps;
-  workflowName?: string;
+  trigger: FlowTrigger;
+  result: string;
+  workflowName: string;
   canRun: boolean;
   editor?: StepDraft;
-  emptyAction?: ReactNode;
 }) {
-  const { t, dateTime } = useI18n();
-  const connectorNames = useConnectorNames();
+  const { t } = useI18n();
+  const records = useConnectorRecords();
+  const phrase = useStepPhrase();
   const [open, setOpen] = useState<number | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
-  const rows = steps.views.map((view, index) => ({ view, index }));
-  const columns = useMemo<CockpitColumn<{ view: WorkflowStepView; index: number }>[]>(() => {
-    const column = tableColumns<{ view: WorkflowStepView; index: number }>({ t, dateTime });
-    return [
-      column.custom(
-        "id",
-        (row) => row.view.definition.id,
-        t("workflowSteps.column.step"),
-        (row) => (
-          <span className="flex min-w-0 items-baseline gap-2">
-            <span className="w-5 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-              {row.index + 1}
-            </span>
-            <span className="min-w-0 truncate font-mono text-xs font-medium">
-              {row.view.definition.id}
-            </span>
-            {editor?.marks[row.view.definition.id] ? (
-              <span
-                className="shrink-0 text-xs text-muted-foreground"
-                data-testid={`workflow-step-${row.index}-mark`}
-              >
-                {t(STEP_MARK_KEYS[editor.marks[row.view.definition.id] ?? "changed"])}
-              </span>
-            ) : null}
-          </span>
-        ),
-        { width: "w-[26%]" },
-      ),
-      column.custom(
-        "kind",
-        (row) => row.view.definition.kind,
-        t("workflowSteps.column.kind"),
-        (row) => t(workflowStepKindKey(row.view.definition.kind)),
-        { width: "w-[16%]" },
-      ),
-      column.custom(
-        "essence",
-        (row) => row.index,
-        t("workflowSteps.column.does"),
-        (row) => (
-          <span className="block truncate" data-testid={`workflow-step-${row.index}-essence`}>
-            {stepEssenceText(row.view.definition, t, {
-              connector: connectorNameOf(row.view.definition, connectorNames),
-            })}
-          </span>
-        ),
-        { width: "w-[38%]" },
-      ),
-      column.custom(
-        "last",
-        (row) => row.view.lastRun?.status ?? null,
-        t("workflowSteps.column.last"),
-        (row) =>
-          row.view.lastRun ? (
-            <StatusBadge
-              state={row.view.lastRun.status}
-              testId={`workflow-step-${row.index}-status`}
-            />
-          ) : (
-            <span
-              className="text-xs text-muted-foreground"
-              data-testid={`workflow-step-${row.index}-never-ran`}
-            >
-              {t("workflow.neverRanShort")}
-            </span>
-          ),
-        { width: "w-[20%]" },
-      ),
-    ];
-  }, [t, dateTime, connectorNames, editor?.marks]);
+  const [inserting, setInserting] = useState<number | null>(null);
+  const TriggerIcon = TRIGGER_ICONS[trigger.kind];
+  const plus = (index: number) =>
+    editor ? (
+      <FlowPlus
+        label={t("workflowFlow.insert", { number: index + 1 })}
+        onClick={() => setInserting(index)}
+        testId={`workflow-flow-insert-${index}`}
+      />
+    ) : (
+      <FlowArrow />
+    );
   const selected = open === null ? null : (steps.views[open] ?? null);
   return (
     <div data-testid="workflow-steps">
-      <RecordTable
-        columns={columns}
-        data={rows}
-        collectionId="workflow-step-list"
-        emptyLine={t("workflow.noSteps")}
-        emptyAction={emptyAction}
-        pending={steps.pending && steps.views.length === 0}
-        onOpen={(row) => setOpen(row.index)}
-        rowLabel={(row) => t("workflow.step", { count: row.index + 1 })}
-        rowActions={
-          editor
-            ? (row) => (
-                <span data-action-scope="step">
-                  <ActionMenu
-                    testId={`workflow-step-${row.index}-menu`}
-                    label={t("stepEditor.actionsFor", { step: row.view.definition.id })}
-                    items={[
-                      {
-                        label: t("stepEditor.edit"),
-                        onSelect: () => setEditing(row.index),
-                        testId: `workflow-step-${row.index}-edit`,
-                      },
-                      ...(row.index > 0
-                        ? [
-                            {
-                              label: t("stepEditor.up"),
-                              onSelect: () => editor.move(row.index, -1),
-                              testId: `workflow-step-${row.index}-up`,
-                            },
-                          ]
-                        : []),
-                      ...(row.index < steps.views.length - 1
-                        ? [
-                            {
-                              label: t("stepEditor.down"),
-                              onSelect: () => editor.move(row.index, 1),
-                              testId: `workflow-step-${row.index}-down`,
-                            },
-                          ]
-                        : []),
-                      {
-                        label: t("stepEditor.remove"),
-                        onSelect: () => editor.remove(row.index),
-                        destructive: true,
-                        testId: `workflow-step-${row.index}-remove`,
-                      },
-                    ]}
-                  />
-                </span>
-              )
-            : undefined
-        }
-      />
+      <ol
+        className="flex flex-col items-stretch gap-1 overflow-x-auto pb-1 lg:flex-row"
+        data-slot="workflow-flow"
+        data-testid="workflow-flow"
+      >
+        <li className="contents">
+          <div
+            className={cn(CARD, "hover:border-border hover:bg-card")}
+            data-testid="workflow-flow-trigger"
+          >
+            <span className="text-xs font-medium text-muted-foreground">
+              {t("workflowFlow.trigger")}
+            </span>
+            <span className="flex items-center gap-2 text-sm font-medium [&_svg]:size-4">
+              <TriggerIcon aria-hidden="true" className="text-muted-foreground" />
+              {trigger.label}
+            </span>
+            <span className="text-xs text-muted-foreground">{trigger.line}</span>
+          </div>
+        </li>
+        {steps.views.map((view, index) => {
+          const definition = view.definition;
+          const Icon = stepIcon(definition);
+          const connector = stepConnector(definition, records);
+          const failed = view.lastRun ? statusTone(view.lastRun.status) === "error" : false;
+          const tone = view.lastRun ? statusTone(view.lastRun.status) : null;
+          const mark = editor?.marks[definition.id];
+          return (
+            <Fragment key={`${definition.id}:${index}`}>
+              {index === 0 ? <FlowArrow /> : plus(index)}
+              <li className="contents">
+                <button
+                  type="button"
+                  onClick={() => setOpen(index)}
+                  className={cn(CARD, failed && "border-destructive/50 bg-destructive/5")}
+                  data-testid={`workflow-step-${index}`}
+                  aria-label={t("workflowFlow.openStep", {
+                    number: index + 1,
+                    name: phrase(definition, connector?.name || null),
+                  })}
+                >
+                  <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span>
+                      {t("workflowFlow.stepNumber", { number: index + 1 })} ·{" "}
+                      {t(workflowStepKindKey(definition.kind))}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      {mark ? (
+                        <span data-testid={`workflow-step-${index}-mark`}>
+                          {t(STEP_MARK_KEYS[mark])}
+                        </span>
+                      ) : null}
+                      <span
+                        aria-hidden="true"
+                        data-testid={`workflow-step-${index}-dot`}
+                        data-tone={tone ?? "none"}
+                        title={
+                          view.lastRun ? t("workflowFlow.lastRunDot") : t("workflow.neverRanShort")
+                        }
+                        className={cn(
+                          "size-2 rounded-full",
+                          tone && tone !== "neutral" ? STATUS_DOT[tone] : "bg-muted-foreground/30",
+                        )}
+                      />
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-2 text-sm font-medium [&_svg]:size-4">
+                    <Icon aria-hidden="true" className="shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 [overflow-wrap:anywhere]">
+                      {phrase(definition, connector?.name || null)}
+                    </span>
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {connector?.name || t("workflowFlow.inSubKit")}
+                  </span>
+                </button>
+              </li>
+            </Fragment>
+          );
+        })}
+        {steps.views.length === 0 ? plus(0) : plus(steps.views.length)}
+        <li className="contents">
+          <div
+            className={cn(CARD, "hover:border-border hover:bg-card")}
+            data-testid="workflow-flow-result"
+          >
+            <span className="text-xs font-medium text-muted-foreground">
+              {t("workflowFlow.result")}
+            </span>
+            <span className="flex items-center gap-2 text-sm font-medium [&_svg]:size-4">
+              <Flag aria-hidden="true" className="text-muted-foreground" />
+              {result}
+            </span>
+          </div>
+        </li>
+      </ol>
       {selected && open !== null ? (
         <StepSheet
           workflowName={workflowName}
           view={selected}
           index={open}
-          connectorName={connectorNameOf(selected.definition, connectorNames)}
+          total={steps.views.length}
+          connector={stepConnector(selected.definition, records)}
           canRun={canRun}
           steps={steps}
           onClose={() => setOpen(null)}
           {...(editor
             ? {
-                onEdit: () => {
-                  setOpen(null);
-                  setEditing(open);
+                editor: {
+                  edit: () => {
+                    setOpen(null);
+                    setEditing(open);
+                  },
+                  up: open > 0 ? () => editor.move(open, -1) : undefined,
+                  down: open < steps.views.length - 1 ? () => editor.move(open, 1) : undefined,
+                  remove: () => {
+                    setOpen(null);
+                    editor.remove(open);
+                  },
                 },
               }
             : {})}
@@ -447,6 +567,15 @@ export function WorkflowStepsList({
           onApply={(step) => editor.replace(editing, step)}
         />
       ) : null}
+      {editor && inserting !== null ? (
+        <StepDialog
+          open
+          onOpenChange={(next) => !next && setInserting(null)}
+          step={null}
+          taken={editor.steps.map(stepId)}
+          onApply={(step) => editor.insert(inserting, step)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -455,31 +584,48 @@ function StepSheet({
   view,
   workflowName,
   index,
-  connectorName,
+  total,
+  connector,
   canRun,
   steps,
   onClose,
-  onEdit,
+  editor,
 }: {
   view: WorkflowStepView;
-  workflowName?: string;
+  workflowName: string;
   index: number;
-  connectorName: string | null;
+  total: number;
+  connector: { id: string | null; name: string } | null;
   canRun: boolean;
   steps: WorkflowSteps;
   onClose: () => void;
-  onEdit?: () => void;
+  editor?: { edit(): void; up?: () => void; down?: () => void; remove(): void };
 }) {
-  const { t } = useI18n();
+  const { t, dateTime } = useI18n();
+  const phrase = useStepPhrase();
   const testId = `workflow-step-${index}`;
   const { definition, lastRun } = view;
   const lastResult = stepResultPreview(lastRun);
   const called = definition.essence.kind === "call" ? definition.essence : null;
   const result = steps.results[definition.id] ?? null;
   const running = steps.running === definition.id;
+  const writes = stepWrites(definition);
+  const failed = lastRun ? statusTone(lastRun.status) === "error" : false;
+  const when = lastRun?.finished_at ?? lastRun?.started_at ?? null;
+  const reason =
+    failed && typeof lastRun?.error === "string"
+      ? maskIdentifiers(lastRun.error.split("\n")[0] ?? "")
+      : null;
   const facts: Fact[] = [
-    { label: t("workflowSteps.column.kind"), value: t(workflowStepKindKey(definition.kind)) },
-    ...(connectorName ? [{ label: t("authority.connector"), value: connectorName }] : []),
+    ...(writes === null
+      ? []
+      : [
+          {
+            label: t("workflowFlow.sheet.effect"),
+            value: t(writes ? "workflowFlow.sheet.writes" : "workflowFlow.sheet.reads"),
+            testId: `${testId}-effect`,
+          },
+        ]),
     ...(called?.workflowId
       ? [
           {
@@ -490,7 +636,7 @@ function StepSheet({
                 className="underline underline-offset-4"
                 data-testid={`${testId}-called-workflow`}
               >
-                {called.slug ?? t("workflow.fact.callsOpen")}
+                {t("workflow.fact.callsOpen")}
               </a>
             ),
           },
@@ -501,67 +647,140 @@ function StepSheet({
       value: "valueKey" in fact ? t(fact.valueKey) : fact.value,
     })),
   ];
+  const menu: ActionMenuItem[] = [
+    ...(canRun
+      ? [
+          {
+            label: t(running ? "workflow.testing" : "workflow.testStep"),
+            disabled: steps.running !== null,
+            onSelect: () =>
+              void steps.runOne(definition.id, { source: "step", step: definition.raw }),
+            testId: `${testId}-test`,
+          },
+        ]
+      : []),
+    ...(editor?.up
+      ? [{ label: t("stepEditor.up"), onSelect: editor.up, testId: `${testId}-up` }]
+      : []),
+    ...(editor?.down
+      ? [{ label: t("stepEditor.down"), onSelect: editor.down, testId: `${testId}-down` }]
+      : []),
+    ...(editor
+      ? [
+          {
+            label: t("stepEditor.remove"),
+            onSelect: editor.remove,
+            destructive: true,
+            testId: `${testId}-remove`,
+          },
+        ]
+      : []),
+  ];
   return (
     <RecordSheet
       dock
       open
       onOpenChange={(next) => !next && onClose()}
-      title={t("workflowSteps.sheetTitle", { number: index + 1, name: definition.id })}
-      subtitle={workflowName}
+      title={phrase(definition, connector?.name || null)}
+      subtitle={t("workflowFlow.sheet.subtitle", {
+        number: index + 1,
+        total,
+        kind: t(workflowStepKindKey(definition.kind)),
+      })}
       badge={lastRun ? <StatusBadge state={lastRun.status} /> : undefined}
-      menu={
-        onEdit ? (
-          <ActionMenu
-            items={[
-              { label: t("stepEditor.edit"), onSelect: onEdit, testId: `${testId}-sheet-edit` },
-            ]}
-          />
+      action={
+        editor ? (
+          <ActionButton size="sm" onClick={editor.edit} testId={`${testId}-sheet-edit`}>
+            {t("stepEditor.edit")}
+          </ActionButton>
         ) : undefined
       }
-      action={
-        canRun ? (
-          <ActionMenu
-            items={[
-              {
-                label: t(running ? "workflow.testing" : "workflow.testStep"),
-                disabled: steps.running !== null,
-                onSelect: () =>
-                  void steps.runOne(definition.id, { source: "step", step: definition.raw }),
-                testId: `${testId}-test`,
-              },
-            ]}
-          />
+      menu={
+        menu.length > 0 ? (
+          <ActionMenu alwaysMenu items={menu} testId={`${testId}-menu`} />
         ) : undefined
       }
       testId={`${testId}-sheet`}
       closeTestId={`${testId}-close`}
     >
-      <div className="flex flex-col gap-3" data-testid={`${testId}-configuration`}>
-        <FactList items={facts} />
-        {definition.blocks.map((block, blockIndex) => (
-          <Copyable key={`${block.labelKey}:${blockIndex}`}>
-            <CodeBlock
-              label={t(block.labelKey)}
-              code={block.code}
-              lang={block.language}
-              testId={`${testId}-block-${blockIndex}`}
-            />
-          </Copyable>
-        ))}
-        {facts.length <= 1 && definition.blocks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("workflow.noConfiguration")}</p>
-        ) : null}
-      </div>
-      <Section label={t("workflow.lastResult")}>
-        {lastResult ? (
-          <Copyable>
-            <CodeBlock code={lastResult} lang="json" testId={`${testId}-last-result`} />
-          </Copyable>
+      <p className="text-sm text-muted-foreground">{workflowName}</p>
+      {connector?.id ? (
+        <a
+          href={absolute(connectorHref(connector.id))}
+          className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
+          data-testid={`${testId}-connector`}
+        >
+          <IconTile outline>
+            <Plug />
+          </IconTile>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium">
+              {connector.name || t("authority.configuredConnector")}
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              {t("workflowFlow.sheet.service")}
+            </span>
+          </span>
+        </a>
+      ) : null}
+      <Section label={t("workflowFlow.sheet.lastRun")} testId={`${testId}-last-run`}>
+        {lastRun ? (
+          <div
+            className={cn(
+              "rounded-lg border p-3 text-sm",
+              failed && "border-destructive/50 text-destructive",
+            )}
+            data-testid={`${testId}-last-run-banner`}
+          >
+            <p className="font-medium">
+              {t(failed ? "workflowFlow.sheet.failed" : "workflowFlow.sheet.succeeded", {
+                when: when ? dateTime(when) : "—",
+              })}
+              {lastRun.duration_ms !== null && lastRun.duration_ms !== undefined
+                ? ` · ${formatDuration(lastRun.duration_ms)}`
+                : ""}
+            </p>
+            {reason ? <p className="mt-1 text-foreground">{reason}</p> : null}
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground">{t("workflow.neverRan")}</p>
         )}
       </Section>
+      {facts.length > 0 ? <FactList items={facts} testId={`${testId}-facts`} /> : null}
       {result ? <PreviewCard result={result} total={1} testId={`${testId}-test-result`} /> : null}
+      <TechnicalDetails testId={`${testId}-technical`}>
+        <FactList
+          items={[
+            {
+              label: t("workflowFlow.sheet.key"),
+              value: <span className="break-all font-mono text-xs">{definition.id}</span>,
+              testId: `${testId}-key`,
+            },
+          ]}
+        />
+        <div className="flex flex-col gap-3" data-testid={`${testId}-configuration`}>
+          {definition.blocks.map((block, blockIndex) => (
+            <Copyable key={`${block.labelKey}:${blockIndex}`}>
+              <CodeBlock
+                label={t(block.labelKey)}
+                code={block.code}
+                lang={block.language}
+                testId={`${testId}-block-${blockIndex}`}
+              />
+            </Copyable>
+          ))}
+        </div>
+        {lastResult ? (
+          <Copyable>
+            <CodeBlock
+              label={t("workflow.lastResult")}
+              code={lastResult}
+              lang="json"
+              testId={`${testId}-last-result`}
+            />
+          </Copyable>
+        ) : null}
+      </TechnicalDetails>
     </RecordSheet>
   );
 }

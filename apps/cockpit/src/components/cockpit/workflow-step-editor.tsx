@@ -74,6 +74,11 @@ export function moveStep<T>(steps: readonly T[], from: number, by: -1 | 1): T[] 
   return next;
 }
 
+export function insertStep<T>(steps: readonly T[], index: number, step: T): T[] {
+  const at = Math.max(0, Math.min(index, steps.length));
+  return [...steps.slice(0, at), step, ...steps.slice(at)];
+}
+
 export function useStepDraft(saved: readonly unknown[]) {
   const [draft, setDraft] = useState<unknown[] | null>(null);
   const [changes, setChanges] = useState(0);
@@ -122,8 +127,11 @@ export function useStepDraft(saved: readonly unknown[]) {
           return rest;
         },
       ),
-    add: (step: unknown) =>
-      change([...steps, step], (current) => ({ ...current, [stepId(step)]: "new" })),
+    insert: (index: number, step: unknown) =>
+      change(insertStep(steps, index, step), (current) => ({
+        ...current,
+        [stepId(step)]: "new",
+      })),
     discard: () => {
       setDraft(null);
       setChanges(0);

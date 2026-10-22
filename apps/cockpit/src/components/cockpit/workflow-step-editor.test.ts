@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { definitionForStepSave, definitionFromRecord } from "./workflow-step-editor";
+import { definitionForStepSave, definitionFromRecord, insertStep } from "./workflow-step-editor";
 
 test("step editing preserves every active workflow definition field", () => {
   const original = {
@@ -51,4 +51,10 @@ test("step editing a pending draft keeps its reviewed definition", () => {
     steps: [{ id: "draft-step", kind: "transform" }],
   };
   expect(definitionForStepSave({ name: "Active name" }, [], waiting)).toEqual(waiting);
+});
+
+test("a step added between two cards lands exactly at that position", () => {
+  expect(insertStep(["a", "b", "c"], 1, "x")).toEqual(["a", "x", "b", "c"]);
+  expect(insertStep(["a"], 0, "x")).toEqual(["x", "a"]);
+  expect(insertStep(["a"], 9, "x")).toEqual(["a", "x"]);
 });
