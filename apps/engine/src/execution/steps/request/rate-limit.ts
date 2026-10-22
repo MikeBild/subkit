@@ -63,6 +63,23 @@ export function rateLimitDelayMs(input: RateLimitInput): RateLimitVerdict {
   return { kind: tooLong ? "fail" : "wait", delay_ms, reason };
 }
 
+export type RateLimitDeadlineScope = "step" | "workflow";
+
+export interface RateLimitDeadline {
+  deadline_ms: number;
+  deadline_scope: RateLimitDeadlineScope;
+}
+
+export function rateLimitDeadline(
+  stepTimeoutMs: number,
+  workflowDeadlineMs: number | undefined,
+): RateLimitDeadline {
+  const stepDeadlineMs = rateLimitNow() + stepTimeoutMs;
+  return workflowDeadlineMs !== undefined && workflowDeadlineMs < stepDeadlineMs
+    ? { deadline_ms: workflowDeadlineMs, deadline_scope: "workflow" }
+    : { deadline_ms: stepDeadlineMs, deadline_scope: "step" };
+}
+
 export interface RateLimitClock {
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;

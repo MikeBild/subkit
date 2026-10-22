@@ -117,7 +117,7 @@ const SAFE_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
   pagination_short_page:
     "The server returned fewer items than requested while more pages exist. Lower page_size to the vendor maximum.",
   upstream_rate_limited:
-    "The vendor's rate limit did not reset within the step's time. Retry after the limit resets.",
+    "The vendor's rate limit does not reset before the step or workflow deadline. Retry after the limit resets.",
   graphql_endpoint_invalid:
     "The GraphQL address must be a fixed GraphQL endpoint path ending in /graphql on the connector's own host, for example /graphql.",
   graphql_path_required: "A GraphQL step on an HTTP connector needs a fixed path such as /graphql.",

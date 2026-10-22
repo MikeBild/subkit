@@ -202,7 +202,7 @@ function issuesStep(pagination: Record<string, unknown> = {}, extra: Record<stri
   });
 }
 
-async function run(step: RequestStep) {
+async function run(step: RequestStep, context: Partial<StepRunContext> = {}) {
   const { execution_id, step_row_id } = await createExecutionRow();
   const bound = { ...step, connector_id: connectorId };
   const ctx: StepRunContext = {
@@ -226,6 +226,7 @@ async function run(step: RequestStep) {
     step_row_id,
     persist_workflow_refs: true,
     llm_budget: new RunLlmBudget(null),
+    ...context,
   };
   const result = await runRequestStep({ ctx, step: bound, scope: {} });
   const audit = await testDb.db
@@ -439,5 +440,44 @@ describe("GitHub rate limits through the request step", () => {
     expect(result.error?.health).toBe("rate_limited");
     expect(result.error?.health).not.toBe("auth_failed");
     expect(hits).toHaveLength(1);
+  });
+
+  test("a wait past the workflow deadline ends the step as a rate limit without sleeping", async () => {
+    mode = "secondary_limit";
+    const seam = clock();
+    const { result } = await withRateLimitClockForTests(seam, () =>
+      run(issuesStep(), { workflow_deadline_ms: TEST_NOW_MS + 30_000 }),
+    );
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("upstream_rate_limited");
+    expect(result.error?.health).toBe("rate_limited");
+    expect(result.error?.message).toContain("workflow deadline");
+    expect(seam.waits).toEqual([]);
+    expect(hits).toHaveLength(1);
+  });
+
+  test("a wait inside the workflow deadline still waits and reads every page", async () => {
+    mode = "secondary_limit";
+    const seam = clock();
+    const { result } = await withRateLimitClockForTests(seam, () =>
+      run(issuesStep(), { workflow_deadline_ms: TEST_NOW_MS + 5 * 60_000 }),
+    );
+    expect(result.status).toBe("succeeded");
+    expect(ids(result.output)).toHaveLength(TOTAL);
+    expect(seam.waits).toEqual([60_000]);
+  });
+
+  test("the step deadline still binds when it ends before the workflow deadline", async () => {
+    mode = "secondary_limit";
+    const seam = clock();
+    const { result } = await withRateLimitClockForTests(seam, () =>
+      run(issuesStep({}, { timeout_ms: 30_000 }), {
+        workflow_deadline_ms: TEST_NOW_MS + 60 * 60_000,
+      }),
+    );
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("upstream_rate_limited");
+    expect(result.error?.message).toContain("step deadline");
+    expect(seam.waits).toEqual([]);
   });
 });

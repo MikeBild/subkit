@@ -71,6 +71,7 @@ export interface ExecutionContext {
   hold_writes?: boolean;
   own_connector_credentials?: boolean;
   persist_workflow_refs: boolean;
+  workflow_deadline_ms?: number;
 }
 
 export interface StepRunContext extends ExecutionContext {

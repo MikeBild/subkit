@@ -74,6 +74,7 @@ import {
   type OutputContractVerdict,
 } from "./state.ts";
 import { type RunStepOutcome, runStep } from "./step-runner.ts";
+import { rateLimitNow } from "./steps/request/rate-limit.ts";
 import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
 import { MAX_CALL_DEPTH, WORKFLOW_TIMEOUT_DEFAULT_MS } from "./timeouts.ts";
 import { preparedApprovalClock } from "./tool-approval-dispatch.ts";
@@ -395,9 +396,11 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       });
   }
   const totalTimeoutCtrl = new AbortController();
+  const workflowTimeoutMs = def.timeout_ms ?? WORKFLOW_TIMEOUT_DEFAULT_MS;
+  const workflowDeadlineMs = rateLimitNow() + workflowTimeoutMs;
   const totalTimer = setTimeout(
     () => totalTimeoutCtrl.abort("workflow_timeout"),
-    def.timeout_ms ?? WORKFLOW_TIMEOUT_DEFAULT_MS,
+    workflowTimeoutMs,
   );
   const signal = combineSignals([ctrl.signal, totalTimeoutCtrl.signal]);
 
@@ -600,6 +603,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       step_row_id,
       llm_budget: llmBudget,
       persist_workflow_refs: resolved.persist_workflow_refs,
+      workflow_deadline_ms: workflowDeadlineMs,
       ...(ownConnectorCredentials ? { own_connector_credentials: true } : {}),
       ...(opts.hold_writes ? { hold_writes: true } : {}),
     };
@@ -1130,6 +1134,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
               step_row_id: bodyStepRowId,
               llm_budget: llmBudget,
               persist_workflow_refs: resolved.persist_workflow_refs,
+              workflow_deadline_ms: workflowDeadlineMs,
               ...(ownConnectorCredentials ? { own_connector_credentials: true } : {}),
               ...(opts.hold_writes ? { hold_writes: true } : {}),
             };
@@ -1343,6 +1348,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
                   step_row_id: branchStepRowId,
                   llm_budget: llmBudget,
                   persist_workflow_refs: resolved.persist_workflow_refs,
+                  workflow_deadline_ms: workflowDeadlineMs,
                   ...(ownConnectorCredentials ? { own_connector_credentials: true } : {}),
                   ...(opts.hold_writes ? { hold_writes: true } : {}),
                 };

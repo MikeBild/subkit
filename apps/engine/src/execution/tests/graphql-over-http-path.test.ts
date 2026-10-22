@@ -147,10 +147,16 @@ function projectStep(extra: Record<string, unknown> = {}, graphql: Record<string
   };
 }
 
-async function run(name: string, step: Record<string, unknown>, sensitive = false) {
+async function run(
+  name: string,
+  step: Record<string, unknown>,
+  sensitive = false,
+  workflow: Record<string, unknown> = {},
+) {
   const { workflow_id } = await createWorkflowRow(ctx, {
     name,
     ...(sensitive ? { execution_privacy: "sensitive" } : {}),
+    ...workflow,
     steps: [step],
   });
   return runExecution({
@@ -366,6 +372,53 @@ describe("GitHub GraphQL rate limits through path /graphql", () => {
     expect((result.steps[0]?.error as { code?: string })?.code).toBe("upstream_rate_limited");
     expect(waits).toEqual([]);
     expect(seen).toHaveLength(1);
+  });
+
+  test("a secondary limit past the workflow deadline ends the step as a rate limit", async () => {
+    const now = getTestNow();
+    const waits: number[] = [];
+    answer = () => ({
+      status: 403,
+      headers: {},
+      body: { message: "You have exceeded a secondary rate limit." },
+    });
+    const result = await withRateLimitClockForTests(
+      { now: () => now, sleep: async (ms) => void waits.push(ms) },
+      () =>
+        run("gql-path-workflow-deadline", projectStep({ max_retries: 3 }), false, {
+          timeout_ms: 30_000,
+        }),
+    );
+    expect(result.status).toBe("failed");
+    const error = result.steps[0]?.error as { code?: string; message?: string };
+    expect(error?.code).toBe("upstream_rate_limited");
+    expect(error?.message).toContain("workflow deadline");
+    expect(result.error?.code).not.toBe("workflow_timeout");
+    expect(waits).toEqual([]);
+    expect(seen).toHaveLength(1);
+  });
+
+  test("a secondary limit inside the workflow deadline still waits", async () => {
+    const now = getTestNow();
+    const waits: number[] = [];
+    answer = (after, call) =>
+      call === 1
+        ? {
+            status: 403,
+            headers: {},
+            body: { message: "You have exceeded a secondary rate limit." },
+          }
+        : { status: 200, body: page(after) };
+    const result = await withRateLimitClockForTests(
+      { now: () => now, sleep: async (ms) => void waits.push(ms) },
+      () =>
+        run("gql-path-workflow-room", projectStep({ max_retries: 3 }), false, {
+          timeout_ms: 5 * 60_000,
+        }),
+    );
+    expect(result.status).toBe("succeeded");
+    expect(waits).toEqual([60_000]);
+    expect(items(result.output)).toHaveLength(5);
   });
 
   test("a limit past the step deadline fails without further requests", async () => {

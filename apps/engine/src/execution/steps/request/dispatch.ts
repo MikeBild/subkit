@@ -134,7 +134,13 @@ import { runGraphqlWithRetry } from "./graphql-retry.ts";
 import { resolveGraphqlDispatchTarget } from "./graphql-target.ts";
 import { runMcpWithRetry } from "./mcp-retry.ts";
 import { redactOwnCredentials } from "./own-credentials.ts";
-import { rateLimitDelayMs, rateLimitNow, rateLimitSleepOverride } from "./rate-limit.ts";
+import {
+  type RateLimitDeadlineScope,
+  rateLimitDeadline,
+  rateLimitDelayMs,
+  rateLimitNow,
+  rateLimitSleepOverride,
+} from "./rate-limit.ts";
 import { isDocumentedReadOperation } from "./read-operations.ts";
 import {
   backoffMs,
@@ -277,6 +283,7 @@ interface DoOnePageParams {
   last_idempotency_key?: { value: string | null };
   capture_binary?: boolean;
   deadline_ms: number;
+  deadline_scope: RateLimitDeadlineScope;
 }
 
 function healthHintMeta(
@@ -406,15 +413,16 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
           logger.warn({
             module: "execution",
             action: "request.rate_limited",
-            msg: "upstream rate limit outlasts the step; stopping without further requests",
+            msg: `upstream rate limit outlasts the ${p.deadline_scope} deadline; stopping without further requests`,
             reason: rateLimit.reason,
+            deadline_scope: p.deadline_scope,
             attempt_no: attempt,
             delay_ms: Math.round(rateLimit.delay_ms),
             status: res.status,
             connector_id: p.connector_id ?? null,
           });
           throw new RequestError(
-            `upstream rate limit (http ${res.status}) did not reset within the step's time`,
+            `upstream rate limit (http ${res.status}) does not reset before the ${p.deadline_scope} deadline; run the workflow again after the provider's reset time`,
             "upstream_rate_limited",
             res.status,
             { health_hint },
@@ -858,7 +866,7 @@ async function dispatchRequestStep(
   const max_attempts = requestMaxAttempts(p.step);
   const timeoutMs = p.step.timeout_ms ?? REQUEST_TIMEOUT_DEFAULT_MS;
   const timeoutCtrl = new AbortController();
-  const rateLimitDeadline = rateLimitNow() + timeoutMs;
+  const rateLimitBound = rateLimitDeadline(timeoutMs, p.ctx.workflow_deadline_ms);
 
   const resolvedScope = await resolveScopeForJsonata(
     p.ctx.db,
@@ -1231,7 +1239,7 @@ async function dispatchRequestStep(
               step: p.step,
               signal,
               start,
-              deadline_ms: rateLimitDeadline,
+              ...rateLimitBound,
               connectorResolution: graphqlConnectorResolution,
             });
           const graphqlResult = cursorPagination
@@ -2242,7 +2250,7 @@ async function dispatchRequestStep(
       }
       const callDoOnePage = () =>
         doOnePage({
-          deadline_ms: rateLimitDeadline,
+          ...rateLimitBound,
           db: p.ctx.db,
           before_dispatch: beforeHttpDispatch,
           ...(signedJwt ? { signed_jwt: signedJwt } : {}),
@@ -2611,7 +2619,7 @@ async function dispatchRequestStep(
       }
       const callPage = () =>
         doOnePage({
-          deadline_ms: rateLimitDeadline,
+          ...rateLimitBound,
           db: p.ctx.db,
           before_dispatch: beforeHttpDispatch,
           ...(signedJwt ? { signed_jwt: signedJwt } : {}),
