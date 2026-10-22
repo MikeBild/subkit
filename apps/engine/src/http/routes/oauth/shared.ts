@@ -2,7 +2,11 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
 import { z } from "zod";
-import { browserSessionFromRequest, type ResolvedPrincipal } from "../../../auth/index.ts";
+import {
+  browserSessionDenyReason,
+  browserSessionFromRequest,
+  type ResolvedPrincipal,
+} from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import type { Db } from "../../../db/client.ts";
 import { sessions } from "../../../db/schema/index.ts";
@@ -137,12 +141,8 @@ export async function sessionIsLive(db: Db, sessionId: string, tenantId: string)
     .where(and(eq(sessions.id, sessionId), eq(sessions.tenant_id, tenantId)))
     .limit(1);
   const row = rows[0];
-  if (!row || row.revoked_at) return false;
-
   const now = Date.now();
-  if (row.absolute_expires_at && row.absolute_expires_at.getTime() <= now) return false;
-  if (row.last_seen_at && now - row.last_seen_at.getTime() > 8 * 60 * 60 * 1000) return false;
-  if (!row.last_seen_at && row.expires_at.getTime() <= now) return false;
+  if (!row || browserSessionDenyReason(row, new Date(now))) return false;
 
   await db
     .update(sessions)

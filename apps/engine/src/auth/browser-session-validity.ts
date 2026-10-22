@@ -8,6 +8,7 @@ export type BrowserSessionDenyReason = "revoked" | "expired_absolute" | "expired
 
 export interface BrowserSessionValidityRow {
   revoked_at: Date | null;
+  expires_at: Date;
   absolute_expires_at: Date | null;
   last_seen_at: Date | null;
 }
@@ -19,9 +20,10 @@ export function browserSessionDenyReason(
   if (row.revoked_at) return "revoked";
   if (row.absolute_expires_at && row.absolute_expires_at.getTime() <= at.getTime())
     return "expired_absolute";
-  if (row.last_seen_at && at.getTime() - row.last_seen_at.getTime() > SESSION_SLIDING_TTL_MS)
-    return "expired_sliding";
-  return null;
+  const slidingExpired = row.last_seen_at
+    ? at.getTime() - row.last_seen_at.getTime() > SESSION_SLIDING_TTL_MS
+    : row.expires_at.getTime() <= at.getTime();
+  return slidingExpired ? "expired_sliding" : null;
 }
 
 export function liveBrowserSessionWhere(at: Date): SQL | undefined {
@@ -29,7 +31,7 @@ export function liveBrowserSessionWhere(at: Date): SQL | undefined {
     isNull(sessions.revoked_at),
     or(isNull(sessions.absolute_expires_at), gt(sessions.absolute_expires_at, at)),
     or(
-      isNull(sessions.last_seen_at),
+      and(isNull(sessions.last_seen_at), gt(sessions.expires_at, at)),
       gte(sessions.last_seen_at, new Date(at.getTime() - SESSION_SLIDING_TTL_MS)),
     ),
   );

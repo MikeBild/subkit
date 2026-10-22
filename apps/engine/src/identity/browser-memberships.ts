@@ -1,7 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
-import { SESSION_SLIDING_TTL_MS } from "../auth/browser-session.ts";
+import {
+  browserSessionDenyReason,
+  SESSION_SLIDING_TTL_MS,
+} from "../auth/browser-session-validity.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { sessions, users } from "../db/schema/index.ts";
@@ -38,12 +41,7 @@ export async function browserMembershipIdentity(input: BrowserMembershipContext,
     !proof?.auth_identity_id ||
     proof.auth_identity_id !== session.auth_identity_id ||
     proof.product_id !== null ||
-    proof.revoked_at !== null ||
-    proof.expires_at.getTime() <= timestamp ||
-    !proof.absolute_expires_at ||
-    proof.absolute_expires_at.getTime() <= timestamp ||
-    !proof.last_seen_at ||
-    proof.last_seen_at.getTime() + SESSION_SLIDING_TTL_MS <= timestamp
+    browserSessionDenyReason(proof, new Date(timestamp))
   ) {
     throw new SelfServiceIdentityError("membership_unavailable");
   }

@@ -386,6 +386,9 @@ test("root push accepts exactly the browser sessions the browser-session provide
     await rootSession(await addUser(), {
       lastSeenAt: new Date(Date.now() - 9 * 60 * 60_000), // allow-wall-clock: live browser fixture
     }),
+    await rootSession(await addUser(), {
+      expiresAt: new Date(Date.now() - 60_000), // allow-wall-clock: live browser fixture
+    }),
   ];
   for (const session of rejected) {
     expect((await fetch(base, { headers: session.headers })).status).toBe(401);

@@ -13,7 +13,12 @@ import {
 } from "../../../auth/providers/tests/fixtures/mock-oidc.ts";
 import { setConfigKey } from "../../../config/loader.ts";
 import { sessions, tenants, users } from "../../../db/schema/index.ts";
-import { createInvite, createUser, provisionSelfServiceTenant } from "../../../identity/index.ts";
+import {
+  browserMembershipIdentity,
+  createInvite,
+  createUser,
+  provisionSelfServiceTenant,
+} from "../../../identity/index.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
@@ -526,6 +531,93 @@ describe("hosted browser identity and memberships", () => {
       headers: { ...request.headers, cookie: nextCookie },
     });
     expect(staleWrite.status).toBe(403);
+  });
+
+  test("memberships and tenant switch accept exactly the browser sessions the session provider accepts", async () => {
+    const owner = await login("sliding-switch-owner");
+    const destination = await provisionSelfServiceTenant(
+      {
+        issuer_url: mock.url,
+        subject: "sliding-destination-owner",
+        email: "sliding-destination@example.test",
+        email_verified: true,
+      },
+      ctx.db,
+    );
+    const sessionWhere = (payload: typeof owner.payload) =>
+      and(eq(sessions.tenant_id, payload.tenant_id), eq(sessions.id, payload.session_id));
+    const [source] = await ctx.db.select().from(sessions).where(sessionWhere(owner.payload));
+    if (!source?.auth_identity_id) throw new Error("OIDC proof missing");
+    await ctx.db.insert(users).values({
+      tenant_id: destination.tenant.id,
+      auth_identity_id: source.auth_identity_id,
+      email: "sliding-switch-owner@example.test",
+      role_id: await builtinRoleId(ctx.db, "member"),
+    });
+    await ctx.db
+      .update(sessions)
+      .set({
+        expires_at: new Date(getTestNow() - 60 * 60_000),
+        last_seen_at: new Date(getTestNow() - 60 * 60_000),
+      })
+      .where(sessionWhere(owner.payload));
+    expect(
+      (
+        await fetch(`${ctx.baseUrl}/v1/identity/whoami`, {
+          headers: { cookie: owner.cookie, "x-subkit-tenant": owner.payload.tenant_id },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await fetch(`${ctx.baseUrl}/v1/identity/memberships`, { headers: { cookie: owner.cookie } }))
+        .status,
+    ).toBe(200);
+    const switched = await fetch(`${ctx.baseUrl}/v1/identity/tenant-session`, {
+      method: "POST",
+      headers: {
+        cookie: owner.cookie,
+        "content-type": "application/json",
+        "x-subkit-csrf": owner.csrf,
+      },
+      body: JSON.stringify({ tenant_id: destination.tenant.id }),
+    });
+    expect(switched.status).toBe(200);
+
+    const rejected = [
+      { revoked_at: new Date(getTestNow() - 60_000) },
+      {
+        absolute_expires_at: new Date(getTestNow() - 60_000),
+        last_seen_at: new Date(getTestNow() - 60_000),
+      },
+      { last_seen_at: new Date(getTestNow() - 9 * 60 * 60_000) },
+    ];
+    for (const [index, change] of rejected.entries()) {
+      const denied = await login(`sliding-denied-owner-${index}`);
+      await ctx.db.update(sessions).set(change).where(sessionWhere(denied.payload));
+      await expect(browserMembershipIdentity(denied.payload, ctx.db)).rejects.toThrow(
+        "membership_unavailable",
+      );
+      expect(
+        (
+          await fetch(`${ctx.baseUrl}/v1/identity/memberships`, {
+            headers: { cookie: denied.cookie },
+          })
+        ).status,
+      ).not.toBe(200);
+      expect(
+        (
+          await fetch(`${ctx.baseUrl}/v1/identity/tenant-session`, {
+            method: "POST",
+            headers: {
+              cookie: denied.cookie,
+              "content-type": "application/json",
+              "x-subkit-csrf": denied.csrf,
+            },
+            body: JSON.stringify({ tenant_id: destination.tenant.id }),
+          })
+        ).status,
+      ).not.toBe(200);
+    }
   });
 
   test("a validly signed cookie cannot substitute another user for a session", async () => {

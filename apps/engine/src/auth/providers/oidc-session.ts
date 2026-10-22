@@ -6,10 +6,10 @@ import type { Db } from "../../db/client.ts";
 import { oidcLoginStates, roles, sessions, users } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import {
+  browserSessionDenyReason,
   clearBrowserSessionCookie,
   expireBrowserSession,
   SESSION_ABSOLUTE_TTL_MS,
-  SESSION_SLIDING_TTL_MS,
 } from "../browser-session.ts";
 import type { ResolvedPrincipal } from "../types.ts";
 
@@ -110,14 +110,7 @@ export async function resolveOidcSession(
     .limit(1);
   if (!row) return null;
 
-  const now = new Date();
-  const denyReason: "revoked" | "expired_absolute" | "expired_sliding" | null = row.revoked_at
-    ? "revoked"
-    : row.absolute_expires_at && row.absolute_expires_at.getTime() <= now.getTime()
-      ? "expired_absolute"
-      : row.last_seen_at && now.getTime() - row.last_seen_at.getTime() > SESSION_SLIDING_TTL_MS
-        ? "expired_sliding"
-        : null;
+  const denyReason = browserSessionDenyReason(row, new Date());
   if (denyReason) {
     if (denyReason !== "revoked") {
       await expireBrowserSession(db, row, denyReason, {

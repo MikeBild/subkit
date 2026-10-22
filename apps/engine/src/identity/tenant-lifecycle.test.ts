@@ -282,16 +282,25 @@ test("restore fails exactly at the deadline and for another identity", async () 
   expect((await tenant(own.tenant.id)).status).toBe("pending_deletion");
 });
 
-test("expired and revoked browser proofs cannot request deletion", async () => {
+test("expired, idle and revoked browser proofs cannot request deletion", async () => {
   const expired = await fixture("expired-browser-proof");
   await tdb.db
     .update(sessions)
-    .set({ expires_at: new Date(clock.now()) })
+    .set({ absolute_expires_at: new Date(clock.now()) })
     .where(eq(sessions.id, expired.browser.session_id));
   await expect(requestOwnedTenantDeletion(expired.input, tdb.db)).rejects.toThrow(
     "membership_unavailable",
   );
   expect((await tenant(expired.tenant.id)).status).toBe("active");
+  const idle = await fixture("idle-browser-proof");
+  await tdb.db
+    .update(sessions)
+    .set({ last_seen_at: new Date(clock.now() - 8 * 60 * 60 * 1000 - 1) })
+    .where(eq(sessions.id, idle.browser.session_id));
+  await expect(requestOwnedTenantDeletion(idle.input, tdb.db)).rejects.toThrow(
+    "membership_unavailable",
+  );
+  expect((await tenant(idle.tenant.id)).status).toBe("active");
   const revoked = await fixture("revoked-browser-proof");
   await tdb.db
     .update(sessions)
