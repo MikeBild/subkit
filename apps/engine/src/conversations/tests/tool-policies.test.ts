@@ -404,7 +404,7 @@ describe("resolveToolMode — yolo mode", () => {
     ).toBe("confirm_before_execution");
   });
 
-  it("replacing an EXISTING workflow is dangerous — creating one is not", () => {
+  it("replacing a saved draft is inert in auto mode; a forced save stays gated", () => {
     const overwrite = decideToolMode({
       tool: "save_workflow_draft",
       category: "tenant_write",
@@ -412,8 +412,27 @@ describe("resolveToolMode — yolo mode", () => {
       permission_mode: "auto",
       overrides: {},
     });
-    expect(overwrite.mode).toBe("confirm_before_execution");
-    expect(overwrite.rule).toBe("computed_from_input");
+    expect(overwrite.mode).toBe("no_confirm");
+
+    for (const permission_mode of ["ask", "plan"] as const)
+      expect(
+        decideToolMode({
+          tool: "save_workflow_draft",
+          category: "tenant_write",
+          input: { target_workflow_id: "5b873c3d-b9ce-465c-81a2-7a5a4e597365" },
+          permission_mode,
+          overrides: {},
+        }).mode,
+      ).toBe("confirm_before_execution");
+
+    const forcedReplacement = decideToolMode({
+      tool: "save_workflow_draft",
+      category: "tenant_write",
+      input: { target_workflow_id: "5b873c3d-b9ce-465c-81a2-7a5a4e597365", force_commit: true },
+      permission_mode: "auto",
+      overrides: {},
+    });
+    expect(forcedReplacement.mode).toBe("confirm_before_execution");
 
     const forced = decideToolMode({
       tool: "save_workflow_draft",

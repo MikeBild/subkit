@@ -39,7 +39,7 @@ const inputSchema = z
 export const saveWorkflowDraftTool: ConversationTool = {
   name: "save_workflow_draft",
   description:
-    "Save an immutable, inactive workflow draft after validation and preview. Sensitive definitions require fresh inspection and schema validation instead of a forbidden chat preview; runtime verification remains outstanding. In auto mode a green judged preview may already have saved it; do not repeat that save. Saving never activates a version, changes live schedules or webhooks, or grants execution authority. Force and explicit replacement remain human-gated.",
+    "Save an immutable, inactive workflow draft after validation and preview. Sensitive definitions require fresh inspection and schema validation instead of a forbidden chat preview; runtime verification remains outstanding. In auto mode a green judged preview may already have saved it; do not repeat that save. Saving never activates a version, changes live schedules or webhooks, or grants execution authority. Replacing a saved draft is inert; a forced save remains human-gated.",
   use_case:
     "Persist validated authoring work, including recovery after an interrupted save. In ask/plan mode the existing save confirmation remains available; in auto mode ordinary draft preparation needs no human decision.",
   important_notes: [

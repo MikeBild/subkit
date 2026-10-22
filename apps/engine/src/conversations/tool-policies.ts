@@ -206,9 +206,8 @@ export function callConnectorSideEffect(input: unknown): SideEffect {
   return classifyHttpSideEffect({ method, s3: method === "LIST" });
 }
 
-function overwritesExistingWorkflow(input: unknown): boolean {
-  const obj = asObj(input);
-  return typeof obj.target_workflow_id === "string" || obj.force_commit === true;
+function forcesWorkflowSave(input: unknown): boolean {
+  return asObj(input).force_commit === true;
 }
 
 export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
@@ -367,8 +366,8 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
       };
     },
     computeModeFromInput: (input) =>
-      overwritesExistingWorkflow(input) ? "confirm_before_execution" : null,
-    computeDangerFromInput: overwritesExistingWorkflow,
+      forcesWorkflowSave(input) ? "confirm_before_execution" : null,
+    computeDangerFromInput: forcesWorkflowSave,
   },
   restore_workflow_version: {
     defaultMode: "confirm_before_execution",
