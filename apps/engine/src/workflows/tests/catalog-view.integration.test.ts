@@ -13,6 +13,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { serializeOne } from "../../http/routes/workflow-representation.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { describePendingCategoryPurposes } from "../catalog-describe.ts";
 import { loadCategoryVocabulary, renameCategory } from "../catalog-view.ts";
 import { listConnectorRefs, listWorkflowsUsingConnector } from "../connector-refs.ts";
@@ -605,4 +606,247 @@ test("plain rename preserves generated purpose ownership without adopting it", a
   expect(result.metadata.purpose).toBe("Generated guidance");
   expect(result.metadata.purpose_source).toBe("llm");
   expect(result.purpose_generation).toBe("not_requested");
+});
+
+const describedAt = "2026-01-01T00:00:00.000Z";
+const catalogMetadataWrite =
+  "catalog_described_at = $2::timestamptz, catalog_input_hash = 'metadata-only'";
+
+const catalogWriters = [
+  {
+    table: "connectors",
+    key: "id",
+    insert:
+      "INSERT INTO subkit.connectors (tenant_id, slug, display_name, driver, environment, auth_type, base_url, config, category) VALUES ($1, $2, $2, 'http', 'dev', 'none', 'https://example.test', '{}', $3) RETURNING id::text AS key",
+    metadata: catalogMetadataWrite,
+  },
+  {
+    table: "workflows",
+    key: "id",
+    insert:
+      "INSERT INTO subkit.workflows (tenant_id, slug, name, lifecycle, category) VALUES ($1, $2, $2, 'active', $3) RETURNING id::text AS key",
+    metadata: catalogMetadataWrite,
+  },
+  {
+    table: "skills",
+    key: "id",
+    insert:
+      "INSERT INTO subkit.skills (tenant_id, slug, scope, title, body, lifecycle, category) VALUES ($1, $2, 'global', $2, 'Body', 'active', $3) RETURNING id::text AS key",
+    metadata: catalogMetadataWrite,
+  },
+  {
+    table: "knowledge_sources",
+    key: "id",
+    insert:
+      "INSERT INTO subkit.knowledge_sources (tenant_id, name, slug, source_type, source_uri, version, category) VALUES ($1, $2, $2, 'text', 'inline:', '1', $3) RETURNING id::text AS key",
+    metadata: catalogMetadataWrite,
+  },
+  {
+    table: "files",
+    key: "id",
+    insert:
+      "INSERT INTO subkit.files (tenant_id, filename, storage_uri, status, category) VALUES ($1, $2, 'local://' || $2, 'ready', $3) RETURNING id::text AS key",
+    metadata: catalogMetadataWrite,
+  },
+  {
+    table: "intake_category_defaults",
+    key: "actor_id",
+    insert:
+      "INSERT INTO subkit.intake_category_defaults (tenant_id, actor_type, actor_id, category) VALUES ($1, 'user', md5($2)::uuid, $3) RETURNING actor_id::text AS key",
+    metadata: "updated_at = $2::timestamptz",
+  },
+] as const;
+
+type CatalogWriter = (typeof catalogWriters)[number];
+
+async function insertCatalogRow(writer: CatalogWriter, slug: string, category: string) {
+  const result = await ctx.pool.query<{ key: string }>(writer.insert, [tenant_id, slug, category]);
+  const key = result.rows[0]?.key;
+  if (!key) throw new Error(`seed ${writer.table} ${slug} failed`);
+  return key;
+}
+
+function metadataUpdate(writer: CatalogWriter) {
+  return `UPDATE subkit.${writer.table} SET ${writer.metadata} WHERE tenant_id = $1 AND ${writer.key}::text = $3`;
+}
+
+async function categoryOf(writer: CatalogWriter, key: string) {
+  const result = await ctx.pool.query<{ category: string }>(
+    `SELECT category FROM subkit.${writer.table} WHERE tenant_id = $1 AND ${writer.key}::text = $2`,
+    [tenant_id, key],
+  );
+  return result.rows[0]?.category;
+}
+
+async function waitForLockWait(operation: { done: boolean }) {
+  await waitFor(
+    async () => {
+      if (operation.done) return true;
+      const result = await ctx.pool.query<{ waiting: number }>(
+        "SELECT count(*)::int AS waiting FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'",
+      );
+      return (result.rows[0]?.waiting ?? 0) > 0;
+    },
+    { label: "writer waits on the row lock", sleepMs: 5, tries: 1000 },
+  );
+}
+
+function settled(operation: Promise<unknown>) {
+  const tracked = { done: false, result: Promise.resolve<unknown>(null) };
+  tracked.result = operation
+    .then(
+      () => null,
+      (error: unknown) => error,
+    )
+    .finally(() => {
+      tracked.done = true;
+    });
+  return tracked;
+}
+
+describe("catalog vocabulary lock scope", () => {
+  for (const writer of catalogWriters) {
+    const slug = writer.table.replace(/_/g, "-");
+
+    test(`a metadata-only ${writer.table} update succeeds while the vocabulary is locked`, async () => {
+      const key = await insertCatalogRow(writer, `lock-scope-${slug}`, "lock-scope");
+      await ctx.db.transaction(async (tx) => {
+        await lockCatalogVocabulary(tx, tenant_id);
+        const metadataOnly = await ctx.pool.query(metadataUpdate(writer), [
+          tenant_id,
+          describedAt,
+          key,
+        ]);
+        expect(metadataOnly.rowCount).toBe(1);
+        const sameCategory = await ctx.pool.query(
+          `UPDATE subkit.${writer.table} SET category = category WHERE tenant_id = $1 AND ${writer.key}::text = $2`,
+          [tenant_id, key],
+        );
+        expect(sameCategory.rowCount).toBe(1);
+      });
+      expect(await categoryOf(writer, key)).toBe("lock-scope");
+    });
+
+    test(`a ${writer.table} category change still fails closed while the vocabulary is locked`, async () => {
+      const key = await insertCatalogRow(writer, `lock-change-${slug}`, "lock-scope");
+      await ctx.db.transaction(async (tx) => {
+        await lockCatalogVocabulary(tx, tenant_id);
+        await expect(
+          ctx.pool.query(
+            `UPDATE subkit.${writer.table} SET category = 'lock-elsewhere' WHERE tenant_id = $1 AND ${writer.key}::text = $2`,
+            [tenant_id, key],
+          ),
+        ).rejects.toMatchObject({ code: "40001" });
+      });
+      expect(await categoryOf(writer, key)).toBe("lock-scope");
+    });
+  }
+
+  test("a platform skill insert still fails closed while the vocabulary is locked", async () => {
+    await ctx.db.transaction(async (tx) => {
+      await lockCatalogVocabulary(tx, tenant_id);
+      await expect(
+        ctx.pool.query(
+          "INSERT INTO subkit.skills (tenant_id, slug, scope, title, body, lifecycle, category) VALUES ($1, 'locked-platform', 'global', 'Locked', 'Body', 'active', 'platform')",
+          [tenant_id],
+        ),
+      ).rejects.toMatchObject({ code: "40001" });
+    });
+  });
+
+  test("moving a row to another tenant still takes that tenant's vocabulary lock", async () => {
+    const [other] = await ctx.db
+      .insert(tenants)
+      .values({ slug: "lock-scope-destination", display_name: "Destination" })
+      .returning();
+    if (!other) throw new Error("Tenant missing");
+    const writer = catalogWriters[0];
+    const key = await insertCatalogRow(writer, "lock-tenant-move", "lock-scope");
+    await ctx.db.transaction(async (tx) => {
+      await lockCatalogVocabulary(tx, other.id);
+      await expect(
+        ctx.pool.query(
+          "UPDATE subkit.connectors SET tenant_id = $2 WHERE tenant_id = $1 AND id::text = $3",
+          [tenant_id, other.id, key],
+        ),
+      ).rejects.toMatchObject({ code: "40001" });
+    });
+    expect(await categoryOf(writer, key)).toBe("lock-scope");
+  });
+
+  test("a rename waits for an open metadata writer and then moves its row", async () => {
+    const writer = catalogWriters[0];
+    const key = await insertCatalogRow(writer, "race-writer-first", "race-a");
+    const metadataWriter = await ctx.pool.connect();
+    try {
+      await metadataWriter.query("BEGIN");
+      await metadataWriter.query(metadataUpdate(writer), [tenant_id, describedAt, key]);
+      const rename = settled(
+        renameCategory(
+          {
+            tenant_id,
+            from: "race-a",
+            to: "race-b",
+            purpose: "Race purpose",
+            aliases: [],
+            expected_source_revision: 1,
+            expected_target_revision: null,
+          },
+          ctx.db,
+        ),
+      );
+      await waitForLockWait(rename);
+      await metadataWriter.query("COMMIT");
+      expect(await rename.result).toBeNull();
+    } finally {
+      await metadataWriter.query("ROLLBACK");
+      metadataWriter.release();
+    }
+    const [row] = await ctx.db
+      .select()
+      .from(connectors)
+      .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.id, key)));
+    expect(row?.category).toBe("race-b");
+    expect(row?.catalog_input_hash).toBe("metadata-only");
+    const [redirect] = await ctx.db
+      .select()
+      .from(catalogCategories)
+      .where(and(eq(catalogCategories.tenant_id, tenant_id), eq(catalogCategories.name, "race-a")));
+    expect(redirect?.redirect_to).toBe("race-b");
+  });
+
+  test("a metadata writer behind an open rename keeps the renamed category", async () => {
+    const writer = catalogWriters[0];
+    const key = await insertCatalogRow(writer, "race-rename-first", "race-c");
+    const renamer = await ctx.pool.connect();
+    try {
+      await renamer.query("BEGIN");
+      await renamer.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text, 741937))", [
+        tenant_id,
+      ]);
+      await renamer.query(
+        "UPDATE subkit.connectors SET category = 'race-d' WHERE tenant_id = $1 AND category = 'race-c'",
+        [tenant_id],
+      );
+      await renamer.query(
+        "UPDATE subkit.catalog_categories SET redirect_to = 'race-d' WHERE tenant_id = $1 AND name = 'race-c'",
+        [tenant_id],
+      );
+      const metadataOnly = settled(
+        ctx.pool.query(metadataUpdate(writer), [tenant_id, describedAt, key]),
+      );
+      await waitForLockWait(metadataOnly);
+      await renamer.query("COMMIT");
+      expect(await metadataOnly.result).toBeNull();
+    } finally {
+      await renamer.query("ROLLBACK");
+      renamer.release();
+    }
+    expect(await categoryOf(writer, key)).toBe("race-d");
+    await ctx.pool.query(
+      "UPDATE subkit.connectors SET category = 'race-c' WHERE tenant_id = $1 AND id::text = $2",
+      [tenant_id, key],
+    );
+    expect(await categoryOf(writer, key)).toBe("race-d");
+  });
 });

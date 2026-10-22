@@ -2,7 +2,10 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import {
+  type ApplyOutcome,
   applySkillSeeds,
   applySkillSeedsForAllTenants,
   loadEmbeddedSkillSeeds,
@@ -234,6 +237,81 @@ describe("applySkillSeedsForAllTenants — per-tenant fanout", () => {
     const rB = await oneByTenantSlug(ctx, tenantB, "broadcast");
     expect(rA.body).toContain("# v1");
     expect(rB.body).toContain("# v1");
+  });
+});
+
+describe("skill seeds and the catalog vocabulary lock", () => {
+  const seedRetries = () =>
+    getMetrics()
+      .snapshot()
+      .find((metric) => metric.name === METRIC_NAMES.DB_TRANSIENT_RETRIES_TOTAL)
+      ?.samples.find((sample) => sample.labels.label === "skills_seed")?.value ?? 0;
+
+  async function holdVocabularyLock(tenant_id: string) {
+    const blocker = await ctx.pool.connect();
+    await blocker.query("BEGIN");
+    await blocker.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text, 741937))", [
+      tenant_id,
+    ]);
+    return {
+      release: async () => {
+        await blocker.query("ROLLBACK");
+        blocker.release();
+      },
+    };
+  }
+
+  test("seed rides out a held catalog vocabulary lock", async () => {
+    const loaded = loadSkillSeedsFromContent([
+      source("contended", validSeedMd({ slug: "contended", body: "# Contended" })),
+    ]);
+    const before = seedRetries();
+    const lock = await holdVocabularyLock(tenantA);
+    let seeding: Promise<unknown> | undefined;
+    let finished = false;
+    try {
+      seeding = applySkillSeedsForAllTenants(loaded.skills, ctx.db)
+        .then(
+          (outcomes) => outcomes,
+          (error: unknown) => error,
+        )
+        .finally(() => {
+          finished = true;
+        });
+      await waitFor(() => finished || seedRetries() >= before + 3, {
+        label: "skill seed retried the catalog lock",
+        sleepMs: 5,
+        tries: 2000,
+      });
+    } finally {
+      await lock.release();
+    }
+    const outcomes = await seeding;
+    expect(Array.isArray(outcomes)).toBe(true);
+    const outcome = (outcomes as ApplyOutcome[]).find((entry) => entry.tenant_id === tenantA);
+    expect(outcome?.inserted).toBe(1);
+    const [row] = await ctx.db
+      .select({ category: skills.category })
+      .from(skills)
+      .where(and(eq(skills.tenant_id, tenantA), eq(skills.slug, "contended")));
+    expect(row?.category).toBe("platform");
+  });
+
+  test("an unchanged reseed does not take the vocabulary lock", async () => {
+    const loaded = loadSkillSeedsFromContent([
+      source("steady-a", validSeedMd({ slug: "steady-a" })),
+      source("steady-b", validSeedMd({ slug: "steady-b", gates: ["tool_b"] })),
+    ]);
+    await applySkillSeeds(loaded.skills, tenantA, ctx.db);
+    const before = seedRetries();
+    const lock = await holdVocabularyLock(tenantA);
+    try {
+      const outcome = await applySkillSeeds(loaded.skills, tenantA, ctx.db);
+      expect(outcome).toEqual({ tenant_id: tenantA, inserted: 0, updated: 0, unchanged: 2 });
+    } finally {
+      await lock.release();
+    }
+    expect(seedRetries()).toBe(before);
   });
 });
 

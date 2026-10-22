@@ -1016,6 +1016,13 @@
       "when": 1792657811892,
       "tag": "0144_cockpit_push_browser_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1792660948015,
+      "tag": "0145_catalog_category_lock_scope",
+      "breakpoints": true
     }
   ]
 }

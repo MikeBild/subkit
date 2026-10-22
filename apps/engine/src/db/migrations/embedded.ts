@@ -162,6 +162,7 @@ import sql0141SteepMorlun from "./0141_steep_morlun.sql" with { type: "text" };
 import sql0142WetPayback from "./0142_wet_payback.sql" with { type: "text" };
 import sql0143CockpitPushRevokedSessionCleanup from "./0143_cockpit_push_revoked_session_cleanup.sql" with { type: "text" };
 import sql0144CockpitPushBrowserSubscriptions from "./0144_cockpit_push_browser_subscriptions.sql" with { type: "text" };
+import sql0145CatalogCategoryLockScope from "./0145_catalog_category_lock_scope.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -331,6 +332,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0142_wet_payback": sql0142WetPayback,
   "0143_cockpit_push_revoked_session_cleanup": sql0143CockpitPushRevokedSessionCleanup,
   "0144_cockpit_push_browser_subscriptions": sql0144CockpitPushBrowserSubscriptions,
+  "0145_catalog_category_lock_scope": sql0145CatalogCategoryLockScope,
 };
 
 const journal = journalMeta as unknown as Journal;

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { PLATFORM_CATEGORY } from "../api/catalog-metadata.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Db, getDb } from "../db/client.ts";
@@ -100,106 +100,155 @@ export async function applySkillSeeds(
   tenant_id: string,
   db: Db = getDb(),
 ): Promise<ApplyOutcome> {
-  return withTenantWork(tenant_id, () =>
-    db.transaction(async (tx) => {
-      await lockCatalogVocabulary(tx, tenant_id);
-      await lockActiveTenant(tenant_id, tx);
-      let inserted = 0;
-      let updated = 0;
-      let unchanged = 0;
-      for (const s of seeds) {
-        const existing = await tx
-          .select()
-          .from(skills)
-          .where(and(eq(skills.tenant_id, tenant_id), eq(skills.slug, s.slug)))
-          .limit(1);
-        const row = existing[0];
-        if (!row) {
-          await tx.insert(skills).values({
-            tenant_id,
-            slug: s.slug,
-            scope: s.scope,
-            title: s.title,
-            description: s.description,
-            description_source: "human",
-            category: PLATFORM_CATEGORY,
-            category_source: "human",
-            body: s.body,
-            examples: {
-              examples: [],
-              best_practices: [],
-              pitfalls: [],
-              doc_refs: [],
-            },
-            lifecycle: "active",
-            source: "template",
-            version: s.version,
-            seed_source: s.body_hash,
-            gates_tools: s.gates_tools,
-            activates_when: s.activates_when,
-            input_schema: s.input_schema,
-            output_schema: s.output_schema,
-            side_effects: s.side_effects,
-            idempotency: s.idempotency,
-            maturity: s.maturity,
-            tags: s.tags,
-          });
-          inserted++;
-          continue;
-        }
-        if (
-          row.seed_source === s.body_hash &&
-          row.title === s.title &&
-          row.side_effects === s.side_effects &&
-          row.idempotency === s.idempotency &&
-          row.maturity === s.maturity &&
-          sameStringArray(row.gates_tools, s.gates_tools) &&
-          sameUnknownArray(row.activates_when, s.activates_when) &&
-          sameStringArray(row.tags, s.tags) &&
-          sameRecord(row.input_schema, s.input_schema) &&
-          sameRecord(row.output_schema, s.output_schema)
-        ) {
-          if (row.description !== s.description || row.category !== PLATFORM_CATEGORY) {
-            await tx
-              .update(skills)
-              .set({
-                description: s.description,
-                description_source: "human",
-                category: PLATFORM_CATEGORY,
-                category_source: "human",
-              })
-              .where(and(eq(skills.tenant_id, tenant_id), eq(skills.id, row.id)));
-          }
-          unchanged++;
-          continue;
-        }
-        await tx
-          .update(skills)
-          .set({
-            title: s.title,
-            description: s.description,
-            description_source: "human",
-            category: PLATFORM_CATEGORY,
-            category_source: "human",
-            body: s.body,
-            seed_source: s.body_hash,
-            gates_tools: s.gates_tools,
-            activates_when: s.activates_when,
-            input_schema: s.input_schema,
-            output_schema: s.output_schema,
-            side_effects: s.side_effects,
-            idempotency: s.idempotency,
-            maturity: s.maturity,
-            tags: s.tags,
-            version: Math.max(row.version + 1, s.version),
-            updated_at: new Date(),
-          })
-          .where(eq(skills.id, row.id));
-        updated++;
-      }
-      return { tenant_id, inserted, updated, unchanged };
-    }),
+  return withTenantWork(tenant_id, async () => {
+    if (await seedsAlreadyApplied(seeds, tenant_id, db)) {
+      return { tenant_id, inserted: 0, updated: 0, unchanged: seeds.length };
+    }
+    return applyChangedSkillSeeds(seeds, tenant_id, db);
+  });
+}
+
+type SkillRow = typeof skills.$inferSelect;
+
+function seedContentMatches(row: SkillRow, s: SeededSkill): boolean {
+  return (
+    row.seed_source === s.body_hash &&
+    row.title === s.title &&
+    row.side_effects === s.side_effects &&
+    row.idempotency === s.idempotency &&
+    row.maturity === s.maturity &&
+    sameStringArray(row.gates_tools, s.gates_tools) &&
+    sameUnknownArray(row.activates_when, s.activates_when) &&
+    sameStringArray(row.tags, s.tags) &&
+    sameRecord(row.input_schema, s.input_schema) &&
+    sameRecord(row.output_schema, s.output_schema)
   );
+}
+
+function seedCatalogMatches(row: SkillRow, s: SeededSkill): boolean {
+  return row.description === s.description && row.category === PLATFORM_CATEGORY;
+}
+
+async function seedsAlreadyApplied(
+  seeds: SeededSkill[],
+  tenant_id: string,
+  db: Db,
+): Promise<boolean> {
+  if (seeds.length === 0) return false;
+  return db.transaction(async (tx) => {
+    await lockActiveTenant(tenant_id, tx);
+    const tenantSkills = await tx
+      .select()
+      .from(skills)
+      .where(
+        and(
+          eq(skills.tenant_id, tenant_id),
+          inArray(
+            skills.slug,
+            seeds.map((s) => s.slug),
+          ),
+        ),
+      );
+    const bySlug = new Map(tenantSkills.map((row) => [row.slug, row]));
+    return seeds.every((s) => {
+      const row = bySlug.get(s.slug);
+      return row !== undefined && seedContentMatches(row, s) && seedCatalogMatches(row, s);
+    });
+  });
+}
+
+function applyChangedSkillSeeds(
+  seeds: SeededSkill[],
+  tenant_id: string,
+  db: Db,
+): Promise<ApplyOutcome> {
+  return db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, tenant_id);
+    await lockActiveTenant(tenant_id, tx);
+    let inserted = 0;
+    let updated = 0;
+    let unchanged = 0;
+    for (const s of seeds) {
+      const existing = await tx
+        .select()
+        .from(skills)
+        .where(and(eq(skills.tenant_id, tenant_id), eq(skills.slug, s.slug)))
+        .limit(1);
+      const row = existing[0];
+      if (!row) {
+        await tx.insert(skills).values({
+          tenant_id,
+          slug: s.slug,
+          scope: s.scope,
+          title: s.title,
+          description: s.description,
+          description_source: "human",
+          category: PLATFORM_CATEGORY,
+          category_source: "human",
+          body: s.body,
+          examples: {
+            examples: [],
+            best_practices: [],
+            pitfalls: [],
+            doc_refs: [],
+          },
+          lifecycle: "active",
+          source: "template",
+          version: s.version,
+          seed_source: s.body_hash,
+          gates_tools: s.gates_tools,
+          activates_when: s.activates_when,
+          input_schema: s.input_schema,
+          output_schema: s.output_schema,
+          side_effects: s.side_effects,
+          idempotency: s.idempotency,
+          maturity: s.maturity,
+          tags: s.tags,
+        });
+        inserted++;
+        continue;
+      }
+      if (seedContentMatches(row, s)) {
+        if (!seedCatalogMatches(row, s)) {
+          await tx
+            .update(skills)
+            .set({
+              description: s.description,
+              description_source: "human",
+              category: PLATFORM_CATEGORY,
+              category_source: "human",
+            })
+            .where(and(eq(skills.tenant_id, tenant_id), eq(skills.id, row.id)));
+        }
+        unchanged++;
+        continue;
+      }
+      await tx
+        .update(skills)
+        .set({
+          title: s.title,
+          description: s.description,
+          description_source: "human",
+          category: PLATFORM_CATEGORY,
+          category_source: "human",
+          body: s.body,
+          seed_source: s.body_hash,
+          gates_tools: s.gates_tools,
+          activates_when: s.activates_when,
+          input_schema: s.input_schema,
+          output_schema: s.output_schema,
+          side_effects: s.side_effects,
+          idempotency: s.idempotency,
+          maturity: s.maturity,
+          tags: s.tags,
+          version: Math.max(row.version + 1, s.version),
+          updated_at: new Date(),
+        })
+        .where(eq(skills.id, row.id));
+      updated++;
+    }
+    return { tenant_id, inserted, updated, unchanged };
+  });
 }
 
 export async function applySkillSeedsForAllTenants(
@@ -214,6 +263,9 @@ export async function applySkillSeedsForAllTenants(
   for (const t of allTenants) {
     try {
       const r = await retryTransient(() => applySkillSeeds(seeds, t.id, db), {
+        tries: 8,
+        startMs: 100,
+        maxMs: 2000,
         label: "skills_seed",
       });
       outcomes.push(r);
