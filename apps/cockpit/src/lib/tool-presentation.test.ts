@@ -276,7 +276,7 @@ describe("what a workflow call really was", () => {
   test("a refusal carries the engine's reason in the reader's words", () => {
     expect(workflowRefusalKey(refused)).toBe("tool.refusal.activationRequired");
     expect(translate("de", "tool.refusal.activationRequired")).toBe(
-      "Gespeicherte Änderung noch nicht übernommen",
+      "Entwurf noch nicht übernommen",
     );
     expect(workflowRefusalKey({ ok: false, denied: true })).toBe("tool.refusal.permission");
     expect(workflowRefusalKey({ ok: false, data: { error_code: "permission_denied" } })).toBe(

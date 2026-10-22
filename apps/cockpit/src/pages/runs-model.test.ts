@@ -55,7 +55,7 @@ describe("run authority evidence", () => {
   test("does not reinterpret unbound runs as approved or unauthorized", () => {
     expect(
       runAuthorityFacts({ execution_authority_id: null, workflow_version_id: null }, t),
-    ).toEqual([["Authority recorded for this run", "No execution-authority binding recorded"]]);
+    ).toEqual([["Authority recorded for this run", "No approval binding recorded"]]);
   });
   test("shortens the two identifiers a person actually gets, and keeps them copyable", () => {
     const authority = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
@@ -85,10 +85,7 @@ describe("run authority evidence", () => {
     expect(
       runAuthorityFacts({ execution_authority_id: null, workflow_version_id: "exact-id" }, de),
     ).toEqual([
-      [
-        "Für diesen Lauf gespeicherte Freigabe",
-        "Keine Bindung an eine Ausführungsfreigabe gespeichert",
-      ],
+      ["Für diesen Lauf gespeicherte Freigabe", "Keine Bindung an eine Freigabe gespeichert"],
       ["Version", "exact-id"],
     ]);
   });

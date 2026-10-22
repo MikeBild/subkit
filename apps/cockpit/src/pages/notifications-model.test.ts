@@ -83,7 +83,7 @@ describe("rules", () => {
       "Anmeldung beim Konnektor fehlgeschlagen",
       "Anmeldung abgelehnt",
       "Konnektor-Zustand geändert",
-      "Reparatur vorgeschlagen",
+      "Korrektur vorgeschlagen",
     ]);
     expect(labels.every((label) => !label.machine)).toBe(true);
   });

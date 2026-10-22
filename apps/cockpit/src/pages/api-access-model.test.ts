@@ -487,10 +487,10 @@ describe("the tabs: their order, the one that opens, and what they count", () =>
   });
 });
 
-test("one valid approval reads singular, more read plural — no (n)", () => {
+test("one app with access reads singular, more read plural — no (n)", () => {
   const { translate } = require("@/lib/i18n") as typeof import("@/lib/i18n");
-  expect(translate("de", "connectedClients.live.one")).toBe("1 gültige Freigabe");
-  expect(translate("de", "connectedClients.live", { count: "3" })).toBe("3 gültige Freigaben");
+  expect(translate("de", "connectedClients.live.one")).toBe("1 App mit Zugriff");
+  expect(translate("de", "connectedClients.live", { count: "3" })).toBe("3 Apps mit Zugriff");
   expect(translate("de", "connectedClients.live", { count: "3" })).not.toContain("(n)");
 });
 

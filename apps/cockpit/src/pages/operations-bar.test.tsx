@@ -159,8 +159,8 @@ describe("the operations bar", () => {
     expect(hint(null)).toBe("");
     expect(hint(0)).toBe("");
     expect(hrefs(hint(13))).toEqual(["/cockpit/workflows?operating_status=repair_required"]);
-    expect(hint(13)).toContain("13 Workflows brauchen eine Reparatur");
-    expect(hint(1)).toContain("1 Workflow braucht eine Reparatur");
+    expect(hint(13)).toContain("13 Workflows brauchen eine Korrektur");
+    expect(hint(1)).toContain("1 Workflow braucht eine Korrektur");
   });
 
   test("the cost figure shows the window's spend in its currency", () => {

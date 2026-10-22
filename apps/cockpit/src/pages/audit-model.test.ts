@@ -326,8 +326,8 @@ describe("searching what the reader can see", () => {
   };
 
   test("finds a row by the words printed in its cell", () => {
-    expect(matches("Freigabe erteilt", "approval.granted")).toBe(true);
-    expect(matches("freigabe", "approval.granted")).toBe(true);
+    expect(matches("Einmal erlaubt", "approval.granted")).toBe(true);
+    expect(matches("freigabe", "workflow.authority_granted")).toBe(true);
   });
 
   test("still finds a row by the engine's own token", () => {

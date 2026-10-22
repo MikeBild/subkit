@@ -82,8 +82,10 @@ test("a gated connector call names connector, method and target in the reader's 
     expect(html).not.toContain("Policy requires");
   }
   expect(render({ ...gated, gatedTool: "call_connector" }, "de")).toContain(
-    "Diese Aktion braucht deine Freigabe.",
+    "Erlaube diese Aktion einmal, damit es weitergeht.",
   );
+  expect(german).toContain(">Einmal erlauben<");
+  expect(german).not.toContain(">Freigeben<");
 });
 
 test("a gated action lists what it concerns", () => {

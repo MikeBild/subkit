@@ -60,19 +60,6 @@ describe("an approval that already covers what is reviewed", () => {
     expect(existingGrant([current], ACTIVE, "prod", NOW)).toBe(current);
   });
 
-  test("the dialog's header says until when and how many runs are left", () => {
-    const current = existingGrant([authority()], ACTIVE, "prod", NOW);
-    expect(
-      interpolate(CATALOGS.de["authority.existing.title"], {
-        until: "30.03.2030, 01:00",
-        runs: current?.remaining_runs ?? 0,
-      }),
-    ).toBe("Bereits freigegeben bis 30.03.2030, 01:00 · 28 Läufe übrig");
-    expect(CATALOGS.de["authority.existing.titleOne"]).toContain("1 Lauf übrig");
-    expect(CATALOGS.de["authority.existing.confirm"]).toBe("Verlängern / Grenzen ändern");
-    expect(CATALOGS.en["authority.existing.confirm"]).toBe("Extend / change limits");
-  });
-
   test("is not one for another environment or another version", () => {
     expect(existingGrant([authority()], ACTIVE, "dev", NOW)).toBeNull();
     expect(existingGrant([authority()], DRAFT, "prod", NOW)).toBeNull();

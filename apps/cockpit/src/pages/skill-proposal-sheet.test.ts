@@ -23,7 +23,7 @@ describe("rejecting a skill proposal", () => {
       "„Kundenpflege“ wird nicht übernommen, und SubKit schlägt ihn nicht noch einmal vor.",
     );
     expect(t("en")("skills.rejectConsequence", { name: "Customer care" })).toBe(
-      "“Customer care” is not adopted, and SubKit will not propose it again.",
+      "“Customer care” is not applied, and SubKit will not propose it again.",
     );
     expect(t("de")("decisions.noteScopeFinal")).toContain("nicht noch einmal vor");
   });

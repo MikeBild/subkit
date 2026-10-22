@@ -178,7 +178,7 @@ describe("the sentence", () => {
     };
     expect(de(actionLabelKey(open, blocked(prepare, [open])))).toBe("Vorbereitung ausführen");
     expect(de(actionLabelKey(open, blocked({ ...prepare, remedy_kind: "patch" }, [open])))).toBe(
-      "Automatisch reparieren",
+      "Automatisch korrigieren",
     );
     expect(de(actionLabelKey(chat, blocked(author, [chat])))).toBe("Im Chat beheben");
     for (const remedy of ["patch", "prepare", "declare", "reconnect", "author"] as const) {
