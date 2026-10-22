@@ -36,4 +36,10 @@ describe("attention bell", () => {
     expect(html).not.toContain("attention-new-dot");
     expect(notificationBellLabel(null)).toBe("installation.notifications");
   });
+
+  test("the bell icon sits in a block box so it centres like the sidebar toggle", () => {
+    const html = render(<NotificationBellIcon fresh={null} />, "en");
+    expect(html).toMatch(/^<span class="relative flex">/);
+    expect(html).not.toContain("inline-flex");
+  });
 });

@@ -252,7 +252,7 @@ export function notificationBellLabel(fresh: AttentionFresh | null): Translation
 
 export function NotificationBellIcon({ fresh }: { fresh: AttentionFresh | null }) {
   return (
-    <span className="relative inline-flex">
+    <span className="relative flex">
       <Bell />
       {fresh && <AttentionDot stopped={fresh.stopped} />}
     </span>
@@ -271,7 +271,7 @@ export function InstallationNotificationControl() {
       <IconButton
         type="button"
         variant="ghost"
-        size="icon-sm"
+        size="icon"
         label={t(notificationBellLabel(fresh))}
         data-testid="installation-notifications"
         data-attention-new={String(fresh !== null)}
