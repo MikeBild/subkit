@@ -133,7 +133,7 @@ Ohne gültige Freigabe antwortet ein Produktlauf mit 403. Eine Person mit Schrei
 5. Wähle unter **Gültigkeit** **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. **Bis auf Widerruf** ist vorausgewählt und setzt weder eine Laufgrenze noch ein Ablaufdatum.
 6. Wähle **Freigeben**. Die Freigabe startet keinen Lauf.
 
-Ein Workflow, den nur die HTTP-Aufrufe der App starten, wird in der Umgebung seiner Konnektoren geprüft. Seine Statuszeile zeigt dann eventuell „Nicht freigegeben“ ohne Reparaturbanner. Fehlt ein Konnektor oder liegt er in einer anderen Umgebung, behebe das zuerst.
+Ein Workflow, den nur die HTTP-Aufrufe der App starten, wird in der Umgebung seiner Konnektoren geprüft. Seine Statuszeile zeigt dann eventuell „Nicht freigegeben“ ohne Korrekturbanner. Fehlt ein Konnektor oder liegt er in einer anderen Umgebung, behebe das zuerst.
 
 Die Freigabe gilt weiter für eine neue Version, deren Grenze nicht wächst. Wächst die Grenze, gibst du erneut frei.
 

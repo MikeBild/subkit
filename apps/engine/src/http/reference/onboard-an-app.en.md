@@ -133,7 +133,7 @@ Without a valid approval, a product run answers 403. A person with write access 
 5. Under **Validity**, choose **7 days**, **30 days** or **Until revoked**. **Until revoked** is preset and sets no run limit and no end date.
 6. Select **Approve**. Approving starts no run.
 
-A workflow that only the app's HTTP calls start is checked in the environment of its connectors. Its status line may read "Not approved" without a repair banner. If a connector is missing or lives in another environment, fix that first.
+A workflow that only the app's HTTP calls start is checked in the environment of its connectors. Its status line may read "Not approved" without a fix banner. If a connector is missing or lives in another environment, fix that first.
 
 The approval follows a new version whose boundary does not grow. If the boundary grows, you approve again.
 

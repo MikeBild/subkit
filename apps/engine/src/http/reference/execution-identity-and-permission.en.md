@@ -8,9 +8,9 @@ audience: operator
 ## Execution identity and permission
 
 Chat keeps local workflow edits when a saved draft changes concurrently. Saving,
-activating and running are separate outcomes. After you activate a prepared change
-in DEV, its recorded test inputs can be used for one live test under the existing
-execution permission. A request not to run live prevents this continuation. PROD
+activating and running are separate outcomes. After you apply a draft
+in DEV, a single run with its recorded test inputs starts only when you tick
+**Start a run afterwards**. A request not to run live prevents this continuation. PROD
 requires an explicit live-run request. The recorded run shows what actually happened.
 
 The chat's model cost is an approximate calculation from reported provider usage

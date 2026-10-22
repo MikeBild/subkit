@@ -8,10 +8,10 @@ audience: operator
 ## Ausführungsidentität und Berechtigung
 
 Der Chat behält lokale Workflow-Änderungen, wenn sich ein gespeicherter Entwurf gleichzeitig
-ändert. Speichern, Aktivieren und Ausführen sind getrennte Ergebnisse. Nachdem du eine
-vorbereitete Änderung in DEV aktiviert hast, können ihre aufgezeichneten Testeingaben für einen
-Live-Test unter der bestehenden Ausführungsberechtigung verwendet werden. Eine Bitte, nicht live
-auszuführen, verhindert diese Fortsetzung. PROD erfordert eine ausdrückliche Anforderung zur
+ändert. Speichern, Aktivieren und Ausführen sind getrennte Ergebnisse. Nachdem du einen
+Entwurf in DEV übernommen hast, startet ein Einzellauf mit seinen aufgezeichneten Testeingaben nur,
+wenn du **Danach einen Lauf starten** anhakst. Eine Bitte, nicht live auszuführen, verhindert
+diese Fortsetzung. PROD erfordert eine ausdrückliche Anforderung zur
 Live-Ausführung. Der aufgezeichnete Lauf zeigt, was tatsächlich geschehen ist.
 
 Die Modellkosten des Chats sind eine ungefähre Berechnung aus gemeldeter Anbieternutzung und

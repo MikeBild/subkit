@@ -56,8 +56,8 @@ Without an approval, a run starts only as a preview without effects.
    The status line shows **Waiting for approval** or **Not approved**.
 2. In the status line, select **Approve…**.
 3. Check **Environment**, **Validity** and **Operations and external targets**.
-4. Confirm with **Use change and allow runs**.
-   **Put into service only** puts the version into service without allowing runs.
+4. Confirm with **Approve**.
+   **Activate only** applies the version without approving runs.
 
 ![Approval dialog for "Invoice export v1" with the environment "Development", validity, read access to the Sales reporting API as external target and the "Use change and allow runs" button](images/first-workflow-approval.en.webp)
 

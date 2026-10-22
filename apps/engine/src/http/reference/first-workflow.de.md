@@ -56,8 +56,8 @@ Ohne Freigabe startet ein Lauf nur als Probelauf ohne Wirkung.
    Die Statuszeile zeigt **Wartet auf Freigabe** oder **Nicht freigegeben**.
 2. Wähle in der Statuszeile **Freigeben…**.
 3. Prüfe **Umgebung**, **Gültigkeit** sowie **Operationen und externe Ziele**.
-4. Bestätige mit **Übernehmen und Läufe erlauben**.
-   **Nur in Betrieb nehmen** setzt die Version in Betrieb, ohne Läufe zu erlauben.
+4. Bestätige mit **Freigeben**.
+   **Nur aktivieren** übernimmt die Version, ohne Läufe freizugeben.
 
 ![Freigabedialog für „Invoice export v1“ mit Umgebung „Entwicklung“, Gültigkeit, Lesezugriff auf die Sales reporting API als externes Ziel und der Schaltfläche „Übernehmen und Läufe erlauben“](images/first-workflow-approval.de.webp)
 
