@@ -170,7 +170,7 @@ describe("POST /v1/oauth/token grant_type=token-exchange", () => {
 
   test("workflow permissions next to workflow:<id> stay permissions of the token", async () => {
     const wildcard = await mintKey(["*"]);
-    const workflowId = crypto.randomUUID();
+    const workflowId = "5b1f7c2e-9a4d-4c3b-8e6f-2d7a9c1b4e30";
     const narrowed = await exchange(wildcard.plaintext, {
       scope: `workflow:run workflow:read workflow:${workflowId}`,
     });
