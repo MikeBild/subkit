@@ -52,6 +52,7 @@ function isInternalUsageRoute(path: string): boolean {
     path === "/llms.txt" ||
     path === "/llms-full.txt" ||
     path === "/docs.json" ||
+    path.startsWith("/docs-images/") ||
     path.startsWith("/llms/")
   );
 }

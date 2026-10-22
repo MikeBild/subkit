@@ -32,6 +32,9 @@ Erkenntnisse aus Sitzungen mit Coding-Agenten landen als Einträge mit der Herku
 ### Einträge prüfen und ordnen
 
 1. Öffne im Cockpit **Eingang**.
+
+   ![Eingang mit drei Einträgen der Herkunft „Fundstück“ in der Kategorie Inbox, Status „Gesammelt“](images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.de.webp)
+
 2. Öffne einen Eintrag, um Inhalt und Originalquelle zu sehen.
 3. Optional: Bearbeite Titel, Inhalt oder Kategorie. Das erfasste Original bleibt erhalten.
 4. Optional: Verschiebe, verwirf oder stelle den Eintrag wieder her.

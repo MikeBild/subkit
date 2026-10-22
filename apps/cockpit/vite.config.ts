@@ -52,7 +52,7 @@ export default defineConfig({
   server: {
     port: 3010,
     proxy: Object.fromEntries(
-      ["/v1", "/openapi.json", "/metrics"].map((path) => [
+      ["/v1", "/openapi.json", "/metrics", "/docs-images"].map((path) => [
         path,
         { target: API_ORIGIN, changeOrigin: true },
       ]),

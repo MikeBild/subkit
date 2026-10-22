@@ -55,8 +55,11 @@ Without an approval, a run starts only as a preview without effects.
 1. Open **Workflows** and select your workflow.
    The status line shows **Waiting for approval** or **Not approved**.
 2. In the status line, select **Approve…**.
-3. Check **Environment**, **Operations and external targets** and **Maximum runs**.
-4. Confirm with **Allow 1 run** or **Allow … runs**.
+3. Check **Environment**, **Validity** and **Operations and external targets**.
+4. Confirm with **Use change and allow runs**.
+   **Put into service only** puts the version into service without allowing runs.
+
+![Approval dialog for "Invoice export v1" with the environment "Development", validity, read access to the Sales reporting API as external target and the "Use change and allow runs" button](images/first-workflow-approval.en.webp)
 
 Approving starts no run. An approval covers one environment and a duration.
 It also follows a new version whose boundary does not grow.
@@ -67,7 +70,7 @@ You can also approve from the chat: select **Review saved change** and then **Us
 | --- | --- |
 | **Environment** | Where the runs are allowed, for example **Production**. |
 | **Operations and external targets** | Which services and addresses the workflow reaches. |
-| **Maximum runs** and the time window | How often and how long the approval applies. |
+| **Validity** | How long the approval applies: **7 days**, **30 days** or **Until revoked**. |
 
 ### Run the workflow
 
@@ -84,6 +87,9 @@ You see **Run started**. If the button is unavailable, the hint says why, for ex
    The newest run is at the top, with its status. **Succeeded** means the run finished.
 2. Open the run.
    You see every step with its output. A failed step shows **Error in step "…"** with the cause.
+
+   ![Successful run of "CRM contact sync" from the history with one step, the requester "API" and the expanded result with one contact](images/first-workflow-run-result.en.webp)
+
 3. Optional: Select **In the audit trail** to see who started and approved the run.
 
 You can check the same with the sk CLI:

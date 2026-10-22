@@ -22,7 +22,7 @@ export interface RenderLlmsIndexOptions {
 
 export function renderLlmsIndex(pages: LlmsPage[], opts: RenderLlmsIndexOptions): string {
   const lines = [
-    "# sk",
+    "# SubKit",
     "",
     "> A self-hosted engine for governed workflows. These pages describe setup, coding-agent briefings and hooks, the sk CLI, runtime settings, the connector catalog, and governed transactional email.",
     `> All pages in one file: ${opts.fullUrl}`,
@@ -78,7 +78,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       de: {
         title: "Mit SubKit arbeiten",
         description:
-          "Erreiche SubKit aus deinem Terminal, einem KI-Client, einem Coding-Agent, dem Browser, der HTTP-API oder deiner eigenen App.",
+          "Erreiche SubKit aus deinem Terminal, einem KI-Client, einem Coding-Agenten, dem Browser, der HTTP-API oder deiner eigenen App.",
       },
     },
   },
@@ -122,7 +122,18 @@ const DocsLocaleContentSchema = z.object({
   title: z.string(),
   summary: z.string(),
   headings: z.array(z.object({ depth: z.number().int(), text: z.string(), anchor: z.string() })),
-  images: z.array(z.object({ src: z.string(), alt: z.string() })),
+  images: z.array(
+    z.object({
+      src: z.string(),
+      alt: z.string(),
+      build: z
+        .string()
+        .regex(/^\d+\.\d+\.\d+$/)
+        .optional(),
+      width: z.number().int().positive().optional(),
+      height: z.number().int().positive().optional(),
+    }),
+  ),
   sha256: z.string(),
   body: z.string(),
 });

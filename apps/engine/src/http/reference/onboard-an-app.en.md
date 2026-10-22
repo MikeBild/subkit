@@ -127,11 +127,11 @@ If step 1 fails, the run fails and nothing is erased. The app retries with the s
 Without a valid approval, a product run answers 403. A person with write access approves each product workflow once per environment.
 
 1. In the Cockpit, open the workflow.
-2. Select **Approve…** in the status line or on the **Approvals** tab. The dialog **Review permission** opens.
+2. Select **Approve…** in the status line or on the **Approvals** tab. The dialog **Approve <workflow> v<n>** opens.
 3. Check that **Environment** (**Production** or **Development**) matches the product's `execution_environment`.
 4. Review the connectors, addresses and read or write access.
-5. Set **Maximum runs** and the time window.
-6. Select **Allow 1 run** or **Allow … runs**.
+5. Under **Validity**, choose **7 days**, **30 days** or **Until revoked**. **Until revoked** is preset and sets no run limit and no end date.
+6. Select **Approve**. Approving starts no run.
 
 A workflow that only the app's HTTP calls start is checked in the environment of its connectors. Its status line may read "Not approved" without a repair banner. If a connector is missing or lives in another environment, fix that first.
 

@@ -1,13 +1,13 @@
 ---
 slug: use-sk-from-a-coding-agent
-summary: Gib einem Coding-Agenten sk-Tools und Briefings aus dem gemeinsamen Gedächtnis für dein Repository.
+summary: Gib einem Coding-Agenten SubKit-Tools und Briefings aus dem gemeinsamen Gedächtnis für dein Repository.
 section: work
 order: 3
 audience: public
 ---
-## sk aus einem Coding-Agenten verwenden
+## SubKit aus einem Coding-Agenten verwenden
 
-Mit MCP bekommt dein Coding-Agent die freigegebenen sk-Tools.
+Mit MCP bekommt dein Coding-Agent die freigegebenen SubKit-Tools.
 Mit `sk agent init` bekommt jede Sitzung in Claude Code und Codex ein Briefing aus dem gemeinsamen Gedächtnis für dein Repository.
 Gesammeltes Material folgt einem Weg: **sammeln → mit dem Agenten prüfen → im Cockpit bestätigen → Wissen**.
 
@@ -18,11 +18,11 @@ Gesammeltes Material folgt einem Weg: **sammeln → mit dem Agenten prüfen → 
 - Claude Code, Codex oder beide.
 - Ein Repository, in dem die Briefings erscheinen sollen.
 
-### Die sk-Tools einmal pro Rechner einrichten
+### Die SubKit-Tools einmal pro Rechner einrichten
 
 1. Öffne im Cockpit **API-Zugang** und erstelle einen Schlüssel.
 2. Lege den Schlüssel in `SK_API_KEY` ab.
-3. Trage sk mit dem passenden Befehl in deinem Client ein.
+3. Trage SubKit mit dem passenden Befehl in deinem Client ein.
 
 Claude Code:
 

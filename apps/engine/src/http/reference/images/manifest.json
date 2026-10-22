@@ -1,0 +1,66 @@
+{
+  "cockpit-app-branding.de.webp": {
+    "sha256": "f3b9fab3838fccb6748576275c1e9e0fe5b1fcddd091334dbc8dd81639a08ebb",
+    "build": "10.4.12"
+  },
+  "cockpit-app-branding.en.webp": {
+    "sha256": "7146710ec87d579e0f24ab4074b911b14c3113504fb274ea79af4e5b43936e3a",
+    "build": "10.4.12"
+  },
+  "cockpit-app-install.de.webp": {
+    "sha256": "1926eab362cc741244e279f8c5501b44d8cf78f52f7ebae8c5cf137ef440cee0",
+    "build": "10.4.12"
+  },
+  "cockpit-app-install.en.webp": {
+    "sha256": "60aa83f3924e27823ecddfb104a5e7e765cc57adfbfdd5835874980e68b0fd7b",
+    "build": "10.4.12"
+  },
+  "collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.de.webp": {
+    "sha256": "4315dd05b164a28da739c99ce91c8bd8e28be5f2b7f96e948139e77bdf1e9313",
+    "build": "10.4.12"
+  },
+  "collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp": {
+    "sha256": "088448e5956d524b399ee82d07f75f16659403bacf6085e015eb6fe25a3fcf33",
+    "build": "10.4.12"
+  },
+  "first-workflow-approval.de.webp": {
+    "sha256": "a8ce547809522eb2e0b7c9ba57517c0eef9ddeb059976cc2c37a635ae355f9bc",
+    "build": "10.4.12"
+  },
+  "first-workflow-approval.en.webp": {
+    "sha256": "43a2103731a8bd19d49e44846b43ee2303c56fa0e820ab9ca6d1c3bb7ec4e396",
+    "build": "10.4.12"
+  },
+  "first-workflow-run-result.de.webp": {
+    "sha256": "28fe0b0e6775ab4cbf54040b72c0986a437b39093c4ef8eaab2dfc363e2121d2",
+    "build": "10.4.12"
+  },
+  "first-workflow-run-result.en.webp": {
+    "sha256": "e41dd21ffff3daedc8b34777d692b238ef5115af73c589f8a36cf948f956792d",
+    "build": "10.4.12"
+  },
+  "intro-docs.de.webp": {
+    "sha256": "58e8ca1ccba4b85c06fb0a181179ca7f231e493afd98cf912e8f2a68d2fbc68a",
+    "build": "10.4.12"
+  },
+  "intro-docs.en.webp": {
+    "sha256": "5e17003c4572ecdc54172d9079bf492435a190e32cc5d2c1f1806d071f64c624",
+    "build": "10.4.12"
+  },
+  "intro-overview.de.webp": {
+    "sha256": "d538e3ab158d12e3c4aecce05299537297d6db04e265b1584f6299910d7f7547",
+    "build": "10.4.12"
+  },
+  "intro-overview.en.webp": {
+    "sha256": "8704e616558bcbb53698db7e5591879350c92990228b8d94314499666b043c0d",
+    "build": "10.4.12"
+  },
+  "web-clipper-api-key.de.webp": {
+    "sha256": "459ba4062e099ea25238c8c38d18cf079e92dde04937a6a38bde1cbc4dd76832",
+    "build": "10.4.12"
+  },
+  "web-clipper-api-key.en.webp": {
+    "sha256": "d3b08c2e990b220981ac62ce79457f9b39ef3530e5f2337171a9219c266706bd",
+    "build": "10.4.12"
+  }
+}

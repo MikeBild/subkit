@@ -55,8 +55,11 @@ Ohne Freigabe startet ein Lauf nur als Probelauf ohne Wirkung.
 1. Öffne **Workflows** und wähle deinen Workflow.
    Die Statuszeile zeigt **Wartet auf Freigabe** oder **Nicht freigegeben**.
 2. Wähle in der Statuszeile **Freigeben…**.
-3. Prüfe **Umgebung**, **Operationen und externe Ziele** und **Maximale Läufe**.
-4. Bestätige mit **1 Lauf erlauben** oder **… Läufe erlauben**.
+3. Prüfe **Umgebung**, **Gültigkeit** sowie **Operationen und externe Ziele**.
+4. Bestätige mit **Übernehmen und Läufe erlauben**.
+   **Nur in Betrieb nehmen** setzt die Version in Betrieb, ohne Läufe zu erlauben.
+
+![Freigabedialog für „Invoice export v1“ mit Umgebung „Entwicklung“, Gültigkeit, Lesezugriff auf die Sales reporting API als externes Ziel und der Schaltfläche „Übernehmen und Läufe erlauben“](images/first-workflow-approval.de.webp)
 
 Die Freigabe startet keinen Lauf. Eine Freigabe gilt für eine Umgebung und eine Dauer.
 Auch eine neue Version, deren Grenze nicht wächst, ist davon gedeckt.
@@ -67,7 +70,7 @@ Du kannst auch im Chat freigeben: Wähle **Gespeicherte Änderung prüfen** und 
 | --- | --- |
 | **Umgebung** | Wo die Läufe erlaubt sind, zum Beispiel **Produktion**. |
 | **Operationen und externe Ziele** | Welche Dienste und Adressen der Workflow erreicht. |
-| **Maximale Läufe** und der Zeitraum | Wie oft und wie lange die Freigabe gilt. |
+| **Gültigkeit** | Wie lange die Freigabe gilt: **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. |
 
 ### Den Workflow ausführen
 
@@ -84,6 +87,9 @@ Du siehst **Lauf gestartet**. Ist der Button nicht verfügbar, nennt der Hinweis
    Der neueste Lauf steht oben, mit seinem Status. **Erfolgreich** heißt, der Lauf ist durchgelaufen.
 2. Öffne den Lauf.
    Du siehst jeden Schritt mit seiner Ausgabe. Ein fehlgeschlagener Schritt zeigt **Fehler in Schritt „…“** mit der Ursache.
+
+   ![Erfolgreicher Lauf von „CRM contact sync“ aus dem Verlauf mit einem Schritt, dem Auftraggeber „API“ und dem aufgeklappten Ergebnis mit einem Kontakt](images/first-workflow-run-result.de.webp)
+
 3. Optional: Wähle **Im Audit-Trail**, um zu sehen, wer den Lauf gestartet und freigegeben hat.
 
 Dasselbe prüfst du mit der sk-CLI:

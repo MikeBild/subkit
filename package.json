@@ -31,7 +31,7 @@
     "check:deps-phantom": "bun run scripts/check-deps-phantom.ts",
     "check:docs": "bun run scripts/check-docs.ts",
     "check:embedded-drift": "bun run db:gen-embedded && git diff --exit-code apps/engine/src/db/migrations/embedded.ts",
-    "check:llms-txt-drift": "bun run gen:llms-txt && git diff --exit-code apps/engine/src/http/llms apps/cockpit/src/app/docs.generated.ts apps/engine/src/conversations/seed/knowledge apps/engine/src/knowledge/embedded-seeds.ts",
+    "check:llms-txt-drift": "bun run gen:llms-txt && git diff --exit-code apps/engine/src/http/llms apps/cockpit/src/app/docs.generated.ts apps/engine/src/conversations/seed/knowledge apps/engine/src/knowledge/embedded-seeds.ts apps/engine/src/http/docs-images-embedded.ts",
     "check:openapi-drift": "bun run gen:openapi-client && git diff --exit-code packages/cli-core/src/engine-api apps/cockpit/src/api/schema.d.ts",
     "compose:down": "docker compose down",
     "compose:logs": "docker compose logs -f",

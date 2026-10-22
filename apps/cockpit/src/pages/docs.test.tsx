@@ -62,7 +62,11 @@ function withLinks(body: string): DocsBundle {
   } as DocsBundle;
 }
 
-async function renderAt(bundle: DocsBundle, path: string): Promise<string> {
+async function renderAt(
+  bundle: DocsBundle,
+  path: string,
+  locale: "en" | "de" = "de",
+): Promise<string> {
   function Chapter() {
     const { slug } = useParams({ strict: false }) as { slug: string };
     return <DocsArticleView bundle={bundle} slug={slug} version="1.2.3" />;
@@ -77,7 +81,32 @@ async function renderAt(bundle: DocsBundle, path: string): Promise<string> {
     history: createMemoryHistory({ initialEntries: [path] }),
   });
   await router.load();
-  return render(<RouterProvider router={router} />);
+  return render(<RouterProvider router={router} />, locale);
+}
+
+const IMAGE_SRC = "/docs-images/web-clipper-saved-clip.de.webp?v=0123456789ab";
+
+function withImage(build: string | undefined): DocsBundle {
+  const page = DOCS.pages.find((entry) => entry.slug === "web-clipper");
+  if (!page) throw new Error("web-clipper chapter is missing");
+  const image = {
+    src: IMAGE_SRC,
+    alt: "Gespeicherter Clip im Eingang",
+    width: 1280,
+    height: 720,
+    ...(build ? { build } : {}),
+  };
+  const withEntry = (content: (typeof page.locales)["en"]) => ({
+    ...content,
+    body: `## ${content.title}\n\n![Gespeicherter Clip im Eingang](${IMAGE_SRC})\n`,
+    images: [image],
+  });
+  return {
+    ...DOCS,
+    pages: [
+      { ...page, locales: { en: withEntry(page.locales.en), de: withEntry(page.locales.de) } },
+    ],
+  } as DocsBundle;
 }
 
 describe("docs pages", () => {
@@ -364,5 +393,27 @@ describe("docs pages", () => {
     const missing = await renderAt(bundle, "/cockpit/docs/nope");
     expect(missing).toContain('data-family-surface="not-found"');
     expect(missing).not.toContain('data-testid="docs-article"');
+  });
+
+  test("a screenshot renders root-relative and lazy with its alt, size, build caption and full-size link", async () => {
+    const html = await renderAt(withImage(VERSION), "/cockpit/docs/web-clipper");
+    const image = html.match(/<img [^>]*>/)?.[0] ?? "";
+    expect(image).toContain(`src="${IMAGE_SRC}"`);
+    expect(image).toContain('alt="Gespeicherter Clip im Eingang"');
+    expect(image).toContain('loading="lazy"');
+    expect(image).toContain('decoding="async"');
+    expect(image).toContain('width="1280"');
+    expect(image).toContain('height="720"');
+    expect(html).toContain(`<a href="${IMAGE_SRC}" target="_blank" rel="noreferrer"`);
+    expect(html).toContain('<span class="sr-only"> (öffnet in einem neuen Tab)</span></a>');
+    expect(html).toContain(`Screenshot aus Build ${VERSION}`);
+    const english = await renderAt(withImage(VERSION), "/cockpit/docs/web-clipper", "en");
+    expect(english).toContain(`Screenshot from build ${VERSION}`);
+  });
+
+  test("a screenshot without a recorded build renders no caption", async () => {
+    const html = await renderAt(withImage(undefined), "/cockpit/docs/web-clipper");
+    expect(html).toContain('data-testid="docs-image"');
+    expect(html).not.toContain("Screenshot aus Build");
   });
 });

@@ -1,9 +1,16 @@
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { join } from "node:path";
 import { type DocsBundle, DocsBundleSchema, LLMS_PAGE_PATHS } from "@shared/llms-index.ts";
 import { SECRET_PATTERNS } from "@shared/redaction.ts";
-import { headingCounts, loadChapters } from "./docs-source.ts";
+import {
+  DOCS_IMAGE_NAME,
+  headingCounts,
+  loadChapters,
+  servedImageFile,
+  webpInfo,
+} from "./docs-source.ts";
 
 export interface DocsPaths {
   referenceDir: string;
@@ -15,6 +22,7 @@ export interface DocsPaths {
 
 export interface CheckOptions {
   llmsPagePaths?: ReadonlyArray<string>;
+  version?: string;
 }
 
 export interface Finding {
@@ -47,6 +55,14 @@ export const REPOSITORY_PATHS: DocsPaths = {
   seedDir: join(ROOT, "apps/engine/src/conversations/seed/knowledge"),
   templates: join(ROOT, "apps/engine/src/connectors/templates.json"),
 };
+
+const IMAGE_MAX_BYTES = 250_000;
+
+const IMAGE_MAX_WIDTH = 1600;
+
+const IMAGE_MAX_HEIGHT = 2400;
+
+const BUILD = /^\d+\.\d+\.\d+$/;
 
 const PUBLIC_PRODUCT_HOSTS = ["subkit-cloud.mikebild.info", "learn.chatgpt.com"];
 
@@ -281,31 +297,153 @@ function linkFindings(
   return found;
 }
 
+function rootVersion(): string {
+  const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version: string };
+  return pkg.version;
+}
+
+function compareVersions(a: string, b: string): number {
+  const left = a.split(".").map(Number);
+  const right = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const diff = (left[i] ?? 0) - (right[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function readManifest(path: string): Record<string, { sha256?: unknown; build?: unknown }> | null {
+  if (!existsSync(path)) return {};
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as Record<
+      string,
+      { sha256?: unknown; build?: unknown }
+    >;
+  } catch {
+    return null;
+  }
+}
+
+function imageFileFindings(
+  imagesDir: string,
+  referenced: ReadonlySet<string>,
+  version: string,
+): Finding[] {
+  const found: Finding[] = [];
+  const add = (file: string, detail: string) => found.push({ rule: "image", file, detail });
+  const manifestFile = join(imagesDir, "manifest.json");
+  const manifest = readManifest(manifestFile);
+  if (manifest === null) {
+    add(manifestFile, "manifest.json is not valid JSON");
+    return found;
+  }
+  const files = existsSync(imagesDir)
+    ? readdirSync(imagesDir).filter((f) => f !== "manifest.json" && !f.startsWith("."))
+    : [];
+  for (const file of files.sort()) {
+    const path = join(imagesDir, file);
+    if (!DOCS_IMAGE_NAME.test(file)) {
+      add(path, `${file} is not named <slug>-<name>.<en|de>.webp`);
+      continue;
+    }
+    if (!referenced.has(file)) add(path, `${file} is not referenced by any chapter`);
+    const bytes = new Uint8Array(readFileSync(path));
+    const sha = createHash("sha256").update(bytes).digest("hex");
+    if (bytes.length > IMAGE_MAX_BYTES)
+      add(path, `${file} has ${bytes.length} bytes, more than ${IMAGE_MAX_BYTES}`);
+    const info = webpInfo(bytes);
+    if (!info) add(path, `${file} is not a WebP image`);
+    else {
+      if (info.width > IMAGE_MAX_WIDTH)
+        add(path, `${file} is ${info.width} px wide, more than ${IMAGE_MAX_WIDTH}`);
+      if (info.height > IMAGE_MAX_HEIGHT)
+        add(path, `${file} is ${info.height} px high, more than ${IMAGE_MAX_HEIGHT}`);
+      if (info.metadata) add(path, `${file} carries EXIF or XMP metadata`);
+    }
+    const entry = manifest[file];
+    if (!entry) add(manifestFile, `${file} has no manifest entry`);
+    else {
+      if (entry.sha256 !== sha) add(manifestFile, `${file} sha256 does not match the manifest`);
+      if (typeof entry.build !== "string" || !BUILD.test(entry.build))
+        add(manifestFile, `${file} needs a build like 1.2.3`);
+      else if (compareVersions(entry.build, version) > 0)
+        add(manifestFile, `${file} build ${entry.build} is newer than ${version}`);
+    }
+  }
+  for (const file of Object.keys(manifest).sort()) {
+    if (!files.includes(file)) add(manifestFile, `manifest entry ${file} has no image`);
+  }
+  return found;
+}
+
 function imageFindings(
   bundle: DocsBundle,
   paths: DocsPaths,
   docsFile: string,
   vendors: RegExp[],
+  version: string,
 ): Finding[] {
   const found: Finding[] = [];
+  const imagesDir = join(paths.referenceDir, "images");
+  const referenced = new Set<string>();
   for (const page of bundle.pages) {
+    const stems = { en: new Set<string>(), de: new Set<string>() };
     for (const locale of ["en", "de"] as const) {
       for (const image of page.locales[locale].images) {
         const where = `${page.slug}/${locale}: ${image.src}`;
-        if (!image.alt.trim())
-          found.push({ rule: "image", file: docsFile, detail: `${where} has no alt text` });
+        const add = (detail: string) =>
+          found.push({ rule: "image", file: docsFile, detail: `${where} ${detail}` });
+        if (!image.alt.trim()) add("has no alt text");
         if (/^https?:\/\//.test(image.src)) {
           const url = new URL(image.src);
           if (!allowedHost(url.hostname.toLowerCase(), url.pathname, vendors)) {
             found.push({ rule: "host", file: docsFile, detail: `image host ${url.hostname}` });
           }
-        } else if (!existsSync(join(paths.referenceDir, image.src))) {
-          found.push({ rule: "image", file: docsFile, detail: `${where} does not exist` });
+          continue;
         }
+        const served = servedImageFile(image.src);
+        if (!served) {
+          add(
+            existsSync(join(paths.referenceDir, image.src))
+              ? "is not served from /docs-images/"
+              : "does not exist",
+          );
+          continue;
+        }
+        const { file, version: v } = served;
+        if (!DOCS_IMAGE_NAME.test(file)) {
+          add("is not named <slug>-<name>.<en|de>.webp");
+          continue;
+        }
+        referenced.add(file);
+        if (!file.startsWith(`${page.slug}-`)) add(`does not start with ${page.slug}-`);
+        if (!file.endsWith(`.${locale}.webp`)) add(`does not end with .${locale}.webp`);
+        stems[locale].add(file.replace(/\.(en|de)\.webp$/, ""));
+        const path = join(imagesDir, file);
+        if (!existsSync(path)) {
+          add("does not exist");
+          continue;
+        }
+        const sha = createHash("sha256").update(readFileSync(path)).digest("hex");
+        if (v !== sha.slice(0, 12)) add(`has v=${v ?? ""} but the image is ${sha.slice(0, 12)}`);
       }
     }
+    const onlyEn = [...stems.en].filter((stem) => !stems.de.has(stem));
+    const onlyDe = [...stems.de].filter((stem) => !stems.en.has(stem));
+    for (const stem of onlyEn)
+      found.push({
+        rule: "image",
+        file: docsFile,
+        detail: `${page.slug}: ${stem} has no de image`,
+      });
+    for (const stem of onlyDe)
+      found.push({
+        rule: "image",
+        file: docsFile,
+        detail: `${page.slug}: ${stem} has no en image`,
+      });
   }
-  return found;
+  return [...found, ...imageFileFindings(imagesDir, referenced, version)];
 }
 
 function translationFindings(bundle: DocsBundle, dir: string): Finding[] {
@@ -449,7 +587,7 @@ export function checkDocs(paths: DocsPaths, options: CheckOptions = {}): Finding
   return [
     ...artifacts.flatMap((a) => privacyFindings(a, vendors)),
     ...linkFindings(bundle, docsFile, llmsFull, llmsFile),
-    ...imageFindings(bundle, paths, docsFile, vendors),
+    ...imageFindings(bundle, paths, docsFile, vendors, options.version ?? rootVersion()),
     ...translationFindings(bundle, paths.referenceDir),
     ...addressFindings(bundle, paths.referenceDir, docsFile),
     ...llmsPathFindings(bundle, options.llmsPagePaths ?? LLMS_PAGE_PATHS, docsFile),

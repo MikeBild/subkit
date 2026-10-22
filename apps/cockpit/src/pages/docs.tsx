@@ -51,6 +51,7 @@ import {
   filterRows,
   findPage,
   headingLevel,
+  imageFor,
   localized,
   neighbours,
   releaseVersion,
@@ -361,6 +362,7 @@ function articleComponents(
   locale: Locale,
   doc: DocsArticle,
   externalLabel: string,
+  imageCaption: (build: string) => string,
 ) {
   const heading =
     (depth: number) =>
@@ -425,6 +427,37 @@ function articleComponents(
         <a {...props} href={target.href} className={LINK_CLASS} data-testid="docs-link">
           {children}
         </a>
+      );
+    },
+    img: ({ src, alt, node: _node }: MarkdownProps<"img">) => {
+      if (typeof src !== "string" || !src) return null;
+      const image = imageFor(page, locale, src);
+      return (
+        <span className="my-4 block" data-testid="docs-image">
+          <a
+            href={src}
+            target="_blank"
+            rel="noreferrer"
+            className="block"
+            data-testid="docs-image-link"
+          >
+            <img
+              src={src}
+              alt={alt ?? image?.alt ?? ""}
+              loading="lazy"
+              decoding="async"
+              width={image?.width}
+              height={image?.height}
+              className="block h-auto w-full rounded-md border border-border"
+            />
+            <span className="sr-only"> ({externalLabel})</span>
+          </a>
+          {image?.build ? (
+            <span className="mt-1 block text-xs text-muted-foreground">
+              {imageCaption(image.build)}
+            </span>
+          ) : null}
+        </span>
       );
     },
     code: ({ children, className, node: _node, ...rest }: MarkdownProps<"code">) => {
@@ -768,7 +801,12 @@ export function DocsArticleView({
   const doc = useMemo(() => (page ? article(page, locale) : null), [page, locale]);
   const current = useActiveHeading(doc?.toc ?? NO_HEADINGS, hash, top);
   const components = useMemo(
-    () => (page && doc ? articleComponents(bundle, page, locale, doc, t("docs.external")) : {}),
+    () =>
+      page && doc
+        ? articleComponents(bundle, page, locale, doc, t("docs.external"), (build) =>
+            t("docs.imageBuild", { build }),
+          )
+        : {},
     [bundle, page, locale, doc, t],
   );
   if (!page || !doc) return <NotFoundPage />;

@@ -32,6 +32,9 @@ Learnings from coding-agent sessions arrive in the same Inbox as items with orig
 ### Review and organize items
 
 1. In the Cockpit, open **Inbox**.
+
+   ![Inbox with three collected clips of origin "Clip" in category Inbox, status "Collected", in the Brennwerk Cockpit](images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp)
+
 2. Open an item to see its content and original source.
 3. Optional: edit title, content or category. The captured original is preserved.
 4. Optional: move, discard or restore the item.

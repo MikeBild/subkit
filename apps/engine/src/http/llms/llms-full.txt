@@ -1,4 +1,4 @@
-# sk
+# SubKit
 
 > A self-hosted engine for governed workflows. These pages describe setup, coding-agent briefings and hooks, the sk CLI, runtime settings, the connector catalog, and governed transactional email.
 > All pages in one file: llms-full.txt
@@ -6,9 +6,9 @@
 ## Pages
 
 - [What is SubKit?](llms/setup.md): SubKit runs your business tasks as governed workflows.
-- [Use sk from a coding agent](llms/coding-agents.md): MCP gives your coding agent the approved sk tools.
+- [Use SubKit from a coding agent](llms/coding-agents.md): MCP gives your coding agent the approved SubKit tools.
 - [sk CLI reference](llms/cli.md): Every sk command and argument — and the surface authoring runs through: creating or changing a workflow, connector, knowledge source or skill is a definition edit, and definition edits belong here, where the change is a file you can read and a command you can re-run.
-- [subkit runtime settings](llms/settings.md): Every value below lives in canonical runtime configuration and is editable via the Cockpit, HTTP/MCP settings APIs, sk settings configure, or sk settings set.
+- [SubKit runtime settings](llms/settings.md): Every value below lives in canonical runtime configuration and is editable via the Cockpit, HTTP/MCP settings APIs, sk settings configure, or sk settings set.
 - [Connector & recipe catalog](llms/connectors.md): What ships in the box: 61 connector templates across 16 categories, carrying 248 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page.
 - [Reply by email to a signed request](llms/transactional-email.md): A workflow can send one plain-text Gmail reply to the person who submitted a form, for example an access request.
 
@@ -19,12 +19,16 @@
 SubKit runs your business tasks as governed workflows.
 You describe the work in plain language. You approve what it may touch. Every run is recorded.
 
+![Overview with key figures for runs, success rate, connector health and cost, the "Needs you" list with open decisions and the latest failed runs](/docs-images/intro-overview.en.webp?v=8704e616558b)
+
 Use it as SubKit Cloud or run your own engine:
 
 - "Use SubKit Cloud": SubKit runs for you, and you sign in from the browser.
 - "Run the engine": you run SubKit on your own server.
 
 Then build your first workflow with "Your first workflow".
+
+![Documentation page with search, the "Getting started" path with steps 1 to 4 and the "Working with SubKit" list](/docs-images/intro-docs.en.webp?v=5e17003c4572)
 ## Use SubKit Cloud
 
 > Cloud (hosted beta, by invitation)
@@ -362,8 +366,11 @@ Without an approval, a run starts only as a preview without effects.
 1. Open **Workflows** and select your workflow.
    The status line shows **Waiting for approval** or **Not approved**.
 2. In the status line, select **Approve…**.
-3. Check **Environment**, **Operations and external targets** and **Maximum runs**.
-4. Confirm with **Allow 1 run** or **Allow … runs**.
+3. Check **Environment**, **Validity** and **Operations and external targets**.
+4. Confirm with **Use change and allow runs**.
+   **Put into service only** puts the version into service without allowing runs.
+
+![Approval dialog for "Invoice export v1" with the environment "Development", validity, read access to the Sales reporting API as external target and the "Use change and allow runs" button](/docs-images/first-workflow-approval.en.webp?v=43a2103731a8)
 
 Approving starts no run. An approval covers one environment and a duration.
 It also follows a new version whose boundary does not grow.
@@ -374,7 +381,7 @@ You can also approve from the chat: select **Review saved change** and then **Us
 | --- | --- |
 | **Environment** | Where the runs are allowed, for example **Production**. |
 | **Operations and external targets** | Which services and addresses the workflow reaches. |
-| **Maximum runs** and the time window | How often and how long the approval applies. |
+| **Validity** | How long the approval applies: **7 days**, **30 days** or **Until revoked**. |
 
 ### Run the workflow
 
@@ -391,6 +398,9 @@ You see **Run started**. If the button is unavailable, the hint says why, for ex
    The newest run is at the top, with its status. **Succeeded** means the run finished.
 2. Open the run.
    You see every step with its output. A failed step shows **Error in step "…"** with the cause.
+
+   ![Successful run of "CRM contact sync" from the history with one step, the requester "API" and the expanded result with one contact](/docs-images/first-workflow-run-result.en.webp?v=e41dd21ffff3)
+
 3. Optional: Select **In the audit trail** to see who started and approved the run.
 
 You can check the same with the sk CLI:
@@ -596,8 +606,8 @@ For authoring, add `mcp:authoring` to `--scopes` when you create the key with `s
    }
    ```
 
-2. In your client, ask: "Call the sk tool whoami." The answer names your account, your workspace and your scopes.
-3. Ask: "Find a workflow in sk." The client calls `find_workflow` and lists what it finds.
+2. In your client, ask: "Call the SubKit tool whoami." The answer names your account, your workspace and your scopes.
+3. Ask: "Find a workflow in SubKit." The client calls `find_workflow` and lists what it finds.
 
 If all three work, the client is connected.
 
@@ -645,9 +655,9 @@ The AI cannot approve anything itself. The link alone is not an approval either.
 | `404` "Session not found" | The session expired, for example after an engine restart. Reconnect the server in the client. |
 | Authoring tools are missing | The access has no `mcp:authoring`. Sign in again and check **Authoring**, or author with the sk CLI. |
 | New tools are missing after an update | claude.ai keeps its old tool list. Remove the connector and add it again. |
-## Use sk from a coding agent
+## Use SubKit from a coding agent
 
-MCP gives your coding agent the approved sk tools.
+MCP gives your coding agent the approved SubKit tools.
 `sk agent init` gives every Claude Code and Codex session a shared-memory briefing for your repository.
 Collected material follows one path: **collect → review with your agent → confirm in the Cockpit → knowledge**.
 
@@ -658,11 +668,11 @@ Collected material follows one path: **collect → review with your agent → co
 - Claude Code, Codex or both.
 - A repository where the briefings should appear.
 
-### Set up the sk tools once per machine
+### Set up the SubKit tools once per machine
 
 1. In the Cockpit, open **API access** and create a key.
 2. Store the key in `SK_API_KEY`.
-3. Register sk in your client with the matching command.
+3. Register SubKit in your client with the matching command.
 
 Claude Code:
 
@@ -828,6 +838,9 @@ The Web Clipper signs in with its own API key.
 
 1. In the Cockpit, open **API access**.
 2. Select **Create key** and pick the **Web Clipper** preset. It grants exactly `intake:read` and `intake:write`.
+
+   !["Create key" dialog with the Web Clipper preset, which grants only View and Edit on collected items](/docs-images/web-clipper-api-key.en.webp?v=d3b08c2e990b)
+
 3. Copy the key.
 4. In the Web Clipper, select the gear icon (⚙). The settings open in a new tab.
 5. Check the **Engine address** and paste the key into **API key**.
@@ -969,6 +982,9 @@ Learnings from coding-agent sessions arrive in the same Inbox as items with orig
 ### Review and organize items
 
 1. In the Cockpit, open **Inbox**.
+
+   ![Inbox with three collected clips of origin "Clip" in category Inbox, status "Collected", in the Brennwerk Cockpit](/docs-images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp?v=088448e5956d)
+
 2. Open an item to see its content and original source.
 3. Optional: edit title, content or category. The captured original is preserved.
 4. Optional: move, discard or restore the item.
@@ -1366,11 +1382,11 @@ If step 1 fails, the run fails and nothing is erased. The app retries with the s
 Without a valid approval, a product run answers 403. A person with write access approves each product workflow once per environment.
 
 1. In the Cockpit, open the workflow.
-2. Select **Approve…** in the status line or on the **Approvals** tab. The dialog **Review permission** opens.
+2. Select **Approve…** in the status line or on the **Approvals** tab. The dialog **Approve <workflow> v<n>** opens.
 3. Check that **Environment** (**Production** or **Development**) matches the product's `execution_environment`.
 4. Review the connectors, addresses and read or write access.
-5. Set **Maximum runs** and the time window.
-6. Select **Allow 1 run** or **Allow … runs**.
+5. Under **Validity**, choose **7 days**, **30 days** or **Until revoked**. **Until revoked** is preset and sets no run limit and no end date.
+6. Select **Approve**. Approving starts no run.
 
 A workflow that only the app's HTTP calls start is checked in the environment of its connectors. Its status line may read "Not approved" without a repair banner. If a connector is missing or lives in another environment, fix that first.
 
@@ -1634,6 +1650,9 @@ If you work in several workspaces, each one gets its own app with its own name, 
 
 1. Open the Cockpit in the browser and sign in.
 2. Open the workspace menu in the sidebar and choose **Install this workspace**.
+
+   ![Open workspace menu with the current workspace checked and the "Install this workspace" entry highlighted](/docs-images/cockpit-app-install.en.webp?v=60aa83f3924e)
+
 3. Check the name and icon in the install dialog and select **Install app**.
 4. The Cockpit moves to this workspace's own address and shows the dialog again. Select **Install app** once more.
 5. Confirm the installation in your browser's dialog.
@@ -1661,6 +1680,9 @@ Each app has its own sign-in. Your sign-in in the regular Cockpit stays untouche
 1. Open **Settings** and, under **Working with sk**, the **Tenant branding** section.
 2. Under **App icon (1:1)**, upload a square PNG with at least 512 pixels per side.
 3. Under **Color palette**, choose **Standard**, **Indigo** or **Teal**.
+
+   ![Tenant branding settings of the fictional workspace Brennwerk with the organization name Brennwerk, the subtitle Logistik, the dark teal app icon with an orange flame, the light and dark logo, and the Teal palette selected; the sidebar shows the same logo and wordmark](/docs-images/cockpit-app-branding.en.webp?v=7146710ec87d)
+
 4. Check the preview and select **Save changes**.
 
 Without both permissions you can only view the branding.
@@ -2106,9 +2128,9 @@ MIT
 
 <!-- Source: coding-agents.md -->
 
-# Use sk from a coding agent
+# Use SubKit from a coding agent
 
-MCP gives your coding agent the approved sk tools.
+MCP gives your coding agent the approved SubKit tools.
 `sk agent init` gives every Claude Code and Codex session a shared-memory briefing for your repository.
 Collected material follows one path: **collect → review with your agent → confirm in the Cockpit → knowledge**.
 
@@ -2119,11 +2141,11 @@ Collected material follows one path: **collect → review with your agent → co
 - Claude Code, Codex or both.
 - A repository where the briefings should appear.
 
-### Set up the sk tools once per machine
+### Set up the SubKit tools once per machine
 
 1. In the Cockpit, open **API access** and create a key.
 2. Store the key in `SK_API_KEY`.
-3. Register sk in your client with the matching command.
+3. Register SubKit in your client with the matching command.
 
 Claude Code:
 
@@ -4393,7 +4415,7 @@ Validate a draft WorkflowDef JSON file (structural + step schema checks). No exe
 
 <!-- Source: settings.md -->
 
-# subkit runtime settings
+# SubKit runtime settings
 
 Every value below lives in canonical runtime configuration and is editable via
 the Cockpit, HTTP/MCP settings APIs, `sk settings configure`, or `sk settings set`. Per-tenant

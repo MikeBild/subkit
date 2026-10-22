@@ -6,11 +6,15 @@ import { join } from "node:path";
 import { DOCS_SECTION_IDS, DocsBundleSchema, LLMS_PAGE_PATHS } from "@shared/llms-index.ts";
 import {
   byReadingPath,
+  docsImageFile,
   headingAnchors,
   headingCounts,
   loadChapters,
   repositoryReferences,
+  servedImageFile,
+  servedImageSrc,
   summary,
+  webpInfo,
 } from "../docs-source.ts";
 
 let dir: string;
@@ -285,7 +289,11 @@ describe("docs bundle", () => {
   test("carries the German chapter body for authored pages", () => {
     for (const page of bundle.pages.filter((p) => !p.generated)) {
       const de = german.find((c) => c.slug === page.slug);
-      expect(page.locales.de.body, page.slug).toBe(de?.body.trimEnd());
+      const authored = page.locales.de.body.replace(
+        /\]\(\/docs-images\/([^?)]+)\?v=[0-9a-f]{12}\)/g,
+        "](images/$1)",
+      );
+      expect(authored, page.slug).toBe(de?.body.trimEnd());
     }
   });
 
@@ -313,5 +321,77 @@ describe("docs bundle", () => {
       "utf8",
     );
     expect(seed).toMatch(new RegExp(`^---\\n[\\s\\S]*^version: ${chapter?.seedVersion}$`, "m"));
+  });
+});
+
+function riff(kind: string, payload: number[], extra: Array<[string, number]> = []): Uint8Array {
+  const body = [...payload];
+  while (body.length < 10) body.push(0);
+  const chunks: number[] = [];
+  const push = (name: string, data: number[]) => {
+    chunks.push(...new TextEncoder().encode(name));
+    chunks.push(data.length & 0xff, (data.length >> 8) & 0xff, 0, 0, ...data);
+    if (data.length % 2) chunks.push(0);
+  };
+  push(kind, body);
+  for (const [name, size] of extra) push(name, new Array(size).fill(0));
+  const out = [...new TextEncoder().encode("RIFF"), 0, 0, 0, 0];
+  out.push(...new TextEncoder().encode("WEBP"), ...chunks);
+  const size = out.length - 8;
+  out[4] = size & 0xff;
+  out[5] = (size >> 8) & 0xff;
+  while (out.length < 30) out.push(0);
+  return new Uint8Array(out);
+}
+
+describe("webpInfo", () => {
+  test("reads a lossy VP8 frame", () => {
+    const bytes = riff("VP8 ", [0, 0, 0, 0x9d, 0x01, 0x2a, 0x40, 0x06, 0xb0, 0x04]);
+    expect(webpInfo(bytes)).toEqual({ width: 1600, height: 1200, metadata: false });
+  });
+
+  test("reads a lossless VP8L frame", () => {
+    const bits = (640 - 1) | ((480 - 1) << 14);
+    const bytes = riff("VP8L", [
+      0x2f,
+      bits & 0xff,
+      (bits >> 8) & 0xff,
+      (bits >> 16) & 0xff,
+      bits >>> 24,
+    ]);
+    expect(webpInfo(bytes)).toEqual({ width: 640, height: 480, metadata: false });
+  });
+
+  test("reads an extended VP8X canvas and its metadata flags", () => {
+    const canvas = [0, 0, 0, 0, 0x3f, 0x06, 0x00, 0x5f, 0x09, 0x00];
+    expect(webpInfo(riff("VP8X", canvas))).toEqual({ width: 1600, height: 2400, metadata: false });
+    expect(webpInfo(riff("VP8X", [0x08, ...canvas.slice(1)]))?.metadata).toBe(true);
+    expect(webpInfo(riff("VP8X", [0x04, ...canvas.slice(1)]))?.metadata).toBe(true);
+    expect(webpInfo(riff("VP8X", [0x10, ...canvas.slice(1)]))?.metadata).toBe(false);
+    expect(webpInfo(riff("VP8X", canvas, [["EXIF", 4]]))?.metadata).toBe(true);
+  });
+
+  test("rejects bytes that are not WebP", () => {
+    expect(webpInfo(new TextEncoder().encode("\x89PNG\r\n\x1a\n".padEnd(40, "x")))).toBeNull();
+    expect(webpInfo(new Uint8Array(4))).toBeNull();
+  });
+});
+
+describe("docs image paths", () => {
+  test("maps an authored images/ src to its file", () => {
+    expect(docsImageFile("images/first-workflow-run-result.de.webp")).toBe(
+      "first-workflow-run-result.de.webp",
+    );
+    expect(docsImageFile("images/First.de.webp")).toBeNull();
+    expect(docsImageFile("images/nested/a.en.webp")).toBeNull();
+    expect(docsImageFile("shot.png")).toBeNull();
+  });
+
+  test("serves a file root-relative with a twelve-digit version", () => {
+    const sha = "0123456789abcdef".repeat(4);
+    const src = servedImageSrc("guide-run.en.webp", sha);
+    expect(src).toBe("/docs-images/guide-run.en.webp?v=0123456789ab");
+    expect(servedImageFile(src)).toEqual({ file: "guide-run.en.webp", version: "0123456789ab" });
+    expect(servedImageFile("images/guide-run.en.webp")).toBeNull();
   });
 });

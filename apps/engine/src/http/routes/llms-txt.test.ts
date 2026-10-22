@@ -6,7 +6,9 @@ import { join } from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { DocsBundleSchema } from "@shared/llms-index.ts";
 import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
+import { DOCS_IMAGES } from "../docs-images-embedded.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
+import { registerDocsImageRoutes } from "./docs-images.ts";
 import { registerLlmsTxtRoutes } from "./llms-txt.ts";
 
 const ORIGIN = "https://docs.example.test";
@@ -40,7 +42,7 @@ describe("GET /llms.txt", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/^text\/markdown; charset=utf-?8$/i);
     const body = await res.text();
-    expect(body.startsWith("# sk\n")).toBe(true);
+    expect(body.startsWith("# SubKit\n")).toBe(true);
     expect(body).toContain("\n> ");
     expect(body).toContain(`All pages in one file: ${ORIGIN}/llms-full.txt`);
     expect(body).toContain(`(${ORIGIN}/llms/setup.md)`);
@@ -52,7 +54,7 @@ describe("GET /.well-known/llms.txt", () => {
     const res = await buildApp().request("/.well-known/llms.txt");
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body.startsWith("# sk\n")).toBe(true);
+    expect(body.startsWith("# SubKit\n")).toBe(true);
     expect(body).toContain(`(${ORIGIN}/llms/`);
   });
 });
@@ -86,7 +88,7 @@ describe("GET /llms-full.txt", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/^text\/markdown; charset=utf-?8$/i);
     const body = await res.text();
-    expect(body.startsWith("# sk\n")).toBe(true);
+    expect(body.startsWith("# SubKit\n")).toBe(true);
     expect(body).toContain("<!-- Source: setup.md -->");
     expect(body.length).toBeGreaterThan(20_000);
   });
@@ -149,6 +151,26 @@ describe("GET /docs.json", () => {
     expect(setup.status).toBe(200);
     expect(setup.headers.get("content-type")).toMatch(/^text\/markdown/);
     const full = await app.request("/llms-full.txt");
-    expect((await full.text()).startsWith("# sk\n")).toBe(true);
+    expect((await full.text()).startsWith("# SubKit\n")).toBe(true);
+  });
+
+  test("serves every image the bundle references from the embedded set", async () => {
+    const app = buildApp();
+    registerDocsImageRoutes(app);
+    const bundle = DocsBundleSchema.parse(await (await app.request("/docs.json")).json());
+    const sources = bundle.pages.flatMap((page) =>
+      Object.values(page.locales).flatMap((content) => content.images.map((image) => image.src)),
+    );
+    const full = await (await app.request("/llms-full.txt")).text();
+    expect(full).not.toMatch(/!\[[^\]]*\]\(images\//);
+    for (const src of sources) {
+      expect(src).toStartWith("/docs-images/");
+      const res = await app.request(src);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toContain("immutable");
+    }
+    const embedded = Object.keys(DOCS_IMAGES);
+    const referenced = new Set(sources.map((src) => src.replace(/^\/docs-images\/|\?.*$/g, "")));
+    expect(embedded.filter((file) => !referenced.has(file))).toEqual([]);
   });
 });

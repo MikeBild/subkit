@@ -22,6 +22,9 @@ If you work in several workspaces, each one gets its own app with its own name, 
 
 1. Open the Cockpit in the browser and sign in.
 2. Open the workspace menu in the sidebar and choose **Install this workspace**.
+
+   ![Open workspace menu with the current workspace checked and the "Install this workspace" entry highlighted](images/cockpit-app-install.en.webp)
+
 3. Check the name and icon in the install dialog and select **Install app**.
 4. The Cockpit moves to this workspace's own address and shows the dialog again. Select **Install app** once more.
 5. Confirm the installation in your browser's dialog.
@@ -49,6 +52,9 @@ Each app has its own sign-in. Your sign-in in the regular Cockpit stays untouche
 1. Open **Settings** and, under **Working with sk**, the **Tenant branding** section.
 2. Under **App icon (1:1)**, upload a square PNG with at least 512 pixels per side.
 3. Under **Color palette**, choose **Standard**, **Indigo** or **Teal**.
+
+   ![Tenant branding settings of the fictional workspace Brennwerk with the organization name Brennwerk, the subtitle Logistik, the dark teal app icon with an orange flame, the light and dark logo, and the Teal palette selected; the sidebar shows the same logo and wordmark](images/cockpit-app-branding.en.webp)
+
 4. Check the preview and select **Save changes**.
 
 Without both permissions you can only view the branding.

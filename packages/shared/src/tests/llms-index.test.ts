@@ -20,7 +20,7 @@ describe("renderLlmsIndex", () => {
   });
 
   test("starts with the H1 and a `>` lede carrying the full-text pointer", () => {
-    expect(out.startsWith("# sk\n")).toBe(true);
+    expect(out.startsWith("# SubKit\n")).toBe(true);
     expect(out).toContain("> All pages in one file: https://x/llms-full.txt");
   });
 

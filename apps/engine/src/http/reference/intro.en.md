@@ -11,9 +11,13 @@ audience: public
 SubKit runs your business tasks as governed workflows.
 You describe the work in plain language. You approve what it may touch. Every run is recorded.
 
+![Overview with key figures for runs, success rate, connector health and cost, the "Needs you" list with open decisions and the latest failed runs](images/intro-overview.en.webp)
+
 Use it as SubKit Cloud or run your own engine:
 
 - "Use SubKit Cloud": SubKit runs for you, and you sign in from the browser.
 - "Run the engine": you run SubKit on your own server.
 
 Then build your first workflow with "Your first workflow".
+
+![Documentation page with search, the "Getting started" path with steps 1 to 4 and the "Working with SubKit" list](images/intro-docs.en.webp)

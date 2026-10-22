@@ -20,12 +20,17 @@ import {
   byReadingPath,
   type Chapter,
   chapterTitle,
+  DOCS_IMAGE_NAME,
+  docsImageFile,
   headings,
-  images,
+  images as imagesOf,
   loadChapters,
   repositoryReferences,
+  servedImageFile,
+  servedImageSrc,
   stripGeneratedMarker,
   summary,
+  webpInfo,
 } from "./docs-source.ts";
 
 const OUT_DIR = "apps/engine/src/http/llms";
@@ -37,6 +42,144 @@ const COCKPIT_DOCS = "apps/cockpit/src/app/docs.generated.ts";
 const SEED_DIR = "apps/engine/src/conversations/seed/knowledge";
 
 const EMBEDDED_SEEDS = "apps/engine/src/knowledge/embedded-seeds.ts";
+
+const IMAGES_DIR = join(REFERENCE_DIR, "images");
+
+const DOCS_IMAGES_MODULE = "apps/engine/src/http/docs-images-embedded.ts";
+
+export interface ImageManifestEntry {
+  sha256: string;
+  build: string;
+}
+
+export interface DocsImageEntry {
+  file: string;
+  sha256: string;
+  bytes: number;
+  width?: number;
+  height?: number;
+  build?: string;
+}
+
+export type DocsImages = ReadonlyMap<string, DocsImageEntry>;
+
+export function loadImageManifest(dir: string): Record<string, ImageManifestEntry> {
+  const path = join(dir, "manifest.json");
+  if (!existsSync(path)) return {};
+  return JSON.parse(readFileSync(path, "utf8")) as Record<string, ImageManifestEntry>;
+}
+
+export function loadDocsImages(dir: string): DocsImages {
+  const found = new Map<string, DocsImageEntry>();
+  if (!existsSync(dir)) return found;
+  const manifest = loadImageManifest(dir);
+  for (const file of readdirSync(dir)
+    .filter((f) => DOCS_IMAGE_NAME.test(f))
+    .sort()) {
+    const bytes = new Uint8Array(readFileSync(join(dir, file)));
+    const sha = createHash("sha256").update(bytes).digest("hex");
+    const info = webpInfo(bytes);
+    const recorded = manifest[file];
+    found.set(file, {
+      file,
+      sha256: sha,
+      bytes: bytes.length,
+      ...(info ? { width: info.width, height: info.height } : {}),
+      ...(recorded?.sha256 === sha && recorded.build ? { build: recorded.build } : {}),
+    });
+  }
+  return found;
+}
+
+export function rewriteImages(body: string, images: DocsImages): string {
+  return body.replace(/(!\[[^\]]*\]\()([^)\s]+)/g, (whole, head: string, src: string) => {
+    const file = docsImageFile(src);
+    const image = file ? images.get(file) : undefined;
+    return image ? `${head}${servedImageSrc(image.file, image.sha256)}` : whole;
+  });
+}
+
+export function imageEntries(body: string, images: DocsImages) {
+  return imagesOf(body).map((image) => {
+    const served = servedImageFile(image.src);
+    const entry = served ? images.get(served.file) : undefined;
+    if (!entry) return image;
+    return {
+      ...image,
+      ...(entry.build ? { build: entry.build } : {}),
+      ...(entry.width ? { width: entry.width } : {}),
+      ...(entry.height ? { height: entry.height } : {}),
+    };
+  });
+}
+
+function imageIdentifier(file: string, index: number): string {
+  const words = file
+    .replace(/\.webp$/, "")
+    .split(/[-.]+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+  return `image${index}${words}`;
+}
+
+function imageImport(file: string, identifier: string): string {
+  const head = `import ${identifier} from "./reference/images/${file}" with `;
+  const single = `${head}{ type: "file" };`;
+  return single.length <= 100 ? single : `${head}{\n  type: "file",\n};`;
+}
+
+export function renderDocsImages(entries: readonly DocsImageEntry[]): string {
+  const sorted = [...entries]
+    .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0))
+    .map((entry, index) => ({ ...entry, identifier: imageIdentifier(entry.file, index) }));
+  const record =
+    sorted.length === 0
+      ? ["export const DOCS_IMAGES: Readonly<Record<string, EmbeddedDocsImage>> = {};"]
+      : [
+          "export const DOCS_IMAGES: Readonly<Record<string, EmbeddedDocsImage>> = {",
+          ...sorted.flatMap((entry) => [
+            `  "${entry.file}": {`,
+            `    path: ${entry.identifier},`,
+            `    sha256: "${entry.sha256}",`,
+            `    bytes: ${entry.bytes},`,
+            "  },",
+          ]),
+          "};",
+        ];
+  return [
+    ...sorted.map((entry) => imageImport(entry.file, entry.identifier)),
+    ...(sorted.length === 0 ? [] : [""]),
+    "export interface EmbeddedDocsImage {",
+    "  path: string;",
+    "  sha256: string;",
+    "  bytes: number;",
+    "}",
+    "",
+    ...record,
+    "",
+  ].join("\n");
+}
+
+let cachedImages: DocsImages | undefined;
+
+function docsImages(): DocsImages {
+  cachedImages ??= loadDocsImages(IMAGES_DIR);
+  return cachedImages;
+}
+
+function referencedImages(bundle: DocsBundle, images: DocsImages): DocsImageEntry[] {
+  const files = new Set(
+    bundle.pages.flatMap((page) =>
+      Object.values(page.locales).flatMap((content) =>
+        content.images.flatMap((image) => {
+          const file = servedImageFile(image.src)?.file;
+          return file ? [file] : [];
+        }),
+      ),
+    ),
+  );
+  return [...images.values()].filter((entry) => files.has(entry.file));
+}
 
 interface SeedEntry {
   file: string;
@@ -162,7 +305,7 @@ function renderCockpitDocs(bundle: string): string {
 }
 
 function references(markdown: string): string {
-  return repositoryReferences(markdown, LLMS_PAGE_PATHS);
+  return rewriteImages(repositoryReferences(markdown, LLMS_PAGE_PATHS), docsImages());
 }
 
 function technicalReference(slug: string): string {
@@ -209,12 +352,13 @@ function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
-function localeContent(body: string, slug: string, title: string | undefined, lead: string) {
+function localeContent(raw: string, slug: string, title: string | undefined, lead: string) {
+  const body = rewriteImages(raw, docsImages());
   return {
     title: title ?? chapterTitle(body, slug),
     summary: lead,
     headings: headings(body),
-    images: images(body),
+    images: imageEntries(body, docsImages()),
     sha256: sha256(body),
     body,
   };
@@ -334,8 +478,15 @@ function main(): void {
 
   mkdirSync(OUT_DIR, { recursive: true });
   writeFileSync(join(OUT_DIR, "llms-full.txt"), `${full}\n`);
-  const bundle = JSON.stringify(buildBundle(generated), null, 2);
+  const docsBundle = buildBundle(generated);
+  const bundle = JSON.stringify(docsBundle, null, 2);
   writeFileSync(join(OUT_DIR, "docs.json"), `${bundle}\n`);
+  writeFileSync(DOCS_IMAGES_MODULE, renderDocsImages(referencedImages(docsBundle, docsImages())));
+  const format = Bun.spawnSync(
+    [process.execPath, "x", "biome", "check", "--write", DOCS_IMAGES_MODULE],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  if (format.exitCode !== 0) throw new Error(`biome could not format ${DOCS_IMAGES_MODULE}`);
   writeFileSync(COCKPIT_DOCS, renderCockpitDocs(bundle));
   writeSeeds();
 }

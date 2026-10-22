@@ -67,6 +67,7 @@ import { registerConversationRoutes } from "./routes/conversations/index.ts";
 import { registerCredentialRoutes } from "./routes/credentials.ts";
 import { registerDiagnosticsRoutes } from "./routes/diagnostics/index.ts";
 import { registerDiscoveryRoutes } from "./routes/discovery.ts";
+import { registerDocsImageRoutes } from "./routes/docs-images.ts";
 import { registerEventRoutes } from "./routes/events.ts";
 import { registerExecutionRoutes } from "./routes/executions/index.ts";
 import { registerFileRoutes } from "./routes/files.ts";
@@ -305,6 +306,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerConnectionRoutes(app);
   registerMetricsRoute(app);
   registerLlmsTxtRoutes(app);
+  registerDocsImageRoutes(app);
   registerComposeRoute(app);
   registerRootRoute(app);
   registerBotRoute(app);

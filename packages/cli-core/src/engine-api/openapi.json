@@ -34706,6 +34706,18 @@
                                         },
                                         "alt": {
                                           "type": "string"
+                                        },
+                                        "build": {
+                                          "type": "string",
+                                          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                        },
+                                        "width": {
+                                          "type": "integer",
+                                          "exclusiveMinimum": 0
+                                        },
+                                        "height": {
+                                          "type": "integer",
+                                          "exclusiveMinimum": 0
                                         }
                                       },
                                       "required": [
@@ -34771,6 +34783,18 @@
                                         },
                                         "alt": {
                                           "type": "string"
+                                        },
+                                        "build": {
+                                          "type": "string",
+                                          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                        },
+                                        "width": {
+                                          "type": "integer",
+                                          "exclusiveMinimum": 0
+                                        },
+                                        "height": {
+                                          "type": "integer",
+                                          "exclusiveMinimum": 0
                                         }
                                       },
                                       "required": [
@@ -34842,6 +34866,60 @@
                   "type": "object",
                   "properties": {},
                   "additionalProperties": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/docs-images/{file}": {
+      "get": {
+        "tags": [
+          "docs"
+        ],
+        "summary": "A screenshot the documentation references",
+        "description": "Serves one WebP screenshot embedded in this engine binary, as referenced from /docs.json and /llms-full.txt. A request whose v query matches the first twelve hex digits of the image sha256 may be cached forever; any other request gets a short cache lifetime.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "first-workflow-run-result.en.webp"
+            },
+            "required": true,
+            "name": "file",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "v",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Screenshot",
+            "content": {
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The cached screenshot with this ETag is still current"
+          },
+          "404": {
+            "description": "No such screenshot",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }

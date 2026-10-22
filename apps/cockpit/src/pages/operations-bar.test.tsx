@@ -178,7 +178,15 @@ describe("the operations bar", () => {
 
   test("the connector tile reports only persisted sign-in requirements", () => {
     const html = render(figuresOf());
-    expect(figureText(html, "connectorHealth")).toContain("1 brauchen Anmeldung");
+    expect(figureText(html, "connectorHealth")).toContain("1 braucht Anmeldung");
+    const several = render(
+      figuresOf({
+        counts: counts({
+          connectors: { enabled: 8, notOk: 2, needsReauth: 3, healthyPercent: 75 },
+        }),
+      }),
+    );
+    expect(figureText(several, "connectorHealth")).toContain("3 brauchen Anmeldung");
     const connected = render(
       figuresOf({
         counts: counts({

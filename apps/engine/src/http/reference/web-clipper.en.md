@@ -55,6 +55,9 @@ The Web Clipper signs in with its own API key.
 
 1. In the Cockpit, open **API access**.
 2. Select **Create key** and pick the **Web Clipper** preset. It grants exactly `intake:read` and `intake:write`.
+
+   !["Create key" dialog with the Web Clipper preset, which grants only View and Edit on collected items](images/web-clipper-api-key.en.webp)
+
 3. Copy the key.
 4. In the Web Clipper, select the gear icon (⚙). The settings open in a new tab.
 5. Check the **Engine address** and paste the key into **API key**.

@@ -3122,6 +3122,9 @@ export interface paths {
                                         images: {
                                             src: string;
                                             alt: string;
+                                            build?: string;
+                                            width?: number;
+                                            height?: number;
                                         }[];
                                         sha256: string;
                                         body: string;
@@ -3137,6 +3140,9 @@ export interface paths {
                                         images: {
                                             src: string;
                                             alt: string;
+                                            build?: string;
+                                            width?: number;
+                                            height?: number;
                                         }[];
                                         sha256: string;
                                         body: string;
@@ -3185,6 +3191,65 @@ export interface paths {
                         "application/json": {
                             [key: string]: unknown;
                         };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docs-images/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A screenshot the documentation references
+         * @description Serves one WebP screenshot embedded in this engine binary, as referenced from /docs.json and /llms-full.txt. A request whose v query matches the first twelve hex digits of the image sha256 may be cached forever; any other request gets a short cache lifetime.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    v?: string;
+                };
+                header?: never;
+                path: {
+                    file: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Screenshot */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/webp": string;
+                    };
+                };
+                /** @description The cached screenshot with this ETag is still current */
+                304: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description No such screenshot */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": string;
                     };
                 };
             };

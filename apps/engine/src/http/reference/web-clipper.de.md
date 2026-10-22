@@ -55,6 +55,9 @@ Der Web Clipper meldet sich mit einem eigenen API-Schlüssel an.
 
 1. Öffne im Cockpit **API-Zugang**.
 2. Wähle **Schlüssel erstellen** und die Vorlage **Web Clipper**. Die Vorlage gewährt genau `intake:read` und `intake:write`.
+
+   ![Dialog „Schlüssel erstellen“ mit der Vorlage Web Clipper, die nur Anzeigen und Bearbeiten für gesammelte Einträge erlaubt](images/web-clipper-api-key.de.webp)
+
 3. Kopiere den Schlüssel.
 4. Wähle im Web Clipper das Zahnrad (⚙). Die Einstellungen öffnen sich in einem neuen Tab.
 5. Prüfe die **Engine-Adresse** und füge den Schlüssel unter **API-Schlüssel** ein.

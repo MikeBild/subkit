@@ -8,9 +8,9 @@ version: 2
 generated: true
 ---
 
-# Use sk from a coding agent
+# Use SubKit from a coding agent
 
-MCP gives your coding agent the approved sk tools.
+MCP gives your coding agent the approved SubKit tools.
 `sk agent init` gives every Claude Code and Codex session a shared-memory briefing for your repository.
 Collected material follows one path: **collect → review with your agent → confirm in the Cockpit → knowledge**.
 
@@ -21,11 +21,11 @@ Collected material follows one path: **collect → review with your agent → co
 - Claude Code, Codex or both.
 - A repository where the briefings should appear.
 
-### Set up the sk tools once per machine
+### Set up the SubKit tools once per machine
 
 1. In the Cockpit, open **API access** and create a key.
 2. Store the key in `SK_API_KEY`.
-3. Register sk in your client with the matching command.
+3. Register SubKit in your client with the matching command.
 
 Claude Code:
 

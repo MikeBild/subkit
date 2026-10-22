@@ -5,6 +5,7 @@ export type DocsPage = DocsBundle["pages"][number];
 export type DocsSectionId = DocsPage["section"];
 export type DocsContent = DocsPage["locales"]["en"];
 export type DocsHeading = DocsContent["headings"][number];
+export type DocsImage = DocsContent["images"][number];
 
 export interface DocsRow {
   slug: string;
@@ -55,6 +56,10 @@ function usable(content: DocsContent | undefined): content is DocsContent {
 export function localized(page: DocsPage, locale: Locale): DocsContent {
   const wanted = page.locales[locale];
   return usable(wanted) ? wanted : page.locales.en;
+}
+
+export function imageFor(page: DocsPage, locale: Locale, src: string): DocsImage | null {
+  return localized(page, locale).images.find((image) => image.src === src) ?? null;
 }
 
 export function sectionText(

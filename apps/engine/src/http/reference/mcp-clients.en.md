@@ -102,8 +102,8 @@ For authoring, add `mcp:authoring` to `--scopes` when you create the key with `s
    }
    ```
 
-2. In your client, ask: "Call the sk tool whoami." The answer names your account, your workspace and your scopes.
-3. Ask: "Find a workflow in sk." The client calls `find_workflow` and lists what it finds.
+2. In your client, ask: "Call the SubKit tool whoami." The answer names your account, your workspace and your scopes.
+3. Ask: "Find a workflow in SubKit." The client calls `find_workflow` and lists what it finds.
 
 If all three work, the client is connected.
 

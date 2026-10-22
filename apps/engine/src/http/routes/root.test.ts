@@ -133,7 +133,9 @@ describe("the self-description set", () => {
 
   test("coding-agent docs explain setup, verification, and manual recognition boundaries", async () => {
     const index = await (await get("/llms.txt")).text();
-    expect(index).toContain("[Use sk from a coding agent](http://127.0.0.1/llms/coding-agents.md)");
+    expect(index).toContain(
+      "[Use SubKit from a coding agent](http://127.0.0.1/llms/coding-agents.md)",
+    );
     const page = await (await get("/llms/coding-agents.md")).text();
     expect(page).toContain("sk agent init --domains <category>");
     expect(page).toContain("`--domains <category>[,<category>]`");

@@ -187,7 +187,7 @@ function Figure({
   window?: StatsWindow;
   onRetry: (id: OperatingFigureId) => void;
 }) {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const tag = locale === "de" ? "de-DE" : "en-US";
   const basis =
     figure.basis === "window" ? (window ? WINDOW_LABEL[window] : null) : BASIS_LABEL[figure.basis];
@@ -265,17 +265,11 @@ function Figure({
       ? t("overview.operations.uncapped")
       : null;
   const detailText = figure.detail
-    ? t(
-        figure.detail.kind === "failures"
-          ? "overview.operations.failedCount"
-          : figure.detail.needsReauth === 0
-            ? "overview.operations.allConnected"
-            : "overview.operations.connectorsSignIn",
-        {
-          count:
-            figure.detail.kind === "failures" ? figure.detail.count : figure.detail.needsReauth,
-        },
-      )
+    ? figure.detail.kind === "failures"
+      ? t("overview.operations.failedCount", { count: figure.detail.count })
+      : figure.detail.needsReauth === 0
+        ? t("overview.operations.allConnected")
+        : tn("overview.operations.connectorsSignIn", figure.detail.needsReauth)
     : partial && figure.money
       ? t("overview.operations.unpricedCalls", { calls: figure.money.unpricedCalls })
       : null;

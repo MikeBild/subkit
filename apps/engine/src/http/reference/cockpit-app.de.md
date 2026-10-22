@@ -22,6 +22,9 @@ Arbeitest du in mehreren Arbeitsbereichen, bekommt jeder seine eigene App mit ei
 
 1. Öffne das Cockpit im Browser und melde dich an.
 2. Öffne in der Seitenleiste das Menü des Arbeitsbereichs und wähle **Arbeitsbereich installieren**.
+
+   ![Geöffnetes Menü der Arbeitsbereiche mit abgehaktem aktuellem Arbeitsbereich und hervorgehobenem Eintrag „Arbeitsbereich installieren“](images/cockpit-app-install.de.webp)
+
 3. Prüfe Name und Symbol im Installationsdialog und wähle **App installieren**.
 4. Das Cockpit wechselt zur eigenen Adresse dieses Arbeitsbereichs und zeigt den Dialog erneut. Wähle noch einmal **App installieren**.
 5. Bestätige die Installation im Dialog deines Browsers.
@@ -49,6 +52,9 @@ Jede App hat ihre eigene Anmeldung. Deine Anmeldung im normalen Cockpit bleibt d
 1. Öffne **Einstellungen** und darin unter **Arbeiten mit sk** den Bereich **Mandanten-Branding**.
 2. Lade unter **App-Icon (1:1)** ein quadratisches PNG mit mindestens 512 Pixeln Kantenlänge hoch.
 3. Wähle unter **Farbpalette** zwischen **Standard**, **Indigo** und **Teal**.
+
+   ![Mandanten-Branding des fiktiven Arbeitsbereichs Brennwerk mit dem Organisationsnamen Brennwerk, dem Untertitel Logistik, dem dunkelgrünen App-Icon mit orangefarbener Flamme, dem hellen und dunklen Logo und der gewählten Farbpalette Teal; die Seitenleiste zeigt dasselbe Logo und die Wortmarke](images/cockpit-app-branding.de.webp)
+
 4. Prüfe die Vorschau und wähle **Änderungen speichern**.
 
 Ohne beide Rechte kannst du das Branding nur ansehen.

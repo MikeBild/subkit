@@ -200,7 +200,8 @@ const EN = {
   "familyFailure.expired.title": "Your session has expired",
   "familyFailure.unreachable.title": "SubKit is currently unreachable",
   "overview.operations.tokenPercent": "{percent}% of token budget",
-  "overview.operations.connectorsSignIn": "{count} need sign-in",
+  "overview.operations.connectorsSignIn.one": "{count} needs sign-in",
+  "overview.operations.connectorsSignIn.other": "{count} need sign-in",
   "overview.operations.allConnected": "All connected",
   "overview.operations.failedCount": "{count} failed",
   "notifications.usedByRules.other": "{count} rules",
@@ -1148,6 +1149,7 @@ const EN = {
   "docs.empty": "No chapters yet",
   "docs.noMatches": "No chapter matches your search",
   "docs.external": "opens in a new tab",
+  "docs.imageBuild": "Screenshot from build {build}",
   "docs.loadFailed": "The documentation could not be loaded",
   "docs.choice.hosting": "Use the Cloud or self-host",
   "releaseNotes.menu": "Changes",
@@ -5180,7 +5182,7 @@ const DE: Record<TranslationKey, string> = {
   "audit.timeline.source.queue": "Warteschlange",
   "branding.title": "Mandanten-Branding",
   "branding.intro":
-    "Passen Sie den tenant-seitigen Namen, Rasterlogos und eine freigegebene Farbpalette an. Die operative Navigation und Statusfarben bleiben unverändert.",
+    "Passe den Namen deines Arbeitsbereichs, die Logos und eine freigegebene Farbpalette an. Die operative Navigation und Statusfarben bleiben unverändert.",
   "branding.wordmark": "Wortmarke",
   "branding.name": "Organisationsname",
   "branding.nameHint": "Maximal 80 Zeichen. Wird als primäre Tenant-Wortmarke angezeigt.",
@@ -5265,7 +5267,8 @@ const DE: Record<TranslationKey, string> = {
   "familyFailure.expired.title": "Deine Sitzung ist abgelaufen",
   "familyFailure.unreachable.title": "SubKit ist gerade nicht erreichbar",
   "overview.operations.tokenPercent": "{percent} % des Tokenkontingents",
-  "overview.operations.connectorsSignIn": "{count} brauchen Anmeldung",
+  "overview.operations.connectorsSignIn.one": "{count} braucht Anmeldung",
+  "overview.operations.connectorsSignIn.other": "{count} brauchen Anmeldung",
   "overview.operations.allConnected": "Alle verbunden",
   "overview.operations.failedCount": "{count} fehlgeschlagen",
   "notifications.usedByRules.other": "{count} Regeln",
@@ -6234,6 +6237,7 @@ const DE: Record<TranslationKey, string> = {
   "docs.empty": "Noch keine Kapitel",
   "docs.noMatches": "Kein Kapitel passt zu deiner Suche",
   "docs.external": "öffnet in einem neuen Tab",
+  "docs.imageBuild": "Screenshot aus Build {build}",
   "docs.loadFailed": "Die Dokumentation konnte nicht geladen werden",
   "docs.choice.hosting": "Cloud nutzen oder selbst betreiben",
   "releaseNotes.menu": "Änderungen",
@@ -6246,13 +6250,12 @@ const DE: Record<TranslationKey, string> = {
   "workspace.label": "Arbeitsbereiche",
   "workspace.delete": "Arbeitsbereich löschen",
   "workspace.deleteDescription":
-    "Löscht nur „{name}“. Ihre anderen Mitgliedschaften bleiben bestehen.",
+    "Löscht nur „{name}“. Deine anderen Mitgliedschaften bleiben bestehen.",
   "workspace.deleteTitle": "„{name}“ löschen?",
   "workspace.deleteIntro": "Folgendes passiert sofort:",
   "workspace.c1": "Der Zugriff auf den Arbeitsbereich wird sofort gesperrt.",
   "workspace.c2": "Eingeladene Mitglieder verlieren ihren Zugriff.",
-  "workspace.c3":
-    "Sie haben 7 Tage Zeit, die Löschung nach erneuter Anmeldung rückgängig zu machen.",
+  "workspace.c3": "Du hast 7 Tage Zeit, die Löschung nach erneuter Anmeldung rückgängig zu machen.",
   "workspace.c4": "Nach Ablauf der Frist werden alle Daten endgültig entfernt.",
   "workspace.c5": "Andere Arbeitsbereiche, in denen du Mitglied bist, sind nicht betroffen.",
   "workspace.confirmation": "Gib zur Bestätigung „{name}“ ein",
@@ -6272,7 +6275,7 @@ const DE: Record<TranslationKey, string> = {
   "workspace.expired":
     "Die Wiederherstellungsfrist ist abgelaufen. Der Arbeitsbereich kann nicht wiederhergestellt werden.",
   "workspace.actionError":
-    "Die Aktion ist fehlgeschlagen. Prüfen Sie vor einem neuen Versuch den aktuellen Status.",
+    "Die Aktion ist fehlgeschlagen. Prüfe vor einem neuen Versuch den aktuellen Status.",
 
   "workspace.switch": "Arbeitsbereich wechseln",
   "workspace.own": "Eigener",
@@ -10198,13 +10201,13 @@ const DE: Record<TranslationKey, string> = {
   "installation.install": "Arbeitsbereich installieren",
   "installation.installTitle": "Installiere {name}",
   "installation.installDescription":
-    "Öffnen Sie diesen Workspace als eigenständige App für schnellen Zugriff und native Systemintegration.",
+    "Öffne diesen Arbeitsbereich als eigenständige App für schnellen Zugriff und native Systemintegration.",
   "installation.installAction": "App installieren",
   "installation.installHint":
     "Diese Option ist in Browsern verfügbar, die die Installation von Web-Apps unterstützen.",
   "installation.unavailableTitle": "Installation nicht möglich",
   "installation.unavailable":
-    "Die Installation ist in diesem Browser derzeit nicht verfügbar. Sie können das Cockpit weiterhin im Browser verwenden.",
+    "Die Installation ist in diesem Browser derzeit nicht verfügbar. Du kannst das Cockpit weiterhin im Browser verwenden.",
   "installation.notifications": "Benachrichtigungen",
   "installation.notificationsEnable": "Neutrale Benachrichtigungen aktivieren",
   "installation.notificationsHint":
@@ -10223,15 +10226,15 @@ const DE: Record<TranslationKey, string> = {
     "Dateien vor dem Hinzufügen prüfen. Es wird nichts automatisch als Wissen übernommen.",
   "installation.importAction": "Zu {category} hinzufügen",
   "installation.importPartial":
-    "Einige Dateien sind bereits in diesem Workspace gespeichert. Wiederholen führt mit denselben Einträgen fort.",
+    "Einige Dateien sind bereits in diesem Arbeitsbereich gespeichert. Wiederholen führt mit denselben Einträgen fort.",
   "installation.importFailed":
-    "Nicht alle Einträge konnten hinzugefügt werden. Ihr Prüfdraft bleibt erhalten.",
+    "Nicht alle Einträge konnten hinzugefügt werden. Dein Prüfentwurf bleibt erhalten.",
   "installation.clipboard": "Zwischenablage einfügen",
   "installation.openFile": "Datei auswählen",
   "installation.retry": "Wiederholen",
   "installation.revoke": "Installation widerrufen",
   "installation.revokeConsequence":
-    "Dadurch wird dieser installierte Workspace auf seinen Geräten abgemeldet. Sie können ihn später erneut installieren.",
+    "Dadurch wird dieser installierte Arbeitsbereich auf seinen Geräten abgemeldet. Du kannst ihn später erneut installieren.",
   "installation.permission": "Deine aktuellen Rechte erlauben diesen Import nicht.",
 };
 

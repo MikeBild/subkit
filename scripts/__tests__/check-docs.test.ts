@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCS_SECTIONS, type DocsBundle, DocsBundleSchema } from "@shared/llms-index.ts";
 import { checkDocs, type DocsPaths, type Finding } from "../check-docs.ts";
-import { headings, images } from "../docs-source.ts";
+import { headings, images, servedImageSrc } from "../docs-source.ts";
 
 let root: string;
 let paths: DocsPaths;
@@ -29,6 +30,8 @@ let pages: PageSpec[];
 let chapters: Record<string, string>;
 let llmsPagePaths: string[];
 let seed: string;
+let imageFiles: Record<string, Uint8Array>;
+let manifest: Record<string, { sha256: string; build: string }>;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "check-docs-"));
@@ -52,6 +55,8 @@ beforeEach(() => {
       "---\nslug: cli\nsection: start\norder: 2\naudience: public\n---\nDie Befehlsreferenz bleibt auf Englisch.\n",
   };
   llmsPagePaths = ["guide.md", "cli.md"];
+  imageFiles = {};
+  manifest = {};
   seed = "---\nslug: sk-ref-guide\ngenerated: true\n---\n\n# Guide\n";
   writeFileSync(
     paths.templates,
@@ -84,6 +89,13 @@ function run(): Finding[] {
   mkdirSync(paths.seedDir, { recursive: true });
   for (const [file, text] of Object.entries(chapters))
     writeFileSync(join(paths.referenceDir, file), text);
+  if (Object.keys(imageFiles).length > 0 || Object.keys(manifest).length > 0) {
+    const imagesDir = join(paths.referenceDir, "images");
+    mkdirSync(imagesDir, { recursive: true });
+    for (const [file, bytes] of Object.entries(imageFiles))
+      writeFileSync(join(imagesDir, file), bytes);
+    writeFileSync(join(imagesDir, "manifest.json"), JSON.stringify(manifest));
+  }
   const bundle: DocsBundle = DocsBundleSchema.parse({
     locales: ["en", "de"],
     sections: DOCS_SECTIONS,
@@ -113,11 +125,60 @@ function run(): Finding[] {
   ].join("\n");
   writeFileSync(join(paths.llmsDir, "llms-full.txt"), `${full}\n`);
   writeFileSync(join(paths.seedDir, "guide.md"), seed);
-  return checkDocs(paths, { llmsPagePaths });
+  return checkDocs(paths, { llmsPagePaths, version: "10.4.12" });
 }
 
 function rules(findings: Finding[]): string[] {
   return [...new Set(findings.map((f) => f.rule))];
+}
+
+interface WebpSpec {
+  width?: number;
+  height?: number;
+  flags?: number;
+  padding?: number;
+}
+
+function webp({ width = 800, height = 600, flags = 0, padding = 0 }: WebpSpec = {}): Uint8Array {
+  const extra = padding > 0 ? 8 + padding : 0;
+  const out = new Uint8Array(30 + extra);
+  const view = new DataView(out.buffer);
+  const text = (value: string, at: number) => out.set(new TextEncoder().encode(value), at);
+  text("RIFF", 0);
+  view.setUint32(4, out.length - 8, true);
+  text("WEBPVP8X", 8);
+  view.setUint32(16, 10, true);
+  out[20] = flags;
+  const u24 = (value: number, at: number) =>
+    out.set([value & 0xff, (value >> 8) & 0xff, value >> 16], at);
+  u24(width - 1, 24);
+  u24(height - 1, 27);
+  if (padding > 0) {
+    text("PADD", 30);
+    view.setUint32(34, padding, true);
+  }
+  return out;
+}
+
+function sha(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function addImage(
+  locale: "en" | "de",
+  options: { name?: string; alt?: string; spec?: WebpSpec; build?: string } = {},
+): string {
+  const file = `${options.name ?? "guide-run"}.${locale}.webp`;
+  const bytes = webp(options.spec);
+  imageFiles[file] = bytes;
+  manifest[file] = { sha256: sha(bytes), build: options.build ?? "10.4.0" };
+  guide()[locale] += `\n![${options.alt ?? "Run result"}](${servedImageSrc(file, sha(bytes))})\n`;
+  return file;
+}
+
+function imageDetails(findings: Finding[]): string[] {
+  expect(rules(findings)).toEqual(["image"]);
+  return findings.map((f) => f.detail);
 }
 
 function guide(): PageSpec {
@@ -343,4 +404,137 @@ describe("checkDocs", () => {
     const findings = checkDocs(paths, { llmsPagePaths });
     expect(findings.map((f) => [f.rule, f.file])).toEqual([["ip", paths.cockpitDocs]]);
   });
+
+  describe("screenshots", () => {
+    test("accepts an EN/DE pair with manifest entries", () => {
+      addImage("en");
+      addImage("de");
+      expect(run()).toEqual([]);
+    });
+
+    test("rejects a referenced image whose file is missing", () => {
+      const file = addImage("en");
+      addImage("de");
+      delete imageFiles[file];
+      delete manifest[file];
+      const details = imageDetails(run());
+      expect(details).toEqual([`guide/en: ${servedSrc(file)} does not exist`]);
+    });
+
+    test("rejects empty alt text", () => {
+      addImage("en", { alt: " " });
+      addImage("de");
+      expect(imageDetails(run())).toEqual([expect.stringContaining("has no alt text")]);
+    });
+
+    test("rejects an image no chapter references", () => {
+      addImage("en");
+      addImage("de");
+      const bytes = webp();
+      imageFiles["guide-spare.en.webp"] = bytes;
+      manifest["guide-spare.en.webp"] = { sha256: sha(bytes), build: "10.4.0" };
+      expect(imageDetails(run())).toEqual(["guide-spare.en.webp is not referenced by any chapter"]);
+    });
+
+    test("rejects a name without the chapter slug", () => {
+      addImage("en", { name: "other-run" });
+      addImage("de", { name: "other-run" });
+      const details = imageDetails(run());
+      expect(details).toHaveLength(2);
+      expect(details.every((d) => d.endsWith("does not start with guide-"))).toBe(true);
+    });
+
+    test("rejects a locale suffix that differs from the chapter", () => {
+      const file = addImage("de");
+      guide().en += `\n![Run result](${servedSrc(file)})\n`;
+      const details = imageDetails(run());
+      expect(details).toContain(`guide/en: ${servedSrc(file)} does not end with .en.webp`);
+    });
+
+    test("rejects a screenshot without its translation", () => {
+      addImage("en");
+      expect(imageDetails(run())).toEqual(["guide: guide-run has no de image"]);
+    });
+
+    test("rejects a stale v", () => {
+      const file = addImage("en");
+      addImage("de");
+      guide().en = guide().en.replace(/\?v=[0-9a-f]{12}/, "?v=000000000000");
+      expect(imageDetails(run())).toEqual([
+        `guide/en: /docs-images/${file}?v=000000000000 has v=000000000000 but the image is ${sha(imageFiles[file] ?? new Uint8Array()).slice(0, 12)}`,
+      ]);
+    });
+
+    test.each([
+      ["too many bytes", { padding: 250_000 }, "more than 250000"],
+      ["too wide", { width: 1601 }, "1601 px wide, more than 1600"],
+      ["too high", { height: 2401 }, "2401 px high, more than 2400"],
+      ["EXIF", { flags: 0x08 }, "carries EXIF or XMP metadata"],
+      ["XMP", { flags: 0x04 }, "carries EXIF or XMP metadata"],
+    ])("rejects an image with %s", (_name, spec, detail) => {
+      addImage("en", { spec });
+      addImage("de");
+      expect(imageDetails(run())).toEqual([expect.stringContaining(detail)]);
+    });
+
+    test("accepts an image at the limits", () => {
+      addImage("en", { spec: { width: 1600, height: 2400, flags: 0x10 } });
+      addImage("de");
+      expect(run()).toEqual([]);
+    });
+
+    test("rejects an image without a manifest entry", () => {
+      const file = addImage("en");
+      addImage("de");
+      delete manifest[file];
+      expect(imageDetails(run())).toEqual([`${file} has no manifest entry`]);
+    });
+
+    test("rejects a manifest sha that does not match the bytes", () => {
+      const file = addImage("en");
+      addImage("de");
+      manifest[file] = { sha256: "0".repeat(64), build: "10.4.0" };
+      expect(imageDetails(run())).toEqual([`${file} sha256 does not match the manifest`]);
+    });
+
+    test.each([
+      ["a malformed build", "v10", "needs a build like 1.2.3"],
+      ["a build newer than the release", "10.5.0", "build 10.5.0 is newer than 10.4.12"],
+    ])("rejects %s", (_name, build, detail) => {
+      addImage("en", { build });
+      addImage("de");
+      expect(imageDetails(run())).toEqual([expect.stringContaining(detail)]);
+    });
+
+    test("rejects an orphaned manifest entry", () => {
+      addImage("en");
+      addImage("de");
+      manifest["guide-gone.en.webp"] = { sha256: "0".repeat(64), build: "10.4.0" };
+      expect(imageDetails(run())).toEqual(["manifest entry guide-gone.en.webp has no image"]);
+    });
+
+    test("rejects a file that does not follow the naming rule", () => {
+      addImage("en");
+      addImage("de");
+      imageFiles["Guide Run.png"] = webp();
+      expect(imageDetails(run())).toEqual([
+        "Guide Run.png is not named <slug>-<name>.<en|de>.webp",
+      ]);
+    });
+
+    test("rejects a local image that is not served from /docs-images", () => {
+      chapters["shot.png"] = "png";
+      guide().en += "\n![Screen](shot.png)\n";
+      expect(imageDetails(run())).toEqual(["guide/en: shot.png is not served from /docs-images/"]);
+    });
+
+    test("still checks raw image hosts", () => {
+      guide().en += "\n![Screen](https://images.vendor.io/shot.webp)\n";
+      expect(rules(run())).toContain("host");
+    });
+  });
 });
+
+function servedSrc(file: string): string {
+  return servedImageSrc(file, sha(imageFiles[file] ?? webp()));
+}

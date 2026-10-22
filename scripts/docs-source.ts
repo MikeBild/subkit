@@ -146,6 +146,94 @@ export function images(markdown: string): Image[] {
   }));
 }
 
+export interface WebpInfo {
+  width: number;
+  height: number;
+  metadata: boolean;
+}
+
+export const DOCS_IMAGE_NAME = /^[a-z0-9-]+\.(en|de)\.webp$/;
+
+export const DOCS_IMAGE_ROUTE = "/docs-images/";
+
+function fourcc(bytes: Uint8Array, offset: number): string {
+  return String.fromCharCode(...bytes.subarray(offset, offset + 4));
+}
+
+function uint16(bytes: Uint8Array, offset: number): number {
+  return (bytes[offset] ?? 0) | ((bytes[offset + 1] ?? 0) << 8);
+}
+
+function uint24(bytes: Uint8Array, offset: number): number {
+  return uint16(bytes, offset) | ((bytes[offset + 2] ?? 0) << 16);
+}
+
+function uint32(bytes: Uint8Array, offset: number): number {
+  return (uint24(bytes, offset) | ((bytes[offset + 3] ?? 0) << 24)) >>> 0;
+}
+
+function chunkNames(bytes: Uint8Array): string[] {
+  const names: string[] = [];
+  let offset = 12;
+  while (offset + 8 <= bytes.length) {
+    names.push(fourcc(bytes, offset));
+    const size = uint32(bytes, offset + 4);
+    offset += 8 + size + (size % 2);
+  }
+  return names;
+}
+
+export function webpInfo(bytes: Uint8Array): WebpInfo | null {
+  if (bytes.length < 30 || fourcc(bytes, 0) !== "RIFF" || fourcc(bytes, 8) !== "WEBP") return null;
+  const names = chunkNames(bytes);
+  const tagged = names.includes("EXIF") || names.includes("XMP ");
+  const kind = fourcc(bytes, 12);
+  if (kind === "VP8X") {
+    const flags = bytes[20] ?? 0;
+    return {
+      width: uint24(bytes, 24) + 1,
+      height: uint24(bytes, 27) + 1,
+      metadata: tagged || (flags & 0x0c) !== 0,
+    };
+  }
+  if (kind === "VP8L") {
+    if (bytes[20] !== 0x2f) return null;
+    const bits = uint32(bytes, 21);
+    return {
+      width: (bits & 0x3fff) + 1,
+      height: ((bits >>> 14) & 0x3fff) + 1,
+      metadata: tagged,
+    };
+  }
+  if (kind === "VP8 ") {
+    if (bytes[23] !== 0x9d || bytes[24] !== 0x01 || bytes[25] !== 0x2a) return null;
+    return {
+      width: uint16(bytes, 26) & 0x3fff,
+      height: uint16(bytes, 28) & 0x3fff,
+      metadata: tagged,
+    };
+  }
+  return null;
+}
+
+export function docsImageFile(src: string): string | null {
+  const file = src.match(/^images\/([^/?#]+)$/)?.[1];
+  return file && DOCS_IMAGE_NAME.test(file) ? file : null;
+}
+
+export function servedImageSrc(file: string, sha: string): string {
+  return `${DOCS_IMAGE_ROUTE}${file}?v=${sha.slice(0, 12)}`;
+}
+
+export function servedImageFile(src: string): { file: string; version: string | null } | null {
+  if (!src.startsWith(DOCS_IMAGE_ROUTE)) return null;
+  const rest = src.slice(DOCS_IMAGE_ROUTE.length);
+  const query = rest.indexOf("?");
+  const file = query < 0 ? rest : rest.slice(0, query);
+  const version = query < 0 ? null : new URLSearchParams(rest.slice(query + 1)).get("v");
+  return { file, version };
+}
+
 export function headingCounts(markdown: string): { h2: number; h3: number } {
   const counts = { h2: 0, h3: 0 };
   let fenced = false;

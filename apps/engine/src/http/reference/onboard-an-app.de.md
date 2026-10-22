@@ -127,11 +127,11 @@ Schlägt Schritt 1 fehl, schlägt der Lauf fehl, und nichts wird gelöscht. Die 
 Ohne gültige Freigabe antwortet ein Produktlauf mit 403. Eine Person mit Schreibrecht gibt jeden Produkt-Workflow einmal pro Umgebung frei.
 
 1. Öffne im Cockpit den Workflow.
-2. Wähle **Freigeben…** in der Statuszeile oder auf dem Tab **Freigaben**. Der Dialog **Freigabe prüfen** öffnet sich.
+2. Wähle **Freigeben…** in der Statuszeile oder auf dem Tab **Freigaben**. Der Dialog **<Workflow> v<n> freigeben** öffnet sich.
 3. Prüfe, ob **Umgebung** (**Produktion** oder **Entwicklung**) zur `execution_environment` des Produkts passt.
 4. Prüfe Konnektoren, Adressen und Lese- oder Schreibzugriff.
-5. Setze **Maximale Läufe** und den Zeitraum.
-6. Wähle **1 Lauf erlauben** oder **… Läufe erlauben**.
+5. Wähle unter **Gültigkeit** **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. **Bis auf Widerruf** ist vorausgewählt und setzt weder eine Laufgrenze noch ein Ablaufdatum.
+6. Wähle **Freigeben**. Die Freigabe startet keinen Lauf.
 
 Ein Workflow, den nur die HTTP-Aufrufe der App starten, wird in der Umgebung seiner Konnektoren geprüft. Seine Statuszeile zeigt dann eventuell „Nicht freigegeben“ ohne Reparaturbanner. Fehlt ein Konnektor oder liegt er in einer anderen Umgebung, behebe das zuerst.
 

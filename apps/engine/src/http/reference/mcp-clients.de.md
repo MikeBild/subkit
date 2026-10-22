@@ -102,8 +102,8 @@ Zum Bearbeiten ergänzt du `mcp:authoring` in `--scopes`, wenn du den Schlüssel
    }
    ```
 
-2. Bitte deinen Client: „Ruf das sk-Tool whoami auf.“ Die Antwort nennt dein Konto, deinen Arbeitsbereich und deine Scopes.
-3. Bitte: „Such einen Workflow in sk.“ Der Client ruft `find_workflow` auf und listet die Treffer.
+2. Bitte deinen Client: „Ruf das SubKit-Tool whoami auf.“ Die Antwort nennt dein Konto, deinen Arbeitsbereich und deine Scopes.
+3. Bitte: „Such einen Workflow in SubKit.“ Der Client ruft `find_workflow` auf und listet die Treffer.
 
 Klappen alle drei, ist der Client verbunden.
 

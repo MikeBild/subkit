@@ -120,7 +120,7 @@ describe("loadEmbeddedKnowledgeSeeds — all 8 embedded files", () => {
     const r = loadEmbeddedKnowledgeSeeds();
     const coding = r.knowledge.find((k) => k.slug === "sk-ref-coding-agents");
     expect(coding?.scope).toBe("global");
-    expect(coding?.body.startsWith("# Use sk from a coding agent\n")).toBe(true);
+    expect(coding?.body.startsWith("# Use SubKit from a coding agent\n")).toBe(true);
     expect(coding?.tags).toContain("coding-agents");
   });
 
