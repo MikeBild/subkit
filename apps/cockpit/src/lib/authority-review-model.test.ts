@@ -4,6 +4,7 @@ import {
   authorityReviewModel,
   reviewTitle,
 } from "@/lib/authority-review-model";
+import { translate } from "@/lib/i18n";
 
 type Effect = AuthorityReviewPreview["manifest"]["effects"][number];
 
@@ -371,4 +372,42 @@ test("the title always uses one template", () => {
     values: { name: "GitHub briefing", version: "v13" },
   });
   expect(reviewTitle(null)).toEqual({ key: "authority.grantOpen", values: {} });
+});
+
+test("adopting a carried-over approval confirms it stays valid; activate-only says runs wait", () => {
+  const base = { preview: writing, connectorNames: names, automation: quiet, activation: true };
+  expect(authorityReviewModel({ ...base, carryOver: true }).messages.activated).toBe(
+    "authority.adopted",
+  );
+  expect(authorityReviewModel({ ...base, carryOver: false }).messages.activated).toBe(
+    "authority.activatedOnly",
+  );
+});
+
+test("the activate-only help names a pausing schedule only when a trigger exists", () => {
+  const base = { preview: writing, connectorNames: names, activation: true, carryOver: false };
+  expect(authorityReviewModel({ ...base, automation: quiet }).messages.activateOnlyHelp).toBe(
+    "authority.review.help.activateOnly",
+  );
+  for (const automation of [
+    { schedule: true, webhook: false },
+    { schedule: false, webhook: true },
+  ])
+    expect(authorityReviewModel({ ...base, automation }).messages.activateOnlyHelp).toBe(
+      "authority.review.help.activateOnlyPaused",
+    );
+  expect(translate("de", "authority.review.help.activateOnly")).toBe("Aktiviert ohne Läufe.");
+  expect(translate("en", "authority.review.help.activateOnly")).toBe(
+    "Activates without allowing runs.",
+  );
+  expect(translate("de", "authority.review.help.activateOnlyPaused")).toBe(
+    "Aktiviert ohne Läufe; Zeitplan pausiert.",
+  );
+  expect(translate("en", "authority.review.help.activateOnlyPaused")).toBe(
+    "Activates without allowing runs; the schedule pauses.",
+  );
+  expect(translate("de", "authority.adopted")).toBe(
+    "Übernommen. Die bestehende Freigabe gilt weiter.",
+  );
+  expect(translate("en", "authority.adopted")).toBe("Applied. The existing approval stays valid.");
 });

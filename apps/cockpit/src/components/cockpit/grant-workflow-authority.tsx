@@ -390,7 +390,8 @@ export function GrantWorkflowAuthority({
       if (then === "single_run") onSingleRun?.();
       else {
         onCompleted?.();
-        if (!showLiveTestResult(_result)) toast.success(t("authority.activatedOnly"));
+        if (!showLiveTestResult(_result))
+          toast.success(t(model?.messages.activated ?? "authority.activatedOnly"));
         if (runAfter) runIfNotStarted(_result);
       }
     },
@@ -698,8 +699,12 @@ export function GrantWorkflowAuthority({
                   disabled={busy}
                   onClick={() => activateOnly.mutate("nothing")}
                   data-testid="authority-activate-only"
-                  title={t("authority.review.help.activateOnly")}
-                  data-hint={t("authority.review.help.activateOnly")}
+                  title={t(
+                    model?.messages.activateOnlyHelp ?? "authority.review.help.activateOnly",
+                  )}
+                  data-hint={t(
+                    model?.messages.activateOnlyHelp ?? "authority.review.help.activateOnly",
+                  )}
                 >
                   {t("authority.review.activateOnly")}
                 </Button>

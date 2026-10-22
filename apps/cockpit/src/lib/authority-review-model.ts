@@ -73,6 +73,7 @@ export interface AuthorityReviewModel {
   requiresWriteCheck: boolean;
   blocked: boolean;
   buttons: { primary: "approve" | "adopt"; activateOnly: "footer" | "menu" | null };
+  messages: { activated: TranslationKey; activateOnlyHelp: TranslationKey };
 }
 
 export const COLLAPSE_GROUPS_ABOVE = 12;
@@ -308,6 +309,13 @@ export function authorityReviewModel(input: {
               : "footer"
             : null,
         },
+    messages: {
+      activated: input.carryOver ? "authority.adopted" : "authority.activatedOnly",
+      activateOnlyHelp:
+        input.automation.schedule || input.automation.webhook
+          ? "authority.review.help.activateOnlyPaused"
+          : "authority.review.help.activateOnly",
+    },
   };
 }
 
