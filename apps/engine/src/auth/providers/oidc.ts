@@ -316,6 +316,11 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       const state = providerId ? `${providerId}.${oauth.randomState()}` : oauth.randomState();
       const nonce = oauth.randomNonce();
 
+      void exec
+        .delete(oidcLoginStates)
+        .where(lt(oidcLoginStates.expires_at, new Date()))
+        .catch(() => {});
+
       await exec.insert(oidcLoginStates).values({
         tenant_id: tenantId,
         membership_invite_id: opts.membershipInviteId ?? null,

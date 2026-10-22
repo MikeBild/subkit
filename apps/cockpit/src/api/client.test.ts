@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
+  logout,
   respondToChatApproval,
   respondToChatChoice,
   respondToChatForm,
@@ -293,5 +294,40 @@ test("form submission and cancellation use the exact pending elicitation endpoin
   });
   expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
     output: { declined: true },
+  });
+});
+
+describe("logout", () => {
+  test("refreshes a rejected CSRF token once and retries the write", async () => {
+    const calls: Array<{ path: string; csrf: string | null }> = [];
+    let logoutAttempts = 0;
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      calls.push({ path, csrf: new Headers(init?.headers).get("x-subkit-csrf") });
+      if (path.endsWith("/v1/cockpit/bootstrap")) {
+        return Response.json({ tenant: { id: "tenant-1" }, csrf_token: "fresh-token" });
+      }
+      logoutAttempts += 1;
+      if (logoutAttempts === 1) {
+        return Response.json({ code: "csrf_rejected" }, { status: 403 });
+      }
+      return new Response(null, { status: 204 });
+    }) as unknown as typeof fetch;
+
+    await logout();
+
+    expect(logoutAttempts).toBe(2);
+    expect(calls.at(-1)?.csrf).toBe("fresh-token");
+  });
+
+  test("does not retry a write rejected for another reason", async () => {
+    let attempts = 0;
+    globalThis.fetch = mock(async () => {
+      attempts += 1;
+      return Response.json({ code: "forbidden" }, { status: 403 });
+    }) as unknown as typeof fetch;
+
+    await expect(logout()).rejects.toMatchObject({ status: 403 });
+    expect(attempts).toBe(1);
   });
 });

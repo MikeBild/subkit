@@ -1,13 +1,16 @@
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
-import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { roles, sessions, users } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
-import { SESSION_ABSOLUTE_TTL_MS, SESSION_SLIDING_TTL_MS } from "../browser-session.ts";
+import {
+  clearBrowserSessionCookie,
+  expireBrowserSession,
+  SESSION_ABSOLUTE_TTL_MS,
+  SESSION_SLIDING_TTL_MS,
+} from "../browser-session.ts";
 import type { ResolvedPrincipal } from "../types.ts";
 
 export const SESSION_COOKIE = "subkit_session";
@@ -79,7 +82,7 @@ export function buildCookieHeader(jwt: string): string {
 }
 
 export function clearCookieHeader(): string {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  return clearBrowserSessionCookie();
 }
 
 export async function resolveOidcSession(
@@ -109,20 +112,12 @@ export async function resolveOidcSession(
         ? "expired_sliding"
         : null;
   if (denyReason) {
-    await auditAwait(
-      {
-        tenant_id: row.tenant_id,
-        actor_type: "system",
-        actor_id: null,
-        action: AuditAction.SESSION_REVOKED,
-        resource_type: "session",
-        resource_id: row.id,
-        result: "denied",
-        reason: denyReason,
+    if (denyReason !== "revoked") {
+      await expireBrowserSession(db, row, denyReason, {
+        actorId: null,
         metadata: { via: "oidc_resolve", subject_user_id: row.user_id },
-      },
-      db,
-    );
+      });
+    }
     return null;
   }
 

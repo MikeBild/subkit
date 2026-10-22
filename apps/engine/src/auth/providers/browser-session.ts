@@ -1,11 +1,13 @@
 import { and, eq } from "drizzle-orm";
-import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { cockpitInstallations } from "../../db/schema/cockpit-installations.ts";
 import { roles, sessions, users } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
-import { browserSessionFromRequest, SESSION_SLIDING_TTL_MS } from "../browser-session.ts";
+import {
+  browserSessionFromRequest,
+  expireBrowserSession,
+  SESSION_SLIDING_TTL_MS,
+} from "../browser-session.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
 
 export interface BrowserSessionProviderOptions {
@@ -81,20 +83,13 @@ export function createBrowserSessionProvider(
             : null;
 
       if (denyReason) {
-        await auditAwait(
-          {
-            tenant_id: row.tenant_id,
-            actor_type: "system",
-            actor_id: row.user_id,
-            action: AuditAction.SESSION_REVOKED,
-            resource_type: "session",
-            resource_id: row.id,
-            result: "denied",
-            reason: denyReason,
+        if (denyReason !== "revoked") {
+          await expireBrowserSession(db, row, denyReason, {
+            actorId: row.user_id,
             metadata: { via: "browser_session_resolve" },
-          },
-          db,
-        );
+          });
+        }
+        log.auth.denied({ provider: "browser_session", reason: denyReason });
         return null;
       }
 

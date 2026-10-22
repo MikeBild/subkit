@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import * as jose from "jose";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -195,7 +195,52 @@ export function clearBrowserSessionCookie(installationId?: string): string {
     ? cockpitInstallationSessionCookie(installationId)
     : BROWSER_SESSION_COOKIE;
   const path = installationId ? `/cockpit/i/${installationId}/` : "/";
-  return `${name}=; Path=${path}; HttpOnly; SameSite=Lax; Max-Age=0`;
+  const secure = process.env.NODE_ENV !== "development" ? " Secure;" : "";
+  return `${name}=; Path=${path}; HttpOnly; SameSite=Lax;${secure} Max-Age=0`;
+}
+
+export function clearBrowserSessionCookieForRequest(req: Request): string {
+  const installationId = cockpitInstallationIdFromPath(new URL(req.url).pathname);
+  return clearBrowserSessionCookie(installationId ?? undefined);
+}
+
+export function hasBrowserSessionCookie(req: Request): boolean {
+  const name = browserSessionCookieName(req);
+  return Boolean(
+    name &&
+      req.headers
+        .get("cookie")
+        ?.split(";")
+        .some((part) => part.trim().startsWith(`${name}=`)),
+  );
+}
+
+export async function expireBrowserSession(
+  db: Db,
+  row: { id: string; tenant_id: string; user_id: string },
+  reason: "expired_absolute" | "expired_sliding",
+  audit: { actorId: string | null; metadata: Record<string, unknown> },
+): Promise<void> {
+  const [expired] = await db
+    .update(sessions)
+    .set({ revoked_at: new Date() })
+    .where(and(eq(sessions.id, row.id), isNull(sessions.revoked_at)))
+    .returning({ id: sessions.id });
+  if (!expired) return;
+  await auditAwait(
+    {
+      tenant_id: row.tenant_id,
+      actor_type: "system",
+      actor_id: audit.actorId,
+      action: AuditAction.SESSION_REVOKED,
+      resource_type: "session",
+      resource_id: row.id,
+      result: "denied",
+      reason,
+      metadata: audit.metadata,
+    },
+    db,
+  );
 }
 
 export function isSafeBrowserRedirect(target: string, publicBaseUrl: string): boolean {
@@ -318,7 +363,7 @@ export async function revokeBrowserSession(
   const [row] = await db
     .update(sessions)
     .set({ revoked_at: new Date() })
-    .where(eq(sessions.id, payload.session_id))
+    .where(and(eq(sessions.id, payload.session_id), isNull(sessions.revoked_at)))
     .returning();
   if (!row) return;
   await auditAwait(

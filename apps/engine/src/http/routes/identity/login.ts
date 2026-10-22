@@ -3,7 +3,7 @@ import type { Context } from "hono";
 import { z } from "zod";
 import {
   browserSessionFromRequest,
-  clearBrowserSessionCookie,
+  clearBrowserSessionCookieForRequest,
   createApiKeyProvider,
   createOidcProvider,
   isSafeBrowserRedirect,
@@ -224,7 +224,7 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
     return new Response(null, {
       status: 204,
       headers: {
-        "set-cookie": clearBrowserSessionCookie(payload?.installation_id),
+        "set-cookie": clearBrowserSessionCookieForRequest(c.req.raw),
         "cache-control": "no-store",
       },
     });

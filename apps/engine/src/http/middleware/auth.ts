@@ -1,5 +1,9 @@
 import type { MiddlewareHandler } from "hono";
-import { browserSessionForPrincipal } from "../../auth/browser-session.ts";
+import {
+  browserSessionForPrincipal,
+  clearBrowserSessionCookieForRequest,
+  hasBrowserSessionCookie,
+} from "../../auth/browser-session.ts";
 import { recordAuthFailure } from "../../auth/failed-auth-tracker.ts";
 import type { AuthProviderRegistry } from "../../auth/registry.ts";
 import { isAuthDenial, type ResolvedPrincipal } from "../../auth/types.ts";
@@ -87,7 +91,17 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
     if (c.req.header("authorization")) {
       recordAuthFailure(c.get("client_ip") ?? "unknown");
     }
-    return next();
+    if (!hasBrowserSessionCookie(c.req.raw)) return next();
+    await next();
+    const clear = clearBrowserSessionCookieForRequest(c.req.raw);
+    const cookieName = clear.slice(0, clear.indexOf("="));
+    const written = c.res.headers.getSetCookie();
+    if (written.some((cookie) => cookie.startsWith(`${cookieName}=`))) return undefined;
+    const res = new Response(c.res.body, c.res);
+    res.headers.append("set-cookie", clear);
+    c.res = undefined;
+    c.res = res;
+    return undefined;
   };
 }
 

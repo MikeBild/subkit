@@ -90,10 +90,22 @@ function limitedSignal(
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
+async function refreshCsrfToken(): Promise<boolean> {
+  try {
+    const result = await apiRequest<Bootstrap>("/v1/cockpit/bootstrap");
+    if (!acceptTenantContext(result.tenant.id)) return false;
+    csrfToken = result.csrf_token;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function apiRequest<T>(
   path: string,
   init: RequestInit = {},
   limits: RequestLimits = {},
+  csrfRetried = false,
 ): Promise<T> {
   const headers = new Headers(init.headers);
   for (const [key, value] of Object.entries(tenantContextHeaders())) headers.set(key, value);
@@ -114,6 +126,15 @@ export async function apiRequest<T>(
   });
   const body = response.status === 204 ? null : await response.json().catch(() => null);
   signal?.throwIfAborted();
+  if (
+    response.status === 403 &&
+    !csrfRetried &&
+    !["GET", "HEAD", "OPTIONS"].includes(method) &&
+    (body as { code?: unknown } | null)?.code === "csrf_rejected" &&
+    (await refreshCsrfToken())
+  ) {
+    return apiRequest<T>(path, init, limits, true);
+  }
   if (!response.ok) throw failure(response.status, body, response.headers.get("x-trace-id"));
   return body as T;
 }
