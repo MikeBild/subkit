@@ -1,14 +1,15 @@
-import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { apiRequest } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
 import type { WorkflowAutomation } from "@/components/cockpit/automation-panel";
 import { useConnectorNames } from "@/components/cockpit/connector-names";
+import { GrantEffectReview } from "@/components/cockpit/grant-effect-review";
 import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
 import {
+  ActionButton,
   ActionMenu,
-  type CockpitColumn,
-  CollapsibleSection,
   ConfirmDialog,
   DataState,
   type Fact,
@@ -16,10 +17,12 @@ import {
   RecordSheet,
   Section,
   StatusBadge,
-  SummaryLine,
+  TabBody,
+  TechnicalDetails,
+  Timeline,
+  type TimelineItem,
 } from "@/components/cockpit/patterns";
-import { RecordTable } from "@/components/cockpit/record-table";
-import { tableColumns } from "@/components/cockpit/table-columns";
+import { type AuthorityReviewPreview, authorityReviewModel } from "@/lib/authority-review-model";
 import { automationQueryKeys } from "@/lib/automation-queries";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -32,10 +35,41 @@ import {
   authorityVersionLabel,
   observedAuthorityState,
   type WorkflowAuthority,
+  type WorkflowAuthorityPreview,
 } from "@/lib/workflow-authorities";
 
 function badgeState(state: WorkflowAuthority["state"]): string {
   return state === "approved" ? "approved" : state === "not_yet_valid" ? "pending" : "inactive";
+}
+
+function grantPreview(authority: WorkflowAuthority): AuthorityReviewPreview {
+  return { manifest: authority.effect_manifest, approval_carries_over: false, schedules: [] };
+}
+
+function useAuthorityModel(
+  preview: AuthorityReviewPreview | null,
+  automation: WorkflowAutomation,
+  activation: boolean,
+) {
+  const connectorNames = useConnectorNames();
+  if (!preview) return null;
+  const triggers = automation.state?.triggers ?? [];
+  return authorityReviewModel({
+    preview,
+    connectorNames,
+    automation: {
+      schedule: triggers.some((trigger) => trigger.kind === "schedule"),
+      webhook: triggers.some((trigger) => trigger.kind === "hook"),
+    },
+    activation,
+    carryOver: Boolean(preview.approval_carries_over),
+  });
+}
+
+function useEnvironmentWord() {
+  const { t } = useI18n();
+  return (environment: "dev" | "prod") =>
+    t(environment === "prod" ? "authority.production" : "authority.development");
 }
 
 function useEffectFacts(authority: WorkflowAuthority): Fact[] {
@@ -56,26 +90,37 @@ function useEffectFacts(authority: WorkflowAuthority): Fact[] {
 
 function ApprovalSheet({
   authority,
-  versions,
-  now,
-  canRevoke,
+  automation,
   onClose,
 }: {
   authority: WorkflowAuthority;
-  versions: ReadonlyMap<string, number>;
-  now: number;
-  canRevoke: boolean;
+  automation: WorkflowAutomation;
   onClose: () => void;
 }) {
   const { t, locale } = useI18n();
-  const version = authorityVersionLabel(authority.workflow_version_id, versions);
-  const state = observedAuthorityState(authority, now);
+  const directory = useActorDirectory(true);
+  const environmentWord = useEnvironmentWord();
+  const version = authorityVersionLabel(authority.workflow_version_id, automation.versions);
+  const state = observedAuthorityState(authority, automation.now);
   const effects = useEffectFacts(authority);
+  const model = useAuthorityModel(grantPreview(authority), automation, false);
   const facts: Fact[] = [
     {
-      label: t("authority.version"),
-      value: <span title={version.full ?? undefined}>{version.text}</span>,
-      testId: "authority-version",
+      label: t("workflowApprovals.sheet.by"),
+      value: actorDirectoryName(directory, "user", authority.created_by) ?? t("audit.actor.user"),
+      testId: "authority-granted-by",
+    },
+    {
+      label: t("workflowApprovals.sheet.at"),
+      value: formatDateTime(locale, authority.created_at),
+    },
+    {
+      label: t("authority.window"),
+      value: `${formatDateTime(locale, authority.valid_from)} — ${
+        authority.valid_until === null
+          ? t("authority.headline.untilRevoked")
+          : formatDateTime(locale, authority.valid_until)
+      }`,
     },
     {
       label: t("authority.runs"),
@@ -88,20 +133,9 @@ function ApprovalSheet({
             }),
     },
     {
-      label: t("authority.window"),
-      value: `${formatDateTime(locale, authority.valid_from)} — ${
-        authority.valid_until === null
-          ? t("authority.headline.untilRevoked")
-          : formatDateTime(locale, authority.valid_until)
-      }`,
-    },
-    {
-      label: t("authority.digest"),
-      value: (
-        <span className="font-mono text-xs" title={authority.effect_manifest_digest}>
-          {`${authority.effect_manifest_digest.slice(0, 12)}…`}
-        </span>
-      ),
+      label: t("authority.version"),
+      value: <span title={version.full ?? undefined}>{version.text}</span>,
+      testId: "authority-version",
     },
   ];
   return (
@@ -109,11 +143,15 @@ function ApprovalSheet({
       dock
       open
       onOpenChange={(next) => !next && onClose()}
-      title={<span title={authority.id}>{authorityHeadline(authority, t, locale)}</span>}
-      titleTestId="authority-headline"
+      title={t("workflowApprovals.sheet.title", {
+        environment: environmentWord(authority.execution_environment),
+      })}
+      subtitle={
+        <span data-testid="authority-headline">{authorityHeadline(authority, t, locale)}</span>
+      }
       badge={<StatusBadge state={badgeState(state)} label={t(AUTHORITY_STATE_KEYS[state])} />}
       menu={
-        canRevoke && !authority.revoked_at ? (
+        automation.canWrite && !authority.revoked_at ? (
           <RevokeApproval
             authority={authority}
             versionText={version.text}
@@ -130,14 +168,24 @@ function ApprovalSheet({
           {t("authority.inactiveVersion")}
         </p>
       )}
+      <GrantEffectReview model={model} growth={undefined} problems={[]} loading={false} />
       <FactList items={facts} testId="authority-facts" />
-      <Section label={t("workflowApprovals.permits")}>
-        {effects.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("authority.noEffects")}</p>
-        ) : (
-          <FactList items={effects} testId="authority-effects" />
-        )}
-      </Section>
+      <TechnicalDetails testId="authority-technical">
+        <FactList
+          testId="authority-effects"
+          items={[
+            {
+              label: t("authority.digest"),
+              value: (
+                <span className="break-all font-mono text-xs">
+                  {authority.effect_manifest_digest}
+                </span>
+              ),
+            },
+            ...effects,
+          ]}
+        />
+      </TechnicalDetails>
     </RecordSheet>
   );
 }
@@ -179,10 +227,12 @@ function RevokeApproval({
   return (
     <>
       <ActionMenu
+        alwaysMenu
         items={[
           {
             label: t("workflowApprovals.revoke"),
             onSelect: () => setOpen(true),
+            destructive: true,
             testId: `${testId}-revoke`,
           },
         ]}
@@ -204,204 +254,233 @@ function RevokeApproval({
   );
 }
 
-function ApprovalTable({
-  items,
+function PendingVersion({
   automation,
-  collectionId,
-  rowTestId,
-  emptyLine,
+  offersApproval,
 }: {
-  items: readonly WorkflowAuthority[];
   automation: WorkflowAutomation;
-  collectionId: string;
-  rowTestId: (index: number) => string;
-  emptyLine: string;
+  offersApproval: boolean;
+}) {
+  const { t } = useI18n();
+  const environmentWord = useEnvironmentWord();
+  const state = automation.state;
+  const target = state?.target?.kind === "prepared" ? state.target : null;
+  const environment = state?.environment ?? "prod";
+  const preview = useQuery({
+    queryKey: [
+      "workflow-authority-preview",
+      automation.workflowId,
+      target?.version_id,
+      environment,
+    ],
+    enabled: Boolean(target),
+    queryFn: () =>
+      apiRequest<WorkflowAuthorityPreview>(
+        `/v1/workflows/${encodeURIComponent(automation.workflowId)}/versions/${encodeURIComponent(target?.version_id ?? "")}/authority-preview?environment=${environment}`,
+      ),
+  });
+  const model = useAuthorityModel(preview.data ?? null, automation, true);
+  if (!target) return null;
+  const label = (value: number | null) => (value === null ? "—" : `v${value}`);
+  return (
+    <section
+      className="flex flex-col gap-3 rounded-lg border p-4"
+      data-testid="workflow-pending-version"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">
+          {t("workflowApprovals.pending.title", { version: label(target.version) })}
+        </span>
+        <StatusBadge state="pending" label={t("workflowApprovals.pending.badge")} />
+        {offersApproval || !automation.canWrite ? null : (
+          <span className="ml-auto">
+            <ActionButton
+              size="sm"
+              onClick={automation.openGrant}
+              data={OPENS_APPROVAL}
+              testId="workflow-pending-approve"
+            >
+              {t("workflowStrip.action.grant")}
+            </ActionButton>
+          </span>
+        )}
+      </div>
+      <p className="text-sm text-muted-foreground">
+        {target.active_version === null
+          ? t("workflowApprovals.pending.first", { environment: environmentWord(environment) })
+          : t("workflowApprovals.pending.keeps", {
+              version: label(target.active_version),
+              environment: environmentWord(environment),
+            })}
+      </p>
+      {preview.error ? (
+        <DataState
+          state="error"
+          line={t("workflowApprovals.pending.failed")}
+          onRetry={() => void preview.refetch()}
+          testId="workflow-pending-failed"
+        />
+      ) : (
+        <GrantEffectReview
+          model={model}
+          growth={preview.data?.boundary_growth}
+          problems={[]}
+          loading={preview.isPending}
+        />
+      )}
+    </section>
+  );
+}
+
+function ActiveGrant({
+  authority,
+  automation,
+  onOpen,
+}: {
+  authority: WorkflowAuthority;
+  automation: WorkflowAutomation;
+  onOpen(): void;
+}) {
+  const { t, dateTime } = useI18n();
+  const directory = useActorDirectory(true);
+  const environmentWord = useEnvironmentWord();
+  const model = useAuthorityModel(grantPreview(authority), automation, false);
+  const state = observedAuthorityState(authority, automation.now);
+  const version = authorityVersionLabel(authority.workflow_version_id, automation.versions);
+  return (
+    <section className="flex flex-col gap-3" data-testid="authority-current">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">
+          {t("workflowApprovals.active.title", {
+            version: version.text,
+            environment: environmentWord(authority.execution_environment),
+          })}
+        </span>
+        <StatusBadge state={badgeState(state)} label={t(AUTHORITY_STATE_KEYS[state])} />
+        <span className="text-xs text-muted-foreground">
+          {t("workflowApprovals.active.granted", {
+            when: dateTime(authority.created_at),
+            who:
+              actorDirectoryName(directory, "user", authority.created_by) ?? t("audit.actor.user"),
+          })}
+        </span>
+        <span className="ml-auto">
+          <ActionButton size="sm" onClick={onOpen} testId="authority-current-open">
+            {t("workflowApprovals.details")}
+          </ActionButton>
+        </span>
+      </div>
+      <GrantEffectReview model={model} growth={undefined} problems={[]} loading={false} />
+    </section>
+  );
+}
+
+export function WorkflowApprovals({
+  automation,
+  offersApproval,
+}: {
+  automation: WorkflowAutomation;
+  offersApproval: boolean;
 }) {
   const { t, locale, dateTime } = useI18n();
   const directory = useActorDirectory(true);
+  const environmentWord = useEnvironmentWord();
   const [open, setOpen] = useState<WorkflowAuthority | null>(null);
-  const { versions, now } = automation;
-  const columns = useMemo<CockpitColumn<WorkflowAuthority>[]>(() => {
-    const column = tableColumns<WorkflowAuthority>({ t, dateTime });
-    return [
-      column.custom(
-        "version",
-        (authority) => authority.workflow_version_id,
-        t("authority.version"),
-        (authority) => {
-          const state = observedAuthorityState(authority, now);
-          return (
-            <span className="inline-flex flex-wrap items-center gap-2">
-              <span>{authorityVersionLabel(authority.workflow_version_id, versions).text}</span>
-              <span className="@2xl:hidden">
-                <StatusBadge state={badgeState(state)} label={t(AUTHORITY_STATE_KEYS[state])} />
-              </span>
-            </span>
-          );
-        },
-        { width: "w-[14%]" },
-      ),
-      column.custom(
-        "boundary",
-        (authority) => authority.valid_until,
-        t("workflowApprovals.column.boundary"),
-        (authority) => authorityHeadline(authority, t, locale),
-        { width: "w-[34%]" },
-      ),
-      column.custom(
-        "granted",
-        (authority) => authority.created_at,
-        t("workflowApprovals.column.granted"),
-        (authority) =>
-          `${actorDirectoryName(directory, "user", authority.created_by) ?? t("audit.actor.user")} · ${dateTime(authority.created_at)}`,
-        { width: "w-[28%]" },
-      ),
-      column.custom(
-        "state",
-        (authority) => authority.state,
-        t("resource.field.status"),
-        (authority) => {
-          const state = observedAuthorityState(authority, now);
-          return <StatusBadge state={badgeState(state)} label={t(AUTHORITY_STATE_KEYS[state])} />;
-        },
-        { width: "w-[24%]" },
-      ),
-    ];
-  }, [t, dateTime, locale, versions, now, directory]);
-  return (
-    <>
-      <RecordTable
-        columns={columns}
-        data={[...items]}
-        collectionId={collectionId}
-        emptyLine={emptyLine}
-        onOpen={(authority) => setOpen(authority)}
-        rowLabel={(authority) => authorityHeadline(authority, t, locale)}
-        rowActions={
-          automation.canWrite
-            ? (authority, index) =>
-                authority.revoked_at ? null : (
-                  <span data-action-scope="approval" data-testid={rowTestId(index)}>
-                    <RevokeApproval
-                      authority={authority}
-                      versionText={
-                        authorityVersionLabel(authority.workflow_version_id, versions).text
-                      }
-                      testId={rowTestId(index)}
-                    />
-                  </span>
-                )
-            : undefined
-        }
-      />
-      {open ? (
-        <ApprovalSheet
-          authority={open}
-          versions={versions}
-          now={now}
-          canRevoke={automation.canWrite}
-          onClose={() => setOpen(null)}
-        />
-      ) : null}
-    </>
-  );
-}
-
-export function WorkflowApprovals({ automation }: { automation: WorkflowAutomation }) {
-  const { t } = useI18n();
   const { state } = automation;
-  const current: WorkflowAuthority[] = state
-    ? state.grant
-      ? [state.grant, ...state.alsoValid]
-      : state.alsoValid
-    : [];
-  const history = state?.history ?? [];
-  const total = current.length + history.length;
-  const summary =
-    total === 0
-      ? null
-      : t(total === 1 ? "workflowApprovals.count.one" : "workflowApprovals.count.other", {
-          count: total,
-          active: current.length,
-        });
-  return (
-    <>
-      {summary ? (
-        <SummaryLine
-          text={summary}
-          help={t("workflowApprovals.summaryHelp")}
-          testId="workflow-approvals-summary"
-        />
-      ) : null}
-      {state && automation.canWrite && !state.grant && state.primaryAction?.kind === "grant" ? (
-        <ActionMenu
-          items={[
-            {
-              label: t("workflowStrip.action.grant"),
-              onSelect: automation.openGrant,
-              testId: "workflow-approvals-grant",
-              data: OPENS_APPROVAL,
-            },
-          ]}
-        />
-      ) : null}
-      {state ? (
-        <ApprovalsBody automation={automation} current={current} history={history} />
-      ) : (
+  if (!state)
+    return (
+      <TabBody>
         <DataState state="loading" testId="workflow-approvals-loading" />
-      )}
-    </>
-  );
-}
-
-function ApprovalsBody({
-  automation,
-  current,
-  history,
-}: {
-  automation: WorkflowAutomation;
-  current: WorkflowAuthority[];
-  history: WorkflowAuthority[];
-}) {
-  const { t } = useI18n();
+      </TabBody>
+    );
+  const prepared = state.target?.kind === "prepared";
+  const grant = state.grant;
+  const earlier = [...(prepared && grant ? [grant] : []), ...state.alsoValid, ...state.history];
+  const timeline: TimelineItem[] = earlier.map((authority, index) => {
+    const observed = observedAuthorityState(authority, automation.now);
+    const version = authorityVersionLabel(authority.workflow_version_id, automation.versions);
+    return {
+      id: authority.id,
+      tone: observed === "approved" ? "ok" : observed === "not_yet_valid" ? "info" : "neutral",
+      title: t("workflowApprovals.active.title", {
+        version: version.text,
+        environment: environmentWord(authority.execution_environment),
+      }),
+      meta: [
+        authorityHeadline(authority, t, locale),
+        t("workflowApprovals.active.granted", {
+          when: dateTime(authority.created_at),
+          who: actorDirectoryName(directory, "user", authority.created_by) ?? t("audit.actor.user"),
+        }),
+      ].join(" · "),
+      aside: <StatusBadge state={badgeState(observed)} label={t(AUTHORITY_STATE_KEYS[observed])} />,
+      onOpen: () => setOpen(authority),
+      label: authorityHeadline(authority, t, locale),
+      testId: `authority-history-${index}`,
+    };
+  });
+  const summary = grant
+    ? t("workflowApprovals.summary.active", { boundary: authorityHeadline(grant, t, locale) })
+    : prepared
+      ? t("workflowApprovals.summary.pending")
+      : t("workflowApprovals.summary.none");
+  const showGrantTrigger =
+    !prepared &&
+    !grant &&
+    !offersApproval &&
+    automation.canWrite &&
+    state.primaryAction?.kind === "grant";
   return (
-    <>
-      <ApprovalTable
-        items={current}
-        automation={automation}
-        collectionId="workflow-approvals"
-        rowTestId={(index) =>
-          index === 0 && automation.state?.grant ? "authority-current" : `authority-valid-${index}`
-        }
-        emptyLine={t("workflowApprovals.none")}
-      />
-      {history.length > 0 || automation.history.hasMore ? (
-        <CollapsibleSection
-          label={t("automation.formerGrants")}
-          count={history.length}
-          testId="workflow-former-grants"
-        >
-          <ApprovalTable
-            items={history}
-            automation={automation}
-            collectionId="workflow-former-approvals"
-            rowTestId={(index) => `authority-history-${index}`}
-            emptyLine={t("workflowApprovals.none")}
-          />
-          {automation.history.hasMore ? (
-            <ActionMenu
-              items={[
-                {
-                  label: t("authority.more"),
-                  disabled: automation.history.loading,
-                  onSelect: automation.history.more,
-                  testId: "authority-more",
-                },
-              ]}
-            />
-          ) : null}
-        </CollapsibleSection>
+    <TabBody
+      testId="workflow-approvals"
+      summary={summary}
+      more={
+        earlier.length > 0 || automation.history.hasMore ? (
+          <Section label={t("workflowApprovals.earlier")} testId="workflow-former-grants">
+            <Timeline groups={[{ items: timeline }]} testId="workflow-approvals-timeline" />
+            {automation.history.hasMore ? (
+              <span>
+                <ActionButton
+                  size="sm"
+                  variant="ghost"
+                  disabled={automation.history.loading}
+                  onClick={automation.history.more}
+                  testId="authority-more"
+                >
+                  {t("authority.more")}
+                </ActionButton>
+              </span>
+            ) : null}
+          </Section>
+        ) : null
+      }
+    >
+      {prepared ? (
+        <PendingVersion automation={automation} offersApproval={offersApproval} />
+      ) : grant ? (
+        <ActiveGrant authority={grant} automation={automation} onOpen={() => setOpen(grant)} />
+      ) : (
+        <DataState
+          state="empty"
+          line={t("workflowApprovals.none")}
+          action={
+            showGrantTrigger ? (
+              <ActionButton
+                size="sm"
+                onClick={automation.openGrant}
+                data={OPENS_APPROVAL}
+                testId="workflow-approvals-grant"
+              >
+                {t("workflowStrip.action.grant")}
+              </ActionButton>
+            ) : undefined
+          }
+          testId="workflow-approvals-empty"
+        />
+      )}
+      {open ? (
+        <ApprovalSheet authority={open} automation={automation} onClose={() => setOpen(null)} />
       ) : null}
-    </>
+    </TabBody>
   );
 }

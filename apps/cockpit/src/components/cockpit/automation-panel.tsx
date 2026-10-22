@@ -447,6 +447,7 @@ export function WorkflowStatus({
   waitingConnector,
   permissions,
   noSteps = false,
+  onOffersApproval,
 }: {
   automation: WorkflowAutomation;
   workflow: AutomationWorkflow;
@@ -457,6 +458,7 @@ export function WorkflowStatus({
   waitingConnector: WaitingConnector | null;
   permissions: readonly string[];
   noSteps?: boolean;
+  onOffersApproval?: (offers: boolean) => void;
 }) {
   const { t, locale } = useI18n();
   const environmentWord = useEnvironmentWord();
@@ -506,6 +508,10 @@ export function WorkflowStatus({
     enabled: automation.canWrite && !invalid && strip.action?.kind === "approve",
   });
   const adoptable = strip.action?.kind === "approve" && carryOver.choice === "adopt";
+  const offersApproval = strip.action?.kind === "approve";
+  useEffect(() => {
+    onOffersApproval?.(offersApproval);
+  }, [offersApproval, onOffersApproval]);
   const opensApproval = strip.action?.kind === "approve" && !adoptable;
   const notice =
     opensApproval && state

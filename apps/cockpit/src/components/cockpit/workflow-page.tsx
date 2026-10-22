@@ -218,6 +218,7 @@ export function WorkflowPage({
   const [renaming, setRenaming] = useState(false);
   const [describing, setDescribing] = useState(false);
   const [confirming, setConfirming] = useState<"disable" | "delete" | null>(null);
+  const [offersApproval, setOffersApproval] = useState(false);
   const navigate = useNavigate();
   const client = useQueryClient();
   const canWrite = permissions.includes("workflow:write");
@@ -573,7 +574,7 @@ export function WorkflowPage({
     {
       value: "approvals",
       label: t("workflowPage.tab.approvals"),
-      content: <WorkflowApprovals automation={automation} />,
+      content: <WorkflowApprovals automation={automation} offersApproval={offersApproval} />,
     },
   ];
 
@@ -629,6 +630,7 @@ export function WorkflowPage({
           waitingConnector={waitingConnector}
           permissions={permissions}
           noSteps={noSteps}
+          onOffersApproval={setOffersApproval}
         />
         <PageTabs tabs={tabs} param="tab" testId="workflow-tabs" />
       </div>
