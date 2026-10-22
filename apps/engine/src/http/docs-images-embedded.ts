@@ -122,8 +122,8 @@ export const DOCS_IMAGES: Readonly<Record<string, EmbeddedDocsImage>> = {
   },
   "web-clipper-api-key.de.webp": {
     path: image14WebClipperApiKeyDe,
-    sha256: "459ba4062e099ea25238c8c38d18cf079e92dde04937a6a38bde1cbc4dd76832",
-    bytes: 14410,
+    sha256: "6bb55bba9e432e8947c142988705713caf4598ac1423e485b5697454c9d5872a",
+    bytes: 17946,
   },
   "web-clipper-api-key.en.webp": {
     path: image15WebClipperApiKeyEn,
