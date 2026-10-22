@@ -187,7 +187,7 @@ export function RunWorkflowDialog({
   const { t } = useI18n();
   const sheets = useOpenRunSheet();
   const [open, setOpen] = useState(false);
-  const requested = useRef(openRequest);
+  const requested = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (openRequest === undefined || openRequest === requested.current) return;
     requested.current = openRequest;
