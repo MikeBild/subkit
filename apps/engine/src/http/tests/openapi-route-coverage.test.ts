@@ -55,6 +55,8 @@ const EXCLUDED_ROUTES = new Set<string>([
 const KNOWN_UNDOCUMENTED_ROUTES: string[] = [];
 
 const COCKPIT_WEB_SURFACE = new Set<string>([
+  "GET /cockpit/sw.js",
+  "HEAD /cockpit/sw.js",
   "GET /cockpit/i/{param}",
   "HEAD /cockpit/i/{param}",
   "GET /cockpit/i/{param}/*",
