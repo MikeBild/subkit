@@ -184,7 +184,7 @@ export function MarkdownEditor({
             </button>
           ))}
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto shrink-0">
           <SegmentedControl
             label={t("markdown.mode")}
             value={mode}

@@ -31,13 +31,14 @@ import {
   type DetailStrip,
   FactList,
   FilePreview,
+  MarkdownDocument,
   searchWithTab,
   TabBody,
   Timeline,
   type TimelineTone,
 } from "@/components/cockpit/patterns";
 import { ForbiddenState } from "@/components/failure-state";
-import { formatRelativeTime, type TranslationKey } from "@/lib/i18n";
+import { formatRelativeTime, pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
   CATEGORIES_KEY,
@@ -463,14 +464,7 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                           {t("intake.notKnowledge")}
                         </p>
                       ) : null}
-                      <article className="rounded-lg border p-5">
-                        <FilePreview
-                          name=""
-                          mimeType="text/markdown"
-                          text={clip.body}
-                          testId="intake-current-body"
-                        />
-                      </article>
+                      <MarkdownDocument text={clip.body} testId="intake-current-body" />
                     </TabBody>
                   ),
                 },
@@ -516,7 +510,9 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                   content: (
                     <TabBody
                       testId="intake-history"
-                      summary={t("intake.history.summary", { count: events.length })}
+                      summary={t(pluralKey("intake.history.summary", events.length), {
+                        count: events.length,
+                      })}
                     >
                       <Timeline
                         testId="intake-proposal-history"

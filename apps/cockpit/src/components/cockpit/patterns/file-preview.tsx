@@ -52,6 +52,18 @@ export const PREVIEW_COMPONENTS = {
   h6: loweredHeading(6),
 };
 
+export function MarkdownDocument({ text, testId }: { text: string; testId?: string }) {
+  return (
+    <article
+      data-slot="markdown-document"
+      data-testid={testId}
+      className="min-w-0 overflow-x-auto rounded-lg border p-5 text-sm [overflow-wrap:anywhere]"
+    >
+      <Streamdown components={PREVIEW_COMPONENTS}>{text}</Streamdown>
+    </article>
+  );
+}
+
 export function FilePreview({
   name,
   mimeType,

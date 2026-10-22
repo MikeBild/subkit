@@ -1,6 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  Check,
   KeyRound,
   LayoutTemplate,
   LockOpen,
@@ -47,7 +46,13 @@ import {
   templateSignIn,
 } from "@/components/cockpit/create-template-model";
 import { ChoiceField, TextField } from "@/components/cockpit/form-field";
-import { ChoiceCards, DataState, FormDialog, Input } from "@/components/cockpit/patterns";
+import {
+  ChoiceCards,
+  DataState,
+  FormDialog,
+  Input,
+  WizardProgress,
+} from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
@@ -75,10 +80,10 @@ type Way = "template" | "manual";
 const STEPS: readonly Step[] = ["how", "service", "signin", "review"];
 
 const STEP_KEYS = {
-  how: "connectorWizard.step.how",
+  how: "wizard.step.how",
   service: "connectorWizard.step.service",
   signin: "connectorWizard.step.signin",
-  review: "connectorWizard.step.review",
+  review: "wizard.step.review",
 } as const;
 
 const WAY_CARD: Record<
@@ -102,45 +107,14 @@ const WAY_CARD: Record<
   },
 };
 
-function WizardProgress({ step }: { step: Step }) {
+function ConnectorProgress({ step }: { step: Step }) {
   const { t } = useI18n();
-  const current = STEPS.indexOf(step);
   return (
-    <ol
-      className="flex items-center gap-2 text-xs"
-      aria-label={t("connectorWizard.progress", { step: current + 1, total: STEPS.length })}
-      data-testid="create-connector-progress"
-    >
-      {STEPS.map((entry, index) => (
-        <li key={entry} className="contents">
-          <span
-            className={cn(
-              "flex items-center gap-2",
-              index === current
-                ? "font-medium text-foreground"
-                : index < current
-                  ? "text-emerald-700 dark:text-emerald-400"
-                  : "text-muted-foreground",
-            )}
-            aria-current={index === current ? "step" : undefined}
-          >
-            <span
-              className={cn(
-                "inline-grid size-5 place-items-center rounded-full border [&_svg]:size-3",
-                index === current && "border-foreground",
-                index < current && "border-emerald-500",
-              )}
-            >
-              {index < current ? <Check aria-hidden="true" /> : index + 1}
-            </span>
-            {t(STEP_KEYS[entry])}
-          </span>
-          {index < STEPS.length - 1 ? (
-            <span aria-hidden="true" className="h-px flex-1 bg-border" />
-          ) : null}
-        </li>
-      ))}
-    </ol>
+    <WizardProgress
+      steps={STEPS.map((entry) => t(STEP_KEYS[entry]))}
+      current={STEPS.indexOf(step)}
+      testId="create-connector-progress"
+    />
   );
 }
 
@@ -396,7 +370,7 @@ export function CreateConnectorDialog({
       error={error}
       testId="create-connector-dialog"
     >
-      <WizardProgress step={step} />
+      <ConnectorProgress step={step} />
       {p.body}
     </FormDialog>
   );
@@ -411,7 +385,7 @@ export function CreateConnectorDialog({
         step="how"
         testId="create-connector-dialog"
       >
-        <WizardProgress step="how" />
+        <ConnectorProgress step="how" />
         <ChoiceCards
           items={[
             ...(canChat
@@ -474,7 +448,7 @@ export function CreateConnectorDialog({
           onRetry={() => void templates.refetch()}
         />
       ),
-      submit: { label: t("connectorWizard.next"), disabled: !chosen },
+      submit: { label: t("wizard.next"), disabled: !chosen },
       onSubmit: () => (chosen ? goTo("signin") : setError(t("connectorWizard.serviceMissing"))),
     });
 
@@ -520,7 +494,7 @@ export function CreateConnectorDialog({
           />
         </>
       ),
-      submit: { label: t("connectorWizard.next") },
+      submit: { label: t("wizard.next") },
       onSubmit: () => {
         if (!slugify(name)) return setError(t("create.nameMissing"));
         if (!/^https:\/\/\S+\.\S+/.test(address.trim()))
@@ -537,7 +511,7 @@ export function CreateConnectorDialog({
       ) : (
         <DataState state="error" line={t("create.template.loadFailed")} />
       ),
-      submit: { label: t("connectorWizard.next"), disabled: true },
+      submit: { label: t("wizard.next"), disabled: true },
       onSubmit: () => undefined,
     });
 
@@ -610,7 +584,7 @@ export function CreateConnectorDialog({
           ) : null}
         </>
       ),
-      submit: { label: t("connectorWizard.next") },
+      submit: { label: t("wizard.next") },
       onSubmit: () => {
         const problem = templateProblem(template);
         if (problem) return setError(t(problem));
@@ -653,7 +627,7 @@ export function CreateConnectorDialog({
           />
         </>
       ),
-      submit: { label: t("connectorWizard.next") },
+      submit: { label: t("wizard.next") },
       onSubmit: () => {
         const problem = manualProblem();
         if (problem) return setError(t(problem));

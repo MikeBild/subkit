@@ -48,10 +48,10 @@ import {
   Field,
   FieldError,
   FieldLabel,
-  FilePreview,
   FilterBar,
   GroupingTabs,
   Input,
+  MarkdownDocument,
   MarkdownEditor,
   OnboardingFrame,
   Page,
@@ -738,14 +738,10 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
                         ))}
                       </div>
                       {skill.body.trim() ? (
-                        <article className="rounded-lg border p-5">
-                          <FilePreview
-                            name=""
-                            mimeType="text/markdown"
-                            text={documentUnderTitle(skill.body, skill.title)}
-                            testId="skill-preview"
-                          />
-                        </article>
+                        <MarkdownDocument
+                          text={documentUnderTitle(skill.body, skill.title)}
+                          testId="skill-preview"
+                        />
                       ) : (
                         <DataState
                           state="empty"

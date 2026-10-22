@@ -111,8 +111,8 @@ export function PageHeader({
               className="order-last mt-2 flex w-full flex-wrap items-center gap-2 sm:order-none sm:mt-0 sm:w-auto sm:flex-nowrap sm:justify-end max-sm:[&>*:not([data-size^=icon])]:flex-1"
             >
               {secondary}
-              {menu}
               {renderAction(action)}
+              {menu}
             </div>
           ) : null}
           {purpose ? (

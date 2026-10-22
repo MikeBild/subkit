@@ -1,4 +1,4 @@
-import type { TranslationKey } from "@/lib/i18n";
+import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { formatDuration, type WorkflowStepDefinition } from "@/lib/workflow-steps";
 
 export interface Phrase {
@@ -84,7 +84,10 @@ export function resultPhrase(outputSchema: unknown): Phrase {
       ? Object.keys(schema.properties as Record<string, unknown>)
       : [];
   if (properties.length > 0)
-    return { key: "workflowFlow.result.fields", values: { count: properties.length } };
+    return {
+      key: pluralKey("workflowFlow.result.fields", properties.length),
+      values: { count: properties.length },
+    };
   if (schema.type === "array") return { key: "workflowFlow.result.list" };
   return { key: "workflowFlow.result.declared" };
 }

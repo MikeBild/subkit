@@ -44,9 +44,11 @@ import {
   FilePreview,
   FilterBar,
   FormDialog,
+  formatBytes,
   GroupingTabs,
   IconTile,
   Input,
+  MarkdownDocument,
   MarkdownEditor,
   OnboardingFrame,
   Page,
@@ -58,9 +60,9 @@ import {
   TabBody,
   TechnicalDetails,
 } from "@/components/cockpit/patterns";
-import { bytes, MISSING, tableColumns } from "@/components/cockpit/table-columns";
+import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
-import { formatRelativeTime } from "@/lib/i18n";
+import { formatRelativeTime, LOCALE_TAGS, type Locale } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -221,7 +223,7 @@ function SourcesOnboarding({
 }
 
 export function KnowledgeSourcesPage({ permissions }: { permissions: readonly string[] }) {
-  const { t, dateTime } = useI18n();
+  const { t, dateTime, locale } = useI18n();
   const navigate = useNavigate();
   const canRead = permissions.includes("knowledge:read");
   const canWrite = permissions.includes("knowledge:write");
@@ -282,7 +284,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
           "chunk_count",
           (row) => row.chunk_count,
           t("knowledge.column.size"),
-          (row) => `${sectionsLine(t, row.chunk_count)} · ${bytes(row.bytes_total)}`,
+          (row) => `${sectionsLine(t, row.chunk_count)} · ${sizeLabel(row.bytes_total, locale)}`,
           { width: "w-[20%]" },
         ),
         meta: { width: "w-[20%]", priority: "low" },
@@ -959,7 +961,7 @@ function SourceContentTab({
   onRetry(): void;
   onOpenSection(key: string): void;
 }) {
-  const { t, dateTime } = useI18n();
+  const { t, dateTime, locale } = useI18n();
   const [filter, setFilter] = useState("");
   const contents = useMemo(() => sections.map((section) => section.content), [sections]);
   const endpoints = useMemo(() => openApiEndpoints(contents), [contents]);
@@ -970,7 +972,7 @@ function SourceContentTab({
           count: endpoints.length,
         })
       : sectionsLine(t, source.chunk_count ?? 0),
-    bytes(source.bytes_total),
+    sizeLabel(source.bytes_total, locale),
     endpoints ? t("knowledge.kind.api") : t(KIND_KEYS[kind]),
     ...(kind === "url" ? [rhythmLabel(t, source)] : []),
   ].join(" · ");
@@ -988,7 +990,7 @@ function SourceContentTab({
       value: <span className="font-mono text-xs">@{source.slug}</span>,
     },
     { label: t("knowledge.fact.mime"), value: source.mime_type ?? MISSING },
-    { label: t("knowledge.fact.size"), value: bytes(source.bytes_total) },
+    { label: t("knowledge.fact.size"), value: sizeLabel(source.bytes_total, locale) },
     { label: t("knowledge.fact.created"), value: dateTime(source.created_at) },
     {
       label: t("knowledge.fact.id"),
@@ -1064,14 +1066,10 @@ function SourceContentTab({
           ) : null}
         </div>
       ) : sections.length === 1 && only ? (
-        <article className="rounded-lg border p-5">
-          <FilePreview
-            name=""
-            mimeType="text/markdown"
-            text={documentUnderTitle(only.content, source.name)}
-            testId="knowledge-preview"
-          />
-        </article>
+        <MarkdownDocument
+          text={documentUnderTitle(only.content, source.name)}
+          testId="knowledge-preview"
+        />
       ) : (
         <ul className="divide-y rounded-lg border" data-testid="knowledge-sections">
           {sections.map((section, index) => (
@@ -1085,7 +1083,7 @@ function SourceContentTab({
                 <span className="w-6 text-xs tabular-nums text-muted-foreground">{index + 1}</span>
                 <span className="min-w-0 flex-1 truncate text-sm">{section.title}</span>
                 <span className="text-xs tabular-nums text-muted-foreground">
-                  {bytes(section.bytes)}
+                  {sizeLabel(section.bytes, locale)}
                 </span>
                 <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground" />
               </button>
@@ -1136,7 +1134,7 @@ function SectionSheet({
   selected: string;
   onSelect(key: string): void;
 }) {
-  const { t, dateTime } = useI18n();
+  const { t, dateTime, locale } = useI18n();
   const contents = useMemo(() => sections.map((section) => section.content), [sections]);
   const endpoints = useMemo(() => openApiEndpoints(contents), [contents]);
   const endpoint = endpoints?.find((entry) => entry.key === selected) ?? null;
@@ -1177,7 +1175,7 @@ function SectionSheet({
         <div className="flex flex-col gap-4">
           <FactList
             items={[
-              { label: t("knowledge.column.size"), value: bytes(section.bytes) },
+              { label: t("knowledge.column.size"), value: sizeLabel(section.bytes, locale) },
               {
                 label: t("knowledge.column.read"),
                 value: source.last_refreshed_at ? dateTime(source.last_refreshed_at) : MISSING,
@@ -1415,4 +1413,10 @@ function EditSourceDialog({
       {problem ? <FieldError>{problem}</FieldError> : null}
     </FormDialog>
   );
+}
+
+function sizeLabel(value: unknown, locale: Locale): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? formatBytes(value, LOCALE_TAGS[locale])
+    : MISSING;
 }

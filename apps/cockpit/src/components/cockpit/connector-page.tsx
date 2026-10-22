@@ -269,7 +269,7 @@ export function ConnectorPage({
       return (
         [
           expiresAt ? t("connectorStrip.line.expiredSince", { when: dateTime(expiresAt) }) : null,
-          users.data
+          users.data && userCount > 0
             ? t(
                 userCount === 1
                   ? "connectorStrip.line.expired.one"

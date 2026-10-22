@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { LayoutTemplate, MessageSquare, PencilLine } from "lucide-react";
+import {
+  CalendarClock,
+  Hand,
+  LayoutTemplate,
+  MessageSquare,
+  PencilLine,
+  Webhook,
+} from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -9,9 +16,19 @@ import { absolute, chatNewHref, workflowHref } from "@/app/links";
 import { CreateConnectorDialog } from "@/components/cockpit/create-connector";
 import { useSolutionFlow } from "@/components/cockpit/create-from-template";
 import { createRefusal, slugify } from "@/components/cockpit/create-refusal";
-import { ChoiceField, SelectField, TextField } from "@/components/cockpit/form-field";
-import { ActionButton, ChoiceCards, FormDialog } from "@/components/cockpit/patterns";
+import { SelectField, TextField } from "@/components/cockpit/form-field";
+import {
+  ActionButton,
+  ChoiceCards,
+  FactList,
+  Field,
+  FieldLabel,
+  FormDialog,
+  MarkdownEditor,
+  WizardProgress,
+} from "@/components/cockpit/patterns";
 import { ScheduleFields } from "@/components/cockpit/workflow-schedule";
+import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { DEFAULT_RHYTHM, type RhythmValue, rhythmToCron, validTime } from "@/lib/schedule-rhythm";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
@@ -19,7 +36,18 @@ import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 type WorkflowDraft = components["schemas"]["WorkflowDraft"];
 
 type Kind = "workflow" | "connector";
-type Step = "choose" | "manual" | "template" | "template-detail";
+type Step = "choose" | "what" | "when" | "review" | "template" | "template-detail";
+
+const WIZARD_STEPS = ["how", "what", "when", "review"] as const;
+
+const STEP_INDEX: Record<Step, number> = {
+  choose: 0,
+  what: 1,
+  template: 1,
+  when: 2,
+  review: 3,
+  "template-detail": 3,
+};
 
 export function CreateChoiceDialog({
   open,
@@ -60,7 +88,14 @@ export function CreateChoiceDialog({
       flow.reset();
     }
   };
-  const back = { label: t("create.back"), onClick: () => goTo("choose") };
+  const backTo = (target: Step) => ({ label: t("create.back"), onClick: () => goTo(target) });
+  const progress = (
+    <WizardProgress
+      steps={WIZARD_STEPS.map((entry) => t(`wizard.step.${entry}`))}
+      current={STEP_INDEX[step]}
+      testId="create-workflow-progress"
+    />
+  );
   if (step === "choose")
     return (
       <FormDialog
@@ -71,6 +106,7 @@ export function CreateChoiceDialog({
         step="choose"
         testId={"create-workflow-dialog"}
       >
+        {progress}
         <ChoiceCards
           items={[
             ...(canChat
@@ -102,7 +138,7 @@ export function CreateChoiceDialog({
               icon: <PencilLine />,
               title: t("create.byHand"),
               line: t("create.workflow.byHandLine"),
-              onSelect: () => goTo("manual"),
+              onSelect: () => goTo("what"),
               testId: "create-workflow-manual",
             },
           ]}
@@ -119,9 +155,10 @@ export function CreateChoiceDialog({
         description={t("create.workflow.templateDescription")}
         size="wide"
         step="template"
-        back={back}
+        back={backTo("choose")}
         testId={"create-workflow-dialog"}
       >
+        {progress}
         {flow.list((slug) => {
           setPicked(slug);
           goTo("template-detail");
@@ -149,17 +186,60 @@ export function CreateChoiceDialog({
         error={error}
         testId={"create-workflow-dialog"}
       >
+        {progress}
         {detail.body}
+      </FormDialog>
+    );
+  if (step === "what")
+    return (
+      <FormDialog
+        open={open}
+        onOpenChange={close}
+        title={t("create.workflow.whatTitle")}
+        size="wide"
+        step="what"
+        back={backTo("choose")}
+        submit={{ label: t("wizard.next"), testId: "create-workflow-next" }}
+        onSubmit={() => {
+          setError(null);
+          if (manual.checkWhat()) goTo("when");
+        }}
+        error={error}
+        testId={"create-workflow-dialog"}
+      >
+        {progress}
+        {manual.what}
+      </FormDialog>
+    );
+  if (step === "when")
+    return (
+      <FormDialog
+        open={open}
+        onOpenChange={close}
+        title={t("create.workflow.whenTitle")}
+        size="wide"
+        step="when"
+        back={backTo("what")}
+        submit={{ label: t("wizard.next"), testId: "create-workflow-next" }}
+        onSubmit={() => {
+          setError(null);
+          if (manual.checkWhen()) goTo("review");
+        }}
+        error={error}
+        testId={"create-workflow-dialog"}
+      >
+        {progress}
+        {manual.when}
       </FormDialog>
     );
   return (
     <FormDialog
       open={open}
       onOpenChange={close}
-      title={t("create.workflow.byHandTitle")}
+      title={t("create.workflow.reviewTitle")}
       size="wide"
-      step="manual"
-      back={back}
+      step="review"
+      back={backTo("when")}
       submit={{ label: t("create.create"), pending: manual.pending }}
       onSubmit={() => {
         setError(null);
@@ -168,19 +248,50 @@ export function CreateChoiceDialog({
       error={error}
       testId={"create-workflow-dialog"}
     >
-      {manual.fields}
+      {progress}
+      {manual.review}
     </FormDialog>
   );
 }
 
 interface ManualForm {
-  fields: ReactNode;
+  what: ReactNode;
+  when: ReactNode;
+  review: ReactNode;
+  checkWhat(): boolean;
+  checkWhen(): boolean;
   submit(): void;
   reset(): void;
   pending: boolean;
 }
 
 type WorkflowTrigger = "webhook" | "schedule" | "request";
+
+const TRIGGER_CARDS: readonly {
+  value: WorkflowTrigger;
+  icon: ReactNode;
+  title: TranslationKey;
+  line: TranslationKey;
+}[] = [
+  {
+    value: "request",
+    icon: <Hand />,
+    title: "create.workflow.onRequest",
+    line: "workflowFlow.trigger.requestLine",
+  },
+  {
+    value: "schedule",
+    icon: <CalendarClock />,
+    title: "create.workflow.schedule",
+    line: "workflowFlow.trigger.scheduleLine",
+  },
+  {
+    value: "webhook",
+    icon: <Webhook />,
+    title: "create.workflow.webhook",
+    line: "workflowFlow.trigger.webhookLine",
+  },
+];
 
 function useManualWorkflow(
   active: boolean,
@@ -192,7 +303,7 @@ function useManualWorkflow(
   const client = useQueryClient();
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
-  const [trigger, setTrigger] = useState<WorkflowTrigger>("webhook");
+  const [trigger, setTrigger] = useState<WorkflowTrigger>("request");
   const [rhythm, setRhythm] = useState<RhythmValue>(DEFAULT_RHYTHM);
   const [category, setCategory] = useState(UNCATEGORIZED);
   const categories = useQuery({
@@ -204,7 +315,7 @@ function useManualWorkflow(
   const reset = () => {
     setName("");
     setPurpose("");
-    setTrigger("webhook");
+    setTrigger("request");
     setRhythm(DEFAULT_RHYTHM);
     setCategory(UNCATEGORIZED);
   };
@@ -247,15 +358,28 @@ function useManualWorkflow(
   const blocks = (categories.data?.categories ?? []).filter(
     (entry) => entry.category !== UNCATEGORIZED,
   );
+  const categoryLabel = humanizeCategory(category, t("catalog.categoryOther"));
+  const triggerTitle =
+    TRIGGER_CARDS.find((card) => card.value === trigger)?.title ?? "create.workflow.onRequest";
+  const checkWhat = () => {
+    if (slugify(name)) return true;
+    fail(t("create.nameMissing"));
+    return false;
+  };
+  const checkWhen = () => {
+    if (trigger !== "schedule" || validTime(rhythm.time)) return true;
+    fail(t("schedule.timeInvalid"));
+    return false;
+  };
   return {
     pending: create.isPending,
     reset,
+    checkWhat,
+    checkWhen,
     submit: () => {
-      if (!slugify(name)) return fail(t("create.nameMissing"));
-      if (trigger === "schedule" && !validTime(rhythm.time)) return fail(t("schedule.timeInvalid"));
-      create.mutate();
+      if (checkWhat() && checkWhen()) create.mutate();
     },
-    fields: (
+    what: (
       <>
         <TextField
           id="create-workflow-name"
@@ -264,25 +388,18 @@ function useManualWorkflow(
           value={name}
           onChange={setName}
         />
-        <TextField
-          id="create-workflow-purpose"
-          label={t("create.workflow.purpose")}
-          placeholder={t("create.workflow.purposePlaceholder")}
-          value={purpose}
-          onChange={setPurpose}
-        />
-        <ChoiceField<WorkflowTrigger>
-          label={t("create.workflow.trigger")}
-          value={trigger}
-          onChange={setTrigger}
-          testId="create-workflow-trigger"
-          options={[
-            { value: "webhook", label: t("create.workflow.webhook") },
-            { value: "schedule", label: t("create.workflow.schedule") },
-            { value: "request", label: t("create.workflow.onRequest") },
-          ]}
-        />
-        {trigger === "schedule" ? <ScheduleFields value={rhythm} onChange={setRhythm} /> : null}
+        <Field>
+          <FieldLabel htmlFor="create-workflow-purpose">{t("create.workflow.purpose")}</FieldLabel>
+          <MarkdownEditor
+            id="create-workflow-purpose"
+            label={t("create.workflow.purpose")}
+            value={purpose}
+            onChange={setPurpose}
+            placeholder={t("create.workflow.purposePlaceholder")}
+            rows={4}
+            testId="create-workflow-purpose"
+          />
+        </Field>
         <SelectField
           id="create-workflow-category"
           label={t("create.workflow.category")}
@@ -297,6 +414,35 @@ function useManualWorkflow(
           ]}
         />
       </>
+    ),
+    when: (
+      <>
+        <div data-testid="create-workflow-trigger">
+          <ChoiceCards
+            items={TRIGGER_CARDS.map((card) => ({
+              icon: card.icon,
+              title: t(card.title),
+              line: t(card.line),
+              selected: trigger === card.value,
+              onSelect: () => setTrigger(card.value),
+              testId: `create-workflow-trigger-${card.value}`,
+            }))}
+          />
+        </div>
+        {trigger === "schedule" ? <ScheduleFields value={rhythm} onChange={setRhythm} /> : null}
+      </>
+    ),
+    review: (
+      <div className="flex flex-col gap-4" data-testid="create-workflow-review">
+        <FactList
+          items={[
+            { label: t("create.name"), value: name.trim() },
+            { label: t("create.workflow.trigger"), value: t(triggerTitle) },
+            { label: t("create.workflow.category"), value: categoryLabel },
+          ]}
+        />
+        <p className="text-sm text-muted-foreground">{t("create.workflow.reviewLine")}</p>
+      </div>
     ),
   };
 }

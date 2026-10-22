@@ -72,8 +72,12 @@ describe("workflow flow trigger and result", () => {
       values: { what: "Report" },
     });
     expect(resultPhrase({ type: "object", properties: { a: {}, b: {} } })).toEqual({
-      key: "workflowFlow.result.fields",
+      key: "workflowFlow.result.fields.other",
       values: { count: 2 },
+    });
+    expect(resultPhrase({ type: "object", properties: { a: {} } })).toEqual({
+      key: "workflowFlow.result.fields.one",
+      values: { count: 1 },
     });
     expect(resultPhrase({ type: "array" })).toEqual({ key: "workflowFlow.result.list" });
   });

@@ -38,7 +38,7 @@ export {
   parseCsv,
   previewKind,
 } from "./file-kinds";
-export { CSV_PREVIEW_ROWS, FilePreview } from "./file-preview";
+export { CSV_PREVIEW_ROWS, FilePreview, MarkdownDocument } from "./file-preview";
 export { FilterBar, type FilterSelect, MAX_FILTER_SELECTS } from "./filter-bar";
 export { FilterSheet } from "./filter-sheet";
 export { type DialogSize, dialogWidthClass, FormDialog } from "./form-dialog";
@@ -84,3 +84,4 @@ export { TabBody, TechnicalDetails } from "./tab-body";
 export { TemplateCard, type TemplateCardProps, TemplateGrid } from "./template-card";
 export { Timeline, type TimelineGroup, type TimelineItem, type TimelineTone } from "./timeline";
 export { TimelineGroupingTabs } from "./timeline-grouping-tabs";
+export { WizardProgress } from "./wizard-progress";
