@@ -68,3 +68,34 @@ export function playbookActionTarget(
     ? id
     : null;
 }
+
+export function playbookAnchorIndex(
+  messages: readonly { role: string; created_at: string }[],
+  playbook: Pick<ConversationPlaybook, "updated_at">,
+): number | null {
+  const updatedAt = Date.parse(playbook.updated_at);
+  const times = messages.map((message) => Date.parse(message.created_at));
+  if (!Number.isFinite(updatedAt) || times.some((time) => !Number.isFinite(time))) return null;
+  const last = times.reduce((found, time, index) => (time <= updatedAt ? index : found), -1);
+  if (last < 0) return null;
+  return messages[last]?.role !== "assistant" && messages[last + 1]?.role === "assistant"
+    ? last + 1
+    : last;
+}
+
+export function playbookSummaryVisible(contextOpen: boolean): boolean {
+  return !contextOpen;
+}
+
+export function playbookPanelNextAction(playbook: ConversationPlaybook): PlaybookAction | null {
+  const action = playbook.next_action;
+  return action &&
+    playbook.steps.some(
+      (step) =>
+        step.next_action?.label === action.label &&
+        step.next_action.owner === action.owner &&
+        step.next_action.elicitation_id === action.elicitation_id,
+    )
+    ? null
+    : action;
+}

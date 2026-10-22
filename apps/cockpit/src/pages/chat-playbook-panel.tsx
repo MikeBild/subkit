@@ -16,6 +16,7 @@ import {
   type PlaybookAction,
   type PlaybookEvidence,
   playbookEvidenceHref,
+  playbookPanelNextAction,
   playbookStatusKey,
   playbookStepStatusKey,
 } from "./chat-playbook";
@@ -163,6 +164,7 @@ export function ChatPlaybookPanel({
   const prefix = useId();
   const readable = (text: string) =>
     hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"));
+  const panelNextAction = playbookPanelNextAction(playbook);
   return (
     <section
       className="space-y-4"
@@ -277,9 +279,9 @@ export function ChatPlaybookPanel({
           </div>
         </div>
       </div>
-      {playbook.next_action ? (
+      {panelNextAction ? (
         <div className="rounded-lg bg-muted/50 p-3">
-          <NextAction action={playbook.next_action} {...actions} />
+          <NextAction action={panelNextAction} {...actions} />
         </div>
       ) : null}
       {Number.isFinite(Date.parse(playbook.updated_at)) ? (

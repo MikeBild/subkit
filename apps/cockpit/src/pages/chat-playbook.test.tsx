@@ -6,8 +6,11 @@ import {
   type ConversationPlaybook,
   type PlaybookEvidence,
   playbookActionTarget,
+  playbookAnchorIndex,
   playbookEvidenceHref,
+  playbookPanelNextAction,
   playbookStatusKey,
+  playbookSummaryVisible,
 } from "./chat-playbook";
 import { ChatPlaybookPanel, ChatPlaybookSummary } from "./chat-playbook-panel";
 
@@ -162,16 +165,68 @@ describe("playbook presentation boundaries", () => {
   });
 
   test("a delivered assessment is useful preparation without claiming technical success", () => {
-    const prepared: ConversationPlaybook = {
+    const assessed: ConversationPlaybook = {
       ...plan,
-      status: "prepared",
-      steps: [{ ...plan.steps[0]!, status: "assessment_ready", assurance: "assessment" }],
+      status: "in_progress",
+      next_action: null,
+      steps: [
+        {
+          ...plan.steps[0]!,
+          status: "assessment_ready",
+          assurance: "assessment",
+          evidence: [],
+          next_action: null,
+        },
+      ],
     };
-    expect(render(prepared, "de", true)).toContain("Zur Prüfung vorbereitet");
-    expect(render(prepared)).toContain("Einschätzung liegt vor");
-    expect(render(prepared)).not.toContain('data-step-status="verified"');
-    expect(render(prepared)).not.toContain("Ziel erreicht");
+    const card = render(assessed, "de", true);
+    const panel = render(assessed);
+    expect(card).toContain("In Bearbeitung");
+    expect(card).not.toContain("Zur Prüfung vorbereitet");
+    expect(panel).not.toContain("Zur Prüfung vorbereitet");
+    expect(panel).toContain("Einschätzung liegt vor");
+    expect(panel).not.toContain('data-step-status="verified"');
+    expect(panel).not.toContain("Ziel erreicht");
+    expect(panel).not.toContain("Offene Rückfrage öffnen");
+    expect(playbookActionTarget(assessed.next_action, [], NOW)).toBeNull();
     expect(render(plan)).toContain("Bestätigung durch berechtigte Person erforderlich");
     expect(render(plan)).not.toContain("Durch berechtigte Person bestätigt");
+  });
+
+  test("places the playbook after the reply of the turn that last changed it", () => {
+    const messages = [
+      { role: "user", created_at: "2030-01-01T03:20:30Z" },
+      { role: "assistant", created_at: "2030-01-01T03:20:54Z" },
+      { role: "user", created_at: "2030-01-01T03:21:35Z" },
+      { role: "assistant", created_at: "2030-01-01T03:21:39Z" },
+    ];
+    expect(playbookAnchorIndex(messages, { updated_at: "2030-01-01T03:20:49Z" })).toBe(1);
+    expect(playbookAnchorIndex(messages, { updated_at: "2030-01-01T03:21:36Z" })).toBe(3);
+    expect(playbookAnchorIndex(messages, { updated_at: "invalid" })).toBeNull();
+    expect(playbookAnchorIndex(messages.slice(0, 1), { updated_at: "2030-01-01T03:20:49Z" })).toBe(
+      0,
+    );
+  });
+
+  test("shows the playbook summary in the chat only while the panel is closed", () => {
+    expect(playbookSummaryVisible(true)).toBe(false);
+    expect(playbookSummaryVisible(false)).toBe(true);
+  });
+
+  test("the panel shows a next step that belongs to a step only once", () => {
+    const decision = {
+      label: "Gewünschte Betriebsumgebung fachlich festlegen",
+      owner: "Betreiber",
+      elicitation_id: null,
+    };
+    const repeated: ConversationPlaybook = {
+      ...plan,
+      next_action: decision,
+      steps: [{ ...plan.steps[0]!, next_action: decision }],
+    };
+    expect(playbookPanelNextAction(repeated)).toBeNull();
+    expect(render(repeated).split(decision.label).length - 1).toBe(1);
+    const separate = { ...repeated, next_action: { ...decision, label: "Ergebnis prüfen" } };
+    expect(playbookPanelNextAction(separate)?.label).toBe("Ergebnis prüfen");
   });
 });

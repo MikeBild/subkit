@@ -180,7 +180,12 @@ import {
   modeSuffixKey,
 } from "./chat-mode";
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
-import { type PlaybookAction, playbookActionTarget } from "./chat-playbook";
+import {
+  type PlaybookAction,
+  playbookActionTarget,
+  playbookAnchorIndex,
+  playbookSummaryVisible,
+} from "./chat-playbook";
 import { ChatPlaybookPanel, ChatPlaybookSummary } from "./chat-playbook-panel";
 import { type ChatReauth, chatReauth } from "./chat-reauth";
 import { ChatReauthCard } from "./chat-reauth-card";
@@ -1699,8 +1704,17 @@ export function ChatPage() {
       formOutput?: Record<string, unknown>;
     }) => {
       clearStream();
+      let resolutionRefreshed = false;
       const onEvent = (event: Parameters<typeof onTurnEvent>[0]) => {
-        if (ownsOperation(operation)) onTurnEvent(event);
+        if (!ownsOperation(operation)) return;
+        if (!resolutionRefreshed) {
+          resolutionRefreshed = true;
+          void queryClient.invalidateQueries({
+            queryKey: ["conversation", conversationId],
+            exact: true,
+          });
+        }
+        onTurnEvent(event);
       };
       return elicitationId
         ? formOutput !== undefined
@@ -2057,6 +2071,32 @@ export function ChatPage() {
   const conversationMissing =
     conversationFailed &&
     conversationFailureKind(detail.error ?? detail.failureReason) === "missing";
+  const playbookAnchor = playbook ? playbookAnchorIndex(messages, playbook) : null;
+  const playbookAnchorMessage = playbookAnchor === null ? null : messages[playbookAnchor];
+  const playbookPlacement = {
+    inlineIndex:
+      playbookAnchor !== null &&
+      (playbookAnchorMessage?.role === "assistant" || playbookAnchor < messages.length - 1)
+        ? playbookAnchor
+        : null,
+    atEnd:
+      playbookAnchor === null
+        ? !messages.some((message) => message.role === "assistant")
+        : playbookAnchor === messages.length - 1 && playbookAnchorMessage?.role !== "assistant",
+  };
+  const playbookSummary =
+    playbook && !conversationFailed && playbookSummaryVisible(chatWorkspace.open) ? (
+      <MessageScrollerItem key={`playbook-${playbook.id}`}>
+        <ChatPlaybookSummary
+          playbook={playbook}
+          actionTarget={playbookActionTargetFor}
+          onOpenQuestion={openPlaybookQuestion}
+          onShowDetails={showPlaybookDetails}
+          refreshing={sendPending || decidePending}
+          refreshFailed={detail.isRefetchError}
+        />
+      </MessageScrollerItem>
+    ) : null;
   const listFailed = queryView(conversations, () => false) === "error";
   const storedMode = detail.data ? storedAuthoringMode(detail.data.draft) : "loading";
   const composerHint = choiceOpen
@@ -2612,75 +2652,78 @@ export function ChatPage() {
                     </div>
                   ) : (
                     messages.map((message, index) => (
-                      <MessageScrollerItem key={message.id}>
-                        <ChatMessage
-                          conversationId={activeId ?? undefined}
-                          message={message}
-                          messageIndex={index}
-                          pendingApprovalId={
-                            pendingDecision?.toolCallId ??
-                            pendingChoice?.toolCallId ??
-                            pendingForm?.toolCallId ??
-                            pendingText?.toolCallId ??
-                            null
-                          }
-                          approval={pendingDecision}
-                          choice={pendingChoice}
-                          form={pendingForm}
-                          text={pendingText}
-                          onForm={submitForm}
-                          onChoice={submitChoice}
-                          answersQuestion={answerMessageIds.has(message.id)}
-                          approvalBusy={busy}
-                          approvalError={decisionErrorFor(
-                            pendingDecision?.id ??
-                              pendingChoice?.id ??
-                              pendingForm?.id ??
-                              pendingText?.id,
-                          )}
-                          onApproval={submitApproval}
-                          nameFor={nameFor}
-                          workflowNameFor={workflowNameFor}
-                          attachmentFor={attachmentFor}
-                          onOpenFile={openStoredFile}
-                          liveReviews={liveReviewCalls}
-                          onAutomationAdjust={(workflowId) =>
-                            void submitTurn(t("authority.adjustPrompt"), [
-                              {
-                                type: "workflow",
-                                id: workflowId,
-                                label: t("chat.singleRun.thisWorkflow"),
-                              },
-                            ])
-                          }
-                          onAutomationSingleRun={(workflowId) =>
-                            void submitTurn(t("chat.activation.singlePrompt"), [
-                              {
-                                type: "workflow",
-                                id: workflowId,
-                                label: t("chat.singleRun.thisWorkflow"),
-                              },
-                            ])
-                          }
-                          onReauth={(action) =>
-                            void submitTurn(t("chat.reauth.prompt"), [
-                              {
-                                type: "connector",
-                                id: action.connectorId,
-                                label: action.label || t("chat.reauth.title"),
-                              },
-                            ])
-                          }
-                          onDecision={(toolCallId, approved) =>
-                            decide.mutate({
-                              toolCallId,
-                              approved,
-                              conversationId: activeId ?? "",
-                              operation: beginOperation(),
-                            })
-                          }
-                        />
-                      </MessageScrollerItem>
+                      <Fragment key={message.id}>
+                        <MessageScrollerItem>
+                          <ChatMessage
+                            conversationId={activeId ?? undefined}
+                            message={message}
+                            messageIndex={index}
+                            pendingApprovalId={
+                              pendingDecision?.toolCallId ??
+                              pendingChoice?.toolCallId ??
+                              pendingForm?.toolCallId ??
+                              pendingText?.toolCallId ??
+                              null
+                            }
+                            approval={pendingDecision}
+                            choice={pendingChoice}
+                            form={pendingForm}
+                            text={pendingText}
+                            onForm={submitForm}
+                            onChoice={submitChoice}
+                            answersQuestion={answerMessageIds.has(message.id)}
+                            approvalBusy={busy}
+                            approvalError={decisionErrorFor(
+                              pendingDecision?.id ??
+                                pendingChoice?.id ??
+                                pendingForm?.id ??
+                                pendingText?.id,
+                            )}
+                            onApproval={submitApproval}
+                            nameFor={nameFor}
+                            workflowNameFor={workflowNameFor}
+                            attachmentFor={attachmentFor}
+                            onOpenFile={openStoredFile}
+                            liveReviews={liveReviewCalls}
+                            onAutomationAdjust={(workflowId) =>
+                              void submitTurn(t("authority.adjustPrompt"), [
+                                {
+                                  type: "workflow",
+                                  id: workflowId,
+                                  label: t("chat.singleRun.thisWorkflow"),
+                                },
+                              ])
+                            }
+                            onAutomationSingleRun={(workflowId) =>
+                              void submitTurn(t("chat.activation.singlePrompt"), [
+                                {
+                                  type: "workflow",
+                                  id: workflowId,
+                                  label: t("chat.singleRun.thisWorkflow"),
+                                },
+                              ])
+                            }
+                            onReauth={(action) =>
+                              void submitTurn(t("chat.reauth.prompt"), [
+                                {
+                                  type: "connector",
+                                  id: action.connectorId,
+                                  label: action.label || t("chat.reauth.title"),
+                                },
+                              ])
+                            }
+                            onDecision={(toolCallId, approved) =>
+                              decide.mutate({
+                                toolCallId,
+                                approved,
+                                conversationId: activeId ?? "",
+                                operation: beginOperation(),
+                              })
+                            }
+                          />
+                        </MessageScrollerItem>
+                        {index === playbookPlacement.inlineIndex ? playbookSummary : null}
+                      </Fragment>
                     ))
                   )}
                   {showOptimistic && optimistic ? (
@@ -2775,18 +2818,7 @@ export function ChatPage() {
                       </Message>
                     </MessageScrollerItem>
                   )}
-                  {playbook && !conversationFailed ? (
-                    <MessageScrollerItem key={`playbook-${playbook.id}`}>
-                      <ChatPlaybookSummary
-                        playbook={playbook}
-                        actionTarget={playbookActionTargetFor}
-                        onOpenQuestion={openPlaybookQuestion}
-                        onShowDetails={showPlaybookDetails}
-                        refreshing={sendPending || decidePending}
-                        refreshFailed={detail.isRefetchError}
-                      />
-                    </MessageScrollerItem>
-                  ) : null}
+                  {playbookPlacement.atEnd ? playbookSummary : null}
                   <MessageScrollerItem data-testid="chat-next-action">
                     {unanchoredDecision && (
                       <ChatApprovalCard
