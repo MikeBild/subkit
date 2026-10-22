@@ -58,7 +58,7 @@ describe("Audit details", () => {
     const de = (key: Parameters<typeof translate>[1]) => translate("de", key);
     const en = (key: Parameters<typeof translate>[1]) => translate("en", key);
     expect(auditChangeValue("status", "inactive", "knowledge_source", de)).toBe(
-      "Deaktiviert (inactive)",
+      "Ausgeschaltet (inactive)",
     );
     expect(auditChangeValue("status", "processing", "knowledge_source", en)).toBe(
       "Being ingested (processing)",

@@ -109,7 +109,7 @@ describe("connector status strip (D15)", () => {
       "connectorStrip.action.signInAgain",
     );
     expect(CATALOGS.de["connectorStrip.state.signInFailed"]).toBe("Anmeldung fehlgeschlagen");
-    expect(CATALOGS.de["connectorStrip.action.signInAgain"]).toBe("Erneut anmelden");
+    expect(CATALOGS.de["connectorStrip.action.signInAgain"]).toBe("Neu anmelden");
     expect(CATALOGS.en["connectorStrip.state.signInFailed"]).toBe("Sign-in failed");
   });
 

@@ -41,7 +41,7 @@ describe("recorded step identity facts", () => {
     expect(html).toContain("Entwicklung");
     expect(html).toContain(">3</dd>");
     expect(html).toContain(">5</dd>");
-    expect(html).toContain("nicht dokumentiert");
+    expect(html).toContain("Unbekannt");
   });
 
   test("a step without a recorded credential stays unknown", () => {
@@ -51,7 +51,7 @@ describe("recorded step identity facts", () => {
         connectorNames={new Map([["connector", "Current account"]])}
       />,
     );
-    expect(html).toContain("nicht dokumentiert");
+    expect(html).toContain("Unbekannt");
     expect(html).not.toContain("Current account");
     expect(html).not.toContain('data-slot="fact-list"');
   });

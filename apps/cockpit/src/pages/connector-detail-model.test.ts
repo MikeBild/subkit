@@ -224,9 +224,11 @@ describe("a connector address with a kept secret", () => {
     expect(shared).toContain(`export const DEFAULT_REDACTED = "${SECRET_MASK}";`);
   });
 
-  test("the note says the secret is kept, in both languages", () => {
-    expect(CATALOGS.de["connectorDetail.connection.secretKept"]).toContain("bleibt geheim");
-    expect(CATALOGS.en["connectorDetail.connection.secretKept"]).toContain("kept");
+  test("the note says stored credentials are never shown again, in both languages", () => {
+    expect(CATALOGS.de["connectorDetail.connection.secretKept"]).toBe(
+      "Gespeicherte Zugangsdaten werden nie wieder angezeigt.",
+    );
+    expect(CATALOGS.en["connectorDetail.connection.secretKept"]).toContain("never shown");
   });
 });
 

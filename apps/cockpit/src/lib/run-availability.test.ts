@@ -86,7 +86,7 @@ describe("the fix for a blocked connector", () => {
     expect(fix).toEqual({ labelKey: "run.openConnector", href: connectorHref(GMAIL) });
   });
 
-  test("a run refused for a lost sign-in offers 'Neu verbinden' on the connector's sign-in card", () => {
+  test("a run refused for a lost sign-in offers 'Neu anmelden' on the connector's sign-in card", () => {
     const remedy = remedyFor({
       workflowId: "wf",
       executionId: "run",
@@ -100,7 +100,7 @@ describe("the fix for a blocked connector", () => {
       labelKey: "remedy.reconnect",
       href: `${connectorHref(GMAIL)}?tab=connection`,
     });
-    expect(translate("de", "remedy.reconnect")).toBe("Neu verbinden");
+    expect(translate("de", "remedy.reconnect")).toBe("Neu anmelden");
   });
 
   test("a refusal no sign-in fixes, or that names no connector, offers no reconnect", () => {

@@ -169,7 +169,7 @@ describe("workflow status strip (D15, reviewed)", () => {
       expect(CATALOGS.en[key]).toBeTruthy();
       expect(CATALOGS.de[key]).toBeTruthy();
     }
-    expect(CATALOGS.de[stripActionKey({ kind: "approve", via: "grant" })]).toBe("Freigeben…");
+    expect(CATALOGS.de[stripActionKey({ kind: "approve", via: "grant" })]).toBe("Freigeben");
   });
 });
 

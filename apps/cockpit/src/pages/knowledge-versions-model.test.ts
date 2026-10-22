@@ -65,8 +65,8 @@ describe("knowledge versions model", () => {
     );
     expect(authorName({ kind: "user", id: ROBOT }, directory, de)).toBe("Person");
     expect(authorName({ kind: "system_account", id: ROBOT }, directory, de)).toBe("Systemkonto");
-    expect(authorName(null, directory, de)).toBe("nicht dokumentiert");
-    expect(authorName(null, directory, (key) => translate("en", key))).toBe("not documented");
+    expect(authorName(null, directory, de)).toBe("Unbekannt");
+    expect(authorName(null, directory, (key) => translate("en", key))).toBe("Unknown");
   });
 
   test("the engine's notes read as a reason in the viewer's language", () => {

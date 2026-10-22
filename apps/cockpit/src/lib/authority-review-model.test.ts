@@ -402,10 +402,10 @@ test("the activate-only help names a pausing schedule only when a trigger exists
     "Activates without allowing runs.",
   );
   expect(translate("de", "authority.review.help.activateOnlyPaused")).toBe(
-    "Aktiviert ohne Läufe; Zeitplan pausiert.",
+    "Schaltet ein, ohne Läufe zu erlauben; der Zeitplan ist angehalten.",
   );
   expect(translate("en", "authority.review.help.activateOnlyPaused")).toBe(
-    "Activates without allowing runs; the schedule pauses.",
+    "Switches on without allowing runs; the schedule is on hold.",
   );
   expect(translate("de", "authority.adopted")).toBe(
     "Übernommen. Die bestehende Freigabe gilt weiter.",

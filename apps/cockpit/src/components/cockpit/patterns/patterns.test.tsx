@@ -116,7 +116,7 @@ describe("P3 StatusStrip", () => {
         line="Wartet auf Freigabe"
         action={
           <button type="button" data-testid="x">
-            Freigeben…
+            Freigeben
           </button>
         }
         testId="strip"
@@ -124,7 +124,7 @@ describe("P3 StatusStrip", () => {
     );
     expect(html).toContain('data-slot="status-strip"');
     expect(html).toContain('data-tone="warn"');
-    expect(html).toContain("Freigeben…");
+    expect(html).toContain("Freigeben");
   });
 });
 

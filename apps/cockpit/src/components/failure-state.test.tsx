@@ -57,15 +57,11 @@ describe("queryView", () => {
 describe("ForbiddenState", () => {
   test("explains the denied page and names an administrator to contact, in both languages", () => {
     const de = render(<ForbiddenState />, "de");
-    expect(de).toContain("Keine Berechtigung");
-    expect(de).toContain(
-      "Du hast keine Berechtigung für diese Seite. Wende dich an deine Administratorin oder deinen Administrator.",
-    );
+    expect(de).toContain("Keine Rechte");
+    expect(de).toContain("Dafür fehlen dir die Rechte. Frag eine Person mit Admin-Rolle.");
     const en = render(<ForbiddenState />, "en");
-    expect(en).toContain("No permission");
-    expect(en).toContain(
-      "You do not have permission to view this page. Contact your administrator.",
-    );
+    expect(en).toContain("No rights");
+    expect(en).toContain("You lack the rights for this. Ask a person with the Admin role.");
   });
 
   test("is a titled forbidden state inside the page, never a second page title or an action", () => {
@@ -198,7 +194,7 @@ describe("SessionExpiredPage", () => {
     const deAction =
       de.match(/<a\b[^>]*data-testid="session-expired-sign-in"[^>]*>[\s\S]*?<\/a>/)?.[0] ?? "";
     expect(deAction).toContain(`href="${href}"`);
-    expect(deAction).toContain(">Erneut anmelden</a>");
+    expect(deAction).toContain(">Neu anmelden</a>");
     expect(de.match(/<a\b/g)?.length).toBe(1);
 
     const en = render(<SessionExpiredPage href={href} />, "en");

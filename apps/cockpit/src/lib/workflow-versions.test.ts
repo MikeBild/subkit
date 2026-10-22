@@ -112,7 +112,7 @@ describe("restoring next to a disabled workflow or an open draft", () => {
     const copy = workflowVersionSheetCopy(view, { canRestore: true, archived: true });
     expect(copy.restore).toBe(false);
     expect(translate("de", copy.hint, copy.values)).toBe(
-      "Dieser Workflow ist deaktiviert. Aktiviere ihn, um eine Version wiederherzustellen.",
+      "Dieser Workflow ist ausgeschaltet. Schalte ihn ein, um eine Version wiederherzustellen.",
     );
   });
 
