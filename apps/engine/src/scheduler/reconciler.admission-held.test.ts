@@ -598,3 +598,26 @@ test("technical failures and lookalike messages remain errors", () => {
     error.mockRestore();
   }
 });
+
+test("integrity refusals outside held authority stay ordinary coded errors", async () => {
+  const { workflow_id } = await createWorkflowRow(ctx, {
+    name: "Integrity refusal",
+    slug: "integrity-refusal",
+    steps: [{ id: "noop", kind: "transform", language: "javascript", expression: "return input;" }],
+  });
+  const refusal = await authorityAdmission
+    .admitSystemWorkflowExecution(
+      {
+        tenant_id: ctx.tenantId,
+        workflow_id,
+        workflow_version_id: "00000000-0000-4000-8000-000000000000",
+        request_source: "scheduler",
+        execution_environment: "prod",
+        input: null,
+      },
+      ctx.testDb.db,
+    )
+    .catch((caught: unknown) => caught);
+  expect(refusal).toMatchObject({ code: "workflow_version_not_active" });
+  expect(refusal).not.toBeInstanceOf(DomainRefusal);
+});

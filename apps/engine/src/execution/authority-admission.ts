@@ -82,8 +82,14 @@ const admissionSchema = z
   })
   .strict();
 
+const HELD_AUTHORITY_CODES = new Set([
+  "execution_authority_required",
+  "execution_authority_unavailable",
+]);
+
 function fail(code: string, message: string): never {
-  throw new DomainRefusal(code, message);
+  if (HELD_AUTHORITY_CODES.has(code)) throw new DomainRefusal(code, message);
+  throw Object.assign(new Error(message), { code });
 }
 
 export async function admitAuthorizedWorkflowExecution(
