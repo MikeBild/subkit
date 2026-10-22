@@ -491,7 +491,9 @@ export function ConnectorMcpTools({
             : "connectorDetail.tools.count.other",
           { count: rows.length },
         ),
-        t("connectorPage.tools.asking", { count: asks }),
+        t(asks === 1 ? "connectorPage.tools.asking.one" : "connectorPage.tools.asking.other", {
+          count: asks,
+        }),
         inspect.readAt
           ? t("connectorDetail.tools.readAt", { when: formatRelativeTime(locale, inspect.readAt) })
           : null,

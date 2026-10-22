@@ -26,13 +26,14 @@ import {
 } from "@/components/cockpit/connector-detail";
 import { ConnectorDeleteDialog, ConnectorEditDialog } from "@/components/cockpit/connector-edit";
 import { ConnectionGraphic } from "@/components/cockpit/connector-graphic";
-import { serviceHost, templateFor } from "@/components/cockpit/connector-view-model";
+import { serviceHost, signInChipKey, templateFor } from "@/components/cockpit/connector-view-model";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { fetchTemplates, TEMPLATES_KEY } from "@/components/cockpit/create-from-template";
-import { SIGN_IN_LABEL, templateSignIn } from "@/components/cockpit/create-template-model";
+import { templateSignIn } from "@/components/cockpit/create-template-model";
 import {
   ActionMenu,
   type ActionMenuItem,
+  Button,
   CollapsibleSection,
   ConfirmDialog,
   DetailPage,
@@ -402,7 +403,7 @@ export function ConnectorPage({
             serviceName={template?.name ?? title}
             serviceLine={host}
             way={signInWay}
-            wayLabel={t(SIGN_IN_LABEL[signInWay])}
+            wayLabel={t(signInChipKey(authType))}
             tone={strip.tone}
             stateLine={stateLabel}
           />
@@ -422,22 +423,22 @@ export function ConnectorPage({
               }
             />
           ) : null}
-          {authType === "oauth2" && permissions.includes("connection:read") ? (
+          {(authType === "oauth2" || credential.data?.mode === "connection") &&
+          permissions.includes("connection:read") ? (
             <ConnectorAccounts
               connectorId={id}
               canWrite={permissions.includes("connection:write")}
               emptyAction={
                 signsInAgain || !canWrite || signInRoute === null ? undefined : (
-                  <ActionMenu
-                    items={[
-                      {
-                        label: t("connectorPage.connectAccount"),
-                        onSelect: () => oauthStart.mutate(),
-                        disabled: oauthStart.isPending,
-                        testId: "connector-connect-account",
-                      },
-                    ]}
-                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    pending={oauthStart.isPending}
+                    onClick={() => oauthStart.mutate()}
+                    data-testid="connector-connect-account"
+                  >
+                    {t("connectorPage.connectAccount")}
+                  </Button>
                 )
               }
             />

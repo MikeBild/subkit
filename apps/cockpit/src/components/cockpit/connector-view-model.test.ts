@@ -4,6 +4,7 @@ import {
   popularTemplates,
   serviceHost,
   serviceInitial,
+  signInChipKey,
   templateFor,
   toolTitle,
 } from "./connector-view-model";
@@ -44,6 +45,15 @@ describe("connector view model", () => {
   test("finds the template a connector was made from", () => {
     expect(templateFor([{ slug: "github" }], "github")).toEqual({ slug: "github" });
     expect(templateFor([{ slug: "github" }], null)).toBeNull();
+  });
+
+  test("names the way SubKit signs in with a short label and never a header name", () => {
+    expect(signInChipKey("oauth2")).toBe("create.connector.signIn.account");
+    expect(signInChipKey("header")).toBe("create.connector.signIn.key");
+    expect(signInChipKey("bearer")).toBe("create.connector.signIn.key");
+    expect(signInChipKey("none")).toBe("create.connector.signIn.none");
+    expect(signInChipKey("signed_jwt")).toBe("connectorLabel.auth.signed_jwt");
+    expect(signInChipKey(null)).toBe("connectorDetail.connection.signIn");
   });
 
   test("marks a service with its first letter", () => {

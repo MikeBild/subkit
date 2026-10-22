@@ -9,7 +9,7 @@ import {
   Search,
   UserCheck,
 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref } from "@/app/links";
@@ -52,9 +52,17 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 import { credentialBody } from "@/pages/connector-detail-model";
-import { serviceHost } from "./connector-view-model";
+import { popularTemplates, serviceHost, signInChipKey } from "./connector-view-model";
 
 type Connector = components["schemas"]["Connector"];
+
+const POPULAR_IN_WIZARD = 12;
+
+const MANUAL_AUTH: Record<ConnectorSignIn, string> = {
+  account: "oauth2",
+  key: "bearer",
+  none: "none",
+};
 
 export type ConnectorWizardStart =
   | { way: "how" }
@@ -156,7 +164,9 @@ function ServiceGrid({
   onRetry(): void;
 }) {
   const { t } = useI18n();
-  const shown = templates.filter((template) => templateMatches(template, query));
+  const shown = query.trim()
+    ? templates.filter((template) => templateMatches(template, query))
+    : popularTemplates(templates, POPULAR_IN_WIZARD);
   return (
     <div className="flex flex-col gap-3" data-testid="create-template-list">
       <div className="relative flex items-center">
@@ -251,8 +261,15 @@ export function CreateConnectorDialog({
   const sorted = useMemo(() => sortedTemplates(templates.data?.items ?? []), [templates.data]);
   const template =
     way === "template" && chosen ? (sorted.find((item) => item.slug === chosen) ?? null) : null;
+  const prefilled = useRef<string | null>(null);
+  useEffect(() => {
+    if (!template || prefilled.current === template.slug) return;
+    prefilled.current = template.slug;
+    setAddress((current) => current || (template.base_url ?? ""));
+  }, [template]);
   const refuse = (failure: unknown) => createRefusal(failure, t("create.connector.taken"), t);
   const reset = () => {
+    prefilled.current = null;
     setStep(initialStep(start));
     setWay(start.way === "manual" ? "manual" : "template");
     setChosen(start.way === "template" ? (start.template ?? null) : null);
@@ -660,7 +677,7 @@ export function CreateConnectorDialog({
           serviceName={serviceName}
           serviceLine={serviceHost(reviewAddress ?? null)}
           way={reviewWay}
-          wayLabel={t(SIGN_IN_LABEL[reviewWay])}
+          wayLabel={t(signInChipKey(template ? template.auth_type : MANUAL_AUTH[signIn]))}
           tone="info"
           stateLine={t("connectorWizard.review.state")}
           testId="create-connector-graphic"

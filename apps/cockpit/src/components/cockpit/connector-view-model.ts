@@ -1,4 +1,5 @@
 import { humanize } from "@/lib/effect-label";
+import type { TranslationKey } from "@/lib/i18n";
 import { presentAddress } from "@/pages/connector-detail-model";
 import type { ConnectorTemplate } from "./create-template-model";
 
@@ -39,6 +40,23 @@ export function templateFor<T extends Pick<ConnectorTemplate, "slug">>(
 ): T | null {
   if (!slug) return null;
   return templates.find((template) => template.slug === slug) ?? null;
+}
+
+const SHORT_WAY: Readonly<Record<string, TranslationKey>> = {
+  oauth2: "create.connector.signIn.account",
+  bearer: "create.connector.signIn.key",
+  header: "create.connector.signIn.key",
+  none: "create.connector.signIn.none",
+  query: "connectorLabel.auth.query",
+  basic: "connectorLabel.auth.basic",
+  oauth2_client: "connectorLabel.auth.oauth2_client",
+  oauth2_private_key: "connectorLabel.auth.oauth2_private_key",
+  signed_jwt: "connectorLabel.auth.signed_jwt",
+  aws_sigv4: "connectorLabel.auth.aws_sigv4",
+};
+
+export function signInChipKey(authType: string | null): TranslationKey {
+  return (authType && SHORT_WAY[authType]) || "connectorDetail.connection.signIn";
 }
 
 export function serviceInitial(name: string): string {
