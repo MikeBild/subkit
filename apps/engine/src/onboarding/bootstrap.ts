@@ -4,13 +4,14 @@ import pc from "picocolors";
 import { z } from "zod";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../audit/types.ts";
-import { setConfigKey } from "../config/loader.ts";
+import { getConfig, setConfigKey } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { engineSettings, tenants } from "../db/schema/identity.ts";
 import { seedTenantBootstrap, type TenantBootstrapPayload } from "../db/seed.ts";
 import { type LlmAccessProbe, probeLlmAccess } from "../llm/core/access-probe.ts";
 import { logger } from "../logging/logger.ts";
 import type { SeededRoleIds } from "../rbac/seed.ts";
+import { settingSecretName } from "../runtime-config/secret-reference.ts";
 import {
   activateRuntimeRevision,
   createSecretVersion,
@@ -391,6 +392,16 @@ async function consumeClaimed(
       },
       db,
     );
+    try {
+      await persistGlobalLlmDefault(db, payload, result.tenant_id, result.user_id);
+    } catch (globalError) {
+      logger.warn({
+        module: "onboarding.bootstrap",
+        action: "setup.global_llm_persist_failed",
+        msg: "global LLM default was not written; the workspace keeps its own LLM settings",
+        error: globalError instanceof Error ? globalError.message : String(globalError),
+      });
+    }
   } catch (err) {
     if (err instanceof RuntimeConfigNotFoundError) {
       try {
@@ -428,6 +439,52 @@ async function consumeClaimed(
   }
 
   return finishBootstrap(db, completedResult, payload, opts);
+}
+
+async function persistGlobalLlmDefault(
+  db: Db,
+  payload: BootstrapSetupPayload,
+  tenantId: string,
+  userId: string,
+): Promise<void> {
+  if (payload.llm_provider === "mock" || getConfig().llm.provider !== "mock") return;
+  const state = await getRuntimeConfigState(db);
+  const secret = await createSecretVersion(db, {
+    name: settingSecretName(undefined, ["llm", "api_key"]),
+    value: payload.llm_api_key,
+    created_by: userId,
+  });
+  const saved = await saveRuntimeConfigPatch(db, {
+    expected_revision: state.saved_revision,
+    changes: {
+      "llm.provider": payload.llm_provider,
+      "llm.api_key": secret.reference,
+      ...(payload.llm_model ? { "llm.model": payload.llm_model } : {}),
+    },
+    scope: "global",
+    created_by: userId,
+  });
+  const activated = await activateRuntimeRevision(db, saved.saved_revision, {
+    tenant_id: tenantId,
+    actor_type: "user",
+    actor_id: userId,
+    source: "bootstrap",
+  });
+  if (activated.activation_status !== "active") {
+    throw new Error(`bootstrap global llm activation failed: ${activated.activation_status}`);
+  }
+  await auditAwait(
+    {
+      tenant_id: tenantId,
+      actor_type: "user",
+      actor_id: userId,
+      action: AuditAction.SECRET_VERSION_CREATED,
+      resource_type: "runtime_secret",
+      resource_id: secret.reference,
+      metadata: { name: secret.name, version: secret.version, source: "bootstrap" },
+    },
+    db,
+  );
 }
 
 async function finishBootstrap(
