@@ -421,15 +421,6 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
         <RowsSkeleton count={2} testId="run-detail-loading" />
       ) : (
         <>
-          {errorEvidence && failing ? (
-            <Copyable>
-              <CodeBlock
-                label={t("runs.detail.errorOfStep", { step: failing.step_key })}
-                code={hideTechnicalIdentifiers(errorEvidence, t("tool.referenceHiddenInline"))}
-                testId="run-detail-error"
-              />
-            </Copyable>
-          ) : null}
           <Section label={t("runs.detail.steps")} testId="run-detail-steps">
             <RunStepChain
               steps={stepItems}
@@ -441,16 +432,6 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
             ) : null}
           </Section>
           <div className="flex flex-col gap-2">
-            {payload ? (
-              <CollapsibleSection label={payloadLabel} testId="run-detail-payload">
-                <Copyable>
-                  <CodeBlock
-                    code={hideTechnicalIdentifiers(payload.text, t("tool.referenceHiddenInline"))}
-                    testId="run-detail-result"
-                  />
-                </Copyable>
-              </CollapsibleSection>
-            ) : null}
             <CollapsibleSection label={t("runs.caller.why")} testId="run-detail-why">
               <FactList
                 items={caller.why
@@ -517,12 +498,27 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
                 testId="run-detail-why-facts"
               />
             </CollapsibleSection>
-            <CollapsibleSection
-              label={t("connectorDetail.technical.title")}
-              testId="run-detail-technical"
-            >
+            <TechnicalDetails testId="run-detail-technical">
               <FactList items={facts} testId="run-detail-facts" />
-            </CollapsibleSection>
+              {errorEvidence && failing ? (
+                <Copyable>
+                  <CodeBlock
+                    label={t("runs.detail.errorOfStep", { step: failing.step_key })}
+                    code={hideTechnicalIdentifiers(errorEvidence, t("tool.referenceHiddenInline"))}
+                    testId="run-detail-error"
+                  />
+                </Copyable>
+              ) : null}
+              {payload ? (
+                <Copyable>
+                  <CodeBlock
+                    label={payloadLabel}
+                    code={hideTechnicalIdentifiers(payload.text, t("tool.referenceHiddenInline"))}
+                    testId="run-detail-result"
+                  />
+                </Copyable>
+              ) : null}
+            </TechnicalDetails>
           </div>
         </>
       )}

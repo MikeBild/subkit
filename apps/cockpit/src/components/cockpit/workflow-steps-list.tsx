@@ -366,19 +366,19 @@ const CARD =
 
 function FlowArrow() {
   return (
-    <div
+    <li
       aria-hidden="true"
       className="flex shrink-0 items-center justify-center py-0.5 text-muted-foreground/50 lg:w-8 [&_svg]:size-4"
     >
       <ArrowDown className="lg:hidden" />
       <ArrowRight className="hidden lg:block" />
-    </div>
+    </li>
   );
 }
 
 function FlowPlus({ label, onClick, testId }: { label: string; onClick(): void; testId: string }) {
   return (
-    <div className="flex shrink-0 items-center justify-center lg:w-8">
+    <li className="flex shrink-0 items-center justify-center lg:w-8">
       <button
         type="button"
         onClick={onClick}
@@ -389,7 +389,7 @@ function FlowPlus({ label, onClick, testId }: { label: string; onClick(): void; 
       >
         <Plus aria-hidden="true" />
       </button>
-    </div>
+    </li>
   );
 }
 
@@ -507,7 +507,12 @@ export function WorkflowFlow({
                     </span>
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {connector?.name || t("workflowFlow.inSubKit")}
+                    {connector?.name ||
+                      t(
+                        definition.kind === "request"
+                          ? "workflowFlow.aService"
+                          : "workflowFlow.inSubKit",
+                      )}
                   </span>
                 </button>
               </li>
