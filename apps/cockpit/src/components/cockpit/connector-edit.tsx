@@ -1,10 +1,18 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
+import {
+  categoryChoices,
+  metadataPatch,
+  normalizeCategoryInput,
+  recordCategory,
+  recordDescription,
+  writtenByAssistant,
+} from "@/components/cockpit/catalog-metadata-model";
 import { ConnectorSignInFields } from "@/components/cockpit/connector-sign-in-fields";
 import {
   type ConnectorEditDraft,
@@ -20,11 +28,14 @@ import {
   signedJwtFieldsOf,
   signInOf,
 } from "@/components/cockpit/create-connector-model";
-import { TextField } from "@/components/cockpit/form-field";
-import { ConfirmDialog, FormDialog } from "@/components/cockpit/patterns";
+import { SelectField, TextAreaField, TextField } from "@/components/cockpit/form-field";
+import { Button, ConfirmDialog, FormDialog } from "@/components/cockpit/patterns";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { useI18n } from "@/lib/i18n-context";
+import { humanizeCategory } from "@/lib/workflow-category";
 import { authLabel, offersKeyReplacement } from "@/pages/connector-detail-model";
+
+const NEW_CATEGORY = "__new__";
 
 type Connector = components["schemas"]["Connector"];
 
@@ -71,6 +82,39 @@ export function ConnectorEditDialog({
   const [missingHeaders, setMissingHeaders] = useState<readonly string[]>([]);
   const everyHeader = replacesEveryHeader(prior);
   const [error, setError] = useState<string | null>(null);
+  const [description, setDescription] = useState(() => recordDescription(record));
+  const [choice, setChoice] = useState(() => recordCategory(record));
+  const [fresh, setFresh] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    setDescription(recordDescription(record));
+    setChoice(recordCategory(record));
+    setFresh("");
+  }, [open, record]);
+  const vocabulary = useQuery({
+    queryKey: ["catalog-categories"],
+    enabled: open,
+    queryFn: () => apiRequest<{ categories?: { category: string }[] }>("/v1/categories"),
+  });
+  const choices = categoryChoices(
+    (vocabulary.data?.categories ?? []).map((entry) => entry.category),
+    recordCategory(record),
+  );
+  const freshCategory = choice === NEW_CATEGORY ? normalizeCategoryInput(fresh) : null;
+  const category = choice === NEW_CATEGORY ? (freshCategory ?? "") : choice;
+  const accept = useMutation({
+    mutationFn: () =>
+      apiRequest(`/v1/connectors/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ description: recordDescription(record), accept_description: true }),
+      }),
+    onSuccess: async () => {
+      toast.success(t("catalogMeta.saved"));
+      await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] });
+      await client.invalidateQueries({ queryKey: ["catalog"] });
+    },
+    onError: () => toast.error(t("detail.saveFailed")),
+  });
   const draft: ConnectorEditDraft = {
     name,
     address,
@@ -86,9 +130,10 @@ export function ConnectorEditDialog({
     mutationFn: async () => {
       const plan = connectorEditPlan(prior, draft);
       const path = `/v1/connectors/${encodeURIComponent(id)}`;
+      const metadata = category ? metadataPatch(record, { description, category }) : null;
       const connector = await apiRequest<Connector>(path, {
         method: "PATCH",
-        body: JSON.stringify(plan.patch),
+        body: JSON.stringify({ ...plan.patch, ...metadata }),
       });
       if (plan.credential)
         await apiRequest(`${path}/credentials`, {
@@ -106,6 +151,8 @@ export function ConnectorEditDialog({
       await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] });
       await client.invalidateQueries({ queryKey: ["connector-credential", id] });
       await client.invalidateQueries({ queryKey: ["connectors", "lookup"] });
+      await client.invalidateQueries({ queryKey: ["catalog"] });
+      await client.invalidateQueries({ queryKey: ["catalog-categories"] });
       if (route) {
         try {
           const start = await apiRequest<{ authorization_url: string }>(route.start, {
@@ -138,6 +185,8 @@ export function ConnectorEditDialog({
       title={t("connectorEdit.title", { name: prior.name })}
       submit={{ label: t("common.save"), pending: save.isPending }}
       onSubmit={() => {
+        if (choice === NEW_CATEGORY && !freshCategory)
+          return setError(t("catalogMeta.invalidCategory"));
         const problem = connectorEditProblem(prior, draft, callbackUrl);
         setMissingHeaders(missingHeaderValues(prior, draft));
         if (problem === "connectorEdit.headersIncomplete") return setError(null);
@@ -154,6 +203,56 @@ export function ConnectorEditDialog({
         value={name}
         onChange={setName}
       />
+      <TextAreaField
+        id="connector-edit-description"
+        label={t("catalogMeta.description")}
+        value={description}
+        onChange={setDescription}
+        rows={3}
+        help={t("catalogMeta.descriptionHelp")}
+        placeholder={t("catalogMeta.empty")}
+      />
+      {writtenByAssistant(record) ? (
+        <p
+          className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
+          data-testid="connector-edit-assistant-hint"
+        >
+          {t("catalogMeta.assistantHint")}
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0"
+            disabled={accept.isPending}
+            onClick={() => accept.mutate()}
+            data-testid="catalog-metadata-accept"
+          >
+            {t("catalogMeta.accept")}
+          </Button>
+        </p>
+      ) : null}
+      <SelectField
+        id="connector-edit-category"
+        label={t("catalogMeta.category")}
+        value={choice}
+        onChange={setChoice}
+        help={t("catalogMeta.categoryHelp")}
+        options={[
+          ...choices.map((value) => ({
+            value,
+            label: humanizeCategory(value, t("catalog.categoryOther")),
+          })),
+          { value: NEW_CATEGORY, label: t("catalogMeta.newCategory") },
+        ]}
+      />
+      {choice === NEW_CATEGORY ? (
+        <TextField
+          id="connector-edit-new-category"
+          label={t("catalogMeta.newCategoryName")}
+          value={fresh}
+          onChange={setFresh}
+          error={fresh.trim() && !freshCategory ? t("catalogMeta.invalidCategory") : null}
+        />
+      ) : null}
       {prior.address ? (
         <TextField
           id="connector-edit-address"

@@ -76,7 +76,7 @@ describe("the fix for a blocked connector", () => {
       const fix = connectorFix({ ...gmail, reason });
       expect(fix).toEqual({
         labelKey: "remedy.reconnect",
-        href: `${connectorHref(GMAIL)}?tab=connection`,
+        href: `${connectorHref(GMAIL)}#connector-credentials`,
       });
     }
   });
@@ -98,7 +98,7 @@ describe("the fix for a blocked connector", () => {
     expect(remedy).toEqual({
       kind: "reauth",
       labelKey: "remedy.reconnect",
-      href: `${connectorHref(GMAIL)}?tab=connection`,
+      href: `${connectorHref(GMAIL)}#connector-credentials`,
     });
     expect(translate("de", "remedy.reconnect")).toBe("Neu anmelden");
   });

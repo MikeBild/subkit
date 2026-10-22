@@ -107,7 +107,6 @@ export function WorkflowOnboarding({ canWrite, canChat }: { canWrite: boolean; c
       />
       {canWrite ? (
         <CreateChoiceDialog
-          kind="workflow"
           open={picked !== null}
           onOpenChange={(next) => !next && setPicked(null)}
           canChat={canChat}

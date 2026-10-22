@@ -38,7 +38,6 @@ function violations(): Record<string, Rule[]> {
 
 const ALLOWED: Record<string, readonly Rule[]> = {
   "components/cockpit/automation-grant.tsx": ["ui-import"],
-  "components/cockpit/connector-credentials.tsx": ["ui-import"],
   "components/cockpit/decision-card.tsx": ["ui-import", "heading", "max-w"],
   "components/cockpit/diff-card.tsx": ["ui-import", "pre"],
   "components/cockpit/grant-notices.tsx": ["ui-import"],

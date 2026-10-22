@@ -1,29 +1,24 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Plug, Zap } from "lucide-react";
-import { type ReactNode, useMemo, useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { connectorHref, workflowHref } from "@/app/links";
-import { useSession } from "@/app/session";
 import { SelectField, TextField } from "@/components/cockpit/form-field";
-import { ListTable } from "@/components/cockpit/list-table";
 import {
   DataState,
   FactList,
-  RowName,
   RowsSkeleton,
   StatusBadge,
   TemplateCard,
   TemplateGrid,
 } from "@/components/cockpit/patterns";
-import { tableColumns } from "@/components/cockpit/table-columns";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { workflowStepKindKey } from "@/lib/workflow-steps";
-import { credentialBody } from "@/pages/connector-detail-model";
 import {
   addressedConnectors,
   type ConnectorTemplate,
@@ -32,7 +27,6 @@ import {
   missingConnectors,
   NEW_CONNECTOR,
   planSolution,
-  SIGN_IN_LABEL,
   type SolutionEntry,
   type SolutionTrigger,
   solutionAddressProblem,
@@ -43,13 +37,7 @@ import {
   solutionSteps,
   solutionText,
   solutionTrigger,
-  sortedTemplates,
   templateConnectorBody,
-  templateConnectProblem,
-  templateKeyHeader,
-  templateMatches,
-  templateNeedsAddress,
-  templateSignIn,
 } from "./create-template-model";
 
 type Connector = components["schemas"]["Connector"];
@@ -78,10 +66,10 @@ const TRIGGER_LABEL: Record<SolutionTrigger, TranslationKey> = {
 };
 
 const SOLUTIONS_KEY = ["recipe-packs", "solutions"] as const;
-const TEMPLATES_KEY = ["connector-templates"] as const;
+export const TEMPLATES_KEY = ["connector-templates"] as const;
 
 const fetchSolutions = () => apiRequest<RecipePack>("/v1/recipe-packs/solutions");
-const fetchTemplates = () => apiRequest<TemplateList>("/v1/connector-templates");
+export const fetchTemplates = () => apiRequest<TemplateList>("/v1/connector-templates");
 
 async function takenWorkflowSlugs(base: string): Promise<Set<string>> {
   const { items } = await apiRequest<{ items: { slug: string }[] }>(
@@ -90,12 +78,12 @@ async function takenWorkflowSlugs(base: string): Promise<Set<string>> {
   return new Set(items.map((item) => item.slug));
 }
 
-async function takenConnectorSlugs(): Promise<Set<string>> {
+export async function takenConnectorSlugs(): Promise<Set<string>> {
   const { items } = await apiRequest<{ items: { slug: string }[] }>("/v1/connectors?limit=1000");
   return new Set(items.map((item) => item.slug));
 }
 
-async function createTemplateConnector(
+export async function createTemplateConnector(
   template: ConnectorTemplate,
   taken: Set<string>,
   address?: string,
@@ -404,14 +392,17 @@ export function useSolutionFlow(
 
 export function useConnectorFinish(): (
   connector: Connector,
-  opts: { keyed: boolean; tab: "connection" | "tools" },
+  opts: { keyed: boolean; tab: "overview" | "tools" },
 ) => Promise<void> {
   const { t } = useI18n();
   const navigate = useNavigate();
   const client = useQueryClient();
   return async (connector, { keyed, tab }) => {
     await refreshLookups(client);
-    const page = `${connectorHref(connector.id)}?tab=${tab}`;
+    const page =
+      tab === "overview"
+        ? connectorHref(connector.id)
+        : `${connectorHref(connector.id)}?tab=${tab}`;
     const route = connectorSignIn(connector);
     if (route) {
       try {
@@ -435,214 +426,5 @@ export function useConnectorFinish(): (
       }),
     );
     void navigate({ to: page });
-  };
-}
-
-export function useConnectorTemplateFlow(
-  active: boolean,
-  done: () => void,
-  fail: (error: string) => void,
-  refusal: (failure: unknown) => string,
-): TemplateFlow {
-  const { t, tn, dateTime } = useI18n();
-  const callbackUrl = useSession().oauth_callback_url;
-  const finish = useConnectorFinish();
-  const [query, setQuery] = useState("");
-  const [address, setAddress] = useState("");
-  const [secret, setSecret] = useState("");
-  const [header, setHeader] = useState("");
-  const templates = useQuery({ queryKey: TEMPLATES_KEY, enabled: active, queryFn: fetchTemplates });
-  const existing = useQuery({
-    queryKey: ["connectors", "templates-in-use"],
-    enabled: active,
-    queryFn: () =>
-      apiRequest<{ items: { template_slug?: string | null }[] }>("/v1/connectors?limit=1000"),
-  });
-  const sorted = useMemo(() => sortedTemplates(templates.data?.items ?? []), [templates.data]);
-  const find = (slug: string) => sorted.find((template) => template.slug === slug) ?? null;
-  const reset = () => {
-    setQuery("");
-    setAddress("");
-    setSecret("");
-    setHeader("");
-  };
-  const columns = useMemo(() => {
-    const column = tableColumns<ConnectorTemplate>({ t, dateTime });
-    return [
-      column.custom(
-        "name",
-        (template) => template.name,
-        t("create.template.column"),
-        (template) => (
-          <span className="grid min-w-0">
-            <span className="truncate">
-              <RowName>{template.name}</RowName>
-            </span>
-            <span className="truncate text-muted-foreground">
-              {template.recipes.length > 0
-                ? tn("create.template.readyLine", template.recipes.length)
-                : t("create.template.readyLineNone")}
-            </span>
-          </span>
-        ),
-        { width: "w-[65%]", ownsRowLink: true },
-      ),
-      column.custom(
-        "sign_in",
-        (template) => template.auth_type,
-        t("create.template.columnSignIn"),
-        (template) => (
-          <span className="text-muted-foreground">
-            {t(SIGN_IN_LABEL[templateSignIn(template)])}
-          </span>
-        ),
-      ),
-    ];
-  }, [t, tn, dateTime]);
-  const connect = useMutation({
-    mutationFn: async (template: ConnectorTemplate) => {
-      const keyHeader = templateKeyHeader(template);
-      const connector = await createTemplateConnector(
-        template,
-        await takenConnectorSlugs(),
-        templateNeedsAddress(template) ? address : undefined,
-      );
-      const keyed = templateSignIn(template) === "key";
-      if (keyed) {
-        const credential = credentialBody(template.auth_type, secret, keyHeader ?? header);
-        if (credential)
-          await apiRequest(`/v1/connectors/${encodeURIComponent(connector.id)}/credentials`, {
-            method: "POST",
-            body: JSON.stringify(credential),
-          });
-      }
-      return { connector, keyed };
-    },
-    onSuccess: async ({ connector, keyed }) => {
-      done();
-      reset();
-      await finish(connector, { keyed, tab: "connection" });
-    },
-    onError: (failure) => fail(refusal(failure)),
-  });
-  return {
-    pending: connect.isPending,
-    reset,
-    submit: (slug) => {
-      const template = find(slug);
-      if (!template) return fail(t("create.template.loadFailed"));
-      const signIn = templateSignIn(template);
-      const asksHeader =
-        signIn === "key" && template.auth_type === "header" && !templateKeyHeader(template);
-      const problem = templateConnectProblem({
-        signIn,
-        needsAddress: templateNeedsAddress(template),
-        address,
-        secret,
-        header: asksHeader ? header : null,
-        callbackUrl,
-      });
-      if (problem) return fail(t(problem));
-      connect.mutate(template);
-    },
-    list: (onPick) => (
-      <div className="grid gap-3" data-testid="create-template-list">
-        <SearchField id="create-template-search" value={query} onChange={setQuery} />
-        <ListTable<ConnectorTemplate>
-          id="create-template"
-          layout="rows"
-          columns={columns}
-          rows={sorted.filter((template) => templateMatches(template, query))}
-          pending={templates.isPending}
-          failed={templates.isError}
-          resource={t("create.template.column")}
-          onRetry={() => void templates.refetch()}
-          empty={t("create.template.noMatches")}
-          onOpen={(template) => {
-            setAddress(template.base_url ?? "");
-            setSecret("");
-            setHeader("");
-            onPick(template.slug);
-          }}
-          rowLabel={(template) => template.name}
-        />
-      </div>
-    ),
-    detail: (slug) => {
-      const template = find(slug);
-      if (!template) return null;
-      const signIn = templateSignIn(template);
-      const needsAddress = templateNeedsAddress(template);
-      const asksHeader =
-        signIn === "key" && template.auth_type === "header" && !templateKeyHeader(template);
-      const second = (existing.data?.items ?? []).some(
-        (item) => item.template_slug === template.slug,
-      );
-      return {
-        title: template.name,
-        description: template.description,
-        body: (
-          <div className="grid gap-4" data-testid="create-template-detail">
-            <FactList
-              testId="create-template-facts"
-              items={[
-                { label: t("create.template.signIn"), value: t(SIGN_IN_LABEL[signIn]) },
-                {
-                  label: t("create.template.address"),
-                  value:
-                    needsAddress || !template.base_url ? (
-                      t("create.template.addressYours")
-                    ) : (
-                      <span className="font-mono text-[13px] break-all">{template.base_url}</span>
-                    ),
-                },
-                {
-                  label: t("create.template.ready"),
-                  value:
-                    template.recipes.length > 0
-                      ? tn("create.template.ready", template.recipes.length)
-                      : t("create.template.readyNone"),
-                },
-              ]}
-            />
-            {needsAddress ? (
-              <TextField
-                id="create-template-address"
-                type="url"
-                label={t("create.connector.address")}
-                value={address}
-                onChange={setAddress}
-                mono
-              />
-            ) : null}
-            {asksHeader ? (
-              <TextField
-                id="create-template-header"
-                label={t("create.template.header")}
-                value={header}
-                onChange={setHeader}
-                mono
-              />
-            ) : null}
-            {signIn === "key" ? (
-              <TextField
-                id="create-template-secret"
-                type="password"
-                label={t("create.connector.secret")}
-                placeholder={t("create.connector.secretPlaceholder")}
-                help={t("create.template.secretHelp")}
-                value={secret}
-                onChange={setSecret}
-              />
-            ) : null}
-            {second ? (
-              <p className="text-sm text-muted-foreground" data-testid="create-template-second">
-                {t("create.template.second", { name: template.name })}
-              </p>
-            ) : null}
-          </div>
-        ),
-      };
-    },
   };
 }

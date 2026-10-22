@@ -23,6 +23,7 @@ export function ConnectorSignInFields({
   oauth,
   onOAuth,
   callbackUrl,
+  choice = true,
 }: {
   idPrefix: string;
   testId: string;
@@ -37,6 +38,7 @@ export function ConnectorSignInFields({
   oauth: OAuthClientFields;
   onOAuth(oauth: OAuthClientFields): void;
   callbackUrl: string | null;
+  choice?: boolean;
 }) {
   const { t } = useI18n();
   const field = (key: keyof OAuthClientFields) => (value: string) =>
@@ -44,22 +46,24 @@ export function ConnectorSignInFields({
   const oauthFields = signIn !== null && needsOAuthClient(target, signIn);
   return (
     <>
-      <ChoiceField<SignInChoice>
-        label={t("create.connector.signIn")}
-        value={signIn ?? "current"}
-        onChange={(next) => onSignIn(next === "current" ? null : next)}
-        help={t("create.connector.signInHelp")}
-        description={signIn === null ? currentDetail : undefined}
-        testId={testId}
-        options={[
-          ...(currentDetail
-            ? [{ value: "current" as const, label: t("create.connector.signIn.current") }]
-            : []),
-          { value: "none", label: t("create.connector.signIn.none") },
-          { value: "key", label: t("create.connector.signIn.key") },
-          { value: "account", label: t("create.connector.signIn.account") },
-        ]}
-      />
+      {choice ? (
+        <ChoiceField<SignInChoice>
+          label={t("create.connector.signIn")}
+          value={signIn ?? "current"}
+          onChange={(next) => onSignIn(next === "current" ? null : next)}
+          help={t("create.connector.signInHelp")}
+          description={signIn === null ? currentDetail : undefined}
+          testId={testId}
+          options={[
+            ...(currentDetail
+              ? [{ value: "current" as const, label: t("create.connector.signIn.current") }]
+              : []),
+            { value: "none", label: t("create.connector.signIn.none") },
+            { value: "key", label: t("create.connector.signIn.key") },
+            { value: "account", label: t("create.connector.signIn.account") },
+          ]}
+        />
+      ) : null}
       {signIn === "key" ? (
         <TextField
           id={`${idPrefix}-secret`}

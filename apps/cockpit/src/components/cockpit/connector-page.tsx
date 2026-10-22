@@ -1,44 +1,44 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { Activity, Sparkles } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref } from "@/app/links";
+import { useSession } from "@/app/session";
 import {
-  CatalogMetadataDialog,
-  CatalogMetadataSummary,
-  useCatalogMetadataActions,
-} from "@/components/cockpit/catalog-metadata";
+  recordCategory,
+  recordDescription,
+  writtenByAssistant,
+} from "@/components/cockpit/catalog-metadata-model";
 import {
+  ConnectorAccounts,
   ConnectorCredentials,
   useConnectorCredential,
 } from "@/components/cockpit/connector-credentials";
 import {
-  ConnectorConnectionFacts,
   ConnectorMcpTools,
   ConnectorRuntimeSection,
   ConnectorTechnicalFacts,
   ConnectorWorkflows,
+  environmentName,
   useConnectorWorkflows,
 } from "@/components/cockpit/connector-detail";
 import { ConnectorDeleteDialog, ConnectorEditDialog } from "@/components/cockpit/connector-edit";
+import { ConnectionGraphic } from "@/components/cockpit/connector-graphic";
+import { serviceHost, templateFor } from "@/components/cockpit/connector-view-model";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
+import { fetchTemplates, TEMPLATES_KEY } from "@/components/cockpit/create-from-template";
+import { SIGN_IN_LABEL, templateSignIn } from "@/components/cockpit/create-template-model";
 import {
   ActionMenu,
   type ActionMenuItem,
-  type CockpitColumn,
   CollapsibleSection,
   ConfirmDialog,
-  Page,
-  PageHeader,
+  DetailPage,
   type PageTab,
-  PageTabs,
-  Section,
-  StatusBadge,
-  StatusStrip,
+  TabBody,
 } from "@/components/cockpit/patterns";
-import { RecordTable } from "@/components/cockpit/record-table";
-import { tableColumns } from "@/components/cockpit/table-columns";
 import { connectorAuthState } from "@/lib/connector-auth-state";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import {
@@ -48,12 +48,16 @@ import {
   connectorStrip,
   connectorStripActionKey,
 } from "@/lib/connector-strip";
+import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
-import { type ConnectionItem, connectionStateKey } from "@/pages/connections-model";
+import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import {
   asInspect,
+  connectorFigures,
   connectorNotice,
+  connectorStatsEndpoint,
+  connectorStatsWindow,
   type McpInspect,
   renewalWay,
   type SignInReturn,
@@ -68,113 +72,6 @@ const text = (record: RecordValue, key: string): string | null => {
   return typeof value === "string" && value ? value : null;
 };
 
-const CONNECTION_BADGE: Record<ConnectionItem["state"], string> = {
-  valid: "ok",
-  expiring: "expiring",
-  expired: "expired",
-  unreadable: "error",
-};
-
-function ConnectorAccountConnections({
-  connectorId,
-  canWrite,
-}: {
-  connectorId: string;
-  canWrite: boolean;
-}) {
-  const { t, dateTime } = useI18n();
-  const client = useQueryClient();
-  const [disconnect, setDisconnect] = useState<ConnectionItem | null>(null);
-  const query = useQuery({
-    queryKey: ["admin", "connections"],
-    queryFn: () => apiRequest<{ items: ConnectionItem[] }>("/v1/connections"),
-  });
-  const rows = (query.data?.items ?? []).filter((item) =>
-    item.used_by.some((user) => user.connector_id === connectorId),
-  );
-  const remove = useMutation({
-    mutationFn: (id: string) =>
-      apiRequest<void>(`/v1/connections/${encodeURIComponent(id)}`, { method: "DELETE" }),
-    onSuccess: async () => {
-      const name = disconnect?.name ?? "";
-      setDisconnect(null);
-      await client.invalidateQueries({ queryKey: ["admin", "connections"] });
-      await client.invalidateQueries({ queryKey: ["connector-credential", connectorId] });
-      toast.success(t("connections.disconnected", { name }));
-    },
-    onError: () => toast.error(t("common.actionFailed")),
-  });
-  const columns = useMemo<CockpitColumn<ConnectionItem>[]>(() => {
-    const column = tableColumns<ConnectionItem>({ t, dateTime });
-    return [
-      column.text("name", (row) => row.service_name ?? row.name, t("connectorPage.account"), {
-        width: "w-[45%]",
-      }),
-      column.custom(
-        "state",
-        (row) => row.state,
-        t("resource.field.status"),
-        (row) => (
-          <StatusBadge
-            state={CONNECTION_BADGE[row.state]}
-            label={t(connectionStateKey(row.state))}
-          />
-        ),
-        { width: "w-[25%]" },
-      ),
-      column.date("expires_at", (row) => row.expires_at, t("connectorPage.expires"), {
-        width: "w-[30%]",
-      }),
-    ];
-  }, [t, dateTime]);
-  return (
-    <Section label={t("connectorPage.accounts")} testId="connector-account-connections">
-      <RecordTable
-        columns={columns}
-        data={rows}
-        collectionId="connector-account"
-        emptyLine={t("connections.emptyTitle")}
-        pending={query.isPending}
-        error={
-          query.error
-            ? { line: t("connections.loadFailed"), onRetry: () => void query.refetch() }
-            : null
-        }
-        rowActions={
-          canWrite
-            ? (row, index) => (
-                <span data-action-scope="connection">
-                  <ActionMenu
-                    items={[
-                      {
-                        label: t("connections.disconnect"),
-                        onSelect: () => setDisconnect(row),
-                        testId: `connector-account-${index}-disconnect`,
-                      },
-                    ]}
-                  />
-                </span>
-              )
-            : undefined
-        }
-      />
-      <ConfirmDialog
-        open={disconnect !== null}
-        onOpenChange={(next) => !next && !remove.isPending && setDisconnect(null)}
-        object={t("connectorPage.accountConnection")}
-        verb={t("connections.disconnect")}
-        consequence={t("connectorPage.disconnectConsequence")}
-        destructive
-        pending={remove.isPending}
-        onConfirm={async () => {
-          if (disconnect) await remove.mutateAsync(disconnect.id).catch(() => undefined);
-        }}
-        testId="connector-account-disconnect"
-      />
-    </Section>
-  );
-}
-
 export function ConnectorPage({
   id,
   record,
@@ -188,20 +85,40 @@ export function ConnectorPage({
   permissions: readonly string[];
   returned: SignInReturn | null;
 }) {
-  const { t, dateTime } = useI18n();
+  const { t, locale, dateTime } = useI18n();
   const client = useQueryClient();
+  const session = useSession();
   const [editing, setEditing] = useState(false);
-  const [describing, setDescribing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [disabling, setDisabling] = useState(false);
+  const [replacing, setReplacing] = useState(false);
   const canWrite = permissions.includes("connector:write");
   const canTest = permissions.includes("connector:test");
   const canChat = permissions.includes("conversation:write");
   const isMcp = record.driver === "mcp";
   const authType = text(record, "auth_type");
   const slug = text(record, "slug");
+  const templateSlug = text(record, "template_slug");
   const users = useConnectorWorkflows(slug && permissions.includes("workflow:read") ? slug : null);
   const userNames = (users.data?.items ?? []).flatMap((item) => (item.name ? [item.name] : []));
   const userCount = users.data?.total ?? userNames.length;
+  const templates = useQuery({
+    queryKey: TEMPLATES_KEY,
+    enabled: templateSlug !== null,
+    queryFn: fetchTemplates,
+  });
+  const template = templateFor(templates.data?.items ?? [], templateSlug);
+  const stats = useQuery({
+    queryKey: ["connector-stats", id],
+    enabled: permissions.includes("stats:read"),
+    queryFn: async () => {
+      const bounds = connectorStatsWindow();
+      return connectorFigures(
+        await apiRequest<unknown>(connectorStatsEndpoint(id, bounds)),
+        bounds,
+      );
+    },
+  });
 
   const probe = useMutation({
     mutationFn: () =>
@@ -243,6 +160,18 @@ export function ConnectorPage({
     fromResult: (result) => result,
     errorMessage: () => t("connectorState.enableFailed"),
     onSuccess: () => toast.success(t("connectorState.enabled")),
+  });
+  const disable = useOptimisticAction({
+    queryKey: ["catalog-detail", "connectors", id],
+    mutationFn: () =>
+      apiRequest<RecordValue>(`/v1/connectors/${encodeURIComponent(id)}/disable`, {
+        method: "POST",
+      }),
+    apply: (current: RecordValue | undefined) =>
+      current ? { ...current, enabled: false } : current,
+    fromResult: (result) => result,
+    errorMessage: () => t("connectorPage.disableFailed"),
+    onSuccess: () => toast.success(t("connectorPage.disabled")),
   });
   const signInRoute = connectorSignIn(record);
   const oauthStart = useMutation({
@@ -310,7 +239,6 @@ export function ConnectorPage({
     signInFailed: failedSignIn !== null,
     rights: { write: canWrite, test: canTest },
   });
-  const toConnection = () => setEditing(true);
   const act = (action: ConnectorStripAction) => {
     switch (action.kind) {
       case "enable":
@@ -323,13 +251,14 @@ export function ConnectorPage({
         if (action.way === "provider") return oauthStart.mutate();
         if (action.way === "connection" && credential.data?.connection)
           return connectionRenew.mutate(credential.data.connection.id);
-        return toConnection();
+        return setReplacing(true);
     }
   };
   const busy =
     enable.isPending || probe.isPending || oauthStart.isPending || connectionRenew.isPending;
   const expiresAt = connectorExpiry(record.credentials, record.environment);
   const testedAt = text(record, "last_tested_at");
+  const latencyMs = probe.data?.ok ? probe.data.latency_ms : (stats.data?.medianMs ?? null);
   const stripLine = (() => {
     if (strip.kind === "signInFailed" && failedSignIn !== null)
       return signInFailureLine(failedSignIn, t);
@@ -353,35 +282,45 @@ export function ConnectorPage({
       );
     if (strip.kind === "notSignedIn") return t("connectorStrip.line.notSignedIn");
     if (strip.kind === "unverified") return t("connectorStrip.line.unverified");
+    if (strip.kind === "off") return t("connectorPage.offLine");
     if (["tested", "connected", "signedIn", "notRequired"].includes(strip.kind))
       return (
         [
-          expiresAt ? t("connectorStrip.line.validUntil", { when: dateTime(expiresAt) }) : null,
-          testedAt ? t("connectorStrip.line.testedAt", { when: dateTime(testedAt) }) : null,
+          testedAt
+            ? t("connectorStrip.line.testedAt", { when: formatRelativeTime(locale, testedAt) })
+            : null,
           probe.data?.ok ? `${Math.round(probe.data.latency_ms)} ms` : null,
+          expiresAt ? t("connectorStrip.line.validUntil", { when: dateTime(expiresAt) }) : null,
         ]
           .filter(Boolean)
           .join(" · ") || null
       );
     return null;
   })();
-
-  const metadataActions = useCatalogMetadataActions({
-    kind: "connector",
-    id,
-    record,
-    queryKey: ["catalog-detail", "connectors", id],
-    onEdit: () => setDescribing(true),
-  });
+  const stateLabel = t(
+    strip.kind === "off" && notice === "signed_in_off"
+      ? "connectorState.signedInOff"
+      : CONNECTOR_STRIP_KEYS[strip.kind],
+  );
+  const signsInAgain =
+    strip.action !== null &&
+    (strip.action.kind === "retry" ||
+      strip.action.kind === "renew" ||
+      strip.action.kind === "complete");
 
   const menu: ActionMenuItem[] = [
-    ...(canTest
+    ...(canChat
       ? [
           {
-            label: t("detail.test"),
-            disabled: probe.isPending || inspect.isPending,
-            onSelect: runTest,
-            testId: "connector-test",
+            label: t("detail.changeInChat"),
+            href: absolute(
+              chatNewHref({
+                connectorId: id,
+                prompt: t("detail.changeRecordPrompt"),
+                references: [{ type: "connector", id }],
+              }),
+            ),
+            testId: "connector-menu-change",
           },
         ]
       : []),
@@ -392,7 +331,15 @@ export function ConnectorPage({
             onSelect: () => setEditing(true),
             testId: "connector-menu-edit",
           },
-          ...metadataActions,
+          ...(enabled
+            ? [
+                {
+                  label: t("connectorPage.disable"),
+                  onSelect: () => setDisabling(true),
+                  testId: "connector-menu-disable",
+                },
+              ]
+            : []),
           {
             label: t("workflowPage.delete"),
             destructive: true,
@@ -403,72 +350,130 @@ export function ConnectorPage({
       : []),
   ];
 
+  const signInWay = templateSignIn({ auth_type: authType ?? "none" });
+  const description = recordDescription(record).trim();
+  const category = recordCategory(record);
+  const host = serviceHost(text(record, "base_url"));
+  const environment = environmentName(record, t);
+  const usedBy = users.data
+    ? t(
+        userCount === 1 ? "connectorPage.summary.usedBy.one" : "connectorPage.summary.usedBy.other",
+        { count: userCount },
+      )
+    : null;
+  const overviewSummary = [
+    environment,
+    usedBy,
+    testedAt
+      ? t("connectorPage.summary.checked", { when: formatRelativeTime(locale, testedAt) })
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   const tabs: PageTab[] = [
     {
-      value: "usage",
-      label: t("connectorPage.tab.usage"),
+      value: "overview",
+      label: t("connectorPage.tab.overview"),
+      testId: "connector-tab-overview",
       content: (
-        <>
-          {typeof record.slug === "string" && permissions.includes("workflow:read") ? (
-            <ConnectorWorkflows slug={record.slug} connectorId={id} connectorName={title} />
-          ) : null}
-          {permissions.includes("conversation:read") ? (
-            <ConversationsAbout target={{ connector_id: id }} />
-          ) : null}
-        </>
-      ),
-    },
-    {
-      value: "connection",
-      label: t("connectorPage.tab.connection"),
-      content: (
-        <>
-          <ConnectorConnectionFacts
-            record={record}
-            headerNames={credential.data?.header_names ?? []}
-            speaksAs={credential.data?.speaks_as}
+        <TabBody
+          testId="connector-overview"
+          summary={overviewSummary || undefined}
+          more={
+            <CollapsibleSection
+              label={t("connectorPage.runtime")}
+              testId="connector-runtime-section"
+            >
+              <ConnectorRuntimeSection record={record} latencyMs={latencyMs} />
+            </CollapsibleSection>
+          }
+          technical={
+            <ConnectorTechnicalFacts
+              record={record}
+              id={id}
+              headerNames={credential.data?.header_names ?? []}
+              speaksAs={credential.data?.speaks_as}
+            />
+          }
+        >
+          <ConnectionGraphic
+            workspace={[session.tenant.display_name, environment].filter(Boolean).join(" · ")}
+            serviceName={template?.name ?? title}
+            serviceLine={host}
+            way={signInWay}
+            wayLabel={t(SIGN_IN_LABEL[signInWay])}
+            tone={strip.tone}
+            stateLine={stateLabel}
           />
           {auth !== "not_required" ? (
             <ConnectorCredentials
               connectorId={id}
+              connectorName={title}
               authType={authType}
+              headerNames={credential.data?.header_names ?? []}
               signsInAtProvider={signInRoute !== null}
               state={auth}
               canWrite={canWrite}
-              stateInStrip={strip.kind === "connected"}
+              replacing={replacing}
+              onReplacing={setReplacing}
               providerUrl={
                 probe.data && !probe.data.ok ? (probe.data.provider_action_url ?? null) : null
               }
             />
           ) : null}
-          {permissions.includes("connection:read") ? (
-            <ConnectorAccountConnections
+          {authType === "oauth2" && permissions.includes("connection:read") ? (
+            <ConnectorAccounts
               connectorId={id}
               canWrite={permissions.includes("connection:write")}
+              emptyAction={
+                signsInAgain || !canWrite || signInRoute === null ? undefined : (
+                  <ActionMenu
+                    items={[
+                      {
+                        label: t("connectorPage.connectAccount"),
+                        onSelect: () => oauthStart.mutate(),
+                        disabled: oauthStart.isPending,
+                        testId: "connector-connect-account",
+                      },
+                    ]}
+                  />
+                )
+              }
             />
           ) : null}
-          <div className="flex flex-col gap-2">
-            <CollapsibleSection
-              label={t("connectorPage.runtime")}
-              testId="connector-runtime-section"
-            >
-              <ConnectorRuntimeSection record={record} />
-            </CollapsibleSection>
-            <CollapsibleSection
-              label={t("connectorDetail.technical.title")}
-              testId="connector-technical"
-            >
-              <ConnectorTechnicalFacts record={record} id={id} />
-            </CollapsibleSection>
-          </div>
-        </>
+        </TabBody>
       ),
+    },
+    {
+      value: "usage",
+      label: t("connectorPage.tab.usage"),
+      testId: "connector-tab-usage",
+      content:
+        slug && permissions.includes("workflow:read") ? (
+          <ConnectorWorkflows
+            slug={slug}
+            connectorId={id}
+            connectorName={title}
+            template={template}
+            conversations={
+              permissions.includes("conversation:read") ? (
+                <ConversationsAbout target={{ connector_id: id }} />
+              ) : undefined
+            }
+          />
+        ) : permissions.includes("conversation:read") ? (
+          <TabBody testId="connector-usage">
+            <ConversationsAbout target={{ connector_id: id }} />
+          </TabBody>
+        ) : null,
     },
     ...(isMcp
       ? [
           {
             value: "tools",
             label: t("connectorPage.tab.tools"),
+            testId: "connector-tab-tools",
             content: (
               <ConnectorMcpTools
                 connectorId={id}
@@ -490,109 +495,133 @@ export function ConnectorPage({
   ];
 
   return (
-    <Page
-      kind="detail"
-      scroll="page"
-      testId="detail-connectors"
-      surface="detail"
-      header={
-        <PageHeader
-          back={{ to: "/connectors", label: t("nav.connectors") }}
-          title={title}
-          purpose={<CatalogMetadataSummary record={record} />}
-          secondary={
-            canChat ? (
-              <ActionMenu
-                items={[
-                  {
-                    label: t("detail.changeInChat"),
-                    href: absolute(
-                      chatNewHref({
-                        connectorId: id,
-                        prompt: t("detail.changeRecordPrompt"),
-                        references: [{ type: "connector", id }],
-                      }),
-                    ),
-                    testId: "connector-menu-change",
-                  },
-                ]}
-              />
-            ) : undefined
-          }
-          menu={menu.length > 0 ? <ActionMenu items={menu} testId="connector-menu" /> : undefined}
-        />
-      }
+    <div
+      className="contents"
+      data-testid="connector-state"
+      data-strip={strip.kind}
+      data-notice={notice ?? ""}
     >
-      <div className="flex flex-col gap-6">
-        <div data-testid="connector-state" data-strip={strip.kind} data-notice={notice ?? ""}>
-          <StatusStrip
-            tone={strip.tone}
-            testId="connector-status-strip"
-            line={
-              <>
-                <span className="font-medium" data-testid="connector-strip-state">
-                  {t(
-                    strip.kind === "off" && notice === "signed_in_off"
-                      ? "connectorState.signedInOff"
-                      : CONNECTOR_STRIP_KEYS[strip.kind],
-                  )}
-                </span>
-                {stripLine ? (
+      <DetailPage
+        testId="detail-connectors"
+        back={{ to: "/connectors", label: t("nav.connectors") }}
+        title={title}
+        badge={
+          category !== UNCATEGORIZED ? (
+            <span
+              className="rounded-full border px-2 py-0.5 text-xs font-medium"
+              data-testid="catalog-metadata-chip"
+            >
+              {humanizeCategory(category, t("catalog.categoryOther"))}
+            </span>
+          ) : undefined
+        }
+        purpose={
+          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span data-testid="catalog-metadata-description">
+              {description || t("connectorPage.purpose", { service: template?.name ?? title })}
+            </span>
+            {writtenByAssistant(record) ? (
+              <span
+                className="inline-flex items-center gap-1 text-xs"
+                data-testid="catalog-metadata-by-assistant"
+              >
+                <Sparkles aria-hidden="true" className="size-3" />
+                {t("catalogMeta.byAssistant")}
+              </span>
+            ) : null}
+          </span>
+        }
+        action={
+          canTest
+            ? {
+                label: (
                   <>
-                    {" · "}
-                    <span data-testid="connector-probe-result">{stripLine}</span>
+                    <Activity data-icon="inline-start" />
+                    {t("detail.test")}
                   </>
-                ) : null}
-              </>
-            }
-            help={
-              strip.lower.length > 0
-                ? strip.lower.map((kind) => t(CONNECTOR_STRIP_KEYS[kind])).join(" · ")
-                : undefined
-            }
-            more={
-              strip.lower.length > 0
-                ? t("workflowStrip.more", { count: strip.lower.length })
-                : undefined
-            }
-            action={
-              strip.action
-                ? {
-                    label: t(connectorStripActionKey(strip.action)),
-                    variant: strip.tone === "ok" ? "outline" : "primary",
-                    pending: busy,
-                    onClick: () => strip.action && act(strip.action),
-                    testId:
-                      strip.action.kind === "enable"
-                        ? "connector-enable"
-                        : strip.action.kind === "recheck"
-                          ? "connector-recheck"
-                          : strip.action.kind === "retry"
-                            ? "connector-signin-again"
-                            : "connector-renew-signin",
-                  }
-                : undefined
-            }
-          />
-        </div>
-        <PageTabs tabs={tabs} param="tab" testId="connector-tabs" />
-      </div>
+                ),
+                variant: "primary",
+                onClick: runTest,
+                pending: probe.isPending || inspect.isPending,
+                testId: "connector-test",
+              }
+            : undefined
+        }
+        menu={menu.length > 0 ? <ActionMenu items={menu} testId="connector-menu" /> : undefined}
+        strip={{
+          tone: strip.tone,
+          testId: "connector-status-strip",
+          line: (
+            <>
+              <span className="font-medium" data-testid="connector-strip-state">
+                {stateLabel}
+              </span>
+              {stripLine ? (
+                <>
+                  {" · "}
+                  <span data-testid="connector-probe-result">{stripLine}</span>
+                </>
+              ) : null}
+            </>
+          ),
+          help:
+            strip.lower.length > 0
+              ? strip.lower.map((kind) => t(CONNECTOR_STRIP_KEYS[kind])).join(" · ")
+              : undefined,
+          more:
+            strip.lower.length > 0
+              ? t("workflowStrip.more", { count: strip.lower.length })
+              : undefined,
+          action: strip.action
+            ? {
+                label: t(connectorStripActionKey(strip.action)),
+                variant: "outline",
+                pending: busy,
+                onClick: () => strip.action && act(strip.action),
+                testId:
+                  strip.action.kind === "enable"
+                    ? "connector-enable"
+                    : strip.action.kind === "recheck"
+                      ? "connector-recheck"
+                      : strip.action.kind === "retry"
+                        ? "connector-signin-again"
+                        : "connector-renew-signin",
+              }
+            : undefined,
+        }}
+        tabs={tabs}
+        defaultTab="overview"
+      />
       {canWrite ? (
         <>
-          <CatalogMetadataDialog
-            kind="connector"
-            id={id}
-            record={record}
-            open={describing}
-            onOpenChange={setDescribing}
-            queryKey={["catalog-detail", "connectors", id]}
-          />
           <ConnectorEditDialog
             open={editing}
             onOpenChange={setEditing}
             id={id}
             record={record}
             headerNames={credential.data?.header_names ?? []}
+          />
+          <ConfirmDialog
+            open={disabling}
+            onOpenChange={(next) => !disable.isPending && setDisabling(next)}
+            object={title}
+            verb={t("connectorPage.disable")}
+            consequence={
+              users.data
+                ? t(
+                    userCount === 1
+                      ? "connectorPage.disableConsequence.one"
+                      : "connectorPage.disableConsequence.other",
+                    { count: userCount },
+                  )
+                : t("connectorState.offBody")
+            }
+            pending={disable.isPending}
+            onConfirm={async () => {
+              await disable.mutateAsync(undefined).catch(() => undefined);
+              setDisabling(false);
+            }}
+            testId="connector-disable"
           />
           <ConnectorDeleteDialog
             open={deleting}
@@ -603,6 +632,6 @@ export function ConnectorPage({
           />
         </>
       ) : null}
-    </Page>
+    </div>
   );
 }
