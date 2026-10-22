@@ -34899,6 +34899,32 @@
         }
       }
     },
+    "/bot": {
+      "get": {
+        "tags": [
+          "docs"
+        ],
+        "summary": "What the web scraper is and how to stop it",
+        "description": "Public page the web scraper's User-Agent links to. Explains who runs the crawler and how to block it with robots.txt. Returns HTML to a browser and Markdown to everything else.",
+        "responses": {
+          "200": {
+            "description": "Scraper information (HTML for browsers, Markdown otherwise)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/identity/tenants": {
       "get": {
         "tags": [

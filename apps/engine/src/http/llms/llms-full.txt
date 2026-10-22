@@ -4684,7 +4684,7 @@ Per-connector tunables. Each sub-section is owned by one connector template.
 | `connectors.web_scraper.runtime.max_chars_readability` | number | `100000` | tenant | no | no | Per-page input cap into Readability (extract_too_large). |
 | `connectors.web_scraper.runtime.max_pages` | number | `1000` | tenant | no | no | Per-run crawl cap. Hard ceiling 10 000 (crawl_max_pages_exceeded). |
 | `connectors.web_scraper.runtime.respect_robots` | boolean | `true` | tenant | no | no | Skip URLs that robots.txt disallows for the configured User-Agent. |
-| `connectors.web_scraper.runtime.user_agent` | string | `"sk-web-scraper/1.0 (+https://github.com/MikeBild/subkit)"` | tenant | no | no | User-Agent header on every fetch; passed to robots-parser matching. |
+| `connectors.web_scraper.runtime.user_agent` | string | `""` | tenant | no | no | User-Agent header on every fetch; passed to robots-parser matching. Empty means sk-web-scraper/<version> (+<server.public_base_url>/bot), or the project URL when no public base URL is set. |
 
 ## products
 Product settings keyed by product_id for product principals (oidc_bearer providers)

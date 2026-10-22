@@ -3284,6 +3284,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the web scraper is and how to stop it
+         * @description Public page the web scraper's User-Agent links to. Explains who runs the crawler and how to block it with robots.txt. Returns HTML to a browser and Markdown to everything else.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Scraper information (HTML for browsers, Markdown otherwise) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                        "text/markdown": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/identity/tenants": {
         parameters: {
             query?: never;
