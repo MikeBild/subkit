@@ -22772,6 +22772,7 @@ export interface components {
             /** Format: uuid */
             workflow_version_id: string;
             version: number;
+            approved: boolean;
         };
         TransactionalMailReceipt: {
             /** Format: uuid */

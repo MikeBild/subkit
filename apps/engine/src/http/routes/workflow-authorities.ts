@@ -485,6 +485,7 @@ async function reviewEffectChanges(
           effect_changes_base: {
             workflow_version_id: base.workflow_version_id,
             version: version.version,
+            approved: reference !== null,
           },
         }
       : {}),

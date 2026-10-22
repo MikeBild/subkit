@@ -99,6 +99,7 @@ const readOnly = preview(
     effect_changes_base: {
       workflow_version_id: "00000000-0000-4000-8000-000000000009",
       version: 12,
+      approved: true,
     },
   },
 );
@@ -176,7 +177,37 @@ test("comparison chips count every change against the named base version", () =>
     activation: true,
     carryOver: false,
   });
-  expect(model.comparison).toEqual({ version: 12, added: 0, widened: 1, unchanged: 1, removed: 1 });
+  expect(model.comparison).toEqual({
+    version: 12,
+    approved: true,
+    added: 0,
+    widened: 1,
+    unchanged: 1,
+    removed: 1,
+  });
+});
+
+test("writes compared only with an unapproved running version still need the write check", () => {
+  const unapproved = preview(writing.manifest.effects, {
+    effect_changes: writing.effect_changes?.map((entry) => ({
+      ...entry,
+      change: "unchanged" as const,
+    })),
+    effect_changes_base: {
+      workflow_version_id: "00000000-0000-4000-8000-000000000009",
+      version: 10,
+      approved: false,
+    },
+  });
+  const model = authorityReviewModel({
+    preview: unapproved,
+    connectorNames: names,
+    automation: quiet,
+    activation: true,
+    carryOver: false,
+  });
+  expect(model.requiresWriteCheck).toBe(true);
+  expect(model.comparison?.approved).toBe(false);
 });
 
 test("rows run from delete to write to new, widened and unchanged; risky rows open", () => {

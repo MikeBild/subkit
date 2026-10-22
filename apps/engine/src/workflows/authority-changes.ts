@@ -25,7 +25,11 @@ export const AuthorityEffectChangeSchema = z
 export type AuthorityEffectChange = z.infer<typeof AuthorityEffectChangeSchema>;
 
 export const AuthorityEffectChangesBaseSchema = z
-  .object({ workflow_version_id: z.string().uuid(), version: z.number().int() })
+  .object({
+    workflow_version_id: z.string().uuid(),
+    version: z.number().int(),
+    approved: z.boolean(),
+  })
   .openapi("AuthorityEffectChangesBase");
 
 const RISK = { destructive: 0, unknown: 1, write: 2, read: 3 } as const;

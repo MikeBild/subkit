@@ -289,7 +289,12 @@ export function GrantEffectReview({
         >
           {comparison.version !== null && (
             <span className="text-muted-foreground">
-              {t("authority.review.compared", { version: `v${comparison.version}` })}
+              {t(
+                comparison.approved
+                  ? "authority.review.compared"
+                  : "authority.review.comparedUnapproved",
+                { version: `v${comparison.version}` },
+              )}
             </span>
           )}
           {(["added", "widened", "unchanged", "removed"] as const).map((kind) =>

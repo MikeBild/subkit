@@ -63,6 +63,7 @@ export interface AuthorityReviewModel {
   sentence: ReviewSentence;
   comparison: {
     version: number | null;
+    approved: boolean;
     added: number;
     widened: number;
     unchanged: number;
@@ -245,6 +246,8 @@ export function authorityReviewModel(input: {
     );
   const services = groups.map((group) => group.name).join(", ");
   const grows = preview.boundary_growth === undefined || preview.boundary_growth.length > 0;
+  const approvedBase =
+    preview.boundary_growth !== undefined && preview.effect_changes_base?.approved !== false;
   const sentence: ReviewSentence =
     effects.length === 0
       ? { kind: "none" }
@@ -273,6 +276,7 @@ export function authorityReviewModel(input: {
     comparison: changes
       ? {
           version: preview.effect_changes_base?.version ?? null,
+          approved: approvedBase,
           added: count("added"),
           widened: count("widened"),
           unchanged: count("unchanged"),
@@ -283,7 +287,10 @@ export function authorityReviewModel(input: {
     requiresWriteCheck: rows.some(
       (row) =>
         row.risk !== "read" &&
-        (changes === undefined || row.change === "added" || row.change === "widened"),
+        (!approvedBase ||
+          changes === undefined ||
+          row.change === "added" ||
+          row.change === "widened"),
     ),
     blocked:
       (preview.request_refusals?.length ?? 0) +

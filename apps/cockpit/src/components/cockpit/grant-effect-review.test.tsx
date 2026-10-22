@@ -71,10 +71,17 @@ const preview: AuthorityReviewPreview = {
     { step_id: "comment", change: "added", effect: "write", subject: "comments" },
     { step_id: "repo", change: "unchanged", effect: "read", subject: "app" },
   ],
-  effect_changes_base: { workflow_version_id: "00000000-0000-4000-8000-000000000009", version: 12 },
+  effect_changes_base: {
+    workflow_version_id: "00000000-0000-4000-8000-000000000009",
+    version: 12,
+    approved: true,
+  },
 };
 
-function render(locale: Locale, extra: { problems?: string[]; loading?: boolean } = {}): string {
+function render(
+  locale: Locale,
+  extra: { problems?: string[]; loading?: boolean; preview?: AuthorityReviewPreview } = {},
+): string {
   const value = {
     locale,
     preference: locale,
@@ -84,7 +91,7 @@ function render(locale: Locale, extra: { problems?: string[]; loading?: boolean 
     dateTime: (date) => String(date),
   } as I18nValue;
   const model = authorityReviewModel({
-    preview,
+    preview: extra.preview ?? preview,
     connectorNames: new Map([[connector, "GitHub"]]),
     automation: { schedule: false, webhook: false },
     activation: true,
@@ -137,4 +144,22 @@ test("problems show as an open error row; loading shows a skeleton", () => {
     'data-testid="authority-review-problems"',
   );
   expect(render("en", { loading: true })).toContain('data-testid="authority-review-loading"');
+});
+
+test("a comparison with a running version that was never approved says so", () => {
+  const unapproved: AuthorityReviewPreview = {
+    ...preview,
+    boundary_growth: undefined,
+    effect_changes_base: {
+      workflow_version_id: "00000000-0000-4000-8000-000000000009",
+      version: 10,
+      approved: false,
+    },
+  };
+  expect(text(render("de", { preview: unapproved }))).toContain(
+    "Gegenüber v10 (nicht freigegeben):",
+  );
+  expect(text(render("en", { preview: unapproved }))).toContain(
+    "Compared with v10 (not approved):",
+  );
 });

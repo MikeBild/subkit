@@ -7188,11 +7188,15 @@
           },
           "version": {
             "type": "integer"
+          },
+          "approved": {
+            "type": "boolean"
           }
         },
         "required": [
           "workflow_version_id",
-          "version"
+          "version",
+          "approved"
         ]
       },
       "TransactionalMailReceipt": {

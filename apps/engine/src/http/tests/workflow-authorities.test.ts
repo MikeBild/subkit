@@ -275,7 +275,7 @@ test("the preview compares each effect with the approved version", async () => {
   expect(preview.status).toBe(200);
   const body = (await preview.json()) as {
     effect_changes?: Array<{ step_id: string; change: string; effect: string }>;
-    effect_changes_base?: { workflow_version_id: string; version: number };
+    effect_changes_base?: { workflow_version_id: string; version: number; approved: boolean };
   };
   expect(
     body.effect_changes?.map(({ step_id, change, effect }) => [step_id, change, effect]),
@@ -283,11 +283,54 @@ test("the preview compares each effect with the approved version", async () => {
     ["send", "widened", "write"],
     ["fetch", "added", "read"],
   ]);
-  expect(body.effect_changes_base).toEqual({ workflow_version_id: f.version.id, version: 1 });
+  expect(body.effect_changes_base).toEqual({
+    workflow_version_id: f.version.id,
+    version: 1,
+    approved: true,
+  });
   const own = (await (await app.request(f.previewPath, { headers: browserHeaders })).json()) as {
     effect_changes?: unknown;
   };
   expect(own.effect_changes).toBeUndefined();
+});
+
+test("a running version that was never approved is no approved baseline", async () => {
+  const f = await fixture();
+  await ctx.db
+    .update(workflows)
+    .set({ current_version_id: f.version.id, lifecycle: "active" })
+    .where(eq(workflows.id, f.workflow.id));
+  const [next] = await ctx.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      version: 2,
+      dag: (
+        await ctx.db
+          .select({ dag: workflowVersions.dag })
+          .from(workflowVersions)
+          .where(eq(workflowVersions.id, f.version.id))
+      )[0]?.dag as Record<string, unknown>,
+    })
+    .returning();
+  if (!next) throw new Error("missing second version");
+  const preview = await app.request(`${f.base}/versions/${next.id}/authority-preview`, {
+    headers: browserHeaders,
+  });
+  expect(preview.status).toBe(200);
+  const body = (await preview.json()) as {
+    boundary_growth?: unknown;
+    effect_changes?: Array<{ change: string }>;
+    effect_changes_base?: { workflow_version_id: string; version: number; approved: boolean };
+  };
+  expect(body.boundary_growth).toBeUndefined();
+  expect(body.effect_changes?.every((entry) => entry.change === "unchanged")).toBe(true);
+  expect(body.effect_changes_base).toEqual({
+    workflow_version_id: f.version.id,
+    version: 1,
+    approved: false,
+  });
 });
 
 test("missing CSRF and a changed reviewed connector are rejected", async () => {
