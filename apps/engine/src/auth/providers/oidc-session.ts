@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import * as jose from "jose";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
-import { roles, sessions, users } from "../../db/schema/index.ts";
+import { oidcLoginStates, roles, sessions, users } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import {
   clearBrowserSessionCookie,
@@ -15,6 +15,13 @@ import type { ResolvedPrincipal } from "../types.ts";
 
 export const SESSION_COOKIE = "subkit_session";
 const JWS_ALG = "HS256";
+
+export function purgeExpiredOidcLoginStates(db: Db): void {
+  void db
+    .delete(oidcLoginStates)
+    .where(lt(oidcLoginStates.expires_at, new Date()))
+    .catch(() => {});
+}
 
 export function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");

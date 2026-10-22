@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { eq, lt } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import * as oauth from "openid-client";
 import { ZodError } from "zod";
 import { auditAwait } from "../../audit/audit.ts";
@@ -45,6 +45,7 @@ import {
   clearCookieHeader,
   deriveSessionSecret,
   parseCookies,
+  purgeExpiredOidcLoginStates,
   resolveOidcSession,
   SESSION_COOKIE,
   sha256Hex,
@@ -316,10 +317,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       const state = providerId ? `${providerId}.${oauth.randomState()}` : oauth.randomState();
       const nonce = oauth.randomNonce();
 
-      void exec
-        .delete(oidcLoginStates)
-        .where(lt(oidcLoginStates.expires_at, new Date()))
-        .catch(() => {});
+      purgeExpiredOidcLoginStates(exec);
 
       await exec.insert(oidcLoginStates).values({
         tenant_id: tenantId,
@@ -383,10 +381,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       }
       const exec = getExec();
 
-      void exec
-        .delete(oidcLoginStates)
-        .where(lt(oidcLoginStates.expires_at, new Date()))
-        .catch(() => {});
+      purgeExpiredOidcLoginStates(exec);
 
       const pending = await exec.transaction(async (tx) => {
         // tenant-filter:exempt — OIDC issuer/sub lookup pre-tenant
