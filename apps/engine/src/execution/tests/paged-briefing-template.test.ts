@@ -242,6 +242,44 @@ test("a merged pull request completes when merged and a closed one when closed",
   expect(output.changes_since_previous_period.current.issues_completed).toBe(0);
 });
 
+test("second-precision provider timestamps fall into the half-open window of their instant", async () => {
+  const scope = baseScope();
+  scope.windows = read({
+    mode: "daily",
+    now: "2026-03-10T08:00:00.500Z",
+    current_start: "2026-03-09T08:00:00.500Z",
+    previous_start: "2026-03-08T08:00:00.500Z",
+  });
+  const rows = [
+    issue(20, { created_at: "2026-03-10T08:00:00Z" }),
+    issue(21, { created_at: "2026-03-09T08:00:00Z" }),
+    issue(22, { created_at: "2026-03-08T08:00:00Z" }),
+    issue(23, { state: "closed", created_at: OLD, closed_at: "2026-03-10T08:00:00Z" }),
+  ];
+  scope.issues = read(rows, summary(rows.length));
+  scope.issues_open = read([], summary(0));
+  scope.commits = read(
+    [
+      { sha: "d", commit: { committer: { date: "2026-03-10T08:00:00Z" } } },
+      { sha: "e", commit: { committer: { date: "2026-03-09T08:00:00Z" } } },
+      { sha: "f", commit: { committer: { date: "2026-03-08T08:00:00Z" } } },
+    ],
+    summary(3),
+  );
+  scope.actions = read([], summary(0));
+  const output = await brief(scope);
+  expect(output.changes_since_previous_period.current).toMatchObject({
+    issues_opened: 1,
+    issues_completed: 1,
+    commits: 1,
+  });
+  expect(output.changes_since_previous_period.previous).toMatchObject({
+    issues_opened: 1,
+    issues_completed: 0,
+    commits: 1,
+  });
+});
+
 test.each(PAGED)(
   "a paged %s read without a pagination summary is never reported complete",
   async (source) => {

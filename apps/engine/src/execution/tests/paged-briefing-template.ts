@@ -74,7 +74,8 @@ for (const entry of completeness) {
   else if (!entry.complete) missing.push('Quelle unvollständig gelesen: ' + entry.source + ' (' + reasonText[entry.reason] + ').');
 }
 const truncated = completeness.some(entry => !entry.complete);
-const inWindow = (value, start, end) => typeof value === 'string' && value >= start && value < end;
+const instant = value => /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/.test(value) ? value.slice(0, 19) + '.000Z' : value;
+const inWindow = (value, start, end) => typeof value === 'string' && instant(value) >= instant(start) && instant(value) < instant(end);
 const labels = row => Array.isArray(row.labels) ? row.labels.map(entry => entry && entry.name).filter(Boolean) : [];
 const field = (item, name) => {
   const nodes = item && item.fieldValues && Array.isArray(item.fieldValues.nodes) ? item.fieldValues.nodes : [];
