@@ -167,6 +167,19 @@ describe("POST /v1/oauth/token grant_type=token-exchange", () => {
     expect(wider.status).toBe(400);
     expect(wider.body.error).toBe("invalid_scope");
   });
+
+  test("workflow permissions next to workflow:<id> stay permissions of the token", async () => {
+    const wildcard = await mintKey(["*"]);
+    const workflowId = crypto.randomUUID();
+    const narrowed = await exchange(wildcard.plaintext, {
+      scope: `workflow:run workflow:read workflow:${workflowId}`,
+    });
+    expect(narrowed.status).toBe(200);
+    expect(narrowed.body.scope).toBe("workflow:run workflow:read");
+    const me = await whoami(narrowed.body.access_token ?? "");
+    expect(me.status).toBe(200);
+    expect(me.body.scopes).toEqual(["workflow:run", "workflow:read"]);
+  });
 });
 
 describe("the token is accepted exactly like the key", () => {

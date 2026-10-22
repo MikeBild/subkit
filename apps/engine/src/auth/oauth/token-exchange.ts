@@ -9,6 +9,7 @@ import { env } from "../../env.ts";
 import { assertTenantActive, SelfServiceIdentityError } from "../../identity/index.ts";
 import { log } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
+import { getPermissionByName } from "../../rbac/catalog.ts";
 import { extractBearerToken, matchApiKeyRow } from "../providers/api-key.ts";
 import {
   type ApiKeyRow,
@@ -80,7 +81,7 @@ export function narrowGrants(requested: string[], key: KeyGrants): NarrowedGrant
   const scopes: string[] = [];
   const workflows: string[] = [];
   for (const entry of requested) {
-    if (entry.startsWith(WORKFLOW_SCOPE_PREFIX)) {
+    if (entry.startsWith(WORKFLOW_SCOPE_PREFIX) && !getPermissionByName(entry)) {
       const workflowId = entry.slice(WORKFLOW_SCOPE_PREFIX.length);
       const allowed = key.allowed_workflows;
       const covered =

@@ -102,6 +102,19 @@ describe("narrowGrants", () => {
     );
     expect(() => narrowGrants(["workflow:"], { scopes: ["*"] })).toThrow(TokenExchangeError);
   });
+
+  test("workflow permissions stay permissions next to workflow:<id> narrowing", () => {
+    expect(
+      narrowGrants(["workflow:run", "workflow:read", "workflow:wf-a"], {
+        scopes: ["*"],
+        allowed_workflows: "all",
+      }),
+    ).toEqual({ scopes: ["workflow:run", "workflow:read"], allowed_workflows: ["wf-a"] });
+    expect(narrowGrants(["workflow:write"], { scopes: ["*"] })).toEqual({
+      scopes: ["workflow:write"],
+    });
+    expect(() => narrowGrants(["workflow:run"], key)).toThrow(/scope not granted/);
+  });
 });
 
 describe("applyTokenGrants", () => {
