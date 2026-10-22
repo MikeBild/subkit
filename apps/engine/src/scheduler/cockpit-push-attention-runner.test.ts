@@ -45,6 +45,27 @@ test("dispatches once per tenant with a live push audience", async () => {
   expect(visited).toEqual([ctx.tenantId]);
 });
 
+test("pages through every tenant with a live push audience in one pass", async () => {
+  const fixtures = createCockpitPushFixtures({ db: ctx.db, at, nextUuid });
+  const first = await createSecondaryTenant(ctx, "push-page-first");
+  const second = await createSecondaryTenant(ctx, "push-page-second");
+  await fixtures.installation(first.tenantId);
+  await fixtures.installation(second.tenantId);
+  const expected = [ctx.tenantId, first.tenantId, second.tenantId].sort();
+  const dispatched: string[] = [];
+  const visited = await runCockpitPushAttention(
+    ctx.db,
+    at,
+    async (_db, tenantId) => {
+      dispatched.push(tenantId);
+      return { notified: 0, delivered: 0 };
+    },
+    1,
+  );
+  expect(dispatched).toEqual(expected);
+  expect(visited).toEqual(expected);
+});
+
 test("the reconciler respects the attention cadence", async () => {
   const passes: Date[] = [];
   const reconciler = new SchedulerReconciler({

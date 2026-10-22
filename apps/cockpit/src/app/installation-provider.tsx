@@ -10,7 +10,6 @@ import {
 } from "react";
 import {
   deletePushSubscription,
-  getCurrentCockpitInstallation,
   preparePushSubscription,
   pushSubscriptionStatus,
   rebindPushSubscriptionBinding,
@@ -21,7 +20,6 @@ import {
   clearInstallationInput,
   enableBrowserPush,
   installationCapabilities,
-  installationPushHandlesDevice,
   installationWorkerController,
   mountInstallationManifest,
   pushDeviceId,
@@ -263,18 +261,10 @@ export function InstallationProvider({
   }, []);
   const refreshPushSubscription = useCallback(async () => {
     if (!available && !capabilities.push) return false;
-    const { subscribed } = await pushSubscriptionStatus();
-    setPushSubscribed(subscribed);
-    if (!available)
-      setHandledByApp(
-        !subscribed &&
-          (await getCurrentCockpitInstallation()
-            .then(({ installation }) =>
-              installationPushHandlesDevice(navigator.serviceWorker, installation?.id ?? null),
-            )
-            .catch(() => false)),
-      );
-    return subscribed;
+    const status = await pushSubscriptionStatus(available ? null : pushDeviceId());
+    setPushSubscribed(status.subscribed);
+    if (!available) setHandledByApp(!status.subscribed && status.handled_by_app);
+    return status.subscribed;
   }, [available, capabilities.push]);
   const enablePush = useCallback(async () => {
     if (!capabilities.push) return false;
@@ -298,19 +288,23 @@ export function InstallationProvider({
     const registration = await registerInstallationWorker();
     if (!registration) return false;
     const device = pushDeviceId();
+    const { public_key } = await preparePushSubscription();
+    const release = () =>
+      void releaseBrowserPush(navigator.serviceWorker, window.location.origin, public_key).catch(
+        () => false,
+      );
     const rebound = await rebindPushSubscription({
       registration,
       permission,
       status: async () => ({ subscribed: false }),
-      prepare: preparePushSubscription,
+      prepare: async () => ({ public_key }),
       save: (subscription) => savePushSubscription(subscription, { device }),
     });
     if (rebound) {
       setPushSubscribed(true);
-      void releaseBrowserPush(navigator.serviceWorker, window.location.origin).catch(() => false);
+      release();
       return true;
     }
-    const { public_key } = await preparePushSubscription();
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: vapidApplicationServerKey(public_key),
@@ -322,7 +316,7 @@ export function InstallationProvider({
       throw error;
     }
     setPushSubscribed(true);
-    void releaseBrowserPush(navigator.serviceWorker, window.location.origin).catch(() => false);
+    release();
     return true;
   }, [available, capabilities.push]);
   const disablePush = useCallback(async () => {

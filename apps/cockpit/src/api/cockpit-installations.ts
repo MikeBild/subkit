@@ -21,8 +21,14 @@ export function revokeCockpitInstallation(id: string): Promise<void> {
   return apiRequest(`/v1/cockpit/installations/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-export function pushSubscriptionStatus(): Promise<{ subscribed: boolean }> {
-  return apiRequest("/v1/cockpit/push-subscription");
+export function pushSubscriptionStatus(
+  device?: string | null,
+): Promise<{ subscribed: boolean; handled_by_app: boolean }> {
+  return apiRequest(
+    device
+      ? `/v1/cockpit/push-subscription?device=${encodeURIComponent(device)}`
+      : "/v1/cockpit/push-subscription",
+  );
 }
 
 export function preparePushSubscription(): Promise<{ public_key: string }> {

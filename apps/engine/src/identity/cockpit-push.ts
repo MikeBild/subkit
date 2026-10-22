@@ -27,7 +27,7 @@ import { sessions, tenants, users } from "../db/schema/identity.ts";
 import { now } from "../utils/clock.ts";
 
 const PUSH_AUDIENCE_MAX = 200;
-const PUSH_TENANTS_MAX = 200;
+export const COCKPIT_PUSH_TENANT_PAGE = 200;
 const PUSH_TTL_SECONDS = 4 * 60 * 60;
 const BROWSER_PUSH_ROWS_PER_USER = 10;
 export const COCKPIT_PUSH_IDLE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
@@ -676,7 +676,12 @@ export interface CockpitPushAudienceRow {
 
 function audienceSelection(
   exec: Executor,
-  scope: { tenant_id: string; installation_id?: string; subscription_ids?: string[] },
+  scope: {
+    tenant_id: string;
+    installation_id?: string;
+    subscription_ids?: string[];
+    installed_device?: { user_id: string; device_sha256: string };
+  },
   at: Date,
 ) {
   return exec
@@ -709,6 +714,13 @@ function audienceSelection(
         ...(scope.subscription_ids
           ? [inArray(cockpitPushSubscriptions.id, scope.subscription_ids)]
           : []),
+        ...(scope.installed_device
+          ? [
+              eq(cockpitPushSubscriptions.kind, "installation"),
+              eq(cockpitPushSubscriptions.device_sha256, scope.installed_device.device_sha256),
+              eq(audienceUserId, scope.installed_device.user_id),
+            ]
+          : []),
         pushAudienceWhere(exec, eq(cockpitPushSubscriptions.tenant_id, scope.tenant_id), at),
       ),
     )
@@ -731,7 +743,30 @@ export async function listCockpitPushAudience(
   }));
 }
 
-export async function listCockpitPushTenants(exec: Executor, at: Date): Promise<string[]> {
+export async function cockpitPushDeviceHandledByApp(
+  exec: Executor,
+  context: CockpitPushContext,
+  device: string | undefined,
+  at: Date = new Date(now()),
+): Promise<boolean> {
+  const hash = context.kind === "browser" ? deviceHash(context, device) : null;
+  if (!hash) return false;
+  const rows = await audienceSelection(
+    exec,
+    {
+      tenant_id: context.tenant_id,
+      installed_device: { user_id: context.user_id, device_sha256: hash },
+    },
+    at,
+  ).limit(1);
+  return rows.length > 0;
+}
+
+export async function listCockpitPushTenants(
+  exec: Executor,
+  at: Date,
+  page: { after?: string | null; limit?: number } = {},
+): Promise<string[]> {
   // tenant-filter:exempt — the attention pass visits every tenant that still has a live push audience
   const rows = await exec
     .selectDistinct({ tenant_id: cockpitPushSubscriptions.tenant_id })
@@ -743,9 +778,15 @@ export async function listCockpitPushTenants(exec: Executor, at: Date): Promise<
     )
     .innerJoin(users, eq(users.id, audienceUserId))
     .innerJoin(tenants, eq(tenants.id, cockpitPushSubscriptions.tenant_id))
-    .where(pushAudienceWhere(exec, sql`true`, at))
+    .where(
+      pushAudienceWhere(
+        exec,
+        page.after ? gt(cockpitPushSubscriptions.tenant_id, page.after) : sql`true`,
+        at,
+      ),
+    )
     .orderBy(asc(cockpitPushSubscriptions.tenant_id))
-    .limit(PUSH_TENANTS_MAX);
+    .limit(page.limit ?? COCKPIT_PUSH_TENANT_PAGE);
   return rows.map((row) => row.tenant_id);
 }
 

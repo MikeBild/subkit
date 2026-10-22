@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   browserPushRegistration,
-  installationPushHandlesDevice,
   installationWorkerController,
   pushDeviceId,
   rebindBrowserPushSubscription,
@@ -156,26 +155,6 @@ describe("worker scopes", () => {
     ).toBeNull();
     expect(await browserPushRegistration(container(undefined), origin)).toBeNull();
     expect(asked).toEqual(["/cockpit/", "/cockpit/", "/cockpit/"]);
-  });
-
-  test("the installed app handles this device only with a live subscription", async () => {
-    const container = (registrations: ServiceWorkerRegistration[]) => ({
-      getRegistrations: async () => registrations,
-    });
-    const scope = `${origin}/cockpit/i/${installation}/`;
-    expect(
-      await installationPushHandlesDevice(container([registration(scope, true)]), installation),
-    ).toBeTrue();
-    expect(
-      await installationPushHandlesDevice(container([registration(scope, false)]), installation),
-    ).toBeFalse();
-    expect(
-      await installationPushHandlesDevice(
-        container([registration(`${origin}/cockpit/`, true)]),
-        installation,
-      ),
-    ).toBeFalse();
-    expect(await installationPushHandlesDevice(container([]), null)).toBeFalse();
   });
 
   test("installation messages go only to the installation worker", () => {

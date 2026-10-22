@@ -8,6 +8,7 @@ import {
 } from "../../auth/browser-session.ts";
 import { cockpitPushSubscriptions } from "../../db/schema/cockpit-push.ts";
 import { sessions, users } from "../../db/schema/identity.ts";
+import { endCockpitPushForSessions } from "../../identity/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { resolveCockpitPushContext } from "../middleware/cockpit-installation.ts";
 import { browserSessionHeaders, createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -81,11 +82,11 @@ test("push opt-in is scoped to the current app session and retains CSRF and key 
   });
   expect(stored.status).toBe(204);
   const active = await fetch(`${base}/cockpit/push-subscription`, { headers });
-  expect(await active.json()).toEqual({ subscribed: true });
+  expect(await active.json()).toEqual({ subscribed: true, handled_by_app: false });
   const removed = await fetch(`${base}/cockpit/push-subscription`, { method: "DELETE", headers });
   expect(removed.status).toBe(204);
   const inactive = await fetch(`${base}/cockpit/push-subscription`, { headers });
-  expect(await inactive.json()).toEqual({ subscribed: false });
+  expect(await inactive.json()).toEqual({ subscribed: false, handled_by_app: false });
 });
 
 async function addUser(): Promise<string> {
@@ -157,7 +158,7 @@ test("the root Cockpit tab opts in with its own browser session and CSRF", async
   const base = `${server.baseUrl}/v1/cockpit/push-subscription`;
   const status = await fetch(base, { headers });
   expect(status.status).toBe(200);
-  expect(await status.json()).toEqual({ subscribed: false });
+  expect(await status.json()).toEqual({ subscribed: false, handled_by_app: false });
   const prepared = await fetch(`${base}/prepare`, { method: "POST", headers, body: "{}" });
   expect(prepared.status).toBe(200);
   const subscription = rootSubscription("https://fcm.googleapis.com/fcm/send/root-tab");
@@ -190,19 +191,77 @@ test("the root Cockpit tab opts in with its own browser session and CSRF", async
   expect(await rootRows(server.userId)).toEqual([
     { tenant_id: server.tenantId, kind: "browser", installation_id: null },
   ]);
-  expect(await (await fetch(base, { headers })).json()).toEqual({ subscribed: true });
+  expect(await (await fetch(base, { headers })).json()).toEqual({
+    subscribed: true,
+    handled_by_app: false,
+  });
   const { headers: renewed } = await rootSession(server.userId);
-  expect(await (await fetch(base, { headers: renewed })).json()).toEqual({ subscribed: false });
+  expect(await (await fetch(base, { headers: renewed })).json()).toEqual({
+    subscribed: false,
+    handled_by_app: false,
+  });
   const rebound = await fetch(base, {
     method: "PUT",
     headers: renewed,
     body: JSON.stringify({ ...subscription, rebind: true }),
   });
   expect(rebound.status).toBe(204);
-  expect(await (await fetch(base, { headers: renewed })).json()).toEqual({ subscribed: true });
+  expect(await (await fetch(base, { headers: renewed })).json()).toEqual({
+    subscribed: true,
+    handled_by_app: false,
+  });
   const removed = await fetch(base, { method: "DELETE", headers: renewed });
   expect(removed.status).toBe(204);
   expect(await rootRows(server.userId)).toEqual([]);
+});
+
+test("the browser tab reports app delivery only while the installed app row on this device is live", async () => {
+  const root = await browserSessionHeaders(server, server.userId);
+  const created = await fetch(`${server.baseUrl}/v1/cockpit/installations`, {
+    method: "POST",
+    headers: root,
+    body: "{}",
+  });
+  const { id } = (await created.json()) as { id: string };
+  const base = `${server.baseUrl}/cockpit/i/${id}/api/v1/cockpit/push-subscription`;
+  const cookie = created.headers.get("set-cookie") ?? "";
+  const boot = await fetch(`${server.baseUrl}/cockpit/i/${id}/api/v1/cockpit/bootstrap`, {
+    headers: { cookie },
+  });
+  const { csrf_token } = (await boot.json()) as { csrf_token: string };
+  const installed = { cookie, "x-subkit-csrf": csrf_token, "content-type": "application/json" };
+  await fetch(`${base}/prepare`, { method: "POST", headers: installed, body: "{}" });
+  const device = "66666666-6666-4666-8666-666666666666";
+  const stored = await fetch(base, {
+    method: "PUT",
+    headers: installed,
+    body: JSON.stringify({
+      ...rootSubscription("https://fcm.googleapis.com/fcm/send/installed-device"),
+      device,
+    }),
+  });
+  expect(stored.status).toBe(204);
+  const { headers } = await rootSession(server.userId);
+  const tab = `${server.baseUrl}/v1/cockpit/push-subscription`;
+  const status = async (query: string) => await (await fetch(`${tab}${query}`, { headers })).json();
+  expect(await status(`?device=${device}`)).toEqual({ subscribed: false, handled_by_app: true });
+  expect(await status("?device=77777777-7777-4777-8777-777777777777")).toEqual({
+    subscribed: false,
+    handled_by_app: false,
+  });
+  expect(await status("")).toEqual({ subscribed: false, handled_by_app: false });
+  expect((await fetch(`${tab}?device=not-a-device`, { headers })).status).toBe(400);
+  const installationSessions = await server.db
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(and(eq(sessions.tenant_id, server.tenantId), eq(sessions.installation_id, id)));
+  await endCockpitPushForSessions(
+    server.db,
+    { tenant_id: server.tenantId, session_ids: installationSessions.map((row) => row.id) },
+    "session_logout",
+    { actor_type: "user", actor_id: server.userId },
+  );
+  expect(await status(`?device=${device}`)).toEqual({ subscribed: false, handled_by_app: false });
 });
 
 test("machine principals and foreign sessions never reach root push", async () => {

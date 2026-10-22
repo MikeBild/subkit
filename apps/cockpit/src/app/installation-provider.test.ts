@@ -286,10 +286,16 @@ describe("browser tab push lifecycle", () => {
 
   test("enabling the installed app releases the browser tab subscription", async () => {
     const workers = browserWorkers({ existing: currentKey });
-    expect(await releaseBrowserPush(workers.container, origin)).toBeTrue();
+    expect(await releaseBrowserPush(workers.container, origin, currentKey)).toBeTrue();
     expect(workers.log).toEqual(["getRegistration:/cockpit/", `unsubscribe:${currentKey}`]);
     const other = browserWorkers({ existing: currentKey, scope: `${origin}${installed}` });
-    expect(await releaseBrowserPush(other.container, origin)).toBeFalse();
+    expect(await releaseBrowserPush(other.container, origin, currentKey)).toBeFalse();
     expect(other.log).toEqual(["getRegistration:/cockpit/"]);
+  });
+
+  test("enabling the installed app keeps another workspace's browser tab subscription", async () => {
+    const workers = browserWorkers({ existing: previousKey });
+    expect(await releaseBrowserPush(workers.container, origin, currentKey)).toBeFalse();
+    expect(workers.log).toEqual(["getRegistration:/cockpit/"]);
   });
 });

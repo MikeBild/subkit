@@ -123,7 +123,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type WorkerRegistrar = Pick<ServiceWorkerContainer, "register">;
 type WorkerLookup = Pick<ServiceWorkerContainer, "getRegistration">;
-type WorkerListing = Pick<ServiceWorkerContainer, "getRegistrations">;
 
 interface DeviceStorage {
   getItem(key: string): string | null;
@@ -164,19 +163,6 @@ export function pushDeviceId(
   } catch {
     return null;
   }
-}
-
-export async function installationPushHandlesDevice(
-  container: WorkerListing | undefined,
-  tenantInstallationId: string | null,
-): Promise<boolean> {
-  if (!container || !tenantInstallationId) return false;
-  const suffix = `/cockpit/i/${tenantInstallationId}/`;
-  for (const registration of await container.getRegistrations()) {
-    if (!new URL(registration.scope).pathname.endsWith(suffix)) continue;
-    if (await registration.pushManager.getSubscription()) return true;
-  }
-  return false;
 }
 
 export function installationWorkerController<Worker extends Pick<ServiceWorker, "scriptURL">>(
@@ -265,10 +251,13 @@ export async function enableBrowserPush(input: {
 export async function releaseBrowserPush(
   container: WorkerLookup | undefined,
   origin: string,
+  publicKey: string,
 ): Promise<boolean> {
   const registration = await browserPushRegistration(container, origin);
   const subscription = await registration?.pushManager.getSubscription();
   if (!subscription) return false;
+  const serverKey = vapidApplicationServerKey(publicKey);
+  if (!sameServerKey(subscription.options.applicationServerKey, serverKey)) return false;
   await subscription.unsubscribe();
   return true;
 }

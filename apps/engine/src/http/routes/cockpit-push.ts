@@ -5,6 +5,7 @@ import { EgressBlockedError } from "../../connectors/index.ts";
 import type { Db } from "../../db/client.ts";
 import {
   type CockpitPushContext,
+  cockpitPushDeviceHandledByApp,
   cockpitPushSubscriptionActive,
   prepareCockpitPushKey,
   rebindCockpitBrowserPushSubscription,
@@ -29,7 +30,10 @@ const SubscriptionBody = z
   .strict()
   .openapi("CockpitPushSubscription");
 
-const PushStatus = z.object({ subscribed: z.boolean() }).openapi("CockpitPushSubscriptionStatus");
+const PushStatus = z
+  .object({ subscribed: z.boolean(), handled_by_app: z.boolean() })
+  .openapi("CockpitPushSubscriptionStatus");
+const PushStatusQuery = z.object({ device: z.string().uuid().optional() }).strict();
 
 const PushKey = z.object({ public_key: z.string() }).openapi("CockpitPushKey");
 const PushError = z.object({ code: z.string(), message: z.string().optional() });
@@ -40,10 +44,15 @@ const statusRoute = createRoute({
   tags: ["identity"],
   summary: "Read the push subscription status of the current Cockpit session",
   security: [{ browserSession: [] }],
+  request: { query: PushStatusQuery },
   responses: {
     200: {
       description: "Push subscription status",
       content: { "application/json": { schema: PushStatus } },
+    },
+    400: {
+      description: "Invalid device",
+      content: { "application/json": { schema: PushError } },
     },
     401: {
       description: "Cockpit browser session required",
@@ -131,8 +140,13 @@ export function registerCockpitPushRoutes(
   app.openapi(statusRoute, async (c) => {
     const pushContext = await context(c.req.raw, c);
     if (!pushContext) return c.json(sessionRequired(c.req.raw), 401);
+    const { device } = c.req.valid("query");
+    const db = c.get("db");
     return c.json(
-      { subscribed: await cockpitPushSubscriptionActive(c.get("db"), pushContext) },
+      {
+        subscribed: await cockpitPushSubscriptionActive(db, pushContext),
+        handled_by_app: await cockpitPushDeviceHandledByApp(db, pushContext, device),
+      },
       200,
     );
   });

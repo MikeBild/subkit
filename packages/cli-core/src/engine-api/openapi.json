@@ -4567,10 +4567,14 @@
         "properties": {
           "subscribed": {
             "type": "boolean"
+          },
+          "handled_by_app": {
+            "type": "boolean"
           }
         },
         "required": [
-          "subscribed"
+          "subscribed",
+          "handled_by_app"
         ]
       },
       "CockpitPushKey": {
@@ -37738,6 +37742,17 @@
             "browserSession": []
           }
         ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "device",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Push subscription status",
@@ -37745,6 +37760,27 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CockpitPushSubscriptionStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
                 }
               }
             }

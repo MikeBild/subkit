@@ -913,7 +913,13 @@ describe("browser tab push", () => {
   test("tenants with only browser rows are visited and never leak across tenants", async () => {
     const foreign = await otherTenant();
     const foreignRow = await browserOptIn({ tenantId: foreign.tenantId, userId: foreign.userId });
-    expect(await listCockpitPushTenants(ctx.db, at)).toContain(foreign.tenantId);
+    const tenantIds = await listCockpitPushTenants(ctx.db, at);
+    expect(tenantIds).toContain(foreign.tenantId);
+    const [firstTenant, ...laterTenants] = tenantIds;
+    expect(await listCockpitPushTenants(ctx.db, at, { limit: 1 })).toEqual([firstTenant ?? ""]);
+    expect(await listCockpitPushTenants(ctx.db, at, { after: firstTenant ?? null })).toEqual(
+      laterTenants,
+    );
     const audience = await listCockpitPushAudience(ctx.db, ctx.tenantId, at);
     expect(audience.map((row) => row.id)).not.toContain(foreignRow.row.id);
     expect(await listCockpitPushAudience(ctx.db, foreign.tenantId, at)).toEqual([

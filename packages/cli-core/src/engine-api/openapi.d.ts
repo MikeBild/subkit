@@ -5718,7 +5718,9 @@ export interface paths {
         /** Read the push subscription status of the current Cockpit session */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    device?: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -5732,6 +5734,18 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["CockpitPushSubscriptionStatus"];
+                    };
+                };
+                /** @description Invalid device */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            message?: string;
+                        };
                     };
                 };
                 /** @description Cockpit browser session required */
@@ -22113,6 +22127,7 @@ export interface components {
         };
         CockpitPushSubscriptionStatus: {
             subscribed: boolean;
+            handled_by_app: boolean;
         };
         CockpitPushKey: {
             public_key: string;
