@@ -37,3 +37,52 @@ export function skillsLoadState(queries: readonly ListQueryState[]): {
   const failed = queries.some((query) => Boolean(query.error || query.failureReason));
   return { pending: !failed && queries.some((query) => query.isPending), failed };
 }
+
+export const SKILL_TEMPLATES = ["tone", "report", "errors", "company"] as const;
+
+export type SkillTemplate = (typeof SKILL_TEMPLATES)[number];
+
+export function skillTemplateFromSearch(search: string): SkillTemplate | null {
+  const value = new URLSearchParams(search).get("template") ?? "";
+  return (SKILL_TEMPLATES as readonly string[]).includes(value) ? (value as SkillTemplate) : null;
+}
+
+export function skillTemplateKeys(template: SkillTemplate): {
+  title: TranslationKey;
+  line: TranslationKey;
+  body: TranslationKey;
+} {
+  return {
+    title: `skills.template.${template}.title`,
+    line: `skills.template.${template}.line`,
+    body: `skills.template.${template}.body`,
+  };
+}
+
+export interface SkillHistoryEntry {
+  audit_entry_id: string;
+  version: number | null;
+  title: string | null;
+  lifecycle: string | null;
+  updated_at: string;
+  actor_id: string | null;
+  has_snapshot: boolean;
+}
+
+export interface SkillVersionRow extends SkillHistoryEntry {
+  current: boolean;
+  restorable: boolean;
+}
+
+export function skillVersionRows(
+  entries: readonly SkillHistoryEntry[],
+  currentVersion: number,
+): SkillVersionRow[] {
+  const found = entries.findIndex((entry) => entry.version === currentVersion);
+  const currentIndex = found < 0 ? 0 : found;
+  return entries.map((entry, index) => ({
+    ...entry,
+    current: index === currentIndex,
+    restorable: entry.has_snapshot && index !== currentIndex,
+  }));
+}

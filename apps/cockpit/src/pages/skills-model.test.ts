@@ -1,6 +1,55 @@
 import { describe, expect, test } from "bun:test";
 import { translate } from "@/lib/i18n";
-import { skillScopeKey, skillsLoadState, skillWhereKey } from "./skills-model";
+import {
+  SKILL_TEMPLATES,
+  skillScopeKey,
+  skillsLoadState,
+  skillTemplateFromSearch,
+  skillTemplateKeys,
+  skillVersionRows,
+  skillWhereKey,
+} from "./skills-model";
+
+describe("skill templates prefill the editor", () => {
+  test("only a known template is read from the address", () => {
+    expect(skillTemplateFromSearch("?template=tone")).toBe("tone");
+    expect(skillTemplateFromSearch("?template=unknown")).toBeNull();
+    expect(skillTemplateFromSearch("")).toBeNull();
+  });
+
+  test("every template has a title, a line and a body in both languages", () => {
+    for (const template of SKILL_TEMPLATES)
+      for (const key of Object.values(skillTemplateKeys(template)))
+        for (const locale of ["de", "en"] as const) expect(translate(locale, key)).not.toBe(key);
+  });
+});
+
+describe("skillVersionRows", () => {
+  const entry = (id: string, version: number | null, has_snapshot = true) => ({
+    audit_entry_id: id,
+    version,
+    title: "Ton",
+    lifecycle: "active",
+    updated_at: "2026-10-20T08:00:00.000Z",
+    actor_id: null,
+    has_snapshot,
+  });
+
+  test("marks the running version as current and never offers to restore it", () => {
+    const rows = skillVersionRows([entry("c", 3), entry("b", 2), entry("a", 1, false)], 3);
+    expect(rows.map((row) => [row.current, row.restorable])).toEqual([
+      [true, false],
+      [false, true],
+      [false, false],
+    ]);
+  });
+
+  test("falls back to the newest entry when the version is not listed", () => {
+    const rows = skillVersionRows([entry("b", null), entry("a", null)], 7);
+    expect(rows[0]?.current).toBe(true);
+    expect(rows[1]?.restorable).toBe(true);
+  });
+});
 
 const done = { isPending: false, error: null, failureReason: null };
 const loading = { isPending: true, error: null, failureReason: null };

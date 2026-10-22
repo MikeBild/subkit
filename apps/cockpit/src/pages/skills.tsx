@@ -1,24 +1,39 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useRouter, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
+import {
+  Building2,
+  Cable,
+  ClipboardList,
+  Inbox,
+  LifeBuoy,
+  type LucideIcon,
+  MessageSquare,
+  PenLine,
+  Workflow,
+} from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { listProposedSkillCandidates, type SkillCandidate } from "@/api/decisions";
+import { listIntakeClips } from "@/api/intake";
 import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
-import { type ActorDirectory, actorLabel } from "@/app/actor-directory-model";
-import { absolute, chatNewHref, recordHref } from "@/app/links";
+import { type ActorDirectory, actorDirectoryName, actorLabel } from "@/app/actor-directory-model";
+import { absolute, chatNewHref, connectorHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
 import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
 import {
+  CatalogCategoryChip,
   CatalogMetadataDialog,
-  CatalogMetadataSummary,
   CatalogNameCell,
+  CatalogPurpose,
   useCatalogMetadataActions,
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
+import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
+import { type UsageCard, UsageCards } from "@/components/cockpit/knowledge-usage";
 import {
   ActionMenu,
   Button,
@@ -27,6 +42,7 @@ import {
   ConfirmDialog,
   DataState,
   DataTable,
+  DetailPage,
   type Fact,
   FactList,
   Field,
@@ -36,18 +52,23 @@ import {
   FilterBar,
   GroupingTabs,
   Input,
+  MarkdownEditor,
+  OnboardingFrame,
   Page,
   PageHeader,
+  RecordSheet,
   SaveBar,
-  Section,
+  SectionHeading,
   SegmentedControl,
   StatusBadge,
-  StatusStrip,
-  SummaryLine,
-  Textarea,
+  TabBody,
+  TemplateCard,
+  TemplateGrid,
+  Timeline,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
-import { ForbiddenState, queryView } from "@/components/failure-state";
+import { ForbiddenState } from "@/components/failure-state";
+import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
@@ -60,11 +81,18 @@ import { SkillProposalRowActions } from "@/pages/skill-proposal-row-actions";
 import { SkillProposalSheet } from "@/pages/skill-proposal-sheet";
 import {
   SKILL_APPLIES_TO,
+  SKILL_TEMPLATES,
   type SkillAppliesTo,
+  type SkillHistoryEntry,
+  type SkillTemplate,
+  type SkillVersionRow,
   skillAppliesToOptionKey,
   skillScopeKey,
   skillStateLabelKey,
   skillsLoadState,
+  skillTemplateFromSearch,
+  skillTemplateKeys,
+  skillVersionRows,
   skillWhereKey,
 } from "@/pages/skills-model";
 
@@ -73,6 +101,13 @@ type Translate = ReturnType<typeof useI18n>["t"];
 
 const ENDPOINT = "/v1/skills";
 const PROPOSALS_KEY = ["skill-candidates", "proposed"];
+
+const TEMPLATE_ICONS: Record<SkillTemplate, LucideIcon> = {
+  tone: PenLine,
+  report: ClipboardList,
+  errors: LifeBuoy,
+  company: Building2,
+};
 
 function skillsLine(t: Translate, skills: number, proposals: number): string {
   const count = t(skills === 1 ? "skills.summary.one" : "skills.summary.other", { count: skills });
@@ -112,6 +147,54 @@ function proposalLine(candidate: SkillCandidate, directory: ActorDirectory, t: T
   const reason = t(ORIGIN_LABEL[skillDecision(candidate).origin]);
   const author = actorLabel(directory, candidate.proposed_by, t);
   return author ? `${reason} · ${t("proposal.by", { name: author })}` : reason;
+}
+
+function newSkillHref(template?: SkillTemplate): string {
+  const href = recordHref("skills", "new");
+  return template ? `${href}?template=${template}` : href;
+}
+
+function SkillsOnboarding({ canWrite }: { canWrite: boolean }) {
+  const { t } = useI18n();
+  const router = useRouter();
+  const open = (href: string) => router.history.push(absolute(href));
+  return (
+    <OnboardingFrame lead={t("skills.onboarding.lead")} testId="skills-onboarding">
+      <section className="flex flex-col gap-2" aria-labelledby="skills-onboarding-templates">
+        <SectionHeading id="skills-onboarding-templates">
+          {t("skills.onboarding.templates")}
+        </SectionHeading>
+        <TemplateGrid>
+          {SKILL_TEMPLATES.map((template) => {
+            const keys = skillTemplateKeys(template);
+            const Icon = TEMPLATE_ICONS[template];
+            const href = newSkillHref(template);
+            return (
+              <TemplateCard
+                key={template}
+                title={t(keys.title)}
+                line={t(keys.line)}
+                icons={[<Icon key={template} />]}
+                href={canWrite ? href : undefined}
+                onSelect={canWrite ? () => open(href) : undefined}
+                testId={`skills-template-${template}`}
+              />
+            );
+          })}
+        </TemplateGrid>
+      </section>
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed px-4 py-3 text-sm">
+        <span className="flex-1 text-muted-foreground">{t("skills.onboarding.tip")}</span>
+        {canWrite ? (
+          <Button variant="outline" size="sm" asChild>
+            <a href={absolute(newSkillHref())} data-testid="skills-onboarding-blank">
+              {t("skills.onboarding.blank")}
+            </a>
+          </Button>
+        ) : null}
+      </div>
+    </OnboardingFrame>
+  );
 }
 
 export function SkillsPage({ permissions }: { permissions: readonly string[] }) {
@@ -235,7 +318,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         surface="collection"
         scroll="page"
         testId="catalog-skills"
-        header={<PageHeader eyebrow={t("nav.group.knowledge")} title={title} />}
+        header={<PageHeader title={title} />}
       >
         <ForbiddenState />
       </Page>
@@ -253,7 +336,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   const newButton = (testId: string) =>
     canWrite ? (
       <Button asChild>
-        <a href={absolute(recordHref("skills", "new"))} data-testid={testId}>
+        <a href={absolute(newSkillHref())} data-testid={testId}>
           {t("skills.new")}
         </a>
       </Button>
@@ -267,25 +350,29 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
       testId="catalog-skills"
       header={
         <PageHeader
-          eyebrow={t("nav.group.knowledge")}
           title={title}
-          action={empty ? undefined : newButton("skills-new")}
-          secondary={
+          action={newButton("skills-new")}
+          menu={
             canChat ? (
-              <Button asChild variant="outline">
-                <a
-                  href={absolute(chatNewHref({ prompt: t("skills.draftPrompt") }))}
-                  data-testid="skills-draft-in-chat"
-                >
-                  {t("skills.draftInChat")}
-                </a>
-              </Button>
+              <ActionMenu
+                alwaysMenu
+                testId="skills-page-actions"
+                items={[
+                  {
+                    label: t("skills.draftInChat"),
+                    href: absolute(chatNewHref({ prompt: t("skills.draftPrompt") })),
+                    testId: "skills-draft-in-chat",
+                  },
+                ]}
+              />
             ) : undefined
           }
         />
       }
     >
-      <div className="flex flex-col gap-8">
+      {empty ? (
+        <SkillsOnboarding canWrite={canWrite} />
+      ) : (
         <div className="flex flex-col gap-3">
           {rows.length > 0 || origin.active || q || categoryFilter.category ? (
             <CatalogOriginSummary
@@ -407,7 +494,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
             collectionId="skills"
           />
         </div>
-      </div>
+      )}
       <SkillProposalSheet
         candidate={proposal}
         permissions={permissions}
@@ -423,7 +510,7 @@ export function SkillPage({ permissions }: { permissions: readonly string[] }): 
   const searchStr: string = useRouterState({ select: (state) => state.location.searchStr });
   const editing = id === "new" || new URLSearchParams(searchStr).get("mode") === "edit";
   return editing ? (
-    <SkillEditor id={id} permissions={permissions} />
+    <SkillEditor id={id} permissions={permissions} search={searchStr} />
   ) : (
     <SkillRecord id={id} permissions={permissions} />
   );
@@ -443,8 +530,30 @@ function editHref(id: string): string {
   return `${absolute(recordHref("skills", id))}?mode=edit`;
 }
 
+function actorName(directory: ActorDirectory, id: string | null, t: Translate): string {
+  return (
+    actorDirectoryName(directory, "user", id) ??
+    actorDirectoryName(directory, "system_account", id) ??
+    t("runs.caller.unknown")
+  );
+}
+
+function Chip({ icon: Icon, children }: { icon?: LucideIcon; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-sm">
+      {Icon ? <Icon aria-hidden="true" className="size-3.5 text-muted-foreground" /> : null}
+      {children}
+    </span>
+  );
+}
+
+function whereChips(appliesTo: string | null | undefined): SkillAppliesTo[] {
+  if (appliesTo === "chat" || appliesTo === "authoring") return [appliesTo];
+  return ["chat", "authoring"];
+}
+
 function SkillRecord({ id, permissions }: { id: string; permissions: readonly string[] }) {
-  const { t, dateTime } = useI18n();
+  const { t, dateTime, locale } = useI18n();
   const navigate = useNavigate();
   const client = useQueryClient();
   const canRead = permissions.includes("skill:read");
@@ -484,161 +593,195 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
     },
     onError: () => toast.error(t("common.actionFailed")),
   });
-
-  const back = { to: "/skills", label: t("nav.skills") };
-  const frame = (body: ReactNode) => (
-    <Page
-      kind="detail"
-      surface="detail"
-      scroll="page"
-      testId="detail-skills"
-      header={<PageHeader back={back} title={MISSING} />}
-    >
-      {body}
-    </Page>
-  );
-  if (!canRead) return frame(<ForbiddenState />);
-  const view = queryView(query, () => false);
-  if (view === "loading") return frame(<DataState state="loading" />);
   const skill = query.data;
-  if (view === "error" || !skill)
-    return frame(
-      <DataState
-        state="error"
-        line={t("detail.loadFailed")}
-        onRetry={() => void query.refetch()}
-        testId="detail-load-failed"
-      />,
+  const back = { to: "/skills", label: t("nav.skills") };
+
+  if (!canRead)
+    return (
+      <DetailPage testId="detail-skills" back={back} title={t("nav.skills")}>
+        <ForbiddenState />
+      </DetailPage>
     );
 
-  const active = skill.status === "active";
-  const strip = active ? (
-    <StatusStrip tone="ok" line={t("skills.strip.active")} testId="skill-strip" />
-  ) : (
-    <StatusStrip
-      tone="warn"
-      line={t(skill.status === "draft" ? "skills.strip.draft" : "skills.strip.disabled")}
-      action={
-        canActivate ? (
-          <Button
-            variant="outline"
-            onClick={() => lifecycle.mutate("activate")}
-            data-testid="skill-activate"
-          >
-            {t("skills.activate")}
-          </Button>
-        ) : undefined
-      }
-      testId="skill-strip"
-    />
-  );
-  const technical: Fact[] = [
-    ...(skill.slug
-      ? [
-          {
-            label: t("skills.fact.slug"),
-            value: <span className="font-mono text-xs">{skill.slug}</span>,
-          },
-        ]
-      : []),
-    { label: t("skills.fact.version"), value: String(skill.version) },
-    { label: t("skills.fact.created"), value: dateTime(skill.created_at) },
-  ];
-  const menu = [
-    ...(canWrite ? metadataActions : []),
-    ...(active && canArchive
-      ? [
-          {
-            label: t("skills.deactivate"),
-            onSelect: () => lifecycle.mutate("archive"),
-            testId: "skill-deactivate",
-          },
-        ]
-      : []),
-    ...(!active && canActivate
-      ? [
-          {
-            label: t("skills.activate"),
-            onSelect: () => lifecycle.mutate("activate"),
-            testId: "skill-menu-activate",
-          },
-        ]
-      : []),
-    ...(canDelete
-      ? [
-          {
-            label: t("skills.delete"),
-            onSelect: () => setDeleting(true),
-            destructive: true,
-            testId: "skill-delete",
-          },
-        ]
-      : []),
-  ];
+  const active = skill?.status === "active";
+  const scope = skill ? t(skillScopeKey(skill.scope)) : "";
+  const where = skill ? t(skillWhereKey(skill.applies_to)) : "";
+  const strip = !skill
+    ? null
+    : active
+      ? {
+          tone: "ok" as const,
+          line: t("skills.strip.active", {
+            scope,
+            when: formatRelativeTime(locale, skill.updated_at),
+          }),
+        }
+      : {
+          tone: "warn" as const,
+          line: t(skill.status === "draft" ? "skills.strip.draft" : "skills.strip.disabled"),
+          action: canActivate ? (
+            <Button
+              variant="outline"
+              onClick={() => lifecycle.mutate("activate")}
+              data-testid="skill-activate"
+            >
+              {t("skills.activate")}
+            </Button>
+          ) : undefined,
+        };
+  const menu = skill
+    ? [
+        ...(canChat
+          ? [
+              {
+                label: t("detail.changeInChat"),
+                href: absolute(
+                  chatNewHref({
+                    prompt: t("detail.changeRecordPrompt"),
+                    references: [{ type: "skill", id: skill.id }],
+                  }),
+                ),
+                testId: "detail-action",
+              },
+            ]
+          : []),
+        ...(canWrite ? metadataActions : []),
+        ...(active && canArchive
+          ? [
+              {
+                label: t("skills.deactivate"),
+                onSelect: () => lifecycle.mutate("archive"),
+                testId: "skill-deactivate",
+              },
+            ]
+          : []),
+        ...(canDelete
+          ? [
+              {
+                label: t("skills.delete"),
+                onSelect: () => setDeleting(true),
+                destructive: true,
+                testId: "skill-delete",
+              },
+            ]
+          : []),
+      ]
+    : [];
+  const technical: Fact[] = skill
+    ? [
+        ...(skill.slug
+          ? [
+              {
+                label: t("skills.fact.slug"),
+                value: <span className="font-mono text-xs">@{skill.slug}</span>,
+              },
+            ]
+          : []),
+        { label: t("skills.fact.version"), value: String(skill.version) },
+        { label: t("skills.fact.created"), value: dateTime(skill.created_at) },
+        {
+          label: t("skills.fact.id"),
+          value: <span className="font-mono text-xs">{skill.id}</span>,
+        },
+      ]
+    : [];
 
   return (
-    <Page
-      kind="detail"
-      surface="detail"
-      scroll="page"
-      testId="detail-skills"
-      header={
-        <PageHeader
-          back={back}
-          title={skill.title}
-          purpose={<CatalogMetadataSummary record={skill} />}
-          action={
-            canWrite ? (
-              <Button asChild>
-                <a href={editHref(skill.id)} data-testid="skill-edit">
-                  {t("skills.edit")}
-                </a>
-              </Button>
-            ) : undefined
-          }
-          secondary={
-            canChat ? (
-              <Button asChild variant="outline">
-                <a
-                  href={absolute(
-                    chatNewHref({
-                      prompt: t("detail.changeRecordPrompt"),
-                      references: [{ type: "skill", id: skill.id }],
-                    }),
-                  )}
-                  data-testid="detail-action"
-                >
-                  {t("detail.changeInChat")}
-                </a>
-              </Button>
-            ) : undefined
-          }
-          menu={menu.length > 0 ? <ActionMenu items={menu} testId="detail-menu" /> : undefined}
-        />
-      }
-    >
-      <div className="flex flex-col gap-8">
-        {strip}
-        <Section testId="skill-content">
-          <SummaryLine
-            text={t("skills.appliesTo", {
-              scope: t(skillScopeKey(skill.scope)),
-              where: t(skillWhereKey(skill.applies_to)),
-              when: dateTime(skill.updated_at),
-            })}
+    <>
+      <DetailPage
+        testId="detail-skills"
+        back={back}
+        title={skill?.title ?? ""}
+        badge={skill ? <CatalogCategoryChip category={recordCategory(skill)} /> : undefined}
+        purpose={skill ? <CatalogPurpose record={skill} /> : undefined}
+        loading={query.isPending}
+        action={
+          skill && canWrite ? (
+            <Button asChild>
+              <a href={editHref(skill.id)} data-testid="skill-edit">
+                {t("skills.edit")}
+              </a>
+            </Button>
+          ) : undefined
+        }
+        menu={
+          menu.length > 0 ? <ActionMenu alwaysMenu items={menu} testId="detail-menu" /> : undefined
+        }
+        strip={strip ? { ...strip, testId: "skill-strip" } : null}
+        tabs={
+          skill
+            ? [
+                {
+                  value: "content",
+                  label: t("skills.tab.content"),
+                  testId: "skill-tab-content",
+                  content: (
+                    <TabBody
+                      testId="skill-content"
+                      summary={t("skills.appliesTo", {
+                        scope,
+                        where,
+                        when: dateTime(skill.updated_at),
+                      })}
+                      technical={<FactList items={technical} testId="skill-technical" />}
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">{t("skills.column.scope")}</span>
+                        <Chip>{scope}</Chip>
+                        <span className="ml-2 text-muted-foreground">
+                          {t("skills.column.where")}
+                        </span>
+                        {whereChips(skill.applies_to).map((place) => (
+                          <Chip key={place} icon={place === "chat" ? MessageSquare : Workflow}>
+                            {t(skillWhereKey(place))}
+                          </Chip>
+                        ))}
+                      </div>
+                      {skill.body.trim() ? (
+                        <article className="rounded-lg border p-5">
+                          <FilePreview
+                            name=""
+                            mimeType="text/markdown"
+                            text={documentUnderTitle(skill.body, skill.title)}
+                            testId="skill-preview"
+                          />
+                        </article>
+                      ) : (
+                        <DataState
+                          state="empty"
+                          line={t("skills.contentEmpty")}
+                          testId="skill-content-empty"
+                        />
+                      )}
+                    </TabBody>
+                  ),
+                },
+                {
+                  value: "usage",
+                  label: t("skills.tab.usage"),
+                  testId: "skill-tab-usage",
+                  content: <SkillUsage skill={skill} permissions={permissions} />,
+                },
+                {
+                  value: "versions",
+                  label: t("skills.tab.versions"),
+                  testId: "skill-tab-versions",
+                  content: <SkillVersions skill={skill} canWrite={canWrite} />,
+                },
+              ]
+            : undefined
+        }
+      >
+        {query.error ? (
+          <DataState
+            state="error"
+            line={t("detail.loadFailed")}
+            onRetry={() => void query.refetch()}
+            testId="detail-load-failed"
           />
-          <FilePreview
-            name=""
-            mimeType="text/markdown"
-            text={documentUnderTitle(skill.body, skill.title)}
-            testId="skill-preview"
-          />
-        </Section>
-        <CollapsibleSection label={t("knowledge.technical")} testId="detail-overview">
-          <FactList items={technical} />
-        </CollapsibleSection>
-      </div>
-      {canWrite ? (
+        ) : null}
+      </DetailPage>
+      {skill && canWrite ? (
         <CatalogMetadataDialog
           kind="skill"
           id={skill.id}
@@ -648,22 +791,267 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
           queryKey={["skill", skill.id]}
         />
       ) : null}
-      <ConfirmDialog
-        open={deleting}
-        onOpenChange={setDeleting}
-        object={skill.title}
-        verb={t("skills.delete")}
-        consequence={t("skills.deleteConsequence")}
-        destructive
-        pending={remove.isPending}
-        onConfirm={() => remove.mutateAsync().then(() => undefined)}
-        testId="skill-delete-confirm"
-      />
-    </Page>
+      {skill ? (
+        <ConfirmDialog
+          open={deleting}
+          onOpenChange={setDeleting}
+          object={skill.title}
+          verb={t("skills.delete")}
+          consequence={t("skills.deleteConsequence")}
+          destructive
+          pending={remove.isPending}
+          onConfirm={() => remove.mutateAsync().then(() => undefined)}
+          testId="skill-delete-confirm"
+        />
+      ) : null}
+    </>
   );
 }
 
-function SkillEditor({ id, permissions }: { id: string; permissions: readonly string[] }) {
+function SkillUsage({ skill, permissions }: { skill: Skill; permissions: readonly string[] }) {
+  const { t } = useI18n();
+  const boundPath =
+    skill.scope === "workflow" && skill.workflow_id
+      ? `/v1/workflows/${encodeURIComponent(skill.workflow_id)}`
+      : skill.scope === "connector" && skill.connector_id
+        ? `/v1/connectors/${encodeURIComponent(skill.connector_id)}`
+        : null;
+  const bound = useQuery({
+    queryKey: ["skill-binding", boundPath],
+    queryFn: () => apiRequest<{ name?: string | null }>(boundPath ?? ""),
+    enabled:
+      Boolean(boundPath) &&
+      permissions.includes(skill.scope === "workflow" ? "workflow:read" : "connector:read"),
+    retry: false,
+  });
+  const intake = useQuery({
+    queryKey: ["intake", "skill-backlinks", skill.id],
+    queryFn: () => listIntakeClips(),
+    enabled: permissions.includes("intake:read"),
+  });
+  const origins = (intake.data?.items ?? []).filter(
+    (item) => item.admitted_target_kind === "skill" && item.admitted_target_id === skill.id,
+  );
+  const cards: UsageCard[] =
+    skill.scope === "workflow" && skill.workflow_id
+      ? [
+          {
+            id: skill.workflow_id,
+            title: bound.data?.name?.trim() || t("skills.scope.workflow"),
+            line: t("skills.usage.workflowLine"),
+            href: workflowHref(skill.workflow_id),
+            icon: <Workflow />,
+          },
+        ]
+      : skill.scope === "connector" && skill.connector_id
+        ? [
+            {
+              id: skill.connector_id,
+              title: bound.data?.name?.trim() || t("skills.scope.connector"),
+              line: t("skills.usage.connectorLine"),
+              href: connectorHref(skill.connector_id),
+              icon: <Cable />,
+            },
+          ]
+        : [];
+  return (
+    <TabBody
+      testId="skill-usage"
+      summary={t("skills.usage.summary", {
+        where: t(skillWhereKey(skill.applies_to)),
+        scope: t(skillScopeKey(skill.scope)),
+      })}
+      more={
+        origins.length > 0 ? (
+          <CollapsibleSection
+            label={t("skills.usage.origin")}
+            count={origins.length}
+            testId="skill-origin"
+          >
+            <UsageCards
+              testId="skill-origin-items"
+              items={origins.map((item) => ({
+                id: item.id,
+                title: item.title,
+                line: t("skills.usage.originLine"),
+                href: recordHref("intake", item.id),
+                icon: <Inbox />,
+              }))}
+            />
+          </CollapsibleSection>
+        ) : undefined
+      }
+    >
+      {cards.length > 0 ? (
+        <UsageCards items={cards} testId="skill-binding" />
+      ) : (
+        <p className="text-sm text-muted-foreground" data-testid="skill-usage-global">
+          {t("skills.usage.everywhere")}
+        </p>
+      )}
+    </TabBody>
+  );
+}
+
+function SkillVersions({ skill, canWrite }: { skill: Skill; canWrite: boolean }) {
+  const { t, dateTime } = useI18n();
+  const client = useQueryClient();
+  const live = useLiveQueryOptions();
+  const directory = useActorDirectory(true);
+  const [selected, setSelected] = useSearchParamState("version", "");
+  const history = useQuery({
+    queryKey: ["skill", skill.id, "history"],
+    queryFn: () =>
+      apiRequest<{ items: SkillHistoryEntry[] }>(
+        `${ENDPOINT}/${encodeURIComponent(skill.id)}/history`,
+      ),
+    ...live,
+  });
+  const restore = useMutation({
+    mutationFn: (entry: SkillVersionRow) =>
+      apiRequest<Skill>(`${ENDPOINT}/${encodeURIComponent(skill.id)}/restore`, {
+        method: "POST",
+        body: JSON.stringify({ audit_entry_id: entry.audit_entry_id }),
+      }),
+    onSuccess: (saved) => {
+      toast.success(t("skills.versions.restored", { version: saved.version }));
+      client.setQueryData(["skill", saved.id], saved);
+      void client.invalidateQueries({ queryKey: ["skill", saved.id, "history"] });
+      void client.invalidateQueries({ queryKey: ["catalog"] });
+      setSelected("");
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof ApiError && error.status === 409
+          ? t("skills.conflict")
+          : t("common.actionFailed"),
+      ),
+  });
+  const rows = skillVersionRows(history.data?.items ?? [], skill.version);
+  const open = rows.find((row) => row.audit_entry_id === selected) ?? null;
+  const label = (row: SkillVersionRow) =>
+    row.version === null
+      ? t("skills.versions.unnumbered")
+      : t("skills.versions.entry", { version: row.version });
+  return (
+    <TabBody
+      testId="skill-versions"
+      summary={
+        history.data
+          ? t(rows.length === 1 ? "skills.versions.one" : "skills.versions.other", {
+              count: rows.length,
+            })
+          : undefined
+      }
+    >
+      {history.isPending ? (
+        <DataState state="loading" />
+      ) : history.error ? (
+        <DataState
+          state="error"
+          line={t("skills.versions.loadFailed")}
+          onRetry={() => void history.refetch()}
+          testId="skill-versions-failed"
+        />
+      ) : rows.length === 0 ? (
+        <DataState state="empty" line={t("skills.versions.empty")} testId="skill-versions-empty" />
+      ) : (
+        <Timeline
+          testId="skill-versions-timeline"
+          groups={[
+            {
+              items: rows.map((row) => ({
+                id: row.audit_entry_id,
+                tone: row.current ? "info" : "neutral",
+                title: label(row),
+                meta: `${t(skillStateLabelKey(row.lifecycle ?? "active"))} · ${actorName(directory, row.actor_id, t)}`,
+                aside: (
+                  <>
+                    {row.current ? (
+                      <StatusBadge state="active" label={t("knowledge.versions.current")} />
+                    ) : null}
+                    <span className="text-xs text-muted-foreground">
+                      {dateTime(row.updated_at)}
+                    </span>
+                  </>
+                ),
+                onOpen: () => setSelected(row.audit_entry_id),
+                label: label(row),
+                testId: `skill-version-${row.audit_entry_id}`,
+              })),
+            },
+          ]}
+        />
+      )}
+      <RecordSheet
+        open={open !== null}
+        onOpenChange={(next) => !next && setSelected("")}
+        title={open ? label(open) : ""}
+        subtitle={open ? dateTime(open.updated_at) : undefined}
+        action={
+          open && canWrite && open.restorable ? (
+            <Button
+              pending={restore.isPending}
+              onClick={() => restore.mutate(open)}
+              data-testid="skill-version-restore"
+            >
+              {t("knowledge.versions.restore")}
+            </Button>
+          ) : undefined
+        }
+        testId="skill-version-sheet"
+        closeTestId="skill-version-close"
+      >
+        {open ? (
+          <div className="flex flex-col gap-6">
+            <FactList
+              testId="skill-version-facts"
+              items={[
+                {
+                  label: t("knowledge.versions.savedBy"),
+                  value: actorName(directory, open.actor_id, t),
+                },
+                { label: t("knowledge.versions.at"), value: dateTime(open.updated_at) },
+                {
+                  label: t("resource.field.status"),
+                  value: t(skillStateLabelKey(open.lifecycle ?? "active")),
+                },
+                ...(open.title ? [{ label: t("common.name"), value: open.title }] : []),
+              ]}
+            />
+            <p className="text-sm text-muted-foreground" data-testid="skill-version-hint">
+              {open.current
+                ? t("skills.versions.currentHint")
+                : open.restorable
+                  ? t("skills.versions.restoreHint")
+                  : t("skills.versions.noSnapshot")}
+            </p>
+            <CollapsibleSection label={t("common.technical")} testId="skill-version-technical">
+              <FactList
+                items={[
+                  {
+                    label: t("skills.versions.auditEntry"),
+                    value: <span className="font-mono text-xs">{open.audit_entry_id}</span>,
+                  },
+                ]}
+              />
+            </CollapsibleSection>
+          </div>
+        ) : null}
+      </RecordSheet>
+    </TabBody>
+  );
+}
+
+function SkillEditor({
+  id,
+  permissions,
+  search,
+}: {
+  id: string;
+  permissions: readonly string[];
+  search: string;
+}) {
   const { t } = useI18n();
   const router = useRouter();
   const client = useQueryClient();
@@ -671,21 +1059,26 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
   const canWrite = permissions.includes("skill:write");
   const query = useSkill(id, permissions.includes("skill:read"));
   const skill = query.data;
+  const template = isNew ? skillTemplateFromSearch(search) : null;
   const original = {
     title: skill?.title ?? "",
     body: skill?.body ?? "",
     appliesTo: (skill?.applies_to ?? "both") as SkillAppliesTo,
   };
-  const [title, setTitle] = useState(original.title);
-  const [body, setBody] = useState(original.body);
+  const [title, setTitle] = useState(() =>
+    template ? t(skillTemplateKeys(template).title) : original.title,
+  );
+  const [body, setBody] = useState(() =>
+    template ? t(skillTemplateKeys(template).body) : original.body,
+  );
   const [appliesTo, setAppliesTo] = useState<SkillAppliesTo>(original.appliesTo);
-  const [view, setView] = useState<"edit" | "preview">("edit");
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
+    if (isNew) return;
     setTitle(skill?.title ?? "");
     setBody(skill?.body ?? "");
     setAppliesTo((skill?.applies_to ?? "both") as SkillAppliesTo);
-  }, [skill?.title, skill?.body, skill?.applies_to]);
+  }, [isNew, skill?.title, skill?.body, skill?.applies_to]);
   const changes =
     (title !== original.title ? 1 : 0) +
     (body !== original.body ? 1 : 0) +
@@ -731,15 +1124,14 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
   });
   const submit = () => {
     setProblem(null);
-    if (!title.trim()) {
-      setView("edit");
-      return setProblem(t("skills.nameMissing"));
-    }
-    if (!body.trim()) {
-      setView("edit");
-      return setProblem(t("skills.bodyMissing"));
-    }
+    if (!title.trim()) return setProblem(t("skills.nameMissing"));
+    if (!body.trim()) return setProblem(t("skills.bodyMissing"));
     save.mutate();
+  };
+  const applyTemplate = (next: SkillTemplate) => {
+    const keys = skillTemplateKeys(next);
+    if (!title.trim()) setTitle(t(keys.title));
+    setBody(t(keys.body));
   };
 
   const back = isNew
@@ -763,87 +1155,71 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
 
   return (
     <Page kind="detail" surface="detail" scroll="page" testId="skill-editor" header={header}>
-      <div className="flex flex-col gap-4">
-        <SummaryLine
-          text={t("skills.editor.summary")}
-          aside={
-            <SegmentedControl
-              label={t("skills.editor.view")}
-              value={view}
-              onValueChange={(next) => setView(next as "edit" | "preview")}
-              options={[
-                { value: "edit", label: t("skills.editor.edit"), testId: "skill-editor-edit" },
-                {
-                  value: "preview",
-                  label: t("skills.editor.preview"),
-                  testId: "skill-editor-preview",
-                },
-              ]}
-              testId="skill-editor-view"
-            />
-          }
-        />
-        {view === "edit" ? (
-          <div className="flex flex-col gap-4">
-            <Field>
-              <FieldLabel htmlFor="skill-name">{t("common.name")}</FieldLabel>
-              <Input
-                id="skill-name"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder={t("skills.editor.namePlaceholder")}
-                data-testid="skill-name"
-              />
-            </Field>
-            <Field>
-              <FieldLabel>{t("skills.editor.appliesTo")}</FieldLabel>
-              <SegmentedControl
-                label={t("skills.editor.appliesTo")}
-                value={appliesTo}
-                onValueChange={(next) => setAppliesTo(next as SkillAppliesTo)}
-                options={SKILL_APPLIES_TO.map((value) => ({
-                  value,
-                  label: t(skillAppliesToOptionKey(value)),
-                  testId: `skill-applies-to-${value}`,
-                }))}
-                testId="skill-applies-to"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="skill-body">{t("skills.editor.body")}</FieldLabel>
-              <Textarea
-                id="skill-body"
-                rows={16}
-                value={body}
-                onChange={(event) => setBody(event.target.value)}
-                placeholder={t("skills.editor.bodyPlaceholder")}
-                className="font-mono text-xs"
-                data-testid="skill-body"
-              />
-            </Field>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            <FactList
-              items={[
-                { label: t("common.name"), value: title.trim() || MISSING },
-                {
-                  label: t("skills.column.scope"),
-                  value: t(skillScopeKey(skill?.scope ?? "global")),
-                },
-              ]}
-              testId="skill-editor-preview-facts"
-            />
-            <FilePreview
-              name=""
-              mimeType="text/markdown"
-              text={documentUnderTitle(body, title)}
-              testId="skill-editor-preview-body"
-            />
-          </div>
-        )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field>
+          <FieldLabel htmlFor="skill-name">{t("common.name")}</FieldLabel>
+          <Input
+            id="skill-name"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={t("skills.editor.namePlaceholder")}
+            data-testid="skill-name"
+          />
+        </Field>
+        <Field>
+          <FieldLabel>{t("skills.editor.appliesTo")}</FieldLabel>
+          <SegmentedControl
+            label={t("skills.editor.appliesTo")}
+            value={appliesTo}
+            onValueChange={(next) => setAppliesTo(next as SkillAppliesTo)}
+            options={SKILL_APPLIES_TO.map((value) => ({
+              value,
+              label: t(skillAppliesToOptionKey(value)),
+              testId: `skill-applies-to-${value}`,
+            }))}
+            testId="skill-applies-to"
+          />
+        </Field>
+        <Field className="sm:col-span-2">
+          <FieldLabel htmlFor="skill-body">{t("skills.editor.body")}</FieldLabel>
+          {isNew ? (
+            <div
+              className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+              data-testid="skill-templates"
+            >
+              {t("skills.editor.useTemplate")}
+              {SKILL_TEMPLATES.map((entry) => {
+                const Icon = TEMPLATE_ICONS[entry];
+                return (
+                  <button
+                    key={entry}
+                    type="button"
+                    onClick={() => applyTemplate(entry)}
+                    className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    data-testid={`skill-template-${entry}`}
+                  >
+                    <Icon aria-hidden="true" className="size-3.5" />
+                    {t(skillTemplateKeys(entry).title)}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          <MarkdownEditor
+            id="skill-body"
+            label={t("skills.editor.body")}
+            value={body}
+            onChange={setBody}
+            placeholder={t("skills.editor.bodyPlaceholder")}
+            rows={16}
+            invalid={problem === t("skills.bodyMissing")}
+            testId="skill-body"
+          />
+        </Field>
         {problem && !dirty ? (
-          <FieldError data-testid="skill-editor-error">{problem}</FieldError>
+          <FieldError className="sm:col-span-2" data-testid="skill-editor-error">
+            {problem}
+          </FieldError>
         ) : null}
       </div>
       {dirty ? (
