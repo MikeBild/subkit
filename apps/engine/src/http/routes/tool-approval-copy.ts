@@ -116,13 +116,13 @@ const de: typeof en = {
   targetShort: "Ziel",
   unknownEffect: "Was diese Aktion erreicht, ist vorab nicht sichtbar.",
   contextNote:
-    "Dieser Tool-Aufruf wartet auf eine menschliche Entscheidung. Vorbereitende Schritte können bereits gelaufen sein; die Erlaubnis bestätigt weder Ausführung noch Erfolg.",
+    "Dieser Werkzeug-Aufruf wartet auf eine menschliche Entscheidung. Vorbereitende Schritte können bereits gelaufen sein; die Erlaubnis bestätigt weder den Lauf noch seinen Erfolg.",
   summary: "Bindung",
   tool: "Tool",
   workflow: "Workflow",
   environment: "Umgebung",
   unspecified: "Nicht hinterlegt",
-  dev: "Entwicklung (dev)",
+  dev: "Test (dev)",
   prod: "Produktion (prod)",
   scope: "Erlaubter Umfang",
   once: "Einmalige Verwendung dieses Tool-Aufrufs — keine dauerhafte Freigabe",
@@ -142,7 +142,7 @@ const de: typeof en = {
   missing:
     "Für diesen Tool-Aufruf ist keine Vorschau externer Anfragen hinterlegt. Das bedeutet nicht, dass die Operation nur liest oder keine externe Wirkung hat.",
   limitations:
-    "Die gespeicherte Vorschau belegt keine unveränderliche Bindung an Workflow-Version oder Connector-Berechtigungen. Prüfe die angeforderte Aktion vor der Entscheidung.",
+    "Die gespeicherte Vorschau belegt keine unveränderliche Bindung an Workflow-Version oder Konnektor-Rechte. Prüfe die angeforderte Aktion vor der Entscheidung.",
   version: "ID der vorbereiteten Version",
   versionOnlyHelp:
     "Vorbereitete Version, Eingaben und Umgebung sind hinterlegt. Eine verifizierte Ansicht der fertigen Anfragen fehlt; die Versionsbindung allein legt noch keine Grenze für externe Wirkungen fest.",
@@ -173,12 +173,12 @@ const de: typeof en = {
   approve: "Einmal erlauben",
   decline: "Ablehnen",
   language: "Sprache",
-  outcome: "Entscheidung und Ausführung sind getrennt",
+  outcome: "Entscheidung und Lauf sind getrennt",
   outcomeHelp:
-    "Das tatsächliche Ergebnis steht im Ausführungsverlauf. Eine Erlaubnis, ein Warteschlangeneintrag oder eine genutzte Erlaubnis ist keine erfolgreiche externe Aktion.",
+    "Das tatsächliche Ergebnis steht im Verlauf der Läufe. Eine Erlaubnis, ein Warteschlangeneintrag oder eine genutzte Erlaubnis ist keine erfolgreiche externe Aktion.",
   deadTitle: "Link abgelaufen oder nicht verfügbar",
   deadMessage:
-    "Mit diesem Link ist keine Entscheidung möglich. Fordere einen neuen Link an. Diese Seite kann nicht feststellen, ob früher eine Entscheidung oder Ausführung stattgefunden hat.",
+    "Mit diesem Link ist keine Entscheidung möglich. Fordere einen neuen Link an. Diese Seite kann nicht feststellen, ob früher eine Entscheidung oder ein Lauf stattgefunden hat.",
   invalidTitle: "Ungültige Übermittlung",
   invalidMessage:
     "Ein gültiger Link und eine Entscheidung sind erforderlich. Durch diese Übermittlung wurde keine Entscheidung gespeichert.",
@@ -194,10 +194,10 @@ const de: typeof en = {
   approvedMessage:
     "Die einmalige Erlaubnis wurde gespeichert. Der Assistent kann sie innerhalb des erlaubten Zeitfensters nutzen; bitte ihn bei Bedarf fortzufahren. Das Ausführungsergebnis steht hier nicht fest.",
   queuedMessage:
-    "Die einmalige Erlaubnis wurde gespeichert und die Fortsetzung eingereiht. Der Warteschlangeneintrag bestätigt weder Start noch Erfolg. Prüfe das Ergebnis im Ausführungsverlauf.",
+    "Die einmalige Erlaubnis wurde gespeichert und die Fortsetzung eingereiht. Der Warteschlangeneintrag bestätigt weder Start noch Erfolg. Prüfe das Ergebnis im Verlauf der Läufe.",
   consumedTitle: "Erlaubnis genutzt — Ergebnis unbekannt",
   consumedMessage:
-    "Die einmalige Erlaubnis wurde genutzt und kann nicht erneut verwendet werden. Das belegt weder die Ausführung noch ihren Erfolg. Prüfe den Ausführungsverlauf.",
+    "Die einmalige Erlaubnis wurde genutzt und kann nicht erneut verwendet werden. Das belegt weder den Lauf noch seinen Erfolg. Prüfe den Verlauf der Läufe.",
   declinedTitle: "Abgelehnt",
   declinedMessage:
     "Diese Anfrage wurde abgelehnt und kann die Aktion nicht erlauben. Diese Entscheidung bewertet weder frühere Vorbereitungen noch andere Läufe.",

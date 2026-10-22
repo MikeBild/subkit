@@ -328,7 +328,7 @@ describe("sign-in pages", () => {
     const html = renderErrorPage("state_expired", "/v1/identity/login/start", DE);
     expect(html).toContain("Anmeldung fehlgeschlagen");
     expect(html).toContain('href="/v1/identity/login/start"');
-    expect(html).toContain(">Erneut anmelden</a>");
+    expect(html).toContain(">Neu anmelden</a>");
     expect(html.match(/<a\s/g)?.length).toBe(1);
     const english = renderErrorPage("grant_denied", "/v1/identity/login/start", EN);
     expect(english).toContain("Sign-in failed");
@@ -371,7 +371,7 @@ test("an unassigned company account has its own error outcome", () => {
     "Dieses Firmenkonto ist SubKit nicht zugeordnet. Frag eine Person mit der Rolle Administrator.",
   );
   expect(unassigned).toContain(
-    '<a class="button primary" href="/v1/identity/login/start" data-testid="auth-retry">Erneut anmelden</a>',
+    '<a class="button primary" href="/v1/identity/login/start" data-testid="auth-retry">Neu anmelden</a>',
   );
   expect(unassigned).not.toContain("Anmeldung fehlgeschlagen");
 

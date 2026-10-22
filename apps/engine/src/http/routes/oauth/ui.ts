@@ -235,7 +235,7 @@ const PAGE_COPY: Record<
     signInTitle: "Anmelden",
     signInHeading: "Bei SubKit anmelden",
     signInFailed: "Anmeldung fehlgeschlagen",
-    signInAgain: "Erneut anmelden",
+    signInAgain: "Neu anmelden",
     oauthContext: "OAuth 2.1",
   },
 };
