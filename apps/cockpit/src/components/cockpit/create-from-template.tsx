@@ -1,5 +1,6 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { Plug, Zap } from "lucide-react";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -8,11 +9,20 @@ import { connectorHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { SelectField, TextField } from "@/components/cockpit/form-field";
 import { ListTable } from "@/components/cockpit/list-table";
-import { FactList, RowName, StatusBadge } from "@/components/cockpit/patterns";
+import {
+  DataState,
+  FactList,
+  RowName,
+  RowsSkeleton,
+  StatusBadge,
+  TemplateCard,
+  TemplateGrid,
+} from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { workflowStepKindKey } from "@/lib/workflow-steps";
 import { credentialBody } from "@/pages/connector-detail-model";
 import {
   addressedConnectors,
@@ -115,13 +125,84 @@ function SearchField({
   );
 }
 
+export function useSolutionTemplates(active: boolean) {
+  const pack = useQuery({ queryKey: SOLUTIONS_KEY, enabled: active, queryFn: fetchSolutions });
+  return {
+    entries: pack.data?.recipes ?? [],
+    pending: pack.isPending,
+    failed: pack.isError,
+    retry: () => void pack.refetch(),
+  };
+}
+
+export function SolutionGallery({
+  entries,
+  pending,
+  failed,
+  onRetry,
+  onPick,
+  limit,
+}: {
+  entries: readonly SolutionEntry[];
+  pending: boolean;
+  failed: boolean;
+  onRetry(): void;
+  onPick(slug: string): void;
+  limit?: number;
+}) {
+  const { t, locale } = useI18n();
+  const tag = LOCALE_TAGS[locale];
+  if (pending) return <RowsSkeleton count={3} testId="create-solution-loading" />;
+  if (failed)
+    return (
+      <DataState
+        state="error"
+        line={t("create.template.loadFailed")}
+        onRetry={onRetry}
+        testId="create-solution-failed"
+      />
+    );
+  if (entries.length === 0)
+    return (
+      <p className="text-sm text-muted-foreground" data-testid="create-solution-none">
+        {t("create.template.noMatches")}
+      </p>
+    );
+  return (
+    <TemplateGrid>
+      {entries.slice(0, limit).map((entry) => {
+        const text = solutionText(entry, t);
+        return (
+          <TemplateCard
+            key={entry.recipe_slug}
+            title={text.title}
+            line={text.line}
+            meta={[
+              <>
+                <Zap aria-hidden="true" />
+                {t(TRIGGER_LABEL[solutionTrigger(entry)])}
+              </>,
+              <>
+                <Plug aria-hidden="true" />
+                {joinNames(solutionNeeds(entry), tag)}
+              </>,
+            ]}
+            onSelect={() => onPick(entry.recipe_slug)}
+            testId={`create-solution-${entry.recipe_slug}`}
+          />
+        );
+      })}
+    </TemplateGrid>
+  );
+}
+
 export function useSolutionFlow(
   active: boolean,
   done: () => void,
   fail: (error: string) => void,
   refusal: (failure: unknown) => string,
 ): TemplateFlow {
-  const { t, locale, dateTime } = useI18n();
+  const { t, locale } = useI18n();
   const navigate = useNavigate();
   const client = useQueryClient();
   const [query, setQuery] = useState("");
@@ -141,30 +222,6 @@ export function useSolutionFlow(
   const entries = pack.data?.recipes ?? [];
   const tag = LOCALE_TAGS[locale];
   const find = (slug: string) => entries.find((entry) => entry.recipe_slug === slug) ?? null;
-  const columns = useMemo(() => {
-    const column = tableColumns<SolutionEntry>({ t, dateTime });
-    return [
-      column.custom(
-        "name",
-        (entry) => entry.title,
-        t("create.template.column"),
-        (entry) => {
-          const text = solutionText(entry, t);
-          return (
-            <span className="grid min-w-0">
-              <span className="truncate">
-                <RowName>{text.title}</RowName>
-              </span>
-              <span className="truncate text-muted-foreground">
-                {t("create.solution.needs", { names: joinNames(solutionNeeds(entry), tag) })}
-              </span>
-            </span>
-          );
-        },
-        { ownsRowLink: true },
-      ),
-    ];
-  }, [t, tag, dateTime]);
   const create = useMutation({
     mutationFn: async (slug: string) => {
       const entry = find(slug);
@@ -221,18 +278,12 @@ export function useSolutionFlow(
     list: (onPick) => (
       <div className="grid gap-3" data-testid="create-solution-list">
         <SearchField id="create-solution-search" value={query} onChange={setQuery} />
-        <ListTable<SolutionEntry>
-          id="create-solution"
-          layout="rows"
-          columns={columns}
-          rows={entries.filter((entry) => solutionMatches(entry, solutionText(entry, t), query))}
+        <SolutionGallery
+          entries={entries.filter((entry) => solutionMatches(entry, solutionText(entry, t), query))}
           pending={pack.isPending}
           failed={pack.isError}
-          resource={t("create.template.column")}
           onRetry={() => void pack.refetch()}
-          empty={t("create.template.noMatches")}
-          onOpen={(entry) => onPick(entry.recipe_slug)}
-          rowLabel={(entry) => solutionText(entry, t).title}
+          onPick={onPick}
         />
       </div>
     ),
@@ -262,13 +313,9 @@ export function useSolutionFlow(
                 },
                 {
                   label: t("create.solution.steps"),
-                  value: (
-                    <span className="font-mono text-[13px]">
-                      {solutionSteps(entry)
-                        .map((step) => step.id)
-                        .join(" → ")}
-                    </span>
-                  ),
+                  value: solutionSteps(entry)
+                    .map((step) => t(workflowStepKindKey(step.kind)))
+                    .join(" → "),
                 },
                 {
                   label: t("create.solution.connectors"),

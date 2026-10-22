@@ -21,6 +21,7 @@ import {
   StatusBadge,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
+import { WorkflowOnboarding } from "@/components/cockpit/workflow-onboarding";
 import { ForbiddenState } from "@/components/failure-state";
 import { cronWords } from "@/lib/cron-words";
 import { LOCALE_TAGS, type Locale, pluralKey, type TranslationKey } from "@/lib/i18n";
@@ -406,6 +407,8 @@ export function CatalogPage({
     !query.error &&
     !query.failureReason;
 
+  const onboarding = resource === "workflows" && showsZeroStateAction;
+
   const resetFilters = useCallback(() => {
     setSearch("");
     origin.setValue("all");
@@ -503,135 +506,146 @@ export function CatalogPage({
       header={
         <PageHeader
           title={title}
-          action={showsZeroStateAction ? undefined : primaryAction("catalog-primary-action")}
+          action={
+            showsZeroStateAction && !onboarding
+              ? undefined
+              : primaryAction("catalog-primary-action")
+          }
         />
       }
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        {rows.length > 0 || hasActiveFilters ? (
-          <CatalogOriginSummary
-            text={catalogCountLine(t, resource, total)}
-            kind={resource === "workflows" ? "workflow" : "connector"}
-            origin={origin}
-            testId="catalog-summary"
-          />
-        ) : null}
-        <DataTable
-          columns={columns}
-          data={rows}
-          groupingTabs={
-            <GroupingTabs
-              label={t("common.groupBy")}
-              value={groupMode}
-              onChange={setGroupMode}
-              options={
-                resource === "workflows"
-                  ? [
-                      { value: "all", label: t("common.all") },
-                      { value: "status", label: t("catalog.status") },
-                      { value: "trigger", label: t("catalog.trigger") },
-                    ]
-                  : [
-                      { value: "all", label: t("common.all") },
-                      { value: "kind", label: t("catalog.kind") },
-                      { value: "health", label: t("catalog.status") },
-                    ]
-              }
-              testId={`catalog-${resource}-grouping`}
-              note={groupMode === "all" ? undefined : t("common.loadedOnly")}
-            />
-          }
-          grouping={grouping}
-          toolbar={
-            <>
-              <FilterBar
-                search={{
-                  value: search,
-                  onChange: setSearch,
-                  placeholder: t("resource.search", { resource: title }),
-                  testId: "catalog-search",
-                }}
-                selects={selects}
-                onApply={(changes) => {
-                  const patch: Partial<CatalogState> = {};
-                  if (changes["catalog-kind-filter"])
-                    patch.kind = changes["catalog-kind-filter"] as CatalogState["kind"];
-                  if (changes["catalog-category-filter"])
-                    patch.category = changes["catalog-category-filter"];
-                  if (changes["catalog-status-filter"])
-                    patch.status = changes["catalog-status-filter"] as WorkflowStatusFilter;
-                  if (Object.keys(patch).length > 0) setState(patch);
-                }}
-                reset={{ label: t("catalog.clearFilters"), onClick: resetFilters }}
-              />
-              {resource === "connectors" && state.health === "not_ok" ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  data-testid="catalog-health-filter"
-                  onClick={() => setState({ health: null })}
-                >
-                  {t("catalog.healthNotOkFilter")}
-                </Button>
-              ) : null}
-              {hasActiveFilters && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  data-testid="catalog-clear-filters"
-                  onClick={resetFilters}
-                >
-                  {t("catalog.clearFilters")}
-                </Button>
-              )}
-            </>
-          }
-          pending={query.isPending && !query.failureReason}
-          error={
-            query.error || query.failureReason
-              ? {
-                  title: t("resource.loadFailed", { resource: title }),
-                  description: t("resource.loadFailedDescription"),
-                  retryLabel: t("session.retry"),
-                  onRetry: () => void query.refetch(),
-                }
-              : null
-          }
-          emptyState={{
-            zero: {
-              title: t(config.emptyKey),
-              action: primaryAction("catalog-empty-action"),
-            },
-            filtered: {
-              title: t("resource.noMatches"),
-              description: t("resource.broaderSearch"),
-              resetLabel: t("catalog.clearFilters"),
-              onReset: resetFilters,
-            },
-          }}
-          hasActiveFilters={hasActiveFilters}
-          sorting={sorting}
-          onSortingChange={(next) => {
-            const first = next[0];
-            if (first)
-              setState({
-                sort: first.id,
-                order: first.desc ? "desc" : "asc",
-              });
-          }}
-          getRowId={(row) => (typeof row.id === "string" ? row.id : "")}
-          onOpen={(row) => {
-            if (typeof row.id === "string") void navigate({ to: recordHref(resource, row.id) });
-          }}
-          rowHref={(row) => (typeof row.id === "string" ? recordHref(resource, row.id) : null)}
-          total={total}
-          infinite={list.infinite}
-          columnsLabel={t("catalog.columns")}
-          pickColumns={false}
-          recordsLabel={t("catalog.records")}
-          actionsLabel={t("common.actions")}
+      {onboarding ? (
+        <WorkflowOnboarding
+          canWrite={permissions.includes("workflow:write")}
+          canChat={permissions.includes("conversation:write")}
         />
-      </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          {rows.length > 0 || hasActiveFilters ? (
+            <CatalogOriginSummary
+              text={catalogCountLine(t, resource, total)}
+              kind={resource === "workflows" ? "workflow" : "connector"}
+              origin={origin}
+              testId="catalog-summary"
+            />
+          ) : null}
+          <DataTable
+            columns={columns}
+            data={rows}
+            groupingTabs={
+              <GroupingTabs
+                label={t("common.groupBy")}
+                value={groupMode}
+                onChange={setGroupMode}
+                options={
+                  resource === "workflows"
+                    ? [
+                        { value: "all", label: t("common.all") },
+                        { value: "status", label: t("catalog.status") },
+                        { value: "trigger", label: t("catalog.trigger") },
+                      ]
+                    : [
+                        { value: "all", label: t("common.all") },
+                        { value: "kind", label: t("catalog.kind") },
+                        { value: "health", label: t("catalog.status") },
+                      ]
+                }
+                testId={`catalog-${resource}-grouping`}
+                note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+              />
+            }
+            grouping={grouping}
+            toolbar={
+              <>
+                <FilterBar
+                  search={{
+                    value: search,
+                    onChange: setSearch,
+                    placeholder: t("resource.search", { resource: title }),
+                    testId: "catalog-search",
+                  }}
+                  selects={selects}
+                  onApply={(changes) => {
+                    const patch: Partial<CatalogState> = {};
+                    if (changes["catalog-kind-filter"])
+                      patch.kind = changes["catalog-kind-filter"] as CatalogState["kind"];
+                    if (changes["catalog-category-filter"])
+                      patch.category = changes["catalog-category-filter"];
+                    if (changes["catalog-status-filter"])
+                      patch.status = changes["catalog-status-filter"] as WorkflowStatusFilter;
+                    if (Object.keys(patch).length > 0) setState(patch);
+                  }}
+                  reset={{ label: t("catalog.clearFilters"), onClick: resetFilters }}
+                />
+                {resource === "connectors" && state.health === "not_ok" ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    data-testid="catalog-health-filter"
+                    onClick={() => setState({ health: null })}
+                  >
+                    {t("catalog.healthNotOkFilter")}
+                  </Button>
+                ) : null}
+                {hasActiveFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid="catalog-clear-filters"
+                    onClick={resetFilters}
+                  >
+                    {t("catalog.clearFilters")}
+                  </Button>
+                )}
+              </>
+            }
+            pending={query.isPending && !query.failureReason}
+            error={
+              query.error || query.failureReason
+                ? {
+                    title: t("resource.loadFailed", { resource: title }),
+                    description: t("resource.loadFailedDescription"),
+                    retryLabel: t("session.retry"),
+                    onRetry: () => void query.refetch(),
+                  }
+                : null
+            }
+            emptyState={{
+              zero: {
+                title: t(config.emptyKey),
+                action: primaryAction("catalog-empty-action"),
+              },
+              filtered: {
+                title: t("resource.noMatches"),
+                description: t("resource.broaderSearch"),
+                resetLabel: t("catalog.clearFilters"),
+                onReset: resetFilters,
+              },
+            }}
+            hasActiveFilters={hasActiveFilters}
+            sorting={sorting}
+            onSortingChange={(next) => {
+              const first = next[0];
+              if (first)
+                setState({
+                  sort: first.id,
+                  order: first.desc ? "desc" : "asc",
+                });
+            }}
+            getRowId={(row) => (typeof row.id === "string" ? row.id : "")}
+            onOpen={(row) => {
+              if (typeof row.id === "string") void navigate({ to: recordHref(resource, row.id) });
+            }}
+            rowHref={(row) => (typeof row.id === "string" ? recordHref(resource, row.id) : null)}
+            total={total}
+            infinite={list.infinite}
+            columnsLabel={t("catalog.columns")}
+            pickColumns={false}
+            recordsLabel={t("catalog.records")}
+            actionsLabel={t("common.actions")}
+          />
+        </div>
+      )}
     </Page>
   );
 }

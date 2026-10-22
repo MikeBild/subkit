@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { LayoutTemplate, MessageSquare, PencilLine } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
@@ -48,20 +48,27 @@ export function slugify(text: string): string {
 type Kind = "workflow" | "connector";
 type Step = "choose" | "manual" | "template" | "template-detail";
 
-function CreateChoiceDialog({
+export function CreateChoiceDialog({
   kind,
   open,
   onOpenChange,
   canChat,
+  initialTemplate = null,
 }: {
   kind: Kind;
   open: boolean;
   onOpenChange(open: boolean): void;
   canChat: boolean;
+  initialTemplate?: string | null;
 }) {
   const { t } = useI18n();
   const [step, setStep] = useState<Step>("choose");
   const [picked, setPicked] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || !initialTemplate) return;
+    setPicked(initialTemplate);
+    setStep("template-detail");
+  }, [open, initialTemplate]);
   const [error, setError] = useState<string | null>(null);
   const done = () => onOpenChange(false);
   const taken = t(kind === "workflow" ? "create.workflow.taken" : "create.connector.taken");
