@@ -92,15 +92,6 @@ export function scheduleRowKey(
   return `${index}:${schedule.environment}:${schedule.cron}:${schedule.timezone}`;
 }
 
-export function initialInvocationMode(
-  modes: readonly InvocationMode[],
-  effectiveTrigger: string | null | undefined,
-): InvocationMode {
-  if (effectiveTrigger === "schedule" && modes.includes("schedule")) return "schedule";
-  if (effectiveTrigger === "webhook" && modes.includes("webhook")) return "webhook";
-  return "http";
-}
-
 const VERIFIER_NAMES: Record<string, string> = {
   standard: "Standard Webhooks",
   github: "GitHub",

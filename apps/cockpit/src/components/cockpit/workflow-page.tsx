@@ -544,7 +544,6 @@ export function WorkflowPage({
             workflowName={title}
             canWrite={canWrite}
             canChat={canChat}
-            effectiveTrigger={effectiveTrigger}
             approvedEnvironment={state?.state === "approved" ? state.environment : null}
           />
         </TabBody>

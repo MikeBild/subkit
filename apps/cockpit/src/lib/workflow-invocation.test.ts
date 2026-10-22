@@ -8,7 +8,6 @@ import {
   hiddenInvocationLists,
   type InvocationHook,
   type InvocationSchedule,
-  initialInvocationMode,
   invocationModes,
   isWorkflowInvocation,
   SCHEDULE_STATE_KEYS,
@@ -84,23 +83,6 @@ describe("invocationModes", () => {
 
   test("bindings the reader may not see are no tabs", () => {
     expect(invocationModes({})).toEqual(["http", "mcp", "cli"]);
-  });
-});
-
-describe("initialInvocationMode", () => {
-  const all = invocationModes({ hooks: [hook], schedules: [schedule] });
-
-  test("the tab a reader lands on is the way the workflow is really started", () => {
-    expect(initialInvocationMode(all, "schedule")).toBe("schedule");
-    expect(initialInvocationMode(all, "webhook")).toBe("webhook");
-    expect(initialInvocationMode(all, "request")).toBe("http");
-  });
-
-  test("a trigger whose tab does not exist falls back to the request", () => {
-    const plain = invocationModes({ hooks: [], schedules: [] });
-    expect(initialInvocationMode(plain, "schedule")).toBe("http");
-    expect(initialInvocationMode(plain, "webhook")).toBe("http");
-    expect(initialInvocationMode(plain, null)).toBe("http");
   });
 });
 

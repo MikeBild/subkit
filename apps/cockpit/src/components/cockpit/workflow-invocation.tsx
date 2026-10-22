@@ -1,4 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
+import {
+  Bot,
+  CalendarClock,
+  CircleCheck,
+  CircleSlash,
+  Globe,
+  type LucideIcon,
+  Shield,
+  Terminal,
+  User,
+  Users,
+  Webhook,
+} from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { apiRequest } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
@@ -7,17 +20,22 @@ import { absolute, apiAccessHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import {
   CodeBlock,
-  CollapsibleSection,
   ContextHelp,
   CopyField,
   DataState,
   FactList,
+  IconTile,
+  RecordSheet,
+  Section,
   SegmentedControl,
   StatusBadge,
+  TechnicalDetails,
 } from "@/components/cockpit/patterns";
 import { WorkflowScheduleSection } from "@/components/cockpit/workflow-schedule";
-import type { TranslationKey } from "@/lib/i18n";
+import { cronWords } from "@/lib/cron-words";
+import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { cn } from "@/lib/utils";
 import {
   callVerdict,
   HOOK_STATE_KEYS,
@@ -28,7 +46,6 @@ import {
   type WorkflowInvocation as Invocation,
   type InvocationHook,
   type InvocationMode,
-  initialInvocationMode,
   invocationModes,
   isWorkflowInvocation,
   SNIPPET_LANGUAGES,
@@ -36,17 +53,10 @@ import {
   scheduleRowKey,
   verifierName,
 } from "@/lib/workflow-invocation";
+import { roleLabel } from "@/pages/admin-model";
 import { API_KEYS_QUERY, type ApiKeyItem, groupApiKeys } from "@/pages/api-access-model";
 
 type Environment = "dev" | "prod";
-
-const MODE_KEYS: Record<InvocationMode, TranslationKey> = {
-  http: "invocation.mode.http",
-  webhook: "invocation.mode.webhook",
-  mcp: "invocation.mode.mcp",
-  schedule: "invocation.mode.schedule",
-  cli: "invocation.mode.cli",
-};
 
 const SNIPPET_NAMES: Record<SnippetLanguage, string> = {
   curl: "curl",
@@ -58,6 +68,30 @@ const SNIPPET_LANG: Record<SnippetLanguage, string> = {
   curl: "bash",
   node: "javascript",
   python: "python",
+};
+
+const CHANNEL_ICONS: Record<InvocationMode, LucideIcon> = {
+  schedule: CalendarClock,
+  webhook: Webhook,
+  http: Globe,
+  mcp: Bot,
+  cli: Terminal,
+};
+
+const CHANNEL_TITLES: Record<InvocationMode, TranslationKey> = {
+  schedule: "workflowUse.channel.schedule",
+  webhook: "workflowUse.channel.webhook",
+  http: "workflowUse.channel.http",
+  mcp: "workflowUse.channel.mcp",
+  cli: "workflowUse.channel.cli",
+};
+
+const CHANNEL_SHEET_LINES: Record<InvocationMode, TranslationKey> = {
+  schedule: "workflowUse.sheet.schedule",
+  webhook: "workflowUse.sheet.webhook",
+  http: "workflowUse.sheet.http",
+  mcp: "workflowUse.sheet.mcp",
+  cli: "workflowUse.sheet.cli",
 };
 
 export function useWorkflowInvocation(workflowId: string, enabled = true) {
@@ -115,7 +149,7 @@ function HttpMode({
   const verdict = callVerdict(invocation, environment, approvedEnvironment);
   const missingKey = useMissingKey();
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <Copyable>
         <CopyField
           labelled
@@ -133,90 +167,25 @@ function HttpMode({
         testId="workflow-invocation-http-facts"
         items={[
           {
-            label: t("invocation.http.method"),
-            value: http.method,
-            testId: "workflow-invocation-http-method",
-          },
-          {
             label: t("invocation.http.signIn"),
             help: t("invocation.http.bearerHelp"),
-            value: missingKey ? (
-              <>
-                {t("invocation.http.bearer")}
-                {" · "}
-                <a
-                  href={absolute(apiAccessHref("keys"))}
-                  className="underline underline-offset-4"
-                  data-testid="workflow-invocation-create-key"
-                >
-                  {t("apiKeys.create")}
-                </a>
-              </>
-            ) : (
-              t("invocation.http.bearer")
-            ),
+            value: t("invocation.http.bearer"),
             testId: "workflow-invocation-http-auth",
           },
         ]}
       />
-      {snippet ? (
-        <>
-          <div className="flex flex-wrap items-center gap-2">
-            <SegmentedControl
-              label={t("run.environment")}
-              value={environment}
-              onValueChange={(value) => setEnvironment(value as Environment)}
-              testId="workflow-invocation-environment"
-              options={[
-                {
-                  value: "prod",
-                  label: t("run.environment.prod"),
-                  testId: "workflow-invocation-environment-prod",
-                },
-                {
-                  value: "dev",
-                  label: t("run.environment.dev"),
-                  testId: "workflow-invocation-environment-dev",
-                },
-              ]}
-            />
-            <SegmentedControl
-              label={t("invocation.http.language")}
-              value={language}
-              onValueChange={(value) => setLanguage(value as SnippetLanguage)}
-              testId="workflow-invocation-language"
-              options={SNIPPET_LANGUAGES.map((value) => ({
-                value,
-                label: SNIPPET_NAMES[value],
-                testId: `workflow-invocation-language-${value}`,
-              }))}
-            />
-            <ContextHelp
-              label={t("invocation.http.snippet")}
-              testId="workflow-invocation-responses"
-            >
-              {t("invocation.http.responses")}
-            </ContextHelp>
-          </div>
-          <Copyable>
-            <CodeBlock
-              label={t("invocation.http.snippet")}
-              code={snippet}
-              lang={SNIPPET_LANG[language]}
-              testId="workflow-invocation-snippet"
-            />
-          </Copyable>
-        </>
-      ) : (
-        <Copyable>
-          <CodeBlock
-            label={t("invocation.http.body")}
-            code={JSON.stringify(http.body, null, 2)}
-            lang="json"
-            testId="workflow-invocation-body"
-          />
-        </Copyable>
-      )}
+      {missingKey ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2.5 text-sm">
+          <span className="min-w-0 flex-1">{t("workflowUse.noKey")}</span>
+          <a
+            href={absolute(apiAccessHref("keys"))}
+            className="text-sm font-medium underline underline-offset-4"
+            data-testid="workflow-invocation-create-key"
+          >
+            {t("apiKeys.create")}
+          </a>
+        </div>
+      ) : null}
       {verdict === "live" ? null : (
         <p className={line} data-verdict={verdict} data-testid="workflow-invocation-preview-only">
           {t(
@@ -228,6 +197,75 @@ function HttpMode({
           )}
         </p>
       )}
+      <TechnicalDetails testId="workflow-invocation-http-technical">
+        <FactList
+          items={[
+            {
+              label: t("invocation.http.method"),
+              value: http.method,
+              testId: "workflow-invocation-http-method",
+            },
+          ]}
+        />
+        {snippet ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <SegmentedControl
+                label={t("run.environment")}
+                value={environment}
+                onValueChange={(value) => setEnvironment(value as Environment)}
+                testId="workflow-invocation-environment"
+                options={[
+                  {
+                    value: "prod",
+                    label: t("run.environment.prod"),
+                    testId: "workflow-invocation-environment-prod",
+                  },
+                  {
+                    value: "dev",
+                    label: t("run.environment.dev"),
+                    testId: "workflow-invocation-environment-dev",
+                  },
+                ]}
+              />
+              <SegmentedControl
+                label={t("invocation.http.language")}
+                value={language}
+                onValueChange={(value) => setLanguage(value as SnippetLanguage)}
+                testId="workflow-invocation-language"
+                options={SNIPPET_LANGUAGES.map((value) => ({
+                  value,
+                  label: SNIPPET_NAMES[value],
+                  testId: `workflow-invocation-language-${value}`,
+                }))}
+              />
+              <ContextHelp
+                label={t("invocation.http.snippet")}
+                testId="workflow-invocation-responses"
+              >
+                {t("invocation.http.responses")}
+              </ContextHelp>
+            </div>
+            <Copyable>
+              <CodeBlock
+                label={t("invocation.http.snippet")}
+                code={snippet}
+                lang={SNIPPET_LANG[language]}
+                testId="workflow-invocation-snippet"
+              />
+            </Copyable>
+          </>
+        ) : (
+          <Copyable>
+            <CodeBlock
+              label={t("invocation.http.body")}
+              code={JSON.stringify(http.body, null, 2)}
+              lang="json"
+              testId="workflow-invocation-body"
+            />
+          </Copyable>
+        )}
+      </TechnicalDetails>
     </div>
   );
 }
@@ -276,26 +314,31 @@ function WebhookMode({ invocation }: { invocation: Invocation }) {
               testId={`workflow-invocation-hook-${index}-state`}
             />
           </div>
-          <FactList
-            items={[
-              {
-                label: t("invocation.hook.signature"),
-                value: signingSentence(hook, t),
-                testId: `workflow-invocation-hook-${index}-signing`,
-              },
-            ]}
-          />
+          <p className={line}>
+            {t(hook.signed ? "workflowUse.hook.signed" : "workflowUse.hook.unsigned")}
+          </p>
         </div>
       ))}
       {invocation.base_url === null ? <p className={line}>{t("invocation.noAddress")}</p> : null}
-      <Copyable>
-        <CodeBlock
-          label={t("invocation.hook.shape")}
-          code={JSON.stringify(invocation.webhook_input_shape, null, 2)}
-          lang="json"
-          testId="workflow-invocation-hook-shape"
-        />
-      </Copyable>
+      <TechnicalDetails testId="workflow-invocation-hook-technical">
+        {hooks.length > 0 ? (
+          <FactList
+            items={hooks.map((hook, index) => ({
+              label: t("invocation.hook.signature"),
+              value: signingSentence(hook, t),
+              testId: `workflow-invocation-hook-${index}-signing`,
+            }))}
+          />
+        ) : null}
+        <Copyable>
+          <CodeBlock
+            label={t("invocation.hook.shape")}
+            code={JSON.stringify(invocation.webhook_input_shape, null, 2)}
+            lang="json"
+            testId="workflow-invocation-hook-shape"
+          />
+        </Copyable>
+      </TechnicalDetails>
     </div>
   );
 }
@@ -304,11 +347,7 @@ function McpMode({ invocation }: { invocation: Invocation }) {
   const { t } = useI18n();
   const { mcp } = invocation;
   return (
-    <div className="flex flex-col gap-3">
-      <FactList
-        items={[{ label: t("invocation.http.signIn"), value: t("invocation.mcp.signIn") }]}
-        testId="workflow-invocation-mcp-auth"
-      />
+    <div className="flex flex-col gap-4">
       {invocation.base_url ? (
         <Copyable>
           <CopyField
@@ -319,28 +358,34 @@ function McpMode({ invocation }: { invocation: Invocation }) {
           />
         </Copyable>
       ) : null}
-      <Copyable>
-        <CopyField
-          labelled
-          value={mcp.tool_name}
-          label={t("invocation.mcp.tool")}
-          testId="workflow-invocation-mcp-tool"
-        />
-      </Copyable>
-      <Copyable>
-        <CodeBlock
-          label={t("invocation.mcp.input")}
-          code={JSON.stringify(invocation.input.sample, null, 2)}
-          lang="json"
-          testId="workflow-invocation-mcp-input"
-        />
-      </Copyable>
-      <p className={line} data-testid="workflow-invocation-mcp-fallback">
-        {t("invocation.mcp.fallback", {
-          tool: mcp.fallback.tool_name,
-          workflow: mcp.fallback.arguments.workflow,
-        })}
-      </p>
+      <FactList
+        items={[{ label: t("invocation.http.signIn"), value: t("invocation.mcp.signIn") }]}
+        testId="workflow-invocation-mcp-auth"
+      />
+      <TechnicalDetails testId="workflow-invocation-mcp-technical">
+        <Copyable>
+          <CopyField
+            labelled
+            value={mcp.tool_name}
+            label={t("invocation.mcp.tool")}
+            testId="workflow-invocation-mcp-tool"
+          />
+        </Copyable>
+        <Copyable>
+          <CodeBlock
+            label={t("invocation.mcp.input")}
+            code={JSON.stringify(invocation.input.sample, null, 2)}
+            lang="json"
+            testId="workflow-invocation-mcp-input"
+          />
+        </Copyable>
+        <p className={line} data-testid="workflow-invocation-mcp-fallback">
+          {t("invocation.mcp.fallback", {
+            tool: mcp.fallback.tool_name,
+            workflow: mcp.fallback.arguments.workflow,
+          })}
+        </p>
+      </TechnicalDetails>
     </div>
   );
 }
@@ -377,45 +422,137 @@ function StartAccess({ access }: { access: NonNullable<Invocation["start_access"
     enabled: access.visibility.rules && permissions.includes("rbac:read"),
     queryFn: () => apiRequest<{ items: { id: string; name: string }[] }>("/v1/rbac/groups"),
   });
+  const chips = access.rules
+    ? [
+        ...access.rules.roles.map((role) => ({
+          key: `role:${role.id}`,
+          icon: Shield,
+          label: roleLabel(role.name, t).text,
+        })),
+        ...access.rules.grants.map((grant) => ({
+          key: `${grant.subject_type}:${grant.subject_id}`,
+          icon: grant.subject_type === "group" ? Users : User,
+          label:
+            (grant.subject_type === "group"
+              ? groups.data?.items.find((group) => group.id === grant.subject_id)?.name
+              : actorDirectoryName(directory, grant.subject_type, grant.subject_id)) ??
+            t("runs.caller.unknown"),
+        })),
+      ]
+    : [];
   return (
-    <CollapsibleSection label={t("invocation.startAccess")} testId="workflow-start-access">
-      <FactList
-        items={[
-          {
-            label: t("invocation.startCaller"),
-            value: t(access.caller.allowed ? "invocation.startAllowed" : "invocation.startDenied"),
-          },
-        ]}
-      />
+    <Section label={t("invocation.startAccess")} testId="workflow-start-access">
       {!access.visibility.rules || !access.rules ? (
         <p className={line}>{t("invocation.startRulesHidden")}</p>
-      ) : access.rules.roles.length + access.rules.grants.length === 0 ? (
+      ) : chips.length === 0 ? (
         <p className={line}>{t("invocation.startNoRules")}</p>
       ) : (
-        <ul className="text-sm">
-          {access.rules.roles.map((role) => (
-            <li key={`role:${role.id}`}>{role.name}</li>
-          ))}
-          {access.rules.grants.map((grant) => (
-            <li key={`${grant.subject_type}:${grant.subject_id}`}>
-              {(grant.subject_type === "group"
-                ? groups.data?.items.find((group) => group.id === grant.subject_id)?.name
-                : actorDirectoryName(directory, grant.subject_type, grant.subject_id)) ??
-                t("runs.caller.unknown")}
+        <ul className="flex flex-wrap gap-1.5" data-testid="workflow-start-access-chips">
+          {chips.map((chip) => (
+            <li
+              key={chip.key}
+              className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm [&_svg]:size-3.5"
+            >
+              <chip.icon aria-hidden="true" className="text-muted-foreground" />
+              {chip.label}
             </li>
           ))}
         </ul>
       )}
+      <p
+        className={cn(
+          "flex items-center gap-1.5 text-sm [&_svg]:size-4",
+          access.caller.allowed
+            ? "text-emerald-700 dark:text-emerald-400"
+            : "text-muted-foreground",
+        )}
+        data-testid="workflow-start-access-caller"
+      >
+        {access.caller.allowed ? (
+          <CircleCheck aria-hidden="true" />
+        ) : (
+          <CircleSlash aria-hidden="true" />
+        )}
+        {t(access.caller.allowed ? "workflowUse.youMayStart" : "workflowUse.youMayNotStart")}
+      </p>
       <p className={line}>{t("invocation.startExternal")}</p>
-      <p className={line}>{t("invocation.startPreview")}</p>
-    </CollapsibleSection>
+    </Section>
+  );
+}
+
+function ChannelSheet({
+  mode,
+  invocation,
+  workflowId,
+  workflowName,
+  canWrite,
+  canChat,
+  approvedEnvironment,
+  onClose,
+}: {
+  mode: InvocationMode;
+  invocation: Invocation;
+  workflowId: string;
+  workflowName: string;
+  canWrite: boolean;
+  canChat: boolean;
+  approvedEnvironment: Environment | null;
+  onClose(): void;
+}) {
+  const { t } = useI18n();
+  const schedules = invocation.schedules ?? [];
+  return (
+    <RecordSheet
+      dock
+      open
+      onOpenChange={(next) => !next && onClose()}
+      title={t(CHANNEL_TITLES[mode])}
+      subtitle={t(CHANNEL_SHEET_LINES[mode])}
+      testId={`workflow-invocation-sheet-${mode}`}
+      closeTestId="workflow-invocation-sheet-close"
+    >
+      {mode === "http" ? (
+        <HttpMode invocation={invocation} approvedEnvironment={approvedEnvironment} />
+      ) : mode === "webhook" ? (
+        <WebhookMode invocation={invocation} />
+      ) : mode === "mcp" ? (
+        <McpMode invocation={invocation} />
+      ) : mode === "schedule" ? (
+        <div className="flex flex-col gap-4">
+          <WorkflowScheduleSection
+            workflowId={workflowId}
+            workflowName={workflowName}
+            nextFireAt={schedules[0]?.next_fire_at ?? null}
+            canWrite={canWrite}
+            canChat={canChat}
+          />
+          {schedules.some((entry) => hasFixedInput(entry.input)) ? (
+            <TechnicalDetails testId="workflow-invocation-schedule-technical">
+              {schedules.map((entry, index) =>
+                hasFixedInput(entry.input) ? (
+                  <Copyable key={scheduleRowKey(entry, index)}>
+                    <CodeBlock
+                      label={t("invocation.schedule.input")}
+                      code={JSON.stringify(entry.input, null, 2)}
+                      lang="json"
+                      testId={`workflow-invocation-schedule-${index}-input`}
+                    />
+                  </Copyable>
+                ) : null,
+              )}
+            </TechnicalDetails>
+          ) : null}
+        </div>
+      ) : (
+        <CliMode invocation={invocation} />
+      )}
+    </RecordSheet>
   );
 }
 
 export function WorkflowInvocation({
   workflowId,
   workflowName,
-  effectiveTrigger,
   approvedEnvironment,
   canWrite,
   canChat,
@@ -424,12 +561,11 @@ export function WorkflowInvocation({
   workflowName: string;
   canWrite: boolean;
   canChat: boolean;
-  effectiveTrigger: string | null;
   approvedEnvironment: Environment | null;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const query = useWorkflowInvocation(workflowId);
-  const [chosen, setChosen] = useState<InvocationMode | null>(null);
+  const [open, setOpen] = useState<InvocationMode | null>(null);
   const invocation = query.data;
   if (query.isPending) return <DataState state="loading" />;
   if (query.error || !invocation)
@@ -445,62 +581,81 @@ export function WorkflowInvocation({
   const modes = INVOCATION_MODES.filter(
     (value) => found.includes(value) || (value === "schedule" && canWrite),
   );
-  const mode =
-    chosen && modes.includes(chosen) ? chosen : initialInvocationMode(modes, effectiveTrigger);
   const hiddenKey = hiddenInvocationKey(hiddenInvocationLists(invocation));
+  const schedule = invocation.schedules?.[0] ?? null;
+  const hooks = invocation.hooks ?? [];
+  const channel = (mode: InvocationMode): { line: string; on: boolean } => {
+    switch (mode) {
+      case "schedule":
+        return schedule
+          ? {
+              line: cronWords(schedule.cron, t, LOCALE_TAGS[locale]),
+              on: schedule.state === "active",
+            }
+          : { line: t("workflowUse.card.noSchedule"), on: false };
+      case "webhook":
+        return {
+          line: t("workflowUse.card.webhook"),
+          on: hooks.some((hook) => hook.state === "active"),
+        };
+      case "http":
+        return { line: t("workflowUse.card.http"), on: true };
+      case "mcp":
+        return { line: t("workflowUse.card.mcp"), on: true };
+      default:
+        return { line: t("workflowUse.card.cli"), on: true };
+    }
+  };
   return (
-    <div className="flex min-w-0 flex-col gap-4" data-testid="workflow-invocation">
-      {invocation.start_access ? <StartAccess access={invocation.start_access} /> : null}
-      {modes.length > 1 ? (
-        <div className="overflow-x-auto">
-          <SegmentedControl
-            label={t("invocation.title")}
-            value={mode}
-            onValueChange={(value) => setChosen(value as InvocationMode)}
-            testId="workflow-invocation-modes"
-            options={modes.map((value) => ({
-              value,
-              label: t(MODE_KEYS[value]),
-              testId: `workflow-invocation-tab-${value}`,
-            }))}
-          />
-        </div>
-      ) : null}
-      {mode === "http" ? (
-        <HttpMode invocation={invocation} approvedEnvironment={approvedEnvironment} />
-      ) : mode === "webhook" ? (
-        <WebhookMode invocation={invocation} />
-      ) : mode === "mcp" ? (
-        <McpMode invocation={invocation} />
-      ) : mode === "schedule" ? (
-        <div className="flex flex-col gap-4">
-          <WorkflowScheduleSection
-            workflowId={workflowId}
-            workflowName={workflowName}
-            nextFireAt={invocation.schedules?.[0]?.next_fire_at ?? null}
-            canWrite={canWrite}
-            canChat={canChat}
-          />
-          {(invocation.schedules ?? []).map((schedule, index) =>
-            hasFixedInput(schedule.input) ? (
-              <Copyable key={scheduleRowKey(schedule, index)}>
-                <CodeBlock
-                  label={t("invocation.schedule.input")}
-                  code={JSON.stringify(schedule.input, null, 2)}
-                  lang="json"
-                  testId={`workflow-invocation-schedule-${index}-input`}
+    <div className="flex min-w-0 flex-col gap-6" data-testid="workflow-invocation">
+      <ul
+        className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+        data-testid="workflow-invocation-modes"
+      >
+        {modes.map((mode) => {
+          const Icon = CHANNEL_ICONS[mode];
+          const card = channel(mode);
+          return (
+            <li key={mode} className="flex">
+              <button
+                type="button"
+                onClick={() => setOpen(mode)}
+                className="flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                data-testid={`workflow-invocation-tab-${mode}`}
+              >
+                <IconTile>
+                  <Icon />
+                </IconTile>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">{t(CHANNEL_TITLES[mode])}</span>
+                  <span className="block text-xs text-muted-foreground">{card.line}</span>
+                </span>
+                <StatusBadge
+                  state={card.on ? "active" : "inactive"}
+                  label={t(card.on ? "workflowUse.on" : "workflowUse.off")}
                 />
-              </Copyable>
-            ) : null,
-          )}
-        </div>
-      ) : (
-        <CliMode invocation={invocation} />
-      )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {invocation.start_access ? <StartAccess access={invocation.start_access} /> : null}
       {hiddenKey ? (
         <p className={line} data-testid="workflow-invocation-hidden">
           {t(hiddenKey)}
         </p>
+      ) : null}
+      {open ? (
+        <ChannelSheet
+          mode={open}
+          invocation={invocation}
+          workflowId={workflowId}
+          workflowName={workflowName}
+          canWrite={canWrite}
+          canChat={canChat}
+          approvedEnvironment={approvedEnvironment}
+          onClose={() => setOpen(null)}
+        />
       ) : null}
     </div>
   );
