@@ -79,22 +79,50 @@ export interface StatusSummary {
   version: string;
 }
 
+type CheckState = "pass" | "fail" | "unknown";
+
+function checkState(value: unknown): CheckState {
+  return value === "pass" || value === "fail" ? value : "unknown";
+}
+
 export const diagnosticsMethods = {
-  health(this: EngineClient): Promise<{
+  async health(this: EngineClient): Promise<{
     status: "ok";
     service: "subkit";
     version: string;
   }> {
-    return this.request("GET", "/health");
+    const body = await this.request<{ status?: string; version?: unknown }>("GET", "/health");
+    if (typeof body.version === "string") {
+      return { status: "ok", service: "subkit", version: body.version };
+    }
+    const descriptor = await this.request<{ version?: unknown }>(
+      "GET",
+      "/.well-known/service-descriptor.json",
+    ).catch(() => null);
+    return {
+      status: "ok",
+      service: "subkit",
+      version: typeof descriptor?.version === "string" ? descriptor.version : "unknown",
+    };
   },
 
-  ready(this: EngineClient): Promise<{
+  async ready(this: EngineClient): Promise<{
     status: "ready" | "not_ready";
     service: "subkit";
-    version: string;
-    checks: { lifecycle: "pass" | "fail"; database: "pass" | "fail" };
+    checks: { lifecycle: CheckState; database: CheckState };
   }> {
-    return this.request("GET", "/ready");
+    const body = await this.request<{
+      status?: string;
+      checks?: { lifecycle?: unknown; database?: unknown };
+    }>("GET", "/ready");
+    return {
+      status: body.status === "ready" || body.status === "ok" ? "ready" : "not_ready",
+      service: "subkit",
+      checks: {
+        lifecycle: checkState(body.checks?.lifecycle),
+        database: checkState(body.checks?.database),
+      },
+    };
   },
 
   diagnosticsVersion(this: EngineClient): Promise<{

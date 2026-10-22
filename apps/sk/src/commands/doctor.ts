@@ -97,13 +97,19 @@ export const doctorCommand = defineCommand({
     let engineVersion: string | undefined;
     try {
       const [h, ready] = await Promise.all([client.health(), client.ready()]);
-      engineVersion = h.version;
-      const databaseReady = ready.checks.database === "pass";
+      engineVersion = h.version === "unknown" ? undefined : h.version;
+      const database = ready.checks.database;
       reachability = {
         name: "reachability",
-        status: ready.status === "ready" ? "ok" : "blocked",
-        detail: `engine live=${h.status} ready=${ready.status} version=${h.version} database=${ready.checks.database}`,
-        ...(databaseReady ? {} : { hint: "engine is up but cannot reach the database" }),
+        status: ready.status === "ready" && database !== "fail" ? "ok" : "blocked",
+        detail: `engine live=${h.status} ready=${ready.status} version=${h.version} database=${database}`,
+        ...(database === "fail"
+          ? { hint: "engine is up but cannot reach the database" }
+          : database === "unknown"
+            ? {
+                hint: "a proxy in front of the engine answered /ready without the engine's checks; the database state is not visible from here",
+              }
+            : {}),
       };
     } catch (err) {
       const detail = isTransportError(err)
@@ -264,7 +270,10 @@ export const doctorCommand = defineCommand({
       results.push({
         name: "version_match",
         status: "warn",
-        detail: "engine version unavailable — reachability check blocked",
+        detail:
+          reachability.status === "blocked"
+            ? "engine version unavailable — reachability check blocked"
+            : "engine version unavailable — the engine did not report it",
       });
     }
 
