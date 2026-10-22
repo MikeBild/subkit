@@ -13,7 +13,9 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { serializeOne } from "../../http/routes/workflow-representation.ts";
+import { provisionSelfServiceTenant } from "../../identity/self-service.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 import { describePendingCategoryPurposes } from "../catalog-describe.ts";
 import { loadCategoryVocabulary, renameCategory } from "../catalog-view.ts";
 import { listConnectorRefs, listWorkflowsUsingConnector } from "../connector-refs.ts";
@@ -79,7 +81,12 @@ beforeAll(async () => {
   for (const name of ["search-pages", "append-markdown", "page-properties"]) {
     await seedWorkflow(
       `notion-${name}`,
-      { id: "s1", kind: "request", method: "GET", url: "https://notion.example.test/x" },
+      {
+        id: "s1",
+        kind: "request",
+        method: "GET",
+        url: "https://notion.example.test/x",
+      },
       "notion",
     );
   }
@@ -254,7 +261,11 @@ describe("one vocabulary across every catalog kind", () => {
         and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.action, "catalog_category.renamed")),
       );
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.metadata).toMatchObject({ from: "notion", to: "knowledge-pages", total: 4 });
+    expect(rows[0]?.metadata).toMatchObject({
+      from: "notion",
+      to: "knowledge-pages",
+      total: 4,
+    });
     await renameCategory(
       {
         purpose: "Catalog purpose",
@@ -279,7 +290,12 @@ describe("the workflow description has one owner", () => {
       url: "https://reports.example.test/x",
     });
     await updateWorkflowMetadata(
-      { tenant_id, id, description: "Sends the weekly report.", actor_id: null },
+      {
+        tenant_id,
+        id,
+        description: "Sends the weekly report.",
+        actor_id: null,
+      },
       ctx.db,
     );
     const updated = await updateWorkflow(
@@ -291,7 +307,12 @@ describe("the workflow description has one owner", () => {
           name: "described-report",
           slug: "described-report",
           steps: [
-            { id: "s1", kind: "request", method: "GET", url: "https://reports.example.test/y" },
+            {
+              id: "s1",
+              kind: "request",
+              method: "GET",
+              url: "https://reports.example.test/y",
+            },
           ],
         },
       },
@@ -315,7 +336,12 @@ describe("the workflow description has one owner", () => {
           slug: "described-report",
           description: "Sends the weekly report to finance.",
           steps: [
-            { id: "s1", kind: "request", method: "GET", url: "https://reports.example.test/y" },
+            {
+              id: "s1",
+              kind: "request",
+              method: "GET",
+              url: "https://reports.example.test/y",
+            },
           ],
         },
       },
@@ -390,7 +416,12 @@ describe("connector references", () => {
 describe("category metadata compare and swap", () => {
   test("a stale source or target cannot overwrite human purpose", async () => {
     await ctx.db.insert(catalogCategories).values([
-      { tenant_id, name: "source-swap", purpose: "Original", purpose_source: "human" },
+      {
+        tenant_id,
+        name: "source-swap",
+        purpose: "Original",
+        purpose_source: "human",
+      },
       {
         tenant_id,
         name: "target-swap",
@@ -659,8 +690,13 @@ const catalogWriters = [
 
 type CatalogWriter = (typeof catalogWriters)[number];
 
-async function insertCatalogRow(writer: CatalogWriter, slug: string, category: string) {
-  const result = await ctx.pool.query<{ key: string }>(writer.insert, [tenant_id, slug, category]);
+async function insertCatalogRow(
+  writer: CatalogWriter,
+  slug: string,
+  category: string,
+  owner = tenant_id,
+) {
+  const result = await ctx.pool.query<{ key: string }>(writer.insert, [owner, slug, category]);
   const key = result.rows[0]?.key;
   if (!key) throw new Error(`seed ${writer.table} ${slug} failed`);
   return key;
@@ -670,10 +706,10 @@ function metadataUpdate(writer: CatalogWriter) {
   return `UPDATE subkit.${writer.table} SET ${writer.metadata} WHERE tenant_id = $1 AND ${writer.key}::text = $3`;
 }
 
-async function categoryOf(writer: CatalogWriter, key: string) {
+async function categoryOf(writer: CatalogWriter, key: string, owner = tenant_id) {
   const result = await ctx.pool.query<{ category: string }>(
     `SELECT category FROM subkit.${writer.table} WHERE tenant_id = $1 AND ${writer.key}::text = $2`,
-    [tenant_id, key],
+    [owner, key],
   );
   return result.rows[0]?.category;
 }
@@ -849,4 +885,65 @@ describe("catalog vocabulary lock scope", () => {
     );
     expect(await categoryOf(writer, key)).toBe("race-d");
   });
+});
+
+describe("catalog vocabulary lock scope on hosted tenants", () => {
+  let hosted_tenant_id = "";
+
+  beforeAll(async () => {
+    await configureHostedPolicyForTests(ctx.db, ctx.url);
+    const hosted = await provisionSelfServiceTenant(
+      {
+        issuer_url: "https://identity.example.test",
+        subject: "lock-scope-hosted",
+        email: "lock-scope-hosted@example.test",
+        email_verified: true,
+      },
+      ctx.db,
+    );
+    hosted_tenant_id = hosted.tenant.id;
+  });
+
+  for (const writer of catalogWriters) {
+    const slug = writer.table.replace(/_/g, "-");
+
+    test(`a byte-neutral ${writer.table} update succeeds while the hosted vocabulary is locked`, async () => {
+      const key = await insertCatalogRow(
+        writer,
+        `hosted-neutral-${slug}`,
+        "lock-scope",
+        hosted_tenant_id,
+      );
+      await ctx.db.transaction(async (tx) => {
+        await lockCatalogVocabulary(tx, hosted_tenant_id);
+        const sameCategory = await ctx.pool.query(
+          `UPDATE subkit.${writer.table} SET category = category WHERE tenant_id = $1 AND ${writer.key}::text = $2`,
+          [hosted_tenant_id, key],
+        );
+        expect(sameCategory.rowCount).toBe(1);
+      });
+      expect(await categoryOf(writer, key, hosted_tenant_id)).toBe("lock-scope");
+    });
+
+    if (writer.metadata !== catalogMetadataWrite) continue;
+
+    test(`a metered ${writer.table} metadata update fails closed through the hosted quota while the vocabulary is locked`, async () => {
+      const key = await insertCatalogRow(
+        writer,
+        `hosted-metered-${slug}`,
+        "lock-scope",
+        hosted_tenant_id,
+      );
+      await ctx.db.transaction(async (tx) => {
+        await lockCatalogVocabulary(tx, hosted_tenant_id);
+        await expect(
+          ctx.pool.query(metadataUpdate(writer), [hosted_tenant_id, describedAt, key]),
+        ).rejects.toMatchObject({
+          code: "40001",
+          message: "hosted_quota_concurrent_write",
+        });
+      });
+      expect(await categoryOf(writer, key, hosted_tenant_id)).toBe("lock-scope");
+    });
+  }
 });
