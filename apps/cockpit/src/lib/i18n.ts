@@ -19,7 +19,7 @@ const EN = {
   "audit.timeline.access": "Access",
   "audit.timeline.resource": "Resource",
   "audit.timeline.source": "Entry point",
-  "audit.timeline.execution": "Execution",
+  "audit.timeline.execution": "Run",
   "audit.timeline.operation": "Verified operation ID",
   "audit.timeline.sameOperation": "Show events with this verified operation ID",
   "audit.timeline.result": "Result",
@@ -119,7 +119,7 @@ const EN = {
   "audit.timeline.source.ui": "Cockpit UI",
   "audit.timeline.source.chat": "Cockpit chat",
   "audit.timeline.source.queue": "Queue",
-  "branding.title": "Tenant branding",
+  "branding.title": "Workspace branding",
   "branding.intro": "Customize your workspace name, logos and a reviewed palette.",
   "branding.wordmark": "Wordmark",
   "branding.name": "Organization name",
@@ -578,9 +578,9 @@ const EN = {
   "authority.storage.readScope": "Read files within this folder.",
   "authority.storage.delete": "Permanently delete report files",
   "authority.storage.deleteScope.one":
-    "Files inside this folder are deleted for good and cannot be restored. Reviewed ceiling: 1 file per run. Every deletion is checked to stay inside this folder; the number per run is a reviewed ceiling and is not yet counted by the system.",
+    "Files inside this folder are deleted for good and cannot be restored. Reviewed ceiling: 1 file per run. Every deletion is checked to stay inside this folder. Deletions are not yet counted against the ceiling.",
   "authority.storage.deleteScope.other":
-    "Files inside this folder are deleted for good and cannot be restored. Reviewed ceiling: {count} files per run. Every deletion is checked to stay inside this folder; the number per run is a reviewed ceiling and is not yet counted by the system.",
+    "Files inside this folder are deleted for good and cannot be restored. Reviewed ceiling: {count} files per run. Every deletion is checked to stay inside this folder. Deletions are not yet counted against the ceiling.",
   "authority.storage.unknown": "Unrecognised storage action",
   "authority.storage.unknownScope":
     "This dialog cannot describe the action “{operation}”. Do not approve it until the action is understood.",
@@ -966,7 +966,7 @@ const EN = {
   "overview.operations.windowOption.24h": "24 h",
   "overview.operations.windowOption.7d": "7 days",
   "overview.operations.windowOption.30d": "30 days",
-  "overview.operations.runs": "Executions",
+  "overview.operations.runs": "Runs",
   "overview.operations.successRate": "Success rate",
   "overview.operations.connectorHealth": "Healthy connectors",
   "overview.operations.repairRate": "Repairs applied",
@@ -1428,9 +1428,9 @@ const EN = {
   "connectedClients.ungranted": "Without a valid approval",
   "connectedClients.disabled": "Retired and revoked",
   "connectedClients.revokeConsequence":
-    "The registration is switched off for every tenant; all of its OAuth connections lose access.",
+    "The registration is switched off for every workspace; all of its OAuth connections lose access.",
   "connectedClients.revokeConsequenceNoApproval":
-    "The registration is switched off for every tenant; all of its OAuth connections lose access.",
+    "The registration is switched off for every workspace; all of its OAuth connections lose access.",
   "connectedClients.revokedToast": "Access withdrawn: {name}",
   "connectedClients.revokeFailed": "The access could not be withdrawn.",
   "connectedClients.connectedAt": "Connected on {date}",
@@ -1582,7 +1582,7 @@ const EN = {
   "settings.auth.issuerUrl": "Issuer URL",
   "settings.auth.clientId": "Client ID",
   "settings.auth.scopes": "OIDC scopes",
-  "settings.auth.tenantSlug": "Tenant slug",
+  "settings.auth.tenantSlug": "Workspace slug",
   "settings.auth.addOidc": "Add OIDC provider",
   "settings.auth.oidcBearer": "OIDC bearer · App sign-in",
   "settings.auth.unknownProtocol": "Unknown protocol",
@@ -1825,7 +1825,7 @@ const EN = {
   "resource.field.path": "Setting",
   "resource.field.value": "Value",
   "resource.field.date": "Date",
-  "resource.field.executions": "Executions",
+  "resource.field.executions": "Runs",
   "resource.field.averageDuration": "Average duration",
   "resource.field.p95Duration": "95th percentile",
   "resource.field.source": "Source",
@@ -1999,7 +1999,7 @@ const EN = {
   "apps.users.erase.verb": "Erase",
   "apps.users.erase.object": "{person} from {id}",
   "apps.users.erase.consequence":
-    "Removes SubKit's own data about this person: the sign-in link, budget usage and personal details. The person's SubKit account is disabled and all of their sessions and API keys are revoked. Tokens issued before now stop working; signing in again creates a new, empty user. The account at the sign-in provider stays untouched. This cannot be undone.",
+    "Removes SubKit's own data about this person: the sign-in link, budget usage and personal details. The SubKit account is disabled, and all sessions and API keys are revoked. Tokens issued before now stop working. Signing in again creates a new, empty user. The account at the sign-in provider stays untouched. This cannot be undone.",
   "apps.users.erase.done": "Person erased from this app.",
   "apps.users.loadFailed": "The users of this app could not be loaded.",
   "apps.budget.none.detail":
@@ -2089,7 +2089,7 @@ const EN = {
   "audit.resource.engine": "Engine",
   "audit.resource.discoveryRun": "Discovery run",
   "audit.resource.discoveryArtifact": "Discovery result",
-  "audit.resource.tenant": "Tenant",
+  "audit.resource.tenant": "Workspace",
   "audit.resource.requestHook": "Request hook",
   "audit.resource.notificationRule": "Notification rule",
   "audit.resource.notificationChannel": "Notification channel",
@@ -2241,7 +2241,7 @@ const EN = {
   "audit.scope.all": "All events",
   "audit.scope.decisions": "Decisions",
   "audit.coverageNote":
-    "Not recorded: the content of a conversation, the body of a response, and anything before this tenant was created.",
+    "Not recorded: the content of a conversation, the body of a response, and anything before this workspace was created.",
   "audit.summary": "What the engine decided, ran and refused.",
   "audit.detail.technical": "Technical details",
   "audit.detail.openRun": "Open run",
@@ -2532,7 +2532,7 @@ const EN = {
   "decisions.failing.unnamed": "Workflow",
   "schedules.held.group": "Blocked workflows",
   "schedules.held.groupHint":
-    "These scheduled workflows cannot start. Open a workflow to review its execution limits.",
+    "These scheduled workflows cannot start. Open a workflow to review its run limits.",
   "schedules.held.concreteShort":
     "The actions and targets need review before scheduled runs can resume.",
   "schedules.held.authorityShort": "No valid execution approval is available for the next run.",
@@ -2597,7 +2597,7 @@ const EN = {
   "authority.refusal.report_delivery_unobserved":
     "A trial run reached this step but did not record a recipient, so there is nothing to approve yet. Open that run and look at this step: the address was probably never worked out.",
   "authority.refusal.report_delivery_unreachable":
-    "A trial run never got as far as this step, so nobody has seen who would receive the e-mail. Another trial run will not help if the step is only reached once something has been sent — a trial run holds all of that back. Name the recipient on the step itself instead; what is actually sent is still checked against that name, every time.",
+    "A trial run never got as far as this step, so nobody has seen who would receive the e-mail. Another trial run will not help, because the step is only reached after something has been sent. Name the recipient on the step instead. What is sent is still checked against that name every time.",
   "authority.refusal.connector_adds_query":
     "The connector appends query parameters of its own, so no reviewed query could ever match what is actually sent.",
   "authority.refusal.target_unresolved":
@@ -2646,7 +2646,7 @@ const EN = {
     "The storage address cannot be worked out from this connector.",
   "operational.core.blocked": "Blocked",
   "operational.core.blocked.tooltip":
-    "Scheduled workflows whose last start was held for execution review. Open the workflow to inspect effects and finite authority.",
+    "Scheduled workflows whose last start was held for run review. Open the workflow to inspect effects and finite authority.",
   "operational.core.blocked.open": "Open blocked decisions",
   "operational.core.failing": "Failing",
   "operational.core.failing.tooltip":
@@ -2661,7 +2661,7 @@ const EN = {
   "operational.core.other.open": "Open other decisions",
   "operational.core.health": "Operational health",
   "operational.core.health.tooltip":
-    "Known execution blockers make the state critical, even when no success ratio is available. Otherwise derived from blockers, execution success and connector health.",
+    "Known blockers make the state critical, even when no success ratio is available. Otherwise derived from blockers, run success and connector health.",
   "operational.core.health.open": "Open operations",
   "operational.core.freshness": "Data freshness",
   "operational.core.freshness.tooltip": "Age of the snapshot behind every dashboard value.",
@@ -2674,12 +2674,12 @@ const EN = {
   "operational.metric.value.tooltip": "Current operational aggregate.",
   "operational.metric.activeWorkflows": "Active workflows",
   "operational.metric.activeWorkflows.tooltip": "Published workflows available to run.",
-  "operational.metric.executionVolume": "Execution volume (24h)",
+  "operational.metric.executionVolume": "Run volume (24 h)",
   "operational.metric.executionVolume.tooltip": "Workflow runs finished during the last 24 hours.",
-  "operational.metric.executionSuccess": "Execution success",
+  "operational.metric.executionSuccess": "Run success",
   "operational.metric.executionSuccess.tooltip":
-    "Successful executions divided by all runs finished in 24 hours.",
-  "operational.metric.failedExecutions": "Failed executions",
+    "Successful runs divided by all runs finished in 24 hours.",
+  "operational.metric.failedExecutions": "Failed runs",
   "operational.metric.failedExecutions.tooltip":
     "Failed, timed-out or aborted runs during the last 24 hours.",
   "operational.metric.productionIncidents": "Production incidents",
@@ -3592,7 +3592,7 @@ const EN = {
   "settings.appliesTo": "Applies to: {scope}",
   "settings.sourceIs": "Source: {source}",
   "settings.storage.body":
-    "Every change is stored in the database as a new, immutable version; earlier versions stay traceable in the audit. Most values take effect immediately on every instance. Values marked “Takes effect after a restart” apply only after a restart — until then the previous version keeps running.",
+    "Every change is stored in the database as a new, immutable version; earlier versions stay traceable in the audit. Most values take effect immediately on every instance. Values marked “Takes effect after a restart” apply only then. Until then, the previous version keeps running.",
   "settings.restartWho.restart":
     "After saving, restart SubKit with “Restart now” above; until then the old value stays in effect.",
   "settings.restartWho.askAdmin":
@@ -3776,13 +3776,13 @@ const EN = {
     "Maximum declared bytes for each new hosted file. Zero blocks file admission.",
   "settings.leaf.queue.hosted.execution_concurrency": "Parallel hosted runs per workspace",
   "settings.help.queue.hosted.execution_concurrency":
-    "Ceiling for simultaneous root executions per hosted workspace. Zero blocks work.",
+    "Ceiling for simultaneous root runs per hosted workspace. Zero blocks work.",
   "settings.leaf.queue.hosted.chat_concurrency": "Parallel hosted chat steps per workspace",
   "settings.help.queue.hosted.chat_concurrency":
     "Ceiling for simultaneous chat steps per hosted workspace, including direct calls. Zero blocks work.",
   "settings.leaf.queue.hosted.pending_jobs": "Queued hosted jobs per workspace",
   "settings.help.queue.hosted.pending_jobs":
-    "Ceiling for queued execution and conversation jobs per workspace. Zero blocks queue admission.",
+    "Ceiling for queued run and conversation jobs per workspace. Zero blocks queue admission.",
   "settings.leaf.llm.model": "Primary model",
   "settings.leaf.llm.api_key": "Primary API key",
   "settings.leaf.llm.fallback_provider": "Fallback provider",
@@ -3901,7 +3901,7 @@ const EN = {
   "settings.leaf.sandbox.tick_budget": "Script interrupt budget",
   "settings.leaf.sandbox.wall_ms": "Script time cap (ms)",
   "settings.leaf.sandbox.queue_limit": "Queued sandbox jobs per worker lane",
-  "settings.leaf.sandbox.tenant_queue_limit": "Queued sandbox jobs per tenant",
+  "settings.leaf.sandbox.tenant_queue_limit": "Queued sandbox jobs per workspace",
   "settings.leaf.sandbox.ipc_max_bytes": "Sandbox message size limit (bytes)",
   "settings.leaf.sandbox.worker_rss_bytes": "Sandbox worker memory limit (bytes)",
   "settings.leaf.sandbox.stack_bytes": "Script stack cap (bytes)",
@@ -4145,7 +4145,7 @@ const EN = {
   "refusal.reason.content_type_differs": "The message format differs from the approval",
   "refusal.reason.sentence": "{reason}.",
   "authority.refusal.report_delivery_contradicted":
-    "A trial run reached this step, and the e-mail it would have sent does not match what the step declares: the message is outside the report format, or goes to a different address. As declared, every run would be refused at sending. Change the step or its declaration so the two agree.",
+    "The e-mail this trial run would have sent does not match the step. The message is outside the report format, or it goes to a different address. Every run would be refused at sending. Change the step or its declaration so the two agree.",
   "diagnosis.title": "What holds this workflow",
   "diagnosis.column.step": "Step",
   "diagnosis.column.reason": "Reason",
@@ -4623,7 +4623,7 @@ const EN = {
   "overview.count.none": "Nothing needs you right now.",
   "overview.count.noneRead": "Nothing from the sources that answered needs you.",
   "overview.countHelp":
-    "These are the entries that need a decision from you now. The time window applies only to executions and success rate; connectors and usage are shown as of now or for the month. More repairs are listed under Workflows.",
+    "These are the entries that need a decision from you now. The time window applies only to runs and success rate; connectors and usage are shown as of now or for the month. More repairs are listed under Workflows.",
   "overview.repairRequired.one": "{count} workflow needs a repair",
   "overview.repairRequired.other": "{count} workflows need a repair",
   "overview.needsYou": "Needs you",
