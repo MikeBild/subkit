@@ -424,14 +424,13 @@ export function ProposalCard({
   const binding = useQuery({
     queryKey: ["intake-target-binding", bindingPath],
     queryFn: () => apiRequest<{ name: string }>(bindingPath ?? ""),
-    enabled: Boolean(bindingPath) && proposal.status === "draft",
+    enabled: Boolean(bindingPath) && (proposal.status === "draft" || proposal.status === "stale"),
     retry: false,
     retryOnMount: false,
   });
   const bindingSettled = !bindingPath || binding.isSuccess || binding.isError;
   const bindingName =
-    binding.data?.name ??
-    (bindingSettled || proposal.status !== "draft" ? t("intake.target.hiddenName") : null);
+    binding.data?.name ?? (binding.isError ? t("intake.target.hiddenName") : null);
   const bindingMissing = binding.error instanceof ApiError && binding.error.status === 404;
   const targetMissing = skillQueries.some((query) => query.isError) || bindingMissing;
   const targetsLoaded = knowledgeId

@@ -273,7 +273,12 @@ export function FilesPage() {
       surface="collection"
       testId="files-page"
       scroll="content"
-      header={<PageHeader title={t("files.title")} action={fileActions ?? undefined} />}
+      header={
+        <PageHeader
+          title={t("files.title")}
+          action={(onboarding ? installationActions : fileActions) ?? undefined}
+        />
+      }
     >
       {onboarding ? (
         <FilesOnboarding canWrite={canWrite} onFiles={dropOnPage} />

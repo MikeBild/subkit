@@ -330,7 +330,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
       header={
         <PageHeader
           title={title}
-          action={addButton("knowledge-add")}
+          action={empty ? undefined : addButton("knowledge-add")}
           menu={
             canChat ? (
               <ActionMenu
@@ -661,6 +661,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     label: t("knowledge.edit"),
   });
   const [deleting, setDeleting] = useState(false);
+  const [section, setSection] = useSearchParamState("section", "");
 
   const refresh = useMutation({
     mutationFn: () =>
@@ -845,6 +846,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
                       loading={chunks.isPending}
                       failed={Boolean(chunks.error)}
                       onRetry={() => void chunks.refetch()}
+                      onOpenSection={setSection}
                     />
                   ),
                 },
@@ -929,14 +931,15 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
         />
       ) : null}
       {source ? (
-        <SectionSheet source={source} sections={sourceSections(chunks.data?.items ?? [])} />
+        <SectionSheet
+          source={source}
+          sections={sourceSections(chunks.data?.items ?? [])}
+          selected={section}
+          onSelect={setSection}
+        />
       ) : null}
     </>
   );
-}
-
-function useSelectedSection() {
-  return useSearchParamState("section", "");
 }
 
 function SourceContentTab({
@@ -946,6 +949,7 @@ function SourceContentTab({
   loading,
   failed,
   onRetry,
+  onOpenSection,
 }: {
   source: KnowledgeSource;
   kind: SourceKind;
@@ -953,9 +957,9 @@ function SourceContentTab({
   loading: boolean;
   failed: boolean;
   onRetry(): void;
+  onOpenSection(key: string): void;
 }) {
   const { t, dateTime } = useI18n();
-  const [, openSection] = useSelectedSection();
   const [filter, setFilter] = useState("");
   const contents = useMemo(() => sections.map((section) => section.content), [sections]);
   const endpoints = useMemo(() => openApiEndpoints(contents), [contents]);
@@ -1046,7 +1050,7 @@ function SourceContentTab({
           <ul className="divide-y rounded-lg border" data-testid="knowledge-endpoints">
             {shown.slice(0, ENDPOINT_PAGE).map((endpoint) => (
               <li key={endpoint.key}>
-                <EndpointRow endpoint={endpoint} onOpen={() => openSection(endpoint.key)} />
+                <EndpointRow endpoint={endpoint} onOpen={() => onOpenSection(endpoint.key)} />
               </li>
             ))}
           </ul>
@@ -1074,7 +1078,7 @@ function SourceContentTab({
             <li key={section.key}>
               <button
                 type="button"
-                onClick={() => openSection(section.key)}
+                onClick={() => onOpenSection(section.key)}
                 className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 data-testid={`knowledge-section-${index}`}
               >
@@ -1124,12 +1128,15 @@ function EndpointRow({ endpoint, onOpen }: { endpoint: ApiEndpoint; onOpen(): vo
 function SectionSheet({
   source,
   sections,
+  selected,
+  onSelect: setSelected,
 }: {
   source: KnowledgeSource;
   sections: SourceSection[];
+  selected: string;
+  onSelect(key: string): void;
 }) {
   const { t, dateTime } = useI18n();
-  const [selected, setSelected] = useSelectedSection();
   const contents = useMemo(() => sections.map((section) => section.content), [sections]);
   const endpoints = useMemo(() => openApiEndpoints(contents), [contents]);
   const endpoint = endpoints?.find((entry) => entry.key === selected) ?? null;

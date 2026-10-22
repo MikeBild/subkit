@@ -351,7 +351,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
       header={
         <PageHeader
           title={title}
-          action={newButton("skills-new")}
+          action={empty ? undefined : newButton("skills-new")}
           menu={
             canChat ? (
               <ActionMenu
