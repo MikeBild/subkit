@@ -4,6 +4,8 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import {
   conversationExecutionSuppressed,
   conversationExecutionSuppression,
+  executionSuppressionRefusal,
+  turnExecutionSuppression,
 } from "./execution-suppression.ts";
 
 let testDb: TestDb;
@@ -166,4 +168,66 @@ test("a neutral conversation suppresses nothing", async () => {
       recent_user_message: null,
     }),
   ).toEqual({ live: false, all: false });
+});
+
+async function userTurns(conversation_id: string, contents: string[]) {
+  const start = Date.parse("2026-01-01T00:00:00.000Z");
+  await testDb.db.insert(conversationMessages).values(
+    contents.map((content, index) => ({
+      tenant_id,
+      conversation_id,
+      role: "user" as const,
+      content,
+      created_at: new Date(start + index * 1000),
+    })),
+  );
+}
+
+test("a later explicit run request lifts an earlier no-run veto for the turn", async () => {
+  const created = await conversation();
+  await userTurns(created.id, ["Bitte nicht ausführen.", "Führe den Workflow jetzt aus."]);
+  const input = {
+    db: testDb.db,
+    tenant_id,
+    conversation_id: created.id,
+    recent_user_message: "Führe den Workflow jetzt aus.",
+  };
+  expect(await turnExecutionSuppression(input)).toEqual({ live: false, all: false });
+  expect(await executionSuppressionRefusal({ ...input, live_tool: true })).toBeNull();
+  expect(await turnExecutionSuppression({ ...input, recent_user_message: null })).toEqual({
+    live: false,
+    all: false,
+  });
+});
+
+test("a no-run veto still holds for neutral turns after it", async () => {
+  const created = await conversation();
+  await userTurns(created.id, [
+    "Run the workflow",
+    "Bitte nicht ausführen.",
+    "Zeig mir die Schritte",
+  ]);
+  const input = {
+    db: testDb.db,
+    tenant_id,
+    conversation_id: created.id,
+    recent_user_message: "Zeig mir die Schritte",
+  };
+  expect(await turnExecutionSuppression(input)).toEqual({ live: true, all: true });
+  expect((await executionSuppressionRefusal({ ...input, live_tool: true }))?.error_code).toBe(
+    "explicit_no_run",
+  );
+});
+
+test("a no-live preparation after an older run request still holds on an answered choice", async () => {
+  const created = await conversation();
+  await userTurns(created.id, ["Führe den Workflow aus", PREPARE_WITHOUT_LIVE_EFFECTS, "PROD"]);
+  expect(
+    await turnExecutionSuppression({
+      db: testDb.db,
+      tenant_id,
+      conversation_id: created.id,
+      recent_user_message: "PROD",
+    }),
+  ).toEqual({ live: true, all: false });
 });

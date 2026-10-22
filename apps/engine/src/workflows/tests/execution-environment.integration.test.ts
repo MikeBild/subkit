@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import {
   connectors,
   tenants,
@@ -102,6 +103,20 @@ test("prod-only connector bindings derive the prod review environment", async ()
     }),
   ).toEqual({ environment: "prod", source: "bindings" });
   expect(await workflowExecutionEnvironment(ctx.db, tenant.id, workflow.id)).toBe("dev");
+});
+
+test("a saved prod-only-bound workflow without a trigger runs in prod by default", async () => {
+  const tenant = await tenantFixture();
+  const briefing = await connectorFixture(tenant.id, "github-briefings-prod", "prod");
+  const { workflow, version } = await workflowFixture(tenant.id, [briefing.id]);
+  await ctx.db
+    .update(workflows)
+    .set({ current_version_id: version.id })
+    .where(eq(workflows.id, workflow.id));
+  expect(await workflowExecutionEnvironment(ctx.db, tenant.id, workflow.id)).toBe("prod");
+  expect(
+    await workflowExecutionEnvironment(ctx.db, "00000000-0000-4000-8000-000000000099", workflow.id),
+  ).toBe("dev");
 });
 
 test("dev and prod variants of the same slug keep the default", async () => {

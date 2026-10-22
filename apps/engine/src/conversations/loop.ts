@@ -90,7 +90,7 @@ import { appendSnapshot, loadDraft } from "./draft.ts";
 import type { ElicitationBridge } from "./elicitation-bridge.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
-import { conversationExecutionSuppression } from "./execution-suppression.ts";
+import { turnExecutionSuppression } from "./execution-suppression.ts";
 import {
   detectMultiArtifactIntent,
   detectUserIntent,
@@ -155,7 +155,7 @@ import {
   resolveExecutionToolGate,
   resolveNamedWorkflowSlug,
 } from "./tools/authoring-palette.ts";
-import { listTools, type ToolContext } from "./tools/index.ts";
+import { getTool, listTools, type ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
 import { LlmTimeoutError, timeoutBudgetOf, timeoutPhaseOf } from "./turn-failure.ts";
 import {
@@ -886,7 +886,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     (draft.summary?.active_target.kind === "workflow" &&
       draft.summary?.active_target.lifecycle_state === "persisted");
   const namedWorkflowSlug = resolveNamedWorkflowSlug(ingestedUserMessage, syntheticWorkflowSlugs);
-  const executionSuppression = await conversationExecutionSuppression({
+  const executionSuppression = await turnExecutionSuppression({
     db: p.db,
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
@@ -919,7 +919,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     const resumedRemedy = pendingPermittedRemedy(
       [...recentToolCalls].reverse().map((call) => ({ tool: call.tool, output: call.output })),
       new Set(Object.keys(tools)),
-      { questionAnswers: false },
+      { questionAnswers: false, readOnly: (name) => getTool(name)?.category === "tenant_read" },
     );
     if (resumedRemedy.length > 0) {
       stepRouterSignals.pendingPermittedRemedy = resumedRemedy;
@@ -1796,6 +1796,9 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
             ev.type === "tool_result" ? [summarizeToolResult(ev.tool, ev.output)] : [],
           ),
           availableTools: Object.keys(tools),
+          readOnlyTools: Object.keys(tools).filter(
+            (name) => getTool(name)?.category === "tenant_read",
+          ),
           ...(resolvedEngineUrl || p.runtime_context?.tenant_slug
             ? {
                 runtimeContext: {

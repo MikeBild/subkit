@@ -319,4 +319,48 @@ describe("chat rubric — permitted next action", () => {
     });
     expect(v.checks?.permitted_next_action_taken).toBe(true);
   });
+
+  it("passes a reply that asks for the confirmation a refused write requires", async () => {
+    const v = await runCritic({
+      artifact: { kind: "chat", payload: "Bitte bestätige das Speichern ausdrücklich." },
+      toolResults: [
+        summarizeToolResult("save_workflow_draft", {
+          ok: false,
+          error_code: "destructive_skill_confirmation_required",
+          next_best_actions: ["save_workflow_draft"],
+        }),
+      ],
+      availableTools: ["save_workflow_draft", "save_connector_draft"],
+    });
+    expect(v.checks?.permitted_next_action_taken).toBe(true);
+  });
+
+  it("does not require a write remedy", async () => {
+    const v = await runCritic({
+      artifact: { kind: "chat", payload: "Die Zugangsdaten fehlen noch." },
+      toolResults: [
+        summarizeToolResult("call_connector", {
+          ok: false,
+          data: { error_code: "missing_auth", next_best_actions: ["save_connector_draft"] },
+        }),
+      ],
+      availableTools: ["save_connector_draft"],
+    });
+    expect(v.checks?.permitted_next_action_taken).toBe(true);
+  });
+
+  it("requires a read-only remedy the caller marks as read-only", async () => {
+    const v = await runCritic({
+      artifact: { kind: "chat", payload: "Konflikte müssen behoben werden." },
+      toolResults: [
+        summarizeToolResult("run_workflow", {
+          ok: false,
+          data: { error_code: "x", next_best_actions: ["inspect_workflow"] },
+        }),
+      ],
+      availableTools: ["inspect_workflow"],
+      readOnlyTools: ["inspect_workflow"],
+    });
+    expect(v.checks?.permitted_next_action_taken).toBe(false);
+  });
 });

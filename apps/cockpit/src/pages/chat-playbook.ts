@@ -69,18 +69,57 @@ export function playbookActionTarget(
     : null;
 }
 
+type AnchorMessage = { id?: string; role: string; created_at: string };
+type AnchorToolCall = {
+  tool: string;
+  created_at: string;
+  parent_message_id?: string | null;
+  outcome?: string | null;
+};
+
+function turnEnd(messages: readonly AnchorMessage[], index: number): number {
+  const next = messages.findIndex((message, at) => at > index && message.role === "user");
+  const bound = next < 0 ? messages.length : next;
+  const lastAssistant = messages
+    .slice(index, bound)
+    .reduce(
+      (found, message, offset) => (message.role === "assistant" ? index + offset : found),
+      -1,
+    );
+  return lastAssistant < 0 ? index : lastAssistant;
+}
+
+function latestRevision(toolCalls: readonly AnchorToolCall[]): AnchorToolCall | null {
+  return toolCalls
+    .filter(
+      (call) =>
+        call.tool === "update_playbook" &&
+        call.outcome !== "error" &&
+        call.outcome !== "denied" &&
+        Number.isFinite(Date.parse(call.created_at)),
+    )
+    .reduce<AnchorToolCall | null>(
+      (found, call) =>
+        !found || Date.parse(call.created_at) >= Date.parse(found.created_at) ? call : found,
+      null,
+    );
+}
+
 export function playbookAnchorIndex(
-  messages: readonly { role: string; created_at: string }[],
+  messages: readonly AnchorMessage[],
   playbook: Pick<ConversationPlaybook, "updated_at">,
+  toolCalls: readonly AnchorToolCall[] = [],
 ): number | null {
-  const updatedAt = Date.parse(playbook.updated_at);
+  const revision = latestRevision(toolCalls);
+  const parent = revision?.parent_message_id
+    ? messages.findIndex((message) => message.id === revision.parent_message_id)
+    : -1;
+  if (parent >= 0) return turnEnd(messages, parent);
+  const anchoredAt = Date.parse(revision?.created_at ?? playbook.updated_at);
   const times = messages.map((message) => Date.parse(message.created_at));
-  if (!Number.isFinite(updatedAt) || times.some((time) => !Number.isFinite(time))) return null;
-  const last = times.reduce((found, time, index) => (time <= updatedAt ? index : found), -1);
-  if (last < 0) return null;
-  return messages[last]?.role !== "assistant" && messages[last + 1]?.role === "assistant"
-    ? last + 1
-    : last;
+  if (!Number.isFinite(anchoredAt) || times.some((time) => !Number.isFinite(time))) return null;
+  const last = times.reduce((found, time, index) => (time <= anchoredAt ? index : found), -1);
+  return last < 0 ? null : turnEnd(messages, last);
 }
 
 export function playbookSummaryVisible(contextOpen: boolean): boolean {

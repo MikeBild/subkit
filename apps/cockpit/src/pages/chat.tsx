@@ -2071,7 +2071,9 @@ export function ChatPage() {
   const conversationMissing =
     conversationFailed &&
     conversationFailureKind(detail.error ?? detail.failureReason) === "missing";
-  const playbookAnchor = playbook ? playbookAnchorIndex(messages, playbook) : null;
+  const playbookAnchor = playbook
+    ? playbookAnchorIndex(messages, playbook, detail.data?.tool_calls ?? [])
+    : null;
   const playbookAnchorMessage = playbookAnchor === null ? null : messages[playbookAnchor];
   const playbookPlacement = {
     inlineIndex:

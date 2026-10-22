@@ -32,6 +32,7 @@ export interface RunCriticParams {
   runtimeContext?: { engine_url?: string; tenant_slug?: string };
   toolResults?: ReadonlyArray<CriticToolResult>;
   availableTools?: ReadonlyArray<string>;
+  readOnlyTools?: ReadonlyArray<string>;
   llm?: SubkitLlm;
 }
 
@@ -100,6 +101,7 @@ const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 function untakenRemedy(
   toolResults: ReadonlyArray<CriticToolResult>,
   availableTools: ReadonlyArray<string>,
+  readOnlyTools: ReadonlyArray<string>,
 ): string[] {
   return pendingPermittedRemedy(
     toolResults.map((result) => ({
@@ -113,7 +115,7 @@ function untakenRemedy(
           },
     })),
     new Set(availableTools),
-    { questionAnswers: true },
+    { questionAnswers: true, readOnly: (name) => readOnlyTools.includes(name) },
   );
 }
 
@@ -123,6 +125,7 @@ function gradeChat(
   runtimeContext: { engine_url?: string; tenant_slug?: string } | undefined,
   toolResults: ReadonlyArray<CriticToolResult> | undefined,
   availableTools: ReadonlyArray<string> | undefined,
+  readOnlyTools: ReadonlyArray<string>,
 ): CriticVerdict {
   const matches = text.match(UUID_PATTERN) ?? [];
   const resultIds = toolResultIds(toolResults ?? []);
@@ -140,7 +143,9 @@ function gradeChat(
         processed_ids_in_results: !claimIssues.some((i) => i.kind === "unprocessed_id"),
       }
     : {};
-  const remedy = availableTools ? untakenRemedy(toolResults ?? [], availableTools) : [];
+  const remedy = availableTools
+    ? untakenRemedy(toolResults ?? [], availableTools, readOnlyTools)
+    : [];
   const remedyChecks = availableTools ? { permitted_next_action_taken: remedy.length === 0 } : {};
   const checks = {
     ids_grounded: ungroundedIds.length === 0,
@@ -218,6 +223,7 @@ export async function runCritic(params: RunCriticParams): Promise<CriticVerdict>
         runtimeContext,
         params.toolResults,
         params.availableTools,
+        params.readOnlyTools ?? [],
       );
   }
 }

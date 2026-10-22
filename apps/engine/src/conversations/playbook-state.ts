@@ -125,9 +125,7 @@ export function projectPlaybook(
         ? "waiting_for_input"
         : steps.some((step) => step.status === "blocked")
           ? "blocked"
-          : ready.size === steps.length &&
-              verified.size > 0 &&
-              steps.every((step) => step.next_action === null)
+          : steps.length > 0 && verified.size === steps.length
             ? "prepared"
             : steps.some((step) => step.status === "in_progress" || ready.has(step.id))
               ? "in_progress"

@@ -830,6 +830,47 @@ describe("prepareStep — permitted remedy continuation", () => {
     expect(later?.reason ?? "").not.toContain("permitted_remedy_continue");
   });
 
+  it("does not force a write remedy or a remedy that waits for confirmation", () => {
+    for (const output of [
+      {
+        ok: false,
+        error_code: "destructive_skill_confirmation_required",
+        next_best_actions: ["save_workflow_draft"],
+      },
+      { ok: false, data: { error_code: "conflict", next_best_actions: ["edit_workflow_patch"] } },
+      {
+        ok: false,
+        data: { error_code: "confirmation_required", next_best_actions: ["inspect_workflow"] },
+      },
+    ]) {
+      const decision = prepareStep(
+        baseParams({
+          steps: [step(["save_workflow_draft", output])],
+          paletteToolNames: ["save_workflow_draft", "edit_workflow_patch", "inspect_workflow"],
+          signals: { stage: "workflow_persisted" },
+        }),
+      );
+      expect(decision?.reason ?? "").not.toContain("permitted_remedy_continue");
+      expect(decision?.toolChoice).not.toBe("required");
+    }
+  });
+
+  it("forces a read-only remedy", () => {
+    const decision = prepareStep(
+      baseParams({
+        steps: [
+          step([
+            "run_workflow",
+            { ok: false, data: { error_code: "x", next_best_actions: ["inspect_workflow"] } },
+          ]),
+        ],
+        paletteToolNames: palette,
+        signals: { stage: "workflow_persisted" },
+      }),
+    );
+    expect(decision?.reason).toContain("permitted_remedy_continue");
+  });
+
   it("keeps the nudge without forcing a tool when thinking is on", () => {
     const decision = prepareStep(
       baseParams({

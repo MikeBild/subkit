@@ -319,7 +319,7 @@ describe("playbook scenario projections with resolved evidence", () => {
     expect(view.steps.every((item) => item.status === "assessment_ready")).toBe(true);
   });
 
-  test("a technically evidenced check with ready assessments is prepared", () => {
+  test("a technically evidenced check with ready assessments stays in progress", () => {
     const view = project(
       document("Automatik vorbereiten", [
         observed("inspect", "workflow"),
@@ -332,6 +332,21 @@ describe("playbook scenario projections with resolved evidence", () => {
       [["inspect", evidence()]],
     );
     expect(view.steps[0]?.status).toBe("verified");
+    expect(view.status).toBe("in_progress");
+  });
+
+  test("a plan whose every check is technically evidenced is prepared", () => {
+    const view = project(
+      document("Automatik vorbereiten", [
+        observed("inspect", "workflow"),
+        observed("review", "workflow"),
+      ]),
+      [
+        ["inspect", evidence()],
+        ["review", evidence()],
+      ],
+    );
+    expect(view.steps.every((item) => item.status === "verified")).toBe(true);
     expect(view.status).toBe("prepared");
   });
 

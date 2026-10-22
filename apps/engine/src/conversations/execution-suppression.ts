@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { conversationMessages } from "../db/schema/index.ts";
 import { detectUserIntent } from "./intent-detector.ts";
@@ -17,20 +17,28 @@ export interface ExecutionSuppression {
   all: boolean;
 }
 
-function suppressionOf(text: string | null | undefined): ExecutionSuppression {
-  const intent = detectUserIntent(text);
-  const all = intent.suppressExecution === true;
-  return { live: all || intent.suppressLiveExecution === true, all };
+interface ScannedIntent extends ExecutionSuppression {
+  run_request: boolean;
 }
 
-export async function conversationExecutionSuppression(input: {
+function scan(text: string | null | undefined): ScannedIntent {
+  const intent = detectUserIntent(text);
+  const all = intent.suppressExecution === true;
+  const live = all || intent.suppressLiveExecution === true;
+  return { live, all, run_request: !live && intent.forceTool === "run_workflow" };
+}
+
+const NONE: ExecutionSuppression = { live: false, all: false };
+
+function merge(left: ExecutionSuppression, right: ExecutionSuppression): ExecutionSuppression {
+  return { live: left.live || right.live, all: left.all || right.all };
+}
+
+async function userMessagesNewestFirst(input: {
   db: Db;
   tenant_id: string;
   conversation_id: string;
-  recent_user_message?: string | null;
-}): Promise<ExecutionSuppression> {
-  const recent = suppressionOf(input.recent_user_message);
-  if (recent.all) return recent;
+}): Promise<string[]> {
   const messages = await input.db
     .select({ content: conversationMessages.content })
     .from(conversationMessages)
@@ -40,13 +48,43 @@ export async function conversationExecutionSuppression(input: {
         eq(conversationMessages.conversation_id, input.conversation_id),
         eq(conversationMessages.role, "user"),
       ),
-    );
-  return messages.reduce<ExecutionSuppression>((combined, message) => {
+    )
+    .orderBy(desc(conversationMessages.created_at));
+  return messages.flatMap((message) => {
     const text = messageText(message.content);
-    if (text === null) return combined;
-    const found = suppressionOf(text);
-    return { live: combined.live || found.live, all: combined.all || found.all };
-  }, recent);
+    return text === null ? [] : [text];
+  });
+}
+
+export async function conversationExecutionSuppression(input: {
+  db: Db;
+  tenant_id: string;
+  conversation_id: string;
+  recent_user_message?: string | null;
+}): Promise<ExecutionSuppression> {
+  const recent = scan(input.recent_user_message);
+  if (recent.all) return merge(NONE, recent);
+  return (await userMessagesNewestFirst(input)).reduce<ExecutionSuppression>(
+    (combined, text) => merge(combined, scan(text)),
+    merge(NONE, recent),
+  );
+}
+
+export async function turnExecutionSuppression(input: {
+  db: Db;
+  tenant_id: string;
+  conversation_id: string;
+  recent_user_message?: string | null;
+}): Promise<ExecutionSuppression> {
+  const recent = scan(input.recent_user_message);
+  if (recent.run_request) return NONE;
+  if (recent.all) return merge(NONE, recent);
+  const history = await userMessagesNewestFirst(input);
+  const lift = history.findIndex((text) => scan(text).run_request);
+  return (lift === -1 ? history : history.slice(0, lift)).reduce<ExecutionSuppression>(
+    (combined, text) => merge(combined, scan(text)),
+    merge(NONE, recent),
+  );
 }
 
 export async function conversationExecutionSuppressed(input: {
@@ -65,7 +103,7 @@ export async function executionSuppressionRefusal(input: {
   recent_user_message?: string | null;
   live_tool: boolean;
 }): Promise<{ error_code: string; message: string } | null> {
-  const suppression = await conversationExecutionSuppression(input);
+  const suppression = await turnExecutionSuppression(input);
   if (suppression.all)
     return {
       error_code: "explicit_no_run",

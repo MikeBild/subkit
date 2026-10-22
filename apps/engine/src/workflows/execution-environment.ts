@@ -1,7 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { connectorEnvironmentKey, getConnectorsForEnvironments } from "../connectors/service.ts";
 import type { Executor } from "../db/client.ts";
-import { webhooksInbound, workflowsSchedules, workflowVersions } from "../db/schema/index.ts";
+import {
+  webhooksInbound,
+  workflows,
+  workflowsSchedules,
+  workflowVersions,
+} from "../db/schema/index.ts";
 
 type ExecutionEnvironment = "dev" | "prod";
 
@@ -12,7 +17,16 @@ export async function workflowExecutionEnvironment(
   tenant_id: string,
   workflow_id: string,
 ): Promise<ExecutionEnvironment> {
-  return (await triggerEnvironment(db, tenant_id, workflow_id))?.environment ?? "dev";
+  const [workflow] = await db
+    .select({ current_version_id: workflows.current_version_id })
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, workflow_id)))
+    .limit(1);
+  return (
+    await resolveWorkflowReviewEnvironment(db, tenant_id, workflow_id, {
+      version_id: workflow?.current_version_id ?? null,
+    })
+  ).environment;
 }
 
 export async function resolveWorkflowReviewEnvironment(

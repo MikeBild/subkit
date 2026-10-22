@@ -408,7 +408,10 @@ function permittedRemedyForStep(params: StepRouterParams): string[] {
   if (!prior.some((result) => refusalRemedies(result.output))) return [];
   const earlier = params.steps.slice(0, -1).flatMap(stepToolResults);
   if (earlier.some((result) => refusalRemedies(result.output))) return [];
-  return pendingPermittedRemedy([...earlier, ...prior], palette, { questionAnswers: true });
+  return pendingPermittedRemedy([...earlier, ...prior], palette, {
+    questionAnswers: true,
+    readOnly: (name) => params.toolsByName[name]?.category === "tenant_read",
+  });
 }
 
 function priorStepWasSuccessfulConnectorAutoPersist(params: StepRouterParams): boolean {

@@ -208,6 +208,40 @@ describe("playbook presentation boundaries", () => {
     );
   });
 
+  test("places the playbook after the final reply of the turn whose call wrote the revision", () => {
+    const messages = [
+      { id: "u1", role: "user", created_at: "2030-01-01T03:20:30Z" },
+      { id: "a1", role: "assistant", created_at: "2030-01-01T03:20:40Z" },
+      { id: "a2", role: "assistant", created_at: "2030-01-01T03:20:54Z" },
+      { id: "u2", role: "user", created_at: "2030-01-01T03:21:35Z" },
+      { id: "a3", role: "assistant", created_at: "2030-01-01T03:21:39Z" },
+    ];
+    const revision = {
+      tool: "update_playbook",
+      created_at: "2030-01-01T03:20:38Z",
+      parent_message_id: "a1",
+      outcome: "ok",
+    };
+    const decided = { updated_at: "2030-01-01T03:21:37Z" };
+    expect(playbookAnchorIndex(messages, decided, [revision])).toBe(2);
+    expect(playbookAnchorIndex(messages, decided, [{ ...revision, parent_message_id: null }])).toBe(
+      2,
+    );
+    expect(
+      playbookAnchorIndex(messages, decided, [
+        revision,
+        {
+          ...revision,
+          created_at: "2030-01-01T03:21:38Z",
+          parent_message_id: "a3",
+          outcome: "error",
+        },
+      ]),
+    ).toBe(2);
+    expect(playbookAnchorIndex(messages, { updated_at: "2030-01-01T03:20:45Z" })).toBe(2);
+    expect(playbookAnchorIndex(messages, decided)).toBe(4);
+  });
+
   test("shows the playbook summary in the chat only while the panel is closed", () => {
     expect(playbookSummaryVisible(true)).toBe(false);
     expect(playbookSummaryVisible(false)).toBe(true);
