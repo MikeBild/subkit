@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Clock, GitBranch, type LucideIcon, Plug, Shuffle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
@@ -12,13 +13,21 @@ import {
   TextAreaField,
   TextField,
 } from "@/components/cockpit/form-field";
-import { ActionButton, ContextHelp, FormDialog } from "@/components/cockpit/patterns";
+import {
+  ActionButton,
+  ChoiceCards,
+  ContextHelp,
+  FormDialog,
+  TechnicalDetails,
+} from "@/components/cockpit/patterns";
+import { Input } from "@/components/ui/input";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
   formFromStep,
   isFormStep,
+  parseDuration,
   STEP_FORM_ERROR_FIELDS,
   STEP_FORM_KINDS,
   STEP_METHODS,
@@ -28,8 +37,11 @@ import {
   type StepFormKind,
   type StepMethod,
   stepFromForm,
+  stepKeyFromName,
 } from "@/lib/step-form";
+import { type Phrase, stepPhrase } from "@/lib/workflow-flow";
 import { workflowStepChanges } from "@/lib/workflow-step-changes";
+import { readStepDefinition } from "@/lib/workflow-steps";
 
 type WorkflowDraft = components["schemas"]["WorkflowDraft"];
 type RecordValue = Record<string, unknown>;
@@ -144,6 +156,30 @@ export type StepMark = "new" | "changed" | "moved";
 
 export type StepDraft = ReturnType<typeof useStepDraft>;
 
+const KIND_ICONS: Record<StepFormKind, LucideIcon> = {
+  request: Plug,
+  transform: Shuffle,
+  branch: GitBranch,
+  wait: Clock,
+};
+
+const KIND_LINES: Record<StepFormKind, TranslationKey> = {
+  request: "stepWizard.kind.request",
+  transform: "stepWizard.kind.transform",
+  branch: "stepWizard.kind.branch",
+  wait: "stepWizard.kind.wait",
+};
+
+const METHOD_WORDS: Record<StepMethod, TranslationKey> = {
+  GET: "stepWizard.method.get",
+  POST: "stepWizard.method.post",
+  PUT: "stepWizard.method.put",
+  PATCH: "stepWizard.method.patch",
+  DELETE: "stepWizard.method.delete",
+};
+
+type Phase = "kind" | "service" | "fields";
+
 export function StepDialog({
   open,
   onOpenChange,
@@ -161,28 +197,30 @@ export function StepDialog({
   const connectors = useConnectorRecords(open);
   const editing = step !== null && step !== undefined;
   const structured = isFormStep(step);
-  const firstConnector = connectors[0]?.id ?? "";
-  const [form, setForm] = useState<StepForm>(() => formFromStep(step, firstConnector));
+  const [form, setForm] = useState<StepForm>(() => formFromStep(step, ""));
+  const [label, setLabel] = useState("");
+  const [phase, setPhase] = useState<Phase>(editing ? "fields" : "kind");
+  const [search, setSearch] = useState("");
   const [text, setText] = useState(() => JSON.stringify(step, null, 2));
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<{ field: StepFormField; text: string } | null>(null);
   useEffect(() => {
     if (!open) return;
     setForm(formFromStep(step, ""));
+    setLabel("");
+    setPhase(step === null || step === undefined ? "kind" : "fields");
+    setSearch("");
     setText(JSON.stringify(step, null, 2));
     setError(null);
     setFieldError(null);
   }, [open, step]);
-  useEffect(() => {
-    if (firstConnector && !form.connectorId)
-      setForm((current) => ({ ...current, connectorId: firstConnector }));
-  }, [firstConnector, form.connectorId]);
   const set = (patch: Partial<StepForm>) => {
     setForm((current) => ({ ...current, ...patch }));
     setFieldError(null);
   };
   const errorOf = (field: StepFormField) => (fieldError?.field === field ? fieldError.text : null);
   const others = taken.map((id) => ({ value: id, label: id }));
+  const connector = connectors.find((item) => item.id === form.connectorId) ?? null;
   const apply = () => {
     if (!structured) {
       try {
@@ -196,7 +234,8 @@ export function StepDialog({
       }
       return;
     }
-    const result = stepFromForm(form, step, taken);
+    const named = editing ? form : { ...form, name: stepKeyFromName(label, form.kind, taken) };
+    const result = stepFromForm(named, step, taken);
     if ("error" in result)
       return setFieldError({
         field: STEP_FORM_ERROR_FIELDS[result.error],
@@ -205,179 +244,307 @@ export function StepDialog({
     onApply(result.step);
     onOpenChange(false);
   };
+  const title = editing ? t("stepEditor.editTitle") : t("stepEditor.addTitle");
+  if (!structured)
+    return (
+      <FormDialog
+        open={open}
+        onOpenChange={onOpenChange}
+        title={title}
+        description={t("stepWizard.rawOnly")}
+        submit={{ label: t("stepEditor.apply") }}
+        onSubmit={apply}
+        error={error}
+        size="wide"
+        testId="step-dialog"
+      >
+        <TechnicalDetails testId="step-raw">
+          <TextAreaField
+            id="step-config"
+            label={t("workflow.configuration")}
+            help={t("stepEditor.configHelp")}
+            value={text}
+            onChange={setText}
+            rows={14}
+            mono
+          />
+        </TechnicalDetails>
+      </FormDialog>
+    );
+  if (phase === "kind")
+    return (
+      <FormDialog
+        open={open}
+        onOpenChange={onOpenChange}
+        title={title}
+        description={t("stepWizard.kindQuestion")}
+        size="wide"
+        step="kind"
+        testId="step-dialog"
+      >
+        <ChoiceCards
+          items={STEP_FORM_KINDS.map((kind) => {
+            const Icon = KIND_ICONS[kind];
+            return {
+              icon: <Icon />,
+              title: t(`workflow.kind.${kind}`),
+              line: t(KIND_LINES[kind]),
+              selected: form.kind === kind,
+              onSelect: () => {
+                set({ kind });
+                setPhase(kind === "request" ? "service" : "fields");
+              },
+              testId: `step-kind-${kind}`,
+            };
+          })}
+        />
+      </FormDialog>
+    );
+  if (phase === "service") {
+    const term = search.trim().toLowerCase();
+    const matches = connectors.filter(
+      (item) =>
+        !term ||
+        item.display_name.toLowerCase().includes(term) ||
+        item.slug.toLowerCase().includes(term),
+    );
+    return (
+      <FormDialog
+        open={open}
+        onOpenChange={onOpenChange}
+        title={title}
+        description={t("stepWizard.serviceQuestion")}
+        size="wide"
+        step="service"
+        back={{ label: t("create.back"), onClick: () => setPhase("kind") }}
+        testId="step-dialog"
+      >
+        <Input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={t("stepWizard.serviceSearch")}
+          aria-label={t("stepWizard.serviceSearch")}
+          data-testid="step-service-search"
+        />
+        {matches.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="step-service-none">
+            {t("stepWizard.noService")}
+          </p>
+        ) : (
+          <ChoiceCards
+            compact
+            items={matches.map((item) => ({
+              icon: <Plug />,
+              title: item.display_name || item.slug,
+              line: t(item.driver === "mcp" ? "stepWizard.service.mcp" : "stepWizard.service.web"),
+              selected: form.connectorId === item.id,
+              onSelect: () => {
+                set({ connectorId: item.id });
+                setPhase("fields");
+              },
+              testId: `step-service-${item.slug}`,
+            }))}
+          />
+        )}
+      </FormDialog>
+    );
+  }
+  const phrase = previewPhrase(form, connector?.display_name ?? null);
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={editing ? t("stepEditor.editTitle", { step: stepId(step) }) : t("stepEditor.addTitle")}
-      submit={{ label: t(editing ? "stepEditor.apply" : "stepEditor.add") }}
+      title={title}
+      description={t(phrase.key, phrase.values)}
+      submit={{ label: t(editing ? "stepEditor.apply" : "stepEditor.add"), testId: "step-submit" }}
       onSubmit={apply}
       error={error}
       size="wide"
+      step="fields"
+      {...(editing
+        ? {}
+        : {
+            back: {
+              label: t("create.back"),
+              onClick: () => setPhase(form.kind === "request" ? "service" : "kind"),
+            },
+          })}
       testId="step-dialog"
     >
-      {structured ? (
-        <>
-          <TextField
-            id="step-name"
-            label={t("create.name")}
-            placeholder={t("stepEditor.namePlaceholder")}
-            help={t("stepEditor.idHelp")}
-            value={form.name}
-            onChange={(name) => set({ name })}
-            error={errorOf("name")}
-            mono
-          />
-          <ChoiceField<StepFormKind>
-            label={t("workflowSteps.column.kind")}
-            value={form.kind}
-            onChange={(kind) => set({ kind })}
-            testId="step-kind"
-            options={STEP_FORM_KINDS.map((kind) => ({
-              value: kind,
-              label: t(`workflow.kind.${kind}`),
-            }))}
-          />
-          {form.kind === "request" ? (
-            <>
-              <SelectField
-                id="step-connector"
-                label={t("authority.connector")}
-                value={form.connectorId}
-                onChange={(connectorId) => set({ connectorId })}
-                error={errorOf("connectorId")}
-                options={connectors.map((connector) => ({
-                  value: connector.id,
-                  label: connector.display_name || connector.slug,
-                }))}
-              />
-              <ChoiceField<StepMethod>
-                label={t("stepEditor.method")}
-                value={form.method}
-                onChange={(method) => set({ method })}
-                testId="step-method"
-                options={STEP_METHODS.map((method) => ({ value: method, label: method }))}
-              />
-              <TextField
-                id="step-path"
-                label={t("stepEditor.path")}
-                placeholder="/messages/send"
-                value={form.path}
-                onChange={(path) => set({ path })}
-                error={errorOf("path")}
-                mono
-              />
-              <TextAreaField
-                id="step-query"
-                label={t("stepEditor.query")}
-                help={t("stepEditor.queryHelp")}
-                placeholder={'{ "limit": 10 }'}
-                value={form.query}
-                onChange={(query) => set({ query })}
-                error={errorOf("query")}
-                rows={3}
-                mono
-              />
-              <TextAreaField
-                id="step-headers"
-                label={t("stepEditor.headers")}
-                help={t("stepEditor.headersHelp")}
-                placeholder="Accept: application/json"
-                value={form.headers}
-                onChange={(headers) => set({ headers })}
-                error={errorOf("headers")}
-                rows={3}
-                mono
-              />
-              <TextAreaField
-                id="step-body"
-                label={t("stepEditor.body")}
-                help={t("stepEditor.bodyHelp")}
-                value={form.body}
-                onChange={(body) => set({ body })}
-                error={errorOf("body")}
-                rows={6}
-                mono
-              />
-            </>
-          ) : form.kind === "wait" ? (
-            <TextField
-              id="step-wait"
-              label={t("stepEditor.duration")}
-              placeholder={t("stepEditor.durationPlaceholder")}
-              value={form.wait}
-              onChange={(wait) => set({ wait })}
-              error={errorOf("wait")}
-            />
-          ) : form.kind === "branch" ? (
-            <>
-              <TextField
-                id="step-when"
-                label={t("stepEditor.when")}
-                help={t("stepEditor.whenHelp")}
-                placeholder="fetch.data.count > 0"
-                value={form.when}
-                onChange={(when) => set({ when })}
-                error={errorOf("when")}
-                mono
-              />
-              <CheckListField
-                id="step-then"
-                label={t("stepEditor.then")}
-                help={t("stepEditor.thenHelp")}
-                values={form.thenSteps}
-                onChange={(thenSteps) => set({ thenSteps })}
-                options={others}
-                empty={t("stepEditor.branchNoSteps")}
-                error={errorOf("thenSteps")}
-              />
-              <CheckListField
-                id="step-else"
-                label={t("stepEditor.else")}
-                help={t("stepEditor.elseHelp")}
-                values={form.elseSteps}
-                onChange={(elseSteps) => set({ elseSteps })}
-                options={others}
-                empty={t("stepEditor.branchNoSteps")}
-                error={errorOf("elseSteps")}
-              />
-            </>
-          ) : (
-            <>
-              <TextAreaField
-                id="step-code"
-                label={t("workflow.kind.transform")}
-                help={t("stepEditor.codeHelp")}
-                value={form.code}
-                onChange={(code) => set({ code })}
-                error={errorOf("code")}
-                rows={5}
-                mono
-              />
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                {t("stepEditor.sandboxTools")}
-                <ContextHelp
-                  label={t("stepEditor.sandboxTools")}
-                  testId="step-code-sandbox-tools-help"
-                >
-                  {t("stepEditor.sandboxToolsHelp")}
-                </ContextHelp>
-              </span>
-            </>
-          )}
-        </>
-      ) : (
-        <TextAreaField
-          id="step-config"
-          label={t("workflow.configuration")}
-          help={t("stepEditor.configHelp")}
-          value={text}
-          onChange={setText}
-          rows={14}
-          mono
+      {editing ? null : (
+        <TextField
+          id="step-name"
+          label={t("stepWizard.name")}
+          placeholder={t("stepWizard.namePlaceholder")}
+          help={t("stepWizard.nameHelp")}
+          value={label}
+          onChange={setLabel}
+          error={errorOf("name")}
         />
       )}
+      {form.kind === "request" ? (
+        <>
+          {editing ? (
+            <SelectField
+              id="step-connector"
+              label={t("authority.connector")}
+              value={form.connectorId}
+              onChange={(connectorId) => set({ connectorId })}
+              error={errorOf("connectorId")}
+              options={connectors.map((item) => ({
+                value: item.id,
+                label: item.display_name || item.slug,
+              }))}
+            />
+          ) : null}
+          <ChoiceField<StepMethod>
+            label={t("stepWizard.methodQuestion")}
+            value={form.method}
+            onChange={(method) => set({ method })}
+            testId="step-method"
+            options={STEP_METHODS.map((method) => ({
+              value: method,
+              label: t(METHOD_WORDS[method]),
+            }))}
+          />
+          <TextField
+            id="step-path"
+            label={t("stepWizard.path")}
+            help={t("stepWizard.pathHelp")}
+            placeholder="/messages/send"
+            value={form.path}
+            onChange={(path) => set({ path })}
+            error={errorOf("path")}
+            mono
+          />
+          {form.method === "GET" ? null : (
+            <p className="text-xs text-muted-foreground" data-testid="step-sends-hint">
+              {t("stepWizard.sendsHint")}
+            </p>
+          )}
+          <TechnicalDetails testId="step-request-technical">
+            <TextAreaField
+              id="step-query"
+              label={t("stepEditor.query")}
+              help={t("stepEditor.queryHelp")}
+              placeholder={'{ "limit": 10 }'}
+              value={form.query}
+              onChange={(query) => set({ query })}
+              error={errorOf("query")}
+              rows={3}
+              mono
+            />
+            <TextAreaField
+              id="step-headers"
+              label={t("stepEditor.headers")}
+              help={t("stepEditor.headersHelp")}
+              placeholder="Accept: application/json"
+              value={form.headers}
+              onChange={(headers) => set({ headers })}
+              error={errorOf("headers")}
+              rows={3}
+              mono
+            />
+            <TextAreaField
+              id="step-body"
+              label={t("stepEditor.body")}
+              help={t("stepEditor.bodyHelp")}
+              value={form.body}
+              onChange={(body) => set({ body })}
+              error={errorOf("body")}
+              rows={6}
+              mono
+            />
+          </TechnicalDetails>
+        </>
+      ) : form.kind === "wait" ? (
+        <TextField
+          id="step-wait"
+          label={t("stepWizard.waitQuestion")}
+          placeholder={t("stepEditor.durationPlaceholder")}
+          value={form.wait}
+          onChange={(wait) => set({ wait })}
+          error={errorOf("wait")}
+        />
+      ) : form.kind === "branch" ? (
+        <>
+          <TextField
+            id="step-when"
+            label={t("stepEditor.when")}
+            help={t("stepEditor.whenHelp")}
+            placeholder="fetch.data.count > 0"
+            value={form.when}
+            onChange={(when) => set({ when })}
+            error={errorOf("when")}
+            mono
+          />
+          <CheckListField
+            id="step-then"
+            label={t("stepEditor.then")}
+            help={t("stepEditor.thenHelp")}
+            values={form.thenSteps}
+            onChange={(thenSteps) => set({ thenSteps })}
+            options={others}
+            empty={t("stepEditor.branchNoSteps")}
+            error={errorOf("thenSteps")}
+          />
+          <CheckListField
+            id="step-else"
+            label={t("stepEditor.else")}
+            help={t("stepEditor.elseHelp")}
+            values={form.elseSteps}
+            onChange={(elseSteps) => set({ elseSteps })}
+            options={others}
+            empty={t("stepEditor.branchNoSteps")}
+            error={errorOf("elseSteps")}
+          />
+        </>
+      ) : (
+        <TechnicalDetails testId="step-code-technical">
+          <TextAreaField
+            id="step-code"
+            label={t("workflow.kind.transform")}
+            help={t("stepEditor.codeHelp")}
+            value={form.code}
+            onChange={(code) => set({ code })}
+            error={errorOf("code")}
+            rows={5}
+            mono
+          />
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            {t("stepEditor.sandboxTools")}
+            <ContextHelp label={t("stepEditor.sandboxTools")} testId="step-code-sandbox-tools-help">
+              {t("stepEditor.sandboxToolsHelp")}
+            </ContextHelp>
+          </span>
+        </TechnicalDetails>
+      )}
+      {fieldError &&
+      (fieldError.field === "code" ||
+        fieldError.field === "query" ||
+        fieldError.field === "headers" ||
+        fieldError.field === "body") ? (
+        <p className="text-sm text-destructive" data-testid="step-technical-error">
+          {fieldError.text}
+        </p>
+      ) : null}
     </FormDialog>
+  );
+}
+
+function previewPhrase(form: StepForm, service: string | null): Phrase {
+  return stepPhrase(
+    readStepDefinition(
+      {
+        id: "preview",
+        kind: form.kind,
+        method: form.method,
+        duration_ms: form.kind === "wait" ? (parseDuration(form.wait) ?? undefined) : undefined,
+      },
+      0,
+    ),
+    service,
   );
 }
 

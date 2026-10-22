@@ -59,6 +59,22 @@ export function isFormStep(step: unknown): boolean {
   return true;
 }
 
+export function stepKeyFromName(name: string, fallback: string, taken: readonly string[]): string {
+  const base =
+    name
+      .normalize("NFKD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/ß/g, "ss")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 48) || fallback;
+  if (!taken.includes(base)) return base;
+  let suffix = 2;
+  while (taken.includes(`${base}_${suffix}`)) suffix += 1;
+  return `${base}_${suffix}`;
+}
+
 export function parseDuration(text: string): number | null {
   const match = /^(\d+(?:[.,]\d+)?)\s*(s|sek|sec|min|m|h|std)?$/i.exec(text.trim());
   if (!match) return null;

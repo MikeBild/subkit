@@ -7,6 +7,7 @@ import {
   parseHeaders,
   STEP_FORM_ERROR_FIELDS,
   stepFromForm,
+  stepKeyFromName,
 } from "./step-form";
 
 const CONNECTOR = "7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f";
@@ -226,5 +227,16 @@ describe("step form", () => {
   test("a name with spaces becomes one with dashes", () => {
     const form = { ...formFromStep(null, CONNECTOR), kind: "transform" as const, name: "Clean up" };
     expect(stepFromForm(form, null, [])).toMatchObject({ step: { id: "clean-up" } });
+  });
+});
+
+describe("step key from a plain name", () => {
+  test("a plain name becomes a stable key that never collides", () => {
+    expect(stepKeyFromName("Offene Pull Requests holen", "request", [])).toBe(
+      "offene_pull_requests_holen",
+    );
+    expect(stepKeyFromName("Grüße senden", "request", [])).toBe("grusse_senden");
+    expect(stepKeyFromName("  ", "transform", [])).toBe("transform");
+    expect(stepKeyFromName("Senden", "request", ["senden", "senden_2"])).toBe("senden_3");
   });
 });
