@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { translate } from "@/lib/i18n";
 import {
   ageInDays,
   approveBlockedReason,
@@ -9,6 +10,7 @@ import {
   conversationDecision,
   countOpenDecisions,
   type DecisionItem,
+  decisionActions,
   filterByKinds,
   hasOverdue,
   humanStep,
@@ -907,5 +909,22 @@ describe("the before and after a repair names", () => {
   test("names at most three paths and nothing when nothing changed", () => {
     expect(changeFacts({}, {}, ["a", "b", "c", "d"])).toHaveLength(3);
     expect(changeFacts({}, {}, null)).toEqual([]);
+  });
+});
+
+describe("decision actions", () => {
+  test("a fix offers exactly apply and reject, never a grant on the side", () => {
+    const actions = decisionActions("patch");
+    expect(actions.map((action) => action.kind)).toEqual(["apply", "reject"]);
+    expect(translate("de", actions[0]!.labelKey)).toBe("Korrektur übernehmen");
+    expect(translate("de", actions[1]!.labelKey)).toBe("Ablehnen");
+    expect(translate("en", actions[0]!.labelKey)).toBe("Apply fix");
+  });
+
+  test("a skill proposal is decided in its own sheet", () => {
+    const actions = decisionActions("skill");
+    expect(actions.map((action) => action.kind)).toEqual(["open"]);
+    expect(translate("de", actions[0]!.labelKey)).toBe("Prüfen");
+    expect(translate("en", actions[0]!.labelKey)).toBe("Review");
   });
 });

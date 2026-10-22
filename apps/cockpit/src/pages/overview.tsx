@@ -816,6 +816,11 @@ function ReviewBody({
             decide.mutate({ item: target, approve: true, reason: "", reviewDigest })
           }
           onReject={(target, reason) => decide.mutate({ item: target, approve: false, reason })}
+          permissions={session.permissions}
+          onDecided={() => {
+            for (const queryKey of [["decisions"], ["attention"], ["skill-candidates"]])
+              void queryClient.invalidateQueries({ queryKey });
+          }}
           actionsSlot={
             decisions.length === 1 && held.length === 0 && heldHooks.length === 0
               ? actionsSlot

@@ -542,6 +542,8 @@ const EN = {
   "authority.repairDescription.other":
     "{count} steps do not say where they may go, and SubKit has read what each of them really did. It can write those limits into a prepared version for you to review — nothing is activated and nothing is authorized by this.",
   "authority.repairAction": "Let SubKit set the limits",
+  "authority.repairCreates": "Creates {version} for you to review. Nothing runs yet.",
+  "authority.repairSwitched": "The new version is shown for review.",
   "authority.repairWorking": "Reading what these steps did\u2026",
   "authority.repairDone.one":
     "Limit written into a prepared version for 1 step. Review it below and put it into service when it is right.",
@@ -1830,7 +1832,7 @@ const EN = {
   "skills.proposal.reason": "Reason",
   "proposal.author": "Proposed by",
   "proposal.by": "by {name}",
-  "skills.reject": "Discard",
+  "skills.reject": "Reject",
   "skills.proposalObject": "proposal",
   "skills.rejectConsequence": "“{name}” is not adopted, and SubKit will not propose it again.",
   "skills.rejected": "Proposal discarded: {name}",
@@ -2776,11 +2778,7 @@ const EN = {
   "decisions.advisory":
     "An observation or description, not a ready correction. Review it before creating reusable guidance.",
   "decisions.openQuestion": "Open conversation",
-  "decisions.activateSkill": "Adopt and activate",
   "decisions.loadMore": "Load more approvals",
-  "decisions.applyAndAuthorize": "Apply correction and authorize runs",
-  "decisions.applyAndAuthorizeDescription":
-    "Applies the correction and allows the corrected version within these limits.",
   "decisions.fact.step": "Step",
   "decisions.fact.before": "Before",
   "decisions.fact.after": "After",
@@ -2789,7 +2787,6 @@ const EN = {
   "decisions.fact.changed": "changed",
   "decisions.fact.wholeStep": "Step definition",
   "decisions.changeDetail": "Code change",
-  "decisions.approveOnly": "Apply only",
   "decisions.gate.refused": "The approval refused step {step}: {reason}",
   "decisions.reviewChanged": "The reviewed change is no longer current. Reload the preview.",
   "decisions.description":
@@ -2870,6 +2867,8 @@ const EN = {
   "decisions.showLess": "Show less",
   "decisions.approve": "Approve",
   "decisions.reject": "Reject",
+  "decisions.applyFix": "Apply fix",
+  "decisions.reviewSkill": "Review",
   "decisions.note": "Note",
   "decisions.notePlaceholder": "Why is this rejected?",
   "decisions.noteScope": "The note is recorded with the rejection.",
@@ -5680,6 +5679,8 @@ const DE: Record<TranslationKey, string> = {
   "authority.repairDescription.other":
     "{count} Schritte sagen nicht, wohin sie gehen dürfen. SubKit hat gelesen, was jeder von ihnen tatsächlich getan hat, und kann diese Grenzen in eine vorbereitete Version schreiben, die du prüfst — nichts wird dadurch aktiviert oder freigegeben.",
   "authority.repairAction": "SubKit die Grenzen setzen lassen",
+  "authority.repairCreates": "Erzeugt {version} zur Prüfung. Noch läuft nichts.",
+  "authority.repairSwitched": "Die neue Version wird zur Prüfung angezeigt.",
   "authority.repairWorking": "Liest, was diese Schritte getan haben\u2026",
   "authority.repairDone.one":
     "Grenze für 1 Schritt in eine vorbereitete Version geschrieben. Unten prüfen und in Betrieb nehmen, wenn es stimmt.",
@@ -6990,7 +6991,7 @@ const DE: Record<TranslationKey, string> = {
   "skills.proposal.reason": "Grund",
   "proposal.author": "Vorgeschlagen von",
   "proposal.by": "von {name}",
-  "skills.reject": "Verwerfen",
+  "skills.reject": "Ablehnen",
   "skills.proposalObject": "Vorschlag",
   "skills.rejectConsequence":
     "„{name}“ wird nicht übernommen, und SubKit schlägt ihn nicht noch einmal vor.",
@@ -7954,11 +7955,7 @@ const DE: Record<TranslationKey, string> = {
   "decisions.advisory":
     "Eine Beobachtung oder Beschreibung, noch keine fertige Korrektur. Vor einer Übernahme als Wissen muss sie geprüft werden.",
   "decisions.openQuestion": "Unterhaltung öffnen",
-  "decisions.activateSkill": "Übernehmen und aktivieren",
   "decisions.loadMore": "Weitere Freigaben laden",
-  "decisions.applyAndAuthorize": "Korrektur anwenden und Läufe freigeben",
-  "decisions.applyAndAuthorizeDescription":
-    "Übernimmt die Korrektur und erlaubt die korrigierte Version in diesen Grenzen.",
   "decisions.fact.step": "Schritt",
   "decisions.fact.before": "Vorher",
   "decisions.fact.after": "Nachher",
@@ -7967,7 +7964,6 @@ const DE: Record<TranslationKey, string> = {
   "decisions.fact.changed": "geändert",
   "decisions.fact.wholeStep": "Schrittdefinition",
   "decisions.changeDetail": "Code-Änderung",
-  "decisions.approveOnly": "Nur übernehmen",
   "decisions.gate.refused": "Die Freigabe hat Schritt {step} abgewiesen: {reason}",
   "decisions.reviewChanged":
     "Die geprüfte Änderung ist nicht mehr aktuell. Lade die Vorschau erneut.",
@@ -8049,6 +8045,8 @@ const DE: Record<TranslationKey, string> = {
   "decisions.showLess": "Weniger anzeigen",
   "decisions.approve": "Freigeben",
   "decisions.reject": "Ablehnen",
+  "decisions.applyFix": "Korrektur übernehmen",
+  "decisions.reviewSkill": "Prüfen",
   "decisions.note": "Notiz",
   "decisions.notePlaceholder": "Warum wird das abgelehnt?",
   "decisions.noteScope": "Die Notiz wird mit der Ablehnung festgehalten.",

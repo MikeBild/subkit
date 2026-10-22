@@ -19,7 +19,6 @@ import {
   useCatalogMetadataActions,
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
-import { ORIGIN_LABEL } from "@/components/cockpit/decision-card";
 import {
   ActionMenu,
   Button,
@@ -55,7 +54,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
-import { skillDecision } from "@/pages/decisions-model";
+import { ORIGIN_LABEL, skillDecision } from "@/pages/decisions-model";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
 import { isDetectedPattern } from "@/pages/skill-proposal-model";
 import { SkillProposalRowActions } from "@/pages/skill-proposal-row-actions";

@@ -5,11 +5,11 @@ import { type Locale, type TranslationKey, translate } from "@/lib/i18n";
 const t = (locale: Locale) => (key: TranslationKey, values?: Record<string, string | number>) =>
   translate(locale, key, values);
 
-describe("discarding a skill proposal", () => {
+describe("rejecting a skill proposal", () => {
   test("asks about the proposal, not the skill name", () => {
     for (const [locale, title] of [
-      ["de", "Vorschlag verwerfen?"],
-      ["en", "Discard proposal?"],
+      ["de", "Vorschlag ablehnen?"],
+      ["en", "Reject proposal?"],
     ] as const) {
       const say = t(locale);
       expect(confirmTitle(say, locale, say("skills.proposalObject"), say("skills.reject"))).toBe(
@@ -18,7 +18,7 @@ describe("discarding a skill proposal", () => {
     }
   });
 
-  test("says that the discard is final", () => {
+  test("says that the rejection is final", () => {
     expect(t("de")("skills.rejectConsequence", { name: "Kundenpflege" })).toBe(
       "„Kundenpflege“ wird nicht übernommen, und SubKit schlägt ihn nicht noch einmal vor.",
     );

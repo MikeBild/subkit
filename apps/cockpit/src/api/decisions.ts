@@ -94,6 +94,10 @@ export function approveSkillCandidate(
   });
 }
 
+export function getSkillCandidate(id: string): Promise<SkillCandidate> {
+  return apiRequest(`/v1/skill-candidates/${encodeURIComponent(id)}`);
+}
+
 export function rejectSkillCandidate(id: string, reason: string): Promise<unknown> {
   return apiRequest(`/v1/skill-candidates/${encodeURIComponent(id)}/reject`, {
     method: "POST",

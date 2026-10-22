@@ -63,6 +63,34 @@ export type DecisionDetail = PatchDetail | SkillDetail | ConversationDetail;
 
 export type DecidableKind = Exclude<DecisionKind, "conversation">;
 
+export const ORIGIN_LABEL: Record<DecisionOrigin, TranslationKey> = {
+  observedFailure: "decisions.origin.observedFailure",
+  repairPattern: "decisions.origin.repairPattern",
+  failurePattern: "decisions.origin.failurePattern",
+  successPattern: "decisions.origin.successPattern",
+  authoringPattern: "decisions.origin.authoringPattern",
+  connectorPattern: "decisions.origin.connectorPattern",
+  sessionPattern: "decisions.origin.sessionPattern",
+  knowledgeLearning: "decisions.origin.knowledgeLearning",
+  chainedPattern: "decisions.origin.chainedPattern",
+  recurringPattern: "decisions.origin.recurringPattern",
+  conversation: "decisions.origin.conversation",
+};
+
+export interface DecisionAction {
+  kind: "apply" | "reject" | "open";
+  labelKey: TranslationKey;
+}
+
+export function decisionActions(kind: DecidableKind): DecisionAction[] {
+  return kind === "patch"
+    ? [
+        { kind: "apply", labelKey: "decisions.applyFix" },
+        { kind: "reject", labelKey: "decisions.reject" },
+      ]
+    : [{ kind: "open", labelKey: "decisions.reviewSkill" }];
+}
+
 export type DecidableItem = Omit<DecisionItem, "kind" | "detail"> & {
   kind: DecidableKind;
   detail: PatchDetail | SkillDetail;

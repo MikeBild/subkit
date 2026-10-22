@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
-import { SkillProposalRowActions } from "./skill-proposal-row-actions";
+import { SkillProposalActions, SkillProposalRowActions } from "./skill-proposal-row-actions";
 
 const value = {
   locale: "de",
@@ -58,5 +58,29 @@ describe("proposal actions in skill rows", () => {
     expect(
       render(["skill:write", "skill:activate"], { ...candidate, review_digest: "" }),
     ).not.toContain("skill-proposal-row-");
+  });
+  test("the row and the sheet share one confirm row with the same verbs", () => {
+    const permissions = ["skill:write", "skill:activate"];
+    const row = render(permissions);
+    expect(row).toContain(">Übernehmen<");
+    expect(row).toContain(">Ablehnen<");
+    const client = new QueryClient();
+    const sheet = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <I18nContext.Provider value={value}>
+          <SkillProposalActions
+            placement="sheet"
+            candidate={candidate}
+            permissions={permissions}
+            onDecided={() => {}}
+          />
+        </I18nContext.Provider>
+      </QueryClientProvider>,
+    );
+    client.clear();
+    expect(sheet).toContain('data-testid="skill-proposal-accept"');
+    expect(sheet).toContain('data-testid="skill-proposal-reject"');
+    expect(sheet).toContain(">Übernehmen<");
+    expect(sheet).toContain(">Ablehnen<");
   });
 });

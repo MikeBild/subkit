@@ -1,13 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { apiRequest } from "@/api/client";
+import { toast } from "sonner";
 import {
   dryRunPatchCandidate,
   getPatchCandidatePreview,
+  getSkillCandidate,
   listSkillCandidateEvidence,
+  type SkillCandidate,
 } from "@/api/decisions";
 import { absolute, runHref } from "@/app/links";
 import { ChangeSummary } from "@/components/cockpit/change-summary";
@@ -33,20 +35,17 @@ import {
   proposalKindKey,
   skillContext,
 } from "@/pages/decisions-context";
-import type {
-  DecidableItem,
-  DecidableKind,
-  DecisionItem,
-  DecisionOrigin,
-} from "@/pages/decisions-model";
+import type { DecidableItem, DecidableKind, DecisionItem } from "@/pages/decisions-model";
 import {
   ageInDays,
   approveBlockedReason,
   changeFacts,
   changeRows,
+  decisionActions,
   decisionKey,
+  ORIGIN_LABEL,
 } from "@/pages/decisions-model";
-import { GrantWorkflowAuthority } from "./grant-workflow-authority";
+import { SkillProposalSheet } from "@/pages/skill-proposal-sheet";
 
 const KIND_LABEL: Record<DecidableKind, TranslationKey> = {
   patch: "decisions.kind.patch",
@@ -56,20 +55,6 @@ const KIND_LABEL: Record<DecidableKind, TranslationKey> = {
 const KIND_EFFECT: Record<DecidableKind, TranslationKey> = {
   patch: "decisions.effect.patch",
   skill: "decisions.effect.skill",
-};
-
-export const ORIGIN_LABEL: Record<DecisionOrigin, TranslationKey> = {
-  observedFailure: "decisions.origin.observedFailure",
-  repairPattern: "decisions.origin.repairPattern",
-  failurePattern: "decisions.origin.failurePattern",
-  successPattern: "decisions.origin.successPattern",
-  authoringPattern: "decisions.origin.authoringPattern",
-  connectorPattern: "decisions.origin.connectorPattern",
-  sessionPattern: "decisions.origin.sessionPattern",
-  knowledgeLearning: "decisions.origin.knowledgeLearning",
-  chainedPattern: "decisions.origin.chainedPattern",
-  recurringPattern: "decisions.origin.recurringPattern",
-  conversation: "decisions.origin.conversation",
 };
 
 const CONFIDENCE_LABEL: Record<"low" | "medium" | "high", TranslationKey> = {
@@ -455,6 +440,8 @@ export interface DecisionCardProps {
   canReadRuns?: boolean;
   priority: "urgent" | "normal";
   actionsSlot?: HTMLElement | null;
+  permissions?: readonly string[];
+  onDecided?: (item: DecisionItem) => void;
 }
 
 export function DecisionCard({
@@ -470,6 +457,8 @@ export function DecisionCard({
   canReadRuns = false,
   priority,
   actionsSlot = null,
+  permissions = [],
+  onDecided,
 }: DecisionCardProps) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -506,7 +495,7 @@ export function DecisionCard({
   });
 
   const blocked =
-    blockedReason && !busy && !rejecting ? (
+    blockedReason && item.kind === "patch" && !busy && !rejecting ? (
       <span
         className={cn("text-xs text-muted-foreground", inSheet ? "" : "basis-full text-right")}
         data-testid={`${testId}-approve-blocked`}
@@ -536,26 +525,16 @@ export function DecisionCard({
     !rejecting &&
     blockedReason === null &&
     (item.kind !== "patch" || (preview.data?.reviewable === true && !!preview.data.review_digest));
-  const grantable =
-    item.kind === "patch" &&
-    (expanded || inSheet) &&
-    preview.data?.reviewable === true &&
-    Boolean(preview.data.base_version_id);
-  const approveItem: ActionMenuItem = {
-    label: t(
-      item.kind === "skill"
-        ? "decisions.activateSkill"
-        : grantable
-          ? "decisions.approveOnly"
-          : "decisions.approve",
-    ),
-    onSelect: () => onApprove(item, preview.data?.review_digest ?? undefined),
-    disabled: !approvable,
-    ...(blockedReason ? { disabledReason: t(blockedReason) } : {}),
-    testId: `${testId}-approve`,
-  };
+  const [primaryAction, secondaryAction] = decisionActions(item.kind);
+  const primaryLabel = t(primaryAction?.labelKey ?? "decisions.applyFix");
+  const [proposal, setProposal] = useState<SkillCandidate | null>(null);
+  const opening = useMutation({
+    mutationFn: () => getSkillCandidate(item.id),
+    onSuccess: setProposal,
+    onError: () => toast.error(t("common.actionFailed")),
+  });
   const rejectItem: ActionMenuItem = {
-    label: t("decisions.reject"),
+    label: t(secondaryAction?.labelKey ?? "decisions.reject"),
     onSelect: () => setRejecting(true),
     disabled: busy,
     testId: `${testId}-reject`,
@@ -583,55 +562,27 @@ export function DecisionCard({
         {t("decisions.reject")}
       </Button>
     </>
-  ) : grantable && preview.data?.base_version_id ? (
-    <>
-      <ActionMenu
-        size="sm"
-        testId={`${testId}-more`}
-        items={[approveItem, { ...rejectItem, destructive: true }]}
-      />
-      <GrantWorkflowAuthority
-        workflowId={preview.data.workflow_id}
-        versionId={preview.data.base_version_id}
-        disabled={!approvable}
-        triggerVariant="default"
-        {...(evidence?.environment ? { ranIn: evidence.environment } : {})}
-        reviewContent={
-          <ChangeSummary facts={facts} step={step} collapsed testId={`${testId}-grant-change`} />
-        }
-        prepareVersion={async () => {
-          const prepared = await apiRequest<{ workflow_version_id: string }>(
-            `/v1/patch-candidates/${encodeURIComponent(item.id)}/prepare`,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                expected_review_digest: preview.data?.review_digest,
-              }),
-            },
-          );
-          return prepared.workflow_version_id;
-        }}
-        onGrant={(input) =>
-          apiRequest(`/v1/patch-candidates/${encodeURIComponent(item.id)}/approve`, {
-            method: "POST",
-            body: JSON.stringify({
-              expected_review_digest: preview.data?.review_digest,
-              execution_authority: input,
-            }),
-          })
-        }
-      />
-    </>
+  ) : item.kind === "skill" ? (
+    <Button
+      size="sm"
+      disabled={busy || opening.isPending}
+      aria-busy={opening.isPending || undefined}
+      data-testid={`${testId}-open`}
+      onClick={() => opening.mutate()}
+    >
+      {primaryLabel}
+    </Button>
   ) : (
     <>
       <ActionMenu size="sm" testId={`${testId}-more`} items={[rejectItem]} />
       <Button
         size="sm"
         disabled={!approvable}
+        title={blockedReason ? t(blockedReason) : undefined}
         data-testid={`${testId}-approve`}
-        onClick={approveItem.onSelect}
+        onClick={() => onApprove(item, preview.data?.review_digest ?? undefined)}
       >
-        {approveItem.label}
+        {primaryLabel}
       </Button>
     </>
   );
@@ -810,6 +761,14 @@ export function DecisionCard({
           )}
         </div>
       )}
+      {item.kind === "skill" ? (
+        <SkillProposalSheet
+          candidate={proposal}
+          permissions={permissions}
+          onClose={() => setProposal(null)}
+          onDecided={() => onDecided?.(item)}
+        />
+      ) : null}
     </article>
   );
 }
