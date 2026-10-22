@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
+import { AlignLeft, ChevronRight, Inbox, Link, Plus, Upload, Workflow } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
@@ -11,21 +12,28 @@ import { absolute, chatNewHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
 import {
+  CatalogCategoryChip,
   CatalogMetadataDialog,
-  CatalogMetadataSummary,
   CatalogNameCell,
+  CatalogPurpose,
   useCatalogMetadataActions,
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
-import { KnowledgeVersions } from "@/components/cockpit/knowledge-versions";
+import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
+import { type UsageCard, UsageCards } from "@/components/cockpit/knowledge-usage";
+import { KnowledgeVersions, useKnowledgeHistory } from "@/components/cockpit/knowledge-versions";
 import {
   ActionMenu,
   Button,
   type CockpitColumn,
+  CodeBlock,
   CollapsibleSection,
   ConfirmDialog,
+  CopyField,
   DataState,
   DataTable,
+  DetailPage,
+  type DetailStrip,
   type Fact,
   FactList,
   Field,
@@ -37,20 +45,21 @@ import {
   FilterBar,
   FormDialog,
   GroupingTabs,
+  IconTile,
   Input,
+  MarkdownEditor,
+  OnboardingFrame,
   Page,
   PageHeader,
   RecordSheet,
-  RowName,
-  Section,
+  SectionHeading,
   SegmentedControl,
   StatusBadge,
-  StatusStrip,
-  SummaryLine,
-  Textarea,
+  TabBody,
+  TechnicalDetails,
 } from "@/components/cockpit/patterns";
 import { bytes, MISSING, tableColumns } from "@/components/cockpit/table-columns";
-import { ForbiddenState, queryView } from "@/components/failure-state";
+import { ForbiddenState } from "@/components/failure-state";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
@@ -59,11 +68,15 @@ import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import {
+  type ApiEndpoint,
   documentUnderTitle,
   knowledgeSummary,
   knowledgeWorkflowId,
   knowledgeWorkflowTarget,
+  matchesEndpoint,
+  openApiEndpoints,
   type RefreshRhythm,
+  rawPreview,
   refreshFields,
   refreshRhythm,
   type SourceKind,
@@ -72,11 +85,11 @@ import {
   sourcePrimaryAction,
   sourceSections,
 } from "@/pages/knowledge-sources-model";
-import type { KnowledgeVersion } from "@/pages/knowledge-versions-model";
 
 type KnowledgeSource = components["schemas"]["KnowledgeSource"];
 
 const ENDPOINT = "/v1/knowledge-sources";
+const ENDPOINT_PAGE = 200;
 
 const KIND_KEYS = {
   url: "knowledge.kind.url",
@@ -96,6 +109,8 @@ const RHYTHM_KEYS = {
   weekly: "knowledge.rhythm.weekly",
   custom: "knowledge.rhythm.custom",
 } as const satisfies Record<RefreshRhythm, string>;
+
+const STARTER_SOURCES = ["handbook", "product", "faq", "api", "prices"] as const;
 
 function rhythmLabel(t: Translate, source: KnowledgeSource): string {
   const rhythm = refreshRhythm(source.refresh_strategy, source.refresh_cron);
@@ -139,6 +154,72 @@ function sectionsLine(t: Translate, count: number): string {
   return t(count === 1 ? "knowledge.sections.one" : "knowledge.sections.other", { count });
 }
 
+type AddMode = "url" | "file" | "text";
+
+const ADD_CARDS: readonly { mode: AddMode; icon: typeof Link }[] = [
+  { mode: "url", icon: Link },
+  { mode: "file", icon: Upload },
+  { mode: "text", icon: AlignLeft },
+];
+
+function SourcesOnboarding({
+  canWrite,
+  onAdd,
+}: {
+  canWrite: boolean;
+  onAdd(mode: AddMode, name?: string): void;
+}) {
+  const { t } = useI18n();
+  return (
+    <OnboardingFrame lead={t("knowledge.onboarding.lead")} testId="knowledge-onboarding">
+      <ul className="grid gap-3 sm:grid-cols-3">
+        {ADD_CARDS.map((card) => (
+          <li key={card.mode}>
+            <button
+              type="button"
+              disabled={!canWrite}
+              onClick={() => onAdd(card.mode)}
+              className="flex h-full w-full flex-col items-start gap-2 rounded-lg border p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none"
+              data-testid={`knowledge-onboarding-${card.mode}`}
+            >
+              <IconTile>
+                <card.icon />
+              </IconTile>
+              <span className="text-sm font-medium">
+                {t(`knowledge.onboarding.${card.mode}.title`)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {t(`knowledge.onboarding.${card.mode}.line`)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {canWrite ? (
+        <section className="flex flex-col gap-2" aria-labelledby="knowledge-onboarding-starters">
+          <SectionHeading id="knowledge-onboarding-starters">
+            {t("knowledge.onboarding.starters")}
+          </SectionHeading>
+          <div className="flex flex-wrap gap-2">
+            {STARTER_SOURCES.map((starter) => (
+              <button
+                key={starter}
+                type="button"
+                onClick={() => onAdd("text", t(`knowledge.onboarding.starter.${starter}`))}
+                className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                data-testid={`knowledge-starter-${starter}`}
+              >
+                <Plus aria-hidden="true" className="size-3.5 text-muted-foreground" />
+                {t(`knowledge.onboarding.starter.${starter}`)}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </OnboardingFrame>
+  );
+}
+
 export function KnowledgeSourcesPage({ permissions }: { permissions: readonly string[] }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
@@ -150,7 +231,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
   const q = useDebouncedValue(search).trim();
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<{ mode: AddMode; name?: string } | null>(null);
   const categoryFilter = useCategoryFilter("knowledge_source");
   const origin = useCatalogOrigin();
   const list = useInfiniteList<
@@ -222,7 +303,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         surface="collection"
         scroll="page"
         testId="catalog-knowledge"
-        header={<PageHeader eyebrow={t("nav.group.knowledge")} title={title} />}
+        header={<PageHeader title={title} />}
       >
         <ForbiddenState />
       </Page>
@@ -235,7 +316,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
     !pending && !failed && rows.length === 0 && !q && !categoryFilter.category && !origin.active;
   const addButton = (testId: string) =>
     canWrite ? (
-      <Button onClick={() => setAdding(true)} data-testid={testId}>
+      <Button onClick={() => setAdding({ mode: "url" })} data-testid={testId}>
         {t("knowledge.add")}
       </Button>
     ) : undefined;
@@ -248,151 +329,169 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
       testId="catalog-knowledge"
       header={
         <PageHeader
-          eyebrow={t("nav.group.knowledge")}
           title={title}
-          action={empty ? undefined : addButton("knowledge-add")}
-          secondary={
+          action={addButton("knowledge-add")}
+          menu={
             canChat ? (
-              <Button asChild variant="outline">
-                <a
-                  href={absolute(chatNewHref({ prompt: t("knowledge.addPrompt") }))}
-                  data-testid="knowledge-add-in-chat"
-                >
-                  {t("knowledge.addInChat")}
-                </a>
-              </Button>
+              <ActionMenu
+                alwaysMenu
+                testId="knowledge-page-actions"
+                items={[
+                  {
+                    label: t("knowledge.addInChat"),
+                    href: absolute(chatNewHref({ prompt: t("knowledge.addPrompt") })),
+                    testId: "knowledge-add-in-chat",
+                  },
+                ]}
+              />
             ) : undefined
           }
         />
       }
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        {rows.length > 0 || origin.active || q || categoryFilter.category ? (
-          <CatalogOriginSummary
-            text={knowledgeSummary(list.total ?? rows.length, list.first?.sections_total, t)}
-            testId="knowledge-summary"
-            kind="knowledge_source"
-            origin={origin}
-          />
-        ) : null}
-        <DataTable
-          columns={columns}
-          data={rows}
-          groupingTabs={
-            <GroupingTabs
-              label={t("common.groupBy")}
-              value={groupMode}
-              onChange={setGroupMode}
-              options={[
-                { value: "all", label: t("common.all") },
-                { value: "kind", label: t("knowledge.column.kind") },
-                { value: "status", label: t("resource.field.status") },
-              ]}
-              testId="knowledge-grouping"
-              note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+      {empty ? (
+        <SourcesOnboarding canWrite={canWrite} onAdd={(mode, name) => setAdding({ mode, name })} />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          {rows.length > 0 || origin.active || q || categoryFilter.category ? (
+            <CatalogOriginSummary
+              text={knowledgeSummary(list.total ?? rows.length, list.first?.sections_total, t)}
+              testId="knowledge-summary"
+              kind="knowledge_source"
+              origin={origin}
             />
-          }
-          grouping={
-            groupMode === "all"
-              ? undefined
-              : {
-                  getKey: (row) =>
-                    groupMode === "kind"
-                      ? t(KIND_KEYS[sourceKind(row.source_type)])
-                      : statusLabel(t, row.status),
-                }
-          }
-          infinite={list.infinite}
-          total={list.total}
-          getRowId={(row) => row.id}
-          toolbar={
-            <FilterBar
-              search={{
-                value: search,
-                onChange: setSearch,
-                placeholder: t("knowledge.search"),
-                testId: "knowledge-search",
-              }}
-              selects={categoryFilter.select ? [categoryFilter.select] : []}
-              reset={{
-                label: t("catalog.clearFilters"),
-                onClick: () => {
+          ) : null}
+          <DataTable
+            columns={columns}
+            data={rows}
+            groupingTabs={
+              <GroupingTabs
+                label={t("common.groupBy")}
+                value={groupMode}
+                onChange={setGroupMode}
+                options={[
+                  { value: "all", label: t("common.all") },
+                  { value: "kind", label: t("knowledge.column.kind") },
+                  { value: "status", label: t("resource.field.status") },
+                ]}
+                testId="knowledge-grouping"
+                note={groupMode === "all" ? undefined : t("common.loadedOnly")}
+              />
+            }
+            grouping={
+              groupMode === "all"
+                ? undefined
+                : {
+                    getKey: (row) =>
+                      groupMode === "kind"
+                        ? t(KIND_KEYS[sourceKind(row.source_type)])
+                        : statusLabel(t, row.status),
+                  }
+            }
+            infinite={list.infinite}
+            total={list.total}
+            getRowId={(row) => row.id}
+            toolbar={
+              <FilterBar
+                search={{
+                  value: search,
+                  onChange: setSearch,
+                  placeholder: t("knowledge.search"),
+                  testId: "knowledge-search",
+                }}
+                selects={categoryFilter.select ? [categoryFilter.select] : []}
+                reset={{
+                  label: t("catalog.clearFilters"),
+                  onClick: () => {
+                    setSearch("");
+                    categoryFilter.select?.onChange("all");
+                    origin.setValue("all");
+                  },
+                }}
+              />
+            }
+            pending={pending}
+            error={
+              failed
+                ? {
+                    title: t("resource.loadFailed", { resource: title }),
+                    description: t("resource.loadFailedDescription"),
+                    retryLabel: t("session.retry"),
+                    onRetry: () => void list.query.refetch(),
+                  }
+                : null
+            }
+            emptyState={{
+              zero: { title: t("knowledge.empty"), action: addButton("knowledge-empty-add") },
+              filtered: {
+                title: t("resource.noMatches"),
+                description: t("resource.broaderSearch"),
+                resetLabel: t("catalog.clearFilters"),
+                onReset: () => {
                   setSearch("");
                   categoryFilter.select?.onChange("all");
                   origin.setValue("all");
                 },
-              }}
-            />
-          }
-          pending={pending}
-          error={
-            failed
-              ? {
-                  title: t("resource.loadFailed", { resource: title }),
-                  description: t("resource.loadFailedDescription"),
-                  retryLabel: t("session.retry"),
-                  onRetry: () => void list.query.refetch(),
-                }
-              : null
-          }
-          emptyState={{
-            zero: { title: t("knowledge.empty"), action: addButton("knowledge-empty-add") },
-            filtered: {
-              title: t("resource.noMatches"),
-              description: t("resource.broaderSearch"),
-              resetLabel: t("catalog.clearFilters"),
-              onReset: () => {
-                setSearch("");
-                categoryFilter.select?.onChange("all");
-                origin.setValue("all");
               },
-            },
-          }}
-          hasActiveFilters={Boolean(q || categoryFilter.category || origin.active)}
-          sorting={sorting}
-          onSortingChange={setSorting}
-          onOpen={(row) => void navigate({ to: recordHref("knowledge", row.id) })}
-          rowHref={(row) => recordHref("knowledge", row.id)}
-          rowLabel={(row) => row.name}
-          columnsLabel={t("catalog.columns")}
-          actionsLabel={t("common.actions")}
-          collectionId="knowledge-sources"
+            }}
+            hasActiveFilters={Boolean(q || categoryFilter.category || origin.active)}
+            sorting={sorting}
+            onSortingChange={setSorting}
+            onOpen={(row) => void navigate({ to: recordHref("knowledge", row.id) })}
+            rowHref={(row) => recordHref("knowledge", row.id)}
+            rowLabel={(row) => row.name}
+            columnsLabel={t("catalog.columns")}
+            actionsLabel={t("common.actions")}
+            collectionId="knowledge-sources"
+          />
+        </div>
+      )}
+      {canWrite ? (
+        <AddSourceDialog
+          open={adding !== null}
+          initialMode={adding?.mode ?? "url"}
+          initialName={adding?.name ?? ""}
+          onOpenChange={(open) => !open && setAdding(null)}
         />
-      </div>
-      {canWrite ? <AddSourceDialog open={adding} onOpenChange={setAdding} /> : null}
+      ) : null}
     </Page>
   );
 }
 
-type AddMode = "url" | "file" | "text";
-
 function AddSourceDialog({
   open,
+  initialMode,
+  initialName,
   onOpenChange,
 }: {
   open: boolean;
+  initialMode: AddMode;
+  initialName: string;
   onOpenChange(open: boolean): void;
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const [mode, setMode] = useState<AddMode>("url");
+  const [mode, setMode] = useState<AddMode>(initialMode);
   const [url, setUrl] = useState("");
   const [rhythm, setRhythm] = useState<OfferedRhythm>("weekly");
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName);
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
-    if (!open) {
-      setUrl("");
-      setRhythm("weekly");
-      setName("");
-      setText("");
-      setFile(null);
-      setProblem(null);
+    if (open) {
+      setMode(initialMode);
+      setName(initialName);
+      return;
     }
-  }, [open]);
+    setUrl("");
+    setRhythm("weekly");
+    setName("");
+    setText("");
+    setFile(null);
+    setProblem(null);
+  }, [open, initialMode, initialName]);
 
   const create = useMutation({
     mutationFn: async (): Promise<KnowledgeSource> => {
@@ -442,6 +541,7 @@ function AddSourceDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t("knowledge.add")}
+      size={mode === "text" ? "wide" : "default"}
       submit={{ label: t("knowledge.add.submit"), pending: create.isPending }}
       onSubmit={submit}
       testId="knowledge-add-dialog"
@@ -472,6 +572,7 @@ function AddSourceDialog({
             placeholder="https://docs.example.com/handbuch"
             data-testid="knowledge-add-url"
           />
+          <FieldDescription>{t("knowledge.add.urlHelp")}</FieldDescription>
         </Field>
       ) : null}
       {mode === "url" ? <RefreshField value={rhythm} onChange={setRhythm} /> : null}
@@ -501,14 +602,14 @@ function AddSourceDialog({
           </Field>
           <Field>
             <FieldLabel htmlFor="knowledge-add-text">{t("knowledge.field.text")}</FieldLabel>
-            <Textarea
+            <MarkdownEditor
               id="knowledge-add-text"
-              rows={8}
+              label={t("knowledge.field.text")}
               value={text}
-              onChange={(event) => setText(event.target.value)}
+              onChange={setText}
               placeholder={t("knowledge.add.textPlaceholder")}
-              className="font-mono text-xs"
-              data-testid="knowledge-add-text"
+              rows={10}
+              testId="knowledge-add-text"
             />
           </Field>
         </>
@@ -524,8 +625,10 @@ interface SourceContent {
   documents: { path: string; content: string }[];
 }
 
+type EditMode = "address" | "text";
+
 export function KnowledgeSourcePage({ permissions }: { permissions: readonly string[] }) {
-  const { t, dateTime, locale } = useI18n();
+  const { t, locale } = useI18n();
   const navigate = useNavigate();
   const client = useQueryClient();
   const live = useLiveQueryOptions();
@@ -541,36 +644,13 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     enabled: canRead && Boolean(id),
     ...live,
   });
-  const workflowId = knowledgeWorkflowId(query.data?.scope, query.data?.workflow_id);
-  const workflow = useQuery({
-    queryKey: ["knowledge-source-workflow", workflowId],
-    queryFn: () =>
-      apiRequest<{ id: string; name?: string | null; slug?: string | null }>(
-        `/v1/workflows/${encodeURIComponent(workflowId ?? "")}`,
-      ),
-    enabled: Boolean(workflowId) && permissions.includes("workflow:read"),
-    retry: false,
-  });
   const chunks = useQuery({
     queryKey: [...queryKey, "chunks", query.data?.version],
     queryFn: () => loadKnowledgeChunks(id),
     enabled: Boolean(query.data),
   });
-  const history = useQuery({
-    queryKey: [...queryKey, "current-version", query.data?.version],
-    queryFn: () =>
-      apiRequest<{ items: KnowledgeVersion[] }>(
-        `${ENDPOINT}/${encodeURIComponent(id)}/history?limit=1`,
-      ),
-    enabled: Boolean(query.data) && sourceKind(query.data?.source_type ?? "") === "text",
-    ...live,
-  });
-  const intakeBacklinks = useQuery({
-    queryKey: ["intake", "knowledge-backlinks", id],
-    queryFn: () => listIntakeClips(),
-    enabled: canRead && permissions.includes("intake:read") && Boolean(id),
-  });
-  const [editing, setEditing] = useState(false);
+  const history = useKnowledgeHistory(id);
+  const [editing, setEditing] = useState<EditMode | null>(null);
   const [describing, setDescribing] = useState(false);
   const metadataActions = useCatalogMetadataActions({
     kind: "knowledge_source",
@@ -578,9 +658,9 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     record: query.data,
     queryKey: queryKey,
     onEdit: () => setDescribing(true),
+    label: t("knowledge.edit"),
   });
   const [deleting, setDeleting] = useState(false);
-  const [openSection, setOpenSection] = useState<SourceSection | null>(null);
 
   const refresh = useMutation({
     mutationFn: () =>
@@ -625,264 +705,202 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
   });
 
   const back = { to: "/knowledge", label: t("nav.knowledgeSources") };
-  const frame = (body: React.ReactNode) => (
-    <Page
-      kind="detail"
-      surface="detail"
-      scroll="page"
-      testId="detail-knowledge"
-      header={<PageHeader back={back} title={MISSING} />}
-    >
-      {body}
-    </Page>
-  );
-  if (!canRead) return frame(<ForbiddenState />);
-  const view = queryView(query, () => false);
-  if (view === "loading") return frame(<DataState state="loading" />);
-  const source = query.data;
-  if (view === "error" || !source)
-    return frame(
-      <DataState
-        state="error"
-        line={t("detail.loadFailed")}
-        onRetry={() => void query.refetch()}
-        testId="detail-load-failed"
-      />,
+  if (!canRead)
+    return (
+      <DetailPage testId="detail-knowledge" back={back} title={t("nav.knowledgeSources")}>
+        <ForbiddenState />
+      </DetailPage>
     );
-  const workflowTarget = knowledgeWorkflowTarget(source.scope, source.workflow_id, workflow.data);
-
-  const kind = sourceKind(source.source_type);
+  const source = query.data;
+  const kind = source ? sourceKind(source.source_type) : "file";
   const primary = canWrite ? sourcePrimaryAction(kind) : null;
-  const readAt = source.last_refreshed_at ?? source.updated_at;
   const currentVersion = history.data?.items.find((version) => version.current);
-  const strip =
-    source.status === "error" ? (
-      <StatusStrip
-        tone="error"
-        line={t("knowledge.strip.error")}
-        help={source.last_error ?? undefined}
-        testId="knowledge-strip"
-      />
-    ) : source.status === "processing" ? (
-      <StatusStrip tone="warn" line={t("knowledge.strip.processing")} testId="knowledge-strip" />
-    ) : source.status === "inactive" ? (
-      <StatusStrip
-        tone="warn"
-        line={t("knowledge.strip.inactive")}
+  const strip: DetailStrip | null = !source
+    ? null
+    : source.status === "error"
+      ? {
+          tone: "error",
+          line: t("knowledge.strip.error"),
+          help: source.last_error ?? undefined,
+        }
+      : source.status === "processing"
+        ? { tone: "warn", line: t("knowledge.strip.processing") }
+        : source.status === "inactive"
+          ? {
+              tone: "warn",
+              line: t("knowledge.strip.inactive"),
+              action: canWrite ? (
+                <Button
+                  variant="outline"
+                  onClick={() => setStatus.mutate("active")}
+                  data-testid="knowledge-activate"
+                >
+                  {t("knowledge.activate")}
+                </Button>
+              ) : undefined,
+            }
+          : {
+              tone: "ok",
+              line:
+                kind === "text" && currentVersion !== undefined
+                  ? t("knowledge.strip.version", {
+                      version: currentVersion.version,
+                      when: formatRelativeTime(locale, currentVersion.created_at),
+                    })
+                  : t("knowledge.strip.active", {
+                      when: formatRelativeTime(
+                        locale,
+                        source.last_refreshed_at ?? source.updated_at,
+                      ),
+                    }),
+            };
+  const menu = source
+    ? [
+        ...(canChat
+          ? [
+              {
+                label: t("detail.changeInChat"),
+                href: absolute(
+                  chatNewHref({
+                    prompt: t("detail.changeRecordPrompt"),
+                    references: [{ type: "knowledge_source", id: source.id }],
+                  }),
+                ),
+                testId: "detail-action",
+              },
+            ]
+          : []),
+        ...(canWrite ? metadataActions : []),
+        ...(canWrite && kind === "url"
+          ? [
+              {
+                label: t("knowledge.editAddress"),
+                onSelect: () => setEditing("address"),
+                testId: "knowledge-edit-address",
+              },
+            ]
+          : []),
+        ...(canWrite && source.status === "active"
+          ? [
+              {
+                label: t("knowledge.deactivate"),
+                onSelect: () => setStatus.mutate("inactive"),
+                testId: "knowledge-deactivate",
+              },
+            ]
+          : []),
+        ...(canDelete
+          ? [
+              {
+                label: t("knowledge.delete"),
+                onSelect: () => setDeleting(true),
+                destructive: true,
+                testId: "knowledge-delete",
+              },
+            ]
+          : []),
+      ]
+    : [];
+
+  return (
+    <>
+      <DetailPage
+        testId="detail-knowledge"
+        back={back}
+        title={source?.name ?? ""}
+        badge={source ? <CatalogCategoryChip category={recordCategory(source)} /> : undefined}
+        purpose={source ? <CatalogPurpose record={source} /> : undefined}
+        loading={query.isPending}
         action={
-          canWrite ? (
+          primary === "refresh" ? (
             <Button
-              variant="outline"
-              onClick={() => setStatus.mutate("active")}
-              data-testid="knowledge-activate"
+              onClick={() => refresh.mutate()}
+              pending={refresh.isPending}
+              data-testid="knowledge-refresh"
             >
-              {t("knowledge.activate")}
+              {t("knowledge.refresh")}
+            </Button>
+          ) : primary === "edit" ? (
+            <Button onClick={() => setEditing("text")} data-testid="knowledge-edit">
+              {t("knowledge.editText")}
             </Button>
           ) : undefined
         }
-        testId="knowledge-strip"
-      />
-    ) : (
-      <StatusStrip
-        tone="ok"
-        line={
-          kind === "text" && currentVersion !== undefined
-            ? t("knowledge.strip.version", {
-                version: currentVersion.version,
-                when: formatRelativeTime(locale, currentVersion.created_at),
-              })
-            : t("knowledge.strip.active", { when: formatRelativeTime(locale, readAt) })
+        menu={
+          menu.length > 0 ? <ActionMenu alwaysMenu items={menu} testId="detail-menu" /> : undefined
         }
-        testId="knowledge-strip"
-      />
-    );
-  const sections = sourceSections(chunks.data?.items ?? []);
-  const facts: Fact[] = [
-    { label: t("knowledge.column.kind"), value: t(KIND_KEYS[kind]) },
-    ...(kind === "url" || kind === "discovered"
-      ? [
-          {
-            label: t("knowledge.field.url"),
-            value: <span className="font-mono text-xs">{source.source_uri}</span>,
-          },
-        ]
-      : []),
-    ...(kind === "url"
-      ? [{ label: t("knowledge.field.refresh"), value: rhythmLabel(t, source) }]
-      : []),
-    ...(workflowTarget
-      ? [
-          {
-            label: t("knowledge.field.scope"),
-            value: (
-              <a
-                className="underline-offset-4 hover:underline"
-                href={absolute(workflowHref(workflowTarget.id))}
-                data-testid="knowledge-scope-workflow"
-              >
-                {workflowTarget.name}
-              </a>
-            ),
-          },
-        ]
-      : []),
-  ];
-  const technical: Fact[] = [
-    {
-      label: t("knowledge.fact.slug"),
-      value: <span className="font-mono text-xs">{source.slug}</span>,
-    },
-    { label: t("knowledge.fact.mime"), value: source.mime_type ?? MISSING },
-    { label: t("knowledge.fact.size"), value: bytes(source.bytes_total) },
-    { label: t("knowledge.fact.created"), value: dateTime(source.created_at) },
-  ];
-  const originalClips = (intakeBacklinks.data?.items ?? []).filter(
-    (item) => item.admitted_target_kind === "knowledge" && item.admitted_target_id === source.id,
-  );
-  const menu = [
-    ...(canWrite ? metadataActions : []),
-    ...(canWrite && primary !== "edit"
-      ? [{ label: t("knowledge.edit"), onSelect: () => setEditing(true), testId: "knowledge-edit" }]
-      : []),
-    ...(canWrite && source.status === "active"
-      ? [
-          {
-            label: t("knowledge.deactivate"),
-            onSelect: () => setStatus.mutate("inactive"),
-            testId: "knowledge-deactivate",
-          },
-        ]
-      : []),
-    ...(canDelete
-      ? [
-          {
-            label: t("knowledge.delete"),
-            onSelect: () => setDeleting(true),
-            destructive: true,
-            testId: "knowledge-delete",
-          },
-        ]
-      : []),
-  ];
-
-  return (
-    <Page
-      kind="detail"
-      surface="detail"
-      scroll="page"
-      testId="detail-knowledge"
-      header={
-        <PageHeader
-          back={back}
-          title={source.name}
-          purpose={<CatalogMetadataSummary record={source} />}
-          action={
-            primary === "refresh" ? (
-              <Button
-                onClick={() => refresh.mutate()}
-                pending={refresh.isPending}
-                data-testid="knowledge-refresh"
-              >
-                {t("knowledge.refresh")}
-              </Button>
-            ) : primary === "edit" ? (
-              <Button onClick={() => setEditing(true)} data-testid="knowledge-edit">
-                {t("knowledge.edit")}
-              </Button>
-            ) : undefined
-          }
-          secondary={
-            canChat ? (
-              <Button asChild variant="outline">
-                <a
-                  href={absolute(
-                    chatNewHref({
-                      prompt: t("detail.changeRecordPrompt"),
-                      references: [{ type: "knowledge_source", id: source.id }],
-                    }),
-                  )}
-                  data-testid="detail-action"
-                >
-                  {t("detail.changeInChat")}
-                </a>
-              </Button>
-            ) : undefined
-          }
-          menu={menu.length > 0 ? <ActionMenu items={menu} testId="detail-menu" /> : undefined}
-        />
-      }
-    >
-      <div className="flex flex-col gap-8">
-        {strip}
-        <div className="flex flex-col gap-3">
-          <SummaryLine
-            text={`${sectionsLine(t, source.chunk_count ?? 0)} · ${bytes(source.bytes_total)}`}
-          />
-          <FactList items={facts} testId="knowledge-facts" />
-        </div>
-        <SourceContentView
-          kind={kind}
-          name={source.name}
-          sections={sections}
-          loading={chunks.isPending}
-          failed={Boolean(chunks.error)}
-          onRetry={() => void chunks.refetch()}
-          onOpen={setOpenSection}
-        />
-        {originalClips.length > 0 ? (
-          <Section label={t("intake.originalClips")}>
-            <div className="flex flex-col gap-2">
-              {originalClips.map((clip) => (
-                <a
-                  key={clip.id}
-                  className="w-fit text-sm text-accent underline-offset-4 hover:underline"
-                  href={absolute(recordHref("intake", clip.id))}
-                  data-testid={`knowledge-intake-clip-${clip.id}`}
-                >
-                  {t("intake.openOriginalClip", { name: clip.title })}
-                </a>
-              ))}
-            </div>
-          </Section>
-        ) : null}
-        <div className="flex flex-col gap-2">
-          <KnowledgeVersions sourceId={source.id} sourceName={source.name} canWrite={canWrite} />
-          <CollapsibleSection label={t("knowledge.technical")} testId="detail-overview">
-            <FactList items={technical} />
-          </CollapsibleSection>
-        </div>
-      </div>
-      <RecordSheet
-        dock
-        open={openSection !== null}
-        onOpenChange={(open) => !open && setOpenSection(null)}
-        title={openSection?.title ?? ""}
-        subtitle={source.name}
-        testId="knowledge-section-sheet"
-      >
-        {openSection ? (
-          <div className="flex flex-col gap-4">
-            <FactList
-              items={[
-                { label: t("knowledge.column.size"), value: bytes(openSection.bytes) },
+        strip={strip ? { ...strip, testId: "knowledge-strip" } : null}
+        tabs={
+          source
+            ? [
                 {
-                  label: t("knowledge.column.read"),
-                  value: source.last_refreshed_at ? dateTime(source.last_refreshed_at) : MISSING,
+                  value: "content",
+                  label: t("knowledge.tab.content"),
+                  testId: "knowledge-tab-content",
+                  content: (
+                    <SourceContentTab
+                      source={source}
+                      kind={kind}
+                      sections={sourceSections(chunks.data?.items ?? [])}
+                      loading={chunks.isPending}
+                      failed={Boolean(chunks.error)}
+                      onRetry={() => void chunks.refetch()}
+                    />
+                  ),
                 },
-              ]}
-              testId="knowledge-section-facts"
-            />
-            <FilePreview
-              name=""
-              mimeType="text/markdown"
-              text={documentUnderTitle(openSection.content, openSection.title)}
-            />
-          </div>
+                {
+                  value: "usage",
+                  label: t("knowledge.tab.usage"),
+                  testId: "knowledge-tab-usage",
+                  content: <SourceUsageTab source={source} permissions={permissions} />,
+                },
+                {
+                  value: "versions",
+                  label: t("knowledge.tab.versions"),
+                  count: history.data?.total || undefined,
+                  testId: "knowledge-tab-versions",
+                  content: (
+                    <TabBody
+                      testId="knowledge-versions-tab"
+                      summary={
+                        history.data
+                          ? t(
+                              history.data.total === 1
+                                ? "knowledge.versions.countOne"
+                                : "knowledge.versions.countOther",
+                              { count: history.data.total },
+                            )
+                          : undefined
+                      }
+                    >
+                      <KnowledgeVersions
+                        sourceId={source.id}
+                        sourceName={source.name}
+                        canWrite={canWrite}
+                      />
+                    </TabBody>
+                  ),
+                },
+              ]
+            : undefined
+        }
+      >
+        {query.error ? (
+          <DataState
+            state="error"
+            line={t("detail.loadFailed")}
+            onRetry={() => void query.refetch()}
+            testId="detail-load-failed"
+          />
         ) : null}
-      </RecordSheet>
-      {canWrite ? (
+      </DetailPage>
+      {source && canWrite ? (
         <>
-          <EditSourceDialog source={source} open={editing} onOpenChange={setEditing} />
+          <EditSourceDialog
+            source={source}
+            mode={editing}
+            onOpenChange={(open) => !open && setEditing(null)}
+          />
           <CatalogMetadataDialog
             kind="knowledge_source"
             id={source.id}
@@ -890,138 +908,384 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
             open={describing}
             onOpenChange={setDescribing}
             queryKey={["knowledge-source", source.id]}
+            nameKey="name"
+            title={t("knowledge.edit.title")}
           />
         </>
       ) : null}
-      <ConfirmDialog
-        open={deleting}
-        onOpenChange={setDeleting}
-        object={source.name}
-        verb={t("knowledge.delete")}
-        consequence={t("knowledge.deleteConsequence", {
-          sections: sectionsLine(t, source.chunk_count),
-        })}
-        destructive
-        pending={remove.isPending}
-        onConfirm={() => remove.mutateAsync().then(() => undefined)}
-        testId="knowledge-delete-confirm"
-      />
-    </Page>
+      {source ? (
+        <ConfirmDialog
+          open={deleting}
+          onOpenChange={setDeleting}
+          object={source.name}
+          verb={t("knowledge.delete")}
+          consequence={t("knowledge.deleteConsequence", {
+            sections: sectionsLine(t, source.chunk_count),
+          })}
+          destructive
+          pending={remove.isPending}
+          onConfirm={() => remove.mutateAsync().then(() => undefined)}
+          testId="knowledge-delete-confirm"
+        />
+      ) : null}
+      {source ? (
+        <SectionSheet source={source} sections={sourceSections(chunks.data?.items ?? [])} />
+      ) : null}
+    </>
   );
 }
 
-function SourceContentView({
+function useSelectedSection() {
+  return useSearchParamState("section", "");
+}
+
+function SourceContentTab({
+  source,
   kind,
-  name,
   sections,
   loading,
   failed,
   onRetry,
-  onOpen,
 }: {
+  source: KnowledgeSource;
   kind: SourceKind;
-  name: string;
   sections: SourceSection[];
   loading: boolean;
   failed: boolean;
   onRetry(): void;
-  onOpen(section: SourceSection): void;
 }) {
   const { t, dateTime } = useI18n();
-  const columns = useMemo<CockpitColumn<SourceSection>[]>(() => {
-    const column = tableColumns<SourceSection>({ t, dateTime });
-    return [
-      column.custom(
-        "title",
-        (row) => row.title,
-        t("knowledge.column.section"),
-        (row) => <RowName>{row.title}</RowName>,
-        {
-          width: "w-[70%]",
-          ownsRowLink: true,
-        },
-      ),
-      column.custom(
-        "size",
-        (row) => row.bytes,
-        t("knowledge.column.size"),
-        (row) => bytes(row.bytes),
-        { width: "w-[30%]" },
-      ),
-    ];
-  }, [t, dateTime]);
-  if (loading) return <DataState state="loading" />;
-  if (failed)
-    return (
-      <DataState
-        state="error"
-        line={t("knowledge.contentFailed")}
-        onRetry={onRetry}
-        testId="knowledge-load-failed"
-      />
-    );
-  if (sections.length === 0)
-    return <DataState state="empty" line={t("knowledge.noDocuments")} testId="knowledge-empty" />;
+  const [, openSection] = useSelectedSection();
+  const [filter, setFilter] = useState("");
+  const contents = useMemo(() => sections.map((section) => section.content), [sections]);
+  const endpoints = useMemo(() => openApiEndpoints(contents), [contents]);
+  const raw = useMemo(() => rawPreview(contents), [contents]);
+  const summary = [
+    endpoints
+      ? t(endpoints.length === 1 ? "knowledge.endpoints.one" : "knowledge.endpoints.other", {
+          count: endpoints.length,
+        })
+      : sectionsLine(t, source.chunk_count ?? 0),
+    bytes(source.bytes_total),
+    endpoints ? t("knowledge.kind.api") : t(KIND_KEYS[kind]),
+    ...(kind === "url" ? [rhythmLabel(t, source)] : []),
+  ].join(" · ");
+  const technical: Fact[] = [
+    ...(kind === "url" || kind === "discovered"
+      ? [
+          {
+            label: t("knowledge.field.url"),
+            value: <CopyField value={source.source_uri} label={t("knowledge.field.url")} />,
+          },
+        ]
+      : []),
+    {
+      label: t("knowledge.fact.slug"),
+      value: <span className="font-mono text-xs">@{source.slug}</span>,
+    },
+    { label: t("knowledge.fact.mime"), value: source.mime_type ?? MISSING },
+    { label: t("knowledge.fact.size"), value: bytes(source.bytes_total) },
+    { label: t("knowledge.fact.created"), value: dateTime(source.created_at) },
+    {
+      label: t("knowledge.fact.id"),
+      value: <span className="font-mono text-xs">{source.id}</span>,
+    },
+  ];
+  const shown = endpoints?.filter((endpoint) => matchesEndpoint(endpoint, filter)) ?? [];
   const [only] = sections;
-  if (sections.length === 1 && only)
-    return (
-      <Section label={t("knowledge.content")}>
-        <FilePreview
-          name=""
-          mimeType="text/markdown"
-          text={documentUnderTitle(only.content, name)}
-          testId="knowledge-preview"
-        />
-      </Section>
-    );
+
   return (
-    <Section label={kind === "url" ? t("knowledge.pages") : t("knowledge.content")}>
-      <DataTable
-        columns={columns}
-        data={sections}
-        sorting={[]}
-        onSortingChange={() => undefined}
-        onOpen={onOpen}
-        rowLabel={(row) => row.title}
-        getRowId={(row) => row.key}
-        emptyState={{
-          zero: { title: t("knowledge.noDocuments") },
-          filtered: { title: "", description: "", resetLabel: "", onReset: () => undefined },
-        }}
-        hasActiveFilters={false}
-        columnsLabel={t("catalog.columns")}
-        actionsLabel={t("common.actions")}
-        collectionId="knowledge-sections"
-        collectionTier="embedded"
-      />
-    </Section>
+    <TabBody
+      testId="knowledge-content"
+      summary={
+        endpoints && endpoints.length > 10 ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span className="min-w-0" data-testid="knowledge-content-summary">
+              {summary}
+            </span>
+            <Input
+              type="search"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder={t("knowledge.endpoints.search")}
+              aria-label={t("knowledge.endpoints.search")}
+              className="ml-auto h-8 w-full sm:w-56"
+              data-testid="knowledge-endpoint-search"
+            />
+          </div>
+        ) : (
+          summary
+        )
+      }
+      technical={
+        <>
+          <FactList items={technical} testId="knowledge-technical" />
+          {raw.text ? (
+            <CodeBlock
+              code={raw.text}
+              label={raw.truncated ? t("knowledge.raw.truncated") : t("knowledge.raw.label")}
+              testId="knowledge-raw"
+            />
+          ) : null}
+        </>
+      }
+    >
+      {loading ? (
+        <DataState state="loading" />
+      ) : failed ? (
+        <DataState
+          state="error"
+          line={t("knowledge.contentFailed")}
+          onRetry={onRetry}
+          testId="knowledge-load-failed"
+        />
+      ) : sections.length === 0 ? (
+        <DataState state="empty" line={t("knowledge.noDocuments")} testId="knowledge-empty" />
+      ) : endpoints ? (
+        <div className="flex flex-col gap-2">
+          <ul className="divide-y rounded-lg border" data-testid="knowledge-endpoints">
+            {shown.slice(0, ENDPOINT_PAGE).map((endpoint) => (
+              <li key={endpoint.key}>
+                <EndpointRow endpoint={endpoint} onOpen={() => openSection(endpoint.key)} />
+              </li>
+            ))}
+          </ul>
+          {shown.length > ENDPOINT_PAGE ? (
+            <p className="text-xs text-muted-foreground">
+              {t("knowledge.endpoints.more", { count: shown.length - ENDPOINT_PAGE })}
+            </p>
+          ) : null}
+          {shown.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("resource.noMatches")}</p>
+          ) : null}
+        </div>
+      ) : sections.length === 1 && only ? (
+        <article className="rounded-lg border p-5">
+          <FilePreview
+            name=""
+            mimeType="text/markdown"
+            text={documentUnderTitle(only.content, source.name)}
+            testId="knowledge-preview"
+          />
+        </article>
+      ) : (
+        <ul className="divide-y rounded-lg border" data-testid="knowledge-sections">
+          {sections.map((section, index) => (
+            <li key={section.key}>
+              <button
+                type="button"
+                onClick={() => openSection(section.key)}
+                className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                data-testid={`knowledge-section-${index}`}
+              >
+                <span className="w-6 text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+                <span className="min-w-0 flex-1 truncate text-sm">{section.title}</span>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {bytes(section.bytes)}
+                </span>
+                <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </TabBody>
+  );
+}
+
+function MethodChip({ method }: { method: string }) {
+  return (
+    <span className="w-16 shrink-0 rounded border px-1.5 py-0.5 text-center font-mono text-[11px] font-semibold">
+      {method}
+    </span>
+  );
+}
+
+function EndpointRow({ endpoint, onOpen }: { endpoint: ApiEndpoint; onOpen(): void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-testid="knowledge-endpoint"
+    >
+      <MethodChip method={endpoint.method} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm">{endpoint.purpose || endpoint.path}</span>
+        <span className="block truncate font-mono text-xs text-muted-foreground">
+          {endpoint.path}
+        </span>
+      </span>
+      <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground" />
+    </button>
+  );
+}
+
+function SectionSheet({
+  source,
+  sections,
+}: {
+  source: KnowledgeSource;
+  sections: SourceSection[];
+}) {
+  const { t, dateTime } = useI18n();
+  const [selected, setSelected] = useSelectedSection();
+  const contents = useMemo(() => sections.map((section) => section.content), [sections]);
+  const endpoints = useMemo(() => openApiEndpoints(contents), [contents]);
+  const endpoint = endpoints?.find((entry) => entry.key === selected) ?? null;
+  const section = endpoint ? null : (sections.find((entry) => entry.key === selected) ?? null);
+  const open = Boolean(selected) && (endpoint !== null || section !== null);
+  return (
+    <RecordSheet
+      open={open}
+      onOpenChange={(next) => !next && setSelected("")}
+      title={endpoint ? endpoint.purpose || endpoint.path : (section?.title ?? "")}
+      subtitle={t("knowledge.section.from", { name: source.name })}
+      testId="knowledge-section-sheet"
+    >
+      {endpoint ? (
+        <div className="flex flex-col gap-6">
+          <FactList
+            testId="knowledge-endpoint-facts"
+            items={[
+              { label: t("knowledge.endpoint.method"), value: endpoint.method },
+              {
+                label: t("knowledge.endpoint.path"),
+                value: <span className="font-mono text-xs">{endpoint.path}</span>,
+              },
+              ...(endpoint.purpose
+                ? [{ label: t("knowledge.endpoint.purpose"), value: endpoint.purpose }]
+                : []),
+            ]}
+          />
+          <TechnicalDetails testId="knowledge-endpoint-technical">
+            <CodeBlock
+              code={JSON.stringify(endpoint.operation, null, 2)}
+              label={t("knowledge.raw.label")}
+              testId="knowledge-endpoint-raw"
+            />
+          </TechnicalDetails>
+        </div>
+      ) : section ? (
+        <div className="flex flex-col gap-4">
+          <FactList
+            items={[
+              { label: t("knowledge.column.size"), value: bytes(section.bytes) },
+              {
+                label: t("knowledge.column.read"),
+                value: source.last_refreshed_at ? dateTime(source.last_refreshed_at) : MISSING,
+              },
+            ]}
+            testId="knowledge-section-facts"
+          />
+          <FilePreview
+            name=""
+            mimeType="text/markdown"
+            text={documentUnderTitle(section.content, section.title)}
+          />
+        </div>
+      ) : null}
+    </RecordSheet>
+  );
+}
+
+function SourceUsageTab({
+  source,
+  permissions,
+}: {
+  source: KnowledgeSource;
+  permissions: readonly string[];
+}) {
+  const { t } = useI18n();
+  const workflowId = knowledgeWorkflowId(source.scope, source.workflow_id);
+  const workflow = useQuery({
+    queryKey: ["knowledge-source-workflow", workflowId],
+    queryFn: () =>
+      apiRequest<{ id: string; name?: string | null; slug?: string | null }>(
+        `/v1/workflows/${encodeURIComponent(workflowId ?? "")}`,
+      ),
+    enabled: Boolean(workflowId) && permissions.includes("workflow:read"),
+    retry: false,
+  });
+  const intake = useQuery({
+    queryKey: ["intake", "knowledge-backlinks", source.id],
+    queryFn: () => listIntakeClips(),
+    enabled: permissions.includes("intake:read"),
+  });
+  const target = knowledgeWorkflowTarget(source.scope, source.workflow_id, workflow.data);
+  const origins = (intake.data?.items ?? []).filter(
+    (item) => item.admitted_target_kind === "knowledge" && item.admitted_target_id === source.id,
+  );
+  const cards: UsageCard[] = workflowId
+    ? [
+        {
+          id: workflowId,
+          title: target?.name ?? t("knowledge.scope.workflow"),
+          line: t("knowledge.usage.workflowLine"),
+          href: workflowHref(workflowId),
+          icon: <Workflow />,
+        },
+      ]
+    : [];
+  return (
+    <TabBody
+      testId="knowledge-usage"
+      summary={t(workflowId ? "knowledge.usage.workflow" : "knowledge.usage.global")}
+      more={
+        origins.length > 0 ? (
+          <CollapsibleSection
+            label={t("intake.originalClips")}
+            count={origins.length}
+            testId="knowledge-origin"
+          >
+            <UsageCards
+              testId="knowledge-intake-clips"
+              items={origins.map((item) => ({
+                id: item.id,
+                title: item.title,
+                line: t("knowledge.usage.originLine"),
+                href: recordHref("intake", item.id),
+                icon: <Inbox />,
+              }))}
+            />
+          </CollapsibleSection>
+        ) : undefined
+      }
+    >
+      {cards.length > 0 ? (
+        <UsageCards items={cards} testId="knowledge-scope" />
+      ) : (
+        <p className="text-sm text-muted-foreground" data-testid="knowledge-usage-global">
+          {t("knowledge.usage.globalLine")}
+        </p>
+      )}
+    </TabBody>
   );
 }
 
 function EditSourceDialog({
   source,
-  open,
+  mode,
   onOpenChange,
 }: {
   source: KnowledgeSource;
-  open: boolean;
+  mode: EditMode | null;
   onOpenChange(open: boolean): void;
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
+  const open = mode !== null;
   const content = useQuery({
     queryKey: ["knowledge-source", source.id, "content"],
     queryFn: () =>
       apiRequest<SourceContent>(`${ENDPOINT}/${encodeURIComponent(source.id)}/content`),
-    enabled: open,
+    enabled: mode === "text",
   });
   const document =
     content.data?.editable && content.data.documents.length === 1
       ? content.data.documents[0]
       : undefined;
-  const isAddress = sourceKind(source.source_type) === "url";
   const savedRhythm = refreshRhythm(source.refresh_strategy, source.refresh_cron);
-  const [name, setName] = useState(source.name);
   const [address, setAddress] = useState(source.source_uri);
   const [note, setNote] = useState("");
   const [rhythm, setRhythm] = useState<OfferedRhythm | null>(null);
@@ -1029,28 +1293,29 @@ function EditSourceDialog({
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
     if (open) {
-      setName(source.name);
       setAddress(source.source_uri);
       setNote("");
       setRhythm(savedRhythm === "custom" ? null : savedRhythm);
       setProblem(null);
     }
-  }, [open, source.name, source.source_uri, savedRhythm]);
+  }, [open, source.source_uri, savedRhythm]);
   useEffect(() => setText(document?.content ?? ""), [document?.content]);
 
   const save = useMutation({
     mutationFn: async () => {
-      const rhythmChanged = isAddress && rhythm !== null && rhythm !== savedRhythm;
-      const addressChanged = isAddress && address.trim() !== source.source_uri;
-      if (name.trim() !== source.name || rhythmChanged || addressChanged)
-        await apiRequest(`${ENDPOINT}/${encodeURIComponent(source.id)}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            ...(name.trim() !== source.name ? { name: name.trim() } : {}),
-            ...(rhythmChanged && rhythm ? refreshFields(rhythm) : {}),
-            ...(addressChanged ? { source_uri: address.trim() } : {}),
-          }),
-        });
+      if (mode === "address") {
+        const rhythmChanged = rhythm !== null && rhythm !== savedRhythm;
+        const addressChanged = address.trim() !== source.source_uri;
+        if (rhythmChanged || addressChanged)
+          await apiRequest(`${ENDPOINT}/${encodeURIComponent(source.id)}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              ...(rhythmChanged && rhythm ? refreshFields(rhythm) : {}),
+              ...(addressChanged ? { source_uri: address.trim() } : {}),
+            }),
+          });
+        return;
+      }
       if (document && content.data && text !== document.content)
         await apiRequest(`${ENDPOINT}/${encodeURIComponent(source.id)}/content`, {
           method: "PUT",
@@ -1079,25 +1344,17 @@ function EditSourceDialog({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={t("knowledge.edit.title")}
+      title={mode === "address" ? t("knowledge.editAddress") : t("knowledge.editText")}
+      size={mode === "text" ? "wide" : "default"}
       submit={{
         label: t("common.save"),
         pending: save.isPending,
-        disabled: !name.trim() || (isAddress && !address.trim()),
+        disabled: mode === "address" ? !address.trim() : !document,
       }}
       onSubmit={() => save.mutate()}
       testId="knowledge-edit-dialog"
     >
-      <Field>
-        <FieldLabel htmlFor="knowledge-edit-name">{t("common.name")}</FieldLabel>
-        <Input
-          id="knowledge-edit-name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          data-testid="knowledge-edit-name"
-        />
-      </Field>
-      {isAddress ? (
+      {mode === "address" ? (
         <>
           <Field>
             <FieldLabel htmlFor="knowledge-edit-address">{t("knowledge.field.url")}</FieldLabel>
@@ -1116,35 +1373,38 @@ function EditSourceDialog({
             current={savedRhythm === "custom" ? rhythmLabel(t, source) : undefined}
           />
         </>
-      ) : null}
-      {document ? (
-        <Field>
-          <FieldLabel htmlFor="knowledge-edit-text">{t("knowledge.field.text")}</FieldLabel>
-          <Textarea
-            id="knowledge-edit-text"
-            rows={10}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            className="font-mono text-xs"
-            data-testid="knowledge-edit-text"
-          />
-        </Field>
-      ) : null}
-      {document ? (
-        <Field>
-          <FieldLabel htmlFor="knowledge-edit-note">
-            {t("knowledge.versions.column.why")}
-          </FieldLabel>
-          <Input
-            id="knowledge-edit-note"
-            value={note}
-            disabled={text === document.content}
-            onChange={(event) => setNote(event.target.value)}
-            maxLength={2000}
-            data-testid="knowledge-edit-note"
-          />
-        </Field>
-      ) : null}
+      ) : content.isPending ? (
+        <DataState state="loading" />
+      ) : document ? (
+        <>
+          <Field>
+            <FieldLabel htmlFor="knowledge-edit-text">{t("knowledge.field.text")}</FieldLabel>
+            <MarkdownEditor
+              id="knowledge-edit-text"
+              label={t("knowledge.field.text")}
+              value={text}
+              onChange={setText}
+              rows={14}
+              testId="knowledge-edit-text"
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="knowledge-edit-note">
+              {t("knowledge.versions.column.why")}
+            </FieldLabel>
+            <Input
+              id="knowledge-edit-note"
+              value={note}
+              disabled={text === document.content}
+              onChange={(event) => setNote(event.target.value)}
+              maxLength={2000}
+              data-testid="knowledge-edit-note"
+            />
+          </Field>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t("knowledge.edit.notEditable")}</p>
+      )}
       {problem ? <FieldError>{problem}</FieldError> : null}
     </FormDialog>
   );

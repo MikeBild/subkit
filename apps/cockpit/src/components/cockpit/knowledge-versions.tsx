@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
@@ -8,20 +7,17 @@ import { useLiveQueryOptions } from "@/app/live-events";
 import { FocusedDiff } from "@/components/cockpit/diff-card";
 import {
   Button,
-  type CockpitColumn,
-  CollapsibleSection,
   DataState,
-  DataTable,
   type Fact,
   FactList,
   FilePreview,
   RecordSheet,
-  RowName,
   Section,
   StatusBadge,
+  Timeline,
 } from "@/components/cockpit/patterns";
-import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { useI18n } from "@/lib/i18n-context";
+import { useSearchParamState } from "@/lib/use-search-param-state";
 import {
   authorName,
   type KnowledgeVersion,
@@ -48,6 +44,15 @@ function versionBadge(version: KnowledgeVersion, t: ReturnType<typeof useI18n>["
   );
 }
 
+export function useKnowledgeHistory(sourceId: string) {
+  const live = useLiveQueryOptions();
+  return useQuery({
+    queryKey: ["knowledge-source", sourceId, "history"],
+    queryFn: () => apiRequest<History>(`${sourcePath(sourceId)}/history?limit=200`),
+    ...live,
+  });
+}
+
 export function KnowledgeVersions({
   sourceId,
   sourceName,
@@ -58,88 +63,57 @@ export function KnowledgeVersions({
   canWrite: boolean;
 }) {
   const { t, dateTime } = useI18n();
-  const live = useLiveQueryOptions();
   const directory = useActorDirectory(true);
-  const history = useQuery({
-    queryKey: ["knowledge-source", sourceId, "history"],
-    queryFn: () => apiRequest<History>(`${sourcePath(sourceId)}/history?limit=200`),
-    ...live,
-  });
-  const [selected, setSelected] = useState<number | null>(null);
-  const columns = useMemo<CockpitColumn<KnowledgeVersion>[]>(() => {
-    const column = tableColumns<KnowledgeVersion>({ t, dateTime });
-    return [
-      column.custom(
-        "version",
-        (row) => row.version,
-        t("knowledge.versions.column.version"),
-        (row) => <RowName>{`v${row.version}`}</RowName>,
-        { width: "w-[15%]", ownsRowLink: true },
-      ),
-      column.custom(
-        "why",
-        (row) => row.note ?? "",
-        t("knowledge.versions.column.why"),
-        (row) => versionWhy(row.note, directory, t) ?? MISSING,
-        { width: "w-[35%]" },
-      ),
-      column.custom(
-        "state",
-        (row) => (row.current ? 1 : 0),
-        t("knowledge.versions.column.state"),
-        (row) => versionBadge(row, t),
-        { width: "w-[15%]" },
-      ),
-      column.custom(
-        "saved",
-        (row) => row.created_at,
-        t("knowledge.versions.column.saved"),
-        (row) => `${authorName(row.author, directory, t)} · ${dateTime(row.created_at)}`,
-        { width: "w-[35%]" },
-      ),
-    ];
-  }, [t, dateTime, directory]);
-
+  const history = useKnowledgeHistory(sourceId);
+  const [selected, setSelected] = useSearchParamState("version", "");
   const items = history.data?.items ?? [];
-  if (!history.error && items.length === 0) return null;
   const latest = items[0]?.version ?? 0;
-  const open = items.find((item) => item.version === selected) ?? null;
+  const open = items.find((item) => String(item.version) === selected) ?? null;
 
+  if (history.isPending) return <DataState state="loading" />;
+  if (history.error)
+    return (
+      <DataState
+        state="error"
+        line={t("knowledge.versions.loadFailed")}
+        onRetry={() => void history.refetch()}
+        testId="knowledge-versions-failed"
+      />
+    );
   return (
     <>
-      <CollapsibleSection
-        label={t("knowledge.versions.title")}
-        count={history.data?.total ?? items.length}
-        testId="knowledge-versions"
-      >
-        {history.error ? (
-          <DataState
-            state="error"
-            line={t("knowledge.versions.loadFailed")}
-            onRetry={() => void history.refetch()}
-            testId="knowledge-versions-failed"
-          />
-        ) : (
-          <DataTable
-            columns={columns}
-            data={items}
-            sorting={[]}
-            onSortingChange={() => undefined}
-            onOpen={(row) => setSelected(row.version)}
-            rowLabel={(row) => `v${row.version}`}
-            getRowId={(row) => String(row.version)}
-            emptyState={{
-              zero: { title: "" },
-              filtered: { title: "", description: "", resetLabel: "", onReset: () => undefined },
-            }}
-            hasActiveFilters={false}
-            columnsLabel={t("catalog.columns")}
-            actionsLabel={t("common.actions")}
-            collectionId="knowledge-versions"
-            collectionTier="embedded"
-          />
-        )}
-      </CollapsibleSection>
+      {items.length === 0 ? (
+        <DataState
+          state="empty"
+          line={t("knowledge.versions.empty")}
+          testId="knowledge-versions-empty"
+        />
+      ) : (
+        <Timeline
+          testId="knowledge-versions"
+          groups={[
+            {
+              items: items.map((item) => ({
+                id: String(item.version),
+                tone: item.current ? "info" : "neutral",
+                title: `v${item.version} · ${versionWhy(item.note, directory, t) ?? t("knowledge.versions.saved")}`,
+                meta: authorName(item.author, directory, t),
+                aside: (
+                  <>
+                    {item.current ? versionBadge(item, t) : null}
+                    <span className="text-xs text-muted-foreground">
+                      {dateTime(item.created_at)}
+                    </span>
+                  </>
+                ),
+                onOpen: () => setSelected(String(item.version)),
+                label: `v${item.version}`,
+                testId: `knowledge-version-${item.version}`,
+              })),
+            },
+          ]}
+        />
+      )}
       <KnowledgeVersionSheet
         sourceId={sourceId}
         sourceName={sourceName}
@@ -148,7 +122,7 @@ export function KnowledgeVersions({
         latest={latest}
         canWrite={canWrite}
         directory={directory}
-        onClose={() => setSelected(null)}
+        onClose={() => setSelected("")}
       />
     </>
   );

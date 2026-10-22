@@ -5,7 +5,11 @@ import {
   knowledgeSummary,
   knowledgeWorkflowId,
   knowledgeWorkflowTarget,
+  matchesEndpoint,
+  openApiEndpoints,
+  RAW_PREVIEW_CHARACTERS,
   REFRESH_CRON,
+  rawPreview,
   refreshFields,
   refreshRhythm,
   sourceKind,
@@ -134,5 +138,55 @@ describe("knowledge summary", () => {
   test("does not invent a section total when the API has not provided it", () => {
     expect(knowledgeSummary(51, undefined, de)).toBe("51 Quellen");
     expect(knowledgeSummary(51, Number.NaN, de)).toBe("51 Quellen");
+  });
+});
+
+describe("openApiEndpoints", () => {
+  const spec = JSON.stringify({
+    openapi: "3.0.3",
+    paths: {
+      "/orgs/{org}/repos": {
+        get: { summary: "List organization repositories", operationId: "repos/list-for-org" },
+        post: { description: "Create a repository\nfor the organization" },
+      },
+      "/": { get: { operationId: "meta/root" }, parameters: [] },
+    },
+  });
+
+  test("lists every operation with method, path and a plain purpose", () => {
+    const endpoints = openApiEndpoints([spec]);
+    expect(endpoints?.map((entry) => [entry.method, entry.path, entry.purpose])).toEqual([
+      ["GET", "/orgs/{org}/repos", "List organization repositories"],
+      ["POST", "/orgs/{org}/repos", "Create a repository"],
+      ["GET", "/", "meta/root"],
+    ]);
+  });
+
+  test("reads a description split across sections", () => {
+    const cut = Math.floor(spec.length / 2);
+    expect(openApiEndpoints([spec.slice(0, cut), spec.slice(cut)])?.length).toBe(3);
+  });
+
+  test("anything else is not an interface description", () => {
+    expect(openApiEndpoints(["# Handbuch"])).toBeNull();
+    expect(openApiEndpoints(['{"name":"x","paths":{}}'])).toBeNull();
+    expect(openApiEndpoints(["{broken"])).toBeNull();
+  });
+
+  test("search matches method, path and purpose", () => {
+    const [first] = openApiEndpoints([spec]) ?? [];
+    if (!first) throw new Error("missing endpoint");
+    expect(matchesEndpoint(first, "organization")).toBe(true);
+    expect(matchesEndpoint(first, "get /orgs")).toBe(true);
+    expect(matchesEndpoint(first, "delete")).toBe(false);
+  });
+});
+
+describe("rawPreview", () => {
+  test("keeps short content whole and cuts long content", () => {
+    expect(rawPreview(["a", "b"])).toEqual({ text: "a\n\nb", truncated: false });
+    const long = rawPreview(["x".repeat(RAW_PREVIEW_CHARACTERS + 5)]);
+    expect(long.truncated).toBe(true);
+    expect(long.text.length).toBe(RAW_PREVIEW_CHARACTERS);
   });
 });

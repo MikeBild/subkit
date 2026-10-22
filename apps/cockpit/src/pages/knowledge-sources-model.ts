@@ -147,3 +147,84 @@ export function knowledgeSummary(
   if (sections === undefined || !Number.isInteger(sections) || sections < 0) return count;
   return `${count} · ${t(sections === 1 ? "knowledge.sections.one" : "knowledge.sections.other", { count: sections })}`;
 }
+
+export interface ApiEndpoint {
+  key: string;
+  method: string;
+  path: string;
+  purpose: string;
+  operation: unknown;
+}
+
+const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "head", "options"] as const;
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function firstLine(value: string): string {
+  return (
+    value
+      .split("\n")
+      .find((line) => line.trim() !== "")
+      ?.trim() ?? ""
+  );
+}
+
+function parseDocument(content: string): Record<string, unknown> | null {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    return record(JSON.parse(trimmed));
+  } catch {
+    return null;
+  }
+}
+
+export function openApiEndpoints(contents: readonly string[]): ApiEndpoint[] | null {
+  const document = parseDocument(contents.join("")) ?? parseDocument(contents.join("\n\n")) ?? null;
+  if (!document || !(document.openapi || document.swagger)) return null;
+  const paths = record(document.paths);
+  if (!paths) return null;
+  const endpoints: ApiEndpoint[] = [];
+  for (const [path, item] of Object.entries(paths)) {
+    const operations = record(item);
+    if (!operations) continue;
+    for (const method of HTTP_METHODS) {
+      const operation = record(operations[method]);
+      if (!operation) continue;
+      endpoints.push({
+        key: `${method.toUpperCase()} ${path}`,
+        method: method.toUpperCase(),
+        path,
+        purpose:
+          text(operation.summary) ||
+          firstLine(text(operation.description)) ||
+          text(operation.operationId),
+        operation,
+      });
+    }
+  }
+  return endpoints;
+}
+
+export function matchesEndpoint(endpoint: ApiEndpoint, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return `${endpoint.method} ${endpoint.path} ${endpoint.purpose}`.toLowerCase().includes(needle);
+}
+
+export const RAW_PREVIEW_CHARACTERS = 20_000;
+
+export function rawPreview(contents: readonly string[]): { text: string; truncated: boolean } {
+  const full = contents.join("\n\n");
+  return full.length > RAW_PREVIEW_CHARACTERS
+    ? { text: full.slice(0, RAW_PREVIEW_CHARACTERS), truncated: true }
+    : { text: full, truncated: false };
+}
