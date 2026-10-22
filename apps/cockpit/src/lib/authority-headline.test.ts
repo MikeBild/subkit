@@ -60,7 +60,7 @@ describe("authority headline", () => {
         now,
         zone,
       ),
-    ).toBe("Entwicklung · gültig bis 28.09., 18:00 MESZ · bis zu 1 Lauf");
+    ).toBe("Test · gültig bis 28.09., 18:00 MESZ · bis zu 1 Lauf");
     expect(
       authorityHeadline(
         { execution_environment: "dev", valid_until: until, max_runs: 1 },
@@ -69,7 +69,7 @@ describe("authority headline", () => {
         now,
         zone,
       ),
-    ).toMatch(/^Development · valid until .+ · up to 1 run$/);
+    ).toMatch(/^Test · valid until .+ · up to 1 run$/);
   });
 
   test("an unreadable end drops that part rather than printing 'Invalid Date'", () => {

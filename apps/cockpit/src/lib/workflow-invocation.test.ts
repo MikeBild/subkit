@@ -146,7 +146,7 @@ describe("schedule rows", () => {
   });
 
   test("the command line says where it runs, and how to reach production", () => {
-    expect(CATALOGS.de["invocation.cli.runsInDev"]).toContain("Entwicklung");
+    expect(CATALOGS.de["invocation.cli.runsInDev"]).toContain("in Test");
     expect(CATALOGS.de["invocation.cli.runsInDev"]).toContain("HTTP-Aufruf");
     expect(CATALOGS.en["invocation.cli.runsInDev"]).toContain("development");
     expect(CATALOGS.en["invocation.cli.runsInDev"]).toContain("HTTP call");

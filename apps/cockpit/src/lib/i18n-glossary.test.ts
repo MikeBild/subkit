@@ -103,3 +103,54 @@ describe("approval glossary", () => {
     }
   });
 });
+
+const RETIRED_REDESIGN_GERMAN = [
+  /Auf Anfrage/,
+  /Abgeschaltet/,
+  /Erneut anmelden/,
+  /Neu verbinden/,
+  /Freigeben…/,
+  /Kurzname/,
+  /Technische Details/,
+  /Anfragequelle/,
+  /Tool-Kette/,
+  /nicht dokumentiert/,
+  /Fundstück/,
+  /Posteingang/,
+  /Light logo|Mobile sheet|^Audience$/,
+];
+
+describe("redesign glossary", () => {
+  test("German copy keeps one term per concept", () => {
+    expect(offenders(CATALOGS.de, RETIRED_REDESIGN_GERMAN)).toEqual([]);
+  });
+
+  test("roles show their display names, never their keys", () => {
+    expect(
+      [
+        "role.admin",
+        "role.member",
+        "role.enduser",
+        "role.portalTokenUser",
+        "role.metricsScraper",
+      ].map((key) => CATALOGS.de[key as keyof typeof CATALOGS.de]),
+    ).toEqual(["Admin", "Mitglied", "Anwender", "Portal-Zugang", "Messwerte-Abruf"]);
+    expect(CATALOGS.en["role.enduser"]).toBe("User");
+  });
+
+  test("each step kind has its own name; a service query and a workflow start no longer collide", () => {
+    expect(CATALOGS.de["workflow.kind.request"]).toBe("Dienst abfragen");
+    expect(CATALOGS.de["workflow.kind.call"]).toBe("Workflow starten");
+    expect(CATALOGS.de["workflow.kind.parallel"]).toBe("Gleichzeitig");
+    expect(CATALOGS.de["workflow.kind.loop"]).toBe("Wiederholen");
+    expect(CATALOGS.en["workflow.kind.request"]).not.toBe(CATALOGS.en["workflow.kind.call"]);
+  });
+
+  test("a run starts on demand and a switched-off object is switched off", () => {
+    expect(CATALOGS.de["workflows.trigger.request"]).toBe("Auf Abruf");
+    expect(CATALOGS.de["connectorState.off"]).toBe("Ausgeschaltet");
+    expect(CATALOGS.de["workflowStrip.state.paused"]).toBe("Angehalten");
+    expect(CATALOGS.de["common.technical"]).toBe("Technische Angaben");
+    expect(CATALOGS.de["run.environment.dev"]).toBe("Test");
+  });
+});
