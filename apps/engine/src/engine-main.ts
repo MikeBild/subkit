@@ -8,7 +8,6 @@ import { assertCryptoKeyOrExit } from "./crypto/aes-gcm.ts";
 import { closeDb, getDb, getPool } from "./db/client.ts";
 import { type DriftReport, detectDrift, runMigrationsFromUrl } from "./db/migrate.ts";
 import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
-import { warmEmbeddings } from "./embeddings/local-provider.ts";
 import {
   EngineBootLifetime,
   EngineBootStoppedError,
@@ -383,36 +382,6 @@ async function runServer(): Promise<void> {
         ...errorFields(err),
       });
     }
-
-    lifetime.background(
-      () =>
-        warmEmbeddings()
-          .then((ready) =>
-            logger.info({
-              module: "embeddings",
-              action: "warm.complete",
-              msg: ready
-                ? "embedding model warm — semantic retrieval active"
-                : "embedding model unavailable — retrieval uses FTS",
-              available: ready,
-            }),
-          )
-          .catch((err) =>
-            logger.warn({
-              module: "embeddings",
-              action: "warm.failed",
-              msg: "embedding warm-up failed (non-fatal); retrieval uses FTS",
-              ...errorFields(err),
-            }),
-          ),
-      (error) =>
-        logger.warn({
-          module: "embeddings",
-          action: "warm.failed",
-          msg: "embedding warm-up failed",
-          ...errorFields(error),
-        }),
-    );
 
     const listener = await lifetime.acquire(
       () =>

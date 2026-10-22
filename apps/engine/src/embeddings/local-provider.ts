@@ -95,10 +95,6 @@ async function loadExtractor(): Promise<Extractor | null> {
   }
 }
 
-export async function warmEmbeddings(): Promise<boolean> {
-  return embeddingsAvailable();
-}
-
 export async function embeddingsAvailable(): Promise<boolean> {
   if (!extractorPromise) extractorPromise = loadExtractor();
   return (await extractorPromise) !== null;
