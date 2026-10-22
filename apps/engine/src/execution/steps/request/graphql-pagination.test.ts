@@ -307,3 +307,133 @@ test("reports an incomplete cursor pagination summary with the limit that stoppe
     pagination: { pages: 1, items: 20, complete: false, truncated: false, limit: null },
   });
 });
+
+const page = (
+  ids: string[],
+  totalCount = ids.length,
+  hasNextPage = false,
+  endCursor: string | null = null,
+) => ({
+  status: "succeeded" as const,
+  retry_count: 0,
+  duration_ms: 0,
+  request_meta: graphqlMeta,
+  output: {
+    user: {
+      project: {
+        items: {
+          totalCount,
+          nodes: ids.map((id) => ({ id })),
+          pageInfo: { hasNextPage, endCursor },
+        },
+      },
+    },
+  },
+});
+
+const scripted = (pages: ReturnType<typeof page>[]) => {
+  const calls: unknown[] = [];
+  return {
+    calls,
+    execute: async (variables: Record<string, unknown>) => {
+      calls.push(variables.after);
+      return pages[Math.min(calls.length - 1, pages.length - 1)]!;
+    },
+  };
+};
+
+const paginationOf = (result: Awaited<ReturnType<typeof runGraphqlCursorPages>>) =>
+  (result.request_meta as { pagination?: Record<string, unknown> } | undefined)?.pagination;
+
+test("rereads an empty read and keeps the first non-empty complete read", async () => {
+  const run = scripted([page([]), page(["a", "b", "c"])]);
+  const waits: number[] = [];
+  const result = await runGraphqlCursorPages({
+    spec: { ...spec, reread_on_empty: 2 },
+    variables: {},
+    execute: run.execute,
+    wait: async () => {
+      waits.push(1);
+    },
+  });
+  expect(result.status).toBe("succeeded");
+  expect(run.calls).toEqual([null, null]);
+  expect(waits).toHaveLength(1);
+  expect(paginationOf(result)).toMatchObject({ items: 3, complete: true, rereads: 1 });
+  const output = result.output as { user: { project: { items: { nodes: unknown[] } } } };
+  expect(output.user.project.items.nodes).toHaveLength(3);
+});
+
+test("fails as incomplete when every reread stays empty below the expected minimum", async () => {
+  const run = scripted([page([])]);
+  const result = await runGraphqlCursorPages({
+    spec: { ...spec, reread_on_empty: 2, expected_items: { min: 1 } },
+    variables: {},
+    execute: run.execute,
+    wait: async () => {},
+  });
+  expect(result.status).toBe("failed");
+  expect(result.error?.code).toBe("graphql_pagination_incomplete");
+  expect(result.output).toBeUndefined();
+  expect(run.calls).toHaveLength(3);
+  expect(paginationOf(result)).toMatchObject({ complete: false, rereads: 2 });
+});
+
+test("confirms an empty result by every reread when no minimum is expected", async () => {
+  const run = scripted([page([])]);
+  const result = await runGraphqlCursorPages({
+    spec: { ...spec, reread_on_empty: 2 },
+    variables: {},
+    execute: run.execute,
+    wait: async () => {},
+  });
+  expect(result.status).toBe("succeeded");
+  expect(run.calls).toHaveLength(3);
+  expect(paginationOf(result)).toMatchObject({ items: 0, complete: true, rereads: 2 });
+});
+
+test("reads once without reread options", async () => {
+  const run = scripted([page([]), page(["a"])]);
+  const result = await runGraphqlCursorPages({ spec, variables: {}, execute: run.execute });
+  expect(result.status).toBe("succeeded");
+  expect(run.calls).toHaveLength(1);
+  expect(paginationOf(result)).toMatchObject({ items: 0, complete: true, rereads: 0 });
+});
+
+test("does not reread a non-empty first read", async () => {
+  const run = scripted([page(["a"]), page(["a", "b"])]);
+  const result = await runGraphqlCursorPages({
+    spec: { ...spec, reread_on_empty: 3 },
+    variables: {},
+    execute: run.execute,
+    wait: async () => {},
+  });
+  expect(result.status).toBe("succeeded");
+  expect(run.calls).toHaveLength(1);
+  expect(paginationOf(result)).toMatchObject({ items: 1, rereads: 0 });
+});
+
+test("fails as incomplete outside the expected item range", async () => {
+  for (const [ids, expected] of [
+    [["a"], { min: 2 }],
+    [["a", "b", "c"], { max: 2 }],
+  ] as const) {
+    const run = scripted([page([]), page([...ids])]);
+    const result = await runGraphqlCursorPages({
+      spec: { ...spec, reread_on_empty: 1, expected_items: expected },
+      variables: {},
+      execute: run.execute,
+      wait: async () => {},
+    });
+    expect(result.error?.code).toBe("graphql_pagination_incomplete");
+    expect(result.output).toBeUndefined();
+    expect(paginationOf(result)).toMatchObject({ complete: false, rereads: 1 });
+  }
+});
+
+test("fails when a later page reports a different totalCount", async () => {
+  const run = scripted([page(["a"], 2, true, "next"), page(["b"], 3)]);
+  const result = await runGraphqlCursorPages({ spec, variables: {}, execute: run.execute });
+  expect(result.error?.code).toBe("graphql_pagination_incomplete");
+  expect(run.calls).toEqual([null, "next"]);
+});

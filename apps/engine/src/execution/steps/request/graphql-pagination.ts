@@ -7,6 +7,8 @@ export interface GraphqlCursorPagination {
   required_connection_paths?: string[] | undefined;
   max_pages: number;
   max_items: number;
+  expected_items?: { min?: number | undefined; max?: number | undefined } | undefined;
+  reread_on_empty?: number | undefined;
 }
 
 const MAX_ACCUMULATED_BYTES = 4 * 1024 * 1024;
@@ -22,7 +24,12 @@ function connectionAt(output: unknown, path: string): Record<string, unknown> | 
     : null;
 }
 
-type CursorProgress = { pages: number; items: number; limit: RequestPaginationSummary["limit"] };
+type CursorProgress = {
+  pages: number;
+  items: number;
+  limit: RequestPaginationSummary["limit"];
+  rereads: number;
+};
 
 function cursorSummary(progress: CursorProgress, complete: boolean): RequestPaginationSummary {
   return {
@@ -33,6 +40,7 @@ function cursorSummary(progress: CursorProgress, complete: boolean): RequestPagi
     complete,
     truncated: false,
     limit: progress.limit,
+    rereads: progress.rereads,
   };
 }
 
@@ -79,22 +87,56 @@ function idOf(item: unknown, itemsField: GraphqlCursorPagination["items_field"])
     : undefined;
 }
 
-export async function runGraphqlCursorPages(p: {
+type CursorRead = { result: StepResult; progress: CursorProgress; complete: boolean };
+
+type CursorReadInput = {
   spec: GraphqlCursorPagination;
   variables: Record<string, unknown>;
   execute: (variables: Record<string, unknown>) => Promise<StepResult>;
-}): Promise<StepResult> {
+};
+
+export async function runGraphqlCursorPages(
+  p: CursorReadInput & { wait?: (() => Promise<void>) | undefined },
+): Promise<StepResult> {
   const started = Date.now();
+  const rereadLimit = p.spec.reread_on_empty ?? 0;
+  let read = await readCursorPages(p, 0, started);
+  while (read.complete && read.progress.items === 0 && read.progress.rereads < rereadLimit) {
+    await p.wait?.();
+    read = await readCursorPages(p, read.progress.rereads + 1, started);
+  }
+  if (!read.complete) return read.result;
+  const { min, max } = p.spec.expected_items ?? {};
+  const count = read.progress.items;
+  const outOfRange =
+    min !== undefined && count < min
+      ? `The complete read returned ${count} items, fewer than the expected minimum ${min}${read.progress.rereads > 0 ? ` after ${read.progress.rereads + 1} reads` : ""}.`
+      : max !== undefined && count > max
+        ? `The complete read returned ${count} items, more than the expected maximum ${max}.`
+        : null;
+  return outOfRange ? incomplete(outOfRange, read.result, started, read.progress) : read.result;
+}
+
+async function readCursorPages(
+  p: CursorReadInput,
+  rereads: number,
+  started: number,
+): Promise<CursorRead> {
+  const failed = (result: StepResult, progress: CursorProgress): CursorRead => ({
+    result,
+    progress,
+    complete: false,
+  });
   const { spec } = p;
   if (
     p.variables[spec.cursor_variable] !== undefined &&
     p.variables[spec.cursor_variable] !== null
   ) {
-    return incomplete("Start the complete read without an initial cursor.", null, started, {
-      pages: 0,
-      items: 0,
-      limit: null,
-    });
+    const progress = { pages: 0, items: 0, limit: null, rereads };
+    return failed(
+      incomplete("Start the complete read without an initial cursor.", null, started, progress),
+      progress,
+    );
   }
   const items: unknown[] = [];
   const seenCursors = new Set<string>();
@@ -108,50 +150,43 @@ export async function runGraphqlCursorPages(p: {
     pages: pagesRead,
     items: items.length,
     limit,
+    rereads,
   });
+  const stop = (reason: string, limit: CursorProgress["limit"] = null): CursorRead =>
+    failed(incomplete(reason, last, started, progress(limit)), progress(limit));
   for (let page = 1; page <= spec.max_pages; page++) {
     const variables = { ...p.variables, [spec.cursor_variable]: cursor };
     last = await p.execute(variables);
-    if (last.status !== "succeeded") return withSummary(last, progress(), false);
+    if (last.status !== "succeeded")
+      return failed(withSummary(last, progress(), false), progress());
     pagesRead = page;
     if (last.warnings?.some((warning) => warning.code === "graphql_partial_errors")) {
-      return incomplete(
-        "The GraphQL page contained partial errors; repeat after repairing the query.",
-        last,
-        started,
-        progress(),
-      );
+      return stop("The GraphQL page contained partial errors; repeat after repairing the query.");
     }
     const connection = connectionAt(last.output, spec.connection_path);
     const pageItems = connection?.[spec.items_field];
     const info = connection?.pageInfo;
     if (!connection || !Array.isArray(pageItems) || !info || typeof info !== "object") {
-      return incomplete(
-        "The response lacks the configured connection, items or pageInfo.",
-        last,
-        started,
-        progress(),
-      );
+      return stop("The response lacks the configured connection, items or pageInfo.");
     }
     const pageInfo = info as Record<string, unknown>;
+    const firstTotal = firstConnection?.totalCount;
+    if (
+      page > 1 &&
+      typeof firstTotal === "number" &&
+      typeof connection.totalCount === "number" &&
+      connection.totalCount !== firstTotal
+    ) {
+      return stop("A later page reports a different totalCount; repeat the read.");
+    }
     if (typeof pageInfo.hasNextPage !== "boolean") {
-      return incomplete("The response lacks pageInfo.hasNextPage.", last, started, progress());
+      return stop("The response lacks pageInfo.hasNextPage.");
     }
     if (pageItems.some((item) => item === null)) {
-      return incomplete(
-        "The connection contains a null item; completeness cannot be verified.",
-        last,
-        started,
-        progress(),
-      );
+      return stop("The connection contains a null item; completeness cannot be verified.");
     }
     if (spec.items_field === "edges" && pageItems.some((item) => nodeOf(item, "edges") == null)) {
-      return incomplete(
-        "The connection contains an edge without a node.",
-        last,
-        started,
-        progress(),
-      );
+      return stop("The connection contains an edge without a node.");
     }
     for (const item of pageItems) {
       const node = nodeOf(item, spec.items_field);
@@ -166,38 +201,23 @@ export async function runGraphqlCursorPages(p: {
           typeof nestedPageInfo !== "object" ||
           typeof (nestedPageInfo as Record<string, unknown>).hasNextPage !== "boolean"
         ) {
-          return incomplete(
-            `The response lacks the required nested connection ${path} or its pageInfo.`,
-            last,
-            started,
-            progress(),
-          );
+          return stop(`The response lacks the required nested connection ${path} or its pageInfo.`);
         }
         if ((nestedPageInfo as Record<string, unknown>).hasNextPage) {
-          return incomplete(
+          return stop(
             `The nested connection ${path} has more pages; read it separately or increase its page size.`,
-            last,
-            started,
-            progress(),
           );
         }
         if (typeof nested.totalCount === "number" && nested.totalCount !== nestedItems.length) {
-          return incomplete(
-            `The nested connection ${path} item count differs from totalCount.`,
-            last,
-            started,
-            progress(),
-          );
+          return stop(`The nested connection ${path} item count differs from totalCount.`);
         }
       }
     }
     bytes += Buffer.byteLength(JSON.stringify(pageItems));
     if (items.length + pageItems.length > spec.max_items || bytes > MAX_ACCUMULATED_BYTES) {
-      return incomplete(
+      return stop(
         "The configured item or memory limit was reached before completion.",
-        last,
-        started,
-        progress(items.length + pageItems.length > spec.max_items ? "max_items" : "max_bytes"),
+        items.length + pageItems.length > spec.max_items ? "max_items" : "max_bytes",
       );
     }
     items.push(...pageItems);
@@ -208,43 +228,31 @@ export async function runGraphqlCursorPages(p: {
     if (!pageInfo.hasNextPage) {
       const total = firstConnection?.totalCount;
       if (typeof total === "number" && total !== items.length) {
-        return incomplete(
-          "Retrieved item count differs from totalCount; repeat the read.",
-          last,
-          started,
-          progress(),
-        );
+        return stop("Retrieved item count differs from totalCount; repeat the read.");
       }
       const ids = items.map((item) => idOf(item, spec.items_field));
       if (ids.every((id) => typeof id === "string") && new Set(ids).size !== ids.length) {
-        return incomplete(
-          "Duplicate item IDs prevent a complete snapshot.",
-          last,
-          started,
-          progress(),
-        );
+        return stop("Duplicate item IDs prevent a complete snapshot.");
       }
-      if (!firstConnection)
-        return incomplete("The first page is unavailable.", last, started, progress());
+      if (!firstConnection) return stop("The first page is unavailable.");
       firstConnection[spec.items_field] = items;
       firstConnection.pageInfo = pageInfo;
-      return withSummary(
-        { ...last, output: firstOutput, duration_ms: Date.now() - started },
-        progress(),
-        true,
-      );
+      return {
+        result: withSummary(
+          { ...last, output: firstOutput, duration_ms: Date.now() - started },
+          progress(),
+          true,
+        ),
+        progress: progress(),
+        complete: true,
+      };
     }
     const next = pageInfo.endCursor;
     if (typeof next !== "string" || next.length === 0 || seenCursors.has(next)) {
-      return incomplete("The next cursor is missing or repeated.", last, started, progress());
+      return stop("The next cursor is missing or repeated.");
     }
     seenCursors.add(next);
     cursor = next;
   }
-  return incomplete(
-    "The page limit was reached while hasNextPage remained true.",
-    last,
-    started,
-    progress("max_pages"),
-  );
+  return stop("The page limit was reached while hasNextPage remained true.", "max_pages");
 }

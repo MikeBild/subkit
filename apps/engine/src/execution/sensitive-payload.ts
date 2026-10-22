@@ -136,10 +136,20 @@ export function sensitiveFailure(code?: string) {
 export function sensitiveRequestMeta(meta: RequestMeta | null | undefined): RequestMeta | null {
   const pagination = meta && "pagination" in meta ? meta.pagination : undefined;
   if (!pagination) return null;
-  const { strategy, pages, items, duplicates_dropped, complete, truncated, limit } = pagination;
+  const { strategy, pages, items, duplicates_dropped, complete, truncated, limit, rereads } =
+    pagination;
   return {
     driver: "sensitive",
-    pagination: { strategy, pages, items, duplicates_dropped, complete, truncated, limit },
+    pagination: {
+      strategy,
+      pages,
+      items,
+      duplicates_dropped,
+      complete,
+      truncated,
+      limit,
+      ...(rereads !== undefined ? { rereads } : {}),
+    },
   };
 }
 

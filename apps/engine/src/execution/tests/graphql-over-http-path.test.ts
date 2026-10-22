@@ -230,6 +230,99 @@ describe("graphql block on an http connector through path /graphql", () => {
     );
   });
 
+  test("an empty read is read again through the audited request path and its backoff", async () => {
+    const empty = {
+      data: {
+        user: {
+          projectV2: {
+            items: { totalCount: 0, nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+          },
+        },
+      },
+    };
+    answer = (after, call) =>
+      call === 1 ? { status: 200, body: empty } : { status: 200, body: page(after) };
+    const waits: number[] = [];
+    const guard = {
+      connection_path: "user.projectV2.items",
+      cursor_variable: "after",
+      items_field: "nodes",
+      max_pages: 10,
+      max_items: 100,
+      expected_items: { min: 1 },
+      reread_on_empty: 2,
+    };
+    const result = await withRateLimitClockForTests(
+      { now: () => getTestNow(), sleep: async (ms) => void waits.push(ms) },
+      () =>
+        run(
+          "gql-path-empty-reread",
+          projectStep({ retry_backoff_ms: 500 }, { cursor_pagination: guard }),
+        ),
+    );
+    expect(result.status).toBe("succeeded");
+    expect(items(result.output).map((node) => node.id)).toEqual(["a", "b", "c", "d", "e"]);
+    expect(seen.map((entry) => entry.after)).toEqual([null, null, "cursor-2", "cursor-4"]);
+    expect(waits).toHaveLength(1);
+    expect(waits[0]).toBeGreaterThanOrEqual(400);
+    expect(waits[0]).toBeLessThanOrEqual(600);
+    const meta = result.steps[0]?.request_meta as { pagination?: Record<string, unknown> } | null;
+    expect(meta?.pagination).toMatchObject({ complete: true, items: 5, rereads: 1 });
+    const invoked = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.action, "connector.invoked")));
+    expect(
+      invoked.filter(
+        (row) => (row.metadata as { execution_id?: string }).execution_id === result.execution_id,
+      ),
+    ).toHaveLength(4);
+  });
+
+  test("an empty read below the expected minimum fails as incomplete after every reread", async () => {
+    answer = () => ({
+      status: 200,
+      body: {
+        data: {
+          user: {
+            projectV2: {
+              items: {
+                totalCount: 0,
+                nodes: [],
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
+            },
+          },
+        },
+      },
+    });
+    const result = await withRateLimitClockForTests(
+      { now: () => getTestNow(), sleep: async () => {} },
+      () =>
+        run(
+          "gql-path-empty-confirmed",
+          projectStep(
+            {},
+            {
+              cursor_pagination: {
+                connection_path: "user.projectV2.items",
+                cursor_variable: "after",
+                max_pages: 10,
+                max_items: 100,
+                expected_items: { min: 1 },
+                reread_on_empty: 2,
+              },
+            },
+          ),
+        ),
+    );
+    expect(result.status).toBe("failed");
+    expect((result.steps[0]?.error as { code?: string })?.code).toBe(
+      "graphql_pagination_incomplete",
+    );
+    expect(seen).toHaveLength(3);
+  });
+
   test("a mutation with cursor pagination is refused before any request", async () => {
     const result = await run(
       "gql-path-mutation",

@@ -99,6 +99,40 @@ test("GraphQL pagination accepts valid required nested connection paths", () => 
   ).toBe(false);
 });
 
+test("GraphQL pagination validates the empty-read guard", () => {
+  const withGuard = (guard: Record<string, unknown>) =>
+    StepSchema.safeParse({
+      kind: "request",
+      id: "read",
+      url: "https://api.example.com/graphql",
+      graphql: {
+        operation: "query",
+        query:
+          "query($after: String) { items(after: $after) { nodes { id } pageInfo { hasNextPage endCursor } } }",
+        cursor_pagination: {
+          connection_path: "items",
+          cursor_variable: "after",
+          max_pages: 2,
+          max_items: 50,
+          ...guard,
+        },
+      },
+    });
+  expect(withGuard({ expected_items: { min: 1 }, reread_on_empty: 2 }).success).toBe(true);
+  expect(withGuard({ expected_items: { min: 1, max: 80 } }).success).toBe(true);
+  expect(withGuard({ reread_on_empty: 0 }).success).toBe(true);
+  const unsatisfiable = withGuard({ expected_items: { min: 5, max: 2 } });
+  expect(unsatisfiable.success).toBe(false);
+  expect(JSON.stringify(unsatisfiable.error?.issues)).toContain("min > max (unsatisfiable)");
+  const empty = withGuard({ expected_items: {} });
+  expect(empty.success).toBe(false);
+  expect(JSON.stringify(empty.error?.issues)).toContain("at least one of `min` or `max`");
+  expect(withGuard({ reread_on_empty: 4 }).success).toBe(false);
+  expect(withGuard({ reread_on_empty: -1 }).success).toBe(false);
+  expect(withGuard({ reread_on_empty: 1.5 }).success).toBe(false);
+  expect(withGuard({ expected_items: { min: -1 } }).success).toBe(false);
+});
+
 describe("baseStep.for_each — W3a schema", () => {
   test("for_each is accepted on a request step (Zod parse)", () => {
     const result = StepSchema.safeParse({

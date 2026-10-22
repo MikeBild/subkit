@@ -140,6 +140,8 @@ type GraphQLConfig = {
         required_connection_paths?: string[] | undefined;
         max_pages: number;
         max_items: number;
+        expected_items?: { min?: number | undefined; max?: number | undefined } | undefined;
+        reread_on_empty?: number | undefined;
       }
     | undefined;
 };
@@ -160,6 +162,30 @@ const GraphQLConfigSchema: z.ZodType<GraphQLConfig> = z
           .optional(),
         max_pages: z.number().int().min(1).max(100),
         max_items: z.number().int().min(1).max(10_000),
+        expected_items: z
+          .object({
+            min: z.number().int().min(0).optional(),
+            max: z.number().int().min(0).optional(),
+          })
+          .superRefine((bounds, zctx) => {
+            if (bounds.min === undefined && bounds.max === undefined) {
+              zctx.addIssue({
+                code: "custom",
+                message: "expected_items object must set at least one of `min` or `max`",
+              });
+            } else if (
+              bounds.min !== undefined &&
+              bounds.max !== undefined &&
+              bounds.min > bounds.max
+            ) {
+              zctx.addIssue({
+                code: "custom",
+                message: `expected_items { min: ${bounds.min}, max: ${bounds.max} } has min > max (unsatisfiable)`,
+              });
+            }
+          })
+          .optional(),
+        reread_on_empty: z.number().int().min(0).max(3).optional(),
       })
       .optional(),
   })

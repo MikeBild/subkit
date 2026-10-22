@@ -23156,6 +23156,11 @@ export interface components {
                     required_connection_paths?: string[];
                     max_pages: number;
                     max_items: number;
+                    expected_items?: {
+                        min?: number;
+                        max?: number;
+                    };
+                    reread_on_empty?: number;
                 };
             } | string;
             /**
@@ -23974,6 +23979,7 @@ export interface components {
             truncated: boolean;
             /** @enum {string|null} */
             limit: "max_pages" | "max_items" | "max_bytes" | null;
+            rereads?: number;
         };
         GraphqlRequestMeta: {
             /** @enum {string} */

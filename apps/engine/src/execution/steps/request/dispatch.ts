@@ -1247,6 +1247,11 @@ async function dispatchRequestStep(
                 spec: cursorPagination,
                 variables: args.variables ?? {},
                 execute: executeGraphqlPage,
+                wait: () =>
+                  (rateLimitSleepOverride() ?? sleep)(
+                    backoffMs(0, resolveRetryPolicy(p.step).backoff_base_ms),
+                    signal,
+                  ),
               })
             : await executeGraphqlPage(args.variables ?? {});
           await recordDriverOutcome(p.ctx.db, connector, graphqlEvidence(graphqlResult));

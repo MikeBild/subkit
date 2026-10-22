@@ -130,6 +130,7 @@ export interface RequestPaginationSummary {
   complete: boolean;
   truncated: boolean;
   limit: "max_pages" | "max_items" | "max_bytes" | null;
+  rereads?: number;
 }
 
 export type RequestMeta =

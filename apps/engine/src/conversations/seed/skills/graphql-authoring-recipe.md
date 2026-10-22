@@ -92,6 +92,8 @@ For a standard Relay connection, `graphql.cursor_pagination` can collect pages i
 
 When each item must contain a complete nested connection, list its path relative to the item node in `required_connection_paths`, for example `["fieldValues"]`. A nested `hasNextPage: true`, missing `pageInfo`, or mismatched `totalCount` fails the step without output. Increase that nested query's page size within its limit or read each item separately; the outer cursor cannot continue an inner connection.
 
+A consistent empty answer (no items, `totalCount: 0`) passes those checks. When a source is known to be non-empty, or its provider sometimes returns an empty connection by mistake, set `expected_items` (`{ "min": 1 }`, optionally `max`) and `reread_on_empty` (0 to 3). Each re-read starts from the first page, waits the step's `retry_backoff_ms`, and goes through the same egress, rate-limit and audit path. A count outside `expected_items` after all reads fails with `graphql_pagination_incomplete`; the step's pagination summary reports `rereads`.
+
 For a workflow loop instead, pass the cursor from the previous step:
 
 ```json
