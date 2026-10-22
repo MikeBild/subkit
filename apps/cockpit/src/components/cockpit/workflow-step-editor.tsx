@@ -18,9 +18,9 @@ import {
   ChoiceCards,
   ContextHelp,
   FormDialog,
+  Input,
   TechnicalDetails,
 } from "@/components/cockpit/patterns";
-import { Input } from "@/components/ui/input";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";

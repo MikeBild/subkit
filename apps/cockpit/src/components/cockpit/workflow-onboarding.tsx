@@ -6,12 +6,12 @@ import { CreateChoiceDialog } from "@/components/cockpit/create-choice";
 import { SolutionGallery, useSolutionTemplates } from "@/components/cockpit/create-from-template";
 import {
   ActionButton,
+  Input,
   OnboardingFrame,
   Section,
   StartChecklist,
   type StartStep,
 } from "@/components/cockpit/patterns";
-import { Input } from "@/components/ui/input";
 import { useI18n } from "@/lib/i18n-context";
 
 const GALLERY_SIZE = 6;

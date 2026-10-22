@@ -172,7 +172,7 @@ export function WorkflowRuns({
         meta: cause && cause !== "ok" ? causeClassLabel(cause, t).text : undefined,
         aside: (
           <>
-            <span className="hidden max-w-48 truncate text-xs text-muted-foreground sm:inline">
+            <span className="hidden w-40 truncate text-right text-xs text-muted-foreground sm:inline">
               {caller.who}
             </span>
             <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">
