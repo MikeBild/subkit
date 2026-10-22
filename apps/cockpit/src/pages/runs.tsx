@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
+import { Check, ChevronRight, Minus, X } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
@@ -22,14 +23,14 @@ import {
   FilterBar,
   GroupingTabs,
   RecordSheet,
-  RowName,
   RowsSkeleton,
   Section,
   StatusBadge,
   StatusStrip,
   SummaryLine,
+  statusTone,
+  TechnicalDetails,
 } from "@/components/cockpit/patterns";
-import { RecordTable } from "@/components/cockpit/record-table";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
@@ -44,7 +45,9 @@ import { refusedSignIn } from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { type CursorPage, listPagePath, useInfiniteList } from "@/lib/use-infinite-list";
+import { cn } from "@/lib/utils";
 import { windowFilterLabel } from "@/lib/window-filter";
+import { workflowStepKindKey } from "@/lib/workflow-steps";
 import {
   failedStatusesFor,
   formatRunDuration,
@@ -311,71 +314,6 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   const caller = runCaller(current, directory, t);
   const stepNames = useNameIndex(session.permissions, true);
   const step = openStep === null ? null : (stepItems[openStep] ?? null);
-  const stepColumns: CockpitColumn<ExecutionStep>[] = useMemo(() => {
-    const column = tableColumns<ExecutionStep>({ t, dateTime });
-    return [
-      column.custom(
-        "step",
-        (item) => item.step_key,
-        t("workflowSteps.column.step"),
-        (item, index) => (
-          <div className="flex min-w-0 flex-col gap-1">
-            <RowName>
-              <span className="font-mono text-xs" data-testid={`run-detail-step-${index}`}>
-                {index + 1} {item.step_key}
-              </span>
-            </RowName>
-            <CollapsibleSection
-              label={t("connectorDetail.connection.speaksAs")}
-              testId={`run-step-identities-inline-${index}`}
-            >
-              <RunStepIdentityFacts
-                snapshots={stepCredentialSnapshots(item)}
-                connectorNames={stepNames.connector}
-              />
-            </CollapsibleSection>
-          </div>
-        ),
-        { width: "w-[35%]", ownsRowLink: true },
-      ),
-      column.custom(
-        "operation",
-        (item) => item.kind,
-        t("resource.field.kind"),
-        (item) => {
-          const effect = stepEffectKind(item);
-          const connector = stepConnectorId(item);
-          return [
-            effect
-              ? t(effect === "read" ? "sideEffects.read" : "sideEffects.write")
-              : t("runs.caller.unknown"),
-            connector
-              ? (stepNames.connector.get(connector) ?? t("inbox.resource.connector"))
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ");
-        },
-        { width: "w-[30%]" },
-      ),
-      column.custom(
-        "status",
-        (item) => item.status,
-        t("resource.field.status"),
-        (item) => <StatusBadge state={item.status} />,
-        { width: "w-[20%]" },
-      ),
-      column.custom(
-        "duration",
-        (item) => item.duration_ms,
-        t("runs.column.duration"),
-        (item) =>
-          item.duration_ms === null ? MISSING : formatRunDuration(locale, item.duration_ms),
-        { width: "w-[15%]" },
-      ),
-    ];
-  }, [t, dateTime, locale, stepNames]);
-
   return (
     <div className="flex min-w-0 flex-col gap-6" data-testid="run-detail-body">
       {failed && sentence ? (
@@ -493,12 +431,10 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
             </Copyable>
           ) : null}
           <Section label={t("runs.detail.steps")} testId="run-detail-steps">
-            <RecordTable
-              columns={stepColumns}
-              data={stepItems}
-              collectionId="run-detail-step-list"
-              emptyLine={t("runs.detail.noSteps")}
-              onOpen={(item) => setOpenStep(stepItems.indexOf(item))}
+            <RunStepChain
+              steps={stepItems}
+              connectorNames={stepNames.connector}
+              onOpen={setOpenStep}
             />
             {step && openStep !== null ? (
               <RunStepSheet step={step} index={openStep} onClose={() => setOpenStep(null)} />
@@ -594,6 +530,84 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   );
 }
 
+const STEP_MARK: Record<"ok" | "warn" | "error" | "neutral", string> = {
+  ok: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  warn: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  error: "bg-destructive/10 text-destructive",
+  neutral: "bg-muted text-muted-foreground",
+};
+
+function RunStepChain({
+  steps,
+  connectorNames,
+  onOpen,
+}: {
+  steps: readonly ExecutionStep[];
+  connectorNames: ReadonlyMap<string, string>;
+  onOpen(index: number): void;
+}) {
+  const { t, locale } = useI18n();
+  if (steps.length === 0)
+    return <p className="text-sm text-muted-foreground">{t("runs.detail.noSteps")}</p>;
+  return (
+    <ol
+      className="relative flex flex-col before:absolute before:top-3 before:bottom-3 before:left-[9px] before:w-px before:bg-border"
+      data-testid="run-detail-step-chain"
+    >
+      {steps.map((item, index) => {
+        const tone = statusTone(item.status);
+        const connector = stepConnectorId(item);
+        const effect = stepEffectKind(item);
+        const Mark = tone === "ok" ? Check : tone === "error" ? X : Minus;
+        return (
+          <li key={item.id}>
+            <button
+              type="button"
+              onClick={() => onOpen(index)}
+              className="relative flex w-full items-start gap-3 rounded-md pb-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&:hover_[data-slot=step-title]]:underline"
+              data-testid={`run-detail-step-${index}`}
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "relative z-10 mt-0.5 inline-grid size-5 shrink-0 place-items-center rounded-full [&_svg]:size-3",
+                  STEP_MARK[tone],
+                )}
+              >
+                <Mark />
+              </span>
+              <span className="min-w-0 flex-1 text-sm">
+                <span className="block font-medium underline-offset-4" data-slot="step-title">
+                  {[
+                    t("workflowFlow.stepNumber", { number: index + 1 }),
+                    t(workflowStepKindKey(item.kind)),
+                    connector ? (connectorNames.get(connector) ?? null) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {[
+                    statusLabel(t, item.status),
+                    effect ? t(effect === "read" ? "sideEffects.read" : "sideEffects.write") : null,
+                    item.duration_ms === null ? null : formatRunDuration(locale, item.duration_ms),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </span>
+              <ChevronRight
+                aria-hidden="true"
+                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+              />
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export function RunStepIdentityFacts({
   snapshots,
   connectorNames,
@@ -672,11 +686,10 @@ function RunStepSheet({
       open
       onOpenChange={(next) => !next && onClose()}
       size="wide"
-      title={
-        <span className="font-mono">
-          {index + 1} {step.step_key}
-        </span>
-      }
+      title={[
+        t("workflowFlow.stepNumber", { number: index + 1 }),
+        t(workflowStepKindKey(step.kind)),
+      ].join(" · ")}
       badge={<StatusBadge state={step.status} />}
       testId="run-step-sheet"
       closeTestId="run-step-close"
@@ -697,8 +710,18 @@ function RunStepSheet({
         <p className="text-sm text-muted-foreground" data-testid="run-step-nothing">
           {t("runs.step.nothingRecorded")}
         </p>
-      ) : (
-        evidence.map(({ key, label, text }) => (
+      ) : null}
+      <TechnicalDetails testId="run-step-technical">
+        <FactList
+          items={[
+            {
+              label: t("workflowFlow.sheet.key"),
+              value: <span className="break-all font-mono text-xs">{step.step_key}</span>,
+              testId: "run-step-key",
+            },
+          ]}
+        />
+        {evidence.map(({ key, label, text }) => (
           <Copyable key={key}>
             <CodeBlock
               label={label}
@@ -706,8 +729,8 @@ function RunStepSheet({
               testId={`run-step-${key}`}
             />
           </Copyable>
-        ))
-      )}
+        ))}
+      </TechnicalDetails>
     </RecordSheet>
   );
 }

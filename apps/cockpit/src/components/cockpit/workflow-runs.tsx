@@ -2,28 +2,37 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
+import { useActorDirectory } from "@/app/actor-directory";
 import {
-  type CockpitColumn,
+  DataState,
   FilterBar,
-  StatusBadge,
-  SummaryLine,
+  InfiniteSentinel,
+  RowsSkeleton,
+  statusTone,
+  TabBody,
+  Timeline,
+  type TimelineGroup,
 } from "@/components/cockpit/patterns";
-import { RecordTable } from "@/components/cockpit/record-table";
-import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
-import { runHereHref, useOpenRunSheet } from "@/components/cockpit/run-sheet";
-import { tableColumns } from "@/components/cockpit/table-columns";
+import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { causeClassLabel } from "@/lib/cause-class";
-import type { TranslationKey } from "@/lib/i18n";
+import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { LabelText } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
 import { useInfiniteList } from "@/lib/use-infinite-list";
-import { shortIdentifier } from "@/pages/audit-model";
+import { cn } from "@/lib/utils";
+import {
+  averageDurationMs,
+  type DayLabel,
+  groupRunsByDay,
+  runStartedAt,
+  successRate,
+} from "@/lib/workflow-flow";
 import {
   failedStatusesFor,
   formatRunDuration,
   isExecutionRecord,
   RUN_STATUSES,
+  runCaller,
   runDurationMs,
 } from "@/pages/runs-model";
 
@@ -33,7 +42,11 @@ type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 const PAGE_SIZE = 25;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-function useWeek(workflowId: string): string | null {
+function useWeek(workflowId: string): {
+  total: number | undefined;
+  failed: number | undefined;
+  summary: string | null;
+} {
   const { t } = useI18n();
   const [from] = useState(() => new Date(Date.now() - WEEK_MS).toISOString());
   const scope = `workflow_id=${encodeURIComponent(workflowId)}&started_from=${encodeURIComponent(from)}`;
@@ -50,7 +63,11 @@ function useWeek(workflowId: string): string | null {
       ),
   });
   const summary = weekSummary(week.data?.total, failed.data?.total);
-  return summary ? t(summary.key, summary.values) : null;
+  return {
+    total: week.data?.total,
+    failed: failed.data?.total,
+    summary: summary ? t(summary.key, summary.values) : null,
+  };
 }
 
 export function weekSummary(
@@ -70,6 +87,49 @@ export function weekSummary(
   };
 }
 
+function Tile({
+  label,
+  value,
+  alert,
+  testId,
+}: {
+  label: string;
+  value: string;
+  alert?: boolean;
+  testId: string;
+}) {
+  return (
+    <div className="flex flex-col rounded-md border px-3 py-2" data-testid={testId}>
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span
+        className={cn("text-lg font-semibold tabular-nums", alert && "text-destructive")}
+        data-slot="tile-value"
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function useDayLabel(): (label: DayLabel) => string {
+  const { t, locale } = useI18n();
+  const format = useMemo(
+    () =>
+      new Intl.DateTimeFormat(LOCALE_TAGS[locale], {
+        weekday: "long",
+        day: "2-digit",
+        month: "2-digit",
+      }),
+    [locale],
+  );
+  return (label) =>
+    label.kind === "today"
+      ? t("workflowRuns.today")
+      : label.kind === "yesterday"
+        ? t("workflowRuns.yesterday")
+        : format.format(label.date);
+}
+
 export function WorkflowRuns({
   workflowId,
   emptyAction,
@@ -77,10 +137,12 @@ export function WorkflowRuns({
   workflowId: string;
   emptyAction?: ReactNode;
 }) {
-  const { t, dateTime, locale } = useI18n();
+  const { t, locale, dateTime } = useI18n();
   const sheets = useOpenRunSheet();
+  const directory = useActorDirectory(true);
+  const dayLabel = useDayLabel();
   const [status, setStatus] = useState("all");
-  const summary = useWeek(workflowId);
+  const week = useWeek(workflowId);
   const list = useInfiniteList<ExecutionListItem>(
     "/v1/executions",
     { workflow_id: workflowId, status: status === "all" ? null : status },
@@ -88,101 +150,108 @@ export function WorkflowRuns({
   );
   const { query } = list;
   const rows = list.items.filter((item): item is ExecutionListItem => isExecutionRecord(item));
-  const columns = useMemo<CockpitColumn<ExecutionListItem>[]>(() => {
-    const column = tableColumns<ExecutionListItem>({ t, dateTime });
-    return [
-      column.custom(
-        "run",
-        (run) => run.id,
-        t("workflowRuns.column.run"),
-        (run) => <span title={run.id}>#{shortIdentifier(run.id)}</span>,
-        { width: "w-[20%]" },
-      ),
-      column.custom(
-        "details",
-        (run) => run.failure?.cause_class ?? null,
-        t("workflowRuns.column.details"),
-        (run, index) => {
-          const cause = run.failure?.cause_class;
-          return cause && cause !== "ok" ? (
-            <span className="text-muted-foreground">
-              <LabelText label={causeClassLabel(cause, t)} />
-              <RefusalReasonLine
-                reason={run.failure?.refusal_reason}
-                testId={`workflow-recent-run-${index}-refusal-reason`}
-                className="block text-xs"
-              />
+  const clock = useMemo(
+    () => new Intl.DateTimeFormat(LOCALE_TAGS[locale], { hour: "2-digit", minute: "2-digit" }),
+    [locale],
+  );
+  const average = averageDurationMs(rows.map((run) => runDurationMs(run)));
+  const rate = successRate(week.total, week.failed);
+  const groups: TimelineGroup[] = groupRunsByDay(rows, new Date()).map((group) => ({
+    label: dayLabel(group.label),
+    items: group.items.map((run, index) => {
+      const duration = runDurationMs(run);
+      const cause = run.failure?.cause_class;
+      const caller = runCaller(run, directory, t);
+      const started = runStartedAt(run);
+      return {
+        id: run.id,
+        tone: statusTone(run.status),
+        time: clock.format(new Date(started)),
+        dateTime: started,
+        title: statusLabel(t, run.status),
+        meta: cause && cause !== "ok" ? causeClassLabel(cause, t).text : undefined,
+        aside: (
+          <>
+            <span className="hidden max-w-48 truncate text-xs text-muted-foreground sm:inline">
+              {caller.who}
             </span>
-          ) : (
-            <span className="tabular-nums">
-              {runDurationMs(run) === null
-                ? "—"
-                : formatRunDuration(locale, runDurationMs(run) ?? 0)}
+            <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">
+              {duration === null ? "—" : formatRunDuration(locale, duration)}
             </span>
-          );
-        },
-        { width: "w-[36%]" },
-      ),
-      column.custom(
-        "status",
-        (run) => run.status,
-        t("resource.field.status"),
-        (run) => <StatusBadge state={run.status} />,
-        { width: "w-[20%]" },
-      ),
-      column.date(
-        "started_at",
-        (run) => run.started_at ?? run.created_at,
-        t("runs.column.started"),
-        { width: "w-[24%]" },
-      ),
-    ];
-  }, [t, dateTime, locale]);
+          </>
+        ),
+        onOpen: () => sheets.run(run.id),
+        label: t("workflowRuns.open", {
+          when: dateTime(started),
+          status: statusLabel(t, run.status),
+        }),
+        testId: `workflow-run-${group.key}-${index}`,
+      };
+    }),
+  }));
   return (
-    <>
-      <SummaryLine text={summary ?? t("workflowRuns.title")} testId="workflow-runs-summary" />
-      <div data-testid="workflow-recent-runs">
-        <RecordTable
-          columns={columns}
-          data={rows}
-          collectionId="workflow-runs"
-          emptyLine={t(status === "all" ? "detail.noRuns" : "resource.noMatches")}
-          emptyAction={status === "all" ? emptyAction : undefined}
-          pending={query.isPending}
-          error={
-            query.error
-              ? { line: t("runs.detail.loadFailed"), onRetry: () => void query.refetch() }
-              : null
-          }
-          toolbar={
-            <FilterBar
-              selects={[
-                {
-                  value: status,
-                  onChange: setStatus,
-                  label: t("catalog.filterStatus"),
-                  testId: "workflow-runs-status",
-                  options: [
-                    { value: "all", label: t("catalog.allStatuses") },
-                    ...RUN_STATUSES.map((value) => ({ value, label: statusLabel(t, value) })),
-                  ],
-                },
-              ]}
-            />
-          }
-          onOpen={(run) => sheets.run(run.id)}
-          rowHref={(run) => runHereHref(run.id)}
-          rowLabel={(run) =>
-            t("workflowRuns.open", {
-              when: dateTime(run.started_at ?? run.created_at),
-              status: statusLabel(t, run.status),
-            })
-          }
-          infinite={list.infinite}
-          total={list.total}
-          getRowId={(run) => run.id}
+    <TabBody testId="workflow-history" summary={week.summary ?? t("workflowRuns.title")}>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="workflow-runs-tiles">
+        <Tile
+          label={t("workflowRuns.tile.runs")}
+          value={week.total === undefined ? "—" : String(week.total)}
+          testId="workflow-runs-tile-runs"
+        />
+        <Tile
+          label={t("workflowRuns.tile.rate")}
+          value={rate === null ? "—" : `${rate} %`}
+          testId="workflow-runs-tile-rate"
+        />
+        <Tile
+          label={t("workflowRuns.tile.duration")}
+          value={average === null ? "—" : formatRunDuration(locale, average)}
+          testId="workflow-runs-tile-duration"
+        />
+        <Tile
+          label={t("workflowRuns.tile.failed")}
+          value={week.failed === undefined ? "—" : String(week.failed)}
+          alert={(week.failed ?? 0) > 0}
+          testId="workflow-runs-tile-failed"
         />
       </div>
-    </>
+      <div className="flex flex-col gap-4" data-testid="workflow-recent-runs">
+        <FilterBar
+          selects={[
+            {
+              value: status,
+              onChange: setStatus,
+              label: t("catalog.filterStatus"),
+              testId: "workflow-runs-status",
+              options: [
+                { value: "all", label: t("catalog.allStatuses") },
+                ...RUN_STATUSES.map((value) => ({ value, label: statusLabel(t, value) })),
+              ],
+            },
+          ]}
+        />
+        {query.error ? (
+          <DataState
+            state="error"
+            line={t("runs.detail.loadFailed")}
+            onRetry={() => void query.refetch()}
+            testId="workflow-runs-error"
+          />
+        ) : query.isPending ? (
+          <RowsSkeleton count={3} testId="workflow-runs-loading" />
+        ) : rows.length === 0 ? (
+          <DataState
+            state="empty"
+            line={t(status === "all" ? "detail.noRuns" : "resource.noMatches")}
+            action={status === "all" ? emptyAction : undefined}
+            testId="workflow-runs-empty"
+          />
+        ) : (
+          <>
+            <Timeline groups={groups} testId="workflow-runs-timeline" />
+            <InfiniteSentinel infinite={list.infinite} testId="workflow-runs-more" />
+          </>
+        )}
+      </div>
+    </TabBody>
   );
 }
