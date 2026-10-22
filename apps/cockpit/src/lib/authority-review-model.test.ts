@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   type AuthorityReviewPreview,
   authorityReviewModel,
+  replacedVersion,
   reviewTitle,
 } from "@/lib/authority-review-model";
 import { translate } from "@/lib/i18n";
@@ -410,4 +411,11 @@ test("the activate-only help names a pausing schedule only when a trigger exists
     "Übernommen. Die bestehende Freigabe gilt weiter.",
   );
   expect(translate("en", "authority.adopted")).toBe("Applied. The existing approval stays valid.");
+});
+
+test("the subtitle names the running version the review replaces, not the approved baseline", () => {
+  expect(replacedVersion({ running: 12, reviewed: 13 })).toBe(12);
+  expect(replacedVersion({ running: 13, reviewed: 13 })).toBeNull();
+  expect(replacedVersion({ running: null, reviewed: 13 })).toBeNull();
+  expect(replacedVersion({ running: 12, reviewed: null })).toBeNull();
 });

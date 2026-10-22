@@ -41,7 +41,7 @@ import {
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { authorityIssues } from "@/lib/authority-issues";
-import { authorityReviewModel, reviewTitle } from "@/lib/authority-review-model";
+import { authorityReviewModel, replacedVersion, reviewTitle } from "@/lib/authority-review-model";
 import { automationQueryKeys, invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { carryOverChoice } from "@/lib/automation-state";
 import { existingGrant, grantScopeWarnings } from "@/lib/grant-context";
@@ -527,6 +527,12 @@ export function GrantWorkflowAuthority({
         : "authority.review.help.approveGrant",
   );
   const title = reviewTitle(titleFacts.data ?? null);
+  const replaced = review
+    ? replacedVersion({
+        running: context.activeVersion,
+        reviewed: titleFacts.data?.version ?? null,
+      })
+    : null;
   const remedy = useGrantRemedy(
     workflowId,
     environment,
@@ -588,12 +594,8 @@ export function GrantWorkflowAuthority({
               ? t("authority.adjustDescription")
               : [
                   t(environment === "prod" ? "authority.production" : "authority.development"),
-                  ...(review?.effect_changes_base
-                    ? [
-                        t("authority.review.replaces", {
-                          version: `v${review.effect_changes_base.version}`,
-                        }),
-                      ]
+                  ...(replaced !== null
+                    ? [t("authority.review.replaces", { version: `v${replaced}` })]
                     : []),
                 ].join(" · ")
         }

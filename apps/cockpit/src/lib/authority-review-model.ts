@@ -319,6 +319,17 @@ export function authorityReviewModel(input: {
   };
 }
 
+export function replacedVersion(versions: {
+  running: number | null;
+  reviewed: number | null;
+}): number | null {
+  return versions.running !== null &&
+    versions.reviewed !== null &&
+    versions.running !== versions.reviewed
+    ? versions.running
+    : null;
+}
+
 export function reviewTitle(facts: { name: string; version: number } | null): {
   key: TranslationKey;
   values: Record<string, string>;
