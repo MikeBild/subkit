@@ -355,9 +355,9 @@ describe("docs model", () => {
       kind: "anchor",
       anchor: "review",
     });
-    expect(resolveLink(FIXTURE, current, "en", "https://subkit.io/x")).toEqual({
+    expect(resolveLink(FIXTURE, current, "en", "https://example.com/x")).toEqual({
       kind: "external",
-      href: "https://subkit.io/x",
+      href: "https://example.com/x",
     });
     expect(resolveLink(FIXTURE, current, "en", "/docs/missing")).toEqual({
       kind: "chapter",

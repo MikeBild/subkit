@@ -38,18 +38,21 @@ async function get(path: string, headers: Record<string, string> = {}): Promise<
 }
 
 describe("GET /", () => {
-  test("an operator can enable a temporary same-origin Cockpit redirect and disable it again", async () => {
+  test("an operator can redirect browsers to the Cockpit while agents keep the Markdown entry point", async () => {
     await setConfigKey("server.root_redirect_to_cockpit", true, { force: true });
     try {
-      for (const accept of ["text/html", "text/markdown"]) {
-        const response = await get("/?next=https://external.example.test", {
-          accept,
-          "x-forwarded-host": "external.example.test",
-          "x-forwarded-proto": "https",
-        });
-        expect(response.status).toBe(302);
-        expect(response.headers.get("location")).toBe("/cockpit");
-        expect(response.headers.get("cache-control")).toBe("no-store");
+      const browser = await get("/?next=https://external.example.test", {
+        accept: "text/html",
+        "x-forwarded-host": "external.example.test",
+        "x-forwarded-proto": "https",
+      });
+      expect(browser.status).toBe(302);
+      expect(browser.headers.get("location")).toBe("/cockpit");
+      expect(browser.headers.get("cache-control")).toBe("no-store");
+      for (const accept of ["text/markdown", "*/*"]) {
+        const agent = await get("/", { accept });
+        expect(agent.status).toBe(200);
+        expect(agent.headers.get("content-type")).toContain("text/markdown");
       }
       expect((await get("/llms.txt")).status).toBe(200);
     } finally {

@@ -48,7 +48,7 @@ export const REPOSITORY_PATHS: DocsPaths = {
   templates: join(ROOT, "apps/engine/src/connectors/templates.json"),
 };
 
-const PUBLIC_PRODUCT_HOSTS = ["subkit.io", "subkit-cloud.mikebild.info", "learn.chatgpt.com"];
+const PUBLIC_PRODUCT_HOSTS = ["subkit-cloud.mikebild.info", "learn.chatgpt.com"];
 
 const ALLOWED_LOOPBACK = new Set(["127.0.0.1", "::1"]);
 

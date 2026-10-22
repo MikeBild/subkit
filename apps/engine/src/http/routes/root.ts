@@ -100,10 +100,11 @@ const route = createRoute({
   tags: ["docs"],
   summary: "What this engine hands out",
   description:
-    "An entry point for someone holding only this URL: the artefacts this engine serves from its own binary — Compose file, installer, documentation, API surface, web interface and health. Returns HTML to a browser and Markdown to everything else. When server.root_redirect_to_cockpit is enabled, returns a temporary redirect to /cockpit instead.",
+    "An entry point for someone holding only this URL: the artefacts this engine serves from its own binary — Compose file, installer, documentation, API surface, web interface and health. Returns HTML to a browser and Markdown to everything else. When server.root_redirect_to_cockpit is enabled, a browser asking for HTML gets a temporary redirect to /cockpit instead; every other client keeps the Markdown entry point.",
   responses: {
     302: {
-      description: "Temporary redirect to /cockpit when server.root_redirect_to_cockpit is enabled",
+      description:
+        "Temporary redirect to /cockpit for a browser asking for HTML when server.root_redirect_to_cockpit is enabled",
       headers: z.object({ location: z.literal("/cockpit") }),
     },
     200: {
@@ -122,7 +123,7 @@ function wantsHtml(c: Context<AppEnv>): boolean {
 
 export function registerRootRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, (c) => {
-    if (isConfigLoaded() && getConfig().server.root_redirect_to_cockpit) {
+    if (wantsHtml(c) && isConfigLoaded() && getConfig().server.root_redirect_to_cockpit) {
       c.header("cache-control", "no-store");
       return c.redirect("/cockpit", 302);
     }

@@ -270,7 +270,7 @@
     "web_scraper": {
       "runtime": {
         "respect_robots": true,
-        "user_agent": "sk-web-scraper/1.0 (+https://subkit.io/bot)",
+        "user_agent": "sk-web-scraper/1.0 (+https://github.com/MikeBild/subkit)",
         "max_pages": 1000,
         "max_chars_readability": 100000,
         "max_chars_markdown": 100000,

@@ -217,7 +217,7 @@ const ServerSection = z
       .boolean()
       .default(false)
       .describe(
-        "Redirect GET / to /cockpit with a non-cacheable temporary redirect. Disabled by default to preserve the HTML and Markdown engine entry point.",
+        "Redirect a browser's GET / (Accept: text/html) to /cockpit with a non-cacheable temporary redirect. Other clients keep the Markdown entry point. Disabled by default.",
       )
       .meta(global()),
     restart_supervised: z
@@ -1400,7 +1400,7 @@ const WebScraperRuntime = z
     user_agent: z
       .string()
       .min(1)
-      .default("sk-web-scraper/1.0 (+https://subkit.io/bot)")
+      .default("sk-web-scraper/1.0 (+https://github.com/MikeBild/subkit)")
       .describe("User-Agent header on every fetch; passed to robots-parser matching.")
       .meta(tenant()),
     max_pages: z
