@@ -1,8 +1,9 @@
-import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 import type { ResolvedPrincipal } from "../../auth/index.ts";
 import {
   type BrowserSessionPayload,
+  browserSessionDenyReason,
   browserSessionForPrincipal,
   cockpitInstallationIdFromPath,
 } from "../../auth/index.ts";
@@ -21,6 +22,12 @@ const APP_TENANT_SWITCH_PATHS = new Set([
   "/v1/identity/owned-tenant/restore",
 ]);
 const APP_LOGIN_PATHS = new Set(["/v1/identity/cockpit-login", "/v1/identity/login/start"]);
+const sessionValiditySelection = {
+  expires_at: sessions.expires_at,
+  revoked_at: sessions.revoked_at,
+  absolute_expires_at: sessions.absolute_expires_at,
+  last_seen_at: sessions.last_seen_at,
+};
 
 export interface CockpitInstallationContext {
   installation_id: string;
@@ -54,10 +61,8 @@ export async function resolveCockpitInstallationContext(
   ) {
     return null;
   }
-  const now = new Date();
-  const slidingCutoff = new Date(now.getTime() - 8 * 60 * 60 * 1000);
   const [session] = await db
-    .select({ expires_at: sessions.expires_at })
+    .select(sessionValiditySelection)
     .from(sessions)
     .innerJoin(users, and(eq(users.tenant_id, sessions.tenant_id), eq(users.id, sessions.user_id)))
     .innerJoin(tenants, eq(tenants.id, sessions.tenant_id))
@@ -67,10 +72,6 @@ export async function resolveCockpitInstallationContext(
         eq(sessions.installation_id, installation.id),
         eq(sessions.tenant_id, installation.tenant_id),
         eq(sessions.user_id, installation.owner_user_id),
-        isNull(sessions.revoked_at),
-        gt(sessions.expires_at, now),
-        or(isNull(sessions.absolute_expires_at), gt(sessions.absolute_expires_at, now)),
-        gt(sessions.last_seen_at, slidingCutoff),
         eq(users.status, "active"),
         isNull(users.deleted_at),
         eq(tenants.status, "active"),
@@ -78,7 +79,7 @@ export async function resolveCockpitInstallationContext(
       ),
     )
     .limit(1);
-  if (!session) return null;
+  if (!session || browserSessionDenyReason(session, new Date())) return null;
   return {
     installation_id: installation.id,
     tenant_id: installation.tenant_id,
@@ -98,10 +99,8 @@ export async function resolveCockpitBrowserPushContext(
   const payload = await browserSessionForPrincipal(request, principal);
   if (!payload || payload.installation_id || principal.session_id !== payload.session_id)
     return null;
-  const now = new Date();
-  const slidingCutoff = new Date(now.getTime() - 8 * 60 * 60 * 1000);
   const [session] = await db
-    .select({ expires_at: sessions.expires_at })
+    .select(sessionValiditySelection)
     .from(sessions)
     .innerJoin(users, and(eq(users.tenant_id, sessions.tenant_id), eq(users.id, sessions.user_id)))
     .innerJoin(tenants, eq(tenants.id, sessions.tenant_id))
@@ -111,10 +110,6 @@ export async function resolveCockpitBrowserPushContext(
         eq(sessions.tenant_id, principal.tenant_id),
         eq(sessions.user_id, principal.id),
         isNull(sessions.installation_id),
-        isNull(sessions.revoked_at),
-        gt(sessions.expires_at, now),
-        or(isNull(sessions.absolute_expires_at), gt(sessions.absolute_expires_at, now)),
-        sql`coalesce(${sessions.last_seen_at}, ${sessions.created_at}) > ${slidingCutoff}`,
         eq(users.status, "active"),
         isNull(users.deleted_at),
         eq(tenants.status, "active"),
@@ -122,7 +117,7 @@ export async function resolveCockpitBrowserPushContext(
       ),
     )
     .limit(1);
-  if (!session) return null;
+  if (!session || browserSessionDenyReason(session, new Date())) return null;
   return {
     kind: "browser",
     tenant_id: principal.tenant_id,

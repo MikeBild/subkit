@@ -18,6 +18,7 @@ import { alias } from "drizzle-orm/pg-core";
 import webpush from "web-push";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
+import { liveBrowserSessionWhere } from "../auth/browser-session-validity.ts";
 import { assertEgressAllowedResolved } from "../connectors/index.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import type { Db, Executor } from "../db/client.ts";
@@ -154,9 +155,7 @@ function activeSessionWhere(context: CockpitPushContext, at: Date) {
           eq(cockpitInstallations.owner_user_id, sessions.user_id),
           isNull(cockpitInstallations.revoked_at),
         ),
-    isNull(sessions.revoked_at),
-    gt(sessions.expires_at, at),
-    or(isNull(sessions.absolute_expires_at), gt(sessions.absolute_expires_at, at)),
+    liveBrowserSessionWhere(at),
     eq(users.tenant_id, context.tenant_id),
     eq(users.id, sessions.user_id),
     eq(users.status, "active"),

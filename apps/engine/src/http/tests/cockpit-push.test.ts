@@ -102,15 +102,19 @@ async function addUser(): Promise<string> {
   return user.id;
 }
 
-async function rootSession(userId: string, input: { lastSeenAt?: Date; expiresAt?: Date } = {}) {
+async function rootSession(
+  userId: string,
+  input: { lastSeenAt?: Date; expiresAt?: Date; absoluteExpiresAt?: Date; revokedAt?: Date } = {},
+) {
   const [session] = await server.db
     .insert(sessions)
     .values({
       tenant_id: server.tenantId,
       user_id: userId,
       expires_at: input.expiresAt ?? new Date(Date.now() + 60 * 60_000), // allow-wall-clock: live browser fixture
-      absolute_expires_at: new Date(Date.now() + 60 * 60_000), // allow-wall-clock: live browser fixture
+      absolute_expires_at: input.absoluteExpiresAt ?? new Date(Date.now() + 60 * 60_000), // allow-wall-clock: live browser fixture
       last_seen_at: input.lastSeenAt ?? null,
+      revoked_at: input.revokedAt ?? null,
     })
     .returning({ id: sessions.id });
   if (!session) throw new Error("missing root push session");
@@ -288,12 +292,6 @@ test("machine principals and foreign sessions never reach root push", async () =
   const crossed = await fetch(base, { headers: { cookie: installationCookie } });
   expect(crossed.status).toBe(401);
 
-  const expiredUser = await addUser();
-  const expired = await rootSession(expiredUser, {
-    expiresAt: new Date(Date.now() - 60_000), // allow-wall-clock: live browser fixture
-  });
-  expect((await fetch(base, { headers: expired.headers })).status).toBe(401);
-
   const idleUser = await addUser();
   const idle = await rootSession(idleUser, {
     lastSeenAt: new Date(Date.now() - 7 * 60 * 60_000), // allow-wall-clock: live browser fixture
@@ -343,4 +341,78 @@ test("the resolver refuses bearer principals and never falls back on installatio
       { ...principal, provider: "browser_session" },
     ),
   ).toBeNull();
+});
+
+test("root push accepts exactly the browser sessions the browser-session provider accepts", async () => {
+  const base = `${server.baseUrl}/v1/cockpit/push-subscription`;
+  const bootstrap = `${server.baseUrl}/v1/cockpit/bootstrap`;
+  const slidingUser = await addUser();
+  const sliding = await rootSession(slidingUser, {
+    expiresAt: new Date(Date.now() - 60 * 60_000), // allow-wall-clock: live browser fixture
+    absoluteExpiresAt: new Date(Date.now() + 6 * 60 * 60_000), // allow-wall-clock: live browser fixture
+    lastSeenAt: new Date(Date.now() - 60 * 60_000), // allow-wall-clock: live browser fixture
+  });
+  expect((await fetch(bootstrap, { headers: sliding.headers })).status).toBe(200);
+  const status = await fetch(base, { headers: sliding.headers });
+  expect(status.status).toBe(200);
+  expect(await status.json()).toEqual({ subscribed: false, handled_by_app: false });
+  const prepared = await fetch(`${base}/prepare`, {
+    method: "POST",
+    headers: sliding.headers,
+    body: "{}",
+  });
+  expect(prepared.status).toBe(200);
+  const stored = await fetch(base, {
+    method: "PUT",
+    headers: sliding.headers,
+    body: JSON.stringify(rootSubscription("https://fcm.googleapis.com/fcm/send/root-sliding")),
+  });
+  expect(stored.status).toBe(204);
+  expect(await (await fetch(base, { headers: sliding.headers })).json()).toEqual({
+    subscribed: true,
+    handled_by_app: false,
+  });
+  expect((await fetch(base, { method: "DELETE", headers: sliding.headers })).status).toBe(204);
+  expect(await rootRows(slidingUser)).toEqual([]);
+
+  const rejected = [
+    await rootSession(await addUser(), {
+      revokedAt: new Date(Date.now() - 60_000), // allow-wall-clock: live browser fixture
+    }),
+    await rootSession(await addUser(), {
+      absoluteExpiresAt: new Date(Date.now() - 60_000), // allow-wall-clock: live browser fixture
+      lastSeenAt: new Date(Date.now() - 60_000), // allow-wall-clock: live browser fixture
+    }),
+    await rootSession(await addUser(), {
+      lastSeenAt: new Date(Date.now() - 9 * 60 * 60_000), // allow-wall-clock: live browser fixture
+    }),
+  ];
+  for (const session of rejected) {
+    expect((await fetch(base, { headers: session.headers })).status).toBe(401);
+    expect((await fetch(bootstrap, { headers: session.headers })).status).toBe(401);
+  }
+});
+
+test("installation push accepts an installation session past its sliding expires_at that browser auth accepts", async () => {
+  const root = await browserSessionHeaders(server, server.userId);
+  const created = await fetch(`${server.baseUrl}/v1/cockpit/installations`, {
+    method: "POST",
+    headers: root,
+    body: "{}",
+  });
+  expect(created.status).toBe(200);
+  const { id } = (await created.json()) as { id: string };
+  const cookie = created.headers.get("set-cookie") ?? "";
+  await server.db
+    .update(sessions)
+    .set({
+      expires_at: new Date(Date.now() - 60 * 60_000), // allow-wall-clock: live browser fixture
+      last_seen_at: new Date(Date.now() - 60 * 60_000), // allow-wall-clock: live browser fixture
+    })
+    .where(and(eq(sessions.tenant_id, server.tenantId), eq(sessions.installation_id, id)));
+  const base = `${server.baseUrl}/cockpit/i/${id}/api/v1`;
+  expect((await fetch(`${base}/cockpit/bootstrap`, { headers: { cookie } })).status).toBe(200);
+  const status = await fetch(`${base}/cockpit/push-subscription`, { headers: { cookie } });
+  expect(status.status).toBe(200);
+  expect(await status.json()).toEqual({ subscribed: false, handled_by_app: false });
 });

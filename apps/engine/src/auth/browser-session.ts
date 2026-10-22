@@ -12,11 +12,19 @@ import {
   endCockpitPushForSessions,
   SelfServiceIdentityError,
 } from "../identity/index.ts";
+import { SESSION_ABSOLUTE_TTL_MS, SESSION_SLIDING_TTL_MS } from "./browser-session-validity.ts";
 import type { ResolvedPrincipal } from "./types.ts";
 
+export {
+  type BrowserSessionDenyReason,
+  type BrowserSessionValidityRow,
+  browserSessionDenyReason,
+  liveBrowserSessionWhere,
+  SESSION_ABSOLUTE_TTL_MS,
+  SESSION_SLIDING_TTL_MS,
+} from "./browser-session-validity.ts";
+
 export const BROWSER_SESSION_COOKIE = "subkit_session";
-export const SESSION_SLIDING_TTL_MS = 8 * 60 * 60 * 1000;
-export const SESSION_ABSOLUTE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface BrowserSessionPayload {
   session_id: string;
