@@ -23,7 +23,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { absolute } from "@/app/links";
+import { absolute, routerPath } from "@/app/links";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -49,6 +49,12 @@ import { cn } from "@/lib/utils";
 import { useColumnToggleClaim } from "./column-toggle-claim";
 import { DataState, LOADING_ROWS } from "./data-state";
 import { FilterBar, FilterBarLayoutContext } from "./filter-bar";
+import {
+  RETURNED_ROW_MS,
+  readListReturn,
+  rememberListReturn,
+  settleListReturn,
+} from "./list-return";
 import { useRowMotion } from "./row-motion";
 import { Skeleton } from "./skeleton";
 
@@ -389,6 +395,41 @@ export function DataTable<TData extends RowData>({
       : getRowId && motion.arrived.has(getRowId(row))
         ? "sk-row-new"
         : undefined;
+  const surface = useRef<HTMLDivElement>(null);
+  const remembers = collectionTier === "primary";
+  const [returnedId, setReturnedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!remembers || !getRowId || pending) return;
+    const listPath = routerPath(window.location.pathname);
+    const entry = readListReturn(listPath);
+    if (!entry?.openedId || !data.some((row) => getRowId(row) === entry.openedId)) return;
+    settleListReturn(listPath);
+    const root = surface.current
+      ? scrollRoot(surface.current, (box) => getComputedStyle(box).overflowY)
+      : null;
+    if (root) root.scrollTop = entry.scrollTop;
+    setReturnedId(entry.openedId);
+  }, [remembers, data, getRowId, pending]);
+  useEffect(() => {
+    if (!returnedId) return;
+    const timer = setTimeout(() => setReturnedId(null), RETURNED_ROW_MS);
+    return () => clearTimeout(timer);
+  }, [returnedId]);
+  const openRow = (row: TData) => {
+    if (remembers) {
+      const root = surface.current
+        ? scrollRoot(surface.current, (box) => getComputedStyle(box).overflowY)
+        : null;
+      rememberListReturn(routerPath(window.location.pathname), {
+        search: window.location.search,
+        scrollTop: root?.scrollTop ?? 0,
+        openedId: getRowId ? getRowId(row) : null,
+      });
+    }
+    onOpen?.(row);
+  };
+  const returnedClass = (row: TData) =>
+    returnedId && getRowId?.(row) === returnedId ? "sk-row-returned" : undefined;
   const table = useTable(
     {
       features: cockpitTableFeatures,
@@ -494,6 +535,7 @@ export function DataTable<TData extends RowData>({
   const stateOnly = !showSkeleton && Boolean(error || empty);
   return (
     <div
+      ref={surface}
       className={cn(
         "@container flex min-h-0 min-w-0 flex-1 flex-col",
         activeFilterPanel &&
@@ -699,7 +741,7 @@ export function DataTable<TData extends RowData>({
                   const heading = leaving ? null : groupHeader(row.original, index);
                   const open =
                     onOpen && !leaving && (canOpen?.(row.original) ?? true)
-                      ? () => onOpen(row.original)
+                      ? () => openRow(row.original)
                       : null;
                   return (
                     <Fragment key={row.id}>
@@ -724,6 +766,7 @@ export function DataTable<TData extends RowData>({
                           "h-11",
                           open && "cursor-pointer",
                           rowMotionClass(row.original, index),
+                          returnedClass(row.original),
                         )}
                         data-testid={leaving ? undefined : `${collectionId}-row-${index}`}
                         onClick={
@@ -822,7 +865,7 @@ export function DataTable<TData extends RowData>({
                   const heading = leaving ? null : groupHeader(row.original, index);
                   const open =
                     onOpen && !leaving && (canOpen?.(row.original) ?? true)
-                      ? () => onOpen(row.original)
+                      ? () => openRow(row.original)
                       : null;
                   const all = row.getVisibleCells();
                   const named = open
@@ -850,6 +893,7 @@ export function DataTable<TData extends RowData>({
                           "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 px-3 py-2.5 text-left text-sm",
                           open && "cursor-pointer transition-colors hover:bg-muted/50",
                           rowMotionClass(row.original, index),
+                          returnedClass(row.original),
                         )}
                         onClick={
                           open

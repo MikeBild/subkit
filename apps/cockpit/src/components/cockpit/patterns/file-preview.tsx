@@ -43,7 +43,7 @@ function loweredHeading(level: 1 | 2 | 3 | 4 | 5 | 6) {
   };
 }
 
-const PREVIEW_COMPONENTS = {
+export const PREVIEW_COMPONENTS = {
   h1: loweredHeading(1),
   h2: loweredHeading(2),
   h3: loweredHeading(3),

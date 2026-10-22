@@ -200,6 +200,7 @@
   --sk-ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --sk-ease-exit: cubic-bezier(0.4, 0, 1, 1);
   --sk-row-arrival: 1200ms;
+  --sk-row-returned: 2000ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -207,6 +208,7 @@
     --sk-dur-fast: 0ms;
     --sk-dur-base: 0ms;
     --sk-row-arrival: 0ms;
+    --sk-row-returned: 0ms;
   }
 }
 
@@ -277,6 +279,10 @@
 }
 
 /* A row that went: it fades where it stood before the list closes over it. */
+.sk-row-returned {
+  animation: sk-row-arrive var(--sk-row-returned) var(--sk-ease-standard) both;
+}
+
 .sk-row-leave {
   animation: sk-fade-out var(--sk-dur-base) var(--sk-ease-exit) both;
 }

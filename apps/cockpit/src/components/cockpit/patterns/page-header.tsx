@@ -1,11 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
+import { routerTarget } from "@/app/links";
 import { SidebarToggle, usePageFrameTrigger } from "@/app/shell-header";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
 import { type ActionSpec, renderAction } from "./action-button";
+import { listReturnHref, readListReturn } from "./list-return";
 import { Skeleton } from "./skeleton";
 
 export function PageHeader({
@@ -82,9 +84,15 @@ export function PageHeader({
           <Skeleton className="h-9 w-full sm:ml-auto sm:h-8 sm:w-28" />
         </div>
       ) : (
-        <div className={arrived ? "sk-fade-in" : undefined}>
+        <div
+          className={cn(
+            "grid gap-x-4 gap-y-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center",
+            arrived && "sk-fade-in",
+          )}
+          data-slot="page-header-grid"
+        >
           <div
-            className="flex flex-wrap items-center gap-2"
+            className="flex min-h-9 min-w-0 flex-wrap items-center gap-2"
             data-testid="page-title-row"
             data-slot="page-title-row"
           >
@@ -96,19 +104,22 @@ export function PageHeader({
               {title}
             </h1>
             {badge}
-            {actions ? (
-              <div
-                data-slot="page-actions"
-                className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:flex-nowrap max-sm:[&>*:not([data-size^=icon])]:flex-1"
-              >
-                {secondary}
-                {menu}
-                {renderAction(action)}
-              </div>
-            ) : null}
           </div>
+          {actions ? (
+            <div
+              data-slot="page-actions"
+              className="order-last mt-2 flex w-full flex-wrap items-center gap-2 sm:order-none sm:mt-0 sm:w-auto sm:flex-nowrap sm:justify-end max-sm:[&>*:not([data-size^=icon])]:flex-1"
+            >
+              {secondary}
+              {menu}
+              {renderAction(action)}
+            </div>
+          ) : null}
           {purpose ? (
-            <p data-slot="page-purpose" className="mt-1 text-sm text-muted-foreground">
+            <p
+              data-slot="page-purpose"
+              className="max-w-3xl text-sm text-muted-foreground sm:col-span-2"
+            >
               {purpose}
             </p>
           ) : null}
@@ -122,8 +133,15 @@ const BACK_CLASS =
   "inline-flex w-fit items-center gap-0.5 rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function BackLink({ to, label }: { to: string; label: string }) {
+  const target = routerTarget(listReturnHref(to, readListReturn(to)));
   return (
-    <Link to={to} data-slot="page-back" data-testid="detail-back" className={BACK_CLASS}>
+    <Link
+      to={target.to}
+      search={target.search}
+      data-slot="page-back"
+      data-testid="detail-back"
+      className={BACK_CLASS}
+    >
       <ChevronLeft aria-hidden="true" className="-ml-1 size-4" />
       {label}
     </Link>

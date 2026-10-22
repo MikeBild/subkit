@@ -12,6 +12,7 @@ export interface InputField {
   format: string | null;
   itemType: string | null;
   required: boolean;
+  title: string | null;
   description: string | null;
   options: readonly InputScalar[] | null;
   defaultValue: unknown;
@@ -74,6 +75,7 @@ function readField(
     format: typeof schema.format === "string" ? schema.format : null,
     itemType: type === "array" && record(schema.items) ? typeOf(schema.items) : null,
     required,
+    title: typeof schema.title === "string" && schema.title.trim() ? schema.title.trim() : null,
     description: typeof schema.description === "string" ? schema.description : null,
     options: options.length > 0 ? options : null,
     defaultValue: schema.default,

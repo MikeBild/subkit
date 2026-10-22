@@ -25,11 +25,11 @@ import { render, renderInRouter } from "./test-utils";
 const count = (html: string, pattern: RegExp) => [...html.matchAll(pattern)].length;
 
 describe("P1 Page", () => {
-  test("lists and records start at the page gutter, left-aligned", () => {
+  test("lists and records share one width and start at the page gutter, left-aligned", () => {
     for (const [kind, width] of [
-      ["list", "max-w-[1760px]"],
+      ["list", "max-w-[1280px]"],
       ["settings", "max-w-[1440px]"],
-      ["detail", "max-w-[1440px]"],
+      ["detail", "max-w-[1280px]"],
     ] as const) {
       const html = render(
         <Page kind={kind} scroll="page" testId="p" header={<div>head</div>}>

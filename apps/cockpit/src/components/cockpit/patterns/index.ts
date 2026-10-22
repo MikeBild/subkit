@@ -28,6 +28,7 @@ export {
   type TableEmptyState,
   type TableErrorState,
 } from "./data-table";
+export { DetailPage, type DetailStrip } from "./detail-page";
 export { type Fact, FactList } from "./fact-list";
 export { FileDrop } from "./file-drop";
 export {
@@ -42,6 +43,15 @@ export { FilterBar, type FilterSelect, MAX_FILTER_SELECTS } from "./filter-bar";
 export { FilterSheet } from "./filter-sheet";
 export { type DialogSize, dialogWidthClass, FormDialog } from "./form-dialog";
 export { type GroupingOption, GroupingTabs } from "./grouping-tabs";
+export { IconTile, type IconTileSize } from "./icon-tile";
+export {
+  type ListReturn,
+  listReturnHref,
+  readListReturn,
+  rememberListReturn,
+} from "./list-return";
+export { MarkdownEditor, type MarkdownEditorMode } from "./markdown-editor";
+export { OnboardingFrame, StartChecklist, type StartStep } from "./onboarding";
 export {
   Page,
   type PageKind,
@@ -63,10 +73,14 @@ export {
 export { RecordOpenLink, RecordSheet, type SheetSize, sheetWidthClass } from "./record-sheet";
 export { activeRouteTab, type RouteTab, RouteTabs } from "./route-tabs";
 export { SaveBar } from "./save-bar";
+export { SchemaForm } from "./schema-form";
 export { CollapsibleSection, SECTION_LABEL, Section, SectionHeading } from "./section";
 export { SegmentedControl, type SegmentedOption } from "./segmented-control";
 export { Loadable, RowsSkeleton, Skeleton, TileSkeleton } from "./skeleton";
 export { type BadgeTone, StatusBadge, statusTone } from "./status-badge";
-export { StatusStrip, type StatusTone } from "./status-strip";
+export { STATUS_DOT, StatusStrip, type StatusTone } from "./status-strip";
 export { SummaryLine } from "./summary-line";
+export { TabBody, TechnicalDetails } from "./tab-body";
+export { TemplateCard, type TemplateCardProps, TemplateGrid } from "./template-card";
+export { Timeline, type TimelineGroup, type TimelineItem, type TimelineTone } from "./timeline";
 export { TimelineGroupingTabs } from "./timeline-grouping-tabs";

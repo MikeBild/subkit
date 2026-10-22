@@ -64,6 +64,7 @@ describe("input fields", () => {
       format: null,
       itemType: null,
       required: true,
+      title: null,
       description: "Which run to publish",
       options: null,
       defaultValue: undefined,

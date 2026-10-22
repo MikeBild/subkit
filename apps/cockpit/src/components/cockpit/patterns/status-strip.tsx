@@ -7,7 +7,7 @@ import { Skeleton } from "./skeleton";
 
 export type StatusTone = "ok" | "info" | "warn" | "error";
 
-const DOT: Record<StatusTone, string> = {
+export const STATUS_DOT: Record<StatusTone, string> = {
   ok: "bg-emerald-500",
   info: "bg-blue-500",
   warn: "bg-amber-500",
@@ -57,17 +57,13 @@ export function StatusStrip({
       data-tone={tone}
       data-testid={testId}
       role={tone === "error" ? "alert" : "status"}
-      className={cn(
-        STRIP,
-        tone === "error" && "border-destructive/40",
-        tone === "warn" && "border-amber-500/40",
-      )}
+      className={STRIP}
     >
       <span
         aria-hidden="true"
         className={cn(
           "size-2 shrink-0 rounded-full transition-colors duration-(--sk-dur-base)",
-          DOT[tone],
+          STATUS_DOT[tone],
         )}
       />
       <span className="min-w-0 flex-1 basis-48" data-slot="status-strip-line">
