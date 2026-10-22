@@ -320,7 +320,7 @@ const SIGN_IN_ERRORS: Record<AuthLocale, Record<SignInError, string>> = {
   },
   de: {
     installation_login_requires_oidc:
-      "Installierte Apps benötigen für die erneute Anmeldung ein bestehendes OIDC-Konto. Mit einem API-Schlüssel kannst du dich im normalen Cockpit anmelden und die Workspace-App dort erneut öffnen.",
+      "Installierte Apps benötigen für die erneute Anmeldung ein bestehendes OIDC-Konto. Mit einem API-Schlüssel kannst du dich im normalen Cockpit anmelden und die Arbeitsbereich-App dort erneut öffnen.",
     state_expired:
       "Dieser Anmeldeversuch ist abgelaufen oder wurde schon verwendet. Melde dich erneut an.",
     account_not_assigned:
@@ -334,7 +334,7 @@ const SIGN_IN_ERRORS: Record<AuthLocale, Record<SignInError, string>> = {
     provider_not_configured:
       "Dieser Anmeldeanbieter ist nicht eingerichtet. Frag eine Person mit der Rolle Administrator.",
     tenant_unavailable:
-      "Dieser Anmeldeanbieter steht für diesen Mandanten nicht bereit. Melde dich erneut an.",
+      "Dieser Anmeldeanbieter steht für diesen Arbeitsbereich nicht bereit. Melde dich erneut an.",
     provider_unavailable:
       "Der Anmeldeanbieter ist gerade nicht erreichbar. Versuche es gleich noch einmal.",
   },

@@ -194,7 +194,7 @@ const de: typeof en = {
     "Die Einzelfreigabe wurde beansprucht und kann nicht erneut verwendet werden. Das belegt weder die Ausführung noch ihren Erfolg. Prüfe den Ausführungsverlauf.",
   declinedTitle: "Abgelehnt",
   declinedMessage:
-    "Diese Anfrage wurde abgelehnt und kann die Aktion nicht autorisieren. Diese Entscheidung bewertet weder frühere Vorbereitungen noch andere Ausführungen.",
+    "Diese Anfrage wurde abgelehnt und kann die Aktion nicht autorisieren. Diese Entscheidung bewertet weder frühere Vorbereitungen noch andere Läufe.",
 };
 
 export function approvalCopy(locale: AuthLocale): typeof en {

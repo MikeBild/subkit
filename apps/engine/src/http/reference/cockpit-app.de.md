@@ -49,11 +49,11 @@ Jede App hat ihre eigene Anmeldung. Deine Anmeldung im normalen Cockpit bleibt d
 
 ### Branding eines Arbeitsbereichs festlegen
 
-1. Öffne **Einstellungen** und darin unter **Arbeiten mit sk** den Bereich **Mandanten-Branding**.
+1. Öffne **Einstellungen** und darin unter **Arbeiten mit sk** den Bereich **Arbeitsbereich-Branding**.
 2. Lade unter **App-Icon (1:1)** ein quadratisches PNG mit mindestens 512 Pixeln Kantenlänge hoch.
 3. Wähle unter **Farbpalette** zwischen **Standard**, **Indigo** und **Teal**.
 
-   ![Mandanten-Branding des fiktiven Arbeitsbereichs Brennwerk mit dem Organisationsnamen Brennwerk, dem Untertitel Logistik, dem dunkelgrünen App-Icon mit orangefarbener Flamme, dem hellen und dunklen Logo und der gewählten Farbpalette Teal; die Seitenleiste zeigt dasselbe Logo und die Wortmarke](images/cockpit-app-branding.de.webp)
+   ![Arbeitsbereich-Branding des fiktiven Arbeitsbereichs Brennwerk mit dem Organisationsnamen Brennwerk, dem Untertitel Logistik, dem dunkelgrünen App-Icon mit orangefarbener Flamme, dem hellen und dunklen Logo und der gewählten Farbpalette Teal; die Seitenleiste zeigt dasselbe Logo und die Wortmarke](images/cockpit-app-branding.de.webp)
 
 4. Prüfe die Vorschau und wähle **Änderungen speichern**.
 

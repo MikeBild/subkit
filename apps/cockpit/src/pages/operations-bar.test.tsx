@@ -124,7 +124,7 @@ describe("the operations bar", () => {
     for (const window of ["24h", "7d", "30d"] as const) {
       const html = render(figuresOf({ bounds: windowBounds(window, NOW) }), "de", window);
       const label = { "24h": "24 Std", "7d": "7 Tage", "30d": "30 Tage" }[window];
-      expect(figureText(html, "runs")).toContain(`Ausführungen · ${label}`);
+      expect(figureText(html, "runs")).toContain(`Läufe · ${label}`);
       expect(figureText(html, "successRate")).toContain(`Erfolgsquote · ${label}`);
       expect(figureText(html, "cost")).toContain(`Kosten · ${label}`);
       expect(figureText(html, "connectorHealth")).toContain("Gesunde Konnektoren · Stand jetzt");
@@ -172,7 +172,7 @@ describe("the operations bar", () => {
 
   test("the runs tile keeps its Cockpit label and shows the failed count below", () => {
     const html = render(figuresOf());
-    expect(figureText(html, "runs")).toContain("Ausführungen");
+    expect(figureText(html, "runs")).toContain("Läufe");
     expect(figureText(html, "runs")).toContain("2 fehlgeschlagen");
   });
 
