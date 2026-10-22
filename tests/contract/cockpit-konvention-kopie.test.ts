@@ -14,13 +14,19 @@ describe("the root copy of the family convention", () => {
   test("it is byte-identical to the reviewed convention", () => {
     const digest = createHash("sha256").update(konventionBytes).digest("hex");
     expect(digest, "COCKPIT-KONVENTION.md is no longer the reviewed text").toBe(
-      "77bf7dc3d6b147807d861d493d79ddecbde1d55c5af035b98b5481aafb5a63bc",
+      "c69817a1ae5f65d1b775ca89755486d053041b7eda3a219a8ebae52e68a8f50f",
     );
   });
 
-  test("it carries the paragraphs v1.5 through v2.4 were cut for, not just its header", () => {
-    expect(konvention).toContain("Version 2.4 · 09.10.2026");
+  test("it carries the paragraphs v1.5 through v2.5 were cut for, not just its header", () => {
+    expect(konvention).toContain("Version 2.5 · 22.10.2026");
+    expect(konvention).toContain("Änderungen v2.5:");
     expect(konvention).toContain("Änderungen v2.4:");
+    expect(konvention).toContain(
+      "ein Vorschau-Seitenblatt zwischen Liste und Detailseite gibt es nicht",
+    );
+    expect(konvention).toContain("**Drei Ebenen auf jeder Detailseite.**");
+    expect(konvention).toContain("**Zustand ohne Farbflächen.**");
     expect(konvention).toContain("## 16. Auftragskette");
     expect(konvention).toContain('**Leitregel (v2.1): Aufgaben leben nur auf der „Übersicht".**');
     expect(konvention).toContain("**Betriebsleiste.** Genau vier Werte in einem Raster");
