@@ -3,6 +3,7 @@ import "../tools/index.ts";
 import { and, eq } from "drizzle-orm";
 import {
   auditLog,
+  connectors,
   conversations,
   executions,
   workflows,
@@ -361,6 +362,117 @@ describe("run_workflow tool", () => {
       expect(runs).toEqual([]);
     });
   }
+
+  test("refusal for an inactive draft bound only to prod connectors reviews prod from the bindings", async () => {
+    const [connector] = await ctx.testDb.db
+      .insert(connectors)
+      .values({
+        tenant_id: ctx.tenant_id,
+        slug: "github-briefings-prod",
+        display_name: "GitHub briefings",
+        driver: "http",
+        auth_type: "none",
+        environment: "prod",
+        base_url: "https://api.github.example.test",
+      })
+      .returning();
+    if (!connector) throw new Error("connector insert failed");
+    const saved = await saveWorkflowDraft(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.user_id,
+        request_source: "chat",
+        def: {
+          name: "Prod briefing",
+          slug: "prod-briefing",
+          steps: [
+            {
+              id: "issues",
+              kind: "request",
+              method: "GET",
+              connector_id: connector.id,
+              path: "/repos/acme/app/issues",
+            },
+          ],
+        },
+      },
+      ctx.testDb.db,
+    );
+    if (!saved.draft) throw new Error(saved.errors.join("; "));
+    const draft = bindPersistedWorkflow(
+      { workflow: { name: "stub", steps: [] } },
+      {
+        kind: "workflow",
+        id: saved.draft.workflow_id,
+        slug: saved.draft.definition.slug ?? null,
+        name: saved.draft.definition.name,
+        version_id: saved.draft.version_id,
+        version: saved.draft.version,
+        environment: null,
+        saved_at: "2026-05-01T00:00:00.000Z",
+        draft_version_id: saved.draft.version_id,
+        current_version_id: null,
+        persistence_kind: "draft",
+      },
+    );
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({ tenant_id: ctx.tenant_id, status: "active", draft })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({ conversation_id: conversation.id, draft, setDraft: async () => {} }),
+      runWorkflowTool.inputSchema.parse({ workflow: saved.draft.workflow_id }),
+    );
+    expect(result.ok).toBe(false);
+    const data = result.data as {
+      error_code: string;
+      environment?: string;
+      environment_source?: string;
+      automation_review?: {
+        saved_change?: {
+          environment: string;
+          environment_source?: string;
+          review: { issues?: Array<{ code: string }> };
+        } | null;
+      };
+    };
+    expect(data).toMatchObject({
+      error_code: "workflow_activation_required",
+      environment: "prod",
+      environment_source: "bindings",
+    });
+    expect((result.data as { message: string }).message).toContain(
+      "PROD follows from the connector bindings",
+    );
+    expect(data.automation_review?.saved_change).toMatchObject({
+      environment: "prod",
+      environment_source: "bindings",
+    });
+    expect(
+      (data.automation_review?.saved_change?.review.issues ?? []).map((issue) => issue.code),
+    ).not.toContain("environment_mismatch");
+  });
+
+  test("run_workflow on an active workflow without an environment keeps the dev default", async () => {
+    const { workflow_id } = await seedWorkflow("default-environment");
+    const draft: DraftDocument = { workflow: { name: "stub", steps: [] } };
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({ tenant_id: ctx.tenant_id, status: "active", draft })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({ conversation_id: conversation.id, draft, setDraft: async () => {} }),
+      runWorkflowTool.inputSchema.parse({ workflow: workflow_id, input: { date: "today" } }),
+    );
+    expect(result.ok).toBe(true);
+    const runs = await ctx.testDb.db
+      .select({ mode: executions.execution_mode })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, ctx.tenant_id), eq(executions.workflow_id, workflow_id)));
+    expect(runs).toEqual([{ mode: "dev" }]);
+  });
 
   test("an empty conversation adopts the workflow it runs, definition included, and normalizes stringified input", async () => {
     const { workflow_id } = await seedWorkflow();

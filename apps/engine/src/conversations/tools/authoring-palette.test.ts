@@ -87,6 +87,54 @@ describe("resolveExecutionToolGate", () => {
     });
     expect(d).toEqual({ exposeExecution: false, reason: "explicit_no_run" });
   });
+
+  test("live suppression hides live execution only where execution was exposed", () => {
+    expect(
+      resolveExecutionToolGate({
+        hasBoundSavedWorkflow: true,
+        explicitlyNamedWorkflowSlug: null,
+        surface: "chat",
+        suppressLiveExecution: true,
+      }),
+    ).toEqual({ exposeExecution: false, reason: "explicit_no_live_effects" });
+    expect(
+      resolveExecutionToolGate({
+        hasBoundSavedWorkflow: false,
+        explicitlyNamedWorkflowSlug: null,
+        suppressLiveExecution: true,
+      }),
+    ).toEqual({ exposeExecution: false, reason: "authoring_no_target" });
+    expect(
+      resolveExecutionToolGate({
+        hasBoundSavedWorkflow: true,
+        explicitlyNamedWorkflowSlug: null,
+        suppressExecution: true,
+        suppressLiveExecution: true,
+      }),
+    ).toEqual({ exposeExecution: false, reason: "explicit_no_run" });
+  });
+
+  test("the live gate removes live tools and keeps held previews", () => {
+    const tools: Record<string, unknown> = {
+      run_workflow: {},
+      rerun_execution: {},
+      dry_run_workflow: {},
+      dry_run_step: {},
+      "wf_daily-briefing": {},
+      inspect_workflow_draft: {},
+    };
+    const removed = applyExecutionToolGate(
+      tools,
+      { exposeExecution: false, reason: "explicit_no_live_effects" },
+      new Set(["daily-briefing"]),
+    );
+    expect(removed).toBe(3);
+    expect(Object.keys(tools).sort()).toEqual([
+      "dry_run_step",
+      "dry_run_workflow",
+      "inspect_workflow_draft",
+    ]);
+  });
 });
 
 describe("isExecutionToolName", () => {

@@ -6,6 +6,12 @@ import type { AuthoringStage } from "../../conversations/types.ts";
 import { logger } from "../../logging/logger.ts";
 import { vendorModelId } from "../pricing.ts";
 import type { LlmProviderKind } from "../types.ts";
+import {
+  isQuestionTool,
+  pendingPermittedRemedy,
+  type RemedyToolResult,
+  refusalRemedies,
+} from "./permitted-remedy.ts";
 import { resolveThinking } from "./thinking-policy.ts";
 
 const NO_UPGRADE_WARNED: Set<string> = new Set();
@@ -19,6 +25,7 @@ export interface StepRouterSignals {
   strongRunIntent?: boolean;
   multiArtifactIntent?: boolean;
   priorCriticFail?: boolean;
+  pendingPermittedRemedy?: readonly string[];
   escalate?: boolean;
   escalateMax?: boolean;
 }
@@ -341,9 +348,32 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
     );
   }
 
+  const remedy = permittedRemedyForStep(params);
+  let remedyTools: string[] | undefined;
+  if (remedy.length > 0 && systemNudge === undefined) {
+    const thinking = resolveThinking({
+      enableThinking: params.turnThinkingEnabled === true,
+      forcesTool: true,
+    });
+    if (!thinking.suppressedByForcedTool) toolChoice = "required";
+    remedyTools = (params.paletteToolNames ?? []).filter(
+      (name) =>
+        remedy.includes(name) ||
+        isQuestionTool(name) ||
+        toolsByName[name]?.category === "tenant_read",
+    );
+    systemNudge = `The last refused tool call named a permitted next step: ${remedy.join(", ")}. The user's instructions allow it and it activates nothing. Take that step now, or ask exactly one business question with options and a recommendation. Do not end the turn on the refusal.`;
+    reasonParts.push(
+      thinking.suppressedByForcedTool
+        ? "permitted_remedy_continue_nudge_only"
+        : "permitted_remedy_continue",
+    );
+  }
+
+  const stepActiveTools = remedyTools ?? activeTools;
   if (
     modelId === undefined &&
-    activeTools === undefined &&
+    stepActiveTools === undefined &&
     toolChoice === undefined &&
     systemNudge === undefined
   ) {
@@ -351,11 +381,34 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
   }
   const decision: StepDecision = {};
   if (modelId !== undefined) decision.modelId = modelId;
-  if (activeTools !== undefined) decision.activeTools = activeTools;
+  if (stepActiveTools !== undefined) decision.activeTools = stepActiveTools;
   if (toolChoice !== undefined) decision.toolChoice = toolChoice;
   if (systemNudge !== undefined) decision.system = systemNudge;
   if (reasonParts.length > 0) decision.reason = reasonParts.join(",");
   return decision;
+}
+
+function stepToolResults(step: unknown): RemedyToolResult[] {
+  const results = (step as { toolResults?: unknown } | undefined)?.toolResults;
+  return Array.isArray(results)
+    ? results.flatMap((result) =>
+        typeof result?.toolName === "string"
+          ? [{ tool: result.toolName as string, output: result.output as unknown }]
+          : [],
+      )
+    : [];
+}
+
+function permittedRemedyForStep(params: StepRouterParams): string[] {
+  const palette = new Set(params.paletteToolNames ?? []);
+  const resumed = params.signals.pendingPermittedRemedy ?? [];
+  if (params.stepNumber === 0) return resumed.filter((tool) => palette.has(tool));
+  if (resumed.length > 0) return [];
+  const prior = stepToolResults(params.steps[params.steps.length - 1]);
+  if (!prior.some((result) => refusalRemedies(result.output))) return [];
+  const earlier = params.steps.slice(0, -1).flatMap(stepToolResults);
+  if (earlier.some((result) => refusalRemedies(result.output))) return [];
+  return pendingPermittedRemedy([...earlier, ...prior], palette, { questionAnswers: true });
 }
 
 function priorStepWasSuccessfulConnectorAutoPersist(params: StepRouterParams): boolean {

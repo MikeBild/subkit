@@ -729,3 +729,117 @@ describe("a review decision survives every narrowed stage", () => {
     expect(active).not.toContain("save_workflow_draft");
   });
 });
+
+describe("prepareStep — permitted remedy continuation", () => {
+  const refusal = {
+    ok: false,
+    data: { error_code: "workflow_activation_required", next_best_actions: ["dry_run_workflow"] },
+  };
+  const palette = [
+    "run_workflow",
+    "dry_run_workflow",
+    "inspect_workflow",
+    "ask_user_text",
+    "delete_workflow",
+  ];
+  const step = (...results: Array<[string, unknown]>) => ({
+    toolResults: results.map(([toolName, output]) => ({ toolName, output })),
+  });
+
+  it("requires the permitted remedy after a refusal that names it", () => {
+    const decision = prepareStep(
+      baseParams({
+        steps: [step(["run_workflow", refusal])],
+        paletteToolNames: palette,
+        signals: { stage: "workflow_persisted" },
+      }),
+    );
+    expect(decision?.toolChoice).toBe("required");
+    expect(decision?.activeTools).toContain("dry_run_workflow");
+    expect(decision?.activeTools).toContain("ask_user_text");
+    expect(decision?.activeTools).toContain("inspect_workflow");
+    expect(decision?.activeTools).not.toContain("run_workflow");
+    expect(decision?.activeTools).not.toContain("delete_workflow");
+    expect(decision?.system).toContain("dry_run_workflow");
+    expect(decision?.reason).toContain("permitted_remedy_continue");
+  });
+
+  it("fires once per turn", () => {
+    const decision = prepareStep(
+      baseParams({
+        stepNumber: 3,
+        steps: [
+          step(["run_workflow", refusal]),
+          step(["inspect_workflow", { ok: true, data: {} }]),
+          step(["run_workflow", refusal]),
+        ],
+        paletteToolNames: palette,
+        signals: { stage: "workflow_persisted" },
+      }),
+    );
+    expect(decision?.reason ?? "").not.toContain("permitted_remedy_continue");
+  });
+
+  it("does not fire once the remedy ran or a question is pending", () => {
+    for (const later of [
+      step(["dry_run_workflow", { ok: true, data: {} }]),
+      step(["ask_user_text", { ok: true, data: {} }]),
+    ]) {
+      const decision = prepareStep(
+        baseParams({
+          stepNumber: 2,
+          steps: [step(["run_workflow", refusal]), later],
+          paletteToolNames: palette,
+          signals: { stage: "workflow_persisted" },
+        }),
+      );
+      expect(decision?.reason ?? "").not.toContain("permitted_remedy_continue");
+    }
+  });
+
+  it("does not fire when the remedy is not in the palette", () => {
+    const decision = prepareStep(
+      baseParams({
+        steps: [step(["run_workflow", refusal])],
+        paletteToolNames: ["run_workflow", "inspect_workflow"],
+        signals: { stage: "workflow_persisted" },
+      }),
+    );
+    expect(decision?.reason ?? "").not.toContain("permitted_remedy_continue");
+  });
+
+  it("fires at step 0 of a resume after a decision and not again later", () => {
+    const first = prepareStep(
+      baseParams({
+        stepNumber: 0,
+        steps: [],
+        paletteToolNames: palette,
+        signals: { stage: "workflow_persisted", pendingPermittedRemedy: ["dry_run_workflow"] },
+      }),
+    );
+    expect(first?.toolChoice).toBe("required");
+    expect(first?.activeTools).toContain("dry_run_workflow");
+    const later = prepareStep(
+      baseParams({
+        stepNumber: 1,
+        steps: [step(["run_workflow", refusal])],
+        paletteToolNames: palette,
+        signals: { stage: "workflow_persisted", pendingPermittedRemedy: ["dry_run_workflow"] },
+      }),
+    );
+    expect(later?.reason ?? "").not.toContain("permitted_remedy_continue");
+  });
+
+  it("keeps the nudge without forcing a tool when thinking is on", () => {
+    const decision = prepareStep(
+      baseParams({
+        steps: [step(["run_workflow", refusal])],
+        paletteToolNames: palette,
+        signals: { stage: "workflow_persisted" },
+        turnThinkingEnabled: true,
+      }),
+    );
+    expect(decision?.toolChoice).toBeUndefined();
+    expect(decision?.system).toContain("dry_run_workflow");
+  });
+});

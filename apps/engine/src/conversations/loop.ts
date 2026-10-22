@@ -41,6 +41,7 @@ import {
   buildAnthropicWebSearchTool,
   nativeWebSearchSetting,
 } from "../llm/core/model-init.ts";
+import { isBusinessDecisionTool, pendingPermittedRemedy } from "../llm/core/permitted-remedy.ts";
 import { repairToolCall as repairToolCallHandler } from "../llm/core/repair-tool-call.ts";
 import { PROVIDER_RESPONSE_TIMEOUT_MS } from "../llm/core/response-timeout.ts";
 import {
@@ -89,6 +90,7 @@ import { appendSnapshot, loadDraft } from "./draft.ts";
 import type { ElicitationBridge } from "./elicitation-bridge.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
+import { conversationExecutionSuppression } from "./execution-suppression.ts";
 import {
   detectMultiArtifactIntent,
   detectUserIntent,
@@ -884,11 +886,18 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
     (draft.summary?.active_target.kind === "workflow" &&
       draft.summary?.active_target.lifecycle_state === "persisted");
   const namedWorkflowSlug = resolveNamedWorkflowSlug(ingestedUserMessage, syntheticWorkflowSlugs);
+  const executionSuppression = await conversationExecutionSuppression({
+    db: p.db,
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    recent_user_message: ingestedUserMessage,
+  });
   const executionGate: ExecutionToolGateDecision = resolveExecutionToolGate({
     hasBoundSavedWorkflow: hasBoundSavedWorkflowTarget,
     explicitlyNamedWorkflowSlug: namedWorkflowSlug,
     ...(p.surface ? { surface: p.surface } : {}),
-    suppressExecution: detectedIntent.suppressExecution === true,
+    suppressExecution: executionSuppression.all,
+    suppressLiveExecution: executionSuppression.live,
   });
   const removedExecutionTools = applyExecutionToolGate(
     tools,
@@ -904,6 +913,25 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
       reason: executionGate.reason,
       removed_count: removedExecutionTools,
     });
+  }
+  const answeredCall = recentToolCalls[0];
+  if (p.user_message === null && answeredCall && isBusinessDecisionTool(answeredCall.tool)) {
+    const resumedRemedy = pendingPermittedRemedy(
+      [...recentToolCalls].reverse().map((call) => ({ tool: call.tool, output: call.output })),
+      new Set(Object.keys(tools)),
+      { questionAnswers: false },
+    );
+    if (resumedRemedy.length > 0) {
+      stepRouterSignals.pendingPermittedRemedy = resumedRemedy;
+      logger.info({
+        module: "conversation",
+        action: "loop.resume.permitted_remedy",
+        msg: "resume turn continues with the permitted step a refused call named",
+        conversation_id: p.conversation_id,
+        tenant_id: p.tenant_id,
+        remedy_tools: resumedRemedy,
+      });
+    }
   }
 
   const stateDrivenTool = inferStateDrivenFollowUpTool({
@@ -1767,6 +1795,7 @@ async function runLoopAdmitted(p: RunLoopParams): Promise<RunLoopResult> {
           toolResults: events.flatMap((ev) =>
             ev.type === "tool_result" ? [summarizeToolResult(ev.tool, ev.output)] : [],
           ),
+          availableTools: Object.keys(tools),
           ...(resolvedEngineUrl || p.runtime_context?.tenant_slug
             ? {
                 runtimeContext: {

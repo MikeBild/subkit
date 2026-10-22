@@ -1,4 +1,5 @@
 import type { SubkitLlm } from "../core/base-types.ts";
+import { pendingPermittedRemedy } from "../core/permitted-remedy.ts";
 import { type CountIssue, detectCountInconsistencies } from "./count-consistency.ts";
 import { chatRubric } from "./rubrics/chat.ts";
 import type { SaveWorkflowDraftArtifact } from "./rubrics/save-workflow-draft.ts";
@@ -30,6 +31,7 @@ export interface RunCriticParams {
   snapshot?: string;
   runtimeContext?: { engine_url?: string; tenant_slug?: string };
   toolResults?: ReadonlyArray<CriticToolResult>;
+  availableTools?: ReadonlyArray<string>;
   llm?: SubkitLlm;
 }
 
@@ -95,11 +97,32 @@ function hintForSaveWorkflowDraft(failed: string[]): string {
 
 const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 
+function untakenRemedy(
+  toolResults: ReadonlyArray<CriticToolResult>,
+  availableTools: ReadonlyArray<string>,
+): string[] {
+  return pendingPermittedRemedy(
+    toolResults.map((result) => ({
+      tool: result.tool,
+      output: result.ok
+        ? { ok: true }
+        : {
+            ok: false,
+            ...(result.error_code ? { error_code: result.error_code } : {}),
+            next_best_actions: result.next_best_actions ?? [],
+          },
+    })),
+    new Set(availableTools),
+    { questionAnswers: true },
+  );
+}
+
 function gradeChat(
   text: string,
   snapshot: string | undefined,
   runtimeContext: { engine_url?: string; tenant_slug?: string } | undefined,
   toolResults: ReadonlyArray<CriticToolResult> | undefined,
+  availableTools: ReadonlyArray<string> | undefined,
 ): CriticVerdict {
   const matches = text.match(UUID_PATTERN) ?? [];
   const resultIds = toolResultIds(toolResults ?? []);
@@ -117,6 +140,8 @@ function gradeChat(
         processed_ids_in_results: !claimIssues.some((i) => i.kind === "unprocessed_id"),
       }
     : {};
+  const remedy = availableTools ? untakenRemedy(toolResults ?? [], availableTools) : [];
+  const remedyChecks = availableTools ? { permitted_next_action_taken: remedy.length === 0 } : {};
   const checks = {
     ids_grounded: ungroundedIds.length === 0,
     runtime_values_consistent:
@@ -126,6 +151,7 @@ function gradeChat(
     no_placeholder_markers: !PLACEHOLDER_MARKER.test(text),
     counts_consistent: countIssues.length === 0,
     ...claimChecks,
+    ...remedyChecks,
   };
   const failed = Object.entries(checks).filter(([, v]) => v === false);
   if (failed.length === 0) {
@@ -167,6 +193,10 @@ function gradeChat(
           "; ",
         )}. Report exactly what the tool results say, including failures and items that were not processed`,
     );
+  if (remedy.length > 0)
+    hintParts.push(
+      `the turn ended on a refused call whose permitted next step was not taken — call ${remedy.join(" or ")}, or ask one business question with options and a recommendation; name the concrete conflict, its owner and the next step`,
+    );
   return {
     verdict: "fail",
     confidence,
@@ -182,7 +212,13 @@ export async function runCritic(params: RunCriticParams): Promise<CriticVerdict>
     case "save_workflow_draft":
       return gradeSaveWorkflowDraft(artifact.payload, snapshot);
     case "chat":
-      return gradeChat(artifact.payload, snapshot, runtimeContext, params.toolResults);
+      return gradeChat(
+        artifact.payload,
+        snapshot,
+        runtimeContext,
+        params.toolResults,
+        params.availableTools,
+      );
   }
 }
 

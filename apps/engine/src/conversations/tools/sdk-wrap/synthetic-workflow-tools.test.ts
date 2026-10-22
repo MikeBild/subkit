@@ -7,6 +7,7 @@ import { auditLog } from "../../../db/schema/audit.ts";
 import { tenants } from "../../../db/schema/identity.ts";
 import {
   conversationElicitations,
+  conversationMessages,
   conversations,
   executions,
   webhooksInbound,
@@ -242,6 +243,36 @@ describe("buildSyntheticWorkflowTools — execute happy path", () => {
     expect(result).toMatchObject({
       ok: false,
       data: { error_code: "explicit_no_run" },
+    });
+    expect(after).toHaveLength(before.length);
+    expect(requests).toBe(0);
+  });
+
+  test("a direct synthetic tool call cannot start a live run after a no-live-effects preparation", async () => {
+    await seedTool("no-live-test");
+    await tdb.db.insert(conversationMessages).values({
+      tenant_id: tenantId,
+      conversation_id: conversationId,
+      role: "user",
+      content:
+        "Bereite diesen Ablauf für den automatischen Betrieb vor. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen.",
+    });
+    const tools = await buildSyntheticWorkflowTools({
+      db: tdb.db,
+      principal: makePrincipal(),
+      ctx: makeCtx({ recentUserMessage: null }),
+      signals: makeTurnSignals(),
+      events: [],
+    });
+    const before = await tdb.db.select({ id: executions.id }).from(executions);
+    const result = await tools["wf_no-live-test"]!.execute!(
+      {},
+      { toolCallId: "no-live-call", messages: [], context: {} },
+    );
+    const after = await tdb.db.select({ id: executions.id }).from(executions);
+    expect(result).toMatchObject({
+      ok: false,
+      data: { error_code: "explicit_no_live_effects" },
     });
     expect(after).toHaveLength(before.length);
     expect(requests).toBe(0);

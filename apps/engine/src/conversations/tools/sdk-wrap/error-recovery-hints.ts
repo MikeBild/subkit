@@ -14,6 +14,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "this product identity may run only a saved workflow matching its product. Select an authorized saved workflow; do not submit a draft or standalone step, self-declare a product, or switch tools to bypass the restriction.",
   explicit_no_run:
     "the user explicitly asked not to run, execute, test-run or start a workflow, so execution tools are hidden and attempts are refused. Respect that instruction and use only read-only inspection or authoring tools until the user asks to run.",
+  explicit_no_live_effects:
+    "the user asked not to activate anything or cause live effects, so live runs (run_workflow, rerun_execution, wf_ tools) are hidden and refused. Inspection, review_workflow_automation and held-write previews stay allowed: preview a saved inactive draft with dry_run_workflow (writes held, nothing activated). Never ask the user to lift the instruction to get a live run.",
   draft_write_held:
     "the draft probe held an external write before credential lookup or dispatch. Validate the draft with a read-only probe, save the connector, then use call_connector for the exact write with human approval. Do not retry the write through a draft probe or bypass the approval gate.",
   workflow_activation_required:

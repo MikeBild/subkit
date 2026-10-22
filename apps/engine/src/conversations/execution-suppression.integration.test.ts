@@ -1,7 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { conversationMessages, conversations, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
-import { conversationExecutionSuppressed } from "./execution-suppression.ts";
+import {
+  conversationExecutionSuppressed,
+  conversationExecutionSuppression,
+} from "./execution-suppression.ts";
 
 let testDb: TestDb;
 let tenant_id: string;
@@ -94,4 +97,73 @@ test("does not read a veto from another tenant", async () => {
       conversation_id: created.id,
     }),
   ).toBe(false);
+});
+
+const PREPARE_WITHOUT_LIVE_EFFECTS =
+  "Bereite diesen Ablauf für den automatischen Betrieb vor. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen. Erlaubte Prüfungen selbst übernehmen.";
+
+test("a no-live-effects preparation suppresses live execution only, also on a resume turn", async () => {
+  const created = await conversation();
+  await testDb.db.insert(conversationMessages).values([
+    {
+      tenant_id,
+      conversation_id: created.id,
+      role: "user",
+      content: PREPARE_WITHOUT_LIVE_EFFECTS,
+    },
+    { tenant_id, conversation_id: created.id, role: "user", content: "PROD" },
+  ]);
+  expect(
+    await conversationExecutionSuppression({
+      db: testDb.db,
+      tenant_id,
+      conversation_id: created.id,
+      recent_user_message: "PROD",
+    }),
+  ).toEqual({ live: true, all: false });
+  expect(
+    await conversationExecutionSuppression({
+      db: testDb.db,
+      tenant_id,
+      conversation_id: created.id,
+      recent_user_message: null,
+    }),
+  ).toEqual({ live: true, all: false });
+  expect(
+    await conversationExecutionSuppressed({
+      db: testDb.db,
+      tenant_id,
+      conversation_id: created.id,
+    }),
+  ).toBe(false);
+});
+
+test("a current no-test instruction suppresses previews before it is persisted", async () => {
+  const created = await conversation();
+  expect(
+    await conversationExecutionSuppression({
+      db: testDb.db,
+      tenant_id,
+      conversation_id: created.id,
+      recent_user_message: "Bitte keinen Testlauf starten.",
+    }),
+  ).toEqual({ live: true, all: true });
+});
+
+test("a neutral conversation suppresses nothing", async () => {
+  const created = await conversation();
+  await testDb.db.insert(conversationMessages).values({
+    tenant_id,
+    conversation_id: created.id,
+    role: "user",
+    content: "Run the workflow",
+  });
+  expect(
+    await conversationExecutionSuppression({
+      db: testDb.db,
+      tenant_id,
+      conversation_id: created.id,
+      recent_user_message: null,
+    }),
+  ).toEqual({ live: false, all: false });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { runCritic } from "../index.ts";
+import { runCritic, summarizeToolResult } from "../index.ts";
 
 describe("save_workflow_draft rubric", () => {
   it("passes when all structural checks succeed", async () => {
@@ -264,5 +264,59 @@ describe("confidence scaling", () => {
       },
     });
     expect(twoFail.confidence).toBeLessThan(oneFail.confidence);
+  });
+});
+
+describe("chat rubric — permitted next action", () => {
+  const refusal = summarizeToolResult("run_workflow", {
+    ok: false,
+    data: {
+      error_code: "workflow_activation_required",
+      next_best_actions: ["dry_run_workflow"],
+    },
+  });
+  const available = ["dry_run_workflow", "inspect_workflow_draft", "ask_user_choice"];
+
+  it("fails a reply that stops on a refusal whose permitted remedy was not taken", async () => {
+    const v = await runCritic({
+      artifact: { kind: "chat", payload: "Konflikte müssen behoben werden." },
+      toolResults: [refusal],
+      availableTools: available,
+    });
+    expect(v.verdict).toBe("fail");
+    expect(v.checks?.permitted_next_action_taken).toBe(false);
+    expect(v.hint).toContain("dry_run_workflow");
+  });
+
+  it("passes once the remedy, a question or the review card follows", async () => {
+    for (const later of [
+      summarizeToolResult("dry_run_workflow", { ok: true, data: { status: "succeeded" } }),
+      summarizeToolResult("ask_user_choice", { ok: true, data: {} }),
+      summarizeToolResult("review_workflow_automation", { ok: true, data: {} }),
+    ]) {
+      const v = await runCritic({
+        artifact: { kind: "chat", payload: "Vorschau mit gehaltenen Schreibvorgängen geprüft." },
+        toolResults: [refusal, later],
+        availableTools: available,
+      });
+      expect(v.checks?.permitted_next_action_taken).toBe(true);
+    }
+  });
+
+  it("skips the check without the available tools", async () => {
+    const v = await runCritic({
+      artifact: { kind: "chat", payload: "Konflikte müssen behoben werden." },
+      toolResults: [refusal],
+    });
+    expect(v.checks?.permitted_next_action_taken).toBeUndefined();
+  });
+
+  it("skips the check when the remedy is not available", async () => {
+    const v = await runCritic({
+      artifact: { kind: "chat", payload: "Konflikte müssen behoben werden." },
+      toolResults: [refusal],
+      availableTools: ["inspect_workflow_draft"],
+    });
+    expect(v.checks?.permitted_next_action_taken).toBe(true);
   });
 });

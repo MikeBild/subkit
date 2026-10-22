@@ -9,6 +9,7 @@ export interface DetectedIntent {
   startNewWorkflow?: boolean;
   forceNoTools?: boolean;
   suppressExecution?: boolean;
+  suppressLiveExecution?: boolean;
   reason: string;
 }
 
@@ -22,6 +23,23 @@ const NEGATED_RUN_PATTERNS = [
   /\b(?:führe|fuehre|starte)\b.{0,80}\b(?:keinen?|keine|keins)\b.{0,48}\b(?:neuen?\s+)?(?:lauf|workflow|tool|pipeline)\b.{0,24}\b(?:aus|starten)\b/i,
   /\b(?:nicht|niemals|keinesfalls)\b.{0,32}\b(?:ausführen|ausfuehren|starten|triggern|dispatchen|runnen)\b/i,
   /\b(?:do\s+not|don't|never|must\s+not)\b.{0,32}\b(?:run|execute|dispatch|trigger|start)\b/i,
+];
+
+const NEGATED_PREVIEW_PATTERNS = [
+  /\b(?:keinen?|kein)\s+(?:test|probe|trocken)[-\s]?(?:lauf|run|durchlauf)\b/i,
+  /\b(?:keinen?|kein)\s+(?:dry[-\s]?run|testlauf|probelauf)\b/i,
+  /\bno\s+(?:dry[-\s]?runs?|test\s+runs?|previews?)\b/i,
+  /\b(?:do\s+not|don't|never|must\s+not)\s+(?:test|dry[-\s]?run|preview)\b/i,
+  /\b(?:nicht|niemals|keinesfalls)\s+(?:testen|probelaufen)\b/i,
+];
+
+const NEGATED_LIVE_PATTERNS = [
+  /\b(?:keine|ohne)\b.{0,16}\blive[-\s]?(?:wirkungen?|effekte?|aktionen?|l[äa]ufe?|runs?|schreibvorg[äa]nge?)\b/i,
+  /\bnichts\b.{0,16}\blive\b/i,
+  /(?:^|[.;,:!]\s*|\b(?:und|aber|bitte|noch)\s+)(?:nicht|niemals|keinesfalls)\s+(?:\w+\s+)?aktivieren\b/i,
+  /\baktiviere\b.{0,40}\bnicht\b/i,
+  /\bno\s+live\s+(?:effects?|runs?|actions?|writes?)\b/i,
+  /\b(?:do\s+not|don't|never|must\s+not)\b.{0,16}\bactivate\b/i,
 ];
 
 const NEW_WORKFLOW_MODIFIER_PATTERN =
@@ -105,14 +123,23 @@ export function detectUserIntent(
   const authoringSignal =
     matchesWorkflowAuthoringPattern(text) ||
     matchesPositiveWorkflowCreationPattern(text, NEW_WORKFLOW_MODIFIER_PATTERN);
-  if (NEGATED_RUN_PATTERNS.some((pattern) => pattern.test(text))) {
+  if (
+    [...NEGATED_RUN_PATTERNS, ...NEGATED_PREVIEW_PATTERNS].some((pattern) => pattern.test(text))
+  ) {
     return authoringSignal
       ? {
           startNewWorkflow: true,
           suppressExecution: true,
+          suppressLiveExecution: true,
           reason: "authoring_intent_over_ambiguous_run",
         }
-      : { suppressExecution: true, reason: "explicit_no_run_intent" };
+      : { suppressExecution: true, suppressLiveExecution: true, reason: "explicit_no_run_intent" };
+  }
+  if (NEGATED_LIVE_PATTERNS.some((pattern) => pattern.test(text))) {
+    return {
+      ...detectRemainingIntent(text, authoringSignal, coverage),
+      suppressLiveExecution: true,
+    };
   }
   for (const pattern of RUN_WORKFLOW_PATTERNS) {
     if (pattern.test(text)) {
@@ -122,6 +149,14 @@ export function detectUserIntent(
       return { forceTool: "run_workflow", reason: "explicit_run_intent" };
     }
   }
+  return detectRemainingIntent(text, authoringSignal, coverage);
+}
+
+function detectRemainingIntent(
+  text: string,
+  authoringSignal: boolean,
+  coverage: EnumerationCoverage,
+): DetectedIntent {
   if (authoringSignal) {
     return { startNewWorkflow: true, reason: "explicit_new_workflow_intent" };
   }

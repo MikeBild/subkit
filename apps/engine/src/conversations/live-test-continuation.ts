@@ -10,7 +10,7 @@ import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { gateWorkflowRunRbac } from "../workflows/rbac.ts";
 import { getWorkflow } from "../workflows/service.ts";
 import { loadDraft } from "./draft.ts";
-import { conversationExecutionSuppressed } from "./execution-suppression.ts";
+import { conversationExecutionSuppression } from "./execution-suppression.ts";
 
 export async function continueConversationDevLiveTest(input: {
   db: Db;
@@ -43,11 +43,13 @@ export async function continueConversationDevLiveTest(input: {
   )
     return { state: "blocked" };
   if (
-    await conversationExecutionSuppressed({
-      db: input.db,
-      tenant_id: input.principal.tenant_id,
-      conversation_id: input.conversation_id,
-    })
+    (
+      await conversationExecutionSuppression({
+        db: input.db,
+        tenant_id: input.principal.tenant_id,
+        conversation_id: input.conversation_id,
+      })
+    ).live
   )
     return { state: "blocked" };
   const draft = await loadDraft(

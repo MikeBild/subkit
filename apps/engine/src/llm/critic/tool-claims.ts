@@ -5,6 +5,8 @@ export interface CriticToolResult {
   ids: string[];
   processed_ids: string[];
   error?: string;
+  error_code?: string;
+  next_best_actions?: string[];
 }
 
 export type ToolClaimIssueKind = "count_mismatch" | "success_after_failure" | "unprocessed_id";
@@ -134,6 +136,13 @@ export function summarizeToolResult(tool: string, output: unknown): CriticToolRe
   collectIds(output, ids, () => false);
   const processed = new Set<string>();
   if (failure === null) collectIds(output, processed, isNonSuccessItem);
+  const inner = asRecord(outer?.data);
+  const errorCode = [outer?.error_code, inner?.error_code].find(
+    (code): code is string => typeof code === "string",
+  );
+  const remedies = [inner?.next_best_actions, outer?.next_best_actions]
+    .find(Array.isArray)
+    ?.filter((name): name is string => typeof name === "string");
   return {
     tool,
     ok: failure === null,
@@ -141,6 +150,8 @@ export function summarizeToolResult(tool: string, output: unknown): CriticToolRe
     ids: [...ids],
     processed_ids: [...processed],
     ...(failure !== null ? { error: failure } : {}),
+    ...(errorCode ? { error_code: errorCode } : {}),
+    ...(failure !== null && remedies && remedies.length > 0 ? { next_best_actions: remedies } : {}),
   };
 }
 

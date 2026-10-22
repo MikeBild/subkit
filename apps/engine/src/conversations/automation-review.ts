@@ -5,7 +5,7 @@ import { listSchedules } from "../scheduler/repo.ts";
 import { inboundHookAutomationView } from "../scheduler/workflow-automation-view.ts";
 import type { WorkflowEffectManifest } from "../workflows/effect-manifest.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
-import { workflowExecutionEnvironment } from "../workflows/execution-environment.ts";
+import { resolveWorkflowReviewEnvironment } from "../workflows/execution-environment.ts";
 import { diagnoseWorkflow } from "../workflows/gate-diagnosis.ts";
 import { repairGuidanceForIssues } from "../workflows/issue-remedies.ts";
 import { inspectHeldPreviewEvidence } from "../workflows/report-delivery-proposal.ts";
@@ -94,17 +94,20 @@ async function savedChangeReview(
 ) {
   const workflow_version_id = pendingSavedChange(workflow);
   if (!workflow_version_id) return null;
-  let environment: "dev" | "prod";
+  let resolved: Awaited<ReturnType<typeof resolveWorkflowReviewEnvironment>>;
   try {
-    environment = await workflowExecutionEnvironment(db, tenant_id, workflow.id);
+    resolved = await resolveWorkflowReviewEnvironment(db, tenant_id, workflow.id, {
+      version_id: workflow_version_id,
+    });
   } catch {
     return null;
   }
   return {
     workflow_version_id,
     current_version_id: workflow.current_version_id ?? null,
-    environment,
-    review: await reviewFor(environment),
+    environment: resolved.environment,
+    environment_source: resolved.source,
+    review: await reviewFor(resolved.environment),
   };
 }
 

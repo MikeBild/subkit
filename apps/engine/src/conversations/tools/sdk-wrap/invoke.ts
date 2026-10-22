@@ -24,7 +24,7 @@ import {
 import { recordTransition, runConfirmGate } from "../../confirmation.ts";
 import { createDraftSnapshot } from "../../draft-checkpoints.ts";
 import { createElicitation } from "../../elicitations.ts";
-import { detectUserIntent } from "../../intent-detector.ts";
+import { executionSuppressionRefusal } from "../../execution-suppression.ts";
 import { parseLoadedSkills } from "../../loop/skill-recency.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import { findPriorSaveWorkflowApproval } from "../../persistence/save-workflow-approval.ts";
@@ -46,7 +46,7 @@ import { assertConversationTurn } from "../../turns.ts";
 import type { DraftDocument, TurnEvent } from "../../types.ts";
 import { withApprovalHandle, withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { decodeAskUserPromptEscapes } from "../ask-user/decode-prompt-escapes.ts";
-import { isWorkflowExecutionTool } from "../authoring-palette.ts";
+import { isLiveExecutionTool, isWorkflowExecutionTool } from "../authoring-palette.ts";
 import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
 import {
@@ -207,19 +207,16 @@ export function wrapOne(
       await prevChain;
       const executeBody = async (): Promise<WrappedToolOutput> => {
         await assertConversationTurn(ctx.abortSignal);
-        if (
-          isWorkflowExecutionTool(inner.name) &&
-          detectUserIntent(ctx.recentUserMessage).suppressExecution === true
-        ) {
-          return {
-            ok: false,
-            data: {
-              error_code: "explicit_no_run",
-              message:
-                "The user explicitly asked not to start a workflow run. No execution was started; use read-only execution history or diagnosis tools for existing runs.",
-            },
-          };
-        }
+        const suppressionRefusal = isWorkflowExecutionTool(inner.name)
+          ? await executionSuppressionRefusal({
+              db: ctx.db,
+              tenant_id: ctx.tenant_id,
+              conversation_id: ctx.conversation_id,
+              recent_user_message: ctx.recentUserMessage ?? null,
+              live_tool: isLiveExecutionTool(inner.name),
+            })
+          : null;
+        if (suppressionRefusal) return { ok: false, data: suppressionRefusal };
         if (intakeReviewBlocksWrite(ctx.getDraft(), inner.name)) {
           return {
             ok: false,

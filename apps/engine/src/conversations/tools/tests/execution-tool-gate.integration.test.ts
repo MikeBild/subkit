@@ -252,6 +252,27 @@ describe("execution-tool gate against a real palette", () => {
     expect(palette.list_executions).toBeDefined();
   });
 
+  test("a no-live-effects preparation keeps the held-write preview and hides live runs", async () => {
+    const palette = await buildRealPalette();
+    const slugs = collectSyntheticWorkflowSlugs(Object.keys(palette));
+    palette.dry_run_workflow = {};
+    const intent = detectUserIntent(
+      "Bereite diesen Ablauf für den automatischen Betrieb vor. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen.",
+    );
+    const gate = resolveExecutionToolGate({
+      hasBoundSavedWorkflow: true,
+      explicitlyNamedWorkflowSlug: null,
+      surface: "chat",
+      suppressExecution: intent.suppressExecution === true,
+      suppressLiveExecution: intent.suppressLiveExecution === true,
+    });
+    applyExecutionToolGate(palette, gate, slugs);
+    expect(gate).toEqual({ exposeExecution: false, reason: "explicit_no_live_effects" });
+    expect(palette.run_workflow).toBeUndefined();
+    expect(palette[`wf_${LOOKALIKE_SLUG}`]).toBeUndefined();
+    expect(palette.dry_run_workflow).toBeDefined();
+  });
+
   test("a direct run_workflow tool call is denied before execution on an explicit no-run turn", async () => {
     const palette = await buildRealPalette("Ändere nichts und führe keinen Lauf aus.");
     const runTool = palette.run_workflow as {
@@ -264,6 +285,22 @@ describe("execution-tool gate against a real palette", () => {
     const output = await runTool.execute?.({ workflow: LOOKALIKE_SLUG, execute_writes: false });
     const after = await tdb.db.select().from(executions);
     expect(output?.data.error_code).toBe("explicit_no_run");
+    expect(after).toHaveLength(before.length);
+  });
+
+  test("a direct run_workflow call is denied on a no-live-effects turn", async () => {
+    const palette = await buildRealPalette(
+      "Bereite diesen Ablauf vor. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen.",
+    );
+    const runTool = palette.run_workflow as {
+      execute?: (
+        args: Record<string, unknown>,
+      ) => Promise<{ ok: boolean; data: Record<string, unknown> }>;
+    };
+    const before = await tdb.db.select().from(executions);
+    const output = await runTool.execute?.({ workflow: LOOKALIKE_SLUG, execute_writes: false });
+    const after = await tdb.db.select().from(executions);
+    expect(output?.data.error_code).toBe("explicit_no_live_effects");
     expect(after).toHaveLength(before.length);
   });
 });

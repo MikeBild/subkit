@@ -494,3 +494,53 @@ describe("the turn's first-step tool choice", () => {
     expect(turnToolChoice(null, true)).toBe("none");
   });
 });
+
+const PREPARE_WITHOUT_LIVE_EFFECTS =
+  "Bereite diesen Ablauf für den automatischen Betrieb vor. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen. Erlaubte Prüfungen selbst übernehmen; bei fehlender fachlicher Entscheidung kurze Frage mit Auswahl und Empfehlung.";
+
+describe("live-effect suppression", () => {
+  test("a no-activation, no-live-effects preparation suppresses only live execution", () => {
+    const res = detectUserIntent(PREPARE_WITHOUT_LIVE_EFFECTS);
+    expect(res.suppressLiveExecution).toBe(true);
+    expect(res.suppressExecution).toBeUndefined();
+    expect(res.forceTool).toBeUndefined();
+  });
+
+  test.each([
+    "Bitte keinen Testlauf starten.",
+    "Kein Probelauf, nur den Entwurf prüfen.",
+    "No dry run please, just review the draft.",
+    "Den Workflow bitte nicht testen.",
+  ])("an explicit no-test instruction suppresses previews too: %s", (message) => {
+    const res = detectUserIntent(message);
+    expect(res.suppressExecution).toBe(true);
+    expect(res.suppressLiveExecution).toBe(true);
+  });
+
+  test.each([
+    "Do not activate it and no live effects.",
+    "Nichts live auslösen, nur vorbereiten.",
+    "Aktiviere den Workflow nicht.",
+  ])("live-effect negations suppress live execution: %s", (message) => {
+    expect(detectUserIntent(message)).toMatchObject({ suppressLiveExecution: true });
+    expect(detectUserIntent(message).suppressExecution).toBeUndefined();
+  });
+
+  test("a question about activation is no instruction", () => {
+    expect(
+      detectUserIntent("Warum kann ich den Workflow nicht aktivieren?").suppressLiveExecution,
+    ).toBeUndefined();
+  });
+
+  test("a plain run request suppresses nothing", () => {
+    const res = detectUserIntent("Run the workflow");
+    expect(res.suppressExecution).toBeUndefined();
+    expect(res.suppressLiveExecution).toBeUndefined();
+  });
+
+  test("an explicit no-run instruction implies live suppression", () => {
+    expect(detectUserIntent("Den Workflow nicht ausführen, sondern nur validieren.")).toMatchObject(
+      { suppressExecution: true, suppressLiveExecution: true, reason: "explicit_no_run_intent" },
+    );
+  });
+});

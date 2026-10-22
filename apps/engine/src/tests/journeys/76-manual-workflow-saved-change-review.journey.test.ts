@@ -10,7 +10,13 @@ import {
 } from "../../auth/browser-session.ts";
 import { bindPersistedWorkflow } from "../../conversations/authoring-state.ts";
 import { ERROR_CODE_ALTERNATIVES } from "../../conversations/tools/sdk-wrap/error-recovery-hints.ts";
-import { conversations, executions, sessions, workflows } from "../../db/schema/index.ts";
+import {
+  connectors,
+  conversations,
+  executions,
+  sessions,
+  workflows,
+} from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { saveWorkflowDraft } from "../../workflows/drafts.ts";
@@ -229,5 +235,56 @@ describe("journey: a manual workflow's saved change has a review the person can 
     const review = dataOf(toolResult(after, "review_workflow_automation"));
     expect(review.saved_change).toBeNull();
     expect(review.presentation).toBe("text");
+  });
+
+  test("AC6: a manual workflow bound only to prod connectors is reviewed in prod", async () => {
+    const [connector] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id: ctx.tenantId,
+        slug: "briefings-prod",
+        display_name: "Briefings",
+        driver: "http",
+        auth_type: "none",
+        environment: "prod",
+        base_url: "https://api.briefings.example.test",
+      })
+      .returning();
+    if (!connector) throw new Error("missing connector fixture");
+    const saved = await saveWorkflowDraft(
+      {
+        tenant_id: ctx.tenantId,
+        actor_id: ctx.userId,
+        request_source: "chat",
+        def: {
+          name: "Prod briefing",
+          slug: "prod-briefing",
+          steps: [
+            {
+              id: "items",
+              kind: "request",
+              method: "GET",
+              connector_id: connector.id,
+              path: "/items",
+            },
+          ],
+        },
+      },
+      ctx.db,
+    );
+    if (!saved.draft) throw new Error(saved.errors.join("; "));
+    const review = dataOf(
+      await mcpCall("review_workflow_automation", { workflow_id: saved.draft.workflow_id }),
+    );
+    const savedChange = review.saved_change as {
+      environment: string;
+      environment_source: string;
+      review: { issues?: Array<{ code: string }> };
+    };
+    expect(savedChange).toMatchObject({ environment: "prod", environment_source: "bindings" });
+    expect((savedChange.review.issues ?? []).map((issue) => issue.code)).not.toContain(
+      "environment_mismatch",
+    );
+    expect(await runsOf(saved.draft.workflow_id)).toEqual([]);
   });
 });

@@ -23,7 +23,7 @@ import {
   openHeldWritesApproval,
 } from "../../confirmation.ts";
 import { createElicitation } from "../../elicitations.ts";
-import { detectUserIntent } from "../../intent-detector.ts";
+import { executionSuppressionRefusal } from "../../execution-suppression.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import type { PermissionMode, ToolPolicies } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
@@ -93,16 +93,14 @@ async function executeSyntheticRun(
   p: BuildOneParams & { rawArgs: Record<string, unknown> },
 ): Promise<WrappedToolOutput> {
   const { entry, ctx, signals, events, db, name, principal, rawArgs } = p;
-  if (detectUserIntent(ctx.recentUserMessage).suppressExecution === true) {
-    return {
-      ok: false,
-      data: {
-        error_code: "explicit_no_run",
-        message:
-          "The user explicitly asked not to start a workflow run. No execution was started; use read-only execution history or diagnosis tools for existing runs.",
-      },
-    };
-  }
+  const suppressionRefusal = await executionSuppressionRefusal({
+    db,
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    recent_user_message: ctx.recentUserMessage ?? null,
+    live_tool: true,
+  });
+  if (suppressionRefusal) return { ok: false, data: suppressionRefusal };
   if (ctx.tenant_id !== principal.tenant_id) {
     throw new Error(
       `synthetic wf_<slug> dispatch: ctx.tenant_id (${ctx.tenant_id}) !== principal.tenant_id (${principal.tenant_id})`,

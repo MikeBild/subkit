@@ -300,3 +300,27 @@ describe("chat critic claim check against tool results", () => {
     expect(issues).toEqual([]);
   });
 });
+
+describe("summarizeToolResult refusal remedies", () => {
+  it("extracts next_best_actions and error_code from a refusal envelope", () => {
+    expect(
+      summarizeToolResult("run_workflow", {
+        ok: false,
+        data: {
+          error_code: "workflow_activation_required",
+          next_best_actions: ["dry_run_workflow", 7],
+        },
+      }),
+    ).toMatchObject({
+      ok: false,
+      error_code: "workflow_activation_required",
+      next_best_actions: ["dry_run_workflow"],
+    });
+  });
+
+  it("leaves successes without remedy fields", () => {
+    const summary = summarizeToolResult("inspect_workflow_draft", { ok: true, data: {} });
+    expect(summary.next_best_actions).toBeUndefined();
+    expect(summary.error_code).toBeUndefined();
+  });
+});

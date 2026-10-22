@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
+  conversationMessages,
   conversations,
   workflows,
   workflowsSchedules,
@@ -239,4 +240,17 @@ test("binds a renewed DEV test intent to the changed preview input", async () =>
     input: { recipient: "two@example.test" },
     input_digest: workflowJsonDigest({ recipient: "two@example.test" }),
   });
+});
+
+test("a no-live-effects preparation never seeds a DEV test intent", async () => {
+  const f = await fixture();
+  await ctx.testDb.db.insert(conversationMessages).values({
+    tenant_id: ctx.tenant_id,
+    conversation_id: f.conversation.id,
+    role: "user",
+    content:
+      "Bereite diesen Ablauf für den automatischen Betrieb vor. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen.",
+  });
+  expect(await review(f)).toMatchObject({ ok: true });
+  expect(f.draft().session?.live_test).toBeUndefined();
 });

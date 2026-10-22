@@ -335,3 +335,28 @@ test("retries a queued admission after enqueue failure and dispatches once", asy
   );
   expect(remote.callCount() - beforeCalls).toBe(1);
 });
+
+test("does not dispatch after a no-live-effects preparation", async () => {
+  const f = await fixture({ authority: true });
+  await ctx.testDb.db.insert(conversationMessages).values({
+    tenant_id: ctx.tenant_id,
+    conversation_id: f.conversation.id,
+    role: "user",
+    content:
+      "Bereite diesen Ablauf für den automatischen Betrieb vor. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen.",
+  });
+  const result = await continueConversationDevLiveTest({
+    db: ctx.testDb.db,
+    principal: principal(),
+    boss,
+    conversation_id: f.conversation.id,
+    workflow_id: f.workflow.id,
+    workflow_version_id: f.version.id,
+  });
+  expect(result.state).toBe("blocked");
+  const rows = await ctx.testDb.db
+    .select()
+    .from(executions)
+    .where(and(eq(executions.tenant_id, ctx.tenant_id), eq(executions.workflow_id, f.workflow.id)));
+  expect(rows).toHaveLength(0);
+});

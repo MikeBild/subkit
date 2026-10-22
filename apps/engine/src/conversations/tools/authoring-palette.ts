@@ -106,11 +106,13 @@ const WORKFLOW_PERSISTENCE: ReadonlySet<string> = new Set(["save_workflow_draft"
 const DIAGNOSIS_TOOLS: ReadonlySet<string> = new Set(["diagnose_latest_execution"]);
 
 const ALWAYS_AVAILABLE_EXECUTION: ReadonlySet<string> = new Set(["run_workflow"]);
+const LIVE_EXECUTION_TOOLS: ReadonlySet<string> = new Set(["run_workflow", "rerun_execution"]);
+
+const HELD_PREVIEW_TOOLS: ReadonlySet<string> = new Set(["dry_run_workflow", "dry_run_step"]);
+
 const WORKFLOW_EXECUTION_TOOLS: ReadonlySet<string> = new Set([
-  "run_workflow",
-  "rerun_execution",
-  "dry_run_workflow",
-  "dry_run_step",
+  ...LIVE_EXECUTION_TOOLS,
+  ...HELD_PREVIEW_TOOLS,
 ]);
 
 export const REVIEW_DECISIONS: ReadonlySet<string> = new Set([
@@ -233,6 +235,7 @@ export interface ExecutionToolGateState {
   explicitlyNamedWorkflowSlug: string | null;
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   suppressExecution?: boolean;
+  suppressLiveExecution?: boolean;
 }
 
 export interface ExecutionToolGateDecision {
@@ -242,6 +245,7 @@ export interface ExecutionToolGateDecision {
     | "named_workflow_slug"
     | "chat_surface"
     | "explicit_no_run"
+    | "explicit_no_live_effects"
     | "authoring_no_target";
 }
 
@@ -249,6 +253,13 @@ export function resolveExecutionToolGate(state: ExecutionToolGateState): Executi
   if (state.suppressExecution) {
     return { exposeExecution: false, reason: "explicit_no_run" };
   }
+  const decision = resolveExposure(state);
+  return decision.exposeExecution && state.suppressLiveExecution
+    ? { exposeExecution: false, reason: "explicit_no_live_effects" }
+    : decision;
+}
+
+function resolveExposure(state: ExecutionToolGateState): ExecutionToolGateDecision {
   if (state.surface === "chat") {
     return { exposeExecution: true, reason: "chat_surface" };
   }
@@ -268,6 +279,10 @@ export function isExecutionToolName(
   if (WORKFLOW_EXECUTION_TOOLS.has(name)) return true;
   if (!name.startsWith(WORKFLOW_TOOL_PREFIX)) return false;
   return syntheticWorkflowSlugs.has(name.slice(WORKFLOW_TOOL_PREFIX.length));
+}
+
+export function isLiveExecutionTool(name: string): boolean {
+  return LIVE_EXECUTION_TOOLS.has(name) || name.startsWith(WORKFLOW_TOOL_PREFIX);
 }
 
 export function isWorkflowExecutionTool(name: string): boolean {
@@ -318,6 +333,7 @@ export function applyExecutionToolGate(
   let removed = 0;
   for (const name of Object.keys(tools)) {
     if (name === "dry_run_step" && decision.reason === "authoring_no_target") continue;
+    if (HELD_PREVIEW_TOOLS.has(name) && decision.reason === "explicit_no_live_effects") continue;
     if (isExecutionToolName(name, syntheticWorkflowSlugs)) {
       delete tools[name];
       removed += 1;

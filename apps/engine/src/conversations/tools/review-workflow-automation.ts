@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { can } from "../../rbac/evaluator.ts";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
 import { inspectAutomationReview, savedChangeReviewPath } from "../automation-review.ts";
-import { conversationExecutionSuppressed } from "../execution-suppression.ts";
+import { conversationExecutionSuppression } from "../execution-suppression.ts";
 import type { ConversationTool, ToolContext } from "./index.ts";
 import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { resolvePublicBaseUrl } from "./usage-guidance.ts";
@@ -13,13 +13,15 @@ function rendersReviewCard(surface: ToolContext["surface"]): boolean {
   return surface === undefined || surface === "web";
 }
 
-async function executionSuppressed(ctx: ToolContext): Promise<boolean> {
-  return conversationExecutionSuppressed({
-    db: ctx.db,
-    tenant_id: ctx.tenant_id,
-    conversation_id: ctx.conversation_id,
-    recent_user_message: ctx.recentUserMessage ?? null,
-  });
+async function liveExecutionSuppressed(ctx: ToolContext): Promise<boolean> {
+  return (
+    await conversationExecutionSuppression({
+      db: ctx.db,
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      recent_user_message: ctx.recentUserMessage ?? null,
+    })
+  ).live;
 }
 
 export async function buildAutomationReview(ctx: ToolContext, workflow_id: string) {
@@ -57,7 +59,7 @@ export async function buildAutomationReview(ctx: ToolContext, workflow_id: strin
 export const reviewWorkflowAutomationTool: ConversationTool = {
   name: "review_workflow_automation",
   description:
-    "Hand off to the user-facing review card for a workflow in this chat: its automatic runs (schedules, inbound webhooks) and a saved change that still has to be applied before the workflow can run. Use after inspecting and preparing the workflow, when run_workflow answers workflow_activation_required, or when the user asks for its current readiness. When there is something to review this ends the turn with a structured card; do not narrate internal diagnosis before calling it. When there is nothing (no schedule, no webhook, no unapplied saved change) there is no card: answer the user in prose from the result. The browser dialog separately checks the exact version, effects and finite limits. A completed DEV preparation records one pending test for this exact version unless the user's current instruction explicitly says not to run live. Never substitute ask_user_confirm, a single run, or an API call: none of them applies a saved change or grants recurring authority.",
+    "Hand off to the user-facing review card for a workflow in this chat: its automatic runs (schedules, inbound webhooks) and a saved change that still has to be applied before the workflow can run. Use after inspecting and preparing the workflow, when run_workflow answers workflow_activation_required, or when the user asks for its current readiness. When there is something to review this ends the turn with a structured card; do not narrate internal diagnosis before calling it. When there is nothing (no schedule, no webhook, no unapplied saved change) there is no card: answer the user in prose from the result. The browser dialog separately checks the exact version, effects and finite limits. A completed DEV preparation records one pending test for this exact version unless the user said not to run live, not to activate or not to cause live effects. Never substitute ask_user_confirm, a single run, or an API call: none of them applies a saved change or grants recurring authority.",
   inputSchema: Input,
   category: "tenant_read",
   permission: { action: "schedule:read", resourceType: "schedule" },
@@ -85,7 +87,7 @@ export const reviewWorkflowAutomationTool: ConversationTool = {
       preview?.ok === true &&
       preview.input !== undefined &&
       inputDigest !== null &&
-      !(await executionSuppressed(ctx))
+      !(await liveExecutionSuppressed(ctx))
     ) {
       const existing = draft.session?.live_test;
       if (
