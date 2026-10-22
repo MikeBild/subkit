@@ -49,11 +49,11 @@ Each app has its own sign-in. Your sign-in in the regular Cockpit stays untouche
 
 ### Set the branding of a workspace
 
-1. Open **Settings** and, under **Working with sk**, the **Tenant branding** section.
+1. Open **Settings** and, under **Working with sk**, the **Workspace branding** section.
 2. Under **App icon (1:1)**, upload a square PNG with at least 512 pixels per side.
 3. Under **Color palette**, choose **Standard**, **Indigo** or **Teal**.
 
-   ![Tenant branding settings of the fictional workspace Brennwerk with the organization name Brennwerk, the subtitle Logistik, the dark teal app icon with an orange flame, the light and dark logo, and the Teal palette selected; the sidebar shows the same logo and wordmark](images/cockpit-app-branding.en.webp)
+   ![Workspace branding settings of the fictional workspace Brennwerk with the organization name Brennwerk, the subtitle Logistik, the dark teal app icon with an orange flame, the light and dark logo, and the Teal palette selected; the sidebar shows the same logo and wordmark](images/cockpit-app-branding.en.webp)
 
 4. Check the preview and select **Save changes**.
 
