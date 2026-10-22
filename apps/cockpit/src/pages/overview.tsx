@@ -10,6 +10,7 @@ import {
   rejectSkillCandidate,
 } from "@/api/decisions";
 import type { components } from "@/api/schema";
+import { markAttentionSeen } from "@/app/attention-seen";
 import {
   absolute,
   attentionHref,
@@ -388,6 +389,17 @@ export function OverviewPage() {
   const repairRequired = useRepairRequiredCount(session.permissions);
   const href = useRouterState({ select: (state) => state.location.href });
   const [review, setReview] = useState<string | null>(() => reviewFromUrl(window.location.search));
+  const seenAttention =
+    attention.enabled && !attention.query.isError ? attention.query.data : undefined;
+  useEffect(() => {
+    if (!seenAttention) return;
+    const mark = () => {
+      if (document.visibilityState === "visible") markAttentionSeen(session, seenAttention);
+    };
+    mark();
+    document.addEventListener("visibilitychange", mark);
+    return () => document.removeEventListener("visibilitychange", mark);
+  }, [seenAttention, session]);
 
   useEffect(() => {
     void href;

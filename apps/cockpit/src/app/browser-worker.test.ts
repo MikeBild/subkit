@@ -9,13 +9,22 @@ const scope = `${origin}/cockpit/`;
 interface WindowClientFixture {
   url: string;
   focused: boolean;
+  visibilityState: "visible" | "hidden";
+  messages: unknown[];
   focus(): Promise<WindowClientFixture>;
+  postMessage(message: unknown): void;
 }
 
-function windowClient(url: string): WindowClientFixture {
+function windowClient(
+  url: string,
+  visibilityState: "visible" | "hidden" = "hidden",
+): WindowClientFixture {
   const client: WindowClientFixture = {
     url,
     focused: false,
+    visibilityState,
+    messages: [],
+    postMessage: (message) => client.messages.push(message),
     focus: async () => {
       client.focused = true;
       return client;
@@ -24,7 +33,7 @@ function windowClient(url: string): WindowClientFixture {
   return client;
 }
 
-function worker(windows: WindowClientFixture[] = []) {
+function worker(windows: WindowClientFixture[] = [], language = "en-US") {
   const handlers = new Map<string, (event: Record<string, unknown>) => void>();
   const notifications: unknown[] = [];
   const opened: unknown[] = [];
@@ -34,6 +43,7 @@ function worker(windows: WindowClientFixture[] = []) {
     URL,
     self: {
       location: { origin },
+      navigator: { language },
       registration: {
         scope,
         showNotification: (...args: unknown[]) => notifications.push(args),
@@ -82,14 +92,58 @@ describe("browser tab push worker", () => {
     expect(source).not.toMatch(/caches\.|indexedDB|localStorage|clients\.claim|fetch\(/);
   });
 
-  test("shows only a neutral notification for the Cockpit tab", async () => {
-    const app = worker();
+  test("shows only a neutral notification while no Cockpit window is visible", async () => {
+    const hidden = windowClient(`${origin}/cockpit/flows`);
+    const foreign = windowClient("https://other.example.test/cockpit/", "visible");
+    const lookalike = windowClient(`${origin}/cockpitx`, "visible");
+    const app = worker([hidden, foreign, lookalike]);
     await app.dispatch("push", { data: { text: () => "secret tenant workflow approval" } });
     expect(app.notifications).toEqual([
       [
         "SubKit",
         {
-          body: "SubKit needs your attention.",
+          body: "New entries need you",
+          icon: "/cockpit/app-icon-192.png",
+          tag: "/cockpit/",
+          renotify: true,
+        },
+      ],
+    ]);
+    expect([hidden, foreign, lookalike].flatMap((client) => client.messages)).toEqual([]);
+    expect(app.matchAllOptions).toEqual([{ type: "window", includeUncontrolled: true }]);
+  });
+
+  test("a visible Cockpit tab gets an in-app hint instead of a notification", async () => {
+    const tab = windowClient(`${origin}/cockpit/flows`, "visible");
+    const app = worker([tab]);
+    await app.dispatch("push", { data: { text: () => "secret tenant workflow approval" } });
+    expect(app.notifications).toEqual([]);
+    expect(tab.messages).toEqual([{ type: "attention" }]);
+    expect(app.matchAllOptions).toEqual([{ type: "window", includeUncontrolled: true }]);
+  });
+
+  test("a visible installed app window on the same origin also takes the hint", async () => {
+    const installed = windowClient(
+      `${origin}/cockpit/i/11111111-1111-4111-8111-111111111111/`,
+      "visible",
+    );
+    const hidden = windowClient(`${origin}/cockpit/`);
+    const app = worker([installed, hidden]);
+    await app.dispatch("push", {});
+    expect(app.notifications).toEqual([]);
+    expect(installed.messages).toEqual([{ type: "attention" }]);
+    expect(hidden.messages).toEqual([]);
+  });
+
+  test("a German browser gets the German notification text and no payload content", async () => {
+    const app = worker([], "de-DE");
+    await app.dispatch("push", { data: { text: () => "secret tenant workflow approval" } });
+    expect(JSON.stringify(app.notifications)).not.toContain("secret");
+    expect(app.notifications).toEqual([
+      [
+        "SubKit",
+        {
+          body: "Neue Einträge brauchen dich",
           icon: "/cockpit/app-icon-192.png",
           tag: "/cockpit/",
           renotify: true,

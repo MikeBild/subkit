@@ -2,11 +2,14 @@ import { Bell, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { type CockpitInstallation, createCockpitInstallation } from "@/api/cockpit-installations";
+import { type AttentionFresh, useAttentionFresh } from "@/app/attention-seen";
 import { cockpitApiHref, installationId } from "@/app/installation-context";
 import { useInstallation } from "@/app/installation-provider";
+import { AttentionDot } from "@/app/live-indicator";
 import { useSession } from "@/app/session";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Button, FormDialog, Switch } from "@/components/cockpit/patterns";
+import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 
 interface DeferredInstallPrompt extends Event {
@@ -243,9 +246,24 @@ export function InstallationNotificationsDialog({
   );
 }
 
+export function notificationBellLabel(fresh: AttentionFresh | null): TranslationKey {
+  return fresh ? "installation.notificationsNew" : "installation.notifications";
+}
+
+export function NotificationBellIcon({ fresh }: { fresh: AttentionFresh | null }) {
+  return (
+    <span className="relative inline-flex">
+      <Bell />
+      {fresh && <AttentionDot stopped={fresh.stopped} />}
+    </span>
+  );
+}
+
 export function InstallationNotificationControl() {
   const { t } = useI18n();
+  const session = useSession();
   const { available, capabilities } = useInstallation();
+  const fresh = useAttentionFresh(session);
   const [open, setOpen] = useState(false);
   if (!available && !capabilities.push) return null;
   return (
@@ -254,11 +272,12 @@ export function InstallationNotificationControl() {
         type="button"
         variant="ghost"
         size="icon-sm"
-        label={t("installation.notifications")}
+        label={t(notificationBellLabel(fresh))}
         data-testid="installation-notifications"
+        data-attention-new={String(fresh !== null)}
         onClick={() => setOpen(true)}
       >
-        <Bell />
+        <NotificationBellIcon fresh={fresh} />
       </IconButton>
       <InstallationNotificationsDialog open={open} onOpenChange={setOpen} />
     </>

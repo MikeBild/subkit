@@ -1,0 +1,18 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { CATALOGS } from "@/lib/i18n";
+
+const workers = ["browser-worker.js", "installation-worker.js"].map((name) => ({
+  name,
+  source: readFileSync(new URL(`../../public/${name}`, import.meta.url), "utf8"),
+}));
+
+describe("worker notification text", () => {
+  test("both workers show the catalog text in English and German", () => {
+    for (const { name, source } of workers) {
+      expect(source, name).toContain(JSON.stringify(CATALOGS.en["attention.notice"]));
+      expect(source, name).toContain(JSON.stringify(CATALOGS.de["attention.notice"]));
+      expect(source, name).not.toContain("needs your attention");
+    }
+  });
+});

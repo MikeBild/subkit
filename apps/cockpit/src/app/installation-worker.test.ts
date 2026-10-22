@@ -12,15 +12,24 @@ interface WindowClientFixture {
   url: string;
   focused: boolean;
   navigated: string[];
+  visibilityState: "visible" | "hidden";
+  messages: unknown[];
   focus(): Promise<WindowClientFixture>;
   navigate(url: string): Promise<WindowClientFixture>;
+  postMessage(message: unknown): void;
 }
 
-function windowClient(url: string): WindowClientFixture {
+function windowClient(
+  url: string,
+  visibilityState: "visible" | "hidden" = "hidden",
+): WindowClientFixture {
   const client: WindowClientFixture = {
     url,
     focused: false,
     navigated: [],
+    visibilityState,
+    messages: [],
+    postMessage: (message) => client.messages.push(message),
     focus: async () => {
       client.focused = true;
       return client;
@@ -34,7 +43,7 @@ function windowClient(url: string): WindowClientFixture {
   return client;
 }
 
-function worker(authenticated = true, windows: WindowClientFixture[] = []) {
+function worker(authenticated = true, windows: WindowClientFixture[] = [], language = "en-US") {
   const handlers = new Map<string, (event: Record<string, unknown>) => void>();
   const sent: unknown[] = [];
   const notifications: unknown[] = [];
@@ -54,6 +63,7 @@ function worker(authenticated = true, windows: WindowClientFixture[] = []) {
         status: authenticated ? 200 : 401,
       }),
     self: {
+      navigator: { language },
       registration: { scope, showNotification: (...args: unknown[]) => notifications.push(args) },
       skipWaiting: () => {},
       clients: {
@@ -165,7 +175,7 @@ describe("installation worker privacy boundary", () => {
       [
         "SubKit",
         {
-          body: "SubKit needs your attention.",
+          body: "New entries need you",
           icon: "/cockpit/app-icon-192.png",
           tag: new URL(scope).pathname,
           renotify: true,
@@ -174,6 +184,40 @@ describe("installation worker privacy boundary", () => {
     ]);
     await app.dispatch("notificationclick", { notification: { close: () => {} } });
     expect(app.opened).toEqual([scope]);
+  });
+  test("a visible Cockpit window on the origin gets an in-app hint instead of a notification", async () => {
+    const root = windowClient("https://app.example.test/cockpit/flows", "visible");
+    const other = windowClient(
+      "https://app.example.test/cockpit/i/22222222-2222-4222-8222-222222222222/",
+      "visible",
+    );
+    const hidden = windowClient(`${scope}runs`);
+    const app = worker(true, [root, other, hidden]);
+    await app.dispatch("push", { data: { text: () => "secret tenant workflow approval" } });
+    expect(app.notifications).toEqual([]);
+    expect(root.messages).toEqual([{ type: "attention" }]);
+    expect(other.messages).toEqual([{ type: "attention" }]);
+    expect(hidden.messages).toEqual([]);
+    expect(app.matchAllOptions).toEqual([{ type: "window", includeUncontrolled: true }]);
+  });
+  test("hidden Cockpit windows and visible foreign pages still get the neutral notification", async () => {
+    const hidden = windowClient(`${scope}runs`);
+    const foreign = windowClient("https://other.example.test/cockpit/", "visible");
+    const lookalike = windowClient("https://app.example.test/cockpitx", "visible");
+    const app = worker(true, [hidden, foreign, lookalike], "de-AT");
+    await app.dispatch("push", { data: { text: () => "secret tenant workflow approval" } });
+    expect(app.notifications).toEqual([
+      [
+        "SubKit",
+        {
+          body: "Neue Einträge brauchen dich",
+          icon: "/cockpit/app-icon-192.png",
+          tag: new URL(scope).pathname,
+          renotify: true,
+        },
+      ],
+    ]);
+    expect([hidden, foreign, lookalike].flatMap((client) => client.messages)).toEqual([]);
   });
   test("a notification click focuses the open app instead of opening another window", async () => {
     const foreign = windowClient("https://app.example.test/cockpit/");

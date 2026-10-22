@@ -37,6 +37,21 @@ export function LiveIndicator({ status }: { status: LiveStatus }) {
   );
 }
 
+export function AttentionDot({ stopped, className }: { stopped: boolean; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="attention-new-dot"
+      data-attention-stopped={String(stopped)}
+      className={cn(
+        "pointer-events-none absolute -top-0.5 -right-0.5 size-1.5 rounded-full",
+        stopped ? "bg-destructive" : "bg-primary",
+        className,
+      )}
+    />
+  );
+}
+
 export function LiveStatusRow({ status, actions }: { status: LiveStatus; actions?: ReactNode }) {
   return (
     <div

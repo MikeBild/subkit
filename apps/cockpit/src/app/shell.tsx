@@ -67,9 +67,11 @@ import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { RunOverlays } from "@/pages/runs";
+import { AttentionNotice } from "./attention-notice";
+import { useAttentionFresh } from "./attention-seen";
 import { cockpitBasePath } from "./installation-context";
 import { LiveEventsProvider, useLiveStatus } from "./live-events";
-import { LiveStatusRow } from "./live-indicator";
+import { AttentionDot, LiveStatusRow } from "./live-indicator";
 import {
   type NavigationItem,
   navigationItem,
@@ -261,6 +263,7 @@ export function AppShell() {
         <Toaster richColors position="bottom-right" />
         <InstallationImportDialog />
         <VersionNotice />
+        <AttentionNotice />
       </SidebarProvider>
     </LiveEventsProvider>
   );
@@ -295,7 +298,7 @@ function ShellContent() {
             data-cockpit-header="chat"
           >
             <div className={cn("flex min-h-8 items-start gap-2", CHAT_COLUMN)}>
-              <SidebarToggle className="-ml-1 shrink-0" />
+              <MobileAttentionToggle className="-ml-1 shrink-0" mobile={isMobile} />
               <div ref={header.setSlot} className="min-w-0 flex-1" />
             </div>
           </header>
@@ -304,7 +307,7 @@ function ShellContent() {
             className="flex h-12 shrink-0 items-center gap-3 border-b px-4 sm:px-6"
             data-testid="cockpit-header"
           >
-            <SidebarToggle className="-ml-1" />
+            <MobileAttentionToggle className="-ml-1" mobile={isMobile} />
           </header>
         ))}
       <ResponsiveWorkspace>
@@ -324,6 +327,18 @@ function ShellContent() {
 function DesktopSidebarToggle() {
   const isMobile = useIsMobile();
   return isMobile ? null : <SidebarToggle className="shrink-0" />;
+}
+
+function MobileAttentionToggle({ className, mobile }: { className: string; mobile: boolean }) {
+  const session = useSession();
+  const fresh = useAttentionFresh(session);
+  if (!mobile || !fresh) return <SidebarToggle className={className} />;
+  return (
+    <span className="relative inline-flex shrink-0" data-testid="sidebar-trigger-attention">
+      <SidebarToggle className={className} />
+      <AttentionDot stopped={fresh.stopped} className="top-1.5 right-1.5" />
+    </span>
+  );
 }
 
 function AttentionCounter() {

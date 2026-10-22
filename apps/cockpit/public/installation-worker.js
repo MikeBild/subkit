@@ -1,4 +1,5 @@
 const scope = new URL(self.registration.scope);
+const origin = scope.origin;
 const MAX_BYTES = 25 * 1024 * 1024;
 const MAX_FILES = 10;
 const pending = new Map();
@@ -7,6 +8,37 @@ function matchingClient(client) {
   if (!client) return false;
   const url = new URL(client.url);
   return url.origin === scope.origin && url.pathname.startsWith(scope.pathname);
+}
+
+const NOTICE = { en: "New entries need you", de: "Neue Einträge brauchen dich" };
+
+function cockpitWindow(client) {
+  if (!client) return false;
+  const url = new URL(client.url);
+  if (url.origin !== origin) return false;
+  return url.pathname === "/cockpit" || url.pathname.startsWith("/cockpit/");
+}
+
+function notice() {
+  const language = String(self.navigator?.language ?? "").toLowerCase();
+  return language.startsWith("de") ? NOTICE.de : NOTICE.en;
+}
+
+async function attention(tag) {
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  const visible = windows.filter(
+    (client) => cockpitWindow(client) && client.visibilityState === "visible",
+  );
+  if (visible.length > 0) {
+    for (const client of visible) client.postMessage({ type: "attention" });
+    return;
+  }
+  return self.registration.showNotification("SubKit", {
+    body: notice(),
+    icon: "/cockpit/app-icon-192.png",
+    tag,
+    renotify: true,
+  });
 }
 
 function clearPending() {
@@ -108,14 +140,7 @@ self.addEventListener("message", (event) => {
   );
 });
 self.addEventListener("push", (event) => {
-  event.waitUntil(
-    self.registration.showNotification("SubKit", {
-      body: "SubKit needs your attention.",
-      icon: "/cockpit/app-icon-192.png",
-      tag: scope.pathname,
-      renotify: true,
-    }),
-  );
+  event.waitUntil(attention(scope.pathname));
 });
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();

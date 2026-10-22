@@ -1890,6 +1890,8 @@ const EN = {
   "pattern.help": "Explanation",
   "platform.newVersion": "A new version is available",
   "platform.reload": "Reload",
+  "attention.notice": "New entries need you",
+  "attention.noticeView": "View",
   "platform.reloadDirty": "Save your input first; reloading would discard it.",
   "platform.live.live": "Live",
   "platform.live.connecting": "Connecting…",
@@ -5046,6 +5048,7 @@ const EN = {
   "installation.unavailable":
     "Installation is not currently available in this browser. You can continue using the Cockpit in the browser.",
   "installation.notifications": "Notifications",
+  "installation.notificationsNew": "Notifications · new entries",
   "installation.notificationsEnable": "Enable neutral notifications",
   "installation.notificationsHint": "Alerts contain no workspace or workflow details.",
   "installation.notificationsDenied":
@@ -6997,6 +7000,8 @@ const DE: Record<TranslationKey, string> = {
   "pattern.help": "Erklärung",
   "platform.newVersion": "Neue Version verfügbar",
   "platform.reload": "Neu laden",
+  "attention.notice": "Neue Einträge brauchen dich",
+  "attention.noticeView": "Ansehen",
   "platform.reloadDirty": "Erst speichern – beim Neuladen gingen die Eingaben verloren.",
   "platform.live.live": "Live",
   "platform.live.connecting": "Verbindet …",
@@ -10225,6 +10230,7 @@ const DE: Record<TranslationKey, string> = {
   "installation.unavailable":
     "Die Installation ist in diesem Browser derzeit nicht verfügbar. Du kannst das Cockpit weiterhin im Browser verwenden.",
   "installation.notifications": "Benachrichtigungen",
+  "installation.notificationsNew": "Benachrichtigungen · neue Einträge",
   "installation.notificationsEnable": "Neutrale Benachrichtigungen aktivieren",
   "installation.notificationsHint":
     "Alerts enthalten keine Details zu Arbeitsbereichen oder Workflows.",
