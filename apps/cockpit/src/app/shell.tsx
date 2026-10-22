@@ -13,7 +13,7 @@ import {
   Sun,
   UserRound,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 import { logout } from "@/api/client";
 import { installationId } from "@/app/installation-context";
@@ -69,7 +69,7 @@ import { cn } from "@/lib/utils";
 import { RunOverlays } from "@/pages/runs";
 import { cockpitBasePath } from "./installation-context";
 import { LiveEventsProvider, useLiveStatus } from "./live-events";
-import { LiveIndicator } from "./live-indicator";
+import { LiveStatusRow } from "./live-indicator";
 import {
   type NavigationItem,
   navigationItem,
@@ -232,14 +232,14 @@ export function AppShell() {
               session.branding?.configured && "border-t border-sidebar-border",
             )}
           >
-            <div
-              className="flex min-h-8 items-center justify-between gap-2 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-1"
-              data-slot="footer-status"
-            >
-              <ShellLiveIndicator />
-              <DesktopSidebarToggle />
-            </div>
-            <InstallationNotificationControl />
+            <ShellLiveStatusRow
+              actions={
+                <>
+                  <InstallationNotificationControl />
+                  <DesktopSidebarToggle />
+                </>
+              }
+            />
             <InstallationFollowupPrompt tenantName={session.tenant.display_name} />
             <SidebarMenu>
               <SidebarMenuItem>
@@ -344,9 +344,9 @@ function AttentionCounter() {
   );
 }
 
-function ShellLiveIndicator() {
+function ShellLiveStatusRow({ actions }: { actions: ReactNode }) {
   const { status } = useLiveStatus();
-  return <LiveIndicator status={status} />;
+  return <LiveStatusRow status={status} actions={actions} />;
 }
 
 function AccountMenu() {

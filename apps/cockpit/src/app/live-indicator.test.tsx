@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render } from "@/components/cockpit/patterns/test-utils";
 import { translate } from "@/lib/i18n";
 import type { LiveStatus } from "./live-events";
-import { LIVE_LABEL, LiveIndicator } from "./live-indicator";
+import { LIVE_LABEL, LiveIndicator, LiveStatusRow } from "./live-indicator";
 
 const STATUSES: LiveStatus[] = ["live", "connecting", "reconnecting", "offline"];
 
@@ -29,5 +31,30 @@ describe("LiveIndicator", () => {
     const html = render(<LiveIndicator status="offline" />);
     expect(word(html)?.classes).toContain("group-data-[collapsible=icon]:sr-only");
     expect(html).toContain(`title="${translate("de", "platform.live.offline")}"`);
+  });
+});
+
+describe("LiveStatusRow", () => {
+  test("the footer actions sit right-aligned in the same row as the live indicator", () => {
+    const html = render(
+      <LiveStatusRow
+        status="live"
+        actions={<button type="button" data-testid="installation-notifications" />}
+      />,
+    );
+    const row = html.match(/^<div class="([^"]*)" data-slot="footer-status">([\s\S]*)<\/div>$/);
+    expect(row?.[1]).toContain("justify-between");
+    expect(row?.[2]).toContain('data-testid="cockpit-live-indicator"');
+    expect(row?.[2]).toMatch(
+      /<div class="[^"]*" data-slot="footer-status-actions"><button type="button" data-testid="installation-notifications"><\/button><\/div>$/,
+    );
+  });
+
+  test("the shell renders the notification bell inside the live row, not as its own footer row", () => {
+    const shell = readFileSync(join(import.meta.dir, "shell.tsx"), "utf8");
+    expect(shell.match(/<InstallationNotificationControl \/>/g)).toHaveLength(1);
+    expect(shell).toMatch(
+      /<ShellLiveStatusRow[^>]*actions=\{\s*<>\s*<InstallationNotificationControl \/>/,
+    );
   });
 });
