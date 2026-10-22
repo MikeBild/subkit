@@ -96,7 +96,7 @@ describe("P2 PageHeader", () => {
     );
     expect(html).toContain('data-testid="detail-back"');
     expect(html).toContain('data-slot="page-back"');
-    expect(html).toMatch(/href="\/workflows"/);
+    expect(html).toMatch(/href="\/cockpit\/workflows"/);
     expect(count(html, />upraft-auth-notify</g)).toBe(1);
   });
 

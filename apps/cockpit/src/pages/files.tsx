@@ -53,6 +53,7 @@ import { tableColumns } from "@/components/cockpit/table-columns";
 import { LOCALE_TAGS, pluralKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useInfiniteList } from "@/lib/use-infinite-list";
+import { useSearchParamState } from "@/lib/use-search-param-state";
 import { cn } from "@/lib/utils";
 
 type StoredFile = components["schemas"]["File"] & {
@@ -167,8 +168,8 @@ export function FilesPage() {
   const canWrite = session.permissions.includes("file:write");
   const canIntakeWrite = session.permissions.includes("intake:write");
   const installation = useInstallation();
-  const [search, setSearch] = useState("");
-  const [groupMode, setGroupMode] = useState("all");
+  const [search, setSearch] = useSearchParamState("q", "");
+  const [groupMode, setGroupMode] = useSearchParamState("group", "all");
   const [upload, setUpload] = useState<{ files: File[]; replace: StoredFile | null } | null>(null);
   const categoryFilter = useCategoryFilter("file");
   const origin = useCatalogOrigin();

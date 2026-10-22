@@ -248,7 +248,7 @@ describe("docs pages", () => {
     expect(html).toContain('data-testid="docs-article"');
     expect(html).toContain("max-w-[780px]");
     expect(html).toContain('data-testid="detail-back"');
-    expect(html).toContain('href="/docs"');
+    expect(html).toContain('href="/cockpit/docs"');
     expect(html).toContain('data-testid="page-eyebrow"');
     expect(html).toContain("Mit SubKit arbeiten");
     expect(html).toContain("Auf dieser Seite");

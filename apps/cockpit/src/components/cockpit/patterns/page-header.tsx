@@ -1,7 +1,7 @@
-import { Link } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
-import { routerTarget } from "@/app/links";
+import { absolute } from "@/app/links";
 import { SidebarToggle, usePageFrameTrigger } from "@/app/shell-header";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
@@ -133,17 +133,23 @@ const BACK_CLASS =
   "inline-flex w-fit items-center gap-0.5 rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function BackLink({ to, label }: { to: string; label: string }) {
-  const target = routerTarget(listReturnHref(to, readListReturn(to)));
+  const router = useRouter();
+  const href = absolute(listReturnHref(to, readListReturn(to)));
   return (
-    <Link
-      to={target.to}
-      search={target.search}
+    <a
+      href={href}
       data-slot="page-back"
       data-testid="detail-back"
       className={BACK_CLASS}
+      onClick={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+          return;
+        event.preventDefault();
+        router.history.push(href);
+      }}
     >
       <ChevronLeft aria-hidden="true" className="-ml-1 size-4" />
       {label}
-    </Link>
+    </a>
   );
 }

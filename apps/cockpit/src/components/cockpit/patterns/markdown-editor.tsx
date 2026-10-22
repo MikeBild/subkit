@@ -119,7 +119,6 @@ export function MarkdownEditor({
             "aria-label": label,
             "aria-multiline": "true",
             ...(id ? { id } : {}),
-            ...(invalid ? { "aria-invalid": "true" } : {}),
           }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) latest.current.onChange(update.state.doc.toString());
@@ -133,7 +132,7 @@ export function MarkdownEditor({
       editor.destroy();
       view.current = null;
     };
-  }, [disabled, id, invalid, label, placeholder]);
+  }, [disabled, id, label, placeholder]);
 
   useEffect(() => {
     const editor = view.current;

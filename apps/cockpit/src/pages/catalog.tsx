@@ -169,6 +169,8 @@ function useCatalogState(config: CatalogConfig) {
       if (next.health) params.set("health", next.health);
       if (next.sort !== config.defaultSort) params.set("sort", next.sort);
       if (next.order !== "desc") params.set("order", next.order);
+      const origin = new URLSearchParams(window.location.search).get("origin");
+      if (origin) params.set("origin", origin);
       const suffix = params.size > 0 ? `?${params}` : "";
       const href = `${window.location.pathname}${suffix}`;
       if (href !== `${window.location.pathname}${window.location.search}`)

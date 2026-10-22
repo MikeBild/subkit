@@ -11,6 +11,7 @@ import {
   FormDialog,
 } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
+import { useSearchParamState } from "@/lib/use-search-param-state";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import {
   type CatalogKind,
@@ -283,7 +284,7 @@ export function useCategoryFilter(kind: CatalogKind): {
   select: FilterSelect | null;
 } {
   const { t } = useI18n();
-  const [value, setValue] = useState("all");
+  const [value, setValue] = useSearchParamState("category", "all");
   const vocabulary = useQuery({
     queryKey: ["catalog-categories"],
     queryFn: () =>

@@ -13,6 +13,7 @@ import {
   SummaryLine,
 } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
+import { useSearchParamState } from "@/lib/use-search-param-state";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import {
   type CategoryUsage,
@@ -319,7 +320,7 @@ export function CatalogCategories({ kind }: { kind: CatalogCategoryKind }) {
 }
 
 export function useCatalogOrigin() {
-  const [value, setValue] = useState("all");
+  const [value, setValue] = useSearchParamState("origin", "all");
   return {
     value,
     setValue,

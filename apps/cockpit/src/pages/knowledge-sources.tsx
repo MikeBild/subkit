@@ -57,6 +57,7 @@ import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
+import { useSearchParamState } from "@/lib/use-search-param-state";
 import {
   documentUnderTitle,
   knowledgeSummary,
@@ -144,8 +145,8 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
   const canRead = permissions.includes("knowledge:read");
   const canWrite = permissions.includes("knowledge:write");
   const canChat = permissions.includes("conversation:write");
-  const [search, setSearch] = useState("");
-  const [groupMode, setGroupMode] = useState("all");
+  const [search, setSearch] = useSearchParamState("q", "");
+  const [groupMode, setGroupMode] = useSearchParamState("group", "all");
   const q = useDebouncedValue(search).trim();
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;

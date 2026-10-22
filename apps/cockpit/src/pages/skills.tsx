@@ -52,6 +52,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
+import { useSearchParamState } from "@/lib/use-search-param-state";
 import { ORIGIN_LABEL, skillDecision } from "@/pages/decisions-model";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
 import { isDetectedPattern } from "@/pages/skill-proposal-model";
@@ -122,8 +123,8 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   const canWrite = permissions.includes("skill:write");
   const canChat = permissions.includes("conversation:write");
   const [proposalId, setProposalId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [groupMode, setGroupMode] = useState("all");
+  const [search, setSearch] = useSearchParamState("q", "");
+  const [groupMode, setGroupMode] = useSearchParamState("group", "all");
   const q = useDebouncedValue(search).trim();
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;

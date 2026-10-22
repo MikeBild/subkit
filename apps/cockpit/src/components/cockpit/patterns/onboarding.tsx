@@ -1,7 +1,7 @@
-import { Link } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { routerTarget } from "@/app/links";
+import { absolute } from "@/app/links";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
@@ -59,6 +59,7 @@ export function StartChecklist({
   testId?: string;
 }) {
   const { t } = useI18n();
+  const router = useRouter();
   const [hidden, setHidden] = useState(readHidden);
   const done = steps.filter((step) => step.done).length;
   if (hidden || steps.length === 0 || done === steps.length) return null;
@@ -96,12 +97,17 @@ export function StartChecklist({
       </div>
       <ol className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {steps.map((step, index) => {
-          const target = routerTarget(step.href);
+          const href = absolute(step.href);
           return (
             <li key={step.title}>
-              <Link
-                to={target.to}
-                search={target.search}
+              <a
+                href={href}
+                onClick={(event) => {
+                  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey)
+                    return;
+                  event.preventDefault();
+                  router.history.push(href);
+                }}
                 aria-current={index === next ? "step" : undefined}
                 data-done={step.done || undefined}
                 data-testid={`${testId}-step-${index}`}
@@ -130,7 +136,7 @@ export function StartChecklist({
                   </span>
                   <span className="block text-xs text-muted-foreground">{step.line}</span>
                 </span>
-              </Link>
+              </a>
             </li>
           );
         })}

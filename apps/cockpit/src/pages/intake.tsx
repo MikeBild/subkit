@@ -44,6 +44,7 @@ import {
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
+import { useSearchParamState, writeSearchParam } from "@/lib/use-search-param-state";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import {
   changedSkillLine,
@@ -567,15 +568,28 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
   const requestedCategory = intakeCategoryFromSearch(intakeSearch);
   const canRead = permissions.includes("intake:read");
   const canWrite = permissions.includes("intake:write");
-  const [category, setCategory] = useState<string | "all" | null>(requestedCategory);
+  const [category, setCategoryState] = useState<string | "all" | null>(requestedCategory);
   useEffect(() => {
-    if (requestedCategory !== null) setCategory(requestedCategory);
+    if (requestedCategory !== null) setCategoryState(requestedCategory);
   }, [requestedCategory]);
+  const setCategory = (next: string | "all" | null) => {
+    setCategoryState(next);
+    writeSearchParam("category", next, "");
+  };
   const [sorting, setSorting] = useState<SortingState>([{ id: "captured_at", desc: true }]);
-  const [groupMode, setGroupMode] = useState("all");
+  const [groupMode, setGroupMode] = useSearchParamState("group", "all");
   const [settingDefaultCategory, setSettingDefaultCategory] = useState(false);
-  const [state, setState] = useState<"all" | (typeof INTAKE_STATES)[number]>("all");
-  const [origin, setOrigin] = useState<"all" | IntakeOrigin>("all");
+  const [state, setState] = useSearchParamState<"all" | (typeof INTAKE_STATES)[number]>(
+    "state",
+    "all",
+    (value): value is (typeof INTAKE_STATES)[number] =>
+      (INTAKE_STATES as readonly string[]).includes(value),
+  );
+  const [origin, setOrigin] = useSearchParamState<"all" | IntakeOrigin>(
+    "origin",
+    "all",
+    (value): value is IntakeOrigin => (INTAKE_ORIGINS as readonly string[]).includes(value),
+  );
   const categories = useQuery({
     queryKey: CATEGORIES_KEY,
     queryFn: listIntakeCategories,
