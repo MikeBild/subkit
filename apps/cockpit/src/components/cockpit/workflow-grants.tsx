@@ -28,6 +28,7 @@ import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { type AuthorityPages, withAuthorityRevoked } from "@/lib/optimistic-authorities";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
+import { useSearchParamState } from "@/lib/use-search-param-state";
 import {
   AUTHORITY_EFFECT_KEYS,
   AUTHORITY_STATE_KEYS,
@@ -227,7 +228,7 @@ function RevokeApproval({
   return (
     <>
       <ActionMenu
-        alwaysMenu
+        size="sm"
         items={[
           {
             label: t("workflowApprovals.revoke"),
@@ -385,7 +386,8 @@ export function WorkflowApprovals({
   const { t, locale, dateTime } = useI18n();
   const directory = useActorDirectory(true);
   const environmentWord = useEnvironmentWord();
-  const [open, setOpen] = useState<WorkflowAuthority | null>(null);
+  const [openId, setOpenId] = useSearchParamState("grant", "");
+  const setOpen = (authority: WorkflowAuthority | null) => setOpenId(authority?.id ?? "");
   const { state } = automation;
   if (!state)
     return (
@@ -396,6 +398,9 @@ export function WorkflowApprovals({
   const prepared = state.target?.kind === "prepared";
   const grant = state.grant;
   const earlier = [...(prepared && grant ? [grant] : []), ...state.alsoValid, ...state.history];
+  const open = openId
+    ? ([grant, ...earlier].find((authority) => authority?.id === openId) ?? null)
+    : null;
   const timeline: TimelineItem[] = earlier.map((authority, index) => {
     const observed = observedAuthorityState(authority, automation.now);
     const version = authorityVersionLabel(authority.workflow_version_id, automation.versions);

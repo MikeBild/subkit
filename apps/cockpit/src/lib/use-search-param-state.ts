@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useRouterState } from "@tanstack/react-router";
+import { useCallback, useEffect, useState } from "react";
 
 export function searchWithParam(
   search: string,
@@ -38,6 +39,13 @@ export function useSearchParamState<T extends string = string>(
     const raw = readSearchParam(name);
     return raw !== null && accept(raw) ? raw : fallback;
   });
+  const routed = useRouterState({ select: (state) => state.location.searchStr });
+  useEffect(() => {
+    void routed;
+    const raw = readSearchParam(name);
+    const next = raw !== null && accept(raw) ? raw : fallback;
+    setValue((current) => (current === next ? current : next));
+  }, [routed, name, fallback, accept]);
   const update = useCallback(
     (next: T) => {
       setValue(next);

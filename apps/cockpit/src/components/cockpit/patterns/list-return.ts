@@ -71,8 +71,9 @@ export function readListReturn(
 export function settleListReturn(
   listPath: string,
   store: ListReturnStore | null = sessionStore(),
+  now: number = Date.now(),
 ): void {
-  const entry = readListReturn(listPath, Date.now(), store);
+  const entry = readListReturn(listPath, now, store);
   if (!entry || !store) return;
   try {
     store.setItem(key(listPath), JSON.stringify({ ...entry, openedId: null }));

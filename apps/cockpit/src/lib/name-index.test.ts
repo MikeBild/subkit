@@ -7,13 +7,20 @@ const index = buildNameIndex(
     { id: "wf-2", name: "  ", slug: "radar-collect-weekly" },
     { id: "wf-3" },
   ],
-  [{ id: "co-1", name: "GitHub" }],
+  [
+    { id: "co-1", name: "GitHub" },
+    { id: "co-2", display_name: "Sales reporting API", slug: "sales-reporting-api" },
+  ],
 );
 
 describe("resolveTargetName", () => {
   test("returns the name when it knows one", () => {
     expect(resolveTargetName(index, "workflow", "wf-1")).toBe("GA4 Tagesreport");
     expect(resolveTargetName(index, "connector", "co-1")).toBe("GitHub");
+  });
+
+  test("names a connector by its display name, not its slug", () => {
+    expect(resolveTargetName(index, "connector", "co-2")).toBe("Sales reporting API");
   });
 
   test("falls back to the slug when the name is blank", () => {

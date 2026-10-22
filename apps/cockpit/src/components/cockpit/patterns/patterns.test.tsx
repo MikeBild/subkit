@@ -141,6 +141,9 @@ describe("P4 PageTabs", () => {
     expect(searchWithTab("?connected=1e5&tab=a", "tab", "b", "a")).toBe("?connected=1e5&tab=b");
     expect(searchWithTab("?connected=1e5&tab=b", "tab", "a", "a")).toBe("?connected=1e5");
     expect(searchWithTab("", "section", "a", "a")).toBe("");
+    expect(searchWithTab("?tab=a&step=2&grant=g&tool=x&version=v&q=k", "tab", "b", "a")).toBe(
+      "?tab=b&q=k",
+    );
   });
 
   test("a tab that is a page of its own is active on its list and on its records", () => {

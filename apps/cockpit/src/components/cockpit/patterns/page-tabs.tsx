@@ -24,6 +24,8 @@ export function tabFromSearch(
   return raw !== null && values.includes(raw) ? raw : fallback;
 }
 
+const TAB_SHEET_PARAMS = ["step", "grant", "tool", "version"] as const;
+
 export function searchWithTab(
   search: string,
   param: string,
@@ -31,6 +33,7 @@ export function searchWithTab(
   defaultValue: string,
 ): string {
   const params = new URLSearchParams(search);
+  for (const sheet of TAB_SHEET_PARAMS) params.delete(sheet);
   if (value === defaultValue) params.delete(param);
   else params.set(param, value);
   const query = params.toString();

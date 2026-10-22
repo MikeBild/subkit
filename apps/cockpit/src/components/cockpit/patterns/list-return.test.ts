@@ -8,6 +8,8 @@ import {
   settleListReturn,
 } from "./list-return";
 
+const NOW = 1_000;
+
 function memory(): ListReturnStore & { data: Map<string, string> } {
   const data = new Map<string, string>();
   return {
@@ -55,14 +57,9 @@ describe("returning to a list", () => {
 
   test("the highlight is shown once; the filters stay for the next back link", () => {
     const store = memory();
-    rememberListReturn(
-      "/skills",
-      { search: "?q=a", scrollTop: 10, openedId: "s" },
-      Date.now(),
-      store,
-    );
-    settleListReturn("/skills", store);
-    expect(readListReturn("/skills", Date.now(), store)).toMatchObject({
+    rememberListReturn("/skills", { search: "?q=a", scrollTop: 10, openedId: "s" }, NOW, store);
+    settleListReturn("/skills", store, NOW);
+    expect(readListReturn("/skills", NOW, store)).toMatchObject({
       search: "?q=a",
       openedId: null,
     });

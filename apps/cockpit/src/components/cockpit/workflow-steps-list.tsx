@@ -42,6 +42,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { StepDialog, type StepDraft, stepId } from "@/components/cockpit/workflow-step-editor";
 import { useI18n } from "@/lib/i18n-context";
+import { useSearchParamState } from "@/lib/use-search-param-state";
 import { cn } from "@/lib/utils";
 import { type Phrase, stepPhrase, stepWrites, type TriggerKind } from "@/lib/workflow-flow";
 import { type WorkflowPreviewSource, workflowPreviewRequest } from "@/lib/workflow-preview";
@@ -417,7 +418,9 @@ export function WorkflowFlow({
   const { t } = useI18n();
   const records = useConnectorRecords();
   const phrase = useStepPhrase();
-  const [open, setOpen] = useState<number | null>(null);
+  const [stepParam, setStepParam] = useSearchParamState("step", "", isStepNumber);
+  const open = stepParam ? Number(stepParam) - 1 : null;
+  const setOpen = (index: number | null) => setStepParam(index === null ? "" : String(index + 1));
   const [editing, setEditing] = useState<number | null>(null);
   const [inserting, setInserting] = useState<number | null>(null);
   const TriggerIcon = TRIGGER_ICONS[trigger.kind];
@@ -788,4 +791,8 @@ function StepSheet({
       </TechnicalDetails>
     </RecordSheet>
   );
+}
+
+function isStepNumber(value: string): value is string {
+  return /^[1-9]\d{0,3}$/.test(value);
 }

@@ -8,6 +8,7 @@ export type NameKind = "workflow" | "connector";
 export interface NamedEntity {
   id: string;
   name?: string | null | undefined;
+  display_name?: string | null | undefined;
   slug?: string | null | undefined;
 }
 
@@ -26,7 +27,7 @@ export function buildNameIndex(
 function indexOf(entities: readonly NamedEntity[]): Map<string, string> {
   const index = new Map<string, string>();
   for (const entity of entities) {
-    const label = entity.name?.trim() || entity.slug?.trim();
+    const label = entity.display_name?.trim() || entity.name?.trim() || entity.slug?.trim();
     if (entity.id && label) index.set(entity.id, label);
   }
   return index;
