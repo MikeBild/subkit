@@ -1,6 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
+import { ArrowRight, MessageSquareText, Puzzle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
@@ -14,36 +15,46 @@ import {
   setIntakeDefaultCategory,
 } from "@/api/intake";
 import type { components } from "@/api/schema";
-import { absolute, recordHref } from "@/app/links";
+import { absolute, chatNewHref, docsHref, recordHref } from "@/app/links";
 import { CatalogCategories } from "@/components/cockpit/catalog-categories";
 import {
   categoryChoices,
   normalizeCategoryInput,
 } from "@/components/cockpit/catalog-metadata-model";
 import { FocusedDiff } from "@/components/cockpit/diff-card";
-import { SelectField, TextAreaField, TextField } from "@/components/cockpit/form-field";
+import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
   ActionMenu,
+  type ActionMenuItem,
   Button,
   type CockpitColumn,
   CollapsibleSection,
   ConfirmDialog,
   DataState,
   DataTable,
+  Field,
+  FieldError,
+  FieldLabel,
   FilePreview,
   FilterBar,
   type FilterSelect,
   FormDialog,
   GroupingTabs,
+  IconTile,
+  MarkdownEditor,
+  OnboardingFrame,
   Page,
   PageHeader,
   Section,
+  SectionHeading,
   StatusBadge,
   SummaryLine,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
+import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/lib/i18n-context";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useSearchParamState, writeSearchParam } from "@/lib/use-search-param-state";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import {
@@ -52,7 +63,7 @@ import {
   INTAKE_STATES,
   type IntakeOrigin,
   intakeCategoryFromSearch,
-  intakeConfirmPermissions,
+  intakeChatPrompt,
   intakeOrigin,
   intakeOriginLabelKey,
   intakeStateLabelKey,
@@ -68,6 +79,62 @@ export const CATEGORIES_KEY = ["intake", "categories"] as const;
 export const DEFAULT_CATEGORY_KEY = ["intake", "default-category"] as const;
 export const CLIPS_KEY = ["intake", "clips"] as const;
 const NEW_CATEGORY = "__new__";
+
+const INTAKE_WAYS = [
+  { key: "clipper", icon: Puzzle, href: docsHref("web-clipper") },
+  { key: "session", icon: MessageSquareText, href: docsHref("use-sk-from-a-coding-agent") },
+] as const;
+
+const INTAKE_FLOW = ["collect", "propose", "confirm", "knowledge"] as const;
+
+function IntakeOnboarding() {
+  const { t } = useI18n();
+  return (
+    <OnboardingFrame lead={t("intake.onboarding.lead")} testId="intake-onboarding">
+      <ul className="grid gap-3 sm:grid-cols-2">
+        {INTAKE_WAYS.map((way) => (
+          <li key={way.key} className="flex h-full flex-col gap-2 rounded-lg border p-4">
+            <IconTile>
+              <way.icon />
+            </IconTile>
+            <span className="text-sm font-medium">{t(`intake.onboarding.${way.key}.title`)}</span>
+            <span className="flex-1 text-xs text-muted-foreground">
+              {t(`intake.onboarding.${way.key}.line`)}
+            </span>
+            <Button variant="outline" size="sm" className="w-fit" asChild>
+              <a href={absolute(way.href)} data-testid={`intake-onboarding-${way.key}`}>
+                {t(`intake.onboarding.${way.key}.action`)}
+              </a>
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <section
+        className="rounded-lg border p-4"
+        aria-labelledby="intake-onboarding-flow"
+        data-testid="intake-onboarding-flow"
+      >
+        <SectionHeading id="intake-onboarding-flow">{t("intake.onboarding.flow")}</SectionHeading>
+        <ol className="mt-3 flex flex-col gap-3 text-sm sm:flex-row sm:items-center">
+          {INTAKE_FLOW.map((step, index) => (
+            <li key={step} className="flex items-center gap-2">
+              <span className="inline-grid size-6 shrink-0 place-items-center rounded-full border text-xs font-medium tabular-nums">
+                {index + 1}
+              </span>
+              {t(`intake.onboarding.flow.${step}`)}
+              {index < INTAKE_FLOW.length - 1 ? (
+                <ArrowRight
+                  aria-hidden="true"
+                  className="ml-2 hidden size-4 text-muted-foreground sm:inline-block"
+                />
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      </section>
+    </OnboardingFrame>
+  );
+}
 
 export function invalidateIntake(queryClient: ReturnType<typeof useQueryClient>): Promise<unknown> {
   return queryClient.invalidateQueries({ queryKey: ["intake"] });
@@ -129,6 +196,7 @@ export function IntakeEditDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t("intake.editItem")}
+      size="wide"
       submit={{
         label: t("common.save"),
         pending,
@@ -166,14 +234,20 @@ export function IntakeEditDialog({
         onChange={setTitle}
         error={title && !trimmedTitle ? t("intake.editTitleRequired") : null}
       />
-      <TextAreaField
-        id="intake-edit-body"
-        label={t("knowledge.content")}
-        value={body}
-        onChange={setBody}
-        rows={10}
-        error={!body ? t("intake.editBodyRequired") : null}
-      />
+      <Field>
+        <FieldLabel htmlFor="intake-edit-body">{t("knowledge.content")}</FieldLabel>
+        <MarkdownEditor
+          id="intake-edit-body"
+          label={t("knowledge.content")}
+          value={body}
+          onChange={setBody}
+          rows={10}
+          invalid={!body}
+          testId="intake-edit-body"
+        />
+        {!body ? <FieldError>{t("intake.editBodyRequired")}</FieldError> : null}
+      </Field>
+      <p className="text-xs text-muted-foreground">{t("intake.editKeepsKnowledge")}</p>
       <SelectField
         id="intake-edit-category"
         label={t("intake.category")}
@@ -306,15 +380,18 @@ export function ProposalCard({
   proposal,
   permissions,
   onConfirm,
+  onReject,
   focused = false,
 }: {
   proposal: IntakeProposal;
   permissions: readonly string[];
   onConfirm(): void;
+  onReject?(): void;
   focused?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, dateTime } = useI18n();
   const [confirming, setConfirming] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
   const proposed = proposal.revision.target;
   const skillTarget = isSkillTarget(proposed) ? proposed : null;
   const knowledgeId = "knowledge_source_id" in proposed ? proposed.knowledge_source_id : null;
@@ -337,7 +414,6 @@ export function ProposalCard({
     skillIds.map((id, index) => [id, skillQueries[index]?.data]),
   );
   const created = skillTarget?.skill.new;
-  const bindingId = created?.connector_id ?? created?.workflow_id ?? null;
   const bindingPath = created?.connector_id
     ? `/v1/connectors/${encodeURIComponent(created.connector_id)}`
     : created?.workflow_id
@@ -352,13 +428,15 @@ export function ProposalCard({
   });
   const bindingSettled = !bindingPath || binding.isSuccess || binding.isError;
   const bindingName =
-    binding.data?.name ?? (bindingSettled || proposal.status !== "draft" ? bindingId : null);
+    binding.data?.name ??
+    (bindingSettled || proposal.status !== "draft" ? t("intake.target.hiddenName") : null);
   const bindingMissing = binding.error instanceof ApiError && binding.error.status === 404;
   const targetMissing = skillQueries.some((query) => query.isError) || bindingMissing;
   const targetsLoaded = knowledgeId
     ? Boolean(knowledge.data)
     : skillQueries.every((query) => Boolean(query.data)) && bindingSettled;
   const canConfirm = mayConfirmIntakeProposal(proposed, permissions);
+  const canReject = permissions.includes("intake:write") && onReject !== undefined;
   const existingSkillId = skillTarget?.skill.skill_id ?? null;
   const existingSkill = existingSkillId ? skills.get(existingSkillId) : undefined;
   const skillMoved =
@@ -423,13 +501,26 @@ export function ProposalCard({
     ...(targetTags ? [`${t("intake.proposal.tags")}: ${targetTags}`] : []),
   ].join(" ");
   const confirmLabel = t(skillTarget ? "intake.proposal.confirmSkill" : "intake.proposal.confirm");
+  const open = proposal.status === "draft" || proposal.status === "stale";
   return (
     <article
-      className="py-3"
+      className="flex flex-col gap-3 rounded-lg border p-4"
       data-testid={`intake-proposal-${proposal.id}`}
       data-focused={focused || undefined}
+      data-slot="proposal-card"
     >
-      <p className="font-medium">{proposal.revision.title}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline" data-testid={`intake-proposal-${proposal.id}-kind`}>
+          {t(skillTarget ? "intake.proposal.kindSkill" : "intake.proposal.kindKnowledge")}
+        </Badge>
+        {proposal.status === "draft" ? null : (
+          <StatusBadge state={proposal.status} label={t(`intake.proposal.${proposal.status}`)} />
+        )}
+        <span className="ml-auto text-xs text-muted-foreground">
+          {t("intake.proposal.proposedAt", { when: dateTime(proposal.created_at) })}
+        </span>
+      </div>
+      <h3 className="font-medium">{proposal.revision.title}</h3>
       <p
         className="text-sm text-muted-foreground"
         data-testid={`intake-proposal-${proposal.id}-target-details`}
@@ -442,9 +533,21 @@ export function ProposalCard({
             ))
           : `${targetName}${targetCategory && targetCategory !== targetName ? ` · ${targetCategory}` : ""}`}
       </p>
+      {skillLines
+        .filter((entry) => entry.id !== "new")
+        .map((entry) => (
+          <SkillChange
+            key={entry.id}
+            proposalId={proposal.id}
+            skillId={entry.id}
+            line={entry.line}
+            skill={skills.get(entry.id)}
+            body={proposal.revision.body}
+          />
+        ))}
       <CollapsibleSection
         label={t("intake.proposal.review")}
-        defaultOpen={focused}
+        defaultOpen={focused && skillLines.every((entry) => entry.id === "new")}
         testId={`intake-proposal-${proposal.id}-review`}
       >
         <FilePreview
@@ -458,18 +561,6 @@ export function ProposalCard({
             {t("intake.proposal.tags")}: {targetTags}
           </p>
         ) : null}
-        {skillLines
-          .filter((entry) => entry.id !== "new")
-          .map((entry) => (
-            <SkillChange
-              key={entry.id}
-              proposalId={proposal.id}
-              skillId={entry.id}
-              line={entry.line}
-              skill={skills.get(entry.id)}
-              body={proposal.revision.body}
-            />
-          ))}
         <ul className="mt-3 grid gap-1 text-sm">
           {proposal.revision.items.map((item) => (
             <li key={item.id}>
@@ -486,7 +577,7 @@ export function ProposalCard({
       </CollapsibleSection>
       {proposal.status === "draft" && skillMoved ? (
         <p
-          className="mt-3 text-sm text-muted-foreground"
+          className="text-sm text-muted-foreground"
           data-testid={`intake-proposal-${proposal.id}-skill-moved`}
         >
           {t("intake.proposal.stale")}
@@ -494,7 +585,7 @@ export function ProposalCard({
       ) : null}
       {proposal.status === "draft" && targetMissing ? (
         <p
-          className="mt-3 text-sm text-muted-foreground"
+          className="text-sm text-muted-foreground"
           data-testid={`intake-proposal-${proposal.id}-target-missing`}
         >
           {t("intake.proposal.targetMissing")}
@@ -502,33 +593,40 @@ export function ProposalCard({
       ) : null}
       {proposal.status === "draft" && !canConfirm ? (
         <p
-          className="mt-3 text-sm text-muted-foreground"
+          className="text-sm text-muted-foreground"
           data-testid={`intake-proposal-${proposal.id}-needs-rights`}
         >
-          {t("intake.proposal.needsRights", {
-            permissions: intakeConfirmPermissions(proposed)
-              .filter((permission) => !permissions.includes(permission))
-              .join(", "),
-          })}
+          {t("intake.proposal.needsRights")}
         </p>
       ) : null}
-      {proposal.status === "draft" && canConfirm ? (
-        <Button
-          className="mt-3"
-          size="sm"
-          disabled={!targetsLoaded || skillMoved || targetMissing}
-          onClick={() => setConfirming(true)}
-          data-testid={`intake-proposal-${proposal.id}-confirm`}
-        >
-          {confirmLabel}
-        </Button>
-      ) : (
-        <StatusBadge state={proposal.status} label={t(`intake.proposal.${proposal.status}`)} />
-      )}
+      {open && ((proposal.status === "draft" && canConfirm) || canReject) ? (
+        <div className="flex flex-wrap gap-2" data-slot="proposal-actions">
+          {proposal.status === "draft" && canConfirm ? (
+            <Button
+              size="sm"
+              disabled={!targetsLoaded || skillMoved || targetMissing}
+              onClick={() => setConfirming(true)}
+              data-testid={`intake-proposal-${proposal.id}-confirm`}
+            >
+              {confirmLabel}
+            </Button>
+          ) : null}
+          {canReject ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setRejecting(true)}
+              data-testid={`intake-proposal-${proposal.id}-reject`}
+            >
+              {t("intake.proposal.reject")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       {proposal.status === "confirmed" && proposal.confirmed_target_id ? (
         proposal.confirmed_target_kind === "skill" ? (
           <a
-            className="mt-2 block text-sm text-accent"
+            className="block text-sm text-accent"
             href={absolute(recordHref("skills", proposal.confirmed_target_id))}
             data-testid={`intake-proposal-${proposal.id}-skill`}
           >
@@ -538,7 +636,7 @@ export function ProposalCard({
           </a>
         ) : proposal.confirmed_target_kind === "knowledge" ? (
           <a
-            className="mt-2 block text-sm text-accent"
+            className="block text-sm text-accent"
             href={absolute(recordHref("knowledge", proposal.confirmed_target_id))}
             data-testid={`intake-proposal-${proposal.id}-knowledge`}
           >
@@ -555,6 +653,17 @@ export function ProposalCard({
         onConfirm={onConfirm}
         testId={`intake-proposal-${proposal.id}-confirm-dialog`}
       />
+      {canReject ? (
+        <ConfirmDialog
+          open={rejecting}
+          onOpenChange={setRejecting}
+          object={t("intake.proposal.rejectObject")}
+          verb={t("intake.proposal.reject")}
+          consequence={t("intake.proposal.rejectConsequence")}
+          onConfirm={() => onReject?.()}
+          testId={`intake-proposal-${proposal.id}-reject-dialog`}
+        />
+      ) : null}
     </article>
   );
 }
@@ -564,10 +673,10 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const intakeSearch = useRouterState({ select: (router) => router.location.search });
-  const focusProposalId = new URLSearchParams(intakeSearch).get("proposal");
   const requestedCategory = intakeCategoryFromSearch(intakeSearch);
   const canRead = permissions.includes("intake:read");
   const canWrite = permissions.includes("intake:write");
+  const canChat = permissions.includes("conversation:write");
   const [category, setCategoryState] = useState<string | "all" | null>(requestedCategory);
   useEffect(() => {
     if (requestedCategory !== null) setCategoryState(requestedCategory);
@@ -577,6 +686,8 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
     writeSearchParam("category", next, "");
   };
   const [sorting, setSorting] = useState<SortingState>([{ id: "captured_at", desc: true }]);
+  const [search, setSearch] = useSearchParamState("q", "");
+  const needle = useDebouncedValue(search).trim().toLowerCase();
   const [groupMode, setGroupMode] = useSearchParamState("group", "all");
   const [settingDefaultCategory, setSettingDefaultCategory] = useState(false);
   const [state, setState] = useSearchParamState<"all" | (typeof INTAKE_STATES)[number]>(
@@ -616,22 +727,6 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
     queryFn: () => listIntakeClips(effectiveCategory ? { category: effectiveCategory } : {}),
     enabled: canRead && state !== "all",
   });
-  const proposals = useQuery({
-    queryKey: ["intake", "proposals"],
-    queryFn: listIntakeProposals,
-    enabled: canRead,
-  });
-  const proposalFocusItemId =
-    proposals.data?.items.find((proposal) => proposal.id === focusProposalId)?.revision.items[0]
-      ?.id ?? null;
-  useEffect(() => {
-    if (!focusProposalId || !proposalFocusItemId) return;
-    void navigate({
-      to: recordHref("intake", proposalFocusItemId),
-      search: { tab: "review", proposal: focusProposalId },
-      replace: true,
-    });
-  }, [focusProposalId, proposalFocusItemId, navigate]);
   const categoryValues = useMemo(
     () => [
       ...new Set([
@@ -642,7 +737,9 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
     [categories.data, defaultCategory.data],
   );
   const clipItems = (clips.data?.items ?? []).filter(
-    (clip) => origin === "all" || intakeOrigin(clip.original_snapshot) === origin,
+    (clip) =>
+      (origin === "all" || intakeOrigin(clip.original_snapshot) === origin) &&
+      (!needle || `${clip.title}\n${clip.body}`.toLowerCase().includes(needle)),
   );
   const write = useMutation({
     mutationFn: async (run: () => Promise<unknown>) => run(),
@@ -658,7 +755,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
         surface="collection"
         scroll="page"
         testId="intake-page"
-        header={<PageHeader eyebrow={t("nav.group.knowledge")} title={t("nav.inbox")} />}
+        header={<PageHeader title={t("nav.inbox")} />}
       >
         <ForbiddenState />
       </Page>
@@ -667,16 +764,40 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
     categories.isPending ||
     defaultCategory.isPending ||
     clips.isPending ||
-    (state !== "all" && categoryClips.isPending) ||
-    (Boolean(focusProposalId) && (proposals.isPending || Boolean(proposalFocusItemId)));
+    (state !== "all" && categoryClips.isPending);
   const failed = Boolean(
     categories.error ||
       defaultCategory.error ||
       clips.error ||
-      (state !== "all" && categoryClips.error) ||
-      (Boolean(focusProposalId) &&
-        (proposals.error || (proposals.isSuccess && !proposalFocusItemId))),
+      (state !== "all" && categoryClips.error),
   );
+  const menuItems: ActionMenuItem[] = [
+    ...(canChat
+      ? [
+          {
+            label: t("intake.reviewChat"),
+            href: absolute(chatNewHref({ prompt: intakeChatPrompt(effectiveCategory ?? "", t) })),
+            testId: "intake-review-chat",
+          },
+        ]
+      : []),
+    ...(canWrite
+      ? [
+          {
+            label: t("intake.chooseDefault"),
+            onSelect: () => setSettingDefaultCategory(true),
+            testId: "intake-category-default",
+          },
+        ]
+      : []),
+  ];
+  const untouched = category === null && state === "all" && origin === "all" && !needle;
+  const onboarding =
+    !loading &&
+    !failed &&
+    untouched &&
+    clipItems.length === 0 &&
+    (categories.data?.categories ?? []).every((entry) => !entry.counts?.intake);
   const clipColumns = (() => {
     const column = tableColumns<IntakeClip>({ t, dateTime });
     return [
@@ -733,22 +854,10 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
       testId="intake-page"
       header={
         <PageHeader
-          eyebrow={t("nav.group.knowledge")}
           title={t("nav.inbox")}
-          purpose={t("intake.explanation")}
           menu={
-            canWrite ? (
-              <ActionMenu
-                alwaysMenu
-                testId="intake-page-actions"
-                items={[
-                  {
-                    label: t("intake.chooseDefault"),
-                    onSelect: () => setSettingDefaultCategory(true),
-                    testId: "intake-category-default",
-                  },
-                ]}
-              />
+            menuItems.length > 0 ? (
+              <ActionMenu alwaysMenu testId="intake-page-actions" items={menuItems} />
             ) : undefined
           }
         />
@@ -779,14 +888,19 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
             testId="intake-error"
           />
         ) : null}
-        {!loading && !failed ? (
+        {onboarding ? <IntakeOnboarding /> : null}
+        {!loading && !failed && !onboarding ? (
           <>
             <SummaryLine
               text={
                 <>
-                  {clipItems.length} · <CatalogCategories kind="intake" />
+                  {t(clipItems.length === 1 ? "intake.summary.one" : "intake.summary.other", {
+                    count: clipItems.length,
+                  })}{" "}
+                  · <CatalogCategories kind="intake" />
                 </>
               }
+              help={t("intake.explanation")}
               testId="intake-summary"
             />
             <DataTable<IntakeClip>
@@ -821,6 +935,12 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
               getRowId={(clip) => clip.id}
               toolbar={
                 <FilterBar
+                  search={{
+                    value: search,
+                    onChange: setSearch,
+                    placeholder: t("intake.search"),
+                    testId: "intake-search",
+                  }}
                   selects={
                     [
                       {
@@ -870,6 +990,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                   reset={{
                     label: t("catalog.clearFilters"),
                     onClick: () => {
+                      setSearch("");
                       setCategory(null);
                       setState("all");
                       setOrigin("all");
@@ -885,13 +1006,14 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                   description: t("resource.broaderSearch"),
                   resetLabel: t("catalog.clearFilters"),
                   onReset: () => {
+                    setSearch("");
                     setCategory(null);
                     setState("all");
                     setOrigin("all");
                   },
                 },
               }}
-              hasActiveFilters={category !== null || state !== "all" || origin !== "all"}
+              hasActiveFilters={!untouched}
               sorting={sorting}
               onSortingChange={setSorting}
               onOpen={(clip) => void navigate({ to: recordHref("intake", clip.id) })}

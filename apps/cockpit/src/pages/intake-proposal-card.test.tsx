@@ -112,10 +112,11 @@ describe("intake proposal card", () => {
     expect(html).toContain('data-testid="intake-proposal-proposal-confirm"');
   });
 
-  test("knowledge writing alone never confirms a skill and names the missing rights", () => {
+  test("knowledge writing alone never confirms a skill and says rights are missing in plain words", () => {
     const html = render(newSkill, ["intake:confirm", "knowledge:write"]);
     expect(html).not.toContain('data-testid="intake-proposal-proposal-confirm"');
-    expect(html).toContain("Zum Bestätigen nötig: skill:write, skill:activate");
+    expect(html).toContain("Dafür fehlen dir die Rechte. Frag eine Person mit Admin-Rolle.");
+    expect(html).not.toContain("skill:write");
   });
 
   test("a connector-scoped new skill shows its binding in the card and the confirmation", () => {
@@ -139,7 +140,7 @@ describe("intake proposal card", () => {
     expect(confirmButton(html)).not.toContain('disabled=""');
   });
 
-  test("an unreadable binding shows its id and leaves confirmation to the engine", () => {
+  test("an unreadable binding hides its id and leaves confirmation to the engine", () => {
     const target: IntakeProposalTarget = {
       skill: {
         new: {
@@ -153,7 +154,8 @@ describe("intake proposal card", () => {
       },
     };
     const forbidden = render(target, SKILL_WRITER, {}, { [`/v1/workflows/${OLD}`]: 403 });
-    expect(forbidden).toContain(`nur für Workflow ${OLD}`);
+    expect(forbidden).toContain("nur für Workflow (für dich nicht sichtbar)");
+    expect(forbidden).not.toContain(`nur für Workflow ${OLD}`);
     expect(forbidden).not.toContain('data-testid="intake-proposal-proposal-target-missing"');
     expect(confirmButton(forbidden)).not.toContain('disabled=""');
     const missing = render(target, SKILL_WRITER, {}, { [`/v1/workflows/${OLD}`]: 404 });
@@ -161,13 +163,13 @@ describe("intake proposal card", () => {
     expect(confirmButton(missing)).toContain('disabled=""');
   });
 
-  test("updating an inactive skill says that confirming activates it", () => {
+  test("updating an inactive skill says that confirming switches it on", () => {
     const html = render(
       { skill: { skill_id: SKILL, expected_version: 3, supersedes: [] } },
       SKILL_WRITER,
       { [SKILL]: { title: "Regel", version: 3, body: "Rollback first.", status: "draft" } },
     );
-    expect(html).toContain("Ändert Regel (v3) · aktiviert ihn auch");
+    expect(html).toContain("Ändert Regel (v3) · schaltet ihn auch ein");
   });
 
   test("a replaced skill shows its name, version and change and needs archive rights", () => {
@@ -220,6 +222,45 @@ describe("intake proposal card", () => {
       "knowledge:write",
     ]);
     expect(html).toContain("Produktwissen · incident-review");
-    expect(html).toContain("Als Wissen bestätigen");
+    expect(html).toContain("Als Quelle bestätigen");
+  });
+});
+
+describe("rejecting a proposal", () => {
+  test("a writer gets one reject action next to the confirmation", () => {
+    const client = new QueryClient();
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <I18nContext.Provider value={value}>
+          <ProposalCard
+            proposal={proposal({ name: "Produktwissen" })}
+            permissions={["intake:confirm", "knowledge:write", "intake:write"]}
+            onConfirm={() => {}}
+            onReject={() => {}}
+          />
+        </I18nContext.Provider>
+      </QueryClientProvider>,
+    );
+    client.clear();
+    expect(html.match(/data-testid="intake-proposal-proposal-reject"/g)?.length).toBe(1);
+    expect(html).toContain("Ablehnen");
+  });
+
+  test("without intake writing there is no reject action", () => {
+    const client = new QueryClient();
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <I18nContext.Provider value={value}>
+          <ProposalCard
+            proposal={proposal({ name: "Produktwissen" })}
+            permissions={["intake:confirm", "knowledge:write"]}
+            onConfirm={() => {}}
+            onReject={() => {}}
+          />
+        </I18nContext.Provider>
+      </QueryClientProvider>,
+    );
+    client.clear();
+    expect(html).not.toContain('data-testid="intake-proposal-proposal-reject"');
   });
 });

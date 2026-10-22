@@ -12,6 +12,7 @@ export type IntakeSkillTarget = components["schemas"]["IntakeSkillTarget"];
 
 export interface IntakeCategory {
   category: string;
+  counts?: { intake?: number };
 }
 
 const categories = "/v1/categories";
@@ -80,6 +81,16 @@ export function confirmIntakeProposal(
   input: { expected_revision: number; digest: string },
 ): Promise<IntakeProposal> {
   return apiRequest(`${proposals}/${encodeURIComponent(id)}/confirm`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function rejectIntakeProposal(
+  id: string,
+  input: { expected_revision: number },
+): Promise<IntakeProposal> {
+  return apiRequest(`${proposals}/${encodeURIComponent(id)}/reject`, {
     method: "POST",
     body: JSON.stringify(input),
   });

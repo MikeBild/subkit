@@ -8,9 +8,11 @@ import {
   intakeCategoryFromSearch,
   intakeChatPrompt,
   intakeConfirmPermissions,
+  intakeEvents,
   intakeNextAction,
   intakeOrigin,
   intakeStateLabelKey,
+  intakeStripState,
   intakeTargetDetails,
   intakeTargetTopic,
   isIntakeCategory,
@@ -246,6 +248,64 @@ describe("collected sessions and confirmation targets", () => {
       { type: "context", text: "a" },
       { type: "removed", text: "old" },
       { type: "added", text: "new" },
+    ]);
+  });
+});
+
+describe("intakeStripState", () => {
+  test("names the one state the strip shows", () => {
+    expect(intakeStripState({ state: "collected" }, [])).toBe("new");
+    expect(intakeStripState({ state: "reviewing" }, [{ status: "draft" }])).toBe("proposal");
+    expect(
+      intakeStripState({ state: "reviewing" }, [{ status: "draft" }, { status: "stale" }]),
+    ).toBe("changed");
+    expect(intakeStripState({ state: "admitted" }, [{ status: "draft" }])).toBe("confirmed");
+    expect(intakeStripState({ state: "discarded" }, [{ status: "draft" }])).toBe("discarded");
+  });
+});
+
+describe("intakeEvents", () => {
+  const proposal = (status: string, rejected_at: string | null = null) => ({
+    id: status,
+    status,
+    created_at: "2026-10-20T08:00:00.000Z",
+    updated_at: "2026-10-21T08:00:00.000Z",
+    rejected_at,
+    revision: { title: `Vorschlag ${status}` },
+  });
+
+  test("lists collection, proposals and decisions newest first", () => {
+    const events = intakeEvents(
+      {
+        state: "discarded",
+        created_at: "2026-10-19T08:00:00.000Z",
+        updated_at: "2026-10-22T08:00:00.000Z",
+      },
+      [proposal("confirmed"), proposal("rejected", "2026-10-20T12:00:00.000Z")],
+    );
+    expect(events.map((event) => event.kind)).toEqual([
+      "discarded",
+      "confirmed",
+      "rejected",
+      "proposed",
+      "proposed",
+      "collected",
+    ]);
+  });
+
+  test("a changed proposal is recorded once it went stale", () => {
+    const events = intakeEvents(
+      {
+        state: "reviewing",
+        created_at: "2026-10-19T08:00:00.000Z",
+        updated_at: "2026-10-19T08:00:00.000Z",
+      },
+      [proposal("stale")],
+    );
+    expect(events.map((event) => [event.kind, event.title ?? null])).toEqual([
+      ["changed", "Vorschlag stale"],
+      ["proposed", "Vorschlag stale"],
+      ["collected", null],
     ]);
   });
 });

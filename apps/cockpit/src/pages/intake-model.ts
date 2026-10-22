@@ -203,3 +203,88 @@ export function changedSkillLine(
 export function skillBodyChange(before: string, after: string): FocusedRow[] {
   return focusDiff(computeLineDiff(before.split("\n"), after.split("\n")));
 }
+
+export type IntakeStripState = "new" | "proposal" | "changed" | "confirmed" | "discarded";
+
+export function intakeStripState(
+  clip: { state: IntakeState },
+  proposals: readonly { status: string }[],
+): IntakeStripState {
+  if (clip.state === "discarded") return "discarded";
+  if (clip.state === "admitted") return "confirmed";
+  if (proposals.some((proposal) => proposal.status === "stale")) return "changed";
+  if (proposals.some((proposal) => proposal.status === "draft")) return "proposal";
+  return "new";
+}
+
+export const INTAKE_STRIP_TONE = {
+  new: "info",
+  proposal: "warn",
+  changed: "warn",
+  confirmed: "ok",
+  discarded: "info",
+} as const satisfies Record<IntakeStripState, "ok" | "info" | "warn" | "error">;
+
+export type IntakeEventKind =
+  | "collected"
+  | "proposed"
+  | "changed"
+  | "confirmed"
+  | "rejected"
+  | "discarded";
+
+export interface IntakeEvent {
+  id: string;
+  kind: IntakeEventKind;
+  at: string;
+  title?: string;
+}
+
+interface EventProposal {
+  id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  rejected_at: string | null;
+  revision: { title: string };
+}
+
+export function intakeEvents(
+  clip: { state: IntakeState; created_at: string; updated_at: string },
+  proposals: readonly EventProposal[],
+): IntakeEvent[] {
+  const events: IntakeEvent[] = [{ id: "collected", kind: "collected", at: clip.created_at }];
+  for (const proposal of proposals) {
+    const title = proposal.revision.title;
+    events.push({
+      id: `${proposal.id}:proposed`,
+      kind: "proposed",
+      at: proposal.created_at,
+      title,
+    });
+    if (proposal.status === "confirmed")
+      events.push({
+        id: `${proposal.id}:confirmed`,
+        kind: "confirmed",
+        at: proposal.updated_at,
+        title,
+      });
+    if (proposal.status === "rejected")
+      events.push({
+        id: `${proposal.id}:rejected`,
+        kind: "rejected",
+        at: proposal.rejected_at ?? proposal.updated_at,
+        title,
+      });
+    if (proposal.status === "stale")
+      events.push({
+        id: `${proposal.id}:changed`,
+        kind: "changed",
+        at: proposal.updated_at,
+        title,
+      });
+  }
+  if (clip.state === "discarded")
+    events.push({ id: "discarded", kind: "discarded", at: clip.updated_at });
+  return events.sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
+}

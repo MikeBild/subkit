@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter, useRouterState } from "@tanstack/react-router";
+import { Bookmark, ExternalLink, MessageSquareText } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/api/client";
@@ -11,13 +12,15 @@ import {
   type IntakeProposal,
   listIntakeCategories,
   listIntakeProposals,
+  rejectIntakeProposal,
   setIntakeClipState,
   updateIntakeClip,
 } from "@/api/intake";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorLabel } from "@/app/actor-directory-model";
 import { contextualHref } from "@/app/installation-context";
-import { absolute, chatNewHref } from "@/app/links";
+import { absolute, chatNewHref, recordHref } from "@/app/links";
+import { CatalogCategoryChip } from "@/components/cockpit/catalog-metadata";
 import {
   ActionMenu,
   type ActionMenuItem,
@@ -25,15 +28,17 @@ import {
   CollapsibleSection,
   DataState,
   DetailPage,
+  type DetailStrip,
   FactList,
   FilePreview,
-  StatusBadge,
   searchWithTab,
   TabBody,
+  Timeline,
+  type TimelineTone,
 } from "@/components/cockpit/patterns";
 import { ForbiddenState } from "@/components/failure-state";
+import { formatRelativeTime, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { humanizeCategory } from "@/lib/workflow-category";
 import {
   CATEGORIES_KEY,
   CLIPS_KEY,
@@ -43,10 +48,13 @@ import {
   ProposalCard,
 } from "./intake";
 import {
+  INTAKE_STRIP_TONE,
+  type IntakeEventKind,
+  intakeEvents,
   intakeItemChatPrompt,
   intakeOrigin,
   intakeOriginLabelKey,
-  intakeStateLabelKey,
+  intakeStripState,
   publishedDate,
   sessionLabel,
   sessionPlace,
@@ -55,17 +63,35 @@ import {
 
 export const INTAKE_ITEM_TABS = ["content", "review", "history"] as const;
 
+const EVENT_TONE: Record<IntakeEventKind, TimelineTone> = {
+  collected: "neutral",
+  proposed: "info",
+  changed: "warn",
+  confirmed: "ok",
+  rejected: "neutral",
+  discarded: "neutral",
+};
+
+const EVENT_TITLE: Record<IntakeEventKind, TranslationKey> = {
+  collected: "intake.event.collected",
+  proposed: "intake.event.proposed",
+  changed: "intake.event.changed",
+  confirmed: "intake.event.confirmed",
+  rejected: "intake.event.rejected",
+  discarded: "intake.event.discarded",
+};
+
 function settled(proposal: IntakeProposal): boolean {
   return proposal.status === "confirmed" || proposal.status === "rejected";
 }
 
 export function IntakeItemPage({ permissions }: { permissions: readonly string[] }) {
-  const { t, dateTime } = useI18n();
+  const { t, dateTime, locale } = useI18n();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { resourceId: id = "" } = useParams({ strict: false }) as { resourceId?: string };
   const search = useRouterState({ select: (state) => state.location.searchStr });
-  const focusProposalId = new URLSearchParams(search).get("proposal");
+  const params = new URLSearchParams(search);
   const canRead = permissions.includes("intake:read");
   const canWrite = permissions.includes("intake:write");
   const canChat = permissions.includes("conversation:write");
@@ -113,12 +139,12 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
     proposal.revision.items.some((entry) => entry.id === id),
   );
   const open = related.filter((proposal) => !settled(proposal));
-  const past = related.filter(settled);
   const session = clip ? sessionSnapshot(clip.original_snapshot) : null;
   const back = { to: "/intake", label: t("nav.inbox") };
-  const chooseTab = (tab: string) =>
+  const tab = params.get("tab") ?? "content";
+  const chooseTab = (next: string) =>
     router.history.replace(
-      `${window.location.pathname}${searchWithTab(window.location.search, "tab", tab, "content")}`,
+      `${window.location.pathname}${searchWithTab(window.location.search, "tab", next, "content")}`,
     );
 
   if (!canRead)
@@ -132,6 +158,49 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
     if (!clip) return;
     write.mutate(() => setIntakeClipState(clip.id, { state, expected_version: clip.version }));
   };
+  const origin = clip ? intakeOrigin(clip.original_snapshot) : "clip";
+  const originLabel = t(intakeOriginLabelKey(origin));
+  const collector = clip ? (actorLabel(directory, clip.collected_by, t) ?? "") : "";
+  const stripState = clip ? intakeStripState(clip, related) : null;
+  const targetKind = clip?.admitted_target_kind;
+  const targetHref =
+    clip?.admitted_target_id && targetKind
+      ? recordHref(targetKind === "skill" ? "skills" : "knowledge", clip.admitted_target_id)
+      : null;
+  const strip: DetailStrip | null =
+    clip && stripState
+      ? {
+          tone: INTAKE_STRIP_TONE[stripState],
+          line:
+            stripState === "confirmed"
+              ? t(
+                  targetKind === "skill"
+                    ? "intake.strip.confirmedSkill"
+                    : "intake.strip.confirmedKnowledge",
+                  { date: dateTime(clip.updated_at) },
+                )
+              : stripState === "discarded"
+                ? t("intake.strip.discarded", { date: dateTime(clip.updated_at) })
+                : t(`intake.strip.${stripState}`),
+          action:
+            stripState === "confirmed" && targetHref ? (
+              <Button variant="outline" asChild>
+                <a href={absolute(targetHref)} data-testid="intake-strip-target">
+                  {t(targetKind === "skill" ? "intake.openSkillUnnamed" : "intake.openSource")}
+                </a>
+              </Button>
+            ) : stripState === "discarded" && canWrite ? (
+              <Button
+                variant="outline"
+                onClick={() => setState("collected")}
+                data-testid="intake-detail-restore"
+              >
+                {t("intake.restore")}
+              </Button>
+            ) : undefined,
+          testId: "intake-strip",
+        }
+      : null;
   const menuItems: ActionMenuItem[] = clip
     ? [
         ...(canChat
@@ -159,24 +228,16 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                 },
                 testId: "intake-detail-edit",
               },
-              ...(clip.state === "discarded"
-                ? [
+              ...(clip.state === "discarded" || clip.state === "admitted"
+                ? []
+                : [
                     {
-                      label: t("intake.restore"),
-                      onSelect: () => setState("collected"),
-                      testId: "intake-detail-restore",
+                      label: t("intake.discard"),
+                      destructive: true,
+                      onSelect: () => setState("discarded"),
+                      testId: "intake-detail-discard",
                     },
-                  ]
-                : clip.state === "admitted"
-                  ? []
-                  : [
-                      {
-                        label: t("intake.discard"),
-                        destructive: true,
-                        onSelect: () => setState("discarded"),
-                        testId: "intake-detail-discard",
-                      },
-                    ]),
+                  ]),
             ]
           : []),
       ]
@@ -188,13 +249,18 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
         key={proposal.id}
         proposal={proposal}
         permissions={permissions}
-        focused={proposal.id === focusProposalId}
+        focused={tab === "review"}
         onConfirm={() =>
           write.mutate(() =>
             confirmIntakeProposal(proposal.id, {
               expected_revision: proposal.revision.revision,
               digest: proposal.revision.digest,
             }),
+          )
+        }
+        onReject={() =>
+          write.mutate(() =>
+            rejectIntakeProposal(proposal.id, { expected_revision: proposal.revision.revision }),
           )
         }
       />
@@ -212,6 +278,10 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
       testId="intake-item-error"
     />
   ) : null;
+  const evidence = item.data?.evidence ?? [];
+  const hiddenEvidence = (item.data?.evidence_total ?? 0) - evidence.length;
+  const published = clip ? publishedDate(clip.original_snapshot.published_at, dateTime) : null;
+  const events = clip ? intakeEvents(clip, related) : [];
 
   return (
     <>
@@ -219,21 +289,18 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
         testId="intake-item-page"
         back={back}
         title={clip?.title ?? ""}
-        badge={
-          clip ? (
-            <StatusBadge state={clip.state} label={t(intakeStateLabelKey(clip.state))} />
-          ) : undefined
-        }
+        badge={clip ? <CatalogCategoryChip category={clip.category} /> : undefined}
         purpose={
           clip
-            ? `${humanizeCategory(clip.category, t("catalog.categoryOther"))} · ${t(
-                intakeOriginLabelKey(intakeOrigin(clip.original_snapshot)),
-              )} · ${dateTime(clip.original_snapshot.captured_at)}`
+            ? t("intake.purpose", {
+                when: formatRelativeTime(locale, clip.original_snapshot.captured_at),
+                origin: originLabel,
+              })
             : undefined
         }
         loading={item.isPending}
         action={
-          clip && open.length > 0 ? (
+          clip && tab !== "review" && clip.state !== "admitted" && clip.state !== "discarded" ? (
             <Button onClick={() => chooseTab("review")} data-testid="intake-item-review">
               {t("intake.reviewAction")}
             </Button>
@@ -244,7 +311,7 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
             <ActionMenu alwaysMenu items={menuItems} testId="intake-detail-actions" />
           ) : undefined
         }
-        defaultTab={focusProposalId ? "review" : undefined}
+        strip={strip}
         tabs={
           clip
             ? [
@@ -255,40 +322,49 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                   content: (
                     <TabBody
                       testId="intake-content"
+                      summary={t("intake.contentSummary", {
+                        origin: originLabel,
+                        name: collector,
+                        when: dateTime(clip.original_snapshot.captured_at),
+                      })}
                       technical={
-                        session ? (
-                          <FactList
-                            testId="intake-detail-session"
-                            items={[
-                              { label: t("intake.session.agent"), value: session.agent },
-                              {
-                                label: t("intake.session.id"),
-                                value: sessionLabel(session.session_id, t),
-                              },
-                              ...(sessionPlace(session)
-                                ? [
-                                    {
-                                      label: t("intake.session.place"),
-                                      value: sessionPlace(session),
-                                    },
-                                  ]
-                                : []),
-                            ]}
-                          />
-                        ) : undefined
+                        <FactList
+                          testId="intake-detail-session"
+                          items={[
+                            ...(session
+                              ? [
+                                  { label: t("intake.session.agent"), value: session.agent },
+                                  {
+                                    label: t("intake.session.id"),
+                                    value: sessionLabel(session.session_id, t),
+                                  },
+                                  ...(sessionPlace(session)
+                                    ? [
+                                        {
+                                          label: t("intake.session.place"),
+                                          value: sessionPlace(session),
+                                        },
+                                      ]
+                                    : []),
+                                ]
+                              : []),
+                            {
+                              label: t("intake.fact.id"),
+                              value: <span className="font-mono text-xs">{clip.id}</span>,
+                            },
+                          ]}
+                        />
                       }
                       more={
                         <>
-                          {session &&
-                          ((item.data?.evidence ?? []).length ||
-                            session.evidence_excerpt.trim()) ? (
+                          {session && (evidence.length || session.evidence_excerpt.trim()) ? (
                             <CollapsibleSection
                               label={t("intake.session.evidence")}
                               testId="intake-session-evidence"
                             >
-                              {(item.data?.evidence ?? []).length ? (
+                              {evidence.length ? (
                                 <ul className="grid gap-3">
-                                  {(item.data?.evidence ?? []).map((row) => (
+                                  {evidence.map((row) => (
                                     <li key={row.id} data-testid="intake-session-evidence-row">
                                       <p className="mb-1 text-sm text-muted-foreground">
                                         {[row.repo, dateTime(row.captured_at)]
@@ -312,15 +388,9 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                                   testId="intake-session-evidence-body"
                                 />
                               )}
-                              {(item.data?.evidence_total ?? 0) -
-                                (item.data?.evidence ?? []).length >
-                              0 ? (
+                              {hiddenEvidence > 0 ? (
                                 <p className="mt-2 text-sm text-muted-foreground">
-                                  {t("intake.session.evidenceMore", {
-                                    count:
-                                      (item.data?.evidence_total ?? 0) -
-                                      (item.data?.evidence ?? []).length,
-                                  })}
+                                  {t("intake.session.evidenceMore", { count: hiddenEvidence })}
                                 </p>
                               ) : null}
                             </CollapsibleSection>
@@ -341,63 +411,65 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                         </>
                       }
                     >
-                      <FactList
-                        testId="intake-detail-facts"
-                        items={[
-                          {
-                            label: t("intake.category"),
-                            value: humanizeCategory(clip.category, t("catalog.categoryOther")),
-                          },
-                          {
-                            label: t("intake.origin"),
-                            value: t(intakeOriginLabelKey(intakeOrigin(clip.original_snapshot))),
-                          },
-                          {
-                            label: t("resource.field.createdAt"),
-                            value: dateTime(clip.original_snapshot.captured_at),
-                          },
-                          ...(clip.original_snapshot.source_author
-                            ? [
-                                {
-                                  label: t("intake.sourceAuthorLabel"),
-                                  value: clip.original_snapshot.source_author,
-                                },
-                              ]
-                            : []),
-                          ...(clip.original_snapshot.published_at
-                            ? [
-                                {
-                                  label: t("intake.sourcePublished"),
-                                  value: publishedDate(
-                                    clip.original_snapshot.published_at,
-                                    dateTime,
-                                  ),
-                                },
-                              ]
-                            : []),
-                          {
-                            label: t("intake.collector"),
-                            value: actorLabel(directory, clip.collected_by, t),
-                          },
-                        ]}
-                      />
-                      {!session && clip.original_snapshot.source_url ? (
-                        <a
-                          className="break-words text-sm text-accent underline-offset-4 hover:underline"
-                          href={contextualHref(clip.original_snapshot.source_url)}
-                          data-testid="intake-original-source-link"
-                          target="_blank"
-                          rel="noreferrer"
+                      <div
+                        className="flex flex-wrap items-center gap-2 text-sm"
+                        data-testid="intake-detail-facts"
+                      >
+                        <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1">
+                          {origin === "session" ? (
+                            <MessageSquareText
+                              aria-hidden="true"
+                              className="size-3.5 text-muted-foreground"
+                            />
+                          ) : (
+                            <Bookmark
+                              aria-hidden="true"
+                              className="size-3.5 text-muted-foreground"
+                            />
+                          )}
+                          {originLabel}
+                        </span>
+                        {clip.original_snapshot.source_author ? (
+                          <span className="text-muted-foreground">
+                            {t("intake.sourceAuthor", {
+                              name: clip.original_snapshot.source_author,
+                            })}
+                          </span>
+                        ) : null}
+                        {published ? (
+                          <span className="text-muted-foreground">
+                            {t("intake.publishedOn", { date: published })}
+                          </span>
+                        ) : null}
+                        {!session && clip.original_snapshot.source_url ? (
+                          <a
+                            className="ml-auto inline-flex items-center gap-1 text-accent underline-offset-4 hover:underline"
+                            href={contextualHref(clip.original_snapshot.source_url)}
+                            data-testid="intake-original-source-link"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <ExternalLink aria-hidden="true" className="size-3.5" />
+                            {t("intake.openOriginal")}
+                          </a>
+                        ) : null}
+                      </div>
+                      {clip.state !== "admitted" ? (
+                        <p
+                          className="text-sm text-muted-foreground"
+                          data-testid="intake-not-knowledge"
                         >
-                          {clip.original_snapshot.source_url}
-                        </a>
+                          {t("intake.notKnowledge")}
+                        </p>
                       ) : null}
-                      <FilePreview
-                        name=""
-                        mimeType="text/markdown"
-                        text={clip.body}
-                        testId="intake-current-body"
-                      />
+                      <article className="rounded-lg border p-5">
+                        <FilePreview
+                          name=""
+                          mimeType="text/markdown"
+                          text={clip.body}
+                          testId="intake-current-body"
+                        />
+                      </article>
                     </TabBody>
                   ),
                 },
@@ -408,7 +480,19 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                   testId: "intake-tab-review",
                   loading: proposals.isPending,
                   content: (
-                    <TabBody testId="intake-review">
+                    <TabBody
+                      testId="intake-review"
+                      summary={
+                        open.length
+                          ? t(
+                              open.length === 1
+                                ? "intake.review.summaryOne"
+                                : "intake.review.summaryOther",
+                              { count: open.length },
+                            )
+                          : undefined
+                      }
+                    >
                       {open.length ? (
                         <div className="flex flex-col gap-4" data-testid="intake-detail-proposals">
                           {proposalCards(open)}
@@ -429,18 +513,36 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                   testId: "intake-tab-history",
                   loading: proposals.isPending,
                   content: (
-                    <TabBody testId="intake-history">
-                      {past.length ? (
-                        <div className="flex flex-col gap-4" data-testid="intake-proposal-history">
-                          {proposalCards(past)}
-                        </div>
-                      ) : (
-                        <DataState
-                          state="empty"
-                          line={t("intake.noHistory")}
-                          testId="intake-history-empty"
-                        />
-                      )}
+                    <TabBody
+                      testId="intake-history"
+                      summary={t("intake.history.summary", { count: events.length })}
+                    >
+                      <Timeline
+                        testId="intake-proposal-history"
+                        groups={[
+                          {
+                            label: t("intake.proposalHistory"),
+                            items: events.map((event) => ({
+                              id: event.id,
+                              tone: EVENT_TONE[event.kind],
+                              title: t(EVENT_TITLE[event.kind]),
+                              meta:
+                                event.kind === "collected"
+                                  ? t("intake.event.collectedBy", {
+                                      name: collector,
+                                      origin: originLabel,
+                                    })
+                                  : event.title,
+                              aside: (
+                                <span className="text-xs text-muted-foreground">
+                                  {dateTime(event.at)}
+                                </span>
+                              ),
+                              testId: `intake-event-${event.id}`,
+                            })),
+                          },
+                        ]}
+                      />
                     </TabBody>
                   ),
                 },
