@@ -15,6 +15,7 @@ const BINARY_SUFFIXES = [
   ".pdf",
   ".woff",
   ".woff2",
+  ".webp",
   ".zip",
   ".tgz",
 ];
