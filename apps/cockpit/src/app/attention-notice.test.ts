@@ -3,12 +3,15 @@ import { ATTENTION_TOAST_ID, attentionWorker, handleAttentionMessage } from "./a
 
 const origin = "https://app.example.test";
 
-function harness(overview = false) {
+const installed = "/cockpit/i/11111111-1111-4111-8111-111111111111";
+
+function harness(overview = false, basePath = "/cockpit") {
   const calls: string[] = [];
   return {
     calls,
     deps: {
       origin,
+      basePath,
       overview: () => overview,
       invalidate: () => calls.push("invalidate"),
       notify: () => calls.push("notify"),
@@ -19,19 +22,36 @@ function harness(overview = false) {
 const worker = (path: string, at = origin) => ({ scriptURL: `${at}${path}` });
 
 describe("attention notice", () => {
-  test("accepts only the root and installed Cockpit workers of this origin", () => {
-    expect(attentionWorker(worker("/cockpit/sw.js"), origin)).toBeTrue();
+  test("accepts only the worker of this page's own Cockpit scope and origin", () => {
+    expect(attentionWorker(worker("/cockpit/sw.js"), origin, "/cockpit")).toBeTrue();
+    expect(attentionWorker(worker(`${installed}/sw.js`), origin, installed)).toBeTrue();
+    expect(attentionWorker(worker(`${installed}/sw.js`), origin, "/cockpit")).toBeFalse();
+    expect(attentionWorker(worker("/cockpit/sw.js"), origin, installed)).toBeFalse();
     expect(
-      attentionWorker(worker("/cockpit/i/11111111-1111-4111-8111-111111111111/sw.js"), origin),
-    ).toBeTrue();
-    expect(attentionWorker(worker("/cockpit/sw.js", "https://other.example.test"), origin)).toBe(
-      false,
-    );
-    expect(attentionWorker(worker("/cockpit/i/a/b/sw.js"), origin)).toBeFalse();
-    expect(attentionWorker(worker("/sw.js"), origin)).toBeFalse();
-    expect(attentionWorker({ scriptURL: "not a url" }, origin)).toBeFalse();
-    expect(attentionWorker(null, origin)).toBeFalse();
-    expect(attentionWorker({ postMessage() {} }, origin)).toBeFalse();
+      attentionWorker(
+        worker("/cockpit/i/22222222-2222-4222-8222-222222222222/sw.js"),
+        origin,
+        installed,
+      ),
+    ).toBeFalse();
+    expect(
+      attentionWorker(worker("/cockpit/sw.js", "https://other.example.test"), origin, "/cockpit"),
+    ).toBeFalse();
+    expect(attentionWorker(worker("/sw.js"), origin, "/cockpit")).toBeFalse();
+    expect(attentionWorker({ scriptURL: "not a url" }, origin, "/cockpit")).toBeFalse();
+    expect(attentionWorker(null, origin, "/cockpit")).toBeFalse();
+    expect(attentionWorker({ postMessage() {} }, origin, "/cockpit")).toBeFalse();
+  });
+
+  test("a hint from another workspace's worker shows nothing", () => {
+    const { calls, deps } = harness(false, "/cockpit");
+    expect(
+      handleAttentionMessage(
+        { data: { type: "attention" }, source: worker(`${installed}/sw.js`) },
+        deps,
+      ),
+    ).toBeFalse();
+    expect(calls).toEqual([]);
   });
 
   test("ignores other message types and foreign sources", () => {
@@ -47,7 +67,10 @@ describe("attention notice", () => {
     ).toBe(false);
     expect(
       handleAttentionMessage(
-        { data: { type: "attention" }, source: worker("/cockpit/sw.js", "https://evil.test") },
+        {
+          data: { type: "attention" },
+          source: worker("/cockpit/sw.js", "https://evil.test"),
+        },
         deps,
       ),
     ).toBeFalse();
@@ -68,11 +91,11 @@ describe("attention notice", () => {
   });
 
   test("on the overview it refreshes without a toast", () => {
-    const { calls, deps } = harness(true);
+    const { calls, deps } = harness(true, installed);
     handleAttentionMessage(
       {
         data: { type: "attention" },
-        source: worker("/cockpit/i/11111111-1111-4111-8111-111111111111/sw.js"),
+        source: worker(`${installed}/sw.js`),
       },
       deps,
     );

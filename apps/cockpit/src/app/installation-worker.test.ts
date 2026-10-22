@@ -43,15 +43,25 @@ function windowClient(
   return client;
 }
 
-function worker(authenticated = true, windows: WindowClientFixture[] = [], language = "en-US") {
+function worker(
+  authenticated = true,
+  windows: WindowClientFixture[] = [],
+  language = "en-US",
+  chosen: string | null = null,
+) {
   const handlers = new Map<string, (event: Record<string, unknown>) => void>();
   const sent: unknown[] = [];
   const notifications: unknown[] = [];
   const opened: unknown[] = [];
   const matchAllOptions: unknown[] = [];
+  const timeline: string[] = [];
   let clientUrl = scope;
   vm.runInNewContext(source, {
     URL,
+    setTimeout: (resolve: () => void, delay: number) => {
+      timeline.push(`wait ${delay}`);
+      resolve();
+    },
     Response,
     Request,
     File,
@@ -59,16 +69,34 @@ function worker(authenticated = true, windows: WindowClientFixture[] = [], langu
     Date,
     crypto: { randomUUID: () => "incoming-fixture" },
     fetch: async () =>
-      new Response(JSON.stringify({ tenant: { id: "tenant" }, principal: { id: "owner" } }), {
-        status: authenticated ? 200 : 401,
-      }),
+      new Response(
+        JSON.stringify({
+          tenant: { id: "tenant" },
+          principal: { id: "owner" },
+        }),
+        {
+          status: authenticated ? 200 : 401,
+        },
+      ),
     self: {
-      navigator: { language },
-      registration: { scope, showNotification: (...args: unknown[]) => notifications.push(args) },
+      navigator: { language, languages: [language] },
+      cookieStore: {
+        get: async (name: string) => (name === "sk_locale" && chosen ? { value: chosen } : null),
+      },
+      registration: {
+        scope,
+        showNotification: async (...args: unknown[]) => {
+          notifications.push(args);
+          timeline.push("notify");
+        },
+      },
       skipWaiting: () => {},
       clients: {
         claim: () => {},
-        get: async () => ({ url: clientUrl, postMessage: (value: unknown) => sent.push(value) }),
+        get: async () => ({
+          url: clientUrl,
+          postMessage: (value: unknown) => sent.push(value),
+        }),
         openWindow: async (url: unknown) => {
           opened.push(url);
           return null;
@@ -85,6 +113,7 @@ function worker(authenticated = true, windows: WindowClientFixture[] = [], langu
   return {
     sent,
     notifications,
+    timeline,
     opened,
     matchAllOptions,
     client: (url: string) => {
@@ -120,7 +149,9 @@ describe("installation worker privacy boundary", () => {
   test("intercepts only scoped incoming shares and never caches ordinary API responses", async () => {
     const app = worker();
     expect(
-      await app.dispatch("fetch", { request: new Request(`${scope}api/v1/files`) }),
+      await app.dispatch("fetch", {
+        request: new Request(`${scope}api/v1/files`),
+      }),
     ).toBeUndefined();
     expect(await app.dispatch("fetch", { request: share("private source") })).toBeInstanceOf(
       Response,
@@ -129,7 +160,9 @@ describe("installation worker privacy boundary", () => {
   });
   test("requires authentication before retaining incoming content", async () => {
     const app = worker(false);
-    const response = await app.dispatch("fetch", { request: share("private source") });
+    const response = await app.dispatch("fetch", {
+      request: share("private source"),
+    });
     expect(response?.headers.get("location")).toBe(`${scope}?incoming=sign-in`);
     await app.dispatch("message", {
       source: { id: "client" },
@@ -164,13 +197,18 @@ describe("installation worker privacy boundary", () => {
   test("clears incoming content and keeps push payloads neutral", async () => {
     const app = worker();
     await app.dispatch("fetch", { request: share("private source") });
-    await app.dispatch("message", { source: { id: "client" }, data: { type: "clear-incoming" } });
+    await app.dispatch("message", {
+      source: { id: "client" },
+      data: { type: "clear-incoming" },
+    });
     await app.dispatch("message", {
       source: { id: "client" },
       data: { type: "take-incoming", id: "incoming-fixture" },
     });
     expect(app.sent).toEqual([{ type: "incoming-unavailable" }]);
-    await app.dispatch("push", { data: { text: () => "secret tenant workflow approval" } });
+    await app.dispatch("push", {
+      data: { text: () => "secret tenant workflow approval" },
+    });
     expect(app.notifications).toEqual([
       [
         "SubKit",
@@ -182,10 +220,27 @@ describe("installation worker privacy boundary", () => {
         },
       ],
     ]);
-    await app.dispatch("notificationclick", { notification: { close: () => {} } });
+    await app.dispatch("notificationclick", {
+      notification: { close: () => {} },
+    });
     expect(app.opened).toEqual([scope]);
   });
-  test("a visible Cockpit window on the origin gets an in-app hint instead of a notification", async () => {
+  test("a visible window of this app gets an in-app hint instead of a notification", async () => {
+    const root = windowClient("https://app.example.test/cockpit/flows", "visible");
+    const own = windowClient(`${scope}runs`, "visible");
+    const hidden = windowClient(scope);
+    const app = worker(true, [root, own, hidden]);
+    await app.dispatch("push", {
+      data: { text: () => "secret tenant workflow approval" },
+    });
+    expect(app.notifications).toEqual([]);
+    expect(app.timeline).toEqual([]);
+    expect(own.messages).toEqual([{ type: "attention" }]);
+    expect(root.messages).toEqual([]);
+    expect(hidden.messages).toEqual([]);
+    expect(app.matchAllOptions).toEqual([{ type: "window", includeUncontrolled: true }]);
+  });
+  test("a visible root tab or another workspace app leaves this app's push to the OS", async () => {
     const root = windowClient("https://app.example.test/cockpit/flows", "visible");
     const other = windowClient(
       "https://app.example.test/cockpit/i/22222222-2222-4222-8222-222222222222/",
@@ -193,19 +248,34 @@ describe("installation worker privacy boundary", () => {
     );
     const hidden = windowClient(`${scope}runs`);
     const app = worker(true, [root, other, hidden]);
-    await app.dispatch("push", { data: { text: () => "secret tenant workflow approval" } });
-    expect(app.notifications).toEqual([]);
-    expect(root.messages).toEqual([{ type: "attention" }]);
-    expect(other.messages).toEqual([{ type: "attention" }]);
-    expect(hidden.messages).toEqual([]);
-    expect(app.matchAllOptions).toEqual([{ type: "window", includeUncontrolled: true }]);
+    await app.dispatch("push", {});
+    expect(app.notifications).toEqual([
+      [
+        "SubKit",
+        {
+          body: "New entries need you",
+          icon: "/cockpit/app-icon-192.png",
+          tag: new URL(scope).pathname,
+          renotify: true,
+        },
+      ],
+    ]);
+    expect(app.timeline).toEqual(["notify", "wait 1000"]);
+    expect([root, other, hidden].flatMap((client) => client.messages)).toEqual([]);
+  });
+  test("the chosen Cockpit language wins over the browser language", async () => {
+    const app = worker(true, [], "en-US", "de");
+    await app.dispatch("push", {});
+    expect(app.notifications).toMatchObject([["SubKit", { body: "Neue Einträge brauchen dich" }]]);
   });
   test("hidden Cockpit windows and visible foreign pages still get the neutral notification", async () => {
     const hidden = windowClient(`${scope}runs`);
     const foreign = windowClient("https://other.example.test/cockpit/", "visible");
     const lookalike = windowClient("https://app.example.test/cockpitx", "visible");
     const app = worker(true, [hidden, foreign, lookalike], "de-AT");
-    await app.dispatch("push", { data: { text: () => "secret tenant workflow approval" } });
+    await app.dispatch("push", {
+      data: { text: () => "secret tenant workflow approval" },
+    });
     expect(app.notifications).toEqual([
       [
         "SubKit",
@@ -223,7 +293,9 @@ describe("installation worker privacy boundary", () => {
     const foreign = windowClient("https://app.example.test/cockpit/");
     const app = windowClient(`${scope}runs`);
     const opened = worker(true, [foreign, app]);
-    await opened.dispatch("notificationclick", { notification: { close: () => {} } });
+    await opened.dispatch("notificationclick", {
+      notification: { close: () => {} },
+    });
     expect(app.focused).toBeTrue();
     expect(foreign.focused).toBeFalse();
     expect(opened.opened).toEqual([]);
@@ -234,7 +306,9 @@ describe("installation worker privacy boundary", () => {
       "https://app.example.test/cockpit/i/22222222-2222-4222-8222-222222222222/",
     );
     const opened = worker(true, [foreign]);
-    await opened.dispatch("notificationclick", { notification: { close: () => {} } });
+    await opened.dispatch("notificationclick", {
+      notification: { close: () => {} },
+    });
     expect(foreign.focused).toBeFalse();
     expect(opened.opened).toEqual([scope]);
   });

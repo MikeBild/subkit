@@ -33,20 +33,40 @@ function windowClient(
   return client;
 }
 
-function worker(windows: WindowClientFixture[] = [], language = "en-US") {
+interface WorkerOptions {
+  language?: string;
+  languages?: string[];
+  cookieStore?: { get(name: string): Promise<{ value: string } | null> };
+}
+
+function worker(windows: WindowClientFixture[] = [], options: WorkerOptions | string = {}) {
+  const {
+    language = "en-US",
+    languages,
+    cookieStore,
+  } = typeof options === "string" ? { language: options } : options;
   const handlers = new Map<string, (event: Record<string, unknown>) => void>();
   const notifications: unknown[] = [];
   const opened: unknown[] = [];
   const matchAllOptions: unknown[] = [];
   const calls: string[] = [];
+  const timeline: string[] = [];
   vm.runInNewContext(source, {
     URL,
+    setTimeout: (resolve: () => void, delay: number) => {
+      timeline.push(`wait ${delay}`);
+      resolve();
+    },
     self: {
       location: { origin },
-      navigator: { language },
+      navigator: { language, languages: languages ?? [language] },
+      cookieStore,
       registration: {
         scope,
-        showNotification: (...args: unknown[]) => notifications.push(args),
+        showNotification: async (...args: unknown[]) => {
+          notifications.push(args);
+          timeline.push("notify");
+        },
       },
       skipWaiting: () => calls.push("skipWaiting"),
       clients: {
@@ -70,6 +90,7 @@ function worker(windows: WindowClientFixture[] = [], language = "en-US") {
     opened,
     matchAllOptions,
     calls,
+    timeline,
     async dispatch(name: string, properties: Record<string, unknown> = {}) {
       let completion: Promise<unknown> = Promise.resolve();
       handlers.get(name)?.({
@@ -97,7 +118,9 @@ describe("browser tab push worker", () => {
     const foreign = windowClient("https://other.example.test/cockpit/", "visible");
     const lookalike = windowClient(`${origin}/cockpitx`, "visible");
     const app = worker([hidden, foreign, lookalike]);
-    await app.dispatch("push", { data: { text: () => "secret tenant workflow approval" } });
+    await app.dispatch("push", {
+      data: { text: () => "secret tenant workflow approval" },
+    });
     expect(app.notifications).toEqual([
       [
         "SubKit",
@@ -116,13 +139,15 @@ describe("browser tab push worker", () => {
   test("a visible Cockpit tab gets an in-app hint instead of a notification", async () => {
     const tab = windowClient(`${origin}/cockpit/flows`, "visible");
     const app = worker([tab]);
-    await app.dispatch("push", { data: { text: () => "secret tenant workflow approval" } });
+    await app.dispatch("push", {
+      data: { text: () => "secret tenant workflow approval" },
+    });
     expect(app.notifications).toEqual([]);
     expect(tab.messages).toEqual([{ type: "attention" }]);
     expect(app.matchAllOptions).toEqual([{ type: "window", includeUncontrolled: true }]);
   });
 
-  test("a visible installed app window on the same origin also takes the hint", async () => {
+  test("a visible installed app window of any workspace leaves the tab push to the OS", async () => {
     const installed = windowClient(
       `${origin}/cockpit/i/11111111-1111-4111-8111-111111111111/`,
       "visible",
@@ -130,14 +155,16 @@ describe("browser tab push worker", () => {
     const hidden = windowClient(`${origin}/cockpit/`);
     const app = worker([installed, hidden]);
     await app.dispatch("push", {});
-    expect(app.notifications).toEqual([]);
-    expect(installed.messages).toEqual([{ type: "attention" }]);
+    expect(app.notifications).toHaveLength(1);
+    expect(installed.messages).toEqual([]);
     expect(hidden.messages).toEqual([]);
   });
 
   test("a German browser gets the German notification text and no payload content", async () => {
     const app = worker([], "de-DE");
-    await app.dispatch("push", { data: { text: () => "secret tenant workflow approval" } });
+    await app.dispatch("push", {
+      data: { text: () => "secret tenant workflow approval" },
+    });
     expect(JSON.stringify(app.notifications)).not.toContain("secret");
     expect(app.notifications).toEqual([
       [
@@ -152,12 +179,65 @@ describe("browser tab push worker", () => {
     ]);
   });
 
+  test("the chosen Cockpit language wins over the browser language", async () => {
+    const asked: string[] = [];
+    const app = worker([], {
+      language: "en-US",
+      cookieStore: {
+        get: async (name) => {
+          asked.push(name);
+          return { value: "de" };
+        },
+      },
+    });
+    await app.dispatch("push", {});
+    expect(asked).toEqual(["sk_locale"]);
+    expect(app.notifications).toMatchObject([["SubKit", { body: "Neue Einträge brauchen dich" }]]);
+  });
+
+  test("without a chosen language it follows the first supported browser language", async () => {
+    const unreadable = worker([], {
+      languages: ["fr-FR", "de-CH"],
+      cookieStore: {
+        get: async () => {
+          throw new Error("blocked");
+        },
+      },
+    });
+    await unreadable.dispatch("push", {});
+    expect(unreadable.notifications).toMatchObject([
+      ["SubKit", { body: "Neue Einträge brauchen dich" }],
+    ]);
+    const unknown = worker([], {
+      language: "de-DE",
+      cookieStore: { get: async () => ({ value: "fr" }) },
+    });
+    await unknown.dispatch("push", {});
+    expect(unknown.notifications).toMatchObject([
+      ["SubKit", { body: "Neue Einträge brauchen dich" }],
+    ]);
+    const other = worker([], { languages: ["fr-FR"] });
+    await other.dispatch("push", {});
+    expect(other.notifications).toMatchObject([["SubKit", { body: "New entries need you" }]]);
+  });
+
+  test("a hidden push keeps the worker alive briefly after the notification", async () => {
+    const hidden = worker([]);
+    await hidden.dispatch("push", {});
+    expect(hidden.timeline).toEqual(["notify", "wait 1000"]);
+    const visible = worker([windowClient(`${origin}/cockpit/`, "visible")]);
+    await visible.dispatch("push", {});
+    expect(visible.timeline).toEqual([]);
+  });
+
   test("a click focuses an open Cockpit tab and never an installed app", async () => {
     const installed = windowClient(`${origin}/cockpit/i/11111111-1111-4111-8111-111111111111/`);
     const tab = windowClient(`${origin}/cockpit/flows`);
     const app = worker([installed, tab]);
     let closed = false;
-    await app.dispatch("notificationclick", { notification: { close: () => (closed = true) } });
+    await app.dispatch("notificationclick", {
+      notification: { close: () => (closed = true) },
+    });
     expect(closed).toBeTrue();
     expect(tab.focused).toBeTrue();
     expect(installed.focused).toBeFalse();
@@ -170,7 +250,9 @@ describe("browser tab push worker", () => {
     const foreign = windowClient("https://other.example.test/cockpit/");
     const lookalike = windowClient(`${origin}/cockpitx`);
     const app = worker([installed, foreign, lookalike]);
-    await app.dispatch("notificationclick", { notification: { close: () => {} } });
+    await app.dispatch("notificationclick", {
+      notification: { close: () => {} },
+    });
     expect(installed.focused || foreign.focused || lookalike.focused).toBeFalse();
     expect(app.opened).toEqual(["/cockpit/"]);
   });
@@ -178,7 +260,9 @@ describe("browser tab push worker", () => {
   test("the canonical /cockpit path counts as the Cockpit tab", async () => {
     const tab = windowClient(`${origin}/cockpit`);
     const app = worker([tab]);
-    await app.dispatch("notificationclick", { notification: { close: () => {} } });
+    await app.dispatch("notificationclick", {
+      notification: { close: () => {} },
+    });
     expect(tab.focused).toBeTrue();
   });
 });
