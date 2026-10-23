@@ -61,6 +61,24 @@ test("a failed run or failed check is reported as failed", () => {
   ).toBe("failed");
 });
 
+test("a failed run reloaded from history as a tool error still shows the card", () => {
+  const failed = {
+    ...summary,
+    status: "failed",
+    counts: { total: 3, succeeded: 1, failed: 1, held: 1 },
+  };
+  expect(
+    chatSensitiveTestRun(
+      part({ ok: false, data: { sensitive_test_run: failed } }, undefined, "output-error"),
+    ),
+  ).toEqual({
+    succeeded: false,
+    steps: { succeeded: 1, failed: 1, held: 1 },
+    reads: [{ step: "read", items: 120, complete: false }],
+    checks: "passed",
+  });
+});
+
 test("undefined checks are not claimed as passed", () => {
   expect(
     chatSensitiveTestRun(

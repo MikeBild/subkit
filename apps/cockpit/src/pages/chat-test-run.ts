@@ -8,6 +8,8 @@ export interface ChatSensitiveTestRun {
   checks: "passed" | "failed" | "none";
 }
 
+const RESULT_STATES = new Set<ToolPart["state"]>(["output-available", "output-error"]);
+
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
@@ -21,7 +23,7 @@ function checksOf(validation: unknown, outputSchema: unknown): ChatSensitiveTest
 }
 
 export function chatSensitiveTestRun(tool: ToolPart): ChatSensitiveTestRun | null {
-  if (toolNameOf(tool) !== "dry_run_workflow" || tool.state !== "output-available") return null;
+  if (toolNameOf(tool) !== "dry_run_workflow" || !RESULT_STATES.has(tool.state)) return null;
   const output = tool.output;
   if (!record(output)) return null;
   const data = record(output.data) ? output.data : output;
