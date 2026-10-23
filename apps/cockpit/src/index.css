@@ -177,6 +177,26 @@
   }
 }
 
+:root {
+  --sk-usage-origin-workflow-runs: #4f46e5;
+  --sk-usage-origin-chat: #0d9488;
+  --sk-usage-origin-authoring: #d97706;
+  --sk-usage-origin-summaries: #7c3aed;
+  --sk-usage-origin-knowledge: #0284c7;
+  --sk-usage-origin-reviews: #db2777;
+  --sk-usage-origin-other: #64748b;
+}
+
+.dark {
+  --sk-usage-origin-workflow-runs: #818cf8;
+  --sk-usage-origin-chat: #2dd4bf;
+  --sk-usage-origin-authoring: #fbbf24;
+  --sk-usage-origin-summaries: #a78bfa;
+  --sk-usage-origin-knowledge: #38bdf8;
+  --sk-usage-origin-reviews: #f472b6;
+  --sk-usage-origin-other: #94a3b8;
+}
+
 @utility scrollbar-thin {
   scrollbar-width: thin;
   scrollbar-color: var(--color-border) transparent;

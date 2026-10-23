@@ -33,6 +33,7 @@ interface ColumnOptions {
   ownsRowLink?: boolean;
   interactive?: boolean;
   cardLabel?: boolean;
+  priority?: "high" | "low";
 }
 
 export function tableColumns<TRow extends RowData>({
@@ -54,6 +55,7 @@ export function tableColumns<TRow extends RowData>({
       ownsRowLink: options?.ownsRowLink,
       interactive: options?.interactive,
       cardLabel: options?.cardLabel,
+      priority: options?.priority,
     },
   });
 

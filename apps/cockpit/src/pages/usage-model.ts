@@ -788,3 +788,33 @@ export function usageCsv(envelope: unknown, unit: BucketUnit, labels: CsvLabels)
   ];
   return [header, ...lines].map((line) => line.map(csvCell).join(",")).join("\r\n");
 }
+
+export type UsageSheet =
+  | { kind: "origin"; id: UsageOrigin }
+  | { kind: "workflow" | "person" | "model" | "conversation"; id: string }
+  | { kind: "failed" };
+
+const SHEET_PARAMS = ["origin", "workflow", "person", "model", "conversation", "failed"] as const;
+
+export function usageSheetFromSearch(search: string): UsageSheet | null {
+  const params = new URLSearchParams(search);
+  for (const name of SHEET_PARAMS) {
+    const value = params.get(name);
+    if (value === null || value === "") continue;
+    if (name === "failed") return { kind: "failed" };
+    if (name === "origin")
+      return (USAGE_ORIGINS as readonly string[]).includes(value)
+        ? { kind: "origin", id: value as UsageOrigin }
+        : null;
+    return { kind: name, id: value };
+  }
+  return null;
+}
+
+export function usageSheetSearch(search: string, sheet: UsageSheet | null): string {
+  const params = new URLSearchParams(search);
+  for (const name of SHEET_PARAMS) params.delete(name);
+  if (sheet) params.set(sheet.kind, sheet.kind === "failed" ? "1" : sheet.id);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}

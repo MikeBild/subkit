@@ -13,6 +13,8 @@ import {
   trendOf,
   usageCsv,
   usageHints,
+  usageSheetFromSearch,
+  usageSheetSearch,
 } from "@/pages/usage-model";
 
 function group(
@@ -468,5 +470,25 @@ describe("the export", () => {
       '2026-10-19,Chat,"own, eigenes",1,0,0,0,0,,',
       "2026-10-20,Workflow-Läufe,gpt,2,0,0,0,0,1.5,USD",
     ]);
+  });
+});
+
+describe("the open detail sheet", () => {
+  test("is kept in the address, one at a time, next to the other parameters", () => {
+    const search = usageSheetSearch("?window=lastWeek&by=model&person=u1", {
+      kind: "model",
+      id: "own-model",
+    });
+    expect(search).toBe("?window=lastWeek&by=model&model=own-model");
+    expect(usageSheetFromSearch(search)).toEqual({ kind: "model", id: "own-model" });
+    expect(usageSheetFromSearch(usageSheetSearch("", { kind: "failed" }))).toEqual({
+      kind: "failed",
+    });
+    expect(usageSheetSearch("?window=lastWeek&failed=1", null)).toBe("?window=lastWeek");
+  });
+
+  test("ignores an unknown origin", () => {
+    expect(usageSheetFromSearch("?origin=nope")).toBeNull();
+    expect(usageSheetFromSearch("?origin=chat")).toEqual({ kind: "origin", id: "chat" });
   });
 });

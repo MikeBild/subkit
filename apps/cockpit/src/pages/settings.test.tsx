@@ -507,7 +507,10 @@ describe("the page's frame", () => {
 
   test("the page saves once, with PATCH, and no longer per field", () => {
     const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
-    expect(source).toContain('method: "PATCH"');
+    const save = readFileSync(resolve(import.meta.dir, "settings-save.ts"), "utf8");
+    expect(source).toContain("applySettingsPatch(");
+    expect(save).toContain('method: "PATCH"');
+    expect(save).not.toMatch(/method: "PUT"/);
     expect(source).not.toMatch(/method: "PUT"/);
     expect(source).not.toMatch(/setTimeout|autosave/i);
   });

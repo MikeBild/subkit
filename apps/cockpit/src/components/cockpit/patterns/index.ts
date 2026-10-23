@@ -45,6 +45,7 @@ export { FilterSheet } from "./filter-sheet";
 export { type DialogSize, dialogWidthClass, FormDialog } from "./form-dialog";
 export { type GroupingOption, GroupingTabs } from "./grouping-tabs";
 export { IconTile, type IconTileSize } from "./icon-tile";
+export { KpiTile } from "./kpi-tile";
 export {
   type ListReturn,
   listReturnHref,

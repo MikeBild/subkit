@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/api/client";
 import { absolute, workflowsHref } from "@/app/links";
-import { ActionButton, TileSkeleton } from "@/components/cockpit/patterns";
+import { ActionButton, KpiTile, TileSkeleton } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -185,58 +185,57 @@ function Figure({
   const basis =
     figure.basis === "window" ? (window ? WINDOW_LABEL[window] : null) : BASIS_LABEL[figure.basis];
   const label = (
-    <p className="truncate text-xs text-muted-foreground">
+    <>
       {t(FIGURE_LABEL[figure.id])}
       {basis ? ` · ${t(basis)}` : null}
-    </p>
+    </>
   );
-  const box = "grid min-h-[72px] min-w-0 content-center gap-0.5 rounded-lg border px-4 py-3";
   if (figure.state !== "value") {
     const onward = figure.state === "unpriced" || figure.state === "uncapped" ? figure.href : null;
     return (
-      <div
-        className={box}
-        data-testid={`operations-figure-${figure.id}`}
-        data-figure-state={figure.state}
-      >
-        {label}
-        <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-          <span>
-            {figure.state === "unreadable"
-              ? t("overview.operations.unreadable")
-              : figure.state === "not_permitted"
-                ? t("overview.operations.notPermitted")
-                : figure.state === "unpriced"
-                  ? t("overview.operations.unpriced")
-                  : figure.state === "uncapped"
-                    ? t("overview.operations.uncapped")
-                    : t(NONE_TEXT[figure.id])}
-          </span>
-          {figure.state === "unreadable" ? (
-            <ActionButton
-              variant="ghost"
-              size="sm"
-              onClick={() => onRetry(figure.id)}
-              testId={`operations-figure-${figure.id}-retry`}
-            >
-              {t("session.retry")}
-            </ActionButton>
-          ) : null}
-          {onward ? (
-            <a
-              className="font-medium text-foreground underline underline-offset-2"
-              href={absolute(onward)}
-              data-testid={`operations-figure-${figure.id}-link`}
-            >
-              {t(
-                figure.state === "uncapped"
-                  ? "resource.usage.setCap"
-                  : "overview.operations.openUsage",
-              )}
-            </a>
-          ) : null}
-        </p>
-      </div>
+      <KpiTile
+        label={label}
+        testId={`operations-figure-${figure.id}`}
+        data={{ "data-figure-state": figure.state }}
+        note={
+          <>
+            <span>
+              {figure.state === "unreadable"
+                ? t("overview.operations.unreadable")
+                : figure.state === "not_permitted"
+                  ? t("overview.operations.notPermitted")
+                  : figure.state === "unpriced"
+                    ? t("overview.operations.unpriced")
+                    : figure.state === "uncapped"
+                      ? t("overview.operations.uncapped")
+                      : t(NONE_TEXT[figure.id])}
+            </span>
+            {figure.state === "unreadable" ? (
+              <ActionButton
+                variant="ghost"
+                size="sm"
+                onClick={() => onRetry(figure.id)}
+                testId={`operations-figure-${figure.id}-retry`}
+              >
+                {t("session.retry")}
+              </ActionButton>
+            ) : null}
+            {onward ? (
+              <a
+                className="font-medium text-foreground underline underline-offset-2"
+                href={absolute(onward)}
+                data-testid={`operations-figure-${figure.id}-link`}
+              >
+                {t(
+                  figure.state === "uncapped"
+                    ? "resource.usage.setCap"
+                    : "overview.operations.openUsage",
+                )}
+              </a>
+            ) : null}
+          </>
+        }
+      />
     );
   }
   const partial = figure.money && figure.money.unpricedCalls > 0;
@@ -268,46 +267,32 @@ function Figure({
       : null;
   const detail = [detailText, budgetNote].filter(Boolean).join(" · ") || null;
   return (
-    <div
-      className={box}
-      data-testid={`operations-figure-${figure.id}`}
-      data-figure-state="value"
-      data-family-kpi-id={figure.id}
-      data-family-kpi-value={display}
-      data-budget-pressure={pressure ?? undefined}
-    >
-      {label}
-      <p className="flex min-w-0 items-baseline">
-        <span
-          className={[
-            "shrink-0 text-2xl font-semibold leading-8 tracking-[-0.02em] tabular-nums",
-            pressure && pressure !== "ample" ? PRESSURE_TONE[pressure] : null,
-          ]
-            .filter(Boolean)
-            .join(" ")}
-        >
-          {figure.href ? (
-            <a
-              className="underline-offset-4 hover:underline"
-              href={absolute(figure.href)}
-              data-testid={`operations-figure-${figure.id}-link`}
-            >
-              {display}
-            </a>
-          ) : (
-            display
-          )}
-        </span>
-      </p>
-      {detail ? (
-        <p
-          className="text-xs text-muted-foreground"
-          title={detail}
-          data-testid={`operations-figure-${figure.id}-detail`}
-        >
-          {detail}
-        </p>
-      ) : null}
-    </div>
+    <KpiTile
+      label={label}
+      testId={`operations-figure-${figure.id}`}
+      data={{
+        "data-figure-state": "value",
+        "data-family-kpi-id": figure.id,
+        "data-family-kpi-value": display,
+        "data-budget-pressure": pressure ?? undefined,
+      }}
+      tone={pressure && pressure !== "ample" ? PRESSURE_TONE[pressure] : null}
+      value={
+        figure.href ? (
+          <a
+            className="underline-offset-4 hover:underline"
+            href={absolute(figure.href)}
+            data-testid={`operations-figure-${figure.id}-link`}
+          >
+            {display}
+          </a>
+        ) : (
+          display
+        )
+      }
+      detail={detail}
+      detailTitle={detail ?? undefined}
+      detailTestId={`operations-figure-${figure.id}-detail`}
+    />
   );
 }

@@ -293,7 +293,7 @@ describe("the operations bar", () => {
     expect(html).not.toContain("data-family-kpi-value");
     expect(html).toContain("Keine im Zeitraum");
     expect(html).toContain("Keine aktiven Konnektoren");
-    expect(html).toContain("Keine Modellaufrufe im Zeitraum");
+    expect(html).toContain("Keine KI-Aufrufe im Zeitraum");
   });
 
   test("a failed read is said per figure, with a way to read again", () => {
@@ -330,6 +330,6 @@ describe("Nutzung", () => {
   test("reads the window its address names, so the cost figure's link lands on its window", () => {
     const source = readFileSync(new URL("./usage.tsx", import.meta.url), "utf8");
     expect(source).toContain("usageWindowFromUrl(window.location.search)");
-    expect(source).toContain(`llmStatsEndpoint(bounds, "workflow")`);
+    expect(source).toContain(`useLlmQuery(allowed, bounds, "flow")`);
   });
 });
