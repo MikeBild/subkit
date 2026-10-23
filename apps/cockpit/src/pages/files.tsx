@@ -24,6 +24,7 @@ import {
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
 import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
+import { FileVersionsSection } from "@/components/cockpit/file-versions";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { InstallationInputActions } from "@/components/cockpit/installation-dialogs";
 import { type UsageCard, UsageCards } from "@/components/cockpit/knowledge-usage";
@@ -58,6 +59,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { cn } from "@/lib/utils";
+import { fileKindKey } from "@/pages/file-versions-model";
 
 type StoredFile = components["schemas"]["File"] & {
   creator?: { kind: "user" | "system_account"; id: string } | null;
@@ -102,21 +104,12 @@ export function fileUsageLine(
   return uses ? t("files.usage.line", { uses }) : null;
 }
 
-const KIND_KEYS = {
-  image: "files.kind.image",
-  pdf: "files.kind.pdf",
-  csv: "files.kind.csv",
-  markdown: "files.kind.markdown",
-  text: "files.kind.text",
-  other: "files.kind.other",
-} as const;
-
 function sizeText(bytes: unknown, locale: string): string {
   return typeof bytes === "number" ? formatBytes(bytes, locale) : "—";
 }
 
 function fileKindLabel(t: ReturnType<typeof useI18n>["t"], file: StoredFile): string {
-  return t(KIND_KEYS[previewKind(file.filename, file.content_type)]);
+  return t(fileKindKey(file.filename, file.content_type));
 }
 
 function readBase64(file: File): Promise<string> {
@@ -926,6 +919,13 @@ export function FilePage() {
                   content: (
                     <TabBody
                       testId="file-usage-tab"
+                      more={
+                        <FileVersionsSection
+                          fileId={file.id}
+                          fileName={file.filename}
+                          canWrite={canWrite}
+                        />
+                      }
                       summary={
                         usedLine
                           ? t("files.usage.summary", { uses: usedLine })
