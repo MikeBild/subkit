@@ -166,6 +166,16 @@ const SensitiveRequestMetaSchema = z
   })
   .openapi("SensitiveRequestMeta");
 
+const SandboxRequestMetaSchema = z
+  .object({
+    driver: z.literal("sandbox"),
+    ticks: z.number().int().min(0),
+    duration_ms: z.number().int().min(0),
+    peak_memory_bytes: z.number().int().min(0).nullable(),
+    extras: z.record(z.string(), z.unknown()).optional(),
+  })
+  .openapi("SandboxRequestMeta");
+
 export const RequestMetaSchema = z
   .discriminatedUnion("driver", [
     HttpRequestMetaSchema,
@@ -176,5 +186,6 @@ export const RequestMetaSchema = z
     ConnectorlessRequestMetaSchema,
     ErrorRequestMetaSchema,
     SensitiveRequestMetaSchema,
+    SandboxRequestMetaSchema,
   ])
   .openapi("RequestMeta");

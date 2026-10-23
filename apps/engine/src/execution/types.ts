@@ -219,6 +219,13 @@ export type RequestMeta =
       driver: "sensitive";
       pagination: RequestPaginationSummary;
       extras?: Record<string, unknown>;
+    }
+  | {
+      driver: "sandbox";
+      ticks: number;
+      duration_ms: number;
+      peak_memory_bytes: number | null;
+      extras?: Record<string, unknown>;
     };
 
 export interface StepErrorDetail {

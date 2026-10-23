@@ -5,8 +5,10 @@ import { instrument } from "../../observability/runtime-telemetry.ts";
 import { sandboxFailureCode } from "../../sandboxes/index.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import {
+  SandboxError,
   SandboxInterruptError,
   SandboxMemoryError,
+  type SandboxStats,
   SandboxTimeoutError,
 } from "../../sandboxes/quickjs/types.ts";
 import type { TransformStep } from "../../workflows/types.ts";
@@ -14,7 +16,7 @@ import { combineSignals } from "../abort.ts";
 import { resolveScopeForJsonata } from "../jsonata-bindings.ts";
 import { sensitiveFailure } from "../sensitive-payload.ts";
 import { TRANSFORM_TIMEOUT_DEFAULT_MS, TRANSFORM_WALL_CEILING_DEFAULT_MS } from "../timeouts.ts";
-import type { StepResult, StepRunContext } from "../types.ts";
+import type { RequestMeta, StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
 import { detectTransformWarnings } from "./transform-warnings.ts";
 import { runHtmlToMarkdown, runReadability, runStructuredData } from "./transform-web-scraper.ts";
@@ -62,6 +64,21 @@ function transformTimeoutMessage(
       ? "the configured sandbox.transform_wall_ms"
       : `timeout_ms ${step.timeout_ms}`;
   return `${base} (operator ceiling sandbox.max_transform_wall_ms; ${requested} was clamped)`;
+}
+
+export function sandboxRequestMeta(stats: SandboxStats | undefined): {
+  request_meta?: RequestMeta;
+} {
+  if (!stats) return {};
+  return {
+    request_meta: {
+      driver: "sandbox",
+      ticks: Math.max(0, Math.trunc(stats.ticks)),
+      duration_ms: Math.max(0, Math.round(stats.duration_ms)),
+      peak_memory_bytes:
+        stats.peak_memory_bytes === null ? null : Math.max(0, Math.trunc(stats.peak_memory_bytes)),
+    },
+  };
 }
 
 export async function runTransformStep(p: RunTransformParams): Promise<StepResult> {
@@ -138,13 +155,15 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
         signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
       }),
     ]);
-    const output = (raced as { output: unknown }).output;
+    const { output, stats } = raced as { output: unknown; stats?: SandboxStats };
     const warnings = detectTransformWarnings({ step_id: p.step.id, output, scope: p.scope });
+    logSandboxStats(p.step.id, stats);
     return {
       status: "succeeded",
       output,
       retry_count: 0,
       duration_ms: Date.now() - start,
+      ...sandboxRequestMeta(stats),
       ...(warnings.length > 0 ? { warnings } : {}),
     };
   } catch (err) {
@@ -153,6 +172,8 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
     const privateError = privateCode ? sensitiveFailure(privateCode) : null;
     const detail = buildStepErrorDetail({ code: "transform_error", err });
     const message = detail.message;
+    const stats = err instanceof SandboxError ? err.stats : undefined;
+    logSandboxStats(p.step.id, stats);
     if (err instanceof SandboxTimeoutError || err instanceof SandboxInterruptError) {
       logger.warn({
         module: "execution",
@@ -166,6 +187,7 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
         status: "timed_out",
         retry_count: 0,
         duration_ms,
+        ...sandboxRequestMeta(stats),
         error: privateError ?? {
           code: "transform_timeout",
           message: transformTimeoutMessage(p.step, wall),
@@ -185,6 +207,7 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
         status: "failed",
         retry_count: 0,
         duration_ms,
+        ...sandboxRequestMeta(stats),
         error: privateError ?? { code: "transform_memory", message },
       };
     }
@@ -224,9 +247,23 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
       status: "failed",
       retry_count: 0,
       duration_ms,
+      ...sandboxRequestMeta(stats),
       error: privateError ?? detail,
     };
   } finally {
     clearTimeout(timer);
   }
+}
+
+function logSandboxStats(stepId: string, stats: SandboxStats | undefined): void {
+  if (!stats) return;
+  logger.debug({
+    module: "sandbox",
+    action: "transform.stats",
+    step_id: stepId,
+    ticks: stats.ticks,
+    duration_ms: stats.duration_ms,
+    peak_memory_bytes: stats.peak_memory_bytes,
+    worker_pid: stats.worker_pid ?? null,
+  });
 }

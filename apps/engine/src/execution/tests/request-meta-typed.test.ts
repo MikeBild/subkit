@@ -145,6 +145,7 @@ describe("RequestMeta · driver-discriminated union", () => {
           limit: null,
         },
       },
+      { driver: "sandbox", ticks: 3, duration_ms: 1, peak_memory_bytes: null },
     ];
     let count = 0;
     for (const v of variants) {
@@ -157,6 +158,7 @@ describe("RequestMeta · driver-discriminated union", () => {
         case "connectorless":
         case "error":
         case "sensitive":
+        case "sandbox":
           count++;
           break;
         default: {
@@ -165,7 +167,7 @@ describe("RequestMeta · driver-discriminated union", () => {
         }
       }
     }
-    expect(count).toBe(8);
+    expect(count).toBe(9);
   });
 });
 

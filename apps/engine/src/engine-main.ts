@@ -45,7 +45,7 @@ import { EVENT_FANOUT_QUEUE } from "./queue/handlers/event-fanout.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
 import type { RuntimeConfigCoordinator as Coordinator } from "./runtime-config/coordinator.ts";
 import { registerRestartTrigger, shutdownExitCode } from "./runtime-config/restart.ts";
-import { closeSandboxWorkers } from "./sandboxes/quickjs/runtime.ts";
+import { closeSandboxWorkers, prewarmSandboxWorkers } from "./sandboxes/quickjs/runtime.ts";
 import { SchedulerReconciler } from "./scheduler/reconciler.ts";
 import { applySkillSeedsForAllTenants, loadEmbeddedSkillSeeds } from "./skills/seed.ts";
 import { startEngineUpdateCheck } from "./update-state.ts";
@@ -553,6 +553,7 @@ async function runServer(): Promise<void> {
             });
           } finally {
             if (!lifetime.stopping) await seedKnowledgeAtBoot(db);
+            if (!lifetime.stopping) await prewarmSandbox();
           }
         },
         (error) =>
@@ -565,7 +566,10 @@ async function runServer(): Promise<void> {
       );
     } else {
       lifetime.background(
-        () => seedKnowledgeAtBoot(db),
+        async () => {
+          await seedKnowledgeAtBoot(db);
+          if (!lifetime.stopping) await prewarmSandbox();
+        },
         (error) =>
           logger.error({
             module: "engine",
@@ -642,6 +646,25 @@ async function runServer(): Promise<void> {
       "boot_failure",
       error instanceof EngineBootStoppedError ? shutdownExitCode("signal") : 1,
     );
+  }
+}
+
+async function prewarmSandbox(): Promise<void> {
+  try {
+    if (await prewarmSandboxWorkers()) {
+      logger.info({
+        module: "sandbox",
+        action: "worker.prewarmed",
+        msg: "sandbox worker started ahead of the first job",
+      });
+    }
+  } catch (err) {
+    logger.warn({
+      module: "sandbox",
+      action: "worker.prewarm_failed",
+      msg: "sandbox worker prewarm failed (non-fatal); the first job starts it instead",
+      ...errorFields(err),
+    });
   }
 }
 

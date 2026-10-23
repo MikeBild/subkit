@@ -7,6 +7,7 @@ import {
 } from "quickjs-emscripten-core";
 import { getConfig } from "../../config/loader.ts";
 import { getContext } from "../../logging/context.ts";
+import { logger } from "../../logging/logger.ts";
 import { STDLIB_HELPER_SOURCES, STDLIB_SOURCE } from "./stdlib/index.ts";
 import {
   DEFAULT_LIMITS,
@@ -49,6 +50,10 @@ export function setQuickJsModuleProviderForTesting(
 ): void {
   _moduleProviderForTesting = provider;
   if (provider) _mod = null;
+}
+
+export async function preloadQuickJsModule(): Promise<void> {
+  await loadModule();
 }
 
 async function loadModule(): Promise<QuickJSWASMModule> {
@@ -310,6 +315,66 @@ interface WorkerResponse {
 
 const MAX_WORKER_MESSAGE_BYTES = 32 * 1024 * 1024;
 const MAX_BINARY_WORKER_WIRE_BYTES = 45 * 1024 * 1024;
+const WORKER_SPAWN_TIMEOUT_MS = 15_000;
+
+export const WORKER_READY_MESSAGE = { ready: true } as const;
+
+function isReadyMessage(message: unknown): boolean {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as { ready?: unknown }).ready === true &&
+    !("id" in message)
+  );
+}
+
+export type WorkerResetReason =
+  | "rss_exceeded"
+  | "rss_recycle"
+  | "deadline_exceeded"
+  | "aborted"
+  | "marshal"
+  | "memory"
+  | "timeout"
+  | "stdlib_init"
+  | "worker_exited"
+  | "invalid_response"
+  | "spawn_failed"
+  | "spawn_timeout"
+  | "closed";
+
+const KEEP_ALIVE_CAUSES: ReadonlySet<SandboxError["cause_kind"]> = new Set([
+  "runtime",
+  "syntax",
+  "interrupt",
+]);
+
+export function workerFailureResetReason(
+  error: Pick<WorkerFailure, "cause_kind"> | undefined,
+): WorkerResetReason | null {
+  const cause = error?.cause_kind ?? "runtime";
+  if (KEEP_ALIVE_CAUSES.has(cause)) return null;
+  switch (cause) {
+    case "memory":
+      return "memory";
+    case "timeout":
+      return "timeout";
+    case "marshal":
+      return "marshal";
+    default:
+      return "stdlib_init";
+  }
+}
+
+class WorkerTransportError extends Error {
+  constructor(
+    message: string,
+    readonly reason: WorkerResetReason,
+  ) {
+    super(message);
+    this.name = "WorkerTransportError";
+  }
+}
 
 function workerLimits(): {
   queue_limit: number;
@@ -476,6 +541,7 @@ const workerAdmission = {
 
 class WorkerLane {
   private child: ReturnType<typeof Bun.spawn> | null = null;
+  private readiness: Promise<void> | null = null;
   private pending: {
     id: number;
     resolve: (response: WorkerResponse) => void;
@@ -487,6 +553,8 @@ class WorkerLane {
   private readonly tenantOrder: string[] = [];
   private running = false;
   private generation = 0;
+
+  constructor(private readonly lane: "default" | "hook") {}
 
   get load(): number {
     return this.queued;
@@ -592,17 +660,22 @@ class WorkerLane {
       throw new SandboxError("sandbox worker request exceeds 32 MiB", "marshal");
     }
     if (opts.signal?.aborted) throw new SandboxTimeoutError("sandbox worker aborted");
-    const script = new URL("../../index.ts", import.meta.url).pathname;
-    const child = this.ensure(script);
+    const child = await this.ready(opts.signal);
     const generation = ++this.generation;
-    const abort = () => child.kill();
+    const kill = (reason: WorkerResetReason) => {
+      if (this.child === child) this.reset(reason);
+      else child.kill();
+    };
+    const abort = () => kill("aborted");
     let rssExceeded = false;
     let deadlineExceeded = false;
+    let keepAlive = false;
+    let resetReason: WorkerResetReason | null = null;
     const rssTimer = setInterval(() => {
       void this.exceedsRss(child.pid, workerConfig.worker_rss_bytes).then((exceeded) => {
         if (!exceeded || this.generation !== generation || this.child !== child) return;
         rssExceeded = true;
-        child.kill();
+        kill("rss_exceeded");
       });
     }, 50);
     rssTimer.unref?.();
@@ -610,7 +683,7 @@ class WorkerLane {
     const timeout = setTimeout(
       () => {
         deadlineExceeded = true;
-        abort();
+        kill("deadline_exceeded");
       },
       (opts.limits?.wall_ms ?? resolveDefaultLimits().wall_ms) + 250,
     );
@@ -621,15 +694,26 @@ class WorkerLane {
         child.send({ id: generation, body });
       });
       if (Buffer.byteLength(JSON.stringify(response)) > workerConfig.ipc_max_bytes) {
+        resetReason = "marshal";
         throw new SandboxError("sandbox worker response exceeds 32 MiB", "marshal");
       }
       if (response.ok) {
         await this.recycleForRss(workerConfig.worker_rss_bytes);
         return this.withWorkerPid(response.result, child.pid) as T;
       }
+      resetReason = workerFailureResetReason(response.error);
+      keepAlive = resetReason === null;
+      if (keepAlive) await this.recycleForRss(workerConfig.worker_rss_bytes);
       throw workerError(response.error);
     } catch (err) {
-      this.reset();
+      if (rssExceeded) resetReason = "rss_exceeded";
+      else if (deadlineExceeded) resetReason = "deadline_exceeded";
+      else if (opts.signal?.aborted && !keepAlive) resetReason = "aborted";
+      if (!keepAlive || rssExceeded || deadlineExceeded) {
+        this.reset(
+          resetReason ?? (err instanceof WorkerTransportError ? err.reason : "worker_exited"),
+        );
+      }
       if (rssExceeded) throw new SandboxMemoryError("sandbox worker RSS threshold exceeded");
       if (deadlineExceeded)
         throw new SandboxTimeoutError("sandbox worker exceeded wall-clock budget");
@@ -645,37 +729,117 @@ class WorkerLane {
     }
   }
 
-  private ensure(script: string): ReturnType<typeof Bun.spawn> {
-    if (this.child) return this.child;
+  async prewarm(): Promise<void> {
+    await this.ready();
+  }
+
+  private async ready(signal?: AbortSignal): Promise<ReturnType<typeof Bun.spawn>> {
+    let spawned: { child: ReturnType<typeof Bun.spawn>; ready: Promise<void> };
+    try {
+      spawned = this.ensure();
+    } catch (err) {
+      throw new SandboxRuntimeError(
+        `sandbox worker failed to start: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    try {
+      await waitForReady(spawned.ready, signal);
+    } catch (err) {
+      if (err instanceof SandboxTimeoutError) throw err;
+      if (this.child === spawned.child) this.reset("spawn_failed");
+      throw err instanceof SandboxError
+        ? err
+        : new SandboxRuntimeError(
+            `sandbox worker failed to start: ${err instanceof Error ? err.message : String(err)}`,
+          );
+    }
+    return spawned.child;
+  }
+
+  private ensure(): { child: ReturnType<typeof Bun.spawn>; ready: Promise<void> } {
+    if (this.child && this.readiness) return { child: this.child, ready: this.readiness };
+    const script = new URL("../../index.ts", import.meta.url).pathname;
     const compiled = process.execPath.includes("/$bunfs/") || !process.execPath.includes("bun");
     const args = compiled ? ["--sandbox-worker"] : ["--no-env-file", script, "--sandbox-worker"];
-    this.child = Bun.spawn([process.execPath, ...args], {
+    const spawnStarted = performance.now();
+    let settled = false;
+    let markReady: () => void = () => {};
+    let failReady: (reason: Error) => void = () => {};
+    const readiness = new Promise<void>((resolve, reject) => {
+      markReady = resolve;
+      failReady = reject;
+    });
+    readiness.catch(() => {});
+    let spawnTimer: ReturnType<typeof setTimeout> | undefined;
+    const settle = (error?: Error): void => {
+      if (settled) return;
+      settled = true;
+      if (spawnTimer) clearTimeout(spawnTimer);
+      if (error) failReady(error);
+      else markReady();
+    };
+    const child = Bun.spawn([process.execPath, ...args], {
       stdin: "ignore",
       stdout: "ignore",
       stderr: "ignore",
       cwd: "/tmp",
       env: { PATH: process.env.PATH ?? "", NODE_ENV: process.env.NODE_ENV ?? "production" },
       ipc: (message, source) => {
+        if (source !== this.child) return;
+        if (isReadyMessage(message)) {
+          if (settled) return;
+          logger.info({
+            module: "sandbox",
+            action: "worker.spawned",
+            lane: this.lane,
+            pid: source.pid,
+            spawn_ms: Math.round(performance.now() - spawnStarted),
+          });
+          settle();
+          return;
+        }
         const response = message as WorkerResponse;
         const pending = this.pending;
-        if (!pending || source !== this.child) return;
+        if (!pending) return;
         if (response?.id !== pending.id) {
           this.pending = null;
-          pending.reject(new Error("sandbox worker returned an invalid response"));
+          pending.reject(
+            new WorkerTransportError(
+              "sandbox worker returned an invalid response",
+              "invalid_response",
+            ),
+          );
           return;
         }
         this.pending = null;
         pending.resolve(response);
       },
     });
-    const child = this.child;
+    spawnTimer = setTimeout(() => {
+      settle(new SandboxRuntimeError("sandbox worker did not start in time"));
+      if (this.child === child) this.reset("spawn_timeout");
+    }, WORKER_SPAWN_TIMEOUT_MS);
+    spawnTimer.unref?.();
+    this.child = child;
+    this.readiness = readiness;
     void child.exited.then(() => {
+      settle(new SandboxRuntimeError("sandbox worker exited during startup"));
       if (this.child !== child) return;
-      this.pending?.reject(new Error("sandbox worker exited without a response"));
+      this.pending?.reject(
+        new WorkerTransportError("sandbox worker exited without a response", "worker_exited"),
+      );
       this.pending = null;
       this.child = null;
+      this.readiness = null;
+      logger.info({
+        module: "sandbox",
+        action: "worker.reset",
+        lane: this.lane,
+        pid: child.pid,
+        reason: "worker_exited",
+      });
     });
-    return this.child;
+    return { child, ready: readiness };
   }
 
   close(): void {
@@ -688,20 +852,31 @@ class WorkerLane {
     }
     this.queues.clear();
     this.tenantOrder.length = 0;
-    this.reset();
+    this.reset("closed");
   }
 
-  private reset(): void {
+  private reset(reason: WorkerResetReason): void {
     this.generation += 1;
-    this.pending?.reject(new Error("sandbox worker reset"));
+    this.pending?.reject(new WorkerTransportError("sandbox worker reset", reason));
     this.pending = null;
-    this.child?.kill();
+    const child = this.child;
     this.child = null;
+    this.readiness = null;
+    if (!child) return;
+    child.kill();
+    if (reason === "closed") return;
+    logger.info({
+      module: "sandbox",
+      action: "worker.reset",
+      lane: this.lane,
+      pid: child.pid,
+      reason,
+    });
   }
 
   private async recycleForRss(limit: number): Promise<void> {
     if (!this.child || !(await this.exceedsRss(this.child.pid, limit))) return;
-    this.reset();
+    this.reset("rss_recycle");
   }
 
   private withWorkerPid(result: unknown, pid: number): unknown {
@@ -728,7 +903,7 @@ class WorkerPool {
   private nextLane = 0;
 
   constructor(size: number) {
-    this.lanes = Array.from({ length: size }, () => new WorkerLane());
+    this.lanes = Array.from({ length: size }, () => new WorkerLane("default"));
   }
 
   run<T>(
@@ -747,13 +922,42 @@ class WorkerPool {
     return result;
   }
 
+  prewarm(): Promise<void> {
+    return this.lanes[0]?.prewarm() ?? Promise.resolve();
+  }
+
   close(): void {
     for (const lane of this.lanes) lane.close();
   }
 }
 
 const defaultPool = new WorkerPool(Math.min(2, availableParallelism()));
-const hookLane = new WorkerLane();
+const hookLane = new WorkerLane("hook");
+
+function prewarmEnabled(): boolean {
+  try {
+    return getConfig().sandbox.prewarm;
+  } catch {
+    return false;
+  }
+}
+
+export async function prewarmSandboxWorkers(): Promise<boolean> {
+  if (!prewarmEnabled()) return false;
+  if (process.argv.includes("--sandbox-worker") || _moduleProviderForTesting) return false;
+  await defaultPool.prewarm();
+  return true;
+}
+
+async function waitForReady(ready: Promise<void>, signal?: AbortSignal): Promise<void> {
+  if (!signal) return ready;
+  if (signal.aborted) throw new SandboxTimeoutError("sandbox worker aborted");
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = () => reject(new SandboxTimeoutError("sandbox worker aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    ready.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
 
 export function closeSandboxWorkers(): void {
   defaultPool.close();

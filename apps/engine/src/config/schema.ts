@@ -1277,6 +1277,15 @@ const SandboxSection = z
           "with the ceiling and sandbox_limit_clamped_total counts the cut. Default 5 min.",
       )
       .meta(global()),
+    prewarm: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Start one default sandbox worker after boot, once the knowledge seed and its embeddings " +
+          "are done, so the first transform or JSONata step does not pay the worker cold start. " +
+          "Default off.",
+      )
+      .meta(global()),
   })
   .superRefine((value, ctx) => {
     if (value.tenant_queue_limit > value.queue_limit) {

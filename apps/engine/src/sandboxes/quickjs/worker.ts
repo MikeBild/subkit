@@ -2,7 +2,13 @@ import { z } from "zod";
 import { parseBinaryFileInCurrentProcess } from "../../docs-ingestion/parsers/index.ts";
 import { evaluateJsonataInCurrentProcess } from "../../execution/jsonata-engine.ts";
 import { routeLogsToStderr } from "../../logging/logger.ts";
-import { assertBoundedWorkerValue, type RunJsOptions, runJsInCurrentProcess } from "./runtime.ts";
+import {
+  assertBoundedWorkerValue,
+  preloadQuickJsModule,
+  type RunJsOptions,
+  runJsInCurrentProcess,
+  WORKER_READY_MESSAGE,
+} from "./runtime.ts";
 import { SandboxError } from "./types.ts";
 
 const MAX_WORKER_MESSAGE_BYTES = 32 * 1024 * 1024;
@@ -47,7 +53,15 @@ export async function runSandboxWorker(): Promise<void> {
     process.on("message", (input: unknown) => {
       void handleRequest(input);
     });
+    void announceReady();
   });
+}
+
+async function announceReady(): Promise<void> {
+  try {
+    await preloadQuickJsModule();
+  } catch {}
+  process.send?.(WORKER_READY_MESSAGE);
 }
 
 async function handleRequest(input: unknown): Promise<void> {
