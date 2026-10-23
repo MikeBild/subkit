@@ -3,7 +3,7 @@ slug: workflow-authoring-automation
 scope: global
 title: Workflow Automation Readiness
 description: Finishing a saved workflow for automatic operation: the in-chat review, automation states, previews with saved schedule input, repair preparation before the review card, and how to talk to the user meanwhile.
-activates_when: [{"kind":"tool","tool":"review_workflow_automation"},{"kind":"tool","tool":"list_schedules"},{"kind":"tool","tool":"save_workflow_draft"},{"kind":"intent_keyword","word":"automatisch"},{"kind":"intent_keyword","word":"automatic"},{"kind":"intent_keyword","word":"recurring"},{"kind":"intent_keyword","word":"regelmäßig"},{"kind":"intent_keyword","word":"automatischen betrieb"},{"kind":"intent_keyword","word":"automatic operation"}]
+activates_when: [{"kind":"tool","tool":"review_workflow_automation"},{"kind":"tool","tool":"list_schedules"},{"kind":"tool","tool":"save_workflow_draft"},{"kind":"tool","tool":"run_workflow"},{"kind":"intent_keyword","word":"automatisch"},{"kind":"intent_keyword","word":"automatic"},{"kind":"intent_keyword","word":"recurring"},{"kind":"intent_keyword","word":"regelmäßig"},{"kind":"intent_keyword","word":"automatischen betrieb"},{"kind":"intent_keyword","word":"automatic operation"}]
 side_effects: read
 idempotency: none
 maturity: stable

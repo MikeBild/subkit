@@ -13,10 +13,6 @@ version: 1
 
 # Workflow Transforms And The sk Stdlib
 
-For request steps, use the current flattened shape: `connector_id`, `method`,
-`path`, `query`, `headers`, `body`, and `graphql` live directly on the step.
-Do not wrap them in `config`.
-
 ## Typed JSON bodies and read-only POSTs
 
 Two general request-body rules worth getting right up front (the

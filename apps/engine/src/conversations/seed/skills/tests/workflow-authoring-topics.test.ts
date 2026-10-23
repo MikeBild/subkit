@@ -78,6 +78,11 @@ describe("workflow-authoring core and topic skills", () => {
     expect(loaded).toContain("workflow-authoring");
     expect(loaded).toContain("workflow-authoring-schedules");
     expect(loaded).toContain("workflow-authoring-automation");
+    expect(
+      autoloadForToolCall({ tool: "run_workflow", input: {} }, seeds.skills, [
+        "workflow-authoring",
+      ]),
+    ).toContain("workflow-authoring-automation");
   });
 
   test("goal phrasing loads only the topic it names", () => {

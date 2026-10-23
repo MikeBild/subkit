@@ -51,6 +51,10 @@ the draft + `save_workflow_draft`, never `update_workflow`.
 
 For a field change inside an existing top-level step, prefer `edit_workflow_patch` with `step_patches: [{step_id, op, path, value}]`. The path is relative to that step, e.g. `/s3/scope` or `/expression`. The engine resolves the stable ID against the current draft, so you must not count numeric positions from a long workflow or use a `config` wrapper. Use ordinary `patches` only for workflow-level structure changes. Never mix the two forms. Both use the same validation and inert-draft persistence gates.
 
+For request steps, use the current flattened shape: `connector_id`, `method`,
+`path`, `query`, `headers`, `body`, and `graphql` live directly on the step.
+Do not wrap them in `config`.
+
 ## Evidence-gated authoring
 
 **Evidence-gated loop authoring.** A loop step that reads `$scope.<X>`
