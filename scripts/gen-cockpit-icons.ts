@@ -157,16 +157,16 @@ const patterns = templates
       `  [${JSON.stringify(template.url_pattern)}, ${JSON.stringify(templateService(template))}],`,
   );
 
-const output = [
-  "export interface ServiceIconData {",
-  "  src: string;",
-  "  mono: boolean;",
-  "}",
+const marks = [
+  'import type { ServiceIconData } from "./service-icons";',
   "",
   "export const SERVICE_ICONS: Record<string, ServiceIconData> = {",
   ...icons,
   "};",
   "",
+].join("\n");
+
+const output = [
   "export const TEMPLATE_SERVICES: Record<string, string> = {",
   ...bySlug,
   "};",
@@ -178,3 +178,4 @@ const output = [
 ].join("\n");
 
 writeFileSync(join(root, "apps/cockpit/src/lib/service-icons.generated.ts"), output);
+writeFileSync(join(root, "apps/cockpit/src/lib/service-icon-marks.generated.ts"), marks);

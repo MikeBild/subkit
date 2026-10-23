@@ -1,6 +1,12 @@
 import { Bot, Plug, Workflow } from "lucide-react";
+import { useSyncExternalStore } from "react";
 import { IconTile, type IconTileSize } from "@/components/cockpit/patterns";
-import { type ServiceIdentity, serviceIcon } from "@/lib/service-icons";
+import {
+  onServiceMarks,
+  type ServiceIdentity,
+  serviceIcon,
+  serviceMarksReady,
+} from "@/lib/service-icons";
 import { cn } from "@/lib/utils";
 
 const GLYPH: Record<IconTileSize, string> = {
@@ -10,7 +16,17 @@ const GLYPH: Record<IconTileSize, string> = {
 };
 
 function Glyph({ service, size }: { service: ServiceIdentity; size: string }) {
+  useSyncExternalStore(onServiceMarks, serviceMarksReady, serviceMarksReady);
   const icon = serviceIcon(service);
+  if (icon === "loading")
+    return (
+      <span
+        aria-hidden="true"
+        data-slot="service-glyph"
+        data-loading="true"
+        className={cn("inline-block shrink-0", size)}
+      />
+    );
   if (icon?.mono)
     return (
       <span

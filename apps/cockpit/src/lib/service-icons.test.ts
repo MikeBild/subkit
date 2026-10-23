@@ -1,8 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isAiService, serviceIcon, serviceIdentity, templateIdentity } from "./service-icons";
-import { SERVICE_ICONS, TEMPLATE_SERVICES } from "./service-icons.generated";
+import { SERVICE_ICONS } from "./service-icon-marks.generated";
+import {
+  isAiService,
+  loadServiceMarks,
+  serviceIcon,
+  serviceIdentity,
+  serviceMarksReady,
+  templateIdentity,
+} from "./service-icons";
+import { TEMPLATE_SERVICES } from "./service-icons.generated";
 
 const templates = JSON.parse(
   readFileSync(join(import.meta.dir, "../../../engine/src/connectors/templates.json"), "utf8"),
@@ -16,6 +24,20 @@ const GENERIC_TEMPLATES = new Set([
   "web-scraper",
   "xray-cloud",
 ]);
+
+beforeAll(() => loadServiceMarks());
+
+describe("service marks load apart from the main bundle", () => {
+  test("a brand reads as loading until the marks arrive, never as the plug", async () => {
+    await loadServiceMarks();
+    expect(serviceMarksReady()).toBe(true);
+    expect(serviceIcon({ kind: "brand", key: "github" })).toEqual(SERVICE_ICONS.github ?? null);
+    const source = readFileSync(join(import.meta.dir, "service-icons.ts"), "utf8");
+    expect(source).toContain('import("./service-icon-marks.generated")');
+    expect(source).not.toMatch(/^import[^;]*service-icon-marks/m);
+    expect(source).toContain('if (marks === null) return "loading";');
+  });
+});
 
 describe("service identity", () => {
   test("every branded template resolves to a generated icon", () => {

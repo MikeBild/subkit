@@ -1,9 +1,35 @@
-import {
-  SERVICE_ICONS,
-  type ServiceIconData,
-  TEMPLATE_ADDRESSES,
-  TEMPLATE_SERVICES,
-} from "./service-icons.generated";
+import { TEMPLATE_ADDRESSES, TEMPLATE_SERVICES } from "./service-icons.generated";
+
+export interface ServiceIconData {
+  src: string;
+  mono: boolean;
+}
+
+let marks: Readonly<Record<string, ServiceIconData>> | null = null;
+const waiting = new Set<() => void>();
+
+const loading: Promise<void> = import("./service-icon-marks.generated")
+  .then(
+    (module) => module.SERVICE_ICONS,
+    () => ({}),
+  )
+  .then((loaded) => {
+    marks = loaded;
+    for (const listener of waiting) listener();
+  });
+
+export function loadServiceMarks(): Promise<void> {
+  return loading;
+}
+
+export function serviceMarksReady(): boolean {
+  return marks !== null;
+}
+
+export function onServiceMarks(listener: () => void): () => void {
+  waiting.add(listener);
+  return () => waiting.delete(listener);
+}
 
 export type ServiceIdentity =
   | { kind: "brand"; key: string }
@@ -118,8 +144,10 @@ export function templateIdentity(
   return key ? { kind: "brand", key } : { kind: "generic", driver: null };
 }
 
-export function serviceIcon(identity: ServiceIdentity): ServiceIconData | null {
-  return identity.kind === "brand" ? (SERVICE_ICONS[identity.key] ?? null) : null;
+export function serviceIcon(identity: ServiceIdentity): ServiceIconData | "loading" | null {
+  if (identity.kind !== "brand") return null;
+  if (marks === null) return "loading";
+  return marks[identity.key] ?? null;
 }
 
 export function isAiService(identity: ServiceIdentity): boolean {

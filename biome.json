@@ -24,6 +24,7 @@
       "!apps/cockpit/src/app/release-notes.generated.ts",
       "!apps/cockpit/src/app/docs.generated.ts",
       "!apps/cockpit/src/lib/service-icons.generated.ts",
+      "!apps/cockpit/src/lib/service-icon-marks.generated.ts",
       "!apps/engine/src/http/llms/docs.json",
       "!apps/engine/src/http/cockpit-embedded.ts",
       "!contract/cockpit-ui.css",
