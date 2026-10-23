@@ -102,7 +102,7 @@ export const demoTemplateConnectors = [
     needsReauth: false,
     token: null,
     category: "sales",
-    description: "Mailbox of the dispatch team. Not signed in yet; demo address only.",
+    description: "Mailbox of the dispatch team. Demo address; it never reaches Google.",
   },
   {
     key: "connector-slack",
