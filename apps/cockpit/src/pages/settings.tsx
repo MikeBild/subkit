@@ -191,12 +191,9 @@ function SettingsWorkspace() {
   const canReadEngine = session.permissions.includes("settings:read:global");
   const tenantId = session.tenant.id;
   const scopeAvailable = canWrite && canReadEngine && tenantId !== SYSTEM_TENANT_ID;
-  const [areaScopes, setAreaScopes] = useState<Record<ScopedArea, SettingDraftScope>>({
-    ai: "global",
-    costs: "global",
-  });
+  const [areaScopes, setAreaScopes] = useState<Partial<Record<ScopedArea, SettingDraftScope>>>({});
   const scopedArea = scopedAreaOf(level);
-  const scope: SettingDraftScope = pageScope(level, scopeAvailable, areaScopes);
+  const tenantReadable = canReadEngine && tenantId !== SYSTEM_TENANT_ID;
   const [conflict, setConflict] = useState(false);
   const [failed, setFailed] = useState(false);
   const [restartOpen, setRestartOpen] = useState(false);
@@ -214,13 +211,8 @@ function SettingsWorkspace() {
     queryKey: [...SETTINGS_QUERY_KEY, "tenant", tenantId],
     queryFn: () =>
       apiRequest<SettingsResponse>(`/v1/settings?tenant=${encodeURIComponent(tenantId)}`),
-    enabled: scopeAvailable,
+    enabled: tenantReadable,
     ...live,
-  });
-  const catalogTenant = scope === "tenant" ? tenantId : null;
-  const catalog = useQuery({
-    queryKey: modelCatalogQueryKey(catalogTenant),
-    queryFn: () => apiRequest<ModelCatalog>(modelCatalogEndpoint(catalogTenant)),
   });
   const statusAllowed = canReadOperations(session.permissions);
   const status = useQuery({
@@ -230,8 +222,20 @@ function SettingsWorkspace() {
   });
   const usage: BudgetSummary | null = status.data ? budgetSummary(status.data) : null;
   const globalItems = query.data?.items ?? [];
-  const tenantItems = scopeAvailable ? (tenantQuery.data?.items ?? null) : null;
-  const viewItems = scope === "tenant" && tenantItems ? tenantItems : globalItems;
+  const tenantItems = tenantReadable ? (tenantQuery.data?.items ?? null) : null;
+  const effectiveItems = tenantItems ?? globalItems;
+  const scope: SettingDraftScope = pageScope(level, scopeAvailable, areaScopes, tenantItems);
+  const viewItems =
+    scope === "tenant" && tenantItems
+      ? tenantItems
+      : level.kind === "area" && !scopedArea
+        ? effectiveItems
+        : globalItems;
+  const catalogTenant = scope === "tenant" ? tenantId : null;
+  const catalog = useQuery({
+    queryKey: modelCatalogQueryKey(catalogTenant),
+    queryFn: () => apiRequest<ModelCatalog>(modelCatalogEndpoint(catalogTenant)),
+  });
   const draftState = useSettingsDrafts(globalItems);
   const { pending } = draftState;
   const changed = useMemo(() => changedSettings(globalItems, pending), [globalItems, pending]);
@@ -330,6 +334,7 @@ function SettingsWorkspace() {
     items: viewItems,
     globalItems,
     tenantItems,
+    effectiveItems,
     drafts: draftState.texts(viewItems, scope),
     canWrite,
     pending: save.isPending,
@@ -349,7 +354,7 @@ function SettingsWorkspace() {
 
   const pendingRestart = query.data?.pending_restart_fields ?? [];
   const facts = {
-    items: globalItems,
+    items: effectiveItems,
     pendingRestart,
     budgetConsumedShare: usage?.consumedShare ?? null,
   };

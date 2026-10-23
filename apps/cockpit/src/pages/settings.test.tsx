@@ -669,6 +669,7 @@ describe("the guided settings pages", () => {
     items,
     globalItems: items,
     tenantItems: null,
+    effectiveItems: items,
     drafts: {},
     canWrite: true,
     pending: false,
@@ -801,6 +802,27 @@ describe("the guided settings pages", () => {
     const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
     expect(source).toContain('onDraft={(path, text) => setDraft(path, text, "global")}');
     expect(source).toContain("drafts={draftState.drafts.global}");
+  });
+
+  test("the overview describes what applies to the signed-in workspace", () => {
+    const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
+    expect(source).toContain("const effectiveItems = tenantItems ?? globalItems;");
+    expect(source).toMatch(/const facts = \{\n\s+items: effectiveItems,/);
+    const workspace = items.map((entry) =>
+      entry.path === "llm.provider"
+        ? { ...entry, value: "anthropic", meta: { ...entry.meta, source: "tenant" } }
+        : entry,
+    );
+    const cards = overviewCards({
+      facts: { items: workspace, pendingRestart: [], budgetConsumedShare: null },
+      catalog,
+      usage: null,
+      canWrite: true,
+      locale: "de",
+      t: de,
+      restartAction: null,
+    });
+    expect(cards.find((card) => card.id === "ai")?.sentence).toContain("Nutzt Anthropic");
   });
 
   test("rows read the drafts as typed, so an opened key field stays open", () => {

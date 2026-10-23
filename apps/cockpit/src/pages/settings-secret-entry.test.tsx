@@ -107,6 +107,7 @@ isolated(
             items: ITEMS,
             globalItems: ITEMS,
             tenantItems: null,
+            effectiveItems: ITEMS,
             drafts: state.texts(ITEMS, "global"),
             canWrite: true,
             pending: false,

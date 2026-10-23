@@ -16,7 +16,6 @@ import {
 } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
-import { providerName } from "@/pages/settings-ai";
 import {
   ExpertLink,
   GlobalOnlyNote,
@@ -27,6 +26,7 @@ import {
   guidedText,
   LockedNote,
   OwnValueHint,
+  providerName,
   Question,
   ScopeToggle,
 } from "@/pages/settings-guided";
@@ -101,6 +101,11 @@ export function hostedAllowlistDraft(
   return JSON.stringify(entries.filter((entry) => allowed.has(entry.model)));
 }
 
+export function effectiveProviderOf(ctx: GuidedContext): string {
+  const value = ctx.effectiveItems.find((item) => item.path === "llm.provider")?.value;
+  return typeof value === "string" ? value : "";
+}
+
 function BudgetQuestion({ ctx }: { ctx: GuidedContext }) {
   const { t, locale } = useI18n();
   const item = guidedItem(ctx, "tokens.monthly_budget");
@@ -111,7 +116,9 @@ function BudgetQuestion({ ctx }: { ctx: GuidedContext }) {
   const disabled = guidedDisabled(ctx, item);
   const tag = locale === "de" ? "de-DE" : "en-US";
   const number = new Intl.NumberFormat(tag);
-  const provider = providerName(guidedText(ctx, "llm.provider") || "mock", t);
+  const effectiveProvider = effectiveProviderOf(ctx);
+  const mock = effectiveProvider === "mock" || effectiveProvider === "";
+  const provider = providerName(effectiveProvider, t);
   if (!item) return null;
   const budget = parsed ?? 0;
   const used = ctx.usage?.usedTokens ?? null;
@@ -203,14 +210,25 @@ function BudgetQuestion({ ctx }: { ctx: GuidedContext }) {
           </p>
         </div>
       ) : null}
-      <p className="text-sm text-muted-foreground">
-        {budget > 0
-          ? t("settings.costs.budget.reached")
-          : t("settings.costs.budget.noLimitHint", { provider })}
-      </p>
-      <p className="text-sm text-muted-foreground">
-        {t("settings.costs.budget.estimate", { provider })}
-      </p>
+      {budget > 0 ? (
+        <p className="text-sm text-muted-foreground">{t("settings.costs.budget.reached")}</p>
+      ) : null}
+      {mock ? (
+        <p className="text-sm text-muted-foreground" data-testid="settings-costs-mock">
+          {t("settings.costs.budget.mockNoCost")}
+        </p>
+      ) : (
+        <>
+          {budget > 0 ? null : (
+            <p className="text-sm text-muted-foreground">
+              {t("settings.costs.budget.noLimitHint", { provider })}
+            </p>
+          )}
+          <p className="text-sm text-muted-foreground">
+            {t("settings.costs.budget.estimate", { provider })}
+          </p>
+        </>
+      )}
       <OwnValueHint ctx={ctx} path="tokens.monthly_budget" />
     </Question>
   );

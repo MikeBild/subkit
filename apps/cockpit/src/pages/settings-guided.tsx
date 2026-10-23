@@ -2,9 +2,10 @@ import { ChevronRight, Lock } from "lucide-react";
 import type { ReactNode } from "react";
 import { absolute } from "@/app/links";
 import { ContextHelp, SectionHeading, SegmentedControl } from "@/components/cockpit/patterns";
+import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
-import type { ModelCatalog } from "@/pages/settings-catalog";
+import { catalogModelName, type ModelCatalog } from "@/pages/settings-catalog";
 import {
   type SettingDraftScope,
   type SettingItem,
@@ -18,6 +19,7 @@ export interface GuidedContext {
   items: readonly SettingItem[];
   globalItems: readonly SettingItem[];
   tenantItems: readonly SettingItem[] | null;
+  effectiveItems: readonly SettingItem[];
   drafts: Readonly<Record<string, string>>;
   canWrite: boolean;
   pending: boolean;
@@ -31,6 +33,38 @@ export interface GuidedContext {
   dropDraft(path: string): void;
   onScope(scope: SettingDraftScope): void;
   navigate(href: string): void;
+}
+
+export function providerName(provider: string, t: (key: TranslationKey) => string): string {
+  const key = `settings.ai.provider.${provider}` as TranslationKey;
+  const text = t(key);
+  return text === key ? provider : text;
+}
+
+const PROVIDER_PATHS = new Set(["llm.provider", "llm.fallback_provider", "llm.summarize_provider"]);
+
+export function guidedValueText(
+  path: string,
+  value: unknown,
+  t: ReturnType<typeof useI18n>["t"],
+  catalog: ModelCatalog | undefined,
+  locale = "de",
+): string {
+  const empty = value === null || value === undefined || value === "";
+  if (PROVIDER_PATHS.has(path))
+    return empty || typeof value !== "string" ? t("settings.value.notSet") : providerName(value, t);
+  if (/(^|\.)(model|fallback_model|summarize_model|suggestion_model)$/.test(path))
+    return empty || typeof value !== "string"
+      ? t("settings.value.providerDefault")
+      : (catalogModelName(catalog, value) ?? value);
+  if (path === "tokens.monthly_budget" && typeof value === "number")
+    return value <= 0
+      ? t("settings.costs.preset.none")
+      : t("settings.costs.tokens", {
+          count: new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US").format(value),
+        });
+  if (empty || (Array.isArray(value) && value.length === 0)) return t("settings.value.notSet");
+  return settingValueText(value, t);
 }
 
 export function guidedItem(ctx: GuidedContext, path: string): SettingItem | undefined {
@@ -128,14 +162,25 @@ export function LockedNote({ item }: { item: SettingItem | undefined }) {
 }
 
 export function OwnValueHint({ ctx, path }: { ctx: GuidedContext; path: string }) {
-  const { t } = useI18n();
-  if (ctx.scope !== "tenant" || !ctx.tenantItems) return null;
+  const { t, locale } = useI18n();
+  if (!ctx.tenantItems) return null;
   const own = ctx.tenantItems.find((item) => item.path === path);
   if (own?.meta.source !== "tenant") return null;
-  const general = ctx.globalItems.find((item) => item.path === path);
+  if (ctx.scope === "tenant") {
+    const general = ctx.globalItems.find((item) => item.path === path);
+    return (
+      <p className="text-xs text-muted-foreground" data-testid={`settings-own-value-${path}`}>
+        {t("settings.scope.ownValue", {
+          globalValue: guidedValueText(path, general?.value, t, ctx.catalog, locale),
+        })}
+      </p>
+    );
+  }
   return (
-    <p className="text-xs text-muted-foreground" data-testid={`settings-own-value-${path}`}>
-      {t("settings.scope.ownValue", { globalValue: settingValueText(general?.value, t) })}
+    <p className="text-xs font-medium" data-testid={`settings-own-value-here-${path}`}>
+      {t("settings.scope.ownValueHere", {
+        value: guidedValueText(path, own.value, t, ctx.catalog, locale),
+      })}
     </p>
   );
 }
@@ -210,6 +255,9 @@ export function GuidedRows({ ctx, paths }: { ctx: GuidedContext; paths: readonly
           />
         ))}
       </div>
+      {rows.map((item) => (
+        <OwnValueHint key={item.path} ctx={ctx} path={item.path} />
+      ))}
       {rows.some((item) => guidedGlobalOnly(ctx, item)) ? (
         <p className="text-xs text-muted-foreground" data-testid="settings-rows-global-only">
           {t("settings.scope.globalOnlyRows")}

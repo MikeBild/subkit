@@ -68,6 +68,7 @@ function ctx(overrides: Partial<GuidedContext> = {}): GuidedContext {
     items,
     globalItems: items,
     tenantItems: items,
+    effectiveItems: items,
     drafts: {},
     canWrite: true,
     pending: false,
@@ -168,5 +169,65 @@ describe("resetting in workspace mode", () => {
     expect(render(<GuidedRows ctx={ctx({ scope: "tenant" })} paths={paths} />)).not.toContain(
       'data-testid="setting-reset-',
     );
+  });
+});
+
+describe("what applies to the signed-in workspace", () => {
+  const own = (
+    path: string,
+    value: unknown,
+    meta: Partial<SettingItem["meta"]> & { kind: string },
+  ) => leaf(path, value, { ...meta, source: "tenant" });
+  const global = [
+    leaf("llm.provider", "mock", { kind: "enum", enum_values: ["mock", "openai", "anthropic"] }),
+    leaf("llm.model", "", { kind: "string", default: "" }),
+    leaf("tokens.monthly_budget", 0, { kind: "number", default: 0 }),
+  ];
+  const workspace = [
+    own("llm.provider", "anthropic", {
+      kind: "enum",
+      enum_values: ["mock", "openai", "anthropic"],
+    }),
+    own("llm.model", "claude-sonnet-4-6", { kind: "string", default: "" }),
+    leaf("tokens.monthly_budget", 0, { kind: "number", default: 0 }),
+  ];
+  const base = (overrides: Partial<GuidedContext>) =>
+    ctx({ items: global, globalItems: global, tenantItems: workspace, ...overrides });
+
+  test("in the all-workspaces mode each field says the workspace keeps its own value", async () => {
+    const { AiArea } = await import("@/pages/settings-ai");
+    const html = render(<AiArea ctx={base({ effectiveItems: workspace })} />);
+    expect(html).toContain(
+      "Dieser Arbeitsbereich nutzt einen eigenen Wert: Anthropic. Die Änderung hier gilt für ihn nicht.",
+    );
+    expect(html).toContain('data-testid="settings-own-value-here-llm.provider"');
+  });
+
+  test("an empty general value reads as the provider's default model, never as (leer)", async () => {
+    const { AiArea } = await import("@/pages/settings-ai");
+    const html = render(
+      <AiArea ctx={base({ items: workspace, scope: "tenant", effectiveItems: workspace })} />,
+    );
+    expect(html).toContain("Der allgemeine Wert (Standardmodell des Anbieters) gilt hier nicht.");
+    expect(html).not.toContain("(leer)");
+  });
+
+  test("the costs page names the workspace's provider, and says test mode costs nothing", () => {
+    const anthropic = render(<CostsArea ctx={base({ effectiveItems: workspace })} />);
+    expect(anthropic).toContain("Prüf die Rechnung bei Anthropic dann regelmäßig selbst.");
+    expect(anthropic).not.toContain("bei Testmodus");
+    const mock = render(<CostsArea ctx={base({ effectiveItems: global })} />);
+    expect(mock).toContain("Im Testmodus entstehen keine Kosten.");
+    expect(mock).not.toContain("Testmodus ohne echte KI dann");
+    expect(mock).not.toContain("kommt von Testmodus");
+  });
+
+  test("the budget for all workspaces is a limit for each workspace, not a shared pot", () => {
+    const html = render(<CostsArea ctx={base({ effectiveItems: workspace })} />);
+    expect(html).toContain("Für alle Arbeitsbereiche (jeder einzeln)");
+    expect(html).toContain(
+      "Jeder Arbeitsbereich darf so viel verbrauchen, außer er hat ein eigenes Limit.",
+    );
+    expect(html).not.toContain("teilen sich");
   });
 });

@@ -152,11 +152,26 @@ describe("the workspace scope", () => {
   test("belongs to the page that offers it and is global everywhere else", async () => {
     const { pageScope } = await import("@/pages/settings-areas");
     const chosen = { ai: "tenant", costs: "global" } as const;
-    expect(pageScope({ kind: "area", area: "ai" }, true, chosen)).toBe("tenant");
-    expect(pageScope({ kind: "area", area: "costs" }, true, chosen)).toBe("global");
+    expect(pageScope({ kind: "area", area: "ai" }, true, chosen, null)).toBe("tenant");
+    expect(pageScope({ kind: "area", area: "costs" }, true, chosen, null)).toBe("global");
     for (const area of ["access", "connections", "notifications", "operations"] as const)
-      expect(pageScope({ kind: "area", area }, true, chosen)).toBe("global");
-    expect(pageScope({ kind: "overview" }, true, chosen)).toBe("global");
-    expect(pageScope({ kind: "area", area: "ai" }, false, chosen)).toBe("global");
+      expect(pageScope({ kind: "area", area }, true, chosen, null)).toBe("global");
+    expect(pageScope({ kind: "overview" }, true, chosen, null)).toBe("global");
+    expect(pageScope({ kind: "area", area: "ai" }, false, chosen, null)).toBe("global");
+  });
+
+  test("opens for this workspace when it has its own value on the page, until someone picks", async () => {
+    const { pageScope } = await import("@/pages/settings-areas");
+    const own = (path: string, value: unknown): SettingItem => ({
+      ...item(path, value),
+      meta: { ...item(path, value).meta, source: "tenant" },
+    });
+    const tenantItems = [own("llm.provider", "anthropic"), item("tokens.monthly_budget", 0)];
+    expect(pageScope({ kind: "area", area: "ai" }, true, {}, tenantItems)).toBe("tenant");
+    expect(pageScope({ kind: "area", area: "costs" }, true, {}, tenantItems)).toBe("global");
+    expect(pageScope({ kind: "area", area: "ai" }, true, { ai: "global" }, tenantItems)).toBe(
+      "global",
+    );
+    expect(pageScope({ kind: "area", area: "ai" }, false, {}, tenantItems)).toBe("global");
   });
 });

@@ -86,13 +86,24 @@ export function scopedAreaOf(level: SettingsLevel): ScopedArea | null {
     : null;
 }
 
+export function workspaceHasOwnValue(
+  area: ScopedArea,
+  tenantItems: readonly SettingItem[] | null,
+): boolean {
+  return (tenantItems ?? []).some(
+    (item) => item.meta.source === "tenant" && settingAreaOf(item.path) === area,
+  );
+}
+
 export function pageScope(
   level: SettingsLevel,
   scopeAvailable: boolean,
-  chosen: Readonly<Record<ScopedArea, "global" | "tenant">>,
+  chosen: Readonly<Partial<Record<ScopedArea, "global" | "tenant">>>,
+  tenantItems: readonly SettingItem[] | null,
 ): "global" | "tenant" {
   const area = scopedAreaOf(level);
-  return scopeAvailable && area ? chosen[area] : "global";
+  if (!scopeAvailable || !area) return "global";
+  return chosen[area] ?? (workspaceHasOwnValue(area, tenantItems) ? "tenant" : "global");
 }
 
 export type AreaStatus = "configured" | "waiting" | "restart" | "limit";

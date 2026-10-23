@@ -28,12 +28,15 @@ import {
   guidedText,
   LockedNote,
   OwnValueHint,
+  providerName,
   Question,
   ScopeToggle,
 } from "@/pages/settings-guided";
 import { settingSecretStored } from "@/pages/settings-model";
 import { SettingSecretControl } from "@/pages/settings-rows";
 import { moneyText } from "@/pages/settings-units";
+
+export { providerName };
 
 const PROVIDER_ORDER = [
   "openai",
@@ -72,12 +75,6 @@ const PROVIDER_FIELDS: Readonly<Record<string, readonly string[]>> = {
 
 const DEFAULT_MODEL = "__default__";
 const CUSTOM_MODEL = "__custom__";
-
-export function providerName(provider: string, t: (key: TranslationKey) => string): string {
-  const key = `settings.ai.provider.${provider}` as TranslationKey;
-  const text = t(key);
-  return text === key ? provider : text;
-}
 
 function providerLine(provider: string, t: (key: TranslationKey) => string): string {
   return t(`settings.ai.provider.${provider}.line` as TranslationKey);

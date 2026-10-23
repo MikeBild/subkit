@@ -1687,6 +1687,11 @@ const EN = {
   "settings.unit.percent": "%",
   "settings.unit.tokens": "tokens",
   "settings.unit.chars": "characters",
+  "settings.value.notSet": "not set",
+  "settings.value.providerDefault": "the provider's default model",
+  "settings.scope.ownValueHere":
+    "This workspace uses its own value: {value}. A change here does not apply to it.",
+  "settings.costs.budget.mockNoCost": "In test mode there are no costs.",
   "settings.scope.globalOnly": "Always applies to all workspaces.",
   "settings.scope.globalOnlyRows": "Some of these settings always apply to all workspaces.",
   "settings.saveBar.firstGlobal":
@@ -1766,8 +1771,9 @@ const EN = {
   "settings.scope.tenantHelp": "Other workspaces keep their setting.",
   "settings.scope.globalHelp": "Applies everywhere a workspace has not set its own value.",
   "settings.scope.costsTenant": "Limit only for this workspace",
-  "settings.scope.costsGlobal": "Shared limit for all workspaces",
-  "settings.scope.costsGlobalHelp": "All workspaces share this amount.",
+  "settings.scope.costsGlobal": "All workspaces (each on its own)",
+  "settings.scope.costsGlobalHelp":
+    "Each workspace may use this much, unless it has its own limit.",
   "settings.scope.ownValue":
     "This workspace has its own value. The general value ({globalValue}) does not apply here.",
   "settings.locked.environment": "Comes from the server environment and cannot be changed here.",
@@ -7732,6 +7738,11 @@ const DE: Record<TranslationKey, string> = {
   "settings.unit.percent": "%",
   "settings.unit.tokens": "Tokens",
   "settings.unit.chars": "Zeichen",
+  "settings.value.notSet": "nicht gesetzt",
+  "settings.value.providerDefault": "Standardmodell des Anbieters",
+  "settings.scope.ownValueHere":
+    "Dieser Arbeitsbereich nutzt einen eigenen Wert: {value}. Die Änderung hier gilt für ihn nicht.",
+  "settings.costs.budget.mockNoCost": "Im Testmodus entstehen keine Kosten.",
   "settings.scope.globalOnly": "Gilt immer für alle Arbeitsbereiche.",
   "settings.scope.globalOnlyRows":
     "Einige dieser Einstellungen gelten immer für alle Arbeitsbereiche.",
@@ -7818,8 +7829,9 @@ const DE: Record<TranslationKey, string> = {
   "settings.scope.tenantHelp": "Andere Arbeitsbereiche behalten ihre Einstellung.",
   "settings.scope.globalHelp": "Gilt überall, wo kein Arbeitsbereich etwas Eigenes festgelegt hat.",
   "settings.scope.costsTenant": "Limit nur für diesen Arbeitsbereich",
-  "settings.scope.costsGlobal": "Gemeinsames Limit für alle Arbeitsbereiche",
-  "settings.scope.costsGlobalHelp": "Alle Arbeitsbereiche teilen sich diesen Betrag.",
+  "settings.scope.costsGlobal": "Für alle Arbeitsbereiche (jeder einzeln)",
+  "settings.scope.costsGlobalHelp":
+    "Jeder Arbeitsbereich darf so viel verbrauchen, außer er hat ein eigenes Limit.",
   "settings.scope.ownValue":
     "Dieser Arbeitsbereich hat einen eigenen Wert. Der allgemeine Wert ({globalValue}) gilt hier nicht.",
   "settings.locked.environment": "Kommt aus der Server-Umgebung und lässt sich hier nicht ändern.",
