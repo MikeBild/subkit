@@ -8019,6 +8019,8 @@ export interface paths {
                     q?: string;
                     sort?: "name" | "lifecycle" | "created_at" | "updated_at";
                     order?: "asc" | "desc";
+                    /** @description Order by catalog category first, uncategorized last, then by `sort` */
+                    group_by?: "category";
                     description_source?: "llm" | "human";
                     /** @description Only workflows in this catalog block (see the `category` field on each item) */
                     category?: string;
@@ -10138,6 +10140,8 @@ export interface paths {
                     health?: "not_ok";
                     q?: string;
                     sort?: "name" | "driver" | "environment" | "enabled" | "updated_at";
+                    /** @description Order by catalog category first, uncategorized last, then by `sort` */
+                    group_by?: "category";
                     order?: "asc" | "desc";
                     limit?: number;
                     offset?: number | null;
@@ -11893,6 +11897,8 @@ export interface paths {
                     category?: components["schemas"]["CatalogCategoryFilter"];
                     q?: string;
                     sort?: "title" | "scope" | "status" | "version" | "updated_at";
+                    /** @description Order by catalog category first, uncategorized last, then by `sort` */
+                    group_by?: "category";
                     order?: "asc" | "desc";
                     limit?: number;
                     offset?: number | null;
@@ -13266,6 +13272,8 @@ export interface paths {
                     category?: components["schemas"]["CatalogCategoryFilter"];
                     q?: string;
                     sort?: "name" | "status" | "source_type" | "bytes_total" | "updated_at";
+                    /** @description Order by catalog category first, uncategorized last, then by `sort` */
+                    group_by?: "category";
                     order?: "asc" | "desc";
                     limit?: number;
                     offset?: number | null;
@@ -16578,6 +16586,8 @@ export interface paths {
                     q?: string;
                     sort?: "filename" | "content_type" | "size_bytes" | "status" | "created_at";
                     order?: "asc" | "desc";
+                    /** @description Order by catalog category first, uncategorized last, then by `sort` */
+                    group_by?: "category";
                     cursor?: string;
                     offset?: number | null;
                     limit?: number;

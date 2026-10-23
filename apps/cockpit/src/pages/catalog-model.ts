@@ -14,6 +14,7 @@ export interface CatalogQueryState {
   health: "not_ok" | null;
   sort: string;
   order: "asc" | "desc";
+  group?: string;
 }
 
 export const CATALOG_WORKFLOW_FILTER_STATUSES = [
@@ -37,6 +38,7 @@ export function catalogListParams(resource: string, state: CatalogQueryState): L
   if (resource === "workflows" && state.connector) params.connector = state.connector;
   if (resource === "connectors" && state.health === "not_ok") params.health = "not_ok";
   if (resource === "workflows" && state.status !== "all") params.operating_status = state.status;
+  if (state.group === CATALOG_CATEGORY_GROUP) params.group_by = CATALOG_CATEGORY_GROUP;
   return params;
 }
 
@@ -69,14 +71,28 @@ export const OPERATING_STATUS_KEYS: Record<WorkflowOperatingStatus, TranslationK
   unknown: "automation.state.unknown",
 };
 
+export const WORKFLOW_ATTENTION_STATUSES: ReadonlySet<WorkflowOperatingStatus> = new Set([
+  "failing",
+  "repair_required",
+  "waiting_approval",
+  "waiting_connector",
+]);
+
+export function workflowNeedsAttention(row: { operating_status?: unknown }): boolean {
+  return WORKFLOW_ATTENTION_STATUSES.has(catalogOperatingStatus(row.operating_status));
+}
+
 export const CATALOG_ALL_GROUPS = "all";
 
+export const CATALOG_CATEGORY_GROUP = "category";
+
 export const CATALOG_GROUPS = {
-  workflows: ["status", "trigger"],
-  connectors: ["kind", "health"],
+  workflows: [CATALOG_CATEGORY_GROUP, "status", "trigger"],
+  connectors: [CATALOG_CATEGORY_GROUP, "kind", "health"],
 } as const satisfies Record<string, readonly string[]>;
 
 export function catalogGroupFromSearch(search: string, allowed: readonly string[]): string {
   const group = new URLSearchParams(search).get("group") ?? "";
-  return allowed.includes(group) ? group : CATALOG_ALL_GROUPS;
+  if (group === CATALOG_ALL_GROUPS) return CATALOG_ALL_GROUPS;
+  return allowed.includes(group) ? group : CATALOG_CATEGORY_GROUP;
 }

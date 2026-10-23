@@ -26,6 +26,11 @@ import {
 } from "./catalog-metadata-model";
 
 const NEW_CATEGORY = "__new__";
+
+export interface CategoryCount {
+  category: string;
+  count: number;
+}
 const KIND_LABELS = {
   workflow: "inbox.resource.workflow",
   connector: "inbox.resource.connector",
@@ -280,12 +285,14 @@ export function CatalogNameCell({
   name,
   record,
   icon,
+  hideCategory = false,
 }: {
   name: string;
   record: CatalogMetadataRecord | undefined;
   icon?: ReactNode;
+  hideCategory?: boolean;
 }) {
-  const text = <CatalogNameText name={name} record={record} />;
+  const text = <CatalogNameText name={name} record={record} hideCategory={hideCategory} />;
   if (!icon) return text;
   return (
     <span className="flex min-w-0 items-start gap-3">
@@ -300,9 +307,11 @@ export function CatalogNameCell({
 function CatalogNameText({
   name,
   record,
+  hideCategory,
 }: {
   name: string;
   record: CatalogMetadataRecord | undefined;
+  hideCategory: boolean;
 }) {
   const { t } = useI18n();
   const category = recordCategory(record);
@@ -311,7 +320,7 @@ function CatalogNameText({
     <span className="flex min-w-0 flex-col gap-0.5">
       <span className="truncate font-medium">{name}</span>
       <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-        {category !== UNCATEGORIZED ? (
+        {category !== UNCATEGORIZED && !hideCategory ? (
           <Chip className="py-0 leading-4">
             {humanizeCategory(category, t("catalog.categoryOther"))}
           </Chip>
@@ -325,6 +334,9 @@ function CatalogNameText({
 export function useCategoryFilter(kind: CatalogKind): {
   category: string | undefined;
   select: FilterSelect | null;
+  value: string;
+  setValue(value: string): void;
+  usage: CategoryCount[];
 } {
   const { t } = useI18n();
   const [value, setValue] = useSearchParamState("category", "all");
@@ -338,9 +350,13 @@ export function useCategoryFilter(kind: CatalogKind): {
   const options = (vocabulary.data?.categories ?? [])
     .map((entry) => ({ category: entry.category, count: entry.counts?.[kind] ?? 0 }))
     .filter((entry) => entry.count > 0);
-  if (options.length === 0) return { category: undefined, select: null };
+  if (options.length === 0)
+    return { category: undefined, select: null, value, setValue, usage: options };
   return {
     category: value === "all" ? undefined : value,
+    value,
+    setValue,
+    usage: options,
     select: {
       value,
       onChange: setValue,

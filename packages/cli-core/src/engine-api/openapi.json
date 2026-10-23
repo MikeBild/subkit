@@ -42222,6 +42222,19 @@
             "schema": {
               "type": "string",
               "enum": [
+                "category"
+              ],
+              "description": "Order by catalog category first, uncategorized last, then by `sort`"
+            },
+            "required": false,
+            "description": "Order by catalog category first, uncategorized last, then by `sort`",
+            "name": "group_by",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
                 "llm",
                 "human"
               ]
@@ -44617,6 +44630,19 @@
             "schema": {
               "type": "string",
               "enum": [
+                "category"
+              ],
+              "description": "Order by catalog category first, uncategorized last, then by `sort`"
+            },
+            "required": false,
+            "description": "Order by catalog category first, uncategorized last, then by `sort`",
+            "name": "group_by",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
                 "asc",
                 "desc"
               ]
@@ -46727,6 +46753,19 @@
             "schema": {
               "type": "string",
               "enum": [
+                "category"
+              ],
+              "description": "Order by catalog category first, uncategorized last, then by `sort`"
+            },
+            "required": false,
+            "description": "Order by catalog category first, uncategorized last, then by `sort`",
+            "name": "group_by",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
                 "asc",
                 "desc"
               ]
@@ -48441,6 +48480,19 @@
             },
             "required": false,
             "name": "sort",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "category"
+              ],
+              "description": "Order by catalog category first, uncategorized last, then by `sort`"
+            },
+            "required": false,
+            "description": "Order by catalog category first, uncategorized last, then by `sort`",
+            "name": "group_by",
             "in": "query"
           },
           {
@@ -52468,6 +52520,19 @@
             },
             "required": false,
             "name": "order",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "category"
+              ],
+              "description": "Order by catalog category first, uncategorized last, then by `sort`"
+            },
+            "required": false,
+            "description": "Order by catalog category first, uncategorized last, then by `sort`",
+            "name": "group_by",
             "in": "query"
           },
           {

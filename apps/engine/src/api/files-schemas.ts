@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { FILE_LINK_RESOURCE_TYPES } from "@shared/index.ts";
 import {
   AcceptDescriptionSchema,
+  CatalogGroupBySchema,
   CatalogSourceSchema,
   CategoryFilterSchema,
   CategorySchema,
@@ -192,6 +193,7 @@ export const ListFilesQuerySchema = z
     q: z.string().min(1).max(200).optional(),
     sort: z.enum(["filename", "content_type", "size_bytes", "status", "created_at"]).optional(),
     order: z.enum(["asc", "desc"]).optional(),
+    group_by: CatalogGroupBySchema.optional(),
     cursor: z.string().optional(),
     offset: z.coerce.number().int().min(0).optional(),
     limit: z.coerce.number().int().positive().max(100).optional(),

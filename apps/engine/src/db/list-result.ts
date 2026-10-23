@@ -1,4 +1,5 @@
-import { sql } from "drizzle-orm";
+import { type AnyColumn, asc, type SQL, sql } from "drizzle-orm";
+import { type CatalogGroupBy, UNCATEGORIZED } from "../api/catalog-metadata.ts";
 
 export interface ListResult<T> {
   rows: T[];
@@ -7,6 +8,10 @@ export interface ListResult<T> {
 
 export function totalOverWindow() {
   return sql<number>`count(*) over ()::int`;
+}
+
+export function catalogGroupOrder(groupBy: CatalogGroupBy | undefined, category: AnyColumn): SQL[] {
+  return groupBy === "category" ? [sql`(${category} = ${UNCATEGORIZED}) asc`, asc(category)] : [];
 }
 
 export async function resolveWindowTotal(

@@ -41,6 +41,7 @@ import {
   recordedFileCreators,
 } from "../../audit/index.ts";
 import { writeEvent } from "../../db/events.ts";
+import { catalogGroupOrder } from "../../db/list-result.ts";
 import { fileLinks, files, filesDedupSeen } from "../../db/schema/index.ts";
 import { storedContentHeaders } from "../../files/content-type.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
@@ -861,7 +862,9 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       )`);
     }
     const totalConds = [...tenantConds];
-    if (q.cursor && (!q.sort || q.sort === "created_at") && (!q.order || q.order === "desc")) {
+    const cursorOrder =
+      !q.group_by && (!q.sort || q.sort === "created_at") && (!q.order || q.order === "desc");
+    if (q.cursor && cursorOrder) {
       const cursorDate = new Date(q.cursor);
       if (!Number.isNaN(cursorDate.getTime())) {
         tenantConds.push(lt(files.created_at, cursorDate));
@@ -887,7 +890,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       .select()
       .from(files)
       .where(and(eq(files.tenant_id, tenant_id), ...tenantConds.slice(1)))
-      .orderBy(ordered, asc(files.id))
+      .orderBy(...catalogGroupOrder(q.group_by, files.category), ordered, asc(files.id))
       .limit(limit + 1)
       .offset(q.offset ?? 0);
 
@@ -922,7 +925,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         conversations: Number(conversationCounts.get(row.id) ?? 0),
       },
     }));
-    const cursorOrder = (!q.sort || q.sort === "created_at") && (!q.order || q.order === "desc");
     const lastVisible = hasMore && cursorOrder ? rows[limit - 1] : undefined;
     const next_cursor = lastVisible ? lastVisible.created_at.toISOString() : null;
     return c.json({ items, total: Number(totalRow?.total ?? 0), next_cursor }, 200);

@@ -25,6 +25,11 @@ import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
 import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
 import {
+  CatalogCategoryChips,
+  catalogCategoryGrouping,
+  categoryCounts,
+} from "@/components/cockpit/catalog-grouping";
+import {
   CatalogCategoryChip,
   CatalogMetadataDialog,
   CatalogNameCell,
@@ -225,7 +230,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   const canChat = permissions.includes("conversation:write");
   const [proposalId, setProposalId] = useState<string | null>(null);
   const [search, setSearch] = useSearchParamState("q", "");
-  const [groupMode, setGroupMode] = useSearchParamState("group", "all");
+  const [groupMode, setGroupMode] = useSearchParamState("group", "category");
   const q = useDebouncedValue(search).trim();
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
@@ -239,6 +244,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
       description_source: origin.descriptionSource,
       sort: first?.id ?? "updated_at",
       order: first?.desc ? "desc" : "asc",
+      group_by: groupMode === "category" ? "category" : undefined,
     },
     { enabled: canRead },
   );
@@ -268,7 +274,11 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         t("skills.column.name"),
         (row) =>
           row.kind === "skill" ? (
-            <CatalogNameCell name={row.skill.title} record={row.skill} />
+            <CatalogNameCell
+              name={row.skill.title}
+              record={row.skill}
+              hideCategory={groupMode === "category"}
+            />
           ) : (
             <span className="flex min-w-0 flex-col">
               <span className="truncate">{rowTitle(row)}</span>
@@ -327,7 +337,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         { sortable: true, width: "w-[18%]" },
       ),
     ];
-  }, [t, dateTime, directory]);
+  }, [t, dateTime, directory, groupMode]);
 
   if (!canRead)
     return (
@@ -408,30 +418,52 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
             columns={columns}
             data={rows}
             groupingTabs={
-              <GroupingTabs
-                label={t("common.groupBy")}
-                value={groupMode}
-                onChange={setGroupMode}
-                options={[
-                  { value: "all", label: t("common.all") },
-                  { value: "status", label: t("resource.field.status") },
-                  { value: "scope", label: t("skills.column.scope") },
-                ]}
-                testId="skills-grouping"
-                note={groupMode === "all" ? undefined : t("common.loadedOnly")}
-              />
+              <>
+                <GroupingTabs
+                  label={t("common.groupBy")}
+                  value={groupMode}
+                  onChange={setGroupMode}
+                  options={[
+                    { value: "all", label: t("common.all") },
+                    { value: "category", label: t("resource.field.category") },
+                    { value: "status", label: t("resource.field.status") },
+                    { value: "scope", label: t("skills.column.scope") },
+                  ]}
+                  testId="skills-grouping"
+                  note={
+                    groupMode === "all" || groupMode === "category"
+                      ? undefined
+                      : t("common.loadedOnly")
+                  }
+                />
+                <CatalogCategoryChips
+                  usage={categoryFilter.usage}
+                  value={categoryFilter.value}
+                  onChange={categoryFilter.setValue}
+                />
+              </>
             }
             grouping={
               groupMode === "all"
                 ? undefined
-                : {
-                    getKey: (row) =>
-                      groupMode === "scope"
-                        ? t(skillScopeKey(rowScope(row)))
-                        : row.kind === "skill"
-                          ? t(skillStateLabelKey(row.skill.status))
-                          : t("skills.state.proposed"),
-                  }
+                : groupMode === "category"
+                  ? catalogCategoryGrouping<SkillRow>({
+                      getCategory: (row) =>
+                        recordCategory(row.kind === "skill" ? row.skill : row.candidate),
+                      otherLabel: t("catalog.categoryOther"),
+                      ...(q || origin.active
+                        ? {}
+                        : { counts: categoryCounts(categoryFilter.usage) }),
+                      needsAttention: (row) => row.kind === "proposal",
+                    })
+                  : {
+                      getKey: (row) =>
+                        groupMode === "scope"
+                          ? t(skillScopeKey(rowScope(row)))
+                          : row.kind === "skill"
+                            ? t(skillStateLabelKey(row.skill.status))
+                            : t("skills.state.proposed"),
+                    }
             }
             infinite={list.infinite}
             total={list.total}

@@ -28,6 +28,10 @@ import type { components } from "@/api/schema";
 import { absolute, chatNewHref, docsHref, recordHref } from "@/app/links";
 import { CatalogCategories } from "@/components/cockpit/catalog-categories";
 import {
+  CatalogCategoryChips,
+  catalogCategoryGrouping,
+} from "@/components/cockpit/catalog-grouping";
+import {
   categoryChoices,
   normalizeCategoryInput,
 } from "@/components/cockpit/catalog-metadata-model";
@@ -57,6 +61,7 @@ import {
   OnboardingFrame,
   Page,
   PageHeader,
+  rowsByGroup,
   Section,
   SectionHeading,
   StatusBadge,
@@ -80,6 +85,7 @@ import {
   intakeAwaitingAssistantReview,
   intakeCategoryFromSearch,
   intakeChatPrompt,
+  intakeNeedsAssistantReview,
   intakeNoteRequest,
   intakeOrigin,
   intakeOriginLabel,
@@ -936,6 +942,18 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
       (origin === "all" || intakeOrigin(clip.original_snapshot) === origin) &&
       (!needle || `${clip.title}\n${clip.body}`.toLowerCase().includes(needle)),
   );
+  const loadedCategoryCounts = new Map(
+    [...rowsByGroup(clipItems, (clip) => clip.category || UNCATEGORIZED)].map(
+      ([key, members]) => [key, members.length] as const,
+    ),
+  );
+  const categoryUsage = categoryValues
+    .map((item) => ({
+      category: item,
+      count:
+        categories.data?.categories.find((entry) => entry.category === item)?.counts?.intake ?? 0,
+    }))
+    .filter((entry) => entry.count > 0 || entry.category === defaultCategory.data?.category);
   const write = useMutation({
     mutationFn: async (run: () => Promise<unknown>) => run(),
     onSuccess: async () => {
@@ -1141,30 +1159,47 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
               columns={clipColumns}
               data={clipItems}
               groupingTabs={
-                <GroupingTabs
-                  label={t("common.groupBy")}
-                  value={groupMode}
-                  onChange={setGroupMode}
-                  options={[
-                    { value: "all", label: t("common.all") },
-                    { value: "category", label: t("intake.category") },
-                    { value: "state", label: t("resource.field.status") },
-                    { value: "origin", label: t("intake.origin") },
-                  ]}
-                  testId="intake-grouping"
-                />
+                <>
+                  <GroupingTabs
+                    label={t("common.groupBy")}
+                    value={groupMode}
+                    onChange={setGroupMode}
+                    options={[
+                      { value: "all", label: t("common.all") },
+                      { value: "category", label: t("intake.category") },
+                      { value: "state", label: t("resource.field.status") },
+                      { value: "origin", label: t("intake.origin") },
+                    ]}
+                    testId="intake-grouping"
+                  />
+                  <CatalogCategoryChips
+                    usage={categoryUsage}
+                    value={
+                      category === "all"
+                        ? "all"
+                        : (category ?? defaultCategory.data?.category ?? "all")
+                    }
+                    onChange={(value) => setCategory(value === "all" ? "all" : value)}
+                    testId="intake-category-chips"
+                  />
+                </>
               }
               grouping={
                 groupMode === "all"
                   ? undefined
-                  : {
-                      getKey: (clip) =>
-                        groupMode === "category"
-                          ? humanizeCategory(clip.category, t("catalog.categoryOther"))
-                          : groupMode === "state"
+                  : groupMode === "category"
+                    ? catalogCategoryGrouping<IntakeClip>({
+                        getCategory: (clip) => clip.category || UNCATEGORIZED,
+                        otherLabel: t("catalog.categoryOther"),
+                        counts: loadedCategoryCounts,
+                        needsAttention: intakeNeedsAssistantReview,
+                      })
+                    : {
+                        getKey: (clip) =>
+                          groupMode === "state"
                             ? t(intakeStateLabelKey(clip.state))
                             : t(intakeOriginLabelKey(intakeOrigin(clip.original_snapshot))),
-                    }
+                      }
               }
               getRowId={(clip) => clip.id}
               toolbar={

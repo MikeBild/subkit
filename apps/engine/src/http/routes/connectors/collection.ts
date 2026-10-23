@@ -1,5 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { compareCategoryCounts } from "../../../api/catalog-metadata.ts";
+import { CatalogGroupBySchema, compareCategoryCounts } from "../../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { actorOf } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
@@ -70,6 +70,7 @@ const listRoute = createRoute({
           ),
         q: z.string().min(1).max(200).optional(),
         sort: z.enum(["name", "driver", "environment", "enabled", "updated_at"]).optional(),
+        group_by: CatalogGroupBySchema.optional(),
         order: z.enum(["asc", "desc"]).optional(),
         limit: z.coerce.number().int().positive().max(1000).optional(),
         offset: z.coerce.number().int().min(0).optional(),
@@ -190,6 +191,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.q) opts.q = q.q;
     if (q.sort) opts.sort = q.sort;
     if (q.order) opts.order = q.order;
+    if (q.group_by) opts.group_by = q.group_by;
     if (q.limit !== undefined) opts.limit = q.limit;
     if (q.offset !== undefined) opts.offset = q.offset;
     const { rows, total } = await connectorSvc.listConnectors(principal.tenant_id, opts, db);

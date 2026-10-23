@@ -8,7 +8,7 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown, Columns3, Loader2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Columns3, Loader2 } from "lucide-react";
 import {
   Children,
   createContext,
@@ -57,6 +57,14 @@ import {
 import { useRowMotion } from "./row-motion";
 import { SearchInput } from "./search-input";
 import { Skeleton } from "./skeleton";
+import {
+  orderGroupedRows,
+  readCollapsedGroups,
+  rowsByGroup,
+  type TableGrouping,
+  toggleGroup,
+  writeCollapsedGroups,
+} from "./table-grouping";
 
 export interface CockpitColumnMeta {
   width?: string;
@@ -315,6 +323,74 @@ function RowLink({
   );
 }
 
+function GroupHeading({
+  variant,
+  label,
+  count,
+  badge,
+  collapsed,
+  onToggle,
+}: {
+  variant: "row" | "card";
+  label: string;
+  count?: number;
+  badge?: ReactNode;
+  collapsed: boolean | null;
+  onToggle(): void;
+}) {
+  const { t } = useI18n();
+  const title = (
+    <span className="min-w-0 truncate text-xs font-semibold text-foreground">
+      {label}
+      {count === undefined ? null : (
+        <span className="ml-1 font-normal text-muted-foreground">· {count}</span>
+      )}
+    </span>
+  );
+  return (
+    <span className="flex min-h-7 min-w-0 items-center gap-2" data-group-variant={variant}>
+      {collapsed === null ? (
+        title
+      ) : (
+        <button
+          type="button"
+          aria-expanded={!collapsed}
+          aria-label={t(collapsed ? "common.groupExpand" : "common.groupCollapse", {
+            group: label,
+          })}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggle();
+          }}
+          className="-ml-1 inline-flex min-w-0 items-center gap-1.5 rounded-sm px-1 py-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11"
+          data-slot="group-toggle"
+        >
+          <ChevronDown
+            aria-hidden="true"
+            className={cn("size-3.5 shrink-0 transition-transform", collapsed && "-rotate-90")}
+          />
+          {title}
+        </button>
+      )}
+      {badge ? <span className="shrink-0">{badge}</span> : null}
+    </span>
+  );
+}
+
+export function GroupAttentionBadge({ count }: { count: number }) {
+  const { t } = useI18n();
+  if (count <= 0) return null;
+  return (
+    <span
+      data-slot="group-attention"
+      className="inline-flex items-center gap-1 rounded bg-warning/15 px-1.5 py-0.5 text-[11px] font-medium text-warning"
+    >
+      <span aria-hidden="true" className="size-1 rounded-full bg-warning" />
+      {t(count === 1 ? "common.attention.one" : "common.attention.other", { count })}
+    </span>
+  );
+}
+
 export function DataTable<TData extends RowData>({
   columns,
   data,
@@ -379,11 +455,7 @@ export function DataTable<TData extends RowData>({
   searchLabel?: string;
   searchText?: (row: TData) => string;
   showDefaultSearch?: boolean;
-  grouping?: {
-    getKey(row: TData): string;
-    label?(key: string): string;
-    compareKeys?(left: string, right: string): number;
-  };
+  grouping?: TableGrouping<TData>;
   groupingTabs?: ReactNode;
 }) {
   const searchInputId = useId();
@@ -393,14 +465,29 @@ export function DataTable<TData extends RowData>({
     if (!needle || collectionTier === "embedded") return data;
     return data.filter((row) => searchText(row).toLocaleLowerCase().includes(needle));
   }, [collectionTier, data, queryText, searchText]);
-  const orderedData = useMemo(() => {
-    if (!grouping) return filteredData;
-    return [...filteredData].sort((left, right) => {
-      const leftKey = grouping.getKey(left);
-      const rightKey = grouping.getKey(right);
-      return grouping.compareKeys?.(leftKey, rightKey) ?? leftKey.localeCompare(rightKey);
-    });
-  }, [filteredData, grouping]);
+  const orderedData = useMemo(
+    () => (grouping ? orderGroupedRows(filteredData, grouping) : filteredData),
+    [filteredData, grouping],
+  );
+  const groupMembers = useMemo(
+    () => (grouping ? rowsByGroup(orderedData, grouping.getKey) : null),
+    [orderedData, grouping],
+  );
+  const collapseScope = grouping?.collapseScope
+    ? `${routerPath(typeof window === "undefined" ? "/" : window.location.pathname)}:${grouping.collapseScope}`
+    : null;
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(() =>
+    collapseScope ? readCollapsedGroups(collapseScope) : new Set(),
+  );
+  useEffect(() => {
+    setCollapsedGroups(collapseScope ? readCollapsedGroups(collapseScope) : new Set());
+  }, [collapseScope]);
+  const toggleCollapsed = (key: string) => {
+    if (!collapseScope) return;
+    const next = toggleGroup(collapsedGroups, key);
+    writeCollapsedGroups(collapseScope, next);
+    setCollapsedGroups(next);
+  };
   const { t } = useI18n();
   const phase = useLoadingPhase(Boolean(pending));
   const arrivedContent = useArrived(phase);
@@ -494,8 +581,21 @@ export function DataTable<TData extends RowData>({
   const rows = table.getRowModel().rows;
   const groupHeader = (row: TData, index: number) =>
     grouping && (index === 0 || grouping.getKey(rows[index - 1]!.original) !== grouping.getKey(row))
-      ? (grouping.label?.(grouping.getKey(row)) ?? grouping.getKey(row))
+      ? grouping.getKey(row)
       : null;
+  const groupCollapsed = (row: TData) =>
+    Boolean(grouping && collapseScope && collapsedGroups.has(grouping.getKey(row)));
+  const headingFor = (key: string, variant: "row" | "card") =>
+    grouping ? (
+      <GroupHeading
+        variant={variant}
+        label={grouping.label?.(key) ?? key}
+        count={grouping.count?.(key)}
+        badge={grouping.badge?.(key, groupMembers?.get(key) ?? [])}
+        collapsed={collapseScope ? collapsedGroups.has(key) : null}
+        onToggle={() => toggleCollapsed(key)}
+      />
+    ) : null;
   const resultCount = queryText.trim() ? filteredData.length : (total ?? data.length);
   const showSkeleton = phase !== "content";
   const empty = !showSkeleton && !error && rows.length === 0;
@@ -763,77 +863,76 @@ export function DataTable<TData extends RowData>({
                   return (
                     <Fragment key={row.id}>
                       {heading ? (
-                        <TableRow
-                          data-slot="group-heading"
-                          className="bg-muted/40 hover:bg-muted/40"
-                        >
+                        <TableRow data-slot="group-heading" className="hover:bg-transparent">
                           <TableCell
                             colSpan={bodySpan}
-                            className="py-2 text-xs font-semibold text-muted-foreground"
+                            className="sticky top-9 z-[5] bg-muted py-1.5 shadow-[inset_0_-1px_0_var(--border)]"
                           >
-                            {heading}
+                            {headingFor(heading, "row")}
                           </TableCell>
                         </TableRow>
                       ) : null}
-                      <TableRow
-                        data-family-slot={leaving ? undefined : "list-row"}
-                        data-family-collection-row={leaving ? undefined : "true"}
-                        aria-hidden={leaving ? true : undefined}
-                        className={cn(
-                          "h-11",
-                          open && "cursor-pointer",
-                          rowMotionClass(row.original, index),
-                          returnedClass(row.original),
-                        )}
-                        data-testid={leaving ? undefined : `${collectionId}-row-${index}`}
-                        onClick={
-                          open
-                            ? (event) => {
-                                if (opensRow(event)) open();
-                              }
-                            : undefined
-                        }
-                      >
-                        {row.getVisibleCells().map((cell, cellIndex) => (
-                          <TableCell
-                            key={cell.id}
-                            style={{ width: widthByColumnId.get(cell.column.id) }}
-                            className={cn(
-                              "min-w-0",
-                              cell.column.columnDef.meta?.align === "end" && "text-right",
-                              priorityClass(cell.column.columnDef.meta?.priority),
-                              cellIndex === 0 ? "font-medium" : "text-muted-foreground",
-                            )}
-                          >
-                            {open && cell.column.id === linkColumnId ? (
-                              <LinkedCell
-                                owns={Boolean(cell.column.columnDef.meta?.ownsRowLink)}
-                                target={{
-                                  href: rowHref?.(row.original) ?? null,
-                                  onOpen: open,
-                                  testId: `${collectionId}-row-link-${index}`,
-                                  label: rowLabel?.(row.original),
-                                }}
-                              >
+                      {groupCollapsed(row.original) ? null : (
+                        <TableRow
+                          data-family-slot={leaving ? undefined : "list-row"}
+                          data-family-collection-row={leaving ? undefined : "true"}
+                          aria-hidden={leaving ? true : undefined}
+                          className={cn(
+                            "h-11",
+                            open && "cursor-pointer",
+                            rowMotionClass(row.original, index),
+                            returnedClass(row.original),
+                          )}
+                          data-testid={leaving ? undefined : `${collectionId}-row-${index}`}
+                          onClick={
+                            open
+                              ? (event) => {
+                                  if (opensRow(event)) open();
+                                }
+                              : undefined
+                          }
+                        >
+                          {row.getVisibleCells().map((cell, cellIndex) => (
+                            <TableCell
+                              key={cell.id}
+                              style={{ width: widthByColumnId.get(cell.column.id) }}
+                              className={cn(
+                                "min-w-0",
+                                cell.column.columnDef.meta?.align === "end" && "text-right",
+                                priorityClass(cell.column.columnDef.meta?.priority),
+                                cellIndex === 0 ? "font-medium" : "text-muted-foreground",
+                              )}
+                            >
+                              {open && cell.column.id === linkColumnId ? (
+                                <LinkedCell
+                                  owns={Boolean(cell.column.columnDef.meta?.ownsRowLink)}
+                                  target={{
+                                    href: rowHref?.(row.original) ?? null,
+                                    onOpen: open,
+                                    testId: `${collectionId}-row-link-${index}`,
+                                    label: rowLabel?.(row.original),
+                                  }}
+                                >
+                                  <table.FlexRender cell={cell} />
+                                </LinkedCell>
+                              ) : (
                                 <table.FlexRender cell={cell} />
-                              </LinkedCell>
-                            ) : (
-                              <table.FlexRender cell={cell} />
-                            )}
-                          </TableCell>
-                        ))}
-                        {hasActionColumn ? (
-                          <TableCell
-                            className="w-56 whitespace-nowrap"
-                            style={{ width: "14rem" }}
-                            data-slot="row-actions"
-                          >
-                            <span className="flex max-w-full flex-wrap items-center justify-end gap-1">
-                              {rowActions?.(row.original, index)}
-                            </span>
-                          </TableCell>
-                        ) : null}
-                      </TableRow>
+                              )}
+                            </TableCell>
+                          ))}
+                          {hasActionColumn ? (
+                            <TableCell
+                              className="w-56 whitespace-nowrap"
+                              style={{ width: "14rem" }}
+                              data-slot="row-actions"
+                            >
+                              <span className="flex max-w-full flex-wrap items-center justify-end gap-1">
+                                {rowActions?.(row.original, index)}
+                              </span>
+                            </TableCell>
+                          ) : null}
+                        </TableRow>
+                      )}
                     </Fragment>
                   );
                 })
@@ -901,76 +1000,78 @@ export function DataTable<TData extends RowData>({
                       {heading ? (
                         <div
                           data-slot="group-heading"
-                          className="bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground"
+                          className="sticky top-0 z-[5] bg-muted px-3 py-1.5"
                         >
-                          {heading}
+                          {headingFor(heading, "card")}
                         </div>
                       ) : null}
-                      <div
-                        className={cn(
-                          "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 px-3 py-2.5 text-left text-sm",
-                          open && "cursor-pointer transition-colors hover:bg-muted/50",
-                          rowMotionClass(row.original, index),
-                          returnedClass(row.original),
-                        )}
-                        onClick={
-                          open
-                            ? (event) => {
-                                if (opensRow(event)) open();
-                              }
-                            : undefined
-                        }
-                        aria-hidden={leaving ? true : undefined}
-                        data-testid={leaving ? undefined : `${collectionId}-mobile-row-${index}`}
-                        data-family-slot={leaving ? undefined : "list-row"}
-                        data-family-collection-row={leaving ? undefined : "true"}
-                        data-family-collection-mobile-card="true"
-                        data-action-scope="row"
-                      >
-                        {title ? (
-                          <span
-                            className="col-start-1 min-w-0 break-words font-medium"
-                            data-family-slot="card-title"
-                          >
-                            {open && title === named ? (
-                              <LinkedCell
-                                owns={Boolean(title.column.columnDef.meta?.ownsRowLink)}
-                                target={{
-                                  href: rowHref?.(row.original) ?? null,
-                                  onOpen: open,
-                                  testId: `${collectionId}-mobile-row-link-${index}`,
-                                  label: rowLabel?.(row.original),
-                                }}
-                              >
+                      {groupCollapsed(row.original) ? null : (
+                        <div
+                          className={cn(
+                            "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 px-3 py-2.5 text-left text-sm",
+                            open && "cursor-pointer transition-colors hover:bg-muted/50",
+                            rowMotionClass(row.original, index),
+                            returnedClass(row.original),
+                          )}
+                          onClick={
+                            open
+                              ? (event) => {
+                                  if (opensRow(event)) open();
+                                }
+                              : undefined
+                          }
+                          aria-hidden={leaving ? true : undefined}
+                          data-testid={leaving ? undefined : `${collectionId}-mobile-row-${index}`}
+                          data-family-slot={leaving ? undefined : "list-row"}
+                          data-family-collection-row={leaving ? undefined : "true"}
+                          data-family-collection-mobile-card="true"
+                          data-action-scope="row"
+                        >
+                          {title ? (
+                            <span
+                              className="col-start-1 min-w-0 break-words font-medium"
+                              data-family-slot="card-title"
+                            >
+                              {open && title === named ? (
+                                <LinkedCell
+                                  owns={Boolean(title.column.columnDef.meta?.ownsRowLink)}
+                                  target={{
+                                    href: rowHref?.(row.original) ?? null,
+                                    onOpen: open,
+                                    testId: `${collectionId}-mobile-row-link-${index}`,
+                                    label: rowLabel?.(row.original),
+                                  }}
+                                >
+                                  <table.FlexRender cell={title} />
+                                </LinkedCell>
+                              ) : (
                                 <table.FlexRender cell={title} />
-                              </LinkedCell>
-                            ) : (
-                              <table.FlexRender cell={title} />
-                            )}
-                          </span>
-                        ) : null}
-                        {facts.map((cell) => (
-                          <span
-                            key={cell.id}
-                            className="col-start-1 min-w-0 break-words text-[13px] leading-5 text-muted-foreground"
-                            data-family-slot="card-fact"
-                          >
-                            {cell.column.columnDef.meta?.cardLabel &&
-                            typeof cell.column.columnDef.header === "string"
-                              ? `${cell.column.columnDef.header} `
-                              : null}
-                            <table.FlexRender cell={cell} />
-                          </span>
-                        ))}
-                        {actions ? (
-                          <span
-                            className="col-start-2 row-start-1 flex items-center gap-1 self-center"
-                            style={{ gridRowEnd: `span ${1 + facts.length}` }}
-                          >
-                            {actions}
-                          </span>
-                        ) : null}
-                      </div>
+                              )}
+                            </span>
+                          ) : null}
+                          {facts.map((cell) => (
+                            <span
+                              key={cell.id}
+                              className="col-start-1 min-w-0 break-words text-[13px] leading-5 text-muted-foreground"
+                              data-family-slot="card-fact"
+                            >
+                              {cell.column.columnDef.meta?.cardLabel &&
+                              typeof cell.column.columnDef.header === "string"
+                                ? `${cell.column.columnDef.header} `
+                                : null}
+                              <table.FlexRender cell={cell} />
+                            </span>
+                          ))}
+                          {actions ? (
+                            <span
+                              className="col-start-2 row-start-1 flex items-center gap-1 self-center"
+                              style={{ gridRowEnd: `span ${1 + facts.length}` }}
+                            >
+                              {actions}
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
                     </Fragment>
                   );
                 })}

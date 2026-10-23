@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
+import { catalogGroupOrder } from "../db/list-result.ts";
 import { knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import type { KnowledgeSourceView, ListKnowledgeSourcesParams } from "./types.ts";
 import { knowledgeSourceRowToView } from "./view.ts";
@@ -58,7 +59,11 @@ export async function listKnowledgeSources(
     .select()
     .from(knowledgeSources)
     .where(and(...tenantConds))
-    .orderBy(ordered, asc(knowledgeSources.id))
+    .orderBy(
+      ...catalogGroupOrder(p.group_by, knowledgeSources.category),
+      ordered,
+      asc(knowledgeSources.id),
+    )
     .limit(limit)
     .offset(offset);
   return rows.map(knowledgeSourceRowToView);

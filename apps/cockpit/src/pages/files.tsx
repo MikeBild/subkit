@@ -28,6 +28,11 @@ import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
 import {
+  CatalogCategoryChips,
+  catalogCategoryGrouping,
+  categoryCounts,
+} from "@/components/cockpit/catalog-grouping";
+import {
   CatalogCategoryChip,
   CatalogMetadataDialog,
   CatalogNameCell,
@@ -173,7 +178,7 @@ export function FilesPage() {
   const canIntakeWrite = session.permissions.includes("intake:write");
   const installation = useInstallation();
   const [search, setSearch] = useSearchParamState("q", "");
-  const [groupMode, setGroupMode] = useSearchParamState("group", "all");
+  const [groupMode, setGroupMode] = useSearchParamState("group", "category");
   const [upload, setUpload] = useState<{ files: File[]; replace: StoredFile | null } | null>(null);
   const categoryFilter = useCategoryFilter("file");
   const origin = useCatalogCreatedBy();
@@ -182,6 +187,7 @@ export function FilesPage() {
     q: search.trim() || undefined,
     category: categoryFilter.category,
     description_source: origin.descriptionSource,
+    group_by: groupMode === "category" ? "category" : undefined,
   });
   const { query, items } = list;
   const total = list.total ?? items.length;
@@ -202,7 +208,11 @@ export function FilesPage() {
           const used = fileUsageLine(t, row.usage);
           return (
             <span className="block min-w-0">
-              <CatalogNameCell name={row.filename} record={row} />
+              <CatalogNameCell
+                name={row.filename}
+                record={row}
+                hideCategory={groupMode === "category"}
+              />
               {used ? (
                 <span
                   className="block truncate text-xs text-muted-foreground"
@@ -227,7 +237,7 @@ export function FilesPage() {
         width: "w-[25%]",
       }),
     ];
-  }, [t, dateTime, locale]);
+  }, [t, dateTime, locale, groupMode]);
 
   const uploadAction = canWrite ? (
     <Button data-testid="files-upload" onClick={() => setUpload({ files: [], replace: null })}>
@@ -306,40 +316,63 @@ export function FilesPage() {
             columns={columns}
             data={items}
             groupingTabs={
-              <GroupingTabs
-                label={t("common.groupBy")}
-                value={groupMode}
-                onChange={setGroupMode}
-                options={[
-                  { value: "all", label: t("common.all") },
-                  { value: "kind", label: t("files.column.kind") },
-                  { value: "date", label: t("files.column.uploaded") },
-                ]}
-                testId="files-grouping"
-                note={groupMode === "all" ? undefined : t("common.loadedOnly")}
-              />
+              <>
+                <GroupingTabs
+                  label={t("common.groupBy")}
+                  value={groupMode}
+                  onChange={setGroupMode}
+                  options={[
+                    { value: "all", label: t("common.all") },
+                    { value: "category", label: t("resource.field.category") },
+                    { value: "kind", label: t("files.column.kind") },
+                    { value: "date", label: t("files.column.uploaded") },
+                  ]}
+                  testId="files-grouping"
+                  note={
+                    groupMode === "all" || groupMode === "category"
+                      ? undefined
+                      : t("common.loadedOnly")
+                  }
+                />
+                <CatalogCategoryChips
+                  usage={categoryFilter.usage}
+                  value={categoryFilter.value}
+                  onChange={categoryFilter.setValue}
+                />
+              </>
             }
             grouping={
               groupMode === "all"
                 ? undefined
-                : {
-                    getKey: (row) =>
-                      groupMode === "kind"
-                        ? fileKindLabel(t, row)
-                        : new Intl.DateTimeFormat("sv-SE", {
-                            year: "numeric",
-                            month: "2-digit",
-                            day: "2-digit",
-                          }).format(new Date(row.created_at)),
-                    label: (key) =>
-                      groupMode === "date"
-                        ? new Intl.DateTimeFormat(LOCALE_TAGS[locale], {
-                            dateStyle: "medium",
-                          }).format(new Date(`${key}T12:00:00`))
-                        : key,
-                    compareKeys:
-                      groupMode === "date" ? (left, right) => right.localeCompare(left) : undefined,
-                  }
+                : groupMode === "category"
+                  ? catalogCategoryGrouping<ListedFile>({
+                      getCategory: (row) => recordCategory(row),
+                      otherLabel: t("catalog.categoryOther"),
+                      ...(search.trim() || origin.active
+                        ? {}
+                        : { counts: categoryCounts(categoryFilter.usage) }),
+                      needsAttention: (row) => row.status === "failed",
+                    })
+                  : {
+                      getKey: (row) =>
+                        groupMode === "kind"
+                          ? fileKindLabel(t, row)
+                          : new Intl.DateTimeFormat("sv-SE", {
+                              year: "numeric",
+                              month: "2-digit",
+                              day: "2-digit",
+                            }).format(new Date(row.created_at)),
+                      label: (key) =>
+                        groupMode === "date"
+                          ? new Intl.DateTimeFormat(LOCALE_TAGS[locale], {
+                              dateStyle: "medium",
+                            }).format(new Date(`${key}T12:00:00`))
+                          : key,
+                      compareKeys:
+                        groupMode === "date"
+                          ? (left, right) => right.localeCompare(left)
+                          : undefined,
+                    }
             }
             getRowId={(row) => row.id}
             infinite={list.infinite}

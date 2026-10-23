@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import {
   AcceptDescriptionSchema,
+  type CatalogGroupBy,
   CatalogSourceSchema,
   CategorySchema,
   DescriptionSchema,
@@ -174,6 +175,7 @@ export interface ListKnowledgeSourcesParams {
   category?: string;
   q?: string;
   sort?: "name" | "status" | "source_type" | "bytes_total" | "updated_at";
+  group_by?: CatalogGroupBy;
   order?: "asc" | "desc";
   limit?: number;
   offset?: number;

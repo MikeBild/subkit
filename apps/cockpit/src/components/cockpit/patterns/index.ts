@@ -8,6 +8,12 @@ export { ActionMenu, type ActionMenuItem } from "./action-menu";
 export { ChatCard } from "./chat-card";
 export * from "./chat-surface";
 export { Chip, type ChipSize, chipClass } from "./chip";
+export {
+  CHIP_FILTER_VISIBLE,
+  ChipFilter,
+  type ChipFilterOption,
+  visibleChipOptions,
+} from "./chip-filter";
 export { type ChoiceCardItem, ChoiceCards } from "./choice-card";
 export { CodeBlock } from "./code-block";
 export { ConfirmDialog, confirmTitle } from "./confirm-dialog";
@@ -21,6 +27,7 @@ export {
   type CockpitTableFeatures,
   cockpitTableFeatures,
   DataTable,
+  GroupAttentionBadge,
   type InfiniteRows,
   InfiniteSentinel,
   priorityClass,
@@ -84,6 +91,11 @@ export { type BadgeTone, StatusBadge, statusTone } from "./status-badge";
 export { STATUS_DOT, StatusStrip, type StatusTone } from "./status-strip";
 export { SummaryLine, SummaryParts } from "./summary-line";
 export { TabBody, TechnicalDetails } from "./tab-body";
+export {
+  orderGroupedRows,
+  rowsByGroup,
+  type TableGrouping,
+} from "./table-grouping";
 export { TemplateCard, type TemplateCardProps, TemplateGrid } from "./template-card";
 export { Timeline, type TimelineGroup, type TimelineItem, type TimelineTone } from "./timeline";
 export { TimelineGroupingTabs } from "./timeline-grouping-tabs";

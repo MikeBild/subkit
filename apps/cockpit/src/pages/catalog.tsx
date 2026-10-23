@@ -7,7 +7,13 @@ import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
 import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
+import {
+  CatalogCategoryChips,
+  catalogCategoryGrouping,
+  categoryCounts,
+} from "@/components/cockpit/catalog-grouping";
 import { CatalogNameCell } from "@/components/cockpit/catalog-metadata";
+import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
 import { CATALOG_CREATED_BY_FILTER } from "@/components/cockpit/catalog-origin-model";
 import { connectorService } from "@/components/cockpit/connector-names";
 import { ConnectorOnboarding } from "@/components/cockpit/connector-onboarding";
@@ -39,7 +45,7 @@ import { type CursorPage, useInfiniteList } from "@/lib/use-infinite-list";
 import { humanizeCategory } from "@/lib/workflow-category";
 import { triggerKindOf } from "@/lib/workflow-flow";
 import {
-  CATALOG_ALL_GROUPS,
+  CATALOG_CATEGORY_GROUP,
   CATALOG_GROUPS,
   CATALOG_WORKFLOW_FILTER_STATUSES,
   catalogGroupFromSearch,
@@ -47,6 +53,7 @@ import {
   catalogOperatingStatus,
   OPERATING_STATUS_KEYS,
   type WorkflowStatusFilter,
+  workflowNeedsAttention,
 } from "@/pages/catalog-model";
 import { driverLabel } from "@/pages/connector-detail-model";
 import {
@@ -186,7 +193,7 @@ function useCatalogState(config: CatalogConfig) {
       if (next.health) params.set("health", next.health);
       if (next.sort !== config.defaultSort) params.set("sort", next.sort);
       if (next.order !== "desc") params.set("order", next.order);
-      if (next.group !== CATALOG_ALL_GROUPS) params.set("group", next.group);
+      if (next.group !== CATALOG_CATEGORY_GROUP) params.set("group", next.group);
       const origin = new URLSearchParams(window.location.search).get("origin");
       if (origin) params.set("origin", origin);
       const suffix = params.size > 0 ? `?${params}` : "";
@@ -234,6 +241,7 @@ function catalogColumns(
     workflowsByConnectorSlug: ReadonlyMap<string, { id: string; name: string }[]>;
     canReadWorkflows: boolean;
     locale: Locale;
+    hideCategory: boolean;
   },
 ): CockpitColumn<CatalogRow>[] {
   const column = tableColumns<CatalogRow>({ t, dateTime });
@@ -248,6 +256,7 @@ function catalogColumns(
           <CatalogNameCell
             name={stringField(row, "name") ?? ""}
             record={row}
+            hideCategory={relations.hideCategory}
             icon={
               <IconTile>
                 <Workflow />
@@ -307,6 +316,7 @@ function catalogColumns(
         <CatalogNameCell
           name={stringField(row, "display_name") ?? ""}
           record={row}
+          hideCategory={relations.hideCategory}
           icon={
             <ServiceIcon
               tile="md"
@@ -416,30 +426,49 @@ export function CatalogPage({
         workflowsByConnectorSlug,
         canReadWorkflows,
         locale,
+        hideCategory: groupMode === CATALOG_CATEGORY_GROUP,
       }),
-    [resource, t, dateTime, workflowsByConnectorSlug, canReadWorkflows, locale],
+    [resource, t, dateTime, workflowsByConnectorSlug, canReadWorkflows, locale, groupMode],
   );
   const sorting: SortingState = [{ id: state.sort, desc: state.order === "desc" }];
   const rows = list.items;
   const total = list.total ?? rows.length;
   const categories = useMemo(() => list.first?.categories ?? [], [list.first]);
   const title = t(config.titleKey);
+  const narrowed =
+    Boolean(state.q) ||
+    state.status !== "all" ||
+    Boolean(state.connector) ||
+    state.health !== null ||
+    state.kind !== "all" ||
+    origin.active;
   const grouping =
     groupMode === "all"
       ? undefined
-      : {
-          getKey: (row: CatalogRow) => {
-            if (resource === "workflows") {
-              if (groupMode === "trigger")
-                return t(
-                  triggerLabelKey(row.effective_trigger as WorkflowListItem["effective_trigger"]),
-                );
-              return t(OPERATING_STATUS_KEYS[catalogOperatingStatus(row.operating_status)]);
-            }
-            if (groupMode === "kind") return driverLabel(stringField(row, "driver"), t) || MISSING;
-            return t(CONNECTOR_STRIP_KEYS[connectorRecordStrip(row).kind]);
-          },
-        };
+      : groupMode === CATALOG_CATEGORY_GROUP
+        ? catalogCategoryGrouping<CatalogRow>({
+            getCategory: (row) => recordCategory(row),
+            otherLabel: t("catalog.categoryOther"),
+            ...(narrowed ? {} : { counts: categoryCounts(categories) }),
+            needsAttention:
+              resource === "workflows"
+                ? workflowNeedsAttention
+                : (row) => connectorRecordStrip(row).tone !== "ok",
+          })
+        : {
+            getKey: (row: CatalogRow) => {
+              if (resource === "workflows") {
+                if (groupMode === "trigger")
+                  return t(
+                    triggerLabelKey(row.effective_trigger as WorkflowListItem["effective_trigger"]),
+                  );
+                return t(OPERATING_STATUS_KEYS[catalogOperatingStatus(row.operating_status)]);
+              }
+              if (groupMode === "kind")
+                return driverLabel(stringField(row, "driver"), t) || MISSING;
+              return t(CONNECTOR_STRIP_KEYS[connectorRecordStrip(row).kind]);
+            },
+          };
   const hasActiveFilters =
     Boolean(state.q) ||
     state.status !== "all" ||
@@ -586,26 +615,39 @@ export function CatalogPage({
             columns={columns}
             data={rows}
             groupingTabs={
-              <GroupingTabs
-                label={t("common.groupBy")}
-                value={groupMode}
-                onChange={setGroupMode}
-                options={
-                  resource === "workflows"
-                    ? [
-                        { value: "all", label: t("common.all") },
-                        { value: "status", label: t("catalog.status") },
-                        { value: "trigger", label: t("catalog.trigger") },
-                      ]
-                    : [
-                        { value: "all", label: t("common.all") },
-                        { value: "kind", label: t("catalog.kind") },
-                        { value: "health", label: t("catalog.status") },
-                      ]
-                }
-                testId={`catalog-${resource}-grouping`}
-                note={groupMode === "all" ? undefined : t("common.loadedOnly")}
-              />
+              <>
+                <GroupingTabs
+                  label={t("common.groupBy")}
+                  value={groupMode}
+                  onChange={setGroupMode}
+                  options={
+                    resource === "workflows"
+                      ? [
+                          { value: "all", label: t("common.all") },
+                          { value: CATALOG_CATEGORY_GROUP, label: t("resource.field.category") },
+                          { value: "status", label: t("catalog.status") },
+                          { value: "trigger", label: t("catalog.trigger") },
+                        ]
+                      : [
+                          { value: "all", label: t("common.all") },
+                          { value: CATALOG_CATEGORY_GROUP, label: t("resource.field.category") },
+                          { value: "kind", label: t("catalog.kind") },
+                          { value: "health", label: t("catalog.status") },
+                        ]
+                  }
+                  testId={`catalog-${resource}-grouping`}
+                  note={
+                    groupMode === "all" || groupMode === CATALOG_CATEGORY_GROUP
+                      ? undefined
+                      : t("common.loadedOnly")
+                  }
+                />
+                <CatalogCategoryChips
+                  usage={categories}
+                  value={state.category}
+                  onChange={(category) => setState({ category })}
+                />
+              </>
             }
             grouping={grouping}
             toolbar={

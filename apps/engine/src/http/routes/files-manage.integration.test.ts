@@ -538,5 +538,12 @@ describe("GET /v1/files paging", () => {
     const namePage = (await byName.json()) as { next_cursor: string | null; total: number };
     expect(namePage.total).toBe(3);
     expect(namePage.next_cursor).toBeNull();
+    const byCategory = await request(
+      "GET",
+      "/v1/files?q=paging-&limit=2&group_by=category",
+      srv.apiKey,
+    );
+    const categoryPage = (await byCategory.json()) as { next_cursor: string | null };
+    expect(categoryPage.next_cursor).toBeNull();
   });
 });

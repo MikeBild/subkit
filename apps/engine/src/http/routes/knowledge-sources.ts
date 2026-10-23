@@ -1,5 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { CategoryFilterSchema } from "../../api/catalog-metadata.ts";
+import { CatalogGroupBySchema, CategoryFilterSchema } from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { actorOf } from "../../audit/index.ts";
 import * as svc from "../../knowledge/index.ts";
@@ -83,6 +83,7 @@ const listRoute = createRoute({
         category: CategoryFilterSchema.optional(),
         q: z.string().min(1).max(200).optional(),
         sort: z.enum(["name", "status", "source_type", "bytes_total", "updated_at"]).optional(),
+        group_by: CatalogGroupBySchema.optional(),
         order: z.enum(["asc", "desc"]).optional(),
         limit: z.coerce.number().int().positive().max(500).optional(),
         offset: z.coerce.number().int().min(0).optional(),
@@ -554,6 +555,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(q.q ? { q: q.q } : {}),
       ...(q.sort ? { sort: q.sort } : {}),
       ...(q.order ? { order: q.order } : {}),
+      ...(q.group_by ? { group_by: q.group_by } : {}),
       ...(q.limit !== undefined ? { limit: q.limit } : {}),
       ...(q.offset !== undefined ? { offset: q.offset } : {}),
     };

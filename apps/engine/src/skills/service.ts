@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import {
+  type CatalogGroupBy,
   catalogMetadataView,
   humanMetadataWrite,
   metadataChange,
@@ -11,6 +12,7 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
+import { catalogGroupOrder } from "../db/list-result.ts";
 import { auditLog, skillCandidates, skills } from "../db/schema/index.ts";
 import { ConflictError, HttpError, NotFoundError } from "../http/errors.ts";
 import { log } from "../logging/logger.ts";
@@ -191,6 +193,7 @@ export interface ListSkillsParams {
   category?: string;
   q?: string;
   sort?: "title" | "scope" | "status" | "version" | "updated_at";
+  group_by?: CatalogGroupBy;
   order?: "asc" | "desc";
   limit?: number;
   offset?: number;
@@ -233,7 +236,7 @@ export async function listSkills(p: ListSkillsParams, exec?: Executor): Promise<
     .select()
     .from(skills)
     .where(and(...tenantConds))
-    .orderBy(ordered, asc(skills.id))
+    .orderBy(...catalogGroupOrder(p.group_by, skills.category), ordered, asc(skills.id))
     .limit(Math.min(p.limit ?? 100, 500))
     .offset(p.offset ?? 0);
   return rows.map(rowToSkill);

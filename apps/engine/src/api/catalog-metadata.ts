@@ -5,6 +5,14 @@ export const UNCATEGORIZED = "other";
 
 export const PLATFORM_CATEGORY = "platform";
 
+export const CATALOG_GROUP_BY = ["category"] as const;
+
+export type CatalogGroupBy = (typeof CATALOG_GROUP_BY)[number];
+
+export const CatalogGroupBySchema = z
+  .enum(CATALOG_GROUP_BY)
+  .describe("Order by catalog category first, uncategorized last, then by `sort`");
+
 export const CATEGORY_MAX_LENGTH = 40;
 
 export const DESCRIPTION_MAX_LENGTH = 2000;

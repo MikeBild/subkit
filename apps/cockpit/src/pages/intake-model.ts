@@ -156,14 +156,17 @@ export function intakeOriginLabel(snapshot: IntakeSnapshot, t: Translate): strin
   return t(intakeOriginLabelKey(intakeOrigin(snapshot)));
 }
 
-export function intakeAwaitingAssistantReview(
-  clips: readonly { state: IntakeState; original_snapshot: Pick<IntakeSnapshot, "origin"> }[],
-): number {
-  return clips.filter(
-    (clip) =>
-      intakeOrigin(clip.original_snapshot) === "session" &&
-      (clip.state === "collected" || clip.state === "reviewing"),
-  ).length;
+type ReviewableClip = { state: IntakeState; original_snapshot: Pick<IntakeSnapshot, "origin"> };
+
+export function intakeNeedsAssistantReview(clip: ReviewableClip): boolean {
+  return (
+    intakeOrigin(clip.original_snapshot) === "session" &&
+    (clip.state === "collected" || clip.state === "reviewing")
+  );
+}
+
+export function intakeAwaitingAssistantReview(clips: readonly ReviewableClip[]): number {
+  return clips.filter(intakeNeedsAssistantReview).length;
 }
 
 export function intakeConversationId(

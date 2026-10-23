@@ -117,6 +117,41 @@ describe("DataTable", () => {
     expect(html).toContain("Group choices");
   });
 
+  test("group headings show a total, an attention badge and a collapse toggle", () => {
+    const html = table({
+      data: [
+        { id: "a", name: "Alpha", owner: "x" },
+        { id: "b", name: "Beta", owner: "y" },
+        { id: "c", name: "Gamma", owner: "x" },
+      ],
+      grouping: {
+        getKey: (row) => row.owner,
+        label: (key) => `Team ${key}`,
+        count: (key) => (key === "x" ? 12 : undefined),
+        badge: (_key, rows) => <span data-slot="badge-probe">{rows.length}</span>,
+        rankWithin: (row) => (row.name === "Gamma" ? 0 : 1),
+        collapseScope: "owner",
+      },
+    });
+    const desktop = html.slice(
+      html.indexOf('data-testid="t-desktop"'),
+      html.indexOf('data-testid="t-mobile"'),
+    );
+    expect(desktop).toContain("Team x");
+    expect(desktop).toContain("· 12");
+    expect(desktop).not.toContain("· 1<");
+    expect(desktop.indexOf("Gamma")).toBeLessThan(desktop.indexOf("Alpha"));
+    expect((html.match(/data-slot="group-toggle"/g) ?? []).length).toBe(4);
+    expect(html).toContain('aria-expanded="true"');
+    expect((html.match(/data-slot="badge-probe"/g) ?? []).length).toBe(4);
+    expect(desktop).toContain("sticky top-9");
+  });
+
+  test("groups without a collapse scope render a plain heading", () => {
+    const html = table({ grouping: { getKey: (row) => row.owner } });
+    expect(html).not.toContain('data-slot="group-toggle"');
+  });
+
   test("grouping tabs keep one spacing step above the table, empty states and cards", () => {
     const grouped = table({ groupingTabs: <span>Group choices</span> });
     expect(grouped).toContain('<div class="shrink-0 pb-3" data-family-slot="list-grouping">');

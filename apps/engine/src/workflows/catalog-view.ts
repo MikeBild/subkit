@@ -2,6 +2,7 @@ import type { WorkflowOperatingStatus } from "@shared/workflow-operating-status.
 import { and, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   CATALOG_KINDS,
+  type CatalogGroupBy,
   type CatalogKind,
   type CategoryKind,
   compareCategoryCounts,
@@ -46,6 +47,7 @@ export interface ListWorkflowsOptions extends CatalogFilterOptions {
   name_contains?: string;
   q?: string;
   sort?: "name" | "lifecycle" | "created_at" | "updated_at";
+  group_by?: CatalogGroupBy;
   order?: "asc" | "desc";
 }
 

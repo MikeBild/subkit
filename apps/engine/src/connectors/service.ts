@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import {
+  type CatalogGroupBy,
   type CatalogMetadataPatch,
   catalogMetadataView,
   humanMetadataWrite,
@@ -12,7 +13,12 @@ import { storedScopes } from "../credentials/authority-scopes.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
-import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
+import {
+  catalogGroupOrder,
+  type ListResult,
+  resolveWindowTotal,
+  totalOverWindow,
+} from "../db/list-result.ts";
 import { connectors, credentials } from "../db/schema/index.ts";
 import { BadRequestError } from "../http/errors.ts";
 import { evictServer as evictMcpServer } from "../mcp/client/pool.ts";
@@ -376,6 +382,7 @@ export async function listConnectors(
     needs_reauth?: boolean;
     q?: string;
     sort?: "name" | "driver" | "environment" | "enabled" | "updated_at";
+    group_by?: CatalogGroupBy;
     order?: "asc" | "desc";
     limit?: number;
     offset?: number;
@@ -437,7 +444,7 @@ export async function listConnectors(
     .select({ row: connectors, total: totalOverWindow() })
     .from(connectors)
     .where(and(...tenantConds))
-    .orderBy(ordered, asc(connectors.id))
+    .orderBy(...catalogGroupOrder(opts.group_by, connectors.category), ordered, asc(connectors.id))
     .limit(Math.min(opts.limit ?? CONNECTOR_LIST_MAX_LIMIT, CONNECTOR_LIST_MAX_LIMIT))
     .offset(offset);
   const total = await resolveWindowTotal(rows, offset, async () => {

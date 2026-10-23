@@ -16,7 +16,12 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
-import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
+import {
+  catalogGroupOrder,
+  type ListResult,
+  resolveWindowTotal,
+  totalOverWindow,
+} from "../db/list-result.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { type WorkflowLifecyclePayload, WorkflowLifecyclePayloadSchema } from "../pubsub/types.ts";
@@ -770,7 +775,7 @@ export async function listWorkflows(
       .select({ row: workflows })
       .from(workflows)
       .where(and(...tenantConds))
-      .orderBy(ordered, asc(workflows.id));
+      .orderBy(...catalogGroupOrder(opts.group_by, workflows.category), ordered, asc(workflows.id));
     const kept = all.filter((r) => !derived || derived.keep(r.row));
     if (opts.operating_status) {
       const views = await withOperatingStates(
@@ -794,7 +799,7 @@ export async function listWorkflows(
     .select({ row: workflows, total: totalOverWindow() })
     .from(workflows)
     .where(and(...tenantConds))
-    .orderBy(ordered, asc(workflows.id))
+    .orderBy(...catalogGroupOrder(opts.group_by, workflows.category), ordered, asc(workflows.id))
     .limit(limit)
     .offset(offset);
   const total = await resolveWindowTotal(rows, offset, () => countWorkflows(db, tenant_id, opts));

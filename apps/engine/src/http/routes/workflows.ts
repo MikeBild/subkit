@@ -2,6 +2,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { WORKFLOW_OPERATING_STATUSES } from "@shared/workflow-operating-status.ts";
 import {
   AcceptDescriptionSchema,
+  CatalogGroupBySchema,
   CategorySchema,
   compareCategoryCounts,
   DescriptionSchema,
@@ -100,6 +101,7 @@ const listRoute = createRoute({
         q: z.string().min(1).max(200).optional(),
         sort: z.enum(["name", "lifecycle", "created_at", "updated_at"]).optional(),
         order: z.enum(["asc", "desc"]).optional(),
+        group_by: CatalogGroupBySchema.optional(),
         description_source: z.enum(["llm", "human"]).optional(),
         category: z
           .string()
@@ -482,6 +484,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.q !== undefined) opts.q = q.q;
     if (q.sort !== undefined) opts.sort = q.sort;
     if (q.order !== undefined) opts.order = q.order;
+    if (q.group_by !== undefined) opts.group_by = q.group_by;
     if (q.category !== undefined) opts.category = q.category;
     if (q.description_source) opts.description_source = q.description_source;
     if (q.connector !== undefined) opts.connector = q.connector;

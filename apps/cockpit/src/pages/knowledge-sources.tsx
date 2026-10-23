@@ -12,6 +12,11 @@ import { absolute, chatNewHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
 import {
+  CatalogCategoryChips,
+  catalogCategoryGrouping,
+  categoryCounts,
+} from "@/components/cockpit/catalog-grouping";
+import {
   CatalogCategoryChip,
   CatalogMetadataDialog,
   CatalogNameCell,
@@ -231,7 +236,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
   const canWrite = permissions.includes("knowledge:write");
   const canChat = permissions.includes("conversation:write");
   const [search, setSearch] = useSearchParamState("q", "");
-  const [groupMode, setGroupMode] = useSearchParamState("group", "all");
+  const [groupMode, setGroupMode] = useSearchParamState("group", "category");
   const q = useDebouncedValue(search).trim();
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
@@ -249,6 +254,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
       description_source: origin.descriptionSource,
       sort: first?.id ?? "updated_at",
       order: first?.desc ? "desc" : "asc",
+      group_by: groupMode === "category" ? "category" : undefined,
     },
     { enabled: canRead },
   );
@@ -261,7 +267,9 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         "name",
         (row) => row.name,
         t("knowledge.column.name"),
-        (row) => <CatalogNameCell name={row.name} record={row} />,
+        (row) => (
+          <CatalogNameCell name={row.name} record={row} hideCategory={groupMode === "category"} />
+        ),
         {
           sortable: true,
           width: "w-[34%]",
@@ -298,7 +306,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         { sortable: true, width: "w-[18%]" },
       ),
     ];
-  }, [t, dateTime]);
+  }, [t, dateTime, groupMode]);
 
   if (!canRead)
     return (
@@ -368,28 +376,49 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
             columns={columns}
             data={rows}
             groupingTabs={
-              <GroupingTabs
-                label={t("common.groupBy")}
-                value={groupMode}
-                onChange={setGroupMode}
-                options={[
-                  { value: "all", label: t("common.all") },
-                  { value: "kind", label: t("knowledge.column.kind") },
-                  { value: "status", label: t("resource.field.status") },
-                ]}
-                testId="knowledge-grouping"
-                note={groupMode === "all" ? undefined : t("common.loadedOnly")}
-              />
+              <>
+                <GroupingTabs
+                  label={t("common.groupBy")}
+                  value={groupMode}
+                  onChange={setGroupMode}
+                  options={[
+                    { value: "all", label: t("common.all") },
+                    { value: "category", label: t("resource.field.category") },
+                    { value: "kind", label: t("knowledge.column.kind") },
+                    { value: "status", label: t("resource.field.status") },
+                  ]}
+                  testId="knowledge-grouping"
+                  note={
+                    groupMode === "all" || groupMode === "category"
+                      ? undefined
+                      : t("common.loadedOnly")
+                  }
+                />
+                <CatalogCategoryChips
+                  usage={categoryFilter.usage}
+                  value={categoryFilter.value}
+                  onChange={categoryFilter.setValue}
+                />
+              </>
             }
             grouping={
               groupMode === "all"
                 ? undefined
-                : {
-                    getKey: (row) =>
-                      groupMode === "kind"
-                        ? t(KIND_KEYS[sourceKind(row.source_type)])
-                        : statusLabel(t, row.status),
-                  }
+                : groupMode === "category"
+                  ? catalogCategoryGrouping<KnowledgeSource>({
+                      getCategory: (row) => recordCategory(row),
+                      otherLabel: t("catalog.categoryOther"),
+                      ...(q || origin.active
+                        ? {}
+                        : { counts: categoryCounts(categoryFilter.usage) }),
+                      needsAttention: (row) => row.status === "error",
+                    })
+                  : {
+                      getKey: (row) =>
+                        groupMode === "kind"
+                          ? t(KIND_KEYS[sourceKind(row.source_type)])
+                          : statusLabel(t, row.status),
+                    }
             }
             infinite={list.infinite}
             total={list.total}

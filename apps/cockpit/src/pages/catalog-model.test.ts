@@ -60,9 +60,23 @@ describe("catalog grouping in the address", () => {
     expect(catalogGroupFromSearch("?group=health", CATALOG_GROUPS.connectors)).toBe("health");
   });
 
-  test("an unknown, foreign or missing grouping falls back to all", () => {
-    expect(catalogGroupFromSearch("?group=health", CATALOG_GROUPS.workflows)).toBe("all");
-    expect(catalogGroupFromSearch("?group=<x>", CATALOG_GROUPS.connectors)).toBe("all");
-    expect(catalogGroupFromSearch("", CATALOG_GROUPS.workflows)).toBe("all");
+  test("an unknown, foreign or missing grouping falls back to category", () => {
+    expect(catalogGroupFromSearch("?group=health", CATALOG_GROUPS.workflows)).toBe("category");
+    expect(catalogGroupFromSearch("?group=<x>", CATALOG_GROUPS.connectors)).toBe("category");
+    expect(catalogGroupFromSearch("", CATALOG_GROUPS.workflows)).toBe("category");
+  });
+
+  test("the flat list stays reachable through an explicit all", () => {
+    expect(catalogGroupFromSearch("?group=all", CATALOG_GROUPS.workflows)).toBe("all");
+    expect(catalogGroupFromSearch("?group=all", CATALOG_GROUPS.connectors)).toBe("all");
+  });
+
+  test("category grouping asks the server for category-first order and keeps the column sort", () => {
+    const grouped = catalogListParams("workflows", { ...state, group: "category" });
+    expect(grouped.group_by).toBe("category");
+    expect(grouped.sort).toBe(state.sort);
+    expect(catalogListParams("connectors", { ...state, group: "kind" })).not.toHaveProperty(
+      "group_by",
+    );
   });
 });
