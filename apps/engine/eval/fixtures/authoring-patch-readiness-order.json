@@ -1,0 +1,48 @@
+{
+  "name": "authoring-patch-readiness-order",
+  "description": "Stale checkpoints after a patch: on a draft that was inspected, validated and previewed, a successful edit_workflow_patch returns a `readiness` object in which inspect, validate and preview turn stale and approval is reported (auto mode needs none). save_workflow_draft's notes spell out the order inspect -> validate -> dry run -> save, so the next turns run the checks once, in sequence, instead of hitting nine save gates one by one.",
+  "flow": "repair",
+  "failure_class": "stale checkpoints after a patch without a readiness signal",
+  "depends_on": ["draft_mutation_save_readiness"],
+  "input": {
+    "workflow": {
+      "name": "Order digest",
+      "slug": "order-digest",
+      "steps": [
+        {
+          "id": "fetch_orders",
+          "kind": "request",
+          "method": "GET",
+          "url": "https://api.acme.com/orders"
+        },
+        {
+          "id": "shape_orders",
+          "kind": "transform",
+          "language": "javascript",
+          "expression": "return (input.scope.fetch_orders.data.items ?? []).map((o) => ({ id: o.id }));"
+        }
+      ]
+    },
+    "patches": [
+      {
+        "op": "replace",
+        "path": "/steps/1/expression",
+        "value": "return (input.scope.fetch_orders.data.items ?? []).map((o) => ({ id: o.id, total: o.total }));"
+      }
+    ],
+    "expect": {
+      "readiness": {
+        "inspect": "stale",
+        "validate": "stale",
+        "preview": "stale",
+        "approval": "not_required"
+      },
+      "save_order": [
+        "inspect_workflow_draft",
+        "validate_draft",
+        "dry_run_workflow",
+        "save_workflow_draft"
+      ]
+    }
+  }
+}

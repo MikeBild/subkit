@@ -1,0 +1,21 @@
+{
+  "name": "convo-direct-slug-for-uuid-masked",
+  "description": "Direct (MCP) tool path: a draft tool whose lookup receives a workflow slug where the uuid column expects an id fails inside PostgreSQL. The caller and the persisted tool call see one clean `tool_execution_failed` envelope with a directly invocable recovery, never the SQL text, its parameters or the driver message.",
+  "flow": "converse",
+  "failure_class": "slug passed where a uuid is expected leaks SQL on the direct path",
+  "depends_on": ["direct_tool_database_error_mask"],
+  "input": {
+    "tool": "validate_draft",
+    "slug": "weekly-mail-digest",
+    "expect": {
+      "error_code": "tool_execution_failed",
+      "forbidden_fragments": [
+        "Failed query",
+        "params:",
+        "invalid input syntax",
+        "select ",
+        "weekly-mail-digest"
+      ]
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "authoring-transform-locale-free-identifier-blocked",
+  "description": "Sandbox globals contract before save: a JavaScript transform that formats a date with toLocaleDateString and returns an undeclared identifier (actionData) parses as a function body but cannot run in the sandbox. validate_draft refuses it with findings on the transform's expression path that name the locale API with the sk.* replacement and the undeclared identifier, and edit_workflow_patch refuses to introduce it, leaving the draft unchanged. The same transform written against sk.fmt passes both.",
+  "flow": "generate",
+  "failure_class": "transform with Intl or undeclared identifiers saved and failing at runtime",
+  "depends_on": ["javascript_transform_lint"],
+  "input": {
+    "workflow": {
+      "name": "Delivery dates",
+      "slug": "delivery-dates",
+      "steps": [
+        {
+          "id": "list_items",
+          "kind": "request",
+          "method": "GET",
+          "url": "https://api.acme.com/deliveries"
+        },
+        {
+          "id": "shape",
+          "kind": "transform",
+          "language": "javascript",
+          "expression": "const rows = input.scope.list_items.data.items ?? [];\nreturn rows.map((r) => ({ id: r.id, total: sk.fmt.number(r.total, { locale: 'de', digits: 2 }) }));"
+        }
+      ]
+    },
+    "broken_expression": "const day = new Date(input.input.at).toLocaleDateString('de-DE');\nreturn actionData;",
+    "expect": {
+      "path": "steps.shape.expression",
+      "message_fragments": [".toLocaleDateString()", "'actionData' is not defined"],
+      "replacement_hint": "sk.",
+      "patch_error_code": "patch_invalid"
+    }
+  }
+}

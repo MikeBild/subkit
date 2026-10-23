@@ -1,0 +1,58 @@
+{
+  "description": "Production authoring baseline measured from conversation_tool_calls and the engine journal before the authoring improvements. Live-eval and later production reads compare against these numbers; targets are the agreed bar.",
+  "window_days": 14,
+  "llm_route": "single OpenAI model",
+  "tools": {
+    "author_workflow": {
+      "calls": 34,
+      "first_pass_ok": 8,
+      "first_pass_rate": 0.2353,
+      "failures": { "authoring_generation_failed": 21, "placeholder_destination": 5 }
+    },
+    "dry_run_workflow": {
+      "calls": 18,
+      "ok": 4,
+      "ok_rate": 0.2222,
+      "failures": { "sensitive_preview_refused": 7 }
+    },
+    "edit_workflow_patch": {
+      "calls": 101,
+      "ok": 74,
+      "ok_rate": 0.7327,
+      "failures": { "patch_invalid": 20, "unresolved_step_reference": 5 }
+    },
+    "save_workflow_draft": {
+      "calls": 91,
+      "ok": 46,
+      "ok_rate": 0.5055,
+      "failures": { "confirmation_required": 10, "checks_not_fresh": 8, "draft_conflict": 6 }
+    },
+    "fetch_connector_docs": { "calls": 30, "no_connector_in_scope": 23 },
+    "get_raw_result": { "calls": 158, "failed": 41, "too_large": 23, "path_not_found": 18 }
+  },
+  "conversations": {
+    "avg_turns": { "mcp": 2.7, "web": 4.8 },
+    "count": { "mcp": 63, "web": 16 },
+    "confirmations_per_conversation": 4.5
+  },
+  "tokens": { "prompt_tokens_per_chat_step": 72000 },
+  "targets": {
+    "author_workflow_first_pass_rate": 0.7,
+    "turns_to_save": { "mcp": 2, "web": 3 },
+    "confirmations_per_conversation": 2,
+    "prompt_tokens_per_chat_step": 30000,
+    "question_bundles_per_workflow": 2,
+    "unanswered_forms_rate": 0.2
+  },
+  "scenarios": {
+    "authoring-abort-needs-reground-retry": "author_workflow first pass",
+    "authoring-connector-choice-prod-default": "author_workflow first pass",
+    "authoring-docs-scoped-to-draft-connectors": "fetch_connector_docs scope",
+    "convo-raw-result-shape-navigation": "get_raw_result navigation",
+    "convo-direct-slug-for-uuid-masked": "direct tool error envelope",
+    "authoring-patch-failed-op-nearest-path": "edit_workflow_patch",
+    "authoring-patch-readiness-order": "save_workflow_draft",
+    "authoring-sensitive-schema-only-preview": "dry_run_workflow",
+    "authoring-transform-locale-free-identifier-blocked": "author_workflow first pass"
+  }
+}

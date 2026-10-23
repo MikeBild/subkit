@@ -1,0 +1,19 @@
+{
+  "name": "convo-raw-result-shape-navigation",
+  "description": "Oversized raw result navigation: a mistyped path and an oversized object field both come back with a structural `shape` and concrete `suggested_paths` instead of a bare refusal; following the first suggested path reads the value, so the model reaches the data in at most two calls without guessing keys.",
+  "flow": "converse",
+  "failure_class": "oversized raw result without a navigable shape",
+  "depends_on": ["raw_result_shape_and_suggested_paths"],
+  "input": {
+    "message_count": 12,
+    "body_chars": 2400,
+    "wrong_path": ["data", "mesages"],
+    "oversized_path": ["data"],
+    "expect": {
+      "path_not_found_code": "raw_result_path_not_found",
+      "too_large_code": "raw_result_too_large",
+      "suggested_prefix": ["data", "messages"],
+      "max_calls_to_value": 2
+    }
+  }
+}

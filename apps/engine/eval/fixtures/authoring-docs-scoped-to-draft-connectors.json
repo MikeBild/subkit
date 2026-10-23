@@ -1,0 +1,27 @@
+{
+  "name": "authoring-docs-scoped-to-draft-connectors",
+  "description": "Multi-connector docs lookup: a draft that calls a CRM connector and a mail connector searches the ingested docs of both when fetch_connector_docs gets no connector argument, and every hit names its connector_slug. An explicit `connector` narrows the search to that one connector. With nothing in scope the tool answers connector_scope_required with the resolvable slugs instead of 'no connector in scope'.",
+  "flow": "converse",
+  "failure_class": "docs lookup fails with no connector in scope on multi-connector drafts",
+  "depends_on": ["connector_scoped_docs_lookup"],
+  "input": {
+    "query": "invoice",
+    "connectors": [
+      {
+        "slug": "crm-billing",
+        "display_name": "CRM billing",
+        "base_url": "https://crm.acme.com/api",
+        "docs": "# CRM billing\n\n## List invoices\n\nGET /invoices returns the open invoice records of a customer with amount and due date.\n"
+      },
+      {
+        "slug": "mail-outbound",
+        "display_name": "Outbound mail",
+        "base_url": "https://mail.acme.com/api",
+        "docs": "# Outbound mail\n\n## Send invoice reminder\n\nPOST /messages sends an invoice reminder email to one recipient.\n"
+      }
+    ],
+    "expect": {
+      "scope_error_code": "connector_scope_required"
+    }
+  }
+}

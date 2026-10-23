@@ -1,0 +1,42 @@
+{
+  "name": "authoring-connector-choice-prod-default",
+  "description": "Connector choice with a production default: two mail connectors on the same base URL, one dev and one prod. When generation aborts with a connector_choice need, author_workflow does not retry or guess: it returns requires_user_input with a prefilled ask_user_choice whose default is the prod connector (chosen by environment, not by name order) and whose options list both. One generation pass, draft unchanged, no live HTTP.",
+  "flow": "generate",
+  "failure_class": "generator cannot tell which of several mail connectors is production",
+  "depends_on": ["structured_generation_abort", "connector_choice_prompt"],
+  "input": {
+    "goal": "Send the weekly status report by mail every Monday.",
+    "connectors": [
+      {
+        "slug": "gmail-archive",
+        "display_name": "Mail archive",
+        "base_url": "https://gmail.googleapis.com",
+        "environment": "dev"
+      },
+      {
+        "slug": "gmail-team",
+        "display_name": "Mail team",
+        "base_url": "https://gmail.googleapis.com",
+        "environment": "prod"
+      }
+    ],
+    "abort": {
+      "reason": "two mail connectors could send this report",
+      "needs": [
+        {
+          "kind": "connector_choice",
+          "connector_slug": null,
+          "method": null,
+          "path": null,
+          "question": "Which mail connector should send the weekly report?"
+        }
+      ]
+    },
+    "expect": {
+      "prompt_tool": "ask_user_choice",
+      "default": "gmail-team",
+      "options": ["gmail-archive", "gmail-team"],
+      "generate_calls": 1
+    }
+  }
+}

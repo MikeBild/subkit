@@ -1,0 +1,34 @@
+{
+  "name": "authoring-sensitive-schema-only-preview",
+  "description": "Sensitive workflow preview: dry_run_workflow with mode schema_only on an execution_privacy=sensitive draft checks structure only. No request is dispatched, no value from the input reaches the result or the draft, the preview checkpoint is recorded as redacted, and the result says that content was not checked and points at save. A transform that does not compile is refused with a finding on that transform, with no payload either way.",
+  "flow": "generate",
+  "failure_class": "sensitive workflow preview refused without a usable next step",
+  "depends_on": ["sensitive_schema_only_preview"],
+  "input": {
+    "canary": "CANARY-sensitive-payload-7f3a",
+    "workflow": {
+      "name": "Payroll summary",
+      "slug": "payroll-summary",
+      "execution_privacy": "sensitive",
+      "steps": [
+        {
+          "id": "fetch_payroll",
+          "kind": "request",
+          "method": "GET",
+          "url": "https://api.acme.com/payroll"
+        },
+        {
+          "id": "summarize",
+          "kind": "transform",
+          "language": "javascript",
+          "expression": "const rows = input.scope.fetch_payroll.data.items ?? [];\nreturn { count: rows.length };"
+        }
+      ]
+    },
+    "broken_expression": "const rows = input.scope.fetch_payroll.data.items ?? [;\nreturn rows;",
+    "expect": {
+      "mode": "schema_only",
+      "next_best_action": "save_workflow_draft"
+    }
+  }
+}

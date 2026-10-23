@@ -1,0 +1,46 @@
+{
+  "name": "authoring-patch-failed-op-nearest-path",
+  "description": "Invalid JSON Patch: a two-op patch whose second op targets a mistyped field is refused atomically with patch_invalid that names the failing op by index, echoes its op and path, carries the patch error code and the nearest real path; the draft stays byte-identical. A step-targeted patch for an unknown step id lists the known step ids.",
+  "flow": "repair",
+  "failure_class": "invalid patch reported as a single prose line",
+  "depends_on": ["patch_failure_details"],
+  "input": {
+    "workflow": {
+      "name": "Order digest",
+      "slug": "order-digest",
+      "steps": [
+        {
+          "id": "fetch_orders",
+          "kind": "request",
+          "method": "GET",
+          "url": "https://api.acme.com/orders"
+        },
+        {
+          "id": "shape_orders",
+          "kind": "transform",
+          "language": "javascript",
+          "expression": "return (input.scope.fetch_orders.data.items ?? []).map((o) => ({ id: o.id }));"
+        }
+      ]
+    },
+    "patches": [
+      { "op": "replace", "path": "/steps/0/url", "value": "https://api.acme.com/orders?limit=50" },
+      {
+        "op": "replace",
+        "path": "/steps/1/expresion",
+        "value": "return input.scope.fetch_orders.data.items;"
+      }
+    ],
+    "step_patches": [
+      { "step_id": "shape_order", "op": "replace", "path": "/expression", "value": "return [];" }
+    ],
+    "expect": {
+      "error_code": "patch_invalid",
+      "failed_op_index": 1,
+      "failed_op": { "op": "replace", "path": "/steps/1/expresion" },
+      "nearest_path": "/steps/1/expression",
+      "target_error_code": "patch_target_invalid",
+      "known_step_ids": ["fetch_orders", "shape_orders"]
+    }
+  }
+}

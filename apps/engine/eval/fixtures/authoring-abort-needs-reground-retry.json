@@ -1,0 +1,68 @@
+{
+  "name": "authoring-abort-needs-reground-retry",
+  "description": "Structured generator abort: pass one aborts naming the missing response shape of one connector route in `needs`. The engine re-grounds that route's recorded shape and runs exactly one more pass whose prompt carries the fetched evidence; the second pass succeeds and the draft is stashed. A need the engine cannot ground returns the needs and a concrete evidence action instead of a blind identical retry. No live HTTP fires.",
+  "flow": "generate",
+  "failure_class": "generator abort with free-text reason retried with identical grounding",
+  "depends_on": ["structured_generation_abort", "abort_regrounding"],
+  "input": {
+    "goal": "Every morning list yesterday's open orders with their totals.",
+    "connector": {
+      "slug": "orders-api",
+      "display_name": "Orders API",
+      "base_url": "https://orders.acme.com/api"
+    },
+    "recorded_shape": {
+      "endpoint_key": "GET /api/v1/orders",
+      "value": { "items": [{ "id": "ord-1", "status": "open", "total": 42.5 }], "next": null }
+    },
+    "abort": {
+      "reason": "the response shape of the orders listing is not in the excerpt",
+      "needs": [
+        {
+          "kind": "response_shape",
+          "connector_slug": "orders-api",
+          "method": "GET",
+          "path": "/v1/orders",
+          "question": null
+        }
+      ]
+    },
+    "unresolvable_abort": {
+      "reason": "no route for the export",
+      "needs": [
+        {
+          "kind": "response_shape",
+          "connector_slug": null,
+          "method": "GET",
+          "path": "/v9/export",
+          "question": null
+        }
+      ]
+    },
+    "definition": {
+      "name": "Open orders digest",
+      "slug": "open-orders-digest",
+      "steps": [
+        {
+          "id": "fetch_orders",
+          "kind": "request",
+          "method": "GET",
+          "url": "https://jsonplaceholder.typicode.com/posts"
+        },
+        {
+          "id": "shape_orders",
+          "kind": "transform",
+          "language": "javascript",
+          "expression": "return (input.scope.fetch_orders.data ?? []).map((o) => ({ id: o.id }));"
+        }
+      ]
+    },
+    "expect": {
+      "evidence_heading": "Evidence fetched for the previous abort",
+      "evidence_line": "recorded response `orders-api` GET /api/v1/orders",
+      "generate_calls": 2,
+      "unresolvable_error_code": "authoring_generation_failed",
+      "unresolvable_next_best_actions": ["probe_connector", "author_workflow"]
+    }
+  }
+}
