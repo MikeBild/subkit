@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createOpenAI } from "@ai-sdk/openai";
 import { tool } from "ai";
 import { z } from "zod";
 import { GeneratedWorkflowSchema } from "../../../conversations/authoring-pipeline.ts";
 import { zodToJsonSchema7 } from "../../../mcp/json-schema.ts";
 import { startLocalTargetServer } from "../../../test-helpers/local-http.ts";
 import { AiSdkModel } from "../ai-sdk-model.ts";
+import { initializeModel } from "../model-init.ts";
 import { repairToolCall } from "../repair-tool-call.ts";
 
 const bodies: Array<Record<string, unknown>> = [];
@@ -88,9 +88,12 @@ describe("structured output through the OpenAI provider", () => {
 
   test("a tool-call repair asks OpenAI for a non-strict schema, so optional tool arguments are accepted", async () => {
     bodies.length = 0;
-    const model = createOpenAI({ baseURL: server.url, apiKey: "sk-test-not-a-real-key" }).chat(
-      "gpt-5.6-sol",
-    );
+    const { model } = await initializeModel({
+      providerOverride: "openai",
+      apiKeyOverride: "sk-test-not-a-real-key",
+      defaultModel: "gpt-5.6-sol",
+      modelOverride: "gpt-5.6-sol",
+    });
     const err = new Error("Invalid input for tool run_workflow");
     err.name = "AI_InvalidToolInputError";
     await repairToolCall({
