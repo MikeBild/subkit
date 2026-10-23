@@ -36,6 +36,20 @@ export async function finalizeHostedContentQuota(
   z.uuid().parse(args.tenantId);
   z.uuid().parse(args.resourceId);
   z.enum(["hosted_storage_quota_exhausted", "hosted_resource_count_exhausted"]).parse(args.code);
+  const [observedTenant] = await db
+    .select({ origin: tenants.origin })
+    .from(tenants)
+    .where(eq(tenants.id, args.tenantId))
+    .limit(1);
+  if (observedTenant?.origin !== "self_service") return "unmatched";
+  if (args.resourceType === "execution") {
+    const [observed] = await db
+      .select({ status: executions.status })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, args.tenantId), eq(executions.id, args.resourceId)))
+      .limit(1);
+    if (!observed || !["queued", "running"].includes(observed.status)) return "stale";
+  }
   return db.transaction(async (tx) => {
     await lockCatalogVocabulary(tx, args.tenantId);
     const [tenant] = await tx

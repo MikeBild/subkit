@@ -147,12 +147,9 @@ export interface PreparedKnowledgeCreate {
   content: KnowledgeVersionContent;
 }
 
-export async function prepareKnowledgeCreate(
-  p: CreateKnowledgeSourceParams,
-  db: Executor,
-): Promise<PreparedKnowledgeCreate> {
-  await lockCatalogVocabulary(db, p.tenant_id);
-  await lockActiveTenant(p.tenant_id, db);
+type ParsedKnowledgeCreate = Omit<PreparedKnowledgeCreate, "persisted">;
+
+function parseKnowledgeCreate(p: CreateKnowledgeSourceParams): ParsedKnowledgeCreate {
   if (p.input.scope === "workflow" && !p.input.workflow_id) {
     throw new Error("workflow_id is required when scope is 'workflow'");
   }
@@ -172,7 +169,6 @@ export async function prepareKnowledgeCreate(
     accepted,
     skipped,
     total_bytes: accepted.reduce((s, c) => s + c.byte_size, 0),
-    persisted: source_type === "url" ? null : await persistKnowledgeFile(db, p),
     content: knowledgeVersionContent({
       source_type,
       upload: p.upload,
@@ -182,12 +178,26 @@ export async function prepareKnowledgeCreate(
   };
 }
 
+export async function prepareKnowledgeCreate(
+  p: CreateKnowledgeSourceParams,
+  db: Executor,
+): Promise<PreparedKnowledgeCreate> {
+  await lockCatalogVocabulary(db, p.tenant_id);
+  await lockActiveTenant(p.tenant_id, db);
+  const parsed = parseKnowledgeCreate(p);
+  return {
+    ...parsed,
+    persisted: parsed.source_type === "url" ? null : await persistKnowledgeFile(db, p),
+  };
+}
+
 export async function applyKnowledgeCreate(
   tx: Executor,
   p: CreateKnowledgeSourceParams,
   prepared: PreparedKnowledgeCreate,
 ): Promise<KnowledgeSourceView> {
   await lockCatalogVocabulary(tx, p.tenant_id);
+  await lockActiveTenant(p.tenant_id, tx);
   const { slug, accepted } = prepared;
   await assertTenantKnowledgeBudget(tx, p.tenant_id, prepared.total_bytes);
 
@@ -287,27 +297,37 @@ export function finishKnowledgeWrite(
   void kickSourceEmbeddingBackfill(tenant_id, knowledge_source_id, db);
 }
 
+const KNOWLEDGE_WRITE_RETRY = {
+  tries: 5,
+  startMs: 50,
+  maxMs: 1_000,
+  label: "knowledge_write",
+} as const;
+
 export async function createKnowledgeSource(
   p: CreateKnowledgeSourceParams,
   exec?: Executor,
 ): Promise<KnowledgeSourceView> {
   const db = exec ?? getDb();
-  const state: { prepared: PreparedKnowledgeCreate | null } = { prepared: null };
-  let created: KnowledgeSourceView;
-  try {
-    created = await (db as Db).transaction(async (tx) => {
-      const prepared = await prepareKnowledgeCreate(p, tx);
-      state.prepared = prepared;
-      return retryTransient(() =>
-        tx.transaction((writeTx) => applyKnowledgeCreate(writeTx, p, prepared)),
+  return withTenantWork(p.tenant_id, async () => {
+    await assertTenantActive(p.tenant_id, db);
+    const parsed = parseKnowledgeCreate(p);
+    let persisted: PersistInlineUploadResult | null = null;
+    let created: KnowledgeSourceView;
+    try {
+      persisted = parsed.source_type === "url" ? null : await persistKnowledgeFile(db, p);
+      const prepared: PreparedKnowledgeCreate = { ...parsed, persisted };
+      created = await retryTransient(
+        () => (db as Db).transaction((tx) => applyKnowledgeCreate(tx, p, prepared)),
+        KNOWLEDGE_WRITE_RETRY,
       );
-    });
-  } catch (error) {
-    await cleanupPersistedKnowledgeFile(db, state.prepared?.persisted ?? null);
-    throw error;
-  }
-  finishKnowledgeWrite(p.tenant_id, created.id, db);
-  return created;
+    } catch (error) {
+      await cleanupPersistedKnowledgeFile(db, persisted);
+      throw error;
+    }
+    finishKnowledgeWrite(p.tenant_id, created.id, db);
+    return created;
+  });
 }
 
 export async function getKnowledgeSourceBySlug(
@@ -603,16 +623,16 @@ export interface AppliedKnowledgeIngest {
   version: number | null;
 }
 
-export async function prepareKnowledgeIngest(
+type ParsedKnowledgeIngest = Omit<PreparedKnowledgeIngest, "persisted" | "content"> & {
+  text: string;
+};
+
+async function parseKnowledgeIngest(
   p: IngestKnowledgeSourceParams,
-  db: Executor,
-): Promise<PreparedKnowledgeIngest> {
-  await lockCatalogVocabulary(db, p.tenant_id);
-  await lockActiveTenant(p.tenant_id, db);
+): Promise<ParsedKnowledgeIngest> {
   const content = decodeUpload(p.upload.buffer);
   assertSourceSize(content);
   const byteSize = Buffer.byteLength(content, "utf8");
-
   const format = detectFormat(p.upload.filename, p.upload.mime);
   const rawChunks = await instrument({
     module: "knowledge",
@@ -630,8 +650,21 @@ export async function prepareKnowledgeIngest(
   const { accepted, skipped } = p.parsed_chunks
     ? { accepted: fingerprinted, skipped: 0 }
     : dedupChunks(fingerprinted);
+  return {
+    format,
+    hash: knowledgeContentHash(content),
+    accepted,
+    skipped,
+    total_bytes: accepted.reduce((s, c) => s + c.byte_size, 0),
+    text: content,
+  };
+}
 
-  const sourceRows = await db
+async function knowledgeIngestSourceType(
+  db: Executor,
+  p: IngestKnowledgeSourceParams,
+): Promise<string | null> {
+  const [row] = await db
     .select({ source_type: knowledgeSources.source_type })
     .from(knowledgeSources)
     .where(
@@ -642,22 +675,37 @@ export async function prepareKnowledgeIngest(
       ),
     )
     .limit(1);
-  const sourceRow = sourceRows[0];
-  const keepsFile = sourceRow !== undefined && sourceRow.source_type !== "url";
+  return row?.source_type ?? null;
+}
+
+async function completeKnowledgeIngest(
+  db: Executor,
+  p: IngestKnowledgeSourceParams,
+  parsed: ParsedKnowledgeIngest,
+  sourceType: string | null,
+): Promise<PreparedKnowledgeIngest> {
+  const { text, ...rest } = parsed;
+  const keepsFile = sourceType !== null && sourceType !== "url";
   return {
-    format,
-    hash: knowledgeContentHash(content),
-    accepted,
-    skipped,
-    total_bytes: accepted.reduce((s, c) => s + c.byte_size, 0),
+    ...rest,
     persisted: keepsFile ? await persistKnowledgeFile(db, p) : null,
     content: knowledgeVersionContent({
-      source_type: sourceRow?.source_type ?? "file_upload",
+      source_type: sourceType ?? "file_upload",
       upload: p.upload,
-      text: content,
+      text,
       parsed_chunks: p.parsed_chunks,
     }),
   };
+}
+
+export async function prepareKnowledgeIngest(
+  p: IngestKnowledgeSourceParams,
+  db: Executor,
+): Promise<PreparedKnowledgeIngest> {
+  await lockCatalogVocabulary(db, p.tenant_id);
+  await lockActiveTenant(p.tenant_id, db);
+  const parsed = await parseKnowledgeIngest(p);
+  return completeKnowledgeIngest(db, p, parsed, await knowledgeIngestSourceType(db, p));
 }
 
 export async function applyKnowledgeIngest(
@@ -665,6 +713,8 @@ export async function applyKnowledgeIngest(
   p: IngestKnowledgeSourceParams,
   prepared: PreparedKnowledgeIngest,
 ): Promise<AppliedKnowledgeIngest | null> {
+  await lockCatalogVocabulary(tx, p.tenant_id);
+  await lockActiveTenant(p.tenant_id, tx);
   const { accepted } = prepared;
   const [lockedSource] = await tx
     .select({
@@ -809,42 +859,45 @@ export async function ingestKnowledgeSource(
   exec?: Executor,
 ): Promise<KnowledgeIngestResult> {
   const db = exec ?? getDb();
-  const state: { prepared: PreparedKnowledgeIngest | null } = { prepared: null };
-  let applied: AppliedKnowledgeIngest | null;
-  try {
-    applied = await (db as Db).transaction(async (tx) => {
-      const prepared = await prepareKnowledgeIngest(p, tx);
-      state.prepared = prepared;
-      return retryTransient(() =>
-        tx.transaction((writeTx) => applyKnowledgeIngest(writeTx, p, prepared)),
+  return withTenantWork(p.tenant_id, async () => {
+    await assertTenantActive(p.tenant_id, db);
+    const parsed = await parseKnowledgeIngest(p);
+    const sourceType = await knowledgeIngestSourceType(db, p);
+    let prepared: PreparedKnowledgeIngest | null = null;
+    let applied: AppliedKnowledgeIngest | null;
+    try {
+      prepared = await completeKnowledgeIngest(db, p, parsed, sourceType);
+      const ready = prepared;
+      applied = await retryTransient(
+        () => (db as Db).transaction((tx) => applyKnowledgeIngest(tx, p, ready)),
+        KNOWLEDGE_WRITE_RETRY,
       );
+    } catch (error) {
+      await cleanupPersistedKnowledgeFile(db, prepared?.persisted ?? null);
+      throw error;
+    }
+    if (!applied) await cleanupPersistedKnowledgeFile(db, prepared.persisted);
+
+    log.knowledge.ingested({
+      knowledge_source_id: p.knowledge_source_id,
+      tenant_id: p.tenant_id,
+      actor_id: p.actor?.id ?? null,
+      format: prepared.format,
+      chunk_count: prepared.accepted.length,
+      skipped_count: prepared.skipped,
+      bytes_total: prepared.total_bytes,
     });
-  } catch (error) {
-    await cleanupPersistedKnowledgeFile(db, state.prepared?.persisted ?? null);
-    throw error;
-  }
-  const prepared = state.prepared;
-  if (!prepared) throw new Error("knowledge ingest preparation did not complete");
+    finishKnowledgeWrite(p.tenant_id, p.knowledge_source_id, db);
 
-  log.knowledge.ingested({
-    knowledge_source_id: p.knowledge_source_id,
-    tenant_id: p.tenant_id,
-    actor_id: p.actor?.id ?? null,
-    format: prepared.format,
-    chunk_count: prepared.accepted.length,
-    skipped_count: prepared.skipped,
-    bytes_total: prepared.total_bytes,
+    return {
+      knowledge_source_id: p.knowledge_source_id,
+      ingested_count: prepared.accepted.length,
+      skipped_count: prepared.skipped,
+      total_bytes: prepared.total_bytes,
+      budget_exceeded: false,
+      content_version: applied?.version ?? null,
+    };
   });
-  finishKnowledgeWrite(p.tenant_id, p.knowledge_source_id, db);
-
-  return {
-    knowledge_source_id: p.knowledge_source_id,
-    ingested_count: prepared.accepted.length,
-    skipped_count: prepared.skipped,
-    total_bytes: prepared.total_bytes,
-    budget_exceeded: false,
-    content_version: applied?.version ?? null,
-  };
 }
 
 const knowledgeSearchCache = new TtlCache<KnowledgeSearchHit[]>({

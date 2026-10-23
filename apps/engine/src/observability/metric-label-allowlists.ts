@@ -20,6 +20,8 @@ export const DB_TRANSIENT_RETRY_LABELS = new Set<string>([
   "chat_dedup_cleanup",
   "compute_desired",
   "knowledge_seed",
+  "knowledge_write",
+  "execution_admission_catalog",
   "skills_seed",
 ]);
 

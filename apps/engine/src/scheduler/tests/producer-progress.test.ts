@@ -211,3 +211,85 @@ test("stop immediately after installation prevents the deferred first pass from 
   expect(passes.reconcileDocsAutoRefresh).toHaveBeenCalledTimes(0);
   expect(passes.reconcileCatalogDescribe).toHaveBeenCalledTimes(0);
 });
+
+test("refresh producers start only after the schedule fanout of the pass settles", async () => {
+  const fanout = deferred();
+  const fanoutEntered = deferred();
+  const driftEntered = deferred();
+  const refreshed = deferred();
+  const { reconciler, passes } = probe();
+  passes.reconcileWorkflowSchedules?.mockImplementation(async () => {
+    fanoutEntered.resolve();
+    await fanout.promise;
+  });
+  passes.reconcileProactiveDriftScans?.mockImplementation(async () => driftEntered.resolve());
+  passes.reconcileKnowledgeAutoRefresh?.mockImplementation(async () => refreshed.resolve());
+  const pass = reconciler.reconcileOnce();
+  try {
+    await fanoutEntered.promise;
+    await driftEntered.promise;
+    await Bun.sleep(5);
+    expect(passes.reconcileDocsAutoRefresh).toHaveBeenCalledTimes(0);
+    expect(passes.reconcileKnowledgeAutoRefresh).toHaveBeenCalledTimes(0);
+    fanout.resolve();
+    await refreshed.promise;
+    await pass;
+    expect(passes.reconcileDocsAutoRefresh).toHaveBeenCalledTimes(1);
+    expect(passes.reconcileKnowledgeAutoRefresh).toHaveBeenCalledTimes(1);
+  } finally {
+    fanout.resolve();
+    await pass;
+    await reconciler.stop();
+  }
+});
+
+test("refresh producers wait for a fanout still running from an earlier tick", async () => {
+  const fanout = deferred();
+  const fanoutEntered = deferred();
+  const reachedTail = deferred();
+  const { reconciler, passes } = probe();
+  passes.reconcileWorkflowSchedules?.mockImplementationOnce(async () => {
+    fanoutEntered.resolve();
+    await fanout.promise;
+  });
+  passes.reconcileEmbeddingBackfill?.mockImplementation(async () => reachedTail.resolve());
+  const first = reconciler.reconcileOnce();
+  try {
+    await fanoutEntered.promise;
+    await reachedTail.promise;
+    expect(passes.reconcileDocsAutoRefresh).toHaveBeenCalledTimes(0);
+    fanout.resolve();
+    await first;
+    expect(passes.reconcileDocsAutoRefresh).toHaveBeenCalledTimes(1);
+    const second = deferred();
+    const secondEntered = deferred();
+    passes.reconcileWorkflowSchedules?.mockImplementationOnce(async () => {
+      secondEntered.resolve();
+      await second.promise;
+    });
+    const next = reconciler.reconcileOnce();
+    await secondEntered.promise;
+    await reconciler.reconcileOnce();
+    expect(passes.reconcileWorkflowSchedules).toHaveBeenCalledTimes(2);
+    expect(passes.reconcileDocsAutoRefresh).toHaveBeenCalledTimes(1);
+    second.resolve();
+    await next;
+    expect(passes.reconcileDocsAutoRefresh).toHaveBeenCalledTimes(2);
+  } finally {
+    fanout.resolve();
+    await first;
+    await reconciler.stop();
+  }
+});
+
+test("a failed fanout does not starve the refresh producers", async () => {
+  const { reconciler, passes } = probe();
+  passes.reconcileWorkflowSchedules?.mockRejectedValue(new Error("fixed fanout failure"));
+  try {
+    await reconciler.reconcileOnce();
+    expect(passes.reconcileDocsAutoRefresh).toHaveBeenCalledTimes(1);
+    expect(passes.reconcileKnowledgeAutoRefresh).toHaveBeenCalledTimes(1);
+  } finally {
+    await reconciler.stop();
+  }
+});

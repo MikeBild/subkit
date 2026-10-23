@@ -418,18 +418,6 @@ async function ingestActiveDocs(
       );
     }
 
-    for (let i = 0; i < accepted.length; i += 1) {
-      const c = accepted[i]!;
-      logger.debug({
-        module: "docs",
-        action: "ingest.chunk",
-        msg: "doc ingest chunk persisted",
-        ordinal: i,
-        bytes: c.byte_size,
-        dedup_skipped: false,
-      });
-    }
-
     await tx
       .update(connectors)
       .set({ last_ingested_at: new Date() })
@@ -476,6 +464,18 @@ async function ingestActiveDocs(
   });
 
   invalidateDocsCache(p.tenant_id, p.connector_id);
+
+  for (let i = 0; i < accepted.length; i += 1) {
+    const c = accepted[i]!;
+    logger.debug({
+      module: "docs",
+      action: "ingest.chunk",
+      msg: "doc ingest chunk persisted",
+      ordinal: i,
+      bytes: c.byte_size,
+      dedup_skipped: false,
+    });
+  }
 
   logger.info({
     module: "docs",

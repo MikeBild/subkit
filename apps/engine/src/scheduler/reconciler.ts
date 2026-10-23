@@ -103,6 +103,12 @@ export class SchedulerReconciler {
     return task;
   }
 
+  private async afterFanout(fanout: Promise<void>, operation: () => Promise<void>): Promise<void> {
+    await fanout.catch(() => {});
+    if (this.stopped) return;
+    await operation();
+  }
+
   private track<T>(task: Promise<T>): Promise<T> {
     this.inFlight.add(task);
     void task.then(
@@ -223,42 +229,48 @@ export class SchedulerReconciler {
 
   async reconcileOnce(): Promise<void> {
     if (this.stopped) return;
+    const fanoutTask = this.runProducerPass("workflow-cron", () =>
+      retryTransient(() => this.reconcileWorkflowSchedules(), {
+        label: "workflow_schedules",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "schedule_fanout_failed",
+          msg: "scheduler workflow schedule fan-out pass failed",
+          ...errorFields(err),
+        });
+      }),
+    );
+    const fanout = this.producerPasses.get("workflow-cron") ?? fanoutTask;
     const producerTasks = [
+      fanoutTask,
       this.runProducerPass("docs", () =>
-        retryTransient(() => this.reconcileDocsAutoRefresh(), {
-          label: "docs_auto_refresh",
-        }).catch((err) => {
-          logger.error({
-            module: "scheduler",
-            action: "docs_refresh_failed",
-            msg: "scheduler docs auto-refresh pass failed",
-            ...errorFields(err),
-          });
-        }),
+        this.afterFanout(fanout, () =>
+          retryTransient(() => this.reconcileDocsAutoRefresh(), {
+            label: "docs_auto_refresh",
+          }).catch((err) => {
+            logger.error({
+              module: "scheduler",
+              action: "docs_refresh_failed",
+              msg: "scheduler docs auto-refresh pass failed",
+              ...errorFields(err),
+            });
+          }),
+        ),
       ),
       this.runProducerPass("knowledge", () =>
-        retryTransient(() => this.reconcileKnowledgeAutoRefresh(), {
-          label: "knowledge_auto_refresh",
-        }).catch((err) => {
-          logger.error({
-            module: "scheduler",
-            action: "knowledge_refresh_failed",
-            msg: "scheduler knowledge auto-refresh pass failed",
-            ...errorFields(err),
-          });
-        }),
-      ),
-      this.runProducerPass("workflow-cron", () =>
-        retryTransient(() => this.reconcileWorkflowSchedules(), {
-          label: "workflow_schedules",
-        }).catch((err) => {
-          logger.error({
-            module: "scheduler",
-            action: "schedule_fanout_failed",
-            msg: "scheduler workflow schedule fan-out pass failed",
-            ...errorFields(err),
-          });
-        }),
+        this.afterFanout(fanout, () =>
+          retryTransient(() => this.reconcileKnowledgeAutoRefresh(), {
+            label: "knowledge_auto_refresh",
+          }).catch((err) => {
+            logger.error({
+              module: "scheduler",
+              action: "knowledge_refresh_failed",
+              msg: "scheduler knowledge auto-refresh pass failed",
+              ...errorFields(err),
+            });
+          }),
+        ),
       ),
       this.runProducerPass("drift", () =>
         retryTransient(() => this.reconcileProactiveDriftScans(), {
