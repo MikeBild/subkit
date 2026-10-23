@@ -113,7 +113,7 @@ export const SANDBOX_SK_MEMBERS: readonly string[] = Object.freeze([
   "xml",
 ]);
 
-export const SANDBOX_SK_FMT_MEMBERS: readonly string[] = Object.freeze(["number", "de"]);
+export const SANDBOX_SK_FMT_MEMBERS: readonly string[] = Object.freeze(["number", "date", "de"]);
 
 export const SANDBOX_GLOBAL_NAMES: ReadonlySet<string> = new Set([
   ...SANDBOX_ECMASCRIPT_GLOBALS,
