@@ -81,6 +81,7 @@ import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { ORIGIN_LABEL, skillDecision } from "@/pages/decisions-model";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
+import { keptVersionCount } from "@/pages/knowledge-versions-model";
 import { isDetectedPattern } from "@/pages/skill-proposal-model";
 import { SkillProposalRowActions } from "@/pages/skill-proposal-row-actions";
 import { SkillProposalSheet } from "@/pages/skill-proposal-sheet";
@@ -950,9 +951,10 @@ function SkillVersions({ skill, canWrite }: { skill: Skill; canWrite: boolean })
       testId="skill-versions"
       summary={
         history.data
-          ? t(rows.length === 1 ? "skills.versions.one" : "skills.versions.other", {
-              count: rows.length,
-            })
+          ? t(
+              keptVersionCount(rows.length) === 1 ? "skills.versions.one" : "skills.versions.other",
+              { count: keptVersionCount(rows.length) },
+            )
           : undefined
       }
     >

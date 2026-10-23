@@ -49,3 +49,37 @@ export function fileVersionContentPath(fileId: string, version: number): string 
 export function hasEarlierVersions(versions: readonly FileVersion[] | undefined): boolean {
   return (versions ?? []).some((version) => !version.current);
 }
+
+export interface FileUsageCounts {
+  workflows: number;
+  conversations: number;
+  other?: number;
+}
+
+export function fileUsageParts(t: Translate, usage: FileUsageCounts | undefined): string | null {
+  if (!usage) return null;
+  const other = usage.other ?? 0;
+  const parts = [
+    usage.workflows > 0
+      ? usage.workflows === 1
+        ? t("files.usage.workflow")
+        : t("files.usage.workflows", { count: usage.workflows })
+      : null,
+    usage.conversations > 0
+      ? usage.conversations === 1
+        ? t("files.usage.conversation")
+        : t("files.usage.conversations", { count: usage.conversations })
+      : null,
+    other > 0
+      ? other === 1
+        ? t("files.usage.otherOne")
+        : t("files.usage.otherMany", { count: other })
+      : null,
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+export function fileUsageLine(t: Translate, usage: FileUsageCounts | undefined): string | null {
+  const uses = fileUsageParts(t, usage);
+  return uses ? t("files.usage.line", { uses }) : null;
+}

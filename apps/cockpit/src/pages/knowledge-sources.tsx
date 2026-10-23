@@ -88,6 +88,7 @@ import {
   sourcePrimaryAction,
   sourceSections,
 } from "@/pages/knowledge-sources-model";
+import { keptVersionCount } from "@/pages/knowledge-versions-model";
 
 type KnowledgeSource = components["schemas"]["KnowledgeSource"];
 
@@ -870,10 +871,10 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
                       summary={
                         history.data
                           ? t(
-                              history.data.total === 1
+                              keptVersionCount(history.data.total) === 1
                                 ? "knowledge.versions.countOne"
                                 : "knowledge.versions.countOther",
-                              { count: history.data.total },
+                              { count: keptVersionCount(history.data.total) },
                             )
                           : undefined
                       }

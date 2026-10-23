@@ -63,3 +63,7 @@ export function restoreHint(version: KnowledgeVersion, latest: number, t: Transl
     ? t("knowledge.versions.currentHint")
     : t("knowledge.versions.restoreHint", { next: latest + 1, latest });
 }
+
+export function keptVersionCount(listed: number): number {
+  return Math.max(listed, 1);
+}

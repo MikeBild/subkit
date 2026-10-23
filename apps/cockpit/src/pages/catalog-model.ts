@@ -68,3 +68,15 @@ export const OPERATING_STATUS_KEYS: Record<WorkflowOperatingStatus, TranslationK
   disabled: "workflowStrip.state.disabled",
   unknown: "automation.state.unknown",
 };
+
+export const CATALOG_ALL_GROUPS = "all";
+
+export const CATALOG_GROUPS = {
+  workflows: ["status", "trigger"],
+  connectors: ["kind", "health"],
+} as const satisfies Record<string, readonly string[]>;
+
+export function catalogGroupFromSearch(search: string, allowed: readonly string[]): string {
+  const group = new URLSearchParams(search).get("group") ?? "";
+  return allowed.includes(group) ? group : CATALOG_ALL_GROUPS;
+}

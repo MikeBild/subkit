@@ -4,6 +4,8 @@ import { translate } from "@/lib/i18n";
 import {
   type FileVersion,
   fileKindKey,
+  fileUsageLine,
+  fileUsageParts,
   fileVersionContentPath,
   fileVersionTitle,
   fileVersionUploader,
@@ -79,5 +81,26 @@ describe("file version helpers", () => {
   test("kind labels follow the preview kind", () => {
     expect(fileKindKey("a.pdf", null)).toBe("files.kind.pdf");
     expect(fileKindKey("a.bin", "application/octet-stream")).toBe("files.kind.other");
+  });
+});
+
+describe("file usage summary", () => {
+  test("counts every use, including records that are neither workflows nor conversations", () => {
+    expect(fileUsageParts(de, { workflows: 0, conversations: 0, other: 1 })).toBe(
+      "1 weiteren Eintrag",
+    );
+    expect(de("files.usage.summary", { uses: "1 weiteren Eintrag" })).toBe(
+      "Genutzt von 1 weiteren Eintrag.",
+    );
+    expect(fileUsageParts(en, { workflows: 2, conversations: 1, other: 3 })).toBe(
+      "2 workflows · 1 conversation · 3 other records",
+    );
+    expect(fileUsageLine(de, { workflows: 1, conversations: 0 })).toBe("genutzt von 1 Workflow");
+  });
+
+  test("says 'not used' only when nothing at all uses the file", () => {
+    expect(fileUsageParts(de, { workflows: 0, conversations: 0, other: 0 })).toBeNull();
+    expect(fileUsageParts(de, { workflows: 0, conversations: 0 })).toBeNull();
+    expect(fileUsageParts(de, undefined)).toBeNull();
   });
 });

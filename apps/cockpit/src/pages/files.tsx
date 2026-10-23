@@ -59,7 +59,12 @@ import { useI18n } from "@/lib/i18n-context";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { cn } from "@/lib/utils";
-import { fileKindKey, hasEarlierVersions } from "@/pages/file-versions-model";
+import {
+  fileKindKey,
+  fileUsageLine,
+  fileUsageParts,
+  hasEarlierVersions,
+} from "@/pages/file-versions-model";
 
 type StoredFile = components["schemas"]["File"] & {
   creator?: { kind: "user" | "system_account"; id: string } | null;
@@ -74,34 +79,6 @@ const LIST_PARAMS = { sort: "created_at", order: "desc" } as const;
 
 export function fileReference(file: Pick<StoredFile, "id" | "reference">): string {
   return file.reference ?? JSON.stringify({ $file: file.id });
-}
-
-function fileUsageParts(
-  t: ReturnType<typeof useI18n>["t"],
-  usage: ListedFile["usage"] | undefined,
-): string | null {
-  if (!usage) return null;
-  const parts = [
-    usage.workflows > 0
-      ? usage.workflows === 1
-        ? t("files.usage.workflow")
-        : t("files.usage.workflows", { count: usage.workflows })
-      : null,
-    usage.conversations > 0
-      ? usage.conversations === 1
-        ? t("files.usage.conversation")
-        : t("files.usage.conversations", { count: usage.conversations })
-      : null,
-  ].filter((part): part is string => part !== null);
-  return parts.length > 0 ? parts.join(" · ") : null;
-}
-
-export function fileUsageLine(
-  t: ReturnType<typeof useI18n>["t"],
-  usage: ListedFile["usage"] | undefined,
-): string | null {
-  const uses = fileUsageParts(t, usage);
-  return uses ? t("files.usage.line", { uses }) : null;
 }
 
 function sizeText(bytes: unknown, locale: string): string {
@@ -797,6 +774,7 @@ export function FilePage() {
     ? fileUsageParts(t, {
         workflows: usage.workflows.length,
         conversations: usage.conversations.length,
+        other: usage.other,
       })
     : null;
   const usageCards: UsageCard[] = [
@@ -914,7 +892,7 @@ export function FilePage() {
                 {
                   value: "usage",
                   label: t("files.tab.usage"),
-                  count: usageCards.length || undefined,
+                  count: usageCards.length + (usage?.other ?? 0) || undefined,
                   loading: usageQuery.isPending,
                   testId: "file-tab-usage",
                   content: (
@@ -938,11 +916,6 @@ export function FilePage() {
                       }
                     >
                       <UsageCards items={usageCards} testId="file-usage" />
-                      {usage && usage.other > 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                          {t("files.otherUses", { count: usage.other })}
-                        </p>
-                      ) : null}
                     </TabBody>
                   ),
                 },

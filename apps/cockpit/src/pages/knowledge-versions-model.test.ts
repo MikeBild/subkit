@@ -4,6 +4,7 @@ import { CATALOGS, type TranslationKey, translate } from "@/lib/i18n";
 import {
   authorName,
   type KnowledgeVersion,
+  keptVersionCount,
   previousVersion,
   restoreHint,
   versionChange,
@@ -104,5 +105,17 @@ describe("knowledge versions model", () => {
     const keys = Object.keys(CATALOGS.en).filter((key) => key.startsWith("knowledge.versions."));
     expect(keys.length).toBeGreaterThan(10);
     for (const key of keys) expect(CATALOGS.de[key as TranslationKey]).toBeTruthy();
+  });
+});
+
+describe("version count", () => {
+  test("the version in use always counts, so the summary never reads 0 next to 'only this version'", () => {
+    expect(keptVersionCount(0)).toBe(1);
+    expect(keptVersionCount(1)).toBe(1);
+    expect(keptVersionCount(3)).toBe(3);
+    expect(translate("de", "skills.versions.one", { count: keptVersionCount(0) })).toBe(
+      "1 Version",
+    );
+    expect(translate("de", "knowledge.versions.empty")).toBe("Nur diese Version.");
   });
 });

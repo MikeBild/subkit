@@ -262,6 +262,7 @@ export function ConnectorPage({
       return signInFailureLine(failedSignIn, t);
     if (strip.kind === "unreachable" && probe.data && !probe.data.ok)
       return probe.data.detail ?? t("connectors.probeFailed");
+    if (strip.kind === "limited") return text(record, "health_reason");
     if (strip.kind === "expired")
       return (
         [

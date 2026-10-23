@@ -42,7 +42,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useI18n } from "@/lib/i18n-context";
-import { PREFETCH_MARGIN, scrollRoot, wantsNextPage } from "@/lib/infinite-scroll";
+import { activeScroller, PREFETCH_MARGIN, scrollRoot, wantsNextPage } from "@/lib/infinite-scroll";
 import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
 import { useColumnToggleClaim } from "./column-toggle-claim";
@@ -77,6 +77,24 @@ export interface InfiniteRows {
   fetchNextPage(): unknown;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
+}
+
+const RESTORE_FRAMES = 30;
+
+function listScroller(surface: HTMLElement): HTMLElement | null {
+  const boxes: HTMLElement[] = [...surface.querySelectorAll<HTMLElement>("[data-list-scroller]")];
+  for (let box = surface.parentElement; box; box = box.parentElement) boxes.push(box);
+  return (
+    activeScroller(
+      boxes.map((element) => ({
+        element,
+        scrollHeight: element.scrollHeight,
+        clientHeight: element.clientHeight,
+        scrollTop: element.scrollTop,
+        overflowY: getComputedStyle(element).overflowY,
+      })),
+    )?.element ?? null
+  );
 }
 
 export function InfiniteSentinel({
@@ -404,11 +422,17 @@ export function DataTable<TData extends RowData>({
     const entry = readListReturn(listPath);
     if (!entry?.openedId || !data.some((row) => getRowId(row) === entry.openedId)) return;
     settleListReturn(listPath);
-    const root = surface.current
-      ? scrollRoot(surface.current, (box) => getComputedStyle(box).overflowY)
-      : null;
-    if (root) root.scrollTop = entry.scrollTop;
     setReturnedId(entry.openedId);
+    let frame = 0;
+    let tries = 0;
+    const restore = () => {
+      const root = surface.current ? listScroller(surface.current) : null;
+      if (root) root.scrollTop = entry.scrollTop;
+      if ((!root || root.scrollTop < entry.scrollTop - 1) && ++tries < RESTORE_FRAMES)
+        frame = requestAnimationFrame(restore);
+    };
+    restore();
+    return () => cancelAnimationFrame(frame);
   }, [remembers, data, getRowId, pending]);
   useEffect(() => {
     if (!returnedId) return;
@@ -417,9 +441,7 @@ export function DataTable<TData extends RowData>({
   }, [returnedId]);
   const openRow = (row: TData) => {
     if (remembers) {
-      const root = surface.current
-        ? scrollRoot(surface.current, (box) => getComputedStyle(box).overflowY)
-        : null;
+      const root = surface.current ? listScroller(surface.current) : null;
       rememberListReturn(routerPath(window.location.pathname), {
         search: window.location.search,
         scrollTop: root?.scrollTop ?? 0,
@@ -635,6 +657,7 @@ export function DataTable<TData extends RowData>({
             cards ? "hidden @4xl:block" : "block",
             stateOnly ? null : "rounded-lg border",
           )}
+          data-list-scroller=""
           data-testid={`${collectionId}-desktop`}
         >
           {stateOnly ? stateBlock : null}
@@ -824,6 +847,7 @@ export function DataTable<TData extends RowData>({
         {cards ? (
           <div
             className="min-h-0 overflow-y-auto @4xl:hidden"
+            data-list-scroller=""
             data-testid={`${collectionId}-mobile`}
           >
             {showSkeleton ? (

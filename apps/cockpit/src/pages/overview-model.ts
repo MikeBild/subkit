@@ -1,6 +1,7 @@
 import type { components } from "@/api/schema";
 import { growthLine } from "@/lib/authority-growth";
 import { causeClassKey } from "@/lib/cause-class";
+import { CONNECTOR_STRIP_KEYS } from "@/lib/connector-strip";
 import { CATALOGS, type PluralKey, pluralKey, type TranslationKey } from "@/lib/i18n";
 import { clipAtWord } from "@/lib/presentation";
 
@@ -501,7 +502,7 @@ const SHORT_REASON_KEYS = {
   scheduler_stale: "overview.short.scheduler_stale",
   needs_reauth: "overview.short.needs_reauth",
   needs_update: "overview.short.needs_update",
-  degraded: "overview.short.degraded",
+  degraded: CONNECTOR_STRIP_KEYS.limited,
   unhealthy: "overview.short.unhealthy",
   refresh_refused: "overview.short.refresh_refused",
   refresh_failed: "overview.short.refresh_failed",
@@ -532,7 +533,7 @@ const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: T
   patch_proposed: { state: "proposed", label: "workflowStrip.state.repairPrepared" },
   needs_reauth: { state: "expired", label: "connectorStrip.state.expired" },
   needs_update: { state: "needs_update", label: "connectors.healthState.needsUpdate" },
-  degraded: { state: "degraded", label: "connectors.healthState.degraded" },
+  degraded: { state: "degraded", label: CONNECTOR_STRIP_KEYS.limited },
   unhealthy: { state: "failed", label: "workflowStrip.state.failing" },
   refresh_refused: { state: "expired", label: "connectorStrip.state.expired" },
   refresh_failed: { state: "expired", label: "connectorStrip.state.expired" },

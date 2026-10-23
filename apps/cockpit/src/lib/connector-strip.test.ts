@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { connectorHealthLabel } from "@/lib/connector-auth-state";
 import {
   CONNECTOR_STRIP_KEYS,
   type ConnectorStripInput,
@@ -7,7 +8,8 @@ import {
   connectorStrip,
   connectorStripActionKey,
 } from "@/lib/connector-strip";
-import { CATALOGS } from "@/lib/i18n";
+import { CATALOGS, translate } from "@/lib/i18n";
+import { attentionRow } from "@/pages/overview-model";
 
 function input(overrides: Partial<ConnectorStripInput>): ConnectorStripInput {
   return {
@@ -156,8 +158,64 @@ describe("connector state of a listed connector", () => {
     ]);
     expect(label({ auth_type: "none", enabled: false })).toEqual(["Ausgeschaltet", "warn"]);
     expect(label({ auth_type: "bearer", health_state: "degraded" })).toEqual([
+      "Eingeschränkt",
+      "warn",
+    ]);
+  });
+
+  test("a stored degraded health reads with one word in the list, the detail strip and the overview", () => {
+    const listed = connectorRecordStrip({ auth_type: "none", health_state: "degraded" });
+    const detail = connectorStrip({
+      auth: "not_required",
+      way: null,
+      enabled: true,
+      health: "degraded",
+      probe: null,
+      missingScopes: 0,
+      returned: false,
+      signInFailed: false,
+      rights: { write: true, test: true },
+    });
+    const overview = attentionRow(
+      {
+        id: "connector:c",
+        class: "degraded",
+        severity: "warning",
+        kind: "connector",
+        subject: { kind: "connector", id: "c", name: "Status API" },
+        reason: "degraded",
+        trigger: null,
+        cause_class: null,
+        counts: {},
+        since: "2026-10-20T08:00:00.000Z",
+        deadline: null,
+        detail: null,
+        actions: [],
+      } as unknown as Parameters<typeof attentionRow>[0],
+      (key, values) => translate("de", key, values),
+    );
+    expect(CONNECTOR_STRIP_KEYS[listed.kind]).toBe(CONNECTOR_STRIP_KEYS[detail.kind]);
+    expect(overview.badge.label).toBe(CONNECTOR_STRIP_KEYS[listed.kind]);
+    expect(connectorHealthLabel("degraded")).toBe(overview.badge.label);
+    expect(CATALOGS.de[CONNECTOR_STRIP_KEYS[detail.kind]]).toBe("Eingeschränkt");
+    expect(detail.action).toEqual({ kind: "recheck" });
+  });
+
+  test("only a failed live check says unreachable", () => {
+    const strip = connectorStrip({
+      auth: "not_required",
+      way: null,
+      enabled: true,
+      health: "degraded",
+      probe: { ok: false },
+      missingScopes: 0,
+      returned: false,
+      signInFailed: false,
+      rights: { write: true, test: true },
+    });
+    expect([strip.kind, CATALOGS.de[CONNECTOR_STRIP_KEYS[strip.kind]]]).toEqual([
+      "unreachable",
       "Nicht erreichbar",
-      "error",
     ]);
   });
 });

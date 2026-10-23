@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type ScrollBox, scrollRoot, wantsNextPage } from "./infinite-scroll";
+import { activeScroller, type ScrollBox, scrollRoot, wantsNextPage } from "./infinite-scroll";
 
 interface Box extends ScrollBox {
   name: string;
@@ -63,5 +63,40 @@ describe("next page", () => {
     expect(
       wantsNextPage([{ isIntersecting: true }], { hasNextPage: false, isFetchingNextPage: false }),
     ).toBe(false);
+  });
+});
+
+describe("the element a list scrolls in", () => {
+  const box = (
+    name: string,
+    scrollHeight: number,
+    clientHeight: number,
+    scrollTop = 0,
+    overflowY = "auto",
+  ) => ({
+    name,
+    scrollHeight,
+    clientHeight,
+    scrollTop,
+    overflowY,
+  });
+
+  test("on a phone the card list scrolls inside itself, not the page", () => {
+    const hiddenTable = box("desktop", 0, 0);
+    const cards = box("mobile", 1645, 426, 600);
+    const page = box("page", 796, 796, 0, "hidden");
+    expect(activeScroller([hiddenTable, cards, page])?.name).toBe("mobile");
+  });
+
+  test("on a wide screen the page scrolls and the hidden card list is ignored", () => {
+    const table = box("desktop", 562, 562);
+    const cards = box("mobile", 0, 0);
+    const page = box("page", 2400, 900, 320);
+    expect(activeScroller([table, cards, page])?.name).toBe("page");
+  });
+
+  test("before anything is scrolled, the first scrollable element wins; none scrolls, none is chosen", () => {
+    expect(activeScroller([box("mobile", 1645, 426), box("page", 2000, 900)])?.name).toBe("mobile");
+    expect(activeScroller([box("a", 100, 100), box("b", 500, 400, 0, "visible")])).toBeNull();
   });
 });

@@ -38,7 +38,10 @@ import { type CursorPage, useInfiniteList } from "@/lib/use-infinite-list";
 import { humanizeCategory } from "@/lib/workflow-category";
 import { triggerKindOf } from "@/lib/workflow-flow";
 import {
+  CATALOG_ALL_GROUPS,
+  CATALOG_GROUPS,
   CATALOG_WORKFLOW_FILTER_STATUSES,
+  catalogGroupFromSearch,
   catalogListParams,
   catalogOperatingStatus,
   OPERATING_STATUS_KEYS,
@@ -65,6 +68,7 @@ interface CatalogState {
   health: ConnectorHealthFilter | null;
   sort: string;
   order: "asc" | "desc";
+  group: string;
 }
 
 interface CategoryCount {
@@ -85,6 +89,7 @@ interface CatalogConfig {
   actionKey?: TranslationKey;
   defaultSort: string;
   statuses: readonly WorkflowStatusFilter[];
+  groups: readonly string[];
 }
 
 const CONFIG: Record<CatalogResource, CatalogConfig> = {
@@ -100,6 +105,7 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     actionKey: "resource.workflows.action",
     defaultSort: "updated_at",
     statuses: CATALOG_WORKFLOW_FILTER_STATUSES,
+    groups: CATALOG_GROUPS.workflows,
   },
   connectors: {
     endpoint: "/v1/connectors",
@@ -113,6 +119,7 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     actionKey: "resource.connectors.action",
     defaultSort: "updated_at",
     statuses: [],
+    groups: CATALOG_GROUPS.connectors,
   },
 };
 
@@ -149,6 +156,7 @@ function parseState(config: CatalogConfig): CatalogState {
         : null,
     sort: params.get("sort") ?? config.defaultSort,
     order: order === "asc" ? "asc" : "desc",
+    group: catalogGroupFromSearch(window.location.search, config.groups),
   };
 }
 
@@ -177,6 +185,7 @@ function useCatalogState(config: CatalogConfig) {
       if (next.health) params.set("health", next.health);
       if (next.sort !== config.defaultSort) params.set("sort", next.sort);
       if (next.order !== "desc") params.set("order", next.order);
+      if (next.group !== CATALOG_ALL_GROUPS) params.set("group", next.group);
       const origin = new URLSearchParams(window.location.search).get("origin");
       if (origin) params.set("origin", origin);
       const suffix = params.size > 0 ? `?${params}` : "";
@@ -361,7 +370,8 @@ export function CatalogPage({
   const navigate = useNavigate();
   const [state, setState] = useCatalogState(config);
   const [search, setSearch] = useState(state.q);
-  const [groupMode, setGroupMode] = useState("all");
+  const groupMode = state.group;
+  const setGroupMode = useCallback((group: string) => setState({ group }), [setState]);
   const origin = useCatalogOrigin();
   const debouncedSearch = useDebouncedValue(search);
   useEffect(() => setSearch(state.q), [state.q]);

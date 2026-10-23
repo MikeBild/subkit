@@ -32,3 +32,18 @@ export function wantsNextPage(
     entries.some((entry) => entry.isIntersecting)
   );
 }
+
+export interface ScrollCandidate {
+  scrollHeight: number;
+  clientHeight: number;
+  scrollTop: number;
+  overflowY: string;
+}
+
+export function activeScroller<T extends ScrollCandidate>(candidates: readonly T[]): T | null {
+  const scrolling = candidates.filter(
+    (box) =>
+      SCROLLING.has(box.overflowY) && box.clientHeight > 0 && box.scrollHeight > box.clientHeight,
+  );
+  return scrolling.find((box) => box.scrollTop > 0) ?? scrolling[0] ?? null;
+}

@@ -1,7 +1,9 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
+  CATALOG_GROUPS,
   CATALOG_WORKFLOW_FILTER_STATUSES,
   type CatalogQueryState,
+  catalogGroupFromSearch,
   catalogListParams,
   catalogOperatingStatus,
 } from "./catalog-model";
@@ -47,4 +49,20 @@ test("missing operating evidence never falls back to a lifecycle success state",
   expect(catalogOperatingStatus("archived")).toBe("unknown");
   expect(catalogOperatingStatus("failing")).toBe("failing");
   expect(catalogOperatingStatus("active")).toBe("active");
+});
+
+describe("catalog grouping in the address", () => {
+  test("a known grouping is read back from the address, so detail → back keeps the tab", () => {
+    expect(catalogGroupFromSearch("?group=status&category=sales", CATALOG_GROUPS.workflows)).toBe(
+      "status",
+    );
+    expect(catalogGroupFromSearch("?group=trigger", CATALOG_GROUPS.workflows)).toBe("trigger");
+    expect(catalogGroupFromSearch("?group=health", CATALOG_GROUPS.connectors)).toBe("health");
+  });
+
+  test("an unknown, foreign or missing grouping falls back to all", () => {
+    expect(catalogGroupFromSearch("?group=health", CATALOG_GROUPS.workflows)).toBe("all");
+    expect(catalogGroupFromSearch("?group=<x>", CATALOG_GROUPS.connectors)).toBe("all");
+    expect(catalogGroupFromSearch("", CATALOG_GROUPS.workflows)).toBe("all");
+  });
 });
