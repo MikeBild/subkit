@@ -74,7 +74,12 @@ export function ConnectorOnboarding({ canChat }: { canChat: boolean }) {
                 key={template.slug}
                 title={template.name}
                 line={template.description}
-                lead={<ServiceIcon service={templateIdentity(template.slug)} tile="md" />}
+                lead={
+                  <ServiceIcon
+                    service={templateIdentity(template.slug, template.base_url)}
+                    tile="md"
+                  />
+                }
                 onSelect={() => open({ way: "template", template: template.slug })}
                 testId={`connector-onboarding-${template.slug}`}
               />

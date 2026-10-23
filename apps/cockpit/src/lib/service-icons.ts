@@ -107,7 +107,13 @@ export function serviceIdentity(source: ServiceSource, selfHost?: string | null)
   return { kind: "generic", driver: source.driver ?? null };
 }
 
-export function templateIdentity(templateSlug: string): ServiceIdentity {
+export function templateIdentity(
+  templateSlug: string,
+  baseUrl?: string | null,
+  selfHost: string | null = currentHost(),
+): ServiceIdentity {
+  const host = hostOf(baseUrl);
+  if (host && selfHost && host === selfHost.toLowerCase()) return { kind: "subkit" };
   const key = templateService(templateSlug);
   return key ? { kind: "brand", key } : { kind: "generic", driver: null };
 }

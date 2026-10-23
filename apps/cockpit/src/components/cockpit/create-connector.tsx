@@ -170,7 +170,10 @@ function ServiceGrid({
                 )}
                 data-testid={`create-template-${template.slug}`}
               >
-                <ServiceIcon service={templateIdentity(template.slug)} className="size-[18px]" />
+                <ServiceIcon
+                  service={templateIdentity(template.slug, template.base_url)}
+                  className="size-[18px]"
+                />
                 <span className="min-w-0 truncate">{template.name}</span>
               </button>
             </li>
@@ -643,7 +646,7 @@ export function CreateConnectorDialog({
           workspace={session.tenant.display_name}
           service={
             template
-              ? templateIdentity(template.slug)
+              ? templateIdentity(template.slug, reviewAddress)
               : serviceIdentity({ display_name: serviceName, base_url: address }, currentHost())
           }
           serviceName={serviceName}

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { connectorHref, workflowHref } from "@/app/links";
+import { connectorService, useConnectorRecords } from "@/components/cockpit/connector-names";
 import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
   DataState,
@@ -20,7 +21,7 @@ import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { templateIdentity } from "@/lib/service-icons";
+import { type ServiceIdentity, templateIdentity } from "@/lib/service-icons";
 import { stepKindKey } from "@/lib/workflow-steps";
 import {
   addressedConnectors,
@@ -30,6 +31,7 @@ import {
   missingConnectors,
   NEW_CONNECTOR,
   planSolution,
+  type SolutionConnector,
   type SolutionEntry,
   type SolutionTrigger,
   solutionAddressProblem,
@@ -111,6 +113,24 @@ export function useSolutionTemplates(active: boolean) {
   };
 }
 
+type BindingChoice = { connectorId: string | null; address: string | null };
+
+function useBindingService(): (
+  binding: SolutionConnector,
+  choice?: BindingChoice,
+) => ServiceIdentity {
+  const records = useConnectorRecords();
+  return (binding, choice) => {
+    const id = choice
+      ? choice.connectorId
+      : (binding.connector_id ?? binding.candidates[0]?.id ?? null);
+    const record = id ? records.find((item) => item.id === id) : undefined;
+    return record
+      ? connectorService(record)
+      : templateIdentity(binding.template, choice?.address ?? null);
+  };
+}
+
 export function SolutionGallery({
   entries,
   pending,
@@ -127,6 +147,7 @@ export function SolutionGallery({
   limit?: number;
 }) {
   const { t, locale } = useI18n();
+  const serviceOf = useBindingService();
   const tag = LOCALE_TAGS[locale];
   if (pending) return <RowsSkeleton count={3} testId="create-solution-loading" />;
   if (failed)
@@ -153,9 +174,14 @@ export function SolutionGallery({
             key={entry.recipe_slug}
             title={text.title}
             line={text.line}
-            icons={[...new Set(entry.connectors.map((connector) => connector.template))].map(
-              (template) => <ServiceIcon key={template} service={templateIdentity(template)} />,
-            )}
+            icons={entry.connectors
+              .filter(
+                (connector, index, all) =>
+                  all.findIndex((other) => other.template === connector.template) === index,
+              )
+              .map((connector) => (
+                <ServiceIcon key={connector.template} service={serviceOf(connector)} />
+              ))}
             meta={[
               <>
                 <Zap aria-hidden="true" />
@@ -189,6 +215,16 @@ export function useSolutionFlow(
   const created = useRef<Record<string, string>>({});
   const pack = useQuery({ queryKey: SOLUTIONS_KEY, enabled: active, queryFn: fetchSolutions });
   const catalog = useQuery({ queryKey: TEMPLATES_KEY, enabled: active, queryFn: fetchTemplates });
+  const serviceOf = useBindingService();
+  const bindingChoice = (connector: SolutionConnector): BindingChoice => {
+    const choice = choiceOf(connector, choices);
+    if (choice.kind === "existing") return { connectorId: choice.id, address: null };
+    const template = catalog.data?.items.find((item) => item.slug === connector.template);
+    return {
+      connectorId: null,
+      address: template?.base_url ?? addresses[connector.placeholder] ?? null,
+    };
+  };
   const addressed = (entry: SolutionEntry) =>
     addressedConnectors(entry, catalog.data?.items ?? [], choices);
   const clear = () => {
@@ -311,7 +347,7 @@ export function useSolutionFlow(
                           className="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm"
                         >
                           <ServiceIcon
-                            service={templateIdentity(connector.template)}
+                            service={serviceOf(connector, bindingChoice(connector))}
                             className="size-[18px]"
                           />
                           <span className="min-w-0 flex-1 truncate">

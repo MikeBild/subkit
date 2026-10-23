@@ -31,6 +31,20 @@ describe("service identity", () => {
     for (const key of Object.values(TEMPLATE_SERVICES)) expect(SERVICE_ICONS[key]).toBeDefined();
   });
 
+  test("a generic template pointing at SubKit itself shows the SubKit mark, otherwise the plug", () => {
+    expect(templateIdentity("http", "https://sk.example.com/v1", "sk.example.com")).toEqual({
+      kind: "subkit",
+    });
+    expect(templateIdentity("http", "https://api.example.org/v1", "sk.example.com")).toEqual({
+      kind: "generic",
+      driver: null,
+    });
+    expect(templateIdentity("http", null, "sk.example.com")).toEqual({
+      kind: "generic",
+      driver: null,
+    });
+  });
+
   test("the template wins over the address and the name", () => {
     expect(
       serviceIdentity({
