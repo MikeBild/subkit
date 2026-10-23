@@ -268,3 +268,21 @@ export function areaSentences(area: SettingAreaId, facts: AreaSentenceFacts): Ar
     },
   ];
 }
+
+const MICROUNITS = /^(0|[1-9]\d{0,17})$/;
+const WHOLE_TOKENS = /^\d+$/;
+
+export function settingsGuidedErrors(
+  items: readonly SettingItem[],
+  drafts: Readonly<Record<string, { text: string }>>,
+): string[] {
+  const effective = (path: string) => drafts[path]?.text ?? stringValue(items, path);
+  return Object.entries(drafts).flatMap(([path, draft]) => {
+    if (path.startsWith(HOSTED_LLM_PREFIX) && path.endsWith("_microunits"))
+      return MICROUNITS.test(draft.text) ? [] : [path];
+    if (path === "tokens.monthly_budget") return WHOLE_TOKENS.test(draft.text.trim()) ? [] : [path];
+    if (path === "llm.fallback_provider")
+      return draft.text !== "" && draft.text === effective("llm.provider") ? [path] : [];
+    return [];
+  });
+}

@@ -149,16 +149,22 @@ function RuleEvents({ rule }: { rule: NotificationRuleItem }) {
 export function useNotificationActions({
   onCreateRule,
   onCreateChannel,
+  outline = false,
 }: {
   onCreateRule(): void;
   onCreateChannel(): void;
+  outline?: boolean;
 }) {
   const { t } = useI18n();
   const session = useSession();
   if (!session.permissions.includes("notification:write")) return { action: null, secondary: null };
   return {
     action: (
-      <Button onClick={onCreateRule} data-testid="notifications-rule-create">
+      <Button
+        variant={outline ? "outline" : "default"}
+        onClick={onCreateRule}
+        data-testid="notifications-rule-create"
+      >
         {t("notifications.createRule")}
       </Button>
     ),

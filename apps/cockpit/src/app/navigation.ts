@@ -164,7 +164,12 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         permission: "settings:read",
         anyPermissions: ["settings:read", "notification:read"],
         icon: Settings,
-        api: ["GET /v1/settings", "GET /v1/notifications/rules", "GET /v1/notifications/channels"],
+        api: [
+          "GET /v1/settings",
+          "GET /v1/settings/catalog/models",
+          "GET /v1/notifications/rules",
+          "GET /v1/notifications/channels",
+        ],
       },
     ],
   },

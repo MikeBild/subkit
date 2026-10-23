@@ -335,6 +335,23 @@ export function settingDraftScope(
   return requested === "tenant" && item.meta.scope === "tenant" ? "tenant" : "global";
 }
 
+export function pendingSettingDrafts(
+  items: readonly SettingItem[],
+  drafts: SettingDrafts,
+): Record<string, SettingDraft> {
+  const secret = new Set(items.filter((item) => item.meta.sensitive).map((item) => item.path));
+  return Object.fromEntries(
+    Object.entries(drafts).filter(([path, draft]) => !(secret.has(path) && draft.text === "")),
+  );
+}
+
+export function changedSettingItems(
+  items: readonly SettingItem[],
+  drafts: SettingDrafts,
+): SettingItem[] {
+  return items.filter((item) => Object.hasOwn(drafts, item.path));
+}
+
 export type SettingsPatch =
   | { expected_revision: number; changes: Record<string, unknown>; scope: "global" }
   | {

@@ -100,3 +100,29 @@ describe("settings areas", () => {
     expect(areaStatus("access", facts([]))).toBeNull();
   });
 });
+
+describe("guided drafts the save bar has to refuse", () => {
+  const items = [item("llm.provider", "openai")];
+  const draft = (text: string) => ({ text });
+  test("hosted amounts are microunit strings, budgets whole numbers, the replacement differs", async () => {
+    const { settingsGuidedErrors } = await import("@/pages/settings-areas");
+    expect(
+      settingsGuidedErrors(items, {
+        "llm.hosted.tenant_monthly_microunits": draft("0,5"),
+        "llm.hosted.global_monthly_microunits": draft("12500000"),
+        "tokens.monthly_budget": draft("1.5"),
+        "llm.fallback_provider": draft("openai"),
+      }),
+    ).toEqual([
+      "llm.hosted.tenant_monthly_microunits",
+      "tokens.monthly_budget",
+      "llm.fallback_provider",
+    ]);
+    expect(
+      settingsGuidedErrors(items, {
+        "llm.fallback_provider": draft("anthropic"),
+        "tokens.monthly_budget": draft("1000000"),
+      }),
+    ).toEqual([]);
+  });
+});

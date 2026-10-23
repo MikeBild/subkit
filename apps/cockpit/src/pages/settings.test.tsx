@@ -10,6 +10,7 @@ import {
   AuthProvidersEditor,
   authProvidersFromDraft,
   moveAuthProvider,
+  overviewCards,
   removeAuthProvider,
   replaceAuthProvider,
   SettingEnumSelect,
@@ -25,12 +26,19 @@ import {
   SettingsSummary,
   settingRowNotes,
 } from "@/pages/settings";
+import { AiArea } from "@/pages/settings-ai";
+import { CostsArea } from "@/pages/settings-costs";
+import type { GuidedContext } from "@/pages/settings-guided";
 import {
+  changedSettingItems,
+  pendingSettingDrafts,
   SETTING_GROUPS,
   type SettingItem,
   settingAppliesToShown,
   settingNavigation,
+  settingsPatches,
 } from "@/pages/settings-model";
+import { SettingsOverview } from "@/pages/settings-overview";
 import { SettingsRestartOffer } from "@/pages/settings-restart";
 
 function render(node: ReactNode, locale: Locale = "de"): string {
@@ -604,5 +612,188 @@ describe("the sign-in provider editor", () => {
     expect(html).toContain(translate("en", "settings.auth.managedElsewhere"));
     expect(html).toContain('data-testid="settings-auth-provider-2-remove"');
     expect(html).toContain('data-testid="settings-auth-provider-1-issuer-url"');
+  });
+});
+
+describe("the guided settings pages", () => {
+  const tenant = "5870ae6d-e542-48ca-bbcc-108b5ae73f5f";
+  const leaf = (
+    path: string,
+    value: unknown,
+    meta: Partial<SettingItem["meta"]> & { kind: string },
+  ): SettingItem => ({
+    path,
+    value,
+    meta: {
+      source: "default",
+      scope: "tenant",
+      sensitive: false,
+      requiresRestart: false,
+      ...meta,
+    },
+  });
+  const items: SettingItem[] = [
+    leaf("llm.provider", "openai", {
+      kind: "enum",
+      default: "mock",
+      enum_values: ["mock", "anthropic", "openai", "gemini"],
+    }),
+    leaf("llm.model", "gpt-4.1-mini", { kind: "string", default: "" }),
+    leaf("llm.fallback_provider", null, {
+      kind: "enum",
+      default: null,
+      enum_values: ["mock", "anthropic", "openai", "gemini"],
+    }),
+    leaf("llm.fallback_model", "", { kind: "string", default: "" }),
+    leaf("llm.api_key", "", { kind: "string", sensitive: true, default: "" }),
+    leaf("llm.providers.openai.api_key", "***", { kind: "string", sensitive: true, default: "" }),
+    leaf("log.level", "info", { kind: "enum", scope: "global", default: "info" }),
+    leaf("tokens.monthly_budget", 0, { kind: "number", default: 0 }),
+  ];
+  const catalog = {
+    currency: "USD",
+    models: [
+      {
+        provider: "openai" as const,
+        model: "gpt-4.1-mini",
+        display_name: "GPT-4.1 mini",
+        input_per_mtok: 0.4,
+        output_per_mtok: 1.6,
+        price_source: "catalog" as const,
+        badges: { recommended: true, economical: true, capable: false },
+      },
+    ],
+  };
+  const ctx = (overrides: Partial<GuidedContext> = {}): GuidedContext => ({
+    items,
+    globalItems: items,
+    tenantItems: null,
+    drafts: {},
+    canWrite: true,
+    pending: false,
+    scope: "global",
+    scopeAvailable: true,
+    catalog,
+    usage: null,
+    publicBaseUrl: "https://subkit.test",
+    setDraft() {},
+    dropDraft() {},
+    onScope() {},
+    expertHref: () => "/settings",
+    navigate() {},
+    ...overrides,
+  });
+  const filled = (html: string) => html.match(/<button[^>]*data-variant="default"/g)?.length ?? 0;
+
+  test("the overview is a list of area cards with one sentence each, read-only without a save bar", () => {
+    const cards = overviewCards({
+      facts: { items, pendingRestart: [], budgetConsumedShare: null },
+      catalog,
+      usage: null,
+      canWrite: false,
+      locale: "de",
+      t: de,
+      restartAction: null,
+    });
+    const html = render(
+      <>
+        <SettingsReadOnlyNotice canWrite={false} />
+        <SettingsOverview cards={cards} onNavigate={() => {}} />
+      </>,
+    );
+    expect(html).toContain("Du darfst ansehen, nicht ändern.");
+    expect(html).toContain("Nutzt OpenAI mit GPT-4.1 mini. Kein Ersatz, falls OpenAI ausfällt.");
+    expect(html).toContain("Kein Monatslimit. Die KI kann unbegrenzt Kosten verursachen.");
+    expect(html).toContain("Nur Administratoren können hier etwas ändern.");
+    expect(html).toContain('data-testid="settings-area-status-configured"');
+    expect(html).toContain("Alle Einstellungen (für Fachleute)");
+    expect(html).not.toContain('data-testid="settings-change-bar"');
+    expect(html).not.toMatch(/role="tablist"/);
+    expect(filled(html)).toBe(0);
+  });
+
+  test("the assistant page asks in plain words and keeps technical keys out", () => {
+    const html = render(<AiArea ctx={ctx()} />);
+    expect(html).toContain("Welchen KI-Anbieter nutzt du?");
+    expect(html).toContain("Welches Modell soll OpenAI verwenden?");
+    expect(html).toContain("Was passiert, falls OpenAI ausfällt?");
+    expect(html).toContain("Ist der Zugangsschlüssel für OpenAI hinterlegt?");
+    expect(html).toContain("Schlüssel ersetzen");
+    expect(html).toContain("Testmodus ohne echte KI");
+    expect(html).toContain('data-testid="settings-scope-toggle"');
+    expect(visibleMarkup(html)).not.toMatch(/llm\.provider|llm\.model|\bTokens?\b(?!\))/);
+    expect(filled(html)).toBe(0);
+  });
+
+  test("a reader without the right sees disabled controls and the stored key without replace", () => {
+    const html = render(<AiArea ctx={ctx({ canWrite: false, scopeAvailable: false })} />);
+    expect(html).toContain("Hinterlegt (nur Administratoren können ihn ersetzen)");
+    expect(html).toMatch(
+      /data-testid="settings-ai-provider-openai"[^>]*disabled=""|disabled=""[^>]*data-testid="settings-ai-provider-openai"/,
+    );
+    expect(html).not.toContain('data-testid="settings-scope-toggle"');
+  });
+
+  test("a guided draft and a full-list draft count in the same save bar, saved once", () => {
+    const drafts = {
+      "llm.model": { text: "gpt-4o", scope: "tenant" as const },
+      "log.level": { text: "debug", scope: "global" as const },
+      "llm.api_key": { text: "", scope: "global" as const },
+    };
+    const pending = pendingSettingDrafts(items, drafts);
+    const changed = changedSettingItems(items, pending);
+    expect(changed.map((item) => item.path)).toEqual(["llm.model", "log.level"]);
+    expect(
+      settingsPatches({ saved_revision: 4, items }, pending, {}, tenant).map(
+        (patch) => patch.scope,
+      ),
+    ).toEqual(["global", "tenant"]);
+    const html = render(
+      <>
+        <AiArea ctx={ctx({ drafts: pending })} />
+        <SettingsSaveBar
+          count={changed.length}
+          conflict={false}
+          pending={false}
+          invalid={false}
+          onDiscard={() => {}}
+          onReload={() => {}}
+          onSave={() => {}}
+        />
+      </>,
+    );
+    expect(html).toContain("2 ungespeicherte Änderungen");
+    expect(filled(html)).toBe(1);
+  });
+
+  test("an entry that needs correcting heads the save bar and blocks saving", () => {
+    const html = render(
+      <SettingsSaveBar
+        count={1}
+        conflict={false}
+        pending={false}
+        invalid={false}
+        invalidCount={1}
+        onDiscard={() => {}}
+        onReload={() => {}}
+        onSave={() => {}}
+      />,
+    );
+    expect(html).toContain("1 Angabe muss noch korrigiert werden.");
+    expect(html).toMatch(
+      /disabled=""[^>]*data-testid="settings-save"|data-testid="settings-save"[^>]*disabled=""/,
+    );
+  });
+
+  test("the costs page offers token presets with no limit as its own option", () => {
+    const html = render(<CostsArea ctx={ctx()} />);
+    expect(html).toContain("Wie viele Textbausteine darf die KI pro Monat verbrauchen?");
+    expect(html).toContain(">Kein Limit<");
+    expect(html).toContain(">10 Mio.<");
+    expect(html).toContain("Was kostet welches Modell?");
+    expect(html).toContain("GPT-4.1 mini");
+    expect(html).toContain("Eingebaut");
+    expect(html).not.toContain("Wann möchtest du vorgewarnt werden?");
+    expect(filled(html)).toBe(0);
   });
 });
