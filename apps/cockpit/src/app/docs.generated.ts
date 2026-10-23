@@ -94,8 +94,8 @@ export const DOCS: DocsBundle = {
               "height": 788
             }
           ],
-          "sha256": "c4395ed72c369ea1f51a4ff7c50175b0bab2395c613cfdab116390bdfb80a8ca",
-          "body": "## What is SubKit?\n\nSubKit runs your business tasks as governed workflows.\nYou describe the work in plain language. You approve what it may touch. Every run is recorded.\n\n![Overview with key figures for runs, success rate, connector health and cost, the \"Needs you\" list with open decisions and the latest failed runs](/docs-images/intro-overview.en.webp?v=8704e616558b)\n\nThe **Overview** shows its key figures for a **Time window**: **24 h**, **This week**, **Last week**, **This month** or **Last month**.\nWeeks start on Monday, and your time zone applies. The **Usage** page offers the same choice.\nThe **Usage** tile follows the chosen time window and shows how much of the monthly budget is used, for example \"42% of the monthly token budget\".\n\nUse it as SubKit Cloud or run your own engine:\n\n- \"Use SubKit Cloud\": SubKit runs for you, and you sign in from the browser.\n- \"Run the engine\": you run SubKit on your own server.\n\nThen build your first workflow with \"Your first workflow\".\n\n![Documentation page with search, the \"Getting started\" path with steps 1 to 4 and the \"Working with SubKit\" list](/docs-images/intro-docs.en.webp?v=5e17003c4572)"
+          "sha256": "0cef64c4fa3203fe7cbc2ce5d0bea41d72d0c55ba03258f808f3522b9520a37e",
+          "body": "## What is SubKit?\n\nSubKit runs your business tasks as governed workflows.\nYou describe the work in plain language. You approve what it may touch. Every run is recorded.\n\n![Overview with key figures for runs, success rate, connector health and cost, the \"Needs you\" list with open decisions and the latest failed runs](/docs-images/intro-overview.en.webp?v=8704e616558b)\n\nThe **Overview** shows its key figures for a **Time window**: **24 h**, **This week**, **Last week**, **This month** or **Last month**.\nWeeks start on Monday, and your time zone applies. The **Usage** page offers the same choice.\nThe **Usage** tile follows the chosen time window and shows how much of the monthly budget is used, for example \"42% of the monthly token budget\".\nWhat the **Usage** page shows and how you adjust the budget is in \"Keep track of usage and costs\".\n\nUse it as SubKit Cloud or run your own engine:\n\n- \"Use SubKit Cloud\": SubKit runs for you, and you sign in from the browser.\n- \"Run the engine\": you run SubKit on your own server.\n\nThen build your first workflow with \"Your first workflow\".\n\n![Documentation page with search, the \"Getting started\" path with steps 1 to 4 and the \"Working with SubKit\" list](/docs-images/intro-docs.en.webp?v=5e17003c4572)"
         },
         "de": {
           "title": "Was ist SubKit?",
@@ -123,8 +123,8 @@ export const DOCS: DocsBundle = {
               "height": 787
             }
           ],
-          "sha256": "1161110bdc449fcfe1293661f5d831d4c75fccf0432cbee413f29f437e4f7b20",
-          "body": "## Was ist SubKit?\n\nSubKit führt deine Geschäftsaufgaben als kontrollierte Workflows aus.\nDu beschreibst die Arbeit in einfacher Sprache. Du gibst frei, was sie berühren darf. Jeder Lauf wird aufgezeichnet.\n\n![Übersicht mit Kennzahlen zu Läufen, Erfolgsquote, Konnektorzustand und Kosten, der Liste „Braucht dich“ mit offenen Entscheidungen und den letzten fehlgeschlagenen Läufen](/docs-images/intro-overview.de.webp?v=f777470b59a2)\n\nDie **Übersicht** zeigt ihre Kennzahlen für einen **Zeitraum**: **24 Std**, **Diese Woche**, **Letzte Woche**, **Dieser Monat** oder **Letzter Monat**.\nWochen beginnen am Montag, und es gilt deine Zeitzone. Die Seite **Nutzung** bietet dieselbe Auswahl.\nDie Kachel **Nutzung** folgt dem gewählten Zeitraum und zeigt, wie viel Prozent des Monatskontingents verbraucht sind, etwa „42 % des Monatskontingents“.\n\nNutze SubKit Cloud oder betreibe deine eigene Engine:\n\n- „SubKit Cloud nutzen“: SubKit läuft für dich, und du meldest dich im Browser an.\n- „Die Engine betreiben“: Du betreibst SubKit auf deinem eigenen Server.\n\nDanach baust du mit „Dein erster Workflow“ deinen ersten Workflow.\n\n![Dokumentationsseite mit Suche, dem Pfad „Erste Schritte“ mit den Schritten 1 bis 4 und der Liste „Mit SubKit arbeiten“](/docs-images/intro-docs.de.webp?v=05ea155b889b)"
+          "sha256": "628bc57492aeabc5b88b9af17a03e6abe9d4ac6ccedbc3d4a88945ccd52cb348",
+          "body": "## Was ist SubKit?\n\nSubKit führt deine Geschäftsaufgaben als kontrollierte Workflows aus.\nDu beschreibst die Arbeit in einfacher Sprache. Du gibst frei, was sie berühren darf. Jeder Lauf wird aufgezeichnet.\n\n![Übersicht mit Kennzahlen zu Läufen, Erfolgsquote, Konnektorzustand und Kosten, der Liste „Braucht dich“ mit offenen Entscheidungen und den letzten fehlgeschlagenen Läufen](/docs-images/intro-overview.de.webp?v=f777470b59a2)\n\nDie **Übersicht** zeigt ihre Kennzahlen für einen **Zeitraum**: **24 Std**, **Diese Woche**, **Letzte Woche**, **Dieser Monat** oder **Letzter Monat**.\nWochen beginnen am Montag, und es gilt deine Zeitzone. Die Seite **Nutzung** bietet dieselbe Auswahl.\nDie Kachel **Nutzung** folgt dem gewählten Zeitraum und zeigt, wie viel Prozent des Monatskontingents verbraucht sind, etwa „42 % des Monatskontingents“.\nWas die Seite **Nutzung** zeigt und wie du das Kontingent anpasst, steht in „Nutzung und Kosten im Blick“.\n\nNutze SubKit Cloud oder betreibe deine eigene Engine:\n\n- „SubKit Cloud nutzen“: SubKit läuft für dich, und du meldest dich im Browser an.\n- „Die Engine betreiben“: Du betreibst SubKit auf deinem eigenen Server.\n\nDanach baust du mit „Dein erster Workflow“ deinen ersten Workflow.\n\n![Dokumentationsseite mit Suche, dem Pfad „Erste Schritte“ mit den Schritten 1 bis 4 und der Liste „Mit SubKit arbeiten“](/docs-images/intro-docs.de.webp?v=05ea155b889b)"
         }
       }
     },
@@ -1851,6 +1851,174 @@ export const DOCS: DocsBundle = {
           "images": [],
           "sha256": "1d673668a22ddcb3947dfff8f21de18c77d45b8368a27569dc6bc54d7237b570",
           "body": "## Quellen, Skills und Dateien pflegen\n\nQuellen, Skills und Dateien findest du im Cockpit in der Gruppe **Wissen**.\nSubKit bewahrt frühere Stände auf. Du siehst, was sich geändert hat, und holst einen früheren Stand zurück.\n\n### Was du brauchst\n\n- Zum Ansehen: `knowledge:read` für Quellen, `skill:read` für Skills, `file:read` für Dateien.\n- Zum Wiederherstellen und Ersetzen: `knowledge:write`, `skill:write` oder `file:write`.\n\n### Versionen einer Quelle oder eines Skills vergleichen\n\n1. Öffne **Quellen** oder **Skills** und klicke auf eine Quelle oder einen Skill.\n2. Öffne den Tab **Versionen**. Die neueste Version steht oben und ist mit **Aktuell** markiert.\n3. Klicke auf eine Version.\n   Unter **Änderung gegenüber v…** siehst du **Vorher** und **Nachher** nebeneinander.\n\n### Eine frühere Version wiederherstellen\n\n1. Öffne die Version wie oben.\n2. Wähle **Diese Version wiederherstellen**. Die aktuelle Version lässt sich nicht wiederherstellen.\n3. Die Frage **Diese Version wiederherstellen?** erscheint. Bestätige mit **Wiederherstellen**.\n\nSubKit speichert den wiederhergestellten Inhalt als neue Version. Die bisherige Version bleibt unter **Versionen** erhalten.\n\n### Unterhaltungen zu einer Quelle oder einem Skill finden\n\n1. Öffne die Quelle oder den Skill.\n2. Öffne den Tab **Verwendung** und klappe **Unterhaltungen dazu** auf.\n\nDie Liste zeigt Unterhaltungen, die die Quelle oder den Skill mit einem `@`-Verweis nennen.\nBei einer Quelle zählen auch Unterhaltungen, in denen ein Wissenswerkzeug die Quelle gelesen oder gefunden hat.\nBei einem Skill zählen auch Unterhaltungen, die den Skill geladen haben.\nKlicke auf eine Unterhaltung, um sie zu öffnen. Gibt es noch keine, startest du mit **Im Chat fragen** eine neue.\n\n### Eine Datei ersetzen\n\n1. Öffne **Dateien** und klicke auf die Datei.\n2. Öffne **Weitere Aktionen** und wähle **Ersetzen**.\n3. Wähle die neue Datei und bestätige mit **Ersetzen**.\n\nDer neue Dateiname wird übernommen. Der Verweis bleibt gleich, Workflows und Chat nutzen also sofort den neuen Inhalt.\nDer bisherige Inhalt bleibt als frühere Version erhalten.\n\n### Einen früheren Stand einer Datei wiederherstellen\n\n1. Öffne die Datei und den Tab **Verwendung**.\n2. Klappe **Ersetzt** auf. Der Bereich erscheint, sobald eine Datei frühere Versionen hat.\n3. Klicke auf eine Version. Du siehst ihre Vorschau.\n4. Wähle bei einer früheren Version **Wiederherstellen**.\n\nDer frühere Stand wird als neue Version aktuell. Der jetzige Inhalt bleibt als frühere Version erhalten.\n\nGut zu wissen:\n\n- SubKit behält die letzten 20 früheren Versionen einer Datei.\n- Löschst du eine Datei, entfernt das auch alle ihre früheren Versionen.\n\nDasselbe geht mit der sk-CLI:\n\n```bash\nsk files replace <file-id> <path>\nsk files versions <file-id>\nsk files restore <file-id> <version>\n```\n\n### Wenn etwas nicht klappt\n\n| Was du siehst | Was du tust |\n| --- | --- |\n| **Diese Version wiederherstellen** fehlt | Du hast die aktuelle Version geöffnet. Öffne eine frühere. Fehlt der Button weiter, bitte eine Administratorin oder einen Administrator um das Schreibrecht für Quellen oder Skills. |\n| „Für diese Version ist kein Stand gespeichert; sie lässt sich nicht wiederherstellen.“ | Wähle eine andere Version oder ändere den Skill direkt. |\n| Der Bereich **Ersetzt** fehlt | Die Datei wurde noch nie ersetzt. Es gibt noch keine früheren Versionen. |\n| **Ersetzen** fehlt im Menü | Bitte eine Administratorin oder einen Administrator um `file:write`. |"
+        }
+      }
+    },
+    {
+      "slug": "usage-and-costs",
+      "llms_path": "setup.md",
+      "audience": "public",
+      "section": "work",
+      "order": 11,
+      "generated": false,
+      "locales": {
+        "en": {
+          "title": "Keep track of usage and costs",
+          "summary": "See what AI calls cost and what for, and adjust the budget and prices.",
+          "headings": [
+            {
+              "depth": 2,
+              "text": "Keep track of usage and costs",
+              "anchor": "keep-track-of-usage-and-costs"
+            },
+            {
+              "depth": 3,
+              "text": "What you need",
+              "anchor": "what-you-need"
+            },
+            {
+              "depth": 3,
+              "text": "Choose the time window",
+              "anchor": "choose-the-time-window"
+            },
+            {
+              "depth": 3,
+              "text": "The four tiles",
+              "anchor": "the-four-tiles"
+            },
+            {
+              "depth": 3,
+              "text": "Worth a look",
+              "anchor": "worth-a-look"
+            },
+            {
+              "depth": 3,
+              "text": "Cost by origin",
+              "anchor": "cost-by-origin"
+            },
+            {
+              "depth": 3,
+              "text": "Break down by",
+              "anchor": "break-down-by"
+            },
+            {
+              "depth": 3,
+              "text": "Open details",
+              "anchor": "open-details"
+            },
+            {
+              "depth": 3,
+              "text": "Adjust the budget",
+              "anchor": "adjust-the-budget"
+            },
+            {
+              "depth": 3,
+              "text": "Set a price",
+              "anchor": "set-a-price"
+            },
+            {
+              "depth": 3,
+              "text": "Export",
+              "anchor": "export"
+            },
+            {
+              "depth": 3,
+              "text": "Technical details",
+              "anchor": "technical-details"
+            },
+            {
+              "depth": 3,
+              "text": "The same numbers through the CLI or the API",
+              "anchor": "the-same-numbers-through-the-cli-or-the-api"
+            },
+            {
+              "depth": 3,
+              "text": "When something does not work",
+              "anchor": "when-something-does-not-work"
+            }
+          ],
+          "images": [],
+          "sha256": "491ec5b34ed7b88e49b6920639a01630cd7aab504c6c1be2af7f25f490359478",
+          "body": "## Keep track of usage and costs\n\nThe **Usage** page shows what AI calls cost, and what for.\nAn AI call is one request from SubKit to an AI model. Every call costs money.\nAt the top, one sentence sums up the time window, for example \"This week: $84.20 for 1,240 AI calls.\"\nWhen costs rise, the sentence names the largest driver.\n\n### What you need\n\n- To view the page: `stats:read`. By default only the Admin role has it.\n- For **Person** and **Conversation** under **Break down by**: `stats:read:all`. Without it you do not see these tabs.\n- To change the budget and prices: `settings:write`. The Admin role has both.\n\n### Choose the time window\n\nChoose the **Time window** at the top right: **24 h**, **This week**, **Last week**, **This month** or **Last month**.\nWeeks start on Monday, and your time zone applies.\nAll figures compare the window with the same span before.\n\nHow to read the trend:\n\n- **↑ 18%** or **↓ 18%**: more or less than in the window before.\n- **≈ same**: less than 5% difference.\n- **New**: not used in the window before.\n- **–**: there is no data for the window before.\n\n### The four tiles\n\n- **Cost**: the estimated cost of all AI calls in the window.\n- **AI calls**: how often SubKit asked an AI model. When calls failed, it shows for example **3 failed**. A click opens the Failed AI calls.\n- **Budget · Month**: how much of the monthly budget is used. This tile always covers the current month.\n- **Saved by cache**: what reused input saved compared with full price, for example \"40% of input from cache\".\n\nThe forecast sits below the budget. SubKit projects it from the last 7 days:\n\n- **Lasts to month end.**\n- **About 94% by month end.** The budget is getting tight.\n- **Used up on the 26.** The budget does not last to month end.\n- **Used up. Chat, creating and fixes are paused.**\n- **No forecast yet. Too few days this month.** This applies to the first two days of a month.\n\nWhen a model has no price, the cost shows **at least** in front.\nThe amount is then a floor. The real cost is higher.\nBelow it you see how many calls have no price, for example **Calls without a price: 12**.\nWhen no prices are known at all, the tile shows **Cost unknown**.\n\n### Worth a look\n\n**Worth a look** lists what changed clearly or costs money.\nEach notice has a matching action:\n\n| Notice | Action |\n| --- | --- |\n| A workflow costs at least 1.5 times as much per run as in the window before. | **View cost** |\n| A model has no price. | **View model** |\n| Several models have no price. | **View models** |\n| The monthly budget will likely run out before month end. | **Adjust budget** |\n| One person accounts for at least half of the cost. | **View breakdown** |\n\nWhen nothing stands out, it says \"Nothing unusual in this window.\"\n\n### Cost by origin\n\n**Cost by origin** shows the cost per day, or per hour for **24 h**.\nThe bars are stacked by origin:\n\n- **Chat**: replies in conversations.\n- **Designing workflows**: creating and fixing workflows in chat.\n- **Summaries**: short summaries of runs and content.\n- **Checks**: AI checks drafts and results.\n- **Knowledge & files**: reading and describing sources and files.\n- **Workflow runs**: \"Ask AI\" steps in runs.\n- **Other**: everything without a known origin.\n\n**As table** shows the same values as a table with a **Total** column. **As chart** switches back.\nClick an origin in the list below to open its details.\nWhen prices are missing, the chart shows token amounts instead of cost.\n\n### Break down by\n\nUnder **Break down by** you choose **Workflow**, **Person**, **Model** or **Conversation**.\nEach row shows **Cost**, **AI calls**, **Share** and **Trend**.\nSome tabs add a column: **Runs** for Workflow, **Error rate** for Model, **Last active** for Conversation.\n\nThe last row collects what belongs to no row:\n\n- **No workflow (chat, designing, knowledge …)**\n- **No person (schedule, webhook)**\n- **Other** for models\n- **No conversation (runs, knowledge, checks …)**\n\nThat way all rows together add up to the total at the top.\n\n### Open details\n\nClick a row to open its details at the side:\n\n- **Workflow**: **Cost per run**, **AI calls per run**, **Most expensive runs** and **Models used**. **Open workflow** takes you to the workflow.\n- **Person**: **Where usage comes from**, plus their **Workflows** and **Conversations**.\n- **Model**: **Share from cache**, **Error rate**, **Price per 1M tokens** and **Response time (typical)**.\n- **Conversation**: cost and AI calls. **Open conversation** takes you to the chat.\n- **Origin**: under **Largest items**, the most expensive workflows, people or models of this origin.\n\nLong conversations get more expensive because every reply reads the history so far. A new topic is worth a new conversation.\n\nYou open **Failed AI calls** from the **AI calls** tile.\nFailed calls still cost money. The sheet names the amount.\nUnder **Where they happen** you see the workflow or conversation and the reason:\n**Provider error**, **Input too large** or **Budget used up**.\n\n### Adjust the budget\n\nThe monthly budget is the maximum number of tokens per month.\n\n1. Click **Adjust budget** under Worth a look, or the forecast in the tile.\n   Without a budget, choose **Set a budget** in the tile.\n2. Enter a value under **Tokens per month**.\n3. Save. The message **Budget saved** confirms the change.\n\nYou need `settings:write` for this, so by default the Admin role.\nWithout it you only see the current state and \"Ask someone with the Admin role.\"\n\nWhat happens as tokens are used:\n\n- From 75% a notice appears.\n- At 100% chat, creating and fixes pause until the first of the month.\n- Approved workflows keep running.\n\nWithout a budget, AI calls are unlimited.\n\n### Set a price\n\nWhen a model has no price, its calls are missing from the cost.\n\n1. Open the model, for example through **View model** or the **Model** tab.\n2. Choose **Set a price**.\n3. Enter **Input per 1M tokens** and **Output per 1M tokens** and save.\n\nThe message **Price saved** confirms the change. The page then calculates with the new price.\nYou need `settings:write` for this too, so by default the Admin role.\nThe price applies to your workspace. In the settings it sits under `tokens.prices`.\n\n### Export\n\n1. Choose **Export** at the top.\n2. Confirm with **Export**.\n\nYou get a CSV file for the chosen window.\nThe file has one line per day, origin and model, or per hour for **24 h**.\nThe columns are the time, **Origin**, **Model**, **AI calls**, the four token kinds, **Cost** and **Currency**.\n\n### Technical details\n\nExpand **Technical details** at the end of the page. It shows:\n\n- **Input tokens**, **Output tokens**, **Cache read**, **Cache written** and **Total**.\n- **Models without a price** and the number of calls without a price.\n- The **Budget** in tokens, for example \"120,000 of 150,000 tokens · 30,000 left\".\n- The **Price source**: built-in list prices per model, or the prices set in `tokens.prices`.\n- Your **Time zone** and the **Internal flows per origin**.\n- The **Query** that fetches the same numbers through the CLI or the API.\n\n### The same numbers through the CLI or the API\n\n`sk stats llm` and `GET /v1/stats/llm` return the same numbers as the page.\nEach answer includes tokens, cost and the savings from the cache.\n\n```bash\nsk stats llm --bucket day --from <from> --to <to> --group-by workflow\n```\n\n- `group_by` breaks down by `model`, `flow`, `user`, `workflow`, `conversation` or `execution`. At most two values at once.\n- `result=` filters by result: `success`, `quota_exhausted`, `context_too_large` or `error`.\n- `workflow_id=` shows only the calls of one workflow.\n- Breakdowns by `user` or `conversation` need `stats:read:all`. That does not apply when `user_id` is your own ID.\n\n### When something does not work\n\n| What you see | What you do |\n| --- | --- |\n| **No rights** instead of the page | Ask someone with the Admin role for `stats:read`. |\n| **Person** and **Conversation** are missing | You lack `stats:read:all`. Ask someone with the Admin role for it. |\n| **at least** in front of the cost | Some models have no price. Add it through **Set a price**. |\n| **Cost unknown** | None of the models used has a price. Add the prices. |\n| \"Ask someone with the Admin role.\" instead of **Adjust budget** | You lack `settings:write`. Ask someone with the Admin role to change the budget. |\n| Chat, creating and fixes are paused | The monthly budget is used up. Raise it or wait for the first of the month. |\n| \"The budget could not be read …\" | Reload the page. This says nothing about whether a budget is set. |\n| \"No AI calls in this window.\" | Choose **Show this month** or another window. |"
+        },
+        "de": {
+          "title": "Nutzung und Kosten im Blick",
+          "summary": "Sieh, was KI-Aufrufe kosten und wofür, und pass Kontingent und Preise an.",
+          "headings": [
+            {
+              "depth": 2,
+              "text": "Nutzung und Kosten im Blick",
+              "anchor": "nutzung-und-kosten-im-blick"
+            },
+            {
+              "depth": 3,
+              "text": "Was du brauchst",
+              "anchor": "was-du-brauchst"
+            },
+            {
+              "depth": 3,
+              "text": "Den Zeitraum wählen",
+              "anchor": "den-zeitraum-wählen"
+            },
+            {
+              "depth": 3,
+              "text": "Die vier Kacheln",
+              "anchor": "die-vier-kacheln"
+            },
+            {
+              "depth": 3,
+              "text": "Auffälligkeiten",
+              "anchor": "auffälligkeiten"
+            },
+            {
+              "depth": 3,
+              "text": "Kosten nach Herkunft",
+              "anchor": "kosten-nach-herkunft"
+            },
+            {
+              "depth": 3,
+              "text": "Aufschlüsseln nach",
+              "anchor": "aufschlüsseln-nach"
+            },
+            {
+              "depth": 3,
+              "text": "Details öffnen",
+              "anchor": "details-öffnen"
+            },
+            {
+              "depth": 3,
+              "text": "Kontingent anpassen",
+              "anchor": "kontingent-anpassen"
+            },
+            {
+              "depth": 3,
+              "text": "Preis hinterlegen",
+              "anchor": "preis-hinterlegen"
+            },
+            {
+              "depth": 3,
+              "text": "Exportieren",
+              "anchor": "exportieren"
+            },
+            {
+              "depth": 3,
+              "text": "Technische Angaben",
+              "anchor": "technische-angaben"
+            },
+            {
+              "depth": 3,
+              "text": "Dieselben Zahlen per CLI oder API",
+              "anchor": "dieselben-zahlen-per-cli-oder-api"
+            },
+            {
+              "depth": 3,
+              "text": "Wenn etwas nicht klappt",
+              "anchor": "wenn-etwas-nicht-klappt"
+            }
+          ],
+          "images": [],
+          "sha256": "7db8a70e8ebd7edb1f5631ded57a4b79ba17aa58564a8420e7dcbf3300ab1911",
+          "body": "## Nutzung und Kosten im Blick\n\nDie Seite **Nutzung** zeigt, was KI-Aufrufe kosten und wofür.\nEin KI-Aufruf ist eine Anfrage von SubKit an ein KI-Modell. Jeder Aufruf kostet.\nGanz oben steht ein Satz, der den Zeitraum zusammenfasst, etwa „Diese Woche 84,20 $ für 1.240 KI-Aufrufe.“\nSteigen die Kosten, nennt der Satz den größten Treiber.\n\n### Was du brauchst\n\n- Zum Ansehen: `stats:read`. Standardmäßig hat das nur die Rolle Admin.\n- Für **Person** und **Unterhaltung** unter **Aufschlüsseln nach**: `stats:read:all`. Ohne dieses Recht siehst du diese Tabs nicht.\n- Zum Ändern von Kontingent und Preisen: `settings:write`. Die Rolle Admin hat beide Rechte.\n\n### Den Zeitraum wählen\n\nWähle oben rechts den **Zeitraum**: **24 Std**, **Diese Woche**, **Letzte Woche**, **Dieser Monat** oder **Letzter Monat**.\nWochen beginnen am Montag, und es gilt deine Zeitzone.\nAlle Zahlen vergleichen den Zeitraum mit dem gleich langen Abschnitt davor.\n\nSo liest du den Trend:\n\n- **↑ 18 %** oder **↓ 18 %**: mehr oder weniger als im Zeitraum davor.\n- **≈ gleich**: weniger als 5 % Unterschied.\n- **Neu**: im Zeitraum davor noch nicht genutzt.\n- **–**: Für den Zeitraum davor fehlen Daten.\n\n### Die vier Kacheln\n\n- **Kosten**: geschätzte Kosten aller KI-Aufrufe im Zeitraum.\n- **KI-Aufrufe**: wie oft SubKit ein KI-Modell gefragt hat. Gibt es Fehler, steht darunter etwa **3 fehlgeschlagen**. Ein Klick öffnet die Fehlgeschlagenen KI-Aufrufe.\n- **Kontingent · Monat**: wie viel vom Monatskontingent verbraucht ist. Diese Kachel gilt immer für den laufenden Monat.\n- **Gespart durch Cache**: was wiederverwendete Eingaben gegenüber dem vollen Preis gespart haben, etwa „40 % der Eingaben aus dem Cache“.\n\nUnter dem Kontingent steht die Prognose. SubKit rechnet dafür den Verbrauch der letzten 7 Tage hoch:\n\n- **Reicht bis Monatsende.**\n- **Bis Monatsende etwa 94 %.** Das Kontingent wird knapp.\n- **Aufgebraucht am 26.** Das Kontingent reicht nicht bis Monatsende.\n- **Aufgebraucht. Chat, Erstellen und Korrekturen stehen still.**\n- **Noch keine Prognose. Zu wenige Tage im Monat.** Das gilt für die ersten beiden Tage im Monat.\n\nFehlt für ein Modell ein Preis, steht vor den Kosten **mind.**\nDer Betrag ist dann eine Untergrenze. Die echten Kosten sind höher.\nDarunter steht, wie viele Aufrufe keinen Preis haben, etwa **Aufrufe ohne Preis: 12**.\nFehlen alle Preise, zeigt die Kachel **Kosten unbekannt**.\n\n### Auffälligkeiten\n\nUnter **Auffälligkeiten** steht, was sich deutlich verändert hat oder Geld kostet.\nJeder Hinweis hat eine passende Aktion:\n\n| Hinweis | Aktion |\n| --- | --- |\n| Ein Workflow kostet je Lauf mindestens 1,5-mal so viel wie im Zeitraum davor. | **Kosten ansehen** |\n| Für ein Modell ist kein Preis hinterlegt. | **Modell ansehen** |\n| Für mehrere Modelle ist kein Preis hinterlegt. | **Modelle ansehen** |\n| Das Monatskontingent ist voraussichtlich vor Monatsende aufgebraucht. | **Kontingent anpassen** |\n| Eine Person verursacht mindestens die Hälfte der Kosten. | **Aufschlüsselung ansehen** |\n\nIst alles ruhig, steht dort „Nichts Auffälliges in diesem Zeitraum.“\n\n### Kosten nach Herkunft\n\n**Kosten nach Herkunft** zeigt die Kosten je Tag, bei **24 Std** je Stunde.\nDie Balken sind nach Herkunft gestapelt:\n\n- **Chat**: Antworten in Unterhaltungen.\n- **Workflows entwerfen**: Workflows im Chat erstellen und korrigieren.\n- **Zusammenfassungen**: Kurzfassungen von Läufen und Inhalten.\n- **Prüfungen**: KI prüft Entwürfe und Ergebnisse.\n- **Wissen & Dateien**: Quellen und Dateien lesen und beschreiben.\n- **Workflow-Läufe**: Schritte „KI fragen“ in Läufen.\n- **Sonstiges**: alles, was keiner Herkunft zuzuordnen ist.\n\nMit **Als Tabelle** siehst du dieselben Werte als Tabelle mit einer Spalte **Summe**. **Als Diagramm** schaltet zurück.\nKlick auf eine Herkunft in der Liste darunter, um ihre Details zu öffnen.\nFehlen Preise, zeigt das Diagramm die Token-Menge statt der Kosten.\n\n### Aufschlüsseln nach\n\nUnter **Aufschlüsseln nach** wählst du **Workflow**, **Person**, **Modell** oder **Unterhaltung**.\nJede Zeile zeigt **Kosten**, **KI-Aufrufe**, **Anteil** und **Trend**.\nJe nach Tab kommt eine Spalte dazu: **Läufe** bei Workflow, **Fehlerquote** bei Modell, **Zuletzt** bei Unterhaltung.\n\nDie letzte Zeile sammelt, was keiner Zeile zuzuordnen ist:\n\n- **Ohne Workflow (Chat, Entwerfen, Wissen …)**\n- **Ohne Person (Zeitplan, Webhook)**\n- **Weitere** bei Modellen\n- **Ohne Unterhaltung (Läufe, Wissen, Prüfungen …)**\n\nSo ergeben alle Zeilen zusammen die Summe oben.\n\n### Details öffnen\n\nKlick auf eine Zeile, um ihre Details seitlich zu öffnen:\n\n- **Workflow**: **Kosten je Lauf**, **KI-Aufrufe je Lauf**, **Teuerste Läufe** und **Genutzte Modelle**. Mit **Workflow öffnen** springst du zum Workflow.\n- **Person**: **Woher die Nutzung kommt**, dazu ihre **Workflows** und **Unterhaltungen**.\n- **Modell**: **Anteil aus Cache**, **Fehlerquote**, **Preis je 1 Mio. Token** und **Antwortzeit (typisch)**.\n- **Unterhaltung**: Kosten und KI-Aufrufe. Mit **Unterhaltung öffnen** springst du in den Chat.\n- **Herkunft**: unter **Größte Posten** die teuersten Workflows, Personen oder Modelle dieser Herkunft.\n\nLange Unterhaltungen werden teurer, weil jede Antwort den bisherigen Verlauf mitliest. Für ein neues Thema lohnt eine neue Unterhaltung.\n\n**Fehlgeschlagene KI-Aufrufe** öffnest du über die Kachel **KI-Aufrufe**.\nFehlgeschlagene Aufrufe kosten trotzdem. Das Sheet nennt den Betrag.\nUnter **Wo sie auftreten** siehst du Workflow oder Unterhaltung und den Grund:\n**Fehler beim Anbieter**, **Eingabe zu groß** oder **Kontingent aufgebraucht**.\n\n### Kontingent anpassen\n\nDas Monatskontingent ist die Höchstmenge an Token je Monat.\n\n1. Klick auf **Kontingent anpassen** in den Auffälligkeiten oder auf die Prognose in der Kachel.\n   Ohne Kontingent wählst du **Kontingent setzen** in der Kachel.\n2. Trag unter **Token pro Monat** einen Wert ein.\n3. Speichere. Die Meldung **Kontingent gespeichert** bestätigt die Änderung.\n\nDafür brauchst du `settings:write`, standardmäßig also die Rolle Admin.\nOhne dieses Recht siehst du nur den Stand und „Frag eine Person mit Admin-Rolle.“\n\nWas beim Verbrauch passiert:\n\n- Ab 75 % erscheint ein Hinweis.\n- Ab 100 % pausieren Chat, Erstellen und Korrekturen bis zum Monatsersten.\n- Freigegebene Workflows laufen weiter.\n\nOhne Kontingent sind KI-Aufrufe unbegrenzt.\n\n### Preis hinterlegen\n\nFehlt für ein Modell ein Preis, fehlen seine Aufrufe in den Kosten.\n\n1. Öffne das Modell, etwa über **Modell ansehen** oder den Tab **Modell**.\n2. Wähle **Preis hinterlegen**.\n3. Trag **Eingabe je 1 Mio. Token** und **Ausgabe je 1 Mio. Token** ein und speichere.\n\nDie Meldung **Preis gespeichert** bestätigt die Änderung. Danach rechnet die Seite mit dem neuen Preis.\nAuch dafür brauchst du `settings:write`, standardmäßig also die Rolle Admin.\nDer Preis gilt für deinen Arbeitsbereich. In den Einstellungen steht er unter `tokens.prices`.\n\n### Exportieren\n\n1. Wähle oben **Exportieren**.\n2. Bestätige mit **Exportieren**.\n\nDu bekommst eine CSV-Datei für den gewählten Zeitraum.\nDie Datei hat eine Zeile je Tag, Herkunft und Modell, bei **24 Std** je Stunde.\nDie Spalten sind Zeitpunkt, **Herkunft**, **Modell**, **KI-Aufrufe**, die vier Token-Arten, **Kosten** und **Währung**.\n\n### Technische Angaben\n\nKlappe **Technische Angaben** am Ende der Seite auf. Dort stehen:\n\n- **Eingabe-Token**, **Ausgabe-Token**, **Aus Cache gelesen**, **In Cache geschrieben** und **Gesamt**.\n- **Modelle ohne Preis** und die Zahl der Aufrufe ohne Preis.\n- Das **Kontingent** in Token, etwa „120.000 von 150.000 Token · 30.000 übrig“.\n- Die **Preisquelle**: eingebaute Listenpreise je Modell oder die Preise in `tokens.prices`.\n- Deine **Zeitzone** und die **Internen Abläufe je Herkunft**.\n- Die **Abfrage**, mit der du dieselben Zahlen per CLI oder API holst.\n\n### Dieselben Zahlen per CLI oder API\n\n`sk stats llm` und `GET /v1/stats/llm` liefern dieselben Zahlen wie die Seite.\nJede Antwort enthält Token, Kosten und die Ersparnis durch den Cache.\n\n```bash\nsk stats llm --bucket day --from <from> --to <to> --group-by workflow\n```\n\n- `group_by` schlüsselt nach `model`, `flow`, `user`, `workflow`, `conversation` oder `execution` auf. Höchstens zwei Werte zugleich.\n- `result=` filtert nach Ergebnis: `success`, `quota_exhausted`, `context_too_large` oder `error`.\n- `workflow_id=` zeigt nur die Aufrufe eines Workflows.\n- Aufschlüsselungen nach `user` oder `conversation` brauchen `stats:read:all`. Das gilt nicht, wenn `user_id` deine eigene Kennung ist.\n\n### Wenn etwas nicht klappt\n\n| Was du siehst | Was du tust |\n| --- | --- |\n| **Keine Rechte** statt der Seite | Bitte eine Person mit Admin-Rolle um `stats:read`. |\n| **Person** und **Unterhaltung** fehlen | Dir fehlt `stats:read:all`. Bitte eine Person mit Admin-Rolle darum. |\n| **mind.** vor den Kosten | Für manche Modelle fehlt ein Preis. Hinterleg ihn über **Preis hinterlegen**. |\n| **Kosten unbekannt** | Für keines der genutzten Modelle ist ein Preis hinterlegt. Hinterleg die Preise. |\n| „Frag eine Person mit Admin-Rolle.“ statt **Kontingent anpassen** | Dir fehlt `settings:write`. Bitte eine Person mit Admin-Rolle, das Kontingent zu ändern. |\n| Chat, Erstellen und Korrekturen stehen still | Das Monatskontingent ist aufgebraucht. Erhöhe es oder warte bis zum Monatsersten. |\n| „Das Kontingent war nicht lesbar …“ | Lad die Seite neu. Das sagt nichts darüber, ob ein Kontingent gesetzt ist. |\n| „Keine KI-Aufrufe in diesem Zeitraum.“ | Wähle **Dieser Monat anzeigen** oder einen anderen Zeitraum. |"
         }
       }
     },

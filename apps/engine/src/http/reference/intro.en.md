@@ -16,6 +16,7 @@ You describe the work in plain language. You approve what it may touch. Every ru
 The **Overview** shows its key figures for a **Time window**: **24 h**, **This week**, **Last week**, **This month** or **Last month**.
 Weeks start on Monday, and your time zone applies. The **Usage** page offers the same choice.
 The **Usage** tile follows the chosen time window and shows how much of the monthly budget is used, for example "42% of the monthly token budget".
+What the **Usage** page shows and how you adjust the budget is in "Keep track of usage and costs".
 
 Use it as SubKit Cloud or run your own engine:
 

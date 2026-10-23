@@ -16,6 +16,7 @@ Du beschreibst die Arbeit in einfacher Sprache. Du gibst frei, was sie berühren
 Die **Übersicht** zeigt ihre Kennzahlen für einen **Zeitraum**: **24 Std**, **Diese Woche**, **Letzte Woche**, **Dieser Monat** oder **Letzter Monat**.
 Wochen beginnen am Montag, und es gilt deine Zeitzone. Die Seite **Nutzung** bietet dieselbe Auswahl.
 Die Kachel **Nutzung** folgt dem gewählten Zeitraum und zeigt, wie viel Prozent des Monatskontingents verbraucht sind, etwa „42 % des Monatskontingents“.
+Was die Seite **Nutzung** zeigt und wie du das Kontingent anpasst, steht in „Nutzung und Kosten im Blick“.
 
 Nutze SubKit Cloud oder betreibe deine eigene Engine:
 
