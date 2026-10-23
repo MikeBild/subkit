@@ -178,6 +178,7 @@ function SettingsWorkspace() {
   const [failed, setFailed] = useState(false);
   const [restartOpen, setRestartOpen] = useState(false);
   const [restartNowOpen, setRestartNowOpen] = useState(false);
+  const [formKey, setFormKey] = useState(0);
   const restartNow = useRestartOffer();
   const live = useLiveQueryOptions();
   const query = useQuery({
@@ -258,6 +259,7 @@ function SettingsWorkspace() {
     },
     onSuccess: async () => {
       setDrafts({});
+      setFormKey((key) => key + 1);
       setConflict(false);
       setFailed(false);
       setRestartOpen(false);
@@ -280,12 +282,12 @@ function SettingsWorkspace() {
     router.history.push(absolute(href));
   }
 
-  function setDraft(path: string, text: string) {
+  function setDraft(path: string, text: string, requested: SettingDraftScope = scope) {
     const item = globalItems.find((candidate) => candidate.path === path);
     setFailed(false);
     setDrafts((current) => ({
       ...current,
-      [path]: { text, scope: item ? settingDraftScope(item, scope) : "global" },
+      [path]: { text, scope: item ? settingDraftScope(item, requested) : "global" },
     }));
   }
 
@@ -342,7 +344,7 @@ function SettingsWorkspace() {
   return (
     <Page kind="settings" scroll="page" testId="admin-settings" header={header}>
       <div className="grid gap-4 pb-20" data-testid="settings-system">
-        {canReadEngine && all ? <PreparedChanges canDecide={canWrite} /> : null}
+        {canReadEngine && level.kind !== "area" ? <PreparedChanges canDecide={canWrite} /> : null}
         {view === "loading" ? (
           <DataState state="loading" testId="settings-loading" />
         ) : view === "error" ? (
@@ -366,12 +368,12 @@ function SettingsWorkspace() {
                 onRestart={() => setRestartNowOpen(true)}
               />
             }
-            onDraft={setDraft}
+            onDraft={(path, text) => setDraft(path, text, "global")}
             onDrop={dropDraft}
           />
         ) : (
           <>
-            <SettingsReadOnlyNotice canWrite={canWrite} />
+            <SettingsReadOnlyNotice canWrite={canWrite} ask />
             {level.kind === "overview" ? (
               <SettingsOverview
                 cards={overviewCards({
@@ -410,7 +412,7 @@ function SettingsWorkspace() {
                 }
                 onNavigate={navigate}
               >
-                <GuidedArea area={level.area} ctx={ctx} />
+                <GuidedArea key={`${level.area}-${formKey}`} area={level.area} ctx={ctx} />
               </SettingsAreaFrame>
             )}
           </>
@@ -426,6 +428,7 @@ function SettingsWorkspace() {
           invalidCount={invalidPaths.size}
           onDiscard={() => {
             setDrafts({});
+            setFormKey((key) => key + 1);
             setConflict(false);
             setFailed(false);
           }}

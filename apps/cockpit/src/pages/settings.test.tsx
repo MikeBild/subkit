@@ -697,11 +697,13 @@ describe("the guided settings pages", () => {
     });
     const html = render(
       <>
-        <SettingsReadOnlyNotice canWrite={false} />
+        <SettingsReadOnlyNotice canWrite={false} ask />
         <SettingsOverview cards={cards} onNavigate={() => {}} />
       </>,
     );
-    expect(html).toContain("Du darfst ansehen, nicht ändern.");
+    expect(html).toContain(
+      "Du darfst ansehen, nicht ändern. Für Änderungen frag einen Administrator.",
+    );
     expect(html).toContain("Nutzt OpenAI mit GPT-4.1 mini. Kein Ersatz, falls OpenAI ausfällt.");
     expect(html).toContain("Kein Monatslimit. Die KI kann unbegrenzt Kosten verursachen.");
     expect(html).toContain("Nur Administratoren können hier etwas ändern.");
@@ -783,6 +785,11 @@ describe("the guided settings pages", () => {
     expect(html).toMatch(
       /disabled=""[^>]*data-testid="settings-save"|data-testid="settings-save"[^>]*disabled=""/,
     );
+  });
+
+  test("drafts from the full list are always for all workspaces", () => {
+    const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
+    expect(source).toContain('onDraft={(path, text) => setDraft(path, text, "global")}');
   });
 
   test("the costs page offers token presets with no limit as its own option", () => {

@@ -838,7 +838,13 @@ export function SettingsFilterToggle({
   );
 }
 
-export function SettingsReadOnlyNotice({ canWrite }: { canWrite: boolean }) {
+export function SettingsReadOnlyNotice({
+  canWrite,
+  ask = false,
+}: {
+  canWrite: boolean;
+  ask?: boolean;
+}) {
   const { t } = useI18n();
   if (canWrite) return null;
   return (
@@ -848,6 +854,7 @@ export function SettingsReadOnlyNotice({ canWrite }: { canWrite: boolean }) {
       data-testid="settings-read-only"
     >
       {t("settings.readOnly")}
+      {ask ? ` ${t("settings.readOnly.ask")}` : null}
     </p>
   );
 }
