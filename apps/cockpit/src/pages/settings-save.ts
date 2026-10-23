@@ -1,9 +1,5 @@
 import { apiRequest } from "@/api/client";
-import {
-  type SettingsPatch,
-  type SettingsResponse,
-  settingsActivationPath,
-} from "@/pages/settings-model";
+import { type SettingsPatch, settingsActivationPath } from "@/pages/settings-model";
 
 export const SETTINGS_ENDPOINT = "/v1/settings";
 
@@ -15,12 +11,17 @@ export async function applySettingsPatch(patch: SettingsPatch): Promise<void> {
   await apiRequest(settingsActivationPath(saved), { method: "POST" });
 }
 
-export async function saveSettingChanges(changes: Record<string, unknown>): Promise<void> {
-  const current = await apiRequest<Pick<SettingsResponse, "saved_revision">>(SETTINGS_ENDPOINT);
-  if (current.saved_revision === null) throw new Error("settings have no saved revision");
-  await applySettingsPatch({
-    expected_revision: current.saved_revision,
-    changes,
-    scope: "global",
+export function workspaceSettingEndpoint(path: string, tenantId: string): string {
+  return `${SETTINGS_ENDPOINT}/${encodeURIComponent(path)}?tenant=${encodeURIComponent(tenantId)}`;
+}
+
+export async function saveWorkspaceSetting(
+  path: string,
+  tenantId: string,
+  value: unknown,
+): Promise<void> {
+  await apiRequest(workspaceSettingEndpoint(path, tenantId), {
+    method: "PUT",
+    body: JSON.stringify({ value }),
   });
 }

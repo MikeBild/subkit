@@ -11,7 +11,7 @@ import {
   type StatsWindow,
   type WindowBounds,
 } from "@/pages/operations-figures";
-import { saveSettingChanges } from "@/pages/settings-save";
+import { saveWorkspaceSetting } from "@/pages/settings-save";
 import { ORIGIN_LABEL, WINDOW_OPTION } from "@/pages/usage-format";
 import {
   type BudgetForecast,
@@ -54,9 +54,11 @@ export function BudgetDialog({
   budget,
   forecast,
   canWrite,
+  tenantId,
 }: {
   open: boolean;
   onOpenChange(open: boolean): void;
+  tenantId: string;
   budget: BudgetSummary;
   forecast: BudgetForecast | null;
   canWrite: boolean;
@@ -70,7 +72,7 @@ export function BudgetDialog({
   );
   const value = parseTokens(draft);
   const save = useMutation({
-    mutationFn: () => saveSettingChanges({ [BUDGET_SETTING]: value ?? 0 }),
+    mutationFn: () => saveWorkspaceSetting(BUDGET_SETTING, tenantId, value ?? 0),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["usage-status"] });
       toast.success(t("usage.budget.saved"));
@@ -130,9 +132,11 @@ export function PriceDialog({
   model,
   modelName,
   currentPrices,
+  tenantId,
 }: {
   open: boolean;
   onOpenChange(open: boolean): void;
+  tenantId: string;
   model: string;
   modelName: string;
   currentPrices: readonly unknown[];
@@ -149,16 +153,14 @@ export function PriceDialog({
         (entry) =>
           !(entry && typeof entry === "object" && (entry as { model?: unknown }).model === model),
       );
-      return saveSettingChanges({
-        [PRICE_SETTING]: [
-          ...others,
-          { model, input_per_mtok: inputValue ?? 0, output_per_mtok: outputValue ?? 0 },
-        ],
-      });
+      return saveWorkspaceSetting(PRICE_SETTING, tenantId, [
+        ...others,
+        { model, input_per_mtok: inputValue ?? 0, output_per_mtok: outputValue ?? 0 },
+      ]);
     },
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["usage-llm"] });
-      await client.invalidateQueries({ queryKey: ["usage-settings"] });
+      await client.invalidateQueries({ queryKey: ["usage-price-setting"] });
       toast.success(t("usage.price.saved"));
       onOpenChange(false);
     },

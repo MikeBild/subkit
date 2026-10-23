@@ -50,7 +50,7 @@ import {
   windowBounds,
   windowBucket,
 } from "@/pages/operations-figures";
-import { SETTINGS_ENDPOINT } from "@/pages/settings-save";
+import { workspaceSettingEndpoint } from "@/pages/settings-save";
 import { OriginChartSvg, OriginChartTable, OriginLegend } from "@/pages/usage-chart";
 import {
   BudgetDialog,
@@ -164,7 +164,7 @@ export function UsagePage() {
   const live = useLiveQueryOptions();
   const allowed = session.permissions.includes("stats:read");
   const canAll = session.permissions.includes("stats:read:all");
-  const canWriteSettings = session.permissions.includes("settings:write:global");
+  const canWriteSettings = session.permissions.includes("settings:write");
   const title = t("resource.usage.title");
 
   const [bounds, setBounds] = useState<WindowBounds>(() =>
@@ -234,13 +234,15 @@ export function UsagePage() {
     ...live,
   });
   const settings = useQuery({
-    queryKey: ["usage-settings"],
+    queryKey: ["usage-price-setting", session.tenant.id],
     enabled: allowed && canWriteSettings,
     retry: false,
     queryFn: () =>
-      apiRequest<{ items?: Array<{ path: string; value: unknown }> }>(SETTINGS_ENDPOINT),
+      apiRequest<{ path: string; value: unknown }>(
+        workspaceSettingEndpoint(PRICE_SETTING, session.tenant.id),
+      ),
   });
-  const priceSetting = settings.data?.items?.find((item) => item.path === PRICE_SETTING);
+  const priceSetting = settings.data;
   const directory = useActorDirectory(canAll);
 
   const usage = useMemo(() => llmWindow(flowNow.data), [flowNow.data]);
@@ -582,7 +584,7 @@ export function UsagePage() {
       value={t("usage.kpi.budgetPercent", { percent: percent ?? 0 })}
       tone={pressure ? PRESSURE_TONE[pressure] : null}
       detail={
-        budgetHinted ? (
+        !forecast || forecast.kind === "uncapped" ? null : budgetHinted ? (
           <span title={t("usage.forecast.help")}>
             <ForecastText forecast={forecast} />
           </span>
@@ -1069,7 +1071,7 @@ export function UsagePage() {
         <p className="text-sm text-muted-foreground">{t("usage.tech.access")}</p>
         <CodeBlock
           label={t("usage.tech.query")}
-          code={`sk stats llm --bucket ${unit} --from ${bounds.from} --to ${bounds.to} --group-by ${BREAKDOWN_AXIS[by]}\n\nGET ${llmStatsEndpoint(bounds, BREAKDOWN_AXIS[by])}`}
+          code={`sk stats llm --bucket ${unit} --from ${bounds.from} --to ${bounds.to} --tz ${timeZone} --group-by ${BREAKDOWN_AXIS[by]}\n\nGET ${llmStatsEndpoint(bounds, BREAKDOWN_AXIS[by])}`}
         />
       </div>
     </CollapsibleSection>
@@ -1100,6 +1102,7 @@ export function UsagePage() {
           budget={budget}
           forecast={forecast}
           canWrite={canWriteSettings}
+          tenantId={session.tenant.id}
         />
       ) : null}
       {modelForPrice ? (
@@ -1109,6 +1112,7 @@ export function UsagePage() {
           model={modelForPrice}
           modelName={modelName(modelForPrice)}
           currentPrices={Array.isArray(priceSetting?.value) ? priceSetting.value : []}
+          tenantId={session.tenant.id}
         />
       ) : null}
       {dialog?.kind === "export" ? (
