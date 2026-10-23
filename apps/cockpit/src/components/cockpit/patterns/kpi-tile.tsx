@@ -5,7 +5,7 @@ export const KPI_TILE_BOX =
   "grid min-h-32 min-w-0 content-start gap-0.5 rounded-lg border px-4 py-3 xl:min-h-0";
 export const KPI_TILE_LABEL = "line-clamp-2 min-h-8 text-xs text-muted-foreground xl:min-h-4";
 export const KPI_TILE_VALUE_ROW = "flex min-h-8 min-w-0 items-baseline gap-1";
-export const KPI_TILE_DETAIL = "line-clamp-2 min-h-8 text-xs text-muted-foreground";
+export const KPI_TILE_DETAIL = "min-h-8 text-xs break-words text-muted-foreground";
 const VALUE = "shrink-0 text-2xl font-semibold leading-8 tracking-[-0.02em] tabular-nums";
 
 export function KpiTile({

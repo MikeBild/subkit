@@ -266,6 +266,15 @@ describe("P11 StatusBadge", () => {
     expect(html).toContain(`>${label}</span>`);
   });
 
+  test("a wrapping status keeps its complete text on up to two lines", () => {
+    const label = "Endpunkt gibt es nicht mehr";
+    const html = render(<StatusBadge state="needs_update" label={label} wrap />);
+    expect(html).toContain("h-auto whitespace-normal");
+    expect(html).toContain("min-w-0 break-words");
+    expect(html).not.toContain("truncate");
+    expect(html).toContain(`>${label}</span>`);
+  });
+
   test("tones", () => {
     expect(statusTone("succeeded")).toBe("ok");
     expect(statusTone("RUNNING")).toBe("warn");
@@ -483,6 +492,12 @@ describe("KPI tile placeholder", () => {
     expect(placeholderBox).toBe(KPI_TILE_BOX);
     expect(placeholderRows).toEqual(realRows);
     expect(placeholderRows).toEqual([KPI_TILE_LABEL, KPI_TILE_VALUE_ROW, KPI_TILE_DETAIL]);
+  });
+
+  test("the detail line reserves two lines and wraps instead of truncating", () => {
+    expect(KPI_TILE_DETAIL).toContain("min-h-8");
+    expect(KPI_TILE_DETAIL).not.toContain("line-clamp");
+    expect(KPI_TILE_DETAIL).not.toContain("truncate");
   });
 });
 
