@@ -11,6 +11,7 @@ import {
   skillsLoadState,
   skillTemplateFromSearch,
   skillTemplateKeys,
+  skillTemplates,
   skillVersionBasis,
   skillVersionChange,
   skillVersionRows,
@@ -93,6 +94,14 @@ describe("what a skill covers and where it is used are two answers", () => {
     expect(skillScope(lost)).toBe("unbound");
     expect(skillScope({ scope: "global" })).toBe("global");
     expect(skillScope({ scope: "workflow", workflow_id: null })).toBe("unbound");
+    const template = {
+      scope: "connector",
+      connector_id: null,
+      activates_when: [{ kind: "connector_template", slug: "github-graphql" }],
+    };
+    expect(skillScope(template)).toBe("template");
+    expect(skillTemplates(template)).toEqual(["github-graphql"]);
+    expect(translate("de", skillScopePhraseKey("template"))).toBe("Konnektoren einer Art");
     expect(
       translate("de", "skills.strip.active", {
         scope: translate("de", skillScopePhraseKey(skillScope(bound))),

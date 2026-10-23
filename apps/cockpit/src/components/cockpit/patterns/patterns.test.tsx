@@ -501,5 +501,6 @@ describe("summary parts", () => {
       <FilterBar search={{ value: "", onChange() {}, placeholder: "Eingang durchsuchen" }} />,
     );
     expect(html).toMatch(/data-slot="search-input"[^>]*class="[^"]*min-w-52/);
+    expect(html).toMatch(/data-slot="filter-bar"[^>]*class="[^"]*min-w-72 max-w-full/);
   });
 });

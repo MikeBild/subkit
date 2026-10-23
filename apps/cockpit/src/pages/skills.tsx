@@ -103,6 +103,7 @@ import {
   skillsLoadState,
   skillTemplateFromSearch,
   skillTemplateKeys,
+  skillTemplates,
   skillVersionBasis,
   skillVersionChange,
   skillVersionRows,
@@ -930,11 +931,14 @@ function SkillUsage({ skill, permissions }: { skill: Skill; permissions: readonl
       {cards.length > 0 ? (
         <UsageCards items={cards} testId="skill-binding" />
       ) : (
-        <p
-          className="text-sm text-muted-foreground"
-          data-testid={scope === "unbound" ? "skill-usage-unbound" : "skill-usage-global"}
-        >
-          {t(scope === "unbound" ? "skills.usage.unbound" : "skills.usage.everywhere")}
+        <p className="text-sm text-muted-foreground" data-testid={`skill-usage-${scope}`}>
+          {scope === "template"
+            ? t("skills.usage.template", {
+                templates: skillTemplates(skill)
+                  .map((slug) => `„${slug}“`)
+                  .join(", "),
+              })
+            : t(scope === "unbound" ? "skills.usage.unbound" : "skills.usage.everywhere")}
         </p>
       )}
     </TabBody>

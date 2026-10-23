@@ -1872,6 +1872,10 @@ const EN = {
   "skills.scope.global": "Everything",
   "skills.scope.workflow": "One workflow",
   "skills.scope.unbound": "Nothing; binding missing",
+  "skills.scope.template": "Connectors of one kind",
+  "skills.scopePhrase.template": "connectors of one kind",
+  "skills.usage.template":
+    "Applies wherever a connector of the kind {templates} takes part: in chat and in workflow drafts.",
   "skills.scopePhrase.global": "everything",
   "skills.scopePhrase.connector": "one connector",
   "skills.scopePhrase.workflow": "one workflow",
@@ -1918,9 +1922,8 @@ const EN = {
   "skills.versions.auditEntry": "Audit entry",
   "skills.versions.change": "Change from the previous version",
   "skills.versions.renamedFrom": "Previous name",
-  "skills.versions.gap.one": "Version 1 was saved before SubKit kept a version history.",
-  "skills.versions.gap.other":
-    "Versions 1 to {through} were saved before SubKit kept a version history; they cannot be shown.",
+  "skills.versions.gap.one": "Version 1 is not in the recorded history.",
+  "skills.versions.gap.other": "Versions 1 to {through} are not in the recorded history.",
   "skills.editor.useTemplate": "Use a template:",
   "skills.onboarding.lead":
     "A skill tells SubKit how you work. Chat and workflow drafts follow it.",
@@ -2550,7 +2553,6 @@ const EN = {
   "catalogMeta.edit": "Edit description",
   "catalogMeta.empty": "No description yet — the assistant adds one shortly.",
   "catalogMeta.byAssistant": "written by the assistant",
-  "catalogMeta.createdByAI": "Created by AI",
   "catalogMeta.dialogTitle": "Description and category",
   "catalogMeta.description": "Description",
   "catalogMeta.descriptionHelp":
@@ -5831,7 +5833,7 @@ const DE: Record<TranslationKey, string> = {
   "branding.indigoHint": "Indigobasierte Wortmarke mit zugänglichen Hell-/Dunkel-Kontrasten.",
   "branding.tealHint":
     "Ruhiger Teal-Akzent; semantische Statusfarben bleiben vollständig erhalten.",
-  "branding.preview": "Inline-Shell-Vorschau",
+  "branding.preview": "Vorschau der Oberfläche",
   "branding.previewHint": "Bis zum Speichern ändert sich nur diese lokale Vorschau.",
   "branding.mobile": "Ansicht auf dem Handy",
   "branding.unsaved": "Ungespeicherte Branding-Änderungen",
@@ -7599,6 +7601,10 @@ const DE: Record<TranslationKey, string> = {
   "skills.scope.global": "Alles",
   "skills.scope.workflow": "Einen Workflow",
   "skills.scope.unbound": "Nichts, Bindung fehlt",
+  "skills.scope.template": "Konnektoren einer Art",
+  "skills.scopePhrase.template": "Konnektoren einer Art",
+  "skills.usage.template":
+    "Gilt, sobald ein Konnektor der Art {templates} beteiligt ist: im Chat und in Workflow-Entwürfen.",
   "skills.scopePhrase.global": "alles",
   "skills.scopePhrase.connector": "einen Konnektor",
   "skills.scopePhrase.workflow": "einen Workflow",
@@ -7646,9 +7652,8 @@ const DE: Record<TranslationKey, string> = {
   "skills.versions.auditEntry": "Audit-Eintrag",
   "skills.versions.change": "Änderung gegenüber der Vorversion",
   "skills.versions.renamedFrom": "Vorheriger Name",
-  "skills.versions.gap.one": "Version 1 entstand, bevor SubKit einen Versionsverlauf führte.",
-  "skills.versions.gap.other":
-    "Versionen 1 bis {through} entstanden, bevor SubKit einen Versionsverlauf führte; sie lassen sich nicht zeigen.",
+  "skills.versions.gap.one": "Version 1 fehlt im aufgezeichneten Verlauf.",
+  "skills.versions.gap.other": "Versionen 1 bis {through} fehlen im aufgezeichneten Verlauf.",
   "skills.editor.useTemplate": "Vorlage einsetzen:",
   "skills.onboarding.lead":
     "Ein Skill sagt SubKit, wie ihr arbeitet. Chat und Workflow-Entwürfe halten sich daran.",
@@ -8283,7 +8288,6 @@ const DE: Record<TranslationKey, string> = {
   "catalogMeta.edit": "Beschreibung bearbeiten",
   "catalogMeta.empty": "Noch keine Beschreibung – die KI ergänzt sie in Kürze.",
   "catalogMeta.byAssistant": "von KI verfasst",
-  "catalogMeta.createdByAI": "Von KI erstellt",
   "catalogMeta.dialogTitle": "Beschreibung und Kategorie",
   "catalogMeta.description": "Beschreibung",
   "catalogMeta.descriptionHelp":

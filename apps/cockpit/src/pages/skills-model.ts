@@ -12,20 +12,33 @@ export function skillAppliesToOptionKey(appliesTo: SkillAppliesTo): TranslationK
   return "skills.editor.appliesTo.both";
 }
 
-export type SkillScope = "global" | "connector" | "workflow" | "unbound";
+export type SkillScope = "global" | "connector" | "template" | "workflow" | "unbound";
 
 export function skillScope(skill: {
   scope: string;
   connector_id?: string | null;
   workflow_id?: string | null;
+  activates_when?: readonly { kind: string }[] | null;
 }): SkillScope {
-  if (skill.scope === "connector") return skill.connector_id ? "connector" : "unbound";
+  if (skill.scope === "connector") {
+    if (skill.connector_id) return "connector";
+    return skillTemplates(skill).length > 0 ? "template" : "unbound";
+  }
   if (skill.scope === "workflow") return skill.workflow_id ? "workflow" : "unbound";
   return "global";
 }
 
+export function skillTemplates(skill: {
+  activates_when?: readonly { kind: string; slug?: string }[] | null;
+}): string[] {
+  return (skill.activates_when ?? []).flatMap((entry) =>
+    entry.kind === "connector_template" && typeof entry.slug === "string" ? [entry.slug] : [],
+  );
+}
+
 export function skillScopeKey(scope: string): TranslationKey {
   if (scope === "connector") return "skills.scope.connector";
+  if (scope === "template") return "skills.scope.template";
   if (scope === "workflow") return "skills.scope.workflow";
   if (scope === "unbound") return "skills.scope.unbound";
   return "skills.scope.global";
@@ -33,6 +46,7 @@ export function skillScopeKey(scope: string): TranslationKey {
 
 export function skillScopePhraseKey(scope: SkillScope): TranslationKey {
   if (scope === "connector") return "skills.scopePhrase.connector";
+  if (scope === "template") return "skills.scopePhrase.template";
   if (scope === "workflow") return "skills.scopePhrase.workflow";
   if (scope === "unbound") return "skills.scopePhrase.unbound";
   return "skills.scopePhrase.global";

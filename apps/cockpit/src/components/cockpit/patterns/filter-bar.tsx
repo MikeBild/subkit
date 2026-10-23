@@ -156,7 +156,7 @@ export function FilterBar({
   return (
     <div
       data-slot="filter-bar"
-      className={`flex min-w-0 flex-1 flex-wrap items-center gap-2 ${compact ? "min-[1600px]:hidden" : ""}`}
+      className={`flex min-w-72 max-w-full flex-1 flex-wrap items-center gap-2 ${compact ? "min-[1600px]:hidden" : ""}`}
     >
       {search ? (
         <SearchInput

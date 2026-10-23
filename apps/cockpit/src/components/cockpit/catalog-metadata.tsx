@@ -119,7 +119,6 @@ export function CatalogPurpose({
       {writtenByAssistant(record) ? (
         <span
           className="ml-1.5 inline-flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground"
-          title={t("catalogMeta.createdByAI")}
           data-testid="catalog-metadata-by-assistant"
         >
           <Bot aria-hidden="true" className="size-3" />
