@@ -1,3 +1,4 @@
+import { DEFAULT_STATS_WINDOW, type StatsWindow } from "@/lib/stats-window";
 import { cockpitBasePath } from "./installation-context";
 import type { RecordResource } from "./route-table";
 
@@ -136,8 +137,10 @@ export function reviewFromUrl(search: string): string | null {
   return raw;
 }
 
-export function usageHref(filter: { window?: "24h" | "7d" | "30d" | null } = {}): string {
-  return withQuery("/usage", { window: filter.window === "7d" ? null : filter.window });
+export function usageHref(filter: { window?: StatsWindow | null } = {}): string {
+  return withQuery("/usage", {
+    window: filter.window === DEFAULT_STATS_WINDOW ? null : filter.window,
+  });
 }
 
 export function settingsHref(

@@ -60,7 +60,12 @@ import {
   useOperationsFigures,
   useRepairRequiredCount,
 } from "./operations-bar";
-import { type StatsWindow, type WindowBounds, windowBounds } from "./operations-figures";
+import {
+  STATS_WINDOWS,
+  type StatsWindow,
+  type WindowBounds,
+  windowBounds,
+} from "./operations-figures";
 import {
   type AttentionAction,
   type AttentionItem,
@@ -81,7 +86,6 @@ type ExecutionList = components["schemas"]["ExecutionListResponse"];
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 
 const KPI_IDS = ["runs", "successRate", "connectorHealth", "budget"] as const;
-const WINDOWS: readonly StatsWindow[] = ["24h", "7d"];
 
 function subjectHref(item: AttentionItem): string | null {
   if (!item.subject) return null;
@@ -508,7 +512,7 @@ export function OverviewPage() {
                   value={bounds.window}
                   onValueChange={(next) => setBounds(windowBounds(next as StatsWindow))}
                   testId="operations-window"
-                  options={WINDOWS.map((window) => ({
+                  options={STATS_WINDOWS.map((window) => ({
                     value: window,
                     label: t(`overview.operations.windowOption.${window}` as TranslationKey),
                     testId: `operations-window-${window}`,

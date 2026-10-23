@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type Locale, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
+import { STATS_WINDOWS } from "@/lib/stats-window";
 import { OperationsBar, RepairRequiredHint } from "./operations-bar";
 import { operatingFigures, type StatsWindow, windowBounds } from "./operations-figures";
 import { budgetSummary } from "./usage-model";
@@ -29,10 +30,6 @@ const month = (
     }),
   );
 const budget = month(40_500_000, 150_000_000);
-const monthSpend = answered({
-  calls: 900,
-  cost: { amount: 135.8, currency: "USD", unpricedModels: [], unpricedCalls: 0 },
-});
 
 function i18nValue(locale: Locale): I18nValue {
   return {
@@ -99,7 +96,6 @@ const figuresOf = (overrides: Partial<Parameters<typeof operatingFigures>[0]> = 
     connectorsPermitted: true,
     spend,
     budget,
-    monthSpend,
     canOpen: all,
     ...overrides,
   });
@@ -117,18 +113,25 @@ describe("the operations bar", () => {
     expect(links[2]).toContain("health=not_ok");
     expect(html).toContain("Stand jetzt");
     expect(links[4]).toBe("/cockpit/usage?window=24h");
-    expect(links[5]).toBe("/cockpit/usage");
+    expect(links[5]).toBe("/cockpit/usage?window=24h");
   });
 
-  test("window tiles name the chosen window, current and month tiles keep their own basis", () => {
-    for (const window of ["24h", "7d", "30d"] as const) {
+  test("window tiles name the chosen period, connector health stays current", () => {
+    const labels = {
+      "24h": "24 Std",
+      thisWeek: "Diese Woche",
+      lastWeek: "Letzte Woche",
+      thisMonth: "Dieser Monat",
+      lastMonth: "Letzter Monat",
+    } as const;
+    for (const window of STATS_WINDOWS) {
       const html = render(figuresOf({ bounds: windowBounds(window, NOW) }), "de", window);
-      const label = { "24h": "24 Std", "7d": "7 Tage", "30d": "30 Tage" }[window];
+      const label = labels[window];
       expect(figureText(html, "runs")).toContain(`Läufe · ${label}`);
       expect(figureText(html, "successRate")).toContain(`Erfolgsquote · ${label}`);
       expect(figureText(html, "cost")).toContain(`Kosten · ${label}`);
       expect(figureText(html, "connectorHealth")).toContain("Gesunde Konnektoren · Stand jetzt");
-      expect(figureText(html, "budget")).toContain("Nutzung · Monat");
+      expect(figureText(html, "budget")).toContain(`Nutzung · ${label}`);
     }
     expect(figureText(render(figuresOf(), "de"), "runs")).not.toContain("·");
   });
@@ -137,16 +140,16 @@ describe("the operations bar", () => {
     const html = render(figuresOf());
     expect(html).toContain("shrink-0 text-2xl");
     const detail = html.match(/data-testid="operations-figure-budget-detail"[^>]*>([^<]+)</);
-    expect(detail?.[1]).toBe("27 % des Tokenkontingents");
+    expect(detail?.[1]).toBe("27 % des Monatskontingents");
     const partial = render(
       figuresOf({
-        monthSpend: answered({
+        spend: answered({
           calls: 900,
           cost: { amount: 135.8, currency: "USD", unpricedModels: ["x"], unpricedCalls: 14 },
         }),
       }),
     );
-    expect(partial).toContain("Aufrufe ohne Preis: 14 · 27 % des Tokenkontingents");
+    expect(partial).toContain("Aufrufe ohne Preis: 14 · 27 % des Monatskontingents");
   });
 
   test("the repair hint links to the filtered workflow list only when workflows need repair", () => {
@@ -224,48 +227,48 @@ describe("the operations bar", () => {
 
   test("the month's usage shows money and token percentage with pressure styling", () => {
     const html = render(figuresOf());
-    expect(figureText(html, "budget")).toBe("Nutzung · Monat135,80 $27 % des Tokenkontingents");
+    expect(figureText(html, "budget")).toBe("Nutzung87,22 $27 % des Monatskontingents");
     expect(html).toContain('data-budget-pressure="ample"');
-    expect(hrefs(html)).toContain("/cockpit/usage");
+    expect(hrefs(html)).toContain("/cockpit/usage?window=24h");
     const critical = render(figuresOf({ budget: month(142_500_000, 150_000_000, "critical") }));
-    expect(figureText(critical, "budget")).toBe("Nutzung · Monat135,80 $95 % des Tokenkontingents");
+    expect(figureText(critical, "budget")).toBe("Nutzung87,22 $95 % des Monatskontingents");
     expect(critical).toContain('data-budget-pressure="critical"');
     expect(critical).toContain("text-destructive");
     expect(figureText(render(figuresOf(), "en"), "budget")).toBe(
-      "Usage · Month$135.8027% of token budget",
+      "Usage$87.2227% of the monthly token budget",
     );
   });
 
   test("a partly priced month is a floor; an unpriced one falls back to its share", () => {
     const partial = render(
       figuresOf({
-        monthSpend: answered({
+        spend: answered({
           calls: 900,
           cost: { amount: 135.8, currency: "USD", unpricedModels: ["x"], unpricedCalls: 12 },
         }),
       }),
     );
     expect(figureText(partial, "budget")).toContain("mind. 135,80 $");
-    const unpriced = render(figuresOf({ monthSpend: answered({ calls: 30, cost: null }) }));
+    const unpriced = render(figuresOf({ spend: answered({ calls: 30, cost: null }) }));
     expect(figureText(unpriced, "budget")).toBe("Nutzung · Monat27 %");
   });
 
-  test("no cap still shows the month's money and says 'Kein Kontingent'", () => {
+  test("no cap still shows the period's money and says 'Kein Kontingent'", () => {
     const html = render(figuresOf({ budget: month(5_000, null) }));
-    expect(figureText(html, "budget")).toBe("Nutzung · Monat135,80 $Kein Kontingent");
-    expect(hrefs(html)).toContain("/cockpit/usage");
+    expect(figureText(html, "budget")).toBe("Nutzung87,22 $Kein Kontingent");
+    expect(hrefs(html)).toContain("/cockpit/usage?window=24h");
   });
 
   test("no cap and no amount reads 'Kein Kontingent' — no percentage — with the setting for an admin", () => {
     const unpriced = answered({ calls: 30, cost: null });
-    const html = render(figuresOf({ budget: month(5_000, null), monthSpend: unpriced }));
+    const html = render(figuresOf({ budget: month(5_000, null), spend: unpriced }));
     expect(figureText(html, "budget")).toBe("Nutzung · MonatKein KontingentKontingent setzen");
     expect(html).toContain('data-figure-state="uncapped"');
     expect(hrefs(html)).toContain("/cockpit/settings?leaf=tokens.monthly_budget");
     const reader = render(
       figuresOf({
         budget: month(5_000, null),
-        monthSpend: unpriced,
+        spend: unpriced,
         canOpen: { ...all, budgetSetting: false },
       }),
     );
@@ -282,7 +285,6 @@ describe("the operations bar", () => {
         }),
         spend: answered({ calls: 0, cost: null }),
         budget: month(0, null),
-        monthSpend: answered({ calls: 0, cost: null }),
         canOpen: { ...all, budgetSetting: false },
       }),
     );

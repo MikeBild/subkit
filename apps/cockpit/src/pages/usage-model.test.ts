@@ -79,10 +79,11 @@ describe("the consumption breakdown", () => {
 
   test("asks for the axis it was given, over the same window as the rest of the page", () => {
     const at = new Date("2026-09-27T08:00:00.000Z");
-    const url = llmStatsEndpoint(windowBounds("30d", at), "workflow");
+    const bounds = windowBounds("lastMonth", at);
+    const url = llmStatsEndpoint(bounds, "workflow");
     expect(url).toContain("group_by=workflow");
     expect(url).toContain("bucket=day");
-    expect(url).toContain(encodeURIComponent("2026-08-28T08:00:00.000Z"));
+    expect(url).toContain(encodeURIComponent(bounds.from));
     expect(llmStatsEndpoint(windowBounds("24h", at), "model")).toContain("bucket=hour");
   });
 });

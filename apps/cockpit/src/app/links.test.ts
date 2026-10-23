@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { STATS_WINDOWS } from "@/lib/stats-window";
 import { openPeopleSection, readablePeopleSections } from "@/pages/admin-model";
 import { openApiAccessSection, readableSections } from "@/pages/api-access-model";
 import { auditFilterFromUrl } from "@/pages/audit-model";
@@ -54,7 +55,7 @@ describe("router-relative, and absolute only on request", () => {
       attentionHref(),
       attentionHref({ review: "skills" }),
       settingsHref(),
-      usageHref({ window: "7d" }),
+      usageHref({ window: "lastMonth" }),
       auditHref(),
       chatNewHref(),
       apiAccessHref(),
@@ -258,11 +259,11 @@ describe("settings", () => {
 
 describe("usage", () => {
   test("the window a link opens is the window the page reads", () => {
-    for (const window of ["24h", "7d", "30d"] as const)
+    for (const window of STATS_WINDOWS)
       expect(usageWindowFromUrl(query(usageHref({ window })))).toBe(window);
-    expect(usageHref({ window: "7d" })).toBe("/usage");
-    expect(usageWindowFromUrl(query(usageHref()))).toBe("7d");
-    expect(usageWindowFromUrl("?window=1y")).toBe("7d");
+    expect(usageHref({ window: "thisWeek" })).toBe("/usage");
+    expect(usageWindowFromUrl(query(usageHref()))).toBe("thisWeek");
+    expect(usageWindowFromUrl("?window=7d")).toBe("thisWeek");
   });
 });
 

@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { STATS_WINDOWS } from "@/lib/stats-window";
 import { auditFilterFromUrl } from "@/pages/audit-model";
 import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
 import {
   DECIDED_REPAIR_ACTIONS,
   executionStatsEndpoint,
   llmStatsEndpoint,
-  monthSpendEndpoint,
   type OperatingCounts,
   type OperatingFigure,
   operatingCounts,
@@ -24,11 +24,11 @@ import { budgetSummary, windowCost } from "@/pages/usage-model";
 
 describe("usage window URL round trips", () => {
   test("every selectable period survives navigation with unrelated query parameters", () => {
-    for (const period of ["24h", "7d", "30d"] as const) {
+    for (const period of STATS_WINDOWS) {
       for (const initial of [
         "",
         "?window=unknown",
-        "?window=30d&filter=one&filter=two&future=kept",
+        "?window=lastMonth&filter=one&filter=two&future=kept",
       ]) {
         const search = usageWindowSearch(initial, period);
         expect(usageWindowFromUrl(search)).toBe(period);
@@ -36,16 +36,63 @@ describe("usage window URL round trips", () => {
         const after = new URLSearchParams(search);
         expect(after.getAll("filter")).toEqual(before.getAll("filter"));
         expect(after.get("future")).toBe(before.get("future"));
-        expect(after.has("window")).toBe(period !== "7d");
+        expect(after.has("window")).toBe(period !== "thisWeek");
       }
     }
   });
 
-  test("missing and unrecognized periods use seven days and canonicalize cleanly", () => {
-    expect(usageWindowFromUrl("")).toBe("7d");
-    expect(usageWindowFromUrl("?window=unknown")).toBe("7d");
-    expect(usageWindowSearch("?window=30d", "7d")).toBe("");
-    expect(usageWindowSearch("?window=7d", "30d")).toBe("?window=30d");
+  test("missing and unrecognized periods use this week and canonicalize cleanly", () => {
+    expect(usageWindowFromUrl("")).toBe("thisWeek");
+    expect(usageWindowFromUrl("?window=7d")).toBe("thisWeek");
+    expect(usageWindowSearch("?window=lastMonth", "thisWeek")).toBe("");
+    expect(usageWindowSearch("?window=thisWeek", "lastMonth")).toBe("?window=lastMonth");
+  });
+});
+
+describe("calendar periods", () => {
+  const NOW = new Date(2026, 9, 22, 14, 30);
+  const local = (...parts: [number, number, number]) => new Date(...parts).toISOString();
+
+  test("weeks start on Monday and months on the first, in the viewer's time", () => {
+    expect(windowBounds("thisWeek", NOW)).toEqual({
+      window: "thisWeek",
+      from: local(2026, 9, 19),
+      to: NOW.toISOString(),
+    });
+    expect(windowBounds("lastWeek", NOW)).toEqual({
+      window: "lastWeek",
+      from: local(2026, 9, 12),
+      to: local(2026, 9, 19),
+    });
+    expect(windowBounds("thisMonth", NOW)).toEqual({
+      window: "thisMonth",
+      from: local(2026, 9, 1),
+      to: NOW.toISOString(),
+    });
+    expect(windowBounds("lastMonth", NOW)).toEqual({
+      window: "lastMonth",
+      from: local(2026, 8, 1),
+      to: local(2026, 9, 1),
+    });
+  });
+
+  test("a Sunday still belongs to the week that began on Monday", () => {
+    expect(windowBounds("thisWeek", new Date(2026, 9, 25, 23, 0)).from).toBe(local(2026, 9, 19));
+  });
+
+  test("last month crosses the year boundary", () => {
+    expect(windowBounds("lastMonth", new Date(2026, 0, 15))).toMatchObject({
+      from: local(2025, 11, 1),
+      to: local(2026, 0, 1),
+    });
+  });
+
+  test("the engine buckets in the viewer's time zone", () => {
+    const query = new URLSearchParams(
+      llmStatsEndpoint(windowBounds("lastWeek", NOW)).split("?")[1] ?? "",
+    );
+    expect(query.get("tz")).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(query.get("bucket")).toBe("day");
   });
 });
 
@@ -53,13 +100,11 @@ describe("the engine's operating figures", () => {
   const NOW = new Date("2026-08-10T12:00:00.000Z");
 
   test("are asked over the window's two fixed instants", () => {
-    const endpoint = operatingFiguresEndpoint(windowBounds("30d", NOW));
+    const bounds = windowBounds("lastMonth", NOW);
+    const endpoint = operatingFiguresEndpoint(bounds);
     expect(endpoint.startsWith("/v1/stats/operating-figures?")).toBe(true);
     const query = new URLSearchParams(endpoint.slice(endpoint.indexOf("?")));
-    expect([query.get("from"), query.get("to")]).toEqual([
-      "2026-07-11T12:00:00.000Z",
-      "2026-08-10T12:00:00.000Z",
-    ]);
+    expect([query.get("from"), query.get("to")]).toEqual([bounds.from, bounds.to]);
   });
 
   test("reads the counts and the engine's own percentages, not a second rounding", () => {
@@ -93,7 +138,7 @@ describe("the engine's operating figures", () => {
 
 describe("the operations figures", () => {
   const NOW = new Date("2026-08-10T12:00:00.000Z");
-  const WEEK = windowBounds("7d", NOW);
+  const WEEK = windowBounds("thisWeek", NOW);
   const all = { runs: true, connectors: true, audit: true, usage: true, budgetSetting: true };
   const answered = <T>(value: T) => ({ state: "answered" as const, value });
   const query = (href: string | null) => (href ? href.slice(href.indexOf("?")) : "");
@@ -108,10 +153,6 @@ describe("the operations figures", () => {
     remaining_monthly_budget_tokens: 109_500_000,
     monthly_budget_state: "ample",
   });
-  const monthPriced = {
-    calls: 900,
-    cost: { amount: 135.8, currency: "USD", unpricedModels: [], unpricedCalls: 0 },
-  };
   const counts = (over: Partial<OperatingCounts> = {}) =>
     answered<OperatingCounts | null>({
       runs: { total: 40, failed: 2, successRatePercent: 95 },
@@ -126,7 +167,6 @@ describe("the operations figures", () => {
       connectorsPermitted: true,
       spend: answered(priced),
       budget: answered(month),
-      monthSpend: answered(monthPriced),
       canOpen: all,
       ...overrides,
     });
@@ -139,13 +179,16 @@ describe("the operations figures", () => {
       from: "2026-08-09T12:00:00.000Z",
       to: "2026-08-10T12:00:00.000Z",
     });
-    expect(executionStatsEndpoint(windowBounds("24h", NOW))).toBe(
-      "/v1/stats/executions?bucket=hour&from=2026-08-09T12%3A00%3A00.000Z&to=2026-08-10T12%3A00%3A00.000Z",
-    );
+    const day = stats(executionStatsEndpoint(windowBounds("24h", NOW)));
+    expect([day.get("bucket"), day.get("from"), day.get("to")]).toEqual([
+      "hour",
+      "2026-08-09T12:00:00.000Z",
+      "2026-08-10T12:00:00.000Z",
+    ]);
     expect(stats(executionStatsEndpoint(WEEK)).get("bucket")).toBe("day");
-    expect(stats(executionStatsEndpoint(WEEK)).get("from")).toBe("2026-08-03T12:00:00.000Z");
+    expect(stats(executionStatsEndpoint(WEEK)).get("from")).toBe(WEEK.from);
     expect(windowBucket("24h")).toBe("hour");
-    expect(windowBucket("30d")).toBe("day");
+    expect(windowBucket("lastMonth")).toBe("day");
     const figures = stats(operatingFiguresEndpoint(WEEK));
     expect([figures.get("from"), figures.get("to")]).toEqual([WEEK.from, WEEK.to]);
   });
@@ -181,12 +224,21 @@ describe("the operations figures", () => {
       ["connectorHealth", 75],
       ["repairRate", 75],
       ["cost", 87.22],
-      ["budget", 135.8],
+      ["budget", 87.22],
     ]);
     const [runs, rate, connectors, repairs, cost, budget] = figures.map(value);
-    expect(usageWindowFromUrl(query(cost?.href ?? null))).toBe("7d");
+    expect(usageWindowFromUrl(query(cost?.href ?? null))).toBe("thisWeek");
     expect(cost?.href).toBe("/usage");
     expect(budget?.href).toBe("/usage");
+    const lastMonth = operatingFigures({
+      bounds: windowBounds("lastMonth", NOW),
+      counts: counts(),
+      connectorsPermitted: true,
+      spend: answered(priced),
+      budget: answered(month),
+      canOpen: all,
+    });
+    expect(value(lastMonth[5])?.href).toBe("/usage?window=lastMonth");
     const window = { startedFrom: WEEK.from, startedTo: WEEK.to };
     expect(filterFromUrl(query(runs?.href ?? null))).toMatchObject({ status: "all", ...window });
     const statsQuery = stats(operatingFiguresEndpoint(WEEK));
@@ -205,7 +257,7 @@ describe("the operations figures", () => {
       "now",
       "window",
       "window",
-      "month",
+      "window",
     ]);
   });
 
@@ -253,7 +305,7 @@ describe("the operations figures", () => {
       ["connectorHealth", "not_permitted", undefined],
       ["repairRate", "none", undefined],
       ["cost", "value", 87.22],
-      ["budget", "value", 135.8],
+      ["budget", "value", 87.22],
     ]);
   });
 
@@ -318,7 +370,7 @@ describe("the operations figures", () => {
     expect(cost && "href" in cost ? cost.href : null).toBe("/usage");
   });
 
-  test("the month's usage is its money, with its whole share of the cap and the engine's word", () => {
+  test("the period's usage is its money, with the month's whole share of the cap and the engine's word", () => {
     const at = (used: number, state = "ample") =>
       value(
         figuresOf({
@@ -333,7 +385,7 @@ describe("the operations figures", () => {
         })[5],
       );
     expect([at(270)?.value, at(270)?.money]).toEqual([
-      135.8,
+      87.22,
       { currency: "USD", unpricedCalls: 0 },
     ]);
     expect([at(270)?.budget?.percent, at(270)?.budget?.pressure]).toEqual([27, "ample"]);
@@ -346,29 +398,26 @@ describe("the operations figures", () => {
       at(896, "tightening")?.budget?.pressure,
     ]).toEqual([89, "tightening"]);
     expect(at(270)?.budget).toMatchObject({ budgetTokens: 1000, remainingTokens: 730 });
-    expect(at(270)?.basis).toBe("month");
+    expect(at(270)?.basis).toBe("window");
   });
 
   test("a month without a priced amount falls back to its share of the cap", () => {
-    for (const monthSpend of [
-      answered({ calls: 30, cost: null }),
-      answered({ calls: 0, cost: null }),
-    ]) {
-      const figure = value(figuresOf({ monthSpend })[5]);
+    for (const spend of [answered({ calls: 30, cost: null }), answered({ calls: 0, cost: null })]) {
+      const figure = value(figuresOf({ spend })[5]);
       expect([figure?.value, figure?.money, figure?.budget?.percent]).toEqual([27, undefined, 27]);
     }
   });
 
-  test("the month's money and its share are both read — either failing makes it unreadable", () => {
-    expect(figuresOf({ monthSpend: { state: "failed" } })[5]?.state).toBe("unreadable");
+  test("the period's money and the month's share are both read — either failing makes it unreadable", () => {
+    expect(figuresOf({ spend: { state: "failed" } })[5]?.state).toBe("unreadable");
     expect(figuresOf({ budget: { state: "failed" } })[5]?.state).toBe("unreadable");
   });
 
-  test("no cap still shows the month's money, and says there is no cap", () => {
+  test("no cap still shows the period's money, and says there is no cap", () => {
     const uncapped = answered(budgetSummary({ tokens_month: 5_000, monthly_budget_tokens: null }));
     const figure = value(figuresOf({ budget: uncapped })[5]);
     expect([figure?.value, figure?.uncapped, figure?.budget, figure?.href]).toEqual([
-      135.8,
+      87.22,
       true,
       undefined,
       "/usage",
@@ -378,29 +427,17 @@ describe("the operations figures", () => {
   test("no cap and no amount is 'no budget' — no percentage — and links the setting only for who may set it", () => {
     const uncapped = answered(budgetSummary({ tokens_month: 5_000, monthly_budget_tokens: null }));
     const unpriced = answered({ calls: 30, cost: null });
-    const figure = figuresOf({ budget: uncapped, monthSpend: unpriced })[5];
+    const figure = figuresOf({ budget: uncapped, spend: unpriced })[5];
     expect(figure?.state).toBe("uncapped");
     expect(figure && "href" in figure ? figure.href : null).toBe(
       "/settings?leaf=tokens.monthly_budget",
     );
     const readOnly = figuresOf({
       budget: uncapped,
-      monthSpend: unpriced,
+      spend: unpriced,
       canOpen: { ...all, budgetSetting: false },
     })[5];
     expect(readOnly && "href" in readOnly ? readOnly.href : "missing").toBeNull();
-  });
-
-  test("the month's money is asked from the first of the UTC month to now, in days", () => {
-    const endpoint = monthSpendEndpoint(new Date("2026-10-04T09:30:00.000Z"));
-    const query = stats(endpoint);
-    expect(endpoint.startsWith("/v1/stats/llm?")).toBe(true);
-    expect([query.get("bucket"), query.get("from"), query.get("to")]).toEqual([
-      "day",
-      "2026-10-01T00:00:00.000Z",
-      "2026-10-04T09:30:00.000Z",
-    ]);
-    expect(query.get("group_by")).toBeNull();
   });
 
   test("a value the reader may not open is shown without a link", () => {

@@ -21,7 +21,9 @@ import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
   BUDGET_SETTING,
+  DEFAULT_STATS_WINDOW,
   executionStatsEndpoint,
+  isStatsWindow,
   llmStatsEndpoint,
   STATS_WINDOWS,
   STATUS_ENDPOINT,
@@ -49,8 +51,10 @@ import {
 
 const WINDOW_OPTION: Record<StatsWindow, TranslationKey> = {
   "24h": "resource.usage.windowOption.24h",
-  "7d": "resource.usage.windowOption.7d",
-  "30d": "resource.usage.windowOption.30d",
+  thisWeek: "resource.usage.windowOption.thisWeek",
+  lastWeek: "resource.usage.windowOption.lastWeek",
+  thisMonth: "resource.usage.windowOption.thisMonth",
+  lastMonth: "resource.usage.windowOption.lastMonth",
 };
 
 const PRESSURE_LABEL = {
@@ -69,10 +73,6 @@ const ORIGIN_LABEL: Record<UsageOrigin, TranslationKey> = {
   other: "resource.usage.origin.other",
 };
 
-function isWindow(value: string): value is StatsWindow {
-  return (STATS_WINDOWS as readonly string[]).includes(value);
-}
-
 export function UsagePage() {
   const { t, dateTime, locale } = useI18n();
   const session = useSession();
@@ -85,7 +85,7 @@ export function UsagePage() {
   );
   const span = bounds.window;
   const chooseWindow = (next: string) => {
-    if (!isWindow(next)) return;
+    if (!isStatsWindow(next)) return;
     setBounds(windowBounds(next));
     window.history.replaceState(
       window.history.state,
@@ -341,7 +341,10 @@ export function UsagePage() {
       <FilterBar
         presentation="panel"
         selects={windowFilter}
-        reset={{ label: t("catalog.clearFilters"), onClick: () => chooseWindow("7d") }}
+        reset={{
+          label: t("catalog.clearFilters"),
+          onClick: () => chooseWindow(DEFAULT_STATS_WINDOW),
+        }}
       />
     </div>
   );
@@ -350,7 +353,10 @@ export function UsagePage() {
       presentation="toolbar"
       mobileOnly
       selects={windowFilter}
-      reset={{ label: t("catalog.clearFilters"), onClick: () => chooseWindow("7d") }}
+      reset={{
+        label: t("catalog.clearFilters"),
+        onClick: () => chooseWindow(DEFAULT_STATS_WINDOW),
+      }}
     />
   );
   const groupingTabs = (
@@ -405,7 +411,7 @@ export function UsagePage() {
       title: t("resource.noMatches"),
       description: t("resource.broaderSearch"),
       resetLabel: t("catalog.clearFilters"),
-      onReset: () => chooseWindow("7d"),
+      onReset: () => chooseWindow(DEFAULT_STATS_WINDOW),
     },
   };
   const tableError = (retry: () => void) => ({
@@ -453,7 +459,7 @@ export function UsagePage() {
               pending={byFlow.isPending}
               error={byFlow.error ? tableError(() => void byFlow.refetch()) : null}
               emptyState={emptyState}
-              hasActiveFilters={span !== "7d"}
+              hasActiveFilters={span !== DEFAULT_STATS_WINDOW}
               sorting={[] as SortingState}
               onSortingChange={() => {}}
               columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byOrigin")}`}
@@ -476,7 +482,7 @@ export function UsagePage() {
               pending={byModel.isPending}
               error={byModel.error ? tableError(() => void byModel.refetch()) : null}
               emptyState={emptyState}
-              hasActiveFilters={span !== "7d"}
+              hasActiveFilters={span !== DEFAULT_STATS_WINDOW}
               sorting={[] as SortingState}
               onSortingChange={() => {}}
               columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byModel")}`}
@@ -504,7 +510,7 @@ export function UsagePage() {
               pending={byWorkflow.isPending}
               error={byWorkflow.error ? tableError(() => void byWorkflow.refetch()) : null}
               emptyState={emptyState}
-              hasActiveFilters={span !== "7d"}
+              hasActiveFilters={span !== DEFAULT_STATS_WINDOW}
               sorting={[] as SortingState}
               onSortingChange={() => {}}
               columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byWorkflow")}`}

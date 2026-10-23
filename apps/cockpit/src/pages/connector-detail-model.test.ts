@@ -91,7 +91,6 @@ describe("runtime figures", () => {
 
   test("read over the last seven days, fixed once", () => {
     expect(bounds).toEqual({
-      window: "7d",
       from: "2026-09-23T12:00:00.000Z",
       to: "2026-09-30T12:00:00.000Z",
     });

@@ -3,7 +3,7 @@ import { auditHref } from "@/app/links";
 import { type ConnectorAuthState, needsRenewal } from "@/lib/connector-auth-state";
 import type { TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
-import { type WindowBounds, windowBounds } from "./operations-figures";
+import { rollingDays, type TimeSpan } from "./operations-figures";
 
 export type ConnectorRuntime = components["schemas"]["ConnectorRuntime"];
 export type McpInspect = Omit<components["schemas"]["ConnectorMcpInspectResponse"], "tools"> & {
@@ -122,11 +122,11 @@ export function docKindLabel(kind: string, t: Translate): CatalogLabel {
   return catalogLabel(kind, DOC_KIND_KEYS[kind], t);
 }
 
-export function connectorStatsWindow(now = new Date()): WindowBounds {
-  return windowBounds("7d", now);
+export function connectorStatsWindow(now = new Date()): TimeSpan {
+  return rollingDays(7, now);
 }
 
-export function connectorStatsEndpoint(connectorId: string, bounds: WindowBounds): string {
+export function connectorStatsEndpoint(connectorId: string, bounds: TimeSpan): string {
   return `/v1/stats/connectors?bucket=day&from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}&connector_id=${encodeURIComponent(connectorId)}`;
 }
 
@@ -140,7 +140,7 @@ export interface ConnectorFigures {
   to: string;
 }
 
-export function connectorFigures(envelope: unknown, asked: WindowBounds): ConnectorFigures | null {
+export function connectorFigures(envelope: unknown, asked: TimeSpan): ConnectorFigures | null {
   if (!isRecord(envelope) || !isRecord(envelope.totals)) return null;
   const totals = envelope.totals;
   const calls = isRecord(totals.calls) ? totals.calls : null;

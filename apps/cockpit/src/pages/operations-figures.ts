@@ -1,5 +1,11 @@
 import { auditHref, connectorsHref, runsHref, settingsHref, usageHref } from "@/app/links";
 import {
+  DEFAULT_STATS_WINDOW,
+  isStatsWindow,
+  STATS_WINDOWS,
+  type StatsWindow,
+} from "@/lib/stats-window";
+import {
   type BudgetSummary,
   budgetPercent,
   budgetPressure,
@@ -16,48 +22,82 @@ function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export const STATS_WINDOWS = ["24h", "7d", "30d"] as const;
-export type StatsWindow = (typeof STATS_WINDOWS)[number];
-
-const WINDOW_SHAPE: Record<StatsWindow, { bucket: "hour" | "day"; hours: number }> = {
-  "24h": { bucket: "hour", hours: 24 },
-  "7d": { bucket: "day", hours: 7 * 24 },
-  "30d": { bucket: "day", hours: 30 * 24 },
-};
+export { DEFAULT_STATS_WINDOW, isStatsWindow, STATS_WINDOWS, type StatsWindow };
 
 export function windowBucket(window: StatsWindow): "hour" | "day" {
-  return WINDOW_SHAPE[window].bucket;
+  return window === "24h" ? "hour" : "day";
 }
 
-export interface WindowBounds {
-  window: StatsWindow;
+export interface TimeSpan {
   from: string;
   to: string;
 }
 
+export interface WindowBounds extends TimeSpan {
+  window: StatsWindow;
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function startOfWeek(date: Date): Date {
+  const day = startOfDay(date);
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate() - ((day.getDay() + 6) % 7));
+}
+
+function shiftDays(date: Date, days: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+function span(window: StatsWindow, now: Date): { from: Date; to: Date } {
+  if (window === "24h") return { from: new Date(now.getTime() - 24 * 3_600_000), to: now };
+  if (window === "thisWeek") return { from: startOfWeek(now), to: now };
+  if (window === "lastWeek") {
+    const to = startOfWeek(now);
+    return { from: shiftDays(to, -7), to };
+  }
+  if (window === "thisMonth")
+    return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: now };
+  return {
+    from: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+    to: new Date(now.getFullYear(), now.getMonth(), 1),
+  };
+}
+
 export function windowBounds(window: StatsWindow, now = new Date()): WindowBounds {
-  const from = new Date(now.getTime() - WINDOW_SHAPE[window].hours * 3_600_000);
-  return { window, from: from.toISOString(), to: now.toISOString() };
+  const { from, to } = span(window, now);
+  return { window, from: from.toISOString(), to: to.toISOString() };
+}
+
+export function rollingDays(days: number, now = new Date()): TimeSpan {
+  const from = new Date(now.getTime() - days * 24 * 3_600_000);
+  return { from: from.toISOString(), to: now.toISOString() };
 }
 
 export function usageWindowFromUrl(search: string): StatsWindow {
-  const raw = new URLSearchParams(search).get("window");
-  return (STATS_WINDOWS as readonly string[]).includes(raw ?? "") ? (raw as StatsWindow) : "7d";
+  const raw = new URLSearchParams(search).get("window") ?? "";
+  return isStatsWindow(raw) ? raw : DEFAULT_STATS_WINDOW;
 }
 
 export function usageWindowSearch(search: string, window: StatsWindow): string {
   const params = new URLSearchParams(search);
-  if (window === "7d") params.delete("window");
+  if (window === DEFAULT_STATS_WINDOW) params.delete("window");
   else params.set("window", window);
   const query = params.toString();
   return query ? `?${query}` : "";
 }
 
+function timeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
 function windowQuery(bounds: WindowBounds): string {
   return [
-    `bucket=${WINDOW_SHAPE[bounds.window].bucket}`,
+    `bucket=${windowBucket(bounds.window)}`,
     `from=${encodeURIComponent(bounds.from)}`,
     `to=${encodeURIComponent(bounds.to)}`,
+    `tz=${encodeURIComponent(timeZone())}`,
   ].join("&");
 }
 
@@ -67,11 +107,6 @@ export function executionStatsEndpoint(bounds: WindowBounds): string {
 
 export function llmStatsEndpoint(bounds: WindowBounds, axis?: ConsumptionAxis): string {
   return `/v1/stats/llm?${windowQuery(bounds)}${axis ? `&group_by=${axis}` : ""}`;
-}
-
-export function monthSpendEndpoint(now = new Date()): string {
-  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  return `/v1/stats/llm?bucket=day&from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(now.toISOString())}`;
 }
 
 export const REPAIR_REQUIRED_ENDPOINT = "/v1/workflows?operating_status=repair_required&limit=1";
@@ -213,7 +248,6 @@ export function operatingFigures(input: {
   connectorsPermitted: boolean;
   spend: Read<WindowSpend>;
   budget: Read<BudgetSummary>;
-  monthSpend: Read<WindowSpend>;
   canOpen: {
     runs: boolean;
     connectors: boolean;
@@ -222,7 +256,7 @@ export function operatingFigures(input: {
     budgetSetting: boolean;
   };
 }): OperatingFigure[] {
-  const { bounds, counts, connectorsPermitted, spend, budget, monthSpend, canOpen } = input;
+  const { bounds, counts, connectorsPermitted, spend, budget, canOpen } = input;
   const window = { startedFrom: bounds.from, startedTo: bounds.to };
   const read = counts.state === "answered" ? counts.value : null;
 
@@ -309,7 +343,7 @@ export function operatingFigures(input: {
     connectorHealth,
     repairRate,
     costFigure(spend, bounds, canOpen.usage),
-    budgetFigure(budget, monthSpend, canOpen),
+    budgetFigure(budget, spend, bounds, canOpen),
   ];
 }
 
@@ -338,16 +372,17 @@ function costFigure(
 
 function budgetFigure(
   budget: Read<BudgetSummary>,
-  monthSpend: Read<WindowSpend>,
+  spend: Read<WindowSpend>,
+  bounds: WindowBounds,
   canOpen: { usage: boolean; budgetSetting: boolean },
 ): OperatingFigure {
-  if (budget.state === "failed" || monthSpend.state === "failed")
+  if (budget.state === "failed" || spend.state === "failed")
     return { id: "budget", state: "unreadable", basis: "month" };
   const summary = budget.value;
   const percent = budgetPercent(summary);
   const pressure = budgetPressure(summary);
-  const { calls, cost } = monthSpend.value;
-  const href = canOpen.usage ? usageHref() : null;
+  const { calls, cost } = spend.value;
+  const href = canOpen.usage ? usageHref({ window: bounds.window }) : null;
   if (cost !== null && calls !== 0) {
     const money = { currency: cost.currency, unpricedCalls: cost.unpricedCalls };
     if (summary.budgetTokens === null)
@@ -356,7 +391,7 @@ function budgetFigure(
         state: "value",
         value: cost.amount,
         href,
-        basis: "month",
+        basis: "window",
         money,
         uncapped: true,
       };
@@ -367,7 +402,7 @@ function budgetFigure(
       state: "value",
       value: cost.amount,
       href,
-      basis: "month",
+      basis: "window",
       money,
       budget: {
         percent,

@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
 import { apiRequest } from "@/api/client";
 import { absolute, workflowsHref } from "@/app/links";
 import { ActionButton, TileSkeleton } from "@/components/cockpit/patterns";
@@ -8,7 +7,6 @@ import { useI18n } from "@/lib/i18n-context";
 import {
   type FigureBasis,
   llmStatsEndpoint,
-  monthSpendEndpoint,
   OPERATING_FIGURE_IDS,
   type OperatingFigure,
   type OperatingFigureId,
@@ -45,8 +43,10 @@ const NONE_TEXT: Record<OperatingFigureId, TranslationKey> = {
 
 const WINDOW_LABEL: Record<StatsWindow, TranslationKey> = {
   "24h": "overview.operations.windowOption.24h",
-  "7d": "overview.operations.windowOption.7d",
-  "30d": "overview.operations.windowOption.30d",
+  thisWeek: "overview.operations.windowOption.thisWeek",
+  lastWeek: "overview.operations.windowOption.lastWeek",
+  thisMonth: "overview.operations.windowOption.thisMonth",
+  lastMonth: "overview.operations.windowOption.lastMonth",
 };
 
 const BASIS_LABEL: Record<Exclude<FigureBasis, "window">, TranslationKey> = {
@@ -104,12 +104,6 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
     enabled: allowed,
     queryFn: () => apiRequest<unknown>(llmStatsEndpoint(bounds)),
   });
-  const monthEndpoint = useMemo(() => monthSpendEndpoint(new Date(bounds.to)), [bounds.to]);
-  const monthSpend = useQuery({
-    queryKey: ["operations-spend", "month", monthEndpoint],
-    enabled: allowed,
-    queryFn: () => apiRequest<unknown>(monthEndpoint),
-  });
   const status = useQuery({
     queryKey: ["usage-status"],
     enabled: allowed,
@@ -124,7 +118,6 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
     connectorsPermitted: canConnectors,
     spend: read(spend, windowSpend(spend.data)),
     budget: read(status, budgetSummary(status.data)),
-    monthSpend: read(monthSpend, windowSpend(monthSpend.data)),
     canOpen: {
       runs: can("execution:read"),
       connectors: canConnectors,
@@ -133,12 +126,12 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
       budgetSetting: can("settings:write:global"),
     },
   });
-  const pending = counts.isPending || spend.isPending || status.isPending || monthSpend.isPending;
+  const pending = counts.isPending || spend.isPending || status.isPending;
   const retry = (id: OperatingFigureId) => {
     if (id === "cost") void spend.refetch();
     else if (id === "budget") {
       void status.refetch();
-      void monthSpend.refetch();
+      void spend.refetch();
     } else void counts.refetch();
   };
   return { allowed, figures, pending, retry };

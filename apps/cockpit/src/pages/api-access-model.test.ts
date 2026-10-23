@@ -98,7 +98,7 @@ describe("API key creator facts", () => {
 describe("scope labels", () => {
   test("a scope reads as a name and a risk word, never as the raw string", () => {
     expect(scopeLabel("workflow:run", t)).toEqual({
-      text: "Workflows · Ausführen",
+      text: "Workflows · Starten",
       machine: false,
     });
     expect(scopeLabel("connection:read", t).machine).toBe(false);
