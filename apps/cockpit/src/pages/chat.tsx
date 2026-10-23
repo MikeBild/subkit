@@ -219,6 +219,8 @@ import {
   userMessageCount,
 } from "./chat-session";
 import { ChatStart } from "./chat-start";
+import { chatSensitiveTestRun } from "./chat-test-run";
+import { ChatTestRunCard } from "./chat-test-run-card";
 import { type ChatText, chatText, composerAnswerAccepted, questionExcerpt } from "./chat-text";
 import { dedupeBackground, groupMessageParts } from "./chat-transcript";
 import { chatContextControlsTarget, useChatWorkspace } from "./chat-workspace";
@@ -1118,6 +1120,11 @@ function ChatMessage({
                 busy={approvalBusy}
                 onRenew={onReauth}
               />
+            );
+          const sensitiveTestRun = chatSensitiveTestRun(tool);
+          if (sensitiveTestRun)
+            return (
+              <ChatTestRunCard key={`${message.id}-test-run-${partIndex}`} run={sensitiveTestRun} />
             );
           const candidateId = patchCandidateId(tool);
           const verdict = toolPartVerdict(tool);
