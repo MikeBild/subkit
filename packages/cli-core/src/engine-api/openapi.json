@@ -2734,6 +2734,90 @@
           "kind"
         ]
       },
+      "SettingsModelCatalog": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettingsModelCatalogEntry"
+            }
+          }
+        },
+        "required": [
+          "currency",
+          "models"
+        ]
+      },
+      "SettingsModelCatalogEntry": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "anthropic",
+              "openai",
+              "gemini",
+              null
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "input_per_mtok": {
+            "type": "number",
+            "minimum": 0
+          },
+          "output_per_mtok": {
+            "type": "number",
+            "minimum": 0
+          },
+          "price_source": {
+            "type": "string",
+            "enum": [
+              "catalog",
+              "override"
+            ]
+          },
+          "badges": {
+            "type": "object",
+            "properties": {
+              "recommended": {
+                "type": "boolean"
+              },
+              "economical": {
+                "type": "boolean"
+              },
+              "capable": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "recommended",
+              "economical",
+              "capable"
+            ]
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "display_name",
+          "input_per_mtok",
+          "output_per_mtok",
+          "price_source",
+          "badges"
+        ]
+      },
       "SettingPutResult": {
         "type": "object",
         "properties": {
@@ -34320,6 +34404,57 @@
           },
           "409": {
             "description": "Refused: not_supervised, nothing_pending, multiple_replicas, restart_in_progress or not_ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/settings/catalog/models": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "List the models the settings page offers, with prices and recommendations",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "tenant",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Named models with their effective prices per 1M tokens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsModelCatalog"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Another workspace's settings or insufficient permissions",
             "content": {
               "application/json": {
                 "schema": {

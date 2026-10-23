@@ -2062,6 +2062,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/settings/catalog/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the models the settings page offers, with prices and recommendations */
+        get: {
+            parameters: {
+                query?: {
+                    tenant?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Named models with their effective prices per 1M tokens */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SettingsModelCatalog"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Another workspace's settings or insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings/{path}": {
         parameters: {
             query?: never;
@@ -22083,6 +22139,25 @@ export interface components {
             kind: string;
             default?: unknown;
             enum_values?: string[];
+        };
+        SettingsModelCatalog: {
+            currency: string;
+            models: components["schemas"]["SettingsModelCatalogEntry"][];
+        };
+        SettingsModelCatalogEntry: {
+            /** @enum {string|null} */
+            provider: "anthropic" | "openai" | "gemini" | null;
+            model: string;
+            display_name: string;
+            input_per_mtok: number;
+            output_per_mtok: number;
+            /** @enum {string} */
+            price_source: "catalog" | "override";
+            badges: {
+                recommended: boolean;
+                economical: boolean;
+                capable: boolean;
+            };
         };
         SettingPutResult: {
             value?: unknown;

@@ -12,6 +12,15 @@ export type { PatchProposal } from "./flows/repair.ts";
 export { PatchProposalSchema, runRepairFlow } from "./flows/repair.ts";
 export { runSummarizeFlow } from "./flows/summarize.ts";
 export { getMockProvider, resetMockProvider } from "./mock-provider.ts";
+export {
+  CATALOG_MODEL_PROVIDERS,
+  type CatalogModelEntry,
+  type CatalogModelProvider,
+  MODEL_BADGE_OUTPUT_PRICE,
+  type ModelCatalogView,
+  modelCatalogView,
+  RECOMMENDED_MODELS,
+} from "./model-catalog-view.ts";
 export { modelDisplayName } from "./model-names.ts";
 export {
   type CatalogModelPrice,

@@ -17,6 +17,7 @@ import {
   ValidationError,
 } from "../../config/loader.ts";
 import { type ConfigLeaf, findLeafByPath } from "../../config/walk.ts";
+import { CATALOG_MODEL_PROVIDERS, modelCatalogView } from "../../llm/model-catalog-view.ts";
 import { logger } from "../../logging/index.ts";
 import {
   activateRuntimeRevision,
@@ -155,6 +156,29 @@ const PutSuccessSchema = z
   })
   .openapi("SettingPutResult");
 
+const SettingsModelCatalogEntry = z
+  .object({
+    provider: z.enum(CATALOG_MODEL_PROVIDERS).nullable(),
+    model: z.string(),
+    display_name: z.string(),
+    input_per_mtok: z.number().nonnegative(),
+    output_per_mtok: z.number().nonnegative(),
+    price_source: z.enum(["catalog", "override"]),
+    badges: z.object({
+      recommended: z.boolean(),
+      economical: z.boolean(),
+      capable: z.boolean(),
+    }),
+  })
+  .openapi("SettingsModelCatalogEntry");
+
+const SettingsModelCatalog = z
+  .object({
+    currency: z.string(),
+    models: z.array(SettingsModelCatalogEntry),
+  })
+  .openapi("SettingsModelCatalog");
+
 function maskedValue(leaf: ConfigLeaf, value: unknown): unknown {
   return maskedSettingValue(!!leaf.meta.secret, value);
 }
@@ -185,6 +209,28 @@ const listRoute = createRoute({
     },
     403: {
       description: "Forbidden",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
+const catalogRoute = createRoute({
+  method: "get",
+  path: "/v1/settings/catalog/models",
+  tags: ["settings"],
+  summary: "List the models the settings page offers, with prices and recommendations",
+  request: { query: TenantQuery },
+  responses: {
+    200: {
+      description: "Named models with their effective prices per 1M tokens",
+      content: { "application/json": { schema: SettingsModelCatalog } },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    403: {
+      description: "Another workspace's settings or insufficient permissions",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -277,6 +323,15 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     const access = await resolveSettingsReadView(c.get("db"), principal, tenant);
     if (!access.ok) return c.json({ code: access.code, message: access.message }, 403);
     return c.json(await readSettingsList(c.get("db"), access.view), 200);
+  });
+
+  app.use("/v1/settings/catalog/models", requirePermission("settings:read"));
+  app.openapi(catalogRoute, async (c) => {
+    const principal = requireAuth(c);
+    const { tenant } = c.req.valid("query");
+    const access = await resolveSettingsReadView(c.get("db"), principal, tenant);
+    if (!access.ok) return c.json({ code: access.code, message: access.message }, 403);
+    return c.json(modelCatalogView(getConfig(access.view.tenantId).tokens), 200);
   });
 
   app.openapi(getRoute, async (c) => {
