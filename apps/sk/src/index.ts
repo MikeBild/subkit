@@ -62,6 +62,7 @@ import {
 import { EngineClient } from "./engine-client.ts";
 import type { OutputFormat } from "./headless.ts";
 import { runHeadless } from "./headless.ts";
+import { splitLeadingOptions } from "./lib/leading-options.ts";
 import { riskSummaryLine } from "./lib/operator-digest.ts";
 import { suggestCommand } from "./lib/suggest.ts";
 import { runCliOAuthLogin } from "./login-oauth.ts";
@@ -476,6 +477,8 @@ const mainCommand = defineCommand({
     "system-accounts": systemAccountsCommand,
   },
   async run({ args }) {
+    const positional = (args._ as string[] | undefined)?.[0];
+    if (positional && Object.hasOwn(SUB_COMMANDS, positional)) return;
     let profile = resolveProfile({
       engine_url: args["engine-url"] as string | undefined,
       api_key: args["api-key"] as string | undefined,
@@ -682,13 +685,22 @@ async function dispatch(): Promise<void> {
     await showUsage(filteredMain);
     return;
   }
-  const first = rawArgs[0];
-  const sub = first && !first.startsWith("-") ? SUB_COMMANDS[first] : undefined;
+  const {
+    leading,
+    command: first,
+    rest,
+  } = splitLeadingOptions(rawArgs, mainCommand.args as Record<string, { type?: string }>);
+  const sub = first ? SUB_COMMANDS[first] : undefined;
   if (sub) {
-    await runCommand(sub.command as CommandDef, { rawArgs: rawArgs.slice(1) });
+    const separator = rest.indexOf("--");
+    const subArgs =
+      separator === -1
+        ? [...rest, ...leading]
+        : [...rest.slice(0, separator), ...leading, ...rest.slice(separator)];
+    await runCommand(sub.command as CommandDef, { rawArgs: subArgs });
     return;
   }
-  if (first && !first.startsWith("-") && !first.includes(" ")) {
+  if (first && leading.length === 0 && !first.includes(" ")) {
     const suggestion = suggestCommand(first, Object.keys(SUB_COMMANDS));
     if (suggestion) {
       process.stderr.write(`sk: unknown command '${first}' — did you mean '${suggestion}'?\n`);

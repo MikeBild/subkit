@@ -106,6 +106,19 @@ export function savedAwaitingRestart(err: unknown): string | null {
   return isEngineError(err) && err.code === "restart_required" ? err.message : null;
 }
 
+export function writeTarget(engineUrl: string, tenant: string | undefined): string {
+  return tenant ? `${engineUrl} · workspace ${tenant}` : `${engineUrl} · engine-wide`;
+}
+
+export function shadowWarning(
+  tenant: string | undefined,
+  workspace: string | null | undefined,
+  effectiveSource: string | undefined,
+): string | null {
+  if (tenant || !workspace || effectiveSource !== "tenant") return null;
+  return `workspace ${workspace} has its own value, so this engine-wide value does not apply there — rerun with --tenant ${workspace}`;
+}
+
 const setCommand = defineCommand({
   meta: {
     name: "set",
@@ -127,24 +140,51 @@ const setCommand = defineCommand({
       );
       process.exit(2);
     }
+    const profile = resolveProfile({
+      engine_url: args["engine-url"] as string | undefined,
+      api_key: args["api-key"] as string | undefined,
+      profile: args.profile as string | undefined,
+    });
     const client = buildClient(args);
+    const tenant = args.tenant as string | undefined;
+    const target = writeTarget(profile.engine_url, tenant);
     try {
       const opts: { tenant?: string; force?: boolean } = {};
-      if (args.tenant) opts.tenant = args.tenant as string;
+      if (tenant) opts.tenant = tenant;
       if (args.force) opts.force = true;
       const out = await client.setSetting(args.path as string, parsed, opts);
-      if (args.json) return printJson(out);
-      process.stdout.write(`${pc.green("✔")} ${pc.cyan(args.path as string)}\n`);
+      const workspace = profile.active_tenant_id;
+      const effective =
+        !tenant && workspace
+          ? await client.getSetting(args.path as string, { tenant: workspace }).catch(() => null)
+          : null;
+      const shadowed = shadowWarning(tenant, workspace, effective?.meta.source);
+      if (args.json) return printJson({ ...out, target, ...(shadowed ? { shadowed } : {}) });
+      const mark = out.requiresRestart || shadowed ? pc.yellow("!") : pc.green("✔");
+      process.stdout.write(`${mark} ${pc.cyan(args.path as string)}\n`);
       process.stdout.write(`  value:           ${JSON.stringify(out.value)}\n`);
+      process.stdout.write(`  saved to:        ${target}\n`);
       if (out.requiresRestart)
         process.stdout.write(
           `  ${pc.yellow("takes effect after a restart — `sk system restart --wait`")}\n`,
         );
+      if (shadowed) process.stdout.write(`  ${pc.yellow(shadowed)}\n`);
     } catch (err) {
       const waiting = savedAwaitingRestart(err);
       if (waiting) {
-        if (args.json) return printJson({ saved: true, restart_required: true, message: waiting });
-        process.stdout.write(`${pc.green("✔")} ${pc.cyan(args.path as string)} saved\n`);
+        process.exitCode = 3;
+        if (args.json)
+          return printJson({
+            saved: true,
+            active: false,
+            restart_required: true,
+            target,
+            message: waiting,
+          });
+        process.stdout.write(
+          `${pc.yellow("!")} ${pc.cyan(args.path as string)} saved, not active yet\n`,
+        );
+        process.stdout.write(`  saved to:        ${target}\n`);
         process.stdout.write(`  ${pc.yellow(waiting)}\n`);
         process.stdout.write(`  Apply it now: ${pc.cyan("sk system restart --wait")}\n`);
         return;
