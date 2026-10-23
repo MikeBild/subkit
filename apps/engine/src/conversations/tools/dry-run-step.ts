@@ -30,7 +30,7 @@ const inputSchema = z
 export const dryRunStepTool: ConversationTool = {
   name: "dry_run_step",
   description:
-    "Run a single draft step in isolation through the real driver pipeline. Produces an auditable executions row (source_kind=step). Read steps execute for real; WRITE steps are always HELD and never dispatched. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval.",
+    "Run a single draft step in isolation through the real driver pipeline. Produces an auditable executions row (source_kind=step). Read steps execute for real; WRITE steps are always HELD and never dispatched. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval. Refused for a sensitive draft (execution_privacy: sensitive); use dry_run_workflow for its metadata-only test run.",
   inputSchema,
   category: "draft_write" as const,
   authoring_resource: "workflow",
@@ -38,6 +38,24 @@ export const dryRunStepTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const workflowDraft = getWorkflowDraft(ctx.getDraft());
+    if (workflowDraft.execution_privacy === "sensitive") {
+      logger.info({
+        module: "conversation_tool",
+        action: "dry_run_step.sensitive_refused",
+        msg: "single-step test run refused for a sensitive draft",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        step_id: args.step_id,
+      });
+      return {
+        ok: false,
+        error_code: "sensitive_execution_unsupported",
+        message:
+          "Single steps of a sensitive draft do not run in chat. Use dry_run_workflow for the metadata-only test run.",
+        next_best_actions: ["dry_run_workflow"],
+        data: { error_code: "sensitive_execution_unsupported", content_withheld: true },
+      };
+    }
     const validation = await validateTenantWorkflowDef(workflowDraft, ctx.tenant_id, ctx.db);
     if (!validation.ok) {
       const nextDraft = withLatestPreview(

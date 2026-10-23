@@ -129,11 +129,14 @@ function outputMetadata(shape: unknown): Record<string, SensitiveOutputField> {
   );
 }
 
-export function sensitiveTestRunSummary(run: RunResult): SensitiveTestRunSummary {
+export function sensitiveTestRunSummary(
+  run: RunResult,
+  durationMs: number,
+): SensitiveTestRunSummary {
   const steps = run.steps.map(stepMetadata);
   return {
     status: run.status === "succeeded" ? "succeeded" : "failed",
-    duration_ms: steps.reduce((total, step) => total + (step.duration_ms ?? 0), 0),
+    duration_ms: Math.max(0, Math.round(durationMs)),
     content_withheld: true,
     steps,
     counts: {
@@ -171,6 +174,7 @@ export async function runSensitiveDryRun(p: {
   const { ctx } = p;
   clearLastPreview({ tenant_id: ctx.tenant_id, conversation_id: ctx.conversation_id });
   let run: RunResult;
+  const startedAt = performance.now();
   try {
     run = await runExecution({
       db: ctx.db,
@@ -209,7 +213,7 @@ export async function runSensitiveDryRun(p: {
     };
   }
 
-  const summary = sensitiveTestRunSummary(run);
+  const summary = sensitiveTestRunSummary(run, performance.now() - startedAt);
   const green = summary.status === "succeeded" && summary.output_schema !== "failed";
   const line = summaryLine(summary);
   for (const step of summary.steps) {
@@ -228,11 +232,10 @@ export async function runSensitiveDryRun(p: {
   const nextDraft = withLatestPreview(
     { ...ctx.getDraft(), latest_preview: null },
     {
-      ok: summary.status === "succeeded",
+      ok: green,
       step_id: stopped?.id ?? summary.steps.at(-1)?.id ?? "(end)",
       summary: line,
       preview: null,
-      ...(summary.output_schema === "failed" ? { requires_repair: true } : {}),
       step_traces: summary.steps.map((step) => ({
         step_id: step.id,
         kind: step.kind,

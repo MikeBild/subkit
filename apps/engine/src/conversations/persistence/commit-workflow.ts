@@ -588,8 +588,9 @@ async function persistAfterGauntlet(
     data: {
       ...(typeof result.data === "object" && result.data !== null ? result.data : {}),
       runtime_verification: previewSkippedByUser ? "not_performed" : "metadata_only",
-      verification_guidance:
-        "Only the inactive sensitive definition was saved. Its test run returned metadata only; values stay withheld from chat. Use the permitted execution/result API with the original caller for separately authorized live verification.",
+      verification_guidance: previewSkippedByUser
+        ? "Only the inactive sensitive definition was saved. The user excluded test runs, so no test run ran; once the user allows one, dry_run_workflow returns metadata only. Use the permitted execution/result API with the original caller for separately authorized live verification."
+        : "Only the inactive sensitive definition was saved. Its test run returned metadata only; values stay withheld from chat. Use the permitted execution/result API with the original caller for separately authorized live verification.",
     },
   };
 }

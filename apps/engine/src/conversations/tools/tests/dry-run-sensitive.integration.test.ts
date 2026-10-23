@@ -28,6 +28,7 @@ import { invokeConversationToolDirect } from "../../direct-invoke.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import type { DraftDocument } from "../../types.ts";
 import { __resetDryRunCacheForTest } from "../dry-run-cache.ts";
+import { dryRunStepTool } from "../dry-run-step.ts";
 import { dryRunWorkflowTool } from "../dry-run-workflow.ts";
 import type { ToolContext } from "../index.ts";
 import { __resetLastPreviewStoreForTest, getLastPreview } from "../last-preview-store.ts";
@@ -311,4 +312,48 @@ test("the conversation stores only metadata for a sensitive test run", async () 
   expect(JSON.stringify(outcome)).not.toContain(PLANTED);
   expect(JSON.stringify(getMockProvider().calls)).not.toContain(PLANTED);
   expect(JSON.stringify(logs)).not.toContain(PLANTED);
+});
+
+test("a single step of a sensitive draft is refused before it runs", async () => {
+  const context = toolContext(sensitiveDraft("sensitive-single-step"));
+  const before = mock.callCount();
+  const executionsBefore = await ctx.testDb.db
+    .select({ id: executions.id })
+    .from(executions)
+    .where(eq(executions.tenant_id, ctx.tenant_id));
+  const result = await dryRunStepTool.execute(context, { step_id: "read" });
+  expect(result).toMatchObject({ ok: false, error_code: "sensitive_execution_unsupported" });
+  expect(mock.callCount()).toBe(before);
+  const executionsAfter = await ctx.testDb.db
+    .select({ id: executions.id })
+    .from(executions)
+    .where(eq(executions.tenant_id, ctx.tenant_id));
+  expect(executionsAfter).toHaveLength(executionsBefore.length);
+  expect(JSON.stringify(result)).not.toContain(PLANTED);
+  expect(context.getDraft().latest_preview).toBeUndefined();
+});
+
+test("an output that misses output_schema records a failed test run", async () => {
+  const workflow = sensitiveWorkflow("sensitive-schema-miss");
+  const draft = withWorkflowValidation(
+    withWorkflowInspection(
+      withWorkflowDraft(createEmptyDraftDocument("workflow_authoring"), {
+        ...workflow,
+        output_schema: {
+          type: "object",
+          properties: { names: { type: "string" }, count: { type: "number" } },
+          required: ["names", "count"],
+        },
+      }),
+    ),
+    true,
+    "Workflow draft valid.",
+  );
+  const context = toolContext(draft);
+  const result = await dryRunWorkflowTool.execute(context, { input: {} });
+  expect(result).toMatchObject({ ok: false, error_code: "preview_needs_repair" });
+  const summary = (result.data as { sensitive_test_run: Record<string, unknown> })
+    .sensitive_test_run;
+  expect(summary).toMatchObject({ status: "succeeded", output_schema: "failed" });
+  expect(context.getDraft().latest_preview?.ok).toBe(false);
 });

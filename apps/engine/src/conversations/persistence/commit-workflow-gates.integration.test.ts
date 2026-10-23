@@ -298,6 +298,21 @@ test("an approved sensitive definition saves inactive after a green metadata tes
   expect(audit[0]?.metadata).toMatchObject({ runtime_verification: "metadata_only" });
 });
 
+test("a sensitive save without a test run does not claim a metadata test run", async () => {
+  const conversationId = await freshConversation();
+  await seedApprovedConfirm(conversationId);
+  const toolCtx = {
+    ...stubToolCtx(conversationId, sensitiveDraft("sensitive-no-run-by-user")),
+    recentUserMessage: "Bitte keinen Testlauf starten.",
+  };
+  const result = await commitWorkflowAtomic({ ctx: toolCtx });
+  expect(result.ok).toBe(true);
+  const data = result.data as { runtime_verification: string; verification_guidance: string };
+  expect(data.runtime_verification).toBe("not_performed");
+  expect(data.verification_guidance).not.toContain("returned metadata only");
+  expect(data.verification_guidance).toContain("no test run");
+});
+
 test("a failed sensitive metadata test run blocks saving and cannot be forced", async () => {
   const conversationId = await freshConversation();
   await seedApprovedConfirm(conversationId);
