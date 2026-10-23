@@ -5,9 +5,20 @@ import { auditAwait } from "../audit/audit.ts";
 import type { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { intakeCategoryDefaults, type intakeItems } from "../db/schema/intake.ts";
-import type { IntakeItemView } from "./intake-types.ts";
+import type { IntakeItemOriginFilter, IntakeItemView } from "./intake-types.ts";
 
 export const DEFAULT_INTAKE_CATEGORY = "inbox";
+
+export const INTAKE_ITEM_ORIGIN_FILTERS = ["capture", "note", "session"] as const;
+
+export const INTAKE_ORIGIN_FILTER_VALUES: Record<
+  IntakeItemOriginFilter,
+  readonly IntakeItemView["original_snapshot"]["origin"][]
+> = {
+  capture: ["capture", "restored_draft"],
+  note: ["note"],
+  session: ["session"],
+};
 
 export function parseIntakeCategory(value: string): string {
   return CategorySchema.parse(value);

@@ -19146,6 +19146,43 @@
               "origin": {
                 "type": "string",
                 "enum": [
+                  "note"
+                ]
+              }
+            },
+            "required": [
+              "title",
+              "captured_at",
+              "body",
+              "origin"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "source_author": {
+                "type": "string"
+              },
+              "published_at": {
+                "type": "string"
+              },
+              "captured_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "body": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
                   "session"
                 ]
               },
@@ -19235,7 +19272,8 @@
           },
           "source_url": {
             "type": "string",
-            "format": "uri"
+            "format": "uri",
+            "description": "Address of the collected source. Leave it out to collect a note."
           },
           "source_author": {
             "type": "string",
@@ -19267,7 +19305,6 @@
         "required": [
           "client_request_id",
           "title",
-          "source_url",
           "captured_at",
           "body"
         ]
@@ -46941,6 +46978,21 @@
             "required": false,
             "name": "state",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "capture",
+                "note",
+                "session"
+              ],
+              "description": "capture: collected from a source address; note: written without an address; session: prepared by an AI agent from a work session."
+            },
+            "required": false,
+            "description": "capture: collected from a source address; note: written without an address; session: prepared by an AI agent from a work session.",
+            "name": "origin",
+            "in": "query"
           }
         ],
         "responses": {
@@ -46976,7 +47028,7 @@
         "tags": [
           "intake"
         ],
-        "summary": "Collect an immutable source clip",
+        "summary": "Collect an immutable source clip or a note without a source address",
         "security": [
           {
             "bearerAuth": []

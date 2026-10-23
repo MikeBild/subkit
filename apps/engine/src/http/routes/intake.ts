@@ -112,13 +112,32 @@ const CreateItemSchema = z
     client_request_id: z.string().uuid(),
     category: CategorySchema.optional(),
     title: z.string().trim().min(1).max(1_000),
-    source_url: z.string().url(),
+    source_url: z
+      .string()
+      .url()
+      .optional()
+      .describe("Address of the collected source. Leave it out to collect a note."),
     source_author: z.string().trim().min(1).max(1_000).optional(),
     published_at: z.string().min(1).max(1_000).optional(),
     captured_at: z.string().datetime(),
     body: z.string().min(1).max(2_000_000),
     note: z.string().max(20_000).optional(),
     original_snapshot: SnapshotSchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.source_url !== undefined) return;
+    if (value.original_snapshot?.source_url !== undefined)
+      ctx.addIssue({
+        code: "custom",
+        message: "a note without source_url cannot carry an original source_url",
+        path: ["original_snapshot", "source_url"],
+      });
+    if (value.original_snapshot?.origin !== undefined)
+      ctx.addIssue({
+        code: "custom",
+        message: "a note without source_url cannot carry an original origin",
+        path: ["original_snapshot", "origin"],
+      });
   })
   .openapi("CreateIntakeItemBody");
 
@@ -223,6 +242,12 @@ const listItemsRoute = createRoute({
     query: z.object({
       category: CategorySchema.optional(),
       state: ItemStateSchema.optional(),
+      origin: z
+        .enum(intake.INTAKE_ITEM_ORIGIN_FILTERS)
+        .optional()
+        .describe(
+          "capture: collected from a source address; note: written without an address; session: prepared by an AI agent from a work session.",
+        ),
     }),
   },
   responses: {
@@ -234,7 +259,7 @@ const createItemRoute = createRoute({
   method: "post",
   path: "/v1/intake/items",
   tags: ["intake"],
-  summary: "Collect an immutable source clip",
+  summary: "Collect an immutable source clip or a note without a source address",
   security: [{ bearerAuth: [] }],
   request: { body: { content: { "application/json": { schema: CreateItemSchema } } } },
   responses: {

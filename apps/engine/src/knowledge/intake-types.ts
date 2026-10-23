@@ -6,6 +6,8 @@ import type {
   IntakeTargetKind,
 } from "../db/schema/intake.ts";
 
+export type IntakeItemOriginFilter = "capture" | "note" | "session";
+
 export type IntakeItemState = "collected" | "reviewing" | "admitted" | "discarded";
 export type IntakeProposalStatus = "draft" | "stale" | "confirmed" | "rejected";
 
@@ -78,7 +80,7 @@ export interface CreateIntakeItemParams {
   client_request_id: string;
   category?: string | undefined;
   title: string;
-  source_url: string;
+  source_url?: string | undefined;
   source_author?: string | undefined;
   published_at?: string | undefined;
   captured_at: string;

@@ -6,6 +6,7 @@ export * from "./content.ts";
 export * from "./errors.ts";
 export * from "./intake.ts";
 export * from "./intake-errors.ts";
+export { INTAKE_ITEM_ORIGIN_FILTERS } from "./intake-rows.ts";
 export * from "./intake-session.ts";
 export * from "./intake-summary.ts";
 export {

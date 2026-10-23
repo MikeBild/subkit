@@ -57,7 +57,14 @@ export interface IntakeSessionSnapshot extends IntakeSnapshotFields {
   tags?: string[] | undefined;
 }
 
-export type IntakeSnapshot = IntakeCaptureSnapshot | IntakeSessionSnapshot;
+export interface IntakeNoteSnapshot extends IntakeSnapshotFields {
+  origin: "note";
+  source_url?: undefined;
+}
+
+export type IntakeCollectedSnapshot = IntakeCaptureSnapshot | IntakeNoteSnapshot;
+
+export type IntakeSnapshot = IntakeCollectedSnapshot | IntakeSessionSnapshot;
 
 export type IntakeTargetKind = "knowledge" | "skill";
 

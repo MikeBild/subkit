@@ -3,7 +3,7 @@ import type { Actor } from "../audit/actor.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import {
-  type IntakeCaptureSnapshot,
+  type IntakeCollectedSnapshot,
   intakeCategoryDefaults,
   intakeItems,
   intakeProposalItems,
@@ -16,6 +16,7 @@ import { IntakeConflictError, IntakeProposalConflictError } from "./intake-error
 import {
   DEFAULT_INTAKE_CATEGORY,
   defaultIntakeCategory,
+  INTAKE_ORIGIN_FILTER_VALUES,
   intakeItemView,
   parseIntakeCategory,
   recordIntakeAudit,
@@ -31,6 +32,7 @@ import type {
   CreateIntakeItemParams,
   CreateIntakeProposalParams,
   IntakeCategoryView,
+  IntakeItemOriginFilter,
   IntakeItemView,
   IntakeProposalItemView,
   IntakeProposalRevisionView,
@@ -70,11 +72,10 @@ function redactCollected(p: CreateIntakeItemParams): {
   return { params, redactions };
 }
 
-function snapshot(p: CreateIntakeItemParams, redactions = 0): IntakeCaptureSnapshot {
+function snapshot(p: CreateIntakeItemParams, redactions = 0): IntakeCollectedSnapshot {
   const source = p.original_snapshot;
-  return {
-    title: source?.title ?? p.title,
-    source_url: source?.source_url ?? p.source_url,
+  const sourceUrl = source?.source_url ?? p.source_url;
+  const described = {
     ...((source?.source_author ?? p.source_author)
       ? { source_author: source?.source_author ?? p.source_author }
       : {}),
@@ -83,9 +84,18 @@ function snapshot(p: CreateIntakeItemParams, redactions = 0): IntakeCaptureSnaps
       : {}),
     captured_at: source?.captured_at ?? p.captured_at,
     body: source?.body ?? p.body,
-    origin: source?.origin ?? "capture",
-    ...(redactions > 0 ? { redactions } : {}),
   };
+  const title = source?.title ?? p.title;
+  const redacted = redactions > 0 ? { redactions } : {};
+  return sourceUrl === undefined
+    ? { title, ...described, origin: "note", ...redacted }
+    : {
+        title,
+        source_url: sourceUrl,
+        ...described,
+        origin: source?.origin ?? "capture",
+        ...redacted,
+      };
 }
 
 function itemRequestDigest(p: CreateIntakeItemParams, intakeCategory: string): string {
@@ -93,7 +103,7 @@ function itemRequestDigest(p: CreateIntakeItemParams, intakeCategory: string): s
     actor: p.actor,
     category: intakeCategory,
     title: p.title,
-    source_url: p.source_url,
+    source_url: p.source_url ?? null,
     source_author: p.source_author ?? null,
     published_at: p.published_at ?? null,
     captured_at: p.captured_at,
@@ -244,7 +254,8 @@ export async function createIntakeItem(
       row.id,
       {
         category: intakeCategory,
-        source_url: row.original_snapshot.source_url,
+        origin: row.original_snapshot.origin,
+        source_url: row.original_snapshot.source_url ?? null,
         redactions: row.original_snapshot.redactions ?? 0,
       },
     );
@@ -257,6 +268,7 @@ export async function listIntakeItems(
     tenant_id: string;
     category?: string | undefined;
     state?: IntakeItemView["state"] | undefined;
+    origin?: IntakeItemOriginFilter | undefined;
   },
   exec?: Executor,
 ): Promise<IntakeItemView[]> {
@@ -264,6 +276,12 @@ export async function listIntakeItems(
   const tenantConds = [eq(intakeItems.tenant_id, p.tenant_id)];
   if (p.category) tenantConds.push(eq(intakeItems.category, parseIntakeCategory(p.category)));
   if (p.state) tenantConds.push(eq(intakeItems.state, p.state));
+  if (p.origin)
+    tenantConds.push(
+      inArray(sql<string>`${intakeItems.original_snapshot}->>'origin'`, [
+        ...INTAKE_ORIGIN_FILTER_VALUES[p.origin],
+      ]),
+    );
   return (
     await db
       .select()

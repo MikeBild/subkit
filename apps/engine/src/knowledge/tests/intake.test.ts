@@ -23,6 +23,7 @@ import {
   intakeConfirmRequirements,
   listIntakeCategories,
   listIntakeItemEvidence,
+  listIntakeItems,
   patchIntakeItem,
   resolveDomainKnowledgeTarget,
   reviseIntakeProposal,
@@ -125,6 +126,89 @@ describe.skipIf(skip)("knowledge intake", () => {
     ).rejects.toBeInstanceOf(IntakeConflictError);
     const afterEditRetry = await createClip({ client_request_id: requestId });
     expect(afterEditRetry.id).toBe(first.id);
+  });
+
+  test("collects a note without a source address as a redacted, audited intake entry", async () => {
+    const pat = `ghp_${"c3D4".repeat(9)}`;
+    const requestId = nextUuid();
+    const params = {
+      client_request_id: requestId,
+      source_url: undefined,
+      source_author: undefined,
+      published_at: undefined,
+      note: undefined,
+      title: "Idea for the onboarding",
+      body: `Ask about the team size first. token ${pat}`,
+    };
+    const note = await createClip(params);
+    expect(note.state).toBe("collected");
+    expect(note.admitted_target_id).toBeNull();
+    expect(note.original_snapshot).toEqual({
+      title: "Idea for the onboarding",
+      captured_at: "2026-10-10T07:00:00.000Z",
+      body: "Ask about the team size first. token ***REDACTED:pat***",
+      origin: "note",
+      redactions: 1,
+    });
+    expect(JSON.stringify(note)).not.toContain(pat);
+    expect((await createClip(params)).id).toBe(note.id);
+    await expect(
+      createClip({ ...params, source_url: "https://example.test/now-with-address" }),
+    ).rejects.toBeInstanceOf(IntakeConflictError);
+    const [audit] = await ctx.testDb.db
+      .select({ metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "intake_item.collected"),
+          eq(auditLog.resource_id, note.id),
+        ),
+      );
+    expect(audit?.metadata).toMatchObject({ origin: "note", source_url: null, redactions: 1 });
+  });
+
+  test("filters listed entries by origin within the tenant", async () => {
+    const clip = await createClip({ title: "Origin filter clip" });
+    const note = await createClip({ title: "Origin filter note", source_url: undefined });
+    const session = (
+      await createSessionIntakeItem(
+        {
+          tenant_id: ctx.tenantId,
+          actor,
+          title: "Origin filter session learning",
+          body: "Prepared by an agent from a work session.",
+          captured_at: "2026-10-10T07:00:00.000Z",
+          session: {
+            agent: "claude-code",
+            session_id: `session-${nextUuid()}`,
+            repo: null,
+            domains: [],
+            evidence_excerpt: "The agent noticed this during the session.",
+          },
+        },
+        ctx.testDb.db,
+      )
+    ).item;
+    const ids = async (origin: "capture" | "note" | "session") => {
+      const items = await listIntakeItems({ tenant_id: ctx.tenantId, origin }, ctx.testDb.db);
+      expect(items.every((item) => item.tenant_id === ctx.tenantId)).toBe(true);
+      return items.map((item) => item.id);
+    };
+    const fromAgents = await ids("session");
+    expect(fromAgents).toContain(session.id);
+    expect(fromAgents).not.toContain(clip.id);
+    expect(fromAgents).not.toContain(note.id);
+    const notes = await ids("note");
+    expect(notes).toContain(note.id);
+    expect(notes).not.toContain(clip.id);
+    const captures = await ids("capture");
+    expect(captures).toContain(clip.id);
+    expect(captures).not.toContain(note.id);
+    expect(captures).not.toContain(session.id);
+    expect(
+      await listIntakeItems({ tenant_id: nextUuid(), origin: "session" }, ctx.testDb.db),
+    ).toEqual([]);
   });
 
   test("redacts secrets from a collected clip and keeps prose, code and URLs intact", async () => {

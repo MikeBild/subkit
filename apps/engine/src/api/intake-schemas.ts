@@ -118,6 +118,10 @@ export const IntakeItemSnapshotSchema = z
     }),
     z.object({
       ...SnapshotFields,
+      origin: z.literal("note"),
+    }),
+    z.object({
+      ...SnapshotFields,
       origin: z.literal("session"),
       source_url: z.string().url().optional(),
       agent: z.string(),

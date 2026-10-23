@@ -12503,6 +12503,8 @@ export interface paths {
                     /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it. */
                     category?: components["schemas"]["CatalogCategory"];
                     state?: "collected" | "reviewing" | "admitted" | "discarded";
+                    /** @description capture: collected from a source address; note: written without an address; session: prepared by an AI agent from a work session. */
+                    origin?: "capture" | "note" | "session";
                 };
                 header?: never;
                 path?: never;
@@ -12525,7 +12527,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Collect an immutable source clip */
+        /** Collect an immutable source clip or a note without a source address */
         post: {
             parameters: {
                 query?: never;
@@ -25923,6 +25925,16 @@ export interface components {
             body: string;
             redactions?: number;
             /** @enum {string} */
+            origin: "note";
+        } | {
+            title: string;
+            source_author?: string;
+            published_at?: string;
+            /** Format: date-time */
+            captured_at: string;
+            body: string;
+            redactions?: number;
+            /** @enum {string} */
             origin: "session";
             /** Format: uri */
             source_url?: string;
@@ -25946,8 +25958,11 @@ export interface components {
             client_request_id: string;
             category?: components["schemas"]["CatalogCategory"];
             title: string;
-            /** Format: uri */
-            source_url: string;
+            /**
+             * Format: uri
+             * @description Address of the collected source. Leave it out to collect a note.
+             */
+            source_url?: string;
             source_author?: string;
             published_at?: string;
             /** Format: date-time */

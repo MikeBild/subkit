@@ -288,6 +288,44 @@ describe("intake HTTP flow", () => {
     ).toContain("original");
   });
 
+  test("collects a note without a source address and filters the list by origin", async () => {
+    const collected = await request("/v1/intake/items", "POST", {
+      client_request_id: "10000000-0000-4000-8000-000000000090",
+      category: "notes",
+      title: "Note without address",
+      captured_at: "2026-10-10T07:00:00.000Z",
+      body: "A thought worth reviewing later.",
+    });
+    expect(collected.status).toBe(201);
+    const note = (await collected.json()) as {
+      id: string;
+      state: string;
+      original_snapshot: Record<string, unknown>;
+    };
+    expect(note.state).toBe("collected");
+    expect(note.original_snapshot.origin).toBe("note");
+    expect(note.original_snapshot).not.toHaveProperty("source_url");
+
+    const pretendingCapture = await request("/v1/intake/items", "POST", {
+      client_request_id: "10000000-0000-4000-8000-000000000091",
+      title: "Note claiming a captured origin",
+      captured_at: "2026-10-10T07:00:00.000Z",
+      body: "No address, but a capture origin.",
+      original_snapshot: { origin: "capture" },
+    });
+    expect(pretendingCapture.status).toBe(400);
+
+    const listed = async (origin: string) => {
+      const response = await request(`/v1/intake/items?category=notes&origin=${origin}`, "GET");
+      expect(response.status).toBe(200);
+      return ((await response.json()) as { items: { id: string }[] }).items.map((item) => item.id);
+    };
+    expect(await listed("note")).toContain(note.id);
+    expect(await listed("session")).not.toContain(note.id);
+    expect(await listed("capture")).not.toContain(note.id);
+    expect((await request("/v1/intake/items?origin=llm", "GET")).status).toBe(400);
+  });
+
   test("rejects category values outside the knowledge metadata contract", async () => {
     for (const category of ["Mission Reports", "mission_reports", "platform"]) {
       const response = await request("/v1/intake/proposals", "POST", {
