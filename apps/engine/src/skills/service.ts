@@ -635,6 +635,20 @@ function snapshotFromAudit(value: unknown): Skill | null {
   return parsed.success ? parsed.data : null;
 }
 
+function historyEntry(row: typeof auditLog.$inferSelect): SkillHistoryEntry {
+  const snapshot = snapshotFromAudit(row.after);
+  const thin = (row.after ?? {}) as { lifecycle?: unknown; version?: unknown; title?: unknown };
+  return {
+    audit_entry_id: row.id,
+    version: snapshot?.version ?? (typeof thin.version === "number" ? thin.version : null),
+    title: snapshot?.title ?? (typeof thin.title === "string" ? thin.title : null),
+    lifecycle: snapshot?.status ?? (typeof thin.lifecycle === "string" ? thin.lifecycle : null),
+    updated_at: row.ts.toISOString(),
+    actor_id: row.actor_id,
+    has_snapshot: snapshot !== null,
+  };
+}
+
 export async function listSkillHistory(
   tenant_id: string,
   skill_id: string,
@@ -653,19 +667,50 @@ export async function listSkillHistory(
     .where(and(...tenantConds))
     .orderBy(desc(auditLog.ts))
     .limit(MAX_HISTORY_ROWS);
-  return rows.map((row) => {
-    const snapshot = snapshotFromAudit(row.after);
-    const thin = (row.after ?? {}) as { lifecycle?: unknown; version?: unknown; title?: unknown };
-    return {
-      audit_entry_id: row.id,
-      version: snapshot?.version ?? (typeof thin.version === "number" ? thin.version : null),
-      title: snapshot?.title ?? (typeof thin.title === "string" ? thin.title : null),
-      lifecycle: snapshot?.status ?? (typeof thin.lifecycle === "string" ? thin.lifecycle : null),
-      updated_at: row.ts.toISOString(),
-      actor_id: row.actor_id,
-      has_snapshot: snapshot !== null,
-    };
-  });
+  return rows.map(historyEntry);
+}
+
+export interface SkillHistoryState {
+  title: string;
+  body: string;
+}
+
+export interface SkillHistoryDetail extends SkillHistoryEntry {
+  before: SkillHistoryState | null;
+  after: SkillHistoryState | null;
+}
+
+function historyState(value: unknown): SkillHistoryState | null {
+  const snapshot = snapshotFromAudit(value);
+  return snapshot ? { title: snapshot.title, body: snapshot.body } : null;
+}
+
+export async function getSkillHistoryEntry(
+  tenant_id: string,
+  skill_id: string,
+  audit_entry_id: string,
+  exec?: Executor,
+): Promise<SkillHistoryDetail | null> {
+  const db = exec ?? getDb();
+  const tenantConds = [
+    eq(auditLog.tenant_id, tenant_id),
+    eq(auditLog.id, audit_entry_id),
+    eq(auditLog.action, AuditAction.SKILL_UPDATED),
+    eq(auditLog.resource_type, "skill"),
+    eq(auditLog.resource_id, skill_id),
+  ];
+  const rows = await db
+    .select()
+    .from(auditLog)
+    .where(and(...tenantConds))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    ...historyEntry(row),
+    before: historyState(row.before),
+    after: historyState(row.after),
+  };
 }
 
 export async function restoreSkill(

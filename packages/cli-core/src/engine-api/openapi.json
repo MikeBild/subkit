@@ -18620,6 +18620,54 @@
           "has_snapshot"
         ]
       },
+      "SkillHistoryDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SkillHistoryEntry"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "before": {
+                "$ref": "#/components/schemas/SkillHistoryState"
+              },
+              "after": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SkillHistoryState"
+                  },
+                  {
+                    "description": "Title and body after this change; null when the entry predates full snapshots."
+                  }
+                ]
+              }
+            },
+            "required": [
+              "before",
+              "after"
+            ]
+          }
+        ]
+      },
+      "SkillHistoryState": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "body"
+        ],
+        "description": "Title and body before this change; null when the entry predates full snapshots."
+      },
       "RestoreSkillBody": {
         "type": "object",
         "properties": {
@@ -46592,6 +46640,61 @@
         }
       }
     },
+    "/v1/skills/{id}/history/{audit_entry_id}": {
+      "get": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "Read one skill version with its title and body before and after the change",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "audit_entry_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHistoryDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/skills/{id}/restore": {
       "post": {
         "tags": [
@@ -49778,6 +49881,28 @@
             },
             "required": false,
             "name": "target_connector_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Only conversations that mention this skill with an @ reference or loaded it with load_skill. Requires skill:read on the skill."
+            },
+            "required": false,
+            "description": "Only conversations that mention this skill with an @ reference or loaded it with load_skill. Requires skill:read on the skill.",
+            "name": "referenced_skill_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Only conversations that mention this knowledge source with an @ reference or read, fetched or found it through a knowledge tool. Requires knowledge:read."
+            },
+            "required": false,
+            "description": "Only conversations that mention this knowledge source with an @ reference or read, fetched or found it through a knowledge tool. Requires knowledge:read.",
+            "name": "referenced_knowledge_source_id",
             "in": "query"
           },
           {

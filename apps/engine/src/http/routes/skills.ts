@@ -9,6 +9,7 @@ import {
   createSkill,
   deleteSkill,
   getSkill,
+  getSkillHistoryEntry,
   listSkillHistory,
   listSkills,
   restoreSkill,
@@ -160,6 +161,25 @@ const SkillHistoryResponse = z
   .object({ items: z.array(SkillHistoryEntrySchema) })
   .openapi("SkillHistoryResponse");
 
+const SkillHistoryStateSchema = z
+  .object({ title: z.string(), body: z.string() })
+  .nullable()
+  .openapi("SkillHistoryState");
+
+const SkillHistoryDetailSchema = SkillHistoryEntrySchema.extend({
+  before: SkillHistoryStateSchema.describe(
+    "Title and body before this change; null when the entry predates full snapshots.",
+  ),
+  after: SkillHistoryStateSchema.describe(
+    "Title and body after this change; null when the entry predates full snapshots.",
+  ),
+}).openapi("SkillHistoryDetail");
+
+const SkillHistoryEntryParam = z.object({
+  id: z.string().uuid(),
+  audit_entry_id: z.string().uuid(),
+});
+
 const RestoreSkillBody = z
   .object({ audit_entry_id: z.string().uuid() })
   .openapi("RestoreSkillBody");
@@ -175,6 +195,22 @@ const historyRoute = createRoute({
     200: {
       description: "OK",
       content: { "application/json": { schema: SkillHistoryResponse } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const historyEntryRoute = createRoute({
+  method: "get",
+  path: "/v1/skills/{id}/history/{audit_entry_id}",
+  tags: ["skills"],
+  summary: "Read one skill version with its title and body before and after the change",
+  security: [{ bearerAuth: [] }],
+  request: { params: SkillHistoryEntryParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: SkillHistoryDetailSchema } },
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -225,6 +261,10 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
     return requirePermission("skill:archive", () => ({ type: "skill", id }))(c, next);
   });
   app.use("/v1/skills/:id/history", async (c, next) => {
+    const id = c.req.param("id");
+    return requirePermission("skill:read", () => ({ type: "skill", id }))(c, next);
+  });
+  app.use("/v1/skills/:id/history/:audit_entry_id", async (c, next) => {
     const id = c.req.param("id");
     return requirePermission("skill:read", () => ({ type: "skill", id }))(c, next);
   });
@@ -332,6 +372,17 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!skill) throw new NotFoundError("skill");
     const items = await listSkillHistory(principal.tenant_id, id, db);
     return c.json({ items }, 200);
+  });
+
+  app.openapi(historyEntryRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id, audit_entry_id } = c.req.valid("param");
+    const skill = await getSkill(principal.tenant_id, id, db);
+    if (!skill) throw new NotFoundError("skill");
+    const entry = await getSkillHistoryEntry(principal.tenant_id, id, audit_entry_id, db);
+    if (!entry) throw new NotFoundError("skill history entry");
+    return c.json(entry, 200);
   });
 
   app.openapi(restoreRoute, async (c) => {

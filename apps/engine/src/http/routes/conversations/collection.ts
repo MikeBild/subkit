@@ -53,6 +53,20 @@ const listRoute = createRoute({
         owner_kind: z.enum(["user", "system_account"]).optional(),
         target_workflow_id: z.string().uuid().optional(),
         target_connector_id: z.string().uuid().optional(),
+        referenced_skill_id: z
+          .string()
+          .uuid()
+          .optional()
+          .describe(
+            "Only conversations that mention this skill with an @ reference or loaded it with load_skill. Requires skill:read on the skill.",
+          ),
+        referenced_knowledge_source_id: z
+          .string()
+          .uuid()
+          .optional()
+          .describe(
+            "Only conversations that mention this knowledge source with an @ reference or read, fetched or found it through a knowledge tool. Requires knowledge:read.",
+          ),
         q: z.string().min(1).max(200).optional(),
         sort: z.enum(["title", "status", "created_at", "updated_at"]).optional(),
         order: z.enum(["asc", "desc"]).optional(),
@@ -124,6 +138,15 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
+    if (q.referenced_skill_id) {
+      await ensurePermission(c, "skill:read", { type: "skill", id: q.referenced_skill_id });
+    }
+    if (q.referenced_knowledge_source_id) {
+      await ensurePermission(c, "knowledge:read", {
+        type: "knowledge",
+        id: q.referenced_knowledge_source_id,
+      });
+    }
     const params = {
       tenant_id: principal.tenant_id,
       ...(q.status ? { status: q.status as ConversationStatus } : {}),
@@ -133,6 +156,10 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(q.owner_kind ? { owner_kind: q.owner_kind } : {}),
       ...(q.target_workflow_id ? { target_workflow_id: q.target_workflow_id } : {}),
       ...(q.target_connector_id ? { target_connector_id: q.target_connector_id } : {}),
+      ...(q.referenced_skill_id ? { referenced_skill_id: q.referenced_skill_id } : {}),
+      ...(q.referenced_knowledge_source_id
+        ? { referenced_knowledge_source_id: q.referenced_knowledge_source_id }
+        : {}),
       ...(q.q ? { q: q.q } : {}),
       ...(q.sort ? { sort: q.sort } : {}),
       ...(q.order ? { order: q.order } : {}),

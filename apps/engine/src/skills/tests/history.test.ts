@@ -5,7 +5,13 @@ import { auditLog, skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { HttpError } from "../../http/errors.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { createSkill, listSkillHistory, restoreSkill, updateSkill } from "../service.ts";
+import {
+  createSkill,
+  getSkillHistoryEntry,
+  listSkillHistory,
+  restoreSkill,
+  updateSkill,
+} from "../service.ts";
 
 let ctx: TestDb;
 const nextUuid = createDeterministicUuidFactory(20260611);
@@ -193,5 +199,65 @@ describe("skills/history", () => {
       restoreSkill(otherTenant, a.id, aHistory[0]!.audit_entry_id, null, ctx.db),
       404,
     );
+  });
+
+  test("one history entry carries title and body before and after its change", async () => {
+    const tenant_id = await seedTenant();
+    const skill = await createSkill(
+      { tenant_id, input: { scope: "global", title: "rules", body: "line one\nline two" } },
+      ctx.db,
+    );
+    await updateSkill(
+      tenant_id,
+      skill.id,
+      { title: "rules v2", body: "line one\nline three" },
+      null,
+      ctx.db,
+    );
+    const [entry] = await listSkillHistory(tenant_id, skill.id, ctx.db);
+    const detail = await getSkillHistoryEntry(tenant_id, skill.id, entry!.audit_entry_id, ctx.db);
+    expect(detail?.version).toBe(2);
+    expect(detail?.has_snapshot).toBe(true);
+    expect(detail?.before).toEqual({ title: "rules", body: "line one\nline two" });
+    expect(detail?.after).toEqual({ title: "rules v2", body: "line one\nline three" });
+
+    const other = await createSkill(
+      { tenant_id, input: { scope: "global", title: "other", body: "x" } },
+      ctx.db,
+    );
+    expect(
+      await getSkillHistoryEntry(tenant_id, other.id, entry!.audit_entry_id, ctx.db),
+    ).toBeNull();
+    expect(await getSkillHistoryEntry(tenant_id, skill.id, nextUuid(), ctx.db)).toBeNull();
+    const otherTenant = await seedTenant();
+    expect(
+      await getSkillHistoryEntry(otherTenant, skill.id, entry!.audit_entry_id, ctx.db),
+    ).toBeNull();
+  });
+
+  test("a thin legacy entry has no before or after state", async () => {
+    const tenant_id = await seedTenant();
+    const skill = await createSkill(
+      { tenant_id, input: { scope: "global", title: "thin", body: "body" } },
+      ctx.db,
+    );
+    const legacyId = nextUuid();
+    await ctx.db.insert(auditLog).values({
+      id: legacyId,
+      tenant_id,
+      actor_type: "system",
+      actor_id: null,
+      action: AuditAction.SKILL_UPDATED,
+      resource_type: "skill",
+      resource_id: skill.id,
+      result: "success",
+      before: { lifecycle: "active", version: 1, title: "thin" },
+      after: { lifecycle: "active", version: 2, title: "thin" },
+      metadata: {},
+    });
+    const detail = await getSkillHistoryEntry(tenant_id, skill.id, legacyId, ctx.db);
+    expect(detail?.has_snapshot).toBe(false);
+    expect(detail?.before).toBeNull();
+    expect(detail?.after).toBeNull();
   });
 });

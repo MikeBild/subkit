@@ -70,6 +70,8 @@ export interface ListConversationsParams {
   owner_id?: string;
   target_workflow_id?: string;
   target_connector_id?: string;
+  referenced_skill_id?: string;
+  referenced_knowledge_source_id?: string;
   q?: string;
   viewer_user_id?: string;
   hidden?: "exclude" | "only" | "all";
@@ -95,6 +97,43 @@ export interface ConversationListItem extends ConversationRecord {
   hidden: boolean;
 }
 
+function mentionedIn(tenant_id: string, type: "skill" | "knowledge_source", id: string) {
+  const reference = JSON.stringify([{ type, id }]);
+  return sql<boolean>`exists (
+    select 1 from conversation_messages cm
+    where cm.tenant_id = ${tenant_id}
+      and cm.conversation_id = ${conversations.id}
+      and cm.role = 'user'
+      and cm.content -> 'references' @> ${reference}::jsonb
+  )`;
+}
+
+function skillLoadedIn(tenant_id: string, skill_id: string) {
+  return sql<boolean>`exists (
+    select 1 from conversation_tool_calls ctc
+    where ctc.tenant_id = ${tenant_id}
+      and ctc.conversation_id = ${conversations.id}
+      and ctc.tool = 'load_skill'
+      and ctc.outcome = 'ok'
+      and ctc.output -> 'skill' ->> 'id' = ${skill_id}
+  )`;
+}
+
+function knowledgeReadIn(tenant_id: string, source_id: string) {
+  const hit = JSON.stringify([{ knowledge_source_id: source_id }]);
+  return sql<boolean>`exists (
+    select 1 from conversation_tool_calls ctc
+    where ctc.tenant_id = ${tenant_id}
+      and ctc.conversation_id = ${conversations.id}
+      and ctc.outcome = 'ok'
+      and (
+        (ctc.tool = 'read_knowledge' and ctc.input ->> 'knowledge_source_id' = ${source_id})
+        or (ctc.tool = 'get_knowledge_source' and ctc.input ->> 'id' = ${source_id})
+        or (ctc.tool = 'search_knowledge' and ctc.output -> 'hits' @> ${hit}::jsonb)
+      )
+  )`;
+}
+
 function conversationListConds(p: ListConversationsParams) {
   const tenantConds = [eq(conversations.tenant_id, p.tenant_id)];
   if (p.status) tenantConds.push(eq(conversations.status, p.status));
@@ -104,6 +143,20 @@ function conversationListConds(p: ListConversationsParams) {
   }
   if (p.target_connector_id) {
     tenantConds.push(eq(conversations.target_connector_id, p.target_connector_id));
+  }
+  if (p.referenced_skill_id) {
+    const used = or(
+      mentionedIn(p.tenant_id, "skill", p.referenced_skill_id),
+      skillLoadedIn(p.tenant_id, p.referenced_skill_id),
+    );
+    if (used) tenantConds.push(used);
+  }
+  if (p.referenced_knowledge_source_id) {
+    const used = or(
+      mentionedIn(p.tenant_id, "knowledge_source", p.referenced_knowledge_source_id),
+      knowledgeReadIn(p.tenant_id, p.referenced_knowledge_source_id),
+    );
+    if (used) tenantConds.push(used);
   }
   if (p.viewer_user_id && p.hidden !== "all") {
     const hiddenForViewer = sql<boolean>`exists (

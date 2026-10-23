@@ -12224,6 +12224,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/skills/{id}/history/{audit_entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one skill version with its title and body before and after the change */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    audit_entry_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SkillHistoryDetail"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/skills/{id}/restore": {
         parameters: {
             query?: never;
@@ -14755,6 +14803,10 @@ export interface paths {
                     owner_kind?: "user" | "system_account";
                     target_workflow_id?: string;
                     target_connector_id?: string;
+                    /** @description Only conversations that mention this skill with an @ reference or loaded it with load_skill. Requires skill:read on the skill. */
+                    referenced_skill_id?: string;
+                    /** @description Only conversations that mention this knowledge source with an @ reference or read, fetched or found it through a knowledge tool. Requires knowledge:read. */
+                    referenced_knowledge_source_id?: string;
                     q?: string;
                     sort?: "title" | "status" | "created_at" | "updated_at";
                     order?: "asc" | "desc";
@@ -25753,6 +25805,15 @@ export interface components {
             actor_id: string | null;
             has_snapshot: boolean;
         };
+        SkillHistoryDetail: components["schemas"]["SkillHistoryEntry"] & {
+            before: components["schemas"]["SkillHistoryState"];
+            after: components["schemas"]["SkillHistoryState"] & unknown;
+        };
+        /** @description Title and body before this change; null when the entry predates full snapshots. */
+        SkillHistoryState: {
+            title: string;
+            body: string;
+        } | null;
         RestoreSkillBody: {
             /** Format: uuid */
             audit_entry_id: string;
