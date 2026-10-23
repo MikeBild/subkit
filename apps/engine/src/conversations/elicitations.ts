@@ -651,6 +651,7 @@ async function resolveElicitationWithin(
     conversation_id: row.conversation_id,
     tool_name: row.tool_name,
     surface: row.protocol_native ? "mcp_elicitation" : "portal",
+    ...(status === "timeout" ? { outcome: "expired" } : {}),
     ...(p.transport && row.protocol_native ? { elicitation_transport: p.transport } : {}),
   };
   await auditAwait(
@@ -736,6 +737,24 @@ const EXPIRY_NOTES: Readonly<Record<ElicitationExpiryReason, string>> = {
     "the question went unanswered long enough to expire; nothing ran. Ask it again if the answer is still needed.",
 };
 
+export function expiredToolCallUpdate(reason: ElicitationExpiryReason): {
+  output: Record<string, unknown>;
+  outcome: "denied";
+  confirmation_state: "expired";
+} {
+  return {
+    output: {
+      ok: false,
+      abandoned: true,
+      outcome: "expired",
+      reason,
+      note: EXPIRY_NOTES[reason],
+    },
+    outcome: "denied",
+    confirmation_state: "expired",
+  };
+}
+
 export async function expireElicitationAndReactivate(
   p: {
     tenant_id: string;
@@ -774,16 +793,7 @@ export async function expireElicitationAndReactivate(
     if (toolCallId) {
       await tx
         .update(conversationToolCalls)
-        .set({
-          output: {
-            ok: false,
-            abandoned: true,
-            reason,
-            note: EXPIRY_NOTES[reason],
-          } as Record<string, unknown>,
-          outcome: "denied",
-          confirmation_state: "expired",
-        })
+        .set(expiredToolCallUpdate(reason))
         .where(eq(conversationToolCalls.id, toolCallId));
     }
   });

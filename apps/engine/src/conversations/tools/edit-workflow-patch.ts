@@ -18,6 +18,7 @@ import type { WorkflowDef } from "../../workflows/types.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { applyDiffsToConfig, type ToolDiff } from "../json-patch-apply.ts";
+import { saveApprovalReadiness } from "../persistence/save-workflow-approval.ts";
 import { emitRecordedEvalSignals, runRecordedEval } from "../recorded-eval.ts";
 import { stepFingerprint } from "../step-fingerprint.ts";
 import { canonicalJson } from "../text-line-diff.ts";
@@ -496,6 +497,7 @@ export async function applyWorkflowPatchToDraft(
       ok: true,
       data: buildDraftMutationPayload(nextDraft, {
         resource_kind: "workflow",
+        save_approval: await saveApprovalReadiness(ctx),
         extra: {
           target: draftTargetOf(ctx),
           patch_count: patches.length,

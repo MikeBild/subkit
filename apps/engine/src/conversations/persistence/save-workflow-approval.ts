@@ -53,3 +53,14 @@ export async function findPriorSaveWorkflowApproval(
   }
   return null;
 }
+
+export async function saveApprovalReadiness(ctx: {
+  db: Db;
+  tenant_id: string;
+  conversation_id: string;
+  permission_mode?: string | null | undefined;
+}): Promise<"fresh" | "missing" | "not_required"> {
+  if (ctx.permission_mode === "auto") return "not_required";
+  const approval = await findPriorSaveWorkflowApproval(ctx.db, ctx.tenant_id, ctx.conversation_id);
+  return approval ? "fresh" : "missing";
+}

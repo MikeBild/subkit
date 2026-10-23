@@ -337,7 +337,7 @@ test("draft access stays tenant scoped and updates require an observed base", as
         ctx.db,
       )
     ).code,
-  ).toBe("draft_conflict");
+  ).toBe("draft_base_not_observed");
   expect((await save(definition("draft-isolation"))).code).toBe("slug_conflict");
 });
 

@@ -105,6 +105,7 @@ test("step-ID edits pass through the canonical validation and draft persistence 
   ];
   const ctx = {
     ...ctxFor(draft),
+    permission_mode: "auto",
     getDraft: () => draft,
     setDraft: async (next: DraftDocument) => {
       draft = next;

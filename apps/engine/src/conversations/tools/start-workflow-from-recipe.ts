@@ -4,6 +4,7 @@ import { rebindConnectorIds } from "../../connectors/recipe-binding.ts";
 import { getBuiltinTemplate } from "../../connectors/templates.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
+import { saveApprovalReadiness } from "../persistence/save-workflow-approval.ts";
 import type { WorkflowDraftDocument } from "../types.ts";
 import { buildDraftMutationPayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -156,6 +157,7 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
       ok: true,
       data: buildDraftMutationPayload(nextDraft, {
         resource_kind: "workflow",
+        save_approval: await saveApprovalReadiness(ctx),
         extra: {
           name,
           slug,

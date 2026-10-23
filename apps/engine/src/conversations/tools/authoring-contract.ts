@@ -206,11 +206,37 @@ export function buildLifecyclePayload(
   };
 }
 
+export type SaveReadinessStatus = "fresh" | "stale" | "missing" | "not_required";
+
+export interface WorkflowSaveReadiness {
+  inspect: SaveReadinessStatus;
+  validate: SaveReadinessStatus;
+  preview: SaveReadinessStatus;
+  approval: SaveReadinessStatus;
+}
+
+export function workflowSaveReadiness(
+  draft: DraftDocument,
+  approval: SaveReadinessStatus,
+): WorkflowSaveReadiness {
+  const { summary } = getAuthoringSnapshot(draft);
+  const sensitive = normalizeDraftDocument(draft).workflow?.execution_privacy === "sensitive";
+  return {
+    inspect: checkpointStatusByKey(summary?.checkpoints, "workflow_inspected"),
+    validate: checkpointStatusByKey(summary?.checkpoints, "workflow_validated"),
+    preview: sensitive
+      ? "not_required"
+      : checkpointStatusByKey(summary?.checkpoints, "workflow_previewed"),
+    approval,
+  };
+}
+
 export function buildDraftMutationPayload(
   draft: DraftDocument,
   args?: {
     resource_kind?: ResourceKind;
     stale_after_mutation?: boolean;
+    save_approval?: SaveReadinessStatus;
     extra?: Record<string, unknown>;
   },
 ): Record<string, unknown> {
@@ -231,6 +257,9 @@ export function buildDraftMutationPayload(
     ...buildLifecyclePayload(draft),
     draft_revision: draftRevision,
     stale_after_mutation: args?.stale_after_mutation ?? true,
+    ...(targetKind === "workflow" && args?.save_approval
+      ? { readiness: workflowSaveReadiness(draft, args.save_approval) }
+      : {}),
     ...(args?.extra ?? {}),
   };
 }

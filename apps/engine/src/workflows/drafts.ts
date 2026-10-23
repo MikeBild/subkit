@@ -28,7 +28,12 @@ export interface WorkflowDraftView {
   definition: WorkflowDef;
 }
 
-type DraftErrorCode = "invalid_definition" | "not_found" | "draft_conflict" | "slug_conflict";
+type DraftErrorCode =
+  | "invalid_definition"
+  | "not_found"
+  | "draft_base_not_observed"
+  | "draft_conflict"
+  | "slug_conflict";
 export type SaveWorkflowDraftResult =
   | { draft: WorkflowDraftView; errors?: never; code?: never }
   | { draft?: never; errors: string[]; code: DraftErrorCode };
@@ -97,6 +102,12 @@ export async function saveWorkflowDraft(
   input: SaveWorkflowDraftInput,
   exec: Executor = getDb(),
 ): Promise<SaveWorkflowDraftResult> {
+  if (input.workflow_id && input.expected_draft_version_id === undefined) {
+    return {
+      code: "draft_base_not_observed",
+      errors: ["read the current draft version before updating"],
+    };
+  }
   const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, exec, {
     destinationTier: "tokens",
     ...(input.lint_javascript === true ? { lintJavascript: true } : {}),
@@ -106,9 +117,6 @@ export async function saveWorkflowDraft(
       code: "invalid_definition",
       errors: validation.errors.map((e) => `${e.path}: ${e.message}`),
     };
-  }
-  if (input.workflow_id && input.expected_draft_version_id === undefined) {
-    return { code: "draft_conflict", errors: ["read the current draft version before updating"] };
   }
   const skillGate = await applySkillSchemaGate(input.tenant_id, validation.workflow, exec);
   if (!skillGate.ok) return { code: "invalid_definition", errors: skillGate.errors };

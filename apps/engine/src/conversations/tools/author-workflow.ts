@@ -5,6 +5,7 @@ import { runAuthoringPipeline } from "../authoring-pipeline.ts";
 import { nextActionsForNeeds } from "../authoring-regrounding.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { getWorkflowDraft, startNewWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
+import { saveApprovalReadiness } from "../persistence/save-workflow-approval.ts";
 import { emitRecordedEvalSignals } from "../recorded-eval.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -209,6 +210,7 @@ export const authorWorkflowTool: ConversationTool = {
       ok: true,
       data: buildDraftMutationPayload(nextDraft, {
         resource_kind: "workflow",
+        save_approval: await saveApprovalReadiness(ctx),
         extra: {
           name: result.definition.name,
           workflow: {

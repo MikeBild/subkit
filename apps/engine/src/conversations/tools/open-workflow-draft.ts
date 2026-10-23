@@ -5,6 +5,7 @@ import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { hasInProgressWorkflowDraft, startNewWorkflowDraft } from "../authoring-state.ts";
 import { hydrateBoundWorkflow } from "../draft.ts";
 import { classifyDraftVsPersisted } from "../persistence/draft-diff.ts";
+import { saveApprovalReadiness } from "../persistence/save-workflow-approval.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { clearLastPreview } from "./last-preview-store.ts";
@@ -101,6 +102,7 @@ export const openWorkflowDraftTool: ConversationTool = {
         ok: true,
         data: buildDraftMutationPayload(ctx.getDraft(), {
           resource_kind: "workflow",
+          save_approval: await saveApprovalReadiness(ctx),
           extra: { target, already_open: true },
         }),
       };
@@ -138,6 +140,7 @@ export const openWorkflowDraftTool: ConversationTool = {
       ok: true,
       data: buildDraftMutationPayload(opened, {
         resource_kind: "workflow",
+        save_approval: await saveApprovalReadiness(ctx),
         extra: {
           target,
           steps: opened.workflow.steps.length,
