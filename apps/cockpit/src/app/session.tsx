@@ -101,7 +101,7 @@ const SKELETON_ROWS = 3;
 export function SessionSkeleton({ label }: { label: string }) {
   return (
     <div
-      className="flex h-full min-h-0 overflow-hidden bg-background"
+      className="flex h-full min-h-0 overflow-clip bg-background"
       data-testid="session-loading"
       data-skeleton="shell"
       role="status"

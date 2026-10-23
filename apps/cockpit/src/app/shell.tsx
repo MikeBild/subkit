@@ -170,7 +170,7 @@ export function AppShell() {
       <SidebarProvider
         data-testid="cockpit-shell"
         data-cockpit-ui
-        className="h-full min-h-0 overflow-hidden"
+        className="h-full min-h-0 overflow-clip"
       >
         <CloseNavigationOnRoute pathname={pathname} />
         <Sidebar
@@ -257,7 +257,7 @@ export function AppShell() {
           />
         </Sidebar>
 
-        <SidebarInset className="min-h-0 min-w-0 overflow-hidden" data-testid="cockpit-content">
+        <SidebarInset className="min-h-0 min-w-0 overflow-clip" data-testid="cockpit-content">
           <ShellContent />
         </SidebarInset>
         <Toaster richColors position="bottom-right" />
@@ -313,7 +313,7 @@ function ShellContent() {
       <ResponsiveWorkspace>
         <div
           ref={content}
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-clip"
           data-testid="page-content"
         >
           <Outlet />

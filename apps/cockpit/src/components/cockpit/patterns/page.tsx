@@ -67,10 +67,10 @@ export function Page({
           </div>
         ) : null}
         {scroll === "content" ? (
-          <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", pad)}>
+          <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-clip", pad)}>
             <div
               data-family-slot="content"
-              className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", column)}
+              className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-clip", column)}
             >
               {children}
             </div>

@@ -63,14 +63,14 @@ export function ResponsiveWorkspace({ children }: { children: ReactNode }) {
     <WorkspaceContext.Provider value={value}>
       <div
         ref={element}
-        className="grid min-h-0 min-w-0 flex-1 overflow-hidden"
+        className="grid min-h-0 min-w-0 flex-1 overflow-clip"
         style={{
           gridTemplateColumns: reserved ? `minmax(0, 1fr) ${reserved}px` : "minmax(0, 1fr)",
         }}
         data-testid="responsive-workspace"
         data-inspector-docked={Boolean(owner)}
       >
-        <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">{children}</div>
+        <div className="flex min-h-0 min-w-0 flex-col overflow-clip">{children}</div>
         <div
           ref={setHost}
           className="min-h-0 min-w-0 overflow-hidden border-l bg-popover"
