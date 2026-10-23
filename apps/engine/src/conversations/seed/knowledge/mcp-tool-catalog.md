@@ -319,7 +319,9 @@ Proposed (not auto-applied) improvements.
   repeat call returns the same candidate. Only the active version is repaired:
   a diagnosis with `is_current: false` is of the draft, whose fix is made in
   the draft.
-- Capability gaps: `list_capability_gaps` **[product]**.
+- Capability gaps: `list_capability_gaps` **[product]** (each gap has a state: open,
+  accepted, declined or resolved); `resolve_capability_gap` **[admin]** marks an
+  open or accepted gap resolved with a short note.
 - Session learnings: `save_learning` **[product]** — collect a durable practice
   or fact the user taught in the current session as an Intake item with origin
   `session` (`{ kind?, title, body, domains?, pitfalls? }`; the item lands in the

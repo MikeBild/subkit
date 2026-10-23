@@ -285,6 +285,73 @@ const rejectArtifactRoute = createRoute({
   },
 });
 
+const CapabilityGapSchema = z
+  .object({
+    id: z.string(),
+    status: z.enum(["proposed", "approved", "rejected", "superseded"]),
+    state: z.enum(["open", "accepted", "declined", "resolved"]),
+    missing_capability: z.string().nullable(),
+    requested: z.string(),
+    suggested_kind: z.enum(["connector", "workflow", "knowledge", "unknown"]),
+    occurrences: z.number().int(),
+    resolution: z.object({ note: z.string(), resolved_at: z.string() }).nullable(),
+    decline_reason: z.string().nullable(),
+    created_at: z.string(),
+    updated_at: z.string(),
+  })
+  .openapi("CapabilityGap");
+
+const listCapabilityGapsRoute = createRoute({
+  method: "get",
+  path: "/v1/discovery/capability-gaps",
+  tags: ["discovery"],
+  summary: "List capability gaps with their state",
+  security: [{ bearerAuth: [] }],
+  request: {
+    query: z.object({
+      status: z.enum(["proposed", "approved", "rejected", "superseded"]).optional(),
+      limit: z.coerce.number().int().positive().max(200).optional(),
+    }),
+  },
+  responses: {
+    200: {
+      description: "OK",
+      content: {
+        "application/json": {
+          schema: z.object({ items: z.array(CapabilityGapSchema) }).openapi("CapabilityGapList"),
+        },
+      },
+    },
+  },
+});
+
+const resolveCapabilityGapRoute = createRoute({
+  method: "post",
+  path: "/v1/discovery/capability-gaps/{id}/resolve",
+  tags: ["discovery"],
+  summary: "Mark an open or accepted capability gap as resolved",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: ArtifactIdParam,
+    body: {
+      content: {
+        "application/json": {
+          schema: z
+            .object({ note: z.string().trim().min(1).max(2000) })
+            .openapi("ResolveCapabilityGapBody"),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: CapabilityGapSchema } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/discovery/*", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("discovery:read")(c, next);
@@ -359,6 +426,40 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     );
     if (!result) throw new NotFoundError("discovery_artifact");
     return c.json({ approved: true, ...result }, 200);
+  });
+
+  app.openapi(listCapabilityGapsRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const q = c.req.valid("query");
+    const gaps = await svc.listCapabilityGaps(
+      {
+        tenant_id: principal.tenant_id,
+        ...(q.status ? { status: q.status } : {}),
+        ...(q.limit ? { limit: q.limit } : {}),
+      },
+      db,
+    );
+    return c.json({ items: gaps.map(svc.toCapabilityGapView) }, 200);
+  });
+
+  app.openapi(resolveCapabilityGapRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const gap = await svc.resolveCapabilityGap(
+      {
+        tenant_id: principal.tenant_id,
+        artifact_id: id,
+        note: body.note,
+        actor_id: principal.id,
+        actor: actorOf(principal),
+      },
+      db,
+    );
+    if (!gap) throw new NotFoundError("capability_gap");
+    return c.json(svc.toCapabilityGapView(gap), 200);
   });
 
   app.openapi(rejectArtifactRoute, async (c) => {

@@ -5,6 +5,7 @@ export {
   discoveryTools,
   getDiscoveryArtifactTool,
   listDiscoveryArtifactsTool,
+  resolveCapabilityGapTool,
 } from "./discovery.ts";
 export { executionReadTools } from "./executions.ts";
 export { hookReadTools } from "./hooks.ts";
@@ -27,6 +28,7 @@ import {
   approveDiscoveryArtifactTool,
   getDiscoveryArtifactTool,
   listDiscoveryArtifactsTool,
+  resolveCapabilityGapTool,
 } from "./discovery.ts";
 import { executionReadTools } from "./executions.ts";
 import { hookReadTools } from "./hooks.ts";
@@ -61,4 +63,5 @@ export const ALL_ENGINE_API_READ_TOOLS: ConversationTool[] = [
   listDiscoveryArtifactsTool,
   getDiscoveryArtifactTool,
   approveDiscoveryArtifactTool,
+  resolveCapabilityGapTool,
 ];

@@ -107,6 +107,7 @@ describe("conversation tools — registration", () => {
     "list_discovery_artifacts",
     "get_discovery_artifact",
     "approve_discovery_artifact",
+    "resolve_capability_gap",
     "list_intake_categories",
     "list_intake_items",
     "get_intake_item",

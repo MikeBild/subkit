@@ -320,6 +320,7 @@ const ADMIN_TOOLS = [
   "reject_skill_candidate",
   "rerun_execution",
   "reset_tenant_branding",
+  "resolve_capability_gap",
   "restore_intake_item",
   "restore_workflow_version",
   "review_workflow_automation",

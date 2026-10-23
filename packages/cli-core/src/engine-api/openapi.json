@@ -21914,6 +21914,123 @@
           "materialized_type"
         ]
       },
+      "CapabilityGapList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityGap"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "CapabilityGap": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "approved",
+              "rejected",
+              "superseded"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "accepted",
+              "declined",
+              "resolved"
+            ]
+          },
+          "missing_capability": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requested": {
+            "type": "string"
+          },
+          "suggested_kind": {
+            "type": "string",
+            "enum": [
+              "connector",
+              "workflow",
+              "knowledge",
+              "unknown"
+            ]
+          },
+          "occurrences": {
+            "type": "integer"
+          },
+          "resolution": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "note": {
+                "type": "string"
+              },
+              "resolved_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "note",
+              "resolved_at"
+            ]
+          },
+          "decline_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "state",
+          "missing_capability",
+          "requested",
+          "suggested_kind",
+          "occurrences",
+          "resolution",
+          "decline_reason",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "ResolveCapabilityGapBody": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "note"
+        ]
+      },
       "RejectDiscoveryArtifactBody": {
         "type": "object",
         "properties": {
@@ -50206,6 +50323,112 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApproveDiscoveryArtifactResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/discovery/capability-gaps": {
+      "get": {
+        "tags": [
+          "discovery"
+        ],
+        "summary": "List capability gaps with their state",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "proposed",
+                "approved",
+                "rejected",
+                "superseded"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityGapList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/discovery/capability-gaps/{id}/resolve": {
+      "post": {
+        "tags": [
+          "discovery"
+        ],
+        "summary": "Mark an open or accepted capability gap as resolved",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveCapabilityGapBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityGap"
                 }
               }
             }

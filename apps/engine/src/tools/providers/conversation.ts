@@ -207,6 +207,12 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
   list_capability_gaps: {
     permission: "discovery:read",
   },
+  resolve_capability_gap: {
+    permission: "discovery:approve",
+  },
+  approve_discovery_artifact: {
+    permission: "discovery:approve",
+  },
   list_audit: {
     permission: "audit:read",
   },

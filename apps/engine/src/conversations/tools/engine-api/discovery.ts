@@ -4,6 +4,8 @@ import {
   approveDiscoveryArtifact,
   getDiscoveryArtifact,
   listDiscoveryArtifacts,
+  resolveCapabilityGap,
+  toCapabilityGapView,
 } from "../../../discovery/service.ts";
 import type { ConversationTool, ToolResult } from "../index.ts";
 
@@ -119,6 +121,7 @@ export const approveDiscoveryArtifactTool: ConversationTool = {
   ],
   inputSchema: ApproveInput,
   category: "tenant_write",
+  permission: { action: "discovery:approve", resourceType: "discovery_artifact" },
   async execute(ctx, args: z.infer<typeof ApproveInput>): Promise<ToolResult> {
     const result = await approveDiscoveryArtifact(
       {
@@ -154,8 +157,69 @@ export const approveDiscoveryArtifactTool: ConversationTool = {
   },
 };
 
+const ResolveGapInput = z
+  .object({
+    id: z.string().uuid(),
+    note: z
+      .string()
+      .trim()
+      .min(1)
+      .max(2000)
+      .describe("What now covers this gap, in one or two sentences, without secrets."),
+  })
+  .openapi("ResolveCapabilityGapInput");
+
+export const resolveCapabilityGapTool: ConversationTool = {
+  name: "resolve_capability_gap",
+  description:
+    "Mark an open or accepted capability gap as resolved, with a short note on what now covers it. The gap stays listed under status `superseded` (state resolved); a later cannot_help for the same capability opens a new gap.",
+  use_case:
+    "After the operator confirms that a recorded gap is no longer a gap — a connector, workflow, tool or product change now covers it — record that decision so the backlog shows what is still open.",
+  important_notes: [
+    "Only gaps in `proposed` (open) or `approved` (accepted) status can be resolved; others return `not_resolvable`.",
+    "Writes an audit entry under action=discovery.artifact_superseded.",
+  ],
+  inputSchema: ResolveGapInput,
+  category: "tenant_write",
+  permission: { action: "discovery:approve", resourceType: "capability_gap" },
+  async execute(ctx, args: z.infer<typeof ResolveGapInput>): Promise<ToolResult> {
+    const gap = await resolveCapabilityGap(
+      {
+        tenant_id: ctx.tenant_id,
+        artifact_id: args.id,
+        note: args.note,
+        actor_id: ctx.actor_id,
+        actor: contextActor(ctx),
+      },
+      ctx.db,
+    );
+    if (!gap) {
+      return {
+        ok: false,
+        data: {
+          persistence: "none" as const,
+          error: {
+            code: "not_resolvable",
+            message: "no open or accepted capability gap with this id",
+          },
+        },
+      };
+    }
+    return {
+      ok: true,
+      data: {
+        persistence: "saved" as const,
+        resource_type: "discovery_artifact",
+        resource_id: args.id,
+        gap: toCapabilityGapView(gap),
+      },
+    };
+  },
+};
+
 export const discoveryTools: ConversationTool[] = [
   listDiscoveryArtifactsTool,
   getDiscoveryArtifactTool,
   approveDiscoveryArtifactTool,
+  resolveCapabilityGapTool,
 ];

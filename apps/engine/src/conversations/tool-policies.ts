@@ -286,6 +286,10 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     defaultMode: "confirm_before_execution",
     buildPendingOutput: (input) => pickFields(input, ["artifact_id", "kind", "title"]),
   },
+  resolve_capability_gap: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => pickFields(input, ["id", "note"]),
+  },
   delete_workflow: {
     defaultMode: "confirm_before_execution",
     buildPendingOutput: (input) => pickFields(input, ["workflow_id", "slug"]),

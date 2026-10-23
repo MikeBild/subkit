@@ -14680,6 +14680,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/discovery/capability-gaps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List capability gaps with their state */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "proposed" | "approved" | "rejected" | "superseded";
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CapabilityGapList"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/discovery/capability-gaps/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark an open or accepted capability gap as resolved */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ResolveCapabilityGapBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CapabilityGap"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/discovery/artifacts/{id}/reject": {
         parameters: {
             query?: never;
@@ -26745,6 +26835,31 @@ export interface components {
             approved: boolean;
             materialized_id: string | null;
             materialized_type: string | null;
+        };
+        CapabilityGapList: {
+            items: components["schemas"]["CapabilityGap"][];
+        };
+        CapabilityGap: {
+            id: string;
+            /** @enum {string} */
+            status: "proposed" | "approved" | "rejected" | "superseded";
+            /** @enum {string} */
+            state: "open" | "accepted" | "declined" | "resolved";
+            missing_capability: string | null;
+            requested: string;
+            /** @enum {string} */
+            suggested_kind: "connector" | "workflow" | "knowledge" | "unknown";
+            occurrences: number;
+            resolution: {
+                note: string;
+                resolved_at: string;
+            } | null;
+            decline_reason: string | null;
+            created_at: string;
+            updated_at: string;
+        };
+        ResolveCapabilityGapBody: {
+            note: string;
         };
         RejectDiscoveryArtifactBody: {
             reason?: string;

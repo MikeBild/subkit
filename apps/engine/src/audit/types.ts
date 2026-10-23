@@ -263,6 +263,7 @@ export const AuditAction = {
   DISCOVERY_ARTIFACT_PROPOSED: "discovery.artifact_proposed",
   DISCOVERY_ARTIFACT_APPROVED: "discovery.artifact_approved",
   DISCOVERY_ARTIFACT_REJECTED: "discovery.artifact_rejected",
+  DISCOVERY_ARTIFACT_SUPERSEDED: "discovery.artifact_superseded",
 
   SKILL_CANDIDATE_PROPOSED: "skill_candidate.proposed",
   SKILL_CANDIDATE_CONTEXT_RECORDED: "skill_candidate.context_recorded",

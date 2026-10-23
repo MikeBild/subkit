@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -522,6 +522,113 @@ export interface CapabilityGapDraft {
   fingerprint: string;
   occurrences: number;
   conversation_id: string | null;
+  resolution?: CapabilityGapResolution;
+}
+
+export interface CapabilityGapResolution {
+  note: string;
+  resolved_at: string;
+}
+
+export type CapabilityGapState = "open" | "accepted" | "declined" | "resolved";
+
+const GAP_STATE_BY_STATUS: Record<DiscoveryArtifactStatus, CapabilityGapState> = {
+  proposed: "open",
+  approved: "accepted",
+  rejected: "declined",
+  superseded: "resolved",
+};
+
+export function capabilityGapState(status: DiscoveryArtifactStatus): CapabilityGapState {
+  return GAP_STATE_BY_STATUS[status];
+}
+
+export interface CapabilityGapView {
+  id: string;
+  status: DiscoveryArtifactStatus;
+  state: CapabilityGapState;
+  missing_capability: string | null;
+  requested: string;
+  suggested_kind: SuggestedGapKind;
+  occurrences: number;
+  resolution: CapabilityGapResolution | null;
+  decline_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function toCapabilityGapView(gap: DiscoveryArtifactView): CapabilityGapView {
+  const d = gap.draft as Partial<CapabilityGapDraft>;
+  return {
+    id: gap.id,
+    status: gap.status,
+    state: capabilityGapState(gap.status),
+    missing_capability: d.missing_capability ?? null,
+    requested: d.requested ?? gap.title,
+    suggested_kind: d.suggested_kind ?? "unknown",
+    occurrences: d.occurrences ?? 1,
+    resolution: d.resolution ?? null,
+    decline_reason: gap.rejection_reason,
+    created_at: gap.created_at,
+    updated_at: gap.updated_at,
+  };
+}
+
+export async function resolveCapabilityGap(
+  params: {
+    tenant_id: string;
+    artifact_id: string;
+    note: string;
+    actor_id?: string | null;
+    actor?: Actor | null;
+  },
+  exec?: Executor,
+): Promise<DiscoveryArtifactView | null> {
+  const db = exec ?? getDb();
+  return await (db as Db).transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(discoveryArtifacts)
+      .where(
+        and(
+          eq(discoveryArtifacts.tenant_id, params.tenant_id),
+          eq(discoveryArtifacts.id, params.artifact_id),
+          eq(discoveryArtifacts.kind, "capability_gap"),
+          inArray(discoveryArtifacts.status, ["proposed", "approved"]),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    const resolution: CapabilityGapResolution = {
+      note: params.note,
+      resolved_at: new Date().toISOString(),
+    };
+    const draft = { ...(row.draft as Record<string, unknown>), resolution };
+    const updated = await tx
+      .update(discoveryArtifacts)
+      .set({ status: "superseded", draft, updated_at: new Date() })
+      .where(
+        and(
+          eq(discoveryArtifacts.tenant_id, params.tenant_id),
+          eq(discoveryArtifacts.id, params.artifact_id),
+        ),
+      )
+      .returning();
+    await auditAwait(
+      {
+        tenant_id: params.tenant_id,
+        ...discoveryAuditActor(params.actor, params.actor_id),
+        action: AuditAction.DISCOVERY_ARTIFACT_SUPERSEDED,
+        resource_type: "discovery_artifact",
+        resource_id: params.artifact_id,
+        result: "success",
+        metadata: { kind: row.kind, previous_status: row.status, note: params.note },
+      },
+      tx,
+    );
+    return updated[0] ? toArtifactView(updated[0]) : null;
+  });
 }
 
 export async function recordGapCandidate(

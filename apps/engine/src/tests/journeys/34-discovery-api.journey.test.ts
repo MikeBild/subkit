@@ -131,4 +131,67 @@ describe("journey: discovery API lifecycle", () => {
       expect(item.status).toBe("approved");
     }
   });
+
+  test("AC7: list capability gaps with state and resolve one", async () => {
+    const [gap] = await ctx.db
+      .insert(discoveryArtifacts)
+      .values({
+        tenant_id: ctx.tenantId,
+        run_id: runId,
+        kind: "capability_gap",
+        title: "Switch authoring mode",
+        draft: {
+          requested: "Switch from connector to workflow authoring",
+          missing_capability: "surface.authoring_mode_switch",
+          suggested_kind: "unknown",
+          fingerprint: "journey-gap",
+          occurrences: 3,
+          conversation_id: null,
+        },
+        evidence: { file_ids: [], excerpts: [] },
+      })
+      .returning();
+    if (!gap) throw new Error("gap not seeded");
+
+    const listRes = await journeyFetch(ctx, "/v1/discovery/capability-gaps?status=proposed");
+    expect(listRes.status).toBe(200);
+    const list = (await listRes.json()) as {
+      items: Array<{ id: string; state: string; occurrences: number }>;
+    };
+    const listed = list.items.find((item) => item.id === gap.id);
+    expect(listed?.state).toBe("open");
+    expect(listed?.occurrences).toBe(3);
+
+    const empty = await journeyFetch(ctx, `/v1/discovery/capability-gaps/${gap.id}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ note: "  " }),
+    });
+    expect(empty.status).toBe(400);
+
+    const res = await journeyFetch(ctx, `/v1/discovery/capability-gaps/${gap.id}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ note: "Mode switch shipped." }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      status: string;
+      state: string;
+      resolution: { note: string } | null;
+    };
+    expect(body.status).toBe("superseded");
+    expect(body.state).toBe("resolved");
+    expect(body.resolution?.note).toBe("Mode switch shipped.");
+
+    const again = await journeyFetch(ctx, `/v1/discovery/capability-gaps/${gap.id}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ note: "again" }),
+    });
+    expect(again.status).toBe(404);
+
+    const audits = await ctx.db
+      .select({ action: auditLog.action })
+      .from(auditLog)
+      .where(eq(auditLog.resource_id, gap.id));
+    expect(audits.map((a) => a.action)).toContain("discovery.artifact_superseded");
+  });
 });

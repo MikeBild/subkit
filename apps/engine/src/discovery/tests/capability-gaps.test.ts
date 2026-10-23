@@ -4,7 +4,13 @@ import { auditLog } from "../../db/schema/audit.ts";
 import { discoveryArtifacts } from "../../db/schema/discovery.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { listCapabilityGaps, recordGapCandidate } from "../service.ts";
+import {
+  listCapabilityGaps,
+  recordGapCandidate,
+  rejectDiscoveryArtifact,
+  resolveCapabilityGap,
+  toCapabilityGapView,
+} from "../service.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
 
@@ -127,5 +133,75 @@ describe.skipIf(skip)("discovery/capability-gaps", () => {
       testDb.db,
     );
     expect(view).toBeNull();
+  });
+
+  test("resolving an open gap records the note, the resolved state and an audit entry", async () => {
+    const gap = await recordGapCandidate(
+      {
+        tenant_id: tenantId,
+        conversation_id: "conv-resolve",
+        requested: "Switch from connector to workflow authoring",
+        missing_capability: "surface.authoring_mode_switch",
+      },
+      testDb.db,
+    );
+    if (!gap) throw new Error("gap not recorded");
+    expect(toCapabilityGapView(gap).state).toBe("open");
+
+    const resolved = await resolveCapabilityGap(
+      { tenant_id: tenantId, artifact_id: gap.id, note: "Mode switch shipped." },
+      testDb.db,
+    );
+    if (!resolved) throw new Error("gap not resolved");
+    const view = toCapabilityGapView(resolved);
+    expect(view.status).toBe("superseded");
+    expect(view.state).toBe("resolved");
+    expect(view.resolution?.note).toBe("Mode switch shipped.");
+    expect(view.occurrences).toBe(1);
+
+    const audits = await testDb.db
+      .select({ action: auditLog.action })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, tenantId), eq(auditLog.resource_id, gap.id)));
+    expect(audits.map((a) => a.action)).toContain("discovery.artifact_superseded");
+
+    const open = await listCapabilityGaps({ tenant_id: tenantId, status: "proposed" }, testDb.db);
+    expect(open.some((g) => g.id === gap.id)).toBe(false);
+    const again = await resolveCapabilityGap(
+      { tenant_id: tenantId, artifact_id: gap.id, note: "twice" },
+      testDb.db,
+    );
+    expect(again).toBeNull();
+  });
+
+  test("declined gaps and other artifact kinds cannot be resolved", async () => {
+    const gap = await recordGapCandidate(
+      {
+        tenant_id: tenantId,
+        conversation_id: "conv-decline",
+        requested: "Delete another conversation",
+        missing_capability: "surface.conversation.delete.other",
+      },
+      testDb.db,
+    );
+    if (!gap) throw new Error("gap not recorded");
+    await rejectDiscoveryArtifact(
+      { tenant_id: tenantId, artifact_id: gap.id, actor_id: null, reason: "by design" },
+      testDb.db,
+    );
+    const resolved = await resolveCapabilityGap(
+      { tenant_id: tenantId, artifact_id: gap.id, note: "n/a" },
+      testDb.db,
+    );
+    expect(resolved).toBeNull();
+    const [row] = await testDb.db
+      .select({
+        status: discoveryArtifacts.status,
+        rejection_reason: discoveryArtifacts.rejection_reason,
+      })
+      .from(discoveryArtifacts)
+      .where(eq(discoveryArtifacts.id, gap.id));
+    expect(row?.status).toBe("rejected");
+    expect(row?.rejection_reason).toBe("by design");
   });
 });
