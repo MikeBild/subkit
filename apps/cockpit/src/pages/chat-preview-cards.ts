@@ -1,7 +1,7 @@
 import type { ToolPart } from "@/components/ai-elements/tool";
 import type { TranslationKey } from "@/lib/i18n";
 import { type ConversationReference, isMentionableLabel, mentionTokenText } from "@/lib/mentions";
-import { toolNameOf } from "@/lib/tool-parts";
+import { asToolPart, toolNameOf } from "@/lib/tool-parts";
 
 export const PREVIEW_STAGES = ["schema_only", "redacted_fixture", "person_verified"] as const;
 
@@ -19,6 +19,7 @@ export interface ChatSensitivePreview {
   expressions: number;
   compileErrors: number;
   requestsHeld: boolean;
+  saveRequired: boolean;
   workflow: ChatWorkflowRef | null;
 }
 
@@ -78,6 +79,7 @@ export function chatSensitivePreview(tool: ToolPart): ChatSensitivePreview | nul
     expressions,
     compileErrors,
     requestsHeld: summary.requests === "held",
+    saveRequired: data.save_required === true,
     workflow: workflowRefOf(data),
   };
 }
@@ -141,4 +143,17 @@ export function openFindings(
   states: Readonly<Record<number, FindingState>>,
 ): number[] {
   return missing.flatMap((_, index) => ((states[index] ?? "open") === "open" ? [index] : []));
+}
+
+export function latestDryRunCallId(
+  messages: readonly { parts: readonly unknown[] }[],
+): string | null {
+  for (let m = messages.length - 1; m >= 0; m--) {
+    const parts = messages[m]?.parts ?? [];
+    for (let p = parts.length - 1; p >= 0; p--) {
+      const tool = asToolPart(parts[p]);
+      if (tool && toolNameOf(tool) === "dry_run_workflow") return tool.toolCallId;
+    }
+  }
+  return null;
 }

@@ -5,6 +5,7 @@ import {
   chatJudgeFindings,
   chatSensitivePreview,
   findingsInstruction,
+  latestDryRunCallId,
   openFindings,
   workflowRefOf,
 } from "./chat-preview-cards";
@@ -48,6 +49,7 @@ test("a passed schema-only result becomes the first preview stage with its workf
     expressions: 4,
     compileErrors: 0,
     requestsHeld: true,
+    saveRequired: true,
     workflow: { id: "wf-1", label: "upraft-auth-notify" },
   });
 });
@@ -152,4 +154,16 @@ test("instructions name the workflow with its @ reference and list every finding
 
 test("only open findings stay open", () => {
   expect(openFindings(["a", "b", "c"], { 0: "handed", 2: "kept" })).toEqual([1]);
+});
+
+test("only the newest dry run in the conversation keeps live finding actions", () => {
+  const call = (id: string, tool: string) => ({ type: "tool_call", call_id: id, tool });
+  expect(
+    latestDryRunCallId([
+      { parts: [call("a", "dry_run_workflow")] },
+      { parts: [call("b", "dry_run_workflow"), call("c", "save_workflow_draft")] },
+      { parts: [{ type: "text", text: "ok" }] },
+    ]),
+  ).toBe("b");
+  expect(latestDryRunCallId([{ parts: [call("c", "save_workflow_draft")] }])).toBeNull();
 });

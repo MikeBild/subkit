@@ -10,6 +10,7 @@ const preview: ChatSensitivePreview = {
   expressions: 4,
   compileErrors: 0,
   requestsHeld: true,
+  saveRequired: false,
   workflow: { id: "wf-1", label: "upraft-auth-notify" },
 };
 
@@ -41,6 +42,17 @@ test("the primary action opens the run dialog on the workflow page and the @ ref
   expect(tag(html, "p-workflow")).toContain('href="/cockpit/workflows/wf-1"');
   expect(html).toContain("@upraft-auth-notify");
   expect(html).not.toContain("Ohne Lauf speichern");
+  expect(html).toContain("Inhalte prüfst nur du, mit echten Daten im Cockpit.");
+});
+
+test("a draft that still needs saving keeps the @ reference but offers no run of the older saved version", () => {
+  const html = render(
+    <ChatSensitivePreviewCard preview={{ ...preview, saveRequired: true }} testId="p" />,
+    "de",
+  );
+  expect(tag(html, "p-workflow")).toContain('href="/cockpit/workflows/wf-1"');
+  expect(html).not.toContain("p-verify");
+  expect(html).toContain("Nach dem Speichern prüfst du die Inhalte selbst im Cockpit.");
 });
 
 test("a failed check names the compile errors with a warning and an unsaved draft has no Cockpit action", () => {

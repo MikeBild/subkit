@@ -192,6 +192,7 @@ import {
   type ChatInstruction,
   chatJudgeFindings,
   chatSensitivePreview,
+  latestDryRunCallId,
 } from "./chat-preview-cards";
 import { type ChatReauth, chatReauth } from "./chat-reauth";
 import { ChatReauthCard } from "./chat-reauth-card";
@@ -918,6 +919,7 @@ function ChatMessage({
   onAutomationAdjust,
   onAutomationSingleRun,
   onInstruction,
+  latestPreviewCallId = null,
   liveReviews,
   nameFor,
   workflowNameFor,
@@ -943,6 +945,7 @@ function ChatMessage({
   onAutomationAdjust: (workflowId: string) => void;
   onAutomationSingleRun: (workflowId: string) => void;
   onInstruction: (instruction: ChatInstruction) => void;
+  latestPreviewCallId?: string | null;
   liveReviews: ReadonlySet<string>;
   nameFor: (id: string) => ResolvedIdentifier | null;
   workflowNameFor: (slug: string) => string | null;
@@ -1150,7 +1153,11 @@ function ChatMessage({
               <ChatJudgeFindingsCard
                 key={`${message.id}-findings-${partIndex}`}
                 findings={judgeFindings}
-                disabled={approvalBusy || Boolean(approval || choice || form)}
+                disabled={
+                  approvalBusy ||
+                  Boolean(approval || choice || form) ||
+                  tool.toolCallId !== latestPreviewCallId
+                }
                 onInstruction={onInstruction}
                 testId={`chat-message-${messageIndex}-findings-${partIndex}`}
               />
@@ -1965,6 +1972,7 @@ export function ChatPage() {
   );
   const createdResources = detail.data?.created_resources ?? [];
   const referencedResources = useMemo(() => collectReferencedResources(messages), [messages]);
+  const latestPreviewCallId = useMemo(() => latestDryRunCallId(messages), [messages]);
   const nameFor = useMemo(() => {
     const known = new Map<string, ResolvedIdentifier>();
     for (const conversation of conversationList.items) {
@@ -2741,6 +2749,7 @@ export function ChatPage() {
                                 },
                               ])
                             }
+                            latestPreviewCallId={latestPreviewCallId}
                             onInstruction={(instruction) =>
                               void submitTurn(instruction.message, instruction.references)
                             }
