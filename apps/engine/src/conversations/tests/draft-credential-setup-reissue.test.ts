@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import {
+  deliverPendingNativeElicitationCore,
   NATIVE_DELIVERY_TIMED_OUT,
   nativeDeliveryFailureCode,
 } from "../../mcp/capabilities/conversation-native-elicitation.ts";
@@ -161,6 +163,38 @@ describe("an expired secure credential link is re-issued on the same pending pro
     );
     expect(result).toEqual({ reissued: false, reason: "engine_public_url_missing" });
     expect(writes).toHaveLength(0);
+  });
+});
+
+describe("a credential link is only re-issued where it can be delivered", () => {
+  test("a client without URL elicitation never rotates the link", async () => {
+    let reissues = 0;
+    const result = await deliverPendingNativeElicitationCore({
+      db: {} as Db,
+      principal: { tenant_id: "t", kind: "user", id: "u" } as ResolvedPrincipal,
+      pending: {
+        id: "e",
+        conversation_id: "c",
+        tool_call_id: null,
+        tool_name: "ask_user_confirm",
+        summary: "Enter the credential",
+        input: setupInput(),
+        output: null,
+        status: "pending",
+        decision_reason: null,
+        delivery_last_error: null,
+        delivery_attempts: 0,
+        created_at: new Date().toISOString(),
+      },
+      nativeElicitation: { elicitForm: async () => ({ action: "cancel" }) },
+      resume: async () => ({ isError: false, content: [] }),
+      reissue_credential_link: async () => {
+        reissues += 1;
+        return { reissued: false, reason: "still_valid" };
+      },
+    });
+    expect(result).toBeNull();
+    expect(reissues).toBe(0);
   });
 });
 

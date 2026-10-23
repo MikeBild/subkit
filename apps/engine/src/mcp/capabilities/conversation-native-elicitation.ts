@@ -104,47 +104,14 @@ export async function deliverPendingNativeElicitationCore(p: {
   reissue_credential_link?: typeof reissueExpiredDraftCredentialSetup;
 }): Promise<NativeDeliveryResult | null> {
   if (!FORM_TOOL_NAMES.has(p.pending.tool_name as FormBridgeToolName)) return null;
-  const reissue = await (p.reissue_credential_link ?? reissueExpiredDraftCredentialSetup)(p.db, {
-    tenant_id: p.principal.tenant_id,
-    conversation_id: p.pending.conversation_id,
-    elicitation_id: p.pending.id,
-    input: p.pending.input,
-    delivery_last_error: p.pending.delivery_last_error,
-    principal: p.principal,
-  });
-  const pending: ElicitationRecord = reissue.reissued
-    ? {
-        ...p.pending,
-        input: reissue.input,
-        delivery_last_error:
-          p.pending.delivery_last_error === "url_accepted" ? null : p.pending.delivery_last_error,
-      }
-    : p.pending;
-  if (reissue.reissued) {
-    logger.info({
-      module: "mcp",
-      action: "mcp.elicitation.credential_link_reissued",
-      msg: "the secure credential link expired before it was used; a fresh single-use link replaces it on the same pending prompt",
-      tenant_id: p.principal.tenant_id,
-      conversation_id: pending.conversation_id,
-      elicitation_id: pending.id,
-      expires_at: reissue.expires_at.toISOString(),
-    });
-  }
-  const redelivery = {
-    ...(p.pending.delivery_last_error === NATIVE_DELIVERY_TIMED_OUT
+  const pending = p.pending;
+  const redelivery: Record<string, unknown> =
+    pending.delivery_last_error === NATIVE_DELIVERY_TIMED_OUT
       ? {
           previous_delivery: "timed_out",
           note: "The previous prompt expired unanswered; nothing was lost. It is presented again now.",
         }
-      : {}),
-    ...(reissue.reissued
-      ? {
-          credential_link_reissued: true,
-          credential_link_expires_at: reissue.expires_at.toISOString(),
-        }
-      : {}),
-  };
+      : {};
   const toolName = pending.tool_name as FormBridgeToolName;
   const elicitForm = p.nativeElicitation.elicitForm;
   const elicitUrl = p.nativeElicitation.elicitUrl;
@@ -267,17 +234,46 @@ export async function deliverPendingNativeElicitationCore(p: {
     );
   }
 
+  let deliveredUrl = urlElicitation;
+  if (urlElicitation?.kind === "credential" && elicitUrl) {
+    const reissue = await (p.reissue_credential_link ?? reissueExpiredDraftCredentialSetup)(p.db, {
+      tenant_id: p.principal.tenant_id,
+      conversation_id: pending.conversation_id,
+      elicitation_id: pending.id,
+      input: pending.input,
+      delivery_last_error: pending.delivery_last_error,
+      principal: p.principal,
+    });
+    const fresh = reissue.reissued
+      ? pendingUrlElicitation({ ...pending, input: reissue.input })
+      : null;
+    if (reissue.reissued && fresh) {
+      deliveredUrl = fresh;
+      redelivery.credential_link_reissued = true;
+      redelivery.credential_link_expires_at = reissue.expires_at.toISOString();
+      logger.info({
+        module: "mcp",
+        action: "mcp.elicitation.credential_link_reissued",
+        msg: "the secure credential link expired before it was used; a fresh single-use link replaces it on the same pending prompt",
+        tenant_id: p.principal.tenant_id,
+        conversation_id: pending.conversation_id,
+        elicitation_id: pending.id,
+        expires_at: reissue.expires_at.toISOString(),
+      });
+    }
+  }
+
   const sentAt = Date.now();
   const delivery = (async () => {
     try {
       let result: ElicitationResult;
       let output: unknown;
-      if (urlElicitation) {
+      if (deliveredUrl) {
         if (!elicitUrl) return;
         result = await elicitUrl({
           mode: "url",
-          message: urlElicitation.message,
-          url: urlElicitation.url,
+          message: deliveredUrl.message,
+          url: deliveredUrl.url,
           elicitationId: pending.id,
         });
         if (result.action === "accept") {

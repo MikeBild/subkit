@@ -197,7 +197,6 @@ export async function reissueExpiredDraftCredentialSetup(
     .set({
       input: next,
       expires_at: grant.expires_at,
-      delivery_last_error: sql`case when ${conversationElicitations.delivery_last_error} = 'url_accepted' then null else ${conversationElicitations.delivery_last_error} end`,
       updated_at: new Date(),
     })
     .where(
