@@ -30,12 +30,6 @@ import {
   FormDialog,
   Section,
   SegmentedControl,
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Textarea,
 } from "@/components/cockpit/patterns";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
@@ -930,32 +924,31 @@ export function GrantWorkflowAuthority({
         )}
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="authority-environment">{t("authority.environment")}</FieldLabel>
-            <Select
+            <FieldLabel>{t("authority.environment")}</FieldLabel>
+            <SegmentedControl
+              label={t("authority.environment")}
               value={environment}
-              disabled={busy}
               onValueChange={(value) => {
-                if (value !== "dev" && value !== "prod") return;
+                if (busy || (value !== "dev" && value !== "prod") || value === environment) return;
                 settled.current = true;
                 setEnvironment(value);
                 grant.reset();
                 startReview(value);
               }}
-            >
-              <SelectTrigger id="authority-environment" data-testid="authority-environment">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="dev" data-testid="authority-environment-dev">
-                    {t("authority.development")}
-                  </SelectItem>
-                  <SelectItem value="prod" data-testid="authority-environment-prod">
-                    {t("authority.production")}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+              testId="authority-environment"
+              options={[
+                {
+                  value: "prod",
+                  label: t("authority.production"),
+                  testId: "authority-environment-prod",
+                },
+                {
+                  value: "dev",
+                  label: t("authority.development"),
+                  testId: "authority-environment-dev",
+                },
+              ]}
+            />
           </Field>
           {boundsVisible && (
             <Field>
