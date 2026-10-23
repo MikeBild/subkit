@@ -10,6 +10,7 @@ export interface MockCall {
   prompt_tokens_estimate: number;
   included_skill_ids: string[];
   included_chunk_ids: string[];
+  included_knowledge_chunk_ids: string[];
 }
 
 export interface MockResult<T = unknown> {
@@ -237,6 +238,7 @@ class MockProvider {
       prompt_tokens_estimate: args.prompt.token_counts.total,
       included_skill_ids: args.prompt.included_skill_ids,
       included_chunk_ids: args.prompt.included_chunk_ids,
+      included_knowledge_chunk_ids: args.prompt.included_knowledge_chunk_ids,
     });
     const canned = this.canned(args.flow, lastUser);
     const completion_tokens = Math.max(16, Math.min(400, Math.floor(canned.text.length / 4)));

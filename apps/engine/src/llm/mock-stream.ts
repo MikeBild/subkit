@@ -176,6 +176,7 @@ export function createMockLanguageModel(modelId = "mock-converse"): MockLanguage
         prompt_tokens_estimate: countPromptTextTokens(options.prompt),
         included_skill_ids: [],
         included_chunk_ids: [],
+        included_knowledge_chunk_ids: [],
       });
 
       const convId = findConversationId(options.prompt);

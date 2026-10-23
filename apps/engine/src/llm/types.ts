@@ -98,6 +98,7 @@ export interface AssembleContextParams {
   connector_id?: string;
   workflow_id?: string;
   user_turns: UserTurn[];
+  retrieval_query?: string;
   prior_failures?: PriorFailure[];
   max_tokens: number;
   model?: string;

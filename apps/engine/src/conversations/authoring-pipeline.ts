@@ -631,6 +631,7 @@ export async function runAuthoringPipeline(
           flow: "generate",
           tenant_id: ctx.tenant_id,
           user_turns: [{ role: "user", content: prompt }],
+          retrieval_query: goal,
           schema: GeneratedWorkflowSchema,
           signal: deadlineSignal,
         },

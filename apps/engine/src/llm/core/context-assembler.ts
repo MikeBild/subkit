@@ -73,7 +73,9 @@ export {
 } from "./context-assembler/formatters.ts";
 export { detectIntentSkills } from "./context-assembler/skill-picker.ts";
 
-function buildQuery(turns: UserTurn[]): string {
+export function buildQuery(turns: UserTurn[], retrievalQuery?: string): string {
+  const explicit = retrievalQuery?.trim();
+  if (explicit) return explicit.slice(0, 512);
   const tail = turns.slice(-3).map((t) => t.content);
   return tail.join(" ").slice(0, 512);
 }
@@ -153,7 +155,7 @@ export async function assembleEnhancedPrompt(
   const loadedSkills = resolvedLoaded.fullBody.filter(offered);
   const loadedIndexSkills = resolvedLoaded.index.filter(offered);
 
-  const query = buildQuery(p.user_turns);
+  const query = buildQuery(p.user_turns, p.retrieval_query);
 
   const preEmbedCorpus = p.flow !== "converse" && p.flow !== "summarize";
   const knowledgeChunks: IncludedKnowledgeChunk[] = [];
@@ -259,6 +261,7 @@ export async function assembleEnhancedPrompt(
         ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
         ...(p.connector_id ? { connector_id: p.connector_id } : {}),
         ...(p.authoring_hint ? { authoring_hint: p.authoring_hint } : {}),
+        ...(p.retrieval_query?.trim() ? { retrieval_query: p.retrieval_query } : {}),
         user_turns: p.user_turns,
       },
       db,

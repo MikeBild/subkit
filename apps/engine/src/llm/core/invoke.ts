@@ -217,6 +217,7 @@ export interface InvokeParams<T = unknown> {
   flow: LlmFlow;
   tenant_id: string;
   user_turns: UserTurn[];
+  retrieval_query?: string;
   connector_id?: string;
   workflow_id?: string;
   prior_failures?: Parameters<typeof assembleContext>[0]["prior_failures"];
@@ -301,6 +302,7 @@ async function invokeInner<T = unknown>(
   };
   if (params.connector_id) assembleParams.connector_id = params.connector_id;
   if (params.workflow_id) assembleParams.workflow_id = params.workflow_id;
+  if (params.retrieval_query) assembleParams.retrieval_query = params.retrieval_query;
   if (params.prior_failures) assembleParams.prior_failures = params.prior_failures;
   if (params.user_memory !== undefined) assembleParams.user_memory = params.user_memory;
   const assembled = await instrument({

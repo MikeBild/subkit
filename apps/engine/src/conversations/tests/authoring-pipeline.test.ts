@@ -2,12 +2,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { and, eq } from "drizzle-orm";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
-import { connectors, tenants } from "../../db/schema/index.ts";
+import { connectors, knowledgeChunks, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { callerFromPrincipal } from "../../execution/caller-context.ts";
 import { runExecution } from "../../execution/engine.ts";
+import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { LLM_CALL_TIMEOUT_MS } from "../../llm/core/ai-sdk-model.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
@@ -1104,4 +1106,55 @@ describe("runAuthoringPipeline — ask-first: placeholder destinations are refus
       expect(fetchCalls).toBe(0);
     },
   );
+});
+
+describe("runAuthoringPipeline — goal-grounded retrieval", () => {
+  tw("the generation call retrieves domain knowledge that matches the goal words", async () => {
+    const [scoped] = await ctx.db
+      .insert(tenants)
+      .values({ slug: "t-author-pipeline-retrieval", display_name: "T" })
+      .returning();
+    const scopedTenant = scoped!.id;
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: scopedTenant,
+        input: { name: "Dunning Rules", scope: "global", tags: ["domain:invoicing"] },
+        upload: {
+          buffer: Buffer.from(
+            "# Dunning Rules\n\nEscalate to the second letter after thirty days.\nNever contact customers on public holidays.",
+          ),
+          filename: "dunning.md",
+          mime: "text/markdown",
+        },
+        actor: null,
+      },
+      ctx.db,
+    );
+    getMockProvider().generateOverrides.generate = () => VALID_DEF;
+    const toolCtx = {
+      ...makeCtx(),
+      tenant_id: scopedTenant,
+      engineClient: new EngineClient({ tenant_id: scopedTenant, actor_id: null, db: ctx.db }),
+    };
+    const result = await runAuthoringPipeline({
+      ctx: toolCtx,
+      goal: "Send overdue invoice reminders every Monday",
+    });
+    expect(result.ok).toBe(true);
+
+    const generateCall = getMockProvider().calls.find((c) => c.flow === "generate");
+    expect(generateCall).toBeDefined();
+    const chunkRows = await ctx.db
+      .select({ id: knowledgeChunks.id })
+      .from(knowledgeChunks)
+      .where(
+        and(
+          eq(knowledgeChunks.tenant_id, scopedTenant),
+          eq(knowledgeChunks.knowledge_source_id, source.id),
+        ),
+      );
+    expect(chunkRows.length).toBeGreaterThan(0);
+    const included = new Set(generateCall!.included_knowledge_chunk_ids);
+    expect(chunkRows.some((r) => included.has(r.id))).toBe(true);
+  });
 });

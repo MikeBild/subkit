@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
 import { humanMetadataWrite, metadataChange } from "../api/catalog-metadata.ts";
 import { type Actor, auditActor } from "../audit/actor.ts";
@@ -41,7 +41,7 @@ import {
 } from "./file-persist.ts";
 import { detectFormat, parseFileToChunks } from "./parsers.ts";
 import { fuseKnowledgeWithVectors } from "./search-vectors.ts";
-import { dedupeTags, mergeStructuralTags } from "./tags.ts";
+import { DOMAIN_TAG_PREFIX, dedupeTags, mergeStructuralTags } from "./tags.ts";
 import type {
   AnalyzeKnowledgeSourceParams,
   CreateKnowledgeSourceParams,
@@ -875,6 +875,105 @@ export function getKnowledgeSearchCacheStats(): { hits: number; misses: number; 
   return knowledgeSearchCache.stats();
 }
 
+type KnowledgeFtsRow = {
+  id: string;
+  knowledge_source_id: string;
+  source_name: string;
+  source_tags: string[] | null;
+  source_description: string | null;
+  title: string | null;
+  path: string | null;
+  snippet: string;
+  rank: number | string;
+  fetched_at: Date | string | null;
+};
+
+async function domainTaggedSourceIds(
+  db: Executor,
+  tenant_id: string,
+  tsquery: SQL,
+): Promise<string[]> {
+  const out = await db.execute(sql`
+    SELECT ks.id::text AS id
+    FROM knowledge_sources ks
+    WHERE ks.tenant_id = ${tenant_id}
+      AND EXISTS (
+        SELECT 1 FROM unnest(ks.tags) AS tag
+        WHERE lower(tag) LIKE ${`${DOMAIN_TAG_PREFIX}%`}
+          AND to_tsvector('english', regexp_replace(substr(tag, ${DOMAIN_TAG_PREFIX.length + 1}), '[-_/.]+', ' ', 'g')) @@ ${tsquery}
+      )
+      AND ks.deleted_at IS NULL
+      AND ks.status = 'active'
+  `);
+  return (out.rows as Array<{ id: string }>).map((r) => r.id);
+}
+
+async function runKnowledgeFts(
+  db: Executor,
+  tenant_id: string,
+  tsquery: SQL,
+  scopeFilter: SQL,
+  limit: number,
+  domainSourceIds: readonly string[],
+): Promise<KnowledgeSearchHit[]> {
+  const domainIds =
+    domainSourceIds.length > 0
+      ? sql`ARRAY[${sql.join(
+          domainSourceIds.map((id) => sql`${id}`),
+          sql`, `,
+        )}]::uuid[]`
+      : null;
+  const match = domainIds
+    ? sql`(kc.tsv @@ ${tsquery} OR kc.knowledge_source_id = ANY(${domainIds}))`
+    : sql`kc.tsv @@ ${tsquery}`;
+  const rank = domainIds
+    ? sql`ts_rank_cd(kc.tsv, ${tsquery}) + CASE WHEN kc.knowledge_source_id = ANY(${domainIds}) THEN 0.1 ELSE 0 END`
+    : sql`ts_rank_cd(kc.tsv, ${tsquery})`;
+  const out = await db.execute(sql`
+    SELECT
+      kc.id::text AS id,
+      kc.knowledge_source_id::text AS knowledge_source_id,
+      ks.name AS source_name,
+      ks.tags AS source_tags,
+      ks.description AS source_description,
+      kc.title,
+      kc.path,
+      COALESCE(ks.last_refreshed_at, ks.updated_at) AS fetched_at,
+      ts_headline(
+        'english',
+        kc.content,
+        ${tsquery},
+        'MaxWords=25, MinWords=5'
+      ) AS snippet,
+      ${rank} AS rank
+    FROM knowledge_chunks kc
+    JOIN knowledge_sources ks ON ks.id = kc.knowledge_source_id
+    WHERE kc.tenant_id = ${tenant_id}
+      AND ${match}
+      ${scopeFilter}
+    ORDER BY rank DESC
+    LIMIT ${limit}
+  `);
+
+  return (out.rows as KnowledgeFtsRow[]).map((r) => ({
+    id: r.id,
+    knowledge_source_id: r.knowledge_source_id,
+    source_name: r.source_name,
+    source_tags: r.source_tags ?? [],
+    source_description: r.source_description,
+    title: r.title,
+    path: r.path,
+    snippet: r.snippet,
+    rank: typeof r.rank === "string" ? parseFloat(r.rank) : r.rank,
+    fetched_at:
+      r.fetched_at instanceof Date
+        ? r.fetched_at.toISOString()
+        : typeof r.fetched_at === "string"
+          ? r.fetched_at
+          : null,
+  }));
+}
+
 export async function searchKnowledge(
   p: SearchKnowledgeParams,
   exec?: Executor,
@@ -904,62 +1003,13 @@ export async function searchKnowledge(
     scopeFilter = sql`${scopeFilter} AND ks.tags && ARRAY[${sql.join(tagLiterals, sql`, `)}]::text[]`;
   }
 
-  const out = await db.execute(sql`
-    SELECT
-      kc.id::text AS id,
-      kc.knowledge_source_id::text AS knowledge_source_id,
-      ks.name AS source_name,
-      ks.tags AS source_tags,
-      ks.description AS source_description,
-      kc.title,
-      kc.path,
-      COALESCE(ks.last_refreshed_at, ks.updated_at) AS fetched_at,
-      ts_headline(
-        'english',
-        kc.content,
-        plainto_tsquery('english', ${p.query}),
-        'MaxWords=25, MinWords=5'
-      ) AS snippet,
-      ts_rank_cd(kc.tsv, plainto_tsquery('english', ${p.query})) AS rank
-    FROM knowledge_chunks kc
-    JOIN knowledge_sources ks ON ks.id = kc.knowledge_source_id
-    WHERE kc.tenant_id = ${p.tenant_id}
-      AND kc.tsv @@ plainto_tsquery('english', ${p.query})
-      ${scopeFilter}
-    ORDER BY rank DESC
-    LIMIT ${limit}
-  `);
-
-  type Row = {
-    id: string;
-    knowledge_source_id: string;
-    source_name: string;
-    source_tags: string[] | null;
-    source_description: string | null;
-    title: string | null;
-    path: string | null;
-    snippet: string;
-    rank: number | string;
-    fetched_at: Date | string | null;
-  };
-
-  const hits: KnowledgeSearchHit[] = (out.rows as Row[]).map((r) => ({
-    id: r.id,
-    knowledge_source_id: r.knowledge_source_id,
-    source_name: r.source_name,
-    source_tags: r.source_tags ?? [],
-    source_description: r.source_description,
-    title: r.title,
-    path: r.path,
-    snippet: r.snippet,
-    rank: typeof r.rank === "string" ? parseFloat(r.rank) : r.rank,
-    fetched_at:
-      r.fetched_at instanceof Date
-        ? r.fetched_at.toISOString()
-        : typeof r.fetched_at === "string"
-          ? r.fetched_at
-          : null,
-  }));
+  const allTermsQuery = sql`plainto_tsquery('english', ${p.query})`;
+  let hits = await runKnowledgeFts(db, p.tenant_id, allTermsQuery, scopeFilter, limit, []);
+  if (hits.length === 0) {
+    const anyTermQuery = sql`regexp_replace(${allTermsQuery}::text, ' & ', ' | ', 'g')::tsquery`;
+    const domainIds = await domainTaggedSourceIds(db, p.tenant_id, anyTermQuery);
+    hits = await runKnowledgeFts(db, p.tenant_id, anyTermQuery, scopeFilter, limit, domainIds);
+  }
 
   const fused = await fuseKnowledgeWithVectors(db, p, hits, scopeFilter, limit);
 

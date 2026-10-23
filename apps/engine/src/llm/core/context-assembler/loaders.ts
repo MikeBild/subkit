@@ -715,10 +715,13 @@ export function trimCandidatesToBudget(candidates: SkillCandidateView[]): {
   return { survivors: [], section: null, trimmed, oversized_item_id: null };
 }
 
-function buildPriorWorkflowRankingQuery(
+export function buildPriorWorkflowRankingQuery(
   hint: AuthoringPromptHint | undefined,
   turns: UserTurn[],
+  retrievalQuery?: string,
 ): string {
+  const explicit = retrievalQuery?.trim();
+  if (explicit) return explicit.slice(0, 512);
   const parts: string[] = [];
   if (hint?.next_required_action) parts.push(hint.next_required_action);
   if (hint?.active_target?.kind) parts.push(hint.active_target.kind);
@@ -732,12 +735,13 @@ export async function loadPriorWorkflows(
     workflow_id?: string;
     connector_id?: string;
     authoring_hint?: AuthoringPromptHint;
+    retrieval_query?: string;
     user_turns: UserTurn[];
   },
   exec: Executor,
 ): Promise<PriorWorkflowRef[]> {
   try {
-    const query = buildPriorWorkflowRankingQuery(p.authoring_hint, p.user_turns);
+    const query = buildPriorWorkflowRankingQuery(p.authoring_hint, p.user_turns, p.retrieval_query);
     return await findSimilarActive(
       p.tenant_id,
       {
