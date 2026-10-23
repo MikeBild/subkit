@@ -3,12 +3,15 @@ import { translate } from "@/lib/i18n";
 import {
   SKILL_TEMPLATES,
   type SkillHistoryDetail,
+  skillChangedAt,
+  skillHistoryGap,
   skillScope,
   skillScopeKey,
   skillScopePhraseKey,
   skillsLoadState,
   skillTemplateFromSearch,
   skillTemplateKeys,
+  skillVersionBasis,
   skillVersionChange,
   skillVersionRows,
   skillWhereKey,
@@ -144,5 +147,49 @@ describe("skillVersionChange", () => {
 
   test("an entry without saved states has no change to show", () => {
     expect(skillVersionChange(detail(null, null))).toBeNull();
+  });
+});
+
+describe("skill versions agree with the engine history", () => {
+  const entry = (version: number | null, at: string, id = `e${version}`) => ({
+    audit_entry_id: id,
+    version,
+    title: "Rule",
+    lifecycle: "active",
+    updated_at: at,
+    actor_id: null,
+    has_snapshot: true,
+  });
+
+  test("a skill with one recorded version says honestly that older versions were not kept", () => {
+    const rows = skillVersionRows([entry(67, "2026-10-20T10:00:00Z")], 67);
+    expect(skillHistoryGap(rows, 67)).toEqual({ through: 66 });
+    expect(skillHistoryGap(skillVersionRows([entry(1, "2026-10-20T10:00:00Z")], 1), 1)).toBeNull();
+    expect(skillHistoryGap([], 1)).toBeNull();
+    expect(skillHistoryGap([], 3)).toEqual({ through: 2 });
+  });
+
+  test("Vorher names a version only when that version is listed", () => {
+    const rows = skillVersionRows(
+      [entry(5, "2026-10-21T10:00:00Z"), entry(4, "2026-10-20T10:00:00Z")],
+      5,
+    );
+    const [five, four] = rows;
+    if (!five || !four) throw new Error("rows missing");
+    expect(skillVersionBasis(rows, five)).toBe(4);
+    expect(skillVersionBasis(rows, four)).toBeNull();
+  });
+
+  test("the header's changed time is the current version's time from the history", () => {
+    const rows = skillVersionRows(
+      [entry(5, "2026-10-21T10:00:00Z"), entry(4, "2026-10-20T10:00:00Z")],
+      5,
+    );
+    const skill = { version: 5, updated_at: "2026-10-22T08:00:00Z" };
+    expect(skillChangedAt(skill, rows)).toBe("2026-10-21T10:00:00Z");
+    expect(skillChangedAt(skill, null)).toBe("2026-10-22T08:00:00Z");
+    expect(skillChangedAt({ version: 6, updated_at: "2026-10-22T08:00:00Z" }, rows)).toBe(
+      "2026-10-22T08:00:00Z",
+    );
   });
 });

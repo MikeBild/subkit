@@ -109,6 +109,32 @@ export function skillVersionRows(
   }));
 }
 
+export function skillVersionBasis(
+  rows: readonly SkillVersionRow[],
+  row: SkillVersionRow,
+): number | null {
+  if (row.version === null || row.version <= 1) return null;
+  const previous = row.version - 1;
+  return rows.some((entry) => entry.version === previous) ? previous : null;
+}
+
+export function skillHistoryGap(
+  rows: readonly SkillVersionRow[],
+  currentVersion: number,
+): { through: number } | null {
+  const numbered = rows.flatMap((row) => (row.version === null ? [] : [row.version]));
+  const oldest = numbered.length > 0 ? Math.min(...numbered) : currentVersion;
+  return oldest > 1 ? { through: oldest - 1 } : null;
+}
+
+export function skillChangedAt(
+  skill: { version: number; updated_at: string },
+  rows: readonly SkillVersionRow[] | null,
+): string {
+  const current = rows?.find((row) => row.version === skill.version);
+  return current?.updated_at ?? skill.updated_at;
+}
+
 export type SkillHistoryDetail = components["schemas"]["SkillHistoryDetail"];
 
 export interface SkillVersionChange {

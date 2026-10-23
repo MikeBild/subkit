@@ -1914,6 +1914,9 @@ const EN = {
   "skills.versions.auditEntry": "Audit entry",
   "skills.versions.change": "Change from the previous version",
   "skills.versions.renamedFrom": "Previous name",
+  "skills.versions.gap.one": "Version 1 was saved before SubKit kept a version history.",
+  "skills.versions.gap.other":
+    "Versions 1 to {through} were saved before SubKit kept a version history; they cannot be shown.",
   "skills.editor.useTemplate": "Use a template:",
   "skills.onboarding.lead":
     "A skill tells SubKit how you work. Chat and workflow drafts follow it.",
@@ -7627,6 +7630,9 @@ const DE: Record<TranslationKey, string> = {
   "skills.versions.auditEntry": "Audit-Eintrag",
   "skills.versions.change": "Änderung gegenüber der Vorversion",
   "skills.versions.renamedFrom": "Vorheriger Name",
+  "skills.versions.gap.one": "Version 1 entstand, bevor SubKit einen Versionsverlauf führte.",
+  "skills.versions.gap.other":
+    "Versionen 1 bis {through} entstanden, bevor SubKit einen Versionsverlauf führte; sie lassen sich nicht zeigen.",
   "skills.editor.useTemplate": "Vorlage einsetzen:",
   "skills.onboarding.lead":
     "Ein Skill sagt SubKit, wie ihr arbeitet. Chat und Workflow-Entwürfe halten sich daran.",

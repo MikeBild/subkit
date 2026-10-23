@@ -94,6 +94,8 @@ import {
   type SkillTemplate,
   type SkillVersionRow,
   skillAppliesToOptionKey,
+  skillChangedAt,
+  skillHistoryGap,
   skillScope,
   skillScopeKey,
   skillScopePhraseKey,
@@ -101,6 +103,7 @@ import {
   skillsLoadState,
   skillTemplateFromSearch,
   skillTemplateKeys,
+  skillVersionBasis,
   skillVersionChange,
   skillVersionRows,
   skillWhereKey,
@@ -566,6 +569,20 @@ function whereChips(appliesTo: string | null | undefined): SkillAppliesTo[] {
   return ["chat", "authoring"];
 }
 
+function useSkillHistory(
+  id: string,
+  enabled: boolean,
+  live?: ReturnType<typeof useLiveQueryOptions>,
+) {
+  return useQuery({
+    queryKey: ["skill", id, "history"],
+    queryFn: () =>
+      apiRequest<{ items: SkillHistoryEntry[] }>(`${ENDPOINT}/${encodeURIComponent(id)}/history`),
+    enabled,
+    ...live,
+  });
+}
+
 function SkillRecord({ id, permissions }: { id: string; permissions: readonly string[] }) {
   const { t, dateTime, locale } = useI18n();
   const navigate = useNavigate();
@@ -577,6 +594,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
   const canDelete = permissions.includes("skill:delete");
   const canChat = permissions.includes("conversation:write");
   const query = useSkill(id, canRead);
+  const history = useSkillHistory(id, canRead && query.data?.status === "active");
   const [deleting, setDeleting] = useState(false);
   const [describing, setDescribing] = useState(false);
   const metadataActions = useCatalogMetadataActions({
@@ -627,7 +645,13 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
           tone: "ok" as const,
           line: t("skills.strip.active", {
             scope,
-            when: formatRelativeTime(locale, skill.updated_at),
+            when: formatRelativeTime(
+              locale,
+              skillChangedAt(
+                skill,
+                history.data ? skillVersionRows(history.data.items, skill.version) : null,
+              ),
+            ),
           }),
         }
       : {
@@ -918,14 +942,7 @@ function SkillVersions({ skill, canWrite }: { skill: Skill; canWrite: boolean })
   const live = useLiveQueryOptions();
   const directory = useActorDirectory(true);
   const [selected, setSelected] = useSearchParamState("version", "");
-  const history = useQuery({
-    queryKey: ["skill", skill.id, "history"],
-    queryFn: () =>
-      apiRequest<{ items: SkillHistoryEntry[] }>(
-        `${ENDPOINT}/${encodeURIComponent(skill.id)}/history`,
-      ),
-    ...live,
-  });
+  const history = useSkillHistory(skill.id, true, live);
   const restore = useMutation({
     mutationFn: (entry: SkillVersionRow) =>
       apiRequest<Skill>(`${ENDPOINT}/${encodeURIComponent(skill.id)}/restore`, {
@@ -947,6 +964,7 @@ function SkillVersions({ skill, canWrite }: { skill: Skill; canWrite: boolean })
       ),
   });
   const rows = skillVersionRows(history.data?.items ?? [], skill.version);
+  const gap = skillHistoryGap(rows, skill.version);
   const open = rows.find((row) => row.audit_entry_id === selected) ?? null;
   const label = (row: SkillVersionRow) =>
     row.version === null
@@ -1003,9 +1021,17 @@ function SkillVersions({ skill, canWrite }: { skill: Skill; canWrite: boolean })
           ]}
         />
       )}
+      {history.data && gap ? (
+        <p className="text-sm text-muted-foreground" data-testid="skill-versions-gap">
+          {gap.through === 1
+            ? t("skills.versions.gap.one")
+            : t("skills.versions.gap.other", { through: gap.through })}
+        </p>
+      ) : null}
       <SkillVersionSheet
         skillId={skill.id}
         row={open}
+        rows={rows}
         label={open ? label(open) : ""}
         canWrite={canWrite}
         restoring={restore.isPending}
@@ -1020,6 +1046,7 @@ function SkillVersions({ skill, canWrite }: { skill: Skill; canWrite: boolean })
 function SkillVersionSheet({
   skillId,
   row,
+  rows,
   label,
   canWrite,
   restoring,
@@ -1029,6 +1056,7 @@ function SkillVersionSheet({
 }: {
   skillId: string;
   row: SkillVersionRow | null;
+  rows: readonly SkillVersionRow[];
   label: string;
   canWrite: boolean;
   restoring: boolean;
@@ -1048,6 +1076,7 @@ function SkillVersionSheet({
     enabled: row?.has_snapshot === true,
   });
   const change = detail.data ? skillVersionChange(detail.data) : null;
+  const basis = row ? skillVersionBasis(rows, row) : null;
   const author = row ? actorName(directory, row.actor_id, t) : "";
   const facts: Fact[] = row
     ? [
@@ -1103,8 +1132,8 @@ function SkillVersionSheet({
           ) : change ? (
             <VersionChange
               label={
-                row.version !== null && row.version > 1
-                  ? t("knowledge.versions.changeSince", { version: row.version - 1 })
+                basis !== null
+                  ? t("knowledge.versions.changeSince", { version: basis })
                   : t("skills.versions.change")
               }
               rows={change.rows}
