@@ -77,22 +77,39 @@ export interface StepKindSource {
   kind: string;
   language?: string | null;
   service?: ServiceIdentity | null;
+  writes?: boolean | null;
+}
+
+export const READ_VERBS = new Set(["GET", "HEAD", "OPTIONS", "LIST"]);
+
+export function stepWrites(
+  definition: Pick<WorkflowStepDefinition, "essence" | "raw">,
+): boolean | null {
+  const { essence } = definition;
+  if (essence.kind !== "request") return null;
+  const declared = definition.raw.side_effects;
+  if (declared === "read") return false;
+  if (declared === "write") return true;
+  if (essence.via !== "http") return null;
+  return !READ_VERBS.has((essence.verb ?? "GET").toUpperCase());
 }
 
 export function stepKindKey(step: StepKindSource): TranslationKey {
   if (step.kind === "request" && step.service && isAiService(step.service))
     return "workflow.kind.askAi";
   if (step.kind === "transform" && step.language === "javascript") return "workflow.kind.code";
+  if (step.kind === "request" && step.writes) return "workflow.kind.send";
   return STEP_KIND_KEYS[step.kind] ?? "workflow.stepType";
 }
 
 export function definitionKind(
-  definition: Pick<WorkflowStepDefinition, "kind" | "essence">,
+  definition: Pick<WorkflowStepDefinition, "kind" | "essence" | "raw">,
   service: ServiceIdentity | null,
 ): StepKindSource {
   return {
     kind: definition.kind,
     language: definition.essence.kind === "transform" ? definition.essence.language : null,
+    writes: stepWrites(definition),
     service,
   };
 }

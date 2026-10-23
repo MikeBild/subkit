@@ -165,7 +165,7 @@ describe("solution templates: list, detail, create", () => {
       "Dienst abfragen",
       "Dienst abfragen",
       "Code",
-      "Dienst abfragen",
+      "An Dienst senden",
     ]);
   });
 

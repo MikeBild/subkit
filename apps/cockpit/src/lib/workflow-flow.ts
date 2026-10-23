@@ -1,13 +1,11 @@
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { isAiService, type ServiceIdentity } from "@/lib/service-icons";
-import { formatDuration, type WorkflowStepDefinition } from "@/lib/workflow-steps";
+import { formatDuration, READ_VERBS, type WorkflowStepDefinition } from "@/lib/workflow-steps";
 
 export interface Phrase {
   key: TranslationKey;
   values?: Record<string, string | number>;
 }
-
-const READ_VERBS = new Set(["GET", "HEAD", "OPTIONS", "LIST"]);
 
 const TRANSFORM_KEYS: Record<string, TranslationKey> = {
   javascript: "workflowFlow.step.code",
@@ -61,16 +59,6 @@ export function stepPhrase(
     default:
       return { key: "workflowFlow.step.other" };
   }
-}
-
-export function stepWrites(definition: WorkflowStepDefinition): boolean | null {
-  const { essence } = definition;
-  if (essence.kind !== "request") return null;
-  const declared = definition.raw.side_effects;
-  if (declared === "read") return false;
-  if (declared === "write") return true;
-  if (essence.via !== "http") return null;
-  return !READ_VERBS.has((essence.verb ?? "GET").toUpperCase());
 }
 
 export type TriggerKind = "schedule" | "webhook" | "request";

@@ -5,11 +5,10 @@ import {
   groupRunsByDay,
   resultPhrase,
   stepPhrase,
-  stepWrites,
   successRate,
   triggerKindOf,
 } from "@/lib/workflow-flow";
-import { definitionKind, readStepDefinition, stepKindKey } from "@/lib/workflow-steps";
+import { definitionKind, readStepDefinition, stepKindKey, stepWrites } from "@/lib/workflow-steps";
 
 describe("workflow flow phrases", () => {
   test("names a reading and a sending request by its service, never by its step key", () => {
@@ -70,7 +69,7 @@ describe("workflow flow phrases", () => {
       service: ServiceIdentity | null = null,
     ) => stepKindKey(definitionKind(definition, service));
     expect(kind(read, github)).toBe("workflow.kind.request");
-    expect(kind(send, github)).toBe("workflow.kind.request");
+    expect(kind(send, github)).toBe("workflow.kind.send");
     expect(kind(send, { kind: "brand", key: "openai" })).toBe("workflow.kind.askAi");
     expect(kind(readStepDefinition({ id: "c", kind: "transform" }, 2))).toBe("workflow.kind.code");
     expect(

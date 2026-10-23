@@ -157,7 +157,6 @@ function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string)
     : safety?.reason || t("runs.rerun.unavailable");
   return (
     <ActionButton
-      variant="primary"
       disabled={disabled}
       disabledReason={disabledReason}
       pending={rerun.isPending}

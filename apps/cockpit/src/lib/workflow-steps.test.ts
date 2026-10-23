@@ -62,6 +62,12 @@ describe("step definition", () => {
     expect(stepKindKey({ kind: "future_kind" })).toBe("workflow.stepType");
   });
 
+  test("a request that writes is named as sending, a read stays a query", () => {
+    expect(stepKindKey({ kind: "request", writes: true })).toBe("workflow.kind.send");
+    expect(stepKindKey({ kind: "request", writes: false })).toBe("workflow.kind.request");
+    expect(stepKindKey({ kind: "request", writes: null })).toBe("workflow.kind.request");
+  });
+
   test("a run step finds its version's definition by step key and reads code from it", () => {
     const definitions = stepDefinitionsOf({
       steps: [

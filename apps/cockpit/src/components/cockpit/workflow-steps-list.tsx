@@ -55,7 +55,7 @@ import { useI18n } from "@/lib/i18n-context";
 import type { ServiceIdentity } from "@/lib/service-icons";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { cn } from "@/lib/utils";
-import { type Phrase, stepPhrase, stepWrites, type TriggerKind } from "@/lib/workflow-flow";
+import { type Phrase, stepPhrase, type TriggerKind } from "@/lib/workflow-flow";
 import { type WorkflowPreviewSource, workflowPreviewRequest } from "@/lib/workflow-preview";
 import {
   type BuildVersion,
@@ -69,6 +69,7 @@ import {
   type SavedDraft,
   stepKindKey,
   stepResultPreview,
+  stepWrites,
   type WorkflowStepDefinition,
   type WorkflowStepView,
 } from "@/lib/workflow-steps";
