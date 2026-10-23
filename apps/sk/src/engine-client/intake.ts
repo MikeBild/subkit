@@ -7,7 +7,7 @@ export interface IntakeItem {
   state: "collected" | "reviewing" | "admitted" | "discarded";
   version: number;
   original_snapshot: {
-    origin: "capture" | "restored_draft" | "session";
+    origin: "capture" | "restored_draft" | "note" | "session";
     source_url?: string;
     captured_at: string;
   };

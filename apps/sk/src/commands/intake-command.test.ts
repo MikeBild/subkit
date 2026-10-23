@@ -34,7 +34,7 @@ function item(id: string, title: string, category = "inbox") {
   };
 }
 
-function installEngine(items: readonly ReturnType<typeof item>[], createStatus = 200): void {
+function installEngine(items: readonly Record<string, unknown>[], createStatus = 200): void {
   globalThis.fetch = (async (input, init) => {
     const url = new URL(String(input));
     requests.push({
@@ -108,6 +108,23 @@ describe("intake CLI commands", () => {
     expect(requests.map((request) => request.path)).toEqual([
       "/gateway/v1/intake/items?category=research&state=collected",
     ]);
+  });
+
+  test("lists a note without a source address", async () => {
+    installEngine([
+      {
+        id: ONE,
+        category: "inbox",
+        title: "Gedanke",
+        state: "collected",
+        version: 1,
+        original_snapshot: { origin: "note", captured_at: "2026-10-10T00:00:00.000Z" },
+      },
+    ]);
+    await runCommand(intakeCommand, { rawArgs: ["list", "--json"] });
+    expect(JSON.parse(output.join(""))).toMatchObject({
+      items: [{ id: ONE, title: "Gedanke", origin: "note", source_url: null }],
+    });
   });
 
   test("uses the personal default and preserves an engine path in the Cockpit handoff", async () => {
