@@ -89,6 +89,18 @@ const AttentionItem = z
         .describe(
           "Collected intake items (clips and session learnings) awaiting review. They are not knowledge or skills until a person confirms a proposal.",
         ),
+      intake_by_category: z
+        .array(z.object({ category: z.string(), count: z.number().int().positive() }))
+        .optional()
+        .describe(
+          "The intake awaiting review per category, largest first. Counts only, never item contents; the counts sum to intake together with intake_categories_omitted.",
+        ),
+      intake_categories_omitted: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Items awaiting review in categories beyond those listed in intake_by_category."),
     }),
     since: z.string().nullable(),
     deadline: z.string().nullable(),

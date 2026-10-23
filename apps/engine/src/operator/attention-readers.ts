@@ -614,22 +614,32 @@ const readSkills: TenantReader = async (db, tenantId) => {
   ];
 };
 
-const readIntake: TenantReader = async (db, tenantId) => {
-  const [row] = await db
-    .select({
-      count: sql<number>`count(*)::int`,
-      oldest: sql<Date | null>`min(${intakeItems.created_at})`,
-    })
-    .from(intakeItems)
-    .where(
-      and(
-        eq(intakeItems.tenant_id, tenantId),
-        inArray(intakeItems.state, ["collected", "reviewing"]),
-      ),
+export const INTAKE_CATEGORY_LIMIT = 10;
+
+export function intakeCandidates(
+  rows: ReadonlyArray<{ category: string; count: number; oldest: Date | string | null }>,
+): Candidate[] {
+  const categories = rows
+    .map((row) => ({ category: row.category, count: Number(row.count) }))
+    .filter((row) => row.count > 0)
+    .sort((a, b) =>
+      b.count !== a.count
+        ? b.count - a.count
+        : a.category < b.category
+          ? -1
+          : a.category > b.category
+            ? 1
+            : 0,
     );
-  const count = Number(row?.count ?? 0);
+  const count = categories.reduce((sum, row) => sum + row.count, 0);
   if (count === 0) return [];
-  const oldest = row?.oldest ? new Date(row.oldest) : null;
+  const listed = categories.slice(0, INTAKE_CATEGORY_LIMIT);
+  const omitted = categories.slice(INTAKE_CATEGORY_LIMIT).reduce((sum, row) => sum + row.count, 0);
+  const oldest = rows.reduce<Date | null>((min, row) => {
+    if (!row.oldest) return min;
+    const at = new Date(row.oldest);
+    return min === null || at < min ? at : min;
+  }, null);
   return [
     {
       source: "intake",
@@ -642,7 +652,11 @@ const readIntake: TenantReader = async (db, tenantId) => {
         reason: "intake_collected",
         trigger: null,
         cause_class: null,
-        counts: { intake: count },
+        counts: {
+          intake: count,
+          intake_by_category: listed,
+          ...(omitted > 0 ? { intake_categories_omitted: omitted } : {}),
+        },
         since: oldest?.toISOString() ?? null,
         deadline: null,
         detail: null,
@@ -657,6 +671,24 @@ const readIntake: TenantReader = async (db, tenantId) => {
       },
     },
   ];
+}
+
+const readIntake: TenantReader = async (db, tenantId) => {
+  const rows = await db
+    .select({
+      category: intakeItems.category,
+      count: sql<number>`count(*)::int`,
+      oldest: sql<Date | null>`min(${intakeItems.created_at})`,
+    })
+    .from(intakeItems)
+    .where(
+      and(
+        eq(intakeItems.tenant_id, tenantId),
+        inArray(intakeItems.state, ["collected", "reviewing"]),
+      ),
+    )
+    .groupBy(intakeItems.category);
+  return intakeCandidates(rows);
 };
 
 function signalItem(signal: RiskSignal, source: "budget" | "risk"): Candidate {

@@ -84,6 +84,11 @@ export interface AttentionAction {
   permission: string;
 }
 
+export interface IntakeCategoryCount {
+  category: string;
+  count: number;
+}
+
 export interface AttentionItem {
   id: string;
   class: AttentionClass;
@@ -116,6 +121,8 @@ export interface AttentionItem {
     consecutive_failures?: number;
     skills?: number;
     intake?: number;
+    intake_by_category?: IntakeCategoryCount[];
+    intake_categories_omitted?: number;
   };
   since: string | null;
   deadline: string | null;

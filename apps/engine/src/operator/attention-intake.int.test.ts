@@ -84,7 +84,7 @@ describe("attention — detected proposals and collected intake", () => {
     expect(intake[0]).toMatchObject({
       id: "intake",
       class: "decide",
-      counts: { intake: 2 },
+      counts: { intake: 2, intake_by_category: [{ category: "blog-de", count: 2 }] },
       actions: [
         { verb: "review", href: "/cockpit/intake?category=all", permission: "intake:read" },
       ],
@@ -93,7 +93,7 @@ describe("attention — detected proposals and collected intake", () => {
     const entry = intake[0];
     if (!entry) throw new Error("missing intake attention entry");
     expect(attentionLine(entry)).toBe(
-      "- [decide] intake_items: intake collected (2 collected items to review)",
+      "- [decide] intake_items: intake collected (2 collected items to review, by category: blog-de 2)",
     );
   });
 });

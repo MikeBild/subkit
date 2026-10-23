@@ -375,6 +375,21 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+const INTAKE_LINE_CATEGORIES = 3;
+
+function intakeCategoriesLine(counts: AttentionItem["counts"]): string | null {
+  const categories = counts.intake_by_category ?? [];
+  if (categories.length === 0) return null;
+  const shown = categories
+    .slice(0, INTAKE_LINE_CATEGORIES)
+    .map((entry) => `${entry.category} ${entry.count}`);
+  const other =
+    categories.slice(INTAKE_LINE_CATEGORIES).reduce((sum, entry) => sum + entry.count, 0) +
+    (counts.intake_categories_omitted ?? 0);
+  if (other > 0) shown.push(`other ${other}`);
+  return `by category: ${shown.join(" | ")}`;
+}
+
 export function attentionLine(item: AttentionItem): string {
   const subject = item.subject
     ? `${item.subject.kind} "${item.subject.name ?? item.subject.id}"`
@@ -386,6 +401,7 @@ export function attentionLine(item: AttentionItem): string {
     item.counts.intake
       ? plural(item.counts.intake, "collected item to review", "collected items to review")
       : null,
+    intakeCategoriesLine(item.counts),
     item.approval ? `v${item.approval.version}` : null,
     item.approval ? item.approval.environment : null,
     item.repair?.step_id
