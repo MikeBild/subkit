@@ -45,7 +45,7 @@ The note carries the origin **Note**. Its page shows no **Open original page** l
 
 1. In the Cockpit, open **Inbox**.
 
-   ![Inbox with three collected items of origin "Browser" in category Inbox, status "Collected", in the Brennwerk Cockpit](images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp)
+   ![Inbox with seven collected items of origin "Note", "Browser", "Claude Code", "Chat" and "Codex" in category Inbox, status "Collected", and the hint that three entries from your AI assistants are waiting for your review](images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp)
 
 2. Optional: in the line above the list, click the hint, for example "3 entries from your AI assistants are waiting for your review". You then only see items from your AI assistants. The filter **Origin: AI assistant** appears next to the search; click it to clear it.
 3. Click an item. On the **Content** tab, one sentence names the origin, such as "Collected by Chat in the session … · for … · …". On the right, **Open conversation** opens the chat conversation; for collected pages, **Open original page** opens the source.

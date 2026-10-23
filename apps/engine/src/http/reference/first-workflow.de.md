@@ -61,7 +61,7 @@ Ohne Freigabe startet ein Lauf nur als Probelauf ohne Wirkung.
 4. Bestätige mit **Freigeben**.
    **Nur übernehmen** übernimmt die Version, ohne Läufe freizugeben.
 
-![Freigabedialog für „Invoice export v1“ mit Umgebung „Entwicklung“, Gültigkeit, Lesezugriff auf die Sales reporting API als externes Ziel und der Schaltfläche „Übernehmen und Läufe erlauben“](images/first-workflow-approval.de.webp)
+![Freigabedialog für „Invoice export v1“ mit der Umgebung „Test“, der Gültigkeit „Bis auf Widerruf“, einem Lesezugriff auf die Sales reporting API, keinem Schreibzugriff und den Schaltflächen „Nur übernehmen“ und „Freigeben“](images/first-workflow-approval.de.webp)
 
 Die Freigabe startet keinen Lauf. Eine Freigabe gilt für eine Umgebung und eine Dauer.
 Auch eine neue Version, deren Grenze nicht wächst, ist davon gedeckt.
@@ -91,7 +91,7 @@ Du siehst **Lauf gestartet**. Ist der Button nicht verfügbar, nennt der Hinweis
 2. Klicke auf den Lauf.
    Du siehst jeden Schritt mit seiner Ausgabe. Ein fehlgeschlagener Schritt zeigt **Fehler in Schritt „…“** mit der Ursache.
 
-   ![Erfolgreicher Lauf von „CRM contact sync“ aus dem Verlauf mit einem Schritt, dem Auftraggeber „API“ und dem aufgeklappten Ergebnis mit einem Kontakt](images/first-workflow-run-result.de.webp)
+   ![Erfolgreicher Lauf von „CRM contact sync“ mit einem Schritt „Dienst abfragen“, dem Auftraggeber „API“ und den eingeklappten Abschnitten „Warum erlaubt“ und „Technische Angaben“](images/first-workflow-run-result.de.webp)
 
 3. Optional: Wähle **Im Audit-Trail**, um zu sehen, wer den Lauf gestartet und freigegeben hat.
 

@@ -61,7 +61,7 @@ Without an approval, a run starts only as a trial run without effects.
 4. Confirm with **Approve**.
    **Apply only** applies the version without approving runs.
 
-![Approval dialog for "Invoice export v1" with the environment "Development", validity, read access to the Sales reporting API as external target and the "Use change and allow runs" button](images/first-workflow-approval.en.webp)
+![Approval dialog for "Invoice export v1" with the environment "Test", the validity "Until revoked", one read on the Sales reporting API, no writes, and the "Apply only" and "Approve" buttons](images/first-workflow-approval.en.webp)
 
 Approving starts no run. An approval covers one environment and a duration.
 It also follows a new version whose boundary does not grow.
@@ -91,7 +91,7 @@ You see **Run started**. If the button is unavailable, the hint says why, for ex
 2. Click the run.
    You see every step with its output. A failed step shows **Error in step "…"** with the cause.
 
-   ![Successful run of "CRM contact sync" from the history with one step, the requester "API" and the expanded result with one contact](images/first-workflow-run-result.en.webp)
+   ![Successful run of "CRM contact sync" with one "Query a service" step, the requester "API" and the collapsed "Why it was allowed" and "Technical details" sections](images/first-workflow-run-result.en.webp)
 
 3. Optional: Select **In the audit trail** to see who started and approved the run.
 

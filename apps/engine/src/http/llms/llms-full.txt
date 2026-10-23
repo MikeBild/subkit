@@ -19,7 +19,7 @@
 SubKit runs your business tasks as governed workflows.
 You describe the work in plain language. You approve what it may touch. Every run is recorded.
 
-![Overview with key figures for runs, success rate, connector health and cost, the "Needs you" list with open decisions and the latest failed runs](/docs-images/intro-overview.en.webp?v=8704e616558b)
+![Overview with key figures for runs, success rate, connector health and cost, the "Needs you" list with open decisions and the latest failed runs](/docs-images/intro-overview.en.webp?v=8dfed08b2c2d)
 
 The **Overview** shows its key figures for a **Time window**: **24 h**, **This week**, **Last week**, **This month** or **Last month**.
 Weeks start on Monday, and your time zone applies. The **Usage** page offers the same choice.
@@ -33,7 +33,7 @@ Use it as SubKit Cloud or run your own engine:
 
 Then build your first workflow with "Your first workflow".
 
-![Documentation page with search, the "Getting started" path with steps 1 to 4 and the "Working with SubKit" list](/docs-images/intro-docs.en.webp?v=5e17003c4572)
+![Documentation page with search, the "Getting started" path with steps 1 to 4 and the "Working with SubKit" list](/docs-images/intro-docs.en.webp?v=85684f500db6)
 ## Use SubKit Cloud
 
 > Cloud (hosted beta, by invitation)
@@ -377,7 +377,7 @@ Without an approval, a run starts only as a trial run without effects.
 4. Confirm with **Approve**.
    **Apply only** applies the version without approving runs.
 
-![Approval dialog for "Invoice export v1" with the environment "Development", validity, read access to the Sales reporting API as external target and the "Use change and allow runs" button](/docs-images/first-workflow-approval.en.webp?v=43a2103731a8)
+![Approval dialog for "Invoice export v1" with the environment "Test", the validity "Until revoked", one read on the Sales reporting API, no writes, and the "Apply only" and "Approve" buttons](/docs-images/first-workflow-approval.en.webp?v=a0dd838590e7)
 
 Approving starts no run. An approval covers one environment and a duration.
 It also follows a new version whose boundary does not grow.
@@ -407,7 +407,7 @@ You see **Run started**. If the button is unavailable, the hint says why, for ex
 2. Click the run.
    You see every step with its output. A failed step shows **Error in step "…"** with the cause.
 
-   ![Successful run of "CRM contact sync" from the history with one step, the requester "API" and the expanded result with one contact](/docs-images/first-workflow-run-result.en.webp?v=e41dd21ffff3)
+   ![Successful run of "CRM contact sync" with one "Query a service" step, the requester "API" and the collapsed "Why it was allowed" and "Technical details" sections](/docs-images/first-workflow-run-result.en.webp?v=d6f1c5541b42)
 
 3. Optional: Select **In the audit trail** to see who started and approved the run.
 
@@ -847,7 +847,7 @@ The Web Clipper signs in with its own API key.
 1. In the Cockpit, open **API access**.
 2. Select **Create key** and pick the **Web Clipper** preset. It grants exactly `intake:read` and `intake:write`.
 
-   !["Create key" dialog with the Web Clipper preset, which grants only View and Edit on collected items](/docs-images/web-clipper-api-key.en.webp?v=d3b08c2e990b)
+   !["Create key" dialog with the Web Clipper preset, which grants only View and Edit on collected items](/docs-images/web-clipper-api-key.en.webp?v=d37e5c477602)
 
 3. Copy the key.
 4. In the Web Clipper, select the gear icon (⚙). The settings open in a new tab.
@@ -1003,7 +1003,7 @@ The note carries the origin **Note**. Its page shows no **Open original page** l
 
 1. In the Cockpit, open **Inbox**.
 
-   ![Inbox with three collected items of origin "Browser" in category Inbox, status "Collected", in the Brennwerk Cockpit](/docs-images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp?v=088448e5956d)
+   ![Inbox with seven collected items of origin "Note", "Browser", "Claude Code", "Chat" and "Codex" in category Inbox, status "Collected", and the hint that three entries from your AI assistants are waiting for your review](/docs-images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp?v=147e1f8a806b)
 
 2. Optional: in the line above the list, click the hint, for example "3 entries from your AI assistants are waiting for your review". You then only see items from your AI assistants. The filter **Origin: AI assistant** appears next to the search; click it to clear it.
 3. Click an item. On the **Content** tab, one sentence names the origin, such as "Collected by Chat in the session … · for … · …". On the right, **Open conversation** opens the chat conversation; for collected pages, **Open original page** opens the source.
@@ -1674,7 +1674,7 @@ If you work in several workspaces, each one gets its own app with its own name, 
 1. Open the Cockpit in the browser and sign in.
 2. Open the workspace menu in the sidebar and choose **Install this workspace**.
 
-   ![Open workspace menu with the current workspace checked and the "Install this workspace" entry highlighted](/docs-images/cockpit-app-install.en.webp?v=60aa83f3924e)
+   ![Open workspace menu with the current workspace checked and the "Install this workspace" entry highlighted](/docs-images/cockpit-app-install.en.webp?v=7303d96df379)
 
 3. Check the name and icon in the install dialog and select **Install app**.
 4. The Cockpit moves to this workspace's own address and shows the dialog again. Select **Install app** once more.

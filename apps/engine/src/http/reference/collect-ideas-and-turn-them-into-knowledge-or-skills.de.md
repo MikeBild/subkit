@@ -45,7 +45,7 @@ Die Notiz trägt die Herkunft **Notiz**. Auf der Seite der Notiz fehlt der Link 
 
 1. Öffne im Cockpit **Eingang**.
 
-   ![Eingang mit drei gesammelten Einträgen der Herkunft „Browser“ in der Kategorie Inbox, Status „Gesammelt“](images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.de.webp)
+   ![Eingang mit sieben gesammelten Einträgen der Herkunft „Notiz“, „Browser“, „Claude Code“, „Chat“ und „Codex“ in der Kategorie Inbox, Status „Gesammelt“, und dem Hinweis, dass drei Einträge deiner KI-Assistenten auf deine Prüfung warten](images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.de.webp)
 
 2. Optional: Klicke in der Zeile über der Liste auf den Hinweis, zum Beispiel „3 Einträge deiner KI-Assistenten warten auf deine Prüfung“. Dann siehst du nur Einträge deiner KI-Assistenten. Der Filter **Herkunft: KI-Assistent** steht neben der Suche; ein Klick darauf hebt ihn auf.
 3. Klicke auf einen Eintrag. Im Tab **Inhalt** nennt ein Satz die Herkunft, etwa „Gesammelt von Chat in der Sitzung … · für … · …“. Rechts daneben öffnet **Unterhaltung öffnen** die Chat-Unterhaltung; bei gesammelten Seiten öffnet **Ursprüngliche Seite öffnen** die Quelle.

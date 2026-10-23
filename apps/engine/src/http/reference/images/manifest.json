@@ -8,59 +8,59 @@
     "build": "10.4.12"
   },
   "cockpit-app-install.de.webp": {
-    "sha256": "a256a9ab96485d87c9b9397276017076447d9584e41f7c0ba280f7b663388201",
-    "build": "10.4.16"
+    "sha256": "adf8567cc2bb59e61b7c88ef08dfcc7967023b2f95a0a8856213c78dbb35569e",
+    "build": "10.6.0"
   },
   "cockpit-app-install.en.webp": {
-    "sha256": "60aa83f3924e27823ecddfb104a5e7e765cc57adfbfdd5835874980e68b0fd7b",
-    "build": "10.4.12"
+    "sha256": "7303d96df379f35bc39ce058f13cf1af90bf3a05861efcf0fe6c9388df87641d",
+    "build": "10.6.0"
   },
   "collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.de.webp": {
-    "sha256": "4315dd05b164a28da739c99ce91c8bd8e28be5f2b7f96e948139e77bdf1e9313",
-    "build": "10.4.12"
+    "sha256": "4fb88b30b4f83cdbdb77f0bf1d7a8c4cb1eb504d95f3fbc9e9040c1d473176b8",
+    "build": "10.6.0"
   },
   "collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp": {
-    "sha256": "088448e5956d524b399ee82d07f75f16659403bacf6085e015eb6fe25a3fcf33",
-    "build": "10.4.12"
+    "sha256": "147e1f8a806b7ed701ac6c753323a4f691a5f26591c452dc79cebf9ee3053175",
+    "build": "10.6.0"
   },
   "first-workflow-approval.de.webp": {
-    "sha256": "39d2bafbd1d571073eeea04ffeff2be4c32c559515b926095ca52aa256f10b9c",
-    "build": "10.4.16"
+    "sha256": "1693159c0530fab177304852038cff4cf01ebb5028dc8bfd04da241f956280bc",
+    "build": "10.6.0"
   },
   "first-workflow-approval.en.webp": {
-    "sha256": "43a2103731a8bd19d49e44846b43ee2303c56fa0e820ab9ca6d1c3bb7ec4e396",
-    "build": "10.4.12"
+    "sha256": "a0dd838590e7d8afeefa0eb52306fed8dc1d4ad15f94e78fa278c32548e6f004",
+    "build": "10.6.0"
   },
   "first-workflow-run-result.de.webp": {
-    "sha256": "1351274ba1f8e5d24aee3dab75ddb124a3c6e336fedf3b0c2a2598b57657b1d7",
-    "build": "10.4.16"
+    "sha256": "b32a1a272008943817c81732235c6dc50a0d46b5a3e2e49881f81e729c556ea7",
+    "build": "10.6.0"
   },
   "first-workflow-run-result.en.webp": {
-    "sha256": "e41dd21ffff3daedc8b34777d692b238ef5115af73c589f8a36cf948f956792d",
-    "build": "10.4.12"
+    "sha256": "d6f1c5541b4245f84c95d86b102cfc341d38064c7e1806ab2696dd65f4aad117",
+    "build": "10.6.0"
   },
   "intro-docs.de.webp": {
-    "sha256": "05ea155b889b6f19a46fde7bb858841b7f52b2d0037ec8a17441d7ed76bc620c",
-    "build": "10.4.16"
+    "sha256": "e1b4efdfa9f7857c6236a74b6b96b73783c3cc1a2b56f08b36c81681898f9b88",
+    "build": "10.6.0"
   },
   "intro-docs.en.webp": {
-    "sha256": "5e17003c4572ecdc54172d9079bf492435a190e32cc5d2c1f1806d071f64c624",
-    "build": "10.4.12"
+    "sha256": "85684f500db644aa645abbd4c1b1e9e76bb90e40dfbff422c1810ccd1c18b472",
+    "build": "10.6.0"
   },
   "intro-overview.de.webp": {
-    "sha256": "f777470b59a2d9ee609e30f4ea24de5cc17d56063b97724aa207d647f55567a6",
-    "build": "10.4.16"
+    "sha256": "24a2727bea035c4d4b095b89d3546b79c4476b9a55372c16b72291441338721e",
+    "build": "10.6.0"
   },
   "intro-overview.en.webp": {
-    "sha256": "8704e616558bcbb53698db7e5591879350c92990228b8d94314499666b043c0d",
-    "build": "10.4.12"
+    "sha256": "8dfed08b2c2d8241ea6802e29bdd2bd5a0049a9f1ba790a02ff809592147190a",
+    "build": "10.6.0"
   },
   "web-clipper-api-key.de.webp": {
-    "sha256": "6bb55bba9e432e8947c142988705713caf4598ac1423e485b5697454c9d5872a",
-    "build": "10.4.16"
+    "sha256": "7da68070ff4624c631effa67ef77824cf0423ddffd22bb7035b1026a37b333f4",
+    "build": "10.6.0"
   },
   "web-clipper-api-key.en.webp": {
-    "sha256": "d3b08c2e990b220981ac62ce79457f9b39ef3530e5f2337171a9219c266706bd",
-    "build": "10.4.12"
+    "sha256": "d37e5c477602309b774797d505ff0417e443d8477d36aa12c02e6ab6ff5556cc",
+    "build": "10.6.0"
   }
 }
