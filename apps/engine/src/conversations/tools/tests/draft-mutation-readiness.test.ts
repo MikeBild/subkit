@@ -69,6 +69,14 @@ describe("draft mutation readiness", () => {
     });
   });
 
+  test("a fresh but failed preview is still missing", () => {
+    const failed = withLatestPreview(checkedDraft(), {
+      ok: false,
+      summary: "preview failed",
+    } as NonNullable<DraftDocument["latest_preview"]>);
+    expect(workflowSaveReadiness(failed, "fresh").preview).toBe("missing");
+  });
+
   test("sensitive drafts do not require a chat preview", () => {
     expect(workflowSaveReadiness(patched(checkedDraft("sensitive")), "fresh").preview).toBe(
       "not_required",

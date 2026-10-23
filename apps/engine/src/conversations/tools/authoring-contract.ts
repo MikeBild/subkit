@@ -221,12 +221,15 @@ export function workflowSaveReadiness(
 ): WorkflowSaveReadiness {
   const { summary } = getAuthoringSnapshot(draft);
   const sensitive = normalizeDraftDocument(draft).workflow?.execution_privacy === "sensitive";
+  const passed = (key: AuthoringCheckpointKey): SaveReadinessStatus => {
+    const checkpoint = summary?.checkpoints?.find((item) => item.key === key);
+    if (!checkpoint) return "missing";
+    return checkpoint.status === "fresh" && checkpoint.ok === false ? "missing" : checkpoint.status;
+  };
   return {
-    inspect: checkpointStatusByKey(summary?.checkpoints, "workflow_inspected"),
-    validate: checkpointStatusByKey(summary?.checkpoints, "workflow_validated"),
-    preview: sensitive
-      ? "not_required"
-      : checkpointStatusByKey(summary?.checkpoints, "workflow_previewed"),
+    inspect: passed("workflow_inspected"),
+    validate: passed("workflow_validated"),
+    preview: sensitive ? "not_required" : passed("workflow_previewed"),
     approval,
   };
 }
