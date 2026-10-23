@@ -4,8 +4,13 @@ import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, files, users } from "../../db/schema/index.ts";
 import { NoopScanner } from "../../files/scanner.ts";
+import {
+  cleanupPersistedKnowledgeFile,
+  persistKnowledgeFile,
+} from "../../knowledge/file-persist.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
+import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -296,6 +301,52 @@ describe("POST /v1/knowledge-sources/bundle — create_only", () => {
         ),
       );
     expect(audits).toHaveLength(1);
+  });
+});
+
+const nextCleanupHex = createDeterministicHexFactory(0x482c1e);
+
+describe("failed knowledge upload cleanup", () => {
+  test("removes an unreferenced upload and keeps one a source already uses", async () => {
+    const orphan = await persistKnowledgeFile(srv.db, {
+      tenant_id: srv.tenantId,
+      actor: null,
+      upload: { buffer: `orphan ${nextCleanupHex(8)}`, filename: "orphan.md" },
+    });
+    expect(orphan.dedup).toBe(false);
+    await cleanupPersistedKnowledgeFile(srv.db, orphan);
+    const orphanRows = await srv.db.select().from(files).where(eq(files.id, orphan.row.id));
+    expect(orphanRows).toHaveLength(0);
+
+    const bundle = {
+      name: "Referenced cleanup",
+      slug: "referenced-cleanup",
+      files: [{ path: "a.md", content: `kept ${nextCleanupHex(8)}` }],
+    };
+    const created = await postBundle(bundle);
+    expect(created.status).toBe(200);
+    const { knowledge_source } = (await created.json()) as {
+      knowledge_source: { id: string; file_id: string | null };
+    };
+    const [stored] = await srv.db
+      .select()
+      .from(files)
+      .where(
+        and(
+          eq(files.tenant_id, srv.tenantId),
+          eq(files.filename, "referenced-cleanup.bundle.json"),
+        ),
+      );
+    if (!stored) throw new Error("bundle file not stored");
+    await cleanupPersistedKnowledgeFile(srv.db, {
+      row: stored,
+      dedup: false,
+      scan: null,
+      scan_timed_out: false,
+    });
+    const kept = await srv.db.select().from(files).where(eq(files.id, stored.id));
+    expect(kept).toHaveLength(1);
+    expect(knowledge_source.id).toBeTruthy();
   });
 });
 

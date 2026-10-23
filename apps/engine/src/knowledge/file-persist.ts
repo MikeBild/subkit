@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, notExists, sql } from "drizzle-orm";
 import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { bucketSize } from "../audit/buckets.ts";
@@ -8,7 +8,8 @@ import {
   FileScanCompletedMetadataSchema,
 } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
-import { fileLinks } from "../db/schema/files.ts";
+import { fileLinks, files } from "../db/schema/files.ts";
+import { knowledgeSources } from "../db/schema/index.ts";
 import { recordFilesDedupSeen } from "../files/dedup-counter.ts";
 import { linkStoredFile } from "../files/links.ts";
 import {
@@ -44,7 +45,20 @@ export async function cleanupPersistedKnowledgeFile(
   persisted: PersistInlineUploadResult | null,
 ): Promise<void> {
   if (!persisted || persisted.dedup) return;
-  await removeStoredFile(db, persisted.row.tenant_id, persisted.row.id);
+  await removeStoredFile(
+    db,
+    persisted.row.tenant_id,
+    persisted.row.id,
+    and(
+      notExists(
+        sql`(select 1 from ${fileLinks} where ${fileLinks.file_id}=${files.id} and ${fileLinks.tenant_id}=${files.tenant_id})`,
+      ),
+      notExists(
+        sql`(select 1 from ${knowledgeSources} where ${knowledgeSources.file_id}=${files.id} and ${knowledgeSources.tenant_id}=${files.tenant_id})`,
+      ),
+    ),
+    "unreferenced_upload_cleanup",
+  );
 }
 
 export async function linkKnowledgeFile(
