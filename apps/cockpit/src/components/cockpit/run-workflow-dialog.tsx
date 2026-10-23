@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -179,6 +180,7 @@ export function RunWorkflowDialog({
             disabled={disabled}
             data-testid={triggerTestId}
           >
+            {quiet ? null : <Play aria-hidden="true" />}
             {triggerLabel ?? t("run.action")}
           </Button>
         ) : undefined

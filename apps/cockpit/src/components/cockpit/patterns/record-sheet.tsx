@@ -79,12 +79,12 @@ function RecordBody({
             {back.label}
           </button>
         ) : null}
-        <div className="flex min-w-0 items-start gap-2">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-start gap-2">
+          <div className="flex min-w-0 flex-[1_1_14rem] flex-wrap items-center gap-2">
             <SheetTitle
               {...(titleId ? { id: titleId } : {})}
               data-testid={titleTestId}
-              className="flex min-w-0 flex-1 items-center gap-2 break-words"
+              className="flex min-w-0 flex-[1_1_10rem] items-center gap-2 break-words"
             >
               {title}
             </SheetTitle>
