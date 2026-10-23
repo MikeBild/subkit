@@ -30,7 +30,7 @@ export function SegmentedControl({
       aria-label={label}
       data-slot="segmented-control"
       data-testid={testId}
-      className="max-w-full gap-0.5 overflow-x-auto rounded-md bg-muted p-[3px] [scrollbar-width:none]"
+      className="max-w-full flex-wrap gap-0.5 rounded-md bg-muted p-[3px]"
     >
       {options.map((option) => (
         <ToggleGroupItem
