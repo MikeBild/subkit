@@ -28,6 +28,7 @@ import {
   ActionMenu,
   type ActionMenuItem,
   Button,
+  Chip,
   type CockpitColumn,
   CollapsibleSection,
   ConfirmDialog,
@@ -659,12 +660,9 @@ export function ProposalCard({
       data-slot="proposal-card"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          className="rounded-full border px-2 py-0.5 text-xs font-medium"
-          data-testid={`intake-proposal-${proposal.id}-kind`}
-        >
+        <Chip testId={`intake-proposal-${proposal.id}-kind`}>
           {t(skillTarget ? "intake.proposal.kindSkill" : "intake.proposal.kindKnowledge")}
-        </span>
+        </Chip>
         {proposal.status === "draft" ? null : (
           <StatusBadge state={proposal.status} label={t(`intake.proposal.${proposal.status}`)} />
         )}

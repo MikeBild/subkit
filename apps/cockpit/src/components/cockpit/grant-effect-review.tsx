@@ -7,7 +7,7 @@ import {
   Trash2,
   TriangleAlert,
 } from "lucide-react";
-import { RowsSkeleton } from "@/components/cockpit/patterns";
+import { chipClass, RowsSkeleton } from "@/components/cockpit/patterns";
 import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { type BoundaryGrowth, growthLine } from "@/lib/authority-growth";
 import { CLASS_KEYS, presentRequestBoundary } from "@/lib/authority-request";
@@ -31,7 +31,7 @@ const TONE = {
   risky: "text-destructive",
 } as const;
 
-const CHIP = "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium";
+const CHIP = chipClass("md");
 
 function Chevron() {
   return (

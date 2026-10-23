@@ -43,6 +43,7 @@ import {
   type CockpitColumn,
   CollapsibleSection,
   ConfirmDialog,
+  chipClass,
   DataState,
   DataTable,
   DetailPage,
@@ -550,8 +551,8 @@ function actorName(directory: ActorDirectory, id: string | null, t: Translate): 
 
 function Chip({ icon: Icon, children }: { icon?: LucideIcon; children: ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-sm">
-      {Icon ? <Icon aria-hidden="true" className="size-3.5 text-muted-foreground" /> : null}
+    <span className={chipClass("md")}>
+      {Icon ? <Icon aria-hidden="true" className="text-muted-foreground" /> : null}
       {children}
     </span>
   );

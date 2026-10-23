@@ -4,7 +4,12 @@ import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { SelectField, TextAreaField, TextField } from "@/components/cockpit/form-field";
-import { type ActionMenuItem, type FilterSelect, FormDialog } from "@/components/cockpit/patterns";
+import {
+  type ActionMenuItem,
+  Chip,
+  type FilterSelect,
+  FormDialog,
+} from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
@@ -91,13 +96,9 @@ export function CatalogCategoryChip({
   const { t } = useI18n();
   if (!category || category === UNCATEGORIZED) return null;
   return (
-    <span
-      className="rounded-md border px-1.5 py-0.5 text-xs text-foreground"
-      data-slot="category-chip"
-      data-testid={testId}
-    >
+    <Chip data-slot="category-chip" testId={testId}>
       {humanizeCategory(category, t("catalog.categoryOther"))}
-    </span>
+    </Chip>
   );
 }
 
@@ -311,9 +312,9 @@ function CatalogNameText({
       <span className="truncate font-medium">{name}</span>
       <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
         {category !== UNCATEGORIZED ? (
-          <span className="shrink-0 rounded-full border px-1.5 leading-4">
+          <Chip className="py-0 leading-4">
             {humanizeCategory(category, t("catalog.categoryOther"))}
-          </span>
+          </Chip>
         ) : null}
         <span className="truncate">{description || t("catalogMeta.empty")}</span>
       </span>

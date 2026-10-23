@@ -26,6 +26,7 @@ import {
   type ActionMenuItem,
   Button,
   CollapsibleSection,
+  chipClass,
   DataState,
   DetailPage,
   type DetailStrip,
@@ -419,7 +420,7 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                         className="flex flex-wrap items-center gap-2 text-sm"
                         data-testid="intake-detail-facts"
                       >
-                        <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1">
+                        <span className={chipClass("md")}>
                           {origin === "session" ? (
                             <MessageSquareText
                               aria-hidden="true"

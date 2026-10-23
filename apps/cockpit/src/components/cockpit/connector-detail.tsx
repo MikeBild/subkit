@@ -9,6 +9,7 @@ import { useSession } from "@/app/session";
 import { CreateAction } from "@/components/cockpit/create-choice";
 import {
   Button,
+  Chip,
   CodeBlock,
   CopyField,
   DataState,
@@ -599,14 +600,13 @@ export function ConnectorMcpTools({
                     </span>
                   ) : null}
                 </span>
-                <span
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs [&_svg]:size-3"
-                  data-testid={`connector-mcp-tool-${index}-chip`}
+                <Chip
+                  testId={`connector-mcp-tool-${index}-chip`}
                   data-asks={!row.trusted || undefined}
                 >
                   {row.trusted ? null : <Hand aria-hidden="true" />}
                   {t(row.trusted ? "connectorPage.tools.free" : "connectorPage.tools.asks")}
-                </span>
+                </Chip>
                 <ChevronRight
                   aria-hidden="true"
                   className="size-4 shrink-0 text-muted-foreground"
