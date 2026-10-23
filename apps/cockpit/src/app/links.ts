@@ -97,6 +97,12 @@ export function workflowAutomationHref(id: string): string {
   return `${workflowHref(id)}#${WORKFLOW_AUTOMATION_ANCHOR}`;
 }
 
+export const WORKFLOW_RUN_ANCHOR = "workflow-run";
+
+export function workflowRunHref(id: string): string {
+  return `${workflowHref(id)}#${WORKFLOW_RUN_ANCHOR}`;
+}
+
 export function connectorHref(id: string): string {
   return record("connectors", id);
 }

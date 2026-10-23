@@ -6,7 +6,13 @@ import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
-import { absolute, chatNewHref, connectorHref, workflowHref } from "@/app/links";
+import {
+  absolute,
+  chatNewHref,
+  connectorHref,
+  WORKFLOW_RUN_ANCHOR,
+  workflowHref,
+} from "@/app/links";
 import {
   useWaitingConnector,
   useWorkflowAutomation,
@@ -621,7 +627,7 @@ export function WorkflowPage({
       badge={<CatalogCategoryChip category={category} testId="catalog-metadata-chip" />}
       purpose={<CatalogPurpose record={record} />}
       menu={menu.length > 0 ? <ActionMenu items={menu} testId="workflow-menu" /> : undefined}
-      action={<RunWorkflowDialog {...runProps} />}
+      action={<RunWorkflowDialog {...runProps} openOnAnchor={WORKFLOW_RUN_ANCHOR} />}
       tabs={tabs}
       status={
         <WorkflowStatus

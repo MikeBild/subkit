@@ -168,6 +168,7 @@ import { ChatChoiceCard } from "./chat-choice-card";
 import { ConversationList } from "./chat-conversation-list";
 import { type ChatForm, chatForm } from "./chat-form";
 import { ChatFormCard } from "./chat-form-card";
+import { ChatJudgeFindingsCard } from "./chat-judge-findings-card";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import { conversationFailureKind, retryConversationRead } from "./chat-load-failure";
 import { CHAT_MARKDOWN_COMPONENTS } from "./chat-message-link";
@@ -187,6 +188,11 @@ import {
   playbookSummaryVisible,
 } from "./chat-playbook";
 import { ChatPlaybookPanel, ChatPlaybookSummary } from "./chat-playbook-panel";
+import {
+  type ChatInstruction,
+  chatJudgeFindings,
+  chatSensitivePreview,
+} from "./chat-preview-cards";
 import { type ChatReauth, chatReauth } from "./chat-reauth";
 import { ChatReauthCard } from "./chat-reauth-card";
 import { collectReferencedResources, namedResources, referencesFromPart } from "./chat-references";
@@ -201,6 +207,7 @@ import {
   type ConversationSelection,
   pinSelectionForSend,
 } from "./chat-selection";
+import { ChatSensitivePreviewCard } from "./chat-sensitive-preview-card";
 import {
   budgetPill,
   type ChatNavigation,
@@ -910,6 +917,7 @@ function ChatMessage({
   onReauth,
   onAutomationAdjust,
   onAutomationSingleRun,
+  onInstruction,
   liveReviews,
   nameFor,
   workflowNameFor,
@@ -934,6 +942,7 @@ function ChatMessage({
   onReauth: (action: ChatReauth) => void;
   onAutomationAdjust: (workflowId: string) => void;
   onAutomationSingleRun: (workflowId: string) => void;
+  onInstruction: (instruction: ChatInstruction) => void;
   liveReviews: ReadonlySet<string>;
   nameFor: (id: string) => ResolvedIdentifier | null;
   workflowNameFor: (slug: string) => string | null;
@@ -1125,6 +1134,26 @@ function ChatMessage({
           if (sensitiveTestRun)
             return (
               <ChatTestRunCard key={`${message.id}-test-run-${partIndex}`} run={sensitiveTestRun} />
+            );
+          const sensitivePreview = chatSensitivePreview(tool);
+          if (sensitivePreview)
+            return (
+              <ChatSensitivePreviewCard
+                key={`${message.id}-preview-${partIndex}`}
+                preview={sensitivePreview}
+                testId={`chat-message-${messageIndex}-preview-${partIndex}`}
+              />
+            );
+          const judgeFindings = chatJudgeFindings(tool);
+          if (judgeFindings)
+            return (
+              <ChatJudgeFindingsCard
+                key={`${message.id}-findings-${partIndex}`}
+                findings={judgeFindings}
+                disabled={approvalBusy || Boolean(approval || choice || form)}
+                onInstruction={onInstruction}
+                testId={`chat-message-${messageIndex}-findings-${partIndex}`}
+              />
             );
           const candidateId = patchCandidateId(tool);
           const verdict = toolPartVerdict(tool);
@@ -2712,6 +2741,9 @@ export function ChatPage() {
                                 },
                               ])
                             }
+                            onInstruction={(instruction) =>
+                              void submitTurn(instruction.message, instruction.references)
+                            }
                             onReauth={(action) =>
                               void submitTurn(t("chat.reauth.prompt"), [
                                 {
@@ -2754,6 +2786,7 @@ export function ChatPage() {
                         onReauth={() => {}}
                         onAutomationAdjust={() => {}}
                         onAutomationSingleRun={() => {}}
+                        onInstruction={() => {}}
                         liveReviews={NO_LIVE_REVIEWS}
                         nameFor={nameFor}
                         workflowNameFor={workflowNameFor}

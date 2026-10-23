@@ -28,9 +28,12 @@ function isolated(name: string, body: () => Promise<void>) {
   });
 }
 
-isolated("a run requested while mounting opens the run dialog right away", async () => {
+async function dialogOpensOnMount(
+  url: string,
+  props: { openRequest?: number; openOnAnchor?: string },
+): Promise<boolean> {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
-    url: "http://localhost/",
+    url,
     pretendToBeVisual: true,
   });
   dom.window.scrollTo = () => {};
@@ -92,7 +95,7 @@ isolated("a run requested while mounting opens the run dialog right away", async
                   workflowId="wf-run"
                   workflowName="Daily report"
                   liveEnvironment="dev"
-                  openRequest={1}
+                  {...props}
                 />
               </RouterContextProvider>
             </TooltipProvider>
@@ -104,10 +107,26 @@ isolated("a run requested while mounting opens the run dialog right away", async
       for (let round = 0; round < 8; round++)
         await new Promise<void>((resolve) => setImmediate(resolve));
     });
-    expect(dom.window.document.querySelector('[data-testid="workflow-run-dialog"]')).not.toBeNull();
+    return dom.window.document.querySelector('[data-testid="workflow-run-dialog"]') !== null;
   } finally {
     if (root) await act(async () => root?.unmount());
     client.clear();
     dom.window.close();
   }
+}
+
+isolated("a run requested while mounting opens the run dialog right away", async () => {
+  expect(await dialogOpensOnMount("http://localhost/", { openRequest: 1 })).toBe(true);
+});
+
+isolated("the run anchor in the address opens the run dialog once", async () => {
+  expect(
+    await dialogOpensOnMount("http://localhost/#workflow-run", { openOnAnchor: "workflow-run" }),
+  ).toBe(true);
+});
+
+isolated("without the run anchor the dialog stays closed", async () => {
+  expect(await dialogOpensOnMount("http://localhost/", { openOnAnchor: "workflow-run" })).toBe(
+    false,
+  );
 });

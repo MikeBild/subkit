@@ -52,6 +52,7 @@ export function RunWorkflowDialog({
   triggerLabel,
   triggerTestId = "workflow-run-open",
   openRequest,
+  openOnAnchor,
 }: {
   quiet?: boolean;
   disabled?: boolean;
@@ -60,6 +61,7 @@ export function RunWorkflowDialog({
   triggerLabel?: string;
   triggerTestId?: string;
   openRequest?: number;
+  openOnAnchor?: string;
   workflowId: string;
   workflowName: string;
   liveEnvironment: RunEnvironment | null | undefined;
@@ -73,6 +75,13 @@ export function RunWorkflowDialog({
     requested.current = openRequest;
     if (!disabled) setOpen(true);
   }, [openRequest, disabled]);
+  const anchored = useRef(false);
+  useEffect(() => {
+    if (!openOnAnchor || anchored.current || disabled) return;
+    if (window.location.hash !== `#${openOnAnchor}`) return;
+    anchored.current = true;
+    setOpen(true);
+  }, [openOnAnchor, disabled]);
   const [values, setValues] = useState<SchemaValues | null>(null);
   const [checked, setChecked] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
