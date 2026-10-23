@@ -10,8 +10,21 @@ const INLINE_CONTENT_TYPES = new Set([
 const INLINE_CONTENT_PREFIXES = ["audio/", "video/"];
 const SANDBOX_POLICY = "sandbox; default-src 'none'";
 
-function baseContentType(content_type: string): string {
-  return (content_type.split(";")[0] ?? "").trim().toLowerCase();
+const FALLBACK_CONTENT_TYPE = "application/octet-stream";
+const MEDIA_TYPE = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
+const CHARSET = /^[a-z0-9][a-z0-9_.:+-]*$/;
+
+function canonicalContentType(content_type: string | null | undefined): string {
+  const [rawBase = "", ...params] = (content_type ?? "").split(";");
+  const base = rawBase.trim().toLowerCase();
+  if (!MEDIA_TYPE.test(base)) return FALLBACK_CONTENT_TYPE;
+  if (!base.startsWith("text/")) return base;
+  const charset = params
+    .map((param) => param.trim().toLowerCase())
+    .find((param) => param.startsWith("charset="))
+    ?.slice("charset=".length)
+    .replace(/^"(.*)"$/, "$1");
+  return charset && CHARSET.test(charset) ? `${base}; charset=${charset}` : base;
 }
 
 function asciiFilename(filename: string): string {
@@ -22,8 +35,8 @@ export function storedContentHeaders(
   content_type: string | null | undefined,
   filename: string,
 ): Record<string, string> {
-  const type = content_type || "application/octet-stream";
-  const base = baseContentType(type);
+  const type = canonicalContentType(content_type);
+  const base = type.split(";")[0] ?? FALLBACK_CONTENT_TYPE;
   const inline =
     INLINE_CONTENT_TYPES.has(base) ||
     INLINE_CONTENT_PREFIXES.some((prefix) => base.startsWith(prefix));

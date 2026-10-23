@@ -20,18 +20,42 @@ describe("storedContentHeaders", () => {
   });
 
   test("passive media and plain text stay viewable inline", () => {
-    for (const contentType of [
-      "image/png",
-      "IMAGE/JPEG",
-      "text/plain; charset=utf-8",
-      "video/mp4",
-      "audio/mpeg",
-    ]) {
-      const headers = storedContentHeaders(contentType, "x");
+    for (const [stored, served] of [
+      ["image/png", "image/png"],
+      ["IMAGE/JPEG", "image/jpeg"],
+      ["text/plain; charset=UTF-8", "text/plain; charset=utf-8"],
+      ["video/mp4; codecs=avc1", "video/mp4"],
+      ["audio/mpeg", "audio/mpeg"],
+    ] as const) {
+      const headers = storedContentHeaders(stored, "x");
       expect(headers["content-disposition"]).toStartWith("inline;");
       expect(headers["content-security-policy"]).toBe("sandbox; default-src 'none'");
-      expect(headers["content-type"]).toBe(contentType);
+      expect(headers["content-type"]).toBe(served);
     }
+  });
+
+  test("only the validated base type is served, so a stored value cannot smuggle a second type", () => {
+    const smuggled = storedContentHeaders("application/pdf;,text/html", "x.pdf");
+    expect(smuggled["content-type"]).toBe("application/pdf");
+    for (const stored of [
+      "application/pdf, text/html",
+      "text/plain\r\nx-injected: 1",
+      "text/plain; charset=utf-8,text/html",
+      "nonsense",
+      "",
+    ]) {
+      const headers = storedContentHeaders(stored, "x");
+      expect(headers["content-type"]).not.toContain("html");
+      expect(headers["content-type"]).not.toContain("\n");
+      expect(headers["content-type"]).not.toContain(",");
+    }
+    expect(storedContentHeaders("application/pdf, text/html", "x")).toMatchObject({
+      "content-type": "application/octet-stream",
+      "content-security-policy": "sandbox; default-src 'none'",
+    });
+    expect(
+      storedContentHeaders("application/pdf, text/html", "x")["content-disposition"],
+    ).toStartWith("attachment;");
   });
 
   test("a PDF stays inline without the sandbox that would block the browser viewer", () => {
