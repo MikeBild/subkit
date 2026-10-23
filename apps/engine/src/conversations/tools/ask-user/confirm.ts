@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
 import { requestApproval } from "../../../tools/approval.ts";
+import { getWorkflowDraft } from "../../authoring-state.ts";
 import {
   authoringIntentFingerprint,
   type ConfirmIntent,
@@ -109,6 +110,9 @@ export async function autoModeSaveWithoutPause(
   if (intent?.kind !== "save_workflow_draft") return null;
   const payload = intent.payload;
   if (payload.force_commit === true || payload.target_workflow_id !== undefined) return null;
+  const derived = (getWorkflowDraft(ctx.getDraft()) as { derived_from_skill_id?: string | null })
+    .derived_from_skill_id;
+  if (derived) return null;
   let overrides: Awaited<ReturnType<AutoSaveDeps["loadPolicies"]>>;
   try {
     overrides = await deps.loadPolicies(ctx.db, ctx.tenant_id, ctx.conversation_id);

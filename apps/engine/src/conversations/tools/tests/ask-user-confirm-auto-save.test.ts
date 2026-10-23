@@ -5,7 +5,9 @@ import { type AutoSaveDeps, autoModeSaveWithoutPause } from "../ask-user/confirm
 
 type Mode = "auto" | "ask" | "plan" | "yolo" | null;
 
-function ctx(over: { permission_mode?: Mode; surface?: string } = {}) {
+function ctx(
+  over: { permission_mode?: Mode; surface?: string; workflow?: Record<string, unknown> } = {},
+) {
   return {
     permission_mode: over.permission_mode === undefined ? "auto" : over.permission_mode,
     ...(over.surface ? { surface: over.surface } : {}),
@@ -13,7 +15,7 @@ function ctx(over: { permission_mode?: Mode; surface?: string } = {}) {
     conversation_id: "c",
     actor_id: null,
     db: {},
-    getDraft: () => ({ summary: null }),
+    getDraft: () => ({ summary: null, ...(over.workflow ? { workflow: over.workflow } : {}) }),
     setDraft: async () => undefined,
   } as never;
 }
@@ -99,6 +101,10 @@ describe("permission_mode=auto does not pause a save it would release anyway", (
     ["plan mode", () => [ctx({ permission_mode: "plan" }), saveIntent(), false]],
     ["no permission mode", () => [ctx({ permission_mode: null }), saveIntent(), false]],
     ["the MCP surface", () => [ctx({ surface: "mcp" }), saveIntent(), false]],
+    [
+      "a draft derived from a skill",
+      () => [ctx({ workflow: { derived_from_skill_id: "risky-skill" } }), saveIntent(), false],
+    ],
     [
       "a delete intent",
       () => [
