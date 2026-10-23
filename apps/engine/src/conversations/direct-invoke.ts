@@ -225,7 +225,7 @@ async function driveDirectTool(
           },
         });
   } catch (err) {
-    const failure = describeToolExecutionFailure(err, ["inspect_workflow_draft"]);
+    const failure = describeToolExecutionFailure(err, ["validate_draft"]);
     await langfuseSpan.finish({ status: "error", error: failure.span_error });
     const msg = failure.message;
     const output = failure.output;
