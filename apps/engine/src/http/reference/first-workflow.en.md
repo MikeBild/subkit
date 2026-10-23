@@ -59,7 +59,7 @@ Without an approval, a run starts only as a trial run without effects.
 2. In the status line, select **Approve**.
 3. Check **Environment**, **Validity** and **Operations and external targets**.
 4. Confirm with **Approve**.
-   **Activate only** applies the version without approving runs.
+   **Apply only** applies the version without approving runs.
 
 ![Approval dialog for "Invoice export v1" with the environment "Development", validity, read access to the Sales reporting API as external target and the "Use change and allow runs" button](images/first-workflow-approval.en.webp)
 
@@ -82,7 +82,7 @@ If the chat offers an approval, it opens the same dialog.
    Without an approval, the button reads **Start a trial run**.
 
 You see **Run started**. If the button is unavailable, the hint says why, for example
-**Enable the workflow before running it.**
+**Switch the workflow on before starting it.**
 
 ### Check the result
 

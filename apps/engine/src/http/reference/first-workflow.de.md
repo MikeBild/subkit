@@ -59,7 +59,7 @@ Ohne Freigabe startet ein Lauf nur als Probelauf ohne Wirkung.
 2. Wähle in der Statuszeile **Freigeben**.
 3. Prüfe **Umgebung**, **Gültigkeit** sowie **Operationen und externe Ziele**.
 4. Bestätige mit **Freigeben**.
-   **Nur aktivieren** übernimmt die Version, ohne Läufe freizugeben.
+   **Nur übernehmen** übernimmt die Version, ohne Läufe freizugeben.
 
 ![Freigabedialog für „Invoice export v1“ mit Umgebung „Entwicklung“, Gültigkeit, Lesezugriff auf die Sales reporting API als externes Ziel und der Schaltfläche „Übernehmen und Läufe erlauben“](images/first-workflow-approval.de.webp)
 
@@ -82,7 +82,7 @@ Bietet dir der Chat eine Freigabe an, öffnet sie denselben Dialog.
    Ohne Freigabe heißt der Button **Probelauf starten**.
 
 Du siehst **Lauf gestartet**. Ist der Button nicht verfügbar, nennt der Hinweis den Grund, zum Beispiel
-**Aktiviere den Workflow vor dem Ausführen.**
+**Schalte den Workflow vor dem Starten ein.**
 
 ### Das Ergebnis prüfen
 
