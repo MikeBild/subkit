@@ -850,7 +850,6 @@ function EventCard({
     timeZone: zone,
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit",
   }).format(new Date(entry.ts));
   return (
     <div className="relative mb-5 pl-6 sm:pl-8" data-testid="audit-timeline-event">
@@ -872,9 +871,9 @@ function EventCard({
         />
         <time
           dateTime={entry.ts}
-          className="absolute -left-[78px] top-5 w-10 text-right text-[11px] font-medium tabular-nums text-muted-foreground sm:-left-[84px] sm:w-12"
+          className="absolute -left-[78px] top-5 w-10 whitespace-nowrap text-right text-[11px] font-medium tabular-nums text-muted-foreground sm:-left-[84px] sm:w-12"
         >
-          {local.slice(0, 5)}
+          {local}
         </time>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <StatusBadge state={entry.result} label={auditResultLabel(entry.result, t).text} />

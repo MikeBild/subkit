@@ -54,7 +54,7 @@ function Entry({ item }: { item: TimelineItem }) {
         {item.time ? (
           <time
             dateTime={item.dateTime}
-            className="w-11 shrink-0 text-xs tabular-nums text-muted-foreground"
+            className="min-w-11 shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground"
             data-slot="timeline-time"
           >
             {item.time}

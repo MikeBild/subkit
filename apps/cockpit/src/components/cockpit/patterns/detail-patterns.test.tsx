@@ -148,6 +148,7 @@ describe("timeline", () => {
     expect(html).toContain('data-tone="ok"');
     expect(html).toContain('data-tone="error"');
     expect(html).toMatch(/<time dateTime="2026-10-22T07:00:00Z"/i);
+    expect(html).toMatch(/<time[^>]*class="[^"]*whitespace-nowrap/);
     expect(count(html, /<button/g)).toBe(1);
     expect(html).toContain('aria-label="Lauf von 07:00 öffnen"');
     expect(html).not.toContain("Leer");
