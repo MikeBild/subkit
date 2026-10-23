@@ -7434,6 +7434,9 @@
                   "from",
                   "content_type"
                 ]
+              },
+              "binding": {
+                "$ref": "#/components/schemas/MissingBindingEvidence"
               }
             }
           },
@@ -7465,6 +7468,93 @@
           "evidence",
           "remedy_kind"
         ]
+      },
+      "MissingBindingEvidence": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "connector"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "deleted",
+              "not_found",
+              "unresolved"
+            ]
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "reference": {
+            "type": "object",
+            "properties": {
+              "connector_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "connector_slug": {
+                "type": "string"
+              },
+              "driver": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "replacement": {
+            "type": "object",
+            "properties": {
+              "connector_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "connector_slug": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "string",
+                "enum": [
+                  "dev",
+                  "prod"
+                ]
+              }
+            },
+            "required": [
+              "connector_id",
+              "connector_slug",
+              "environment"
+            ],
+            "additionalProperties": false
+          },
+          "call_step_id": {
+            "type": "string"
+          },
+          "repair": {
+            "type": "string",
+            "enum": [
+              "rebind_connector",
+              "restore_connector",
+              "repair_called_workflow"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "state",
+          "environment",
+          "reference",
+          "repair"
+        ],
+        "additionalProperties": false,
+        "description": "What a missing_binding step lacks: the kind of binding, the reference the step names and whether it was deleted or never existed in this workspace, a live connector with the same slug and driver when one exists, and the repair path."
       },
       "ProposeWorkflowRepairResponse": {
         "type": "object",
@@ -11514,6 +11604,9 @@
             "$ref": "#/components/schemas/SensitiveRequestMeta"
           },
           {
+            "$ref": "#/components/schemas/SandboxRequestMeta"
+          },
+          {
             "type": "null"
           }
         ]
@@ -12048,6 +12141,42 @@
         "required": [
           "driver",
           "pagination"
+        ]
+      },
+      "SandboxRequestMeta": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string",
+            "enum": [
+              "sandbox"
+            ]
+          },
+          "ticks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "peak_memory_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "extras": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "driver",
+          "ticks",
+          "duration_ms",
+          "peak_memory_bytes"
         ]
       },
       "CallerBudgetRefusal": {
@@ -26494,6 +26623,31 @@
               "intake": {
                 "type": "integer",
                 "description": "Collected intake items (clips and session learnings) awaiting review. They are not knowledge or skills until a person confirms a proposal."
+              },
+              "intake_by_category": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "category",
+                    "count"
+                  ]
+                },
+                "description": "The intake awaiting review per category, largest first. Counts only, never item contents; the counts sum to intake together with intake_categories_omitted."
+              },
+              "intake_categories_omitted": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "description": "Items awaiting review in categories beyond those listed in intake_by_category."
               }
             }
           },

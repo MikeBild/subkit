@@ -239,7 +239,8 @@
     "ipc_max_bytes": 33554432,
     "worker_rss_bytes": 536870912,
     "transform_wall_ms": 60000,
-    "max_transform_wall_ms": 300000
+    "max_transform_wall_ms": 300000,
+    "prewarm": false
   },
   "repl": {
     "permissionMode": "auto",

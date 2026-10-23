@@ -4974,6 +4974,7 @@ QuickJS JS sandbox limits
 | `sandbox.ipc_max_bytes` | number | `33554432` | global | no | no | Maximum sandbox worker request or response size in bytes. Default 32 MB. |
 | `sandbox.max_transform_wall_ms` | number | `300000` | global | no | no | Operator ceiling for a transform step's wall-clock, in ms. A step timeout_ms above it runs with the ceiling and sandbox_limit_clamped_total counts the cut. Default 5 min. |
 | `sandbox.memory_bytes` | number | `134217728` | global | no | no | Hard WASM heap cap for a JS sandbox run, in bytes. Default 128 MB. |
+| `sandbox.prewarm` | boolean | `false` | global | no | no | Start one default sandbox worker after boot, once the knowledge seed and its embeddings are done, so the first transform or JSONata step does not pay the worker cold start. Default off. |
 | `sandbox.queue_limit` | number | `32` | global | no | no | Maximum queued sandbox jobs across one worker lane. Default 32. |
 | `sandbox.stack_bytes` | number | `2097152` | global | no | no | Max stack size for a JS sandbox run, in bytes. Default 2 MB. |
 | `sandbox.tenant_queue_limit` | number | `8` | global | no | no | Maximum queued sandbox jobs for one tenant in one worker lane. Default 8. |

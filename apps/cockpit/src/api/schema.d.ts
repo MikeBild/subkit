@@ -23048,6 +23048,7 @@ export interface components {
                     /** @enum {string} */
                     content_type: "text/plain" | "text/html" | "multipart/alternative";
                 };
+                binding?: components["schemas"]["MissingBindingEvidence"];
             };
             /** @enum {string} */
             remedy_kind: "patch" | "prepare" | "declare" | "reconnect" | "author";
@@ -23055,6 +23056,31 @@ export interface components {
             fixer?: "use_utf8_encoder" | "declare_report_delivery";
             /** Format: uuid */
             candidate_id?: string;
+        };
+        /** @description What a missing_binding step lacks: the kind of binding, the reference the step names and whether it was deleted or never existed in this workspace, a live connector with the same slug and driver when one exists, and the repair path. */
+        MissingBindingEvidence: {
+            /** @enum {string} */
+            kind: "connector";
+            /** @enum {string} */
+            state: "deleted" | "not_found" | "unresolved";
+            /** @enum {string} */
+            environment: "dev" | "prod";
+            reference: {
+                /** Format: uuid */
+                connector_id?: string;
+                connector_slug?: string;
+                driver?: string;
+            };
+            replacement?: {
+                /** Format: uuid */
+                connector_id: string;
+                connector_slug: string;
+                /** @enum {string} */
+                environment: "dev" | "prod";
+            };
+            call_step_id?: string;
+            /** @enum {string} */
+            repair: "rebind_connector" | "restore_connector" | "repair_called_workflow";
         };
         ProposeWorkflowRepairResponse: {
             /** Format: uuid */
@@ -24159,7 +24185,7 @@ export interface components {
             request_meta?: components["schemas"]["RequestMeta"];
             held?: boolean;
         };
-        RequestMeta: components["schemas"]["HttpRequestMeta"] | components["schemas"]["GraphqlRequestMeta"] | components["schemas"]["PostgresRequestMeta"] | components["schemas"]["S3RequestMeta"] | components["schemas"]["McpRequestMeta"] | components["schemas"]["ConnectorlessRequestMeta"] | components["schemas"]["ErrorRequestMeta"] | components["schemas"]["SensitiveRequestMeta"] | null;
+        RequestMeta: components["schemas"]["HttpRequestMeta"] | components["schemas"]["GraphqlRequestMeta"] | components["schemas"]["PostgresRequestMeta"] | components["schemas"]["S3RequestMeta"] | components["schemas"]["McpRequestMeta"] | components["schemas"]["ConnectorlessRequestMeta"] | components["schemas"]["ErrorRequestMeta"] | components["schemas"]["SensitiveRequestMeta"] | components["schemas"]["SandboxRequestMeta"] | null;
         HttpRequestMeta: {
             /** @enum {string} */
             driver: "http";
@@ -24302,6 +24328,16 @@ export interface components {
             /** @enum {string} */
             driver: "sensitive";
             pagination: components["schemas"]["RequestPaginationSummary"];
+            extras?: {
+                [key: string]: unknown;
+            };
+        };
+        SandboxRequestMeta: {
+            /** @enum {string} */
+            driver: "sandbox";
+            ticks: number;
+            duration_ms: number;
+            peak_memory_bytes: number | null;
             extras?: {
                 [key: string]: unknown;
             };
@@ -27765,6 +27801,13 @@ export interface components {
                 skills?: number;
                 /** @description Collected intake items (clips and session learnings) awaiting review. They are not knowledge or skills until a person confirms a proposal. */
                 intake?: number;
+                /** @description The intake awaiting review per category, largest first. Counts only, never item contents; the counts sum to intake together with intake_categories_omitted. */
+                intake_by_category?: {
+                    category: string;
+                    count: number;
+                }[];
+                /** @description Items awaiting review in categories beyond those listed in intake_by_category. */
+                intake_categories_omitted?: number;
             };
             since: string | null;
             deadline: string | null;
