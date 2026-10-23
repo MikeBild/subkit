@@ -39,7 +39,7 @@ import {
   settingNavigation,
   settingsPatches,
 } from "@/pages/settings-model";
-import { SettingsOverview } from "@/pages/settings-overview";
+import { SettingsAreaFrame, SettingsOverview } from "@/pages/settings-overview";
 import { SettingsRestartOffer } from "@/pages/settings-restart";
 
 function render(node: ReactNode, locale: Locale = "de"): string {
@@ -823,6 +823,53 @@ describe("the guided settings pages", () => {
       restartAction: null,
     });
     expect(cards.find((card) => card.id === "ai")?.sentence).toContain("Nutzt Anthropic");
+  });
+
+  test("a save keeps its drafts until the reloaded settings and usage are in", () => {
+    const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
+    const reloaded = source.indexOf("await Promise.all([");
+    expect(reloaded).toBeGreaterThan(0);
+    expect(source.indexOf("draftState.clear(saved)")).toBeGreaterThan(reloaded);
+    expect(source).toContain('client.invalidateQueries({ queryKey: ["usage-status"] })');
+    expect(source).toContain("settleSettings(");
+  });
+
+  test("below 720px the area list hides and the way back to all areas shows", () => {
+    const html = render(
+      <SettingsAreaFrame
+        area="costs"
+        drafted={new Set()}
+        attention={new Set()}
+        onNavigate={() => {}}
+      >
+        <CostsArea ctx={ctx()} />
+      </SettingsAreaFrame>,
+    );
+    expect(html).toMatch(
+      /class="hidden [^"]*@min-\[720px\]\/settings:block[^"]*" data-testid="settings-area-nav"/,
+    );
+    expect(html).toContain('data-testid="settings-all-areas"');
+    expect(html).toContain("Alle Bereiche");
+    expect(html).toContain("@container/settings");
+    expect(html).not.toMatch(/overflow-x-(auto|scroll)[^"]*" data-testid="settings-area-frame"/);
+    const ai = render(<AiArea ctx={ctx()} />);
+    expect(ai).toMatch(/class="grid gap-3 sm:grid-cols-2" data-testid="settings-ai-providers"/);
+    const overview = render(
+      <SettingsOverview
+        cards={overviewCards({
+          facts: { items, pendingRestart: [], budgetConsumedShare: null },
+          catalog,
+          usage: null,
+          canWrite: true,
+          locale: "de",
+          t: de,
+          restartAction: null,
+        })}
+        onNavigate={() => {}}
+      />,
+    );
+    expect(overview).not.toContain('data-testid="settings-area-nav"');
+    expect(overview).toContain("grid-cols-[auto_minmax(0,1fr)_auto]");
   });
 
   test("rows read the drafts as typed, so an opened key field stays open", () => {

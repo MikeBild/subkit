@@ -101,6 +101,11 @@ export function hostedAllowlistDraft(
   return JSON.stringify(entries.filter((entry) => allowed.has(entry.model)));
 }
 
+export function budgetBarShare(used: number | null, budget: number): number | null {
+  if (used === null || budget <= 0) return null;
+  return Math.min(used / budget, 1);
+}
+
 export function effectiveProviderOf(ctx: GuidedContext): string {
   const value = ctx.effectiveItems.find((item) => item.path === "llm.provider")?.value;
   return typeof value === "string" ? value : "";
@@ -122,7 +127,7 @@ function BudgetQuestion({ ctx }: { ctx: GuidedContext }) {
   if (!item) return null;
   const budget = parsed ?? 0;
   const used = ctx.usage?.usedTokens ?? null;
-  const share = ctx.usage?.consumedShare ?? null;
+  const share = budgetBarShare(used, budget);
   const invalid = preset === "custom" && (parsed === null || parsed < 1);
   const amount = t("settings.costs.tokens", { count: number.format(budget) });
   return (
@@ -193,8 +198,13 @@ function BudgetQuestion({ ctx }: { ctx: GuidedContext }) {
       ) : null}
       {used !== null ? (
         <div className="grid gap-1" data-testid="settings-costs-usage">
-          {budget > 0 && share !== null ? (
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+          {share !== null ? (
+            <div
+              className="h-1.5 overflow-hidden rounded-full bg-muted"
+              aria-hidden="true"
+              data-testid="settings-costs-usage-bar"
+              data-share={share.toFixed(4)}
+            >
               <div className="h-full bg-primary" style={{ width: `${Math.round(share * 100)}%` }} />
             </div>
           ) : null}

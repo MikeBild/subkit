@@ -90,7 +90,7 @@ import {
   SettingsSectionNav,
   SettingsSummary,
 } from "@/pages/settings-rows";
-import { applySettingsPatch } from "@/pages/settings-save";
+import { applySettingsPatch, settingsPatchEndpoint, settleSettings } from "@/pages/settings-save";
 import { type BudgetSummary, budgetSummary } from "@/pages/usage-model";
 import { BrandingSettings } from "./branding";
 
@@ -291,16 +291,33 @@ function SettingsWorkspace() {
       }
       const scoped = { ...NO_SETTING_DRAFTS, [savingScope]: pending[savingScope] };
       const next = nextSettingsSave(settingsPatches(query.data, scoped, references, patchTenant));
-      if (next) await applySettingsPatch(next.patch);
+      if (next) {
+        await applySettingsPatch(next.patch);
+        const endpoint = settingsPatchEndpoint(next.patch);
+        const fresh = await settleSettings(
+          () => apiRequest<SettingsResponse>(endpoint),
+          next.patch.changes,
+        );
+        if (fresh)
+          client.setQueryData(
+            next.patch.scope === "tenant"
+              ? [...SETTINGS_QUERY_KEY, "tenant", tenantId]
+              : SETTINGS_QUERY_KEY,
+            fresh,
+          );
+      }
       return savingScope;
     },
     onSuccess: async (saved) => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
+        client.invalidateQueries({ queryKey: RESTART_STATUS_QUERY_KEY }),
+        client.invalidateQueries({ queryKey: ["usage-status"] }),
+      ]);
       draftState.clear(saved);
       setConflict(false);
       setFailed(false);
       setRestartOpen(false);
-      await client.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
-      await client.invalidateQueries({ queryKey: RESTART_STATUS_QUERY_KEY });
       setFormKey((key) => key + 1);
       toast.success(t("settings.saved"));
     },

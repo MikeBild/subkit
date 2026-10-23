@@ -231,3 +231,28 @@ describe("what applies to the signed-in workspace", () => {
     expect(html).not.toContain("teilen sich");
   });
 });
+
+describe("the usage bar", () => {
+  test("measures against the drafted limit, like the sentence below it", async () => {
+    const { budgetBarShare } = await import("@/pages/settings-costs");
+    expect(budgetBarShare(265103, 10000000)).toBeCloseTo(0.0265103);
+    expect(budgetBarShare(265103, 0)).toBeNull();
+    expect(budgetBarShare(null, 100)).toBeNull();
+    const html = render(
+      <CostsArea
+        ctx={ctx({
+          drafts: { "tokens.monthly_budget": "10000000" },
+          usage: {
+            state: "ample",
+            usedTokens: 265103,
+            budgetTokens: 442268,
+            remainingTokens: 177165,
+            consumedShare: 265103 / 442268,
+          },
+        })}
+      />,
+    );
+    expect(html).toContain('data-share="0.0265"');
+    expect(html).toContain("Diesen Monat: ca. 265.103 Textbausteine von 10.000.000 Textbausteine");
+  });
+});
