@@ -100,12 +100,12 @@ describe("findSimilarActive · stage-1 ranking", () => {
     await seed(tenant_id, {
       name: "Bravo",
       slug: "wf-bravo",
-      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "$" }],
+      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "return input;" }],
     });
     await seed(tenant_id, {
       name: "Alpha",
       slug: "wf-alpha",
-      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "$" }],
+      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "return input;" }],
     });
 
     const refs = await findSimilarActive(
@@ -222,7 +222,7 @@ describe("findSimilarActive · stage-1 ranking", () => {
           id: "shape",
           kind: "transform",
           language: "javascript",
-          expression: "$",
+          expression: "return input;",
         },
         {
           id: "post",
@@ -293,7 +293,7 @@ describe("findSimilarActive · stage-1 ranking", () => {
     await seed(tenant_id, {
       name: "Some workflow",
       slug: "wf-some",
-      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "$" }],
+      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "return input;" }],
     });
 
     const refs = await findSimilarActive(
@@ -316,7 +316,7 @@ describe("findSimilarActive · stage-1 ranking", () => {
         required: ["whatever"],
         additionalProperties: false,
       },
-      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "$" }],
+      steps: [{ id: "s", kind: "transform", language: "javascript", expression: "return input;" }],
     });
 
     const [ref] = await findSimilarActive(

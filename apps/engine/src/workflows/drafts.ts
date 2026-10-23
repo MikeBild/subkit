@@ -13,7 +13,7 @@ import { canonicalWorkflowJson as canonical, workflowJsonDigest } from "./canoni
 import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
-import { validateTenantWorkflowDef } from "./tenant-validator.ts";
+import { validateTenantWorkflowDefForSave } from "./tenant-validator.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { type VersionActor, versionAuthorColumns } from "./version-author.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
@@ -49,7 +49,6 @@ export interface SaveWorkflowDraftInput extends VersionActor {
   request_source: RequestSource;
   audit_metadata?: Record<string, unknown>;
   metadata?: CatalogMetadataPatch;
-  lint_javascript?: boolean;
 }
 
 function draftView(
@@ -108,9 +107,8 @@ export async function saveWorkflowDraft(
       errors: ["read the current draft version before updating"],
     };
   }
-  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, exec, {
+  const validation = await validateTenantWorkflowDefForSave(input.def, input.tenant_id, exec, {
     destinationTier: "tokens",
-    ...(input.lint_javascript === true ? { lintJavascript: true } : {}),
   });
   if (!validation.ok || !validation.workflow) {
     return {

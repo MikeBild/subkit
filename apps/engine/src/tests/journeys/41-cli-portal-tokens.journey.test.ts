@@ -188,7 +188,7 @@ beforeAll(async () => {
     body: JSON.stringify({
       name: "portal-token-probe",
       slug: "portal-token-probe",
-      steps: [{ kind: "transform", id: "t", expression: "$input" }],
+      steps: [{ kind: "transform", id: "t", expression: "return input.input;" }],
     }),
   });
   expect(wfRes.status).toBe(201);

@@ -41,7 +41,7 @@ import { loadWorkflowOperatingStates } from "./operating-status.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
 import { invalidDefinitionForRead, readStoredDefinition } from "./stored-definition.ts";
-import { validateTenantWorkflowDef } from "./tenant-validator.ts";
+import { validateTenantWorkflowDefForSave } from "./tenant-validator.ts";
 import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
 import type { WorkflowDef } from "./types.ts";
 import {
@@ -232,7 +232,7 @@ export async function createWorkflow(
   exec?: Executor,
 ): Promise<{ workflow: WorkflowView; errors?: never } | { workflow?: never; errors: string[] }> {
   const db = exec ?? getDb();
-  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, db, {
+  const validation = await validateTenantWorkflowDefForSave(input.def, input.tenant_id, db, {
     destinationTier: "tokens",
   });
   if (!validation.ok || !validation.workflow) {
@@ -357,7 +357,7 @@ export async function updateWorkflow(
   exec?: Executor,
 ): Promise<{ workflow: WorkflowView; errors?: never } | { workflow?: never; errors: string[] }> {
   const db = exec ?? getDb();
-  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, db, {
+  const validation = await validateTenantWorkflowDefForSave(input.def, input.tenant_id, db, {
     destinationTier: "tokens",
   });
   if (!validation.ok || !validation.workflow) {

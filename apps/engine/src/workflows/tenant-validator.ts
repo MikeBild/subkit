@@ -141,3 +141,12 @@ export async function validateTenantWorkflowDef(
     connectorBaseUrls: baseUrls,
   });
 }
+
+export function validateTenantWorkflowDefForSave(
+  input: unknown,
+  tenantId: string,
+  db: Executor,
+  options: Pick<ValidateOptions, "destinationTier"> = {},
+) {
+  return validateTenantWorkflowDef(input, tenantId, db, { ...options, lintJavascript: true });
+}
