@@ -70,6 +70,44 @@ export function windowBounds(window: StatsWindow, now = new Date()): WindowBound
   return { window, from: from.toISOString(), to: to.toISOString() };
 }
 
+function shiftMonthsClamped(date: Date, months: number): Date {
+  const first = new Date(date.getFullYear(), date.getMonth() + months, 1);
+  const lastDay = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  return new Date(
+    first.getFullYear(),
+    first.getMonth(),
+    Math.min(date.getDate(), lastDay),
+    date.getHours(),
+    date.getMinutes(),
+    date.getSeconds(),
+    date.getMilliseconds(),
+  );
+}
+
+export function previousBounds(bounds: WindowBounds): TimeSpan {
+  const from = new Date(bounds.from);
+  const to = new Date(bounds.to);
+  const iso = (a: Date, b: Date): TimeSpan => ({ from: a.toISOString(), to: b.toISOString() });
+  if (bounds.window === "24h") return iso(new Date(from.getTime() - 24 * 3_600_000), from);
+  if (bounds.window === "thisWeek") {
+    const back = (date: Date) =>
+      new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate() - 7,
+        date.getHours(),
+        date.getMinutes(),
+        date.getSeconds(),
+        date.getMilliseconds(),
+      );
+    return iso(back(from), back(to));
+  }
+  if (bounds.window === "lastWeek") return iso(shiftDays(from, -7), from);
+  if (bounds.window === "thisMonth")
+    return iso(new Date(from.getFullYear(), from.getMonth() - 1, 1), shiftMonthsClamped(to, -1));
+  return iso(new Date(from.getFullYear(), from.getMonth() - 1, 1), from);
+}
+
 export function rollingDays(days: number, now = new Date()): TimeSpan {
   const from = new Date(now.getTime() - days * 24 * 3_600_000);
   return { from: from.toISOString(), to: now.toISOString() };
@@ -92,7 +130,7 @@ function timeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
-function windowQuery(bounds: WindowBounds): string {
+function windowQuery(bounds: TimeSpan & { window: StatsWindow }): string {
   return [
     `bucket=${windowBucket(bounds.window)}`,
     `from=${encodeURIComponent(bounds.from)}`,
@@ -101,12 +139,31 @@ function windowQuery(bounds: WindowBounds): string {
   ].join("&");
 }
 
-export function executionStatsEndpoint(bounds: WindowBounds): string {
+export function executionStatsEndpoint(bounds: TimeSpan & { window: StatsWindow }): string {
   return `/v1/stats/executions?${windowQuery(bounds)}`;
 }
 
-export function llmStatsEndpoint(bounds: WindowBounds, axis?: ConsumptionAxis): string {
-  return `/v1/stats/llm?${windowQuery(bounds)}${axis ? `&group_by=${axis}` : ""}`;
+export interface LlmStatsFilter {
+  userId?: string;
+  flows?: readonly string[];
+  results?: readonly string[];
+  workflowId?: string;
+}
+
+export function llmStatsEndpoint(
+  bounds: TimeSpan & { window: StatsWindow },
+  axis?: ConsumptionAxis | readonly ConsumptionAxis[],
+  filter: LlmStatsFilter = {},
+): string {
+  const axes = axis === undefined ? [] : typeof axis === "string" ? [axis] : axis;
+  const parts = [windowQuery(bounds)];
+  if (axes.length > 0) parts.push(`group_by=${axes.join(",")}`);
+  if (filter.userId) parts.push(`user_id=${encodeURIComponent(filter.userId)}`);
+  if (filter.flows && filter.flows.length > 0)
+    parts.push(`flow=${filter.flows.map(encodeURIComponent).join(",")}`);
+  if (filter.results && filter.results.length > 0) parts.push(`result=${filter.results.join(",")}`);
+  if (filter.workflowId) parts.push(`workflow_id=${encodeURIComponent(filter.workflowId)}`);
+  return `/v1/stats/llm?${parts.join("&")}`;
 }
 
 export const REPAIR_REQUIRED_ENDPOINT = "/v1/workflows?operating_status=repair_required&limit=1";
