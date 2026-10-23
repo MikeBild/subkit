@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getConfig, loadConfig } from "../../../src/config/loader.ts";
+import { _withConnectorPreflightForTests } from "../../../src/conversations/authoring-preflight.ts";
 import { createEmptyDraftDocument } from "../../../src/conversations/authoring-state.ts";
 import type { ToolContext } from "../../../src/conversations/tools/index.ts";
 import type { DraftDocument } from "../../../src/conversations/types.ts";
@@ -98,7 +99,9 @@ export async function withEgressTripwire<T>(
     fetch_calls += 1;
     throw new Error("live HTTP is forbidden inside CI-mode authoring eval scenarios");
   }) as unknown as typeof fetch;
-  const result = await withDriverFetchForTests(tripwire, fn);
+  const result = await withDriverFetchForTests(tripwire, () =>
+    _withConnectorPreflightForTests(async () => null, fn),
+  );
   return { result, fetch_calls };
 }
 

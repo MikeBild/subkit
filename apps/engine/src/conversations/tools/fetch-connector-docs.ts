@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { asc, eq } from "drizzle-orm";
 import { connectors as connectorsTable } from "../../db/schema/index.ts";
 import { searchDocs } from "../../docs-ingestion/service.ts";
-import { type GroundedConnector, resolveConnectors } from "../authoring-pipeline.ts";
+import { type GroundedConnector, resolveConnectors } from "../authoring-grounding.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { collectDraftConnectorRefs } from "./probed-connectors.ts";
 

@@ -15,6 +15,7 @@ import { recordSuccessShape } from "../../schema-versions/service.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { runAuthoringPipeline } from "../authoring-pipeline.ts";
+import { _withConnectorPreflightForTests } from "../authoring-preflight.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { authorWorkflowTool } from "../tools/author-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
@@ -48,7 +49,11 @@ const tripwire = ((..._args: unknown[]) => {
 }) as unknown as typeof fetch;
 
 function tw(name: string, body: () => Promise<void>) {
-  test(name, () => withSelfHostedDriverFetchForTests(tripwire, body));
+  test(name, () =>
+    withSelfHostedDriverFetchForTests(tripwire, () =>
+      _withConnectorPreflightForTests(async () => null, body),
+    ),
+  );
 }
 
 beforeAll(async () => {

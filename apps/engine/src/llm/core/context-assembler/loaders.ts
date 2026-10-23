@@ -5,6 +5,7 @@ import type { Executor } from "../../../db/client.ts";
 import { connectors, conversationElicitations, conversations } from "../../../db/schema/index.ts";
 import { searchDocs } from "../../../docs-ingestion/service.ts";
 import { searchKnowledge } from "../../../knowledge/service.ts";
+import { DOMAIN_TAG_PREFIX } from "../../../knowledge/tags.ts";
 import { logger } from "../../../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../../../observability/metrics.ts";
 import { listLatestShapes } from "../../../schema-versions/service.ts";
@@ -386,13 +387,14 @@ export async function loadKnowledgeChunks(
   workflow_id: string | undefined,
   query: string,
   exec: Executor,
+  domains?: readonly string[],
 ): Promise<IncludedKnowledgeChunk[]> {
   if (!query) return [];
   try {
-    const hits = await searchKnowledge(
-      { tenant_id, query, ...(workflow_id ? { workflow_id } : {}), limit: 10 },
-      exec,
-    );
+    const base = { tenant_id, query, ...(workflow_id ? { workflow_id } : {}), limit: 10 };
+    const tags = [...new Set(domains ?? [])].map((d) => `${DOMAIN_TAG_PREFIX}${d}`);
+    const narrowed = tags.length > 0 ? await searchKnowledge({ ...base, tags }, exec) : [];
+    const hits = narrowed.length > 0 ? narrowed : await searchKnowledge(base, exec);
     return hits.map((h) => ({
       id: h.id,
       knowledge_source_id: h.knowledge_source_id,

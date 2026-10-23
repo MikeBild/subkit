@@ -6,6 +6,7 @@ export interface MockCall {
   model: string;
   flow: LlmFlow;
   system_length: number;
+  system?: string;
   last_user: string;
   prompt_tokens_estimate: number;
   included_skill_ids: string[];
@@ -234,6 +235,7 @@ class MockProvider {
       model: args.model,
       flow: args.flow,
       system_length: args.prompt.system.length,
+      system: args.prompt.system,
       last_user: lastUser,
       prompt_tokens_estimate: args.prompt.token_counts.total,
       included_skill_ids: args.prompt.included_skill_ids,

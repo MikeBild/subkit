@@ -31,17 +31,16 @@
 //                 definition is stashed — the model repairs from the
 //                 findings via `edit_workflow_patch` / `update_param`.
 //
-// NO live HTTP fires anywhere in this pipeline. Grounding reads the DB,
-// generation goes through `invoke()` (tenant token budget enforced like
-// every other engine LLM call), and recorded evaluation runs JSONata /
-// QuickJS against recorded evidence only. `dry_run_workflow` stays the
-// explicit preview step.
+// The only live HTTP is the bounded read-only pre-flight before pass 1:
+// discovery of a missing endpoint index and GET shape probes through the
+// existing discover/probe tools. Generation goes through `invoke()`
+// (tenant token budget enforced like every other engine LLM call), and
+// recorded evaluation runs JSONata / QuickJS against recorded evidence
+// only. `dry_run_workflow` stays the explicit preview step.
 
-import { and, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 import { readDiscoveryIndexForConnector } from "../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../connectors/discovery/types.ts";
-import { connectors as connectorsTable } from "../db/schema/index.ts";
 import {
   findUnknownFunctionCalls,
   JSONATA_BUILTIN_FUNCTIONS,
@@ -49,7 +48,7 @@ import {
 } from "../execution/jsonata-engine.ts";
 import { LLM_CALL_TIMEOUT_MS } from "../llm/core/ai-sdk-model.ts";
 import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatters.ts";
-import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
+import { loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
 import type { GenerationNeed } from "../llm/core/generation-abort.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { LlmError, LlmGenerationAborted, LlmProviderError } from "../llm/errors.ts";
@@ -82,6 +81,17 @@ import {
   DISCOVERED_ENDPOINTS_PER_CONNECTOR,
   formatDiscoveredEndpoints,
 } from "./authoring-endpoint-selection.ts";
+import {
+  connectorDomains,
+  type GroundedConnector,
+  loadDocsExcerpt,
+  resolveConnectors,
+} from "./authoring-grounding.ts";
+import {
+  activeConnectorPreflight,
+  PREFLIGHT_BUDGET_MS,
+  runConnectorPreflights,
+} from "./authoring-preflight.ts";
 import { resolveGenerationAbort, type UserPromptPayload } from "./authoring-regrounding.ts";
 import { withWorkflowDraft } from "./authoring-state.ts";
 import {
@@ -102,8 +112,6 @@ export const MAX_GENERATION_PASSES = 2;
 
 export const PIPELINE_DEADLINE_MS = (MAX_GENERATION_PASSES + 1) * LLM_CALL_TIMEOUT_MS;
 
-const DOCS_EXCERPT_CAP_CHARS = 1_500;
-const DOCS_SNIPPETS_PER_CONNECTOR = 4;
 const INPUT_EXAMPLE_CAP_CHARS = 1_000;
 
 export const JSONATA_ARGMAX_IDIOM =
@@ -161,6 +169,7 @@ export interface AuthoringPipelineParams {
   ctx: ToolContext;
   goal: string;
   connector_ids?: string[];
+  domains?: string[];
   input_example?: unknown;
 }
 
@@ -203,79 +212,6 @@ export type AuthoringPipelineResult =
       attempts: number;
       unresolved_connectors: string[];
     };
-
-export interface GroundedConnector {
-  id: string;
-  slug: string;
-  display_name: string;
-  driver: string;
-  base_url: string | null;
-  auth_type: string;
-  description: string | null;
-  self_description: { links?: { url?: string }[] } | null;
-}
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export async function resolveConnectors(
-  ctx: Pick<ToolContext, "db" | "tenant_id">,
-  refs: string[],
-): Promise<{ resolved: GroundedConnector[]; unresolved: string[] }> {
-  const ids = [...new Set(refs.filter((r) => UUID_RE.test(r)))];
-  const slugs = [...new Set(refs.filter((r) => !UUID_RE.test(r)))];
-  if (ids.length === 0 && slugs.length === 0) return { resolved: [], unresolved: [] };
-  const idFilter = ids.length > 0 ? inArray(connectorsTable.id, ids) : null;
-  const slugFilter = slugs.length > 0 ? inArray(connectorsTable.slug, slugs) : null;
-  const refFilter =
-    idFilter && slugFilter ? or(idFilter, slugFilter) : (idFilter ?? slugFilter ?? undefined);
-  const rows = await ctx.db
-    .select({
-      id: connectorsTable.id,
-      slug: connectorsTable.slug,
-      display_name: connectorsTable.display_name,
-      driver: connectorsTable.driver,
-      base_url: connectorsTable.base_url,
-      auth_type: connectorsTable.auth_type,
-      config: connectorsTable.config,
-      self_description: connectorsTable.self_description,
-    })
-    .from(connectorsTable)
-    .where(and(eq(connectorsTable.tenant_id, ctx.tenant_id), refFilter));
-  const resolved: GroundedConnector[] = rows.map((row) => ({
-    id: row.id,
-    slug: row.slug,
-    display_name: row.display_name,
-    driver: row.driver,
-    base_url: row.base_url,
-    auth_type: row.auth_type,
-    description:
-      typeof (row.config as Record<string, unknown> | null)?.description === "string"
-        ? ((row.config as Record<string, unknown>).description as string)
-        : null,
-    self_description: (row.self_description as { links?: { url?: string }[] } | null) ?? null,
-  }));
-  const seen = new Set<string>();
-  for (const r of resolved) {
-    seen.add(r.id);
-    seen.add(r.slug);
-  }
-  const unresolved = refs.filter((r) => !seen.has(r));
-  return { resolved, unresolved };
-}
-
-async function loadDocsExcerpt(ctx: ToolContext, goal: string, c: GroundedConnector) {
-  const chunks = await loadChunks(ctx.tenant_id, c.id, goal, ctx.db);
-  const lines: string[] = [];
-  let budget = DOCS_EXCERPT_CAP_CHARS;
-  for (const chunk of chunks.slice(0, DOCS_SNIPPETS_PER_CONNECTOR)) {
-    const head = chunk.title ?? chunk.path ?? "(doc)";
-    const snippet = chunk.snippet.length > budget ? chunk.snippet.slice(0, budget) : chunk.snippet;
-    lines.push(`- ${head}: ${snippet.replace(/\s+/g, " ").trim()}`);
-    budget -= snippet.length;
-    if (budget <= 0) break;
-  }
-  return lines;
-}
 
 export function buildGenerationPrompt(args: {
   goal: string;
@@ -435,6 +371,27 @@ export async function runAuthoringPipeline(
       unresolved_connectors: unresolved,
     };
   }
+  const deadlineSignal = ctx.abortSignal
+    ? AbortSignal.any([ctx.abortSignal, AbortSignal.timeout(PIPELINE_DEADLINE_MS)])
+    : AbortSignal.timeout(PIPELINE_DEADLINE_MS);
+  const deadlineStartedAt = Date.now(); // allow-wall-clock
+  const msRemaining = (): number =>
+    Math.max(0, PIPELINE_DEADLINE_MS - (Date.now() - deadlineStartedAt)); // allow-wall-clock
+
+  ctx.onLog?.(
+    "info",
+    `ground · pre-flight discovery and read-only shape probes for ${connectors.length} connector(s)`,
+  );
+  const preflightIndexes =
+    connectors.length > 0
+      ? await runConnectorPreflights({
+          ctx,
+          goal,
+          connectors,
+          signal: AbortSignal.any([deadlineSignal, AbortSignal.timeout(PREFLIGHT_BUDGET_MS)]),
+          preflight: activeConnectorPreflight(),
+        })
+      : new Map<string, DiscoveryResult>();
   ctx.onLog?.(
     "info",
     `ground · collecting recorded samples, docs and discovered endpoints for ${connectors.length} connector(s)`,
@@ -451,10 +408,12 @@ export async function runAuthoringPipeline(
     Promise.all(
       connectors.map(async (c) => ({
         id: c.id,
-        index: await readDiscoveryIndexForConnector(ctx.db, ctx.tenant_id, {
-          base_url: c.base_url,
-          self_description: c.self_description,
-        }),
+        index:
+          preflightIndexes.get(c.id) ??
+          (await readDiscoveryIndexForConnector(ctx.db, ctx.tenant_id, {
+            base_url: c.base_url,
+            self_description: c.self_description,
+          })),
       })),
     ),
   ]);
@@ -478,13 +437,7 @@ export async function runAuthoringPipeline(
     `ground · ${discoveredEndpointCount} discovered endpoint(s), docs for ${docsByConnector.size}/${connectors.length} connector(s)`,
   );
   const groundingIndex = buildGroundingIndex(connectors, discoveredById);
-
-  const deadlineSignal = ctx.abortSignal
-    ? AbortSignal.any([ctx.abortSignal, AbortSignal.timeout(PIPELINE_DEADLINE_MS)])
-    : AbortSignal.timeout(PIPELINE_DEADLINE_MS);
-  const deadlineStartedAt = Date.now(); // allow-wall-clock
-  const msRemaining = (): number =>
-    Math.max(0, PIPELINE_DEADLINE_MS - (Date.now() - deadlineStartedAt)); // allow-wall-clock
+  const domains = connectorDomains(connectors, params.domains);
 
   let definition: GeneratedWorkflow | null = null;
   let definitionPass = 0;
@@ -596,6 +549,8 @@ export async function runAuthoringPipeline(
           tenant_id: ctx.tenant_id,
           user_turns: [{ role: "user", content: prompt }],
           retrieval_query: goal,
+          ...(connectors.length > 0 ? { connector_ids: connectors.map((c) => c.id) } : {}),
+          ...(domains.length > 0 ? { domains } : {}),
           schema: GeneratedWorkflowSchema,
           signal: deadlineSignal,
         },

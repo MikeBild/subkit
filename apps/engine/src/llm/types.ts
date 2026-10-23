@@ -96,6 +96,8 @@ export interface AssembleContextParams {
   tenant_id: string;
   flow: LlmFlow;
   connector_id?: string;
+  connector_ids?: string[];
+  domains?: string[];
   workflow_id?: string;
   user_turns: UserTurn[];
   retrieval_query?: string;

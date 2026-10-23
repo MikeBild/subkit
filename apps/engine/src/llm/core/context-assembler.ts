@@ -126,10 +126,13 @@ export async function assembleEnhancedPrompt(
     ? applyRuntimeTemplate(basePrompt.volatile, p.runtime_context)
     : null;
   const audience = promptSkillAudience(p.flow, p.authoring_hint?.mode);
+  const scopedConnectorIds = [
+    ...new Set([...(p.connector_id ? [p.connector_id] : []), ...(p.connector_ids ?? [])]),
+  ];
   const skillsApplicable = await retrieveApplicableSkills(
     {
       tenant_id: p.tenant_id,
-      ...(p.connector_id ? { connector_ids: [p.connector_id] } : {}),
+      ...(scopedConnectorIds.length > 0 ? { connector_ids: scopedConnectorIds } : {}),
       ...(p.workflow_id ? { workflow_ids: [p.workflow_id] } : {}),
       audience,
     },
@@ -162,7 +165,13 @@ export async function assembleEnhancedPrompt(
   const chunks: IncludedChunk[] = [];
   if (preEmbedCorpus) {
     const knowledgeBudget = Math.floor(cap * 0.15);
-    const rawKnowledgeChunks = await loadKnowledgeChunks(p.tenant_id, p.workflow_id, query, db);
+    const rawKnowledgeChunks = await loadKnowledgeChunks(
+      p.tenant_id,
+      p.workflow_id,
+      query,
+      db,
+      p.domains,
+    );
     let knowledgeBytes = 0;
     for (const kc of rawKnowledgeChunks) {
       if (knowledgeBytes + kc.tokens > knowledgeBudget) break;
@@ -197,38 +206,45 @@ export async function assembleEnhancedPrompt(
 
   let { probeShapeExamplesBlock, connectorSchemaBlock } = await loadConnectorAuthoringAids(p, db);
 
-  let connectorOperatorQuirksBlock: string | null = null;
-  let connectorRecipesBlock: string | null = null;
-  let connectorRecipeBodiesBlock: string | null = null;
+  const quirkBlocks: string[] = [];
+  const recipeBlocks: string[] = [];
+  const recipeBodyBlocks: string[] = [];
   let connectorRecipeBodiesSurvivors: RecipeBodyView[] = [];
-  let connectorRecipeBodiesTemplateSlug: string | null = null;
-  let connectorRecipeBodiesFallbackSlugs: string[] = [];
-  if (p.connector_id) {
+  const quirkCategories = selectOperatorQuirkCategories(
+    p.authoring_hint,
+    (failures?.length ?? 0) > 0,
+  );
+  for (const connectorId of scopedConnectorIds) {
     try {
-      const connector = await getConnector(p.tenant_id, p.connector_id, db);
+      const connector = await getConnector(p.tenant_id, connectorId, db);
       const quirks = connector?.operator_quirks ?? {};
-      const categories = selectOperatorQuirkCategories(
-        p.authoring_hint,
-        (failures?.length ?? 0) > 0,
-      );
       if (connector && Object.keys(quirks).length > 0) {
-        connectorOperatorQuirksBlock = formatOperatorQuirks(
+        const block = formatOperatorQuirks(
           connector.slug,
           connector.display_name,
           quirks,
-          categories,
+          quirkCategories,
         );
+        if (block) quirkBlocks.push(block);
       }
       if (connector?.template_snapshot) {
         const snapshot = connector.template_snapshot as Record<string, unknown>;
-        connectorRecipesBlock = formatConnectorRecipes(connector.slug, snapshot);
+        const recipes = formatConnectorRecipes(connector.slug, snapshot);
+        if (recipes) recipeBlocks.push(recipes);
         const recipeBodies = loadTopRecipeBodies(snapshot, p.authoring_hint, query);
         if (recipeBodies.length > 0) {
           const trimmed = trimRecipeBodiesToBudget(connector.slug, recipeBodies);
-          connectorRecipeBodiesBlock = trimmed.section;
-          connectorRecipeBodiesSurvivors = trimmed.survivors;
-          connectorRecipeBodiesTemplateSlug = connector.slug;
-          connectorRecipeBodiesFallbackSlugs = trimmed.fallback_recipe_slugs;
+          if (trimmed.section) recipeBodyBlocks.push(trimmed.section);
+          connectorRecipeBodiesSurvivors = [
+            ...connectorRecipeBodiesSurvivors,
+            ...trimmed.survivors,
+          ];
+          logRecipeBodyFallbacks(
+            connector.slug,
+            p.tenant_id,
+            trimmed.survivors,
+            trimmed.fallback_recipe_slugs,
+          );
         }
       }
     } catch (err) {
@@ -237,20 +253,17 @@ export async function assembleEnhancedPrompt(
         action: "llm.context.operator_quirks_skipped",
         msg: "operator_quirks load failed during context assembly",
         tenant_id: p.tenant_id,
-        connector_id: p.connector_id,
+        connector_id: connectorId,
         error: err instanceof Error ? err.message : String(err),
       });
     }
   }
-
-  if (connectorRecipeBodiesTemplateSlug && connectorRecipeBodiesFallbackSlugs.length > 0) {
-    logRecipeBodyFallbacks(
-      connectorRecipeBodiesTemplateSlug,
-      p.tenant_id,
-      connectorRecipeBodiesSurvivors,
-      connectorRecipeBodiesFallbackSlugs,
-    );
-  }
+  let connectorOperatorQuirksBlock: string | null =
+    quirkBlocks.length > 0 ? quirkBlocks.join("\n\n") : null;
+  let connectorRecipesBlock: string | null =
+    recipeBlocks.length > 0 ? recipeBlocks.join("\n\n") : null;
+  let connectorRecipeBodiesBlock: string | null =
+    recipeBodyBlocks.length > 0 ? recipeBodyBlocks.join("\n\n") : null;
 
   let priorWorkflowsBlock: string | null = null;
   let priorWorkflowsSurvivors: PriorWorkflowRef[] = [];

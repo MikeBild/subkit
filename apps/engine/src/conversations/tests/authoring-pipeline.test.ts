@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
-import { connectors, knowledgeChunks, tenants } from "../../db/schema/index.ts";
+import { connectors, knowledgeChunks, skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { callerFromPrincipal } from "../../execution/caller-context.ts";
@@ -23,6 +23,10 @@ import {
   PIPELINE_DEADLINE_MS,
   runAuthoringPipeline,
 } from "../authoring-pipeline.ts";
+import {
+  _withConnectorPreflightForTests,
+  type ConnectorPreflightArgs,
+} from "../authoring-preflight.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import type { RecordedEvalReport } from "../recorded-eval.ts";
 import { authorWorkflowTool } from "../tools/author-workflow.ts";
@@ -59,7 +63,11 @@ const tripwire = ((..._args: unknown[]) => {
 }) as unknown as typeof fetch;
 
 function tw(name: string, body: () => Promise<void>) {
-  test(name, () => withSelfHostedDriverFetchForTests(tripwire, body));
+  test(name, () =>
+    withSelfHostedDriverFetchForTests(tripwire, () =>
+      _withConnectorPreflightForTests(async () => null, body),
+    ),
+  );
 }
 
 beforeAll(async () => {
@@ -542,6 +550,91 @@ describe("runAuthoringPipeline — one-shot contract", () => {
 });
 
 describe("runAuthoringPipeline — grounding", () => {
+  tw(
+    "two connectors: pre-flight runs once per connector and both connectors' skills and quirks reach the generate context",
+    async () => {
+      const inserted = await ctx.db
+        .insert(connectors)
+        .values([
+          {
+            tenant_id,
+            slug: "scope-crm",
+            display_name: "Scope CRM",
+            driver: "http",
+            base_url: "https://crm.scope.test",
+            auth_type: "none",
+            operator_quirks: { general: "CRM_QUIRK_MARKER: contacts page with cursor tokens." },
+          },
+          {
+            tenant_id,
+            slug: "scope-mailer",
+            display_name: "Scope Mailer",
+            driver: "http",
+            base_url: "https://mailer.scope.test",
+            auth_type: "none",
+            operator_quirks: { general: "MAILER_QUIRK_MARKER: send requires a plain-text body." },
+          },
+        ])
+        .returning();
+      const crm = inserted.find((c) => c.slug === "scope-crm");
+      const mailer = inserted.find((c) => c.slug === "scope-mailer");
+      if (!crm || !mailer) throw new Error("connector fixtures missing");
+      const skillRows = await ctx.db
+        .insert(skills)
+        .values([
+          {
+            tenant_id,
+            slug: "scope-crm-paging",
+            title: "Scope CRM paging",
+            body: "Follow the cursor until it is null.",
+            scope: "connector",
+            connector_id: crm.id,
+            lifecycle: "active",
+            source: "template",
+          },
+          {
+            tenant_id,
+            slug: "scope-mailer-sending",
+            title: "Scope Mailer sending",
+            body: "Send one message per recipient.",
+            scope: "connector",
+            connector_id: mailer.id,
+            lifecycle: "active",
+            source: "template",
+          },
+        ])
+        .returning();
+
+      const preflightCalls: string[] = [];
+      const stub = async (args: ConnectorPreflightArgs) => {
+        preflightCalls.push(args.connector.id);
+        expect(args.signal.aborted).toBe(false);
+        return null;
+      };
+      getMockProvider().generateOverrides.generate = () => VALID_DEF;
+      const result = await _withConnectorPreflightForTests(stub, () =>
+        runAuthoringPipeline({
+          ctx: makeCtx(),
+          goal: "Mail every new CRM contact a welcome note",
+          connector_ids: ["scope-crm", "scope-mailer"],
+        }),
+      );
+      expect(result.ok).toBe(true);
+      expect(preflightCalls.sort()).toEqual([crm.id, mailer.id].sort());
+
+      const generateCall = getMockProvider().calls.find((c) => c.flow === "generate");
+      if (!generateCall) throw new Error("generate call missing");
+      expect(generateCall.system).toContain("CRM_QUIRK_MARKER");
+      expect(generateCall.system).toContain("MAILER_QUIRK_MARKER");
+      expect(generateCall.system).toContain("Operator quirks — connector `scope-crm`");
+      expect(generateCall.system).toContain("Operator quirks — connector `scope-mailer`");
+      for (const skill of skillRows) {
+        expect(generateCall.included_skill_ids).toContain(skill.id);
+      }
+      expect(fetchCalls).toBe(0);
+    },
+  );
+
   tw(
     "the ONE generation prompt carries the goal verbatim, the connector, its recorded endpoint samples, and the verbatim JS contract",
     async () => {
@@ -1168,5 +1261,67 @@ describe("runAuthoringPipeline — goal-grounded retrieval", () => {
     expect(chunkRows.length).toBeGreaterThan(0);
     const included = new Set(generateCall!.included_knowledge_chunk_ids);
     expect(chunkRows.some((r) => included.has(r.id))).toBe(true);
+  });
+
+  tw("a connector category narrows knowledge retrieval to its domain tag", async () => {
+    const [scoped] = await ctx.db
+      .insert(tenants)
+      .values({ slug: "t-author-pipeline-domains", display_name: "T" })
+      .returning();
+    const scopedTenant = scoped!.id;
+    const ingest = (name: string, tag: string) =>
+      createKnowledgeSource(
+        {
+          tenant_id: scopedTenant,
+          input: { name, scope: "global", tags: [tag] },
+          upload: {
+            buffer: Buffer.from(`# ${name}\n\nOverdue invoice reminders go out every Monday.`),
+            filename: `${tag.replace(":", "-")}.md`,
+            mime: "text/markdown",
+          },
+          actor: null,
+        },
+        ctx.db,
+      );
+    const billing = await ingest("Billing reminders", "domain:billing");
+    const support = await ingest("Support reminders", "domain:support");
+    await ctx.db.insert(connectors).values({
+      tenant_id: scopedTenant,
+      slug: "domain-billing-api",
+      display_name: "Billing API",
+      driver: "http",
+      base_url: "https://billing.domains.test",
+      auth_type: "none",
+      category: "billing",
+    });
+    getMockProvider().generateOverrides.generate = () => VALID_DEF;
+    const toolCtx = {
+      ...makeCtx(),
+      tenant_id: scopedTenant,
+      engineClient: new EngineClient({ tenant_id: scopedTenant, actor_id: null, db: ctx.db }),
+    };
+    const result = await runAuthoringPipeline({
+      ctx: toolCtx,
+      goal: "Send overdue invoice reminders every Monday",
+      connector_ids: ["domain-billing-api"],
+    });
+    expect(result.ok).toBe(true);
+    const generateCall = getMockProvider().calls.find((c) => c.flow === "generate");
+    if (!generateCall) throw new Error("generate call missing");
+    const chunksOf = async (knowledge_source_id: string) =>
+      (
+        await ctx.db
+          .select({ id: knowledgeChunks.id })
+          .from(knowledgeChunks)
+          .where(
+            and(
+              eq(knowledgeChunks.tenant_id, scopedTenant),
+              eq(knowledgeChunks.knowledge_source_id, knowledge_source_id),
+            ),
+          )
+      ).map((r) => r.id);
+    const included = new Set(generateCall.included_knowledge_chunk_ids);
+    expect((await chunksOf(billing.id)).some((id) => included.has(id))).toBe(true);
+    expect((await chunksOf(support.id)).some((id) => included.has(id))).toBe(false);
   });
 });
