@@ -13,6 +13,9 @@ const RETIRED_GERMAN = [
   /(^|[^a-zäöüß])gespeicherte Änderung/i,
   /vorbereitete Version/i,
   /Zugriff freigeben/,
+  /Ausweich/,
+  /(?<!Client-)\bSecret\b/,
+  /\bAdmin\b/,
 ];
 
 const RETIRED_ENGLISH = [
@@ -138,7 +141,7 @@ describe("redesign glossary", () => {
         "role.portalTokenUser",
         "role.metricsScraper",
       ].map((key) => CATALOGS.de[key as keyof typeof CATALOGS.de]),
-    ).toEqual(["Admin", "Mitglied", "Anwender", "Portal-Zugang", "Messwerte-Abruf"]);
+    ).toEqual(["Administrator", "Mitglied", "Anwender", "Portal-Zugang", "Messwerte-Abruf"]);
     expect(CATALOGS.en["role.enduser"]).toBe("User");
   });
 

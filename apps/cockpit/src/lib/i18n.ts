@@ -7432,7 +7432,7 @@ const DE: Record<TranslationKey, string> = {
   "notifications.severity.warn": "Warnung",
   "notifications.severity.error": "Fehler",
   "notifications.severity.critical": "Kritisch",
-  "role.admin": "Admin",
+  "role.admin": "Administrator",
   "role.member": "Mitglied",
   "role.enduser": "Anwender",
   "role.metricsScraper": "Messwerte-Abruf",
@@ -7470,7 +7470,7 @@ const DE: Record<TranslationKey, string> = {
   "apiKeys.scopesHint":
     "Wähl nur, was das Skript oder Programm braucht. Das Segment „Ausführen“ enthält intake:write nur, wenn deinem Konto dieses Recht erteilt ist, damit der Webclipper Clips speichern kann. Die Rechte darunter zeigen genau, was der Schlüssel erhält.",
   "apiKeys.webClipperPermissionsMissing":
-    "Der Webclipper braucht intake:read und intake:write. Deinem Konto fehlen: {permissions}. Bitte eine Admin-Person um diese Rechte, bevor du einen Schlüssel erstellst.",
+    "Der Webclipper braucht intake:read und intake:write. Deinem Konto fehlen: {permissions}. Bitte einen Administrator um diese Rechte, bevor du einen Schlüssel erstellst.",
   "apiKeys.scope.all": "Alle Rechte deiner Rolle",
   "apiKeys.risk.reads": "liest",
   "apiKeys.risk.writes": "schreibt",
@@ -7638,7 +7638,7 @@ const DE: Record<TranslationKey, string> = {
   "settings.label.enabled": "Aktiviert",
   "settings.label.model": "Modell",
   "settings.label.provider": "Anbieter",
-  "settings.label.secret": "Zugangsdaten oder Secret",
+  "settings.label.secret": "Zugangsdaten oder Schlüssel",
   "settings.label.endpoint": "Endpunkt",
   "settings.label.url": "URL",
   "settings.label.timeout": "Zeitlimit",
@@ -7689,7 +7689,7 @@ const DE: Record<TranslationKey, string> = {
   "settings.meta.workspace": "Arbeitsbereich",
   "settings.restart": "Wirkt nach Neustart",
   "settings.unset": "Nicht gesetzt",
-  "settings.secretPlaceholder": "Neues Secret eingeben",
+  "settings.secretPlaceholder": "Schlüssel hier einfügen",
   "settings.filter.label": "Anzeigen",
   "settings.filter.all": "Alle",
   "settings.filter.changed": "Geändert",
@@ -7993,8 +7993,7 @@ const DE: Record<TranslationKey, string> = {
   "settings.invalidCount": "{count} Angaben müssen noch korrigiert werden.",
   "settings.invalidCount.one": "1 Angabe muss noch korrigiert werden.",
   "resource.permission.title": "Keine Rechte",
-  "resource.permission.description":
-    "Dafür fehlen dir die Rechte. Frag eine Person mit Admin-Rolle.",
+  "resource.permission.description": "Dafür fehlen dir die Rechte. Frag einen Administrator.",
   "resource.search": "{resource} durchsuchen",
   "resource.noMatches": "Keine passenden Datensätze",
   "resource.broaderSearch": "Versuch eine allgemeinere Suche.",
@@ -10142,14 +10141,14 @@ const DE: Record<TranslationKey, string> = {
   "settings.restartWho.restart":
     "Nach dem Speichern startest du SubKit oben mit „Jetzt neu starten“ neu; bis dahin gilt der alte Wert.",
   "settings.restartWho.askAdmin":
-    "Nach dem Speichern startet ein Admin SubKit neu; bis dahin gilt der alte Wert.",
+    "Nach dem Speichern startet ein Administrator SubKit neu; bis dahin gilt der alte Wert.",
   "settings.restartWho.manual":
     "SubKit startet sich hier nicht selbst neu. Wer diese Installation betreibt, startet sie neu; bis dahin gilt der alte Wert.",
   "settings.restartNow.button": "Jetzt neu starten",
   "settings.restartNow.verb": "Neu starten",
   "settings.restartNow.object": "SubKit",
   "settings.restartSave.object": "Änderung",
-  "settings.restartNow.askAdmin": "Bitte einen Admin, SubKit neu zu starten.",
+  "settings.restartNow.askAdmin": "Bitte einen Administrator, SubKit neu zu starten.",
   "settings.restartNow.manual":
     "SubKit startet sich hier nicht selbst neu. Wer die Installation betreibt: `systemctl restart subkit-engine` oder `docker compose restart engine` — oder „Aufseher vorhanden“ in den Einstellungen einschalten.",
   "settings.restartNow.consequence":
@@ -10183,7 +10182,7 @@ const DE: Record<TranslationKey, string> = {
   "usage.calls": "KI-Aufrufe",
   "usage.openDetails": "Details zu {name} öffnen",
   "usage.unpriced": "ohne Preis",
-  "usage.askAdmin": "Frag eine Person mit Admin-Rolle.",
+  "usage.askAdmin": "Frag einen Administrator.",
   "usage.noPerson": "Ohne Person (automatisch)",
   "usage.personUnknown": "Name nicht lesbar",
   "usage.lastActive": "Zuletzt",
@@ -10403,7 +10402,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.reauth.titleNamed": "„{name}“ erneut verbinden",
   "chat.resume.settingUp": "Du richtest {target} ein.",
   "people.change.note.leavesAdmin":
-    "Ohne die Rolle Admin kann die Person keine Personen und Rollen mehr verwalten — auch eine eigene Rolle mit allen Rechten umfasst das nicht.",
+    "Ohne die Rolle Administrator kann die Person keine Personen und Rollen mehr verwalten — auch eine eigene Rolle mit allen Rechten umfasst das nicht.",
   "people.change.note.self": "Das ist deine eigene Rolle.",
   "people.change.note.selfLeavesAdmin":
     "Das ist deine eigene Rolle: Danach kannst du selbst keine Personen und Rollen mehr verwalten — auch eine eigene Rolle mit allen Rechten umfasst das nicht.",
@@ -10522,8 +10521,8 @@ const DE: Record<TranslationKey, string> = {
     "Grenze eingereihter Ausführungs- und Gesprächsaufträge je Arbeitsbereich. Null sperrt die Aufnahme in die Warteschlange.",
   "settings.leaf.llm.model": "Primäres Modell",
   "settings.leaf.llm.api_key": "Primärer API-Schlüssel",
-  "settings.leaf.llm.fallback_provider": "Ausweich-Anbieter",
-  "settings.leaf.llm.fallback_model": "Ausweich-Modell",
+  "settings.leaf.llm.fallback_provider": "Ersatzanbieter",
+  "settings.leaf.llm.fallback_model": "Ersatzmodell",
   "settings.leaf.llm.summarize_provider": "Anbieter für Zusammenfassungen",
   "settings.leaf.llm.summarize_model": "Modell für Zusammenfassungen",
   "settings.leaf.llm.suggestion_model": "Modell für Vorschläge",
@@ -10623,7 +10622,7 @@ const DE: Record<TranslationKey, string> = {
   "settings.leaf.observability.predictive.connector_unhealthy_pct":
     "Frühwarnung · fehlerhafte Konnektor-Aufrufe (%)",
   "settings.leaf.observability.predictive.llm_fallback_pct":
-    "Frühwarnung · Modell-Ausweichaufrufe (%)",
+    "Frühwarnung · Aufrufe beim Ersatzanbieter (%)",
   "settings.leaf.egress.mode": "Modus für ausgehende Verbindungen",
   "settings.leaf.egress.provider_hosts_extra": "Weitere Hosts von Modellanbietern",
   "settings.leaf.mcp.api_key": "MCP · API-Schlüssel",
@@ -10733,9 +10732,9 @@ const DE: Record<TranslationKey, string> = {
     "Nach so vielen Ablehnungen in Folge entfällt die Prüfung, damit ein Entwurf nicht endlos kreist.",
   "settings.help.llm.critic.min_steps": "Entwürfe mit weniger Schritten überspringen die Prüfung.",
   "settings.help.llm.fallback_model":
-    "Das Modell des Ausweichanbieters. Leer: dessen Standardmodell.",
+    "Das Modell des Ersatzanbieters. Leer: dessen Standardmodell.",
   "settings.help.llm.fallback_provider":
-    "Springt ein, wenn der Hauptanbieter ausfällt oder sein Kontingent erschöpft ist. Nicht gesetzt: kein Ausweichen, ein Fehler beendet den Schritt.",
+    "Springt ein, wenn der Hauptanbieter ausfällt oder sein Kontingent erschöpft ist. Nicht gesetzt: kein Ersatz, ein Fehler beendet den Schritt.",
   "settings.help.llm.model":
     "Das Modell, das der Hauptanbieter verwendet. Leer: das Standardmodell des Anbieters.",
   "settings.help.llm.output_guard":
@@ -10743,17 +10742,17 @@ const DE: Record<TranslationKey, string> = {
   "settings.help.llm.provider":
     "Der KI-Anbieter, den jedes Gespräch und jeder Entwurf zuerst nutzt. Sein Schlüssel muss weiter unten beim Anbieter hinterlegt sein.",
   "settings.help.llm.providers.ai_gateway.api_key":
-    "Schlüssel für das KI-Gateway. Nur nötig, wenn das KI-Gateway Haupt-, Ausweich- oder Zusammenfassungsanbieter ist.",
+    "Schlüssel für das KI-Gateway. Nur nötig, wenn das KI-Gateway Haupt-, Ersatz- oder Zusammenfassungsanbieter ist.",
   "settings.help.llm.providers.ai_gateway.model":
     "Modell, das das KI-Gateway verwendet, wenn der Anbieter gewählt ist. Leer: das oben gesetzte Modell.",
   "settings.help.llm.providers.anthropic.api_key":
-    "Schlüssel für Anthropic. Nur nötig, wenn Anthropic Haupt-, Ausweich- oder Zusammenfassungsanbieter ist.",
+    "Schlüssel für Anthropic. Nur nötig, wenn Anthropic Haupt-, Ersatz- oder Zusammenfassungsanbieter ist.",
   "settings.help.llm.providers.anthropic.base_url":
     "Nur für einen Proxy oder privaten Endpunkt vor Anthropic. Leer: die öffentliche Adresse des Anbieters.",
   "settings.help.llm.providers.anthropic.model":
     "Modell, das Anthropic verwendet, wenn der Anbieter gewählt ist. Leer: das oben gesetzte Modell.",
   "settings.help.llm.providers.azure.api_key":
-    "Schlüssel für Azure OpenAI. Nur nötig, wenn Azure OpenAI Haupt-, Ausweich- oder Zusammenfassungsanbieter ist.",
+    "Schlüssel für Azure OpenAI. Nur nötig, wenn Azure OpenAI Haupt-, Ersatz- oder Zusammenfassungsanbieter ist.",
   "settings.help.llm.providers.azure.api_version":
     "Die Azure-OpenAI-API-Version, die jede Anfrage mitschickt. Leer: der Standard des Clients.",
   "settings.help.llm.providers.azure.base_url":
@@ -10777,19 +10776,19 @@ const DE: Record<TranslationKey, string> = {
   "settings.help.llm.providers.bedrock.session_token":
     "Nur für temporäre AWS-Zugangsdaten; dauerhafte Schlüssel brauchen keinen.",
   "settings.help.llm.providers.gemini.api_key":
-    "Schlüssel für Gemini. Nur nötig, wenn Gemini Haupt-, Ausweich- oder Zusammenfassungsanbieter ist.",
+    "Schlüssel für Gemini. Nur nötig, wenn Gemini Haupt-, Ersatz- oder Zusammenfassungsanbieter ist.",
   "settings.help.llm.providers.gemini.base_url":
     "Nur für einen Proxy oder privaten Endpunkt vor Gemini. Leer: die öffentliche Adresse des Anbieters.",
   "settings.help.llm.providers.gemini.model":
     "Modell, das Gemini verwendet, wenn der Anbieter gewählt ist. Leer: das oben gesetzte Modell.",
   "settings.help.llm.providers.openai.api_key":
-    "Schlüssel für OpenAI. Nur nötig, wenn OpenAI Haupt-, Ausweich- oder Zusammenfassungsanbieter ist.",
+    "Schlüssel für OpenAI. Nur nötig, wenn OpenAI Haupt-, Ersatz- oder Zusammenfassungsanbieter ist.",
   "settings.help.llm.providers.openai.base_url":
     "Nur für einen Proxy oder privaten Endpunkt vor OpenAI. Leer: die öffentliche Adresse des Anbieters.",
   "settings.help.llm.providers.openai.model":
     "Modell, das OpenAI verwendet, wenn der Anbieter gewählt ist. Leer: das oben gesetzte Modell.",
   "settings.help.llm.providers.vertex.api_key":
-    "Schlüssel für Google Vertex AI. Nur nötig, wenn Google Vertex AI Haupt-, Ausweich- oder Zusammenfassungsanbieter ist.",
+    "Schlüssel für Google Vertex AI. Nur nötig, wenn Google Vertex AI Haupt-, Ersatz- oder Zusammenfassungsanbieter ist.",
   "settings.help.llm.providers.vertex.client_email":
     "E-Mail des Dienstkontos; mit dessen privatem Schlüssel eine Alternative zum API-Schlüssel.",
   "settings.help.llm.providers.vertex.google_application_credentials":
@@ -12081,7 +12080,7 @@ const DE: Record<TranslationKey, string> = {
     "Dieser genaue Inhalt wird zur aktiven Fassung des gewählten Skills und erscheint in passenden Agent-Briefings.",
   "intake.proposal.targetMissing":
     "Ein Skill, auf den sich dieser Vorschlag bezieht, lässt sich nicht mehr laden. Überarbeite den Vorschlag im Chat, bevor du bestätigst.",
-  "intake.proposal.needsRights": "Dafür fehlen dir die Rechte. Frag eine Person mit Admin-Rolle.",
+  "intake.proposal.needsRights": "Dafür fehlen dir die Rechte. Frag einen Administrator.",
   "intake.proposal.archives": "Nach der Bestätigung archiviert: {skills}.",
   "intake.proposal.stale":
     "Dieser Vorschlag hat sich geändert. Prüfe den aktuellen Inhalt, bevor du bestätigst.",

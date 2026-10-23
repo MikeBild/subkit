@@ -115,7 +115,7 @@ describe("intake proposal card", () => {
   test("knowledge writing alone never confirms a skill and says rights are missing in plain words", () => {
     const html = render(newSkill, ["intake:confirm", "knowledge:write"]);
     expect(html).not.toContain('data-testid="intake-proposal-proposal-confirm"');
-    expect(html).toContain("Dafür fehlen dir die Rechte. Frag eine Person mit Admin-Rolle.");
+    expect(html).toContain("Dafür fehlen dir die Rechte. Frag einen Administrator.");
     expect(html).not.toContain("skill:write");
   });
 

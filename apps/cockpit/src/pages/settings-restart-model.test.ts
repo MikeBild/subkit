@@ -45,7 +45,7 @@ describe("what the waiting-for-a-restart line offers", () => {
     expect(restartOffer(MEMBER, true)).toBe("ask_admin");
     expect(restartOffer(MEMBER, false)).toBe("ask_admin");
     expect(translate("de", "settings.restartNow.askAdmin")).toBe(
-      "Bitte einen Admin, SubKit neu zu starten.",
+      "Bitte einen Administrator, SubKit neu zu starten.",
     );
   });
 

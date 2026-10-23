@@ -58,7 +58,7 @@ describe("ForbiddenState", () => {
   test("explains the denied page and names an administrator to contact, in both languages", () => {
     const de = render(<ForbiddenState />, "de");
     expect(de).toContain("Keine Rechte");
-    expect(de).toContain("Dafür fehlen dir die Rechte. Frag eine Person mit Admin-Rolle.");
+    expect(de).toContain("Dafür fehlen dir die Rechte. Frag einen Administrator.");
     const en = render(<ForbiddenState />, "en");
     expect(en).toContain("No rights");
     expect(en).toContain("You lack the rights for this. Ask a person with the Admin role.");
