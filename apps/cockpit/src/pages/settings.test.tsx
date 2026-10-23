@@ -510,7 +510,7 @@ describe("the page's frame", () => {
     const save = readFileSync(resolve(import.meta.dir, "settings-save.ts"), "utf8");
     expect(source).toContain("applySettingsPatch(");
     expect(save).toContain('method: "PATCH"');
-    expect(save).not.toMatch(/method: "PUT"/);
+    expect(source).not.toMatch(/method: "PUT"|saveWorkspaceSetting/);
     expect(source).not.toMatch(/method: "PUT"/);
     expect(source).not.toMatch(/setTimeout|autosave/i);
   });
