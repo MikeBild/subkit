@@ -6,6 +6,9 @@ const JS_SCOPE_REF_PATTERNS = [
 const RESOLVED_SCOPE_ACCESS =
   /\binput\s*\??\.\s*scope\s*(?:\??\.\s*([A-Za-z_$][A-Za-z0-9_$]*)|\??\.?\[\s*["']([^"'\]]+)["']\s*\])/g;
 
+const PROTOTYPE_SCOPE_ACCESS =
+  /\binput\s*\??\.\s*scope\s*(?:\??\.\s*[A-Za-z_$][A-Za-z0-9_$]*\s*(?:\?\.\s*)?\(|\??\.\s*(?:constructor|__proto__|prototype|toString|valueOf|hasOwnProperty|isPrototypeOf|propertyIsEnumerable|toLocaleString)\b)/;
+
 const WORKFLOW_INPUT_ACCESS = /\binput\s*\??\.\s*input\b/g;
 
 const UNRESOLVED_ACCESS =
@@ -28,6 +31,7 @@ export function extractJsScopeReferences(code: string): string[] {
 }
 
 export function resolveJsScopeReferences(code: string): string[] | null {
+  if (PROTOTYPE_SCOPE_ACCESS.test(code)) return null;
   const ids = new Set<string>();
   const remainder = code
     .replace(

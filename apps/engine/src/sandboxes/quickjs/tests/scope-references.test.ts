@@ -28,6 +28,10 @@ describe("scope references", () => {
       "return arguments[0].scope.fetch_a;",
       "return globalThis.__sandbox_input__.scope.fetch_a;",
       "return eval('input.scope.fetch_a');",
+      "return input.scope.hasOwnProperty('fetch_a');",
+      "return input.scope?.hasOwnProperty?.('fetch_a');",
+      "return input.scope.constructor === Object;",
+      "return input.scope.toString();",
     ]) {
       expect(resolveJsScopeReferences(code)).toBeNull();
     }
@@ -50,6 +54,8 @@ describe("scope references", () => {
       "return input.scope.not_run === undefined ? sk.nowIso() : 'ran';",
       "return Object.keys(input.scope).sort();",
       "const s = input.scope; return s.unused.data.large.length;",
+      "return input.scope.hasOwnProperty('fetch_a');",
+      "return input.scope.constructor === Object;",
     ];
     for (const code of programs) {
       const workflowInput = { mode: "daily" };
