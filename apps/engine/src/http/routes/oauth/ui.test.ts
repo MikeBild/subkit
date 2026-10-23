@@ -360,6 +360,9 @@ test("API key sign-in returns to the same authorization attempt and retains esca
   expect(html).toContain(
     '<a class="button outline" href="/v1/identity/login/start?login_state=state%26value" data-testid="auth-api-key-back">Zurück</a>',
   );
+  const actions = html.match(/<div class="actions"[^>]*>[\s\S]*?<\/div>/g) ?? [];
+  expect(actions).toHaveLength(1);
+  expect(actions[0]?.indexOf("Zurück")).toBeLessThan(actions[0]?.indexOf(">Anmelden<") ?? -1);
 });
 
 test("an unassigned company account has its own error outcome", () => {
