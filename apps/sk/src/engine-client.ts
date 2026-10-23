@@ -72,6 +72,7 @@ export type {
   FileLinkWire,
   FileStatsWire,
   FileStatusWire,
+  FileVersionWire,
   FileWire,
 } from "./engine-client/files.ts";
 export {

@@ -327,6 +327,104 @@ const downloadCommand = defineCommand({
   },
 });
 
+const replaceCommand = defineCommand({
+  meta: {
+    name: "replace",
+    description: `Replace a file's content (up to ${MAX_INLINE_BYTES / 1024 / 1024} MB); the id, reference and earlier versions stay`,
+  },
+  args: {
+    id: { type: "positional", required: true, description: "File id (fid_…)" },
+    path: { type: "positional", required: true, description: "Path to the new content" },
+    "content-type": { type: "string", description: "Override detected MIME type" },
+    json: { type: "boolean", description: "JSON output", default: false },
+  },
+  async run({ args }) {
+    const client = makeClient();
+    try {
+      const filePath = sanitizePathInput(String(args.path));
+      if (!existsSync(filePath) || !statSync(filePath).isFile()) {
+        throw new Error(
+          `file not found: ${String(args.path)}${renderSuspiciousCodepoints(String(args.path))}`,
+        );
+      }
+      const bytes = readFileSync(filePath);
+      if (bytes.byteLength > MAX_INLINE_BYTES) {
+        throw new Error(`replacement content is larger than ${humanBytes(MAX_INLINE_BYTES)}`);
+      }
+      const row = await client.replaceFile(String(args.id), {
+        filename: basename(filePath),
+        content_type: args["content-type"] ? String(args["content-type"]) : detectMime(filePath),
+        content_base64: bytes.toString("base64"),
+      });
+      if (args.json) {
+        printJson(row);
+        return;
+      }
+      process.stdout.write(
+        `${pc.green("replaced")}  ${row.id}  ${row.filename}  (${humanBytes(row.size_bytes)})\n`,
+      );
+    } catch (err) {
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+  },
+});
+
+const versionsCommand = defineCommand({
+  meta: { name: "versions", description: "List a file's current and earlier content versions" },
+  args: {
+    id: { type: "positional", required: true, description: "File id (fid_…)" },
+    json: { type: "boolean", description: "JSON output", default: false },
+  },
+  async run({ args }) {
+    const client = makeClient();
+    try {
+      const items = await client.listFileVersions(String(args.id));
+      if (args.json) {
+        printJson({ items });
+        return;
+      }
+      const lines = items.map((item) => {
+        const label = `v${item.version}`.padEnd(5);
+        const marker = item.current ? pc.green("current ") : "        ";
+        const origin = item.restored_from ? pc.dim(` restored from v${item.restored_from}`) : "";
+        return `${label} ${marker} ${item.uploaded_at}  ${humanBytes(item.size_bytes).padStart(9)}  ${item.filename}${origin}`;
+      });
+      process.stdout.write(`${lines.join("\n")}\n`);
+    } catch (err) {
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+  },
+});
+
+const restoreCommand = defineCommand({
+  meta: {
+    name: "restore",
+    description: "Make an earlier content version current again as a new version",
+  },
+  args: {
+    id: { type: "positional", required: true, description: "File id (fid_…)" },
+    version: { type: "positional", required: true, description: "Version number to restore" },
+    json: { type: "boolean", description: "JSON output", default: false },
+  },
+  async run({ args }) {
+    const client = makeClient();
+    try {
+      const version = Number(args.version);
+      if (!Number.isInteger(version) || version < 1) {
+        throw new Error("version must be a positive whole number");
+      }
+      const row = await client.restoreFileVersion(String(args.id), version);
+      if (args.json) {
+        printJson(row);
+        return;
+      }
+      process.stdout.write(`${pc.green("restored")}  ${row.id}  v${version}  ${row.filename}\n`);
+    } catch (err) {
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+  },
+});
+
 const deleteCommand = defineCommand({
   meta: { name: "delete", description: "Soft-delete a file" },
   args: {
@@ -456,6 +554,9 @@ export const filesCommand = defineCommand({
     get: getCommand,
     upload: uploadCommand,
     download: downloadCommand,
+    replace: replaceCommand,
+    versions: versionsCommand,
+    restore: restoreCommand,
     delete: deleteCommand,
     link: linkCommand,
     patch: patchCommand,

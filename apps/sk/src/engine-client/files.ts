@@ -18,6 +18,19 @@ export interface FileWire {
   deleted_at: string | null;
 }
 
+export interface FileVersionWire {
+  version: number;
+  current: boolean;
+  filename: string;
+  content_type: string | null;
+  size_bytes: number;
+  sha256: string | null;
+  restored_from: number | null;
+  uploaded_at: string;
+  uploaded_by: { kind: "user" | "system_account"; id: string } | null;
+  replaced_at: string | null;
+}
+
 export interface BatchCreateEntry {
   filename: string;
   content_type?: string;
@@ -85,6 +98,25 @@ const FileWireSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   deleted_at: z.string().nullable(),
+});
+
+const FileVersionListSchema = z.object({
+  items: z.array(
+    z.object({
+      version: z.number(),
+      current: z.boolean(),
+      filename: z.string(),
+      content_type: z.string().nullable(),
+      size_bytes: z.number(),
+      sha256: z.string().nullable(),
+      restored_from: z.number().nullable(),
+      uploaded_at: z.string(),
+      uploaded_by: z
+        .object({ kind: z.enum(["user", "system_account"]), id: z.string() })
+        .nullable(),
+      replaced_at: z.string().nullable(),
+    }),
+  ),
 });
 
 const BatchCreateResponseEntrySchema = z.object({
@@ -237,6 +269,32 @@ export const filesMethods = {
 
   async getFile(this: EngineClient, id: string): Promise<FileWire> {
     const raw = await this.request<unknown>("GET", `/v1/files/${encodeURIComponent(id)}`);
+    return FileWireSchema.parse(raw);
+  },
+
+  async replaceFile(
+    this: EngineClient,
+    id: string,
+    file: { filename: string; content_type?: string; content_base64: string },
+  ): Promise<FileWire> {
+    const raw = await this.request<unknown>(
+      "POST",
+      `/v1/files/${encodeURIComponent(id)}/replace`,
+      file,
+    );
+    return FileWireSchema.parse(raw);
+  },
+
+  async listFileVersions(this: EngineClient, id: string): Promise<FileVersionWire[]> {
+    const raw = await this.request<unknown>("GET", `/v1/files/${encodeURIComponent(id)}/versions`);
+    return FileVersionListSchema.parse(raw).items;
+  },
+
+  async restoreFileVersion(this: EngineClient, id: string, version: number): Promise<FileWire> {
+    const raw = await this.request<unknown>(
+      "POST",
+      `/v1/files/${encodeURIComponent(id)}/versions/${version}/restore`,
+    );
     return FileWireSchema.parse(raw);
   },
 

@@ -310,3 +310,90 @@ describe("sk files stats", () => {
     await expect(client.getFileStats()).rejects.toBeInstanceOf(EngineError);
   });
 });
+
+describe("sk files replace, versions and restore", () => {
+  test("replace posts inline content to the file's replace route", async () => {
+    const calls: Array<{ url: string; method: string; body: unknown }> = [];
+    const client = new EngineClient({
+      engine_url: "http://engine.local",
+      api_key: "wf_live_test",
+      tenant: "t-test",
+      fetchImpl: async (url, init) => {
+        calls.push({
+          url: String(url),
+          method: String(init?.method),
+          body: JSON.parse(String(init?.body)),
+        });
+        return new Response(JSON.stringify(makeFileRow({ filename: "new.txt" })), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    const row = await client.replaceFile("fid_00000000-0000-0000-0000-000000000001", {
+      filename: "new.txt",
+      content_type: "text/plain",
+      content_base64: Buffer.from("next").toString("base64"),
+    });
+    expect(row.filename).toBe("new.txt");
+    expect(calls[0]).toMatchObject({
+      url: "http://engine.local/v1/files/fid_00000000-0000-0000-0000-000000000001/replace",
+      method: "POST",
+      body: { filename: "new.txt", content_base64: Buffer.from("next").toString("base64") },
+    });
+  });
+
+  test("versions lists current and earlier content newest first", async () => {
+    const entry = {
+      filename: "test.txt",
+      content_type: "text/plain",
+      size_bytes: 4,
+      sha256: "b",
+      restored_from: null,
+      uploaded_at: NOW,
+      uploaded_by: null,
+    };
+    const client = new EngineClient({
+      engine_url: "http://engine.local",
+      api_key: "wf_live_test",
+      tenant: "t-test",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            items: [
+              { ...entry, version: 2, current: true, replaced_at: null },
+              { ...entry, version: 1, current: false, replaced_at: NOW },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    });
+    const items = await client.listFileVersions("fid_00000000-0000-0000-0000-000000000001");
+    expect(items.map((item) => [item.version, item.current])).toEqual([
+      [2, true],
+      [1, false],
+    ]);
+  });
+
+  test("restore addresses one version and surfaces conflicts", async () => {
+    const urls: string[] = [];
+    const client = new EngineClient({
+      engine_url: "http://engine.local",
+      api_key: "wf_live_test",
+      tenant: "t-test",
+      fetchImpl: async (url) => {
+        urls.push(String(url));
+        return new Response(
+          JSON.stringify({ code: "duplicate_content", message: "another file has it" }),
+          { status: 409, headers: { "content-type": "application/json" } },
+        );
+      },
+    });
+    await expect(
+      client.restoreFileVersion("fid_00000000-0000-0000-0000-000000000001", 1),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(urls).toEqual([
+      "http://engine.local/v1/files/fid_00000000-0000-0000-0000-000000000001/versions/1/restore",
+    ]);
+  });
+});
