@@ -237,6 +237,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             mcpMode: mcpModeForCall,
             readOnly: readOnlyForCall,
             invocation,
+            clientName: server.getClientVersion()?.name,
           }),
           TOOLS_CALL_DEADLINE_MS,
         );

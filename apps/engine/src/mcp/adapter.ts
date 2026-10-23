@@ -154,7 +154,11 @@ export function envelopeToMcpResponse(envelope: ToolEnvelope): {
   };
 }
 
-export function buildMcpStubCtx(opts: { db: Db; principal: ResolvedPrincipal }): ToolContext {
+export function buildMcpStubCtx(opts: {
+  db: Db;
+  principal: ResolvedPrincipal;
+  clientName?: string | undefined;
+}): ToolContext {
   const engineClient = new EngineClient({
     tenant_id: opts.principal.tenant_id,
     actor_id: opts.principal.id,
@@ -180,6 +184,7 @@ export function buildMcpStubCtx(opts: { db: Db; principal: ResolvedPrincipal }):
     connector_id: null,
     workflow_id: null,
     surface: "mcp",
+    ...(opts.clientName ? { mcp_client_name: opts.clientName } : {}),
     direct_mcp_invocation: true,
     raw_result_scope_id: `mcp:${opts.principal.id}`,
     engineClient,
@@ -194,6 +199,7 @@ export async function callToolViaDispatcher(opts: {
   mcpMode: "product" | "authoring" | "admin";
   readOnly: boolean;
   invocation: ToolInvocation;
+  clientName?: string | undefined;
 }): Promise<ReturnType<typeof envelopeToMcpResponse>> {
   const envelope = await withRawResultScope(
     {
@@ -207,7 +213,12 @@ export async function callToolViaDispatcher(opts: {
           registry: getUnifiedRegistry(),
           db: opts.db,
           principal: opts.principal,
-          buildMcpStubCtx: () => buildMcpStubCtx({ db: opts.db, principal: opts.principal }),
+          buildMcpStubCtx: () =>
+            buildMcpStubCtx({
+              db: opts.db,
+              principal: opts.principal,
+              clientName: opts.clientName,
+            }),
           mcpMode: opts.mcpMode,
           readOnly: opts.readOnly,
           permissionMode: "auto",

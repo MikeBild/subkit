@@ -2,10 +2,23 @@ import { z } from "@hono/zod-openapi";
 import { collectSessionLearning, learningTargetOf } from "../../agent/sessions.ts";
 import { LearningKindSchema } from "../../api/agent-sessions.ts";
 import { DOMAIN_SLUG_RE } from "../../api/domain-slug.ts";
-import type { ConversationTool, ToolResult } from "./index.ts";
+import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { toolActor } from "./tool-actor.ts";
 
 export const SAVE_LEARNING_AGENT = "save_learning";
+
+const CLIENT_NAME_MAX = 80;
+
+export function learningClient(
+  ctx: Pick<ToolContext, "surface" | "mcp_client_name">,
+): string | undefined {
+  if (ctx.surface === "mcp") {
+    const name = ctx.mcp_client_name?.trim().slice(0, CLIENT_NAME_MAX);
+    return name || undefined;
+  }
+  if (ctx.surface === "sk_headless" || ctx.surface === "sk_interactive") return "sk";
+  return "chat";
+}
 
 const inputSchema = z
   .object({
@@ -59,6 +72,7 @@ export const saveLearningTool: ConversationTool = {
       actor: toolActor(ctx),
       session: {
         agent: SAVE_LEARNING_AGENT,
+        client: learningClient(ctx),
         session_id: ctx.conversation_id,
         domains: args.domains,
       },

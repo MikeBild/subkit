@@ -125,6 +125,12 @@ export const IntakeItemSnapshotSchema = z
       origin: z.literal("session"),
       source_url: z.string().url().optional(),
       agent: z.string(),
+      client: z
+        .string()
+        .optional()
+        .describe(
+          "Assistant that prepared the entry: the MCP client name, chat for Cockpit chat or sk for the sk CLI. Absent when the assistant was not recorded.",
+        ),
       session_id: z.string(),
       repo: z.string().nullable(),
       domains: z.array(z.string()),

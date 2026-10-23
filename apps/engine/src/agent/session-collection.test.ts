@@ -96,6 +96,7 @@ describe("save_learning collects into intake", () => {
     expect(item.original_snapshot).toMatchObject({
       origin: "session",
       agent: "save_learning",
+      client: "chat",
       session_id: "10000000-0000-4000-8000-000000000001",
       domains: ["blog-de"],
       learning_kind: "practice",
@@ -107,6 +108,28 @@ describe("save_learning collects into intake", () => {
       .from(skillCandidates)
       .where(eq(skillCandidates.tenant_id, tenantId));
     expect(candidates[0]?.value).toBe(0);
+  });
+
+  test("a learning saved over MCP records the client that saved it", async () => {
+    const result = await saveLearningTool.execute(
+      {
+        ...toolCtx("10000000-0000-4000-8000-0000000000c1"),
+        surface: "mcp",
+        mcp_client_name: "claude-code",
+      },
+      {
+        kind: "practice",
+        title: "Vor dem Build die Bundles neu erzeugen",
+        body: "Vor jedem Build die eingebetteten Dateien neu erzeugen.",
+        domains: [],
+      },
+    );
+    const item = await itemById((result.data as { intake_item_id: string }).intake_item_id);
+    expect(item.original_snapshot).toMatchObject({
+      origin: "session",
+      agent: "save_learning",
+      client: "claude-code",
+    });
   });
 
   test("a domain without a shared category lands in the collector's default category", async () => {

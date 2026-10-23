@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Db } from "../../db/client.ts";
 import type { ToolContext } from "./index.ts";
-import { saveLearningTool } from "./save-learning.ts";
+import { learningClient, saveLearningTool } from "./save-learning.ts";
 
 const untouchableDb = new Proxy(
   {},
@@ -36,5 +36,23 @@ describe("save_learning sensitive paths", () => {
     if (result.ok) throw new Error("expected a refusal");
     expect(result.error_code).toBe("sensitive_path");
     expect(result.data).toEqual({ outcome: "dropped", intake_item_id: null, kind: "fact" });
+  });
+});
+
+describe("save_learning assistant", () => {
+  test("names the MCP client, Cockpit chat or the sk CLI", () => {
+    expect(learningClient({ surface: "mcp", mcp_client_name: "  claude-code " })).toBe(
+      "claude-code",
+    );
+    expect(learningClient({ surface: "mcp", mcp_client_name: "codex-mcp-client" })).toBe(
+      "codex-mcp-client",
+    );
+    expect(learningClient({ surface: "mcp" })).toBeUndefined();
+    expect(learningClient({ surface: "mcp", mcp_client_name: " " })).toBeUndefined();
+    expect(learningClient({ surface: "mcp", mcp_client_name: "x".repeat(200) })).toHaveLength(80);
+    expect(learningClient({ surface: "web" })).toBe("chat");
+    expect(learningClient({})).toBe("chat");
+    expect(learningClient({ surface: "sk_interactive" })).toBe("sk");
+    expect(learningClient({ surface: "sk_headless" })).toBe("sk");
   });
 });

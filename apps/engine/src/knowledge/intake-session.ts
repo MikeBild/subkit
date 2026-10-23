@@ -199,6 +199,7 @@ export async function createSessionIntakeItem(
       body: p.body,
       origin: "session",
       agent: p.session.agent,
+      ...(p.session.client ? { client: p.session.client } : {}),
       session_id: p.session.session_id,
       repo: p.session.repo ?? null,
       domains: [...p.session.domains],

@@ -28,7 +28,13 @@ export interface CollectSessionLearningParams {
   pitfalls?: string[];
   kind: LearningKind;
   actor: Actor | null;
-  session: { agent: string; session_id: string; repo?: string | undefined; domains: string[] };
+  session: {
+    agent: string;
+    client?: string | undefined;
+    session_id: string;
+    repo?: string | undefined;
+    domains: string[];
+  };
   evidence_excerpt: string;
   target?: LearningTarget | undefined;
   db: Db;
@@ -103,6 +109,7 @@ export async function collectSessionLearning(
       actor: p.actor,
       session: {
         agent: p.session.agent,
+        ...(p.session.client ? { client: p.session.client } : {}),
         session_id: p.session.session_id,
         repo: p.session.repo ?? null,
         domains: p.session.domains,

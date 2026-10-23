@@ -91,6 +91,7 @@ describe("journey 67: a learning from a connector-targeted chat is collected for
       expect(rows[0]?.original_snapshot).toMatchObject({
         origin: "session",
         agent: "save_learning",
+        client: "chat",
         session_id: conversation.id,
         scope: "connector",
         connector_id: connectorId,

@@ -145,6 +145,7 @@ export interface ConfirmIntakeProposalParams {
 
 export interface IntakeSessionProvenance {
   agent: string;
+  client?: string | undefined;
   session_id: string;
   repo?: string | null | undefined;
   domains: readonly string[];

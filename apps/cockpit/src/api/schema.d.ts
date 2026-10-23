@@ -26120,6 +26120,8 @@ export interface components {
             /** Format: uri */
             source_url?: string;
             agent: string;
+            /** @description Assistant that prepared the entry: the MCP client name, chat for Cockpit chat or sk for the sk CLI. Absent when the assistant was not recorded. */
+            client?: string;
             session_id: string;
             repo: string | null;
             domains: string[];

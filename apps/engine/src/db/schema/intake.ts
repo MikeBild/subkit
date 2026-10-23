@@ -46,6 +46,7 @@ export interface IntakeSessionSnapshot extends IntakeSnapshotFields {
   origin: "session";
   source_url?: string | undefined;
   agent: string;
+  client?: string | undefined;
   session_id: string;
   repo: string | null;
   domains: string[];
