@@ -41,11 +41,11 @@ function FindingRow({
       data-state={state}
     >
       <div className={cn("flex min-w-0 flex-1 flex-col", settled && "opacity-60")}>
-        <div className="flex min-h-7 min-w-0 items-center gap-2">
+        <div className="flex min-h-7 min-w-0 items-start gap-2 py-0.5">
           <Icon
             aria-hidden="true"
             className={cn(
-              "size-4 shrink-0",
+              "mt-0.5 size-4 shrink-0",
               state === "handed"
                 ? "text-emerald-700 dark:text-emerald-400"
                 : state === "kept"
@@ -55,7 +55,7 @@ function FindingRow({
           />
           <span
             className={cn(
-              "min-w-0 flex-1 truncate font-medium",
+              "min-w-0 flex-1 font-medium break-words",
               state === "kept" && "line-through",
             )}
             data-testid={`${rowId}-text`}
