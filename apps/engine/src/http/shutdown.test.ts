@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { beginHttpShutdown, type ShutdownHttpServer } from "./shutdown.ts";
+import { beginHttpShutdown, drainHttpBounded, type ShutdownHttpServer } from "./shutdown.ts";
 
 describe("HTTP shutdown", () => {
   test("stops admission, closes idle sockets, then exposes an explicit force-close", async () => {
@@ -37,5 +37,34 @@ describe("HTTP shutdown", () => {
     shutdown.forceClose();
 
     expect(await shutdown.waitUntilClosed(5)).toBe(false);
+  });
+
+  test("bounded drain reports closed, late close and an abandoned server", async () => {
+    let finish: (() => void) | undefined;
+    const prompt = beginHttpShutdown({
+      close(callback) {
+        finish = callback;
+      },
+      closeAllConnections() {
+        finish?.();
+      },
+    });
+    expect(await drainHttpBounded(prompt, { forceWaitMs: 5, abandonWaitMs: 5 })).toBe("closed");
+
+    let finishLate: (() => void) | undefined;
+    const late = beginHttpShutdown({
+      close(callback) {
+        finishLate = callback;
+      },
+      closeAllConnections() {
+        setTimeout(() => finishLate?.(), 15);
+      },
+    });
+    expect(await drainHttpBounded(late, { forceWaitMs: 5, abandonWaitMs: 100 })).toBe(
+      "closed_after_force",
+    );
+
+    const stuck = beginHttpShutdown({ close() {}, closeAllConnections() {} });
+    expect(await drainHttpBounded(stuck, { forceWaitMs: 5, abandonWaitMs: 5 })).toBe("abandoned");
   });
 });

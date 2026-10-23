@@ -26,3 +26,15 @@ export function beginHttpShutdown(server: ShutdownHttpServer): HttpShutdown {
       ]),
   };
 }
+
+export type HttpDrainOutcome = "closed" | "closed_after_force" | "abandoned";
+
+export async function drainHttpBounded(
+  shutdown: HttpShutdown,
+  limits: { forceWaitMs: number; abandonWaitMs: number },
+): Promise<HttpDrainOutcome> {
+  shutdown.forceClose();
+  if (await shutdown.waitUntilClosed(limits.forceWaitMs)) return "closed";
+  if (await shutdown.waitUntilClosed(limits.abandonWaitMs)) return "closed_after_force";
+  return "abandoned";
+}

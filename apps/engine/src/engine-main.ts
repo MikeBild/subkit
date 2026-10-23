@@ -26,7 +26,7 @@ import { engineServeOptions } from "./http/listen-hostname.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import type { HttpShutdown } from "./http/shutdown.ts";
-import { beginHttpShutdown } from "./http/shutdown.ts";
+import { beginHttpShutdown, drainHttpBounded } from "./http/shutdown.ts";
 import { seedKnowledgeAtBoot } from "./knowledge/seed.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
 import { errorFields, logger } from "./logging/logger.ts";
@@ -69,6 +69,7 @@ async function runServer(): Promise<void> {
   let shutting: Promise<void> | undefined;
   let requestedExitCode = shutdownExitCode("signal");
   const SHUTDOWN_DRAIN_TIMEOUT_MS = 120_000;
+  const HTTP_CLOSE_ABANDON_MS = 10_000;
   const shutdown = (
     signal: NodeJS.Signals | "restart" | "boot_failure",
     exitCode = shutdownExitCode("signal"),
@@ -96,18 +97,28 @@ async function runServer(): Promise<void> {
     shutting = (async () => {
       try {
         await drained;
-        httpShutdown?.forceClose();
-        let httpClosed = httpShutdown ? await httpShutdown.waitUntilClosed(1_000) : true;
-        if (!httpClosed)
+        const httpDrain = httpShutdown
+          ? await drainHttpBounded(httpShutdown, {
+              forceWaitMs: 1_000,
+              abandonWaitMs: HTTP_CLOSE_ABANDON_MS,
+            })
+          : "closed";
+        if (httpDrain !== "closed")
           logger.warn({
             module: "http",
             action: "shutdown.http_force_close_timeout",
             msg: "HTTP close callback remained pending after force-closing connections",
             timeout_ms: 1_000,
           });
-        if (httpShutdown && !httpClosed) {
-          await httpShutdown.closed;
-          httpClosed = true;
+        const httpClosed = httpDrain !== "abandoned";
+        if (!httpClosed) {
+          requestedExitCode = shutdownExitCode("timeout");
+          logger.warn({
+            module: "http",
+            action: "shutdown.http_close_abandoned",
+            msg: "HTTP server never confirmed close; continuing shutdown without it",
+            timeout_ms: HTTP_CLOSE_ABANDON_MS,
+          });
         }
         await waitForTenantWorkDrain();
         await lifetime.finalize();
