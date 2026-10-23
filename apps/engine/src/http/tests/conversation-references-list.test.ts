@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   apiKeys,
   conversationMessages,
@@ -7,7 +7,10 @@ import {
   conversationToolCalls,
 } from "../../db/schema/index.ts";
 import { createSkill, updateSkill } from "../../skills/service.ts";
-import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import {
+  createDeterministicHexFactory,
+  createDeterministicUuidFactory,
+} from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, createSecondaryTenant, type HttpTestServer } from "./setup.ts";
 
 interface ListBody {
@@ -22,8 +25,10 @@ function headers(key = srv.apiKey): Record<string, string> {
   return { authorization: `Bearer ${key}` };
 }
 
+const nextHex = createDeterministicHexFactory(0xc0ae5e);
+
 async function scopedKey(scopes: string[]): Promise<string> {
-  const plaintext = `wf_live_${randomBytes(24).toString("base64url").slice(0, 32)}`;
+  const plaintext = `wf_live_${nextHex(16)}`;
   await srv.db.insert(apiKeys).values({
     tenant_id: srv.tenantId,
     user_id: srv.userId,
