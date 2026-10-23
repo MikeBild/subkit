@@ -443,6 +443,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     `UPDATE tenants SET display_name=${quote(cockpitDemoTenantName)} WHERE id=${quote(tenantId)} AND slug=${quote(cockpitDemoTenantSlug)} AND display_name=${quote(cockpitDemoSetupTenantName)};`,
     `UPDATE users SET email=${quote(cockpitDemoOwnerEmail)} WHERE id=${quote(adminUserId)} AND tenant_id=${quote(tenantId)} AND (email LIKE '%@localhost.test' OR email='lena@brennwerk.example') AND NOT EXISTS (SELECT 1 FROM users other WHERE other.tenant_id=${quote(tenantId)} AND other.email=${quote(cockpitDemoOwnerEmail)});`,
     `UPDATE users SET display_name=${quote(cockpitDemoOwnerName)} WHERE id=${quote(adminUserId)} AND tenant_id=${quote(tenantId)} AND display_name IS NULL;`,
+    `UPDATE executions SET request_source='scheduler' WHERE tenant_id=${quote(tenantId)} AND request_source='schedule';`,
   ];
   for (const category of demoCategories) {
     repairs.push(

@@ -440,3 +440,17 @@ test("the approval refuses a preview of another workflow or an ineligible bounda
     }),
   ).toThrow();
 });
+
+test("scheduled demo runs carry the scheduler source, also after a repair of an older seed", async () => {
+  await context.pool.query(createCockpitDemoSeedSql(tenantId, adminId));
+  const [first] = demoAiRuns(new Date());
+  if (!first) throw new Error("missing demo run");
+  const runId = cockpitDemoId(tenantId, first.key);
+  await context.pool.query("UPDATE executions SET request_source='schedule' WHERE id=$1", [runId]);
+  await context.pool.query(createCockpitDemoSeedSql(tenantId, adminId));
+  const sources = await context.pool.query(
+    "SELECT DISTINCT request_source FROM executions WHERE tenant_id=$1 AND workflow_id=$2",
+    [tenantId, cockpitDemoId(tenantId, "workflow-ai")],
+  );
+  expect(sources.rows).toEqual([{ request_source: "scheduler" }]);
+}, 60_000);
