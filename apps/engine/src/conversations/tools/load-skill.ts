@@ -37,7 +37,6 @@ export const loadSkillTool: ConversationTool = {
     "Skills are stored per tenant — the same slug may resolve to different bodies across tenants.",
     "Loaded skills persist across turns of the same conversation; calling twice is a no-op.",
     "Available slugs include: subkit-concepts, workflow-authoring, http-connectors, postgres-connectors, graphql-connectors, s3-connectors, data-handling, rbac-and-scopes, self-healing, error-recovery.",
-    "workflow-authoring is the core recipe; its topic rules are separate workflow-authoring-* skills (structures, transforms, repair, automation, boundaries, schedules, output-format, product-callers, transactional-mail, loop-examples) that autoload on their tools, step kinds and diagnosis codes.",
   ],
   example_input: { slug: "workflow-authoring" },
   inputSchema: Input,

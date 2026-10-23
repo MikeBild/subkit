@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [scraping, browserless, headless-chrome, reliability]
-version: 2
+version: 1
 ---
 
 # Browser Page Scrape Quirks
@@ -163,5 +163,5 @@ ISO timestamps.
 ## See also
 
 - `browserless-basics` (template-skills) — endpoint reference, auth, unblock, proxy.
-- `workflow-authoring.md` — dry-runs; `workflow-authoring-repair.md` — the transform-requires-inspect gate.
+- `workflow-authoring.md` — dry-runs and the transform-requires-inspect gate.
 - `data-handling.md` — JS transform contract (one `input` global, explicit `return`).

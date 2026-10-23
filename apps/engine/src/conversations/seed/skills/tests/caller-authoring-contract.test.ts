@@ -13,12 +13,7 @@ import { autoloadForToolCall, autoloadForUserTurn } from "../../../skill-autoloa
 
 const skills = loadEmbeddedSkillSeeds();
 const knowledge = loadEmbeddedKnowledgeSeeds();
-const authoring = skills.skills
-  .filter((skill) => skill.slug.startsWith("workflow-authoring"))
-  .map((skill) => skill.body)
-  .join("\n");
-const productCallers =
-  skills.skills.find((skill) => skill.slug === "workflow-authoring-product-callers")?.body ?? "";
+const authoring = skills.skills.find((skill) => skill.slug === "workflow-authoring")?.body ?? "";
 const concepts = skills.skills.find((skill) => skill.slug === "subkit-concepts")?.body ?? "";
 const api = knowledge.knowledge.find((source) => source.slug === "sk-ref-rest-api")?.body ?? "";
 const immutable = loadAgentSkills(["placeholder-rules", "conversational-authoring"]);
@@ -140,9 +135,9 @@ describe("loaded caller authoring contract", () => {
   });
 
   test("the documented transform validates and evaluates genuine user, machine and portal caller values", async () => {
-    const section = productCallers
-      .split("## Product identity and sensitive execution")[1]
-      ?.split("\n## ")[0];
+    const section = authoring
+      .split("## Authenticated caller contract")[1]
+      ?.split("## Chat completion")[0];
     const example = section?.match(/```json\n([\s\S]*?)\n```/)?.[1];
     expect(example).toBeDefined();
     const step = JSON.parse(example ?? "null") as { expression: string };

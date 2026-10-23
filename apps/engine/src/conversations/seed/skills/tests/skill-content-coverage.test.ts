@@ -1,18 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const SKILLS = join(import.meta.dir, "..");
 
 function read(name: string): string {
   return readFileSync(join(SKILLS, name), "utf-8");
-}
-
-function readAuthoringFamily(): string {
-  return readdirSync(SKILLS)
-    .filter((file) => file.startsWith("workflow-authoring"))
-    .map((file) => read(file))
-    .join("\n");
 }
 
 describe("mcp-tool-contract.md · local approval boundary", () => {
@@ -69,8 +62,8 @@ describe("postgres-connectors.md · field coverage", () => {
   });
 });
 
-describe("workflow-authoring skills · field coverage", () => {
-  const body = readAuthoringFamily();
+describe("workflow-authoring.md · field coverage", () => {
+  const body = read("workflow-authoring.md");
   test("mentions probe_connector before author_workflow recipe", () => {
     expect(body).toMatch(/probe_connector.*author_workflow/s);
   });
@@ -257,7 +250,7 @@ test("s3-connectors names the issue codes its boundary resolves", () => {
 });
 
 test("workflow-authoring names the request boundary, its patch path and its limits", () => {
-  const body = read("workflow-authoring-boundaries.md");
+  const body = read("workflow-authoring.md");
   expect(body).toContain("## Bounded requests");
   expect(body).toContain('path: "/boundary"');
   expect(body).toContain("max_body_bytes");

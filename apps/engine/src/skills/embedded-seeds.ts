@@ -70,36 +70,6 @@ import whenSomethingIsStuck from "../conversations/seed/skills/when-something-is
 import workflowAuthoring from "../conversations/seed/skills/workflow-authoring.md" with {
   type: "text",
 };
-import workflowAuthoringAutomation from "../conversations/seed/skills/workflow-authoring-automation.md" with {
-  type: "text",
-};
-import workflowAuthoringBoundaries from "../conversations/seed/skills/workflow-authoring-boundaries.md" with {
-  type: "text",
-};
-import workflowAuthoringLoopExamples from "../conversations/seed/skills/workflow-authoring-loop-examples.md" with {
-  type: "text",
-};
-import workflowAuthoringOutputFormat from "../conversations/seed/skills/workflow-authoring-output-format.md" with {
-  type: "text",
-};
-import workflowAuthoringProductCallers from "../conversations/seed/skills/workflow-authoring-product-callers.md" with {
-  type: "text",
-};
-import workflowAuthoringRepair from "../conversations/seed/skills/workflow-authoring-repair.md" with {
-  type: "text",
-};
-import workflowAuthoringSchedules from "../conversations/seed/skills/workflow-authoring-schedules.md" with {
-  type: "text",
-};
-import workflowAuthoringStructures from "../conversations/seed/skills/workflow-authoring-structures.md" with {
-  type: "text",
-};
-import workflowAuthoringTransactionalMail from "../conversations/seed/skills/workflow-authoring-transactional-mail.md" with {
-  type: "text",
-};
-import workflowAuthoringTransforms from "../conversations/seed/skills/workflow-authoring-transforms.md" with {
-  type: "text",
-};
 import workflowFindRunCheck from "../conversations/seed/skills/workflow-find-run-check.md" with {
   type: "text",
 };
@@ -141,16 +111,6 @@ export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "troubleshooting-workflow-failures.md", content: troubleshootingWorkflowFailures },
   { file: "webhooks-and-triggers.md", content: webhooksAndTriggers },
   { file: "when-something-is-stuck.md", content: whenSomethingIsStuck },
-  { file: "workflow-authoring-automation.md", content: workflowAuthoringAutomation },
-  { file: "workflow-authoring-boundaries.md", content: workflowAuthoringBoundaries },
-  { file: "workflow-authoring-loop-examples.md", content: workflowAuthoringLoopExamples },
-  { file: "workflow-authoring-output-format.md", content: workflowAuthoringOutputFormat },
-  { file: "workflow-authoring-product-callers.md", content: workflowAuthoringProductCallers },
-  { file: "workflow-authoring-repair.md", content: workflowAuthoringRepair },
-  { file: "workflow-authoring-schedules.md", content: workflowAuthoringSchedules },
-  { file: "workflow-authoring-structures.md", content: workflowAuthoringStructures },
-  { file: "workflow-authoring-transactional-mail.md", content: workflowAuthoringTransactionalMail },
-  { file: "workflow-authoring-transforms.md", content: workflowAuthoringTransforms },
   { file: "workflow-authoring.md", content: workflowAuthoring },
   { file: "workflow-find-run-check.md", content: workflowFindRunCheck },
 ];
