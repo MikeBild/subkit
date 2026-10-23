@@ -1113,6 +1113,7 @@ export function UsagePage() {
           modelName={modelName(modelForPrice)}
           currentPrices={Array.isArray(priceSetting?.value) ? priceSetting.value : []}
           tenantId={session.tenant.id}
+          pricedBounds={bounds}
         />
       ) : null}
       {dialog?.kind === "export" ? (

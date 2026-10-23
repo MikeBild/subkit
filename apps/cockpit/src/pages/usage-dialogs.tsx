@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n-context";
 import {
   BUDGET_SETTING,
   llmStatsEndpoint,
+  STATUS_ENDPOINT,
   type StatsWindow,
   type WindowBounds,
 } from "@/pages/operations-figures";
@@ -17,10 +18,24 @@ import {
   type BudgetForecast,
   type BudgetSummary,
   budgetPercent,
+  budgetSummary,
+  unpricedModels,
   usageCsv,
 } from "@/pages/usage-model";
 
 export const PRICE_SETTING = "tokens.prices";
+
+const SETTLE_ATTEMPTS = 10;
+const SETTLE_DELAY_MS = 400;
+
+async function settle<T>(read: () => Promise<T | null>): Promise<T | null> {
+  for (let attempt = 0; attempt < SETTLE_ATTEMPTS; attempt += 1) {
+    const result = await read().catch(() => null);
+    if (result !== null) return result;
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_DELAY_MS));
+  }
+  return null;
+}
 
 function parseAmount(text: string): number | null {
   const normalized = text.trim().replace(/\s/g, "").replace(",", ".");
@@ -74,6 +89,12 @@ export function BudgetDialog({
   const save = useMutation({
     mutationFn: () => saveWorkspaceSetting(BUDGET_SETTING, tenantId, value ?? 0),
     onSuccess: async () => {
+      const expected = value && value > 0 ? value : null;
+      const applied = await settle(async () => {
+        const status = await apiRequest<unknown>(STATUS_ENDPOINT);
+        return budgetSummary(status).budgetTokens === expected ? status : null;
+      });
+      if (applied) client.setQueryData(["usage-status"], applied);
       await client.invalidateQueries({ queryKey: ["usage-status"] });
       toast.success(t("usage.budget.saved"));
       onOpenChange(false);
@@ -133,10 +154,12 @@ export function PriceDialog({
   modelName,
   currentPrices,
   tenantId,
+  pricedBounds,
 }: {
   open: boolean;
   onOpenChange(open: boolean): void;
   tenantId: string;
+  pricedBounds: WindowBounds;
   model: string;
   modelName: string;
   currentPrices: readonly unknown[];
@@ -159,6 +182,10 @@ export function PriceDialog({
       ]);
     },
     onSuccess: async () => {
+      await settle(async () => {
+        const window = await apiRequest<unknown>(llmStatsEndpoint(pricedBounds));
+        return unpricedModels(window).includes(model) ? null : window;
+      });
       await client.invalidateQueries({ queryKey: ["usage-llm"] });
       await client.invalidateQueries({ queryKey: ["usage-price-setting"] });
       toast.success(t("usage.price.saved"));
