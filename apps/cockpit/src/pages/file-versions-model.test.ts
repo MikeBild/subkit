@@ -4,6 +4,8 @@ import { translate } from "@/lib/i18n";
 import {
   type FileVersion,
   fileKindKey,
+  fileOtherLinkCard,
+  fileUploaderName,
   fileUsageLine,
   fileUsageParts,
   fileVersionContentPath,
@@ -102,5 +104,48 @@ describe("file usage summary", () => {
     expect(fileUsageParts(de, { workflows: 0, conversations: 0, other: 0 })).toBeNull();
     expect(fileUsageParts(de, { workflows: 0, conversations: 0 })).toBeNull();
     expect(fileUsageParts(de, undefined)).toBeNull();
+  });
+});
+
+describe("file usage names the other records", () => {
+  test("a linked record is named and linked; a vanished one is said to be gone", () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    expect(
+      fileOtherLinkCard({ resource_type: "knowledge_source", id, name: "Approval policy" }, de),
+    ).toEqual({
+      id: `knowledge_source-${id}`,
+      title: "Approval policy",
+      line: "Wissensquelle",
+      href: `/knowledge/${id}`,
+    });
+    expect(fileOtherLinkCard({ resource_type: "skill", id, name: "Rule" }, de).href).toBe(
+      `/skills/${id}`,
+    );
+    const gone = fileOtherLinkCard({ resource_type: "connector", id, name: null }, de);
+    expect(gone.title).toBe("Nicht mehr vorhanden");
+    expect(gone.href).toBeUndefined();
+    expect(
+      fileOtherLinkCard({ resource_type: "discovery_run", id, name: "Probe" }, de).href,
+    ).toBeUndefined();
+  });
+});
+
+describe("file uploader", () => {
+  const directory: ActorDirectory = new Map();
+  const creator = { kind: "system_account", id: "22222222-2222-4222-8222-222222222222" };
+
+  test("names the uploader and the API key it used, and only says Unbekannt without a creator", () => {
+    expect(fileUploaderName({ creator: null }, directory, de)).toBe("Unbekannt");
+    expect(fileUploaderName({ creator, creator_name: "Nightly import" }, directory, de)).toBe(
+      "Nightly import",
+    );
+    expect(
+      fileUploaderName(
+        { creator, creator_name: "Lena", creator_api_key_name: "CLI" },
+        directory,
+        de,
+      ),
+    ).toBe("Lena · API-Schlüssel CLI");
+    expect(fileUploaderName({ creator }, directory, de)).not.toBe("Unbekannt");
   });
 });

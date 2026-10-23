@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { Context } from "hono";
 import { DescriptionAcceptanceError, metadataChange } from "../../api/catalog-metadata.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
@@ -28,9 +28,13 @@ import {
 import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
 import type { Db } from "../../db/client.ts";
 import {
+  connectors,
   conversations,
+  executions,
   fileLinks,
   files,
+  knowledgeSources,
+  skills,
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
@@ -583,16 +587,93 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
       .where(and(eq(fileLinks.tenant_id, tenant_id), eq(fileLinks.file_id, row.id)));
     const seen = new Set<string>();
     const conversationsUsing: Array<{ id: string; title: string | null }> = [];
-    let other = 0;
+    const others: Array<{ resource_type: (typeof links)[number]["resource_type"]; id: string }> =
+      [];
     for (const link of links) {
       if (link.resource_type !== "conversation") {
-        other += 1;
+        others.push({ resource_type: link.resource_type, id: link.resource_id });
         continue;
       }
       if (seen.has(link.resource_id)) continue;
       seen.add(link.resource_id);
       conversationsUsing.push({ id: link.resource_id, title: link.title ?? null });
     }
-    return c.json({ workflows: usedBy, conversations: conversationsUsing, other }, 200);
+    const names = await linkedRecordNames(db, tenant_id, others);
+    const other_links = others
+      .map((link) => ({ ...link, name: names.get(`${link.resource_type}:${link.id}`) ?? null }))
+      .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "") || a.id.localeCompare(b.id));
+    return c.json(
+      { workflows: usedBy, conversations: conversationsUsing, other: others.length, other_links },
+      200,
+    );
   });
+}
+
+async function linkedRecordNames(
+  db: Db,
+  tenant_id: string,
+  links: readonly { resource_type: string; id: string }[],
+): Promise<Map<string, string>> {
+  const ids = (type: string) =>
+    links.filter((link) => link.resource_type === type).map((link) => link.id);
+  const names = new Map<string, string>();
+  const put = (type: string, rows: readonly { id: string; name: string | null }[]) => {
+    for (const row of rows) if (row.name) names.set(`${type}:${row.id}`, row.name);
+  };
+  const knowledge = ids("knowledge_source");
+  if (knowledge.length > 0)
+    put(
+      "knowledge_source",
+      await db
+        .select({ id: knowledgeSources.id, name: knowledgeSources.name })
+        .from(knowledgeSources)
+        .where(
+          and(
+            eq(knowledgeSources.tenant_id, tenant_id),
+            inArray(knowledgeSources.id, knowledge),
+            isNull(knowledgeSources.deleted_at),
+          ),
+        ),
+    );
+  const skillIds = ids("skill");
+  if (skillIds.length > 0)
+    put(
+      "skill",
+      await db
+        .select({ id: skills.id, name: skills.title })
+        .from(skills)
+        .where(and(eq(skills.tenant_id, tenant_id), inArray(skills.id, skillIds))),
+    );
+  const connectorIds = ids("connector");
+  if (connectorIds.length > 0)
+    put(
+      "connector",
+      await db
+        .select({ id: connectors.id, name: connectors.display_name })
+        .from(connectors)
+        .where(
+          and(
+            eq(connectors.tenant_id, tenant_id),
+            inArray(connectors.id, connectorIds),
+            isNull(connectors.deleted_at),
+          ),
+        ),
+    );
+  const runIds = ids("workflow_run");
+  if (runIds.length > 0)
+    put(
+      "workflow_run",
+      await db
+        .select({ id: executions.id, name: workflows.name })
+        .from(executions)
+        .innerJoin(
+          workflows,
+          and(
+            eq(workflows.tenant_id, executions.tenant_id),
+            eq(workflows.id, executions.workflow_id),
+          ),
+        )
+        .where(and(eq(executions.tenant_id, tenant_id), inArray(executions.id, runIds))),
+    );
+  return names;
 }

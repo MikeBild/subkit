@@ -8,6 +8,7 @@ import {
   conversations,
   executions,
   fileLinks,
+  knowledgeSources,
   roles,
   users,
   workflows,
@@ -241,13 +242,71 @@ describe("GET /v1/files/{id}/usage", () => {
       workflows: [{ id: workflow.id, name: "Uses file" }],
       conversations: [{ id: conversation.id, title: "Monatsbericht" }],
       other: 0,
+      other_links: [],
     });
+  });
+
+  test("names and counts the other records that link the file", async () => {
+    const file = await upload("linked content", "linked.md");
+    const [source] = await srv.db
+      .insert(knowledgeSources)
+      .values({
+        tenant_id: srv.tenantId,
+        name: "Approval policy",
+        slug: "approval-policy",
+        source_type: "markdown",
+        source_uri: "inline:approval-policy",
+        version: "1",
+      })
+      .returning();
+    if (!source) throw new Error("seed source");
+    const vanished = "33333333-3333-4333-8333-333333333333";
+    await srv.db.insert(fileLinks).values([
+      {
+        tenant_id: srv.tenantId,
+        file_id: parseFileIdOrThrow(file.id),
+        resource_type: "knowledge_source",
+        resource_id: source.id,
+        slug: "policy",
+      },
+      {
+        tenant_id: srv.tenantId,
+        file_id: parseFileIdOrThrow(file.id),
+        resource_type: "connector",
+        resource_id: vanished,
+        slug: "gone",
+      },
+    ]);
+    const response = await request("GET", `/v1/files/${file.id}/usage`, srv.apiKey);
+    const body = (await response.json()) as { other: number; other_links: unknown[] };
+    expect(body.other).toBe(2);
+    expect(body.other_links).toEqual([
+      { resource_type: "connector", id: vanished, name: null },
+      { resource_type: "knowledge_source", id: source.id, name: "Approval policy" },
+    ]);
+  });
+
+  test("names the uploader of a single file", async () => {
+    const file = await upload("named upload", "named.txt");
+    const response = await request("GET", `/v1/files/${file.id}`, srv.apiKey);
+    const body = (await response.json()) as {
+      creator: { kind: string } | null;
+      creator_name?: string | null;
+    };
+    expect(body.creator?.kind).toBe("user");
+    expect(typeof body.creator_name).toBe("string");
+    expect(body.creator_name?.length).toBeGreaterThan(0);
   });
 
   test("is empty for a file nobody uses", async () => {
     const file = await upload("lonely content", "lonely.txt");
     const response = await request("GET", `/v1/files/${file.id}/usage`, srv.apiKey);
-    expect(await response.json()).toEqual({ workflows: [], conversations: [], other: 0 });
+    expect(await response.json()).toEqual({
+      workflows: [],
+      conversations: [],
+      other: 0,
+      other_links: [],
+    });
   });
 
   test("needs file:read", async () => {

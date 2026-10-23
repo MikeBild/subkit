@@ -27257,6 +27257,10 @@ export interface components {
                 /** Format: uuid */
                 id: string;
             } | null;
+            /** @description Display name of the established creator: the person's name or e-mail, or the system account's name. Only on a single file; null when unknown. */
+            creator_name?: string | null;
+            /** @description Name of the API key the creator uploaded the file with, when the creation audit names one. Only on a single file. */
+            creator_api_key_name?: string | null;
             created_at: string;
             updated_at: string;
             replaced_at: string | null;
@@ -27398,6 +27402,13 @@ export interface components {
                 title: string | null;
             }[];
             other: number;
+            /** @description The non-conversation records that link this file, named where the record still exists; counted in `other`. */
+            other_links: {
+                resource_type: components["schemas"]["FileLinkResourceType"];
+                /** Format: uuid */
+                id: string;
+                name: string | null;
+            }[];
         };
         McpPromptsResponse: {
             items: components["schemas"]["McpPrompt"][];

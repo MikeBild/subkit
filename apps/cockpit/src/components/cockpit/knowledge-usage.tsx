@@ -8,7 +8,7 @@ export interface UsageCard {
   id: string;
   title: string;
   line?: ReactNode;
-  href: string;
+  href?: string;
   icon: ReactNode;
   aside?: ReactNode;
 }
@@ -19,6 +19,29 @@ export function UsageCards({ items, testId }: { items: readonly UsageCard[]; tes
   return (
     <ul className="grid gap-2 sm:grid-cols-2" data-slot="usage-cards" data-testid={testId}>
       {items.map((item) => {
+        const body = (
+          <>
+            <IconTile>{item.icon}</IconTile>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">{item.title}</span>
+              {item.line ? (
+                <span className="block text-xs text-muted-foreground">{item.line}</span>
+              ) : null}
+            </span>
+          </>
+        );
+        if (!item.href)
+          return (
+            <li key={item.id}>
+              <div
+                className="flex h-full items-start gap-3 rounded-lg border p-4"
+                data-testid={testId ? `${testId}-${item.id}` : undefined}
+              >
+                {body}
+                {item.aside ?? null}
+              </div>
+            </li>
+          );
         const href = absolute(item.href);
         return (
           <li key={item.id}>
@@ -32,13 +55,7 @@ export function UsageCards({ items, testId }: { items: readonly UsageCard[]; tes
               className="flex h-full items-start gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               data-testid={testId ? `${testId}-${item.id}` : undefined}
             >
-              <IconTile>{item.icon}</IconTile>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{item.title}</span>
-                {item.line ? (
-                  <span className="block text-xs text-muted-foreground">{item.line}</span>
-                ) : null}
-              </span>
+              {body}
               {item.aside ?? (
                 <ChevronRight
                   aria-hidden="true"

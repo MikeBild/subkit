@@ -24321,6 +24321,20 @@
             ],
             "description": "Creator kind established by a retained original creation audit event matching created_by. Null when unknown or ambiguous."
           },
+          "creator_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name of the established creator: the person's name or e-mail, or the system account's name. Only on a single file; null when unknown."
+          },
+          "creator_api_key_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name of the API key the creator uploaded the file with, when the creation audit names one. Only on a single file."
+          },
           "created_at": {
             "type": "string"
           },
@@ -24931,12 +24945,40 @@
           "other": {
             "type": "integer",
             "minimum": 0
+          },
+          "other_links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resource_type": {
+                  "$ref": "#/components/schemas/FileLinkResourceType"
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "resource_type",
+                "id",
+                "name"
+              ]
+            },
+            "description": "The non-conversation records that link this file, named where the record still exists; counted in `other`."
           }
         },
         "required": [
           "workflows",
           "conversations",
-          "other"
+          "other",
+          "other_links"
         ]
       },
       "McpPromptsResponse": {

@@ -56,6 +56,20 @@ export const FileSchema = z
       .describe(
         "Creator kind established by a retained original creation audit event matching created_by. Null when unknown or ambiguous.",
       ),
+    creator_name: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Display name of the established creator: the person's name or e-mail, or the system account's name. Only on a single file; null when unknown.",
+      ),
+    creator_api_key_name: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Name of the API key the creator uploaded the file with, when the creation audit names one. Only on a single file.",
+      ),
     created_at: z.string(),
     updated_at: z.string(),
     replaced_at: z.string().nullable(),
@@ -222,6 +236,17 @@ export const FileUsageSchema = z
     workflows: z.array(z.object({ id: z.string().uuid(), name: z.string() })),
     conversations: z.array(z.object({ id: z.string().uuid(), title: z.string().nullable() })),
     other: z.number().int().nonnegative(),
+    other_links: z
+      .array(
+        z.object({
+          resource_type: FileLinkResourceTypeSchema,
+          id: z.string().uuid(),
+          name: z.string().nullable(),
+        }),
+      )
+      .describe(
+        "The non-conversation records that link this file, named where the record still exists; counted in `other`.",
+      ),
   })
   .openapi("FileUsage");
 

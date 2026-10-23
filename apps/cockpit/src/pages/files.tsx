@@ -1,13 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { Download, FileText, ImageIcon, MessageSquare, Sheet, Workflow, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  BookOpen,
+  Cable,
+  Download,
+  FileText,
+  ImageIcon,
+  MessageSquare,
+  Play,
+  ScrollText,
+  Search,
+  Sheet,
+  Workflow,
+  X,
+} from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest, apiText, apiUpload } from "@/api/client";
 import type { components } from "@/api/schema";
 import { tenantContentHref } from "@/api/tenant-context";
 import { useActorDirectory } from "@/app/actor-directory";
-import { actorDirectoryName } from "@/app/actor-directory-model";
 import { cockpitApiHref } from "@/app/installation-context";
 import { exportInstallationFile } from "@/app/installation-export";
 import { useInstallation } from "@/app/installation-provider";
@@ -61,6 +73,8 @@ import { useSearchParamState } from "@/lib/use-search-param-state";
 import { cn } from "@/lib/utils";
 import {
   fileKindKey,
+  fileOtherLinkCard,
+  fileUploaderName,
   fileUsageLine,
   fileUsageParts,
   hasEarlierVersions,
@@ -71,6 +85,15 @@ type StoredFile = components["schemas"]["File"] & {
 };
 type ListedFile = components["schemas"]["FileListItem"];
 type FileUsage = components["schemas"]["FileUsage"];
+
+const OTHER_LINK_ICONS: Record<FileUsage["other_links"][number]["resource_type"], ReactNode> = {
+  conversation: <MessageSquare />,
+  knowledge_source: <BookOpen />,
+  skill: <ScrollText />,
+  connector: <Cable />,
+  workflow_run: <Play />,
+  discovery_run: <Search />,
+};
 
 export const UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -764,10 +787,7 @@ export function FilePage() {
       testId="file-page-error"
     />
   ) : null;
-  const uploader = file?.creator
-    ? (actorDirectoryName(directory, file.creator.kind, file.creator.id) ??
-      t("runs.caller.unknown"))
-    : t("runs.caller.unknown");
+  const uploader = file ? fileUploaderName(file, directory, t) : t("runs.caller.unknown");
   const kindLabel = file ? fileKindLabel(t, file) : "";
   const size = file ? sizeText(file.size_bytes, LOCALE_TAGS[locale]) : "";
   const usedLine = usage
@@ -791,6 +811,10 @@ export function FilePage() {
       line: t("files.usage.conversationLine"),
       href: conversationHref(conversation.id),
       icon: <MessageSquare />,
+    })),
+    ...(usage?.other_links ?? []).map((link) => ({
+      ...fileOtherLinkCard(link, t),
+      icon: OTHER_LINK_ICONS[link.resource_type],
     })),
   ];
 
@@ -892,7 +916,7 @@ export function FilePage() {
                 {
                   value: "usage",
                   label: t("files.tab.usage"),
-                  count: usageCards.length + (usage?.other ?? 0) || undefined,
+                  count: usageCards.length || undefined,
                   loading: usageQuery.isPending,
                   testId: "file-tab-usage",
                   content: (

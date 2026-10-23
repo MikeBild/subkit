@@ -36,6 +36,7 @@ import {
   FileFinalizedMetadataSchema,
   FileScanCompletedMetadataSchema,
   FileUploadReceivedMetadataSchema,
+  fileCreatorNames,
   readRequestSource,
   recordedFileCreators,
 } from "../../audit/index.ts";
@@ -1024,7 +1025,17 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json({ code: "not_found", message: "file not found" }, 404);
     }
     const creators = await recordedFileCreators(db, principal.tenant_id, [row]);
-    return c.json({ ...toFileWire(row), creator: creators.get(row.id) ?? null }, 200);
+    const creator = creators.get(row.id) ?? null;
+    const names = await fileCreatorNames(db, principal.tenant_id, row.id, creator);
+    return c.json(
+      {
+        ...toFileWire(row),
+        creator,
+        creator_name: names.name,
+        creator_api_key_name: names.api_key_name,
+      },
+      200,
+    );
   });
 
   const contentRoute = createRoute({
