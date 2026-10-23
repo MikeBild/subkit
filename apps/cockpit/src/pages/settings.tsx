@@ -34,9 +34,12 @@ import { AreaList } from "@/pages/settings-area-list";
 import {
   areaSentences,
   areaStatus,
+  pageScope,
+  type ScopedArea,
   SETTING_AREA_IDS,
   type SettingAreaId,
   type SettingsLevel,
+  scopedAreaOf,
   settingAreaOf,
   settingsGuidedErrors,
   settingsLevelFromUrl,
@@ -48,17 +51,17 @@ import {
   modelCatalogQueryKey,
 } from "@/pages/settings-catalog";
 import { CostsArea } from "@/pages/settings-costs";
+import { useSettingsDrafts } from "@/pages/settings-drafts";
 import type { GuidedContext } from "@/pages/settings-guided";
 import {
-  changedSettingItems,
-  pendingSettingDrafts,
-  type SettingDraft,
+  changedSettings,
+  NO_SETTING_DRAFTS,
+  nextSettingsSave,
   type SettingDraftScope,
   type SettingItem,
   type SettingsFilter,
   type SettingsResponse,
   settingDraftError,
-  settingDraftScope,
   settingIsChanged,
   settingLeafTarget,
   settingNavigation,
@@ -87,13 +90,29 @@ import {
   SettingsSectionNav,
   SettingsSummary,
 } from "@/pages/settings-rows";
-import { applySettingsPatches } from "@/pages/settings-save";
+import { applySettingsPatch } from "@/pages/settings-save";
 import { type BudgetSummary, budgetSummary } from "@/pages/usage-model";
 import { BrandingSettings } from "./branding";
 
 export * from "@/pages/settings-rows";
 
 const SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000";
+
+export function rememberHostedModels(
+  current: readonly unknown[],
+  seen: readonly unknown[],
+): readonly unknown[] {
+  const modelOf = (entry: unknown) =>
+    entry && typeof entry === "object" && typeof (entry as { model?: unknown }).model === "string"
+      ? (entry as { model: string }).model
+      : null;
+  const known = new Set(current.map(modelOf));
+  const added = seen.filter((entry) => {
+    const model = modelOf(entry);
+    return model !== null && !known.has(model);
+  });
+  return added.length > 0 ? [...current, ...added] : current;
+}
 const SETTINGS_QUERY_KEY = ["admin", "settings"] as const;
 
 export function SettingsPage() {
@@ -172,13 +191,18 @@ function SettingsWorkspace() {
   const canReadEngine = session.permissions.includes("settings:read:global");
   const tenantId = session.tenant.id;
   const scopeAvailable = canWrite && canReadEngine && tenantId !== SYSTEM_TENANT_ID;
-  const [scope, setScope] = useState<SettingDraftScope>("global");
-  const [drafts, setDrafts] = useState<Record<string, SettingDraft>>({});
+  const [areaScopes, setAreaScopes] = useState<Record<ScopedArea, SettingDraftScope>>({
+    ai: "global",
+    costs: "global",
+  });
+  const scopedArea = scopedAreaOf(level);
+  const scope: SettingDraftScope = pageScope(level, scopeAvailable, areaScopes);
   const [conflict, setConflict] = useState(false);
   const [failed, setFailed] = useState(false);
   const [restartOpen, setRestartOpen] = useState(false);
   const [restartNowOpen, setRestartNowOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
+  const [rememberedHostedModels, setRememberedHostedModels] = useState<readonly unknown[]>([]);
   const restartNow = useRestartOffer();
   const live = useLiveQueryOptions();
   const query = useQuery({
@@ -190,10 +214,10 @@ function SettingsWorkspace() {
     queryKey: [...SETTINGS_QUERY_KEY, "tenant", tenantId],
     queryFn: () =>
       apiRequest<SettingsResponse>(`/v1/settings?tenant=${encodeURIComponent(tenantId)}`),
-    enabled: canReadEngine,
+    enabled: scopeAvailable,
     ...live,
   });
-  const catalogTenant = canReadEngine && scope === "tenant" ? tenantId : null;
+  const catalogTenant = scope === "tenant" ? tenantId : null;
   const catalog = useQuery({
     queryKey: modelCatalogQueryKey(catalogTenant),
     queryFn: () => apiRequest<ModelCatalog>(modelCatalogEndpoint(catalogTenant)),
@@ -206,65 +230,74 @@ function SettingsWorkspace() {
   });
   const usage: BudgetSummary | null = status.data ? budgetSummary(status.data) : null;
   const globalItems = query.data?.items ?? [];
-  const tenantItems = canReadEngine ? (tenantQuery.data?.items ?? null) : null;
+  const tenantItems = scopeAvailable ? (tenantQuery.data?.items ?? null) : null;
   const viewItems = scope === "tenant" && tenantItems ? tenantItems : globalItems;
-  const pendingDrafts = useMemo(
-    () => pendingSettingDrafts(globalItems, drafts),
-    [globalItems, drafts],
-  );
-  const changedItems = useMemo(
-    () => changedSettingItems(globalItems, pendingDrafts),
-    [globalItems, pendingDrafts],
-  );
-  const invalidPaths = useMemo(
+  const draftState = useSettingsDrafts(globalItems);
+  const { pending } = draftState;
+  const changed = useMemo(() => changedSettings(globalItems, pending), [globalItems, pending]);
+  const savingScope: SettingDraftScope = changed.some((entry) => entry.scope === "global")
+    ? "global"
+    : "tenant";
+  const savingNow = changed.filter((entry) => entry.scope === savingScope);
+  const mixed = savingNow.length > 0 && savingNow.length < changed.length;
+  const invalidCount = useMemo(
     () =>
       new Set([
-        ...changedItems
-          .filter((item) => settingDraftError(item, pendingDrafts[item.path]?.text))
-          .map((item) => item.path),
-        ...settingsGuidedErrors(viewItems, pendingDrafts),
-      ]),
-    [changedItems, pendingDrafts, viewItems],
+        ...changed
+          .filter((entry) => settingDraftError(entry.item, entry.text))
+          .map((entry) => `${entry.scope}:${entry.item.path}`),
+        ...settingsGuidedErrors(globalItems, pending.global).map((path) => `global:${path}`),
+        ...settingsGuidedErrors(tenantItems ?? globalItems, pending.tenant).map(
+          (path) => `tenant:${path}`,
+        ),
+      ]).size,
+    [changed, globalItems, tenantItems, pending],
   );
   const attention = settingsAttention(query.data);
-  const restartItems = changedItems.filter((item) => item.meta.requiresRestart);
+  const restartItems = savingNow.filter((entry) => entry.item.meta.requiresRestart);
   const saveOffer = restartOfferAfterSave(
     restartNow.offer,
-    drafts["server.restart_supervised"]?.text,
+    draftState.drafts.global["server.restart_supervised"],
   );
   const publicBaseUrl =
-    drafts["server.public_base_url"]?.text ??
+    draftState.drafts.global["server.public_base_url"] ??
     (stringItem(globalItems, "server.public_base_url") || (globalThis.location?.origin ?? ""));
-  useDirtyGuard(changedItems.length > 0);
+  useDirtyGuard(changed.length > 0);
+  useEffect(() => {
+    const value = globalItems.find((item) => item.path === "llm.hosted.models")?.value;
+    if (!Array.isArray(value) || value.length === 0) return;
+    setRememberedHostedModels((current) => rememberHostedModels(current, value));
+  }, [globalItems]);
 
   const save = useMutation({
     mutationFn: async () => {
       if (!query.data) throw new Error("settings are not loaded");
       const patchTenant = scopeAvailable ? tenantId : null;
-      const secretReferences: Record<string, string> = {};
-      for (const item of changedItems.filter((candidate) => candidate.meta.sensitive)) {
-        const draft = pendingDrafts[item.path];
-        if (!draft) continue;
-        const target =
-          patchTenant && settingDraftScope(item, draft.scope) === "tenant" ? patchTenant : null;
+      const references: Record<SettingDraftScope, Record<string, string>> = {
+        global: {},
+        tenant: {},
+      };
+      for (const entry of savingNow.filter((candidate) => candidate.item.meta.sensitive)) {
+        const target = entry.scope === "tenant" ? patchTenant : null;
         const created = await apiRequest<{ reference: string }>(
-          `/v1/secrets/${encodeURIComponent(settingSecretName(item.path, target))}/versions`,
-          { method: "POST", body: JSON.stringify({ value: draft.text }) },
+          `/v1/secrets/${encodeURIComponent(settingSecretName(entry.item.path, target))}/versions`,
+          { method: "POST", body: JSON.stringify({ value: entry.text }) },
         );
-        secretReferences[item.path] = created.reference;
+        references[entry.scope][entry.item.path] = created.reference;
       }
-      await applySettingsPatches(
-        settingsPatches(query.data, pendingDrafts, secretReferences, patchTenant),
-      );
+      const scoped = { ...NO_SETTING_DRAFTS, [savingScope]: pending[savingScope] };
+      const next = nextSettingsSave(settingsPatches(query.data, scoped, references, patchTenant));
+      if (next) await applySettingsPatch(next.patch);
+      return savingScope;
     },
-    onSuccess: async () => {
-      setDrafts({});
-      setFormKey((key) => key + 1);
+    onSuccess: async (saved) => {
+      draftState.clear(saved);
       setConflict(false);
       setFailed(false);
       setRestartOpen(false);
       await client.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
       await client.invalidateQueries({ queryKey: RESTART_STATUS_QUERY_KEY });
+      setFormKey((key) => key + 1);
       toast.success(t("settings.saved"));
     },
     onError: (error) => {
@@ -282,20 +315,9 @@ function SettingsWorkspace() {
     router.history.push(absolute(href));
   }
 
-  function setDraft(path: string, text: string, requested: SettingDraftScope = scope) {
-    const item = globalItems.find((candidate) => candidate.path === path);
+  function setDraft(path: string, text: string, requested: SettingDraftScope) {
     setFailed(false);
-    setDrafts((current) => ({
-      ...current,
-      [path]: { text, scope: item ? settingDraftScope(item, requested) : "global" },
-    }));
-  }
-
-  function dropDraft(path: string) {
-    setDrafts((current) => {
-      const { [path]: _dropped, ...rest } = current;
-      return rest;
-    });
+    draftState.setDraft(path, text, requested);
   }
 
   function reload() {
@@ -308,24 +330,26 @@ function SettingsWorkspace() {
     items: viewItems,
     globalItems,
     tenantItems,
-    drafts: pendingDrafts,
+    drafts: draftState.texts(viewItems, scope),
     canWrite,
     pending: save.isPending,
     scope,
-    scopeAvailable,
+    scopeAvailable: scopeAvailable && scopedArea !== null,
     catalog: catalog.data,
     usage,
     publicBaseUrl,
-    setDraft,
-    dropDraft,
-    onScope: setScope,
-    expertHref: (area) => settingsHref(null, { area }),
+    rememberedHostedModels,
+    setDraft: (path, text) => setDraft(path, text, scope),
+    dropDraft: (path) => draftState.dropDraft(path, scope),
+    onScope: (next) => {
+      if (scopedArea) setAreaScopes((current) => ({ ...current, [scopedArea]: next }));
+    },
     navigate,
   };
 
   const pendingRestart = query.data?.pending_restart_fields ?? [];
   const facts = {
-    items: viewItems,
+    items: globalItems,
     pendingRestart,
     budgetConsumedShare: usage?.consumedShare ?? null,
   };
@@ -358,7 +382,7 @@ function SettingsWorkspace() {
             key={searchStr}
             data={query.data}
             items={globalItems}
-            drafts={pendingDrafts}
+            drafts={draftState.drafts.global}
             canWrite={canWrite}
             pending={save.isPending}
             publicBaseUrl={publicBaseUrl}
@@ -369,7 +393,7 @@ function SettingsWorkspace() {
               />
             }
             onDraft={(path, text) => setDraft(path, text, "global")}
-            onDrop={dropDraft}
+            onDrop={(path) => draftState.dropDraft(path, "global")}
           />
         ) : (
           <>
@@ -401,7 +425,7 @@ function SettingsWorkspace() {
             ) : (
               <SettingsAreaFrame
                 area={level.area}
-                drafted={new Set(Object.keys(pendingDrafts).map(settingAreaOf))}
+                drafted={new Set(changed.map((entry) => settingAreaOf(entry.item.path)))}
                 attention={
                   new Set(
                     SETTING_AREA_IDS.filter((area) => {
@@ -418,16 +442,17 @@ function SettingsWorkspace() {
           </>
         )}
       </div>
-      {canWrite && (changedItems.length > 0 || conflict) ? (
+      {canWrite && (changed.length > 0 || conflict) ? (
         <SettingsSaveBar
-          count={changedItems.length}
+          count={changed.length}
           conflict={conflict}
           failed={failed}
           pending={save.isPending}
-          invalid={invalidPaths.size > 0}
-          invalidCount={invalidPaths.size}
+          invalid={invalidCount > 0}
+          invalidCount={invalidCount}
+          firstOf={mixed ? savingNow.length : undefined}
           onDiscard={() => {
-            setDrafts({});
+            draftState.clear();
             setFormKey((key) => key + 1);
             setConflict(false);
             setFailed(false);
@@ -492,6 +517,7 @@ export function overviewCards({
       budgetText: tokens,
       spentText: usage && usage.usedTokens !== null ? tokens(usage.usedTokens) : null,
       resetDate: nextMonthStart(locale),
+      apiKeyName: t("settings.overview.access.apiKey"),
     });
     return {
       id,
@@ -563,7 +589,7 @@ function AllSettings({
 }: {
   data: SettingsResponse | undefined;
   items: readonly SettingItem[];
-  drafts: Readonly<Record<string, SettingDraft>>;
+  drafts: Readonly<Record<string, string>>;
   canWrite: boolean;
   pending: boolean;
   publicBaseUrl: string;
@@ -666,7 +692,7 @@ function AllSettings({
         item={item}
         index={allItems.indexOf(item)}
         items={allItems}
-        draft={drafts[item.path]?.text}
+        draft={drafts[item.path]}
         highlighted={highlighted === item.path}
         disabled={!canWrite || pending}
         canCopyKey={canWrite}

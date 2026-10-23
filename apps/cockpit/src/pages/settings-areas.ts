@@ -77,6 +77,24 @@ export function settingsLevelFromUrl(search: string): SettingsLevel {
   return { kind: "overview" };
 }
 
+export const SCOPED_AREAS = ["ai", "costs"] as const;
+export type ScopedArea = (typeof SCOPED_AREAS)[number];
+
+export function scopedAreaOf(level: SettingsLevel): ScopedArea | null {
+  return level.kind === "area" && (SCOPED_AREAS as readonly string[]).includes(level.area)
+    ? (level.area as ScopedArea)
+    : null;
+}
+
+export function pageScope(
+  level: SettingsLevel,
+  scopeAvailable: boolean,
+  chosen: Readonly<Record<ScopedArea, "global" | "tenant">>,
+): "global" | "tenant" {
+  const area = scopedAreaOf(level);
+  return scopeAvailable && area ? chosen[area] : "global";
+}
+
 export type AreaStatus = "configured" | "waiting" | "restart" | "limit";
 
 export interface AreaFacts {
@@ -106,8 +124,8 @@ export function providerKeyState(
   const key = items.find((item) => item.path === providerKeyPath(provider));
   if (!key) return "none";
   if (settingSecretStored(key)) return "stored";
-  const legacy = primary ? items.find((item) => item.path === "llm.api_key") : undefined;
-  return legacy && settingSecretStored(legacy) ? "stored" : "missing";
+  const generalKey = primary ? items.find((item) => item.path === "llm.api_key") : undefined;
+  return generalKey && settingSecretStored(generalKey) ? "stored" : "missing";
 }
 
 export function areaRestartFields(area: SettingAreaId, pending: readonly string[]): string[] {
@@ -144,6 +162,7 @@ export interface AreaSentenceFacts extends AreaFacts {
   budgetText(tokens: number): string;
   spentText: string | null;
   resetDate: string;
+  apiKeyName: string;
 }
 
 const CHAT_PLATFORMS: readonly { id: string; secret: string; name: string }[] = [
@@ -163,16 +182,17 @@ export function ownObjectStore(items: readonly SettingItem[]): boolean {
   return stringValue(items, "storage.object_store.bucket").length > 0;
 }
 
-function authMethodNames(items: readonly SettingItem[]): string[] {
+export function authMethodNames(items: readonly SettingItem[], apiKeyName: string): string[] {
   const providers = itemValue(items, "auth.providers");
   if (!Array.isArray(providers)) return [];
-  return providers
-    .map((provider) =>
-      provider && typeof provider === "object" && typeof provider.label === "string"
-        ? provider.label
-        : "",
-    )
+  const names = providers
+    .map((provider) => {
+      if (!provider || typeof provider !== "object") return "";
+      if (provider.protocol === "api_key") return apiKeyName;
+      return typeof provider.label === "string" ? provider.label : "";
+    })
     .filter((label) => label.length > 0);
+  return [...new Set(names)];
 }
 
 export function areaSentences(area: SettingAreaId, facts: AreaSentenceFacts): AreaSentence[] {
@@ -215,7 +235,7 @@ export function areaSentences(area: SettingAreaId, facts: AreaSentenceFacts): Ar
     ];
   }
   if (area === "access") {
-    const methods = authMethodNames(items);
+    const methods = authMethodNames(items, facts.apiKeyName);
     return [
       methods.length > 0
         ? { key: "settings.overview.access.methods", values: { methods: methods.join(", ") } }
@@ -269,15 +289,16 @@ export function areaSentences(area: SettingAreaId, facts: AreaSentenceFacts): Ar
   ];
 }
 
-const MICROUNITS = /^(0|[1-9]\d{0,17})$/;
+const MICROUNITS = /^[1-9]\d{0,17}$/;
 const WHOLE_TOKENS = /^\d+$/;
 
 export function settingsGuidedErrors(
   items: readonly SettingItem[],
-  drafts: Readonly<Record<string, { text: string }>>,
+  drafts: Readonly<Record<string, string>>,
 ): string[] {
-  const effective = (path: string) => drafts[path]?.text ?? stringValue(items, path);
-  return Object.entries(drafts).flatMap(([path, draft]) => {
+  const effective = (path: string) => drafts[path] ?? stringValue(items, path);
+  return Object.entries(drafts).flatMap(([path, text]) => {
+    const draft = { text };
     if (path.startsWith(HOSTED_LLM_PREFIX) && path.endsWith("_microunits"))
       return MICROUNITS.test(draft.text) ? [] : [path];
     if (path === "tokens.monthly_budget") return WHOLE_TOKENS.test(draft.text.trim()) ? [] : [path];

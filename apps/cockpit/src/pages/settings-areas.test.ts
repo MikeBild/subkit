@@ -103,7 +103,7 @@ describe("settings areas", () => {
 
 describe("guided drafts the save bar has to refuse", () => {
   const items = [item("llm.provider", "openai")];
-  const draft = (text: string) => ({ text });
+  const draft = (text: string) => text;
   test("hosted amounts are microunit strings, budgets whole numbers, the replacement differs", async () => {
     const { settingsGuidedErrors } = await import("@/pages/settings-areas");
     expect(
@@ -124,5 +124,39 @@ describe("guided drafts the save bar has to refuse", () => {
         "tokens.monthly_budget": draft("1000000"),
       }),
     ).toEqual([]);
+  });
+});
+
+describe("hosted amounts and sign-in names", () => {
+  test("a hosted budget of 0 is refused, because it blocks every paid call", async () => {
+    const { settingsGuidedErrors } = await import("@/pages/settings-areas");
+    expect(
+      settingsGuidedErrors([], {
+        "llm.hosted.global_monthly_microunits": "0",
+        "llm.hosted.tenant_monthly_microunits": "1",
+      }),
+    ).toEqual(["llm.hosted.global_monthly_microunits"]);
+  });
+
+  test("the overview names the API-key sign-in in the reader's words, not its stored label", async () => {
+    const { authMethodNames } = await import("@/pages/settings-areas");
+    const providers = item("auth.providers", [
+      { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+      { protocol: "oidc", id: "google", label: "Google" },
+    ]);
+    expect(authMethodNames([providers], "API-Schlüssel")).toEqual(["API-Schlüssel", "Google"]);
+  });
+});
+
+describe("the workspace scope", () => {
+  test("belongs to the page that offers it and is global everywhere else", async () => {
+    const { pageScope } = await import("@/pages/settings-areas");
+    const chosen = { ai: "tenant", costs: "global" } as const;
+    expect(pageScope({ kind: "area", area: "ai" }, true, chosen)).toBe("tenant");
+    expect(pageScope({ kind: "area", area: "costs" }, true, chosen)).toBe("global");
+    for (const area of ["access", "connections", "notifications", "operations"] as const)
+      expect(pageScope({ kind: "area", area }, true, chosen)).toBe("global");
+    expect(pageScope({ kind: "overview" }, true, chosen)).toBe("global");
+    expect(pageScope({ kind: "area", area: "ai" }, false, chosen)).toBe("global");
   });
 });

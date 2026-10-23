@@ -301,6 +301,18 @@ function ModelPriceLine({ ctx, provider }: { ctx: GuidedContext; provider: strin
   );
 }
 
+export function fallbackChange(previous: string, next: string): Array<[string, string]> {
+  if (previous === next) return [];
+  return [
+    ["llm.fallback_provider", next],
+    ["llm.fallback_model", ""],
+  ];
+}
+
+function applyDrafts(ctx: GuidedContext, changes: ReadonlyArray<[string, string]>) {
+  for (const [path, text] of changes) ctx.setDraft(path, text);
+}
+
 function FallbackQuestion({ ctx, provider }: { ctx: GuidedContext; provider: string }) {
   const { t } = useI18n();
   const item = guidedItem(ctx, "llm.fallback_provider");
@@ -331,9 +343,12 @@ function FallbackQuestion({ ctx, provider }: { ctx: GuidedContext; provider: str
           checked={fallback !== ""}
           disabled={disabled}
           onCheckedChange={(checked) =>
-            ctx.setDraft(
-              "llm.fallback_provider",
-              checked ? (options.find((option) => option !== provider) ?? "") : "",
+            applyDrafts(
+              ctx,
+              fallbackChange(
+                fallback,
+                checked ? (options.find((option) => option !== provider) ?? "") : "",
+              ),
             )
           }
           data-testid="settings-ai-fallback-toggle"
@@ -346,7 +361,7 @@ function FallbackQuestion({ ctx, provider }: { ctx: GuidedContext; provider: str
             <Select
               value={fallback}
               disabled={disabled}
-              onValueChange={(next) => ctx.setDraft("llm.fallback_provider", next)}
+              onValueChange={(next) => applyDrafts(ctx, fallbackChange(fallback, next))}
             >
               <SelectTrigger
                 className="w-full"
@@ -421,9 +436,9 @@ function KeyRow({
         {t("settings.ai.key.elsewhere")}
       </p>
     );
-  const legacy = primary ? guidedItem(ctx, "llm.api_key") : undefined;
-  const covered = !settingSecretStored(item) && legacy && settingSecretStored(legacy);
-  const draft = ctx.drafts[path]?.text;
+  const generalKey = primary ? guidedItem(ctx, "llm.api_key") : undefined;
+  const covered = !settingSecretStored(item) && generalKey && settingSecretStored(generalKey);
+  const draft = ctx.drafts[path];
   const page = PROVIDER_KEY_PAGES[provider];
   return (
     <div className="grid gap-1.5" data-testid={`settings-ai-key-${provider}`}>

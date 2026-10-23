@@ -30,11 +30,12 @@ import { AiArea } from "@/pages/settings-ai";
 import { CostsArea } from "@/pages/settings-costs";
 import type { GuidedContext } from "@/pages/settings-guided";
 import {
-  changedSettingItems,
+  changedSettings,
   pendingSettingDrafts,
   SETTING_GROUPS,
   type SettingItem,
   settingAppliesToShown,
+  settingDraftTexts,
   settingNavigation,
   settingsPatches,
 } from "@/pages/settings-model";
@@ -516,7 +517,7 @@ describe("the page's frame", () => {
   test("the page saves once, with PATCH, and no longer per field", () => {
     const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
     const save = readFileSync(resolve(import.meta.dir, "settings-save.ts"), "utf8");
-    expect(source).toContain("applySettingsPatches(");
+    expect(source).toContain("applySettingsPatch(");
     expect(save).toContain('method: "PATCH"');
     expect(source).not.toMatch(/method: "PUT"|saveWorkspaceSetting/);
     expect(source).not.toMatch(/method: "PUT"/);
@@ -679,7 +680,7 @@ describe("the guided settings pages", () => {
     setDraft() {},
     dropDraft() {},
     onScope() {},
-    expertHref: () => "/settings",
+    rememberedHostedModels: [],
     navigate() {},
     ...overrides,
   });
@@ -736,35 +737,44 @@ describe("the guided settings pages", () => {
     expect(html).not.toContain('data-testid="settings-scope-toggle"');
   });
 
-  test("a guided draft and a full-list draft count in the same save bar, saved once", () => {
+  test("a guided draft and a full-list draft count in the same save bar, one scope per save", () => {
     const drafts = {
-      "llm.model": { text: "gpt-4o", scope: "tenant" as const },
-      "log.level": { text: "debug", scope: "global" as const },
-      "llm.api_key": { text: "", scope: "global" as const },
+      global: { "log.level": "debug", "llm.api_key": "" },
+      tenant: { "llm.model": "gpt-4o" },
     };
     const pending = pendingSettingDrafts(items, drafts);
-    const changed = changedSettingItems(items, pending);
-    expect(changed.map((item) => item.path)).toEqual(["llm.model", "log.level"]);
+    const changed = changedSettings(items, pending);
+    expect(changed.map((entry) => `${entry.scope}:${entry.item.path}`)).toEqual([
+      "global:log.level",
+      "tenant:llm.model",
+    ]);
     expect(
-      settingsPatches({ saved_revision: 4, items }, pending, {}, tenant).map(
-        (patch) => patch.scope,
-      ),
+      settingsPatches(
+        { saved_revision: 4, items },
+        pending,
+        { global: {}, tenant: {} },
+        tenant,
+      ).map((patch) => patch.scope),
     ).toEqual(["global", "tenant"]);
     const html = render(
       <>
-        <AiArea ctx={ctx({ drafts: pending })} />
+        <AiArea ctx={ctx({ drafts: settingDraftTexts(drafts, items, "global") })} />
         <SettingsSaveBar
           count={changed.length}
           conflict={false}
           pending={false}
           invalid={false}
+          firstOf={1}
           onDiscard={() => {}}
           onReload={() => {}}
           onSave={() => {}}
         />
       </>,
     );
-    expect(html).toContain("2 ungespeicherte Änderungen");
+    expect(html).toContain(
+      "Zuerst wird 1 Änderung für alle Arbeitsbereiche gespeichert, die für diesen Arbeitsbereich danach in einem zweiten Schritt.",
+    );
+    expect(html).toContain(">Erst diese Änderungen speichern<");
     expect(filled(html)).toBe(1);
   });
 
@@ -790,6 +800,13 @@ describe("the guided settings pages", () => {
   test("drafts from the full list are always for all workspaces", () => {
     const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
     expect(source).toContain('onDraft={(path, text) => setDraft(path, text, "global")}');
+    expect(source).toContain("drafts={draftState.drafts.global}");
+  });
+
+  test("rows read the drafts as typed, so an opened key field stays open", () => {
+    const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
+    expect(source).toContain("drafts: draftState.texts(viewItems, scope)");
+    expect(source).not.toMatch(/drafts: (pending|pendingDrafts)\b/);
   });
 
   test("the costs page offers token presets with no limit as its own option", () => {

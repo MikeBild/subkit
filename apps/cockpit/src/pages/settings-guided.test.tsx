@@ -1,0 +1,172 @@
+import { describe, expect, test } from "bun:test";
+import { render } from "@/components/cockpit/patterns/test-utils";
+import { rememberHostedModels } from "@/pages/settings";
+import { fallbackChange } from "@/pages/settings-ai";
+import {
+  CostsArea,
+  type HostedModelEntry,
+  hostedAllowlistDraft,
+  hostedDraftText,
+  hostedFieldText,
+  hostedModelChips,
+} from "@/pages/settings-costs";
+import { type GuidedContext, GuidedRows } from "@/pages/settings-guided";
+import type { SettingItem } from "@/pages/settings-model";
+
+function leaf(
+  path: string,
+  value: unknown,
+  meta: Partial<SettingItem["meta"]> & { kind: string },
+): SettingItem {
+  return {
+    path,
+    value,
+    meta: { source: "default", scope: "tenant", sensitive: false, requiresRestart: false, ...meta },
+  };
+}
+
+const hosted = (model: string): HostedModelEntry => ({
+  model,
+  max_context_tokens: 200000,
+  max_output_tokens: 8000,
+  input_usd_per_million_tokens: "1",
+  output_usd_per_million_tokens: "5",
+  cache_read_usd_per_million_tokens: "0.1",
+  cache_write_5m_usd_per_million_tokens: "1.25",
+  cache_write_1h_usd_per_million_tokens: "2",
+});
+
+const items: SettingItem[] = [
+  leaf("llm.provider", "openai", { kind: "enum", enum_values: ["mock", "openai", "anthropic"] }),
+  leaf("llm.hosted.enabled", true, { kind: "boolean", scope: "global" }),
+  leaf("llm.hosted.tenant_monthly_microunits", "5000000", { kind: "string", scope: "global" }),
+  leaf("llm.hosted.global_monthly_microunits", "50000000", { kind: "string", scope: "global" }),
+  leaf("llm.hosted.models", [hosted("openai:gpt-4.1-mini")], { kind: "json", scope: "global" }),
+  leaf("tokens.monthly_budget", 0, { kind: "number", default: 0 }),
+  leaf("tokens.currency", "USD", { kind: "string", default: "USD" }),
+  leaf("tokens.prices", [], { kind: "json", default: [] }),
+  leaf("notifications.push.thresholdSec", 60, { kind: "number", default: 30 }),
+];
+
+const catalog = {
+  currency: "USD",
+  models: [
+    {
+      provider: "openai" as const,
+      model: "gpt-4.1-mini",
+      display_name: "GPT-4.1 mini",
+      input_per_mtok: 0.4,
+      output_per_mtok: 1.6,
+      price_source: "catalog" as const,
+      badges: { recommended: true, economical: true, capable: false },
+    },
+  ],
+};
+
+function ctx(overrides: Partial<GuidedContext> = {}): GuidedContext {
+  return {
+    items,
+    globalItems: items,
+    tenantItems: items,
+    drafts: {},
+    canWrite: true,
+    pending: false,
+    scope: "global",
+    scopeAvailable: true,
+    catalog,
+    usage: null,
+    publicBaseUrl: "https://subkit.test",
+    rememberedHostedModels: [],
+    setDraft() {},
+    dropDraft() {},
+    onScope() {},
+    navigate() {},
+    ...overrides,
+  };
+}
+
+describe("the replacement provider", () => {
+  test("switching or turning it off clears the replacement model", () => {
+    expect(fallbackChange("anthropic", "gemini")).toEqual([
+      ["llm.fallback_provider", "gemini"],
+      ["llm.fallback_model", ""],
+    ]);
+    expect(fallbackChange("anthropic", "")).toEqual([
+      ["llm.fallback_provider", ""],
+      ["llm.fallback_model", ""],
+    ]);
+    expect(fallbackChange("anthropic", "anthropic")).toEqual([]);
+  });
+});
+
+describe("hosted budgets", () => {
+  test("show the saved amount once no draft is open, even after typing", () => {
+    expect(hostedFieldText("5000000", undefined, "9")).toBe("5");
+    expect(hostedFieldText("5000000", "7000000", null)).toBe("7");
+    expect(hostedFieldText("5000000", "7000000", "7,0")).toBe("7,0");
+  });
+
+  test("0 stays as typed and is not turned into a valid amount", () => {
+    expect(hostedDraftText("0")).toBe("0");
+    expect(hostedDraftText("12,5")).toBe("12500000");
+  });
+
+  test("are marked as applying to all workspaces in workspace mode", () => {
+    const html = render(<CostsArea ctx={ctx({ scope: "tenant" })} />);
+    expect(html).toContain(
+      'data-testid="settings-global-only-llm.hosted.tenant_monthly_microunits"',
+    );
+    expect(html).toContain('data-testid="settings-global-only-llm.hosted.models"');
+    expect(render(<CostsArea ctx={ctx()} />)).not.toContain("settings-global-only-");
+  });
+});
+
+describe("the hosted allowlist", () => {
+  test("an unticked model keeps its limits and can be ticked again after saving", () => {
+    const mini = hosted("openai:gpt-4.1-mini");
+    const sonnet = hosted("anthropic:claude-sonnet-5");
+    let remembered = rememberHostedModels([], [mini, sonnet]);
+    const before = hostedModelChips([mini, sonnet], [mini], remembered as HostedModelEntry[]);
+    expect(before.entries.map((entry) => entry.model)).toEqual([mini.model, sonnet.model]);
+    expect([...before.allowed]).toEqual([mini.model]);
+    const saved = JSON.parse(hostedAllowlistDraft(before.entries, before.allowed));
+    expect(saved).toEqual([mini]);
+    remembered = rememberHostedModels(remembered, saved);
+    const after = hostedModelChips(saved, null, remembered as HostedModelEntry[]);
+    expect(after.entries.map((entry) => entry.model)).toEqual([mini.model, sonnet.model]);
+    expect([...after.allowed]).toEqual([mini.model]);
+    expect(
+      JSON.parse(hostedAllowlistDraft(after.entries, new Set([mini.model, sonnet.model]))),
+    ).toEqual([mini, sonnet]);
+  });
+
+  test("says that saving removes unticked models", () => {
+    const html = render(<CostsArea ctx={ctx({ drafts: { "llm.hosted.models": "[]" } })} />);
+    expect(html).toContain('data-testid="settings-costs-allowed-removed"');
+  });
+});
+
+describe("the price list in another currency", () => {
+  test("keeps built-in prices in dollars and asks for own prices", () => {
+    const html = render(<CostsArea ctx={ctx({ drafts: { "tokens.currency": "EUR" } })} />).replace(
+      /\u00a0/g,
+      " ",
+    );
+    expect(html.includes("0,40 $")).toBe(true);
+    expect(html.includes("0,40 €")).toBe(false);
+    expect(html).toContain('data-testid="settings-costs-own-prices-needed"');
+    expect(render(<CostsArea ctx={ctx()} />)).not.toContain("settings-costs-own-prices-needed");
+  });
+});
+
+describe("resetting in workspace mode", () => {
+  test("offers no reset for a workspace value, because the engine cannot remove an override", () => {
+    const paths = ["notifications.push.thresholdSec"];
+    expect(render(<GuidedRows ctx={ctx()} paths={paths} />)).toContain(
+      'data-testid="setting-reset-',
+    );
+    expect(render(<GuidedRows ctx={ctx({ scope: "tenant" })} paths={paths} />)).not.toContain(
+      'data-testid="setting-reset-',
+    );
+  });
+});

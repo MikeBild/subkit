@@ -4,10 +4,8 @@ import { absolute } from "@/app/links";
 import { ContextHelp, SectionHeading, SegmentedControl } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
-import type { SettingAreaId } from "@/pages/settings-areas";
 import type { ModelCatalog } from "@/pages/settings-catalog";
 import {
-  type SettingDraft,
   type SettingDraftScope,
   type SettingItem,
   settingFieldValue,
@@ -20,7 +18,7 @@ export interface GuidedContext {
   items: readonly SettingItem[];
   globalItems: readonly SettingItem[];
   tenantItems: readonly SettingItem[] | null;
-  drafts: Readonly<Record<string, SettingDraft>>;
+  drafts: Readonly<Record<string, string>>;
   canWrite: boolean;
   pending: boolean;
   scope: SettingDraftScope;
@@ -28,10 +26,10 @@ export interface GuidedContext {
   catalog: ModelCatalog | undefined;
   usage: BudgetSummary | null;
   publicBaseUrl: string;
+  rememberedHostedModels: readonly unknown[];
   setDraft(path: string, text: string): void;
   dropDraft(path: string): void;
   onScope(scope: SettingDraftScope): void;
-  expertHref(area: SettingAreaId): string;
   navigate(href: string): void;
 }
 
@@ -41,7 +39,7 @@ export function guidedItem(ctx: GuidedContext, path: string): SettingItem | unde
 
 export function guidedText(ctx: GuidedContext, path: string): string {
   const draft = ctx.drafts[path];
-  if (draft) return draft.text;
+  if (draft !== undefined) return draft;
   const item = guidedItem(ctx, path);
   return item ? settingFieldValue(item, undefined) : "";
 }
@@ -52,6 +50,29 @@ export function guidedLocked(item: SettingItem | undefined): boolean {
 
 export function guidedDisabled(ctx: GuidedContext, item: SettingItem | undefined): boolean {
   return !ctx.canWrite || ctx.pending || !item || guidedLocked(item);
+}
+
+export function guidedGlobalOnly(ctx: GuidedContext, item: SettingItem | undefined): boolean {
+  return ctx.scope === "tenant" && item !== undefined && item.meta.scope !== "tenant";
+}
+
+export function GlobalOnlyNote({
+  ctx,
+  item,
+}: {
+  ctx: GuidedContext;
+  item: SettingItem | undefined;
+}) {
+  const { t } = useI18n();
+  if (!guidedGlobalOnly(ctx, item)) return null;
+  return (
+    <p
+      className="text-xs text-muted-foreground"
+      data-testid={`settings-global-only-${item?.path ?? "setting"}`}
+    >
+      {t("settings.scope.globalOnly")}
+    </p>
+  );
 }
 
 export function guidedIndex(ctx: GuidedContext, path: string): number {
@@ -165,26 +186,35 @@ export function ScopeToggle({
 }
 
 export function GuidedRows({ ctx, paths }: { ctx: GuidedContext; paths: readonly string[] }) {
+  const { t } = useI18n();
   const rows = paths.flatMap((path) => {
     const item = guidedItem(ctx, path);
     return item ? [item] : [];
   });
   if (rows.length === 0) return null;
   return (
-    <div className="@container/settings-panel overflow-hidden rounded-lg border">
-      {rows.map((item) => (
-        <SettingField
-          key={item.path}
-          item={item}
-          index={guidedIndex(ctx, item.path)}
-          items={ctx.items}
-          draft={ctx.drafts[item.path]?.text}
-          disabled={guidedDisabled(ctx, item)}
-          publicBaseUrl={ctx.publicBaseUrl}
-          onDraft={(text) => ctx.setDraft(item.path, text)}
-          onDrop={() => ctx.dropDraft(item.path)}
-        />
-      ))}
+    <div className="grid gap-2">
+      <div className="@container/settings-panel overflow-hidden rounded-lg border">
+        {rows.map((item) => (
+          <SettingField
+            key={item.path}
+            item={item}
+            index={guidedIndex(ctx, item.path)}
+            items={ctx.items}
+            draft={ctx.drafts[item.path]}
+            disabled={guidedDisabled(ctx, item)}
+            resettable={ctx.scope !== "tenant" || item.meta.scope !== "tenant"}
+            publicBaseUrl={ctx.publicBaseUrl}
+            onDraft={(text) => ctx.setDraft(item.path, text)}
+            onDrop={() => ctx.dropDraft(item.path)}
+          />
+        ))}
+      </div>
+      {rows.some((item) => guidedGlobalOnly(ctx, item)) ? (
+        <p className="text-xs text-muted-foreground" data-testid="settings-rows-global-only">
+          {t("settings.scope.globalOnlyRows")}
+        </p>
+      ) : null}
     </div>
   );
 }

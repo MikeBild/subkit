@@ -321,12 +321,13 @@ export function settingHelpKey(path: string): TranslationKey | null {
 
 export type SettingDraftScope = "global" | "tenant";
 
-export interface SettingDraft {
-  text: string;
-  scope: SettingDraftScope;
-}
+export const SETTING_DRAFT_SCOPES: readonly SettingDraftScope[] = ["global", "tenant"];
 
-export type SettingDrafts = Readonly<Record<string, SettingDraft>>;
+export type SettingDraftTexts = Readonly<Record<string, string>>;
+
+export type SettingDrafts = Readonly<Record<SettingDraftScope, SettingDraftTexts>>;
+
+export const NO_SETTING_DRAFTS: SettingDrafts = { global: {}, tenant: {} };
 
 export function settingDraftScope(
   item: Pick<SettingItem, "meta">,
@@ -335,21 +336,71 @@ export function settingDraftScope(
   return requested === "tenant" && item.meta.scope === "tenant" ? "tenant" : "global";
 }
 
+export function withSettingDraft(
+  drafts: SettingDrafts,
+  item: Pick<SettingItem, "path" | "meta"> | undefined,
+  path: string,
+  text: string,
+  requested: SettingDraftScope,
+): SettingDrafts {
+  const scope = item ? settingDraftScope(item, requested) : "global";
+  return { ...drafts, [scope]: { ...drafts[scope], [path]: text } };
+}
+
+export function withoutSettingDraft(
+  drafts: SettingDrafts,
+  item: Pick<SettingItem, "path" | "meta"> | undefined,
+  path: string,
+  requested: SettingDraftScope,
+): SettingDrafts {
+  const scope = item ? settingDraftScope(item, requested) : "global";
+  const { [path]: _dropped, ...rest } = drafts[scope];
+  return { ...drafts, [scope]: rest };
+}
+
+export function settingDraftTexts(
+  drafts: SettingDrafts,
+  items: readonly Pick<SettingItem, "path" | "meta">[],
+  requested: SettingDraftScope,
+): Record<string, string> {
+  const texts: Record<string, string> = {};
+  for (const item of items) {
+    const text = drafts[settingDraftScope(item, requested)][item.path];
+    if (text !== undefined) texts[item.path] = text;
+  }
+  return texts;
+}
+
 export function pendingSettingDrafts(
   items: readonly SettingItem[],
   drafts: SettingDrafts,
-): Record<string, SettingDraft> {
+): SettingDrafts {
   const secret = new Set(items.filter((item) => item.meta.sensitive).map((item) => item.path));
-  return Object.fromEntries(
-    Object.entries(drafts).filter(([path, draft]) => !(secret.has(path) && draft.text === "")),
-  );
+  const keep = (texts: SettingDraftTexts) =>
+    Object.fromEntries(
+      Object.entries(texts).filter(([path, text]) => !(secret.has(path) && text === "")),
+    );
+  return { global: keep(drafts.global), tenant: keep(drafts.tenant) };
 }
 
-export function changedSettingItems(
+export interface ChangedSetting {
+  item: SettingItem;
+  scope: SettingDraftScope;
+  text: string;
+}
+
+export function changedSettings(
   items: readonly SettingItem[],
   drafts: SettingDrafts,
-): SettingItem[] {
-  return items.filter((item) => Object.hasOwn(drafts, item.path));
+): ChangedSetting[] {
+  return SETTING_DRAFT_SCOPES.flatMap((scope) =>
+    items.flatMap((item) => {
+      const text = drafts[scope][item.path];
+      if (text === undefined) return [];
+      if (scope === "tenant" && item.meta.scope !== "tenant") return [];
+      return [{ item, scope, text }];
+    }),
+  );
 }
 
 export type SettingsPatch =
@@ -361,41 +412,52 @@ export type SettingsPatch =
       tenant_id: string;
     };
 
+export type SettingSecretReferences = Readonly<
+  Record<SettingDraftScope, Readonly<Record<string, string>>>
+>;
+
 export function settingsPatches(
   data: Pick<SettingsResponse, "saved_revision" | "items">,
   drafts: SettingDrafts,
-  secretReferences: Readonly<Record<string, string>>,
+  secretReferences: SettingSecretReferences,
   tenantId: string | null,
 ): SettingsPatch[] {
   if (data.saved_revision === null) throw new Error("settings have no saved revision to build on");
-  const global: Record<string, unknown> = {};
-  const tenant: Record<string, unknown> = {};
-  for (const item of data.items) {
-    const draft = drafts[item.path];
-    if (!draft) continue;
-    const scope = tenantId ? settingDraftScope(item, draft.scope) : "global";
-    const changes = scope === "tenant" ? tenant : global;
+  const changes: Record<SettingDraftScope, Record<string, unknown>> = { global: {}, tenant: {} };
+  for (const { item, scope, text } of changedSettings(data.items, drafts)) {
+    if (scope === "tenant" && !tenantId) continue;
     if (item.meta.sensitive) {
-      const reference = secretReferences[item.path];
+      const reference = secretReferences[scope][item.path];
       if (!reference) throw new Error(`secret ${item.path} has no stored version`);
-      changes[item.path] = reference;
+      changes[scope][item.path] = reference;
       continue;
     }
-    const value = parseSettingDraft(item, draft.text);
+    const value = parseSettingDraft(item, text);
     if (value === undefined) throw new Error(`draft for ${item.path} is not a valid value`);
-    changes[item.path] = value;
+    changes[scope][item.path] = value;
   }
   const patches: SettingsPatch[] = [];
-  if (Object.keys(global).length > 0)
-    patches.push({ expected_revision: data.saved_revision, changes: global, scope: "global" });
-  if (tenantId && Object.keys(tenant).length > 0)
+  if (Object.keys(changes.global).length > 0)
     patches.push({
       expected_revision: data.saved_revision,
-      changes: tenant,
+      changes: changes.global,
+      scope: "global",
+    });
+  if (tenantId && Object.keys(changes.tenant).length > 0)
+    patches.push({
+      expected_revision: data.saved_revision,
+      changes: changes.tenant,
       scope: "tenant",
       tenant_id: tenantId,
     });
   return patches;
+}
+
+export function nextSettingsSave(
+  patches: readonly SettingsPatch[],
+): { patch: SettingsPatch; remaining: number } | null {
+  const [patch, ...rest] = patches;
+  return patch ? { patch, remaining: rest.length } : null;
 }
 
 export function settingsActivationPath(saved: { saved_revision: number }): string {

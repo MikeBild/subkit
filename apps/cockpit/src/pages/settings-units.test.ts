@@ -6,6 +6,7 @@ import {
   dollarsToMicrounits,
   microunitsToDollars,
   moneyText,
+  normalizeDecimal,
   parseAmount,
   parseTokens,
 } from "@/pages/settings-units";
@@ -58,5 +59,19 @@ describe("monthly budget presets", () => {
   test("format money in the reader's language", () => {
     expect(moneyText(0.4, "USD", "de").replace(/\s/g, " ")).toBe("0,40 $");
     expect(moneyText(0.4, "USD", "en")).toBe("$0.40");
+  });
+});
+
+describe("amounts typed with thousands separators", () => {
+  test("read in German and English notation alike", () => {
+    expect(normalizeDecimal("1.000,50")).toBe("1000.50");
+    expect(normalizeDecimal("1,000.50")).toBe("1000.50");
+    expect(normalizeDecimal("1 000,50")).toBe("1000.50");
+    expect(normalizeDecimal("1.000.000")).toBe("1000000");
+    expect(normalizeDecimal("0,500")).toBe("0.500");
+    expect(normalizeDecimal("1.2.3")).toBeNull();
+    expect(dollarsToMicrounits("1.000,50")).toBe("1000500000");
+    expect(dollarsToMicrounits("1,000.50")).toBe("1000500000");
+    expect(parseAmount("1.000,50")).toBe(1000.5);
   });
 });

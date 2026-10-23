@@ -1017,6 +1017,7 @@ export function SettingsSaveBar({
   pending,
   invalid,
   invalidCount = 0,
+  firstOf,
   onDiscard,
   onReload,
   onSave,
@@ -1027,6 +1028,7 @@ export function SettingsSaveBar({
   pending: boolean;
   invalid: boolean;
   invalidCount?: number;
+  firstOf?: number;
   onDiscard: () => void;
   onReload: () => void;
   onSave: () => void;
@@ -1041,7 +1043,11 @@ export function SettingsSaveBar({
           ? invalidCount === 1
             ? t("settings.invalidCount.one")
             : t("settings.invalidCount", { count: invalidCount })
-          : undefined
+          : firstOf !== undefined
+            ? firstOf === 1
+              ? t("settings.saveBar.firstGlobal.one")
+              : t("settings.saveBar.firstGlobal", { count: firstOf })
+            : undefined
       }
       notice={
         conflict ? (
@@ -1060,6 +1066,7 @@ export function SettingsSaveBar({
           ? { onClick: onReload, label: t("settings.reload"), testId: "settings-conflict-reload" }
           : {
               onClick: onSave,
+              label: firstOf !== undefined ? t("settings.saveBar.firstLabel") : undefined,
               pending,
               disabled: invalid || invalidCount > 0 || count === 0,
               testId: "settings-save",
@@ -1077,6 +1084,7 @@ export function SettingField({
   highlighted = false,
   disabled,
   canCopyKey = false,
+  resettable = true,
   publicBaseUrl,
   onDraft,
   onDrop,
@@ -1088,6 +1096,7 @@ export function SettingField({
   highlighted?: boolean;
   disabled: boolean;
   canCopyKey?: boolean;
+  resettable?: boolean;
   publicBaseUrl: string;
   onDraft: (value: string) => void;
   onDrop: () => void;
@@ -1100,7 +1109,7 @@ export function SettingField({
     draft,
     disabled,
     canCopyKey,
-    onReset: onDraft,
+    onReset: resettable ? onDraft : undefined,
   };
   if (item.path === "auth.providers")
     return (

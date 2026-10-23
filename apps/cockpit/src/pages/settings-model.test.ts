@@ -3,13 +3,17 @@ import { resolve } from "node:path";
 import { settingsHref } from "@/app/links";
 import { CATALOGS, translate } from "@/lib/i18n";
 import {
+  changedSettings,
   isUnset,
+  nextSettingsSave,
   parseSettingDraft,
+  pendingSettingDrafts,
   SETTING_GROUPS,
   SETTING_SECTION_KEYS,
   type SettingItem,
   settingDiffersFromDefault,
   settingDraftError,
+  settingDraftTexts,
   settingFieldValue,
   settingIsChanged,
   settingLabel,
@@ -29,6 +33,8 @@ import {
   settingsViewFromUrl,
   settingUnit,
   settingValueText,
+  withoutSettingDraft,
+  withSettingDraft,
 } from "@/pages/settings-model";
 
 const query = (href: string) => href.slice(href.indexOf("?"));
@@ -358,8 +364,6 @@ describe("one save", () => {
     setting("server.port", 3000, { kind: "number", default: 3000 }),
   ];
 
-  const g = (text: string) => ({ text, scope: "global" as const });
-  const w = (text: string) => ({ text, scope: "tenant" as const });
   const tenant = "5870ae6d-e542-48ca-bbcc-108b5ae73f5f";
   const scoped = [
     setting("log.level", "info", { kind: "enum", default: "info", scope: "global" }),
@@ -371,17 +375,18 @@ describe("one save", () => {
       scope: "tenant",
     }),
   ];
+  const none = { global: {}, tenant: {} };
+  const drafts = (global: Record<string, string>, workspace: Record<string, string> = {}) => ({
+    global,
+    tenant: workspace,
+  });
 
   test("global drafts are one patch against the revision the page was read at", () => {
     expect(
       settingsPatches(
         { saved_revision: 7, items },
-        {
-          "log.level": g("debug"),
-          "tokens.monthly_budget": g("500"),
-          "llm.api_key": g("sk-new"),
-        },
-        { "llm.api_key": "secret://settings.llm.api_key/3" },
+        drafts({ "log.level": "debug", "tokens.monthly_budget": "500", "llm.api_key": "sk-new" }),
+        { global: { "llm.api_key": "secret://settings.llm.api_key/3" }, tenant: {} },
         tenant,
       ),
     ).toEqual([
@@ -397,15 +402,14 @@ describe("one save", () => {
     ]);
   });
 
-  test("mixed drafts save the global patch first, then the workspace patch", () => {
-    expect(
-      settingsPatches(
-        { saved_revision: 7, items: scoped },
-        { "log.level": g("debug"), "tokens.monthly_budget": w("500") },
-        {},
-        tenant,
-      ),
-    ).toEqual([
+  test("mixed drafts are one patch per scope, and a save only ever sends the first", () => {
+    const patches = settingsPatches(
+      { saved_revision: 7, items: scoped },
+      drafts({ "log.level": "debug" }, { "tokens.monthly_budget": "500" }),
+      none,
+      tenant,
+    );
+    expect(patches).toEqual([
       { expected_revision: 7, scope: "global", changes: { "log.level": "debug" } },
       {
         expected_revision: 7,
@@ -414,25 +418,55 @@ describe("one save", () => {
         changes: { "tokens.monthly_budget": 500 },
       },
     ]);
+    expect(nextSettingsSave(patches)).toEqual({ patch: patches[0]!, remaining: 1 });
+    expect(nextSettingsSave([])).toBeNull();
   });
 
-  test("a setting for the whole installation stays global when drafted for a workspace", () => {
+  test("a setting for the whole installation is never drafted for a workspace", () => {
+    const item = scoped[0]!;
+    expect(withSettingDraft(none, item, item.path, "debug", "tenant")).toEqual(
+      drafts({ "log.level": "debug" }),
+    );
     expect(
       settingsPatches(
         { saved_revision: 7, items: scoped },
-        { "log.level": w("debug") },
-        {},
+        drafts({}, { "log.level": "debug" }),
+        none,
         tenant,
       ),
-    ).toEqual([{ expected_revision: 7, scope: "global", changes: { "log.level": "debug" } }]);
+    ).toEqual([]);
     expect(
       settingsPatches(
         { saved_revision: 7, items: scoped },
-        { "tokens.monthly_budget": w("5") },
-        {},
+        drafts({}, { "tokens.monthly_budget": "5" }),
+        none,
         null,
       ),
-    ).toEqual([{ expected_revision: 7, scope: "global", changes: { "tokens.monthly_budget": 5 } }]);
+    ).toEqual([]);
+  });
+
+  test("a workspace draft and a global draft of the same setting stay apart", () => {
+    const budget = scoped[1]!;
+    let state = withSettingDraft(none, budget, budget.path, "100", "tenant");
+    state = withSettingDraft(state, budget, budget.path, "900", "global");
+    expect(state).toEqual(
+      drafts({ "tokens.monthly_budget": "900" }, { "tokens.monthly_budget": "100" }),
+    );
+    expect(settingDraftTexts(state, scoped, "global")).toEqual({ "tokens.monthly_budget": "900" });
+    expect(settingDraftTexts(state, scoped, "tenant")).toEqual({ "tokens.monthly_budget": "100" });
+    expect(withoutSettingDraft(state, budget, budget.path, "global")).toEqual(
+      drafts({}, { "tokens.monthly_budget": "100" }),
+    );
+    expect(changedSettings(scoped, state).map((entry) => entry.scope)).toEqual([
+      "global",
+      "tenant",
+    ]);
+  });
+
+  test("an opened, still empty key field is a draft for its row but not a change to save", () => {
+    const state = drafts({ "llm.api_key": "" });
+    expect(settingDraftTexts(state, scoped, "global")).toEqual({ "llm.api_key": "" });
+    expect(pendingSettingDrafts(scoped, state)).toEqual(none);
   });
 
   test("a workspace secret reference goes into the workspace patch", () => {
@@ -440,8 +474,8 @@ describe("one save", () => {
     expect(
       settingsPatches(
         { saved_revision: 7, items: scoped },
-        { "llm.api_key": w("sk-new"), "log.level": g("debug") },
-        { "llm.api_key": reference },
+        drafts({ "log.level": "debug" }, { "llm.api_key": "sk-new" }),
+        { global: {}, tenant: { "llm.api_key": reference } },
         tenant,
       ),
     ).toEqual([
@@ -457,7 +491,12 @@ describe("one save", () => {
 
   test("a secret's plaintext never enters the patch", () => {
     expect(() =>
-      settingsPatches({ saved_revision: 7, items }, { "llm.api_key": g("sk-new") }, {}, null),
+      settingsPatches(
+        { saved_revision: 7, items },
+        drafts({ "llm.api_key": "sk-new" }),
+        none,
+        null,
+      ),
     ).toThrow();
     expect(settingSecretName("llm.api_key")).toBe("settings.llm.api_key");
     expect(settingSecretName("llm.api_key", tenant)).toBe(`tenants.${tenant}.settings.llm.api_key`);
@@ -465,10 +504,15 @@ describe("one save", () => {
 
   test("an invalid draft is not sent, and nothing is saved without a revision", () => {
     expect(() =>
-      settingsPatches({ saved_revision: 7, items }, { "server.port": g("") }, {}, null),
+      settingsPatches({ saved_revision: 7, items }, drafts({ "server.port": "" }), none, null),
     ).toThrow();
     expect(() =>
-      settingsPatches({ saved_revision: null, items }, { "log.level": g("debug") }, {}, null),
+      settingsPatches(
+        { saved_revision: null, items },
+        drafts({ "log.level": "debug" }),
+        none,
+        null,
+      ),
     ).toThrow();
   });
 

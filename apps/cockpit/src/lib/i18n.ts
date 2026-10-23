@@ -1687,6 +1687,18 @@ const EN = {
   "settings.unit.percent": "%",
   "settings.unit.tokens": "tokens",
   "settings.unit.chars": "characters",
+  "settings.scope.globalOnly": "Always applies to all workspaces.",
+  "settings.scope.globalOnlyRows": "Some of these settings always apply to all workspaces.",
+  "settings.saveBar.firstGlobal":
+    "{count} changes for all workspaces are saved first; the changes for this workspace follow in a second save.",
+  "settings.saveBar.firstGlobal.one":
+    "1 change for all workspaces is saved first; the changes for this workspace follow in a second save.",
+  "settings.saveBar.firstLabel": "Save these first",
+  "settings.overview.access.apiKey": "API key",
+  "settings.costs.currency.ownNeeded":
+    "The built-in prices exist only in US dollars and are shown in dollars. With {currency} you enter your own price for each model.",
+  "settings.costs.allowed.removed":
+    "Saving removes unticked models together with their limits. Until you leave this page you can tick them again here; afterwards only under all settings of this area.",
   "settings.purpose": "How SubKit works for you: AI, costs, sign-in and connections.",
   "settings.level.areas": "Areas",
   "settings.level.allAreas": "All areas",
@@ -1864,7 +1876,7 @@ const EN = {
   "settings.costs.tokens": "{count} text pieces",
   "settings.costs.hosted.question": "How much may hosted workspaces cost?",
   "settings.costs.hosted.help":
-    "Applies to all workspaces we run for you. 0 $ blocks every paid AI call, so there is no “no limit” here.",
+    "Applies to all workspaces we run for you. An amount above 0 is required: 0 $ blocks every paid AI call.",
   "settings.costs.hosted.tenant": "Per workspace and month",
   "settings.costs.hosted.global": "All workspaces together per month",
   "settings.costs.hosted.unit": "US dollars",
@@ -7720,6 +7732,19 @@ const DE: Record<TranslationKey, string> = {
   "settings.unit.percent": "%",
   "settings.unit.tokens": "Tokens",
   "settings.unit.chars": "Zeichen",
+  "settings.scope.globalOnly": "Gilt immer für alle Arbeitsbereiche.",
+  "settings.scope.globalOnlyRows":
+    "Einige dieser Einstellungen gelten immer für alle Arbeitsbereiche.",
+  "settings.saveBar.firstGlobal":
+    "Zuerst werden {count} Änderungen für alle Arbeitsbereiche gespeichert, die für diesen Arbeitsbereich danach in einem zweiten Schritt.",
+  "settings.saveBar.firstGlobal.one":
+    "Zuerst wird 1 Änderung für alle Arbeitsbereiche gespeichert, die für diesen Arbeitsbereich danach in einem zweiten Schritt.",
+  "settings.saveBar.firstLabel": "Erst diese Änderungen speichern",
+  "settings.overview.access.apiKey": "API-Schlüssel",
+  "settings.costs.currency.ownNeeded":
+    "Die eingebauten Preise gibt es nur in US-Dollar und sie stehen hier in Dollar. Mit {currency} trägst du für jedes Modell einen eigenen Preis ein.",
+  "settings.costs.allowed.removed":
+    "Beim Speichern entfernt SubKit abgewählte Modelle samt ihren Grenzen. Bis du die Seite verlässt, kannst du sie hier wieder anhaken, danach nur unter allen Einstellungen dieses Bereichs.",
   "settings.purpose": "So arbeitet SubKit für dich: KI, Kosten, Anmeldung und Verbindungen.",
   "settings.level.areas": "Bereiche",
   "settings.level.allAreas": "Alle Bereiche",
@@ -7905,7 +7930,7 @@ const DE: Record<TranslationKey, string> = {
   "settings.costs.tokens": "{count} Textbausteine",
   "settings.costs.hosted.question": "Wie viel dürfen gehostete Arbeitsbereiche kosten?",
   "settings.costs.hosted.help":
-    "Gilt für alle von uns betriebenen Arbeitsbereiche. 0 $ sperrt jeden kostenpflichtigen KI-Aufruf, deshalb gibt es hier kein „Kein Limit“.",
+    "Gilt für alle von uns betriebenen Arbeitsbereiche. Ein Betrag über 0 ist Pflicht: 0 $ sperrt jeden kostenpflichtigen KI-Aufruf.",
   "settings.costs.hosted.tenant": "Je Arbeitsbereich pro Monat",
   "settings.costs.hosted.global": "Alle Arbeitsbereiche zusammen pro Monat",
   "settings.costs.hosted.unit": "US-Dollar",

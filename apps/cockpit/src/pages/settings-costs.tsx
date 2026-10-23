@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { providerName } from "@/pages/settings-ai";
 import {
   ExpertLink,
+  GlobalOnlyNote,
   type GuidedContext,
   guidedDisabled,
   guidedIndex,
@@ -45,6 +46,7 @@ interface PriceRow {
   input: number;
   output: number;
   own: boolean;
+  currency: string;
 }
 
 function parseJson(text: string): unknown {
@@ -64,9 +66,39 @@ function priceEntries(value: unknown): Array<Record<string, unknown> & { model: 
 }
 
 export function hostedDraftText(text: string): string {
-  const trimmed = text.trim();
-  if (/^0+([.,]0*)?$/.test(trimmed)) return "0";
-  return dollarsToMicrounits(trimmed) ?? text;
+  return dollarsToMicrounits(text) ?? text;
+}
+
+export function hostedFieldText(
+  saved: string,
+  draft: string | undefined,
+  editing: string | null,
+): string {
+  if (draft === undefined) return microunitsToDollars(saved) ?? saved;
+  return editing ?? microunitsToDollars(draft) ?? draft;
+}
+
+export type HostedModelEntry = Record<string, unknown> & { model: string };
+
+export function hostedModelChips(
+  saved: readonly HostedModelEntry[],
+  drafted: readonly HostedModelEntry[] | null,
+  remembered: readonly HostedModelEntry[],
+): { entries: HostedModelEntry[]; allowed: Set<string> } {
+  const entries = new Map<string, HostedModelEntry>();
+  for (const entry of [...remembered, ...saved, ...(drafted ?? [])])
+    if (!entries.has(entry.model)) entries.set(entry.model, entry);
+  return {
+    entries: [...entries.values()],
+    allowed: new Set((drafted ?? saved).map((entry) => entry.model)),
+  };
+}
+
+export function hostedAllowlistDraft(
+  entries: readonly HostedModelEntry[],
+  allowed: ReadonlySet<string>,
+): string {
+  return JSON.stringify(entries.filter((entry) => allowed.has(entry.model)));
 }
 
 function BudgetQuestion({ ctx }: { ctx: GuidedContext }) {
@@ -187,11 +219,12 @@ function BudgetQuestion({ ctx }: { ctx: GuidedContext }) {
 function HostedAmount({ ctx, path, label }: { ctx: GuidedContext; path: string; label: string }) {
   const { t } = useI18n();
   const item = guidedItem(ctx, path);
-  const stored = guidedText(ctx, path);
-  const [text, setText] = useState(() => microunitsToDollars(stored) ?? stored);
+  const [editing, setEditing] = useState<string | null>(null);
   if (!item) return null;
-  const draft = hostedDraftText(text);
-  const invalid = ctx.drafts[path] !== undefined && !/^(0|[1-9]\d{0,17})$/.test(draft);
+  const saved = typeof item.value === "string" ? item.value : "";
+  const draft = ctx.drafts[path];
+  const text = hostedFieldText(saved, draft, editing);
+  const invalid = draft !== undefined && !/^[1-9]\d{0,17}$/.test(draft);
   return (
     <div className="grid gap-1">
       <label className="text-xs font-medium" htmlFor={`setting-${guidedIndex(ctx, path)}`}>
@@ -206,7 +239,7 @@ function HostedAmount({ ctx, path, label }: { ctx: GuidedContext; path: string; 
           disabled={guidedDisabled(ctx, item)}
           aria-invalid={invalid || undefined}
           onChange={(event) => {
-            setText(event.target.value);
+            setEditing(event.target.value);
             ctx.setDraft(path, hostedDraftText(event.target.value));
           }}
           data-testid={`settings-costs-${path}`}
@@ -218,6 +251,7 @@ function HostedAmount({ ctx, path, label }: { ctx: GuidedContext; path: string; 
           {t("settings.costs.hosted.invalid")}
         </p>
       ) : null}
+      <GlobalOnlyNote ctx={ctx} item={item} />
     </div>
   );
 }
@@ -306,9 +340,11 @@ function PricesQuestion({ ctx }: { ctx: GuidedContext }) {
   const pricesItem = guidedItem(ctx, "tokens.prices");
   const currencyItem = guidedItem(ctx, "tokens.currency");
   const currency = (guidedText(ctx, "tokens.currency") || "USD").toUpperCase();
-  const drafted = ctx.drafts["tokens.prices"]
-    ? priceEntries(parseJson(ctx.drafts["tokens.prices"].text))
-    : null;
+  const drafted =
+    ctx.drafts["tokens.prices"] !== undefined
+      ? priceEntries(parseJson(ctx.drafts["tokens.prices"]))
+      : null;
+  const builtInCurrency = ctx.catalog?.currency ?? "USD";
   const rows = new Map<string, PriceRow>();
   for (const entry of ctx.catalog?.models ?? [])
     rows.set(entry.model, {
@@ -317,6 +353,7 @@ function PricesQuestion({ ctx }: { ctx: GuidedContext }) {
       input: entry.input_per_mtok,
       output: entry.output_per_mtok,
       own: entry.price_source === "override",
+      currency: builtInCurrency,
     });
   for (const entry of drafted ?? []) {
     const existing = rows.get(entry.model);
@@ -326,6 +363,7 @@ function PricesQuestion({ ctx }: { ctx: GuidedContext }) {
       input: typeof entry.input_per_mtok === "number" ? entry.input_per_mtok : 0,
       output: typeof entry.output_per_mtok === "number" ? entry.output_per_mtok : 0,
       own: true,
+      currency,
     });
   }
   const list = [...rows.values()];
@@ -338,6 +376,11 @@ function PricesQuestion({ ctx }: { ctx: GuidedContext }) {
       testId="settings-costs-prices"
     >
       <p className="text-xs text-muted-foreground">{t("settings.costs.prices.unit")}</p>
+      {currency !== builtInCurrency || currency !== "USD" ? (
+        <p className="text-sm text-muted-foreground" data-testid="settings-costs-own-prices-needed">
+          {t("settings.costs.currency.ownNeeded", { currency })}
+        </p>
+      ) : null}
       {list.length === 0 ? (
         <p className="text-sm text-muted-foreground" data-testid="settings-costs-prices-empty">
           {t("settings.costs.prices.empty")}
@@ -365,8 +408,8 @@ function PricesQuestion({ ctx }: { ctx: GuidedContext }) {
               {list.map((row) => (
                 <tr key={row.model} data-testid={`settings-costs-price-${row.model}`}>
                   <td className="px-3 py-2 font-medium">{row.name}</td>
-                  <td className="px-3 py-2">{moneyText(row.input, currency, locale)}</td>
-                  <td className="px-3 py-2">{moneyText(row.output, currency, locale)}</td>
+                  <td className="px-3 py-2">{moneyText(row.input, row.currency, locale)}</td>
+                  <td className="px-3 py-2">{moneyText(row.output, row.currency, locale)}</td>
                   <td className="px-3 py-2 text-muted-foreground">
                     {row.own ? t("settings.costs.prices.own") : t("settings.costs.prices.builtin")}
                   </td>
@@ -443,17 +486,16 @@ function AllowedModels({ ctx }: { ctx: GuidedContext }) {
   const { t } = useI18n();
   const item = guidedItem(ctx, "llm.hosted.models");
   if (!item) return null;
-  const saved = priceEntries(item.value);
-  const drafted = ctx.drafts["llm.hosted.models"]
-    ? priceEntries(parseJson(ctx.drafts["llm.hosted.models"].text))
-    : saved;
-  const allowed = new Set(drafted.map((entry) => entry.model));
+  const draftText = ctx.drafts["llm.hosted.models"];
+  const { entries, allowed } = hostedModelChips(
+    priceEntries(item.value),
+    draftText !== undefined ? priceEntries(parseJson(draftText)) : null,
+    priceEntries(ctx.rememberedHostedModels),
+  );
   const disabled = guidedDisabled(ctx, item);
-  const write = (models: Set<string>) =>
-    ctx.setDraft(
-      "llm.hosted.models",
-      JSON.stringify(saved.filter((entry) => models.has(entry.model))),
-    );
+  const write = (models: ReadonlySet<string>) =>
+    ctx.setDraft("llm.hosted.models", hostedAllowlistDraft(entries, models));
+  const removed = entries.length - allowed.size;
   return (
     <Question
       title={t("settings.costs.allowed.question")}
@@ -461,7 +503,7 @@ function AllowedModels({ ctx }: { ctx: GuidedContext }) {
       testId="settings-costs-allowed"
     >
       <div className="flex flex-wrap gap-2">
-        {saved.map((entry) => {
+        {entries.map((entry) => {
           const on = allowed.has(entry.model);
           return (
             <button
@@ -488,7 +530,7 @@ function AllowedModels({ ctx }: { ctx: GuidedContext }) {
         <span data-testid="settings-costs-allowed-count">
           {allowed.size === 0
             ? t("settings.costs.allowed.empty")
-            : t("settings.costs.allowed.count", { count: allowed.size, total: saved.length })}
+            : t("settings.costs.allowed.count", { count: allowed.size, total: entries.length })}
         </span>
         <Button
           type="button"
@@ -496,7 +538,7 @@ function AllowedModels({ ctx }: { ctx: GuidedContext }) {
           size="sm"
           className="h-auto p-0 text-xs"
           disabled={disabled}
-          onClick={() => write(new Set(saved.map((entry) => entry.model)))}
+          onClick={() => write(new Set(entries.map((entry) => entry.model)))}
           data-testid="settings-costs-allowed-all"
         >
           {t("settings.costs.allowed.all")}
@@ -513,7 +555,13 @@ function AllowedModels({ ctx }: { ctx: GuidedContext }) {
           {t("settings.costs.allowed.none")}
         </Button>
       </p>
+      {removed > 0 ? (
+        <p className="text-xs text-muted-foreground" data-testid="settings-costs-allowed-removed">
+          {t("settings.costs.allowed.removed")}
+        </p>
+      ) : null}
       <p className="text-xs text-muted-foreground">{t("settings.costs.allowed.more")}</p>
+      <GlobalOnlyNote ctx={ctx} item={item} />
     </Question>
   );
 }
