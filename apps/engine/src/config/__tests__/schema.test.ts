@@ -176,6 +176,32 @@ describe("ConfigSchema", () => {
     expect(r.data.tenants?.["tenant-b"]?.tokens?.monthly_budget).toBe(50_000);
   });
 
+  test("a tenant overlay keeps its own model prices and currency", () => {
+    const r = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      tenants: {
+        "tenant-c": {
+          tokens: {
+            currency: "EUR",
+            prices: [{ model: "own-model", input_per_mtok: 1.2, output_per_mtok: 4 }],
+          },
+        },
+      },
+    });
+    expect(r.success).toBe(true);
+    if (!r.success) return;
+    expect(r.data.tenants?.["tenant-c"]?.tokens?.currency).toBe("EUR");
+    expect(r.data.tenants?.["tenant-c"]?.tokens?.prices).toEqual([
+      {
+        model: "own-model",
+        input_per_mtok: 1.2,
+        output_per_mtok: 4,
+        cache_read_per_mtok: 0,
+        cache_write_per_mtok: 0,
+      },
+    ]);
+  });
+
   test("auth accepts one product-local list with API key and OIDC", () => {
     const result = ConfigSchema.safeParse({
       database: { url: "postgres://x" },

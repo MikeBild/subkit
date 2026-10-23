@@ -1642,7 +1642,13 @@ const TenantOverlaySchema = z
       })
       .optional(),
     queue: z.object({ concurrency: z.number().int().positive().max(64).optional() }).optional(),
-    tokens: z.object({ monthly_budget: z.number().int().nonnegative().optional() }).optional(),
+    tokens: z
+      .object({
+        currency: z.string().optional(),
+        prices: z.array(ModelPriceSchema).optional(),
+        monthly_budget: z.number().int().nonnegative().optional(),
+      })
+      .optional(),
     repl: z
       .object({
         permissionMode: z.enum(["ask", "auto", "plan", "yolo"]).optional(),
