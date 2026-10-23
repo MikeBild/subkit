@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-const BOX = "grid min-h-[72px] min-w-0 content-center gap-0.5 rounded-lg border px-4 py-3";
+const BOX = "grid min-h-32 min-w-0 content-start gap-0.5 rounded-lg border px-4 py-3 xl:min-h-0";
 const VALUE = "shrink-0 text-2xl font-semibold leading-8 tracking-[-0.02em] tabular-nums";
 
 export function KpiTile({
@@ -29,9 +29,9 @@ export function KpiTile({
 }) {
   return (
     <div className={BOX} data-slot="kpi-tile" data-testid={testId} {...data}>
-      <p className="truncate text-xs text-muted-foreground">{label}</p>
+      <p className="line-clamp-2 min-h-8 text-xs text-muted-foreground xl:min-h-4">{label}</p>
       {value !== undefined ? (
-        <p className="flex min-w-0 items-baseline gap-1">
+        <p className="flex min-h-8 min-w-0 items-baseline gap-1">
           {prefix ? (
             <span className="text-sm font-normal text-muted-foreground">{prefix}</span>
           ) : null}
@@ -39,15 +39,22 @@ export function KpiTile({
         </p>
       ) : null}
       {note ? (
-        <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+        <p
+          className={cn(
+            "flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-muted-foreground",
+            value === undefined && "min-h-8",
+          )}
+        >
           {note}
         </p>
       ) : null}
-      {detail ? (
-        <p className="text-xs text-muted-foreground" title={detailTitle} data-testid={detailTestId}>
-          {detail}
-        </p>
-      ) : null}
+      <p
+        className="min-h-4 text-xs text-muted-foreground"
+        title={detailTitle}
+        data-testid={detail ? detailTestId : undefined}
+      >
+        {detail}
+      </p>
     </div>
   );
 }

@@ -17,7 +17,7 @@ import { sheetWidthClass } from "./record-sheet";
 import { activeRouteTab } from "./route-tabs";
 import { SearchInput } from "./search-input";
 import { CollapsibleSection, Section } from "./section";
-import { SegmentedControl } from "./segmented-control";
+import { revealScrollLeft, SegmentedControl } from "./segmented-control";
 import { StatusBadge, statusTone } from "./status-badge";
 import { StatusStrip } from "./status-strip";
 import { SummaryLine } from "./summary-line";
@@ -394,7 +394,7 @@ describe("P17 SegmentedControl", () => {
     expect(html).toMatch(/aria-checked="true"[^>]*>7 Tage|7 Tage/);
   });
 
-  test("a long label shrinks with an ellipsis instead of running into its neighbours", () => {
+  test("labels stay whole on one row; a narrow container scrolls instead of truncating", () => {
     const html = render(
       <SegmentedControl
         label="Anmeldung"
@@ -406,14 +406,26 @@ describe("P17 SegmentedControl", () => {
         ]}
       />,
     );
+    const root = html.match(/<div[^>]*data-slot="segmented-control"[^>]*>/)?.[0] ?? "";
+    expect(root).toContain("flex-nowrap");
+    expect(root).toContain("overflow-x-auto");
+    expect(root).not.toContain("flex-wrap");
     const items = [...html.matchAll(/<button[^>]*role="radio"[^>]*>/g)].map((m) => m[0]);
     expect(items).toHaveLength(2);
     for (const item of items) {
-      expect(item).toContain("min-w-0");
-      expect(item).toMatch(/ shrink /);
-      expect(item).not.toMatch(/ shrink-0 /);
+      expect(item).toMatch(/ shrink-0 /);
+      expect(item).toContain("whitespace-nowrap");
     }
-    expect(count(html, /<span class="truncate">/g)).toBe(2);
+    expect(html).not.toContain("truncate");
+    expect(html).toContain("Schlüssel im Header Authorization, apikey");
+  });
+
+  test("the chosen option is scrolled into view along the row only", () => {
+    const box = { left: 100, right: 300, scrollLeft: 0 };
+    expect(revealScrollLeft(box, { left: 150, right: 250 })).toBe(0);
+    expect(revealScrollLeft(box, { left: 320, right: 400 })).toBe(104);
+    expect(revealScrollLeft({ ...box, scrollLeft: 180 }, { left: 40, right: 120 })).toBe(116);
+    expect(revealScrollLeft({ ...box, scrollLeft: 10 }, { left: 40, right: 120 })).toBe(0);
   });
 });
 

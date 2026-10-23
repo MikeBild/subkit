@@ -256,11 +256,22 @@ export const OPERATING_FIGURE_IDS = [
 ] as const;
 export type OperatingFigureId = (typeof OPERATING_FIGURE_IDS)[number];
 
-export type FigureBasis = "window" | "now" | "month";
+export type FigureBasis = "window" | "now";
 
 export const BUDGET_SETTING = "tokens.monthly_budget";
 
 export type Read<T> = { state: "answered"; value: T } | { state: "failed" };
+
+export type BudgetHint =
+  | {
+      kind: "share";
+      percent: number;
+      budgetTokens: number;
+      remainingTokens: number | null;
+      pressure: "ample" | "tightening" | "critical";
+    }
+  | { kind: "uncapped"; href: string | null }
+  | { kind: "unreadable" };
 
 export type OperatingFigure =
   | {
@@ -273,30 +284,20 @@ export type OperatingFigure =
         | { kind: "failures"; count: number }
         | { kind: "connectors"; count: number; needsReauth: number };
       money?: { currency: string; unpricedCalls: number };
-      budget?: {
-        percent: number;
-        budgetTokens: number;
-        remainingTokens: number | null;
-        pressure: "ample" | "tightening" | "critical";
-      };
-      uncapped?: true;
+      hint?: BudgetHint;
     }
   | {
       id: OperatingFigureId;
       state: "none" | "unreadable" | "not_permitted";
       basis: FigureBasis;
+      hint?: BudgetHint;
     }
   | {
-      id: "cost";
+      id: "cost" | "budget";
       state: "unpriced";
       href: string | null;
       basis: FigureBasis;
-    }
-  | {
-      id: "budget";
-      state: "uncapped";
-      href: string | null;
-      basis: FigureBasis;
+      hint?: BudgetHint;
     };
 
 export function operatingFigures(input: {
@@ -427,68 +428,43 @@ function costFigure(
   };
 }
 
+export function budgetHint(budget: Read<BudgetSummary>, canSet: boolean): BudgetHint {
+  if (budget.state === "failed") return { kind: "unreadable" };
+  const summary = budget.value;
+  if (summary.budgetTokens === null)
+    return { kind: "uncapped", href: canSet ? settingsHref(BUDGET_SETTING) : null };
+  const percent = budgetPercent(summary);
+  const pressure = budgetPressure(summary);
+  if (percent === null || pressure === null) return { kind: "unreadable" };
+  return {
+    kind: "share",
+    percent,
+    budgetTokens: summary.budgetTokens,
+    remainingTokens: summary.remainingTokens,
+    pressure,
+  };
+}
+
 function budgetFigure(
   budget: Read<BudgetSummary>,
   spend: Read<WindowSpend>,
   bounds: WindowBounds,
   canOpen: { usage: boolean; budgetSetting: boolean },
 ): OperatingFigure {
-  if (budget.state === "failed" || spend.state === "failed")
-    return { id: "budget", state: "unreadable", basis: "month" };
-  const summary = budget.value;
-  const percent = budgetPercent(summary);
-  const pressure = budgetPressure(summary);
-  const { calls, cost } = spend.value;
+  if (spend.state === "failed") return { id: "budget", state: "unreadable", basis: "window" };
+  const hint = budgetHint(budget, canOpen.budgetSetting);
   const href = canOpen.usage ? usageHref({ window: bounds.window }) : null;
-  if (cost !== null && calls !== 0) {
-    const money = { currency: cost.currency, unpricedCalls: cost.unpricedCalls };
-    if (summary.budgetTokens === null)
-      return {
-        id: "budget",
-        state: "value",
-        value: cost.amount,
-        href,
-        basis: "window",
-        money,
-        uncapped: true,
-      };
-    if (percent === null || pressure === null)
-      return { id: "budget", state: "unreadable", basis: "month" };
-    return {
-      id: "budget",
-      state: "value",
-      value: cost.amount,
-      href,
-      basis: "window",
-      money,
-      budget: {
-        percent,
-        budgetTokens: summary.budgetTokens,
-        remainingTokens: summary.remainingTokens,
-        pressure,
-      },
-    };
-  }
-  if (summary.budgetTokens === null)
-    return {
-      id: "budget",
-      state: "uncapped",
-      href: canOpen.budgetSetting ? settingsHref(BUDGET_SETTING) : null,
-      basis: "month",
-    };
-  if (percent === null || pressure === null)
-    return { id: "budget", state: "unreadable", basis: "month" };
+  const { calls, cost } = spend.value;
+  if (calls === 0 || (calls === null && cost === null))
+    return { id: "budget", state: "none", basis: "window", hint };
+  if (cost === null) return { id: "budget", state: "unpriced", href, basis: "window", hint };
   return {
     id: "budget",
     state: "value",
-    value: percent,
+    value: cost.amount,
     href,
-    basis: "month",
-    budget: {
-      percent,
-      budgetTokens: summary.budgetTokens,
-      remainingTokens: summary.remainingTokens,
-      pressure,
-    },
+    basis: "window",
+    money: { currency: cost.currency, unpricedCalls: cost.unpricedCalls },
+    hint,
   };
 }

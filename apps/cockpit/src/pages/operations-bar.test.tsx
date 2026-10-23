@@ -239,7 +239,7 @@ describe("the operations bar", () => {
     );
   });
 
-  test("a partly priced month is a floor; an unpriced one falls back to its share", () => {
+  test("a partly priced period is a floor; an unpriced one says so and keeps the share below", () => {
     const partial = render(
       figuresOf({
         spend: answered({
@@ -248,31 +248,60 @@ describe("the operations bar", () => {
         }),
       }),
     );
-    expect(figureText(partial, "budget")).toContain("mind. 135,80 $");
-    const unpriced = render(figuresOf({ spend: answered({ calls: 30, cost: null }) }));
-    expect(figureText(unpriced, "budget")).toBe("Nutzung · Monat27 %");
+    expect(figureText(partial, "budget")).toBe(
+      "Nutzungmind. 135,80 $Aufrufe ohne Preis: 12 · 27 % des Monatskontingents",
+    );
+    const unpriced = render(figuresOf({ spend: answered({ calls: 30, cost: null }) }), "de", "24h");
+    expect(figureText(unpriced, "budget")).toBe(
+      "Nutzung · 24 StdModelle ohne PreisNutzung27 % des Monatskontingents",
+    );
   });
 
-  test("no cap still shows the period's money and says 'Kein Kontingent'", () => {
+  test("no cap still shows the period's money and says 'Kein Kontingent' below", () => {
     const html = render(figuresOf({ budget: month(5_000, null) }));
-    expect(figureText(html, "budget")).toBe("Nutzung87,22 $Kein Kontingent");
+    expect(figureText(html, "budget")).toBe("Nutzung87,22 $Kein Kontingent · Kontingent setzen");
     expect(hrefs(html)).toContain("/cockpit/usage?window=24h");
+    expect(hrefs(html)).toContain("/cockpit/settings?leaf=tokens.monthly_budget");
   });
 
-  test("no cap and no amount reads 'Kein Kontingent' — no percentage — with the setting for an admin", () => {
-    const unpriced = answered({ calls: 30, cost: null });
-    const html = render(figuresOf({ budget: month(5_000, null), spend: unpriced }));
-    expect(figureText(html, "budget")).toBe("Nutzung · MonatKein KontingentKontingent setzen");
-    expect(html).toContain('data-figure-state="uncapped"');
-    expect(hrefs(html)).toContain("/cockpit/settings?leaf=tokens.monthly_budget");
+  test("every period names itself; without AI calls the tile says so and the budget stays the detail", () => {
+    for (const window of STATS_WINDOWS) {
+      const figures = operatingFigures({
+        bounds: windowBounds(window, NOW),
+        counts: counts(),
+        connectorsPermitted: true,
+        spend: answered({ calls: 0, cost: null }),
+        budget: month(5_000, null),
+        canOpen: all,
+      });
+      const html = render(figures, "de", window);
+      const text = figureText(html, "budget");
+      expect(text).toStartWith(
+        `Nutzung · ${translate("de", `overview.operations.windowOption.${window}`)}`,
+      );
+      expect(text).toEndWith("Keine KI-Aufrufe im ZeitraumKein Kontingent · Kontingent setzen");
+      expect(html).toContain('data-testid="operations-figure-budget-detail"');
+    }
     const reader = render(
       figuresOf({
         budget: month(5_000, null),
-        spend: unpriced,
+        spend: answered({ calls: 0, cost: null }),
         canOpen: { ...all, budgetSetting: false },
       }),
+      "de",
+      "lastMonth",
     );
-    expect(figureText(reader, "budget")).toBe("Nutzung · MonatKein Kontingent");
+    expect(figureText(reader, "budget")).toBe(
+      "Nutzung · Letzter MonatKeine KI-Aufrufe im ZeitraumKein Kontingent",
+    );
+    const capped = render(
+      figuresOf({ spend: answered({ calls: 0, cost: null }) }),
+      "en",
+      "lastMonth",
+    );
+    expect(figureText(capped, "budget")).toBe(
+      "Usage · Last monthNo AI calls in this window27% of the monthly token budget",
+    );
   });
 
   test("a figure with nothing to count says so — no 0, no link", () => {

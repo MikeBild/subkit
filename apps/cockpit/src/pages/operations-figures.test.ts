@@ -289,7 +289,7 @@ describe("the operations figures", () => {
       ["connectorHealth", "none"],
       ["repairRate", "none"],
       ["cost", "none"],
-      ["budget", "value"],
+      ["budget", "none"],
     ]);
     expect(
       figuresOf({
@@ -370,7 +370,7 @@ describe("the operations figures", () => {
     expect(cost && "href" in cost ? cost.href : null).toBe("/usage");
   });
 
-  test("the period's usage is its money, with the month's whole share of the cap and the engine's word", () => {
+  test("the period's usage is its money, with the month's whole share of the cap as its hint", () => {
     const at = (used: number, state = "ample") =>
       value(
         figuresOf({
@@ -388,56 +388,70 @@ describe("the operations figures", () => {
       87.22,
       { currency: "USD", unpricedCalls: 0 },
     ]);
-    expect([at(270)?.budget?.percent, at(270)?.budget?.pressure]).toEqual([27, "ample"]);
-    expect([
-      at(750, "tightening")?.budget?.percent,
-      at(750, "tightening")?.budget?.pressure,
-    ]).toEqual([75, "tightening"]);
-    expect([
-      at(896, "tightening")?.budget?.percent,
-      at(896, "tightening")?.budget?.pressure,
-    ]).toEqual([89, "tightening"]);
-    expect(at(270)?.budget).toMatchObject({ budgetTokens: 1000, remainingTokens: 730 });
+    expect(at(270)?.hint).toEqual({
+      kind: "share",
+      percent: 27,
+      budgetTokens: 1000,
+      remainingTokens: 730,
+      pressure: "ample",
+    });
+    expect(at(750, "tightening")?.hint).toMatchObject({ percent: 75, pressure: "tightening" });
+    expect(at(896, "tightening")?.hint).toMatchObject({ percent: 89, pressure: "tightening" });
     expect(at(270)?.basis).toBe("window");
   });
 
-  test("a month without a priced amount falls back to its share of the cap", () => {
-    for (const spend of [answered({ calls: 30, cost: null }), answered({ calls: 0, cost: null })]) {
-      const figure = value(figuresOf({ spend })[5]);
-      expect([figure?.value, figure?.money, figure?.budget?.percent]).toEqual([27, undefined, 27]);
+  test("a period without AI calls says so in every budget state and keeps the budget as its hint", () => {
+    const none = answered({ calls: 0, cost: null });
+    const uncapped = answered(budgetSummary({ tokens_month: 5_000, monthly_budget_tokens: null }));
+    for (const window of ["24h", "lastWeek", "lastMonth"] as const) {
+      for (const [budget, hint] of [
+        [answered(month), { kind: "share", percent: 27 }],
+        [uncapped, { kind: "uncapped", href: "/settings?leaf=tokens.monthly_budget" }],
+        [{ state: "failed" as const }, { kind: "unreadable" }],
+      ] as const) {
+        const figure = operatingFigures({
+          bounds: windowBounds(window, NOW),
+          counts: counts(),
+          connectorsPermitted: true,
+          spend: none,
+          budget,
+          canOpen: all,
+        })[5];
+        expect([figure?.state, figure?.basis]).toEqual(["none", "window"]);
+        expect(figure?.hint).toMatchObject(hint);
+      }
     }
   });
 
-  test("the period's money and the month's share are both read — either failing makes it unreadable", () => {
-    expect(figuresOf({ spend: { state: "failed" } })[5]?.state).toBe("unreadable");
-    expect(figuresOf({ budget: { state: "failed" } })[5]?.state).toBe("unreadable");
+  test("calls without a price say so, never a percentage in the amount's place", () => {
+    const figure = figuresOf({ spend: answered({ calls: 30, cost: null }) })[5];
+    expect(figure?.state).toBe("unpriced");
+    expect(figure && "href" in figure ? figure.href : null).toBe("/usage");
+    expect(figure?.hint).toMatchObject({ kind: "share", percent: 27 });
   });
 
-  test("no cap still shows the period's money, and says there is no cap", () => {
+  test("only the period's money decides readability; an unreadable budget is only the hint", () => {
+    expect(figuresOf({ spend: { state: "failed" } })[5]).toEqual({
+      id: "budget",
+      state: "unreadable",
+      basis: "window",
+    });
+    const figure = value(figuresOf({ budget: { state: "failed" } })[5]);
+    expect([figure?.value, figure?.hint]).toEqual([87.22, { kind: "unreadable" }]);
+  });
+
+  test("no cap still shows the period's money, and the hint says there is no cap", () => {
     const uncapped = answered(budgetSummary({ tokens_month: 5_000, monthly_budget_tokens: null }));
     const figure = value(figuresOf({ budget: uncapped })[5]);
-    expect([figure?.value, figure?.uncapped, figure?.budget, figure?.href]).toEqual([
+    expect([figure?.value, figure?.hint, figure?.href]).toEqual([
       87.22,
-      true,
-      undefined,
+      { kind: "uncapped", href: "/settings?leaf=tokens.monthly_budget" },
       "/usage",
     ]);
-  });
-
-  test("no cap and no amount is 'no budget' — no percentage — and links the setting only for who may set it", () => {
-    const uncapped = answered(budgetSummary({ tokens_month: 5_000, monthly_budget_tokens: null }));
-    const unpriced = answered({ calls: 30, cost: null });
-    const figure = figuresOf({ budget: uncapped, spend: unpriced })[5];
-    expect(figure?.state).toBe("uncapped");
-    expect(figure && "href" in figure ? figure.href : null).toBe(
-      "/settings?leaf=tokens.monthly_budget",
+    const readOnly = value(
+      figuresOf({ budget: uncapped, canOpen: { ...all, budgetSetting: false } })[5],
     );
-    const readOnly = figuresOf({
-      budget: uncapped,
-      spend: unpriced,
-      canOpen: { ...all, budgetSetting: false },
-    })[5];
-    expect(readOnly && "href" in readOnly ? readOnly.href : "missing").toBeNull();
+    expect(readOnly?.hint).toEqual({ kind: "uncapped", href: null });
   });
 
   test("a value the reader may not open is shown without a link", () => {

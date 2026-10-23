@@ -5,6 +5,7 @@ import { ActionButton, KpiTile, TileSkeleton } from "@/components/cockpit/patter
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
+  type BudgetHint,
   type FigureBasis,
   llmStatsEndpoint,
   OPERATING_FIGURE_IDS,
@@ -38,7 +39,7 @@ const NONE_TEXT: Record<OperatingFigureId, TranslationKey> = {
   connectorHealth: "overview.operations.none.connectorHealth",
   repairRate: "overview.operations.none.repairRate",
   cost: "overview.operations.none.cost",
-  budget: "overview.operations.uncapped",
+  budget: "overview.operations.none.cost",
 };
 
 const WINDOW_LABEL: Record<StatsWindow, TranslationKey> = {
@@ -51,7 +52,6 @@ const WINDOW_LABEL: Record<StatsWindow, TranslationKey> = {
 
 const BASIS_LABEL: Record<Exclude<FigureBasis, "window">, TranslationKey> = {
   now: "overview.operations.current",
-  month: "overview.operations.month",
 };
 
 const PRESSURE_TONE = {
@@ -171,6 +171,30 @@ export function OperationsBar({
   );
 }
 
+function HintText({ hint, id }: { hint: BudgetHint; id: OperatingFigureId }) {
+  const { t } = useI18n();
+  if (hint.kind === "share")
+    return <>{t("overview.operations.tokenPercent", { percent: hint.percent })}</>;
+  if (hint.kind === "unreadable") return <>{t("overview.operations.budgetUnreadable")}</>;
+  return (
+    <>
+      {t("overview.operations.uncapped")}
+      {hint.href ? (
+        <>
+          {" · "}
+          <a
+            className="font-medium text-foreground underline underline-offset-2"
+            href={absolute(hint.href)}
+            data-testid={`operations-figure-${id}-set-budget`}
+          >
+            {t("resource.usage.setCap")}
+          </a>
+        </>
+      ) : null}
+    </>
+  );
+}
+
 function Figure({
   figure,
   window,
@@ -190,13 +214,18 @@ function Figure({
       {basis ? ` · ${t(basis)}` : null}
     </>
   );
+  const hint = figure.hint ? <HintText hint={figure.hint} id={figure.id} /> : null;
+  const pressure = figure.hint?.kind === "share" ? figure.hint.pressure : null;
   if (figure.state !== "value") {
-    const onward = figure.state === "unpriced" || figure.state === "uncapped" ? figure.href : null;
+    const onward = figure.state === "unpriced" ? figure.href : null;
     return (
       <KpiTile
         label={label}
         testId={`operations-figure-${figure.id}`}
-        data={{ "data-figure-state": figure.state }}
+        data={{
+          "data-figure-state": figure.state,
+          "data-budget-pressure": pressure ?? undefined,
+        }}
         note={
           <>
             <span>
@@ -206,9 +235,7 @@ function Figure({
                   ? t("overview.operations.notPermitted")
                   : figure.state === "unpriced"
                     ? t("overview.operations.unpriced")
-                    : figure.state === "uncapped"
-                      ? t("overview.operations.uncapped")
-                      : t(NONE_TEXT[figure.id])}
+                    : t(NONE_TEXT[figure.id])}
             </span>
             {figure.state === "unreadable" ? (
               <ActionButton
@@ -226,15 +253,13 @@ function Figure({
                 href={absolute(onward)}
                 data-testid={`operations-figure-${figure.id}-link`}
               >
-                {t(
-                  figure.state === "uncapped"
-                    ? "resource.usage.setCap"
-                    : "overview.operations.openUsage",
-                )}
+                {t("overview.operations.openUsage")}
               </a>
             ) : null}
           </>
         }
+        detail={hint}
+        detailTestId={`operations-figure-${figure.id}-detail`}
       />
     );
   }
@@ -248,14 +273,6 @@ function Figure({
             currency: figure.money.currency,
           }).format(figure.value)}`
         : `${figure.value} %`;
-  const pressure = figure.budget?.pressure ?? null;
-  const budgetNote = figure.budget
-    ? figure.money
-      ? t("overview.operations.tokenPercent", { percent: figure.budget.percent })
-      : null
-    : figure.uncapped
-      ? t("overview.operations.uncapped")
-      : null;
   const detailText = figure.detail
     ? figure.detail.kind === "failures"
       ? t("overview.operations.failedCount", { count: figure.detail.count })
@@ -265,7 +282,16 @@ function Figure({
     : partial && figure.money
       ? t("overview.operations.unpricedCalls", { calls: figure.money.unpricedCalls })
       : null;
-  const detail = [detailText, budgetNote].filter(Boolean).join(" · ") || null;
+  const detail =
+    detailText && hint ? (
+      <>
+        {detailText}
+        {" · "}
+        {hint}
+      </>
+    ) : (
+      (detailText ?? hint)
+    );
   return (
     <KpiTile
       label={label}
@@ -291,7 +317,7 @@ function Figure({
         )
       }
       detail={detail}
-      detailTitle={detail ?? undefined}
+      detailTitle={detailText ?? undefined}
       detailTestId={`operations-figure-${figure.id}-detail`}
     />
   );
