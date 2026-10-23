@@ -57,7 +57,8 @@ test("rows stack and buttons fill the width on narrow screens", () => {
   expect(row).toContain("flex-col");
   expect(row).toContain("sm:flex-row");
   expect(row).toContain("min-w-0");
-  expect(tag(html, "f-row-0-text")).toContain("truncate");
+  expect(tag(html, "f-row-0-text")).toContain("break-words");
+  expect(tag(html, "f-row-0-text")).not.toContain("truncate");
   for (const id of ["f-row-0-fix", "f-row-0-keep", "f-fix-all"]) {
     expect(tag(html, id)).toContain("w-full");
     expect(tag(html, id)).toContain("sm:w-auto");
