@@ -3,6 +3,7 @@ import {
   averageDurationMs,
   groupRunsByDay,
   resultPhrase,
+  runStepKindKey,
   stepKindKey,
   stepPhrase,
   stepWrites,
@@ -74,6 +75,17 @@ describe("workflow flow phrases", () => {
     expect(stepKindKey(readStepDefinition({ id: "d", kind: "wait" }, 3), null)).toBe(
       "workflow.kind.wait",
     );
+  });
+
+  test("a run step uses the same kind names as the flow card", () => {
+    expect(runStepKindKey("request", "read", { kind: "brand", key: "github" })).toBe(
+      "workflow.kind.request",
+    );
+    expect(runStepKindKey("request", "write", null)).toBe("workflow.kind.send");
+    expect(runStepKindKey("request", "write", { kind: "brand", key: "anthropic" })).toBe(
+      "workflow.kind.askAi",
+    );
+    expect(runStepKindKey("transform", null, null)).toBe("workflow.kind.transform");
   });
 });
 

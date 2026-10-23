@@ -38,7 +38,7 @@ const SERVICES: Record<string, Source> = {
   digitalocean: { icon: "logos:digital-ocean-icon" },
   dropbox: { icon: "logos:dropbox" },
   firebase: { icon: "logos:firebase-icon" },
-  github: { icon: "mdi:github" },
+  github: { icon: "simple-icons:github" },
   "google-analytics": { icon: "logos:google-analytics" },
   "google-calendar": { icon: "logos:google-calendar" },
   "google-chat": { icon: "simple-icons:googlechat", color: "#00AC47" },
@@ -53,7 +53,7 @@ const SERVICES: Record<string, Source> = {
   intercom: { icon: "logos:intercom-icon" },
   jira: { icon: "logos:jira" },
   linear: { icon: "logos:linear-icon" },
-  linkedin: { icon: "mdi:linkedin", color: "#0A66C2" },
+  linkedin: { icon: "simple-icons:linkedin", color: "#0A66C2" },
   mailchimp: { icon: "simple-icons:mailchimp" },
   metabase: { icon: "logos:metabase" },
   monday: { icon: "logos:monday-icon" },
@@ -90,6 +90,11 @@ const sets = new Map<string, IconSet>();
 function iconSet(prefix: string): IconSet {
   const known = sets.get(prefix);
   if (known) return known;
+  const info = JSON.parse(
+    readFileSync(join(root, `node_modules/@iconify-json/${prefix}/info.json`), "utf8"),
+  ) as { license?: { spdx?: string } };
+  if (info.license?.spdx !== "CC0-1.0")
+    throw new Error(`Service icons must come from CC0 sets; ${prefix} is not`);
   const set = JSON.parse(
     readFileSync(join(root, `node_modules/@iconify-json/${prefix}/icons.json`), "utf8"),
   ) as IconSet;

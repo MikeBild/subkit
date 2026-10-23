@@ -89,6 +89,16 @@ export function stepKindKey(
   return workflowStepKindKey(definition.kind);
 }
 
+export function runStepKindKey(
+  kind: string,
+  effect: "read" | "write" | null,
+  service: ServiceIdentity | null,
+): TranslationKey {
+  if (kind === "request" && service && isAiService(service)) return "workflow.kind.askAi";
+  if (kind === "request" && effect === "write") return "workflow.kind.send";
+  return workflowStepKindKey(kind);
+}
+
 export type TriggerKind = "schedule" | "webhook" | "request";
 
 export function triggerKindOf(value: unknown): TriggerKind {

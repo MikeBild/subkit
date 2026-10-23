@@ -10,6 +10,7 @@ import { actorDirectoryName } from "@/app/actor-directory-model";
 import { absolute, RUNS_FILTER_PARAMS, runHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useNameIndex } from "@/app/use-decisions";
+import { connectorService, useConnectorRecords } from "@/components/cockpit/connector-names";
 import {
   ActionButton,
   ActionMenu,
@@ -36,7 +37,7 @@ import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { causeClassLabel } from "@/lib/cause-class";
 import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
-import { pluralKey } from "@/lib/i18n";
+import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
@@ -47,7 +48,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { type CursorPage, listPagePath, useInfiniteList } from "@/lib/use-infinite-list";
 import { cn } from "@/lib/utils";
 import { windowFilterLabel } from "@/lib/window-filter";
-import { workflowStepKindKey } from "@/lib/workflow-steps";
+import { runStepKindKey } from "@/lib/workflow-flow";
 import {
   failedStatusesFor,
   formatRunDuration,
@@ -533,6 +534,19 @@ const STEP_MARK: Record<"ok" | "warn" | "error" | "neutral", string> = {
   neutral: "bg-muted text-muted-foreground",
 };
 
+function useRunStepKind(): (step: ExecutionStep) => TranslationKey {
+  const records = useConnectorRecords();
+  return (step) => {
+    const id = stepConnectorId(step);
+    const record = id ? records.find((item) => item.id === id) : undefined;
+    return runStepKindKey(
+      step.kind,
+      stepEffectKind(step),
+      record ? connectorService(record) : null,
+    );
+  };
+}
+
 function RunStepChain({
   steps,
   connectorNames,
@@ -543,6 +557,7 @@ function RunStepChain({
   onOpen(index: number): void;
 }) {
   const { t, locale } = useI18n();
+  const kindOf = useRunStepKind();
   if (steps.length === 0)
     return <p className="text-sm text-muted-foreground">{t("runs.detail.noSteps")}</p>;
   return (
@@ -576,7 +591,7 @@ function RunStepChain({
                 <span className="block font-medium underline-offset-4" data-slot="step-title">
                   {[
                     t("workflowFlow.stepNumber", { number: index + 1 }),
-                    t(workflowStepKindKey(item.kind)),
+                    t(kindOf(item)),
                     connector ? (connectorNames.get(connector) ?? null) : null,
                   ]
                     .filter(Boolean)
@@ -668,6 +683,7 @@ function RunStepSheet({
   const { t, locale } = useI18n();
   const session = useSession();
   const names = useNameIndex(session.permissions, true);
+  const kindOf = useRunStepKind();
   const snapshots = stepCredentialSnapshots(step);
   const evidence = [
     { key: "error", label: t("runs.step.error"), text: previewText(step.error) },
@@ -682,10 +698,7 @@ function RunStepSheet({
       open
       onOpenChange={(next) => !next && onClose()}
       size="wide"
-      title={[
-        t("workflowFlow.stepNumber", { number: index + 1 }),
-        t(workflowStepKindKey(step.kind)),
-      ].join(" · ")}
+      title={[t("workflowFlow.stepNumber", { number: index + 1 }), t(kindOf(step))].join(" · ")}
       badge={<StatusBadge state={step.status} />}
       testId="run-step-sheet"
       closeTestId="run-step-close"

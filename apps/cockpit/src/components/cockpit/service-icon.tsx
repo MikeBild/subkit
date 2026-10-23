@@ -50,19 +50,30 @@ function Glyph({ service, size }: { service: ServiceIdentity; size: string }) {
   );
 }
 
-export function SubKitMark({ size = "md", tile = true }: { size?: IconTileSize; tile?: boolean }) {
+export function SubKitMark({
+  size = "md",
+  tile = true,
+  className,
+}: {
+  size?: IconTileSize;
+  tile?: boolean;
+  className?: string;
+}) {
   if (!tile)
     return (
       <span
         aria-hidden="true"
         data-slot="subkit-mark"
-        className="inline-grid size-4 shrink-0 place-items-center rounded-[4px] bg-foreground text-background"
+        className={cn(
+          "inline-grid size-4 shrink-0 place-items-center rounded-[4px] bg-foreground text-background",
+          className,
+        )}
       >
-        <Workflow className="size-3" strokeWidth={2.4} />
+        <Workflow className="size-3/4" strokeWidth={2.4} />
       </span>
     );
   return (
-    <IconTile size={size} className="bg-foreground text-background">
+    <IconTile size={size} className={cn("bg-foreground text-background", className)}>
       <Workflow data-slot="subkit-mark" strokeWidth={2.2} />
     </IconTile>
   );
@@ -77,7 +88,8 @@ export function ServiceIcon({
   tile?: IconTileSize;
   className?: string;
 }) {
-  if (service.kind === "subkit") return <SubKitMark size={tile} tile={tile !== undefined} />;
+  if (service.kind === "subkit")
+    return <SubKitMark size={tile} tile={tile !== undefined} className={className} />;
   if (!tile) return <Glyph service={service} size={cn("size-4", className)} />;
   return (
     <IconTile size={tile} outline className={className}>
