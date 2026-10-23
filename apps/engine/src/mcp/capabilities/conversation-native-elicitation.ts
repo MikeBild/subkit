@@ -1,4 +1,6 @@
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { reissueExpiredDraftCredentialSetup } from "../../conversations/draft-credential-setup.ts";
 import {
   type ElicitationResult,
   type ElicitFormParams,
@@ -32,6 +34,14 @@ export const ELICITATION_FORM_TIMEOUT_MS = 5 * 60_000;
 export const ELICITATION_DELIVERY_LEASE_MS = ELICITATION_FORM_TIMEOUT_MS + 15_000;
 
 export const ELICITATION_DELIVERY_GRACE_MS = 1_000;
+
+export const NATIVE_DELIVERY_TIMED_OUT = "delivery_timed_out";
+
+export function nativeDeliveryFailureCode(err: unknown): string {
+  return err instanceof McpError && err.code === ErrorCode.RequestTimeout
+    ? NATIVE_DELIVERY_TIMED_OUT
+    : "transport_failed";
+}
 
 export interface NativeDeliveryResult {
   isError: boolean;
@@ -91,38 +101,80 @@ export async function deliverPendingNativeElicitationCore(p: {
   resume: (params: NativeResumeParams) => Promise<NativeDeliveryResult>;
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   reuse_task_id?: string;
+  reissue_credential_link?: typeof reissueExpiredDraftCredentialSetup;
 }): Promise<NativeDeliveryResult | null> {
   if (!FORM_TOOL_NAMES.has(p.pending.tool_name as FormBridgeToolName)) return null;
-  const toolName = p.pending.tool_name as FormBridgeToolName;
+  const reissue = await (p.reissue_credential_link ?? reissueExpiredDraftCredentialSetup)(p.db, {
+    tenant_id: p.principal.tenant_id,
+    conversation_id: p.pending.conversation_id,
+    elicitation_id: p.pending.id,
+    input: p.pending.input,
+    delivery_last_error: p.pending.delivery_last_error,
+    principal: p.principal,
+  });
+  const pending: ElicitationRecord = reissue.reissued
+    ? {
+        ...p.pending,
+        input: reissue.input,
+        delivery_last_error:
+          p.pending.delivery_last_error === "url_accepted" ? null : p.pending.delivery_last_error,
+      }
+    : p.pending;
+  if (reissue.reissued) {
+    logger.info({
+      module: "mcp",
+      action: "mcp.elicitation.credential_link_reissued",
+      msg: "the secure credential link expired before it was used; a fresh single-use link replaces it on the same pending prompt",
+      tenant_id: p.principal.tenant_id,
+      conversation_id: pending.conversation_id,
+      elicitation_id: pending.id,
+      expires_at: reissue.expires_at.toISOString(),
+    });
+  }
+  const redelivery = {
+    ...(p.pending.delivery_last_error === NATIVE_DELIVERY_TIMED_OUT
+      ? {
+          previous_delivery: "timed_out",
+          note: "The previous prompt expired unanswered; nothing was lost. It is presented again now.",
+        }
+      : {}),
+    ...(reissue.reissued
+      ? {
+          credential_link_reissued: true,
+          credential_link_expires_at: reissue.expires_at.toISOString(),
+        }
+      : {}),
+  };
+  const toolName = pending.tool_name as FormBridgeToolName;
   const elicitForm = p.nativeElicitation.elicitForm;
   const elicitUrl = p.nativeElicitation.elicitUrl;
-  const urlCandidate = pendingUrlElicitation(p.pending);
+  const urlCandidate = pendingUrlElicitation(pending);
   const urlAlreadyResolved =
-    p.pending.delivery_last_error === "url_completed" ||
-    p.pending.delivery_last_error === "url_failed" ||
-    p.pending.delivery_last_error === "url_accepted";
+    pending.delivery_last_error === "url_completed" ||
+    pending.delivery_last_error === "url_failed" ||
+    pending.delivery_last_error === "url_accepted";
   const urlElicitation =
     urlCandidate && (urlCandidate.kind === "credential" || urlAlreadyResolved || !elicitForm)
       ? urlCandidate
       : null;
-  const mapped = urlElicitation ? null : mapAskUserToPrimitiveSchema(toolName, p.pending.input);
+  const mapped = urlElicitation ? null : mapAskUserToPrimitiveSchema(toolName, pending.input);
   const formMapping = mapped && !mapped.degrade ? mapped : null;
   if (urlElicitation && !elicitUrl && !urlAlreadyResolved) return null;
   if (!urlElicitation && (!formMapping || !elicitForm)) return null;
-  if (urlElicitation && p.pending.delivery_last_error === "url_accepted") {
+  if (urlElicitation && pending.delivery_last_error === "url_accepted") {
     return successText({
       status: "input_required",
-      conversation_id: p.pending.conversation_id,
+      conversation_id: pending.conversation_id,
       phase: "external_interaction_pending",
-      pending_elicitation_id: p.pending.id,
+      pending_elicitation_id: pending.id,
     });
   }
 
   const claim = await claimNativeElicitationDelivery(
     {
       tenant_id: p.principal.tenant_id,
-      conversation_id: p.pending.conversation_id,
-      id: p.pending.id,
+      conversation_id: pending.conversation_id,
+      id: pending.id,
       lease_ms: ELICITATION_DELIVERY_LEASE_MS,
     },
     p.db,
@@ -130,9 +182,9 @@ export async function deliverPendingNativeElicitationCore(p: {
   if (!claim) {
     return successText({
       status: "working",
-      conversation_id: p.pending.conversation_id,
+      conversation_id: pending.conversation_id,
       phase: "awaiting_human_input",
-      pending_elicitation_id: p.pending.id,
+      pending_elicitation_id: pending.id,
     });
   }
 
@@ -143,13 +195,13 @@ export async function deliverPendingNativeElicitationCore(p: {
     withReservedConversationTurn(
       p.db,
       p.principal.tenant_id,
-      p.pending.conversation_id,
+      pending.conversation_id,
       async (turn_id) => {
         const staged = await stageElicitationAnswer(
           {
             tenant_id: p.principal.tenant_id,
-            conversation_id: p.pending.conversation_id,
-            id: p.pending.id,
+            conversation_id: pending.conversation_id,
+            id: pending.id,
             output,
           },
           p.db,
@@ -162,7 +214,7 @@ export async function deliverPendingNativeElicitationCore(p: {
           );
         }
         const reason =
-          urlElicitation && p.pending.delivery_last_error === "url_failed"
+          urlElicitation && pending.delivery_last_error === "url_failed"
             ? "external_interaction_failed"
             : result.action === "decline"
               ? "user_declined"
@@ -181,7 +233,7 @@ export async function deliverPendingNativeElicitationCore(p: {
           await releaseNativeElicitationDelivery(
             {
               tenant_id: p.principal.tenant_id,
-              id: p.pending.id,
+              id: pending.id,
               lease_id: claim.lease_id,
               error_code: "resume_enqueue_failed",
             },
@@ -193,8 +245,8 @@ export async function deliverPendingNativeElicitationCore(p: {
           action: "mcp.elicitation.native_answer_staged",
           msg: "native MCP elicitation answered and queued for conversation resume",
           tenant_id: p.principal.tenant_id,
-          conversation_id: p.pending.conversation_id,
-          elicitation_id: p.pending.id,
+          conversation_id: pending.conversation_id,
+          elicitation_id: pending.id,
           elicitation_action: result.action,
         });
         return resumed;
@@ -203,11 +255,11 @@ export async function deliverPendingNativeElicitationCore(p: {
 
   if (
     urlElicitation &&
-    (p.pending.delivery_last_error === "url_completed" ||
-      p.pending.delivery_last_error === "url_failed")
+    (pending.delivery_last_error === "url_completed" ||
+      pending.delivery_last_error === "url_failed")
   ) {
     const result: ElicitationResult = {
-      action: p.pending.delivery_last_error === "url_completed" ? "accept" : "cancel",
+      action: pending.delivery_last_error === "url_completed" ? "accept" : "cancel",
     };
     return await stageAnswerAndResume(
       result,
@@ -226,13 +278,13 @@ export async function deliverPendingNativeElicitationCore(p: {
           mode: "url",
           message: urlElicitation.message,
           url: urlElicitation.url,
-          elicitationId: p.pending.id,
+          elicitationId: pending.id,
         });
         if (result.action === "accept") {
           await acknowledgeNativeUrlElicitation(
             {
               tenant_id: p.principal.tenant_id,
-              id: p.pending.id,
+              id: pending.id,
               lease_id: claim.lease_id,
             },
             p.db,
@@ -250,7 +302,7 @@ export async function deliverPendingNativeElicitationCore(p: {
           await releaseNativeElicitationDelivery(
             {
               tenant_id: p.principal.tenant_id,
-              id: p.pending.id,
+              id: pending.id,
               lease_id: claim.lease_id,
               error_code: "form_fast_cancel",
             },
@@ -261,18 +313,18 @@ export async function deliverPendingNativeElicitationCore(p: {
             action: "mcp.elicitation.form_fast_cancel",
             msg: "client cancelled the form faster than a human could render it — treating as undelivered, row remains retryable",
             tenant_id: p.principal.tenant_id,
-            conversation_id: p.pending.conversation_id,
-            elicitation_id: p.pending.id,
+            conversation_id: pending.conversation_id,
+            elicitation_id: pending.id,
             elapsed_ms: Date.now() - sentAt,
           });
           return;
         }
         output =
           result.action === "accept"
-            ? mapElicitResultToAskUserOutput(toolName, p.pending.input, result.content)
+            ? mapElicitResultToAskUserOutput(toolName, pending.input, result.content)
             : null;
         if (result.action === "accept" && output !== null) {
-          const verdict = validateElicitationAnswer(toolName, p.pending.input, output);
+          const verdict = validateElicitationAnswer(toolName, pending.input, output);
           if (!verdict.ok) {
             const detail = verdict.field_errors.map((e) => `${e.name}: ${e.message}`).join("; ");
             result = await elicitForm({
@@ -281,7 +333,7 @@ export async function deliverPendingNativeElicitationCore(p: {
             });
             output =
               result.action === "accept"
-                ? mapElicitResultToAskUserOutput(toolName, p.pending.input, result.content)
+                ? mapElicitResultToAskUserOutput(toolName, pending.input, result.content)
                 : null;
           }
         }
@@ -291,19 +343,19 @@ export async function deliverPendingNativeElicitationCore(p: {
       await releaseNativeElicitationDelivery(
         {
           tenant_id: p.principal.tenant_id,
-          id: p.pending.id,
+          id: pending.id,
           lease_id: claim.lease_id,
-          error_code: "transport_failed",
+          error_code: nativeDeliveryFailureCode(err),
         },
         p.db,
       );
       logger.warn({
         module: "mcp",
         action: "mcp.elicitation.native_transport_failed",
-        msg: "native MCP elicitation failed; pending row remains retryable",
+        msg: "native MCP elicitation failed or timed out; the pending prompt stays open and is presented again on the next poll",
         tenant_id: p.principal.tenant_id,
-        conversation_id: p.pending.conversation_id,
-        elicitation_id: p.pending.id,
+        conversation_id: pending.conversation_id,
+        elicitation_id: pending.id,
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -316,9 +368,10 @@ export async function deliverPendingNativeElicitationCore(p: {
 
   return successText({
     status: "input_required",
-    conversation_id: p.pending.conversation_id,
+    conversation_id: pending.conversation_id,
     phase: "awaiting_human_input",
-    pending_elicitation_id: p.pending.id,
+    pending_elicitation_id: pending.id,
+    ...redelivery,
   });
 }
 
