@@ -16,6 +16,11 @@ import { authorityLive } from "./authority-live.ts";
 import { contentBoundariesFromManifest } from "./content-publication-proposal.ts";
 import { type WorkflowEffectManifest, WorkflowEffectManifestSchema } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
+import {
+  type ReadInheritanceEvidence,
+  readEffectInherits,
+  requestStepsOf,
+} from "./read-inheritance.ts";
 import { reportBoundariesFromManifest } from "./report-delivery-proposal.ts";
 
 type Effect = WorkflowEffectManifest["effects"][number];
@@ -102,6 +107,7 @@ function sameConfiguration(next: Effect, granted: Effect): boolean {
 export function boundaryGrowth(
   granted: WorkflowEffectManifest,
   next: WorkflowEffectManifest,
+  evidence?: ReadInheritanceEvidence,
 ): BoundaryGrowth[] {
   const growth = new Map<string, BoundaryGrowth>();
   const add = (kind: BoundaryGrowth["kind"], effect: Effect) => {
@@ -129,7 +135,11 @@ export function boundaryGrowth(
       add("new_target", effect);
       continue;
     }
-    const sameShape = sameTarget.filter((candidate) => sameConfiguration(effect, candidate));
+    const sameShape = sameTarget.filter(
+      (candidate) =>
+        (evidence ? readEffectInherits(effect, candidate, evidence, SUB_BOUNDARIES) : null) ??
+        sameConfiguration(effect, candidate),
+    );
     if (sameShape.length === 0) {
       add("changed_boundary", effect);
       continue;
@@ -175,7 +185,38 @@ async function judgeCarry(db: Executor, parent: AuthorityRow, to_version_id: str
   if (!preview.eligible_for_repeated_runs) return null;
   const granted = parseManifest(parent.approved_manifest ?? parent.effect_manifest);
   if (!granted) return null;
-  return { preview, granted, growth: boundaryGrowth(granted, preview.manifest) };
+  const evidence = await readInheritanceEvidence(
+    db,
+    parent.tenant_id,
+    granted.workflow_version_id,
+    to_version_id,
+  );
+  return {
+    preview,
+    granted,
+    growth: boundaryGrowth(granted, preview.manifest, evidence ?? undefined),
+  };
+}
+
+async function readInheritanceEvidence(
+  db: Executor,
+  tenant_id: string,
+  granted_version_id: string,
+  next_version_id: string,
+): Promise<ReadInheritanceEvidence | null> {
+  const rows = await db
+    .select({ id: workflowVersions.id, dag: workflowVersions.dag })
+    .from(workflowVersions)
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, tenant_id),
+        inArray(workflowVersions.id, [granted_version_id, next_version_id]),
+      ),
+    );
+  const dagOf = (id: string) => rows.find((row) => row.id === id)?.dag;
+  const grantedSteps = requestStepsOf(dagOf(granted_version_id));
+  const nextSteps = requestStepsOf(dagOf(next_version_id));
+  return grantedSteps && nextSteps ? { granted: grantedSteps, next: nextSteps } : null;
 }
 
 export async function approvalWouldCarry(
