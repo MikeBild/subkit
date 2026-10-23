@@ -132,3 +132,43 @@ test("step-ID edits pass through the canonical validation and draft persistence 
   expect(rejected.ok).toBe(false);
   expect(JSON.stringify(draft)).toBe(before);
 });
+
+test("a failing JSON Patch op is named by index, operation, code and the nearest real path", async () => {
+  const draft = draftWithOneStep();
+  draft.workflow.steps[0] = {
+    kind: "request",
+    id: "report",
+    method: "PUT",
+    connector_id: "00000000-0000-4000-8000-000000000001",
+    s3: { key: "reports/file.json" },
+    body: "PRIVATE_REPORT_PAYLOAD",
+  };
+  const result = await applyWorkflowPatchToDraft(ctxFor(draft), [
+    { op: "replace", path: "/steps/0/method", value: "PUT" },
+    { op: "add", path: "/steps/0/s3x/scope", value: { key_prefix: "PRIVATE_SCOPE_VALUE" } },
+  ]);
+
+  expect(result.ok).toBe(false);
+  expect(result.data).toMatchObject({
+    error_code: "patch_invalid",
+    failed_op_index: 1,
+    failed_op: { op: "add", path: "/steps/0/s3x/scope" },
+    code: "OPERATION_PATH_CANNOT_ADD",
+    nearest_path: "/steps/0/s3/scope",
+  });
+  const serialized = JSON.stringify(result.data);
+  expect(serialized).not.toContain("PRIVATE_SCOPE_VALUE");
+  expect(serialized).not.toContain("PRIVATE_REPORT_PAYLOAD");
+});
+
+test("an unknown step_id lists the draft's known step ids", async () => {
+  const result = await editWorkflowPatchTool.execute(ctxFor(draftWithOneStep()), {
+    step_patches: [{ step_id: "missing", op: "replace", path: "/method", value: "POST" }],
+  });
+
+  expect(result.ok).toBe(false);
+  expect(result.data).toMatchObject({
+    error_code: "patch_target_invalid",
+    known_step_ids: ["step1"],
+  });
+});

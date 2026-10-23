@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { JsonPatchError } from "fast-json-patch";
 import { log } from "../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
@@ -8,6 +9,7 @@ import {
   replacedGraphqlSteps,
 } from "../../workflows/graphql-conversion.ts";
 import { loadTenantConnectorBaseUrls, validateTenantWorkflowDef } from "../../workflows/index.ts";
+import { levenshtein } from "../../workflows/levenshtein.ts";
 import {
   describeStepReferences,
   validateUnsupportedPlaceholders,
@@ -74,6 +76,82 @@ function repairExtras(draft: { steps?: Array<Record<string, unknown>> }): Record
   };
 }
 
+const MAX_KNOWN_STEP_IDS = 50;
+
+function knownStepIds(steps: ReadonlyArray<Record<string, unknown>>): string[] {
+  return steps
+    .flatMap((step) => (typeof step.id === "string" ? [step.id] : []))
+    .slice(0, MAX_KNOWN_STEP_IDS);
+}
+
+function stepPathCandidates(steps: ReadonlyArray<Record<string, unknown>>): string[] {
+  return steps.flatMap((step, index) => {
+    const base = `/steps/${index}`;
+    const s3 =
+      step.kind === "request" && step.s3 && typeof step.s3 === "object"
+        ? Object.keys(step.s3 as Record<string, unknown>).map((field) => `${base}/s3/${field}`)
+        : [];
+    const scope = step.kind === "request" && step.s3 ? [`${base}/s3/scope`] : [];
+    return [base, ...Object.keys(step).map((field) => `${base}/${field}`), ...s3, ...scope];
+  });
+}
+
+function sharedSegments(a: string, b: string): number {
+  const left = a.split("/");
+  const right = b.split("/");
+  let count = 0;
+  while (count < left.length && count < right.length && left[count] === right[count]) count++;
+  return count;
+}
+
+export function nearestStepPath(
+  path: string,
+  steps: ReadonlyArray<Record<string, unknown>>,
+): string | null {
+  const candidates = [...new Set(stepPathCandidates(steps))];
+  let best: { path: string; shared: number; distance: number } | null = null;
+  for (const candidate of candidates) {
+    const shared = sharedSegments(path, candidate);
+    const distance = levenshtein(path, candidate);
+    if (
+      !best ||
+      shared > best.shared ||
+      (shared === best.shared && distance < best.distance) ||
+      (shared === best.shared && distance === best.distance && candidate < best.path)
+    )
+      best = { path: candidate, shared, distance };
+  }
+  return best?.path ?? null;
+}
+
+function describePatchFailure(
+  error: unknown,
+  patches: ToolDiff[],
+  steps: ReadonlyArray<Record<string, unknown>>,
+): Record<string, unknown> {
+  const patchError = error instanceof JsonPatchError ? error : null;
+  const byIdentity = patchError?.operation ? patches.indexOf(patchError.operation as ToolDiff) : -1;
+  const index =
+    byIdentity >= 0
+      ? byIdentity
+      : typeof patchError?.index === "number" && patches[patchError.index]
+        ? patchError.index
+        : null;
+  const failed = index === null ? undefined : patches[index];
+  return {
+    failed_op_index: index,
+    failed_op: failed
+      ? {
+          op: failed.op,
+          path: failed.path,
+          ...("from" in failed && typeof failed.from === "string" ? { from: failed.from } : {}),
+        }
+      : null,
+    code: patchError?.name ?? null,
+    nearest_path: failed ? nearestStepPath(failed.path, steps) : null,
+  };
+}
+
 interface DraftTarget {
   workflow_id: string | null;
   slug: string | null;
@@ -132,7 +210,10 @@ export const editWorkflowPatchTool: ConversationTool = {
           error_code: "patch_target_invalid",
           message: `${error instanceof Error ? error.message : "Invalid step target"} (in the draft of workflow "${target.slug ?? target.workflow_id ?? target.name ?? "(unnamed)"}")`,
           next_best_actions: ["inspect_workflow_draft", "open_workflow_draft"],
-          extra: { target },
+          extra: {
+            target,
+            known_step_ids: knownStepIds(getWorkflowDraft(ctx.getDraft()).steps ?? []),
+          },
         }),
       };
     }
@@ -161,6 +242,7 @@ export async function applyWorkflowPatchToDraft(
           next_best_actions: ["inspect_workflow_draft"],
           extra: {
             patches: patches.map(({ op, path }) => ({ op, path })),
+            ...describePatchFailure(err, patches, workflowDraft.steps ?? []),
             ...repairExtras(workflowDraft),
           },
         }),

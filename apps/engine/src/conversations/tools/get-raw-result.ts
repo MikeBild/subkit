@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { summarizeScopeShape } from "../../workflows/scope-shape.ts";
 import type { ConversationTool } from "./index.ts";
 import type { RawResultScope } from "./truncate.ts";
 import { getRawResult, rememberRaw, withRawResultScope } from "./truncate.ts";
@@ -68,6 +69,9 @@ function atPath(value: unknown, path: Array<string | number>): unknown {
 }
 
 const MAX_LISTED_KEYS = 50;
+const MAX_FIELD_SHAPES = 20;
+const MAX_SUGGESTED_PATHS = 10;
+const MAX_LEAF_DEPTH = 6;
 
 function topLevelShape(value: unknown): { available_keys: string[] } | { total_items: number } {
   if (Array.isArray(value)) return { total_items: value.length };
@@ -75,14 +79,57 @@ function topLevelShape(value: unknown): { available_keys: string[] } | { total_i
   return { available_keys: Object.keys(value).slice(0, MAX_LISTED_KEYS) };
 }
 
+function shapeOf(value: unknown): { shape: string; field_shapes?: Record<string, string> } {
+  const shape = summarizeScopeShape(value);
+  const entries = Array.isArray(value)
+    ? value.slice(0, 1).map((entry, index) => [String(index), entry] as const)
+    : value && typeof value === "object"
+      ? Object.entries(value as Record<string, unknown>).slice(0, MAX_FIELD_SHAPES)
+      : [];
+  if (entries.length === 0) return { shape };
+  return {
+    shape,
+    field_shapes: Object.fromEntries(
+      entries.map(([key, child]) => [key, summarizeScopeShape(child)]),
+    ),
+  };
+}
+
+function suggestedPaths(
+  value: unknown,
+  prefix: Array<string | number> = [],
+): Array<Array<string | number>> {
+  const out: Array<Array<string | number>> = [];
+  const walk = (node: unknown, path: Array<string | number>, depth: number): void => {
+    if (out.length >= MAX_SUGGESTED_PATHS) return;
+    const children = Array.isArray(node)
+      ? node.slice(0, 1).map((entry, index) => [index, entry] as const)
+      : node && typeof node === "object"
+        ? Object.entries(node as Record<string, unknown>)
+        : [];
+    if (children.length === 0 || depth >= MAX_LEAF_DEPTH) {
+      if (path.length > prefix.length) out.push(path);
+      return;
+    }
+    for (const [key, child] of children) walk(child, [...path, key], depth + 1);
+  };
+  walk(value, prefix, 0);
+  return out;
+}
+
 function tooLarge(value: unknown, path: Array<string | number>, totalChars: number) {
   return {
     ok: false,
     data: {
       error: "raw_result_too_large",
+      error_code: "raw_result_too_large",
+      message:
+        "The result is too large to read at once. Read a listed field a section at a time using path, offset, and limit. Continue until next_offset is null, then explain the useful findings in plain language without mentioning these retrieval details.",
+      next_best_actions: ["get_raw_result"],
       total_chars: totalChars,
       fields: largeValuePaths(value, path).slice(0, 12),
-      hint: "The result is too large to read at once. Read a listed field a section at a time using path, offset, and limit. Continue until next_offset is null, then explain the useful findings in plain language without mentioning these retrieval details.",
+      ...shapeOf(value),
+      suggested_paths: suggestedPaths(value, path),
     },
   };
 }
@@ -121,7 +168,10 @@ export const getRawResultTool: ConversationTool = {
         ok: false,
         data: {
           error: "raw_ref_not_found",
-          hint: "The reference is unavailable to this caller and conversation, or it expired. Re-run the original authorized tool call for a fresh reference, then read it in the same scope.",
+          error_code: "raw_ref_not_found",
+          next_best_actions: [],
+          message:
+            "The reference is unavailable to this caller and conversation, or it expired. Re-run the original authorized tool call for a fresh reference, then read it in the same scope.",
         },
       };
     }
@@ -137,6 +187,7 @@ export const getRawResultTool: ConversationTool = {
           ok: false,
           data: {
             error: "raw_result_offset_out_of_range",
+            error_code: "raw_result_offset_out_of_range",
             offset: streamOffset,
             total_chars: characters.length,
           },
@@ -168,8 +219,14 @@ export const getRawResultTool: ConversationTool = {
         ok: false,
         data: {
           error: "raw_result_path_not_found",
+          error_code: "raw_result_path_not_found",
+          message:
+            "Nothing is stored at this path. Retry get_raw_result with one of suggested_paths or a key from the shape.",
+          next_best_actions: ["get_raw_result"],
           path: args.path ?? [],
           ...topLevelShape(raw),
+          ...shapeOf(raw),
+          suggested_paths: suggestedPaths(raw),
         },
       };
     }
@@ -185,6 +242,7 @@ export const getRawResultTool: ConversationTool = {
             ok: false,
             data: {
               error: "raw_result_offset_out_of_range",
+              error_code: "raw_result_offset_out_of_range",
               offset,
               total_chars: characters.length,
             },
@@ -209,7 +267,12 @@ export const getRawResultTool: ConversationTool = {
       if (offset > selected.length) {
         return {
           ok: false,
-          data: { error: "raw_result_offset_out_of_range", offset, total_items: selected.length },
+          data: {
+            error: "raw_result_offset_out_of_range",
+            error_code: "raw_result_offset_out_of_range",
+            offset,
+            total_items: selected.length,
+          },
         };
       }
       const chunk: unknown[] = [];

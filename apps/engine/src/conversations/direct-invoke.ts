@@ -12,6 +12,7 @@ import { listElicitationsForConversation } from "./elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "./persist.ts";
 import { PendingElicitationBlockedError } from "./service/shared.ts";
 import { computeLineDiff } from "./text-line-diff.ts";
+import { describeToolExecutionFailure } from "./tool-execution-failure.ts";
 import { getTool, type ToolContext, type ToolResult } from "./tools/index.ts";
 import { checkToolPermission, type ToolPermissionResult } from "./tools/permission-gate.ts";
 import { normalizeToolResultPayload, toolCallOutcome } from "./tools/result-payload.ts";
@@ -224,9 +225,10 @@ async function driveDirectTool(
           },
         });
   } catch (err) {
-    await langfuseSpan.finish({ status: "error", error: err });
-    const msg = err instanceof Error ? err.message : String(err);
-    const output = { error: msg };
+    const failure = describeToolExecutionFailure(err, ["inspect_workflow_draft"]);
+    await langfuseSpan.finish({ status: "error", error: failure.span_error });
+    const msg = failure.message;
+    const output = failure.output;
     await updateToolCallOutput(p.db, toolCallId, output, "error");
     recordConversationToolCall({
       category: tool.category,

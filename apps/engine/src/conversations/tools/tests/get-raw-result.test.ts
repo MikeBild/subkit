@@ -145,8 +145,14 @@ describe("get_raw_result", () => {
       ok: false,
       data: {
         error: "raw_result_path_not_found",
+        error_code: "raw_result_path_not_found",
+        message: expect.any(String),
+        next_best_actions: ["get_raw_result"],
         path: ["data", "rows"],
         available_keys: ["rows", "meta", "next_cursor"],
+        shape: "object{rows[0],meta,next_cursor}",
+        field_shapes: { rows: "array[0]", meta: "object{total}", next_cursor: "null" },
+        suggested_paths: [["rows"], ["meta", "total"], ["next_cursor"]],
       },
     });
   });
@@ -158,8 +164,54 @@ describe("get_raw_result", () => {
 
     expect(result).toEqual({
       ok: false,
-      data: { error: "raw_result_path_not_found", path: ["items"], total_items: 2 },
+      data: {
+        error: "raw_result_path_not_found",
+        error_code: "raw_result_path_not_found",
+        message: expect.any(String),
+        next_best_actions: ["get_raw_result"],
+        path: ["items"],
+        total_items: 2,
+        shape: "array[2]<object>",
+        field_shapes: { "0": "object{id}" },
+        suggested_paths: [[0, "id"]],
+      },
     });
+  });
+
+  it("describes the shape and readable leaf paths when a selected field is too large", async () => {
+    const rows = Array.from({ length: 50 }, (_, id) => ({
+      id,
+      title: `Row ${id}`,
+      body: "b".repeat(400),
+      meta: { tags: ["sample"], owner: { name: "Sample" } },
+    }));
+    const ref = rememberRaw({ page: { rows, total: rows.length } });
+
+    const result = await getRawResultTool.execute({} as never, { ref, path: ["page"] });
+
+    expect(result.ok).toBe(false);
+    const data = result.data as Record<string, unknown>;
+    expect(data).toMatchObject({
+      error: "raw_result_too_large",
+      error_code: "raw_result_too_large",
+      next_best_actions: ["get_raw_result"],
+      shape: "object{rows[50],total}",
+      field_shapes: { rows: "array[50]<object>", total: "number" },
+    });
+    expect(data.suggested_paths).toEqual([
+      ["page", "rows", 0, "id"],
+      ["page", "rows", 0, "title"],
+      ["page", "rows", 0, "body"],
+      ["page", "rows", 0, "meta", "tags", 0],
+      ["page", "rows", 0, "meta", "owner", "name"],
+      ["page", "total"],
+    ]);
+    const follow = await getRawResultTool.execute({} as never, {
+      ref,
+      path: (data.suggested_paths as Array<Array<string | number>>)[1],
+    });
+    expect(follow).toMatchObject({ ok: true, data: { raw: "Row 0" } });
+    expect(JSON.stringify(result).length).toBeLessThan(4_000);
   });
 
   it("rejects chunk offsets beyond the available string", async () => {
