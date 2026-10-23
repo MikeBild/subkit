@@ -233,6 +233,7 @@ export function WorkflowPage({
   const canRun = permissions.includes("workflow:run");
   const canChat = permissions.includes("conversation:write");
   const versionId = text(record, "current_version_id");
+  const lastExecutedAt = text(record, "last_executed_at");
   const draftVersionId = text(record, "draft_version_id");
   const legacy = record.invalid === true;
   const version = typeof record.current_version === "number" ? record.current_version : null;
@@ -629,7 +630,12 @@ export function WorkflowPage({
           workflowName={title}
           health={health}
           disabled={disabled}
-          lastRunAt={text(record, "last_executed_at")}
+          lastRun={
+            steps.lastRun ??
+            (lastExecutedAt
+              ? { status: "unknown", started_at: lastExecutedAt, created_at: lastExecutedAt }
+              : null)
+          }
           waitingConnector={waitingConnector}
           permissions={permissions}
           noSteps={noSteps}

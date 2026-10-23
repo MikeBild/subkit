@@ -42,7 +42,7 @@ import { causeClassLabel } from "@/lib/cause-class";
 import { connectorAuthState } from "@/lib/connector-auth-state";
 import { cronWords } from "@/lib/cron-words";
 import { grantOpeningNotice, hookStartedOnly, OPENING_NOTICE_KEYS } from "@/lib/grant-context";
-import { formatRelativeTime, LOCALE_TAGS } from "@/lib/i18n";
+import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { environmentToCorrectTo, type ReviewLike } from "@/lib/resolved-environment";
 import { reviewTarget } from "@/lib/review-target";
@@ -58,7 +58,12 @@ import {
 } from "@/lib/workflow-strip";
 import { fixerKey } from "@/pages/decisions-context";
 import { patchDecision } from "@/pages/decisions-model";
-import { failedStatusesFor, isExecutionRecord, latestFailedRun } from "@/pages/runs-model";
+import {
+  failedStatusesFor,
+  isExecutionRecord,
+  lastRunLine,
+  latestFailedRun,
+} from "@/pages/runs-model";
 
 const catalogText = (label: { text: string }) => label.text;
 
@@ -275,6 +280,7 @@ export function useWorkflowAutomation(
 }
 
 type ExecutionList = components["schemas"]["ExecutionListResponse"];
+type Execution = components["schemas"]["Execution"];
 
 function useEnvironmentWord() {
   const { t } = useI18n();
@@ -443,7 +449,7 @@ export function WorkflowStatus({
   workflowName,
   health,
   disabled,
-  lastRunAt,
+  lastRun,
   waitingConnector,
   permissions,
   noSteps = false,
@@ -454,7 +460,7 @@ export function WorkflowStatus({
   workflowName: string;
   health: string | null;
   disabled: boolean;
-  lastRunAt: string | null;
+  lastRun: Pick<Execution, "status" | "started_at" | "created_at"> | null;
   waitingConnector: WaitingConnector | null;
   permissions: readonly string[];
   noSteps?: boolean;
@@ -583,9 +589,7 @@ export function WorkflowStatus({
       case "approved":
       case "manual":
         return [
-          lastRunAt
-            ? t("workflowStrip.line.running", { when: formatRelativeTime(locale, lastRunAt) })
-            : t("workflowStrip.line.runningNever"),
+          lastRunLine(lastRun, t, locale),
           runHealth.noRecentFailures ? t("workflowStrip.line.noRecentFailures") : null,
         ]
           .filter(Boolean)

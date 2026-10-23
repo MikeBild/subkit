@@ -2,8 +2,15 @@ import type { ReactNode } from "react";
 import type { components } from "@/api/schema";
 import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import { auditHref, instantParam, RUNS_FILTER_PARAMS, uuidParam } from "@/app/links";
+import { statusTone } from "@/components/cockpit/patterns/status-badge";
 import { causeClassLabel } from "@/lib/cause-class";
-import { LOCALE_TAGS, type Locale, type PluralKey, type TranslationKey } from "@/lib/i18n";
+import {
+  formatRelativeTime,
+  LOCALE_TAGS,
+  type Locale,
+  type PluralKey,
+  type TranslationKey,
+} from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 import { shortIdentifier } from "@/pages/audit-model";
 
@@ -695,4 +702,23 @@ export function runPermissionEvidence(run: {
   )
     return null;
   return { basis, phase, checkedAt } as const;
+}
+
+export function lastRunLine(
+  run: Pick<Execution, "status" | "started_at" | "created_at"> | null,
+  t: Translate,
+  locale: Locale,
+  now: number = Date.now(),
+): string {
+  if (!run) return t("workflowStrip.line.runningNever");
+  const when = formatRelativeTime(locale, run.started_at ?? run.created_at, now);
+  const tone = statusTone(run.status);
+  return t(
+    tone === "ok"
+      ? "workflowStrip.line.running"
+      : tone === "error"
+        ? "workflowStrip.line.ranFailed"
+        : "workflowStrip.line.ranOther",
+    { when },
+  );
 }

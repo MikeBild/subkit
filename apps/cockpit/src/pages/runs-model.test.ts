@@ -3,6 +3,7 @@ import { translate, translatePlural } from "@/lib/i18n";
 import {
   formatRunDuration,
   isExecutionRecord,
+  lastRunLine,
   previewText,
   requestSourceLabel,
   runAuthorityFacts,
@@ -382,5 +383,25 @@ test("run trace evidence links only a recorded trace and only for audit readers"
   expect(runTraceEvidence({ trace_id: "recorded-trace" }, true)).toEqual({
     id: "recorded-trace",
     href: "/audit?trace_id=recorded-trace&scope=all",
+  });
+});
+
+describe("the workflow header names the latest run with its real outcome", () => {
+  const de = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+    translate("de", key, values);
+  const now = Date.parse("2026-10-23T12:00:00Z");
+  const at = "2026-10-23T10:00:00Z";
+
+  test("a failed latest run never reads as successful", () => {
+    expect(lastRunLine({ status: "failed", started_at: at, created_at: at }, de, "de", now)).toBe(
+      "Letzter Lauf vor 2 Std. fehlgeschlagen",
+    );
+    expect(
+      lastRunLine({ status: "succeeded", started_at: at, created_at: at }, de, "de", now),
+    ).toBe("Letzter Lauf vor 2 Std. erfolgreich");
+    expect(lastRunLine({ status: "unknown", started_at: at, created_at: at }, de, "de", now)).toBe(
+      "Letzter Lauf vor 2 Std.",
+    );
+    expect(lastRunLine(null, de, "de", now)).toBe("Noch nicht gelaufen");
   });
 });
