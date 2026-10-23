@@ -24,6 +24,7 @@ const SERVICES: Record<string, Source> = {
   asana: { icon: "logos:asana-icon" },
   atlassian: { icon: "logos:atlassian" },
   aws: { icon: "simple-icons:amazonwebservices" },
+  claude: { icon: "simple-icons:claude" },
   "aws-cloudwatch": { icon: "logos:aws-cloudwatch" },
   "aws-cognito": { icon: "logos:aws-cognito" },
   "aws-dynamodb": { icon: "logos:aws-dynamodb" },

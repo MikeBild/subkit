@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter, useRouterState } from "@tanstack/react-router";
-import { Bookmark, ExternalLink, MessageSquareText, StickyNote } from "lucide-react";
+import { ExternalLink, MessageSquareText } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ApiError } from "@/api/client";
+import { ApiError, getConversation } from "@/api/client";
 import {
   confirmIntakeProposal,
   getIntakeClip,
@@ -19,43 +19,46 @@ import {
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorLabel } from "@/app/actor-directory-model";
 import { contextualHref } from "@/app/installation-context";
-import { absolute, chatNewHref, recordHref } from "@/app/links";
+import { absolute, chatNewHref, conversationHref, recordHref } from "@/app/links";
 import { CatalogCategoryChip } from "@/components/cockpit/catalog-metadata";
 import {
   ActionMenu,
   type ActionMenuItem,
   Button,
   CollapsibleSection,
-  chipClass,
   DataState,
   DetailPage,
   type DetailStrip,
   FactList,
   FilePreview,
   MarkdownDocument,
+  SummaryLine,
   searchWithTab,
   TabBody,
   Timeline,
   type TimelineTone,
 } from "@/components/cockpit/patterns";
 import { ForbiddenState } from "@/components/failure-state";
-import { formatRelativeTime, pluralKey, type TranslationKey } from "@/lib/i18n";
+import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
   CATEGORIES_KEY,
   CLIPS_KEY,
   DEFAULT_CATEGORY_KEY,
   IntakeEditDialog,
+  IntakeOriginIcon,
   invalidateIntake,
   ProposalCard,
 } from "./intake";
 import {
   INTAKE_STRIP_TONE,
   type IntakeEventKind,
+  intakeConversationId,
   intakeEvents,
   intakeItemChatPrompt,
   intakeOrigin,
-  intakeOriginLabelKey,
+  intakeOriginLabel,
+  intakeProvenance,
   intakeSourceUrl,
   intakeStripState,
   publishedDate,
@@ -89,7 +92,7 @@ function settled(proposal: IntakeProposal): boolean {
 }
 
 export function IntakeItemPage({ permissions }: { permissions: readonly string[] }) {
-  const { t, dateTime, locale } = useI18n();
+  const { t, dateTime } = useI18n();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { resourceId: id = "" } = useParams({ strict: false }) as { resourceId?: string };
@@ -143,6 +146,13 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
   );
   const open = related.filter((proposal) => !settled(proposal));
   const session = clip ? sessionSnapshot(clip.original_snapshot) : null;
+  const conversationId = session ? intakeConversationId(session) : null;
+  const conversation = useQuery({
+    queryKey: ["conversation", conversationId],
+    queryFn: () => getConversation(conversationId ?? ""),
+    enabled: canRead && Boolean(conversationId),
+    retry: false,
+  });
   const back = { to: "/intake", label: t("nav.inbox") };
   const focusProposalId = params.get("proposal");
   const tab = params.get("tab") ?? "content";
@@ -163,7 +173,7 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
     write.mutate(() => setIntakeClipState(clip.id, { state, expected_version: clip.version }));
   };
   const origin = clip ? intakeOrigin(clip.original_snapshot) : "clip";
-  const originLabel = t(intakeOriginLabelKey(origin));
+  const originLabel = clip ? intakeOriginLabel(clip.original_snapshot, t) : "";
   const sourceUrl = clip ? intakeSourceUrl(clip.original_snapshot) : null;
   const collector = clip ? (actorLabel(directory, clip.collected_by, t) ?? "") : "";
   const stripState = clip ? intakeStripState(clip, related) : null;
@@ -287,6 +297,39 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
   const hiddenEvidence = (item.data?.evidence_total ?? 0) - evidence.length;
   const published = clip ? publishedDate(clip.original_snapshot.published_at, dateTime) : null;
   const events = clip ? intakeEvents(clip, related) : [];
+  const provenance = clip
+    ? intakeProvenance(
+        {
+          origin,
+          who: originLabel,
+          session: conversation.data?.conversation.title?.trim() || null,
+          name: collector,
+          when: dateTime(clip.original_snapshot.captured_at),
+        },
+        t,
+      )
+    : null;
+  const onward = conversation.data ? (
+    <a
+      className="inline-flex items-center gap-1 text-sm text-accent underline-offset-4 hover:underline"
+      href={absolute(conversationHref(conversation.data.conversation.id))}
+      data-testid="intake-open-conversation"
+    >
+      <MessageSquareText aria-hidden="true" className="size-3.5" />
+      {t("intake.openConversation")}
+    </a>
+  ) : sourceUrl ? (
+    <a
+      className="inline-flex items-center gap-1 text-sm text-accent underline-offset-4 hover:underline"
+      href={contextualHref(sourceUrl)}
+      data-testid="intake-original-source-link"
+      target="_blank"
+      rel="noreferrer"
+    >
+      <ExternalLink aria-hidden="true" className="size-3.5" />
+      {t("intake.openOriginal")}
+    </a>
+  ) : undefined;
 
   return (
     <>
@@ -295,14 +338,6 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
         back={back}
         title={clip?.title ?? ""}
         badge={clip ? <CatalogCategoryChip category={clip.category} /> : undefined}
-        purpose={
-          clip
-            ? t("intake.purpose", {
-                when: formatRelativeTime(locale, clip.original_snapshot.captured_at),
-                origin: originLabel,
-              })
-            : undefined
-        }
         loading={item.isPending}
         action={
           clip && tab !== "review" && clip.state !== "admitted" && clip.state !== "discarded" ? (
@@ -327,11 +362,24 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                   content: (
                     <TabBody
                       testId="intake-content"
-                      summary={t("intake.contentSummary", {
-                        origin: originLabel,
-                        name: collector,
-                        when: dateTime(clip.original_snapshot.captured_at),
-                      })}
+                      summary={
+                        <SummaryLine
+                          testId="intake-content-summary"
+                          text={
+                            <span data-testid="intake-provenance">
+                              {provenance?.lead}
+                              <span className="font-medium text-foreground">
+                                <span className="mr-1 inline-flex align-[-0.125em]">
+                                  <IntakeOriginIcon snapshot={clip.original_snapshot} />
+                                </span>
+                                {provenance?.who}
+                              </span>
+                              {provenance?.tail}
+                            </span>
+                          }
+                          aside={onward}
+                        />
+                      }
                       technical={
                         <FactList
                           testId="intake-detail-session"
@@ -416,54 +464,23 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                         </>
                       }
                     >
-                      <div
-                        className="flex flex-wrap items-center gap-2 text-sm"
-                        data-testid="intake-detail-facts"
-                      >
-                        <span className={chipClass("md")}>
-                          {origin === "session" ? (
-                            <MessageSquareText
-                              aria-hidden="true"
-                              className="size-3.5 text-muted-foreground"
-                            />
-                          ) : origin === "note" ? (
-                            <StickyNote
-                              aria-hidden="true"
-                              className="size-3.5 text-muted-foreground"
-                            />
-                          ) : (
-                            <Bookmark
-                              aria-hidden="true"
-                              className="size-3.5 text-muted-foreground"
-                            />
-                          )}
-                          {originLabel}
-                        </span>
-                        {clip.original_snapshot.source_author ? (
-                          <span className="text-muted-foreground">
-                            {t("intake.sourceAuthor", {
-                              name: clip.original_snapshot.source_author,
-                            })}
-                          </span>
-                        ) : null}
-                        {published ? (
-                          <span className="text-muted-foreground">
-                            {t("intake.publishedOn", { date: published })}
-                          </span>
-                        ) : null}
-                        {!session && sourceUrl ? (
-                          <a
-                            className="ml-auto inline-flex items-center gap-1 text-accent underline-offset-4 hover:underline"
-                            href={contextualHref(sourceUrl)}
-                            data-testid="intake-original-source-link"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <ExternalLink aria-hidden="true" className="size-3.5" />
-                            {t("intake.openOriginal")}
-                          </a>
-                        ) : null}
-                      </div>
+                      {clip.original_snapshot.source_author || published ? (
+                        <div
+                          className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
+                          data-testid="intake-detail-facts"
+                        >
+                          {clip.original_snapshot.source_author ? (
+                            <span>
+                              {t("intake.sourceAuthor", {
+                                name: clip.original_snapshot.source_author,
+                              })}
+                            </span>
+                          ) : null}
+                          {published ? (
+                            <span>{t("intake.publishedOn", { date: published })}</span>
+                          ) : null}
+                        </div>
+                      ) : null}
                       {clip.state !== "admitted" ? (
                         <p
                           className="text-sm text-muted-foreground"

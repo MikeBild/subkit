@@ -119,6 +119,7 @@ const RETIRED_REDESIGN_GERMAN = [
   /Tool-Kette/,
   /nicht dokumentiert/,
   /Fundstück/,
+  /Programmier-Assistent/,
   /Posteingang/,
   /Light logo|Mobile sheet|^Audience$/,
 ];

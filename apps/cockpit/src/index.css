@@ -185,6 +185,8 @@
   --sk-usage-origin-knowledge: #0284c7;
   --sk-usage-origin-reviews: #db2777;
   --sk-usage-origin-other: #64748b;
+  --sk-agent-claude: #d97757;
+  --sk-agent-codex: #10a37f;
 }
 
 .dark {

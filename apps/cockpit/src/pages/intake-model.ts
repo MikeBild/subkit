@@ -1,11 +1,11 @@
 import type {
   CreateIntakeClipInput,
-  IntakeOriginFilter,
   IntakeProposalTarget,
   IntakeSkillTarget,
   IntakeSnapshot,
   IntakeState,
 } from "@/api/intake";
+import type { AssistantMarkKind } from "@/components/cockpit/service-icon";
 import type { TranslationKey } from "@/lib/i18n";
 import { computeLineDiff, type FocusedRow, focusDiff } from "@/lib/line-diff";
 
@@ -14,8 +14,6 @@ type Translate = (key: TranslationKey, values?: Record<string, string | number>)
 export const INTAKE_STATES = ["collected", "reviewing", "admitted", "discarded"] as const;
 export const INTAKE_ORIGINS = ["clip", "note", "session"] as const;
 export type IntakeOrigin = (typeof INTAKE_ORIGINS)[number];
-export const INTAKE_AUTHORS = ["all", "ai"] as const;
-export type IntakeAuthor = (typeof INTAKE_AUTHORS)[number];
 export const INTAKE_CHAT_PROMPTS = ["review", "summarize", "compare", "prepare"] as const;
 export type IntakeChatPrompt = (typeof INTAKE_CHAT_PROMPTS)[number];
 
@@ -119,12 +117,103 @@ export function intakeSourceUrl(snapshot: IntakeSnapshot): string | null {
   return "source_url" in snapshot ? (snapshot.source_url ?? null) : null;
 }
 
-export function isIntakeAuthor(value: string): value is IntakeAuthor {
-  return (INTAKE_AUTHORS as readonly string[]).includes(value);
+export interface IntakeAssistant {
+  mark: AssistantMarkKind;
+  name: string | null;
 }
 
-export function intakeAuthorOrigin(author: IntakeAuthor): IntakeOriginFilter | undefined {
-  return author === "ai" ? "session" : undefined;
+const UNNAMED_ASSISTANTS = new Set(["save_learning", "session", "create_skill", "mcp"]);
+
+function namedAssistant(raw: string): IntakeAssistant | null {
+  const name = raw.trim();
+  const key = name.toLowerCase();
+  if (!key || UNNAMED_ASSISTANTS.has(key)) return null;
+  if (/claude[\s_-]*code/.test(key)) return { mark: "claude", name: "Claude Code" };
+  if (key.startsWith("claude")) return { mark: "claude", name: "Claude" };
+  if (key.includes("codex")) return { mark: "codex", name: "Codex" };
+  if (key === "chat") return { mark: "subkit", name: null };
+  return { mark: "bot", name };
+}
+
+export function intakeAssistant(
+  snapshot: Pick<SessionSnapshot, "agent" | "client">,
+): IntakeAssistant {
+  for (const raw of [snapshot.client, snapshot.agent]) {
+    const named = raw ? namedAssistant(raw) : null;
+    if (named) return named;
+  }
+  return { mark: "bot", name: null };
+}
+
+export function intakeAssistantLabel(assistant: IntakeAssistant, t: Translate): string {
+  if (assistant.mark === "subkit") return t("intake.assistant.chat");
+  return assistant.name ?? t("intake.origin.session");
+}
+
+export function intakeOriginLabel(snapshot: IntakeSnapshot, t: Translate): string {
+  const session = sessionSnapshot(snapshot);
+  if (session) return intakeAssistantLabel(intakeAssistant(session), t);
+  return t(intakeOriginLabelKey(intakeOrigin(snapshot)));
+}
+
+export function intakeAwaitingAssistantReview(
+  clips: readonly { state: IntakeState; original_snapshot: Pick<IntakeSnapshot, "origin"> }[],
+): number {
+  return clips.filter(
+    (clip) =>
+      intakeOrigin(clip.original_snapshot) === "session" &&
+      (clip.state === "collected" || clip.state === "reviewing"),
+  ).length;
+}
+
+export function intakeConversationId(
+  snapshot: Pick<SessionSnapshot, "agent" | "client" | "session_id">,
+): string | null {
+  const chat =
+    snapshot.client === "chat" || (!snapshot.client && snapshot.agent === "save_learning");
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return chat && uuid.test(snapshot.session_id) ? snapshot.session_id : null;
+}
+
+const WHO_SLOT = "\u0000who\u0000";
+
+export interface IntakeProvenance {
+  lead: string;
+  who: string;
+  tail: string;
+}
+
+export function intakeProvenance(
+  input: {
+    origin: IntakeOrigin;
+    who: string;
+    session: string | null;
+    name: string;
+    when: string;
+  },
+  t: Translate,
+): IntakeProvenance {
+  const key: TranslationKey =
+    input.origin === "note"
+      ? "intake.provenance.note"
+      : input.origin === "clip"
+        ? "intake.provenance.clip"
+        : input.session
+          ? "intake.provenance.assistantSession"
+          : "intake.provenance.assistant";
+  const sentence = t(key, {
+    who: WHO_SLOT,
+    session: input.session ?? "",
+    name: input.name,
+    when: input.when,
+  });
+  const at = sentence.indexOf(WHO_SLOT);
+  if (at < 0) return { lead: sentence, who: "", tail: "" };
+  return {
+    lead: sentence.slice(0, at),
+    who: input.who,
+    tail: sentence.slice(at + WHO_SLOT.length),
+  };
 }
 
 export function intakeNoteRequest(input: {

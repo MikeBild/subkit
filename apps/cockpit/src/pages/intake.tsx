@@ -1,7 +1,15 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { ArrowRight, MessageSquareText, Puzzle, StickyNote } from "lucide-react";
+import {
+  ArrowRight,
+  Bookmark,
+  MessageSquareText,
+  PenLine,
+  Puzzle,
+  StickyNote,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
@@ -11,6 +19,7 @@ import {
   getIntakeDefaultCategory,
   type IntakeClip,
   type IntakeProposal,
+  type IntakeSnapshot,
   listIntakeCategories,
   listIntakeClips,
   setIntakeDefaultCategory,
@@ -43,16 +52,17 @@ import {
   FormDialog,
   GroupingTabs,
   IconTile,
+  type IconTileSize,
   MarkdownEditor,
   OnboardingFrame,
   Page,
   PageHeader,
   Section,
   SectionHeading,
-  SegmentedControl,
   StatusBadge,
   SummaryLine,
 } from "@/components/cockpit/patterns";
+import { AssistantIcon } from "@/components/cockpit/service-icon";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
@@ -61,22 +71,23 @@ import { useSearchParamState, writeSearchParam } from "@/lib/use-search-param-st
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import {
   changedSkillLine,
-  INTAKE_AUTHORS,
   INTAKE_ORIGINS,
   INTAKE_STATES,
   type IntakeOrigin,
-  intakeAuthorOrigin,
+  intakeAssistant,
+  intakeAwaitingAssistantReview,
   intakeCategoryFromSearch,
   intakeChatPrompt,
   intakeNoteRequest,
   intakeOrigin,
+  intakeOriginLabel,
   intakeOriginLabelKey,
   intakeStateLabelKey,
-  isIntakeAuthor,
   isSkillTarget,
   mayConfirmIntakeProposal,
   newSkillLine,
   type ReferencedSkill,
+  sessionSnapshot,
   skillBodyChange,
   skillTargetIds,
 } from "./intake-model";
@@ -92,6 +103,24 @@ const INTAKE_WAYS = [
 ] as const;
 
 const INTAKE_FLOW = ["collect", "propose", "confirm", "knowledge"] as const;
+
+export function IntakeOriginIcon({
+  snapshot,
+  tile,
+}: {
+  snapshot: IntakeSnapshot;
+  tile?: IconTileSize;
+}) {
+  const session = sessionSnapshot(snapshot);
+  if (session) return <AssistantIcon mark={intakeAssistant(session).mark} tile={tile} />;
+  const Icon = intakeOrigin(snapshot) === "note" ? PenLine : Bookmark;
+  if (!tile) return <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />;
+  return (
+    <IconTile size={tile}>
+      <Icon />
+    </IconTile>
+  );
+}
 
 export function IntakeOnboarding({ onAddNote }: { onAddNote?: () => void }) {
   const { t } = useI18n();
@@ -852,8 +881,6 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
     "all",
     (value): value is IntakeOrigin => (INTAKE_ORIGINS as readonly string[]).includes(value),
   );
-  const [author, setAuthor] = useSearchParamState("by", "all", isIntakeAuthor);
-  const authorOrigin = intakeAuthorOrigin(author);
   const categories = useQuery({
     queryKey: CATEGORIES_KEY,
     queryFn: listIntakeCategories,
@@ -867,12 +894,11 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
   const effectiveCategory =
     category === "all" ? undefined : (category ?? defaultCategory.data?.category);
   const clips = useQuery({
-    queryKey: [...CLIPS_KEY, effectiveCategory, state, author],
+    queryKey: [...CLIPS_KEY, effectiveCategory, state],
     queryFn: () =>
       listIntakeClips({
         ...(effectiveCategory ? { category: effectiveCategory } : {}),
         ...(state === "all" ? {} : { state }),
-        ...(authorOrigin ? { origin: authorOrigin } : {}),
       }),
     enabled: canRead,
   });
@@ -889,6 +915,9 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
       ]),
     ],
     [categories.data, defaultCategory.data],
+  );
+  const awaitingReview = intakeAwaitingAssistantReview(
+    (state === "all" ? clips.data?.items : categoryClips.data?.items) ?? [],
   );
   const clipItems = (clips.data?.items ?? []).filter(
     (clip) =>
@@ -945,8 +974,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
         ]
       : []),
   ];
-  const untouched =
-    category === null && state === "all" && origin === "all" && author === "all" && !needle;
+  const untouched = category === null && state === "all" && origin === "all" && !needle;
   const onboarding =
     !loading &&
     !failed &&
@@ -966,23 +994,24 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
         "title",
         (clip) => clip.title,
         t("knowledge.column.name"),
-        (clip) => <span className="truncate font-medium">{clip.title}</span>,
+        (clip) => (
+          <span className="flex min-w-0 items-center gap-3">
+            <IntakeOriginIcon snapshot={clip.original_snapshot} tile="md" />
+            <span className="truncate font-medium">{clip.title}</span>
+          </span>
+        ),
         { sortable: true, width: "w-[30%]" },
       ),
       column.custom(
         "origin",
         (clip) => intakeOrigin(clip.original_snapshot),
         t("intake.origin"),
-        (clip) => {
-          const value = intakeOrigin(clip.original_snapshot);
-          return (
-            <StatusBadge
-              state={value}
-              label={t(intakeOriginLabelKey(value))}
-              testId={`intake-origin-${clip.id}`}
-            />
-          );
-        },
+        (clip) => (
+          <Chip testId={`intake-origin-${clip.id}`}>
+            <IntakeOriginIcon snapshot={clip.original_snapshot} />
+            {intakeOriginLabel(clip.original_snapshot, t)}
+          </Chip>
+        ),
         { width: "w-[12%]" },
       ),
       column.custom(
@@ -1072,27 +1101,30 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                 <>
                   {t(clipItems.length === 1 ? "intake.summary.one" : "intake.summary.other", {
                     count: clipItems.length,
-                  })}{" "}
+                  })}
+                  {awaitingReview > 0 ? (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        className="font-medium text-foreground underline-offset-2 hover:underline"
+                        onClick={() => setOrigin("session")}
+                        data-testid="intake-awaiting-review"
+                      >
+                        {t(
+                          awaitingReview === 1
+                            ? "intake.awaitingReview.one"
+                            : "intake.awaitingReview.other",
+                          { count: awaitingReview },
+                        )}
+                      </button>
+                    </>
+                  ) : null}{" "}
                   · <CatalogCategories kind="intake" />
                 </>
               }
               help={t("intake.explanation")}
               testId="intake-summary"
-              aside={
-                <SegmentedControl
-                  label={t("catalog.originAI")}
-                  value={author}
-                  onValueChange={(next) => {
-                    if (isIntakeAuthor(next)) setAuthor(next);
-                  }}
-                  options={INTAKE_AUTHORS.map((value) => ({
-                    value,
-                    label: t(value === "ai" ? "catalog.originAI" : "catalog.originAll"),
-                    testId: `intake-author-${value}`,
-                  }))}
-                  testId="intake-author"
-                />
-              }
             />
             <DataTable<IntakeClip>
               columns={clipColumns}
@@ -1125,70 +1157,83 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
               }
               getRowId={(clip) => clip.id}
               toolbar={
-                <FilterBar
-                  search={{
-                    value: search,
-                    onChange: setSearch,
-                    placeholder: t("intake.search"),
-                    testId: "intake-search",
-                  }}
-                  selects={
-                    [
-                      {
-                        value:
-                          category === "all"
-                            ? "all"
-                            : (category ?? defaultCategory.data?.category ?? "all"),
-                        onChange: (value) => setCategory(value === "all" ? "all" : value),
-                        label: t("intake.category"),
-                        testId: "intake-category",
-                        options: [
-                          { value: "all", label: t("intake.allCategories") },
-                          ...categoryValues.map((item) => ({
-                            value: item,
-                            label: humanizeCategory(item, t("catalog.categoryOther")),
-                          })),
-                        ],
+                <>
+                  <FilterBar
+                    search={{
+                      value: search,
+                      onChange: setSearch,
+                      placeholder: t("intake.search"),
+                      testId: "intake-search",
+                    }}
+                    selects={
+                      [
+                        {
+                          value:
+                            category === "all"
+                              ? "all"
+                              : (category ?? defaultCategory.data?.category ?? "all"),
+                          onChange: (value) => setCategory(value === "all" ? "all" : value),
+                          label: t("intake.category"),
+                          testId: "intake-category",
+                          options: [
+                            { value: "all", label: t("intake.allCategories") },
+                            ...categoryValues.map((item) => ({
+                              value: item,
+                              label: humanizeCategory(item, t("catalog.categoryOther")),
+                            })),
+                          ],
+                        },
+                        {
+                          value: state,
+                          onChange: (value) => setState(value as typeof state),
+                          label: t("intake.stateFilter"),
+                          testId: "intake-state",
+                          options: [
+                            { value: "all", label: t("intake.state.all") },
+                            ...INTAKE_STATES.map((item) => ({
+                              value: item,
+                              label: t(intakeStateLabelKey(item)),
+                            })),
+                          ],
+                        },
+                        {
+                          value: origin,
+                          onChange: (value) => setOrigin(value as typeof origin),
+                          label: t("intake.originFilter"),
+                          testId: "intake-origin",
+                          options: [
+                            { value: "all", label: t("intake.origin.all") },
+                            ...INTAKE_ORIGINS.map((item) => ({
+                              value: item,
+                              label: t(intakeOriginLabelKey(item)),
+                            })),
+                          ],
+                        },
+                      ] satisfies FilterSelect[]
+                    }
+                    reset={{
+                      label: t("catalog.clearFilters"),
+                      onClick: () => {
+                        setSearch("");
+                        setCategory(null);
+                        setState("all");
+                        setOrigin("all");
                       },
-                      {
-                        value: state,
-                        onChange: (value) => setState(value as typeof state),
-                        label: t("intake.stateFilter"),
-                        testId: "intake-state",
-                        options: [
-                          { value: "all", label: t("intake.state.all") },
-                          ...INTAKE_STATES.map((item) => ({
-                            value: item,
-                            label: t(intakeStateLabelKey(item)),
-                          })),
-                        ],
-                      },
-                      {
-                        value: origin,
-                        onChange: (value) => setOrigin(value as typeof origin),
-                        label: t("intake.originFilter"),
-                        testId: "intake-origin",
-                        options: [
-                          { value: "all", label: t("intake.origin.all") },
-                          ...INTAKE_ORIGINS.map((item) => ({
-                            value: item,
-                            label: t(intakeOriginLabelKey(item)),
-                          })),
-                        ],
-                      },
-                    ] satisfies FilterSelect[]
-                  }
-                  reset={{
-                    label: t("catalog.clearFilters"),
-                    onClick: () => {
-                      setSearch("");
-                      setCategory(null);
-                      setState("all");
-                      setOrigin("all");
-                      setAuthor("all");
-                    },
-                  }}
-                />
+                    }}
+                  />
+                  {origin === "all" ? null : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      title={t("intake.originChipClear")}
+                      data-testid="intake-origin-filter-chip"
+                      onClick={() => setOrigin("all")}
+                    >
+                      {t("intake.originChip", { origin: t(intakeOriginLabelKey(origin)) })}
+                      <X aria-hidden="true" />
+                    </Button>
+                  )}
+                </>
               }
               pending={false}
               emptyState={{
@@ -1205,7 +1250,6 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                     setCategory(null);
                     setState("all");
                     setOrigin("all");
-                    setAuthor("all");
                   },
                 },
               }}

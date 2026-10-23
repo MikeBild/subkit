@@ -1,25 +1,29 @@
 import { describe, expect, test } from "bun:test";
-import type { IntakeProposalTarget } from "@/api/intake";
+import type { IntakeState as IntakeClipState, IntakeProposalTarget } from "@/api/intake";
 import { routerTarget } from "@/app/links";
 import { translate } from "@/lib/i18n";
 import {
   changedSkillLine,
   INTAKE_CHAT_PROMPTS,
-  intakeAuthorOrigin,
+  intakeAssistant,
+  intakeAssistantLabel,
+  intakeAwaitingAssistantReview,
   intakeCategoryFromSearch,
   intakeChatPrompt,
   intakeConfirmPermissions,
+  intakeConversationId,
   intakeEvents,
   intakeNextAction,
   intakeNoteRequest,
   intakeOrigin,
+  intakeOriginLabel,
   intakeOriginLabelKey,
+  intakeProvenance,
   intakeSourceUrl,
   intakeStateLabelKey,
   intakeStripState,
   intakeTargetDetails,
   intakeTargetTopic,
-  isIntakeAuthor,
   isIntakeCategory,
   mayConfirmIntakeProposal,
   newSkillLine,
@@ -164,14 +168,106 @@ describe("collected sessions and confirmation targets", () => {
     expect(translate("en", intakeOriginLabelKey("note"))).toBe("Note");
   });
 
-  test("Alle / Von KI keeps everything or asks the engine for agent-prepared entries", () => {
-    expect(isIntakeAuthor("all")).toBe(true);
-    expect(isIntakeAuthor("ai")).toBe(true);
-    expect(isIntakeAuthor("llm")).toBe(false);
-    expect(intakeAuthorOrigin("all")).toBeUndefined();
-    expect(intakeAuthorOrigin("ai")).toBe("session");
-    expect(de("catalog.originAll")).toBe("Alle");
-    expect(de("catalog.originAI")).toBe("Von KI");
+  test("an assistant entry names its assistant and mark", () => {
+    const t = (key: Parameters<typeof translate>[1]) => de(key);
+    const named = (agent: string, client?: string) =>
+      intakeAssistant({ agent, ...(client ? { client } : {}) });
+    expect(named("claude-code")).toEqual({ mark: "claude", name: "Claude Code" });
+    expect(named("save_learning", "claude-code")).toEqual({ mark: "claude", name: "Claude Code" });
+    expect(named("save_learning", "Claude Code")).toEqual({ mark: "claude", name: "Claude Code" });
+    expect(named("save_learning", "claude-ai")).toEqual({ mark: "claude", name: "Claude" });
+    expect(named("codex")).toEqual({ mark: "codex", name: "Codex" });
+    expect(named("save_learning", "codex-mcp-client")).toEqual({ mark: "codex", name: "Codex" });
+    expect(named("save_learning", "chat")).toEqual({ mark: "subkit", name: null });
+    expect(named("save_learning", "cursor")).toEqual({ mark: "bot", name: "cursor" });
+    expect(named("save_learning")).toEqual({ mark: "bot", name: null });
+    expect(named("session")).toEqual({ mark: "bot", name: null });
+    expect(named("create_skill")).toEqual({ mark: "bot", name: null });
+    expect(intakeAssistantLabel(named("save_learning", "chat"), t)).toBe("Chat");
+    expect(intakeAssistantLabel(named("save_learning"), t)).toBe("KI-Assistent");
+    expect(translate("en", "intake.origin.session")).toBe("AI assistant");
+    expect(intakeAssistantLabel(named("claude-code"), t)).toBe("Claude Code");
+  });
+
+  test("the origin label is the assistant, Browser or Notiz", () => {
+    const t = (key: Parameters<typeof translate>[1]) => de(key);
+    const base = { title: "T", captured_at: "2026-01-02T00:00:00.000Z", body: "x" };
+    expect(intakeOriginLabel({ ...base, origin: "note" }, t)).toBe("Notiz");
+    expect(
+      intakeOriginLabel({ ...base, origin: "capture", source_url: "https://example.test/a" }, t),
+    ).toBe("Browser");
+    expect(
+      intakeOriginLabel(
+        {
+          ...base,
+          origin: "session",
+          agent: "save_learning",
+          client: "codex-mcp-client",
+          session_id: "s",
+          repo: null,
+          domains: [],
+          evidence_excerpt: "",
+        },
+        t,
+      ),
+    ).toBe("Codex");
+  });
+
+  test("the summary counts assistant entries that still need review", () => {
+    const entry = (origin: "session" | "note", state: IntakeClipState) => ({
+      state,
+      original_snapshot: { origin },
+    });
+    expect(
+      intakeAwaitingAssistantReview([
+        entry("session", "collected"),
+        entry("session", "reviewing"),
+        entry("session", "admitted"),
+        entry("session", "discarded"),
+        entry("note", "collected"),
+      ]),
+    ).toBe(2);
+    expect(intakeAwaitingAssistantReview([])).toBe(0);
+    expect(de("intake.awaitingReview.one")).toBe(
+      "1 Eintrag deiner KI-Assistenten wartet auf deine Prüfung",
+    );
+    expect(de("intake.awaitingReview.other", { count: 3 })).toBe(
+      "3 Einträge deiner KI-Assistenten warten auf deine Prüfung",
+    );
+    expect(en("intake.awaitingReview.other", { count: 3 })).toBe(
+      "3 entries from your AI assistants are waiting for your review",
+    );
+  });
+
+  test("only chat entries link a conversation", () => {
+    const id = "569e053b-629a-4549-9022-fe834c6a1d55";
+    expect(intakeConversationId({ agent: "save_learning", client: "chat", session_id: id })).toBe(
+      id,
+    );
+    expect(intakeConversationId({ agent: "save_learning", session_id: id })).toBe(id);
+    expect(
+      intakeConversationId({ agent: "save_learning", client: "claude-code", session_id: id }),
+    ).toBeNull();
+    expect(intakeConversationId({ agent: "claude-code", session_id: "abc" })).toBeNull();
+  });
+
+  test("the origin sentence places the mark inside one sentence", () => {
+    const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+      de(key, values);
+    const join = (p: { lead: string; who: string; tail: string }) => `${p.lead}[${p.who}]${p.tail}`;
+    const base = { name: "Mike Bild", when: "18.10., 21:48" };
+    expect(
+      join(intakeProvenance({ ...base, origin: "session", who: "Chat", session: "Release" }, t)),
+    ).toBe("Gesammelt von [Chat] in der Sitzung „Release“ · für Mike Bild · 18.10., 21:48");
+    expect(
+      join(intakeProvenance({ ...base, origin: "session", who: "Codex", session: null }, t)),
+    ).toBe("Gesammelt von [Codex] · für Mike Bild · 18.10., 21:48");
+    expect(
+      join(intakeProvenance({ ...base, origin: "note", who: "Notiz", session: null }, t)),
+    ).toBe("[Notiz] von Mike Bild · 18.10., 21:48");
+    expect(
+      join(intakeProvenance({ ...base, origin: "clip", who: "Browser", session: null }, t)),
+    ).toBe("Gesammelt mit dem [Browser] von Mike Bild · 18.10., 21:48");
   });
 
   test("a note request carries no source address and keeps an optional category", () => {

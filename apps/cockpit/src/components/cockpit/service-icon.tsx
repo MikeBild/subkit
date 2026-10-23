@@ -1,4 +1,5 @@
 import { Bot, Plug, Workflow } from "lucide-react";
+import type { CSSProperties } from "react";
 import { useSyncExternalStore } from "react";
 import { IconTile, type IconTileSize } from "@/components/cockpit/patterns";
 import {
@@ -110,6 +111,57 @@ export function ServiceIcon({
   return (
     <IconTile size={tile} outline className={className}>
       <Glyph service={service} size={GLYPH[tile]} />
+    </IconTile>
+  );
+}
+
+export type AssistantMarkKind = "claude" | "codex" | "subkit" | "bot";
+
+const ASSISTANT_BRAND: Record<"claude" | "codex", { key: string; color: string }> = {
+  claude: { key: "claude", color: "var(--sk-agent-claude)" },
+  codex: { key: "openai", color: "var(--sk-agent-codex)" },
+};
+
+function AssistantGlyph({ mark, size }: { mark: AssistantMarkKind; size: string }) {
+  if (mark === "subkit")
+    return (
+      <Workflow
+        aria-hidden="true"
+        data-slot="assistant-glyph"
+        strokeWidth={2.2}
+        className={cn("shrink-0 text-accent", size)}
+      />
+    );
+  if (mark === "bot")
+    return (
+      <Bot
+        aria-hidden="true"
+        data-slot="assistant-glyph"
+        className={cn("shrink-0 text-accent", size)}
+      />
+    );
+  const brand = ASSISTANT_BRAND[mark];
+  const style: CSSProperties = { color: brand.color };
+  return (
+    <span className="inline-flex shrink-0" style={style} data-slot="assistant-glyph">
+      <Glyph service={{ kind: "brand", key: brand.key }} size={size} />
+    </span>
+  );
+}
+
+export function AssistantIcon({
+  mark,
+  tile,
+  className,
+}: {
+  mark: AssistantMarkKind;
+  tile?: IconTileSize;
+  className?: string;
+}) {
+  if (!tile) return <AssistantGlyph mark={mark} size={cn("size-4", className)} />;
+  return (
+    <IconTile size={tile} outline className={className}>
+      <AssistantGlyph mark={mark} size={GLYPH[tile]} />
     </IconTile>
   );
 }
