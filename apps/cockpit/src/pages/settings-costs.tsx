@@ -83,14 +83,13 @@ export type HostedModelEntry = Record<string, unknown> & { model: string };
 export function hostedModelChips(
   saved: readonly HostedModelEntry[],
   drafted: readonly HostedModelEntry[] | null,
-  remembered: readonly HostedModelEntry[],
 ): { entries: HostedModelEntry[]; allowed: Set<string> } {
-  const entries = new Map<string, HostedModelEntry>();
-  for (const entry of [...remembered, ...saved, ...(drafted ?? [])])
-    if (!entries.has(entry.model)) entries.set(entry.model, entry);
+  const entries = [...(drafted ?? saved)];
   return {
-    entries: [...entries.values()],
-    allowed: new Set((drafted ?? saved).map((entry) => entry.model)),
+    entries,
+    allowed: new Set(
+      entries.filter((entry) => entry.disabled !== true).map((entry) => entry.model),
+    ),
   };
 }
 
@@ -98,7 +97,12 @@ export function hostedAllowlistDraft(
   entries: readonly HostedModelEntry[],
   allowed: ReadonlySet<string>,
 ): string {
-  return JSON.stringify(entries.filter((entry) => allowed.has(entry.model)));
+  return JSON.stringify(
+    entries.map((entry) => {
+      const { disabled: _disabled, ...rest } = entry;
+      return allowed.has(entry.model) ? rest : { ...rest, disabled: true };
+    }),
+  );
 }
 
 export function budgetBarShare(used: number | null, budget: number): number | null {
@@ -518,12 +522,10 @@ function AllowedModels({ ctx }: { ctx: GuidedContext }) {
   const { entries, allowed } = hostedModelChips(
     priceEntries(item.value),
     draftText !== undefined ? priceEntries(parseJson(draftText)) : null,
-    priceEntries(ctx.rememberedHostedModels),
   );
   const disabled = guidedDisabled(ctx, item);
   const write = (models: ReadonlySet<string>) =>
     ctx.setDraft("llm.hosted.models", hostedAllowlistDraft(entries, models));
-  const removed = entries.length - allowed.size;
   return (
     <Question
       title={t("settings.costs.allowed.question")}
@@ -583,11 +585,9 @@ function AllowedModels({ ctx }: { ctx: GuidedContext }) {
           {t("settings.costs.allowed.none")}
         </Button>
       </p>
-      {removed > 0 ? (
-        <p className="text-xs text-muted-foreground" data-testid="settings-costs-allowed-removed">
-          {t("settings.costs.allowed.removed")}
-        </p>
-      ) : null}
+      <p className="text-xs text-muted-foreground" data-testid="settings-costs-allowed-kept">
+        {t("settings.costs.allowed.kept")}
+      </p>
       <p className="text-xs text-muted-foreground">{t("settings.costs.allowed.more")}</p>
       <GlobalOnlyNote ctx={ctx} item={item} />
     </Question>

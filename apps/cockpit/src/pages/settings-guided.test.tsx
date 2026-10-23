@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "@/components/cockpit/patterns/test-utils";
-import { rememberHostedModels } from "@/pages/settings";
 import { fallbackChange } from "@/pages/settings-ai";
 import {
   CostsArea,
@@ -77,7 +76,6 @@ function ctx(overrides: Partial<GuidedContext> = {}): GuidedContext {
     catalog,
     usage: null,
     publicBaseUrl: "https://subkit.test",
-    rememberedHostedModels: [],
     setDraft() {},
     dropDraft() {},
     onScope() {},
@@ -123,27 +121,43 @@ describe("hosted budgets", () => {
 });
 
 describe("the hosted allowlist", () => {
-  test("an unticked model keeps its limits and can be ticked again after saving", () => {
+  test("unticking marks the entry disabled; after reloading it is still there to tick again", () => {
     const mini = hosted("openai:gpt-4.1-mini");
     const sonnet = hosted("anthropic:claude-sonnet-5");
-    let remembered = rememberHostedModels([], [mini, sonnet]);
-    const before = hostedModelChips([mini, sonnet], [mini], remembered as HostedModelEntry[]);
-    expect(before.entries.map((entry) => entry.model)).toEqual([mini.model, sonnet.model]);
-    expect([...before.allowed]).toEqual([mini.model]);
-    const saved = JSON.parse(hostedAllowlistDraft(before.entries, before.allowed));
-    expect(saved).toEqual([mini]);
-    remembered = rememberHostedModels(remembered, saved);
-    const after = hostedModelChips(saved, null, remembered as HostedModelEntry[]);
-    expect(after.entries.map((entry) => entry.model)).toEqual([mini.model, sonnet.model]);
-    expect([...after.allowed]).toEqual([mini.model]);
+    const before = hostedModelChips([mini, sonnet], null);
+    expect([...before.allowed]).toEqual([mini.model, sonnet.model]);
+    const draft = JSON.parse(hostedAllowlistDraft(before.entries, new Set([mini.model])));
+    expect(draft).toEqual([mini, { ...sonnet, disabled: true }]);
+    const reloaded = hostedModelChips(draft, null);
+    expect(reloaded.entries.map((entry) => entry.model)).toEqual([mini.model, sonnet.model]);
+    expect([...reloaded.allowed]).toEqual([mini.model]);
     expect(
-      JSON.parse(hostedAllowlistDraft(after.entries, new Set([mini.model, sonnet.model]))),
+      JSON.parse(hostedAllowlistDraft(reloaded.entries, new Set([mini.model, sonnet.model]))),
     ).toEqual([mini, sonnet]);
   });
 
-  test("says that saving removes unticked models", () => {
-    const html = render(<CostsArea ctx={ctx({ drafts: { "llm.hosted.models": "[]" } })} />);
-    expect(html).toContain('data-testid="settings-costs-allowed-removed"');
+  test("counts the active entries and says unticked ones are kept", () => {
+    const models = [
+      hosted("openai:gpt-4.1-mini"),
+      { ...hosted("anthropic:claude-sonnet-5"), disabled: true },
+    ];
+    const html = render(
+      <CostsArea
+        ctx={ctx({
+          items: items.map((entry) =>
+            entry.path === "llm.hosted.models" ? { ...entry, value: models } : entry,
+          ),
+        })}
+      />,
+    );
+    expect(html).toContain("1 von 2 Modellen erlaubt");
+    expect(html).toContain(
+      "Abgewählte Modelle bleiben mit ihren Grenzen gespeichert und lassen sich jederzeit wieder auswählen.",
+    );
+    expect(html).toMatch(
+      /aria-pressed="false"[^>]*data-testid="settings-costs-allowed-anthropic:claude-sonnet-5"/,
+    );
+    expect(html).not.toContain("Beim Speichern entfernt");
   });
 });
 

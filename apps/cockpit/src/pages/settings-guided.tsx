@@ -28,7 +28,6 @@ export interface GuidedContext {
   catalog: ModelCatalog | undefined;
   usage: BudgetSummary | null;
   publicBaseUrl: string;
-  rememberedHostedModels: readonly unknown[];
   setDraft(path: string, text: string): void;
   dropDraft(path: string): void;
   onScope(scope: SettingDraftScope): void;

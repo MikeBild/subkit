@@ -98,21 +98,6 @@ export * from "@/pages/settings-rows";
 
 const SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
-export function rememberHostedModels(
-  current: readonly unknown[],
-  seen: readonly unknown[],
-): readonly unknown[] {
-  const modelOf = (entry: unknown) =>
-    entry && typeof entry === "object" && typeof (entry as { model?: unknown }).model === "string"
-      ? (entry as { model: string }).model
-      : null;
-  const known = new Set(current.map(modelOf));
-  const added = seen.filter((entry) => {
-    const model = modelOf(entry);
-    return model !== null && !known.has(model);
-  });
-  return added.length > 0 ? [...current, ...added] : current;
-}
 const SETTINGS_QUERY_KEY = ["admin", "settings"] as const;
 
 export function SettingsPage() {
@@ -199,7 +184,6 @@ function SettingsWorkspace() {
   const [restartOpen, setRestartOpen] = useState(false);
   const [restartNowOpen, setRestartNowOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
-  const [rememberedHostedModels, setRememberedHostedModels] = useState<readonly unknown[]>([]);
   const restartNow = useRestartOffer();
   const live = useLiveQueryOptions();
   const query = useQuery({
@@ -267,11 +251,6 @@ function SettingsWorkspace() {
     draftState.drafts.global["server.public_base_url"] ??
     (stringItem(globalItems, "server.public_base_url") || (globalThis.location?.origin ?? ""));
   useDirtyGuard(changed.length > 0);
-  useEffect(() => {
-    const value = globalItems.find((item) => item.path === "llm.hosted.models")?.value;
-    if (!Array.isArray(value) || value.length === 0) return;
-    setRememberedHostedModels((current) => rememberHostedModels(current, value));
-  }, [globalItems]);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -360,7 +339,6 @@ function SettingsWorkspace() {
     catalog: catalog.data,
     usage,
     publicBaseUrl,
-    rememberedHostedModels,
     setDraft: (path, text) => setDraft(path, text, scope),
     dropDraft: (path) => draftState.dropDraft(path, scope),
     onScope: (next) => {

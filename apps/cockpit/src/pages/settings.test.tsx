@@ -681,7 +681,6 @@ describe("the guided settings pages", () => {
     setDraft() {},
     dropDraft() {},
     onScope() {},
-    rememberedHostedModels: [],
     navigate() {},
     ...overrides,
   });

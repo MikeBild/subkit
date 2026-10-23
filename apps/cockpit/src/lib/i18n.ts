@@ -1702,8 +1702,8 @@ const EN = {
   "settings.overview.access.apiKey": "API key",
   "settings.costs.currency.ownNeeded":
     "The built-in prices exist only in US dollars and are shown in dollars. With {currency} you enter your own price for each model.",
-  "settings.costs.allowed.removed":
-    "Saving removes unticked models together with their limits. Until you leave this page you can tick them again here; afterwards only under all settings of this area.",
+  "settings.costs.allowed.kept":
+    "Unticked models stay saved with their limits and can be selected again at any time.",
   "settings.purpose": "How SubKit works for you: AI, costs, sign-in and connections.",
   "settings.level.areas": "Areas",
   "settings.level.allAreas": "All areas",
@@ -7754,8 +7754,8 @@ const DE: Record<TranslationKey, string> = {
   "settings.overview.access.apiKey": "API-Schlüssel",
   "settings.costs.currency.ownNeeded":
     "Die eingebauten Preise gibt es nur in US-Dollar und sie stehen hier in Dollar. Mit {currency} trägst du für jedes Modell einen eigenen Preis ein.",
-  "settings.costs.allowed.removed":
-    "Beim Speichern entfernt SubKit abgewählte Modelle samt ihren Grenzen. Bis du die Seite verlässt, kannst du sie hier wieder anhaken, danach nur unter allen Einstellungen dieses Bereichs.",
+  "settings.costs.allowed.kept":
+    "Abgewählte Modelle bleiben mit ihren Grenzen gespeichert und lassen sich jederzeit wieder auswählen.",
   "settings.purpose": "So arbeitet SubKit für dich: KI, Kosten, Anmeldung und Verbindungen.",
   "settings.level.areas": "Bereiche",
   "settings.level.allAreas": "Alle Bereiche",

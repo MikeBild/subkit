@@ -116,7 +116,6 @@ isolated(
             catalog: { currency: "USD", models: [] },
             usage: null,
             publicBaseUrl: "http://localhost",
-            rememberedHostedModels: [],
             setDraft: (path, text) => state.setDraft(path, text, "global"),
             dropDraft: (path) => state.dropDraft(path, "global"),
             onScope() {},
