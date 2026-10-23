@@ -241,6 +241,11 @@ test("seed shows every feature: intake from AI, template connectors, an AI step 
     [tenantId],
   );
   expect(automatic.rows[0]?.n).toBeGreaterThan(0);
+  const versions = await context.pool.query(
+    "SELECT version FROM knowledge_source_versions WHERE tenant_id=$1 AND knowledge_source_id=$2 ORDER BY version",
+    [tenantId, cockpitDemoId(tenantId, "knowledge-1")],
+  );
+  expect(versions.rows.map((row) => row.version)).toEqual([1, 2, 3]);
   for (const table of ["workflows", "connectors", "knowledge_sources", "skills"]) {
     const leaked = await context.pool.query(
       `SELECT count(*)::int AS n FROM ${table} WHERE tenant_id=$1 AND (description LIKE 'Mock description:%' OR category IN ('mock-category','sk'))`,

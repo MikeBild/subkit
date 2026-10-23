@@ -343,17 +343,6 @@ async function seedDemoHistory(tenantId: string, state: DemoState): Promise<void
     const skill = await api(`/v1/skills/${skillId}`);
     await api(`/v1/skills/${skillId}`, "PATCH", { expected_version: skill.version, body });
   }
-  const sourceId = own(demoHistory.knowledge.key);
-  for (const content of demoHistory.knowledge.contents) {
-    const current = await api(`/v1/knowledge-sources/${sourceId}/content`);
-    const path = current.documents[0]?.path;
-    if (!path) fail("Demo knowledge source has no editable document");
-    await api(`/v1/knowledge-sources/${sourceId}/content`, "PUT", {
-      expected_version: current.version,
-      path,
-      content,
-    });
-  }
   const fileId = state.uploadedFiles?.[demoHistory.file.filename];
   if (!fileId) fail("Demo file for the replaced version is missing");
   await api(`/v1/files/${fileId}/replace`, "POST", {

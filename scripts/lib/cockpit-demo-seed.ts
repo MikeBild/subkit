@@ -866,7 +866,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       slug: `demo-knowledge-${i}`,
       source_type: "text",
       source_uri: `text:demo-knowledge-${i}`,
-      version: "1",
+      version: String(1 + (i === 1 ? demoHistory.knowledge.contents.length : 0)),
       status: i < 3 ? "active" : i === 3 ? "inactive" : i === 4 ? "processing" : "error",
       ...(i === 0 ? { created_at: ago(340), updated_at: ago(170) } : {}),
       last_error: i === 5 ? "Import failed: source document unavailable" : null,
@@ -882,8 +882,22 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       content: { kind: "document", filename: `${name}.md`, mime: "text/markdown", text: content },
       content_hash: createHash("sha256").update(content).digest("hex"),
       author_user_id: adminUserId,
-      ...(i === 0 ? { created_at: ago(338) } : {}),
+      ...(i === 0 ? { created_at: ago(338) } : i === 1 ? { created_at: ago(240) } : {}),
     });
+    if (i === 1)
+      demoHistory.knowledge.contents.forEach((text, index) => {
+        insert("knowledge_source_versions", {
+          id: id(`knowledge-version-${i}-${index + 2}`),
+          tenant_id: tenantId,
+          knowledge_source_id: id(`knowledge-${i}`),
+          version: index + 2,
+          content: { kind: "document", filename: `${name}.md`, mime: "text/markdown", text },
+          content_hash: createHash("sha256").update(text).digest("hex"),
+          author_user_id: index === 0 ? id("user-0") : adminUserId,
+          note: index === 0 ? "Shorter approval duration" : "Second person for production",
+          created_at: ago(index === 0 ? 120 : 20),
+        });
+      });
     for (let j = 0; j < 2; j++)
       insert("knowledge_chunks", {
         id: id(`chunk-${i}-${j}`),
