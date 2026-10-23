@@ -945,8 +945,238 @@
     return (n < 0 ? "-" : "") + whole + (digits > 0 ? sep.decimal + parts[1] : "");
   }
 
+  const DATE_NAMES = {
+    de: [
+      "Januar,Februar,März,April,Mai,Juni,Juli,August,September,Oktober,November,Dezember",
+      "Jan.,Feb.,März,Apr.,Mai,Juni,Juli,Aug.,Sept.,Okt.,Nov.,Dez.",
+      "Sonntag,Montag,Dienstag,Mittwoch,Donnerstag,Freitag,Samstag",
+      "So.,Mo.,Di.,Mi.,Do.,Fr.,Sa.",
+    ],
+    en: [
+      "January,February,March,April,May,June,July,August,September,October,November,December",
+      "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec",
+      "Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday",
+      "Sun,Mon,Tue,Wed,Thu,Fri,Sat",
+    ],
+  };
+  const HOUR_MS = 3600000;
+  const EU_RULE_FIRST_YEAR = 1996;
+
+  function lastSundayUtc(year, month) {
+    const day = 31 - new Date(Date.UTC(year, month, 31)).getUTCDay();
+    return Date.UTC(year, month, day, 1);
+  }
+
+  const DATE_ZONES = {
+    UTC: function utcOffset() {
+      return 0;
+    },
+    "Europe/Berlin": function berlinOffset(epochMs) {
+      const year = new Date(epochMs).getUTCFullYear();
+      if (year < EU_RULE_FIRST_YEAR) {
+        throw new Error(
+          "sk.fmt.date: Europe/Berlin is supported from " +
+            EU_RULE_FIRST_YEAR +
+            " on; use sk.date.format for earlier instants",
+        );
+      }
+      const summer = epochMs >= lastSundayUtc(year, 2) && epochMs < lastSundayUtc(year, 9);
+      return summer ? 2 * HOUR_MS : HOUR_MS;
+    },
+  };
+
+  const ISO_DATE_TIME =
+    /^(\d{4})-(\d{2})-(\d{2})(?:[Tt ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(?:([Zz])|([+-])(\d{2}):(\d{2}))?)?$/;
+
+  function utcFields(epochMs) {
+    const d = new Date(epochMs);
+    return {
+      year: d.getUTCFullYear(),
+      month: d.getUTCMonth(),
+      day: d.getUTCDate(),
+      weekday: d.getUTCDay(),
+      hour: d.getUTCHours(),
+      minute: d.getUTCMinutes(),
+      second: d.getUTCSeconds(),
+    };
+  }
+
+  function invalidDate(value) {
+    return new Error(
+      "sk.fmt.date: expected epoch milliseconds or an ISO 8601 string with Z or an offset " +
+        '(or a date-only "yyyy-MM-dd"), got ' +
+        (typeof value === "string" ? JSON.stringify(value) : typeof value),
+    );
+  }
+
+  function parseDateValue(value) {
+    if (typeof value === "number") {
+      if (Number.isNaN(new Date(value).getTime())) throw invalidDate(value);
+      return { epochMs: value, dateOnly: false };
+    }
+    if (value instanceof Date) {
+      const t = value.getTime();
+      if (Number.isNaN(t)) throw invalidDate(value);
+      return { epochMs: t, dateOnly: false };
+    }
+    if (typeof value !== "string") throw invalidDate(value);
+    const m = ISO_DATE_TIME.exec(value.trim());
+    if (!m) throw invalidDate(value);
+    const hasTime = m[4] !== undefined;
+    if (hasTime && m[8] === undefined && m[9] === undefined) throw invalidDate(value);
+    const year = Number(m[1]);
+    const month = Number(m[2]) - 1;
+    const day = Number(m[3]);
+    const hour = hasTime ? Number(m[4]) : 0;
+    const minute = hasTime ? Number(m[5]) : 0;
+    const second = m[6] === undefined ? 0 : Number(m[6]);
+    const millis = m[7] === undefined ? 0 : Number((m[7] + "00").slice(0, 3));
+    const base = new Date(Date.UTC(2000, month, day, hour, minute, second, millis));
+    base.setUTCFullYear(year);
+    const f = utcFields(base.getTime());
+    if (
+      f.year !== year ||
+      f.month !== month ||
+      f.day !== day ||
+      f.hour !== hour ||
+      f.minute !== minute ||
+      f.second !== second
+    ) {
+      throw invalidDate(value);
+    }
+    let offsetMs = 0;
+    if (m[9] !== undefined) {
+      const oh = Number(m[10]);
+      const om = Number(m[11]);
+      if (oh > 23 || om > 59) throw invalidDate(value);
+      offsetMs = (m[9] === "-" ? -1 : 1) * (oh * HOUR_MS + om * 60000);
+    }
+    return { epochMs: base.getTime() - offsetMs, dateOnly: !hasTime };
+  }
+
+  function pad(n, width) {
+    let s = String(n);
+    while (s.length < width) s = "0" + s;
+    return s;
+  }
+
+  function formatOffset(offsetMs) {
+    if (offsetMs === 0) return "Z";
+    const total = Math.abs(offsetMs) / 60000;
+    return (offsetMs < 0 ? "-" : "+") + pad(Math.floor(total / 60), 2) + ":" + pad(total % 60, 2);
+  }
+
+  const DATE_TOKENS = [
+    "yyyy",
+    "MMMM",
+    "MMM",
+    "MM",
+    "M",
+    "dd",
+    "d",
+    "EEEE",
+    "EEE",
+    "HH",
+    "H",
+    "mm",
+    "ss",
+    "XXX",
+  ];
+  const TIME_TOKENS = ["HH", "H", "mm", "ss", "XXX"];
+
+  function fmtDate(value, options) {
+    const opts = options || {};
+    const known = Object.keys(DATE_ZONES).join(", ");
+    if (opts.tz === undefined || opts.tz === null) {
+      throw new Error("sk.fmt.date: options.tz is required; known: " + known);
+    }
+    const zoneOffset = Object.hasOwn(DATE_ZONES, opts.tz) ? DATE_ZONES[opts.tz] : null;
+    if (!zoneOffset) {
+      throw new Error(
+        'sk.fmt.date: unsupported tz "' +
+          opts.tz +
+          '"; known: ' +
+          known +
+          " (sk.date.format covers every IANA zone)",
+      );
+    }
+    const locale = String(opts.locale || "en")
+      .slice(0, 2)
+      .toLowerCase();
+    const table = DATE_NAMES[locale];
+    if (!table) {
+      throw new Error(
+        'sk.fmt.date: unsupported locale "' +
+          opts.locale +
+          '"; known: ' +
+          Object.keys(DATE_NAMES).join(", "),
+      );
+    }
+    const parsed = parseDateValue(value);
+    const pattern =
+      opts.pattern !== undefined && opts.pattern !== null
+        ? String(opts.pattern)
+        : parsed.dateOnly
+          ? "yyyy-MM-dd"
+          : "yyyy-MM-dd'T'HH:mm:ssXXX";
+    const offsetMs = parsed.dateOnly ? 0 : zoneOffset(parsed.epochMs);
+    const f = utcFields(parsed.epochMs + offsetMs);
+    if (f.year < 0 || f.year > 9999) throw new Error("sk.fmt.date: year must be 0..9999");
+    const values = {
+      yyyy: pad(f.year, 4),
+      MMMM: table[0].split(",")[f.month],
+      MMM: table[1].split(",")[f.month],
+      MM: pad(f.month + 1, 2),
+      M: String(f.month + 1),
+      dd: pad(f.day, 2),
+      d: String(f.day),
+      EEEE: table[2].split(",")[f.weekday],
+      EEE: table[3].split(",")[f.weekday],
+      HH: pad(f.hour, 2),
+      H: String(f.hour),
+      mm: pad(f.minute, 2),
+      ss: pad(f.second, 2),
+      XXX: formatOffset(offsetMs),
+    };
+    let out = "";
+    let i = 0;
+    while (i < pattern.length) {
+      const ch = pattern[i];
+      if (ch === "'") {
+        const close = pattern.indexOf("'", i + 1);
+        if (close === -1) throw new Error("sk.fmt.date: unterminated quote in pattern");
+        out += close === i + 1 ? "'" : pattern.slice(i + 1, close);
+        i = close + 1;
+        continue;
+      }
+      if (!/[A-Za-z]/.test(ch)) {
+        out += ch;
+        i += 1;
+        continue;
+      }
+      let run = ch;
+      while (pattern[i + run.length] === ch) run += ch;
+      if (DATE_TOKENS.indexOf(run) === -1) {
+        throw new Error(
+          'sk.fmt.date: unsupported pattern token "' +
+            run +
+            '"; known: ' +
+            DATE_TOKENS.join(", ") +
+            ". Quote literal text, e.g. 'Uhr'",
+        );
+      }
+      if (parsed.dateOnly && TIME_TOKENS.indexOf(run) !== -1) {
+        throw new Error('sk.fmt.date: a date-only value has no time for token "' + run + '"');
+      }
+      out += values[run];
+      i += run.length;
+    }
+    return out;
+  }
+
   const fmt = Object.freeze({
     number: fmtNumber,
+    date: fmtDate,
     de: function de(value, digits) {
       return fmtNumber(value, { locale: "de", digits: digits === undefined ? 0 : digits });
     },
@@ -986,7 +1216,7 @@
     isObject: isObject,
     isNil: isNil,
     fmt: fmt,
-    version: "1.7.0",
+    version: "1.8.0",
   };
   Object.defineProperties(sk, Object.getOwnPropertyDescriptors(globalThis.__sk_tools__));
   Object.freeze(sk);
@@ -1057,7 +1287,8 @@
             name +
               "(locale, options) is not supported: this sandbox has no Intl/ECMA-402, so " +
               "both would be ignored and the result would be wrong. Use sk.fmt.number(value, " +
-              '{ locale: "de", digits: 1 }) for numbers, or format upstream.',
+              '{ locale: "de", digits: 1 }) for numbers, sk.fmt.date(value, { tz: "Europe/Berlin", ' +
+              'pattern: "dd.MM.yyyy HH:mm" }) for dates, or format upstream.',
           );
         }
         return original.apply(this, []);

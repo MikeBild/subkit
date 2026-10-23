@@ -20,7 +20,8 @@ describe("detectStdlibDrift", () => {
   });
 
   test("additive minor bumps stay on major 1 — no drift vs an earlier 1.x", () => {
-    expect(STDLIB_VERSION).toBe("1.7.0");
+    expect(STDLIB_VERSION).toBe("1.8.0");
+    expect(detectStdlibDrift("1.7.0")).toBeNull();
     expect(detectStdlibDrift("1.6.0")).toBeNull();
     expect(detectStdlibDrift("1.5.0")).toBeNull();
     expect(detectStdlibDrift("1.4.0")).toBeNull();

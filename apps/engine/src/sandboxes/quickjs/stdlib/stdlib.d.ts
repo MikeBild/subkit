@@ -152,7 +152,7 @@ export interface Sk extends Readonly<typeof sandboxTools> {
   isNil(v: unknown): v is null | undefined;
 
   /**
-   * Locale-aware number formatting. This sandbox has no Intl/ECMA-402, and
+   * Locale-aware number and date formatting. This sandbox has no Intl/ECMA-402, and
    * `toLocaleString(locale)` would silently ignore the locale — so formatting
    * lives here instead. Known locales: `de`, `en`.
    */
@@ -164,6 +164,22 @@ export interface Sk extends Readonly<typeof sandboxTools> {
     ): string;
     /** Shorthand for German formatting: `de(35606)` → `"35.606"`, `de(9.15, 1)` → `"9,2"`. */
     de(value: unknown, digits?: number): string;
+    /**
+     * Deterministic date formatting without Intl. `value`: epoch milliseconds, a `Date`, an
+     * ISO 8601 date-time with `Z` or `±hh:mm`, or a date-only `"yyyy-MM-dd"` (kept as that
+     * calendar date, no zone shift, no time tokens). A date-time without an offset throws.
+     * `tz` is required: `"UTC"` or `"Europe/Berlin"` (CEST from the last Sunday of March
+     * 01:00 UTC to the last Sunday of October 01:00 UTC; Berlin instants before 1996 throw).
+     * Other IANA zones: `sk.date.format`. Tokens: `yyyy MMMM MMM MM M dd d EEEE EEE HH H mm ss
+     * XXX`; quote literal text (`'Uhr'`); any other letter run throws. `locale` (`de`, `en`;
+     * default `en`) names months and weekdays. Default pattern `yyyy-MM-dd'T'HH:mm:ssXXX`.
+     * `date("2026-03-29T01:30:00Z", { tz: "Europe/Berlin", locale: "de", pattern: "EEEE, d. MMMM yyyy HH:mm" })`
+     * → `"Sonntag, 29. März 2026 03:30"`.
+     */
+    date(
+      value: unknown,
+      options: { tz: "UTC" | "Europe/Berlin"; pattern?: string; locale?: string },
+    ): string;
   };
 
   readonly version: string;
