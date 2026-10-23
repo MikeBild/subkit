@@ -27,7 +27,7 @@ Der Weg ist immer gleich: **sammeln → im Chat prüfen → bestätigen → Wiss
 6. Wähle eine Kategorie. Deine Standardkategorie ist vorausgewählt, anfangs `inbox`.
 7. Wähle **Sammeln**.
 
-Erkenntnisse aus Sitzungen mit Coding-Agenten landen im selben Eingang, mit der Herkunft **Programmier-Assistent**. Gesammelte Seiten tragen die Herkunft **Browser**.
+Erkenntnisse aus Sitzungen mit KI-Assistenten landen im selben Eingang. Als Herkunft steht dort der Assistent mit seinem Zeichen, etwa **Claude Code**, **Codex** oder **Chat**. Ist der Assistent unbekannt, steht dort **KI-Assistent**. Gesammelte Seiten tragen die Herkunft **Browser**.
 
 ### Eine Notiz hinzufügen
 
@@ -39,16 +39,16 @@ Eine Notiz ist ein Eintrag ohne Quelladresse, etwa ein Gedanke oder eine Idee.
 4. Wähle eine **Kategorie** oder lege mit **Neue Kategorie …** eine neue an.
 5. Wähle **Hinzufügen**.
 
-Die Notiz trägt die Herkunft **Notiz**. Statt **Original öffnen** zeigt ihre Seite nur **Notiz**, denn es gibt keine Quelle.
+Die Notiz trägt die Herkunft **Notiz**. Auf der Seite der Notiz fehlt der Link **Ursprüngliche Seite öffnen**, denn es gibt keine Quelle.
 
 ### Einträge prüfen und ordnen
 
 1. Öffne im Cockpit **Eingang**.
 
-   ![Eingang mit drei Einträgen der Herkunft „Fundstück“ in der Kategorie Inbox, Status „Gesammelt“](images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.de.webp)
+   ![Eingang mit drei gesammelten Einträgen der Herkunft „Browser“ in der Kategorie Inbox, Status „Gesammelt“](images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.de.webp)
 
-2. Optional: Wähle über der Liste **Von KI**. Dann siehst du nur Einträge, die ein Agent oder eine Chat-Sitzung vorbereitet hat. **Alle** zeigt wieder jeden Eintrag.
-3. Klicke auf einen Eintrag. Seine Seite zeigt im Tab **Inhalt** den Text und die Herkunft. Bei gesammelten Seiten öffnet **Original öffnen** die Quelle.
+2. Optional: Klicke in der Zeile über der Liste auf den Hinweis, zum Beispiel „3 Einträge deiner KI-Assistenten warten auf deine Prüfung“. Dann siehst du nur Einträge deiner KI-Assistenten. Der Filter **Herkunft: KI-Assistent** steht neben der Suche; ein Klick darauf hebt ihn auf.
+3. Klicke auf einen Eintrag. Im Tab **Inhalt** nennt ein Satz die Herkunft, etwa „Gesammelt von Chat in der Sitzung … · für … · …“. Rechts daneben öffnet **Unterhaltung öffnen** die Chat-Unterhaltung; bei gesammelten Seiten öffnet **Ursprüngliche Seite öffnen** die Quelle.
 4. Optional: Wähle **Eintrag bearbeiten**, um Titel, Inhalt oder Kategorie zu ändern. Das erfasste Original bleibt erhalten.
 5. Optional: **Verwerfen** oder **Wiederherstellen**.
 
@@ -90,7 +90,7 @@ Gut zu wissen:
 | Was du siehst | Was du tust |
 | --- | --- |
 | Der Web Clipper meldet keine Verbindung oder einen ungültigen Schlüssel | Folge „Wenn etwas nicht klappt“ im Kapitel „Webseiten mit dem Web Clipper sammeln“. |
-| Ein Eintrag fehlt im **Eingang** | Prüfe Kategorie und Herkunft. Wähle **Alle** statt **Von KI**. |
+| Ein Eintrag fehlt im **Eingang** | Prüfe Kategorie und Herkunft. Hebe den Filter **Herkunft** auf. |
 | „Dafür fehlen dir die Rechte. …“ | Bitte eine Administratorin oder einen Administrator um `intake:confirm` und das Recht des Ziels. |
 | „Dieser Vorschlag hat sich geändert. Prüfe den aktuellen Inhalt, bevor du bestätigst.“ | Lies den aktuellen Inhalt und bestätige dann erneut. |
 | „Ein Skill, auf den sich dieser Vorschlag bezieht, lässt sich nicht mehr laden. …“ | Überarbeite den Vorschlag im Chat, bevor du bestätigst. |

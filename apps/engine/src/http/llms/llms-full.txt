@@ -985,7 +985,7 @@ The path is always the same: **collect → review in chat → confirm → knowle
 6. Pick a category. Your default category is preselected, at first `inbox`.
 7. Select **Collect**.
 
-Learnings from coding-agent sessions arrive in the same Inbox, with the origin **Coding assistant**. Collected pages carry the origin **Browser**.
+Learnings from sessions with AI assistants arrive in the same Inbox. Their origin names the assistant with its mark, such as **Claude Code**, **Codex** or **Chat**. When the assistant is unknown, it reads **AI assistant**. Collected pages carry the origin **Browser**.
 
 ### Add a note
 
@@ -997,16 +997,16 @@ A note is an item without a source address, such as a thought or an idea.
 4. Pick a **Category**, or create one with **New category…**.
 5. Select **Add**.
 
-The note carries the origin **Note**. Instead of **Open original**, its page only shows **Note**, because there is no source.
+The note carries the origin **Note**. Its page shows no **Open original page** link, because there is no source.
 
 ### Review and organize items
 
 1. In the Cockpit, open **Inbox**.
 
-   ![Inbox with three collected clips of origin "Clip" in category Inbox, status "Collected", in the Brennwerk Cockpit](/docs-images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp?v=088448e5956d)
+   ![Inbox with three collected items of origin "Browser" in category Inbox, status "Collected", in the Brennwerk Cockpit](/docs-images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp?v=088448e5956d)
 
-2. Optional: above the list, select **By AI**. You then only see items an agent or a chat session prepared. **All** shows every item again.
-3. Click an item. Its page shows the text and the origin on the **Content** tab. For collected pages, **Open original** opens the source.
+2. Optional: in the line above the list, click the hint, for example "3 entries from your AI assistants are waiting for your review". You then only see items from your AI assistants. The filter **Origin: AI assistant** appears next to the search; click it to clear it.
+3. Click an item. On the **Content** tab, one sentence names the origin, such as "Collected by Chat in the session … · for … · …". On the right, **Open conversation** opens the chat conversation; for collected pages, **Open original page** opens the source.
 4. Optional: select **Edit item** to change title, content or category. The captured original is preserved.
 5. Optional: **Discard** or **Restore**.
 
@@ -1048,7 +1048,7 @@ Good to know:
 | What you see | What to do |
 | --- | --- |
 | The Web Clipper reports no connection or an invalid key | Follow "If something does not work" in the chapter "Collect web pages with the Web Clipper". |
-| An item is missing in the **Inbox** | Check the category and the origin. Select **All** instead of **By AI**. |
+| An item is missing in the **Inbox** | Check the category and the origin. Clear the **Origin** filter. |
 | "You lack the rights for this. …" | Ask an administrator for `intake:confirm` and the destination right. |
 | "This suggestion changed. Review the current content before confirming it." | Read the current content, then confirm again. |
 | "A skill this suggestion refers to can no longer be loaded. …" | Revise the suggestion in the chat before you confirm. |
