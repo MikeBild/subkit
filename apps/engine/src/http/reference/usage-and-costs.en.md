@@ -93,7 +93,7 @@ Some tabs add a column: **Runs** for Workflow, **Error rate** for Model, **Last 
 The last row collects what belongs to no row:
 
 - **No workflow (chat, designing, knowledge …)**
-- **No person (schedule, webhook)**
+- **No person (automatic)**: schedules, webhooks and background work such as cataloguing
 - **Other** for models
 - **No conversation (runs, knowledge, checks …)**
 

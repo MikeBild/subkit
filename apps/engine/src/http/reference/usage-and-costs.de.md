@@ -93,7 +93,7 @@ Je nach Tab kommt eine Spalte dazu: **Läufe** bei Workflow, **Fehlerquote** bei
 Die letzte Zeile sammelt, was keiner Zeile zuzuordnen ist:
 
 - **Ohne Workflow (Chat, Entwerfen, Wissen …)**
-- **Ohne Person (Zeitplan, Webhook)**
+- **Ohne Person (automatisch)**: Zeitpläne, Webhooks und Hintergrundarbeit wie das Katalogisieren
 - **Weitere** bei Modellen
 - **Ohne Unterhaltung (Läufe, Wissen, Prüfungen …)**
 

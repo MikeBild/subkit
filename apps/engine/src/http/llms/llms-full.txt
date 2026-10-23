@@ -23,7 +23,7 @@ You describe the work in plain language. You approve what it may touch. Every ru
 
 The **Overview** shows its key figures for a **Time window**: **24 h**, **This week**, **Last week**, **This month** or **Last month**.
 Weeks start on Monday, and your time zone applies. The **Usage** page offers the same choice.
-The **Usage** tile follows the chosen time window and shows how much of the monthly budget is used, for example "42% of the monthly token budget".
+The **Usage** tile follows the chosen time window. It shows the cost in the window or "No AI calls in this window". Below it, it shows how much of the monthly budget is used, for example "42% of the monthly token budget".
 What the **Usage** page shows and how you adjust the budget is in "Keep track of usage and costs".
 
 Use it as SubKit Cloud or run your own engine:
@@ -1896,7 +1896,7 @@ Some tabs add a column: **Runs** for Workflow, **Error rate** for Model, **Last 
 The last row collects what belongs to no row:
 
 - **No workflow (chat, designing, knowledge …)**
-- **No person (schedule, webhook)**
+- **No person (automatic)**: schedules, webhooks and background work such as cataloguing
 - **Other** for models
 - **No conversation (runs, knowledge, checks …)**
 
