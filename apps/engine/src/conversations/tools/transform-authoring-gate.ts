@@ -1,5 +1,5 @@
+import { extractJsScopeReferences } from "../../sandboxes/quickjs/scope-references.ts";
 import { extractStepIdReferences } from "../../workflows/levenshtein.ts";
-import { extractJsScopeReferences } from "../js-transform-eval.ts";
 import { traceFailedWithRuntimeDataError } from "../persistence/preview-failure-class.ts";
 import { stepFingerprint } from "../step-fingerprint.ts";
 import type { DraftDocument, WorkflowDraftStepPreview } from "../types.ts";

@@ -63,24 +63,3 @@ export function evaluateJsOutputFunction(args: {
 }): Promise<JsBodyEvalOutcome> {
   return runBody(args.code, args.root);
 }
-
-const JS_SCOPE_REF_PATTERNS = [
-  /\binput\??\.scope\??\.([A-Za-z_$][A-Za-z0-9_$]*)/g,
-  /\binput\??\.scope\[\s*["']([^"'\]]+)["']\s*\]/g,
-];
-
-export function extractJsScopeReferences(code: string): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const re of JS_SCOPE_REF_PATTERNS) {
-    re.lastIndex = 0;
-    for (let m = re.exec(code); m !== null; m = re.exec(code)) {
-      const id = m[1] ?? "";
-      if (id && !seen.has(id)) {
-        seen.add(id);
-        out.push(id);
-      }
-    }
-  }
-  return out;
-}

@@ -9,6 +9,7 @@ import {
 } from "../execution/jsonata-engine.ts";
 import { logger } from "../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../observability/instrumentation.ts";
+import { extractJsScopeReferences } from "../sandboxes/quickjs/scope-references.ts";
 import { lintJsBody } from "../workflows/js-body-lint.ts";
 import { extractStepIdReferences } from "../workflows/levenshtein.ts";
 import {
@@ -16,11 +17,7 @@ import {
   validateBareIterationIdentifiers,
 } from "../workflows/reference-validator.ts";
 import { enumerateScopePaths, summarizeScopeShape } from "../workflows/scope-shape.ts";
-import {
-  checkJsBodySyntax,
-  evaluateJsBody,
-  extractJsScopeReferences,
-} from "./js-transform-eval.ts";
+import { checkJsBodySyntax, evaluateJsBody } from "./js-transform-eval.ts";
 import { fingerprintsById } from "./step-fingerprint.ts";
 import {
   describeLoopGateBlock,

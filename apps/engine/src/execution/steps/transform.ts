@@ -4,6 +4,7 @@ import { recordSandboxLimitClamped } from "../../observability/instrumentation.t
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { sandboxFailureCode } from "../../sandboxes/index.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
+import { pruneScopeForJs } from "../../sandboxes/quickjs/scope-references.ts";
 import {
   SandboxError,
   SandboxInterruptError,
@@ -137,7 +138,7 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
   try {
     const jsPromise = runJs({
       code: p.step.expression,
-      input: { scope: p.scope, input: p.input },
+      input: { scope: pruneScopeForJs(p.step.expression, p.scope).scope, input: p.input },
       limits: { wall_ms: timeoutMs },
       clock: {
         now_ms: p.ctx.started_at.getTime(),
