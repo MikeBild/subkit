@@ -2,17 +2,14 @@ import { z } from "zod";
 import { parseBinaryFileInCurrentProcess } from "../../docs-ingestion/parsers/index.ts";
 import { evaluateJsonataInCurrentProcess } from "../../execution/jsonata-engine.ts";
 import { routeLogsToStderr } from "../../logging/logger.ts";
+import { preloadQuickJsModule, type RunJsOptions, runJsInCurrentProcess } from "./runtime.ts";
+import { SandboxError } from "./types.ts";
 import {
   assertBoundedWorkerValue,
-  preloadQuickJsModule,
-  type RunJsOptions,
-  runJsInCurrentProcess,
+  MAX_BINARY_WORKER_WIRE_BYTES,
+  MAX_WORKER_MESSAGE_BYTES,
   WORKER_READY_MESSAGE,
-} from "./runtime.ts";
-import { SandboxError } from "./types.ts";
-
-const MAX_WORKER_MESSAGE_BYTES = 32 * 1024 * 1024;
-const MAX_BINARY_WORKER_WIRE_BYTES = 45 * 1024 * 1024;
+} from "./worker-protocol.ts";
 
 const WorkerRequestSchema = z.discriminatedUnion("op", [
   z.object({

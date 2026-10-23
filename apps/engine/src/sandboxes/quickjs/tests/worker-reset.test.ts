@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import {
-  prewarmSandboxWorkers,
-  runJs,
-  runSandboxWorkerJob,
-  workerFailureResetReason,
-} from "../runtime.ts";
+import { prewarmSandboxWorkers, runJs, runSandboxWorkerJob } from "../runtime.ts";
 import { SandboxRuntimeError, SandboxSyntaxError, SandboxTimeoutError } from "../types.ts";
+import { workerFailureResetReason } from "../worker-protocol.ts";
 
 async function hookPid(): Promise<number | undefined> {
   const result = await runJs<number>({

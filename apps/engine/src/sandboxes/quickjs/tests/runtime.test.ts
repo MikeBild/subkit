@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { withContext } from "../../../logging/context.ts";
-import { assertBoundedWorkerValue, runJs } from "../runtime.ts";
+import { runJs } from "../runtime.ts";
 import {
   SandboxInterruptError,
   SandboxMemoryError,
   SandboxRuntimeError,
   SandboxTimeoutError,
 } from "../types.ts";
+import { assertBoundedWorkerValue } from "../worker-protocol.ts";
 
 describe("quickjs runtime", () => {
   test("rejects oversized and cyclic worker values before serialization", () => {
