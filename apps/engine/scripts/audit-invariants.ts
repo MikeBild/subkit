@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { COMMENT_EXEMPT, COMMENT_SCOPE, findComments } from "./audit/comments.ts";
 import { auditTenantFilter } from "./audit/tenant-filter-ast.ts";
@@ -34,6 +34,7 @@ function listFiles(root: string, predicate: (p: string) => boolean): string[] {
       }
       if (s.isDirectory()) {
         if (name === "node_modules" || name === "dist" || name === ".turbo") continue;
+        if (name === "worktrees" && basename(dir) === ".claude") continue;
         stack.push(p);
       } else if (predicate(p)) {
         out.push(p);
