@@ -166,7 +166,7 @@ export interface Sk extends Readonly<typeof sandboxTools> {
     de(value: unknown, digits?: number): string;
     /**
      * Deterministic date formatting without Intl. `value`: epoch milliseconds, a `Date`, an
-     * ISO 8601 date-time with `Z` or `±hh:mm`, or a date-only `"yyyy-MM-dd"` (kept as that
+     * ISO 8601 date-time with `Z`, `±hh:mm` or `±hhmm`, or a date-only `"yyyy-MM-dd"` (kept as that
      * calendar date, no zone shift, no time tokens). A date-time without an offset throws.
      * `tz` is required: `"UTC"` or `"Europe/Berlin"` (CEST from the last Sunday of March
      * 01:00 UTC to the last Sunday of October 01:00 UTC; Berlin instants before 1996 throw).

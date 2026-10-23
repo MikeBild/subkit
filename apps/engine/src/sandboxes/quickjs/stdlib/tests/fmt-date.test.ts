@@ -42,6 +42,7 @@ describe("sk.fmt.date Europe/Berlin DST boundaries", () => {
   test("offset input is converted to the instant first", async () => {
     expect(await berlin("2026-07-01T23:30:00-02:00")).toBe("2026-07-02 03:30:00 +02:00");
     expect(await berlin("2026-01-15T08:00:00.250+05:30")).toBe("2026-01-15 03:30:00 +01:00");
+    expect(await berlin("2024-01-15T10:30:00.000+0100")).toBe("2024-01-15 10:30:00 +01:00");
   });
 
   test("matches the host IANA database hourly around every transition 1996–2037", async () => {
