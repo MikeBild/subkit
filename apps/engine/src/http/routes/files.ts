@@ -41,6 +41,7 @@ import {
 } from "../../audit/index.ts";
 import { writeEvent } from "../../db/events.ts";
 import { fileLinks, files, filesDedupSeen } from "../../db/schema/index.ts";
+import { storedContentHeaders } from "../../files/content-type.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
 import { FileLinkError, linkStoredFile } from "../../files/links.ts";
 import { buildObjectKey, composeStorageUri } from "../../files/object-key.ts";
@@ -1057,7 +1058,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json({ code: "not_found", message: "file not found" }, 404);
     }
     const key = storageKey(row.storage_uri);
-    const ct = row.content_type ?? "application/octet-stream";
     const total = row.size_bytes;
 
     const rangeHeader = c.req.header("range");
@@ -1129,14 +1129,14 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     if (range) {
       const sliceLen = range.end - range.start + 1;
       return c.body(stream, 206, {
-        "content-type": ct,
+        ...storedContentHeaders(row.content_type, row.filename),
         "content-length": String(sliceLen),
         "content-range": `bytes ${range.start}-${range.end}/${total}`,
         "accept-ranges": "bytes",
       });
     }
     return c.body(stream, 200, {
-      "content-type": ct,
+      ...storedContentHeaders(row.content_type, row.filename),
       "content-length": String(total),
       "accept-ranges": "bytes",
     });

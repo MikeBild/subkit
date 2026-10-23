@@ -34,6 +34,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { storedContentHeaders } from "../../files/content-type.ts";
 import { buildObjectKey, composeStorageUri, streamFromBytes } from "../../files/object-key.ts";
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import type { ScanResult } from "../../files/scanner.ts";
@@ -465,7 +466,7 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
       },
     });
     return c.body(stream, 200, {
-      "content-type": source.content_type ?? "application/octet-stream",
+      ...storedContentHeaders(source.content_type, source.filename),
       "content-length": String(source.size_bytes),
     });
   });

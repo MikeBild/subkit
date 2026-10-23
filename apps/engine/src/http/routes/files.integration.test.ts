@@ -188,6 +188,26 @@ describe("files HTTP integration", () => {
     expect(dr.status).toBe(204);
   });
 
+  test("an uploaded HTML file is served as a sandboxed download, also for range reads", async () => {
+    const cr = await post("/v1/files/inline", srv.apiKey, {
+      filename: "page.html",
+      content_type: "text/html",
+      content_base64: Buffer.from("<script>alert(1)</script>").toString("base64"),
+    });
+    expect(cr.status).toBe(201);
+    const { id } = (await cr.json()) as { id: string };
+    for (const response of [
+      await getContent(id, srv.apiKey),
+      await getContent(id, srv.apiKey, "bytes=0-3"),
+    ]) {
+      expect(response.headers.get("content-disposition")).toStartWith("attachment;");
+      expect(response.headers.get("content-security-policy")).toBe("sandbox; default-src 'none'");
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      await response.arrayBuffer();
+    }
+    expect((await deleteFile(id, srv.apiKey)).status).toBe(204);
+  });
+
   test("413 on > 5 MiB inline payload", async () => {
     const big = Buffer.alloc(5 * 1024 * 1024 + 1, "X").toString("base64");
     const res = await post("/v1/files/inline", srv.apiKey, {

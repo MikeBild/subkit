@@ -133,6 +133,11 @@ describe("file versions", () => {
     expect(earlier.status).toBe(200);
     expect(await earlier.text()).toBe("first draft");
     const current = await request("GET", `/v1/files/${file.id}/versions/2/content`, srv.apiKey);
+    expect(current.headers.get("content-disposition")).toStartWith(
+      'inline; filename="notes-v2.txt"',
+    );
+    expect(current.headers.get("content-security-policy")).toBe("sandbox; default-src 'none'");
+    expect(current.headers.get("x-content-type-options")).toBe("nosniff");
     expect(await current.text()).toBe("second draft");
     const meta = (await (await request("GET", `/v1/files/${file.id}`, srv.apiKey)).json()) as {
       version: number;
