@@ -1,5 +1,6 @@
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { SandboxError, SandboxSyntaxError } from "../sandboxes/quickjs/types.ts";
+import { now } from "../utils/clock.ts";
 
 export const JS_EVAL_WALL_MS = 500;
 
@@ -30,7 +31,7 @@ async function runBody(code: string, input: unknown): Promise<JsBodyEvalOutcome>
       code,
       input,
       limits: { wall_ms: JS_EVAL_WALL_MS },
-      clock: null,
+      clock: { now_ms: now(), seed: "authoring-preview" },
     });
     return { ok: true, value: result.output };
   } catch (err) {

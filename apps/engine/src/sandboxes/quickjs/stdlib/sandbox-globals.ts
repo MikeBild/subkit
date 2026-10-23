@@ -124,7 +124,7 @@ export const SANDBOX_GLOBAL_NAMES: ReadonlySet<string> = new Set([
 export function sandboxDateFormatHint(): string {
   return SANDBOX_SK_FMT_MEMBERS.includes("date")
     ? 'sk.fmt.date(value, { tz: "Europe/Berlin", pattern: "dd.MM.yyyy" })'
-    : 'sk.date.format(value, "dd.MM.yyyy", { zone: "Europe/Berlin" })';
+    : 'sk.date.format(value, "dd.MM.yyyy", { zone: "Europe/Berlin" }) or format upstream';
 }
 
 export function sandboxNumberFormatHint(): string {
