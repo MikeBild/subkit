@@ -647,7 +647,7 @@ export function UsagePage() {
           usage && usage.failedCalls > 0 ? (
             <button
               type="button"
-              className="underline underline-offset-2 hover:text-foreground"
+              className="relative underline underline-offset-2 hover:text-foreground pointer-coarse:after:absolute pointer-coarse:after:-inset-y-3.5 pointer-coarse:after:-inset-x-1"
               onClick={() => openSheet({ kind: "failed" })}
               data-testid="usage-failed-open"
             >

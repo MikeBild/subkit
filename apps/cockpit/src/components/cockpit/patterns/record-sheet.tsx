@@ -234,7 +234,7 @@ export function RecordSheet(props: RecordSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        className={`overflow-y-auto data-[side=right]:w-full [&>[data-slot=sheet-close]]:top-4 ${sheetWidthClass(size)}`}
+        className={`overflow-y-auto data-[side=right]:w-full [&>[data-slot=sheet-close]]:top-[calc(1rem+env(safe-area-inset-top))] ${sheetWidthClass(size)}`}
         closeLabel={t("common.close")}
         closeTestId={closeTestId}
         data-testid={testId}

@@ -76,7 +76,7 @@ function SheetContent({
           <SheetPrimitive.Close data-slot="sheet-close" asChild>
             <Button
               variant="ghost"
-              className="absolute top-3 right-3"
+              className="absolute top-3 right-3 in-data-[side=left]:top-[calc(0.75rem+env(safe-area-inset-top))] in-data-[side=right]:top-[calc(0.75rem+env(safe-area-inset-top))] in-data-[side=right]:right-[calc(0.75rem+env(safe-area-inset-right))] in-data-[side=top]:top-[calc(0.75rem+env(safe-area-inset-top))]"
               size="icon-sm"
               data-testid={closeTestId}
             >

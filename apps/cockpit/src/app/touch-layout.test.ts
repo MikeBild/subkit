@@ -14,7 +14,9 @@ describe("touch and phone layout", () => {
   });
 
   test("text fields on phones never fall below 16px, so iOS does not zoom on focus", () => {
-    expect(css).toContain("@media (pointer: coarse) and (width < 48rem) {");
+    expect(css).toContain(
+      "@media (pointer: coarse) and (width < 48rem), (pointer: coarse) and (height < 32rem) {",
+    );
     expect(css).toContain("font-size: max(1rem, 1em);");
   });
 

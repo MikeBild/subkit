@@ -428,7 +428,7 @@
   }
 }
 
-@media (pointer: coarse) and (width < 48rem) {
+@media (pointer: coarse) and (width < 48rem), (pointer: coarse) and (height < 32rem) {
   input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]),
   textarea,
   select,

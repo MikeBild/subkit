@@ -2975,7 +2975,7 @@ export function ChatPage() {
           </MessageScrollerProvider>
 
           <div
-            className="scrollbar-thin shrink-0 overflow-y-auto px-4 sm:px-6 bg-background/95 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable]"
+            className="scrollbar-thin shrink-0 overflow-y-auto px-4 sm:px-6 bg-background/95 pt-3 pb-3 supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable]"
             data-testid="chat-composer-area"
             hidden={conversationFailed}
           >
