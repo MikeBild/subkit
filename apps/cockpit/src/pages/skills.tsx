@@ -36,6 +36,7 @@ import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { VersionChange } from "@/components/cockpit/diff-card";
 import { type UsageCard, UsageCards } from "@/components/cockpit/knowledge-usage";
+import { RestoreVersionConfirm } from "@/components/cockpit/knowledge-versions";
 import {
   ActionMenu,
   Button,
@@ -994,7 +995,7 @@ function SkillVersions({ skill, canWrite }: { skill: Skill; canWrite: boolean })
         label={open ? label(open) : ""}
         canWrite={canWrite}
         restoring={restore.isPending}
-        onRestore={(row) => restore.mutate(row)}
+        onRestore={(row) => restore.mutateAsync(row)}
         directory={directory}
         onClose={() => setSelected("")}
       />
@@ -1017,11 +1018,12 @@ function SkillVersionSheet({
   label: string;
   canWrite: boolean;
   restoring: boolean;
-  onRestore: (row: SkillVersionRow) => void;
+  onRestore: (row: SkillVersionRow) => Promise<unknown>;
   directory: ActorDirectory;
   onClose: () => void;
 }) {
   const { t, dateTime } = useI18n();
+  const [confirming, setConfirming] = useState(false);
   const entryId = row?.audit_entry_id ?? "";
   const detail = useQuery({
     queryKey: ["skill", skillId, "history", entryId],
@@ -1062,7 +1064,7 @@ function SkillVersionSheet({
         row && canWrite && row.restorable ? (
           <Button
             pending={restoring}
-            onClick={() => onRestore(row)}
+            onClick={() => setConfirming(true)}
             data-testid="skill-version-restore"
           >
             {t("knowledge.versions.restore")}
@@ -1112,6 +1114,13 @@ function SkillVersionSheet({
               ]}
             />
           </CollapsibleSection>
+          <RestoreVersionConfirm
+            open={confirming}
+            onOpenChange={setConfirming}
+            pending={restoring}
+            onConfirm={() => onRestore(row)}
+            testId="skill-version-restore-confirm"
+          />
         </div>
       ) : null}
     </RecordSheet>

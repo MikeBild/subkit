@@ -4,6 +4,7 @@ import {
   focusDiff,
   isUnchanged,
   selectChangeView,
+  splitSides,
   toDiffLines,
 } from "./line-diff";
 
@@ -95,5 +96,34 @@ describe("a diff focused on its change", () => {
 
   test("an unchanged text has nothing to show", () => {
     expect(focusDiff(computeLineDiff(["a"], ["a"]))).toEqual([]);
+  });
+});
+
+describe("a change split into before and after", () => {
+  test("before keeps removed lines, after keeps added lines, both keep context and gaps", () => {
+    const rows = focusDiff(
+      computeLineDiff(["a", "b", "c", "d", "e", "f"], ["a", "b", "c", "d", "e", "g"]),
+      1,
+    );
+    const sides = splitSides(rows);
+    expect(sides.before).toEqual([
+      { type: "gap", count: 4 },
+      { type: "context", text: "e" },
+      { type: "removed", text: "f" },
+    ]);
+    expect(sides.after).toEqual([
+      { type: "gap", count: 4 },
+      { type: "context", text: "e" },
+      { type: "added", text: "g" },
+    ]);
+  });
+
+  test("a pure addition leaves before with context only", () => {
+    const sides = splitSides(focusDiff(computeLineDiff(["a"], ["a", "b"])));
+    expect(sides.before).toEqual([{ type: "context", text: "a" }]);
+    expect(sides.after).toEqual([
+      { type: "context", text: "a" },
+      { type: "added", text: "b" },
+    ]);
   });
 });

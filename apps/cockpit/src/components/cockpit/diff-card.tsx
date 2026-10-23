@@ -8,6 +8,7 @@ import {
   type FocusedRow,
   focusDiff,
   selectChangeView,
+  splitSides,
   toDiffLines,
 } from "@/lib/line-diff";
 import { cn } from "@/lib/utils";
@@ -71,6 +72,66 @@ export function FocusedDiff({ rows, testId }: { rows: readonly FocusedRow[]; tes
   );
 }
 
+const SIDE_FRAME = {
+  before: "border-destructive/30 bg-destructive/5",
+  after: "border-success/30 bg-success/5",
+} as const;
+
+const SIDE_HEADING = {
+  before: "text-destructive",
+  after: "text-success",
+} as const;
+
+const SIDE_LINE: Record<DiffLine["type"], string> = {
+  context: "text-muted-foreground",
+  removed: "bg-destructive/10 text-destructive",
+  added: "bg-success/10 text-success",
+};
+
+function VersionSide({
+  side,
+  rows,
+  testId,
+}: {
+  side: "before" | "after";
+  rows: readonly FocusedRow[];
+  testId: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <div
+      className={cn("min-w-0 rounded-md border p-3 text-sm", SIDE_FRAME[side])}
+      data-testid={testId}
+      data-diff-side={side}
+    >
+      <p className={cn("mb-1 text-xs font-medium", SIDE_HEADING[side])}>
+        {t(side === "before" ? "diff.before" : "diff.after")}
+      </p>
+      <pre className="max-h-72 overflow-auto text-xs leading-relaxed">
+        {rows.map((row, index) =>
+          row.type === "gap" ? (
+            <code
+              key={`gap-${index}`}
+              className="block text-muted-foreground italic"
+              data-diff-gap={row.count}
+            >
+              {`⋯ ${t("diff.unchangedLines", { count: row.count })}`}
+            </code>
+          ) : (
+            <code
+              key={`${row.type}-${index}-${row.text}`}
+              className={cn("block rounded-sm px-1 whitespace-pre-wrap", SIDE_LINE[row.type])}
+              data-diff-line={row.type}
+            >
+              {row.text || " "}
+            </code>
+          ),
+        )}
+      </pre>
+    </div>
+  );
+}
+
 export function VersionChange({
   label,
   rows,
@@ -81,10 +142,14 @@ export function VersionChange({
   testId: string;
 }) {
   const { t } = useI18n();
+  const sides = splitSides(rows);
   return (
     <Section label={label} testId={`${testId}-change`}>
       {rows.length > 0 ? (
-        <FocusedDiff rows={rows} testId={`${testId}-diff`} />
+        <div className="grid gap-2 sm:grid-cols-2" data-testid={`${testId}-diff`}>
+          <VersionSide side="before" rows={sides.before} testId={`${testId}-before`} />
+          <VersionSide side="after" rows={sides.after} testId={`${testId}-after`} />
+        </div>
       ) : (
         <p className="text-sm text-muted-foreground" data-testid={`${testId}-unchanged`}>
           {t("knowledge.versions.unchanged")}

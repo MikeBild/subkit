@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
@@ -7,6 +8,7 @@ import { useLiveQueryOptions } from "@/app/live-events";
 import { VersionChange } from "@/components/cockpit/diff-card";
 import {
   Button,
+  ConfirmDialog,
   DataState,
   type Fact,
   FactList,
@@ -161,6 +163,7 @@ function KnowledgeVersionSheet({
     queryFn: () => apiRequest<KnowledgeVersionDetail>(`${sourcePath(sourceId)}/history/${prior}`),
     enabled: version !== null && prior !== null,
   });
+  const [confirming, setConfirming] = useState(false);
   const restore = useMutation({
     mutationFn: () =>
       apiRequest<{ version: number }>(`${sourcePath(sourceId)}/restore/${number}`, {
@@ -205,7 +208,7 @@ function KnowledgeVersionSheet({
         version && canWrite && !version.current ? (
           <Button
             pending={restore.isPending}
-            onClick={() => restore.mutate()}
+            onClick={() => setConfirming(true)}
             data-testid="knowledge-version-restore"
           >
             {t("knowledge.versions.restore")}
@@ -248,8 +251,48 @@ function KnowledgeVersionSheet({
           <p className="text-sm text-muted-foreground" data-testid="knowledge-version-hint">
             {restoreHint(version, latest, t)}
           </p>
+          <RestoreVersionConfirm
+            open={confirming}
+            onOpenChange={setConfirming}
+            pending={restore.isPending}
+            onConfirm={() => restore.mutateAsync()}
+            testId="knowledge-version-restore-confirm"
+          />
         </div>
       ) : null}
     </RecordSheet>
+  );
+}
+
+export function RestoreVersionConfirm({
+  open,
+  onOpenChange,
+  pending,
+  onConfirm,
+  testId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  pending: boolean;
+  onConfirm: () => Promise<unknown>;
+  testId: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      object={t("knowledge.versions.confirmObject")}
+      verb={t("knowledge.versions.confirmVerb")}
+      consequence={t("knowledge.versions.confirmConsequence")}
+      pending={pending}
+      onConfirm={() =>
+        onConfirm().then(
+          () => onOpenChange(false),
+          () => undefined,
+        )
+      }
+      testId={testId}
+    />
   );
 }
