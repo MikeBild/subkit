@@ -2,7 +2,17 @@ import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import type { BucketUnit } from "../http/routes/stats/bucket-window.ts";
 
-export type LlmGroupDim = "model" | "flow" | "user" | "workflow";
+export const LLM_GROUP_DIMS = [
+  "model",
+  "flow",
+  "user",
+  "workflow",
+  "conversation",
+  "execution",
+] as const;
+export type LlmGroupDim = (typeof LLM_GROUP_DIMS)[number];
+
+export const LLM_RESULTS = ["success", "quota_exhausted", "context_too_large", "error"] as const;
 
 export interface LlmStatsParams {
   tenantId: string;
@@ -13,6 +23,8 @@ export interface LlmStatsParams {
   model?: string[] | undefined;
   flow?: string[] | undefined;
   userId?: string | null | undefined;
+  result?: string[] | undefined;
+  workflowId?: string | undefined;
   groupBy: LlmGroupDim[];
 }
 
@@ -44,7 +56,12 @@ export interface LlmBucketRow {
 export interface LlmGroup {
   key: Record<string, string>;
   buckets: LlmBucketRow[];
-  totals: { calls: number; tokens: TokenAgg; latency_ms: LatencyAgg };
+  totals: {
+    calls: number;
+    tokens: TokenAgg;
+    latency_ms: LatencyAgg;
+    result: Record<string, number>;
+  };
 }
 
 export interface LlmStatsResult {
@@ -62,6 +79,8 @@ export function dimColumn(dim: LlmGroupDim): SQL {
   if (dim === "model") return sql`llm_usage.model`;
   if (dim === "user") return sql`llm_usage.user_id`;
   if (dim === "workflow") return sql`executions.workflow_id`;
+  if (dim === "conversation") return sql`llm_usage.conversation_id`;
+  if (dim === "execution") return sql`llm_usage.execution_id`;
   return sql`llm_usage.flow`;
 }
 
@@ -109,11 +128,14 @@ function readLatency(row: Record<string, unknown>): LatencyAgg {
   };
 }
 
-export function buildWhere(
-  p: Pick<LlmStatsParams, "tenantId" | "from" | "to" | "model" | "flow" | "userId"> & {
-    groupBy?: LlmGroupDim[];
-  },
-): SQL {
+export type LlmFilter = Pick<
+  LlmStatsParams,
+  "tenantId" | "from" | "to" | "model" | "flow" | "userId" | "result" | "workflowId"
+> & {
+  groupBy?: LlmGroupDim[];
+};
+
+export function buildWhere(p: LlmFilter): SQL {
   const conds: SQL[] = [
     sql`llm_usage.tenant_id = ${p.tenantId}`,
     sql`llm_usage.created_at >= ${p.from}`,
@@ -121,6 +143,8 @@ export function buildWhere(
   ];
   if (p.model && p.model.length > 0) conds.push(sql`llm_usage.model in ${p.model}`);
   if (p.flow && p.flow.length > 0) conds.push(sql`llm_usage.flow in ${p.flow}`);
+  if (p.result && p.result.length > 0) conds.push(sql`llm_usage.result in ${p.result}`);
+  if (p.workflowId) conds.push(sql`executions.workflow_id = ${p.workflowId}`);
   if (p.userId) {
     conds.push(sql`llm_usage.user_id = ${p.userId}`);
     conds.push(sql`llm_usage.actor_type = 'user'`);
@@ -132,24 +156,35 @@ export function buildWhere(
 }
 
 function fromClause(p: LlmStatsParams): SQL {
-  return llmFromClause(p.groupBy);
+  return llmFromClause(p);
 }
 
-export function llmFromClause(groupBy: readonly LlmGroupDim[]): SQL {
-  return groupBy.includes("workflow")
-    ? sql`llm_usage left join executions on executions.id = llm_usage.execution_id`
+export function llmFromClause(p: {
+  groupBy?: readonly LlmGroupDim[] | undefined;
+  workflowId?: string | undefined;
+}): SQL {
+  return p.groupBy?.includes("workflow") || p.workflowId
+    ? sql`llm_usage left join executions on executions.id = llm_usage.execution_id and executions.tenant_id = llm_usage.tenant_id`
     : sql`llm_usage`;
-}
-
-function bucketExpr(p: LlmStatsParams): SQL {
-  return sql`date_trunc(${p.bucket}, llm_usage.created_at at time zone ${p.tz})`;
 }
 
 const GROUP_BY_BUCKET = sql`bucket_ts`;
 
+export function llmGroupKey(dims: readonly LlmGroupDim[], key: Record<string, string>): string {
+  return dims.map((d) => `${d}=${key[d] ?? ""}`).join("|");
+}
+
+export function llmBucketKey(groupKey: string, ts: string): string {
+  return `${groupKey}@@${ts}`;
+}
+
+export function llmBucketExpr(p: Pick<LlmStatsParams, "bucket" | "tz">): SQL {
+  return sql`date_trunc(${p.bucket}, llm_usage.created_at at time zone ${p.tz})`;
+}
+
 export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsResult> {
   const where = buildWhere(p);
-  const bucket = bucketExpr(p);
+  const bucket = llmBucketExpr(p);
   const dims = p.groupBy.slice(0, 2);
 
   const dimSelects =
@@ -199,9 +234,9 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
     }
     return key;
   };
-  const keyStr = (key: Record<string, string>): string =>
-    dims.map((d) => `${d}=${key[d]}`).join("|");
-  const bucketKey = (key: Record<string, string>, ts: string): string => `${keyStr(key)}@@${ts}`;
+  const keyStr = (key: Record<string, string>): string => llmGroupKey(dims, key);
+  const bucketKey = (key: Record<string, string>, ts: string): string =>
+    llmBucketKey(keyStr(key), ts);
 
   const groupTotalRows =
     dims.length > 0
@@ -260,6 +295,7 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
           calls: 0,
           tokens: { prompt: 0, completion: 0, cache_read: 0, cache_creation: 0, total: 0 },
           latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+          result: {},
         },
       };
       groupMap.set(ks, g);
@@ -287,6 +323,7 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
         calls: Number(row.calls ?? 0),
         tokens: readTokens(row),
         latency_ms: readLatency(row),
+        result: g.totals.result,
       };
     }
   } else {
@@ -295,7 +332,16 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
       calls: Number(windowRow.calls ?? 0),
       tokens: readTokens(windowRow),
       latency_ms: readLatency(windowRow),
+      result: g.totals.result,
     };
+  }
+
+  for (const g of groupMap.values()) {
+    const sums: Record<string, number> = {};
+    for (const b of g.buckets) {
+      for (const [result, n] of Object.entries(b.result)) sums[result] = (sums[result] ?? 0) + n;
+    }
+    g.totals.result = sums;
   }
 
   const byResult: Record<string, number> = {};

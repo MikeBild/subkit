@@ -127,7 +127,7 @@ Returns this month's total LLM token usage, the priced spend over a window, and 
 
 Response data:
 - `month_bucket`, `user_id`, `monthly_total_tokens`, `window` (`from`, `to`).
-- `cost` — the same object `GET /v1/stats/llm` returns as `cost` for the same window and user: `amount`, `currency`, `price_sources[]` (`model`, `price_source`: `catalog` for SubKit's built-in list price, `override` for the operator's `tokens.prices`), `unpriced_models[]`, `unpriced_calls`, `rates_basis`. `null` with `cost_withheld` when the caller lacks `stats:read`.
+- `cost` — the same object `GET /v1/stats/llm` returns as `cost` for the same window and user: `amount`, `currency`, `price_sources[]` (`model`, `price_source`: `catalog` for SubKit's built-in list price, `override` for the operator's `tokens.prices`), `unpriced_models[]`, `unpriced_calls`, `cache_savings` (what cache reads saved against the full input price), `rates_basis`. `null` with `cost_withheld` when the caller lacks `stats:read`.
 - `recent[]` — each row: `flow`, `model`, `prompt_tokens`, `completion_tokens`, `latency_ms`, `result`, `created_at`.
 
 How to read: `monthly_total_tokens` is the rollup; `cost.amount` is money for the priced models only — SubKit ships list prices, so prices are configured unless a model is named in `unpriced_models`; `recent[]` is the per-call ledger for attributing spend to a `flow`/`model` and spotting failures (`result`) or latency spikes (`latency_ms`).

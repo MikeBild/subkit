@@ -169,9 +169,23 @@ export const EventsStatsResponse = ConnectorsStatsResponse.openapi("StatsEventsR
 export const LlmStatsQuery = BucketWindowQuery.extend({
   model: CsvOrArray,
   flow: CsvOrArray,
+  result: CsvOrArray.openapi({
+    description:
+      "Only calls with one of these results: success, quota_exhausted, context_too_large, error.",
+  }),
+  workflow_id: z.string().uuid().optional(),
   group_by: CsvOrArray,
   user_id: z.string().uuid().optional(),
 }).openapi("StatsLlmQuery");
+
+const LlmPartCost = z
+  .object({
+    amount: z.number(),
+    currency: z.string(),
+    unpriced_calls: z.number().int(),
+    cache_savings: z.number(),
+  })
+  .openapi("StatsLlmPartCost");
 
 const LlmBucket = z.object({
   ts: z.string(),
@@ -179,6 +193,7 @@ const LlmBucket = z.object({
   tokens: TokenAggSchema,
   latency_ms: LatencyAggSchema,
   result: z.record(z.string(), z.number()),
+  cost: LlmPartCost.optional(),
 });
 
 export const LlmStatsResponse = z
@@ -188,19 +203,31 @@ export const LlmStatsResponse = z
       z.object({
         key: GroupKey,
         model_name: z.string().optional(),
+        model_price: z
+          .object({
+            input_per_mtok: z.number(),
+            output_per_mtok: z.number(),
+            cache_read_per_mtok: z.number(),
+            cache_write_per_mtok: z.number(),
+            price_source: z.enum(PRICE_SOURCES),
+            currency: z.string(),
+          })
+          .optional(),
+        conversation: z
+          .object({
+            title: z.string().nullable(),
+            owner_id: z.string().nullable(),
+            updated_at: z.string(),
+          })
+          .optional(),
         buckets: z.array(LlmBucket),
         totals: z.object({
           calls: z.number(),
           tokens: TokenAggSchema,
           latency_ms: LatencyAggSchema,
+          result: z.record(z.string(), z.number()),
         }),
-        cost: z
-          .object({
-            amount: z.number(),
-            currency: z.string(),
-            unpriced_calls: z.number().int(),
-          })
-          .optional(),
+        cost: LlmPartCost.optional(),
       }),
     ),
     totals: z.object({
@@ -214,6 +241,7 @@ export const LlmStatsResponse = z
         currency: z.string(),
         unpriced_models: z.array(z.string()),
         unpriced_calls: z.number().int(),
+        cache_savings: z.number(),
         price_sources: z.array(
           z.object({ model: z.string(), price_source: z.enum(PRICE_SOURCES) }),
         ),

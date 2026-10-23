@@ -1323,6 +1323,67 @@
                 "model_name": {
                   "type": "string"
                 },
+                "model_price": {
+                  "type": "object",
+                  "properties": {
+                    "input_per_mtok": {
+                      "type": "number"
+                    },
+                    "output_per_mtok": {
+                      "type": "number"
+                    },
+                    "cache_read_per_mtok": {
+                      "type": "number"
+                    },
+                    "cache_write_per_mtok": {
+                      "type": "number"
+                    },
+                    "price_source": {
+                      "type": "string",
+                      "enum": [
+                        "catalog",
+                        "catalog_normalized",
+                        "override"
+                      ]
+                    },
+                    "currency": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "input_per_mtok",
+                    "output_per_mtok",
+                    "cache_read_per_mtok",
+                    "cache_write_per_mtok",
+                    "price_source",
+                    "currency"
+                  ]
+                },
+                "conversation": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "owner_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "updated_at": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "owner_id",
+                    "updated_at"
+                  ]
+                },
                 "buckets": {
                   "type": "array",
                   "items": {
@@ -1345,6 +1406,9 @@
                         "additionalProperties": {
                           "type": "number"
                         }
+                      },
+                      "cost": {
+                        "$ref": "#/components/schemas/StatsLlmPartCost"
                       }
                     },
                     "required": [
@@ -1367,32 +1431,23 @@
                     },
                     "latency_ms": {
                       "$ref": "#/components/schemas/StatsLatencyAgg"
+                    },
+                    "result": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number"
+                      }
                     }
                   },
                   "required": [
                     "calls",
                     "tokens",
-                    "latency_ms"
+                    "latency_ms",
+                    "result"
                   ]
                 },
                 "cost": {
-                  "type": "object",
-                  "properties": {
-                    "amount": {
-                      "type": "number"
-                    },
-                    "currency": {
-                      "type": "string"
-                    },
-                    "unpriced_calls": {
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "amount",
-                    "currency",
-                    "unpriced_calls"
-                  ]
+                  "$ref": "#/components/schemas/StatsLlmPartCost"
                 }
               },
               "required": [
@@ -1477,6 +1532,29 @@
           "total"
         ]
       },
+      "StatsLlmPartCost": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "unpriced_calls": {
+            "type": "integer"
+          },
+          "cache_savings": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "amount",
+          "currency",
+          "unpriced_calls",
+          "cache_savings"
+        ]
+      },
       "StatsLlmCost": {
         "type": "object",
         "properties": {
@@ -1494,6 +1572,9 @@
           },
           "unpriced_calls": {
             "type": "integer"
+          },
+          "cache_savings": {
+            "type": "number"
           },
           "price_sources": {
             "type": "array",
@@ -1530,6 +1611,7 @@
           "currency",
           "unpriced_models",
           "unpriced_calls",
+          "cache_savings",
           "price_sources",
           "rates_basis"
         ]
@@ -13173,6 +13255,9 @@
           "unpriced_calls": {
             "type": "integer"
           },
+          "cache_savings": {
+            "type": "number"
+          },
           "price_sources": {
             "type": "array",
             "items": {
@@ -13208,6 +13293,7 @@
           "currency",
           "unpriced_models",
           "unpriced_calls",
+          "cache_savings",
           "price_sources",
           "rates_basis"
         ]
@@ -31795,7 +31881,7 @@
         "tags": [
           "Stats"
         ],
-        "summary": "Time-bucketed LLM token usage + cache-hit + latency stats",
+        "summary": "Time-bucketed LLM token usage, cost, cache savings and latency stats",
         "security": [
           {
             "bearerAuth": []
@@ -31890,6 +31976,35 @@
                     "type": "string"
                   }
                 }
+              ],
+              "description": "Only calls with one of these results: success, quota_exhausted, context_too_large, error."
+            },
+            "required": false,
+            "description": "Only calls with one of these results: success, quota_exhausted, context_too_large, error.",
+            "name": "result",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "workflow_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
               ]
             },
             "required": false,
@@ -31928,7 +32043,7 @@
             }
           },
           "403": {
-            "description": "Cross-user usage requires stats:read:all",
+            "description": "Another user's usage, or a breakdown by user or conversation, requires stats:read:all",
             "content": {
               "application/json": {
                 "schema": {

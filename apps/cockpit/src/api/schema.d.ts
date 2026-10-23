@@ -821,7 +821,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Time-bucketed LLM token usage + cache-hit + latency stats */
+        /** Time-bucketed LLM token usage, cost, cache savings and latency stats */
         get: {
             parameters: {
                 query: {
@@ -831,6 +831,9 @@ export interface paths {
                     tz?: string;
                     model?: string | string[];
                     flow?: string | string[];
+                    /** @description Only calls with one of these results: success, quota_exhausted, context_too_large, error. */
+                    result?: string | string[];
+                    workflow_id?: string;
                     group_by?: string | string[];
                     user_id?: string;
                 };
@@ -858,7 +861,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Cross-user usage requires stats:read:all */
+                /** @description Another user's usage, or a breakdown by user or conversation, requires stats:read:all */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -21627,6 +21630,20 @@ export interface components {
                     [key: string]: string;
                 };
                 model_name?: string;
+                model_price?: {
+                    input_per_mtok: number;
+                    output_per_mtok: number;
+                    cache_read_per_mtok: number;
+                    cache_write_per_mtok: number;
+                    /** @enum {string} */
+                    price_source: "catalog" | "catalog_normalized" | "override";
+                    currency: string;
+                };
+                conversation?: {
+                    title: string | null;
+                    owner_id: string | null;
+                    updated_at: string;
+                };
                 buckets: {
                     ts: string;
                     calls: number;
@@ -21635,17 +21652,17 @@ export interface components {
                     result: {
                         [key: string]: number;
                     };
+                    cost?: components["schemas"]["StatsLlmPartCost"];
                 }[];
                 totals: {
                     calls: number;
                     tokens: components["schemas"]["StatsTokenAgg"];
                     latency_ms: components["schemas"]["StatsLatencyAgg"];
+                    result: {
+                        [key: string]: number;
+                    };
                 };
-                cost?: {
-                    amount: number;
-                    currency: string;
-                    unpriced_calls: number;
-                };
+                cost?: components["schemas"]["StatsLlmPartCost"];
             }[];
             totals: {
                 calls: {
@@ -21666,11 +21683,18 @@ export interface components {
             cache_creation: number;
             total: number;
         };
+        StatsLlmPartCost: {
+            amount: number;
+            currency: string;
+            unpriced_calls: number;
+            cache_savings: number;
+        };
         StatsLlmCost: {
             amount: number;
             currency: string;
             unpriced_models: string[];
             unpriced_calls: number;
+            cache_savings: number;
             price_sources: {
                 model: string;
                 /** @enum {string} */
@@ -24592,6 +24616,7 @@ export interface components {
             currency: string;
             unpriced_models: string[];
             unpriced_calls: number;
+            cache_savings: number;
             price_sources: {
                 model: string;
                 /** @enum {string} */

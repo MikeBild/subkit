@@ -14,6 +14,7 @@ function cost(overrides: Partial<CostResult>): CostResult {
     currency: "EUR",
     unpriced_models: [],
     unpriced_calls: 0,
+    cache_savings: 0,
     price_sources: [],
     rates_basis: "current",
     ...overrides,

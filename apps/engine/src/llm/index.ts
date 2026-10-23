@@ -21,6 +21,7 @@ export {
 } from "./model-price-catalog.ts";
 export {
   type CostResult,
+  findModelPrice,
   type LongContextPrice,
   longContextThresholds,
   type ModelPrice,

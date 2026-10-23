@@ -92,8 +92,31 @@ export interface CostResult {
   currency: string;
   unpriced_models: string[];
   unpriced_calls: number;
+  cache_savings: number;
   price_sources: Array<{ model: string; price_source: PriceSource }>;
   rates_basis: "current";
+}
+
+export function findModelPrice(
+  model: string,
+  prices: readonly SourcedModelPrice[],
+): { rate: SourcedModelPrice; source: PriceSource } | undefined {
+  const byModel = new Map(prices.map((p) => [p.model, p]));
+  return lookupModelPrice(model, byModel);
+}
+
+function lookupModelPrice(
+  model: string,
+  byModel: ReadonlyMap<string, SourcedModelPrice>,
+): { rate: SourcedModelPrice; source: PriceSource } | undefined {
+  const exact = byModel.get(model) ?? byModel.get(vendorModelId(model));
+  if (exact) return { rate: exact, source: exact.price_source };
+  const normalized = byModel.get(bareModelId(model));
+  if (!normalized) return undefined;
+  return {
+    rate: normalized,
+    source: normalized.price_source === "catalog" ? "catalog_normalized" : normalized.price_source,
+  };
 }
 
 export function priceCalls(
@@ -102,23 +125,13 @@ export function priceCalls(
   currency: string,
 ): CostResult {
   const byModel = new Map(prices.map((p) => [p.model, p]));
-  const lookup = (model: string): { rate: SourcedModelPrice; source: PriceSource } | undefined => {
-    const exact = byModel.get(model) ?? byModel.get(vendorModelId(model));
-    if (exact) return { rate: exact, source: exact.price_source };
-    const normalized = byModel.get(bareModelId(model));
-    if (!normalized) return undefined;
-    return {
-      rate: normalized,
-      source:
-        normalized.price_source === "catalog" ? "catalog_normalized" : normalized.price_source,
-    };
-  };
   const unpriced = new Map<string, number>();
   const sources = new Map<string, PriceSource>();
   let amount = 0;
+  let savings = 0;
 
   for (const call of calls) {
-    const found = lookup(call.model);
+    const found = lookupModelPrice(call.model, byModel);
     if (!found) {
       unpriced.set(call.model, (unpriced.get(call.model) ?? 0) + (call.calls ?? 1));
       continue;
@@ -134,6 +147,9 @@ export function priceCalls(
       (call.completion_tokens / 1_000_000) * rate.output_per_mtok +
       (call.cache_read_tokens / 1_000_000) * rate.cache_read_per_mtok +
       (call.cache_creation_tokens / 1_000_000) * rate.cache_write_per_mtok;
+    savings +=
+      (call.cache_read_tokens / 1_000_000) *
+      Math.max(0, rate.input_per_mtok - rate.cache_read_per_mtok);
   }
 
   return {
@@ -141,6 +157,7 @@ export function priceCalls(
     currency,
     unpriced_models: [...unpriced.keys()].sort(),
     unpriced_calls: [...unpriced.values()].reduce((sum, n) => sum + n, 0),
+    cache_savings: Math.round(savings * 1e6) / 1e6,
     price_sources: [...sources.entries()]
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([model, price_source]) => ({ model, price_source })),

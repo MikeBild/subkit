@@ -39,6 +39,7 @@ const ExecutionCost = z
           currency: z.string(),
           unpriced_models: z.array(z.string()),
           unpriced_calls: z.number().int(),
+          cache_savings: z.number(),
           price_sources: z.array(
             z.object({ model: z.string(), price_source: z.enum(PRICE_SOURCES) }),
           ),

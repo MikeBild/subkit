@@ -388,11 +388,16 @@ describe("LLM aggregation", () => {
     expect(names["claude-sonnet-4-6"]).toBe("Claude Sonnet 4.6");
   });
 
-  test("two dimensions carry no per-group cost", async () => {
+  test("two dimensions are priced per group, adding up to the window's cost", async () => {
     const res = await authedFetch(`/v1/stats/llm?${WIN}&group_by=model,flow`);
-    const body = (await res.json()) as { groups: Array<{ cost?: unknown }> };
+    const body = (await res.json()) as {
+      groups: Array<{ cost?: { amount: number } }>;
+      cost: { amount: number };
+    };
     expect(body.groups.length).toBeGreaterThan(0);
-    expect(body.groups.every((g) => g.cost === undefined)).toBe(true);
+    expect(body.groups.every((g) => g.cost !== undefined)).toBe(true);
+    const groupSum = body.groups.reduce((s, g) => s + (g.cost?.amount ?? 0), 0);
+    expect(groupSum).toBeCloseTo(body.cost.amount, 6);
   });
 
   test("group_by=flow: haiku=2 calls, sonnet=1 call", async () => {
