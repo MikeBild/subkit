@@ -1,4 +1,4 @@
-import { ts } from "ts-morph";
+import type { ts as TsApi } from "ts-morph";
 import {
   SANDBOX_GLOBAL_NAMES,
   SANDBOX_SK_FMT_MEMBERS,
@@ -8,7 +8,14 @@ import {
 } from "../sandboxes/quickjs/stdlib/sandbox-globals.ts";
 import { suggestClosest } from "./levenshtein.ts";
 
-type Node = ts.Node;
+type Node = TsApi.Node;
+
+let tsModule: typeof TsApi | undefined;
+
+function loadTs(): typeof TsApi {
+  tsModule ??= (require("ts-morph") as typeof import("ts-morph")).ts;
+  return tsModule;
+}
 
 export type JsLintCode =
   | "free_identifier"
@@ -43,7 +50,8 @@ function localeMessage(method: string): string {
   return `.${method}() is not available in the transform sandbox: there is no Intl/ECMA-402, so the locale is ignored and the output is wrong. Format numbers with ${sandboxNumberFormatHint()} and dates with ${sandboxDateFormatHint()}.`;
 }
 
-function bindingNames(name: ts.BindingName, out: Set<string>): void {
+function bindingNames(name: TsApi.BindingName, out: Set<string>): void {
+  const ts = loadTs();
   if (ts.isIdentifier(name)) {
     out.add(name.text);
     return;
@@ -55,6 +63,7 @@ function bindingNames(name: ts.BindingName, out: Set<string>): void {
 }
 
 function collectDeclarations(root: Node): Set<string> {
+  const ts = loadTs();
   const declared = new Set<string>();
   const visit = (node: Node): void => {
     if (ts.isVariableDeclaration(node) || ts.isParameter(node)) {
@@ -74,7 +83,8 @@ function collectDeclarations(root: Node): Set<string> {
   return declared;
 }
 
-function isReferencePosition(node: ts.Identifier): boolean {
+function isReferencePosition(node: TsApi.Identifier): boolean {
+  const ts = loadTs();
   const parent = node.parent;
   if (!parent) return false;
   if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
@@ -118,13 +128,14 @@ function freeIdentifierMessage(name: string, candidates: ReadonlyArray<string>):
   return `'${name}' is not defined in the transform sandbox${hint ? ` (did you mean '${hint}'?)` : ""}. A transform only receives \`input\` (input.scope.<step_id>.data, input.input, input.scope.$item inside a loop body) plus the sandbox globals and sk.*; declare '${name}' with const/let or read it from input.`;
 }
 
-function hasSyntaxErrors(sourceFile: ts.SourceFile): boolean {
+function hasSyntaxErrors(sourceFile: TsApi.SourceFile): boolean {
   const diagnostics = (sourceFile as unknown as { parseDiagnostics?: ReadonlyArray<unknown> })
     .parseDiagnostics;
   return Array.isArray(diagnostics) && diagnostics.length > 0;
 }
 
 export function lintJsBody(code: string): JsLintFinding[] {
+  const ts = loadTs();
   const sourceFile = ts.createSourceFile(
     "transform.js",
     `function __sk_transform__(input) {\n${code}\n}`,
