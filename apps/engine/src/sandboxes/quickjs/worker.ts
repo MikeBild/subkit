@@ -1,6 +1,4 @@
 import { z } from "zod";
-import { parseBinaryFileInCurrentProcess } from "../../docs-ingestion/parsers/index.ts";
-import { evaluateJsonataInCurrentProcess } from "../../execution/jsonata-engine.ts";
 import { routeLogsToStderr } from "../../logging/logger.ts";
 import { preloadQuickJsModule, type RunJsOptions, runJsInCurrentProcess } from "./runtime.ts";
 import { SandboxError } from "./types.ts";
@@ -82,7 +80,9 @@ async function handleRequest(input: unknown): Promise<void> {
       request.op === "run_js"
         ? await runJsInCurrentProcess(workerRunOptions(request.opts))
         : request.op === "evaluate_jsonata"
-          ? await evaluateJsonataInCurrentProcess({
+          ? await (
+              await import("../../execution/jsonata-engine.ts")
+            ).evaluateJsonataInCurrentProcess({
               source: request.source,
               data: request.data,
               bindings: request.bindings,
@@ -94,7 +94,9 @@ async function handleRequest(input: unknown): Promise<void> {
                 : null,
             })
           : request.op === "parse_binary"
-            ? await parseBinaryFileInCurrentProcess(
+            ? await (
+                await import("../../docs-ingestion/parsers/index.ts")
+              ).parseBinaryFileInCurrentProcess(
                 Buffer.from(request.buffer, "base64"),
                 request.format,
               )
