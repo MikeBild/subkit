@@ -1,5 +1,10 @@
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
-import { formatDuration, type WorkflowStepDefinition } from "@/lib/workflow-steps";
+import { isAiService, type ServiceIdentity } from "@/lib/service-icons";
+import {
+  formatDuration,
+  type WorkflowStepDefinition,
+  workflowStepKindKey,
+} from "@/lib/workflow-steps";
 
 export interface Phrase {
   key: TranslationKey;
@@ -64,6 +69,18 @@ export function stepWrites(definition: WorkflowStepDefinition): boolean | null {
   if (declared === "write") return true;
   if (essence.via !== "http") return null;
   return !READ_VERBS.has((essence.verb ?? "GET").toUpperCase());
+}
+
+export function stepKindKey(
+  definition: WorkflowStepDefinition,
+  service: ServiceIdentity | null,
+): TranslationKey {
+  const { essence } = definition;
+  if (essence.kind === "request" && service && isAiService(service)) return "workflow.kind.askAi";
+  if (essence.kind === "request" && stepWrites(definition) === true) return "workflow.kind.send";
+  if (essence.kind === "transform" && essence.language === "javascript")
+    return "workflow.kind.code";
+  return workflowStepKindKey(definition.kind);
 }
 
 export type TriggerKind = "schedule" | "webhook" | "request";

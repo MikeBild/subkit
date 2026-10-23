@@ -18,6 +18,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { connectorService, useConnectorRecords } from "@/components/cockpit/connector-names";
 import {
   Command,
   CommandEmpty,
@@ -26,6 +27,7 @@ import {
   CommandList,
   PopoverContent,
 } from "@/components/cockpit/patterns";
+import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { useI18n } from "@/lib/i18n-context";
 import {
   type ConversationReference,
@@ -66,6 +68,22 @@ export const TYPE_ICON: Record<MentionCandidateType, typeof Workflow> = {
   skill: Sparkles,
   file: FileText,
 };
+
+function MentionIcon({
+  type,
+  id,
+  className,
+}: {
+  type: MentionCandidateType;
+  id: string;
+  className: string;
+}) {
+  const records = useConnectorRecords(type === "connector");
+  const record = type === "connector" ? records.find((item) => item.id === id) : undefined;
+  if (record) return <ServiceIcon service={connectorService(record)} className={className} />;
+  const Icon = TYPE_ICON[type];
+  return <Icon aria-hidden="true" className={className} />;
+}
 
 const GROUP_HEADING = {
   category: "chat.mention.categories",
@@ -323,7 +341,6 @@ export function MentionPicker({
             </CommandEmpty>
           )}
           {groups.map((group) => {
-            const Icon = TYPE_ICON[group.type];
             return (
               <CommandGroup key={group.type} heading={t(GROUP_HEADING[group.type])}>
                 {group.items.map((item) => {
@@ -336,7 +353,11 @@ export function MentionPicker({
                       onMouseDown={(event) => event.preventDefault()}
                       data-testid={testId}
                     >
-                      <Icon className="size-4 text-muted-foreground" />
+                      <MentionIcon
+                        type={item.type}
+                        id={item.id}
+                        className="size-4 text-muted-foreground"
+                      />
                       {item.type === "category" ? (
                         <>
                           <span className="truncate font-medium">{item.label}</span>
@@ -399,7 +420,7 @@ export function MentionChips({
         }
         const reference = segment.reference;
         const missing = gone.has(`${reference.type}:${reference.id}`);
-        const Icon = missing ? CircleAlert : TYPE_ICON[reference.type];
+
         return (
           <span
             key={i}
@@ -412,7 +433,11 @@ export function MentionChips({
             title={missing ? t("chat.mention.unresolved") : undefined}
             data-testid={`${testIdPrefix}-chip-${index++}`}
           >
-            <Icon aria-hidden="true" />
+            {missing ? (
+              <CircleAlert aria-hidden="true" />
+            ) : (
+              <MentionIcon type={reference.type} id={reference.id} className="size-3" />
+            )}
             {segment.text}
           </span>
         );

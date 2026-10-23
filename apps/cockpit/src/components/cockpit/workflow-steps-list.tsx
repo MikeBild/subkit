@@ -23,7 +23,11 @@ import { Fragment, type ReactNode, useCallback, useEffect, useState } from "reac
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, connectorHref, workflowHref } from "@/app/links";
-import { type ConnectorRecord, useConnectorRecords } from "@/components/cockpit/connector-names";
+import {
+  type ConnectorRecord,
+  connectorService,
+  useConnectorRecords,
+} from "@/components/cockpit/connector-names";
 import {
   ActionButton,
   ActionMenu,
@@ -32,7 +36,6 @@ import {
   ContextHelp,
   type Fact,
   FactList,
-  IconTile,
   RecordSheet,
   Section,
   STATUS_DOT,
@@ -40,11 +43,19 @@ import {
   statusTone,
   TechnicalDetails,
 } from "@/components/cockpit/patterns";
+import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { StepDialog, type StepDraft, stepId } from "@/components/cockpit/workflow-step-editor";
 import { useI18n } from "@/lib/i18n-context";
+import type { ServiceIdentity } from "@/lib/service-icons";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { cn } from "@/lib/utils";
-import { type Phrase, stepPhrase, stepWrites, type TriggerKind } from "@/lib/workflow-flow";
+import {
+  type Phrase,
+  stepKindKey,
+  stepPhrase,
+  stepWrites,
+  type TriggerKind,
+} from "@/lib/workflow-flow";
 import { type WorkflowPreviewSource, workflowPreviewRequest } from "@/lib/workflow-preview";
 import {
   type BuildVersion,
@@ -58,7 +69,6 @@ import {
   stepResultPreview,
   type WorkflowStepDefinition,
   type WorkflowStepView,
-  workflowStepKindKey,
 } from "@/lib/workflow-steps";
 
 type Execution = components["schemas"]["Execution"];
@@ -334,24 +344,38 @@ function stepIcon(definition: WorkflowStepDefinition): LucideIcon {
   return KIND_ICONS[definition.kind] ?? Workflow;
 }
 
-const TRIGGER_ICONS: Record<TriggerKind, LucideIcon> = {
+export const TRIGGER_ICONS: Record<TriggerKind, LucideIcon> = {
   schedule: CalendarClock,
   webhook: Webhook,
   request: Hand,
 };
 
+export interface StepConnector {
+  id: string | null;
+  name: string;
+  service: ServiceIdentity;
+}
+
 export function stepConnector(
   definition: WorkflowStepDefinition,
   records: readonly ConnectorRecord[],
-): { id: string | null; name: string } | null {
+): StepConnector | null {
   if (!definition.connectorId && !definition.connector) return null;
   const known = records.find((item) =>
     definition.connectorId
       ? item.id === definition.connectorId
       : item.slug === definition.connector,
   );
-  if (known) return { id: known.id, name: known.display_name || known.slug };
-  return definition.connectorId ? { id: definition.connectorId, name: "" } : null;
+  if (known)
+    return {
+      id: known.id,
+      name: known.display_name || known.slug,
+      service: connectorService(known),
+    };
+  const driver = definition.essence.kind === "request" ? definition.essence.via : null;
+  return definition.connectorId
+    ? { id: definition.connectorId, name: "", service: { kind: "generic", driver } }
+    : null;
 }
 
 function useStepPhrase(): (definition: WorkflowStepDefinition, service: string | null) => string {
@@ -481,7 +505,7 @@ export function WorkflowFlow({
                   <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span>
                       {t("workflowFlow.stepNumber", { number: index + 1 })} ·{" "}
-                      {t(workflowStepKindKey(definition.kind))}
+                      {t(stepKindKey(definition, connector?.service ?? null))}
                     </span>
                     <span className="flex items-center gap-1.5">
                       {mark ? (
@@ -504,7 +528,11 @@ export function WorkflowFlow({
                     </span>
                   </span>
                   <span className="flex items-center gap-2 text-sm font-medium [&_svg]:size-4">
-                    <Icon aria-hidden="true" className="shrink-0 text-muted-foreground" />
+                    {connector ? (
+                      <ServiceIcon service={connector.service} />
+                    ) : (
+                      <Icon aria-hidden="true" className="shrink-0 text-muted-foreground" />
+                    )}
                     <span className="min-w-0 [overflow-wrap:anywhere]">
                       {phrase(definition, connector?.name || null)}
                     </span>
@@ -603,7 +631,7 @@ function StepSheet({
   workflowName: string;
   index: number;
   total: number;
-  connector: { id: string | null; name: string } | null;
+  connector: StepConnector | null;
   canRun: boolean;
   steps: WorkflowSteps;
   onClose: () => void;
@@ -693,7 +721,7 @@ function StepSheet({
       subtitle={t("workflowFlow.sheet.subtitle", {
         number: index + 1,
         total,
-        kind: t(workflowStepKindKey(definition.kind)),
+        kind: t(stepKindKey(definition, connector?.service ?? null)),
       })}
       badge={lastRun ? <StatusBadge state={lastRun.status} /> : undefined}
       action={
@@ -718,9 +746,7 @@ function StepSheet({
           className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
           data-testid={`${testId}-connector`}
         >
-          <IconTile outline>
-            <Plug />
-          </IconTile>
+          <ServiceIcon service={connector.service} tile="md" />
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-medium">
               {connector.name || t("authority.configuredConnector")}

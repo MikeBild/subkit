@@ -3,6 +3,7 @@ import {
   averageDurationMs,
   groupRunsByDay,
   resultPhrase,
+  stepKindKey,
   stepPhrase,
   stepWrites,
   successRate,
@@ -54,6 +55,21 @@ describe("workflow flow phrases", () => {
       ),
     ).toBe(false);
     expect(stepWrites(readStepDefinition({ id: "a", kind: "transform" }, 0))).toBeNull();
+  });
+
+  test("names the step kind the way the glossary shows it on cards", () => {
+    const read = readStepDefinition({ id: "a", kind: "request", method: "GET" }, 0);
+    const send = readStepDefinition({ id: "b", kind: "request", method: "POST" }, 1);
+    const github = { kind: "brand", key: "github" } as const;
+    expect(stepKindKey(read, github)).toBe("workflow.kind.request");
+    expect(stepKindKey(send, github)).toBe("workflow.kind.send");
+    expect(stepKindKey(send, { kind: "brand", key: "openai" })).toBe("workflow.kind.askAi");
+    expect(stepKindKey(readStepDefinition({ id: "c", kind: "transform" }, 2), null)).toBe(
+      "workflow.kind.code",
+    );
+    expect(stepKindKey(readStepDefinition({ id: "d", kind: "wait" }, 3), null)).toBe(
+      "workflow.kind.wait",
+    );
   });
 });
 

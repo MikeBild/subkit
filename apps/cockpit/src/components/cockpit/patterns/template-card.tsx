@@ -6,10 +6,13 @@ import { IconTile } from "./icon-tile";
 const CARD =
   "flex min-w-0 flex-col gap-2 rounded-lg border bg-background p-4 text-left transition-colors hover:border-foreground/20 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
 
+const ROW = "flex-row items-start gap-3";
+
 export interface TemplateCardProps {
   title: string;
   line: string;
   icons?: readonly ReactNode[];
+  lead?: ReactNode;
   tag?: string;
   meta?: readonly ReactNode[];
   href?: string;
@@ -17,7 +20,19 @@ export interface TemplateCardProps {
   testId: string;
 }
 
-function Body({ title, line, icons, tag, meta }: TemplateCardProps) {
+function Body({ title, line, icons, lead, tag, meta }: TemplateCardProps) {
+  if (lead)
+    return (
+      <>
+        {lead}
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-sm font-medium" data-slot="template-card-title">
+            {title}
+          </span>
+          <span className="text-xs text-muted-foreground">{line}</span>
+        </span>
+      </>
+    );
   return (
     <>
       {icons?.length || tag ? (
@@ -62,7 +77,7 @@ export function TemplateCard(props: TemplateCardProps) {
     return (
       <a
         href={absolute(props.href)}
-        className={cn(CARD)}
+        className={cn(CARD, props.lead && ROW)}
         data-slot="template-card"
         data-testid={props.testId}
         onClick={(event) => {
@@ -78,7 +93,7 @@ export function TemplateCard(props: TemplateCardProps) {
     <button
       type="button"
       onClick={props.onSelect}
-      className={CARD}
+      className={cn(CARD, props.lead && ROW)}
       data-slot="template-card"
       data-testid={props.testId}
     >

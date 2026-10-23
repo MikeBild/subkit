@@ -3,7 +3,6 @@ import {
   askingTools,
   popularTemplates,
   serviceHost,
-  serviceInitial,
   signInChipKey,
   templateFor,
   toolTitle,
@@ -54,10 +53,5 @@ describe("connector view model", () => {
     expect(signInChipKey("none")).toBe("create.connector.signIn.none");
     expect(signInChipKey("signed_jwt")).toBe("connectorLabel.auth.signed_jwt");
     expect(signInChipKey(null)).toBe("connectorDetail.connection.signIn");
-  });
-
-  test("marks a service with its first letter", () => {
-    expect(serviceInitial("  hubspot")).toBe("H");
-    expect(serviceInitial("")).toBe("?");
   });
 });

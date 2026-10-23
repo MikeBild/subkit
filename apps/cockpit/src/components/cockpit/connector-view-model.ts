@@ -58,8 +58,3 @@ const SHORT_WAY: Readonly<Record<string, TranslationKey>> = {
 export function signInChipKey(authType: string | null): TranslationKey {
   return (authType && SHORT_WAY[authType]) || "connectorDetail.connection.signIn";
 }
-
-export function serviceInitial(name: string): string {
-  const letter = name.trim().match(/[\p{L}\p{N}]/u)?.[0];
-  return letter ? letter.toLocaleUpperCase() : "?";
-}

@@ -26,6 +26,7 @@ import {
 } from "@/components/cockpit/connector-detail";
 import { ConnectorDeleteDialog, ConnectorEditDialog } from "@/components/cockpit/connector-edit";
 import { ConnectionGraphic } from "@/components/cockpit/connector-graphic";
+import { connectorService } from "@/components/cockpit/connector-names";
 import { serviceHost, signInChipKey, templateFor } from "@/components/cockpit/connector-view-model";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { fetchTemplates, TEMPLATES_KEY } from "@/components/cockpit/create-from-template";
@@ -355,6 +356,13 @@ export function ConnectorPage({
   const description = recordDescription(record).trim();
   const category = recordCategory(record);
   const host = serviceHost(text(record, "base_url"));
+  const service = connectorService({
+    slug: slug ?? "",
+    display_name: title,
+    driver: record.driver as string | null | undefined,
+    template_slug: templateSlug,
+    base_url: text(record, "base_url"),
+  });
   const environment = environmentName(record, t);
   const usedBy = users.data
     ? t(
@@ -400,6 +408,7 @@ export function ConnectorPage({
         >
           <ConnectionGraphic
             workspace={[session.tenant.display_name, environment].filter(Boolean).join(" · ")}
+            service={service}
             serviceName={template?.name ?? title}
             serviceLine={host}
             way={signInWay}
@@ -456,6 +465,7 @@ export function ConnectorPage({
             slug={slug}
             connectorId={id}
             connectorName={title}
+            service={service}
             template={template}
             conversations={
               permissions.includes("conversation:read") ? (

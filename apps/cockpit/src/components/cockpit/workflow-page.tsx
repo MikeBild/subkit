@@ -38,6 +38,7 @@ import {
   TabBody,
 } from "@/components/cockpit/patterns";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
+import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { MISSING } from "@/components/cockpit/table-columns";
 import { WorkflowDraftingContext } from "@/components/cockpit/workflow-drafting-context";
 import { WorkflowApprovals } from "@/components/cockpit/workflow-grants";
@@ -58,6 +59,7 @@ import { useCurrentVersionDag, WorkflowVersions } from "@/components/cockpit/wor
 import { cronWords } from "@/lib/cron-words";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import type { ServiceIdentity } from "@/lib/service-icons";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { cn } from "@/lib/utils";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
@@ -380,13 +382,17 @@ export function WorkflowPage({
       t("workflowPage.calledOnRequest")
     )
   ) : null;
-  const services = new Map<string, { label: string; href: string | null }>();
+  const services = new Map<
+    string,
+    { label: string; href: string | null; service: ServiceIdentity }
+  >();
   for (const view of steps.views) {
     const connector = stepConnector(view.definition, connectorRecords);
     if (!connector?.name || services.has(connector.name)) continue;
     services.set(connector.name, {
       label: connector.name,
       href: connector.id ? absolute(connectorHref(connector.id)) : null,
+      service: connector.service,
     });
   }
   const overviewSummary = (
@@ -406,13 +412,17 @@ export function WorkflowPage({
           {entry.href ? (
             <a
               href={entry.href}
-              className="rounded-md border px-1.5 py-0.5 text-xs text-foreground underline-offset-4 hover:underline"
+              className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs text-foreground underline-offset-4 hover:underline"
               data-testid={`workflow-build-connector-${index}`}
             >
+              <ServiceIcon service={entry.service} className="size-3.5" />
               {entry.label}
             </a>
           ) : (
-            <span className="rounded-md border px-1.5 py-0.5 text-xs">{entry.label}</span>
+            <span className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs">
+              <ServiceIcon service={entry.service} className="size-3.5" />
+              {entry.label}
+            </span>
           )}
         </span>
       ))}

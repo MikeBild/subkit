@@ -209,6 +209,24 @@ describe("cards", () => {
     expect(html).toContain("Beliebt");
     expect(html).toContain("ca. 5 Min.");
   });
+
+  test("a template with one leading symbol puts it beside the name", () => {
+    const html = render(
+      <TemplateCard
+        title="GitHub"
+        line="Code, Pull Requests"
+        lead={
+          <IconTile outline>
+            <svg />
+          </IconTile>
+        }
+        testId="cn"
+      />,
+    );
+    expect(html).toContain("flex-row items-start gap-3");
+    expect(count(html, /data-slot="icon-tile"/g)).toBe(1);
+    expect(html).not.toContain('data-slot="template-card-icons"');
+  });
 });
 
 describe("onboarding", () => {

@@ -620,10 +620,19 @@ export function WorkflowInvocation({
               <button
                 type="button"
                 onClick={() => setOpen(mode)}
-                className="flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className={cn(
+                  "flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  !card.on && "opacity-70",
+                )}
                 data-testid={`workflow-invocation-tab-${mode}`}
               >
-                <IconTile>
+                <IconTile
+                  className={
+                    card.on
+                      ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                      : "text-muted-foreground"
+                  }
+                >
                   <Icon />
                 </IconTile>
                 <span className="min-w-0 flex-1">

@@ -1,6 +1,6 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Plug, Zap } from "lucide-react";
+import { Zap } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -15,9 +15,11 @@ import {
   TemplateCard,
   TemplateGrid,
 } from "@/components/cockpit/patterns";
+import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { templateIdentity } from "@/lib/service-icons";
 import { workflowStepKindKey } from "@/lib/workflow-steps";
 import {
   addressedConnectors,
@@ -165,15 +167,17 @@ export function SolutionGallery({
             key={entry.recipe_slug}
             title={text.title}
             line={text.line}
+            icons={[...new Set(entry.connectors.map((connector) => connector.template))].map(
+              (template) => <ServiceIcon key={template} service={templateIdentity(template)} />,
+            )}
             meta={[
               <>
                 <Zap aria-hidden="true" />
                 {t(TRIGGER_LABEL[solutionTrigger(entry)])}
               </>,
-              <>
-                <Plug aria-hidden="true" />
+              <span key="needs" className="sr-only">
                 {joinNames(solutionNeeds(entry), tag)}
-              </>,
+              </span>,
             ]}
             onSelect={() => onPick(entry.recipe_slug)}
             testId={`create-solution-${entry.recipe_slug}`}
@@ -308,18 +312,29 @@ export function useSolutionFlow(
                 {
                   label: t("create.solution.connectors"),
                   value: (
-                    <span className="flex flex-wrap gap-1.5">
+                    <span className="flex flex-col gap-2">
                       {entry.connectors.map((connector) => (
-                        <StatusBadge
+                        <span
                           key={connector.placeholder}
-                          state={connector.connector_id ? "ok" : "pending"}
-                          label={`${connector.connector_name ?? connector.template_name} · ${t(
-                            connector.connector_id
-                              ? "create.solution.connected"
-                              : "create.solution.missing",
-                          )}`}
-                          testId={`create-solution-connector-${connector.template}`}
-                        />
+                          className="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm"
+                        >
+                          <ServiceIcon
+                            service={templateIdentity(connector.template)}
+                            className="size-[18px]"
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {connector.connector_name ?? connector.template_name}
+                          </span>
+                          <StatusBadge
+                            state={connector.connector_id ? "ok" : "pending"}
+                            label={t(
+                              connector.connector_id
+                                ? "create.solution.connected"
+                                : "create.solution.missing",
+                            )}
+                            testId={`create-solution-connector-${connector.template}`}
+                          />
+                        </span>
                       ))}
                     </span>
                   ),

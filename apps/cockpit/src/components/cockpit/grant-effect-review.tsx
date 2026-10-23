@@ -8,6 +8,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { RowsSkeleton } from "@/components/cockpit/patterns";
+import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { type BoundaryGrowth, growthLine } from "@/lib/authority-growth";
 import { CLASS_KEYS, presentRequestBoundary } from "@/lib/authority-request";
 import type { AuthorityReviewModel, ReviewGroup, ReviewRow } from "@/lib/authority-review-model";
@@ -174,6 +175,7 @@ function Group({ group }: { group: ReviewGroup }) {
       data-testid="authority-effect-group"
     >
       <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-2 [&::-webkit-details-marker]:hidden">
+        <ServiceIcon service={group.service} />
         <span className="font-medium">{group.name}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
           {group.scope}

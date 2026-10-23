@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { SelectField, TextAreaField, TextField } from "@/components/cockpit/form-field";
@@ -331,6 +331,27 @@ export function CatalogMetadataDialog({
 }
 
 export function CatalogNameCell({
+  name,
+  record,
+  icon,
+}: {
+  name: string;
+  record: CatalogMetadataRecord | undefined;
+  icon?: ReactNode;
+}) {
+  const text = <CatalogNameText name={name} record={record} />;
+  if (!icon) return text;
+  return (
+    <span className="flex min-w-0 items-start gap-3">
+      <span className="mt-0.5 flex shrink-0" data-slot="catalog-name-icon">
+        {icon}
+      </span>
+      {text}
+    </span>
+  );
+}
+
+function CatalogNameText({
   name,
   record,
 }: {

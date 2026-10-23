@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Hand, RefreshCw, Workflow, Wrench, Zap } from "lucide-react";
+import { ChevronRight, Hand, RefreshCw, Workflow, Wrench } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -26,12 +26,14 @@ import {
   TemplateCard,
   TemplateGrid,
 } from "@/components/cockpit/patterns";
+import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { MISSING } from "@/components/cockpit/table-columns";
 import { humanize } from "@/lib/effect-label";
 import { formatRelativeTime, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { catalogLabel, LabelText } from "@/lib/machine-label";
 import { schemaFieldKind, schemaFields } from "@/lib/schema-form";
+import type { ServiceIdentity } from "@/lib/service-icons";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import type { InputField } from "@/lib/workflow-inputs";
 import { catalogOperatingStatus, OPERATING_STATUS_KEYS } from "@/pages/catalog-model";
@@ -687,12 +689,14 @@ export function ConnectorWorkflows({
   slug,
   connectorId,
   connectorName,
+  service,
   template,
   conversations,
 }: {
   slug: string;
   connectorId: string;
   connectorName: string;
+  service: ServiceIdentity;
   template: ConnectorTemplate | null;
   conversations?: ReactNode;
 }) {
@@ -762,7 +766,7 @@ export function ConnectorWorkflows({
                       key={recipe.slug}
                       title={recipe.title}
                       line={recipe.description}
-                      icons={[<Zap key="zap" />]}
+                      icons={[<ServiceIcon key="service" service={service} />]}
                       href={chatNewHref({
                         prompt: t("connectorPage.usage.recipePrompt", { title: recipe.title }),
                         connectorId,

@@ -13,7 +13,7 @@ import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { ConnectionGraphic, ServiceMark } from "@/components/cockpit/connector-graphic";
+import { ConnectionGraphic } from "@/components/cockpit/connector-graphic";
 import { ConnectorSignInFields } from "@/components/cockpit/connector-sign-in-fields";
 import {
   afterCreateTab,
@@ -53,8 +53,10 @@ import {
   Input,
   WizardProgress,
 } from "@/components/cockpit/patterns";
+import { ServiceIcon } from "@/components/cockpit/service-icon";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { currentHost, serviceIdentity, templateIdentity } from "@/lib/service-icons";
 import { cn } from "@/lib/utils";
 import { credentialBody } from "@/pages/connector-detail-model";
 import { popularTemplates, serviceHost, signInChipKey } from "./connector-view-model";
@@ -177,7 +179,7 @@ function ServiceGrid({
                 )}
                 data-testid={`create-template-${template.slug}`}
               >
-                <ServiceMark name={template.name} size="sm" />
+                <ServiceIcon service={templateIdentity(template.slug)} className="size-[18px]" />
                 <span className="min-w-0 truncate">{template.name}</span>
               </button>
             </li>
@@ -648,6 +650,11 @@ export function CreateConnectorDialog({
       <>
         <ConnectionGraphic
           workspace={session.tenant.display_name}
+          service={
+            template
+              ? templateIdentity(template.slug)
+              : serviceIdentity({ display_name: serviceName, base_url: address }, currentHost())
+          }
           serviceName={serviceName}
           serviceLine={serviceHost(reviewAddress ?? null)}
           way={reviewWay}

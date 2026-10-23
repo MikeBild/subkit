@@ -1,13 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { Bot } from "lucide-react";
+import { Bot, Workflow } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
 import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
 import { CatalogNameCell } from "@/components/cockpit/catalog-metadata";
+import { connectorService } from "@/components/cockpit/connector-names";
 import { ConnectorOnboarding } from "@/components/cockpit/connector-onboarding";
 import { CreateAction } from "@/components/cockpit/create-choice";
 import {
@@ -17,12 +18,15 @@ import {
   FilterBar,
   type FilterSelect,
   GroupingTabs,
+  IconTile,
   Page,
   PageHeader,
   StatusBadge,
 } from "@/components/cockpit/patterns";
+import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { WorkflowOnboarding } from "@/components/cockpit/workflow-onboarding";
+import { TRIGGER_ICONS } from "@/components/cockpit/workflow-steps-list";
 import { ForbiddenState } from "@/components/failure-state";
 import { cronWords } from "@/lib/cron-words";
 import { LOCALE_TAGS, type Locale, pluralKey, type TranslationKey } from "@/lib/i18n";
@@ -31,6 +35,7 @@ import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { type CursorPage, useInfiniteList } from "@/lib/use-infinite-list";
 import { humanizeCategory } from "@/lib/workflow-category";
+import { triggerKindOf } from "@/lib/workflow-flow";
 import {
   CATALOG_WORKFLOW_FILTER_STATUSES,
   catalogListParams,
@@ -228,7 +233,17 @@ function catalogColumns(
         "name",
         (row) => row.name,
         t("common.name"),
-        (row) => <CatalogNameCell name={stringField(row, "name") ?? ""} record={row} />,
+        (row) => (
+          <CatalogNameCell
+            name={stringField(row, "name") ?? ""}
+            record={row}
+            icon={
+              <IconTile>
+                <Workflow />
+              </IconTile>
+            }
+          />
+        ),
         { sortable: true, width: "w-[38%]" },
       ),
       column.custom(
@@ -239,9 +254,15 @@ function catalogColumns(
           const trigger = row.effective_trigger as WorkflowListItem["effective_trigger"];
           const schedule = row.schedule as WorkflowListItem["schedule"];
           const label = t(triggerLabelKey(trigger));
-          return trigger.kind === "schedule" && schedule?.cron
-            ? `${label} · ${cronWords(schedule.cron, t, LOCALE_TAGS[relations.locale])}`
-            : label;
+          const Icon = TRIGGER_ICONS[triggerKindOf(trigger)];
+          return (
+            <span className="inline-flex items-center gap-1.5">
+              <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+              {trigger.kind === "schedule" && schedule?.cron
+                ? `${label} · ${cronWords(schedule.cron, t, LOCALE_TAGS[relations.locale])}`
+                : label}
+            </span>
+          );
         },
         { width: "w-[18%]" },
       ),
@@ -271,7 +292,24 @@ function catalogColumns(
       "name",
       (row) => row.display_name,
       t("common.name"),
-      (row) => <CatalogNameCell name={stringField(row, "display_name") ?? ""} record={row} />,
+      (row) => (
+        <CatalogNameCell
+          name={stringField(row, "display_name") ?? ""}
+          record={row}
+          icon={
+            <ServiceIcon
+              tile="md"
+              service={connectorService({
+                slug: stringField(row, "slug") ?? "",
+                display_name: stringField(row, "display_name") ?? "",
+                driver: stringField(row, "driver"),
+                template_slug: stringField(row, "template_slug"),
+                base_url: stringField(row, "base_url"),
+              })}
+            />
+          }
+        />
+      ),
       { sortable: true, width: "w-[34%]" },
     ),
     column.custom(

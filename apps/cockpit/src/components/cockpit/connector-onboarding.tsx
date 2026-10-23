@@ -17,7 +17,9 @@ import {
   TemplateGrid,
 } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
-import { popularTemplates, serviceInitial } from "./connector-view-model";
+import { templateIdentity } from "@/lib/service-icons";
+import { popularTemplates } from "./connector-view-model";
+import { ServiceIcon } from "./service-icon";
 
 const SEARCH_RESULTS = 12;
 
@@ -72,11 +74,7 @@ export function ConnectorOnboarding({ canChat }: { canChat: boolean }) {
                 key={template.slug}
                 title={template.name}
                 line={template.description}
-                icons={[
-                  <span key="mark" className="text-xs font-semibold">
-                    {serviceInitial(template.name)}
-                  </span>,
-                ]}
+                lead={<ServiceIcon service={templateIdentity(template.slug)} tile="md" />}
                 onSelect={() => open({ way: "template", template: template.slug })}
                 testId={`connector-onboarding-${template.slug}`}
               />

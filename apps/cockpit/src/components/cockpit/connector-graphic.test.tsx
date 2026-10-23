@@ -8,6 +8,7 @@ function graphic(tone: "ok" | "warn" | "error") {
   return render(
     <ConnectionGraphic
       workspace="Acme · Produktion"
+      service={{ kind: "brand", key: "hubspot" }}
       serviceName="HubSpot"
       serviceLine="api.hubapi.com"
       way="account"
@@ -26,6 +27,9 @@ describe("connection graphic", () => {
     expect(html).toMatch(/data-testid="connector-graphic-way"[^>]*>[\s\S]*Mit Konto/);
     expect(html).toContain("HubSpot");
     expect(html).toContain("api.hubapi.com");
+    expect(html).toContain('data-slot="subkit-mark"');
+    expect(html).toContain('src="data:image/svg+xml');
+    expect(html).not.toMatch(/>H<\/span>/);
   });
 
   test("only the connecting line carries the state, never a card border", () => {

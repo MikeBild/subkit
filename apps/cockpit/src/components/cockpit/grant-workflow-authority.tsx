@@ -5,7 +5,7 @@ import { ApiError, apiRequest } from "@/api/client";
 import { cockpitApiHref } from "@/app/installation-context";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { useConnectorNames } from "@/components/cockpit/connector-names";
+import { useConnectorNames, useConnectorServices } from "@/components/cockpit/connector-names";
 import { GrantEffectReview } from "@/components/cockpit/grant-effect-review";
 import {
   GrantRemedyAction,
@@ -113,6 +113,7 @@ export function GrantWorkflowAuthority({
   const client = useQueryClient();
   const session = useSession();
   const connectorNames = useConnectorNames(open);
+  const connectorServices = useConnectorServices(open);
   const [environment, setEnvironment] = useState<"dev" | "prod">("dev");
   const [limit, setLimit] = useState<GrantLimit>(DEFAULT_GRANT_LIMIT);
   const [reviewVersionId, setReviewVersionId] = useState(versionId);
@@ -482,6 +483,7 @@ export function GrantWorkflowAuthority({
     ? authorityReviewModel({
         preview: review,
         connectorNames,
+        connectorServices,
         automation: {
           schedule: review.schedules.length > 0,
           webhook: context.webhooksActive,

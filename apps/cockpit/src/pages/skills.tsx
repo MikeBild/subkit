@@ -53,6 +53,7 @@ import {
   FieldLabel,
   FilterBar,
   GroupingTabs,
+  IconTile,
   Input,
   MarkdownDocument,
   MarkdownEditor,
@@ -179,7 +180,11 @@ function SkillsOnboarding({ canWrite }: { canWrite: boolean }) {
                 key={template}
                 title={t(keys.title)}
                 line={t(keys.line)}
-                icons={[<Icon key={template} />]}
+                lead={
+                  <IconTile>
+                    <Icon />
+                  </IconTile>
+                }
                 href={canWrite ? href : undefined}
                 onSelect={canWrite ? () => open(href) : undefined}
                 testId={`skills-template-${template}`}

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useDirtyGuard } from "@/app/version-notice";
-import { useConnectorRecords } from "@/components/cockpit/connector-names";
+import { connectorService, useConnectorRecords } from "@/components/cockpit/connector-names";
 import {
   CheckListField,
   ChoiceField,
@@ -21,6 +21,7 @@ import {
   Input,
   TechnicalDetails,
 } from "@/components/cockpit/patterns";
+import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -335,7 +336,7 @@ export function StepDialog({
           <ChoiceCards
             compact
             items={matches.map((item) => ({
-              icon: <Plug />,
+              icon: <ServiceIcon service={connectorService(item)} />,
               title: item.display_name || item.slug,
               line: t(item.driver === "mcp" ? "stepWizard.service.mcp" : "stepWizard.service.web"),
               selected: form.connectorId === item.id,

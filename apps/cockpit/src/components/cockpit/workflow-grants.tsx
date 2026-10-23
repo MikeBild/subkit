@@ -4,7 +4,7 @@ import { apiRequest } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
 import type { WorkflowAutomation } from "@/components/cockpit/automation-panel";
-import { useConnectorNames } from "@/components/cockpit/connector-names";
+import { useConnectorNames, useConnectorServices } from "@/components/cockpit/connector-names";
 import { GrantEffectReview } from "@/components/cockpit/grant-effect-review";
 import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
 import {
@@ -53,11 +53,13 @@ function useAuthorityModel(
   activation: boolean,
 ) {
   const connectorNames = useConnectorNames();
+  const connectorServices = useConnectorServices();
   if (!preview) return null;
   const triggers = automation.state?.triggers ?? [];
   return authorityReviewModel({
     preview,
     connectorNames,
+    connectorServices,
     automation: {
       schedule: triggers.some((trigger) => trigger.kind === "schedule"),
       webhook: triggers.some((trigger) => trigger.kind === "hook"),

@@ -1,4 +1,5 @@
 import type { TranslationKey } from "@/lib/i18n";
+import { currentHost, type ServiceIdentity, serviceIdentity } from "@/lib/service-icons";
 import type { WorkflowAuthorityPreview } from "@/lib/workflow-authorities";
 
 export type AuthorityReviewPreview = Pick<
@@ -46,6 +47,7 @@ export interface ReviewRow {
 export interface ReviewGroup {
   key: string;
   name: string;
+  service: ServiceIdentity;
   scope: string;
   counts: { read: number; write: number; risky: number };
   rows: ReviewRow[];
@@ -174,6 +176,7 @@ function compareRows(left: ReviewRow, right: ReviewRow): number {
 export function authorityReviewModel(input: {
   preview: AuthorityReviewPreview;
   connectorNames: ReadonlyMap<string, string>;
+  connectorServices?: ReadonlyMap<string, ServiceIdentity>;
   automation: { schedule: boolean; webhook: boolean };
   activation: boolean;
   carryOver: boolean;
@@ -230,6 +233,12 @@ export function authorityReviewModel(input: {
       return {
         key,
         name: (first?.connector_id && connectorNames.get(first.connector_id)) || host || key,
+        service:
+          (first?.connector_id && input.connectorServices?.get(first.connector_id)) ||
+          serviceIdentity(
+            { base_url: first?.boundary?.origin ?? first?.target ?? null },
+            currentHost(),
+          ),
         scope: [host, ...prefix].filter(Boolean).join("/"),
         counts: {
           read: members.filter((row) => row.risk === "read").length,
