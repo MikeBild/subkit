@@ -197,6 +197,46 @@ describe("sk connectors driver-dispatched verbs", () => {
     expect(JSON.parse(enabled.stdout).enabled).toBe(true);
   }, 90_000);
 
+  test("patch --file changes one oauth field, keeps the rest and asks for a new sign-in", async () => {
+    const api = apiClient(env);
+    const created = await api.post<{ id: string }>("/v1/connectors", {
+      name: "Scoped OAuth",
+      driver: "http",
+      base_url: env.baseUrl,
+      auth_type: "oauth2",
+      config: {
+        oauth: {
+          scope: "https://idp.example.test/read",
+          authorization_endpoint: "https://idp.example.test/authorize",
+          token_endpoint: "https://idp.example.test/token",
+        },
+      },
+    });
+    expect(created.status).toBe(201);
+    const id = created.body.id;
+    const file = writeTempFile(
+      env.personas.admin,
+      "scope.json",
+      JSON.stringify({ config: { oauth: { scope: "https://idp.example.test/write" } } }),
+    );
+
+    const patched = await cli(["connectors", "patch", id, "--file", file], {
+      env,
+      persona: "admin",
+    });
+    expectSuccess(patched, "sk connectors patch --file");
+    expect(`${patched.stdout}${patched.stderr}`).toContain("Update connector Scoped OAuth");
+
+    const after = await cli(["connectors", "get", id], { env, persona: "admin" });
+    const saved = JSON.parse(after.stdout) as {
+      needs_reauth: boolean;
+      config: { oauth: Record<string, string> };
+    };
+    expect(saved.config.oauth.scope).toBe("https://idp.example.test/write");
+    expect(saved.config.oauth.token_endpoint).toBe("https://idp.example.test/token");
+    expect(saved.needs_reauth).toBe(true);
+  }, 90_000);
+
   test("mcp-inspect on a connector of another driver fails with the engine's answer", async () => {
     const { id } = await seedConnector(env, { name: "Not An MCP Server" });
     const result = await cli(["connectors", "mcp-inspect", id], { env, persona: "admin" });

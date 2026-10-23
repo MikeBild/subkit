@@ -139,6 +139,15 @@ describe("IntentCard · connector", () => {
     ui.unmount();
   });
 
+  test("connector update shows Update instead of Create", () => {
+    const intent: ConnectorIntent = { kind: "connector", action: "Update", name: "Search Console" };
+    const ui = renderIntent(intent);
+    const out = snapshot(ui);
+    expect(out).toContain("Update connector Search Console");
+    expect(out).not.toContain("Create connector");
+    ui.unmount();
+  });
+
   test("file-authored connector shows its name and no template line", () => {
     const intent: ConnectorIntent = { kind: "connector", name: "Loop MCP" };
     const ui = renderIntent(intent);

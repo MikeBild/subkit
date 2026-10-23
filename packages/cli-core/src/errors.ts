@@ -97,6 +97,32 @@ export function wasReported(err: unknown): boolean {
   );
 }
 
+export function engineErrorDetailLines(details: unknown): string[] {
+  if (!details || typeof details !== "object") return [];
+  const d = details as Record<string, unknown>;
+  const lines: string[] = [];
+  if (Array.isArray(d.formErrors)) {
+    for (const m of d.formErrors) if (typeof m === "string" && m) lines.push(m);
+  }
+  if (d.fieldErrors && typeof d.fieldErrors === "object") {
+    for (const [field, msgs] of Object.entries(d.fieldErrors as Record<string, unknown>)) {
+      const list = Array.isArray(msgs) ? msgs.filter((m) => typeof m === "string") : [];
+      for (const m of list) lines.push(`${field}: ${m}`);
+    }
+  }
+  if (Array.isArray(d.issues)) {
+    for (const i of d.issues) {
+      if (!i || typeof i !== "object") continue;
+      const issue = i as Record<string, unknown>;
+      const path = Array.isArray(issue.path) ? issue.path.join(".") : issue.path;
+      if (typeof issue.message === "string") {
+        lines.push(path ? `${String(path)}: ${issue.message}` : issue.message);
+      }
+    }
+  }
+  return lines;
+}
+
 export function reportCommandError(err: unknown, opts?: { json?: boolean }): never {
   const msg = err instanceof Error ? err.message : String(err);
   if (opts?.json) {
@@ -105,6 +131,7 @@ export function reportCommandError(err: unknown, opts?: { json?: boolean }): nev
       payload.code = err.code;
       if (err.hint) payload.hint = err.hint;
       if (err.trace_id) payload.trace_id = err.trace_id;
+      if (err.details != null) payload.details = err.details;
     } else if (isTransportError(err)) {
       payload.code = "transport_error";
       payload.error = `cannot reach engine: ${msg}`;
@@ -114,6 +141,7 @@ export function reportCommandError(err: unknown, opts?: { json?: boolean }): nev
     const lines: string[] = [];
     if (isEngineError(err)) {
       lines.push(`${pc.red("error")}: ${err.code}: ${msg}`);
+      for (const line of engineErrorDetailLines(err.details)) lines.push(`  ${line}`);
       if (err.hint) lines.push(pc.dim(`  hint: ${err.hint}`));
       if (err.trace_id) lines.push(pc.dim(`  trace: ${err.trace_id}`));
     } else if (isTransportError(err)) {

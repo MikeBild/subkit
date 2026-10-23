@@ -97,6 +97,18 @@ describe("POST /v1/connectors/validate", () => {
     expect(await connectorCount()).toBe(before);
   });
 
+  test("a definition missing required fields is a 200 with ok:false naming them", async () => {
+    const res = await post("/v1/connectors/validate", {
+      config: { oauth: { scope: "https://example.test/scope" } },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; issues: { path: string }[] };
+    expect(body.ok).toBe(false);
+    const paths = body.issues.map((i) => i.path);
+    expect(paths).toContain("name");
+    expect(paths).toContain("driver");
+  });
+
   test("a valid definition passes and still saves nothing", async () => {
     const before = await connectorCount();
     const res = await post("/v1/connectors/validate", {
@@ -403,5 +415,62 @@ describe("POST /v1/connectors/probe — driver mcp", () => {
     expect((await res.json()) as { ok: boolean }).toMatchObject({ ok: true });
     expect(mcpHeaders.Authorization).toBe("Bearer PROBE-ONLY-TOKEN");
     expect(await connectorCount()).toBe(before);
+  });
+});
+
+describe("PATCH /v1/connectors/{id} oauth scope", () => {
+  async function createOauthConnector(name: string): Promise<string> {
+    const res = await post("/v1/connectors", {
+      name,
+      driver: "http",
+      base_url: mockBaseUrl,
+      auth_type: "oauth2",
+      config: {
+        oauth: {
+          scope: "https://example.test/read",
+          authorization_endpoint: "https://idp.example.test/authorize",
+          token_endpoint: "https://idp.example.test/token",
+        },
+      },
+    });
+    expect(res.status).toBe(201);
+    return ((await res.json()) as { id: string }).id;
+  }
+
+  async function patch(id: string, body: unknown): Promise<Response> {
+    return fetch(`${ctx.baseUrl}/v1/connectors/${id}`, {
+      method: "PATCH",
+      headers: adminAuth(),
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function row(id: string) {
+    const [r] = await ctx.db.select().from(connectors).where(eq(connectors.id, id));
+    return r;
+  }
+
+  test("a changed scope asks for a new sign-in", async () => {
+    const id = await createOauthConnector("Scope Change");
+    const res = await patch(id, {
+      config: {
+        oauth: {
+          scope: "https://example.test/read https://example.test/write",
+          authorization_endpoint: "https://idp.example.test/authorize",
+          token_endpoint: "https://idp.example.test/token",
+        },
+      },
+    });
+    expect(res.status).toBe(200);
+    const saved = await row(id);
+    expect(saved?.needs_reauth).toBe(true);
+    expect(saved?.auth_failed_reason).toContain("scope");
+  });
+
+  test("an unchanged scope keeps the sign-in", async () => {
+    const id = await createOauthConnector("Scope Same");
+    const res = await patch(id, { name: "Scope Same Renamed" });
+    expect(res.status).toBe(200);
+    expect((await row(id))?.needs_reauth).toBe(false);
   });
 });

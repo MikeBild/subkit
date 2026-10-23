@@ -652,6 +652,14 @@ export async function getConnectorForEnvironment(
   return rows.get(connectorEnvironmentKey(id, environment)) ?? null;
 }
 
+function oauthScopeOf(config: unknown): string | null {
+  if (!config || typeof config !== "object") return null;
+  const oauth = (config as Record<string, unknown>).oauth;
+  if (!oauth || typeof oauth !== "object") return null;
+  const scope = (oauth as Record<string, unknown>).scope;
+  return typeof scope === "string" && scope.trim() ? scope.trim() : null;
+}
+
 export async function updateConnector(
   tenant_id: string,
   id: string,
@@ -771,6 +779,15 @@ export async function updateConnector(
         prior.config,
         set.config as Record<string, unknown>,
       );
+    }
+    if (
+      set.config !== undefined &&
+      (set.auth_type ?? prior.auth_type) === "oauth2" &&
+      oauthScopeOf(set.config) !== oauthScopeOf(prior.config)
+    ) {
+      set.needs_reauth = true;
+      set.auth_failed_at = new Date();
+      set.auth_failed_reason = "oauth scope changed — sign in again to grant it";
     }
     const [row] = await tx.update(connectors).set(set).where(eq(connectors.id, id)).returning();
     if (!row) return null;

@@ -181,21 +181,32 @@ function draftConnectorView(input: z.infer<typeof CreateConnectorSchema>): Conne
 }
 
 export function registerAuthoringRoutes(app: OpenAPIHono<AppEnv>): void {
-  app.openapi(validateRoute, async (c) => {
-    requireAuth(c);
-    const body = c.req.valid("json");
-    const effectiveConfig = withMcpConfigDefaults(
-      body.driver as DriverName,
-      body.auth_type ?? "none",
-      body.config as Record<string, unknown> | undefined,
-    );
-    const issues = [
-      ...validateConnectorConfig(body.driver as DriverName, effectiveConfig),
-      ...validateConnectorAuthType(body.driver as DriverName, body.auth_type),
-      ...validateMcpAuthConsistency(body.driver as DriverName, body.auth_type, effectiveConfig),
-    ];
-    return c.json({ ok: issues.length === 0, issues }, 200);
-  });
+  app.openapi(
+    validateRoute,
+    async (c) => {
+      requireAuth(c);
+      const body = c.req.valid("json");
+      const effectiveConfig = withMcpConfigDefaults(
+        body.driver as DriverName,
+        body.auth_type ?? "none",
+        body.config as Record<string, unknown> | undefined,
+      );
+      const issues = [
+        ...validateConnectorConfig(body.driver as DriverName, effectiveConfig),
+        ...validateConnectorAuthType(body.driver as DriverName, body.auth_type),
+        ...validateMcpAuthConsistency(body.driver as DriverName, body.auth_type, effectiveConfig),
+      ];
+      return c.json({ ok: issues.length === 0, issues }, 200);
+    },
+    (result, c) => {
+      if (result.success) return undefined;
+      const issues = result.error.issues.map((i) => ({
+        path: i.path.length > 0 ? i.path.join(".") : "body",
+        message: i.message,
+      }));
+      return c.json({ ok: false, issues }, 200);
+    },
+  );
 
   app.openapi(probeRoute, async (c) => {
     const principal = requireAuth(c);

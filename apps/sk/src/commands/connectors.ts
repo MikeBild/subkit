@@ -10,6 +10,12 @@ import {
   catalogMetadataBody,
   shortDescription,
 } from "../lib/catalog-metadata.ts";
+import {
+  connectorDisplayName,
+  connectorPatchBody,
+  connectorPatchDraft,
+  unwrapConnectorRecord,
+} from "../lib/connector-patch.ts";
 import { pickId } from "../lib/pick.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { ConnectorIntent, ConnectorSummary, PlanStep } from "../render/types.ts";
@@ -157,12 +163,24 @@ async function saveConnectorFromFile(
   const client = makeClient();
   const jsonMode = Boolean(args.json);
   try {
-    const body = await readDefinitionFile(String(args.file));
+    const file = await readDefinitionFile(String(args.file));
+    const current =
+      target.action === "patch"
+        ? unwrapConnectorRecord(await client.getConnector(target.id))
+        : undefined;
+    const body = current ? connectorPatchBody(current, file) : file;
     const skip = Boolean(args["skip-checks"]);
+    const name =
+      typeof body.name === "string"
+        ? body.name
+        : current
+          ? connectorDisplayName(current)
+          : undefined;
     await renderIntent(
       {
         kind: "connector",
-        ...(typeof body.name === "string" ? { name: body.name } : {}),
+        action: target.action === "patch" ? "Update" : "Create",
+        ...(name ? { name } : {}),
         ...(typeof body.template_slug === "string" ? { template_slug: body.template_slug } : {}),
       },
       { jsonMode },
@@ -170,7 +188,9 @@ async function saveConnectorFromFile(
 
     let probe: ConnectorSummary["probe"];
     if (!skip) {
-      const verdict = await client.validateConnectorDraft(body);
+      const verdict = await client.validateConnectorDraft(
+        current ? connectorPatchDraft(current, body) : body,
+      );
       if (!verdict.ok) {
         await renderTaskList(
           [

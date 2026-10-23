@@ -57,7 +57,9 @@ function plainIntent(intent: AnyIntent): string {
     out.push(`  ${pc.dim(`MIME: ${intent.mime_type}`)}`);
   } else if (isConnectorIntent(intent)) {
     const heading = connectorHeading(intent);
-    out.push(`${pc.cyan(pc.bold("●"))} ${pc.bold(`Create connector ${heading}`)}`);
+    out.push(
+      `${pc.cyan(pc.bold("●"))} ${pc.bold(`${intent.action ?? "Create"} connector ${heading}`)}`,
+    );
     if (intent.template_slug) out.push(`  ${pc.dim(`Template: ${intent.template_slug}`)}`);
     if (intent.environment) out.push(`  ${pc.dim(`Environment: ${intent.environment}`)}`);
     if (intent.auth_type) out.push(`  ${pc.dim(`Auth: ${intent.auth_type}`)}`);

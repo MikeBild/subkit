@@ -219,6 +219,18 @@ describe("renderIntent · non-TTY plain ASCII", () => {
     expect(stderrBuf).not.toContain("undefined");
   });
 
+  test("connector update intent says Update", async () => {
+    setTTY(false);
+    const { renderIntent } = await importDispatcher();
+    await renderIntent({
+      kind: "connector",
+      action: "Update",
+      name: "Search Console",
+    } as AnyIntent);
+    expect(stderrBuf).toContain("Update connector Search Console");
+    expect(stderrBuf).not.toContain("Create connector");
+  });
+
   test("knowledge source intent emits every fixture field", async () => {
     setTTY(false);
     const { renderIntent } = await importDispatcher();

@@ -16,6 +16,7 @@ export interface WorkflowIntent {
 
 export interface ConnectorIntent {
   kind: "connector";
+  action?: "Create" | "Update";
   template_slug?: string;
   name?: string;
   environment?: "dev" | "prod";

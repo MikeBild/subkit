@@ -45,7 +45,7 @@ const ConnectorIntentCard: React.FC<{ intent: ConnectorIntent }> = ({ intent }) 
         <Text color="cyan" bold>
           {"● "}
         </Text>
-        <Text bold>{`Create connector ${heading}`}</Text>
+        <Text bold>{`${intent.action ?? "Create"} connector ${heading}`}</Text>
       </Box>
       {intent.template_slug ? (
         <Box marginLeft={2}>
