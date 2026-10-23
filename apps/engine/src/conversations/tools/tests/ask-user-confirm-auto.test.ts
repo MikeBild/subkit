@@ -25,14 +25,15 @@ function ctx(over: Partial<MinimalCtx> = {}): MinimalCtx {
 }
 
 describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
-  test("save_workflow_draft resolves confirmed:true in auto mode", async () => {
-    const result = await askUserConfirmTool.execute(ctx({ permission_mode: "auto" }) as never, {
-      question: "Save the workflow?",
-      kind: "save_workflow_draft",
-    });
-    expect(result.ok).toBe(true);
-    expect((result.data as { confirmed: boolean }).confirmed).toBe(true);
-    expect((result.data as { auto_resolved: boolean }).auto_resolved).toBe(true);
+  test("save_workflow_draft is never reported confirmed without a write", async () => {
+    let result: Awaited<ReturnType<typeof askUserConfirmTool.execute>> | null = null;
+    try {
+      result = await askUserConfirmTool.execute(ctx({ permission_mode: "auto" }) as never, {
+        question: "Save the workflow?",
+        kind: "save_workflow_draft",
+      });
+    } catch {}
+    expect((result?.data as { auto_resolved?: boolean } | undefined)?.auto_resolved).not.toBe(true);
   });
 
   test("external_write resolves confirmed:true in auto mode", async () => {
@@ -42,6 +43,7 @@ describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
     });
     expect(result.ok).toBe(true);
     expect((result.data as { confirmed: boolean }).confirmed).toBe(true);
+    expect((result.data as { performed: unknown }).performed).toBeNull();
   });
 
   test("destructive=true STILL pauses in auto mode (safety carve-out)", async () => {

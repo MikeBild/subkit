@@ -23,10 +23,12 @@ export interface ToolPolicies {
   [toolName: string]: ToolPolicyMode;
 }
 
-const AUTO_PREPARATION_WRITES: ReadonlySet<string> = new Set([
-  "save_workflow_draft",
-  "create_knowledge_source",
-  "analyze_knowledge_source",
+type PolicyCategory = "draft_write" | "tenant_read" | "tenant_write";
+
+const AUTO_PREPARATION_WRITES: ReadonlyMap<string, PolicyCategory> = new Map([
+  ["save_workflow_draft", "draft_write"],
+  ["create_knowledge_source", "tenant_write"],
+  ["analyze_knowledge_source", "tenant_write"],
 ]);
 
 export type PermissionMode = "auto" | "ask" | "plan" | "yolo";
@@ -522,6 +524,24 @@ export function decideToolMode(args: {
   }
   if (def?.defaultMode) return { mode: def.defaultMode, rule: "tool_default" };
   return { mode: defaultModeForCategory(category), rule: "category_default" };
+}
+
+export function autoPreparationProceeds(args: {
+  tool: string;
+  input: unknown;
+  overrides: ToolPolicies;
+}): boolean {
+  const category = AUTO_PREPARATION_WRITES.get(args.tool);
+  if (!category) return false;
+  return (
+    decideToolMode({
+      tool: args.tool,
+      category,
+      input: args.input,
+      overrides: args.overrides,
+      permission_mode: "auto",
+    }).mode === "no_confirm"
+  );
 }
 
 export function resolveToolMode(args: {

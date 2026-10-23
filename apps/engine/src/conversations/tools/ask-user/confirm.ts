@@ -6,7 +6,11 @@ import {
   type ConfirmIntent,
   intentHasDistinguishingAction,
 } from "../../intent-fingerprint.ts";
-import { checkWorkflowSaveReadiness } from "../../persistence/commit-workflow.ts";
+import {
+  checkWorkflowSaveReadiness,
+  commitWorkflowAtomic,
+} from "../../persistence/commit-workflow.ts";
+import { autoPreparationProceeds, getToolPolicies } from "../../tool-policies.ts";
 import type { ConversationTool, ToolResult } from "../index.ts";
 import { resolveConversationPrincipal } from "../permission-gate.ts";
 import type { ModelCommitIntent } from "./commit-intent.ts";
@@ -79,6 +83,64 @@ async function approvalBackedMcpIntent(
         "The approval could not be persisted. No confirmation was opened and nothing was written.",
     };
   }
+}
+
+type ToolCtx = Parameters<ConversationTool["execute"]>[0];
+
+export interface AutoSaveDeps {
+  loadPolicies: typeof getToolPolicies;
+  checkReadiness: typeof checkWorkflowSaveReadiness;
+  commit: typeof commitWorkflowAtomic;
+}
+
+const AUTO_SAVE_DEPS: AutoSaveDeps = {
+  loadPolicies: getToolPolicies,
+  checkReadiness: checkWorkflowSaveReadiness,
+  commit: commitWorkflowAtomic,
+};
+
+export async function autoModeSaveWithoutPause(
+  ctx: ToolCtx,
+  intent: ModelCommitIntent | undefined,
+  destructive: boolean,
+  deps: AutoSaveDeps = AUTO_SAVE_DEPS,
+): Promise<ToolResult | null> {
+  if (ctx.permission_mode !== "auto" || destructive || ctx.surface === "mcp") return null;
+  if (intent?.kind !== "save_workflow_draft") return null;
+  const payload = intent.payload;
+  if (payload.force_commit === true || payload.target_workflow_id !== undefined) return null;
+  let overrides: Awaited<ReturnType<AutoSaveDeps["loadPolicies"]>>;
+  try {
+    overrides = await deps.loadPolicies(ctx.db, ctx.tenant_id, ctx.conversation_id);
+  } catch {
+    return null;
+  }
+  if (!autoPreparationProceeds({ tool: "save_workflow_draft", input: payload, overrides })) {
+    return null;
+  }
+  const readiness = await deps.checkReadiness({ ctx, forceCommit: false });
+  if (!readiness.ok) return readiness.result;
+  const result = await deps.commit({
+    ctx,
+    reason: "auto_mode_no_prior_approval",
+    commitIntentKind: "save_workflow_draft",
+  });
+  if (!result.ok) return result;
+  const data =
+    typeof result.data === "object" && result.data !== null
+      ? (result.data as Record<string, unknown>)
+      : {};
+  return {
+    ...result,
+    data: {
+      ...data,
+      confirmed: true,
+      auto_resolved: true,
+      performed: "save_workflow_draft",
+      reason:
+        "permission_mode=auto: saving an inactive draft needs no confirmation, so the engine saved it without asking. Do not call save_workflow_draft again.",
+    },
+  };
 }
 
 function buildOverrideWarning(intent: ModelCommitIntent | undefined): string | null {
@@ -157,17 +219,24 @@ export const askUserConfirmTool: ConversationTool = {
         };
       }
     }
+    const autoSaved = await autoModeSaveWithoutPause(
+      ctx,
+      proposedCommitIntent,
+      args.destructive === true,
+    );
+    if (autoSaved) return autoSaved;
     if (
       ctx.permission_mode === "auto" &&
       args.destructive !== true &&
-      args.commit_intent === undefined
+      proposedCommitIntent === undefined
     ) {
       return {
         ok: true,
         data: {
           confirmed: true,
           auto_resolved: true,
-          reason: `permission_mode=auto skipped ${args.kind} confirmation`,
+          performed: null,
+          reason: `permission_mode=auto skipped ${args.kind} confirmation. Nothing ran; call the action's own tool, which applies its own gate.`,
         },
       };
     }
