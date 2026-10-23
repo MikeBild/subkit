@@ -319,40 +319,74 @@ export function settingHelpKey(path: string): TranslationKey | null {
   return Object.hasOwn(CATALOGS.en, key) ? (key as TranslationKey) : null;
 }
 
-export interface SettingsPatch {
-  expected_revision: number;
-  changes: Record<string, unknown>;
-  scope: "global";
+export type SettingDraftScope = "global" | "tenant";
+
+export interface SettingDraft {
+  text: string;
+  scope: SettingDraftScope;
 }
 
-export function settingsPatch(
+export type SettingDrafts = Readonly<Record<string, SettingDraft>>;
+
+export function settingDraftScope(
+  item: Pick<SettingItem, "meta">,
+  requested: SettingDraftScope,
+): SettingDraftScope {
+  return requested === "tenant" && item.meta.scope === "tenant" ? "tenant" : "global";
+}
+
+export type SettingsPatch =
+  | { expected_revision: number; changes: Record<string, unknown>; scope: "global" }
+  | {
+      expected_revision: number;
+      changes: Record<string, unknown>;
+      scope: "tenant";
+      tenant_id: string;
+    };
+
+export function settingsPatches(
   data: Pick<SettingsResponse, "saved_revision" | "items">,
-  drafts: Readonly<Record<string, string>>,
+  drafts: SettingDrafts,
   secretReferences: Readonly<Record<string, string>>,
-): SettingsPatch {
+  tenantId: string | null,
+): SettingsPatch[] {
   if (data.saved_revision === null) throw new Error("settings have no saved revision to build on");
-  const changes: Record<string, unknown> = {};
+  const global: Record<string, unknown> = {};
+  const tenant: Record<string, unknown> = {};
   for (const item of data.items) {
-    if (!Object.hasOwn(drafts, item.path)) continue;
+    const draft = drafts[item.path];
+    if (!draft) continue;
+    const scope = tenantId ? settingDraftScope(item, draft.scope) : "global";
+    const changes = scope === "tenant" ? tenant : global;
     if (item.meta.sensitive) {
       const reference = secretReferences[item.path];
       if (!reference) throw new Error(`secret ${item.path} has no stored version`);
       changes[item.path] = reference;
       continue;
     }
-    const value = parseSettingDraft(item, drafts[item.path] ?? "");
+    const value = parseSettingDraft(item, draft.text);
     if (value === undefined) throw new Error(`draft for ${item.path} is not a valid value`);
     changes[item.path] = value;
   }
-  return { expected_revision: data.saved_revision, changes, scope: "global" };
+  const patches: SettingsPatch[] = [];
+  if (Object.keys(global).length > 0)
+    patches.push({ expected_revision: data.saved_revision, changes: global, scope: "global" });
+  if (tenantId && Object.keys(tenant).length > 0)
+    patches.push({
+      expected_revision: data.saved_revision,
+      changes: tenant,
+      scope: "tenant",
+      tenant_id: tenantId,
+    });
+  return patches;
 }
 
 export function settingsActivationPath(saved: { saved_revision: number }): string {
   return `/v1/settings/revisions/${saved.saved_revision}/activate`;
 }
 
-export function settingSecretName(path: string): string {
-  return `settings.${path}`;
+export function settingSecretName(path: string, tenantId?: string | null): string {
+  return tenantId ? `tenants.${tenantId}.settings.${path}` : `settings.${path}`;
 }
 
 export function settingsSaveFailure(error: unknown): "conflict" | "failed" {

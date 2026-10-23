@@ -1,0 +1,102 @@
+import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
+import {
+  areaStatus,
+  SETTING_AREAS,
+  settingAreaOf,
+  settingsLevelFromUrl,
+} from "@/pages/settings-areas";
+import type { SettingItem } from "@/pages/settings-model";
+import { settingSectionOf } from "@/pages/settings-model";
+
+const WALK = resolve(import.meta.dir, "../../../engine/src/config/walk.ts");
+const { listConfigLeaves } = (await import(WALK)) as {
+  listConfigLeaves(): Array<{ path: string[] }>;
+};
+const PATHS = listConfigLeaves().map((leaf) => leaf.path.join("."));
+
+function item(path: string, value: unknown, sensitive = false): SettingItem {
+  return {
+    path,
+    value,
+    meta: { source: "default", scope: "tenant", sensitive, requiresRestart: false, kind: "string" },
+  };
+}
+
+describe("settings areas", () => {
+  test("every engine section and branding belongs to exactly one area", () => {
+    expect(PATHS.length).toBeGreaterThan(100);
+    const sections = new Set([...PATHS.map(settingSectionOf), "branding"]);
+    for (const section of sections) {
+      const owners = SETTING_AREAS.filter((area) => area.sections.includes(section));
+      expect(
+        owners.map((area) => area.id),
+        section,
+      ).toHaveLength(1);
+    }
+  });
+
+  test("hosted AI budgets belong to costs, the rest of the AI section to the assistant", () => {
+    expect(settingAreaOf("llm.hosted.tenant_monthly_microunits")).toBe("costs");
+    expect(settingAreaOf("llm.model")).toBe("ai");
+    expect(settingAreaOf("tokens.prices")).toBe("costs");
+    expect(settingAreaOf("branding")).toBe("operations");
+  });
+
+  test("deep links open the full list; areas and the overview have their own address", () => {
+    expect(settingsLevelFromUrl("?leaf=llm.model").kind).toBe("all");
+    expect(settingsLevelFromUrl("?section=llm").kind).toBe("all");
+    expect(settingsLevelFromUrl("?filter=changed").kind).toBe("all");
+    expect(settingsLevelFromUrl("?view=all").kind).toBe("all");
+    expect(settingsLevelFromUrl("?area=costs")).toEqual({ kind: "area", area: "costs" });
+    expect(settingsLevelFromUrl("?tab=notifications")).toEqual({
+      kind: "area",
+      area: "notifications",
+    });
+    expect(settingsLevelFromUrl("?area=nope")).toEqual({ kind: "overview" });
+    expect(settingsLevelFromUrl("")).toEqual({ kind: "overview" });
+  });
+
+  test("status comes from facts: a missing key waits, a pending restart wins, no limit is quiet", () => {
+    const facts = (items: SettingItem[], pendingRestart: string[] = []) => ({
+      items,
+      pendingRestart,
+      budgetConsumedShare: null,
+    });
+    const openai = [
+      item("llm.provider", "openai"),
+      item("llm.providers.openai.api_key", null, true),
+      item("llm.api_key", null, true),
+    ];
+    expect(areaStatus("ai", facts(openai))).toBe("waiting");
+    expect(areaStatus("ai", facts([item("llm.provider", null)]))).toBe("waiting");
+    expect(
+      areaStatus(
+        "ai",
+        facts([item("llm.provider", "openai"), item("llm.providers.openai.api_key", "***", true)]),
+      ),
+    ).toBe("configured");
+    expect(
+      areaStatus(
+        "ai",
+        facts([
+          item("llm.provider", "openai"),
+          item("llm.providers.openai.api_key", null, true),
+          item("llm.api_key", "***", true),
+        ]),
+      ),
+    ).toBe("configured");
+    expect(areaStatus("ai", facts(openai, ["llm.fallback_provider"]))).toBe("restart");
+    expect(areaStatus("operations", facts([], ["llm.fallback_provider"]))).toBe("restart");
+    expect(areaStatus("costs", facts([item("tokens.monthly_budget", 0)]))).toBeNull();
+    expect(areaStatus("costs", facts([item("tokens.monthly_budget", 1000)]))).toBe("configured");
+    expect(
+      areaStatus("costs", {
+        items: [item("tokens.monthly_budget", 1000)],
+        pendingRestart: [],
+        budgetConsumedShare: 1,
+      }),
+    ).toBe("limit");
+    expect(areaStatus("access", facts([]))).toBeNull();
+  });
+});

@@ -66,7 +66,7 @@ import {
   settingSectionOf,
   settingSourceIsNotable,
   settingsAttention,
-  settingsPatch,
+  settingsPatches,
   settingsSaveFailure,
   settingsViewFromUrl,
   settingUnit,
@@ -79,7 +79,7 @@ import {
   useRestartOffer,
 } from "@/pages/settings-restart";
 import { restartOfferAfterSave, restartSaveNote } from "@/pages/settings-restart-model";
-import { applySettingsPatch } from "@/pages/settings-save";
+import { applySettingsPatches } from "@/pages/settings-save";
 import { BrandingSettings } from "./branding";
 
 type ApiKeyProviderSetting = {
@@ -1217,7 +1217,13 @@ function SystemSettings() {
         );
         secretReferences[item.path] = created.reference;
       }
-      await applySettingsPatch(settingsPatch(query.data, pendingDrafts, secretReferences));
+      const scoped = Object.fromEntries(
+        Object.entries(pendingDrafts).map(([path, text]) => [
+          path,
+          { text, scope: "global" as const },
+        ]),
+      );
+      await applySettingsPatches(settingsPatches(query.data, scoped, secretReferences, null));
     },
     onSuccess: async () => {
       setDrafts({});

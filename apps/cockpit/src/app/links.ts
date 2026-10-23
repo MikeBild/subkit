@@ -151,9 +151,20 @@ export function usageHref(filter: { window?: StatsWindow | null } = {}): string 
 
 export function settingsHref(
   leaf?: string | null,
-  view: { section?: string | null; filter?: "changed" | null } = {},
+  view: {
+    section?: string | null;
+    filter?: "changed" | null;
+    area?: string | null;
+    all?: boolean;
+  } = {},
 ): string {
-  return withQuery("/settings", { leaf, section: view.section, filter: view.filter });
+  return withQuery("/settings", {
+    leaf,
+    section: view.section,
+    filter: view.filter,
+    area: view.area,
+    view: view.all && !leaf && !view.section && !view.filter ? "all" : null,
+  });
 }
 
 export function auditHref(

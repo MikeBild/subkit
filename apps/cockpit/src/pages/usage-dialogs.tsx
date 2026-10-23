@@ -13,6 +13,7 @@ import {
   type WindowBounds,
 } from "@/pages/operations-figures";
 import { saveWorkspaceSetting } from "@/pages/settings-save";
+import { parseAmount, parseTokens } from "@/pages/settings-units";
 import { ORIGIN_LABEL, WINDOW_OPTION } from "@/pages/usage-format";
 import {
   type BudgetForecast,
@@ -35,20 +36,6 @@ async function settle<T>(read: () => Promise<T | null>): Promise<T | null> {
     await new Promise((resolve) => setTimeout(resolve, SETTLE_DELAY_MS));
   }
   return null;
-}
-
-function parseAmount(text: string): number | null {
-  const normalized = text.trim().replace(/\s/g, "").replace(",", ".");
-  if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
-  const value = Number(normalized);
-  return Number.isFinite(value) ? value : null;
-}
-
-function parseTokens(text: string): number | null {
-  const digits = text.replace(/[\s.,'_]/g, "");
-  if (!/^\d+$/.test(digits)) return null;
-  const value = Number(digits);
-  return Number.isSafeInteger(value) ? value : null;
 }
 
 export function ForecastText({ forecast }: { forecast: BudgetForecast | null }) {
