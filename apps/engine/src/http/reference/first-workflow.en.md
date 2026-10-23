@@ -47,14 +47,16 @@ When the workflow is ready, SubKit shows a card **Save workflow draft**.
 
 Saving starts nothing. The workflow now appears under **Workflows**.
 
+Without the chat, you create a workflow under **Workflows** with **Create workflow**. The wizard guides you through **How**, **What**, **When** and **Check**.
+
 ### Approve what it may touch
 
 A new version does not touch anything outside SubKit until a person approves it.
-Without an approval, a run starts only as a preview without effects.
+Without an approval, a run starts only as a trial run without effects.
 
-1. Open **Workflows** and select your workflow.
+1. Open **Workflows** and click your workflow. Its page opens on the **Overview** tab.
    The status line shows **Waiting for approval** or **Not approved**.
-2. In the status line, select **Approve…**.
+2. In the status line, select **Approve**.
 3. Check **Environment**, **Validity** and **Operations and external targets**.
 4. Confirm with **Approve**.
    **Activate only** applies the version without approving runs.
@@ -64,7 +66,7 @@ Without an approval, a run starts only as a preview without effects.
 Approving starts no run. An approval covers one environment and a duration.
 It also follows a new version whose boundary does not grow.
 You can revoke it at any time in the **Approvals** tab.
-You can also approve from the chat: select **Review saved change** and then **Use change and allow runs**.
+If the chat offers an approval, it opens the same dialog.
 
 | Field | What it controls |
 | --- | --- |
@@ -72,11 +74,12 @@ You can also approve from the chat: select **Review saved change** and then **Us
 | **Operations and external targets** | Which services and addresses the workflow reaches. |
 | **Validity** | How long the approval applies: **7 days**, **30 days** or **Until revoked**. |
 
-### Run the workflow
+### Start the workflow
 
-1. On the workflow page, select **Run**.
-2. Fill in the inputs if the workflow asks for any.
-3. Select **Run** to confirm. The dialog says **Starts a run of the approved version.**
+1. On the workflow page, select **Start**.
+2. Fill in the form if the workflow asks for inputs. You only type JSON under **Enter as JSON**.
+3. Select **Start** to confirm. The dialog says **Starts a run of the approved version.**
+   Without an approval, the button reads **Start a trial run**.
 
 You see **Run started**. If the button is unavailable, the hint says why, for example
 **Enable the workflow before running it.**
@@ -85,7 +88,7 @@ You see **Run started**. If the button is unavailable, the hint says why, for ex
 
 1. On the workflow page, open the **History** tab.
    The newest run is at the top, with its status. **Succeeded** means the run finished.
-2. Open the run.
+2. Click the run.
    You see every step with its output. A failed step shows **Error in step "…"** with the cause.
 
    ![Successful run of "CRM contact sync" from the history with one step, the requester "API" and the expanded result with one contact](images/first-workflow-run-result.en.webp)
@@ -106,8 +109,8 @@ sk executions result <run-id>
 
 | What you see | What to do |
 | --- | --- |
-| The run result is headed **Preview — not written** | The version has no approval yet. Follow "Approve what it may touch". |
+| The run result is headed **Trial run result — not written** | The version has no approval yet. Follow "Approve what it may touch". |
 | "Not started (…): no valid approval covers this run." | The approval is missing, expired or used up. Approve again or extend it. |
-| "… must be reconnected" | Sign in to the connector again under **Connectors**. |
+| "… must be reconnected" | Open the connector under **Connectors** and select **Sign in again**. |
 | **You do not have permission to run this workflow.** | Ask your administrator for a role that may run workflows. |
 | A step failed | Open the run, read the error and describe it in the same chat. SubKit suggests a fix that you review again. |

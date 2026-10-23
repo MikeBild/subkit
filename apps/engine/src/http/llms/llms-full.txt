@@ -358,14 +358,16 @@ When the workflow is ready, SubKit shows a card **Save workflow draft**.
 
 Saving starts nothing. The workflow now appears under **Workflows**.
 
+Without the chat, you create a workflow under **Workflows** with **Create workflow**. The wizard guides you through **How**, **What**, **When** and **Check**.
+
 ### Approve what it may touch
 
 A new version does not touch anything outside SubKit until a person approves it.
-Without an approval, a run starts only as a preview without effects.
+Without an approval, a run starts only as a trial run without effects.
 
-1. Open **Workflows** and select your workflow.
+1. Open **Workflows** and click your workflow. Its page opens on the **Overview** tab.
    The status line shows **Waiting for approval** or **Not approved**.
-2. In the status line, select **Approve…**.
+2. In the status line, select **Approve**.
 3. Check **Environment**, **Validity** and **Operations and external targets**.
 4. Confirm with **Approve**.
    **Activate only** applies the version without approving runs.
@@ -375,7 +377,7 @@ Without an approval, a run starts only as a preview without effects.
 Approving starts no run. An approval covers one environment and a duration.
 It also follows a new version whose boundary does not grow.
 You can revoke it at any time in the **Approvals** tab.
-You can also approve from the chat: select **Review saved change** and then **Use change and allow runs**.
+If the chat offers an approval, it opens the same dialog.
 
 | Field | What it controls |
 | --- | --- |
@@ -383,11 +385,12 @@ You can also approve from the chat: select **Review saved change** and then **Us
 | **Operations and external targets** | Which services and addresses the workflow reaches. |
 | **Validity** | How long the approval applies: **7 days**, **30 days** or **Until revoked**. |
 
-### Run the workflow
+### Start the workflow
 
-1. On the workflow page, select **Run**.
-2. Fill in the inputs if the workflow asks for any.
-3. Select **Run** to confirm. The dialog says **Starts a run of the approved version.**
+1. On the workflow page, select **Start**.
+2. Fill in the form if the workflow asks for inputs. You only type JSON under **Enter as JSON**.
+3. Select **Start** to confirm. The dialog says **Starts a run of the approved version.**
+   Without an approval, the button reads **Start a trial run**.
 
 You see **Run started**. If the button is unavailable, the hint says why, for example
 **Enable the workflow before running it.**
@@ -396,7 +399,7 @@ You see **Run started**. If the button is unavailable, the hint says why, for ex
 
 1. On the workflow page, open the **History** tab.
    The newest run is at the top, with its status. **Succeeded** means the run finished.
-2. Open the run.
+2. Click the run.
    You see every step with its output. A failed step shows **Error in step "…"** with the cause.
 
    ![Successful run of "CRM contact sync" from the history with one step, the requester "API" and the expanded result with one contact](/docs-images/first-workflow-run-result.en.webp?v=e41dd21ffff3)
@@ -417,9 +420,9 @@ sk executions result <run-id>
 
 | What you see | What to do |
 | --- | --- |
-| The run result is headed **Preview — not written** | The version has no approval yet. Follow "Approve what it may touch". |
+| The run result is headed **Trial run result — not written** | The version has no approval yet. Follow "Approve what it may touch". |
 | "Not started (…): no valid approval covers this run." | The approval is missing, expired or used up. Approve again or extend it. |
-| "… must be reconnected" | Sign in to the connector again under **Connectors**. |
+| "… must be reconnected" | Open the connector under **Connectors** and select **Sign in again**. |
 | **You do not have permission to run this workflow.** | Ask your administrator for a role that may run workflows. |
 | A step failed | Open the run, read the error and describe it in the same chat. SubKit suggests a fix that you review again. |
 ## Use the sk CLI on your machine
@@ -535,8 +538,8 @@ Every call is checked against your permissions and recorded in the audit log.
 | **Browser sign-in (OAuth)** | SubKit Cloud and engines with an identity provider | Enter the address. The client opens your browser. In the cloud, select **Sign in with work account** there. |
 | **API key** | Clients that use a key, and engines without an identity provider | Enter a key in the client as a bearer token. |
 
-Prefer browser sign-in. You copy no secret, and the access renews itself.
-An API key is a long-lived secret on your machine.
+Prefer browser sign-in. You copy no key, and the access renews itself.
+An API key is long-lived access that sits on your machine.
 
 ### Connect with browser sign-in
 
@@ -636,7 +639,7 @@ The scope decides which tools the client sees. It never widens your permissions;
 Writes always need a person. There are two checks:
 
 - **Writes inside a workflow:** A workflow writes for real only after a person approves it in the Cockpit. The approval covers the exact version, its targets and its limits.
-  Without approval, the run is a preview: writes are held and nothing is sent.
+  Without approval, the run is a trial run: writes are held and nothing is sent.
 - **Write tools in the client:** A write tool can pause and return a link to allow it once.
   Open the link, sign in, check what will happen, and select **Allow once** or **Decline**.
   Only after you allow it can the client finish the call with `confirm_tool_call`.
@@ -712,9 +715,9 @@ To sign in without a key, see "Connect AI clients via MCP".
 Your agent can start a review of collected entries. You confirm the result in the Cockpit.
 
 1. Ask your agent: "Review the new entries in Research. Which are useful? Propose what we should keep as knowledge."
-2. Open the Cockpit link the agent returns.
+2. Open the Cockpit link the agent returns. It leads to the item's **Review** tab.
 3. Check the proposal's sources, exact text and knowledge destination.
-4. Select **Confirm as knowledge**.
+4. Select **Confirm as source**.
 5. Run `sk agent briefing --json` and check `knowledge_sources`.
 
 A new session loads the updated briefing.
@@ -723,7 +726,7 @@ Good to know:
 
 - Only a signed-in person with `intake:confirm` and `knowledge:write` confirms a proposal. An API key, an MCP client or the Web Clipper never does.
 - The Web Clipper key uses the **Web Clipper** preset (`intake:read` and `intake:write`).
-- The original clip stays linked to the knowledge it became.
+- The item's original stays linked to the knowledge it became.
 - Moving, editing or discarding an entry never admits it as knowledge.
 
 ### Review collected material in the terminal
@@ -741,7 +744,7 @@ Good to know:
 
 - Without a selection, `review` uses your default category.
 - `--json` returns machine-readable results.
-- These actions preserve the original clip and never admit knowledge.
+- These actions preserve the item's original and never admit knowledge.
 
 ### How briefings work
 
@@ -762,7 +765,7 @@ A briefing contains:
 - Domain context and a short status, with blocked work and deadlines first.
 - Up to three specific next steps in your language.
 - Relevant knowledge sources and workflows of the folder's domain, named when they help with a task.
-- A count of collected clips and session learnings, never their content. With `intake:read`, also a workspace-wide count of collected entries and pending proposals.
+- A count of collected pages and session learnings, never their content. With `intake:read`, also a workspace-wide count of collected entries and pending proposals.
 
 **Session learnings.** At session end, both clients send the transcript.
 
@@ -773,7 +776,7 @@ A briefing contains:
 
 **Reviews with an agent.** The review runs in a saved SubKit conversation.
 
-- MCP clients start it with `conversation_start`. `intake_item_ids` selects particular clips and keeps that selection fixed.
+- MCP clients start it with `conversation_start`. `intake_item_ids` selects particular items and keeps that selection fixed.
 - Tools that read entries or prepare proposals work only inside this conversation.
 - For a new destination, include the topic category or `domain:<slug>` tag in the proposal. A changed proposal must be reviewed again.
 
@@ -847,7 +850,7 @@ The Web Clipper signs in with its own API key.
 6. Select **Save connection**.
 7. Allow access when Chrome asks for it.
 
-The Web Clipper checks the connection, loads your categories and confirms that the key may save clips.
+The Web Clipper checks the connection, loads your categories and confirms that the key may save items.
 
 If the engine address changes, you also need the key for the new engine. **Clear API key** removes the stored key from the extension.
 
@@ -873,9 +876,9 @@ Good to know:
 
 ### What happens next
 
-1. **Inbox:** in the Cockpit, open **Inbox**. There you read, edit, move or discard the item.
-2. **Review:** select **Review in chat** in the Web Clipper or on the item. The chat prepares a proposal: the exact content, its sources and the destination (knowledge or skill).
-3. **Confirm:** only a person signed in to the Cockpit in the browser confirms the proposal as **knowledge** or **skill**.
+1. **Inbox:** in the Cockpit, open **Inbox** and click the item. On its page you read, edit or discard it.
+2. **Review:** select **Review in chat** in the Web Clipper or in the item's menu. The chat prepares a proposal: the exact content, its sources and the destination (knowledge or skill).
+3. **Confirm:** only a person signed in to the Cockpit in the browser confirms the proposal on the item's **Review** tab as a source or skill.
 
 To confirm, that person needs `intake:confirm` and the right of the destination:
 
@@ -887,7 +890,7 @@ To confirm, that person needs `intake:confirm` and the right of the destination:
 
 API keys, MCP clients and the Web Clipper cannot confirm.
 
-Until someone confirms it, a clip is not knowledge, and ordinary knowledge search does not find it.
+Until someone confirms it, an item is not knowledge, and ordinary knowledge search does not find it.
 Moving or editing it does not admit it either.
 If the proposal changes, you review it again.
 The chapter "Collect ideas and turn them into knowledge or skills" walks through review and confirmation.
@@ -902,9 +905,9 @@ It also keeps the source address, author and publish date when the page provides
 
 ### Privacy
 
-- **Destination:** clips go only to the engine you configured. For the transcript, the Web Clipper may also load the page and captions directly from YouTube.
-- **Originals stay:** the engine keeps the original captured snapshot. Later edits do not overwrite it, and the clip stays linked to the knowledge or skill made from it.
-- **Secrets are replaced:** before saving, SubKit replaces recognizable secrets (API keys, tokens, private keys, signed-link signatures) with a marker. The values are never stored. Personal data is kept. Don't clip pages that show passwords or keys.
+- **Destination:** items go only to the engine you configured. For the transcript, the Web Clipper may also load the page and captions directly from YouTube.
+- **Originals stay:** the engine keeps the original captured snapshot. Later edits do not overwrite it, and the item stays linked to the knowledge or skill made from it.
+- **Credentials are replaced:** before saving, SubKit replaces recognizable credentials (API keys, tokens, private keys, signed-link signatures) with a marker. The values are never stored. Personal data is kept. Don't clip pages that show passwords or keys.
 - **Your API key** is stored in the extension on this device. Revoke it in the Cockpit when you no longer need it.
 - **Visibility:** items follow the permissions of your workspace. Categories are shared, not private.
 
@@ -985,9 +988,9 @@ Learnings from coding-agent sessions arrive in the same Inbox as items with orig
 
    ![Inbox with three collected clips of origin "Clip" in category Inbox, status "Collected", in the Brennwerk Cockpit](/docs-images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp?v=088448e5956d)
 
-2. Open an item to see its content and original source.
-3. Optional: edit title, content or category. The captured original is preserved.
-4. Optional: move, discard or restore the item.
+2. Click an item. Its page shows the text and the original source on the **Content** tab.
+3. Optional: select **Edit item** to change title, content or category. The captured original is preserved.
+4. Optional: **Discard** or **Restore**.
 
 Inbox visibility follows the permissions of your workspace. Categories are not private.
 
@@ -1002,14 +1005,15 @@ Review a whole category:
 
 - In a new chat, start the category's review suggestion, or ask: "Look through my new Research entries and suggest what to keep."
 
-The chat prepares a proposal with content, sources and destination, and links to it. Completed decisions stay in the chat history.
+The chat prepares a proposal with content, sources and destination, and links to it. The link opens the item's **Review** tab. Completed decisions appear on the **History** tab under **Proposals and decisions**.
 
 ### Confirm a proposal
 
 You need a browser session in the Cockpit, `intake:confirm` and the destination right. API keys, MCP clients and the Web Clipper cannot confirm.
 
-1. Review the proposal: content, sources and destination.
-2. Select **Confirm as knowledge** or **Confirm as skill**.
+1. Open the item and select **Review**.
+2. Review the proposal: content, sources and destination.
+3. Select **Confirm as source** or **Confirm as skill**.
 
 Only then can ordinary knowledge retrieval use the result, or agent briefings carry the skill. For a skill, confirming also archives the skills it replaces. The proposal shows each change.
 
@@ -1017,8 +1021,8 @@ Good to know:
 
 - Moving, editing or discarding an item never makes it knowledge.
 - If a proposal or its sources change, you review it again.
-- SubKit replaces secrets such as API keys and tokens before saving a clip.
-- The original clip stays linked to the knowledge or skill.
+- SubKit replaces credentials such as API keys and tokens before saving an item.
+- The item's original stays linked to the knowledge or skill.
 
 ### If something does not work
 
@@ -1026,7 +1030,7 @@ Good to know:
 | --- | --- |
 | The Web Clipper reports no connection or an invalid key | Follow "If something does not work" in the chapter "Collect web pages with the Web Clipper". |
 | An item is missing in the **Inbox** | Check the category and the origin filter. |
-| The proposal says "Confirming needs: …" | Ask an administrator for the rights it names. |
+| "You lack the rights for this. …" | Ask an administrator for `intake:confirm` and the destination right. |
 | "This suggestion changed. Review the current content before confirming it." | Read the current content, then confirm again. |
 | "A skill this suggestion refers to can no longer be loaded. …" | Revise the suggestion in the chat before you confirm. |
 ## Use the HTTP API
@@ -1330,7 +1334,7 @@ sk settings set products '{"<product-id>":{"execution_environment":"prod",
 
 Create one connector per upstream the workflows call: the model API, and the identity provider's admin API if the app deletes accounts.
 
-1. Write each definition as a JSON file without any secret.
+1. Write each definition as a JSON file without any credentials.
 2. Create the connector.
 3. Store the credential.
 
@@ -1342,7 +1346,7 @@ sk credentials set <idp-admin-connector-id> --mode header --header "Authorizatio
 
 - `--skip-checks` is needed because the credential does not exist yet when the connector is created. `credentials set` checks it afterwards.
 - `bearer` sends `Authorization: Bearer <token>`. `header` sends the named headers (comma-separated `Name=Value`).
-- Secrets come from your shell or secret store, never from a file, the app or this repository.
+- Credentials come from your shell or secret store, never from a file, the app or this repository.
 - To replace a credential with several headers in the Cockpit, fill all header fields, or leave all empty to keep them.
 
 To verify a credential, give the connector a cheap authenticated read as its probe:
@@ -1381,9 +1385,9 @@ If step 1 fails, the run fails and nothing is erased. The app retries with the s
 
 Without a valid approval, a product run answers 403. A person with write access approves each product workflow once per environment.
 
-1. In the Cockpit, open the workflow.
-2. Select **Approve…** in the status line or on the **Approvals** tab. The dialog **Approve <workflow> v<n>** opens.
-3. Check that **Environment** (**Production** or **Development**) matches the product's `execution_environment`.
+1. In the Cockpit, open **Workflows** and click the workflow.
+2. Select **Approve** in the status line or on the **Approvals** tab. The dialog **Approve <workflow> v<n>** opens.
+3. Check that **Environment** (**Production** or **Test**) matches the product's `execution_environment`.
 4. Review the connectors, addresses and read or write access.
 5. Under **Validity**, choose **7 days**, **30 days** or **Until revoked**. **Until revoked** is preset and sets no run limit and no end date.
 6. Select **Approve**. Approving starts no run.
@@ -1415,9 +1419,9 @@ Expected:
 - `$BAD_TOKEN`, a wrong audience, a missing required claim or an expired token answers `401 invalid bearer token`.
 - `sk executions` and the run record show the caller summary and the approval used.
 
-### Renew a connector secret
+### Renew a connector's credentials
 
-Secrets in connectors can expire, and admin keys get rotated. Record each secret's name, connector, owner and expiry date in the app's repository, never the value. Renew it before it expires.
+Credentials in connectors can expire, and admin keys get rotated. Record the name, connector, owner and expiry date of all credentials in the app's repository, never the value. Renew them before they expire.
 
 1. Store the new value with `sk credentials set`.
 2. Check it with `sk connectors test <connector-id>`.
@@ -1511,7 +1515,7 @@ Budget today shows the units used and reserved today, the refusals since local m
 | Provider entry, `products` entry, connectors and their credentials | Runtime configuration per deployment, set with `sk` |
 | Workflow definitions and their fixed IDs | The app's own repository, created with `sk workflows create` |
 | Workflow approvals | A person, per workflow and environment, in the Cockpit |
-| Secret expiry records | The app's own repository (metadata only) |
+| Credential expiry records | The app's own repository (metadata only) |
 
 Every change to a sign-in provider or a `products` entry writes an audit entry. It names the changed fields, not their values.
 
@@ -1997,7 +2001,7 @@ can also be imported with `POST /v1/connectors/{id}/docs/ingest` using
 
 ### Set up a signed-JWT connector
 
-In Cockpit, choose **Create → Connector → App Store Connect**, then open the
+In Cockpit, under **Connectors**, choose **Add connector → From a template → App Store Connect**, then open the
 connector's existing edit dialog. Enter the public Key ID and either the Issuer
 ID (team key) or Subject `user` (individual key). Paste the private key into the
 private-key field, save, and run the connector test. Saving a key is not evidence
@@ -2185,9 +2189,9 @@ To sign in without a key, see "Connect AI clients via MCP".
 Your agent can start a review of collected entries. You confirm the result in the Cockpit.
 
 1. Ask your agent: "Review the new entries in Research. Which are useful? Propose what we should keep as knowledge."
-2. Open the Cockpit link the agent returns.
+2. Open the Cockpit link the agent returns. It leads to the item's **Review** tab.
 3. Check the proposal's sources, exact text and knowledge destination.
-4. Select **Confirm as knowledge**.
+4. Select **Confirm as source**.
 5. Run `sk agent briefing --json` and check `knowledge_sources`.
 
 A new session loads the updated briefing.
@@ -2196,7 +2200,7 @@ Good to know:
 
 - Only a signed-in person with `intake:confirm` and `knowledge:write` confirms a proposal. An API key, an MCP client or the Web Clipper never does.
 - The Web Clipper key uses the **Web Clipper** preset (`intake:read` and `intake:write`).
-- The original clip stays linked to the knowledge it became.
+- The item's original stays linked to the knowledge it became.
 - Moving, editing or discarding an entry never admits it as knowledge.
 
 ### Review collected material in the terminal
@@ -2214,7 +2218,7 @@ Good to know:
 
 - Without a selection, `review` uses your default category.
 - `--json` returns machine-readable results.
-- These actions preserve the original clip and never admit knowledge.
+- These actions preserve the item's original and never admit knowledge.
 
 ### How briefings work
 
@@ -2235,7 +2239,7 @@ A briefing contains:
 - Domain context and a short status, with blocked work and deadlines first.
 - Up to three specific next steps in your language.
 - Relevant knowledge sources and workflows of the folder's domain, named when they help with a task.
-- A count of collected clips and session learnings, never their content. With `intake:read`, also a workspace-wide count of collected entries and pending proposals.
+- A count of collected pages and session learnings, never their content. With `intake:read`, also a workspace-wide count of collected entries and pending proposals.
 
 **Session learnings.** At session end, both clients send the transcript.
 
@@ -2246,7 +2250,7 @@ A briefing contains:
 
 **Reviews with an agent.** The review runs in a saved SubKit conversation.
 
-- MCP clients start it with `conversation_start`. `intake_item_ids` selects particular clips and keeps that selection fixed.
+- MCP clients start it with `conversation_start`. `intake_item_ids` selects particular items and keeps that selection fixed.
 - Tools that read entries or prepare proposals work only inside this conversation.
 - For a new destination, include the topic category or `domain:<slug>` tag in the proposal. A changed proposal must be reviewed again.
 

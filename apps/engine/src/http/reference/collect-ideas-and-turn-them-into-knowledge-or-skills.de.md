@@ -35,11 +35,11 @@ Erkenntnisse aus Sitzungen mit Coding-Agenten landen als Einträge mit der Herku
 
    ![Eingang mit drei Einträgen der Herkunft „Fundstück“ in der Kategorie Inbox, Status „Gesammelt“](images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.de.webp)
 
-2. Öffne einen Eintrag, um Inhalt und Originalquelle zu sehen.
-3. Optional: Bearbeite Titel, Inhalt oder Kategorie. Das erfasste Original bleibt erhalten.
-4. Optional: Verschiebe, verwirf oder stelle den Eintrag wieder her.
+2. Klicke auf einen Eintrag. Seine Seite zeigt im Tab **Inhalt** den Text und die ursprüngliche Quelle.
+3. Optional: Wähle **Eintrag bearbeiten**, um Titel, Inhalt oder Kategorie zu ändern. Das erfasste Original bleibt erhalten.
+4. Optional: **Verwerfen** oder **Wiederherstellen**.
 
-Die Sichtbarkeit im Eingang folgt den Berechtigungen deines Arbeitsbereichs. Kategorien sind nicht privat.
+Die Sichtbarkeit im Eingang folgt den Rechten deines Arbeitsbereichs. Kategorien sind nicht privat.
 
 ### Im Chat prüfen
 
@@ -52,14 +52,15 @@ Eine ganze Kategorie prüfen:
 
 - Starte in einem neuen Chat den Prüfvorschlag der Kategorie oder frag: „Sieh meine neuen Research-Einträge durch und schlag vor, was wir behalten.“
 
-Der Chat bereitet einen Vorschlag mit Inhalt, Quellen und Ziel vor und verlinkt ihn. Abgeschlossene Entscheidungen bleiben im Verlauf des Chats.
+Der Chat bereitet einen Vorschlag mit Inhalt, Quellen und Ziel vor und verlinkt ihn. Der Link öffnet den Tab **Prüfen** des Eintrags. Abgeschlossene Entscheidungen stehen im Tab **Verlauf** unter **Vorschläge und Entscheidungen**.
 
 ### Einen Vorschlag bestätigen
 
 Du brauchst eine Browsersitzung im Cockpit, `intake:confirm` und das Recht des Ziels. API-Schlüssel, MCP-Clients und der Web Clipper können nicht bestätigen.
 
-1. Prüfe den Vorschlag: Inhalt, Quellen und Ziel.
-2. Wähle **Als Wissen bestätigen** oder **Als Skill bestätigen**.
+1. Öffne den Eintrag und wähle **Prüfen**.
+2. Prüfe den Vorschlag: Inhalt, Quellen und Ziel.
+3. Wähle **Als Quelle bestätigen** oder **Als Skill bestätigen**.
 
 Erst danach kann die gewöhnliche Wissensabfrage das Ergebnis nutzen oder können Agenten-Briefings den Skill tragen. Bei einem Skill archiviert das Bestätigen auch die Skills, die er ersetzt. Der Vorschlag zeigt jede Änderung.
 
@@ -67,8 +68,8 @@ Gut zu wissen:
 
 - Verschieben, Bearbeiten oder Verwerfen macht einen Eintrag nie zu Wissen.
 - Ändert sich ein Vorschlag oder seine Quellen, prüfst du ihn erneut.
-- SubKit ersetzt Geheimnisse wie API-Schlüssel und Tokens, bevor ein Clip gespeichert wird.
-- Der Original-Clip bleibt mit dem Wissen oder Skill verknüpft.
+- SubKit ersetzt Zugangsdaten wie API-Schlüssel und Tokens, bevor ein Eintrag gespeichert wird.
+- Das Original des Eintrags bleibt mit dem Wissen oder Skill verknüpft.
 
 ### Wenn etwas nicht klappt
 
@@ -76,6 +77,6 @@ Gut zu wissen:
 | --- | --- |
 | Der Web Clipper meldet keine Verbindung oder einen ungültigen Schlüssel | Folge „Wenn etwas nicht klappt“ im Kapitel „Webseiten mit dem Web Clipper sammeln“. |
 | Ein Eintrag fehlt im **Eingang** | Prüfe Kategorie und Herkunftsfilter. |
-| Beim Vorschlag steht „Zum Bestätigen nötig: …“ | Bitte eine Administratorin oder einen Administrator um die genannten Rechte. |
+| „Dafür fehlen dir die Rechte. …“ | Bitte eine Administratorin oder einen Administrator um `intake:confirm` und das Recht des Ziels. |
 | „Dieser Vorschlag hat sich geändert. Prüfe den aktuellen Inhalt, bevor du bestätigst.“ | Lies den aktuellen Inhalt und bestätige dann erneut. |
 | „Ein Skill, auf den sich dieser Vorschlag bezieht, lässt sich nicht mehr laden. …“ | Überarbeite den Vorschlag im Chat, bevor du bestätigst. |

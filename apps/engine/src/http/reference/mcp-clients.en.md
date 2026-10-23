@@ -31,8 +31,8 @@ Every call is checked against your permissions and recorded in the audit log.
 | **Browser sign-in (OAuth)** | SubKit Cloud and engines with an identity provider | Enter the address. The client opens your browser. In the cloud, select **Sign in with work account** there. |
 | **API key** | Clients that use a key, and engines without an identity provider | Enter a key in the client as a bearer token. |
 
-Prefer browser sign-in. You copy no secret, and the access renews itself.
-An API key is a long-lived secret on your machine.
+Prefer browser sign-in. You copy no key, and the access renews itself.
+An API key is long-lived access that sits on your machine.
 
 ### Connect with browser sign-in
 
@@ -132,7 +132,7 @@ The scope decides which tools the client sees. It never widens your permissions;
 Writes always need a person. There are two checks:
 
 - **Writes inside a workflow:** A workflow writes for real only after a person approves it in the Cockpit. The approval covers the exact version, its targets and its limits.
-  Without approval, the run is a preview: writes are held and nothing is sent.
+  Without approval, the run is a trial run: writes are held and nothing is sent.
 - **Write tools in the client:** A write tool can pause and return a link to allow it once.
   Open the link, sign in, check what will happen, and select **Allow once** or **Decline**.
   Only after you allow it can the client finish the call with `confirm_tool_call`.

@@ -64,7 +64,7 @@ Der Web Clipper meldet sich mit einem eigenen API-Schlüssel an.
 6. Wähle **Verbindung speichern**.
 7. Erlaube den Zugriff, wenn Chrome danach fragt.
 
-Der Web Clipper prüft die Verbindung, lädt deine Kategorien und bestätigt, dass der Schlüssel Clips speichern darf.
+Der Web Clipper prüft die Verbindung, lädt deine Kategorien und bestätigt, dass der Schlüssel Einträge speichern darf.
 
 Ändert sich die Engine-Adresse, brauchst du auch den Schlüssel der neuen Engine. **API-Schlüssel löschen** entfernt den gespeicherten Schlüssel aus der Erweiterung.
 
@@ -90,9 +90,9 @@ Gut zu wissen:
 
 ### Wie es weitergeht
 
-1. **Eingang:** Öffne im Cockpit **Eingang**. Dort liest, bearbeitest, verschiebst oder verwirfst du den Eintrag.
-2. **Prüfen:** Wähle **Im Chat prüfen** im Web Clipper oder beim Eintrag. Der Chat bereitet einen Vorschlag vor: genauer Inhalt, Quellen und Ziel (Wissen oder Skill).
-3. **Bestätigen:** Nur eine Person, die im Browser am Cockpit angemeldet ist, bestätigt den Vorschlag als **Wissen** oder **Skill**.
+1. **Eingang:** Öffne im Cockpit **Eingang** und klicke auf den Eintrag. Auf seiner Seite liest, bearbeitest oder verwirfst du ihn.
+2. **Prüfen:** Wähle **Im Chat prüfen** im Web Clipper oder im Menü des Eintrags. Der Chat bereitet einen Vorschlag vor: genauer Inhalt, Quellen und Ziel (Wissen oder Skill).
+3. **Bestätigen:** Nur eine Person, die im Browser am Cockpit angemeldet ist, bestätigt den Vorschlag im Tab **Prüfen** des Eintrags als Quelle oder Skill.
 
 Zum Bestätigen braucht diese Person `intake:confirm` und das Recht des Ziels:
 
@@ -104,7 +104,7 @@ Zum Bestätigen braucht diese Person `intake:confirm` und das Recht des Ziels:
 
 API-Schlüssel, MCP-Clients und der Web Clipper können nicht bestätigen.
 
-Solange niemand bestätigt, ist ein Clip kein Wissen, und die normale Wissenssuche findet ihn nicht.
+Solange niemand bestätigt, ist ein Eintrag kein Wissen, und die normale Wissenssuche findet ihn nicht.
 Auch Verschieben oder Bearbeiten übernimmt ihn nicht.
 Ändert sich der Vorschlag, prüfst du ihn erneut.
 Prüfen und Bestätigen beschreibt das Kapitel „Ideen sammeln und in Wissen oder Skills verwandeln“.
@@ -119,11 +119,11 @@ Dazu kommen Quelladresse, Autor und Veröffentlichungsdatum, sofern die Seite si
 
 ### Datenschutz
 
-- **Ziel:** Clips gehen nur an die Engine, die du eingestellt hast. Für das Transkript lädt der Web Clipper eventuell Seite und Untertitel direkt von YouTube.
-- **Originale bleiben:** Die Engine bewahrt den ursprünglich erfassten Stand. Spätere Änderungen überschreiben ihn nicht, und der Clip bleibt mit dem daraus entstandenen Wissen oder Skill verknüpft.
-- **Geheimnisse werden ersetzt:** Vor dem Speichern ersetzt SubKit erkennbare Geheimnisse (API-Schlüssel, Tokens, private Schlüssel, Signaturen signierter Links) durch eine Markierung. Die Werte werden nie gespeichert. Personenbezogene Daten bleiben erhalten. Sammle keine Seiten, die Passwörter oder Schlüssel zeigen.
+- **Ziel:** Einträge gehen nur an die Engine, die du eingestellt hast. Für das Transkript lädt der Web Clipper eventuell Seite und Untertitel direkt von YouTube.
+- **Originale bleiben:** Die Engine bewahrt den ursprünglich erfassten Stand. Spätere Änderungen überschreiben ihn nicht, und der Eintrag bleibt mit dem daraus entstandenen Wissen oder Skill verknüpft.
+- **Zugangsdaten werden ersetzt:** Vor dem Speichern ersetzt SubKit erkennbare Zugangsdaten (API-Schlüssel, Tokens, private Schlüssel, Signaturen signierter Links) durch eine Markierung. Die Werte werden nie gespeichert. Personenbezogene Daten bleiben erhalten. Sammle keine Seiten, die Passwörter oder Schlüssel zeigen.
 - **Dein API-Schlüssel** liegt in der Erweiterung auf diesem Gerät. Widerrufe ihn im Cockpit, wenn du ihn nicht mehr brauchst.
-- **Sichtbarkeit:** Einträge folgen den Berechtigungen deines Arbeitsbereichs. Kategorien sind gemeinsam, nicht privat.
+- **Sichtbarkeit:** Einträge folgen den Rechten deines Arbeitsbereichs. Kategorien sind gemeinsam, nicht privat.
 
 ### Installationsoptionen
 

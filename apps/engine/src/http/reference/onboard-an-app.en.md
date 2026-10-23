@@ -75,7 +75,7 @@ sk settings set products '{"<product-id>":{"execution_environment":"prod",
 
 Create one connector per upstream the workflows call: the model API, and the identity provider's admin API if the app deletes accounts.
 
-1. Write each definition as a JSON file without any secret.
+1. Write each definition as a JSON file without any credentials.
 2. Create the connector.
 3. Store the credential.
 
@@ -87,7 +87,7 @@ sk credentials set <idp-admin-connector-id> --mode header --header "Authorizatio
 
 - `--skip-checks` is needed because the credential does not exist yet when the connector is created. `credentials set` checks it afterwards.
 - `bearer` sends `Authorization: Bearer <token>`. `header` sends the named headers (comma-separated `Name=Value`).
-- Secrets come from your shell or secret store, never from a file, the app or this repository.
+- Credentials come from your shell or secret store, never from a file, the app or this repository.
 - To replace a credential with several headers in the Cockpit, fill all header fields, or leave all empty to keep them.
 
 To verify a credential, give the connector a cheap authenticated read as its probe:
@@ -126,9 +126,9 @@ If step 1 fails, the run fails and nothing is erased. The app retries with the s
 
 Without a valid approval, a product run answers 403. A person with write access approves each product workflow once per environment.
 
-1. In the Cockpit, open the workflow.
-2. Select **Approve…** in the status line or on the **Approvals** tab. The dialog **Approve <workflow> v<n>** opens.
-3. Check that **Environment** (**Production** or **Development**) matches the product's `execution_environment`.
+1. In the Cockpit, open **Workflows** and click the workflow.
+2. Select **Approve** in the status line or on the **Approvals** tab. The dialog **Approve <workflow> v<n>** opens.
+3. Check that **Environment** (**Production** or **Test**) matches the product's `execution_environment`.
 4. Review the connectors, addresses and read or write access.
 5. Under **Validity**, choose **7 days**, **30 days** or **Until revoked**. **Until revoked** is preset and sets no run limit and no end date.
 6. Select **Approve**. Approving starts no run.
@@ -160,9 +160,9 @@ Expected:
 - `$BAD_TOKEN`, a wrong audience, a missing required claim or an expired token answers `401 invalid bearer token`.
 - `sk executions` and the run record show the caller summary and the approval used.
 
-### Renew a connector secret
+### Renew a connector's credentials
 
-Secrets in connectors can expire, and admin keys get rotated. Record each secret's name, connector, owner and expiry date in the app's repository, never the value. Renew it before it expires.
+Credentials in connectors can expire, and admin keys get rotated. Record the name, connector, owner and expiry date of all credentials in the app's repository, never the value. Renew them before they expire.
 
 1. Store the new value with `sk credentials set`.
 2. Check it with `sk connectors test <connector-id>`.
@@ -256,7 +256,7 @@ Budget today shows the units used and reserved today, the refusals since local m
 | Provider entry, `products` entry, connectors and their credentials | Runtime configuration per deployment, set with `sk` |
 | Workflow definitions and their fixed IDs | The app's own repository, created with `sk workflows create` |
 | Workflow approvals | A person, per workflow and environment, in the Cockpit |
-| Secret expiry records | The app's own repository (metadata only) |
+| Credential expiry records | The app's own repository (metadata only) |
 
 Every change to a sign-in provider or a `products` entry writes an audit entry. It names the changed fields, not their values.
 

@@ -37,7 +37,7 @@ can also be imported with `POST /v1/connectors/{id}/docs/ingest` using
 
 ### Set up a signed-JWT connector
 
-In Cockpit, choose **Create → Connector → App Store Connect**, then open the
+In Cockpit, under **Connectors**, choose **Add connector → From a template → App Store Connect**, then open the
 connector's existing edit dialog. Enter the public Key ID and either the Issuer
 ID (team key) or Subject `user` (individual key). Paste the private key into the
 private-key field, save, and run the connector test. Saving a key is not evidence

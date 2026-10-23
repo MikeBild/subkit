@@ -16,7 +16,7 @@ Das funktioniert in SubKit Cloud und auf einer selbst betriebenen Engine gleich.
 - Ein SubKit-Konto in einem Arbeitsbereich.
   - Cloud: `https://subkit-cloud.mikebild.info`
   - Selbst betrieben: `https://<deine-engine>/cockpit`
-- Die Berechtigung, Workflows anzulegen und auszuführen. Fehlt ein Button, bitte eine Administratorin oder einen Administrator darum.
+- Das Recht, Workflows anzulegen und zu starten. Fehlt ein Button, bitte eine Administratorin oder einen Administrator darum.
 - Einen KI-Anbieter. Die Cloud stellt ihn bereit. Eine selbst betriebene Engine nutzt den Anbieter, den du bei `sk init` gewählt hast.
 
 ### Anmelden
@@ -47,14 +47,16 @@ Ist der Workflow fertig, zeigt SubKit eine Karte **Workflow-Entwurf speichern**.
 
 Speichern startet nichts. Der Workflow erscheint jetzt unter **Workflows**.
 
+Ohne Chat legst du einen Workflow unter **Workflows** mit **Workflow erstellen** an. Der Assistent führt dich durch **Wie**, **Was**, **Wann** und **Prüfen**.
+
 ### Freigeben, was er berühren darf
 
 Eine neue Version berührt nichts außerhalb von SubKit, bis ein Mensch sie freigibt.
 Ohne Freigabe startet ein Lauf nur als Probelauf ohne Wirkung.
 
-1. Öffne **Workflows** und wähle deinen Workflow.
+1. Öffne **Workflows** und klicke auf deinen Workflow. Seine Seite öffnet sich mit dem Tab **Übersicht**.
    Die Statuszeile zeigt **Wartet auf Freigabe** oder **Nicht freigegeben**.
-2. Wähle in der Statuszeile **Freigeben…**.
+2. Wähle in der Statuszeile **Freigeben**.
 3. Prüfe **Umgebung**, **Gültigkeit** sowie **Operationen und externe Ziele**.
 4. Bestätige mit **Freigeben**.
    **Nur aktivieren** übernimmt die Version, ohne Läufe freizugeben.
@@ -64,7 +66,7 @@ Ohne Freigabe startet ein Lauf nur als Probelauf ohne Wirkung.
 Die Freigabe startet keinen Lauf. Eine Freigabe gilt für eine Umgebung und eine Dauer.
 Auch eine neue Version, deren Grenze nicht wächst, ist davon gedeckt.
 Im Tab **Freigaben** kannst du sie jederzeit widerrufen.
-Du kannst auch im Chat freigeben: Wähle **Gespeicherte Änderung prüfen** und dann **Übernehmen und Läufe erlauben**.
+Bietet dir der Chat eine Freigabe an, öffnet sie denselben Dialog.
 
 | Feld | Was es festlegt |
 | --- | --- |
@@ -72,11 +74,12 @@ Du kannst auch im Chat freigeben: Wähle **Gespeicherte Änderung prüfen** und 
 | **Operationen und externe Ziele** | Welche Dienste und Adressen der Workflow erreicht. |
 | **Gültigkeit** | Wie lange die Freigabe gilt: **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. |
 
-### Den Workflow ausführen
+### Den Workflow starten
 
-1. Wähle auf der Workflow-Seite **Ausführen**.
-2. Fülle die Eingaben aus, wenn der Workflow welche verlangt.
-3. Wähle **Ausführen**, um zu bestätigen. Der Dialog sagt **Startet einen Lauf mit der freigegebenen Version.**
+1. Wähle auf der Workflow-Seite **Starten**.
+2. Fülle das Formular aus, wenn der Workflow Eingaben verlangt. JSON gibst du nur unter **Als JSON eingeben** ein.
+3. Wähle **Starten**, um zu bestätigen. Der Dialog sagt **Startet einen Lauf mit der freigegebenen Version.**
+   Ohne Freigabe heißt der Button **Probelauf starten**.
 
 Du siehst **Lauf gestartet**. Ist der Button nicht verfügbar, nennt der Hinweis den Grund, zum Beispiel
 **Aktiviere den Workflow vor dem Ausführen.**
@@ -85,7 +88,7 @@ Du siehst **Lauf gestartet**. Ist der Button nicht verfügbar, nennt der Hinweis
 
 1. Öffne auf der Workflow-Seite den Tab **Verlauf**.
    Der neueste Lauf steht oben, mit seinem Status. **Erfolgreich** heißt, der Lauf ist durchgelaufen.
-2. Öffne den Lauf.
+2. Klicke auf den Lauf.
    Du siehst jeden Schritt mit seiner Ausgabe. Ein fehlgeschlagener Schritt zeigt **Fehler in Schritt „…“** mit der Ursache.
 
    ![Erfolgreicher Lauf von „CRM contact sync“ aus dem Verlauf mit einem Schritt, dem Auftraggeber „API“ und dem aufgeklappten Ergebnis mit einem Kontakt](images/first-workflow-run-result.de.webp)
@@ -106,8 +109,8 @@ sk executions result <run-id>
 
 | Was du siehst | Was du tust |
 | --- | --- |
-| Das Ergebnis des Laufs ist mit **Vorschau – nicht geschrieben** überschrieben | Die Version ist noch nicht freigegeben. Folge „Freigeben, was er berühren darf“. |
+| Das Ergebnis des Laufs ist mit **Ergebnis des Probelaufs – nicht geschrieben** überschrieben | Die Version ist noch nicht freigegeben. Folge „Freigeben, was er berühren darf“. |
 | „Nicht gestartet (…): Für diesen Lauf gibt es keine gültige Freigabe.“ | Die Freigabe fehlt, ist abgelaufen oder aufgebraucht. Gib erneut frei oder verlängere sie. |
-| „… muss neu verbunden werden“ | Melde dich unter **Konnektoren** erneut beim Konnektor an. |
-| **Du darfst diesen Workflow nicht ausführen.** | Bitte eine Administratorin oder einen Administrator um eine Rolle, die Workflows ausführen darf. |
+| „… muss neu verbunden werden“ | Öffne den Konnektor unter **Konnektoren** und wähle **Neu anmelden**. |
+| **Du darfst diesen Workflow nicht ausführen.** | Bitte eine Administratorin oder einen Administrator um eine Rolle, die Workflows starten darf. |
 | Ein Schritt ist fehlgeschlagen | Öffne den Lauf, lies den Fehler und beschreibe ihn im selben Chat. SubKit schlägt eine Korrektur vor, die du erneut prüfst. |

@@ -75,7 +75,7 @@ sk settings set products '{"<product-id>":{"execution_environment":"prod",
 
 Lege pro aufgerufenem Upstream der Workflows einen Konnektor an: die Modell-API und, falls die App Konten löscht, die Admin-API des Identitätsanbieters.
 
-1. Schreibe jede Definition ohne Geheimnis in eine JSON-Datei.
+1. Schreibe jede Definition ohne Zugangsdaten in eine JSON-Datei.
 2. Lege den Konnektor an.
 3. Hinterlege das Zugangsdatum.
 
@@ -87,7 +87,7 @@ sk credentials set <idp-admin-connector-id> --mode header --header "Authorizatio
 
 - `--skip-checks` ist nötig, weil das Zugangsdatum beim Anlegen des Konnektors noch nicht existiert. `credentials set` prüft es anschließend.
 - `bearer` sendet `Authorization: Bearer <token>`. `header` sendet die genannten Header (kommagetrennt `Name=Value`).
-- Geheimnisse stammen aus deiner Shell oder deinem Secret-Speicher, nie aus einer Datei, der App oder diesem Repository.
+- Zugangsdaten stammen aus deiner Shell oder deinem Secret-Speicher, nie aus einer Datei, der App oder diesem Repository.
 - Um ein Zugangsdatum mit mehreren Headern im Cockpit zu ersetzen, füll alle Header-Felder aus oder lass alle leer, um sie zu behalten.
 
 Um ein Zugangsdatum zu prüfen, gib dem Konnektor einen günstigen authentifizierten Lesezugriff als Probe:
@@ -126,9 +126,9 @@ Schlägt Schritt 1 fehl, schlägt der Lauf fehl, und nichts wird gelöscht. Die 
 
 Ohne gültige Freigabe antwortet ein Produktlauf mit 403. Eine Person mit Schreibrecht gibt jeden Produkt-Workflow einmal pro Umgebung frei.
 
-1. Öffne im Cockpit den Workflow.
-2. Wähle **Freigeben…** in der Statuszeile oder auf dem Tab **Freigaben**. Der Dialog **<Workflow> v<n> freigeben** öffnet sich.
-3. Prüfe, ob **Umgebung** (**Produktion** oder **Entwicklung**) zur `execution_environment` des Produkts passt.
+1. Öffne im Cockpit **Workflows** und klicke auf den Workflow.
+2. Wähle **Freigeben** in der Statuszeile oder auf dem Tab **Freigaben**. Der Dialog **<Workflow> v<n> freigeben** öffnet sich.
+3. Prüfe, ob **Umgebung** (**Produktion** oder **Test**) zur `execution_environment` des Produkts passt.
 4. Prüfe Konnektoren, Adressen und Lese- oder Schreibzugriff.
 5. Wähle unter **Gültigkeit** **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. **Bis auf Widerruf** ist vorausgewählt und setzt weder eine Laufgrenze noch ein Ablaufdatum.
 6. Wähle **Freigeben**. Die Freigabe startet keinen Lauf.
@@ -160,9 +160,9 @@ Erwartet:
 - `$BAD_TOKEN`, eine falsche Audience, ein fehlender Pflicht-Claim oder ein abgelaufenes Token antworten `401 invalid bearer token`.
 - `sk executions` und der Datensatz des Laufs zeigen die Aufruferzusammenfassung und die verwendete Freigabe.
 
-### Ein Konnektor-Geheimnis erneuern
+### Zugangsdaten eines Konnektors erneuern
 
-Geheimnisse in Konnektoren können ablaufen, und Admin-Schlüssel werden rotiert. Halte Name, Konnektor, Verantwortliche und Ablaufdatum jedes Geheimnisses im Repository der App fest, nie den Wert. Erneuere es vor Ablauf.
+Zugangsdaten in Konnektoren können ablaufen, und Admin-Schlüssel werden rotiert. Halte Name, Konnektor, Verantwortliche und Ablaufdatum aller Zugangsdaten im Repository der App fest, nie den Wert. Erneuere sie vor Ablauf.
 
 1. Hinterlege den neuen Wert mit `sk credentials set`.
 2. Prüfe ihn mit `sk connectors test <connector-id>`.
@@ -256,7 +256,7 @@ Das heutige Budget zeigt die heute verbrauchten und reservierten Einheiten, die 
 | Anbietereintrag, `products`-Eintrag, Konnektoren und ihre Zugangsdaten | Laufzeitkonfiguration pro Deployment, gesetzt mit `sk` |
 | Workflow-Definitionen und ihre festen IDs | Das eigene Repository der App, angelegt mit `sk workflows create` |
 | Freigaben der Workflows | Eine Person, pro Workflow und Umgebung, im Cockpit |
-| Ablaufnachweise für Geheimnisse | Das eigene Repository der App (nur Metadaten) |
+| Ablaufnachweise für Zugangsdaten | Das eigene Repository der App (nur Metadaten) |
 
 Jede Änderung an einem Anmeldeanbieter oder `products`-Eintrag schreibt einen Audit-Eintrag. Er nennt die geänderten Felder, nicht ihre Werte.
 

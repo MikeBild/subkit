@@ -62,9 +62,9 @@ Ohne Schlüssel anmelden: siehe „KI-Clients per MCP anbinden“.
 Dein Agent kann eine Prüfung gesammelter Einträge starten. Das Ergebnis bestätigst du im Cockpit.
 
 1. Frag deinen Agenten: „Sieh die neuen Einträge in Research durch. Welche sind nützlich? Schlage vor, was wir als Wissen behalten sollten.“
-2. Öffne den Cockpit-Link, den der Agent zurückgibt.
+2. Öffne den Cockpit-Link, den der Agent zurückgibt. Er führt zum Tab **Prüfen** des Eintrags.
 3. Prüfe Quellen, genauen Text und Wissensziel des Vorschlags.
-4. Wähle **Als Wissen bestätigen**.
+4. Wähle **Als Quelle bestätigen**.
 5. Führe `sk agent briefing --json` aus und prüfe `knowledge_sources`.
 
 Eine neue Sitzung lädt das aktualisierte Briefing.
@@ -73,7 +73,7 @@ Gut zu wissen:
 
 - Nur eine angemeldete Person mit `intake:confirm` und `knowledge:write` bestätigt einen Vorschlag. Ein API-Schlüssel, ein MCP-Client oder der Web Clipper tut das nie.
 - Der Schlüssel des Web Clippers nutzt die Vorlage **Web Clipper** (`intake:read` und `intake:write`).
-- Der Original-Clip bleibt mit dem Wissen verknüpft, das aus ihm entsteht.
+- Das Original des Eintrags bleibt mit dem Wissen verknüpft, das aus ihm entsteht.
 - Verschieben, Bearbeiten oder Verwerfen nimmt einen Eintrag nie als Wissen auf.
 
 ### Gesammeltes Material im Terminal prüfen
@@ -91,7 +91,7 @@ Gut zu wissen:
 
 - Ohne Auswahl nutzt `review` deine Standardkategorie.
 - `--json` liefert maschinenlesbare Ergebnisse.
-- Diese Aktionen erhalten den Original-Clip und nehmen nie Wissen auf.
+- Diese Aktionen erhalten das Original des Eintrags und nehmen nie Wissen auf.
 
 ### So funktionieren Briefings
 
@@ -112,7 +112,7 @@ Ein Briefing enthält:
 - Domänenkontext und einen kurzen Status, blockierte Arbeit und Fristen zuerst.
 - Bis zu drei konkrete nächste Schritte in deiner Sprache.
 - Relevante Wissensquellen und Workflows der Ordner-Domäne, namentlich genannt, wenn sie bei einer Aufgabe helfen.
-- Eine Zählung gesammelter Clips und Sitzungserkenntnisse, nie deren Inhalt. Mit `intake:read` zusätzlich eine Zählung gesammelter Einträge und offener Vorschläge im ganzen Arbeitsbereich.
+- Eine Zählung gesammelter Seiten und Sitzungserkenntnisse, nie deren Inhalt. Mit `intake:read` zusätzlich eine Zählung gesammelter Einträge und offener Vorschläge im ganzen Arbeitsbereich.
 
 **Sitzungserkenntnisse.** Am Sitzungsende senden beide Clients das Transkript.
 
@@ -121,10 +121,10 @@ Ein Briefing enthält:
 - Der Rest landet im Eingang mit Herkunft `session`, in der gemeinsamen Kategorie des Projekts oder in deiner Standardkategorie. Eine wiederholte Erkenntnis ergänzt den bestehenden Eintrag um Belege.
 - Erkenntnisse sind weder Wissen noch Skills, bis eine Person sie im Cockpit bestätigt. `sk intake list` zeigt, was wartet.
 
-**Prüfungen mit einem Agenten.** Die Prüfung läuft in einer gespeicherten SubKit-Konversation.
+**Prüfungen mit einem Agenten.** Die Prüfung läuft in einer gespeicherten SubKit-Unterhaltung.
 
-- MCP-Clients starten sie mit `conversation_start`. `intake_item_ids` wählt bestimmte Clips aus und hält die Auswahl fest.
-- Tools, die Einträge lesen oder Vorschläge vorbereiten, arbeiten nur in dieser Konversation.
+- MCP-Clients starten sie mit `conversation_start`. `intake_item_ids` wählt bestimmte Einträge aus und hält die Auswahl fest.
+- Tools, die Einträge lesen oder Vorschläge vorbereiten, arbeiten nur in dieser Unterhaltung.
 - Nimm bei einem neuen Ziel die Themenkategorie oder das Tag `domain:<slug>` in den Vorschlag auf. Ein geänderter Vorschlag muss erneut geprüft werden.
 
 ### Wenn etwas nicht klappt
@@ -136,5 +136,5 @@ Ein Briefing enthält:
 | Der Client zeigt eine Warnung zum Briefing | Die Engine ist nicht erreichbar. Die Sitzung läuft weiter. Prüfe mit `sk status` Anmeldung und Verbindung. |
 | Keine Briefings in Claude Code oder Codex | Öffne `/hooks`, prüfe, ob die SubKit-Hooks aktiv sind, und vertraue neuen oder geänderten Hooks. |
 | `/hooks` in Codex zeigt die SubKit-Hooks als deaktiviert | Codex-Hooks sind standardmäßig aktiv, eine Änderung an `config.toml` ist normalerweise nicht nötig. Prüfe zuerst die wirksame Feature-Einstellung und die Administratorrichtlinie, dann folge dem [Codex-Hook-Leitfaden](https://learn.chatgpt.com/docs/hooks). |
-| Der Hinweis auf gesammelte Einträge fehlt | Dir fehlt die Berechtigung `intake:read`. Bitte eine Administratorin oder einen Administrator darum. |
+| Der Hinweis auf gesammelte Einträge fehlt | Dir fehlt das Recht `intake:read`. Bitte eine Administratorin oder einen Administrator darum. |
 | Ein Vorschlag lässt sich nicht bestätigen | Bestätigen kann nur eine angemeldete Person mit `intake:confirm` und `knowledge:write`, nicht ein API-Schlüssel. Öffne den Cockpit-Link. |

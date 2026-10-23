@@ -37,7 +37,7 @@ kann außerdem mit `POST /v1/connectors/{id}/docs/ingest` importiert werden, mit
 
 ### Einen Konnektor mit signiertem JWT einrichten
 
-Wähle im Cockpit **Create → Connector → App Store Connect** und öffne dann den
+Wähle im Cockpit unter **Konnektoren** **Konnektor hinzufügen → Aus Vorlage → App Store Connect** und öffne dann den
 vorhandenen Bearbeitungsdialog des Konnektors. Gib die öffentliche Key ID und entweder die Issuer-ID
 (Team-Schlüssel) oder das Subject `user` (individueller Schlüssel) ein. Füge den privaten Schlüssel in das
 Feld für den privaten Schlüssel ein, speichere und führe den Konnektortest aus. Das Speichern eines Schlüssels ist kein Beleg dafür,

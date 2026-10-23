@@ -31,8 +31,8 @@ Jeder Aufruf wird gegen deine Rechte geprüft und im Audit-Log festgehalten.
 | **Browser-Anmeldung (OAuth)** | SubKit Cloud und Engines mit Anmeldeanbieter | Adresse eintragen. Der Client öffnet deinen Browser. In der Cloud wählst du dort **Mit Firmenkonto anmelden**. |
 | **API-Schlüssel** | Clients, die einen Schlüssel nutzen, und Engines ohne Anmeldeanbieter | Einen Schlüssel als Bearer-Token in den Client eintragen. |
 
-Nimm die Browser-Anmeldung, wenn du kannst. Du kopierst kein Geheimnis, und der Zugang erneuert sich selbst.
-Ein API-Schlüssel ist ein langlebiges Geheimnis auf deinem Rechner.
+Nimm die Browser-Anmeldung, wenn du kannst. Du kopierst keinen Schlüssel, und der Zugang erneuert sich selbst.
+Ein API-Schlüssel ist ein langlebiger Zugang, der auf deinem Rechner liegt.
 
 ### Mit Browser-Anmeldung verbinden
 
@@ -114,7 +114,7 @@ Der Scope bestimmt, welche Tools der Client sieht. Er erweitert nie deine Rechte
 | Auf der Zugriffsseite | Scope | Der Client kann |
 | --- | --- | --- |
 | **Lesen** | `mcp:read` | Workflows, Läufe, Konnektoren und Wissen lesen und gespeicherte Workflows starten. |
-| **Bearbeiten** | `mcp:authoring` | Zusätzlich Workflows und Konnektoren in einer geführten Konversation bauen. |
+| **Bearbeiten** | `mcp:authoring` | Zusätzlich Workflows und Konnektoren in einer geführten Unterhaltung bauen. |
 | **Verwalten** | `mcp:admin` | Zusätzlich im Arbeitsbereich anlegen, ändern und löschen. |
 | **Betriebszähler** | `metrics:read` | Die Betriebszähler lesen, sonst nichts. |
 
@@ -132,7 +132,7 @@ Der Scope bestimmt, welche Tools der Client sieht. Er erweitert nie deine Rechte
 Schreiben braucht immer einen Menschen. Es gibt zwei Prüfungen:
 
 - **Schreiben in einem Workflow:** Ein Workflow schreibt erst wirklich, wenn eine Person ihn im Cockpit freigegeben hat. Die Freigabe gilt für die genaue Version, ihre Ziele und ihre Grenzen.
-  Ohne Freigabe ist der Lauf eine Vorschau: Schreibzugriffe werden zurückgehalten, nichts wird gesendet.
+  Ohne Freigabe ist der Lauf ein Probelauf: Schreibzugriffe werden zurückgehalten, nichts wird gesendet.
 - **Schreibende Tools im Client:** Ein schreibendes Tool kann anhalten und einen Link zum einmaligen Erlauben liefern.
   Öffne den Link, melde dich an, prüfe, was passieren wird, und wähle **Einmal erlauben** oder **Ablehnen**.
   Erst wenn du es erlaubt hast, kann der Client den Aufruf mit `confirm_tool_call` abschließen.

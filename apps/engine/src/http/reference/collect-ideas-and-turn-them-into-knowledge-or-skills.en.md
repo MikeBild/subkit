@@ -35,9 +35,9 @@ Learnings from coding-agent sessions arrive in the same Inbox as items with orig
 
    ![Inbox with three collected clips of origin "Clip" in category Inbox, status "Collected", in the Brennwerk Cockpit](images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp)
 
-2. Open an item to see its content and original source.
-3. Optional: edit title, content or category. The captured original is preserved.
-4. Optional: move, discard or restore the item.
+2. Click an item. Its page shows the text and the original source on the **Content** tab.
+3. Optional: select **Edit item** to change title, content or category. The captured original is preserved.
+4. Optional: **Discard** or **Restore**.
 
 Inbox visibility follows the permissions of your workspace. Categories are not private.
 
@@ -52,14 +52,15 @@ Review a whole category:
 
 - In a new chat, start the category's review suggestion, or ask: "Look through my new Research entries and suggest what to keep."
 
-The chat prepares a proposal with content, sources and destination, and links to it. Completed decisions stay in the chat history.
+The chat prepares a proposal with content, sources and destination, and links to it. The link opens the item's **Review** tab. Completed decisions appear on the **History** tab under **Proposals and decisions**.
 
 ### Confirm a proposal
 
 You need a browser session in the Cockpit, `intake:confirm` and the destination right. API keys, MCP clients and the Web Clipper cannot confirm.
 
-1. Review the proposal: content, sources and destination.
-2. Select **Confirm as knowledge** or **Confirm as skill**.
+1. Open the item and select **Review**.
+2. Review the proposal: content, sources and destination.
+3. Select **Confirm as source** or **Confirm as skill**.
 
 Only then can ordinary knowledge retrieval use the result, or agent briefings carry the skill. For a skill, confirming also archives the skills it replaces. The proposal shows each change.
 
@@ -67,8 +68,8 @@ Good to know:
 
 - Moving, editing or discarding an item never makes it knowledge.
 - If a proposal or its sources change, you review it again.
-- SubKit replaces secrets such as API keys and tokens before saving a clip.
-- The original clip stays linked to the knowledge or skill.
+- SubKit replaces credentials such as API keys and tokens before saving an item.
+- The item's original stays linked to the knowledge or skill.
 
 ### If something does not work
 
@@ -76,6 +77,6 @@ Good to know:
 | --- | --- |
 | The Web Clipper reports no connection or an invalid key | Follow "If something does not work" in the chapter "Collect web pages with the Web Clipper". |
 | An item is missing in the **Inbox** | Check the category and the origin filter. |
-| The proposal says "Confirming needs: …" | Ask an administrator for the rights it names. |
+| "You lack the rights for this. …" | Ask an administrator for `intake:confirm` and the destination right. |
 | "This suggestion changed. Review the current content before confirming it." | Read the current content, then confirm again. |
 | "A skill this suggestion refers to can no longer be loaded. …" | Revise the suggestion in the chat before you confirm. |

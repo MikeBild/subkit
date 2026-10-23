@@ -64,9 +64,9 @@ To sign in without a key, see "Connect AI clients via MCP".
 Your agent can start a review of collected entries. You confirm the result in the Cockpit.
 
 1. Ask your agent: "Review the new entries in Research. Which are useful? Propose what we should keep as knowledge."
-2. Open the Cockpit link the agent returns.
+2. Open the Cockpit link the agent returns. It leads to the item's **Review** tab.
 3. Check the proposal's sources, exact text and knowledge destination.
-4. Select **Confirm as knowledge**.
+4. Select **Confirm as source**.
 5. Run `sk agent briefing --json` and check `knowledge_sources`.
 
 A new session loads the updated briefing.
@@ -75,7 +75,7 @@ Good to know:
 
 - Only a signed-in person with `intake:confirm` and `knowledge:write` confirms a proposal. An API key, an MCP client or the Web Clipper never does.
 - The Web Clipper key uses the **Web Clipper** preset (`intake:read` and `intake:write`).
-- The original clip stays linked to the knowledge it became.
+- The item's original stays linked to the knowledge it became.
 - Moving, editing or discarding an entry never admits it as knowledge.
 
 ### Review collected material in the terminal
@@ -93,7 +93,7 @@ Good to know:
 
 - Without a selection, `review` uses your default category.
 - `--json` returns machine-readable results.
-- These actions preserve the original clip and never admit knowledge.
+- These actions preserve the item's original and never admit knowledge.
 
 ### How briefings work
 
@@ -114,7 +114,7 @@ A briefing contains:
 - Domain context and a short status, with blocked work and deadlines first.
 - Up to three specific next steps in your language.
 - Relevant knowledge sources and workflows of the folder's domain, named when they help with a task.
-- A count of collected clips and session learnings, never their content. With `intake:read`, also a workspace-wide count of collected entries and pending proposals.
+- A count of collected pages and session learnings, never their content. With `intake:read`, also a workspace-wide count of collected entries and pending proposals.
 
 **Session learnings.** At session end, both clients send the transcript.
 
@@ -125,7 +125,7 @@ A briefing contains:
 
 **Reviews with an agent.** The review runs in a saved SubKit conversation.
 
-- MCP clients start it with `conversation_start`. `intake_item_ids` selects particular clips and keeps that selection fixed.
+- MCP clients start it with `conversation_start`. `intake_item_ids` selects particular items and keeps that selection fixed.
 - Tools that read entries or prepare proposals work only inside this conversation.
 - For a new destination, include the topic category or `domain:<slug>` tag in the proposal. A changed proposal must be reviewed again.
 

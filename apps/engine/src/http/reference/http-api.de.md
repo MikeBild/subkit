@@ -42,7 +42,7 @@ Es funktioniert in SubKit Cloud und auf einer selbst betriebenen Engine gleich.
 
 ### Einen API-Schlüssel anlegen und prüfen
 
-1. Leg einen Schlüssel mit genau den Berechtigungen an, die dieses Kapitel braucht:
+1. Leg einen Schlüssel mit genau den Rechten an, die dieses Kapitel braucht:
 
    ```bash
    sk apikeys create --name http-api-test --scopes workflow:read,workflow:run,execution:read
@@ -222,7 +222,7 @@ Verzweige in deinem Programm nach `code`, nicht nach `message`. Heb `trace_id` a
 | `202` | | Angenommen. Der Lauf geht im Hintergrund weiter. |
 | `400` | `bad_request` | Die Anfrage ist ungültig. `details` nennt die Felder. |
 | `401` | `unauthorized` | Der Schlüssel fehlt, ist falsch, abgelaufen oder widerrufen. Prüfe `Authorization: Bearer <api-key>` oder leg einen neuen Schlüssel an. |
-| `403` | `forbidden` | Dem Schlüssel fehlt ein Scope oder deiner Rolle die Berechtigung. Leg einen Schlüssel mit `workflow:read`, `workflow:run` und `execution:read` an. |
+| `403` | `forbidden` | Dem Schlüssel fehlt ein Scope oder deiner Rolle das Recht. Leg einen Schlüssel mit `workflow:read`, `workflow:run` und `execution:read` an. |
 | `404` | `not_found` | Die ID gibt es in deinem Arbeitsbereich nicht. |
 | `409` | `conflict` | Der aktuelle Zustand erlaubt es nicht. Bei einem Lauf: keine aktive Version, oder die Freigabe fehlt oder ist aufgebraucht. |
 | `429` | `rate_limit_exceeded`, `rate_limited` | Ein Limit ist erreicht. Warte so lange, wie der Header `Retry-After` sagt, und versuch es dann mit demselben `Idempotency-Key` erneut. |

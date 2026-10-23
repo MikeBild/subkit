@@ -64,7 +64,7 @@ The Web Clipper signs in with its own API key.
 6. Select **Save connection**.
 7. Allow access when Chrome asks for it.
 
-The Web Clipper checks the connection, loads your categories and confirms that the key may save clips.
+The Web Clipper checks the connection, loads your categories and confirms that the key may save items.
 
 If the engine address changes, you also need the key for the new engine. **Clear API key** removes the stored key from the extension.
 
@@ -90,9 +90,9 @@ Good to know:
 
 ### What happens next
 
-1. **Inbox:** in the Cockpit, open **Inbox**. There you read, edit, move or discard the item.
-2. **Review:** select **Review in chat** in the Web Clipper or on the item. The chat prepares a proposal: the exact content, its sources and the destination (knowledge or skill).
-3. **Confirm:** only a person signed in to the Cockpit in the browser confirms the proposal as **knowledge** or **skill**.
+1. **Inbox:** in the Cockpit, open **Inbox** and click the item. On its page you read, edit or discard it.
+2. **Review:** select **Review in chat** in the Web Clipper or in the item's menu. The chat prepares a proposal: the exact content, its sources and the destination (knowledge or skill).
+3. **Confirm:** only a person signed in to the Cockpit in the browser confirms the proposal on the item's **Review** tab as a source or skill.
 
 To confirm, that person needs `intake:confirm` and the right of the destination:
 
@@ -104,7 +104,7 @@ To confirm, that person needs `intake:confirm` and the right of the destination:
 
 API keys, MCP clients and the Web Clipper cannot confirm.
 
-Until someone confirms it, a clip is not knowledge, and ordinary knowledge search does not find it.
+Until someone confirms it, an item is not knowledge, and ordinary knowledge search does not find it.
 Moving or editing it does not admit it either.
 If the proposal changes, you review it again.
 The chapter "Collect ideas and turn them into knowledge or skills" walks through review and confirmation.
@@ -119,9 +119,9 @@ It also keeps the source address, author and publish date when the page provides
 
 ### Privacy
 
-- **Destination:** clips go only to the engine you configured. For the transcript, the Web Clipper may also load the page and captions directly from YouTube.
-- **Originals stay:** the engine keeps the original captured snapshot. Later edits do not overwrite it, and the clip stays linked to the knowledge or skill made from it.
-- **Secrets are replaced:** before saving, SubKit replaces recognizable secrets (API keys, tokens, private keys, signed-link signatures) with a marker. The values are never stored. Personal data is kept. Don't clip pages that show passwords or keys.
+- **Destination:** items go only to the engine you configured. For the transcript, the Web Clipper may also load the page and captions directly from YouTube.
+- **Originals stay:** the engine keeps the original captured snapshot. Later edits do not overwrite it, and the item stays linked to the knowledge or skill made from it.
+- **Credentials are replaced:** before saving, SubKit replaces recognizable credentials (API keys, tokens, private keys, signed-link signatures) with a marker. The values are never stored. Personal data is kept. Don't clip pages that show passwords or keys.
 - **Your API key** is stored in the extension on this device. Revoke it in the Cockpit when you no longer need it.
 - **Visibility:** items follow the permissions of your workspace. Categories are shared, not private.
 
