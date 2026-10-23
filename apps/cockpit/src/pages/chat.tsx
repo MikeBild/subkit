@@ -190,9 +190,11 @@ import {
 import { ChatPlaybookPanel, ChatPlaybookSummary } from "./chat-playbook-panel";
 import {
   type ChatInstruction,
+  type ChatWorkflowRef,
   chatJudgeFindings,
   chatSensitivePreview,
   latestDryRunCallId,
+  savedSensitivePreviews,
 } from "./chat-preview-cards";
 import { type ChatReauth, chatReauth } from "./chat-reauth";
 import { ChatReauthCard } from "./chat-reauth-card";
@@ -236,6 +238,8 @@ import { budgetPressure, budgetSummary } from "./usage-model";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 type ConversationUsage = ConversationDetail["usage"];
+
+const NO_SAVED_PREVIEWS: ReadonlyMap<string, ChatWorkflowRef> = new Map();
 
 function localizedTarget(value: string | null | undefined, t: Translate): string {
   if (!value || value.toLowerCase() === "none") return t("chat.context.noTarget");
@@ -920,6 +924,7 @@ function ChatMessage({
   onAutomationSingleRun,
   onInstruction,
   latestPreviewCallId = null,
+  savedPreviews = NO_SAVED_PREVIEWS,
   liveReviews,
   nameFor,
   workflowNameFor,
@@ -946,6 +951,7 @@ function ChatMessage({
   onAutomationSingleRun: (workflowId: string) => void;
   onInstruction: (instruction: ChatInstruction) => void;
   latestPreviewCallId?: string | null;
+  savedPreviews?: ReadonlyMap<string, ChatWorkflowRef>;
   liveReviews: ReadonlySet<string>;
   nameFor: (id: string) => ResolvedIdentifier | null;
   workflowNameFor: (slug: string) => string | null;
@@ -1144,6 +1150,7 @@ function ChatMessage({
               <ChatSensitivePreviewCard
                 key={`${message.id}-preview-${partIndex}`}
                 preview={sensitivePreview}
+                saved={savedPreviews.get(tool.toolCallId) ?? null}
                 testId={`chat-message-${messageIndex}-preview-${partIndex}`}
               />
             );
@@ -1973,6 +1980,10 @@ export function ChatPage() {
   const createdResources = detail.data?.created_resources ?? [];
   const referencedResources = useMemo(() => collectReferencedResources(messages), [messages]);
   const latestPreviewCallId = useMemo(() => latestDryRunCallId(messages), [messages]);
+  const savedPreviews = useMemo(
+    () => savedSensitivePreviews(detail.data?.tool_calls ?? []),
+    [detail.data],
+  );
   const nameFor = useMemo(() => {
     const known = new Map<string, ResolvedIdentifier>();
     for (const conversation of conversationList.items) {
@@ -2750,6 +2761,7 @@ export function ChatPage() {
                               ])
                             }
                             latestPreviewCallId={latestPreviewCallId}
+                            savedPreviews={savedPreviews}
                             onInstruction={(instruction) =>
                               void submitTurn(instruction.message, instruction.references)
                             }

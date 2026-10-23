@@ -71,3 +71,42 @@ test("a failed check names the compile errors with a warning and an unsaved draf
   expect(html).not.toContain("p-workflow");
   expect(html).toContain("Once it is saved, you check the content yourself in the Cockpit.");
 });
+
+test("a draft saved later in the conversation switches to its saved state with the Cockpit check", () => {
+  const html = render(
+    <ChatSensitivePreviewCard
+      preview={{ ...preview, saveRequired: true, workflow: null }}
+      saved={{ id: "wf-7", label: "weekly-report" }}
+      testId="p"
+    />,
+    "de",
+  );
+  const verify = tag(html, "p-verify");
+  expect(verify).toContain('href="/cockpit/workflows/wf-7#workflow-run"');
+  expect(verify).toContain("w-full");
+  expect(verify).toContain("sm:w-auto");
+  expect(html).toContain("Im Cockpit selbst prüfen");
+  expect(tag(html, "p-workflow")).toContain('href="/cockpit/workflows/wf-7"');
+  expect(html).toContain("@weekly-report");
+  expect(html).toContain("Inhalte prüfst nur du, mit echten Daten im Cockpit.");
+  expect(html).not.toContain("Nach dem Speichern");
+});
+
+test("the English saved state names the check, and a failed check stays without action", () => {
+  const saved = { id: "wf-7", label: "weekly-report" };
+  const html = render(
+    <ChatSensitivePreviewCard
+      preview={{ ...preview, saveRequired: true }}
+      saved={saved}
+      testId="p"
+    />,
+    "en",
+  );
+  expect(html).toContain("Check it yourself in the Cockpit");
+  expect(html).toContain("Only you check the content, with real data in the Cockpit.");
+  const failed = render(
+    <ChatSensitivePreviewCard preview={{ ...preview, passed: false }} saved={saved} testId="p" />,
+    "en",
+  );
+  expect(failed).not.toContain("p-verify");
+});

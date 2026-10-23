@@ -7,6 +7,7 @@ import {
   findingsInstruction,
   latestDryRunCallId,
   openFindings,
+  savedSensitivePreviews,
   workflowRefOf,
 } from "./chat-preview-cards";
 
@@ -166,4 +167,72 @@ test("only the newest dry run in the conversation keeps live finding actions", (
     ]),
   ).toBe("b");
   expect(latestDryRunCallId([{ parts: [call("c", "save_workflow_draft")] }])).toBeNull();
+});
+
+const saved = {
+  resource_kind: "workflow",
+  resource_id: "wf-1",
+  workflow_id: "wf-1",
+  slug: "upraft-auth-notify",
+  name: "Auth notify",
+  persistence_kind: "draft",
+  activation_required: true,
+  runtime_verification: "schema_only",
+};
+
+const call = (id: string, tool: string, output: unknown, minute: number) => ({
+  id,
+  tool,
+  output,
+  created_at: `2030-01-01T00:0${minute}:00.000Z`,
+});
+
+const preview = { save_required: true, schema_only_preview: schemaOnly };
+
+test("a later schema-only save marks the newest preview before it as saved, also after approval", () => {
+  const approved = { tool: "save_workflow_draft", ok: true, data: saved, source: "x" };
+  const result = savedSensitivePreviews([
+    call("save", "save_workflow_draft", approved, 3),
+    call("old", "dry_run_workflow", preview, 1),
+    call("new", "dry_run_workflow", preview, 2),
+    call("after", "dry_run_workflow", preview, 4),
+  ]);
+  expect([...result.entries()]).toEqual([["new", { id: "wf-1", label: "upraft-auth-notify" }]]);
+  expect(
+    savedSensitivePreviews([
+      call("p", "dry_run_workflow", preview, 1),
+      call("s", "save_workflow_draft", saved, 2),
+    ]).get("p"),
+  ).toEqual({ id: "wf-1", label: "upraft-auth-notify" });
+});
+
+test("a save of another workflow leaves a preview of a known workflow unsaved", () => {
+  const other = { ...preview, target_ref: { kind: "workflow", id: "wf-9", slug: "other" } };
+  expect(
+    savedSensitivePreviews([
+      call("p", "dry_run_workflow", other, 1),
+      call("s", "save_workflow_draft", saved, 2),
+    ]).size,
+  ).toBe(0);
+});
+
+test("other verifications, pending, failed or anonymous saves mark no preview as saved", () => {
+  const marks = (output: unknown) =>
+    savedSensitivePreviews([
+      call("p", "dry_run_workflow", preview, 1),
+      call("s", "save_workflow_draft", output, 2),
+    ]).size;
+  expect(marks({ ...saved, runtime_verification: "metadata_only" })).toBe(0);
+  expect(marks({ ...saved, runtime_verification: "not_performed" })).toBe(0);
+  expect(marks({ ...saved, runtime_verification: undefined })).toBe(0);
+  expect(marks({ pending: true, status: "awaiting_confirmation", elicitation_id: "e" })).toBe(0);
+  expect(marks({ ok: false, data: saved })).toBe(0);
+  expect(marks(null)).toBe(0);
+  expect(marks({ runtime_verification: "schema_only", persistence_kind: "draft" })).toBe(0);
+  expect(
+    savedSensitivePreviews([
+      call("s", "save_workflow_draft", saved, 1),
+      call("p", "dry_run_workflow", preview, 2),
+    ]).size,
+  ).toBe(0);
 });

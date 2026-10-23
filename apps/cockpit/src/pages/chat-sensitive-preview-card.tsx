@@ -71,14 +71,17 @@ function CheckItem({ ok, children, testId }: { ok: boolean; children: string; te
 
 export function ChatSensitivePreviewCard({
   preview,
+  saved = null,
   testId = "chat-sensitive-preview-card",
 }: {
   preview: ChatSensitivePreview;
+  saved?: ChatWorkflowRef | null;
   testId?: string;
 }) {
   const { t, tn } = useI18n();
-  const workflow = preview.workflow;
-  const verifiable = workflow !== null && preview.passed && !preview.saveRequired;
+  const workflow = saved ?? preview.workflow;
+  const verifiable =
+    workflow !== null && preview.passed && (saved !== null || !preview.saveRequired);
   return (
     <ChatCard
       testId={testId}
@@ -90,10 +93,10 @@ export function ChatSensitivePreviewCard({
       }
       line={t(preview.passed ? "chat.preview.passed" : "chat.preview.failed")}
       action={
-        verifiable ? (
+        verifiable && workflow ? (
           <Button asChild className="w-full sm:w-auto">
             <a
-              href={contextualHref(absolute(workflowRunHref(workflow?.id ?? "")))}
+              href={contextualHref(absolute(workflowRunHref(workflow.id)))}
               data-testid={`${testId}-verify`}
             >
               {t("chat.preview.verify")}

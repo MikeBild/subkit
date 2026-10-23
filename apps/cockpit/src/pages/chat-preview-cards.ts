@@ -157,3 +157,46 @@ export function latestDryRunCallId(
   }
   return null;
 }
+
+export interface ChatToolCallRecord {
+  id: string;
+  tool: string;
+  output?: unknown;
+  created_at: string;
+}
+
+function resultData(output: unknown): Record<string, unknown> | null {
+  if (!record(output) || output.ok === false) return null;
+  return record(output.data) ? output.data : output;
+}
+
+function sensitiveSaveRef(call: ChatToolCallRecord): ChatWorkflowRef | null {
+  if (call.tool !== "save_workflow_draft") return null;
+  const data = resultData(call.output);
+  return data?.runtime_verification === "schema_only" ? workflowRefOf(data) : null;
+}
+
+export function savedSensitivePreviews(
+  calls: readonly ChatToolCallRecord[],
+): ReadonlyMap<string, ChatWorkflowRef> {
+  const saved = new Map<string, ChatWorkflowRef>();
+  const previews: { id: string; workflowId: string | null }[] = [];
+  const ordered = [...calls].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  for (const call of ordered) {
+    if (call.tool === "dry_run_workflow") {
+      const data = resultData(call.output);
+      previews.push({ id: call.id, workflowId: data ? (workflowRefOf(data)?.id ?? null) : null });
+      continue;
+    }
+    const workflow = sensitiveSaveRef(call);
+    if (!workflow) continue;
+    for (let index = previews.length - 1; index >= 0; index--) {
+      const preview = previews[index];
+      if (preview && (preview.workflowId === null || preview.workflowId === workflow.id)) {
+        saved.set(preview.id, workflow);
+        break;
+      }
+    }
+  }
+  return saved;
+}
