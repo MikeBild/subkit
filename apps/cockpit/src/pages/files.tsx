@@ -24,7 +24,7 @@ import {
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
 import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
-import { FileVersionsSection } from "@/components/cockpit/file-versions";
+import { FileVersionsSection, useFileVersions } from "@/components/cockpit/file-versions";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { InstallationInputActions } from "@/components/cockpit/installation-dialogs";
 import { type UsageCard, UsageCards } from "@/components/cockpit/knowledge-usage";
@@ -59,7 +59,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { cn } from "@/lib/utils";
-import { fileKindKey } from "@/pages/file-versions-model";
+import { fileKindKey, hasEarlierVersions } from "@/pages/file-versions-model";
 
 type StoredFile = components["schemas"]["File"] & {
   creator?: { kind: "user" | "system_account"; id: string } | null;
@@ -681,6 +681,7 @@ export function FilePage() {
     onEdit: () => setEditing(true),
     label: t("files.edit"),
   });
+  const versionsQuery = useFileVersions(id);
   const usageQuery = useQuery({
     queryKey: ["file", id, "usage"],
     queryFn: () => apiRequest<FileUsage>(`/v1/files/${encodeURIComponent(id)}/usage`),
@@ -920,11 +921,13 @@ export function FilePage() {
                     <TabBody
                       testId="file-usage-tab"
                       more={
-                        <FileVersionsSection
-                          fileId={file.id}
-                          fileName={file.filename}
-                          canWrite={canWrite}
-                        />
+                        versionsQuery.error || hasEarlierVersions(versionsQuery.data?.items) ? (
+                          <FileVersionsSection
+                            fileId={file.id}
+                            fileName={file.filename}
+                            canWrite={canWrite}
+                          />
+                        ) : undefined
                       }
                       summary={
                         usedLine
