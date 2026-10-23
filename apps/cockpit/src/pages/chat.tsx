@@ -2546,7 +2546,7 @@ export function ChatPage() {
             className={cn(
               "col-span-2 -mx-2 min-h-0 flex-1 flex-col pt-2 pb-4",
               listOpen
-                ? cn("flex max-h-[40vh]", chatWorkspace.horizontal && "max-h-none")
+                ? cn("flex max-h-[40dvh]", chatWorkspace.horizontal && "max-h-none")
                 : chatWorkspace.horizontal
                   ? "flex"
                   : "hidden",

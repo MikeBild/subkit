@@ -2,8 +2,7 @@ import { useRouter } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { absolute } from "@/app/links";
-import { SidebarToggle, usePageFrameTrigger } from "@/app/shell-header";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { usePageFrameTrigger } from "@/app/shell-header";
 import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
 import { type ActionSpec, renderAction } from "./action-button";
@@ -35,8 +34,7 @@ export function PageHeader({
   testId?: string;
   rhythm?: "compact" | "reading";
 }) {
-  const ownsTrigger = usePageFrameTrigger();
-  const isMobile = useIsMobile();
+  usePageFrameTrigger();
   const phase = useLoadingPhase(Boolean(loading));
   const arrived = useArrived(phase);
   const actions = secondary || menu || action;
@@ -77,7 +75,6 @@ export function PageHeader({
           data-testid="page-title-row"
           data-slot="page-title-row"
         >
-          {ownsTrigger && isMobile ? <SidebarToggle className="shrink-0" /> : null}
           {title ? <h1 className="sr-only">{title}</h1> : null}
           <Skeleton className="h-7 w-56 max-w-[60%]" />
           <Skeleton className="h-5 w-16 rounded-full" />
@@ -96,7 +93,6 @@ export function PageHeader({
             data-testid="page-title-row"
             data-slot="page-title-row"
           >
-            {ownsTrigger && isMobile ? <SidebarToggle className="shrink-0" /> : null}
             <h1
               title={title}
               className="min-w-0 max-w-full text-2xl font-semibold leading-8 tracking-[-0.02em] [overflow-wrap:anywhere]"

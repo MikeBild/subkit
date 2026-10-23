@@ -28,11 +28,11 @@ export function StandaloneStatus({
     </Alert>
   );
   return layout === "centered" ? (
-    <main className="flex min-h-svh items-start justify-center bg-background px-4 py-6 md:px-8">
+    <main className="flex min-h-full items-start justify-center bg-background px-4 py-6 md:px-8">
       {notice}
     </main>
   ) : (
-    <main className="min-h-svh bg-background px-4 py-6 md:px-8">
+    <main className="min-h-full bg-background px-4 py-6 md:px-8">
       <div className="mx-auto max-w-lg py-16">{notice}</div>
     </main>
   );

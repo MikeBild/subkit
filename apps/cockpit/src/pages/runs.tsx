@@ -942,7 +942,7 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
   return (
     <div className="flex flex-col gap-6">
       {list.query.data ? <SummaryLine text={summary} testId="runs-summary" /> : null}
-      <div className="flex h-[calc(100svh-14rem)] min-h-80 flex-col">
+      <div className="flex h-[calc(100dvh-14rem)] min-h-80 flex-col">
         <DataTable
           columns={columns}
           data={rows}

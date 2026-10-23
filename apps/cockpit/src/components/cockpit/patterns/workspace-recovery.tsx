@@ -29,7 +29,7 @@ export function WorkspaceRecovery({
   const pendingDeletion = tenant?.status === "pending_deletion";
   const deadline = tenant?.deletion_scheduled_for;
   return (
-    <main className="min-h-svh bg-background px-4 py-6 md:px-8">
+    <main className="min-h-full bg-background px-4 py-6 md:px-8">
       <div className="mx-auto max-w-lg py-16">
         <Alert variant={pendingDeletion && !state.data?.can_restore ? "destructive" : "default"}>
           <Clock className="size-4" />

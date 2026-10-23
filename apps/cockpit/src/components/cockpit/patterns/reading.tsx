@@ -47,7 +47,7 @@ export function ReadingLayout({
       <div className={COLUMN}>{children}</div>
       {aside ? (
         <aside data-family-slot="page-toc" className={ASIDE}>
-          <div className="max-h-[calc(100svh-3rem)] overflow-y-auto pt-10 pb-6">
+          <div className="max-h-[calc(100dvh-3rem)] overflow-y-auto pt-10 pb-6">
             {asideLabel ? (
               <p className="mb-2 px-2 text-xs leading-4 font-medium text-muted-foreground">
                 {asideLabel}

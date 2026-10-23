@@ -204,7 +204,7 @@ export function MarkdownEditor({
           hidden={!writing}
           data-slot="markdown-source"
           className="min-w-0 overflow-auto"
-          style={{ minHeight: `${rows * 1.5 + 1}rem`, maxHeight: "60vh" }}
+          style={{ minHeight: `${rows * 1.5 + 1}rem`, maxHeight: "60dvh" }}
         />
         {previewing ? (
           <section
@@ -215,7 +215,7 @@ export function MarkdownEditor({
               "min-w-0 overflow-auto p-4 text-sm",
               mode === "split" && "hidden border-l lg:block",
             )}
-            style={{ minHeight: `${rows * 1.5 + 1}rem`, maxHeight: "60vh" }}
+            style={{ minHeight: `${rows * 1.5 + 1}rem`, maxHeight: "60dvh" }}
           >
             {value.trim() ? (
               <Streamdown components={PREVIEW_COMPONENTS}>{value}</Streamdown>

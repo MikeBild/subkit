@@ -1,19 +1,30 @@
-import * as React from "react";
+import { useSyncExternalStore } from "react";
 
-const MOBILE_BREAKPOINT = 768;
+export const NAVIGATION_SHEET_BELOW_REM = 68.75;
 
-export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
+export const NAVIGATION_SHEET_QUERY = `(width < ${NAVIGATION_SHEET_BELOW_REM}rem)`;
 
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    };
-    mql.addEventListener("change", onChange);
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    return () => mql.removeEventListener("change", onChange);
-  }, []);
+export function navigationIsSheet(widthPx: number, remPx = 16): boolean {
+  return widthPx < NAVIGATION_SHEET_BELOW_REM * remPx;
+}
 
-  return !!isMobile;
+function query(): MediaQueryList | null {
+  return typeof window === "undefined" || typeof window.matchMedia !== "function"
+    ? null
+    : window.matchMedia(NAVIGATION_SHEET_QUERY);
+}
+
+function subscribe(onChange: () => void): () => void {
+  const list = query();
+  if (!list) return () => {};
+  list.addEventListener("change", onChange);
+  return () => list.removeEventListener("change", onChange);
+}
+
+function snapshot(): boolean {
+  return query()?.matches ?? false;
+}
+
+export function useIsMobile(): boolean {
+  return useSyncExternalStore(subscribe, snapshot, () => false);
 }

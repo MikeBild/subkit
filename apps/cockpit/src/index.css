@@ -6,6 +6,7 @@
 @source not "./app/docs.generated.ts";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant sk-nav (@media (width >= 68.75rem));
 
 /* shadcn's components read raw variables — `--background`, `--card`, `--sidebar`
    and so on. This block gives them shadcn's NAMES with the family's VALUES, so
@@ -167,6 +168,13 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+
+  #root {
+    height: 100dvh;
+    overflow-y: auto;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
   }
 
   body {

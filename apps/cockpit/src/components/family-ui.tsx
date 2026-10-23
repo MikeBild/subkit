@@ -253,7 +253,7 @@ export function FamilyFailureState(props: FamilyFailureStateProps) {
       data-testid={kind === "not-found" ? "not-found" : "fatal-error"}
       className={classes(
         "grid w-full min-w-0 flex-1 place-items-center px-4 py-10 sm:px-6",
-        standalone ? "min-h-svh bg-background" : "min-h-[calc(100svh-3.5rem)]",
+        standalone ? "min-h-full bg-background" : "min-h-[calc(100dvh-3.5rem)]",
         className,
       )}
       {...rest}

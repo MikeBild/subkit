@@ -13,7 +13,7 @@ import {
   Sun,
   UserRound,
 } from "lucide-react";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { logout } from "@/api/client";
 import { installationId } from "@/app/installation-context";
@@ -61,7 +61,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
-import { useIsMobile } from "@/hooks/use-mobile";
 import type { TranslationKey } from "@/lib/i18n";
 import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
@@ -171,8 +170,9 @@ export function AppShell() {
       <SidebarProvider
         data-testid="cockpit-shell"
         data-cockpit-ui
-        className="h-svh min-h-0 overflow-hidden"
+        className="h-full min-h-0 overflow-hidden"
       >
+        <CloseNavigationOnRoute pathname={pathname} />
         <Sidebar
           collapsible="icon"
           mobileTitle={
@@ -324,8 +324,16 @@ function ShellContent() {
   );
 }
 
+function CloseNavigationOnRoute({ pathname }: { pathname: string }) {
+  const { setOpenMobile } = useSidebar();
+  useEffect(() => {
+    if (pathname) setOpenMobile(false);
+  }, [pathname, setOpenMobile]);
+  return null;
+}
+
 function DesktopSidebarToggle() {
-  const isMobile = useIsMobile();
+  const { isMobile } = useSidebar();
   return isMobile ? null : <SidebarToggle className="shrink-0" />;
 }
 
@@ -368,8 +376,7 @@ function AccountMenu() {
   const session = useSession();
   const { t, preference, setPreference } = useI18n();
   const { theme, setTheme } = useTheme();
-  const isMobile = useIsMobile();
-  const { setOpenMobile } = useSidebar();
+  const { isMobile, setOpenMobile } = useSidebar();
   const [signingOut, setSigningOut] = useState(false);
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
   const identity = session.principal.email || session.principal.role_name || t("common.member");
@@ -430,7 +437,7 @@ function AccountMenu() {
         <DropdownMenuContent
           side={isMobile ? "top" : "right"}
           align="end"
-          className="w-64 max-h-[min(80vh,640px)] overflow-y-auto"
+          className="w-64 max-h-[min(80dvh,640px)] overflow-y-auto"
           data-testid="account-menu"
         >
           <DropdownMenuLabel data-testid="account-summary">

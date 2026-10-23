@@ -1,7 +1,7 @@
 "use client";
 
 import { cva, type VariantProps } from "class-variance-authority";
-import { PanelLeftIcon } from "lucide-react";
+import { PanelLeftIcon, XIcon } from "lucide-react";
 import { Slot } from "radix-ui";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetHeader,
@@ -17,6 +18,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { type SwipePoint, swipeDismisses } from "@/lib/sheet-swipe";
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
@@ -34,6 +36,7 @@ type SidebarContextProps = {
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
   toggleSidebar: () => void;
+  triggerRef: React.RefObject<HTMLElement | null>;
 };
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null);
@@ -62,6 +65,11 @@ function SidebarProvider({
 }) {
   const isMobile = useIsMobile();
   const [openMobile, setOpenMobile] = React.useState(false);
+  const triggerRef = React.useRef<HTMLElement | null>(null);
+
+  React.useEffect(() => {
+    if (!isMobile) setOpenMobile(false);
+  }, [isMobile]);
 
   const [_open, _setOpen] = React.useState(defaultOpen);
   const open = openProp ?? _open;
@@ -103,11 +111,12 @@ function SidebarProvider({
       open,
       setOpen,
       isMobile,
-      openMobile,
+      openMobile: isMobile && openMobile,
       setOpenMobile,
       toggleSidebar,
+      triggerRef,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+    [state, open, setOpen, isMobile, openMobile, toggleSidebar],
   );
 
   return (
@@ -122,7 +131,7 @@ function SidebarProvider({
           } as React.CSSProperties
         }
         className={cn(
-          "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
+          "group/sidebar-wrapper flex min-h-full w-full has-data-[variant=inset]:bg-sidebar",
           className,
         )}
         {...props}
@@ -154,7 +163,8 @@ function Sidebar({
   mobileCloseLabel?: string;
   mobileCloseTestId?: string;
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+  const { isMobile, state, openMobile, setOpenMobile, triggerRef } = useSidebar();
+  const swipeStart = React.useRef<SwipePoint | null>(null);
 
   if (collapsible === "none") {
     return (
@@ -176,24 +186,67 @@ function Sidebar({
       <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
         <SheetContent
           dir={dir}
-          closeLabel={mobileCloseLabel}
-          closeTestId={mobileCloseTestId}
+          showCloseButton={false}
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          className="gap-0 bg-sidebar p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-sidebar-foreground data-[side=left]:w-[min(calc(var(--sidebar-width)+env(safe-area-inset-left)),calc(100%-3.5rem))] data-[side=left]:pl-[env(safe-area-inset-left)] data-[side=left]:sm:max-w-none data-[side=right]:w-[min(calc(var(--sidebar-width)+env(safe-area-inset-right)),calc(100%-3.5rem))] data-[side=right]:pr-[env(safe-area-inset-right)] data-[side=right]:sm:max-w-none"
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
             } as React.CSSProperties
           }
           side={side}
+          onCloseAutoFocus={(event) => {
+            const trigger = triggerRef.current;
+            if (!trigger?.isConnected) return;
+            event.preventDefault();
+            trigger.focus({ preventScroll: true });
+          }}
+          onTouchStart={(event) => {
+            const touch = event.touches[0];
+            swipeStart.current =
+              event.touches.length === 1 && touch ? { x: touch.clientX, y: touch.clientY } : null;
+          }}
+          onTouchEnd={(event) => {
+            const start = swipeStart.current;
+            const touch = event.changedTouches[0];
+            swipeStart.current = null;
+            if (
+              start &&
+              touch &&
+              swipeDismisses(side, start, { x: touch.clientX, y: touch.clientY })
+            )
+              setOpenMobile(false);
+          }}
+          onTouchCancel={() => {
+            swipeStart.current = null;
+          }}
         >
           <SheetHeader className="sr-only">
             <SheetTitle>{mobileTitle}</SheetTitle>
             <SheetDescription>{mobileDescription}</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
+          <div
+            data-slot="sidebar-sheet-bar"
+            className={cn(
+              "flex h-12 shrink-0 items-center px-4 sm:px-6",
+              side === "right" && "justify-end",
+            )}
+          >
+            <SheetClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={side === "right" ? "-mr-1" : "-ml-1"}
+                aria-label={mobileCloseLabel}
+                data-testid={mobileCloseTestId}
+              >
+                <XIcon />
+              </Button>
+            </SheetClose>
+          </div>
+          <div className="flex min-h-0 w-full flex-1 flex-col">{children}</div>
         </SheetContent>
       </Sheet>
     );
@@ -201,7 +254,7 @@ function Sidebar({
 
   return (
     <div
-      className="group peer hidden text-sidebar-foreground md:block"
+      className="group peer hidden text-sidebar-foreground sk-nav:block"
       data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}
       data-variant={variant}
@@ -223,7 +276,7 @@ function Sidebar({
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
+          "fixed inset-y-0 z-10 hidden h-dvh w-(--sidebar-width) pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] sk-nav:flex",
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
@@ -249,27 +302,33 @@ function SidebarTrigger({
   label = "Toggle Sidebar",
   ...props
 }: React.ComponentProps<typeof Button> & { label?: string }) {
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, isMobile, openMobile, triggerRef } = useSidebar();
+
+  const button = (
+    <Button
+      data-sidebar="trigger"
+      data-slot="sidebar-trigger"
+      variant="ghost"
+      size="icon"
+      className={cn(className)}
+      aria-label={label}
+      aria-expanded={isMobile ? openMobile : undefined}
+      onClick={(event) => {
+        onClick?.(event);
+        triggerRef.current = event.currentTarget;
+        toggleSidebar();
+      }}
+      {...props}
+    >
+      <PanelLeftIcon />
+    </Button>
+  );
+
+  if (isMobile) return button;
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          data-sidebar="trigger"
-          data-slot="sidebar-trigger"
-          variant="ghost"
-          size="icon"
-          className={cn(className)}
-          aria-label={label}
-          onClick={(event) => {
-            onClick?.(event);
-            toggleSidebar();
-          }}
-          {...props}
-        >
-          <PanelLeftIcon />
-        </Button>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent side="right">{label}</TooltipContent>
     </Tooltip>
   );
@@ -305,7 +364,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
     <main
       data-slot="sidebar-inset"
       className={cn(
-        "relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
+        "relative flex w-full flex-1 flex-col bg-background sk-nav:peer-data-[variant=inset]:m-2 sk-nav:peer-data-[variant=inset]:ml-0 sk-nav:peer-data-[variant=inset]:rounded-xl sk-nav:peer-data-[variant=inset]:shadow-sm sk-nav:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className,
       )}
       {...props}
@@ -414,7 +473,7 @@ function SidebarGroupAction({
       data-slot="sidebar-group-action"
       data-sidebar="group-action"
       className={cn(
-        "absolute top-3.5 right-3 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform group-data-[collapsible=icon]:hidden after:absolute after:-inset-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
+        "absolute top-3.5 right-3 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform group-data-[collapsible=icon]:hidden after:absolute after:-inset-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 sk-nav:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
         className,
       )}
       {...props}
@@ -465,8 +524,8 @@ const sidebarMenuButtonVariants = cva(
           "bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]",
       },
       size: {
-        default: "h-8 text-sm",
-        sm: "h-7 text-xs",
+        default: "h-8 text-sm pointer-coarse:h-11",
+        sm: "h-7 text-xs pointer-coarse:h-11",
         lg: "h-12 text-sm group-data-[collapsible=icon]:p-0!",
       },
     },
@@ -543,9 +602,9 @@ function SidebarMenuAction({
       data-slot="sidebar-menu-action"
       data-sidebar="menu-action"
       className={cn(
-        "absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform group-data-[collapsible=icon]:hidden peer-hover/menu-button:text-sidebar-accent-foreground peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 peer-data-[size=sm]/menu-button:top-1 after:absolute after:-inset-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
+        "absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform group-data-[collapsible=icon]:hidden peer-hover/menu-button:text-sidebar-accent-foreground peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 peer-data-[size=sm]/menu-button:top-1 after:absolute after:-inset-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 sk-nav:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
         showOnHover &&
-          "group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 peer-data-active/menu-button:text-sidebar-accent-foreground aria-expanded:opacity-100 md:opacity-0",
+          "group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 peer-data-active/menu-button:text-sidebar-accent-foreground aria-expanded:opacity-100 sk-nav:opacity-0",
         className,
       )}
       {...props}

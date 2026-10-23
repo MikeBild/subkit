@@ -62,7 +62,7 @@ export function LoginRedirect({ href, label }: { href: string; label: string }) 
 
   return (
     <main
-      className="grid min-h-svh place-items-center bg-background"
+      className="grid min-h-full place-items-center bg-background"
       data-family-surface="auth"
       data-family-contract-version={FAMILY_UI_VERSION}
       data-testid="session-redirect"

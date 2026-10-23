@@ -16,7 +16,7 @@ test("centered status preserves the existing main and notice markup", () => {
     ),
   ).toBe(
     render(
-      <main className="flex min-h-svh items-start justify-center bg-background px-4 py-6 md:px-8">
+      <main className="flex min-h-full items-start justify-center bg-background px-4 py-6 md:px-8">
         <Alert className="max-w-2xl" data-testid="changed">
           <AlertTitle>Changed</AlertTitle>
           <AlertDescription>
@@ -42,7 +42,7 @@ test("reading status preserves its column, icon, variant and notice markup", () 
     ),
   ).toBe(
     render(
-      <main className="min-h-svh bg-background px-4 py-6 md:px-8">
+      <main className="min-h-full bg-background px-4 py-6 md:px-8">
         <div className="mx-auto max-w-lg py-16">
           <Alert variant="destructive">
             <span>Icon</span>
