@@ -8,7 +8,7 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown, Columns3, Loader2, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Columns3, Loader2 } from "lucide-react";
 import {
   Children,
   createContext,
@@ -33,7 +33,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -56,6 +55,7 @@ import {
   settleListReturn,
 } from "./list-return";
 import { useRowMotion } from "./row-motion";
+import { SearchInput } from "./search-input";
 import { Skeleton } from "./skeleton";
 
 export interface CockpitColumnMeta {
@@ -576,20 +576,14 @@ export function DataTable<TData extends RowData>({
         {toolbarShown ? (
           <div className="flex flex-wrap items-center gap-2 pb-2" data-family-slot="list-toolbar">
             {usesDefaultSearch && (
-              <label htmlFor={searchInputId} className="relative min-w-52 flex-1 sm:max-w-xs">
-                <span className="sr-only">{searchLabel}</span>
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id={searchInputId}
-                  type="search"
-                  value={queryText}
-                  onChange={(event) => setQueryText(event.target.value)}
-                  placeholder={searchLabel}
-                  className="pl-8"
-                  data-family-action="search"
-                  data-testid={`${collectionId}-search`}
-                />
-              </label>
+              <SearchInput
+                id={searchInputId}
+                value={queryText}
+                onChange={setQueryText}
+                label={searchLabel}
+                testId={`${collectionId}-search`}
+                className="min-w-52 flex-1 sm:max-w-xs"
+              />
             )}
             <FilterBarLayoutContext.Provider value={{ mobileOnly: Boolean(activeFilterPanel) }}>
               {toolbar}

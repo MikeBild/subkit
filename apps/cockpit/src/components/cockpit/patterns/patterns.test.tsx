@@ -15,6 +15,7 @@ import { PageHeader } from "./page-header";
 import { searchWithTab, tabFromSearch } from "./page-tabs";
 import { sheetWidthClass } from "./record-sheet";
 import { activeRouteTab } from "./route-tabs";
+import { SearchInput } from "./search-input";
 import { CollapsibleSection, Section } from "./section";
 import { SegmentedControl } from "./segmented-control";
 import { StatusBadge, statusTone } from "./status-badge";
@@ -433,5 +434,19 @@ describe("P19 ChatCard", () => {
     expect(html).toContain('data-slot="chat-card"');
     expect(html).toContain("<dl");
     expect(html).toContain("Übernehmen");
+  });
+});
+
+describe("SearchInput", () => {
+  test("shows the search icon inside the field and names it by its placeholder", () => {
+    const html = render(
+      <SearchInput value="" onChange={() => {}} label="Vorlagen durchsuchen" testId="s" />,
+    );
+    expect(html).toContain('data-slot="search-input"');
+    expect(html).toContain('type="search"');
+    expect(html).toContain('aria-label="Vorlagen durchsuchen"');
+    expect(html).toContain('placeholder="Vorlagen durchsuchen"');
+    expect(html).toContain("lucide-search");
+    expect(html).not.toContain("<label");
   });
 });

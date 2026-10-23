@@ -1,6 +1,5 @@
-import { Search, SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import {
   Select,
   SelectContent,
@@ -10,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useI18n } from "@/lib/i18n-context";
+import { SearchInput } from "./search-input";
 
 export interface FilterSelect {
   value: string;
@@ -107,19 +107,12 @@ export function FilterBar({
           {t("common.filters")}
         </h2>
         {search ? (
-          <InputGroup className="h-9 w-full">
-            <InputGroupAddon>
-              <Search />
-            </InputGroupAddon>
-            <InputGroupInput
-              type="search"
-              value={search.value}
-              onChange={(event) => search.onChange(event.target.value)}
-              placeholder={search.placeholder}
-              aria-label={search.placeholder}
-              data-testid={search.testId ? `${search.testId}-panel` : undefined}
-            />
-          </InputGroup>
+          <SearchInput
+            value={search.value}
+            onChange={search.onChange}
+            label={search.placeholder}
+            testId={search.testId ? `${search.testId}-panel` : undefined}
+          />
         ) : null}
         {segmented ? <div className="min-w-0 overflow-x-auto">{segmented}</div> : null}
         {filters.map((select) => (
@@ -166,19 +159,13 @@ export function FilterBar({
       className={`flex min-w-0 flex-1 flex-wrap items-center gap-2 ${compact ? "min-[1600px]:hidden" : ""}`}
     >
       {search ? (
-        <InputGroup className="h-9 w-full sm:max-w-xs">
-          <InputGroupAddon>
-            <Search />
-          </InputGroupAddon>
-          <InputGroupInput
-            type="search"
-            value={search.value}
-            onChange={(event) => search.onChange(event.target.value)}
-            placeholder={search.placeholder}
-            aria-label={search.placeholder}
-            data-testid={search.testId}
-          />
-        </InputGroup>
+        <SearchInput
+          value={search.value}
+          onChange={search.onChange}
+          label={search.placeholder}
+          testId={search.testId}
+          className="sm:max-w-xs"
+        />
       ) : null}
       {filters.length > 0 ? (
         <>

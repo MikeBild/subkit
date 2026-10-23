@@ -11,6 +11,7 @@ import {
   DataState,
   FactList,
   RowsSkeleton,
+  SearchInput,
   StatusBadge,
   TemplateCard,
   TemplateGrid,
@@ -98,21 +99,6 @@ export async function createTemplateConnector(
 async function refreshLookups(client: QueryClient): Promise<void> {
   await client.invalidateQueries({ queryKey: ["catalog"] });
   await client.invalidateQueries({ queryKey: ["connectors"] });
-}
-
-function SearchField({
-  id,
-  value,
-  onChange,
-}: {
-  id: string;
-  value: string;
-  onChange(value: string): void;
-}) {
-  const { t } = useI18n();
-  return (
-    <TextField id={id} label={t("create.template.search")} value={value} onChange={onChange} />
-  );
 }
 
 export function useSolutionTemplates(active: boolean) {
@@ -269,7 +255,13 @@ export function useSolutionFlow(
     },
     list: (onPick) => (
       <div className="grid gap-3" data-testid="create-solution-list">
-        <SearchField id="create-solution-search" value={query} onChange={setQuery} />
+        <SearchInput
+          id="create-solution-search"
+          value={query}
+          onChange={setQuery}
+          label={t("create.template.search")}
+          testId="create-solution-search"
+        />
         <SolutionGallery
           entries={entries.filter((entry) => solutionMatches(entry, solutionText(entry, t), query))}
           pending={pack.isPending}

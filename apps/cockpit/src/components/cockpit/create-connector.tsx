@@ -5,7 +5,6 @@ import {
   LockOpen,
   MessageSquare,
   PencilLine,
-  Search,
   UserCheck,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -50,7 +49,7 @@ import {
   ChoiceCards,
   DataState,
   FormDialog,
-  Input,
+  SearchInput,
   WizardProgress,
 } from "@/components/cockpit/patterns";
 import { ServiceIcon } from "@/components/cockpit/service-icon";
@@ -145,20 +144,12 @@ function ServiceGrid({
     : popularTemplates(templates, POPULAR_IN_WIZARD);
   return (
     <div className="flex flex-col gap-3" data-testid="create-template-list">
-      <div className="relative flex items-center">
-        <Search
-          aria-hidden="true"
-          className="pointer-events-none absolute left-3 size-4 text-muted-foreground"
-        />
-        <Input
-          value={query}
-          onChange={(event) => onQuery(event.target.value)}
-          placeholder={t("connectorWizard.searchService")}
-          aria-label={t("connectorWizard.searchService")}
-          className="pl-9"
-          data-testid="create-template-search"
-        />
-      </div>
+      <SearchInput
+        value={query}
+        onChange={onQuery}
+        label={t("connectorWizard.searchService")}
+        testId="create-template-search"
+      />
       {failed ? (
         <DataState state="error" line={t("create.template.loadFailed")} onRetry={onRetry} />
       ) : pending ? (
