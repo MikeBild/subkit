@@ -46,6 +46,11 @@ import {
 } from "@/components/cockpit/patterns";
 import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { StepDialog, type StepDraft, stepId } from "@/components/cockpit/workflow-step-editor";
+import {
+  CONNECTOR_STRIP_KEYS,
+  type ConnectorStrip,
+  connectorRecordStrip,
+} from "@/lib/connector-strip";
 import { useI18n } from "@/lib/i18n-context";
 import type { ServiceIdentity } from "@/lib/service-icons";
 import { useSearchParamState } from "@/lib/use-search-param-state";
@@ -351,6 +356,7 @@ export interface StepConnector {
   id: string | null;
   name: string;
   service: ServiceIdentity;
+  strip: ConnectorStrip | null;
 }
 
 export function stepConnector(
@@ -368,10 +374,11 @@ export function stepConnector(
       id: known.id,
       name: known.display_name || known.slug,
       service: connectorService(known),
+      strip: connectorRecordStrip(known),
     };
   const driver = definition.essence.kind === "request" ? definition.essence.via : null;
   return definition.connectorId
-    ? { id: definition.connectorId, name: "", service: { kind: "generic", driver } }
+    ? { id: definition.connectorId, name: "", service: { kind: "generic", driver }, strip: null }
     : null;
 }
 
@@ -755,9 +762,18 @@ function StepSheet({
             <span className="block text-sm font-medium">
               {connector.name || t("authority.configuredConnector")}
             </span>
-            <span className="block text-xs text-muted-foreground">
-              {t("workflowFlow.sheet.service")}
-            </span>
+            {connector.strip ? (
+              <span
+                className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                data-testid={`${testId}-connector-state`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn("size-1.5 shrink-0 rounded-full", STATUS_DOT[connector.strip.tone])}
+                />
+                {t(CONNECTOR_STRIP_KEYS[connector.strip.kind])}
+              </span>
+            ) : null}
           </span>
           <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
         </a>

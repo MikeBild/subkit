@@ -3,6 +3,7 @@ import {
   CONNECTOR_STRIP_KEYS,
   type ConnectorStripInput,
   connectorExpiry,
+  connectorRecordStrip,
   connectorStrip,
   connectorStripActionKey,
 } from "@/lib/connector-strip";
@@ -138,5 +139,25 @@ describe("connector expiry evidence", () => {
       connectorExpiry([{ environment: "prod", oauth2_expires_at: "not a date" }], "prod"),
     ).toBeNull();
     expect(connectorExpiry(undefined, "prod")).toBeNull();
+  });
+});
+
+describe("connector state of a listed connector", () => {
+  const label = (record: Parameters<typeof connectorRecordStrip>[0]) => {
+    const strip = connectorRecordStrip(record);
+    return [CATALOGS.de[CONNECTOR_STRIP_KEYS[strip.kind]], strip.tone];
+  };
+
+  test("says Verbunden, Anmeldung abgelaufen or Ausgeschaltet with the strip's tone", () => {
+    expect(label({ auth_type: "bearer", health_state: "ok" })).toEqual(["Verbunden", "ok"]);
+    expect(label({ auth_type: "oauth2", needs_reauth: true })).toEqual([
+      "Anmeldung abgelaufen",
+      "error",
+    ]);
+    expect(label({ auth_type: "none", enabled: false })).toEqual(["Ausgeschaltet", "warn"]);
+    expect(label({ auth_type: "bearer", health_state: "degraded" })).toEqual([
+      "Nicht erreichbar",
+      "error",
+    ]);
   });
 });

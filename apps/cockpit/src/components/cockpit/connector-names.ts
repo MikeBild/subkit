@@ -17,6 +17,7 @@ export interface ConnectorRecord {
   id: string;
   slug: string;
   display_name: string;
+  enabled?: boolean | null;
   driver?: string | null;
   auth_type?: string | null;
   health_state?: string | null;

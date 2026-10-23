@@ -1,4 +1,8 @@
-import type { ConnectorAuthState } from "@/lib/connector-auth-state";
+import {
+  type ConnectorAuthInput,
+  type ConnectorAuthState,
+  connectorAuthState,
+} from "@/lib/connector-auth-state";
 import type { TranslationKey } from "@/lib/i18n";
 import type { RenewalWay } from "@/pages/connector-detail-model";
 
@@ -125,6 +129,22 @@ export function connectorStrip(input: ConnectorStripInput): ConnectorStrip {
           ? "connected"
           : "unproven";
   return { kind: calm, tone: "ok", action: null, lower: [] };
+}
+
+export function connectorRecordStrip(
+  record: ConnectorAuthInput & { enabled?: boolean | null },
+): ConnectorStrip {
+  return connectorStrip({
+    auth: connectorAuthState(record),
+    way: null,
+    enabled: record.enabled !== false,
+    health: record.health_state ?? null,
+    probe: null,
+    missingScopes: 0,
+    returned: false,
+    signInFailed: false,
+    rights: { write: false, test: false },
+  });
 }
 
 export function connectorExpiry(credentials: unknown, environment: unknown): string | null {
