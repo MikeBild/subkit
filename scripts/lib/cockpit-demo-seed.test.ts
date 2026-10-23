@@ -201,7 +201,29 @@ test("seed shows every feature: intake from AI, template connectors, an AI step 
     [tenantId],
   );
   const origins = intake.rows.map((row) => row.origin).sort();
-  expect(origins).toEqual(["capture", "capture", "capture", "note", "session", "session"]);
+  expect(origins).toEqual([
+    "capture",
+    "capture",
+    "capture",
+    "note",
+    "session",
+    "session",
+    "session",
+  ]);
+  const agents = await context.pool.query(
+    `SELECT i.original_snapshot->>'agent' AS agent, i.original_snapshot->>'session_id' AS session,
+            e.agent AS evidence_agent, c.id IS NOT NULL AS conversation
+       FROM intake_items i
+       JOIN intake_item_evidence e ON e.item_id=i.id AND e.tenant_id=i.tenant_id
+       LEFT JOIN conversations c ON c.id::text=i.original_snapshot->>'session_id' AND c.tenant_id=i.tenant_id
+      WHERE i.tenant_id=$1 AND i.original_snapshot->>'origin'='session' ORDER BY 1`,
+    [tenantId],
+  );
+  expect(agents.rows.map((row) => [row.agent, row.evidence_agent, row.conversation])).toEqual([
+    ["claude-code", "claude-code", false],
+    ["codex", "codex", false],
+    ["save_learning", "save_learning", true],
+  ]);
   expect(intake.rows.every((row) => row.state === "collected")).toBe(true);
   expect(intake.rows.filter((row) => row.origin === "capture").every((row) => row.url)).toBe(true);
   const connectors = await context.pool.query(

@@ -256,7 +256,10 @@ export interface DemoIntakeItem {
   sessionId?: string;
   domains?: string[];
   excerpt?: string;
+  conversation?: string;
 }
+
+export const demoChatLearningAgent = "save_learning";
 
 export function demoIntakeItems(now: Date): DemoIntakeItem[] {
   const at = (hours: number) => new Date(now.getTime() - hours * HOUR_MS).toISOString();
@@ -323,6 +326,17 @@ export function demoIntakeItems(now: Date): DemoIntakeItem[] {
       domains: ["sales"],
       excerpt: "Two customer replies asked for the gross price after an offer listed net only.",
     },
+    {
+      key: "intake-session-2",
+      origin: "session",
+      title: "CRM contacts: dedupe by e-mail before the sync",
+      body: "Contacts with the same e-mail address arrive twice from the CRM. Merge them by e-mail before the sync writes them to the customer list.",
+      note: "",
+      capturedAt: at(12),
+      agent: demoChatLearningAgent,
+      domains: ["sales"],
+      conversation: "conversation-3",
+    },
   ];
 }
 
@@ -372,7 +386,7 @@ export const cockpitDemoManifest = {
   connectors: 6 + demoTemplateConnectors.length,
   workflows: 13,
   executions: 30,
-  intakeItems: 6,
+  intakeItems: 7,
   conversations: 8,
   knowledgeSources: 6,
   knowledgeChunks: 12,
@@ -665,6 +679,10 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     });
   }
   demoIntakeItems(now).forEach((item) => {
+    const sessionId = item.conversation ? id(item.conversation) : (item.sessionId ?? "");
+    const excerpt = item.conversation
+      ? `explicit save_learning (conversation=${sessionId})`
+      : (item.excerpt ?? "");
     const snapshot =
       item.origin === "session"
         ? {
@@ -673,10 +691,10 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
             body: item.body,
             origin: "session",
             agent: item.agent,
-            session_id: item.sessionId,
+            session_id: sessionId,
             repo: null,
             domains: item.domains,
-            evidence_excerpt: item.excerpt,
+            evidence_excerpt: excerpt,
             learning_kind: "practice",
             scope: "global",
           }
@@ -708,6 +726,19 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       created_at: item.capturedAt,
       updated_at: item.capturedAt,
     });
+    if (item.origin === "session")
+      insert("intake_item_evidence", {
+        id: id(`${item.key}-evidence`),
+        tenant_id: tenantId,
+        item_id: id(item.key),
+        agent: item.agent ?? "",
+        session_id: sessionId,
+        repo: null,
+        excerpt,
+        captured_at: item.capturedAt,
+        recorded_by_type: "user",
+        recorded_by_id: adminUserId,
+      });
   });
   for (let i = 0; i < 24; i++) {
     const wf = i % 5;
