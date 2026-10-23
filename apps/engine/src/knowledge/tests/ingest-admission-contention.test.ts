@@ -237,7 +237,11 @@ test("a parked knowledge file write no longer holds the tenant lock against conc
   const observed = {
     longest_tenant_lock_hold_ms: longestHoldMs,
     admission_retries: admissionRetries() - retriesBefore,
-    admissions: admissions.map((admission) => ({ ok: admission.ok, ms: admission.ms })),
+    admissions: admissions.map((admission) => ({
+      ok: admission.ok,
+      code: admission.ok ? null : admission.code,
+      ms: admission.ms,
+    })),
     ingest_ok: ingested.ok,
   };
   expect({
@@ -313,7 +317,7 @@ test("erasure stays blocked while an unlocked knowledge file write is in flight"
       { queue: erasureQueue(), objects: new MemoryObjectStore() },
       srv.db,
     );
-    expect(erased.status).toBe("blocked");
+    expect(erased).toEqual({ status: "blocked", reason: "producer_drain_required" });
   } finally {
     parked.release();
   }
