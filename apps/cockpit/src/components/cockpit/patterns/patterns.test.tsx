@@ -28,7 +28,7 @@ import { revealScrollLeft, SegmentedControl } from "./segmented-control";
 import { TileSkeleton } from "./skeleton";
 import { StatusBadge, statusTone } from "./status-badge";
 import { StatusStrip } from "./status-strip";
-import { SummaryLine } from "./summary-line";
+import { SummaryLine, SummaryParts } from "./summary-line";
 import { render, renderInRouter } from "./test-utils";
 
 const count = (html: string, pattern: RegExp) => [...html.matchAll(pattern)].length;
@@ -483,5 +483,23 @@ describe("KPI tile placeholder", () => {
     expect(placeholderBox).toBe(KPI_TILE_BOX);
     expect(placeholderRows).toEqual(realRows);
     expect(placeholderRows).toEqual([KPI_TILE_LABEL, KPI_TILE_VALUE_ROW, KPI_TILE_DETAIL]);
+  });
+});
+
+describe("summary parts", () => {
+  test("parts stack left-aligned on a phone and only show separators beside each other", () => {
+    const html = render(<SummaryParts parts={["3 entries", null, "2 to review", "Categories"]} />);
+    expect(count(html, /data-slot="summary-part"/g)).toBe(3);
+    expect(count(html, /data-slot="summary-separator"/g)).toBe(2);
+    expect(html).toContain("flex-col items-start");
+    expect(html).toContain("text-left");
+    expect(html).toMatch(/class="hidden sm:inline" data-slot="summary-separator"/);
+  });
+
+  test("the filter search keeps a usable width beside a chip", () => {
+    const html = render(
+      <FilterBar search={{ value: "", onChange() {}, placeholder: "Eingang durchsuchen" }} />,
+    );
+    expect(html).toMatch(/data-slot="search-input"[^>]*class="[^"]*min-w-52/);
   });
 });

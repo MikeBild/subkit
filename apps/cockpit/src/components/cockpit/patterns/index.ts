@@ -82,7 +82,7 @@ export { SegmentedControl, type SegmentedOption } from "./segmented-control";
 export { Loadable, RowsSkeleton, Skeleton, TileSkeleton } from "./skeleton";
 export { type BadgeTone, StatusBadge, statusTone } from "./status-badge";
 export { STATUS_DOT, StatusStrip, type StatusTone } from "./status-strip";
-export { SummaryLine } from "./summary-line";
+export { SummaryLine, SummaryParts } from "./summary-line";
 export { TabBody, TechnicalDetails } from "./tab-body";
 export { TemplateCard, type TemplateCardProps, TemplateGrid } from "./template-card";
 export { Timeline, type TimelineGroup, type TimelineItem, type TimelineTone } from "./timeline";

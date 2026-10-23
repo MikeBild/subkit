@@ -164,7 +164,7 @@ export function FilterBar({
           onChange={search.onChange}
           label={search.placeholder}
           testId={search.testId}
-          className="sm:max-w-xs"
+          className="min-w-52 flex-1 sm:max-w-xs"
         />
       ) : null}
       {filters.length > 0 ? (

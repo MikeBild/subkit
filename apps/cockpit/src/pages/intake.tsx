@@ -61,6 +61,7 @@ import {
   SectionHeading,
   StatusBadge,
   SummaryLine,
+  SummaryParts,
 } from "@/components/cockpit/patterns";
 import { AssistantIcon } from "@/components/cockpit/service-icon";
 import { tableColumns } from "@/components/cockpit/table-columns";
@@ -1109,16 +1110,15 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
           <>
             <SummaryLine
               text={
-                <>
-                  {t(clipItems.length === 1 ? "intake.summary.one" : "intake.summary.other", {
-                    count: clipItems.length,
-                  })}
-                  {awaitingReview > 0 ? (
-                    <>
-                      {" · "}
+                <SummaryParts
+                  parts={[
+                    t(clipItems.length === 1 ? "intake.summary.one" : "intake.summary.other", {
+                      count: clipItems.length,
+                    }),
+                    awaitingReview > 0 ? (
                       <button
                         type="button"
-                        className="font-medium text-foreground underline-offset-2 hover:underline"
+                        className="text-left font-medium text-foreground underline-offset-2 hover:underline"
                         onClick={() => setOrigin("session")}
                         data-testid="intake-awaiting-review"
                       >
@@ -1129,10 +1129,10 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                           { count: awaitingReview },
                         )}
                       </button>
-                    </>
-                  ) : null}{" "}
-                  · <CatalogCategories kind="intake" />
-                </>
+                    ) : null,
+                    <CatalogCategories key="categories" kind="intake" />,
+                  ]}
+                />
               }
               help={t("intake.explanation")}
               testId="intake-summary"

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
 import { ContextHelp } from "./context-help";
@@ -56,5 +56,28 @@ export function SummaryLine({
         <span className="ml-auto flex min-w-0 max-w-full items-center gap-2">{aside}</span>
       ) : null}
     </div>
+  );
+}
+
+export function SummaryParts({ parts }: { parts: readonly ReactNode[] }) {
+  const shown = parts.filter((part) => part !== null && part !== undefined && part !== false);
+  return (
+    <span
+      className="flex flex-col items-start gap-0.5 text-left sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1.5"
+      data-slot="summary-parts"
+    >
+      {shown.map((part, index) => (
+        <Fragment key={index}>
+          {index > 0 ? (
+            <span aria-hidden="true" className="hidden sm:inline" data-slot="summary-separator">
+              ·
+            </span>
+          ) : null}
+          <span className="min-w-0" data-slot="summary-part">
+            {part}
+          </span>
+        </Fragment>
+      ))}
+    </span>
   );
 }
