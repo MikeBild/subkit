@@ -184,6 +184,16 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     'this workflow carries sensitive execution data, which never enters conversation previews or messages. Call inspect_workflow_draft and validate_draft; for a sensitive draft, dry_run_workflow returns metadata only and mode "schema_only" checks structure without content. Live verification happens in the Cockpit by the signed-in person; do not retry through chat tools',
   schema_only_requires_sensitive_draft:
     "mode schema_only only applies to a sensitive draft — call dry_run_workflow without mode to run the held preview of this ordinary draft",
+  preview_needs_repair:
+    "the preview ran but left blocking warnings or compile errors, so nothing was saved. Fix the flagged step with edit_workflow_patch (read it first with inspect_workflow_draft), then re-run dry_run_workflow in the same mode. Do not save around the warnings or repeat the preview unchanged",
+  raw_ref_not_found:
+    "the raw_ref is unknown to this caller and conversation, or it expired. Re-run the original authorized tool call for a fresh reference and read that one; never invent or reuse a ref from another conversation",
+  raw_result_too_large:
+    "the stored result is too large to return at once. Call get_raw_result again with one of the listed fields as path plus offset and limit, and continue until next_offset is null",
+  raw_result_path_not_found:
+    "nothing is stored at that path. Call get_raw_result again with one of suggested_paths or a key from the returned shape; do not guess deeper paths",
+  raw_result_offset_out_of_range:
+    "the offset is past the end of the stored value. Restart get_raw_result at offset 0, or follow next_ref / next_offset from the previous chunk instead of computing offsets",
   preview_empty:
     "the last preview produced no output — call run_workflow with concrete input, or dry_run_workflow with a non-empty input payload",
   connector_auth_unset:
