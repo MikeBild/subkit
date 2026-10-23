@@ -9,12 +9,14 @@ const LINE = "flex flex-wrap items-center gap-2 text-sm text-muted-foreground";
 export function SummaryLine({
   text,
   help,
+  helpLabel,
   aside,
   loading,
   testId,
 }: {
   text: ReactNode;
   help?: ReactNode;
+  helpLabel?: string;
   aside?: ReactNode;
   loading?: boolean;
   testId?: string;
@@ -43,11 +45,16 @@ export function SummaryLine({
         {text}
       </span>
       {help ? (
-        <ContextHelp label={typeof text === "string" ? text : id} testId={`${id}-help`}>
+        <ContextHelp
+          label={helpLabel ?? (typeof text === "string" ? text : id)}
+          testId={`${id}-help`}
+        >
           {help}
         </ContextHelp>
       ) : null}
-      {aside ? <span className="ml-auto flex items-center gap-2">{aside}</span> : null}
+      {aside ? (
+        <span className="ml-auto flex min-w-0 max-w-full items-center gap-2">{aside}</span>
+      ) : null}
     </div>
   );
 }

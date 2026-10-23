@@ -218,7 +218,7 @@ export function OriginLegend({
             >
               <span
                 aria-hidden="true"
-                className="size-3 rounded-sm"
+                className="size-3 rounded-[3px]"
                 style={{ background: ORIGIN_COLOR[origin] }}
               />
               <span className="text-sm font-medium">{name}</span>

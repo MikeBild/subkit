@@ -528,6 +528,7 @@ export function UsagePage() {
         </span>
       }
       help={`${t("usage.purpose")} ${t("usage.trend.help")}`}
+      helpLabel={title}
       aside={
         <SegmentedControl
           label={t("resource.usage.windowPicker")}

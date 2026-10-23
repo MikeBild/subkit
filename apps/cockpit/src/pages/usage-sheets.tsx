@@ -14,7 +14,7 @@ import {
   RecordSheet,
   Section,
 } from "@/components/cockpit/patterns";
-import type { TranslationKey } from "@/lib/i18n";
+import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
   type LlmStatsFilter,
@@ -269,7 +269,9 @@ function WorkflowSheet({ ctx, id }: { ctx: SheetContext; id: string }) {
       return {
         key: executionId,
         label: t("usage.sheet.runOn", { date: ctx.format.dateLabel(first?.ts ?? "") }),
-        sub: t("usage.sheet.callsCount", { count: ctx.format.count(group.calls) }),
+        sub: t(pluralKey("usage.sheet.callsCount", group.calls), {
+          count: ctx.format.count(group.calls),
+        }),
         value: group.cost === null ? t("usage.unpriced") : ctx.format.money(group.cost),
         href: absolute(runHref(executionId)),
       };
@@ -419,7 +421,7 @@ function PersonSheet({ ctx, id }: { ctx: SheetContext; id: string }) {
                   <span className="flex items-center gap-2">
                     <span
                       aria-hidden="true"
-                      className="size-2.5 shrink-0 rounded-sm"
+                      className="size-2.5 shrink-0 rounded-[3px]"
                       style={{ background: ORIGIN_COLOR[origin.key] }}
                     />
                     <span className="truncate">{t(ORIGIN_LABEL[origin.key])}</span>
