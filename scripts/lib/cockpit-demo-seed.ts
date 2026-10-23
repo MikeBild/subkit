@@ -257,6 +257,7 @@ export interface DemoIntakeItem {
   domains?: string[];
   excerpt?: string;
   conversation?: string;
+  client?: string;
 }
 
 export const demoChatLearningAgent = "save_learning";
@@ -309,6 +310,7 @@ export function demoIntakeItems(now: Date): DemoIntakeItem[] {
       note: "",
       capturedAt: at(8),
       agent: "claude-code",
+      client: "claude-code",
       sessionId: "demo-session-status-retry",
       domains: ["operations"],
       excerpt:
@@ -322,6 +324,7 @@ export function demoIntakeItems(now: Date): DemoIntakeItem[] {
       note: "",
       capturedAt: at(30),
       agent: "codex",
+      client: "codex",
       sessionId: "demo-session-price-format",
       domains: ["sales"],
       excerpt: "Two customer replies asked for the gross price after an offer listed net only.",
@@ -334,6 +337,7 @@ export function demoIntakeItems(now: Date): DemoIntakeItem[] {
       note: "",
       capturedAt: at(12),
       agent: demoChatLearningAgent,
+      client: "chat",
       domains: ["sales"],
       conversation: "conversation-3",
     },
@@ -691,6 +695,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
             body: item.body,
             origin: "session",
             agent: item.agent,
+            ...(item.client ? { client: item.client } : {}),
             session_id: sessionId,
             repo: null,
             domains: item.domains,
