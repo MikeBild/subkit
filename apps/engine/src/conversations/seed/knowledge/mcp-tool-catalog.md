@@ -92,7 +92,11 @@ execution_id, poll_with: "get_execution" }`.
   is what resolves the poll handle a long run hands back.
 - `list_recipes` **[product]** / `inspect_recipe` **[product]** — browse and read
   the workflow recipe catalog.
-- `get_workflow` **[product]** — fetch a saved workflow's metadata by id.
+- `get_workflow` **[product]** — fetch a saved workflow's metadata by id. With
+  `include_draft: true` it also returns the saved inactive draft (`version_id`,
+  `version`, `digest`, full `definition`); a session can pass that `version_id`
+  to `save_workflow_draft` as `expected_draft_version_id`, and a stale id is
+  refused with `draft_conflict` instead of overwriting newer work.
 - `list_workflows` **[product]** — enumerate workflows. Prefer `find_workflow`.
 - `inspect_execution` **[product]** — full execution detail (steps, timings,
   errors). This is how you diagnose a failed run over MCP.

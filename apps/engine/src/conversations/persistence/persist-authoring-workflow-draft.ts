@@ -16,6 +16,7 @@ export async function persistAuthoringWorkflowDraft(input: {
   def: WorkflowDefFromDraft;
   explicitTarget?: string;
   auditMetadata?: Record<string, unknown>;
+  expectedDraftVersionId?: string | null;
 }): Promise<ToolResult> {
   const { ctx, fullDraft } = input;
   const bound = fullDraft.state ? persistedWorkflowResource(fullDraft.state) : null;
@@ -64,6 +65,19 @@ export async function persistAuthoringWorkflowDraft(input: {
       "draft_base_not_observed",
       "Open this workflow in an authoring session before replacing its draft. The saved draft version must be observed; an active version or a force flag cannot substitute for it. Existing local edits have not been changed.",
     );
+  }
+  if (input.expectedDraftVersionId !== undefined) {
+    const observed = targetId ? (bound?.draft_version_id ?? null) : null;
+    if (input.expectedDraftVersionId !== observed) {
+      const message =
+        "The expected draft version does not match the saved draft this conversation observed. Nothing was saved and local changes are preserved. Re-read the saved draft and compare before saving again.";
+      await ctx.setDraft(withWorkflowSaveError(fullDraft, { code: "draft_conflict", message }));
+      return fail("draft_conflict", message, {
+        expected_draft_version_id: input.expectedDraftVersionId,
+        observed_draft_version_id: observed,
+        local_changes_preserved: true,
+      });
+    }
   }
   const scope_index: NonNullable<Parameters<typeof saveWorkflowDraft>[0]["scope_index"]> = {};
   for (const trace of fullDraft.latest_preview?.step_traces ?? []) {

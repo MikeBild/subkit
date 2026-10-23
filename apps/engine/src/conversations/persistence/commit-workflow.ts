@@ -66,6 +66,7 @@ export interface CommitWorkflowAtomicParams {
   emitAutoPersistAudit?: boolean;
   commitIntentKind?: string;
   extraAuditMetadata?: Record<string, unknown>;
+  expected_draft_version_id?: string | null;
 }
 
 type CommitGate = { name: string; run: () => Promise<ToolResult | null> };
@@ -577,6 +578,9 @@ async function persistAfterGauntlet(
         : {}),
     },
     ...(p.target_workflow_id ? { explicitTarget: p.target_workflow_id } : {}),
+    ...(p.expected_draft_version_id !== undefined
+      ? { expectedDraftVersionId: p.expected_draft_version_id }
+      : {}),
   });
   if (!result.ok) return result;
   if (previewSkippedByUser && !sensitiveDraft) {

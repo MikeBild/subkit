@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { listedDescription } from "../../../api/catalog-metadata.ts";
 import { listTransactionalMailReceipts } from "../../../execution/index.ts";
 import { bindingFor, workflowTriggerView } from "../../../scheduler/trigger-bindings.ts";
+import { getWorkflowDraft } from "../../../workflows/drafts.ts";
 import type { ConversationTool } from "../index.ts";
 
 const ListInput = z
@@ -28,6 +29,12 @@ const GetInput = z
   .object({
     id: z.string().uuid("workflow id must be a UUID").optional(),
     slug: z.string().optional(),
+    include_draft: z
+      .boolean()
+      .optional()
+      .describe(
+        "Also return the saved inactive draft as `draft` (version_id, version, digest, full definition). Pass `draft.version_id` as expected_draft_version_id when saving changes to it.",
+      ),
   })
   .refine((v) => Boolean(v.id || v.slug), { message: "Either id or slug is required" })
   .openapi("GetWorkflowToolInput");
@@ -78,7 +85,7 @@ export const listWorkflowsTool: ConversationTool = {
 export const getWorkflowTool: ConversationTool = {
   name: "get_workflow",
   description:
-    "Fetch a single workflow by id or slug. `effective_trigger` says what really starts it (a bound schedule or webhook beats the definition's declared `trigger`); `schedule` is the bound schedule, if any. Transactional email workflows also include their newest durable mail receipts, without applicant data. attempted or delivery_unknown never authorizes resend.",
+    "Fetch a single workflow by id or slug. `definition` is the active version; pass include_draft to also read the saved inactive draft with its version id. `effective_trigger` says what really starts it (a bound schedule or webhook beats the definition's declared `trigger`); `schedule` is the bound schedule, if any. Transactional email workflows also include their newest durable mail receipts, without applicant data. attempted or delivery_unknown never authorizes resend.",
   inputSchema: GetInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof GetInput>) {
@@ -95,6 +102,7 @@ export const getWorkflowTool: ConversationTool = {
     )
       ? await listTransactionalMailReceipts(ctx.db, ctx.tenant_id, wf.id)
       : undefined;
+    const draft = args.include_draft ? await getWorkflowDraft(ctx.tenant_id, wf.id, ctx.db) : null;
     return {
       ok: true,
       data: {
@@ -103,6 +111,19 @@ export const getWorkflowTool: ConversationTool = {
           ...(receipts ? { transactional_mail_receipts: receipts } : {}),
           ...workflowTriggerView(wf.definition.trigger, bindingFor(bindings, wf.id)),
         },
+        ...(args.include_draft
+          ? {
+              draft: draft
+                ? {
+                    version_id: draft.version_id,
+                    version: draft.version,
+                    digest: draft.digest,
+                    is_active: draft.version_id === draft.current_version_id,
+                    definition: draft.definition,
+                  }
+                : null,
+            }
+          : {}),
       },
     };
   },

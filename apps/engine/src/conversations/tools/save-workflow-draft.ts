@@ -27,6 +27,14 @@ const inputSchema = z
       .describe(
         "Persist the draft even if the most recent dry-run preview was unsuccessful. Surfaces a warning in the response and tags the audit row with `kind: preview_override`. Use only when the operator explicitly confirms.",
       ),
+    expected_draft_version_id: z
+      .string()
+      .uuid()
+      .nullable()
+      .optional()
+      .describe(
+        "Compare-and-swap guard: the saved draft version id you read (get_workflow with include_draft, or the last save result), or null for a workflow that has no saved draft yet. The save is refused with draft_conflict when it no longer matches; omit to rely on the version this conversation observed.",
+      ),
     confirmed: z
       .boolean()
       .default(false)
@@ -106,6 +114,9 @@ export const saveWorkflowDraftTool: ConversationTool = {
       forceCommit: args.force_commit,
       reason: auditReason,
       ...(args.target_workflow_id ? { target_workflow_id: args.target_workflow_id } : {}),
+      ...(args.expected_draft_version_id !== undefined
+        ? { expected_draft_version_id: args.expected_draft_version_id }
+        : {}),
     });
     if (!result.ok) {
       return result;
