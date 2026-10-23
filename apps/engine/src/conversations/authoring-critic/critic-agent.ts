@@ -40,6 +40,9 @@ export function renderDraftForCritic(draft: WorkflowDraftDocument, goal?: string
     draft.output_transform
       ? `output_transform: ${cap(draft.output_transform, RENDERED_TRANSFORM_CAP)}`
       : "",
+    draft.output_transform_function
+      ? `output_transform_function: ${cap(draft.output_transform_function, RENDERED_TRANSFORM_CAP)}`
+      : "",
     `Steps (${draft.steps.length}):\n${cap(JSON.stringify(draft.steps, null, 2), RENDERED_STEPS_CAP)}`,
   ]
     .filter((s) => s.length > 0)

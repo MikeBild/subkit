@@ -86,6 +86,14 @@ describe("renderDraftForCritic", () => {
     expect(renderDraftForCritic(draft(1))).toContain("Goal: not recorded");
     expect(renderDraftForCritic(draft(1))).toContain("Declared output_schema: none");
   });
+
+  test("shows a JavaScript final transform so the output can be checked against the goal", () => {
+    const text = renderDraftForCritic(
+      draft(1, { output_transform_function: "return input.slice(0, 5);" }),
+      "five newest",
+    );
+    expect(text).toContain("output_transform_function: return input.slice(0, 5);");
+  });
 });
 
 describe("attributeCriticReview", () => {
