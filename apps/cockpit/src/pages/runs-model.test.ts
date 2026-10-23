@@ -168,9 +168,13 @@ describe("run naming and request source", () => {
 
   test("names known request sources and shows an unnamed one as the machine value", () => {
     expect(requestSourceLabel("scheduler", t)).toEqual({
-      text: translate("en", "runs.source.scheduler"),
+      text: translate("en", "workflows.trigger.schedule"),
       machine: false,
     });
+    expect(requestSourceLabel("scheduler", (key) => translate("de", key)).text).toBe("Zeitplan");
+    expect(requestSourceLabel("webhook", t).text).toBe(
+      translate("en", "workflows.trigger.webhook"),
+    );
     expect(requestSourceLabel("carrier-pigeon", t)).toEqual({
       text: "carrier-pigeon",
       machine: true,

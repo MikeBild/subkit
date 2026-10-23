@@ -157,4 +157,30 @@ describe("redesign glossary", () => {
     expect(CATALOGS.de["common.technical"]).toBe("Technische Angaben");
     expect(CATALOGS.de["run.environment.dev"]).toBe("Test");
   });
+
+  test("triggers carry the glossary names in both languages", () => {
+    expect(
+      ["workflows.trigger.schedule", "workflows.trigger.webhook", "workflows.trigger.request"].map(
+        (key) => [
+          CATALOGS.de[key as keyof typeof CATALOGS.de],
+          CATALOGS.en[key as keyof typeof CATALOGS.en],
+        ],
+      ),
+    ).toEqual([
+      ["Zeitplan", "Schedule"],
+      ["Webhook", "Webhook"],
+      ["Auf Abruf", "On demand"],
+    ]);
+  });
+
+  test("German branding settings carry no untranslated English labels", () => {
+    const names = new Set(["Standard", "Indigo", "Teal"]);
+    const untranslated = Object.entries(CATALOGS.de)
+      .filter(([key]) => key.startsWith("branding."))
+      .filter(([key, value]) => CATALOGS.en[key as keyof typeof CATALOGS.en] === value)
+      .filter(([, value]) => !names.has(value))
+      .map(([key, value]) => `${key}: ${value}`);
+    expect(untranslated).toEqual([]);
+    expect(CATALOGS.de["branding.darkLogo"]).toBe("Logo für dunkles Design");
+  });
 });

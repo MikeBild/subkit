@@ -654,7 +654,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       workflow_id: id("workflow-ai"),
       workflow_version_id: id("version-ai"),
       status: "succeeded",
-      request_source: "schedule",
+      request_source: "scheduler",
       execution_mode: "dev",
       input: { demo: true },
       started_at: run.startedAt.toISOString(),
