@@ -11,6 +11,7 @@ export interface GateSubject {
   id: string;
   title: string | null;
   status: string;
+  body_excerpt?: string;
 }
 
 export type GateTarget = { kind: "skill_draft" };
@@ -20,6 +21,7 @@ export interface GateCard {
   target?: GateTarget;
   body_excerpt?: string;
   review_digest?: string;
+  review_digests?: Record<string, string>;
 }
 
 interface GateRecord {
@@ -34,7 +36,7 @@ interface GateSubjectSource {
   ids(args: Record<string, unknown>): string[];
   load(tenantId: string, ids: string[], db: Executor): Promise<GateRecord[]>;
   actionable(status: string): boolean;
-  single?: true;
+  reviewed?: true;
 }
 
 function uniqueIds(value: unknown): string[] {
@@ -70,10 +72,14 @@ async function loadIntakeItems(
 
 const SOURCES: Record<string, GateSubjectSource> = {
   approve_skill_candidate: {
-    ids: (args) => (typeof args.candidate_id === "string" ? [args.candidate_id] : []),
+    ids: (args) =>
+      uniqueIds([
+        ...(Array.isArray(args.candidate_ids) ? args.candidate_ids : []),
+        ...(typeof args.candidate_id === "string" ? [args.candidate_id] : []),
+      ]),
     load: loadCandidates,
     actionable: (status) => status === "proposed",
-    single: true,
+    reviewed: true,
   },
   reject_skill_candidate: {
     ids: (args) => uniqueIds(args.candidate_ids),
@@ -115,7 +121,20 @@ export async function resolveGateSubjects(
       ? { id, title: row.title, status: row.status }
       : { id, title: null, status: "not_found" };
   });
-  if (!source.single) return { subjects };
+  if (!source.reviewed) return { subjects };
+  if (ids.length > 1) {
+    const review_digests: Record<string, string> = {};
+    const reviewed = subjects.map((subject) => {
+      const row = byId.get(subject.id.toLowerCase());
+      if (row?.review_digest !== undefined) review_digests[subject.id] = row.review_digest;
+      return row?.body !== undefined ? { ...subject, body_excerpt: excerpt(row.body) } : subject;
+    });
+    return {
+      subjects: reviewed,
+      target: { kind: "skill_draft" },
+      ...(Object.keys(review_digests).length > 0 ? { review_digests } : {}),
+    };
+  }
   const row = ids[0] ? byId.get(ids[0].toLowerCase()) : undefined;
   if (!row) return { subjects };
   return {
@@ -156,9 +175,13 @@ export async function prepareGate(
   const card = await resolveGateSubjects(tool, args, tenantId, db);
   const base = buildPendingOutputForTool(tool, args);
   if (!card) return { args, pending_output: base };
-  const { review_digest, ...shown } = card;
+  const { review_digest, review_digests, ...shown } = card;
   return {
-    args: review_digest ? { ...args, expected_review_digest: review_digest } : args,
+    args: {
+      ...args,
+      ...(review_digest ? { expected_review_digest: review_digest } : {}),
+      ...(review_digests ? { expected_review_digests: review_digests } : {}),
+    },
     pending_output: { ...(base ?? {}), ...shown },
   };
 }

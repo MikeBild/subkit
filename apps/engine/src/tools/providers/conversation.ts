@@ -120,7 +120,8 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
   approve_skill_candidate: {
     permission: "skill:write",
     resource: (args) => {
-      const id = (args as { candidate_id?: unknown }).candidate_id;
+      const ids = (args as { candidate_ids?: unknown }).candidate_ids;
+      const id = Array.isArray(ids) ? ids[0] : (args as { candidate_id?: unknown }).candidate_id;
       return typeof id === "string" && id.length > 0 ? { type: "skill_candidate", id } : null;
     },
   },

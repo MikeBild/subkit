@@ -257,7 +257,18 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   },
   approve_skill_candidate: {
     defaultMode: "confirm_before_execution",
-    buildPendingOutput: (input) => pickFields(input, ["candidate_id"]),
+    buildPendingOutput: (input) => {
+      const obj = asObj(input);
+      const ids = [
+        ...new Set([
+          ...(Array.isArray(obj.candidate_ids) ? obj.candidate_ids : []),
+          ...(obj.candidate_id !== undefined ? [obj.candidate_id] : []),
+        ]),
+      ];
+      return ids.length === 1 && obj.candidate_id !== undefined && obj.candidate_ids === undefined
+        ? { candidate_id: obj.candidate_id }
+        : { candidate_count: ids.length, candidate_ids: ids };
+    },
   },
   reject_skill_candidate: {
     defaultMode: "confirm_before_execution",

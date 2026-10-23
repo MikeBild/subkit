@@ -374,6 +374,71 @@ describe("skill candidate chat tools", () => {
       expect(late).toMatchObject({ ok: false, error_code: "already_decided" });
       expect(late.ok ? "" : (late.message ?? "")).not.toContain("nobody was asked");
     });
+
+    test("a batch shows every candidate under one confirmation and binds each digest", async () => {
+      const a = await propose("Batch Alpha");
+      const b = await propose("Batch Beta");
+      const prepared = await prepareGate(
+        "approve_skill_candidate",
+        { candidate_ids: [a, b, a] },
+        tenantId,
+        testDb.db,
+      );
+      expect(prepared.pending_output).toEqual({
+        candidate_count: 2,
+        candidate_ids: [a, b],
+        subjects: [
+          { id: a, title: "Batch Alpha", status: "proposed", body_excerpt: "Body of Batch Alpha" },
+          { id: b, title: "Batch Beta", status: "proposed", body_excerpt: "Body of Batch Beta" },
+        ],
+        target: { kind: "skill_draft" },
+      });
+      const digests = prepared.args.expected_review_digests as Record<string, string>;
+      expect(Object.keys(digests).sort()).toEqual([a, b].sort());
+
+      await testDb.db
+        .update(skillCandidates)
+        .set({ body: "Edited after review" })
+        .where(and(eq(skillCandidates.tenant_id, tenantId), eq(skillCandidates.id, b)));
+      const result = await approveSkillCandidateTool.execute(makeCtx(), prepared.args);
+      expect(result.ok).toBe(true);
+      expect(result.data).toMatchObject({
+        approved: 1,
+        changed_since_review: 1,
+        results: [
+          { candidate_id: a, outcome: "approved" },
+          { candidate_id: b, outcome: "changed_since_review" },
+        ],
+      });
+      expect(await statusOf(a)).toBe("approved");
+      expect(await statusOf(b)).toBe("proposed");
+      const audits = await testDb.db
+        .select({ resource_id: auditLog.resource_id, result: auditLog.result })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, tenantId),
+            eq(auditLog.action, "conversation.approve_skill_candidate"),
+          ),
+        );
+      expect(audits.filter((row) => row.resource_id === a)).toContainEqual({
+        resource_id: a,
+        result: "success",
+      });
+      expect(audits.filter((row) => row.resource_id === b)).toContainEqual({
+        resource_id: b,
+        result: "error",
+      });
+    });
+
+    test("the batch precheck refuses the whole batch when one id is not proposed", async () => {
+      const a = await propose("Batch Gamma");
+      const precheck = approveSkillCandidateTool.precheck;
+      if (!precheck) throw new Error("approve_skill_candidate declares no precheck");
+      const refused = await precheck(makeCtx(), { candidate_ids: [a, MISSING_UUID] });
+      expect(refused).toMatchObject({ ok: false, result: { error_code: "not_found" } });
+      expect(await statusOf(a)).toBe("proposed");
+    });
   });
 
   describe("list_skill_candidates", () => {
