@@ -1,5 +1,5 @@
 import type { SubkitProviderErrorKind } from "./core/base-types.ts";
-import { LlmProviderError } from "./errors.ts";
+import { LlmGenerationAborted, LlmProviderError } from "./errors.ts";
 
 const QUOTA_PATTERNS = [
   "usage limit",
@@ -45,6 +45,7 @@ function readErrorParts(err: unknown): { statusCode: number | null; message: str
 }
 
 export function classifyProviderError(err: unknown): SubkitProviderErrorKind {
+  if (err instanceof LlmGenerationAborted) return "other";
   if (err instanceof LlmProviderError && err.kind !== "other") return err.kind;
   const { statusCode, message } = readErrorParts(err);
 

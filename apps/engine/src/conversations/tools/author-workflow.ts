@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { conversations } from "../../db/schema/index.ts";
 import { runAuthoringPipeline } from "../authoring-pipeline.ts";
+import { nextActionsForNeeds } from "../authoring-regrounding.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { getWorkflowDraft, startNewWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { emitRecordedEvalSignals } from "../recorded-eval.ts";
@@ -62,6 +63,7 @@ export const authorWorkflowTool: ConversationTool = {
     "Name every connector the workflow should call (ids or slugs) — their recorded endpoint samples and docs ground the generation. Probe a connector first when it has never been called; recorded shapes make the difference between a grounded draft and a guessed one.",
     "The result's `recorded_eval` may carry findings and verified `repair` proposals; a valid definition is stashed with them — apply repairs via edit_workflow_patch, then preview with dry_run_workflow (metadata-only for sensitive definitions). A definition that fails workflow validation is never stashed: the call refuses with authoring_definition_invalid and the previous draft stays.",
     "Destinations (recipients, channels, webhook URLs, upload targets) come from the user: when the goal does not name them, ask with ask_user_text/ask_user_form BEFORE calling this tool. A generated definition that fills a destination with a placeholder is refused with authoring_definition_invalid, `requires_user_input: true` and `placeholder_destinations` naming each field; never retry with another placeholder.",
+    "When generation aborts for missing evidence, the result lists `needs`. The engine already re-grounded the named routes and recorded shapes once; follow `next_best_actions` (discover, probe or fetch docs for the named operation) before calling again. With `requires_user_input: true`, ask the user with the prefilled `user_prompt` payload — its default is the production or approved connector — and never guess the answer.",
     "No live HTTP fires inside this call; generation cost rides the tenant token budget (≤2 generation passes + bounded expression repair).",
   ],
   requires_skill: "workflow-authoring",
@@ -117,23 +119,26 @@ export const authorWorkflowTool: ConversationTool = {
     if (!result.ok) {
       const placeholderDestinations = result.placeholder_destinations ?? [];
       const askFirst = placeholderDestinations.length > 0;
+      const needs = result.needs ?? [];
       return {
         ok: false,
         data: buildGateError(ctx.getDraft(), {
           error_code: result.error_code,
           message: result.message,
           recommended_mode: "workflow",
-          requires_user_input: askFirst,
+          requires_user_input: askFirst || result.requires_user_input === true,
           next_best_actions: askFirst
             ? [...PLACEHOLDER_DESTINATION_NEXT_ACTIONS]
-            : result.error_code === "authoring_connectors_unresolved"
-              ? ["list_connectors", "find_connector", "author_workflow"]
-              : result.error_code === "llm_provider_limited" ||
-                  result.error_code === "llm_quota_exhausted"
-                ? []
-                : result.error_code === "authoring_definition_invalid"
-                  ? ["author_workflow"]
-                  : ["author_workflow", "edit_workflow_patch"],
+            : needs.length > 0 || result.user_prompt
+              ? nextActionsForNeeds(needs, result.user_prompt ?? null)
+              : result.error_code === "authoring_connectors_unresolved"
+                ? ["list_connectors", "find_connector", "author_workflow"]
+                : result.error_code === "llm_provider_limited" ||
+                    result.error_code === "llm_quota_exhausted"
+                  ? []
+                  : result.error_code === "authoring_definition_invalid"
+                    ? ["author_workflow"]
+                    : ["author_workflow", "edit_workflow_patch"],
           extra: {
             errors: result.errors,
             attempts: result.attempts,
@@ -141,6 +146,9 @@ export const authorWorkflowTool: ConversationTool = {
               ? { unresolved_connectors: result.unresolved_connectors }
               : {}),
             ...(askFirst ? { placeholder_destinations: placeholderDestinations } : {}),
+            ...(needs.length > 0 ? { needs } : {}),
+            ...(result.user_prompt ? { user_prompt: result.user_prompt } : {}),
+            ...(result.regrounded ? { regrounded: true } : {}),
           },
         }),
       };

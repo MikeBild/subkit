@@ -18,10 +18,10 @@ function collectPlaceholderConnectorSlugs(step: Record<string, unknown>): string
   return [...out];
 }
 
-export async function collectProbedConnectorSlugs(
-  ctx: ToolContext,
-  steps: ReadonlyArray<Record<string, unknown>>,
-): Promise<ReadonlySet<string>> {
+export function collectDraftConnectorRefs(steps: ReadonlyArray<unknown>): {
+  connectorIds: Set<string>;
+  slugCandidates: Set<string>;
+} {
   const connectorIds = new Set<string>();
   const slugCandidates = new Set<string>();
   for (const s of steps) {
@@ -33,6 +33,14 @@ export async function collectProbedConnectorSlugs(
       slugCandidates.add(slug);
     }
   }
+  return { connectorIds, slugCandidates };
+}
+
+export async function collectProbedConnectorSlugs(
+  ctx: ToolContext,
+  steps: ReadonlyArray<Record<string, unknown>>,
+): Promise<ReadonlySet<string>> {
+  const { connectorIds, slugCandidates } = collectDraftConnectorRefs(steps);
   if (connectorIds.size === 0 && slugCandidates.size === 0) return new Set<string>();
   try {
     const idFilter = connectorIds.size > 0 ? inArray(connectorsTable.id, [...connectorIds]) : null;
