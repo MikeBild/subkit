@@ -38,6 +38,7 @@ describe("lintJsBody", () => {
   test("flags Date.now, Math.random and host APIs", () => {
     expect(
       codes(
+        // allow-wall-clock allow-random
         "const t = Date.now(); const r = Math.random(); fetch('x'); const m = require('m'); console.log(process.env); return import('y');",
       ),
     ).toEqual([
@@ -81,6 +82,7 @@ describe("lintJsBody", () => {
   test("a local shadowing a global is not a finding", () => {
     expect(
       codes(
+        // allow-wall-clock
         "const Date = { now: () => 1 }; const sk = { anything: 1 }; return [Date.now(), sk.anything];",
       ),
     ).toEqual([]);

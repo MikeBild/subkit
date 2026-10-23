@@ -59,6 +59,7 @@ describe("sandbox globals contract", () => {
     const block = renderSandboxGlobalsContract().join("\n");
     expect(block).toContain("sk.fmt.number");
     expect(block).toContain("Intl");
+    // allow-wall-clock
     expect(block).toContain("Date.now()");
     expect(block.length).toBeLessThan(2000);
   });

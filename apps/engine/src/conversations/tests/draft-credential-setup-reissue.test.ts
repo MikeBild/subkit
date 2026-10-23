@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -8,12 +8,30 @@ import {
   nativeDeliveryFailureCode,
 } from "../../mcp/capabilities/conversation-native-elicitation.ts";
 import {
+  createDeterministicClock,
+  FROZEN_NOW,
+  getTestNow,
+  installClock,
+  type NowProvider,
+  restoreClock,
+} from "../../test-helpers/determinism/clock.ts";
+import {
   DRAFT_CREDENTIAL_SETUP_KIND,
   DRAFT_CREDENTIAL_SETUP_MAX_REISSUES,
   DRAFT_CREDENTIAL_SETUP_TTL_MS,
   type ReissueDeps,
   reissueExpiredDraftCredentialSetup,
 } from "../draft-credential-setup.ts";
+
+let prevClock: NowProvider | null = null;
+
+beforeEach(() => {
+  prevClock = installClock(createDeterministicClock());
+});
+
+afterEach(() => {
+  restoreClock(prevClock);
+});
 
 const OLD_URL = "https://engine.example.test/v1/connector-drafts/c/credentials/setup?grant=old";
 const NEW_URL = "https://engine.example.test/v1/connector-drafts/c/credentials/setup?grant=new";
@@ -37,7 +55,7 @@ function deps(over: Partial<ReissueDeps> = {}) {
     mint: () => ({
       ok: true,
       url: NEW_URL,
-      expires_at: new Date(Date.now() + DRAFT_CREDENTIAL_SETUP_TTL_MS),
+      expires_at: new Date(getTestNow() + DRAFT_CREDENTIAL_SETUP_TTL_MS),
     }),
     audit: (async (entry: unknown) => {
       audits.push(entry);
@@ -52,7 +70,7 @@ function setupInput(over: Record<string, unknown> = {}) {
   return {
     kind: DRAFT_CREDENTIAL_SETUP_KIND,
     setup_url: OLD_URL,
-    expires_at: new Date(Date.now() - 1_000).toISOString(),
+    expires_at: new Date(getTestNow() - 1_000).toISOString(),
     auth_type: "bearer",
     connector_slug: "example",
     ...over,
@@ -93,7 +111,7 @@ describe("an expired secure credential link is re-issued on the same pending pro
       kind: DRAFT_CREDENTIAL_SETUP_KIND,
     });
     expect(String(result.input.note)).toContain(NEW_URL);
-    const lifetime = result.expires_at.getTime() - Date.now();
+    const lifetime = result.expires_at.getTime() - getTestNow();
     expect(lifetime).toBeLessThanOrEqual(DRAFT_CREDENTIAL_SETUP_TTL_MS);
     expect(lifetime).toBeGreaterThan(DRAFT_CREDENTIAL_SETUP_TTL_MS - 60_000);
     expect(writes[0]).toMatchObject({ expires_at: result.expires_at });
@@ -111,7 +129,7 @@ describe("an expired secure credential link is re-issued on the same pending pro
     const d = deps();
     const result = await reissue(
       db,
-      setupInput({ expires_at: new Date(Date.now() + 60_000).toISOString() }),
+      setupInput({ expires_at: new Date(getTestNow() + 60_000).toISOString() }),
       d.value,
     );
     expect(result).toEqual({ reissued: false, reason: "still_valid" });
@@ -184,7 +202,7 @@ describe("a credential link is only re-issued where it can be delivered", () => 
         decision_reason: null,
         delivery_last_error: null,
         delivery_attempts: 0,
-        created_at: new Date().toISOString(),
+        created_at: new Date(FROZEN_NOW).toISOString(),
       },
       nativeElicitation: { elicitForm: async () => ({ action: "cancel" }) },
       resume: async () => ({ isError: false, content: [] }),
