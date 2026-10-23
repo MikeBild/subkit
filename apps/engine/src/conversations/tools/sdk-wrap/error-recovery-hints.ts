@@ -138,6 +138,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the connector is switched off by an operator, so nothing was sent — the same refusal a workflow step on it gets. Do not retry, and do not look for another route to the same system. Tell the user which connector and environment is disabled (see `details`) and that it has to be enabled before it can be called; enabling it is their decision.",
   playbooks_disabled:
     "this conversation has playbooks turned off, so its plan cannot be updated. Continue with ordinary conversation; do not retry the playbook tool or change the conversation mode without the user's instruction.",
+  connector_scope_required:
+    "no connector is in scope for this docs search, so nothing was searched — pass `connector` with one of `resolvable_connectors` (id or slug), or bind a request step to a connector in the draft first. Do not guess a slug that is not listed.",
   connector_not_found:
     "the connector id is unknown — call find_connector or list_connectors to discover the correct id",
   connector_has_no_base_url:

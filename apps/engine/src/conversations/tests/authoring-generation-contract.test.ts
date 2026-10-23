@@ -19,7 +19,7 @@ test("nested generation keeps the user's goal while separating outer interactive
   expect(prompt).toContain("not actions for this nested generation stage");
   expect(prompt).toContain("If a required fact is absent, use abort");
   expect(prompt).toContain(
-    "never invent endpoints, credentials, caller identities or approval evidence",
+    "Never invent endpoints, credentials, caller identities or approval evidence",
   );
   expect(prompt).toContain('"message": "example"');
   expect(prompt).toContain("FUNCTION BODY");
