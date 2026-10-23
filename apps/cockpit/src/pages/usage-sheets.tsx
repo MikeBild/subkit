@@ -127,11 +127,16 @@ function SheetList({ items, empty }: { items: readonly ListItem[]; empty: string
                 onClick={item.onOpen}
                 aria-label={t("usage.openDetails", { name: item.label })}
                 className={`${row} transition-colors hover:bg-muted/50`}
+                data-testid={`usage-sheet-item-${item.key}`}
               >
                 {body}
               </button>
             ) : item.href ? (
-              <a className={`${row} transition-colors hover:bg-muted/50`} href={item.href}>
+              <a
+                className={`${row} transition-colors hover:bg-muted/50`}
+                href={item.href}
+                data-testid={`usage-sheet-link-${item.key}`}
+              >
                 {body}
               </a>
             ) : (
@@ -489,6 +494,7 @@ function ModelSheet({ ctx, id }: { ctx: SheetContext; id: string }) {
             ) : ctx.canWriteSettings ? (
               <a
                 className="font-medium underline underline-offset-2"
+                data-testid="usage-price-settings"
                 href={absolute(settingsHref("tokens.prices"))}
               >
                 {t("usage.price.action")}

@@ -1300,13 +1300,13 @@ const EN = {
   "resource.usage.runs": "Runs",
   "resource.usage.tokensAmount.one": "1 token",
   "resource.usage.tokensAmount.other": "{count} tokens",
-  "resource.usage.capShare": "{percent} % of the monthly cap",
+  "resource.usage.capShare": "{percent}% of the monthly budget",
   "resource.usage.consumptionDescription":
-    "What this workspace spent on model calls, and how much of the monthly cap is left.",
+    "What this workspace spent on model calls, and how much of the monthly budget is left.",
   "resource.usage.budgetUnreadable":
-    "The cap could not be read — this says nothing about whether one is set.",
+    "The budget could not be read — this says nothing about whether one is set.",
   "resource.usage.unattributed": "Not attributable to one",
-  "resource.usage.noCap": "No cap configured",
+  "resource.usage.noCap": "No budget set",
   "resource.usage.pressure.ample": "Comfortable",
   "resource.usage.pressure.tightening": "Tightening",
   "resource.usage.pressure.critical": "Nearly exhausted",
@@ -3760,10 +3760,10 @@ const EN = {
     "A restart is already running or ended less than a minute ago.",
   "settings.auth.removeConsequence":
     "Nobody can sign in through it any more — you included, if you use it.",
-  "resource.usage.setCap": "Set a cap",
-  "resource.usage.raiseCap": "adjust the cap",
+  "resource.usage.setCap": "Set a budget",
+  "resource.usage.raiseCap": "adjust the budget",
   "resource.usage.capReached":
-    "When the cap is used up, chat, authoring and fixes stop until the month ends.",
+    "When the budget is used up, chat, authoring and fixes stop until the month ends.",
   "resource.usage.unknownWorkflow": "A workflow this workspace no longer has",
   "resource.usage.workflowUnreadable": "Name not readable",
   "usage.purpose": "What AI calls cost, and what for.",
