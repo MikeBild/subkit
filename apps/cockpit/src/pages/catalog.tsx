@@ -28,6 +28,7 @@ import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { WorkflowOnboarding } from "@/components/cockpit/workflow-onboarding";
 import { TRIGGER_ICONS } from "@/components/cockpit/workflow-steps-list";
 import { ForbiddenState } from "@/components/failure-state";
+import { CONNECTOR_STRIP_KEYS, connectorRecordStrip } from "@/lib/connector-strip";
 import { cronWords } from "@/lib/cron-words";
 import { LOCALE_TAGS, type Locale, pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -337,8 +338,8 @@ function catalogColumns(
       (row) => row.health_state,
       t("catalog.status"),
       (row) => {
-        const state = row.enabled === false ? "disabled" : stringField(row, "health_state");
-        return state ? <StatusBadge state={state} label={statusLabel(t, state)} /> : MISSING;
+        const strip = connectorRecordStrip(row);
+        return <StatusBadge state={strip.tone} label={t(CONNECTOR_STRIP_KEYS[strip.kind])} />;
       },
       { width: "w-[18%]" },
     ),
@@ -425,9 +426,7 @@ export function CatalogPage({
               return t(OPERATING_STATUS_KEYS[catalogOperatingStatus(row.operating_status)]);
             }
             if (groupMode === "kind") return driverLabel(stringField(row, "driver"), t) || MISSING;
-            return row.enabled === false
-              ? statusLabel(t, "disabled")
-              : statusLabel(t, stringField(row, "health_state") ?? "unknown");
+            return t(CONNECTOR_STRIP_KEYS[connectorRecordStrip(row).kind]);
           },
         };
   const hasActiveFilters =
