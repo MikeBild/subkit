@@ -137,7 +137,8 @@ export function hostedRowBytes(table: (typeof columns)[number], alias: string): 
       return bytes;
     })
     .filter((value): value is string => value !== null);
-  if (table.table === "files") fields.push(`${alias}."size_bytes"::bigint`);
+  if (table.table === "files" || table.table === "file_versions")
+    fields.push(`${alias}."size_bytes"::bigint`);
   const bytes = fields.length ? fields.join(" + ") : "0::bigint";
   if (table.table === "tenants")
     return `CASE WHEN ${alias}.deleted_at IS NOT NULL AND ${alias}.status='pending_deletion' AND ${alias}.display_name='Deleted workspace' AND ${alias}.slug ~ '^[0-9a-f-]{36}$' AND ${alias}.llm_primary IS NULL AND ${alias}.llm_fallback IS NULL AND ${alias}.egress_guard_mode IS NULL AND ${alias}.timezone='UTC' THEN 0::bigint ELSE ${bytes} END`;

@@ -563,6 +563,7 @@ export const FileDownloadedMetadataSchema = z.object({
   size_bytes_bucket: SizeBucketSchema,
   range: z.boolean().optional(),
   content_type: z.string().nullable().optional(),
+  version: z.number().int().positive().optional(),
   request_source: RequestSourceSchema.optional(),
 });
 export type FileDownloadedMetadata = z.infer<typeof FileDownloadedMetadataSchema>;
@@ -579,6 +580,9 @@ export const FileReplacedMetadataSchema = z.object({
   content_type: z.string().nullable().optional(),
   size_bytes_bucket: SizeBucketSchema,
   sha256_prefix: z.string().regex(/^[0-9a-f]{16}$/),
+  version: z.number().int().positive().optional(),
+  restored_from_version: z.number().int().positive().optional(),
+  pruned_versions: z.number().int().positive().optional(),
   request_source: RequestSourceSchema.optional(),
 });
 export type FileReplacedMetadata = z.infer<typeof FileReplacedMetadataSchema>;

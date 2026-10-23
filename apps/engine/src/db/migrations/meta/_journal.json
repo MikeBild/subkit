@@ -1023,6 +1023,13 @@
       "when": 1792660948015,
       "tag": "0145_catalog_category_lock_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1792732212803,
+      "tag": "0146_file_versions",
+      "breakpoints": true
     }
   ]
 }

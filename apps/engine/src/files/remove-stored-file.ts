@@ -6,6 +6,7 @@ import { files } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
 import { getObjectStore } from "../storage/object-store.ts";
 import { storageKey } from "./resolver.ts";
+import { fileVersionKeys } from "./versions.ts";
 
 export async function removeStoredFile(
   db: Executor,
@@ -29,10 +30,12 @@ export async function removeStoredFile(
       const [row] = await tx.select().from(files).where(tenantWhere).limit(1);
       if (!row) return undefined;
       const store = getObjectStore();
-      const key = storageKey(row.storage_uri);
-      await store.delete(key);
-      if (await store.head(key))
-        throw new Error("Object deletion could not be verified; file reservation retained");
+      const keys = [...(await fileVersionKeys(tx, tenantId, row.id)), storageKey(row.storage_uri)];
+      for (const key of keys) {
+        await store.delete(key);
+        if (await store.head(key))
+          throw new Error("Object deletion could not be verified; file reservation retained");
+      }
       await tx.delete(files).where(tenantWhere);
       await auditAwait(
         {

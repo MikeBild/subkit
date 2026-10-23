@@ -1,12 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, ne } from "drizzle-orm";
+import type { Context } from "hono";
 import { DescriptionAcceptanceError, metadataChange } from "../../api/catalog-metadata.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
+  FILE_VERSION_RETENTION,
   FileIdSchema,
   FileSchema,
   FileUsageSchema,
+  FileVersionListSchema,
   InlineUploadSchema,
   MAX_INLINE_BYTES,
   parseFileIdOrThrow,
@@ -18,12 +21,12 @@ import {
   actorType,
   auditAwait,
   bucketSize,
+  FileDownloadedMetadataSchema,
   FileRenamedMetadataSchema,
-  FileReplacedMetadataSchema,
   readRequestSource,
 } from "../../audit/index.ts";
 import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
-import { writeEvent } from "../../db/events.ts";
+import type { Db } from "../../db/client.ts";
 import {
   conversations,
   fileLinks,
@@ -36,6 +39,13 @@ import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import type { ScanResult } from "../../files/scanner.ts";
 import { getScanner, SCANNER_TIMEOUT_SECONDS } from "../../files/scanner.ts";
 import { dagNamesFile } from "../../files/usage.ts";
+import {
+  DuplicateFileContentError,
+  findFileVersion,
+  listFileVersions,
+  type NextContent,
+  replaceFileContent,
+} from "../../files/versions.ts";
 import { logger } from "../../logging/index.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -50,6 +60,86 @@ const FileIdParam = z.object({
 });
 
 const notFound = { code: "not_found", message: "file not found" } as const;
+const versionNotFound = { code: "not_found", message: "file version not found" } as const;
+
+const FileVersionParam = z.object({
+  id: FileIdSchema.openapi({ param: { name: "id", in: "path" } }),
+  version: z.coerce
+    .number()
+    .int()
+    .positive()
+    .openapi({ param: { name: "version", in: "path" }, type: "integer" }),
+});
+
+async function liveFile(db: Db, tenantId: string, id: string) {
+  try {
+    const row = await requireFileForTenant(db, tenantId, parseFileIdOrThrow(id));
+    return row.deleted_at ? null : row;
+  } catch {
+    return null;
+  }
+}
+
+async function findTwin(db: Db, tenantId: string, sha256: string, fileId: string) {
+  const [twin] = await db
+    .select({ id: files.id })
+    .from(files)
+    .where(and(eq(files.tenant_id, tenantId), eq(files.sha256, sha256), ne(files.id, fileId)))
+    .limit(1);
+  return twin?.id ?? null;
+}
+
+function duplicate(twinId: string) {
+  return {
+    code: "duplicate_content",
+    message: "another stored file already has exactly this content",
+    hint: `Use the existing file ${toFileId(twinId)} instead.`,
+  };
+}
+
+async function discardObject(key: string) {
+  try {
+    await getObjectStore().delete(key);
+  } catch (err) {
+    logger.warn({
+      module: "http.files",
+      action: "replace.discard_object",
+      msg: "unused replacement object was not removed",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function applyContent(
+  c: Context<AppEnv>,
+  fileId: string,
+  key: string,
+  content: NextContent,
+): Promise<
+  | { kind: "replaced" | "unchanged"; row: typeof files.$inferSelect }
+  | { kind: "not_found" }
+  | { kind: "duplicate"; twinId: string }
+> {
+  const principal = requireAuth(c);
+  try {
+    const result = await replaceFileContent(c.get("db"), {
+      tenantId: principal.tenant_id,
+      fileId,
+      actor: {
+        kind: actorType(principal) === "user" ? "user" : "system_account",
+        id: principal.id,
+      },
+      content,
+      requestSource: readRequestSource(c),
+    });
+    if (result.kind !== "replaced") await discardObject(key);
+    return result;
+  } catch (err) {
+    await discardObject(key);
+    if (err instanceof DuplicateFileContentError) return { kind: "duplicate", twinId: err.twinId };
+    throw err;
+  }
+}
 
 async function scanBytes(
   bytes: Uint8Array,
@@ -71,6 +161,9 @@ async function scanBytes(
 
 export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/files/:id/replace", requireAnyPermission(["file:write"]));
+  app.use("/v1/files/:id/versions", requireAnyPermission(["file:read"]));
+  app.use("/v1/files/:id/versions/:version/content", requireAnyPermission(["file:read"]));
+  app.use("/v1/files/:id/versions/:version/restore", requireAnyPermission(["file:write"]));
   app.use("/v1/files/:id/usage", requireAnyPermission(["file:read"]));
 
   const renameRoute = createRoute({
@@ -231,13 +324,8 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const tenant_id = principal.tenant_id;
-    let row: typeof files.$inferSelect;
-    try {
-      row = await requireFileForTenant(db, tenant_id, parseFileIdOrThrow(id));
-    } catch {
-      return c.json(notFound, 404);
-    }
-    if (row.deleted_at) return c.json(notFound, 404);
+    const row = await liveFile(db, tenant_id, id);
+    if (!row) return c.json(notFound, 404);
 
     const bytes = Uint8Array.from(Buffer.from(body.content_base64, "base64"));
     if (bytes.byteLength === 0) return c.json({ code: "bad_input", message: "empty content" }, 400);
@@ -250,20 +338,8 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     const sha256 = createHash("sha256").update(bytes).digest("hex");
     if (sha256 === row.sha256 && body.filename === row.filename)
       return c.json(toFileWire(row), 200);
-    const twin = await db
-      .select({ id: files.id, filename: files.filename })
-      .from(files)
-      .where(and(eq(files.tenant_id, tenant_id), eq(files.sha256, sha256), ne(files.id, row.id)))
-      .limit(1);
-    if (twin[0])
-      return c.json(
-        {
-          code: "duplicate_content",
-          message: "another stored file already has exactly this content",
-          hint: `Use the existing file ${toFileId(twin[0].id)} instead.`,
-        },
-        409,
-      );
+    const twin = await findTwin(db, tenant_id, sha256, row.id);
+    if (twin) return c.json(duplicate(twin), 409);
 
     const key = buildObjectKey(tenant_id, randomUUID());
     await getObjectStore().put(key, bytes);
@@ -272,9 +348,7 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
       filename: body.filename,
     });
     if (scan.verdict !== "clean") {
-      try {
-        await getObjectStore().delete(key);
-      } catch {}
+      await discardObject(key);
       return c.json(
         {
           code: "scan_rejected",
@@ -286,61 +360,173 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
         422,
       );
     }
+    const result = await applyContent(c, row.id, key, {
+      filename: body.filename,
+      content_type: body.content_type ?? null,
+      size_bytes: bytes.byteLength,
+      sha256,
+      storage_uri: composeStorageUri(key),
+      scan_result: scan.verdict,
+      restored_from: null,
+    });
+    if (result.kind === "duplicate") return c.json(duplicate(result.twinId), 409);
+    if (result.kind === "not_found") return c.json(notFound, 404);
+    return c.json(toFileWire(result.row), 200);
+  });
 
-    const previousKey = storageKey(row.storage_uri);
-    const now = new Date();
-    const [updated] = await db
-      .update(files)
-      .set({
-        filename: body.filename,
-        content_type: body.content_type ?? null,
-        size_bytes: bytes.byteLength,
-        storage_uri: composeStorageUri(key),
-        sha256,
-        scan_result: scan.verdict,
-        status: "ready",
-        updated_at: now,
-        replaced_at: now,
-      })
-      .where(eq(files.id, row.id))
-      .returning();
-    try {
-      await getObjectStore().delete(previousKey);
-    } catch (err) {
-      logger.warn({
-        module: "http.files",
-        action: "replace.previous_object",
-        msg: "replaced file's previous object was not removed",
-        file_id: row.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+  const versionsRoute = createRoute({
+    method: "get",
+    path: "/v1/files/{id}/versions",
+    tags: [TAG],
+    summary: "List a file's content versions, newest first",
+    description: `The current content and every earlier content kept after a replace or restore, newest first. \`current\` marks the content the file serves now. The newest ${FILE_VERSION_RETENTION} earlier versions are kept; deleting the file removes all of them.`,
+    security: [{ bearerAuth: [] }],
+    request: { params: FileIdParam },
+    responses: {
+      200: {
+        description: "OK",
+        content: { "application/json": { schema: FileVersionListSchema } },
+      },
+      404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
+    },
+  });
+
+  app.openapi(versionsRoute, async (c) => {
+    const { id } = c.req.valid("param");
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const row = await liveFile(db, principal.tenant_id, id);
+    if (!row) return c.json(notFound, 404);
+    return c.json({ items: await listFileVersions(db, principal.tenant_id, row) }, 200);
+  });
+
+  const versionContentRoute = createRoute({
+    method: "get",
+    path: "/v1/files/{id}/versions/{version}/content",
+    tags: [TAG],
+    summary: "Download one content version of a file",
+    security: [{ bearerAuth: [] }],
+    request: { params: FileVersionParam },
+    responses: {
+      200: { description: "OK" },
+      404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
+    },
+  });
+
+  app.openapi(versionContentRoute, async (c) => {
+    const { id, version } = c.req.valid("param");
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const row = await liveFile(db, principal.tenant_id, id);
+    if (!row) return c.json(notFound, 404);
+    const source =
+      version === row.version
+        ? row
+        : await findFileVersion(db, principal.tenant_id, row.id, version);
+    if (!source) return c.json(versionNotFound, 404);
     await auditAwait(
       {
-        tenant_id,
+        tenant_id: principal.tenant_id,
         actor_type: actorType(principal),
         actor_id: principal.id,
-        action: AuditAction.FILE_REPLACED,
+        action: AuditAction.FILE_DOWNLOADED,
         resource_type: "file",
         resource_id: row.id,
         result: "success",
-        metadata: FileReplacedMetadataSchema.parse({
+        metadata: FileDownloadedMetadataSchema.parse({
           file_id: row.id,
-          content_type: body.content_type ?? null,
-          size_bytes_bucket: bucketSize(bytes.byteLength),
-          sha256_prefix: sha256.slice(0, 16),
+          content_type: source.content_type,
+          size_bytes_bucket: bucketSize(source.size_bytes),
+          version,
           request_source: readRequestSource(c),
         }),
       },
       db,
     );
-    await writeEvent(db, {
-      tenant_id,
-      channel: "notification.emitted",
-      type: "file.replaced",
-      payload: { file_id: toFileId(row.id) },
+    const iterable = await getObjectStore().openRead(storageKey(source.storage_uri));
+    const iterator = iterable[Symbol.asyncIterator]();
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const { value, done } = await iterator.next();
+          if (done) {
+            controller.close();
+            return;
+          }
+          if (value) controller.enqueue(value);
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+      async cancel(reason) {
+        try {
+          await iterator.return?.(reason);
+        } catch {}
+      },
     });
-    return c.json(toFileWire(updated ?? row), 200);
+    return c.body(stream, 200, {
+      "content-type": source.content_type ?? "application/octet-stream",
+      "content-length": String(source.size_bytes),
+    });
+  });
+
+  const restoreRoute = createRoute({
+    method: "post",
+    path: "/v1/files/{id}/versions/{version}/restore",
+    tags: [TAG],
+    summary: "Make an earlier content version the file's content again",
+    description:
+      "Restores the content of an earlier version as a new version. The content it replaces stays in the history, so a restore can be undone the same way. The id and every reference stay unchanged.",
+    security: [{ bearerAuth: [] }],
+    request: { params: FileVersionParam },
+    responses: {
+      200: {
+        description: "Restored as the newest version",
+        content: { "application/json": { schema: FileSchema } },
+      },
+      404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
+      409: {
+        description: "duplicate_content or current_version",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
+    },
+  });
+
+  app.openapi(restoreRoute, async (c) => {
+    const { id, version } = c.req.valid("param");
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const tenant_id = principal.tenant_id;
+    const row = await liveFile(db, tenant_id, id);
+    if (!row) return c.json(notFound, 404);
+    if (version === row.version)
+      return c.json(
+        { code: "current_version", message: `version ${version} is already the current content` },
+        409,
+      );
+    const source = await findFileVersion(db, tenant_id, row.id, version);
+    if (!source?.sha256) return c.json(versionNotFound, 404);
+    const twin = await findTwin(db, tenant_id, source.sha256, row.id);
+    if (twin) return c.json(duplicate(twin), 409);
+    const store = getObjectStore();
+    const key = buildObjectKey(tenant_id, randomUUID());
+    await store.putStream(
+      key,
+      await store.openRead(storageKey(source.storage_uri)),
+      source.size_bytes,
+    );
+    const result = await applyContent(c, row.id, key, {
+      filename: source.filename,
+      content_type: source.content_type,
+      size_bytes: source.size_bytes,
+      sha256: source.sha256,
+      storage_uri: composeStorageUri(key),
+      scan_result: "clean",
+      restored_from: version,
+    });
+    if (result.kind === "duplicate") return c.json(duplicate(result.twinId), 409);
+    if (result.kind === "not_found") return c.json(notFound, 404);
+    return c.json(toFileWire(result.row), 200);
   });
 
   const usageRoute = createRoute({

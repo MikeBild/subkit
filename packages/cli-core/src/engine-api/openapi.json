@@ -24221,6 +24221,11 @@
               "null"
             ]
           },
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Number of the current content version."
+          },
           "deleted_at": {
             "type": [
               "string",
@@ -24268,6 +24273,7 @@
           "created_at",
           "updated_at",
           "replaced_at",
+          "version",
           "deleted_at",
           "slug",
           "reference",
@@ -24661,6 +24667,110 @@
             ]
           }
         }
+      },
+      "FileVersionList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileVersion"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "FileVersion": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "current": {
+            "type": "boolean",
+            "description": "True for the content the file serves now."
+          },
+          "filename": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "restored_from": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Version this content was restored from, or null for an upload."
+          },
+          "uploaded_at": {
+            "type": "string",
+            "description": "When this content became the file's content."
+          },
+          "uploaded_by": {
+            "$ref": "#/components/schemas/FileVersionActor"
+          },
+          "replaced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When newer content replaced this one. Null for the current version."
+          }
+        },
+        "required": [
+          "version",
+          "current",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "sha256",
+          "restored_from",
+          "uploaded_at",
+          "uploaded_by",
+          "replaced_at"
+        ]
+      },
+      "FileVersionActor": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "system_account"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "description": "Who uploaded or restored this content. Null when unknown."
       },
       "FileUsage": {
         "type": "object",
@@ -52437,6 +52547,162 @@
           },
           "422": {
             "description": "scan_rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{id}/versions": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "List a file's content versions, newest first",
+        "description": "The current content and every earlier content kept after a replace or restore, newest first. `current` marks the content the file serves now. The newest 20 earlier versions are kept; deleting the file removes all of them.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "$ref": "#/components/schemas/FileId"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileVersionList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{id}/versions/{version}/content": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Download one content version of a file",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "$ref": "#/components/schemas/FileId"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer"
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{id}/versions/{version}/restore": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Make an earlier content version the file's content again",
+        "description": "Restores the content of an earlier version as a new version. The content it replaces stays in the history, so a restore can be undone the same way. The id and every reference stay unchanged.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "$ref": "#/components/schemas/FileId"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer"
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Restored as the newest version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/File"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "duplicate_content or current_version",
             "content": {
               "application/json": {
                 "schema": {

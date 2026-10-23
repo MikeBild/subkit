@@ -3456,6 +3456,92 @@
     "tenant": true
   },
   {
+    "table": "file_versions",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "tenant_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "file_id",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "enum": null
+      },
+      {
+        "name": "filename",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "content_type",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "size_bytes",
+        "type": "bigint",
+        "enum": null
+      },
+      {
+        "name": "storage_uri",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "sha256",
+        "type": "text",
+        "enum": null
+      },
+      {
+        "name": "restored_from",
+        "type": "integer",
+        "enum": null
+      },
+      {
+        "name": "uploaded_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "uploaded_by_kind",
+        "type": "audit_actor_kind",
+        "enum": ["user", "system_account", "system", "unknown"]
+      },
+      {
+        "name": "uploaded_by",
+        "type": "uuid",
+        "enum": null
+      },
+      {
+        "name": "replaced_at",
+        "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "replaced_by_kind",
+        "type": "audit_actor_kind",
+        "enum": ["user", "system_account", "system", "unknown"]
+      },
+      {
+        "name": "replaced_by",
+        "type": "uuid",
+        "enum": null
+      }
+    ],
+    "tenant": true
+  },
+  {
     "table": "files",
     "columns": [
       {
@@ -3556,6 +3642,16 @@
       {
         "name": "updated_at",
         "type": "timestamp with time zone",
+        "enum": null
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "enum": null
+      },
+      {
+        "name": "restored_from",
+        "type": "integer",
         "enum": null
       },
       {

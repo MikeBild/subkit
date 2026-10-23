@@ -82,6 +82,7 @@ export function toFileWire(row: typeof files.$inferSelect): FileWire {
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
     replaced_at: row.replaced_at ? row.replaced_at.toISOString() : null,
+    version: row.version,
     deleted_at: row.deleted_at ? row.deleted_at.toISOString() : null,
     slug: row.slug,
     reference: fileReference(row.slug),

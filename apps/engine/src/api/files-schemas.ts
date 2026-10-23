@@ -59,6 +59,7 @@ export const FileSchema = z
     created_at: z.string(),
     updated_at: z.string(),
     replaced_at: z.string().nullable(),
+    version: z.number().int().positive().describe("Number of the current content version."),
     deleted_at: z.string().nullable(),
     slug: z.string().nullable(),
     reference: z.string().nullable(),
@@ -224,6 +225,42 @@ export const FileUsageSchema = z
   })
   .openapi("FileUsage");
 
+export const FileVersionActorSchema = z
+  .object({ kind: z.enum(["user", "system_account"]), id: z.string().uuid() })
+  .nullable()
+  .openapi("FileVersionActor");
+
+export const FileVersionSchema = z
+  .object({
+    version: z.number().int().positive(),
+    current: z.boolean().describe("True for the content the file serves now."),
+    filename: z.string(),
+    content_type: z.string().nullable(),
+    size_bytes: z.number().int().nonnegative(),
+    sha256: z.string().nullable(),
+    restored_from: z
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .describe("Version this content was restored from, or null for an upload."),
+    uploaded_at: z.string().describe("When this content became the file's content."),
+    uploaded_by: FileVersionActorSchema.describe(
+      "Who uploaded or restored this content. Null when unknown.",
+    ),
+    replaced_at: z
+      .string()
+      .nullable()
+      .describe("When newer content replaced this one. Null for the current version."),
+  })
+  .openapi("FileVersion");
+
+export const FileVersionListSchema = z
+  .object({ items: z.array(FileVersionSchema) })
+  .openapi("FileVersionList");
+
+export const FILE_VERSION_RETENTION = 20;
+
 export { MAX_INLINE_BYTES } from "@shared/index.ts";
 
 export type FileWire = z.infer<typeof FileSchema>;
@@ -235,4 +272,5 @@ export type LinkRequest = z.infer<typeof LinkRequestSchema>;
 export type FileLinkWire = z.infer<typeof FileLinkSchema>;
 export type FileStats = z.infer<typeof FileStatsSchema>;
 export type FileUsage = z.infer<typeof FileUsageSchema>;
+export type FileVersionWire = z.infer<typeof FileVersionSchema>;
 export type ListFilesQuery = z.infer<typeof ListFilesQuerySchema>;

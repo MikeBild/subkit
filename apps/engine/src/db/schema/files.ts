@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  check,
   index,
+  integer,
   pgEnum,
   pgTable,
   text,
@@ -10,7 +12,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { catalogMetadata, catalogMetadataConstraints, tenantId, timestamps } from "./_common.ts";
-import { tenants } from "./identity.ts";
+import { auditActorKindEnum, tenants } from "./identity.ts";
 
 export const fileStatusEnum = pgEnum("file_status", [
   "pending",
@@ -49,6 +51,8 @@ export const files = pgTable(
     slug: text("slug"),
     ...catalogMetadata(),
     ...timestamps,
+    version: integer("version").notNull().default(1),
+    restored_from: integer("restored_from"),
     replaced_at: timestamp("replaced_at", { withTimezone: true }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
   },
@@ -59,6 +63,34 @@ export const files = pgTable(
       .on(t.tenant_id, t.slug)
       .where(sql`${t.slug} IS NOT NULL AND ${t.deleted_at} IS NULL`),
     ...catalogMetadataConstraints("files", t),
+  ],
+);
+
+export const fileVersions = pgTable(
+  "file_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    file_id: uuid("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    filename: text("filename").notNull(),
+    content_type: text("content_type"),
+    size_bytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    storage_uri: text("storage_uri").notNull(),
+    sha256: text("sha256"),
+    restored_from: integer("restored_from"),
+    uploaded_at: timestamp("uploaded_at", { withTimezone: true }).notNull(),
+    uploaded_by_kind: auditActorKindEnum("uploaded_by_kind"),
+    uploaded_by: uuid("uploaded_by"),
+    replaced_at: timestamp("replaced_at", { withTimezone: true }).notNull(),
+    replaced_by_kind: auditActorKindEnum("replaced_by_kind"),
+    replaced_by: uuid("replaced_by"),
+  },
+  (t) => [
+    uniqueIndex("file_versions_tenant_file_version_uq").on(t.tenant_id, t.file_id, t.version),
+    check("file_versions_size_bytes_nonnegative", sql`${t.size_bytes} >= 0`),
   ],
 );
 

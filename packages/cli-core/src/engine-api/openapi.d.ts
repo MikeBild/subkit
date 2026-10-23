@@ -16970,6 +16970,162 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/files/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a file's content versions, newest first
+         * @description The current content and every earlier content kept after a replace or restore, newest first. `current` marks the content the file serves now. The newest 20 earlier versions are kept; deleting the file removes all of them.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["schemas"]["FileId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FileVersionList"];
+                    };
+                };
+                /** @description not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/{id}/versions/{version}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download one content version of a file */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["schemas"]["FileId"];
+                    version: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/{id}/versions/{version}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make an earlier content version the file's content again
+         * @description Restores the content of an earlier version as a new version. The content it replaces stays in the history, so a restore can be undone the same way. The id and every reference stay unchanged.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["schemas"]["FileId"];
+                    version: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Restored as the newest version */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["File"];
+                    };
+                };
+                /** @description not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description duplicate_content or current_version */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/files/{id}/usage": {
         parameters: {
             query?: never;
@@ -27071,6 +27227,8 @@ export interface components {
             created_at: string;
             updated_at: string;
             replaced_at: string | null;
+            /** @description Number of the current content version. */
+            version: number;
             deleted_at: string | null;
             slug: string | null;
             reference: string | null;
@@ -27169,6 +27327,32 @@ export interface components {
             accept_description?: boolean;
             category?: components["schemas"]["CatalogCategory"] & (string | null);
         };
+        FileVersionList: {
+            items: components["schemas"]["FileVersion"][];
+        };
+        FileVersion: {
+            version: number;
+            /** @description True for the content the file serves now. */
+            current: boolean;
+            filename: string;
+            content_type: string | null;
+            size_bytes: number;
+            sha256: string | null;
+            /** @description Version this content was restored from, or null for an upload. */
+            restored_from: number | null;
+            /** @description When this content became the file's content. */
+            uploaded_at: string;
+            uploaded_by: components["schemas"]["FileVersionActor"];
+            /** @description When newer content replaced this one. Null for the current version. */
+            replaced_at: string | null;
+        };
+        /** @description Who uploaded or restored this content. Null when unknown. */
+        FileVersionActor: {
+            /** @enum {string} */
+            kind: "user" | "system_account";
+            /** Format: uuid */
+            id: string;
+        } | null;
         FileUsage: {
             workflows: {
                 /** Format: uuid */

@@ -447,6 +447,53 @@ test("negative file sizes cannot mint quota credit through insert or update", as
   expect(rows.rows[0]?.size_bytes).toBe("5");
 });
 
+test("kept file versions count their content bytes and release them when removed", async () => {
+  const result = await owned("quota-file-versions");
+  const tenantId = result.tenant.id;
+  const inserted = await ctx.db.execute<{ id: string }>(
+    sql`INSERT INTO subkit.files(tenant_id,filename,storage_uri,size_bytes) VALUES(${tenantId},'kept','kept',5) RETURNING id`,
+  );
+  const fileId = inserted.rows[0]?.id;
+  const [before] = await ctx.db
+    .select()
+    .from(hostedTenantUsage)
+    .where(eq(hostedTenantUsage.tenant_id, tenantId));
+  await ctx.db.execute(
+    sql`INSERT INTO subkit.file_versions(tenant_id,file_id,version,filename,storage_uri,size_bytes,uploaded_at,replaced_at) VALUES(${tenantId},${fileId},1,'kept','kept-v1',4000,now(),now())`,
+  );
+  const [kept] = await ctx.db
+    .select()
+    .from(hostedTenantUsage)
+    .where(eq(hostedTenantUsage.tenant_id, tenantId));
+  expect((kept?.logical_bytes ?? 0n) - (before?.logical_bytes ?? 0n)).toBeGreaterThanOrEqual(4000n);
+  expect(kept?.resource_counts.file_versions).toBe("1");
+  await expect(
+    (async () => {
+      await ctx.db.execute(
+        sql`INSERT INTO subkit.file_versions(tenant_id,file_id,version,filename,storage_uri,size_bytes,uploaded_at,replaced_at) VALUES(${tenantId},${fileId},2,'kept','kept-v2',-5,now(),now())`,
+      );
+    })(),
+  ).rejects.toThrow();
+  await policy(((kept?.logical_bytes ?? 0n) + 100n).toString());
+  let denied: unknown;
+  try {
+    await ctx.db.execute(
+      sql`INSERT INTO subkit.file_versions(tenant_id,file_id,version,filename,storage_uri,size_bytes,uploaded_at,replaced_at) VALUES(${tenantId},${fileId},2,'kept','kept-v2',4000,now(),now())`,
+    );
+  } catch (error) {
+    denied = error;
+  }
+  expect(hostedQuotaError(denied)?.code).toBe("hosted_storage_quota_exhausted");
+  await policy("50000000");
+  await ctx.db.execute(sql`DELETE FROM subkit.files WHERE tenant_id=${tenantId} AND id=${fileId}`);
+  const [after] = await ctx.db
+    .select()
+    .from(hostedTenantUsage)
+    .where(eq(hostedTenantUsage.tenant_id, tenantId));
+  expect(after?.resource_counts.file_versions).toBe("0");
+  expect((after?.logical_bytes ?? 0n) < (before?.logical_bytes ?? 0n)).toBe(true);
+});
+
 test("unknown persisted content column types fail closed", () => {
   expect(() => hostedColumnBytes("unclassified_payload", "payload")).toThrow(
     "hosted_quota_column_type_unclassified",

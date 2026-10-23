@@ -47,6 +47,7 @@ export const ERASED_TENANT_TABLES = [
   "execution_steps",
   "executions",
   "external_call_metering",
+  "file_versions",
   "file_links",
   "files",
   "files_dedup_seen",
