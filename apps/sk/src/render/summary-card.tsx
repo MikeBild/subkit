@@ -101,7 +101,7 @@ const ConnectorSummaryCard: React.FC<{ summary: ConnectorSummary }> = ({ summary
         </Text>
         <Text
           bold
-        >{`Created connector "${summary.slug}" · id=${summary.id}${connectorTemplateSuffix(summary)}`}</Text>
+        >{`${summary.action ?? "Created"} connector "${summary.slug}" · id=${summary.id}${connectorTemplateSuffix(summary)}`}</Text>
       </Box>
       {probeLine ? (
         <Box marginLeft={2}>

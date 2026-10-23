@@ -181,6 +181,14 @@ describe("SummaryCard · connector", () => {
     ui.unmount();
   });
 
+  test("an updated connector says Updated", () => {
+    const ui = renderSummary({ kind: "connector", action: "Updated", id: "c1", slug: "gsc" });
+    const out = snapshot(ui);
+    expect(out).toContain('Updated connector "gsc"');
+    expect(out).not.toContain("Created connector");
+    ui.unmount();
+  });
+
   test("probe ok=true renders 'ok'", () => {
     const summary: ConnectorSummary = {
       ...base,

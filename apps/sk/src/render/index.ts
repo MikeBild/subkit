@@ -128,7 +128,7 @@ function plainSummary(summary: AnySummary): string {
   } else if (isConnectorSummary(summary)) {
     out.push(
       `${pc.green(pc.bold("✓"))} ${pc.bold(
-        `Created connector "${summary.slug}" · id=${summary.id}${connectorTemplateSuffix(summary)}`,
+        `${summary.action ?? "Created"} connector "${summary.slug}" · id=${summary.id}${connectorTemplateSuffix(summary)}`,
       )}`,
     );
     if (summary.probe) {

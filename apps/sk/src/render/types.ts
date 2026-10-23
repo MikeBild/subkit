@@ -68,6 +68,7 @@ export interface WorkflowSummary {
 
 export interface ConnectorSummary {
   kind: "connector";
+  action?: "Created" | "Updated";
   id: string;
   slug: string;
   template_slug?: string;

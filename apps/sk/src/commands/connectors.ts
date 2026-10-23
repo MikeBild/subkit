@@ -265,6 +265,7 @@ async function saveConnectorFromFile(
     await renderSummary(
       {
         kind: "connector",
+        action: target.action === "patch" ? "Updated" : "Created",
         id: typeof saved.id === "string" ? saved.id : "(unknown)",
         slug: typeof saved.slug === "string" ? saved.slug : "(unknown)",
         ...(typeof saved.template_slug === "string" ? { template_slug: saved.template_slug } : {}),
