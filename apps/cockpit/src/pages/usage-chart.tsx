@@ -10,7 +10,10 @@ import {
 import type { BucketUnit, OriginChart, OriginRow, UsageOrigin } from "@/pages/usage-model";
 
 const HEIGHT = 230;
-const PAD_LEFT = 44;
+const PAD_LEFT_MIN = 44;
+const TICK_FONT_SIZE = 10;
+const TICK_CHAR_WIDTH = 0.62 * TICK_FONT_SIZE;
+const TICK_GAP = 6;
 const PAD_RIGHT = 8;
 const PAD_BOTTOM = 24;
 const PAD_TOP = 18;
@@ -21,6 +24,11 @@ function tickStep(max: number): number {
   if (found) return found;
   const magnitude = 10 ** Math.ceil(Math.log10(max / 4));
   return magnitude;
+}
+
+export function axisPaddingLeft(labels: readonly string[]): number {
+  const widest = Math.max(0, ...labels.map((label) => label.length));
+  return Math.max(PAD_LEFT_MIN, Math.ceil(widest * TICK_CHAR_WIDTH) + TICK_GAP + 4);
 }
 
 function axisLabel(at: Date, unit: BucketUnit, format: UsageFormat): string {
@@ -46,9 +54,10 @@ export function OriginChartSvg({
   const step = max > 0 ? tickStep(max) : 1;
   const top = max > 0 ? Math.ceil(max / step) * step : 1;
   const y = (v: number) => HEIGHT - PAD_BOTTOM - (v / top) * (HEIGHT - PAD_BOTTOM - PAD_TOP);
-  const barWidth = Math.max(1, (width - PAD_LEFT - PAD_RIGHT - (count - 1) * gap) / count);
   const ticks: number[] = [];
   for (let v = 0; v <= top + step / 1000; v += step) ticks.push(v);
+  const padLeft = axisPaddingLeft(ticks.map((tick) => value(tick)));
+  const barWidth = Math.max(1, (width - padLeft - PAD_RIGHT - (count - 1) * gap) / count);
   const labelEvery = count <= 12 ? 1 : Math.ceil(count / 10);
   return (
     <div className="overflow-x-auto [scrollbar-width:thin]">
@@ -62,17 +71,17 @@ export function OriginChartSvg({
         {ticks.map((tick) => (
           <g key={tick} className="text-muted-foreground">
             <line
-              x1={PAD_LEFT}
+              x1={padLeft}
               x2={width - PAD_RIGHT}
               y1={y(tick)}
               y2={y(tick)}
               stroke="var(--border)"
             />
             <text
-              x={PAD_LEFT - 6}
+              x={padLeft - TICK_GAP}
               y={y(tick) + 4}
               textAnchor="end"
-              fontSize="10"
+              fontSize={TICK_FONT_SIZE}
               fill="currentColor"
             >
               {value(tick)}
@@ -80,7 +89,7 @@ export function OriginChartSvg({
           </g>
         ))}
         {chart.buckets.map((bucket, index) => {
-          const x = PAD_LEFT + index * (barWidth + gap);
+          const x = padLeft + index * (barWidth + gap);
           let acc = 0;
           const label = axisLabel(bucket.at, unit, format);
           return (
