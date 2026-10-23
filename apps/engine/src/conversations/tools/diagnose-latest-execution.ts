@@ -7,6 +7,7 @@ import { withWorkflowDiagnosis } from "../authoring-state.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import { buildExecutionDiagnosis } from "./execution-diagnosis.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { sensitiveExecutionUnsupported } from "./sensitive-envelope.ts";
 
 const inputSchema = z
   .object({
@@ -50,7 +51,9 @@ export const diagnoseLatestExecutionTool: ConversationTool = {
       .limit(1);
     if (!visible) return { ok: false, error_code: "execution_not_found" };
     if (isSensitivePayload(visible.input) || isSensitivePayload(visible.result))
-      return { ok: false, error_code: "sensitive_execution_unsupported" };
+      return sensitiveExecutionUnsupported(
+        "This execution carries sensitive data, so its contents stay out of chat.",
+      );
     const result = await buildExecutionDiagnosis(ctx.db, ctx.tenant_id, executionId);
     if (!result.found) {
       return {

@@ -155,6 +155,7 @@ export interface AuthoringCheckpointRecord {
     id: string;
     version_id?: string | null;
   } | null;
+  redacted?: boolean;
 }
 
 export interface AuthoringCheckpointView {
@@ -339,6 +340,8 @@ export interface WorkflowDraftPreviewSummary {
   requires_repair?: boolean;
   step_traces?: WorkflowDraftStepPreview[];
   input?: unknown;
+  redacted?: boolean;
+  mode?: "schema_only";
 }
 
 export interface AuthoringSummary {

@@ -344,6 +344,8 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
               ? { warnings: raw.latest_preview.warnings }
               : {}),
             ...(raw.latest_preview.requires_repair === true ? { requires_repair: true } : {}),
+            ...(raw.latest_preview.redacted === true ? { redacted: true } : {}),
+            ...(raw.latest_preview.mode === "schema_only" ? { mode: "schema_only" as const } : {}),
             ...(raw.latest_preview.input !== undefined ? { input: raw.latest_preview.input } : {}),
             ...(Array.isArray(raw.latest_preview.step_traces)
               ? {
@@ -499,7 +501,7 @@ export function withLatestPreview(
 ): DraftDocument {
   const normalized = normalizeDraftDocument(draft);
   const mergedPreview = ((): DraftDocument["latest_preview"] => {
-    if (!preview) return preview ?? null;
+    if (!preview || preview.redacted === true) return preview ?? null;
     const incoming = preview.step_traces ?? [];
     const incomingIds = new Set(incoming.map((t) => t.step_id));
     const retained = retainFingerprintValidTraces(
@@ -518,15 +520,24 @@ export function withLatestPreview(
     preview?.ok ?? false,
     preview?.summary ?? "Workflow preview recorded.",
   );
+  const redacted = preview?.redacted === true;
+  if (redacted && state.checkpoints.workflow_previewed) {
+    state.checkpoints.workflow_previewed = {
+      ...state.checkpoints.workflow_previewed,
+      redacted: true,
+    };
+  }
   if (preview?.ok === true) {
     state = recordCheckpoint(
       state,
       "workflow_validated",
       tool_name,
       true,
-      preview.warnings?.length
-        ? "Preview completed with warnings. Review the recorded warnings; not every action was verified. This grants no live execution permission."
-        : "Preview completed successfully for preparation. This grants no live execution permission.",
+      redacted
+        ? "Structure checked; content not checked. This grants no live execution permission."
+        : preview.warnings?.length
+          ? "Preview completed with warnings. Review the recorded warnings; not every action was verified. This grants no live execution permission."
+          : "Preview completed successfully for preparation. This grants no live execution permission.",
     );
   }
   return refreshDraftSummary({

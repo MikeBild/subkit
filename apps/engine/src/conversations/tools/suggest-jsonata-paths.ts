@@ -10,6 +10,7 @@ import {
 } from "../../workflows/scope-shape.ts";
 import type { WorkflowDraftStepPreview } from "../types.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { sensitiveExecutionUnsupported } from "./sensitive-envelope.ts";
 
 const inputSchema = z
   .object({
@@ -79,7 +80,9 @@ export const suggestJsonataPathsTool: ConversationTool = {
     const draft = ctx.getDraft();
     if (!ctx.principal) return { ok: false, error_code: "principal_required" };
     if (Reflect.get(draft.workflow, "execution_privacy") === "sensitive")
-      return { ok: false, error_code: "sensitive_execution_unsupported" };
+      return sensitiveExecutionUnsupported(
+        "Recorded step data of a sensitive workflow stays out of chat, so no JSONata paths are suggested.",
+      );
     const recordedExecutionId = draft.summary?.latest_execution?.execution_id;
     if (recordedExecutionId) {
       const [recorded] = await ctx.db
@@ -95,7 +98,9 @@ export const suggestJsonataPathsTool: ConversationTool = {
         .limit(1);
       if (!recorded) return { ok: false, error_code: "execution_not_found" };
       if (isSensitivePayload(recorded.input) || isSensitivePayload(recorded.result))
-        return { ok: false, error_code: "sensitive_execution_unsupported" };
+        return sensitiveExecutionUnsupported(
+          "Recorded step data of a sensitive execution stays out of chat, so no JSONata paths are suggested.",
+        );
     }
 
     let preview: unknown;
@@ -136,7 +141,9 @@ export const suggestJsonataPathsTool: ConversationTool = {
           .limit(1);
         const definition = rows[0]?.dag as Record<string, unknown> | undefined;
         if (definition?.execution_privacy === "sensitive")
-          return { ok: false, error_code: "sensitive_execution_unsupported" };
+          return sensitiveExecutionUnsupported(
+            "Recorded step data of a sensitive workflow stays out of chat, so no JSONata paths are suggested.",
+          );
         if (
           (definition?.product_id || ctx.principal.product_id) &&
           definition?.product_id !== ctx.principal.product_id
@@ -201,7 +208,9 @@ export const suggestJsonataPathsTool: ConversationTool = {
           .orderBy(desc(executionSteps.finished_at), desc(executions.created_at))
           .limit(1);
         if (isSensitivePayload(rows[0]?.input) || isSensitivePayload(rows[0]?.result))
-          return { ok: false, error_code: "sensitive_execution_unsupported" };
+          return sensitiveExecutionUnsupported(
+            "Recorded step data of a sensitive execution stays out of chat, so no JSONata paths are suggested.",
+          );
         const op = rows[0]?.output_preview;
         if (op !== null && op !== undefined) {
           preview = op;

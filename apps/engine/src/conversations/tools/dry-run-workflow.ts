@@ -57,6 +57,7 @@ import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { placeholderDestinationGateResult } from "./placeholder-destination-gate.ts";
 import { previewEvidence } from "./preview-evidence.ts";
 import { runSensitiveDryRun } from "./sensitive-dry-run.ts";
+import { runSensitiveSchemaPreview } from "./sensitive-schema-preview.ts";
 import { replacesPersistedWorkflow } from "./state-gate.ts";
 import { buildRawStepResults } from "./step-results.ts";
 import { truncateStepPreviewForLlm } from "./truncate.ts";
@@ -65,6 +66,12 @@ import { unverifiedBoundaries } from "./unverified-boundaries.ts";
 const inputSchema = z
   .object({
     input: z.unknown().optional(),
+    mode: z
+      .enum(["schema_only"])
+      .optional()
+      .describe(
+        "Sensitive drafts only. `schema_only` validates the definition and compiles its expressions without running any step: no request is dispatched, no data is read, nothing is returned or stored but structure findings. Use it when the encrypted metadata test run is refused or must not read data. It reports structure checked, content not checked; live verification happens in the Cockpit by the signed-in person.",
+      ),
     environment: z.enum(["dev", "prod"]).optional(),
     budget_ms_per_step: z.number().int().min(500).max(60_000).optional(),
     include_step_results: z
@@ -79,7 +86,7 @@ const inputSchema = z
 export const dryRunWorkflowTool: ConversationTool = {
   name: "dry_run_workflow",
   description:
-    "Run the entire draft workflow via runExecution (source=draft), producing an auditable executions row. Read steps execute for real; WRITE steps are always HELD — resolved for inspection but never dispatched. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval. Omit input when repairing an existing scheduled workflow: the engine reuses its single enabled schedule in this environment. Explicit input, including {}, is preserved. Never invent dummy identifiers or destinations for real read requests. External destinations must come from the user, never fabricated placeholders. A sensitive draft (execution_privacy: sensitive) runs encrypted and returns only `sensitive_test_run` metadata: step statuses, held steps, safe failure codes, item counts, check verdicts and declared output field types. Values are never returned; do not guess them.",
+    "Run the entire draft workflow via runExecution (source=draft), producing an auditable executions row. Read steps execute for real; WRITE steps are always HELD — resolved for inspection but never dispatched. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval. Omit input when repairing an existing scheduled workflow: the engine reuses its single enabled schedule in this environment. Explicit input, including {}, is preserved. Never invent dummy identifiers or destinations for real read requests. External destinations must come from the user, never fabricated placeholders. A sensitive draft (execution_privacy: sensitive) runs encrypted and returns only `sensitive_test_run` metadata: step statuses, held steps, safe failure codes, item counts, check verdicts and declared output field types. Values are never returned; do not guess them. When that test run is refused or must not read data, mode `schema_only` checks only structure.",
   inputSchema,
   category: "draft_write" as const,
   authoring_resource: "workflow",
@@ -88,6 +95,15 @@ export const dryRunWorkflowTool: ConversationTool = {
     const args = inputSchema.parse(rawArgs);
     const draft = getWorkflowDraft(ctx.getDraft());
     const sensitiveDraft = Reflect.get(draft, "execution_privacy") === "sensitive";
+    if (args.mode === "schema_only" && !sensitiveDraft) {
+      return {
+        ok: false,
+        error_code: "schema_only_requires_sensitive_draft",
+        message:
+          "mode schema_only is reserved for sensitive drafts; run dry_run_workflow without mode for the held preview.",
+        next_best_actions: ["dry_run_workflow"],
+      };
+    }
     const validation = await validateTenantWorkflowDef(draft, ctx.tenant_id, ctx.db, {
       destinationTier: "all",
     });
@@ -218,6 +234,13 @@ export const dryRunWorkflowTool: ConversationTool = {
     const inheritedReferencesField = references.notice
       ? { inherited_step_references: references.notice }
       : {};
+
+    if (sensitiveDraft && args.mode === "schema_only") {
+      return runSensitiveSchemaPreview({
+        ctx,
+        definition: { ...validation.workflow, name: draft.name ?? "draft", steps },
+      });
+    }
 
     const author = ctx.principal ?? (await resolveConversationPrincipal(ctx));
     const authorPermissionWarnings = author

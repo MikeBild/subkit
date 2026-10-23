@@ -14,6 +14,10 @@ import { withLatestPreview } from "../authoring-state.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ToolContext, ToolResult } from "./index.ts";
 import { clearLastPreview } from "./last-preview-store.ts";
+import {
+  SENSITIVE_EXECUTION_UNSUPPORTED,
+  sensitiveExecutionUnsupported,
+} from "./sensitive-envelope.ts";
 
 export const SENSITIVE_CONTENT_NOTE =
   "Content is withheld because this workflow is sensitive. Only metadata is shown; never guess or describe values.";
@@ -205,10 +209,16 @@ export async function runSensitiveDryRun(p: {
       conversation_id: ctx.conversation_id,
       error_code: failure.code,
     });
+    if (failure.code === SENSITIVE_EXECUTION_UNSUPPORTED) {
+      return sensitiveExecutionUnsupported(
+        "The encrypted metadata test run was refused. Call dry_run_workflow with mode schema_only to check the structure without reading content.",
+      );
+    }
     return {
       ok: false,
       error_code: failure.code,
       message: failure.message,
+      next_best_actions: ["inspect_workflow_draft", "validate_draft"],
       data: { error_code: failure.code, content_withheld: true },
     };
   }

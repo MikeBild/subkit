@@ -357,3 +357,27 @@ test("an output that misses output_schema records a failed test run", async () =
   expect(summary).toMatchObject({ status: "succeeded", output_schema: "failed" });
   expect(context.getDraft().latest_preview?.ok).toBe(false);
 });
+
+test("schema_only checks a sensitive draft without any upstream call or execution", async () => {
+  const context = toolContext(sensitiveDraft("sensitive-schema-only"));
+  const before = mock.callCount();
+  const executionsBefore = await ctx.testDb.db
+    .select({ id: executions.id })
+    .from(executions)
+    .where(eq(executions.tenant_id, ctx.tenant_id));
+  const result = await dryRunWorkflowTool.execute(context, { mode: "schema_only" });
+  expect(result.ok).toBe(true);
+  expect(mock.callCount()).toBe(before);
+  const executionsAfter = await ctx.testDb.db
+    .select({ id: executions.id })
+    .from(executions)
+    .where(eq(executions.tenant_id, ctx.tenant_id));
+  expect(executionsAfter).toHaveLength(executionsBefore.length);
+  expect(JSON.stringify(result)).not.toContain(PLANTED);
+  expect(JSON.stringify(context.getDraft())).not.toContain(PLANTED);
+  expect(context.getDraft().latest_preview).toMatchObject({ ok: true, redacted: true });
+  expect(context.getDraft().state?.checkpoints.workflow_previewed).toMatchObject({
+    ok: true,
+    redacted: true,
+  });
+});

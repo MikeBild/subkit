@@ -10,6 +10,7 @@ import {
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { buildExecutionDiagnosis } from "./execution-diagnosis.ts";
 import type { ConversationTool, ToolContext } from "./index.ts";
+import { sensitiveExecutionUnsupported } from "./sensitive-envelope.ts";
 
 const Input = z
   .object({
@@ -115,7 +116,9 @@ export const inspectExecutionTool: ConversationTool = {
       .limit(1);
     if (!visible) return { ok: false, data: { error_code: "execution_not_found" } };
     if (isSensitivePayload(visible.input))
-      return { ok: false, data: { error_code: "sensitive_execution_unsupported" } };
+      return sensitiveExecutionUnsupported(
+        "This execution carries sensitive data, so its contents stay out of chat.",
+      );
     const [result, row] = await Promise.all([
       buildExecutionDiagnosis(ctx.db, ctx.tenant_id, executionId),
       ctx.engineClient.executions.get(executionId),

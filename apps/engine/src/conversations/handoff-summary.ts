@@ -9,6 +9,7 @@ export type HandoffKind = "save_confirm" | "confirm" | "choice" | "input" | "rev
 export type SavePreviewEvidence =
   | "passed"
   | "passed_metadata"
+  | "passed_schema_only"
   | "failed"
   | "skipped_by_user"
   | "missing";
@@ -26,6 +27,8 @@ const SAVE_PREVIEW_RESULT: Record<ReplyLocale, Record<SavePreviewEvidence, strin
       "Ich habe den Entwurf angepasst; der letzte Testlauf ohne Wirkung ist fehlgeschlagen, das Speichern wäre eine bewusste Ausnahme.",
     passed_metadata:
       "Ich habe den Entwurf angepasst und geprüft; der Testlauf ohne Wirkung war erfolgreich, Inhalte blieben dabei vertraulich.",
+    passed_schema_only:
+      "Ich habe den Entwurf angepasst und seine Struktur geprüft; Inhalte wurden nicht geprüft, die Live-Prüfung übernimmt die angemeldete Person im Cockpit.",
     skipped_by_user:
       "Ich habe den Entwurf angepasst und geprüft; den Testlauf ohne Wirkung habe ich wie gewünscht ausgelassen, die Laufzeitprüfung steht noch aus.",
     missing:
@@ -37,6 +40,8 @@ const SAVE_PREVIEW_RESULT: Record<ReplyLocale, Record<SavePreviewEvidence, strin
       "I adjusted the draft; the latest test run without effects failed, so saving would be a deliberate exception.",
     passed_metadata:
       "I adjusted and checked the draft; the test run without effects succeeded and its contents stayed confidential.",
+    passed_schema_only:
+      "I adjusted the draft and checked its structure; its content was not checked, so the signed-in person verifies it live in the Cockpit.",
     skipped_by_user:
       "I adjusted and checked the draft; as requested I skipped the test run without effects, so runtime verification is still outstanding.",
     missing: "I adjusted the draft; there is no test run without effects for this version yet.",
@@ -99,10 +104,16 @@ export function saveVerificationEvidence(
 ): SaveVerificationEvidence {
   const latest = draft.latest_preview ?? null;
   const fresh = missingFreshCheckpoints(draft, ["workflow_previewed"]).length === 0;
-  if (latest?.ok === true && fresh)
-    return getWorkflowDraft(draft).execution_privacy === "sensitive"
+  if (latest?.ok === true && fresh) {
+    const sensitive = getWorkflowDraft(draft).execution_privacy === "sensitive";
+    if (latest.redacted === true)
+      return sensitive
+        ? { preview: "passed_schema_only", summary: latest.summary }
+        : { preview: previewsForbiddenByUser ? "skipped_by_user" : "missing" };
+    return sensitive
       ? { preview: "passed_metadata", summary: latest.summary }
       : { preview: "passed", summary: latest.summary };
+  }
   if (latest?.ok === false) return { preview: "failed", summary: latest.summary };
   return { preview: previewsForbiddenByUser ? "skipped_by_user" : "missing" };
 }
@@ -110,6 +121,7 @@ export function saveVerificationEvidence(
 const PREVIEW_EVIDENCE = new Set<string>([
   "passed",
   "passed_metadata",
+  "passed_schema_only",
   "failed",
   "skipped_by_user",
   "missing",
@@ -161,6 +173,8 @@ export function saveEvidenceLabel(evidence: SaveVerificationEvidence): string {
       return "failed";
     case "passed_metadata":
       return "passed with metadata only";
+    case "passed_schema_only":
+      return "structure checked, content not checked";
     case "skipped_by_user":
       return "skipped as requested";
     case "missing":

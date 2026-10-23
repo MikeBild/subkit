@@ -20,6 +20,7 @@ const PROD_PROMPT =
 const PREVIEWS: SavePreviewEvidence[] = [
   "passed",
   "passed_metadata",
+  "passed_schema_only",
   "failed",
   "skipped_by_user",
   "missing",

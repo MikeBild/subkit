@@ -4,6 +4,7 @@ import { executionSteps, executions } from "../../db/schema/index.ts";
 import { executionVisibilityFilter, isSensitivePayload } from "../../execution/index.ts";
 import { OffloadResolutionError, resolveOffloaded } from "../../execution/offload.ts";
 import type { ConversationTool } from "./index.ts";
+import { sensitiveExecutionUnsupported } from "./sensitive-envelope.ts";
 
 const Input = z
   .object({
@@ -96,7 +97,9 @@ export const inspectExecutionStepTool: ConversationTool = {
       };
     }
     if (isSensitivePayload(exec.input)) {
-      return { ok: false, data: { error_code: "sensitive_execution_unsupported" } };
+      return sensitiveExecutionUnsupported(
+        "This execution carries sensitive data, so its contents stay out of chat.",
+      );
     }
 
     const stepRows = await ctx.db

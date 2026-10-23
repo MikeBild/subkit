@@ -280,6 +280,7 @@ export function parseCheckpointRecord(
     mutation_seq: typeof value.mutation_seq === "number" ? value.mutation_seq : 0,
     ok: typeof value.ok === "boolean" ? value.ok : null,
     summary: typeof value.summary === "string" ? value.summary : null,
+    ...(value.redacted === true ? { redacted: true } : {}),
     resource_ref:
       isRecord(value.resource_ref) &&
       typeof value.resource_ref.kind === "string" &&

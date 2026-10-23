@@ -11,6 +11,10 @@ import { type SaveVerificationEvidence, saveVerificationEvidence } from "../hand
 import { buildGateError, missingFreshCheckpoints } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { placeholderDestinationGateResult } from "../tools/placeholder-destination-gate.ts";
+import {
+  SCHEMA_ONLY_NOTE,
+  SENSITIVE_LIVE_VERIFICATION_HANDOFF,
+} from "../tools/sensitive-envelope.ts";
 import type { DraftDocument, WorkflowDraftDocument } from "../types.ts";
 import { persistAuthoringWorkflowDraft } from "./persist-authoring-workflow-draft.ts";
 import { classifyPreviewFailure } from "./preview-failure-class.ts";
@@ -145,7 +149,8 @@ async function runSaveGauntlet(
   const fullDraft = ctx.getDraft();
   const sensitiveDraft = getWorkflowDraft(fullDraft).execution_privacy === "sensitive";
   const verification = await resolveSaveVerification(ctx, fullDraft);
-  const latestPreview = fullDraft.latest_preview;
+  const redactedPreview = fullDraft.latest_preview?.redacted === true;
+  const latestPreview = redactedPreview && !sensitiveDraft ? null : fullDraft.latest_preview;
   const latestExecution = fullDraft.state?.latest_execution ?? null;
   const latestPreviewClearedRepair =
     latestPreview?.ok === true && latestPreview.requires_repair !== true;
@@ -507,6 +512,7 @@ async function persistAfterGauntlet(
     verification,
   } = facts;
   const previewSkippedByUser = verification.preview === "skipped_by_user";
+  const schemaOnlyVerified = sensitiveDraft && verification.preview === "passed_schema_only";
 
   if (forceClearsPreview && runtimeDataFailure) {
     logger.info({
@@ -559,9 +565,11 @@ async function persistAfterGauntlet(
       source: p.emitAutoPersistAudit ? "harness_auto_persist" : "tool_call",
       ...(previewSkippedByUser
         ? { runtime_verification: "not_performed" }
-        : sensitiveDraft
-          ? { runtime_verification: "metadata_only" }
-          : {}),
+        : schemaOnlyVerified
+          ? { runtime_verification: "schema_only" }
+          : sensitiveDraft
+            ? { runtime_verification: "metadata_only" }
+            : {}),
       ...(previewSkippedByUser ? { preview_skipped: "explicit_no_run" } : {}),
       ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
       ...(forceClearsPreview && runtimeDataFailure
@@ -587,10 +595,16 @@ async function persistAfterGauntlet(
     ...result,
     data: {
       ...(typeof result.data === "object" && result.data !== null ? result.data : {}),
-      runtime_verification: previewSkippedByUser ? "not_performed" : "metadata_only",
-      verification_guidance: previewSkippedByUser
-        ? "Only the inactive sensitive definition was saved. The user excluded test runs, so no test run ran; once the user allows one, dry_run_workflow returns metadata only. Use the permitted execution/result API with the original caller for separately authorized live verification."
-        : "Only the inactive sensitive definition was saved. Its test run returned metadata only; values stay withheld from chat. Use the permitted execution/result API with the original caller for separately authorized live verification.",
+      runtime_verification: previewSkippedByUser
+        ? "not_performed"
+        : schemaOnlyVerified
+          ? "schema_only"
+          : "metadata_only",
+      verification_guidance: schemaOnlyVerified
+        ? `Only the inactive sensitive definition was saved. ${SCHEMA_ONLY_NOTE} No request was dispatched and no data was read. ${SENSITIVE_LIVE_VERIFICATION_HANDOFF}`
+        : previewSkippedByUser
+          ? "Only the inactive sensitive definition was saved. The user excluded test runs, so no test run ran; once the user allows one, dry_run_workflow returns metadata only. Use the permitted execution/result API with the original caller for separately authorized live verification."
+          : "Only the inactive sensitive definition was saved. Its test run returned metadata only; values stay withheld from chat. Use the permitted execution/result API with the original caller for separately authorized live verification.",
     },
   };
 }
