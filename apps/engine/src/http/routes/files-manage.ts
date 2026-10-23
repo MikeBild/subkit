@@ -587,8 +587,7 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
       .where(and(eq(fileLinks.tenant_id, tenant_id), eq(fileLinks.file_id, row.id)));
     const seen = new Set<string>();
     const conversationsUsing: Array<{ id: string; title: string | null }> = [];
-    const others: Array<{ resource_type: (typeof links)[number]["resource_type"]; id: string }> =
-      [];
+    const others: LinkedRecord[] = [];
     for (const link of links) {
       if (link.resource_type !== "conversation") {
         others.push({ resource_type: link.resource_type, id: link.resource_id });
@@ -608,6 +607,8 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     );
   });
 }
+
+type LinkedRecord = Pick<typeof fileLinks.$inferSelect, "resource_type"> & { id: string };
 
 async function linkedRecordNames(
   db: Db,
