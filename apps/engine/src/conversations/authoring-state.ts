@@ -480,6 +480,25 @@ export function withConnectorDraft(
   return applyConnectorMutation(draft, connector, last_action);
 }
 
+export function withAuthoringFocus(
+  draft: DraftDocument,
+  focus: "connector" | "workflow",
+  options: { dropConnector?: boolean } = {},
+): DraftDocument {
+  const base = options.dropConnector
+    ? withConnectorDraft(draft, null)
+    : normalizeDraftDocument(draft);
+  const state = cloneState(
+    base.state ?? createEmptyState(focus === "connector" ? "connector" : "workflow"),
+  );
+  state.authoring_focus = focus === "connector" ? "connector" : null;
+  return refreshDraftSummary({
+    ...base,
+    mode: focus === "connector" ? "connector_authoring" : "workflow_authoring",
+    state,
+  });
+}
+
 export function withJudgeBreaker(
   draft: DraftDocument,
   judge_breaker: JudgeBreakerState | null,

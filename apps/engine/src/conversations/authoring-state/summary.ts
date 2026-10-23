@@ -200,6 +200,16 @@ export function computeActiveTarget(
   const connectorLifecycle = connectorTargetLifecycle(state, connector);
   const workflowLifecycle = workflowTargetLifecycle(state, workflow);
   const persistedWorkflow = persistedWorkflowResource(state);
+  if (state.authoring_focus === "connector" && typeof connector?.saved_connector_id !== "string") {
+    return {
+      kind: "connector",
+      name: connector?.name ?? null,
+      slug: connector?.slug ?? null,
+      id: null,
+      environment: connector?.environment ?? null,
+      lifecycle_state: connectorLifecycle,
+    };
+  }
   if (workflow.steps.length > 0) {
     return {
       kind: "workflow",

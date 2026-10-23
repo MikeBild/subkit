@@ -242,6 +242,7 @@ export interface AuthoringState {
   grounding_fingerprint?: string | null;
   grounding_connector_ids?: string[] | null;
   last_denied_intent?: { fingerprint: string; timestamp: string } | null;
+  authoring_focus?: "connector" | null;
   latest_workflow_save_error?: {
     code: "draft_conflict";
     message: string;

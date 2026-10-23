@@ -487,6 +487,7 @@ export function normalizeState(raw: unknown, draftMode: AuthoringMode | undefine
       : null,
     last_denied_intent: normalizeLastDeniedIntent(state.last_denied_intent),
     latest_workflow_save_error: normalizeWorkflowSaveError(state.latest_workflow_save_error),
+    authoring_focus: state.authoring_focus === "connector" ? "connector" : null,
   };
   if (isRecord(state.checkpoints)) {
     for (const key of CHECKPOINT_KEYS) {

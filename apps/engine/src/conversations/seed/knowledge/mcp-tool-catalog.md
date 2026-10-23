@@ -74,8 +74,10 @@ working draft, and a stateless `tools/call` has no draft to mutate:
 `author_workflow`, `save_workflow_draft`, `edit_workflow_patch`, `validate_draft`,
 `dry_run_workflow`, `dry_run_step`, `restore_draft_snapshot`,
 `diagnose_latest_execution`, `request_connector_reauth`,
-`ask_user_*`, and every `*_connector_draft` tool. The engine runs them for you
-inside a `conversation_*` session — that is the only place they exist.
+`ask_user_*`, `switch_authoring_focus`, and every `*_connector_draft` tool. The
+engine runs them for you inside a `conversation_*` session — that is the only
+place they exist. Inside a session, `switch_authoring_focus` moves between
+connector and workflow authoring without losing the workflow draft.
 
 # Workflow Run & Inspect
 

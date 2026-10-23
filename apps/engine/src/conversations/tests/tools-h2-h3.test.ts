@@ -118,6 +118,7 @@ describe("conversation tools — registration", () => {
     "create_intake_proposal",
     "revise_intake_proposal",
     "list_capability_gaps",
+    "switch_authoring_focus",
     "run_workflow",
     "rerun_execution",
     "delete_workflow",

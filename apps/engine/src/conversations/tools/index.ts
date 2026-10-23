@@ -59,6 +59,7 @@ import { startConnectorFromTemplateTool } from "./start-connector-from-template.
 import { startWorkflowFromRecipeTool } from "./start-workflow-from-recipe.ts";
 import { suggestConnectorTemplatesTool } from "./suggest-connector-templates.ts";
 import { suggestJsonataPathsTool } from "./suggest-jsonata-paths.ts";
+import { switchAuthoringFocusTool } from "./switch-authoring-focus.ts";
 import { testConnectorTool } from "./test-connector.ts";
 import { updateConnectorDraftTool } from "./update-connector-draft.ts";
 import { validateConnectorDraftTool } from "./validate-connector-draft.ts";
@@ -198,6 +199,7 @@ register(searchDocsTool);
 register(analyzeScrapeTargetTool);
 register(listSkillSuggestionsTool);
 register(listCapabilityGapsTool);
+register(switchAuthoringFocusTool);
 register(listAttachmentsTool);
 register(previewAttachmentTool);
 register(probeConnectorTool);
