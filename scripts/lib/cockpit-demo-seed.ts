@@ -386,9 +386,27 @@ export function createCockpitDemoCatalogRepairSql(tenantId: string): string {
   return `BEGIN;\n${statements.join("\n")}\nCOMMIT;\n`;
 }
 
+export const demoApprovedWorkflow = {
+  key: "workflow-approved",
+  versionKey: "version-approved",
+  connectorKey: "connector-dispatch-production",
+  authorityKey: "authority-approved",
+  slug: "demo-dispatch-production-sync",
+  name: "Dispatch sync to production",
+  description:
+    "Reads the open dispatch report and posts the daily status to the production dispatch API. Approved for production until revoked.",
+  connector: {
+    slug: "dispatch-production-api",
+    name: "Dispatch API (production)",
+    description:
+      "Production dispatch API of the local demo service; reads the report and accepts status updates.",
+  },
+  approvedHoursAgo: 30,
+} as const;
+
 export const cockpitDemoManifest = {
-  connectors: 6 + demoTemplateConnectors.length,
-  workflows: 13,
+  connectors: 7 + demoTemplateConnectors.length,
+  workflows: 14,
   executions: 30,
   intakeItems: 7,
   conversations: 8,
@@ -397,13 +415,13 @@ export const cockpitDemoManifest = {
   skills: 8,
   skillProposals: 6,
   additionalUsers: 3,
-  auditEntries: 32,
+  auditEntries: 33,
   usageEntries: 37,
   files: demoFiles.length,
   categoryMetadata: demoCategories.length,
   limitations: [
     "Past runs and usage are synthetic.",
-    "Approvals are not faked; local workflows can be approved manually.",
+    "One workflow carries a synthetic production approval; other local workflows can be approved manually.",
     "External OAuth, MCP and delivery services are not set up.",
     "Template connectors point at .invalid hosts with fake tokens; the OpenAI connector answers from the local demo API.",
   ],
@@ -663,6 +681,69 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       failure: null,
     });
   }
+  insert("connectors", {
+    id: id(demoApprovedWorkflow.connectorKey),
+    tenant_id: tenantId,
+    slug: demoApprovedWorkflow.connector.slug,
+    display_name: demoApprovedWorkflow.connector.name,
+    driver: "http",
+    base_url: "http://demo-api:8080",
+    config: {},
+    environment: "prod",
+    auth_type: "none",
+    enabled: true,
+    health_state: "ok",
+    health_reason: null,
+    needs_reauth: false,
+    auth_failed_reason: null,
+    ...metadata("operations", demoApprovedWorkflow.connector.description),
+  });
+  insert("workflows", {
+    id: id(demoApprovedWorkflow.key),
+    tenant_id: tenantId,
+    slug: demoApprovedWorkflow.slug,
+    name: demoApprovedWorkflow.name,
+    lifecycle: "active",
+    last_executed_at: null,
+    health_state: "ok",
+    health_reason: null,
+    created_at: ago(demoApprovedWorkflow.approvedHoursAgo + 18),
+    ...metadata("operations", demoApprovedWorkflow.description),
+  });
+  insert("workflow_versions", {
+    id: id(demoApprovedWorkflow.versionKey),
+    tenant_id: tenantId,
+    workflow_id: id(demoApprovedWorkflow.key),
+    version: 1,
+    author_user_id: adminUserId,
+    dag: {
+      name: demoApprovedWorkflow.name,
+      slug: demoApprovedWorkflow.slug,
+      description: demoApprovedWorkflow.description,
+      steps: [
+        {
+          id: "read-report",
+          kind: "request",
+          connector_id: id(demoApprovedWorkflow.connectorKey),
+          method: "GET",
+          path: "/report",
+        },
+        {
+          id: "post-status",
+          kind: "request",
+          connector_id: id(demoApprovedWorkflow.connectorKey),
+          method: "POST",
+          path: "/echo",
+          body: { message: "Daily dispatch status from the demo workspace" },
+        },
+      ],
+    },
+    note: "Initial version",
+    created_at: ago(demoApprovedWorkflow.approvedHoursAgo + 18),
+  });
+  statements.push(
+    `UPDATE workflows SET current_version_id=${quote(id(demoApprovedWorkflow.versionKey))} WHERE tenant_id=${quote(tenantId)} AND id=${quote(id(demoApprovedWorkflow.key))};`,
+  );
   for (const usage of demoExtraUsage(now)) {
     insert("llm_usage", {
       tenant_id: tenantId,
@@ -1227,4 +1308,68 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     `UPDATE workflows w SET last_executed_at=(SELECT max(e.started_at) FROM executions e WHERE e.tenant_id=w.tenant_id AND e.workflow_id=w.id) WHERE w.tenant_id=${quote(tenantId)} AND w.id IN (${workflowIds}) AND w.last_executed_at IS NULL AND EXISTS (SELECT 1 FROM executions e WHERE e.tenant_id=w.tenant_id AND e.workflow_id=w.id AND e.started_at IS NOT NULL);`,
   );
   return `BEGIN;\nDO $cockpit_demo$ BEGIN\nPERFORM pg_advisory_xact_lock(hashtext('cockpit-demo'), hashtext(${quote(tenantId)}));\nIF NOT EXISTS (SELECT 1 FROM tenants WHERE id=${quote(tenantId)} AND slug=${quote(cockpitDemoTenantSlug)}) THEN RAISE EXCEPTION 'Refusing to seed a non-demo tenant'; END IF;\nIF NOT EXISTS (SELECT 1 FROM users WHERE id=${quote(adminUserId)} AND tenant_id=${quote(tenantId)}) THEN RAISE EXCEPTION 'Demo owner does not belong to tenant'; END IF;\n${repairs.join("\n")}\nIF EXISTS (SELECT 1 FROM audit_log WHERE id=${quote(id("seed-complete"))} AND tenant_id=${quote(tenantId)}) THEN RETURN; END IF;\n${statements.join("\n")}\nEND $cockpit_demo$;\nCOMMIT;\n`;
+}
+
+export interface CockpitDemoAuthorityPreview {
+  manifest: {
+    workflow_id: string;
+    workflow_version_id: string;
+    execution_environment: string;
+    effects: readonly { target?: string | null; effect?: string }[];
+  };
+  digest: string;
+  eligible_for_repeated_runs: boolean;
+}
+
+export function createCockpitDemoApprovalSql(
+  tenantId: string,
+  adminUserId: string,
+  preview: CockpitDemoAuthorityPreview,
+  now: Date = new Date(),
+): string {
+  const id = (name: string) => cockpitDemoId(tenantId, name);
+  const workflowId = id(demoApprovedWorkflow.key);
+  const versionId = id(demoApprovedWorkflow.versionKey);
+  if (
+    preview.manifest.workflow_id !== workflowId ||
+    preview.manifest.workflow_version_id !== versionId ||
+    preview.manifest.execution_environment !== "prod"
+  )
+    throw new Error("Demo approval preview does not describe the approved demo workflow");
+  if (!preview.eligible_for_repeated_runs || !/^[0-9a-f]{64}$/.test(preview.digest))
+    throw new Error("Demo approval preview is not eligible for a standing approval");
+  const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
+  const json = (value: unknown) => `${quote(JSON.stringify(value))}::jsonb`;
+  const authorityId = id(demoApprovedWorkflow.authorityKey);
+  const approvedAt = new Date(
+    now.getTime() - demoApprovedWorkflow.approvedHoursAgo * HOUR_MS,
+  ).toISOString();
+  const targets = [
+    ...new Set(
+      preview.manifest.effects.flatMap((effect) => (effect.target ? [effect.target] : [])),
+    ),
+  ].sort();
+  const tenant = quote(tenantId);
+  return `BEGIN;
+DO $cockpit_demo_approval$ BEGIN
+IF NOT EXISTS (SELECT 1 FROM tenants WHERE id=${tenant} AND slug=${quote(cockpitDemoTenantSlug)}) THEN RAISE EXCEPTION 'Refusing to seed a non-demo tenant'; END IF;
+IF NOT EXISTS (SELECT 1 FROM users WHERE id=${quote(adminUserId)} AND tenant_id=${tenant}) THEN RAISE EXCEPTION 'Demo owner does not belong to tenant'; END IF;
+IF EXISTS (SELECT 1 FROM workflow_execution_authorities WHERE tenant_id=${tenant} AND id=${quote(authorityId)}) THEN RETURN; END IF;
+INSERT INTO workflow_execution_authorities (id,tenant_id,workflow_id,workflow_version_id,effect_manifest_digest,effect_manifest,execution_environment,target_constraints,valid_from,valid_until,max_runs,created_by,created_at,approved_manifest) VALUES (${quote(authorityId)},${tenant},${quote(workflowId)},${quote(versionId)},${quote(preview.digest)},${json(preview.manifest)},'prod',${json({ targets })},${quote(approvedAt)},NULL,NULL,${quote(adminUserId)},${quote(approvedAt)},${json(preview.manifest)});
+INSERT INTO audit_log (id,tenant_id,actor_type,actor_id,action,resource_type,resource_id,result,ts,metadata) VALUES (${quote(id("authority-approved-audit"))},${tenant},'user',${quote(adminUserId)},'workflow.authority_granted','workflow_execution_authority',${quote(authorityId)},'success',${quote(approvedAt)},${json(
+    {
+      workflow_id: workflowId,
+      workflow_version_id: versionId,
+      effect_manifest_digest: preview.digest,
+      execution_environment: "prod",
+      valid_from: approvedAt,
+      valid_until: null,
+      max_runs: null,
+      open_ended: true,
+      request_source: "ui",
+    },
+  )}) ON CONFLICT DO NOTHING;
+END $cockpit_demo_approval$;
+COMMIT;
+`;
 }

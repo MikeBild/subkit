@@ -17,14 +17,17 @@ import {
   resolveCockpitDemoInstance,
 } from "./lib/cockpit-demo-instance.ts";
 import {
+  type CockpitDemoAuthorityPreview,
   cockpitDemoId,
   cockpitDemoManifest,
   cockpitDemoOwnerEmail,
   cockpitDemoOwnerSql,
   cockpitDemoSetupTenantName,
   cockpitDemoTenantSlug,
+  createCockpitDemoApprovalSql,
   createCockpitDemoCatalogRepairSql,
   createCockpitDemoSeedSql,
+  demoApprovedWorkflow,
   demoFiles,
   demoHistory,
   demoMonthlyBudgetTokens,
@@ -132,6 +135,19 @@ function sql(statement: string): string {
 
 export function retryableDemoRequest(status: number, code: string): boolean {
   return status === 409 && code === "catalog_vocabulary_changed";
+}
+
+async function seedDemoApproval(identities: { tenantId: string; adminUserId: string }) {
+  const workflowId = cockpitDemoId(identities.tenantId, demoApprovedWorkflow.key);
+  const versionId = cockpitDemoId(identities.tenantId, demoApprovedWorkflow.versionKey);
+  const present = sql(
+    `SELECT count(*) FROM workflow_versions WHERE tenant_id='${identities.tenantId}' AND workflow_id='${workflowId}' AND id='${versionId}';`,
+  );
+  if (present.trim() !== "1") return;
+  const preview = (await api(
+    `/v1/workflows/${workflowId}/versions/${versionId}/authority-preview?environment=prod`,
+  )) as CockpitDemoAuthorityPreview;
+  sql(createCockpitDemoApprovalSql(identities.tenantId, identities.adminUserId, preview));
 }
 
 async function api(path: string, method = "GET", body?: unknown) {
@@ -507,6 +523,7 @@ async function main(): Promise<void> {
     save(STATE_FILE, state);
   }
   sql(createCockpitDemoSeedSql(identities.tenantId, identities.adminUserId));
+  await seedDemoApproval(identities);
   if (!state.filesReady) {
     state.uploadedFiles ??= {};
     for (const file of demoFiles) {

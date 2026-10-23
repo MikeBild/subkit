@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { tenants, users } from "../../apps/engine/src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../apps/engine/src/db/tests/setup.ts";
 import { builtinRoleId } from "../../apps/engine/src/rbac/roles.ts";
+import { previewWorkflowAuthority } from "../../apps/engine/src/workflows/execution-authorities.ts";
 import {
   cockpitDemoId,
   cockpitDemoOwnerEmail,
@@ -10,9 +11,11 @@ import {
   cockpitDemoSetupTenantName,
   cockpitDemoTenantName,
   cockpitDemoTenantSlug,
+  createCockpitDemoApprovalSql,
   createCockpitDemoCatalogRepairSql,
   createCockpitDemoSeedSql,
   demoAiRuns,
+  demoApprovedWorkflow,
   demoMonthlyBudgetTokens,
   demoTemplateConnectors,
 } from "./cockpit-demo-seed.ts";
@@ -344,4 +347,96 @@ test("the AI workflow's runs and the budget forecast are anchored to now", () =>
   expect(budget as number).toBeGreaterThan(100_000);
   expect(budget as number).toBeLessThan(100_000 + 10_000 * remainingDays);
   expect(demoMonthlyBudgetTokens({ usedTokens: 1, lastSevenDaysTokens: 0, now })).toBeNull();
+});
+
+test("one workflow carries an open-ended production approval for its read and write effects", async () => {
+  await context.pool.query(createCockpitDemoSeedSql(tenantId, adminId));
+  const workflowId = cockpitDemoId(tenantId, demoApprovedWorkflow.key);
+  const versionId = cockpitDemoId(tenantId, demoApprovedWorkflow.versionKey);
+  const authorityId = cockpitDemoId(tenantId, demoApprovedWorkflow.authorityKey);
+  const boundary = {
+    tenant_id: tenantId,
+    workflow_id: workflowId,
+    workflow_version_id: versionId,
+    execution_environment: "prod" as const,
+  };
+  const preview = await previewWorkflowAuthority(boundary, context.db);
+  expect(preview.eligible_for_repeated_runs).toBe(true);
+  expect(preview.manifest.effects.map((effect) => effect.effect).sort()).toEqual(["read", "write"]);
+  const approval = createCockpitDemoApprovalSql(tenantId, adminId, preview);
+  await context.pool.query(approval);
+  await context.pool.query(approval);
+  const authorities = await context.pool.query(
+    `SELECT id::text, workflow_version_id::text, execution_environment::text, effect_manifest_digest,
+            valid_from, valid_until, max_runs, revoked_at, created_by::text, target_constraints
+       FROM workflow_execution_authorities WHERE tenant_id=$1 AND workflow_id=$2`,
+    [tenantId, workflowId],
+  );
+  expect(authorities.rows).toHaveLength(1);
+  const authority = authorities.rows[0];
+  expect(authority).toMatchObject({
+    id: authorityId,
+    workflow_version_id: versionId,
+    execution_environment: "prod",
+    valid_until: null,
+    max_runs: null,
+    revoked_at: null,
+    created_by: adminId,
+    target_constraints: { targets: ["http://demo-api:8080/echo", "http://demo-api:8080/report"] },
+  });
+  expect(authority?.valid_from.getTime()).toBeLessThan(Date.now());
+  const fresh = await previewWorkflowAuthority(boundary, context.db);
+  expect(authority?.effect_manifest_digest).toBe(fresh.digest);
+  const workflow = await context.pool.query(
+    "SELECT lifecycle, current_version_id::text FROM workflows WHERE tenant_id=$1 AND id=$2",
+    [tenantId, workflowId],
+  );
+  expect(workflow.rows[0]).toEqual({ lifecycle: "active", current_version_id: versionId });
+  const audit = await context.pool.query(
+    "SELECT action, actor_id::text, result, metadata FROM audit_log WHERE tenant_id=$1 AND resource_type='workflow_execution_authority' AND resource_id=$2",
+    [tenantId, authorityId],
+  );
+  expect(audit.rows).toHaveLength(1);
+  expect(audit.rows[0]).toMatchObject({
+    action: "workflow.authority_granted",
+    actor_id: adminId,
+    result: "success",
+    metadata: {
+      execution_environment: "prod",
+      open_ended: true,
+      valid_until: null,
+      max_runs: null,
+    },
+  });
+}, 60_000);
+
+test("the approval refuses a preview of another workflow or an ineligible boundary", () => {
+  const manifest = {
+    workflow_id: cockpitDemoId(tenantId, demoApprovedWorkflow.key),
+    workflow_version_id: cockpitDemoId(tenantId, demoApprovedWorkflow.versionKey),
+    execution_environment: "prod",
+    effects: [],
+  };
+  const digest = "a".repeat(64);
+  expect(() =>
+    createCockpitDemoApprovalSql(tenantId, adminId, {
+      manifest: { ...manifest, workflow_id: cockpitDemoId(tenantId, "workflow-3") },
+      digest,
+      eligible_for_repeated_runs: true,
+    }),
+  ).toThrow();
+  expect(() =>
+    createCockpitDemoApprovalSql(tenantId, adminId, {
+      manifest,
+      digest,
+      eligible_for_repeated_runs: false,
+    }),
+  ).toThrow();
+  expect(() =>
+    createCockpitDemoApprovalSql(tenantId, adminId, {
+      manifest: { ...manifest, execution_environment: "dev" },
+      digest,
+      eligible_for_repeated_runs: true,
+    }),
+  ).toThrow();
 });
