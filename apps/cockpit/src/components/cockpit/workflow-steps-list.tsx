@@ -422,7 +422,7 @@ function FlowPlus({ label, onClick, testId }: { label: string; onClick(): void; 
         aria-label={label}
         title={label}
         data-testid={testId}
-        className="inline-grid size-6 place-items-center rounded-full border border-dashed text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-3.5"
+        className="relative inline-grid size-6 place-items-center rounded-full border border-dashed pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5 text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-3.5"
       >
         <Plus aria-hidden="true" />
       </button>

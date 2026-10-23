@@ -8,6 +8,18 @@ import {
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 import { useTheme } from "@/lib/theme";
 
+function safeOffset(space: string) {
+  return {
+    top: `calc(${space} + env(safe-area-inset-top))`,
+    right: `calc(${space} + env(safe-area-inset-right))`,
+    bottom: `calc(${space} + env(safe-area-inset-bottom))`,
+    left: `calc(${space} + env(safe-area-inset-left))`,
+  };
+}
+
+const SAFE_OFFSET = safeOffset("24px");
+const SAFE_MOBILE_OFFSET = safeOffset("16px");
+
 const Toaster = ({ ...props }: ToasterProps) => {
   const { resolved } = useTheme();
 
@@ -15,6 +27,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={resolved}
       className="toaster group"
+      offset={SAFE_OFFSET}
+      mobileOffset={SAFE_MOBILE_OFFSET}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,

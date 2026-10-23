@@ -39,7 +39,7 @@ export function GroupingTabs({
       data-slot="grouping-tabs"
       data-testid={testId}
       className={cn(
-        "scrollbar-none relative flex h-9 shrink-0 items-center gap-6 overflow-x-auto border-b",
+        "scrollbar-none relative flex h-9 shrink-0 items-center gap-6 overflow-x-auto border-b pointer-coarse:h-11",
         className,
       )}
     >
@@ -58,7 +58,7 @@ export function GroupingTabs({
                 : undefined
           }
           className={cn(
-            "relative inline-flex h-9 shrink-0 items-center whitespace-nowrap text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "relative inline-flex h-9 shrink-0 items-center whitespace-nowrap pointer-coarse:h-11 pointer-coarse:after:absolute pointer-coarse:after:inset-y-0 pointer-coarse:after:-inset-x-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             option.value === value && "text-foreground",
           )}
         >

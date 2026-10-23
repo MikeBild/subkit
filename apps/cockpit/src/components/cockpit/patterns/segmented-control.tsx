@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useEdgeFade } from "./tab-motion";
 
 export interface SegmentedOption {
   value: string;
@@ -38,6 +39,7 @@ export function SegmentedControl({
   testId?: string;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const edgeFade = useEdgeFade(root);
   useLayoutEffect(() => {
     const box = root.current;
     if (!box || box.scrollWidth <= box.clientWidth) return;
@@ -62,6 +64,7 @@ export function SegmentedControl({
       aria-label={label}
       data-slot="segmented-control"
       data-testid={testId}
+      style={edgeFade}
       className="min-w-0 max-w-full flex-nowrap gap-0.5 overflow-x-auto rounded-md bg-muted p-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {options.map((option) => (
@@ -69,7 +72,7 @@ export function SegmentedControl({
           key={option.value}
           value={option.value}
           data-testid={option.testId}
-          className="h-[26px] shrink-0 whitespace-nowrap rounded-sm border-0 bg-transparent px-2.5 shadow-none text-[13px] font-medium text-muted-foreground hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
+          className="h-[26px] shrink-0 pointer-coarse:h-[38px] whitespace-nowrap rounded-sm border-0 bg-transparent px-2.5 shadow-none text-[13px] font-medium text-muted-foreground hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
         >
           {option.label}
         </ToggleGroupItem>

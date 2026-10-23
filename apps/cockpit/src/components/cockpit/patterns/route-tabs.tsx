@@ -46,7 +46,7 @@ export function RouteTabs({
             data-state={current ? "active" : "inactive"}
             data-testid={tab.testId ?? `${testId}-${tab.to.replace(/^\//, "")}`}
             className={cn(
-              "relative inline-flex h-9 shrink-0 items-center px-3 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "relative inline-flex h-9 shrink-0 items-center px-3 pointer-coarse:h-11 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               current &&
                 "text-foreground after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-foreground",
             )}

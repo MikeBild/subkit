@@ -101,7 +101,7 @@ export function WorkspaceMenu({
             <SidebarMenuButton
               aria-label={t("workspace.switch")}
               aria-busy={changing}
-              className="size-8 shrink-0 justify-center data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="size-8 shrink-0 justify-center pointer-coarse:w-11 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <ChevronsUpDown className="size-4 text-muted-foreground" />
             </SidebarMenuButton>

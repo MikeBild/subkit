@@ -9,7 +9,7 @@ export function dialogWidthClass(size: DialogSize): string {
 }
 
 export const DIALOG_FRAME =
-  "flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden bg-background p-0 max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[calc(100dvh-1.5rem)] max-sm:w-full max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none";
+  "flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden bg-background p-0 max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[calc(100dvh-1.5rem)] max-sm:w-full max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none max-sm:pb-[env(safe-area-inset-bottom)]";
 
 export const DIALOG_HEAD =
   "grid flex-none gap-1 px-6 pt-5 pb-4 max-sm:px-4 max-sm:pt-4 max-sm:pb-3";

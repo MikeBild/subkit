@@ -170,6 +170,22 @@
     @apply border-border outline-ring/50;
   }
 
+  @media (pointer: coarse) {
+    :where(button, a)[data-variant][data-size],
+    [data-slot="select-trigger"],
+    [data-slot="collapsible-trigger"] {
+      position: relative;
+    }
+
+    :where(button, a)[data-variant][data-size]::after,
+    [data-slot="select-trigger"]::after,
+    [data-slot="collapsible-trigger"]::after {
+      content: "";
+      position: absolute;
+      inset: min(0px, calc((100% - 2.75rem) / 2));
+    }
+  }
+
   #root {
     height: 100dvh;
     overflow-y: auto;
@@ -409,5 +425,14 @@
 
   [data-cockpit-ui] [data-slot="tabs-list"] {
     height: auto;
+  }
+}
+
+@media (pointer: coarse) and (width < 48rem) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]),
+  textarea,
+  select,
+  [contenteditable="true"] {
+    font-size: max(1rem, 1em);
   }
 }

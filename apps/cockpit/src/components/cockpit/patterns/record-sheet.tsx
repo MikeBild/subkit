@@ -73,7 +73,7 @@ function RecordBody({
             onClick={back.onClick}
             data-slot="sheet-back"
             data-testid={`${testId}-back`}
-            className="inline-flex w-fit items-center gap-0.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline"
+            className="relative inline-flex w-fit items-center gap-0.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline pointer-coarse:after:absolute pointer-coarse:after:-inset-x-2 pointer-coarse:after:-inset-y-3"
           >
             <ChevronLeft aria-hidden="true" className="-ml-1 size-4" />
             {back.label}

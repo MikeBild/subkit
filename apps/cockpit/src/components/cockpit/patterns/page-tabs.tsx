@@ -91,14 +91,17 @@ export function PageTabs({
         <TabsList
           ref={list}
           variant="line"
-          className="relative h-9 w-full min-w-max justify-start gap-6 rounded-none border-b p-0"
+          className="relative h-9 w-full min-w-max justify-start gap-6 rounded-none border-b p-0 pointer-coarse:h-11"
           data-testid={`${testId}-list`}
         >
           {tabs.map((tab) => (
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className={cn("h-9 flex-none px-0 text-sm font-medium", indicator && "after:hidden")}
+              className={cn(
+                "h-9 flex-none px-0 text-sm font-medium pointer-coarse:h-11",
+                indicator && "after:hidden",
+              )}
               data-testid={tab.testId ?? `${testId}-tab-${tab.value}`}
             >
               {tab.label}

@@ -143,7 +143,7 @@ export function FilterBar({
               <button
                 type="button"
                 onClick={applyFilters}
-                className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+                className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground pointer-coarse:h-11"
                 data-testid="filter-bar-panel-apply"
               >
                 {t("common.applyFilters")}
@@ -174,7 +174,7 @@ export function FilterBar({
             onClick={openFilters}
             aria-haspopup="dialog"
             aria-expanded={open}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent pointer-coarse:h-11"
             data-testid="filter-bar-open"
           >
             <SlidersHorizontal className="size-4" />
@@ -223,7 +223,7 @@ export function FilterBar({
                   type="button"
                   data-testid="filter-bar-apply"
                   onClick={applyFilters}
-                  className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+                  className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground pointer-coarse:h-11"
                 >
                   {t("common.applyFilters")}
                 </button>
