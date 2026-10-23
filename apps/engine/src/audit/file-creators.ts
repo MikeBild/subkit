@@ -60,9 +60,7 @@ export async function fileCreatorNames(
   const [person] =
     creator.kind === "user"
       ? await db
-          .select({
-            name: sql<string>`coalesce(nullif(${users.display_name}, ''), ${users.email})`,
-          })
+          .select({ name: sql<string | null>`nullif(${users.display_name}, '')` })
           .from(users)
           .where(and(eq(users.tenant_id, tenantId), eq(users.id, creator.id)))
           .limit(1)

@@ -52,6 +52,7 @@ import {
   replaceFileContent,
 } from "../../files/versions.ts";
 import { logger } from "../../logging/index.ts";
+import { can } from "../../rbac/index.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
@@ -597,7 +598,12 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
       seen.add(link.resource_id);
       conversationsUsing.push({ id: link.resource_id, title: link.title ?? null });
     }
-    const names = await linkedRecordNames(db, tenant_id, others);
+    const readable = await readableLinkKinds(db, principal);
+    const names = await linkedRecordNames(
+      db,
+      tenant_id,
+      others.filter((link) => readable.has(link.resource_type)),
+    );
     const other_links = others
       .map((link) => ({ ...link, name: names.get(`${link.resource_type}:${link.id}`) ?? null }))
       .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "") || a.id.localeCompare(b.id));
@@ -606,6 +612,30 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
       200,
     );
   });
+}
+
+const LINK_READ_PERMISSIONS = {
+  knowledge_source: "knowledge:read",
+  skill: "skill:read",
+  connector: "connector:read",
+  workflow_run: "execution:read",
+} as const;
+
+async function readableLinkKinds(
+  db: Db,
+  principal: ReturnType<typeof requireAuth>,
+): Promise<Set<string>> {
+  const kinds = new Set<string>();
+  for (const [kind, permission] of Object.entries(LINK_READ_PERMISSIONS)) {
+    const decision = await can(db, {
+      tenant_id: principal.tenant_id,
+      principal,
+      permission,
+      quiet: true,
+    });
+    if (decision.allow) kinds.add(kind);
+  }
+  return kinds;
 }
 
 type LinkedRecord = Pick<typeof fileLinks.$inferSelect, "resource_type"> & { id: string };

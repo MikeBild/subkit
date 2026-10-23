@@ -27257,9 +27257,9 @@ export interface components {
                 /** Format: uuid */
                 id: string;
             } | null;
-            /** @description Display name of the established creator: the person's name or e-mail, or the system account's name. Only on a single file; null when unknown. */
+            /** @description Display name of the established creator: the person's display name or the system account's name. Only on a single file and only for readers of the identity directory; null otherwise. */
             creator_name?: string | null;
-            /** @description Name of the API key the creator uploaded the file with, when the creation audit names one. Only on a single file. */
+            /** @description Name of the API key the creator uploaded the file with, when the creation audit names one. Only on a single file and only for readers of the identity directory. */
             creator_api_key_name?: string | null;
             created_at: string;
             updated_at: string;
@@ -27402,7 +27402,7 @@ export interface components {
                 title: string | null;
             }[];
             other: number;
-            /** @description The non-conversation records that link this file, named where the record still exists; counted in `other`. */
+            /** @description The non-conversation records that link this file; `name` is set only when the record still exists and the caller may read its kind. Counted in `other`. */
             other_links: {
                 resource_type: components["schemas"]["FileLinkResourceType"];
                 /** Format: uuid */

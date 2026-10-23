@@ -61,14 +61,14 @@ export const FileSchema = z
       .nullable()
       .optional()
       .describe(
-        "Display name of the established creator: the person's name or e-mail, or the system account's name. Only on a single file; null when unknown.",
+        "Display name of the established creator: the person's display name or the system account's name. Only on a single file and only for readers of the identity directory; null otherwise.",
       ),
     creator_api_key_name: z
       .string()
       .nullable()
       .optional()
       .describe(
-        "Name of the API key the creator uploaded the file with, when the creation audit names one. Only on a single file.",
+        "Name of the API key the creator uploaded the file with, when the creation audit names one. Only on a single file and only for readers of the identity directory.",
       ),
     created_at: z.string(),
     updated_at: z.string(),
@@ -245,7 +245,7 @@ export const FileUsageSchema = z
         }),
       )
       .describe(
-        "The non-conversation records that link this file, named where the record still exists; counted in `other`.",
+        "The non-conversation records that link this file; `name` is set only when the record still exists and the caller may read its kind. Counted in `other`.",
       ),
   })
   .openapi("FileUsage");

@@ -288,14 +288,18 @@ describe("GET /v1/files/{id}/usage", () => {
 
   test("names the uploader of a single file", async () => {
     const file = await upload("named upload", "named.txt");
-    const response = await request("GET", `/v1/files/${file.id}`, srv.apiKey);
-    const body = (await response.json()) as {
-      creator: { kind: string } | null;
+    const first = (await (await request("GET", `/v1/files/${file.id}`, srv.apiKey)).json()) as {
+      creator: { kind: string; id: string } | null;
+    };
+    expect(first.creator?.kind).toBe("user");
+    await srv.db
+      .update(users)
+      .set({ display_name: "Lena Hoffmann" })
+      .where(eq(users.id, first.creator?.id ?? ""));
+    const named = (await (await request("GET", `/v1/files/${file.id}`, srv.apiKey)).json()) as {
       creator_name?: string | null;
     };
-    expect(body.creator?.kind).toBe("user");
-    expect(typeof body.creator_name).toBe("string");
-    expect(body.creator_name?.length).toBeGreaterThan(0);
+    expect(named.creator_name).toBe("Lena Hoffmann");
   });
 
   test("is empty for a file nobody uses", async () => {
