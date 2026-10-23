@@ -67,10 +67,12 @@ export function StatusBadge({
   state,
   label,
   testId,
+  wrap = false,
 }: {
   state: string;
   label?: string;
   testId?: string;
+  wrap?: boolean;
 }) {
   const { t } = useI18n();
   const tone = statusTone(state);
@@ -83,10 +85,14 @@ export function StatusBadge({
       data-state={state}
       data-tone={tone}
       aria-label={text}
-      className={cn("min-w-0 max-w-full", TONE_CLASS[tone])}
+      className={cn(
+        "min-w-0 max-w-full",
+        wrap && "h-auto whitespace-normal text-left",
+        TONE_CLASS[tone],
+      )}
       title={text}
     >
-      <span className="min-w-0 truncate">{text}</span>
+      <span className={cn("min-w-0", wrap ? "break-words" : "truncate")}>{text}</span>
     </Badge>
   );
 }

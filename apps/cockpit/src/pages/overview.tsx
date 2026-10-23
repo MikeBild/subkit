@@ -236,7 +236,7 @@ function NeedsYou({
         (item) => attentionRow(item, t).name,
         t("overview.column.entry"),
         (item) => <span className="font-medium">{attentionRow(item, t).name}</span>,
-        { width: "w-[30%]" },
+        { width: "w-[28%]" },
       ),
       column.custom(
         "reason",
@@ -255,7 +255,7 @@ function NeedsYou({
             </span>
           );
         },
-        { width: "w-[34%]" },
+        { width: "w-[30%]" },
       ),
       column.custom(
         "state",
@@ -263,9 +263,9 @@ function NeedsYou({
         t("resource.field.status"),
         (item) => {
           const { badge } = attentionRow(item, t);
-          return <StatusBadge state={badge.state} label={t(badge.label)} />;
+          return <StatusBadge state={badge.state} label={t(badge.label)} wrap />;
         },
-        { width: "w-[20%]" },
+        { width: "w-[26%]" },
       ),
       column.custom(
         "since",
