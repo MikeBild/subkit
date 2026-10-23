@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { JsonPatchError } from "fast-json-patch";
+import { LLM_CALL_TIMEOUT_MS } from "../../llm/core/ai-sdk-model.ts";
 import { log } from "../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
@@ -15,6 +16,8 @@ import {
   validateUnsupportedPlaceholders,
 } from "../../workflows/reference-validator.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
+import { reviewDraftWithCritic } from "../authoring-critic/critic-agent.ts";
+import { loadConsecutiveCriticRejections } from "../authoring-critic/streak.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { applyDiffsToConfig, type ToolDiff } from "../json-patch-apply.ts";
@@ -218,9 +221,57 @@ export const editWorkflowPatchTool: ConversationTool = {
         }),
       };
     }
-    return applyWorkflowPatchToDraft(ctx, patches);
+    const applied = await applyWorkflowPatchToDraft(ctx, patches);
+    if (!applied.ok) return applied;
+    return withPatchCriticReview(ctx, applied);
   },
 };
+
+async function withPatchCriticReview(
+  ctx: ToolContext,
+  applied: Extract<ToolResult, { ok: true }>,
+): Promise<ToolResult> {
+  const nextDraft = ctx.getDraft();
+  const workflow = getWorkflowDraft(nextDraft);
+  const timeout = AbortSignal.timeout(LLM_CALL_TIMEOUT_MS);
+  const outcome = await reviewDraftWithCritic({
+    tool: "edit_workflow_patch",
+    draft: workflow,
+    goal: workflow.goal ?? null,
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    recentDriftCount: nextDraft.latest_preview?.warnings?.length ?? 0,
+    loadConsecutiveRejections: () =>
+      loadConsecutiveCriticRejections({
+        db: ctx.db,
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        ...(ctx.tool_call_id ? { tool_call_id: ctx.tool_call_id } : {}),
+      }),
+    db: ctx.db,
+    signal: ctx.abortSignal ? AbortSignal.any([ctx.abortSignal, timeout]) : timeout,
+  });
+  const data =
+    applied.data !== null && typeof applied.data === "object"
+      ? (applied.data as Record<string, unknown>)
+      : {};
+  return {
+    ...applied,
+    data: {
+      ...data,
+      critic: { result: outcome.result, gating_reason: outcome.gating_reason },
+      ...(outcome.result === "reject" && outcome.rationale !== null
+        ? {
+            critic_rejection: {
+              repairs: outcome.repairs,
+              rationale: outcome.rationale,
+              gating_reason: outcome.gating_reason,
+            },
+          }
+        : {}),
+    },
+  };
+}
 
 export async function applyWorkflowPatchToDraft(
   ctx: ToolContext,

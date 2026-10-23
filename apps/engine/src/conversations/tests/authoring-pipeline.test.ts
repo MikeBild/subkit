@@ -895,6 +895,7 @@ describe("runAuthoringPipeline — semantic critic wire-in", () => {
       expect(result.attempts).toBe(1);
       expect(result.definition.slug).toBe("top-repos-digest");
       expect(result.critic_rejection).toBeUndefined();
+      expect(result.critic).toMatchObject({ result: "skipped_disabled", returned_pass: 1 });
       expect(getMockProvider().calls.filter((c) => c.flow === "critic_authoring")).toHaveLength(0);
       expect(fetchCalls).toBe(0);
     },
@@ -932,6 +933,16 @@ describe("runAuthoringPipeline — semantic critic wire-in", () => {
         expect(result.critic_rejection).toBeDefined();
         expect(result.critic_rejection?.repairs[0]).toContain("Reorder shape_repos");
         expect(result.critic_rejection?.gating_reason).toBe("step_count");
+        expect(result.critic).toEqual({
+          result: "reject",
+          gating_reason: "step_count",
+          reviewed_pass: 1,
+          returned_pass: 2,
+          reviewed_returned_definition: false,
+        });
+        expect(result.candidate_swap).toBeUndefined();
+        const criticCall = getMockProvider().calls.find((c) => c.flow === "critic_authoring");
+        expect(criticCall?.last_user).toContain("top repos with names");
         const genPrompts = getMockProvider().calls.filter((c) => c.flow === "generate");
         expect(genPrompts).toHaveLength(2);
         expect(genPrompts[1]?.last_user).toContain("Findings from the previous attempt");
@@ -966,6 +977,7 @@ describe("runAuthoringPipeline — semantic critic wire-in", () => {
         expect(data.persistence).toBe("draft_only");
         expect(data.critic_rejection).toBeDefined();
         expect(data.critic_rejection?.repairs[0]).toContain("idempotency_key");
+        expect((data as { critic?: { result: string } }).critic?.result).toBe("reject");
         expect((data as { error_code?: string }).error_code).toBeUndefined();
         expect(fetchCalls).toBe(0);
       } finally {

@@ -37,11 +37,11 @@
 // QuickJS against recorded evidence only. `dry_run_workflow` stays the
 // explicit preview step.
 
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 import { readDiscoveryIndexForConnector } from "../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../connectors/discovery/types.ts";
-import { connectors as connectorsTable, conversationToolCalls } from "../db/schema/index.ts";
+import { connectors as connectorsTable } from "../db/schema/index.ts";
 import {
   findUnknownFunctionCalls,
   JSONATA_BUILTIN_FUNCTIONS,
@@ -70,8 +70,14 @@ import {
   WorkflowDefSchema,
   WorkflowRuntimeSchema,
 } from "../workflows/types.ts";
-import { runCriticAgent } from "./authoring-critic/critic-agent.ts";
-import { shouldRunCritic } from "./authoring-critic/gating.ts";
+import {
+  type AuthoringCriticReport,
+  attributeCriticReview,
+  type CandidateSwap,
+  type CriticReviewRecord,
+} from "./authoring-critic/attribution.ts";
+import { reviewDraftWithCritic } from "./authoring-critic/critic-agent.ts";
+import { loadConsecutiveCriticRejections } from "./authoring-critic/streak.ts";
 import {
   DISCOVERED_ENDPOINTS_PER_CONNECTOR,
   formatDiscoveredEndpoints,
@@ -174,6 +180,8 @@ export type AuthoringPipelineResult =
       unresolved_connectors: string[];
       note?: string;
       critic_rejection?: CriticRejectionDetail;
+      critic: AuthoringCriticReport;
+      candidate_swap?: CandidateSwap;
       next: "dry_run_workflow";
     }
   | {
@@ -408,31 +416,6 @@ function toWorkflowDraftDocument(def: GeneratedWorkflow): WorkflowDraftDocument 
   };
 }
 
-async function countConsecutiveCriticRejections(ctx: ToolContext): Promise<number> {
-  const rows = await ctx.db
-    .select({ tool: conversationToolCalls.tool, output: conversationToolCalls.output })
-    .from(conversationToolCalls)
-    .where(
-      and(
-        eq(conversationToolCalls.tenant_id, ctx.tenant_id),
-        eq(conversationToolCalls.conversation_id, ctx.conversation_id),
-      ),
-    )
-    .orderBy(desc(conversationToolCalls.created_at))
-    .limit(8);
-  let streak = 0;
-  for (const row of rows) {
-    if (row.tool !== "author_workflow") continue;
-    const out = row.output as Record<string, unknown> | null;
-    if (out && typeof out === "object" && out.critic_rejection !== undefined) {
-      streak += 1;
-    } else {
-      break;
-    }
-  }
-  return streak;
-}
-
 export async function runAuthoringPipeline(
   params: AuthoringPipelineParams,
 ): Promise<AuthoringPipelineResult> {
@@ -504,7 +487,12 @@ export async function runAuthoringPipeline(
     Math.max(0, PIPELINE_DEADLINE_MS - (Date.now() - deadlineStartedAt)); // allow-wall-clock
 
   let definition: GeneratedWorkflow | null = null;
-  let lastValid: { definition: GeneratedWorkflow; errors: ValidationError[] } | null = null;
+  let definitionPass = 0;
+  let lastValid: {
+    definition: GeneratedWorkflow;
+    errors: ValidationError[];
+    pass: number;
+  } | null = null;
   let validationErrors: ValidationError[] = [];
   let attempts = 0;
   let priorFindings: string[] | null = null;
@@ -514,45 +502,39 @@ export async function runAuthoringPipeline(
   let regrounded = false;
   let criticRan = false;
   let criticRejection: CriticRejectionDetail | null = null;
+  const criticState: { review: CriticReviewRecord | null } = { review: null };
 
   const runCriticGate = async (
     candidate: GeneratedWorkflow,
+    pass: number,
   ): Promise<{ rejection: CriticRejectionDetail; priorFindings: string[] } | null> => {
-    const recentDriftCount = ctx.getDraft().latest_preview?.warnings?.length ?? 0;
-    const consecutiveRejections = await countConsecutiveCriticRejections(ctx);
-    const gate = shouldRunCritic({
-      stepCount: candidate.steps.length,
-      recentDriftCount,
-      consecutiveRejections,
-      tenantId: ctx.tenant_id,
-    });
-    if (!gate.run) return null;
-    const verdict = await runCriticAgent({
+    const outcome = await reviewDraftWithCritic({
+      tool: "author_workflow",
       draft: toWorkflowDraftDocument(candidate),
+      goal,
       tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      recentDriftCount: ctx.getDraft().latest_preview?.warnings?.length ?? 0,
+      loadConsecutiveRejections: () =>
+        loadConsecutiveCriticRejections({
+          db: ctx.db,
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          ...(ctx.tool_call_id ? { tool_call_id: ctx.tool_call_id } : {}),
+        }),
       db: ctx.db,
       signal: deadlineSignal,
     });
-    if (verdict.passed || verdict.repairs.length === 0) {
-      return null;
-    }
-    logger.info({
-      module: "conversations",
-      action: "authoring_pipeline.critic_rejected",
-      msg: "semantic critic rejected a static-clean draft — feeding repairs into one more grounded regenerate pass",
-      tenant_id: ctx.tenant_id,
-      conversation_id: ctx.conversation_id,
-      gating_reason: gate.reason,
-      repair_count: verdict.repairs.length,
-    });
+    criticState.review = { result: outcome.result, gating_reason: outcome.gating_reason, pass };
+    if (outcome.result !== "reject" || outcome.rationale === null) return null;
     return {
       rejection: {
-        repairs: verdict.repairs,
-        rationale: verdict.rationale,
-        gating_reason: gate.reason,
+        repairs: outcome.repairs,
+        rationale: outcome.rationale,
+        gating_reason: outcome.gating_reason,
       },
       priorFindings: renderValidationFindings(
-        verdict.repairs.map((r) => ({ path: "critic", message: r })),
+        outcome.repairs.map((r) => ({ path: "critic", message: r })),
       ),
     };
   };
@@ -782,8 +764,9 @@ export async function runAuthoringPipeline(
         });
       }
       definition = candidate;
+      definitionPass = pass;
       validationErrors = [...validation.errors, ...groundingErrors];
-      if (validation.ok) lastValid = { definition: candidate, errors: validationErrors };
+      if (validation.ok) lastValid = { definition: candidate, errors: validationErrors, pass };
       passErrors = validationErrors;
       ctx.onLog?.(
         validationErrors.length > 0 ? "warn" : "info",
@@ -794,7 +777,7 @@ export async function runAuthoringPipeline(
       if (validation.ok && grounding.ok) {
         if (!criticRan && !deadlineSignal.aborted) {
           criticRan = true;
-          const critic = await runCriticGate(candidate);
+          const critic = await runCriticGate(candidate, pass);
           if (critic) {
             ctx.onLog?.(
               "warn",
@@ -813,9 +796,47 @@ export async function runAuthoringPipeline(
     priorFindings = renderValidationFindings(passErrors);
   }
 
+  let candidateSwap: CandidateSwap | null = null;
   if (definition && lastValid && definition !== lastValid.definition) {
+    candidateSwap = {
+      returned_pass: lastValid.pass,
+      latest_pass: definitionPass,
+      reason: "latest_candidate_invalid",
+    };
+    logger.info({
+      module: "conversations",
+      action: "authoring_pipeline.candidate_swapped",
+      msg: "latest generated candidate failed validation — returning the earlier valid candidate; recorded_eval and critic attribution describe that returned definition",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      returned_pass: lastValid.pass,
+      latest_pass: definitionPass,
+    });
+    ctx.onLog?.(
+      "warn",
+      `generate · pass ${definitionPass} draft failed validation — returning the valid draft from pass ${lastValid.pass}`,
+    );
     definition = lastValid.definition;
+    definitionPass = lastValid.pass;
     validationErrors = lastValid.errors;
+  }
+
+  const reviewed = criticState.review;
+  const criticReport: AuthoringCriticReport = attributeCriticReview({
+    review: reviewed,
+    returnedPass: definition ? definitionPass : null,
+    deadlineExceeded,
+  });
+  if (!reviewed) {
+    logger.info({
+      module: "conversations",
+      action: "authoring_critic.not_reached",
+      msg: "authoring critic never reviewed a candidate in this pipeline run",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      reason: criticReport.result === "not_reached" ? criticReport.reason : null,
+      attempts,
+    });
   }
 
   if (!definition) {
@@ -966,6 +987,8 @@ export async function runAuthoringPipeline(
     unresolved_connectors: unresolved,
     ...(note ? { note } : {}),
     ...(criticRejection ? { critic_rejection: criticRejection } : {}),
+    critic: criticReport,
+    ...(candidateSwap ? { candidate_swap: candidateSwap } : {}),
     next: nextAction,
   };
 }

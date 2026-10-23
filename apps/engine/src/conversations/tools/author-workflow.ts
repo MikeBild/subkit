@@ -227,6 +227,8 @@ export const authorWorkflowTool: ConversationTool = {
             ? { unresolved_connectors: result.unresolved_connectors }
             : {}),
           ...(result.critic_rejection ? { critic_rejection: result.critic_rejection } : {}),
+          critic: result.critic,
+          ...(result.candidate_swap ? { candidate_swap: result.candidate_swap } : {}),
           persistence: "draft_only" as const,
           next_step: result.next,
           next_hint: sensitiveDefinition

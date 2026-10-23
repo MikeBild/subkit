@@ -50,14 +50,34 @@ export function shouldRunCritic(input: GatingInput): GatingDecision {
   if (!cfg.enabled) {
     return { run: false, reason: "disabled" };
   }
+  const threshold: GatingDecision =
+    input.stepCount >= cfg.min_steps
+      ? { run: true, reason: "step_count" }
+      : input.recentDriftCount > 0
+        ? { run: true, reason: "recent_drift" }
+        : { run: false, reason: "below_threshold" };
+  if (!threshold.run) return threshold;
   if (input.consecutiveRejections >= cfg.max_consecutive_rejections) {
     return { run: false, reason: "anti_loop" };
   }
-  if (input.stepCount >= cfg.min_steps) {
-    return { run: true, reason: "step_count" };
-  }
-  if (input.recentDriftCount > 0) {
-    return { run: true, reason: "recent_drift" };
-  }
-  return { run: false, reason: "below_threshold" };
+  return threshold;
+}
+
+export interface ResolveCriticGateInput {
+  stepCount: number;
+  recentDriftCount: number;
+  tenantId?: string;
+  loadConsecutiveRejections: () => Promise<number>;
+}
+
+export async function resolveCriticGate(input: ResolveCriticGateInput): Promise<GatingDecision> {
+  const base = {
+    stepCount: input.stepCount,
+    recentDriftCount: input.recentDriftCount,
+    ...(input.tenantId !== undefined ? { tenantId: input.tenantId } : {}),
+  };
+  const preliminary = shouldRunCritic({ ...base, consecutiveRejections: 0 });
+  if (!preliminary.run) return preliminary;
+  const consecutiveRejections = await input.loadConsecutiveRejections();
+  return shouldRunCritic({ ...base, consecutiveRejections });
 }

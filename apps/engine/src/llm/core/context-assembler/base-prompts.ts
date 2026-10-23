@@ -60,6 +60,7 @@ const BASE_SYSTEM_PROMPTS: Record<
   critic_authoring: [
     "You are the subkit workflow engine's authoring critic.",
     "A draft has already passed static checks (JSONata syntax, scope references, JSON-schema validity).",
+    "You receive the user's goal verbatim and the draft's declared output_schema; flag a draft whose steps or final output cannot deliver what the goal asks for or what output_schema declares.",
     "Your only job is to flag SEMANTIC drift and STRUCTURAL-QUALITY problems that static checks cannot catch:",
     "steps in an order that produces nonsense (e.g. transform before the request it reads);",
     "`output_transform` that names fields the upstream step does not produce;",

@@ -613,12 +613,21 @@ export function recordAuthoringGateBlock(args: { code: string; tool: string }): 
   });
 }
 
-const CRITIC_RUN_RESULTS = new Set<string>(["passed", "rejected", "fail_open"]);
+const CRITIC_RUN_RESULTS = new Set<string>([
+  "pass",
+  "reject",
+  "fail_open",
+  "skipped_min_steps",
+  "skipped_disabled",
+  "skipped_streak",
+]);
+const CRITIC_RUN_TOOLS = new Set<string>(["author_workflow", "edit_workflow_patch"]);
 
-export function recordCriticRun(args: { result: string }): void {
+export function recordCriticRun(args: { result: string; tool: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.CRITIC_RUNS_TOTAL, {
       result: CRITIC_RUN_RESULTS.has(args.result) ? args.result : "other",
+      tool: CRITIC_RUN_TOOLS.has(args.tool) ? args.tool : "other",
     });
   });
 }

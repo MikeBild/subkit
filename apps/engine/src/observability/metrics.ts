@@ -496,8 +496,8 @@ function buildRegistry(): MetricsRegistry {
   });
   reg.registerCounter({
     name: METRIC_NAMES.CRITIC_RUNS_TOTAL,
-    help: "Authoring-critic invocations. `result` is `passed` (critic approved), `rejected` (critic returned passed:false; tool emits critic_rejected), or `fail_open` (LLM error / no structured output; treated as passed).",
-    labels: ["result"],
+    help: "Authoring-critic decisions per reviewed draft, one per author_workflow pipeline and per successful edit_workflow_patch. `result` is `pass`, `reject` (repairs returned as critic_rejection), `fail_open` (LLM error, missing or invalid verdict, or a rejection without repairs; the draft proceeds unreviewed and is never counted as a pass), `skipped_min_steps`, `skipped_disabled` (llm.critic.enabled false or config unreadable) or `skipped_streak` (max_consecutive_rejections reached). A tenant with critic enabled but only skipped_* or fail_open results is not being reviewed.",
+    labels: ["result", "tool"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.PREVIEW_JUDGE_VERDICTS_TOTAL,
