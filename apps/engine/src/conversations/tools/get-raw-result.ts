@@ -9,6 +9,8 @@ const DEFAULT_CHUNK_LIMIT = 24_000;
 const MAX_CHUNK_LIMIT = 32_000;
 const REF_ONLY_CHUNK_CHARS = 4_000;
 const STREAM_CURSOR = Symbol("raw-result-stream-cursor");
+const OFFSET_OUT_OF_RANGE_MESSAGE =
+  "the offset is past the end of the stored value; restart at offset 0 or follow next_offset";
 
 type StreamCursor = {
   [STREAM_CURSOR]: { source_ref: string; offset: number };
@@ -188,6 +190,8 @@ export const getRawResultTool: ConversationTool = {
           data: {
             error: "raw_result_offset_out_of_range",
             error_code: "raw_result_offset_out_of_range",
+            message: OFFSET_OUT_OF_RANGE_MESSAGE,
+            next_best_actions: ["get_raw_result"],
             offset: streamOffset,
             total_chars: characters.length,
           },
@@ -243,6 +247,8 @@ export const getRawResultTool: ConversationTool = {
             data: {
               error: "raw_result_offset_out_of_range",
               error_code: "raw_result_offset_out_of_range",
+              message: OFFSET_OUT_OF_RANGE_MESSAGE,
+              next_best_actions: ["get_raw_result"],
               offset,
               total_chars: characters.length,
             },
@@ -270,6 +276,8 @@ export const getRawResultTool: ConversationTool = {
           data: {
             error: "raw_result_offset_out_of_range",
             error_code: "raw_result_offset_out_of_range",
+            message: OFFSET_OUT_OF_RANGE_MESSAGE,
+            next_best_actions: ["get_raw_result"],
             offset,
             total_items: selected.length,
           },

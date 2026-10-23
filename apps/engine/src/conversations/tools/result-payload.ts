@@ -1,25 +1,107 @@
 import type { ToolResult } from "./index.ts";
 
+export const GENERIC_TOOL_FAILURE_CODE = "tool_failed";
+
+const GENERIC_TOOL_FAILURE_MESSAGE = "the tool reported a failure without details";
+
+const CODE_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;
+
+export interface ToolFailureEnvelope {
+  error_code: string;
+  message: string;
+  next_best_actions: string[];
+}
+
+type FailedToolResult = Extract<ToolResult, { ok: false }>;
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function codeOf(value: unknown): string | undefined {
+  const text = nonEmptyString(value);
+  return text && CODE_PATTERN.test(text) ? text : undefined;
+}
+
+function proseOf(value: unknown): string | undefined {
+  const text = nonEmptyString(value);
+  return text && !CODE_PATTERN.test(text) ? text : undefined;
+}
+
+function stringList(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string")
+    ? value
+    : undefined;
+}
+
+function firstErrorMessage(value: unknown): string | undefined {
+  if (!Array.isArray(value)) return undefined;
+  for (const entry of value) {
+    const message =
+      typeof entry === "object" && entry !== null
+        ? nonEmptyString((entry as { message?: unknown }).message)
+        : nonEmptyString(entry);
+    if (message) return message;
+  }
+  return undefined;
+}
+
+export function toolFailureEnvelope(result: FailedToolResult): ToolFailureEnvelope {
+  const data =
+    typeof result.data === "object" && result.data !== null
+      ? (result.data as Record<string, unknown>)
+      : {};
+  const details =
+    typeof result.details === "object" && result.details !== null
+      ? (result.details as Record<string, unknown>)
+      : {};
+  const nested =
+    typeof data.error === "object" && data.error !== null
+      ? (data.error as Record<string, unknown>)
+      : {};
+  const errorCode =
+    nonEmptyString(data.error_code) ??
+    nonEmptyString(result.error_code) ??
+    nonEmptyString(details.error_code) ??
+    codeOf(data.error) ??
+    codeOf(nested.code) ??
+    codeOf(data.reason) ??
+    GENERIC_TOOL_FAILURE_CODE;
+  const message =
+    nonEmptyString(data.message) ??
+    nonEmptyString(result.message) ??
+    nonEmptyString(details.message) ??
+    proseOf(data.error) ??
+    nonEmptyString(data.hint) ??
+    nonEmptyString(nested.message) ??
+    proseOf(data.reason) ??
+    firstErrorMessage(data.errors) ??
+    nonEmptyString(result.data) ??
+    (errorCode === GENERIC_TOOL_FAILURE_CODE ? GENERIC_TOOL_FAILURE_MESSAGE : errorCode);
+  const nextBestActions =
+    stringList(data.next_best_actions) ??
+    result.next_best_actions ??
+    stringList(details.next_best_actions) ??
+    [];
+  return { error_code: errorCode, message, next_best_actions: nextBestActions };
+}
+
 export function normalizeToolResultPayload(result: ToolResult): unknown {
   if (result.ok) return result.data;
-  if (result.data !== undefined) {
-    if (typeof result.data === "object" && result.data !== null) {
-      return {
-        ...(result.error_code !== undefined ? { error_code: result.error_code } : {}),
-        ...(result.message !== undefined ? { message: result.message } : {}),
-        ...(result.data as Record<string, unknown>),
-      };
-    }
-    return result.data;
-  }
+  if (result.pause !== undefined && result.data !== undefined) return result.data;
+  const envelope = toolFailureEnvelope(result);
+  const data =
+    typeof result.data === "object" && result.data !== null
+      ? (result.data as Record<string, unknown>)
+      : { ok: false };
   return {
-    ok: false,
-    ...(result.error_code !== undefined ? { error_code: result.error_code } : {}),
-    ...(result.message !== undefined ? { message: result.message } : {}),
-    ...(result.details !== undefined ? { details: result.details } : {}),
-    ...(result.next_best_actions !== undefined
-      ? { next_best_actions: result.next_best_actions }
+    ...data,
+    error_code: envelope.error_code,
+    message: envelope.message,
+    ...(result.details !== undefined && data.details === undefined
+      ? { details: result.details }
       : {}),
+    next_best_actions: envelope.next_best_actions,
   };
 }
 

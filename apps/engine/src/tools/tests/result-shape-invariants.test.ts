@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
+import { envelopeToMcpResponse } from "../../mcp/adapter.ts";
 import { dispatchTool } from "../dispatcher.ts";
 import { buildRegistry, type ToolProvider } from "../registry.ts";
 import type { ToolDescriptor, ToolEnvelope } from "../types.ts";
@@ -123,6 +124,64 @@ describe("tools/result-shape — envelope union invariants", () => {
     }
   });
 
+  test("MCP renders a data-nested failure with the canonical top-level fields", async () => {
+    const reg = buildRegistry([
+      descriptorWithExecute("_errnested", "tenant_read", async () => ({
+        ok: false,
+        data: {
+          error_code: "connector_scope_required",
+          error: "no connector in scope",
+          next_best_actions: ["find_connector"],
+          resolvable_connectors: ["crm"],
+        },
+      })),
+      descriptorWithExecute("_errbare", "tenant_read", async () => ({
+        ok: false,
+        data: { error: "connector_id is required" },
+      })),
+    ]);
+    const rendered = async (name: string) => {
+      const envelope = await dispatchTool(
+        { registry: reg, db: DB_STUB, principal: PRINCIPAL, conversationCtx: {} as never },
+        { surface: "chat", name, args: {} },
+      );
+      expect(ToolEnvelopeSchema.safeParse(envelope).success).toBe(true);
+      const response = envelopeToMcpResponse(envelope);
+      expect(response.isError).toBe(true);
+      return JSON.parse(response.content[0]?.text ?? "{}") as Record<string, unknown>;
+    };
+    expect(await rendered("_errnested")).toMatchObject({
+      error_code: "connector_scope_required",
+      message: "no connector in scope",
+      next_best_actions: ["find_connector"],
+      details: { resolvable_connectors: ["crm"] },
+    });
+    expect(await rendered("_errbare")).toMatchObject({
+      error_code: "tool_failed",
+      message: "connector_id is required",
+      next_best_actions: [],
+    });
+  });
+
+  test("a thrown database error is masked with the canonical execution failure", async () => {
+    const reg = buildRegistry([
+      descriptorWithExecute("_dbthrows", "tenant_read", async () => {
+        throw new Error('Failed query: select * from secrets where id = $1\nparams: "s3cr3t"');
+      }),
+    ]);
+    const envelope = await dispatchTool(
+      { registry: reg, db: DB_STUB, principal: PRINCIPAL, conversationCtx: {} as never },
+      { surface: "chat", name: "_dbthrows", args: {} },
+    );
+    expect(envelope).toMatchObject({
+      status: "error",
+      error_code: "tool_execution_failed",
+      message: "the lookup failed; check the arguments",
+      next_best_actions: [],
+    });
+    expect(JSON.stringify(envelope)).not.toContain("s3cr3t");
+  });
+
   test("needs_confirm envelope conforms", async () => {
     const reg = buildRegistry([
       descriptorWithExecute("_writes", "tenant_write", async () => ({
@@ -176,7 +235,7 @@ describe("tools/result-shape — envelope union invariants", () => {
     );
     expect(ToolEnvelopeSchema.safeParse(envelope).success).toBe(true);
     if (envelope.status === "error") {
-      expect(envelope.error_code).toBe("tool_execute_failed");
+      expect(envelope.error_code).toBe("tool_execution_failed");
     }
   });
 

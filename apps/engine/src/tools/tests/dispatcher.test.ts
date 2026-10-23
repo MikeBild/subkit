@@ -257,7 +257,7 @@ describe("tools/dispatcher (active)", () => {
     expect(rows.filter((r) => r.action === AuditAction.APPROVAL_APPROVED)).toHaveLength(1);
   });
 
-  test("executor throwing → status:'error' error_code:'tool_execute_failed'", async () => {
+  test("executor throwing → status:'error' error_code:'tool_execution_failed'", async () => {
     const watchedDescriptor: ToolDescriptor = {
       name: "_test_throws",
       description: "throws",
@@ -293,7 +293,7 @@ describe("tools/dispatcher (active)", () => {
     );
     expect(envelope.status).toBe("error");
     if (envelope.status === "error") {
-      expect(envelope.error_code).toBe("tool_execute_failed");
+      expect(envelope.error_code).toBe("tool_execution_failed");
       expect(envelope.message).toContain("boom");
     }
   });
@@ -430,7 +430,8 @@ describe("tools/dispatcher (active)", () => {
     payload = { status: "failed" };
     const bare = JSON.parse((await overMcp()).content[0]?.text ?? "{}") as Record<string, unknown>;
     expect(bare.error_code).toBe("tool_failed");
-    expect(bare.message).toBe("tool returned ok=false");
+    expect(bare.message).toBe("the tool reported a failure without details");
+    expect(bare.next_best_actions).toEqual([]);
   });
 });
 

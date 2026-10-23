@@ -21,6 +21,10 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the id is not a uuid, so nothing was looked up. Omit id and search with a short query instead; never invent an id or use a placeholder such as * or the nil uuid.",
   tool_execution_failed:
     "the lookup failed inside the engine, so no result is available. Check the arguments against the tool schema and retry once with corrected values; if it fails again, tell the user the lookup is unavailable instead of guessing.",
+  intake_review_requires_human_confirmation:
+    "this conversation reviews collected material, so writes are refused here. Create or revise an intake proposal and let the signed-in person confirm content, sources and destination in the review; do not retry the write",
+  skill_prerequisites_unmet:
+    "the tool needs skills that are not loaded yet. Call load_skill for every slug in missing_skills, then retry the same call once",
   draft_write_held:
     "the draft probe held an external write before credential lookup or dispatch. Validate the draft with a read-only probe, save the connector, then use call_connector for the exact write with human approval. Do not retry the write through a draft probe or bypass the approval gate.",
   workflow_activation_required:

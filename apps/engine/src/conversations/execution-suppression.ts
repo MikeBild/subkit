@@ -102,19 +102,21 @@ export async function executionSuppressionRefusal(input: {
   conversation_id: string;
   recent_user_message?: string | null;
   live_tool: boolean;
-}): Promise<{ error_code: string; message: string } | null> {
+}): Promise<{ error_code: string; message: string; next_best_actions: string[] } | null> {
   const suppression = await turnExecutionSuppression(input);
   if (suppression.all)
     return {
       error_code: "explicit_no_run",
       message:
         "The user explicitly asked not to start a workflow run. No execution was started; use read-only execution history or diagnosis tools for existing runs.",
+      next_best_actions: ["list_executions", "diagnose_latest_execution"],
     };
   if (suppression.live && input.live_tool)
     return {
       error_code: "explicit_no_live_effects",
       message:
         "The user asked not to activate anything or cause live effects. No execution was started. Inspect and review instead; a saved inactive draft can be previewed with dry_run_workflow (writes held, nothing activated).",
+      next_best_actions: ["review_workflow_automation", "dry_run_workflow"],
     };
   return null;
 }

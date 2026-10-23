@@ -3,8 +3,10 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { runConfirmGate } from "../conversations/confirmation.ts";
+import { describeToolExecutionFailure } from "../conversations/tool-execution-failure.ts";
 import type { PermissionMode } from "../conversations/tool-policies.ts";
 import type { ToolContext, ToolPrecheck, ToolResult } from "../conversations/tools/index.ts";
+import { toolFailureEnvelope } from "../conversations/tools/result-payload.ts";
 import { prepareGate } from "../conversations/tools/sdk-wrap/gate-subjects.ts";
 import { checkBeforeGate } from "../conversations/tools/sdk-wrap/pregate.ts";
 import type { Db } from "../db/client.ts";
@@ -63,16 +65,13 @@ function normalizeConversationResult(r: ToolResult): ToolEnvelope {
     };
   }
   const details = r.details !== undefined ? r.details : r.data;
-  const own = (field: "error_code" | "message"): string | undefined => {
-    const value = (details as Record<string, unknown> | null | undefined)?.[field];
-    return typeof value === "string" && value.length > 0 ? value : undefined;
-  };
+  const failure = toolFailureEnvelope(r);
   return {
     status: "error",
-    error_code: r.error_code ?? own("error_code") ?? "tool_failed",
-    message: r.message ?? own("message") ?? "tool returned ok=false",
+    error_code: failure.error_code,
+    message: failure.message,
     ...(details !== undefined ? { details } : {}),
-    ...(r.next_best_actions ? { next_best_actions: r.next_best_actions } : {}),
+    next_best_actions: failure.next_best_actions,
   };
 }
 
@@ -553,10 +552,12 @@ async function dispatchTenantTool(
                 ? "not_available_on_surface"
                 : "error";
         } catch (err) {
+          const failure = describeToolExecutionFailure(err);
           envelope = {
             status: "error",
-            error_code: "tool_execute_failed",
-            message: err instanceof Error ? err.message : String(err),
+            error_code: failure.output.error_code,
+            message: failure.message,
+            next_best_actions: failure.output.next_best_actions,
           };
           decisionLabel = "execute_failed";
         }

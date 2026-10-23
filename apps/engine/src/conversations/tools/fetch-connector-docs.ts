@@ -60,13 +60,15 @@ export const fetchConnectorDocsTool: ConversationTool = {
       scoped.push(c);
     }
     if (scoped.length === 0) {
+      const message = args.connector
+        ? `connector "${args.connector}" does not resolve for this tenant — pass one of resolvable_connectors`
+        : "no connector in scope — pass `connector` (id or slug), or add a request step bound to a connector to the draft first";
       return {
         ok: false,
         data: {
           error_code: "connector_scope_required",
-          error: args.connector
-            ? `connector "${args.connector}" does not resolve for this tenant — pass one of resolvable_connectors`
-            : "no connector in scope — pass `connector` (id or slug), or add a request step bound to a connector to the draft first",
+          error: message,
+          message,
           resolvable_connectors: await resolvableSlugs(ctx),
           ...(unresolved.length > 0 ? { unresolved_connectors: unresolved } : {}),
           next_best_actions: ["list_connectors", "find_connector", "fetch_connector_docs"],

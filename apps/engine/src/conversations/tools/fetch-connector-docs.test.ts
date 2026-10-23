@@ -8,6 +8,7 @@ import { createEmptyDraftDocument } from "../authoring-state.ts";
 import type { DraftDocument } from "../types.ts";
 import { fetchConnectorDocsTool } from "./fetch-connector-docs.ts";
 import type { ToolContext } from "./index.ts";
+import { normalizeToolResultPayload } from "./result-payload.ts";
 
 const nextUuid = createDeterministicUuidFactory(0xd0c_5);
 
@@ -137,6 +138,11 @@ describe("fetch_connector_docs connector scope", () => {
     expect(data.error_code).toBe("connector_scope_required");
     expect(data.resolvable_connectors).toEqual(["docs-crm", "docs-mail"]);
     expect(data.next_best_actions).toContain("find_connector");
+    expect(normalizeToolResultPayload(result)).toMatchObject({
+      error_code: "connector_scope_required",
+      message: expect.stringContaining("no connector in scope"),
+      next_best_actions: ["list_connectors", "find_connector", "fetch_connector_docs"],
+    });
     expect(searched).toEqual([]);
   });
 });

@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { withContext } from "../../../logging/context.ts";
-import { errorFields, isDatabaseQueryError, log, logger } from "../../../logging/logger.ts";
+import { errorFields, log, logger } from "../../../logging/logger.ts";
 import { stampMcpTaskProgress } from "../../../mcp/tasks/store.ts";
 import {
   recordConversationToolCall,
@@ -39,6 +39,7 @@ import {
   reaffirmLoadedForTurn,
 } from "../../skill-autoload.ts";
 import { computeLineDiff } from "../../text-line-diff.ts";
+import { describeToolExecutionFailure } from "../../tool-execution-failure.ts";
 import {
   type PermissionMode,
   prerequisitesForTool,
@@ -56,7 +57,11 @@ import {
   resolveConversationPrincipal,
   type ToolPermissionResult,
 } from "../permission-gate.ts";
-import { normalizeToolResultPayload, toolCallOutcome } from "../result-payload.ts";
+import {
+  GENERIC_TOOL_FAILURE_CODE,
+  normalizeToolResultPayload,
+  toolCallOutcome,
+} from "../result-payload.ts";
 import {
   boundForPersistence,
   type TruncatedOutput,
@@ -224,6 +229,8 @@ export function wrapOne(
             ok: false,
             data: {
               error: "intake_review_requires_human_confirmation",
+              error_code: "intake_review_requires_human_confirmation",
+              next_best_actions: [],
               message:
                 "This conversation is reviewing collected material. Create or revise an intake proposal; a person confirms the exact content, sources, and destination in the review before it becomes knowledge or a skill.",
             },
@@ -236,6 +243,9 @@ export function wrapOne(
             ok: false,
             data: {
               error: `tool ${inner.name} requires skill(s) not yet loaded: ${missingSkills.join(", ")}. Call load_skill for each one before retrying.`,
+              error_code: "skill_prerequisites_unmet",
+              message: `tool ${inner.name} requires skill(s) not yet loaded: ${missingSkills.join(", ")}. Call load_skill for each one before retrying.`,
+              next_best_actions: ["load_skill"],
               reason: "skill_prerequisites_unmet",
               tool: inner.name,
               missing_skills: missingSkills,
@@ -672,7 +682,10 @@ export function wrapOne(
         if (gate.kind === "duplicate_pending") {
           const dupOutput = {
             error: "duplicate_pending_elicitation_in_turn",
-            note: "Another tool call in this turn already staged an ask_user_confirm. Wait for the user to resolve that one, then re-issue this call after the user confirms.",
+            error_code: "duplicate_pending_elicitation_in_turn",
+            message:
+              "Another tool call in this turn already staged an ask_user_confirm. Wait for the user to resolve that one, then re-issue this call after the user confirms.",
+            next_best_actions: [],
             existing_elicitation_id: pendingElicitationBeforeGate?.elicitation_id,
             existing_tool: pendingElicitationBeforeGate?.tool_name,
           };
@@ -702,11 +715,13 @@ export function wrapOne(
                     error_code: "approval_request_failed",
                     message: `${inner.name} requires the operator's confirmation, and the engine could not open one. Nothing ran. Tell the user, and retry only if they ask again.`,
                     reason: "approval_request_failed",
+                    next_best_actions: [],
                   }
                 : {
                     error_code: "not_available_on_surface",
                     message: gate.reason,
                     reason: "not_available_on_surface",
+                    next_best_actions: [],
                   },
           };
           await updateToolCallOutput(db, toolCallId, failure.data, "error");
@@ -1046,19 +1061,10 @@ export function wrapOne(
                 )
               : permissionRefusal(inner, permCheck));
         } catch (err) {
-          const databaseFailure = isDatabaseQueryError(err);
-          await langfuseSpan.finish({
-            status: "error",
-            error: databaseFailure ? new Error("database query failed") : err,
-          });
-          const msg = databaseFailure
-            ? "the lookup failed; check the arguments"
-            : err instanceof Error
-              ? err.message
-              : String(err);
-          const output: Record<string, unknown> = databaseFailure
-            ? { ok: false, error_code: "tool_execution_failed", error: msg }
-            : { error: msg };
+          const failure = describeToolExecutionFailure(err);
+          await langfuseSpan.finish({ status: "error", error: failure.span_error });
+          const msg = failure.message;
+          const output: Record<string, unknown> = failure.output;
           await updateToolCallOutput(db, toolCallId, output, "error");
           events.push({
             type: "tool_result",
@@ -1207,7 +1213,8 @@ export function wrapOne(
           const reason =
             typeof errObj.reason === "string"
               ? errObj.reason
-              : typeof errObj.error_code === "string"
+              : typeof errObj.error_code === "string" &&
+                  errObj.error_code !== GENERIC_TOOL_FAILURE_CODE
                 ? errObj.error_code
                 : "";
           const err =

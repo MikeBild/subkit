@@ -247,4 +247,23 @@ describe("get_raw_result", () => {
       },
     });
   });
+
+  it("an offset past the end carries the canonical failure envelope", async () => {
+    const ref = rememberRaw({ items: Array.from({ length: 4_000 }, (_, i) => ({ i, v: "x" })) });
+
+    const result = await getRawResultTool.execute({} as never, {
+      ref,
+      path: ["items"],
+      offset: 999_999,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      data: {
+        error_code: "raw_result_offset_out_of_range",
+        message: expect.stringContaining("offset 0"),
+        next_best_actions: ["get_raw_result"],
+      },
+    });
+  });
 });

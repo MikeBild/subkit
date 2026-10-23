@@ -232,7 +232,7 @@ describe("(e) RBAC credential ceiling — skill / knowledge tools", () => {
     );
 
     expect(envelope.status).toBe("error");
-    if (envelope.status === "error") expect(envelope.error_code).toBe("tool_execute_failed");
+    if (envelope.status === "error") expect(envelope.error_code).toBe("tool_execution_failed");
     const denied = capture.inserts.filter((r) => r.action === AuditAction.POLICY_DENIED);
     expect(denied.length).toBe(0);
   });
@@ -273,7 +273,7 @@ describe("(f) confirm-gate on MCP surface", () => {
     );
 
     expect(envelope.status).toBe("error");
-    if (envelope.status === "error") expect(envelope.error_code).toBe("tool_execute_failed");
+    if (envelope.status === "error") expect(envelope.error_code).toBe("tool_execution_failed");
     const approvalRows = capture.inserts.filter((r) => r.action === AuditAction.APPROVAL_REQUESTED);
     expect(approvalRows.length).toBe(0);
   });

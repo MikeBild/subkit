@@ -31,11 +31,15 @@ export const searchDocsTool: ConversationTool = {
     const args = inputSchema.parse(rawArgs);
     const connector_id = args.connector_id ?? ctx.connector_id;
     if (!connector_id) {
+      const message =
+        "connector_id is required — pass it explicitly or bind the conversation to a connector first";
       return {
         ok: false,
         data: {
-          error:
-            "connector_id is required — pass it explicitly or bind the conversation to a connector first",
+          error: message,
+          error_code: "connector_scope_required",
+          message,
+          next_best_actions: ["find_connector", "list_connectors"],
         },
       };
     }
