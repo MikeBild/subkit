@@ -8,6 +8,7 @@ import { workflows, workflowVersions } from "../db/schema/workflows.ts";
 import { logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { diffShapesDeep } from "../schema-versions/service.ts";
+import { hasFieldLevelChange } from "./drift-detector.ts";
 import type { SignalSource } from "./service.ts";
 import { scanStdlibDrift } from "./stdlib-drift-scan.ts";
 import type { DriftSignal, SchemaShape } from "./types.ts";
@@ -218,6 +219,20 @@ async function scanSchemaShapeDriftForTenant(
         endpoint_key,
         step_id,
         direction: after.schema.type === "unknown" ? "collapsed" : "recovered",
+      });
+      continue;
+    }
+    if (!hasFieldLevelChange(before.schema, after.schema)) {
+      logger.info({
+        module: "self-healing",
+        action: "proactive_scan.no_field_change",
+        msg: "skipped: no field-level change",
+        tenant_id,
+        workflow_id,
+        connector_id,
+        endpoint_key,
+        step_id,
+        widened: diff.widened.slice(0, 20),
       });
       continue;
     }

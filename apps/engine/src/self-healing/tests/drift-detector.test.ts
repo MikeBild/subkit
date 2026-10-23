@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { deriveShape } from "../../schema-versions/service.ts";
-import { analyzeStepFailure, renderDriftDiff } from "../drift-detector.ts";
+import { deriveShape, diffShapesDeep } from "../../schema-versions/service.ts";
+import { analyzeStepFailure, hasFieldLevelChange, renderDriftDiff } from "../drift-detector.ts";
 import type { SchemaShape } from "../types.ts";
 
 describe("self-healing/drift-detector", () => {
@@ -174,5 +174,49 @@ describe("self-healing/drift-detector", () => {
       null,
     );
     expect(signal).toBeNull();
+  });
+
+  describe("hasFieldLevelChange", () => {
+    test("identical shapes carry no field-level change", () => {
+      const shape = deriveShape({ id: 1, tags: ["a"] });
+      expect(hasFieldLevelChange(shape, shape)).toBe(false);
+    });
+
+    test("an emptied root list is reported as widened but carries no field-level change", () => {
+      const before = deriveShape([{ id: 1, name: "Ada" }]);
+      const after = deriveShape([]);
+      expect(diffShapesDeep(before, after).widened).toEqual(["[]"]);
+      expect(hasFieldLevelChange(before, after)).toBe(false);
+      expect(hasFieldLevelChange(after, before)).toBe(false);
+    });
+
+    test("an emptied nested list carries no field-level change", () => {
+      const before = deriveShape({ data: { items: [{ id: 1 }] }, total: 1 });
+      const after = deriveShape({ data: { items: [] }, total: 0 });
+      expect(diffShapesDeep(before, after).widened).toEqual(["data.items[]"]);
+      expect(hasFieldLevelChange(before, after)).toBe(false);
+    });
+
+    test("a real type change on a field is a field-level change", () => {
+      const before = deriveShape({ data: { items: [{ id: 1 }] } });
+      const after = deriveShape({ data: { items: [{ id: "1" }] } });
+      expect(hasFieldLevelChange(before, after)).toBe(true);
+    });
+
+    test("a field that becomes null stays a field-level change", () => {
+      expect(hasFieldLevelChange(deriveShape({ id: 1 }), deriveShape({ id: null }))).toBe(true);
+    });
+
+    test("added and removed fields are field-level changes", () => {
+      const before = deriveShape({ id: 1 });
+      expect(hasFieldLevelChange(before, deriveShape({ id: 1, name: "Ada" }))).toBe(true);
+      expect(hasFieldLevelChange(deriveShape({ id: 1, name: "Ada" }), before)).toBe(true);
+    });
+
+    test("an added field next to an emptied list is still a field-level change", () => {
+      const before = deriveShape({ items: [{ id: 1 }] });
+      const after = deriveShape({ items: [], cursor: "next" });
+      expect(hasFieldLevelChange(before, after)).toBe(true);
+    });
   });
 });

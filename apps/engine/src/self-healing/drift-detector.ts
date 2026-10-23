@@ -156,6 +156,23 @@ export function analyzeStepFailure(
   return null;
 }
 
+export function hasFieldLevelChange(before: SchemaShape, after: SchemaShape): boolean {
+  if (before.type === "unknown" || after.type === "unknown") return false;
+  if (before.type !== after.type) return true;
+  if (before.type === "array" && after.type === "array")
+    return hasFieldLevelChange(before.items, after.items);
+  if (before.type !== "object" || after.type !== "object") return false;
+  const beforeKeys = Object.keys(before.properties);
+  const afterKeys = Object.keys(after.properties);
+  if (afterKeys.some((key) => !(key in before.properties))) return true;
+  if (beforeKeys.some((key) => !(key in after.properties))) return true;
+  return beforeKeys.some((key) => {
+    const b = before.properties[key];
+    const a = after.properties[key];
+    return b !== undefined && a !== undefined && hasFieldLevelChange(b, a);
+  });
+}
+
 export function renderDriftDiff(signal: DriftSignal): string {
   switch (signal.kind) {
     case "jsonata_path_miss":

@@ -316,7 +316,7 @@ async function processDriftSignalLocked(
   });
   if (terminal) {
     const policy = await resolvePolicy(ctx.tenant_id, ctx.workflow_id, db);
-    logger.info({
+    logger.debug({
       module: "self-healing",
       action: "patch.terminal_dedup",
       msg: "skipping proactive drift repair because a terminal candidate already covers the same drift fingerprint",
