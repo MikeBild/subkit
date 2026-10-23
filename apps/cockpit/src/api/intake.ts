@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { components } from "./schema";
+import type { components, paths } from "./schema";
 
 export type IntakeClip = components["schemas"]["IntakeItem"];
 export type IntakeClipDetail = components["schemas"]["IntakeItemDetail"];
@@ -36,14 +36,24 @@ export function getIntakeClip(id: string): Promise<IntakeClipDetail> {
   return apiRequest(`${clips}/${encodeURIComponent(id)}`);
 }
 
+export type IntakeOriginFilter = NonNullable<
+  NonNullable<paths["/v1/intake/items"]["get"]["parameters"]["query"]>["origin"]
+>;
+export type CreateIntakeClipInput = components["schemas"]["CreateIntakeItemBody"];
+
 export function listIntakeClips(
-  input: { category?: string; state?: IntakeState } = {},
+  input: { category?: string; state?: IntakeState; origin?: IntakeOriginFilter } = {},
 ): Promise<{ items: IntakeClip[] }> {
   const params = new URLSearchParams();
   if (input.category) params.set("category", input.category);
   if (input.state) params.set("state", input.state);
+  if (input.origin) params.set("origin", input.origin);
   const query = params.toString();
   return apiRequest(`${clips}${query ? `?${query}` : ""}`);
+}
+
+export function createIntakeClip(input: CreateIntakeClipInput): Promise<IntakeClip> {
+  return apiRequest(clips, { method: "POST", body: JSON.stringify(input) });
 }
 
 export function updateIntakeClip(

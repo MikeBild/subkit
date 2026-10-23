@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter, useRouterState } from "@tanstack/react-router";
-import { Bookmark, ExternalLink, MessageSquareText } from "lucide-react";
+import { Bookmark, ExternalLink, MessageSquareText, StickyNote } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/api/client";
@@ -55,6 +55,7 @@ import {
   intakeItemChatPrompt,
   intakeOrigin,
   intakeOriginLabelKey,
+  intakeSourceUrl,
   intakeStripState,
   publishedDate,
   sessionLabel,
@@ -162,6 +163,7 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
   };
   const origin = clip ? intakeOrigin(clip.original_snapshot) : "clip";
   const originLabel = t(intakeOriginLabelKey(origin));
+  const sourceUrl = clip ? intakeSourceUrl(clip.original_snapshot) : null;
   const collector = clip ? (actorLabel(directory, clip.collected_by, t) ?? "") : "";
   const stripState = clip ? intakeStripState(clip, related) : null;
   const targetKind = clip?.admitted_target_kind;
@@ -423,6 +425,11 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                               aria-hidden="true"
                               className="size-3.5 text-muted-foreground"
                             />
+                          ) : origin === "note" ? (
+                            <StickyNote
+                              aria-hidden="true"
+                              className="size-3.5 text-muted-foreground"
+                            />
                           ) : (
                             <Bookmark
                               aria-hidden="true"
@@ -443,10 +450,10 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
                             {t("intake.publishedOn", { date: published })}
                           </span>
                         ) : null}
-                        {!session && clip.original_snapshot.source_url ? (
+                        {!session && sourceUrl ? (
                           <a
                             className="ml-auto inline-flex items-center gap-1 text-accent underline-offset-4 hover:underline"
-                            href={contextualHref(clip.original_snapshot.source_url)}
+                            href={contextualHref(sourceUrl)}
                             data-testid="intake-original-source-link"
                             target="_blank"
                             rel="noreferrer"

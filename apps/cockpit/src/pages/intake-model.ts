@@ -1,4 +1,6 @@
 import type {
+  CreateIntakeClipInput,
+  IntakeOriginFilter,
   IntakeProposalTarget,
   IntakeSkillTarget,
   IntakeSnapshot,
@@ -10,8 +12,10 @@ import { computeLineDiff, type FocusedRow, focusDiff } from "@/lib/line-diff";
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 export const INTAKE_STATES = ["collected", "reviewing", "admitted", "discarded"] as const;
-export const INTAKE_ORIGINS = ["clip", "session"] as const;
+export const INTAKE_ORIGINS = ["clip", "note", "session"] as const;
 export type IntakeOrigin = (typeof INTAKE_ORIGINS)[number];
+export const INTAKE_AUTHORS = ["all", "ai"] as const;
+export type IntakeAuthor = (typeof INTAKE_AUTHORS)[number];
 export const INTAKE_CHAT_PROMPTS = ["review", "summarize", "compare", "prepare"] as const;
 export type IntakeChatPrompt = (typeof INTAKE_CHAT_PROMPTS)[number];
 
@@ -102,13 +106,43 @@ export function intakeItemChatPrompt(
 }
 
 export function intakeOrigin(snapshot: Pick<IntakeSnapshot, "origin">): IntakeOrigin {
-  return snapshot.origin === "session" ? "session" : "clip";
+  return snapshot.origin === "session" || snapshot.origin === "note" ? snapshot.origin : "clip";
 }
 
 export function intakeOriginLabelKey(
   origin: IntakeOrigin,
-): "intake.origin.clip" | "intake.origin.session" {
+): "intake.origin.clip" | "intake.origin.note" | "intake.origin.session" {
   return `intake.origin.${origin}`;
+}
+
+export function intakeSourceUrl(snapshot: IntakeSnapshot): string | null {
+  return "source_url" in snapshot ? (snapshot.source_url ?? null) : null;
+}
+
+export function isIntakeAuthor(value: string): value is IntakeAuthor {
+  return (INTAKE_AUTHORS as readonly string[]).includes(value);
+}
+
+export function intakeAuthorOrigin(author: IntakeAuthor): IntakeOriginFilter | undefined {
+  return author === "ai" ? "session" : undefined;
+}
+
+export function intakeNoteRequest(input: {
+  clientRequestId: string;
+  title: string;
+  body: string;
+  category: string;
+  capturedAt: Date;
+}): CreateIntakeClipInput | null {
+  const title = input.title.trim();
+  if (!title || !input.body.trim()) return null;
+  return {
+    client_request_id: input.clientRequestId,
+    title,
+    body: input.body,
+    captured_at: input.capturedAt.toISOString(),
+    ...(input.category ? { category: input.category } : {}),
+  };
 }
 
 export type SessionSnapshot = Extract<IntakeSnapshot, { origin: "session" }>;

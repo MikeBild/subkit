@@ -5,16 +5,21 @@ import { translate } from "@/lib/i18n";
 import {
   changedSkillLine,
   INTAKE_CHAT_PROMPTS,
+  intakeAuthorOrigin,
   intakeCategoryFromSearch,
   intakeChatPrompt,
   intakeConfirmPermissions,
   intakeEvents,
   intakeNextAction,
+  intakeNoteRequest,
   intakeOrigin,
+  intakeOriginLabelKey,
+  intakeSourceUrl,
   intakeStateLabelKey,
   intakeStripState,
   intakeTargetDetails,
   intakeTargetTopic,
+  isIntakeAuthor,
   isIntakeCategory,
   mayConfirmIntakeProposal,
   newSkillLine,
@@ -146,6 +151,45 @@ describe("collected sessions and confirmation targets", () => {
     expect(intakeOrigin({ origin: "session" })).toBe("session");
     expect(intakeOrigin({ origin: "capture" })).toBe("clip");
     expect(intakeOrigin({ origin: "restored_draft" })).toBe("clip");
+    expect(intakeOrigin({ origin: "note" })).toBe("note");
+  });
+
+  test("a note shows Notiz where a clip shows its source address", () => {
+    const base = { title: "Gedanke", captured_at: "2026-10-10T07:00:00.000Z", body: "Text" };
+    expect(intakeSourceUrl({ ...base, origin: "note" })).toBeNull();
+    expect(
+      intakeSourceUrl({ ...base, origin: "capture", source_url: "https://example.test/a" }),
+    ).toBe("https://example.test/a");
+    expect(de(intakeOriginLabelKey(intakeOrigin({ origin: "note" })))).toBe("Notiz");
+    expect(translate("en", intakeOriginLabelKey("note"))).toBe("Note");
+  });
+
+  test("Alle / Von KI keeps everything or asks the engine for agent-prepared entries", () => {
+    expect(isIntakeAuthor("all")).toBe(true);
+    expect(isIntakeAuthor("ai")).toBe(true);
+    expect(isIntakeAuthor("llm")).toBe(false);
+    expect(intakeAuthorOrigin("all")).toBeUndefined();
+    expect(intakeAuthorOrigin("ai")).toBe("session");
+    expect(de("catalog.originAll")).toBe("Alle");
+    expect(de("catalog.originAI")).toBe("Von KI");
+  });
+
+  test("a note request carries no source address and keeps an optional category", () => {
+    const capturedAt = new Date("2026-10-10T07:00:00.000Z");
+    const base = { clientRequestId: "11111111-1111-4111-8111-111111111111", capturedAt };
+    expect(
+      intakeNoteRequest({ ...base, title: "  Idee  ", body: "Erst fragen.", category: "" }),
+    ).toEqual({
+      client_request_id: base.clientRequestId,
+      title: "Idee",
+      body: "Erst fragen.",
+      captured_at: "2026-10-10T07:00:00.000Z",
+    });
+    expect(
+      intakeNoteRequest({ ...base, title: "Idee", body: "Text", category: "research" }),
+    ).toMatchObject({ category: "research" });
+    expect(intakeNoteRequest({ ...base, title: " ", body: "Text", category: "" })).toBeNull();
+    expect(intakeNoteRequest({ ...base, title: "Idee", body: "  ", category: "" })).toBeNull();
   });
 
   test("session details name repository and domains but never a clip address", () => {

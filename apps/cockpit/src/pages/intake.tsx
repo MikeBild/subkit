@@ -1,11 +1,13 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { ArrowRight, MessageSquareText, Puzzle } from "lucide-react";
+import { ArrowRight, MessageSquareText, Puzzle, StickyNote } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import {
+  type CreateIntakeClipInput,
+  createIntakeClip,
   getIntakeDefaultCategory,
   type IntakeClip,
   type IntakeProposal,
@@ -46,6 +48,7 @@ import {
   PageHeader,
   Section,
   SectionHeading,
+  SegmentedControl,
   StatusBadge,
   SummaryLine,
 } from "@/components/cockpit/patterns";
@@ -57,14 +60,18 @@ import { useSearchParamState, writeSearchParam } from "@/lib/use-search-param-st
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import {
   changedSkillLine,
+  INTAKE_AUTHORS,
   INTAKE_ORIGINS,
   INTAKE_STATES,
   type IntakeOrigin,
+  intakeAuthorOrigin,
   intakeCategoryFromSearch,
   intakeChatPrompt,
+  intakeNoteRequest,
   intakeOrigin,
   intakeOriginLabelKey,
   intakeStateLabelKey,
+  isIntakeAuthor,
   isSkillTarget,
   mayConfirmIntakeProposal,
   newSkillLine,
@@ -85,11 +92,11 @@ const INTAKE_WAYS = [
 
 const INTAKE_FLOW = ["collect", "propose", "confirm", "knowledge"] as const;
 
-function IntakeOnboarding() {
+export function IntakeOnboarding({ onAddNote }: { onAddNote?: () => void }) {
   const { t } = useI18n();
   return (
     <OnboardingFrame lead={t("intake.onboarding.lead")} testId="intake-onboarding">
-      <ul className="grid gap-3 sm:grid-cols-2">
+      <ul className={onAddNote ? "grid gap-3 sm:grid-cols-3" : "grid gap-3 sm:grid-cols-2"}>
         {INTAKE_WAYS.map((way) => (
           <li key={way.key} className="flex h-full flex-col gap-2 rounded-lg border p-4">
             <IconTile>
@@ -106,6 +113,26 @@ function IntakeOnboarding() {
             </Button>
           </li>
         ))}
+        {onAddNote ? (
+          <li className="flex h-full flex-col gap-2 rounded-lg border p-4">
+            <IconTile>
+              <StickyNote />
+            </IconTile>
+            <span className="text-sm font-medium">{t("intake.onboarding.note.title")}</span>
+            <span className="flex-1 text-xs text-muted-foreground">
+              {t("intake.onboarding.note.line")}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              onClick={onAddNote}
+              data-testid="intake-onboarding-note"
+            >
+              {t("intake.onboarding.note.action")}
+            </Button>
+          </li>
+        ) : null}
       </ul>
       <section
         className="rounded-lg border p-4"
@@ -268,6 +295,126 @@ export function IntakeEditDialog({
           error={fresh.trim() && !freshCategory ? t("catalogMeta.invalidCategory") : null}
         />
       ) : null}
+    </FormDialog>
+  );
+}
+
+export function IntakeNoteDialog({
+  categories,
+  initialCategory,
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  categories: string[];
+  initialCategory: string | undefined;
+  open: boolean;
+  onOpenChange(open: boolean): void;
+  onCreated(clip: IntakeClip): void;
+}) {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [choice, setChoice] = useState(initialCategory ?? "");
+  const [fresh, setFresh] = useState("");
+  const attempt = useRef<{ content: string; id: string; at: Date } | null>(null);
+  const [touched, setTouched] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    setTitle("");
+    setBody("");
+    setChoice(initialCategory ?? "");
+    setFresh("");
+    setTouched(false);
+    attempt.current = null;
+  }, [initialCategory, open]);
+  const freshCategory = choice === NEW_CATEGORY ? normalizeCategoryInput(fresh) : null;
+  const category = choice === NEW_CATEGORY ? (freshCategory ?? "") : choice;
+  const choices = categoryChoices(categories, initialCategory ?? "").filter(
+    (item) => item !== UNCATEGORIZED,
+  );
+  const create = useMutation({
+    mutationFn: (input: CreateIntakeClipInput) => createIntakeClip(input),
+    onSuccess: async (clip) => {
+      await invalidateIntake(queryClient);
+      onCreated(clip);
+    },
+  });
+  const invalidCategory = choice === NEW_CATEGORY && !freshCategory;
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("intake.add.title")}
+      size="wide"
+      submit={{
+        label: t("intake.add.submit"),
+        pending: create.isPending,
+        disabled: invalidCategory,
+        testId: "intake-add-submit",
+      }}
+      onSubmit={() => {
+        setTouched(true);
+        if (invalidCategory) return;
+        const content = JSON.stringify([title, body, category]);
+        if (attempt.current?.content !== content)
+          attempt.current = { content, id: crypto.randomUUID(), at: new Date() };
+        const request = intakeNoteRequest({
+          clientRequestId: attempt.current.id,
+          title,
+          body,
+          category,
+          capturedAt: attempt.current.at,
+        });
+        if (request) create.mutate(request);
+      }}
+      error={create.error ? t("intake.add.failed") : null}
+      testId="intake-add-dialog"
+    >
+      <TextField
+        id="intake-add-title"
+        label={t("resource.field.title")}
+        value={title}
+        onChange={setTitle}
+        error={touched && !title.trim() ? t("intake.editTitleRequired") : null}
+      />
+      <Field>
+        <FieldLabel htmlFor="intake-add-body">{t("knowledge.content")}</FieldLabel>
+        <MarkdownEditor
+          id="intake-add-body"
+          label={t("knowledge.content")}
+          value={body}
+          onChange={setBody}
+          rows={10}
+          invalid={touched && !body.trim()}
+          testId="intake-add-body"
+        />
+        {touched && !body.trim() ? <FieldError>{t("intake.editBodyRequired")}</FieldError> : null}
+      </Field>
+      <SelectField
+        id="intake-add-category"
+        label={t("intake.category")}
+        value={choice}
+        onChange={setChoice}
+        options={[
+          ...choices.map((item) => ({
+            value: item,
+            label: humanizeCategory(item, t("catalog.categoryOther")),
+          })),
+          { value: NEW_CATEGORY, label: t("catalogMeta.newCategory") },
+        ]}
+      />
+      {choice === NEW_CATEGORY ? (
+        <TextField
+          id="intake-add-category-new"
+          label={t("catalogMeta.newCategoryName")}
+          value={fresh}
+          onChange={setFresh}
+          error={fresh.trim() && !freshCategory ? t("catalogMeta.invalidCategory") : null}
+        />
+      ) : null}
+      <p className="text-xs text-muted-foreground">{t("intake.add.hint")}</p>
     </FormDialog>
   );
 }
@@ -695,6 +842,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
   const needle = useDebouncedValue(search).trim().toLowerCase();
   const [groupMode, setGroupMode] = useSearchParamState("group", "all");
   const [settingDefaultCategory, setSettingDefaultCategory] = useState(false);
+  const [addingNote, setAddingNote] = useState(false);
   const [state, setState] = useSearchParamState<"all" | (typeof INTAKE_STATES)[number]>(
     "state",
     "all",
@@ -706,6 +854,8 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
     "all",
     (value): value is IntakeOrigin => (INTAKE_ORIGINS as readonly string[]).includes(value),
   );
+  const [author, setAuthor] = useSearchParamState("by", "all", isIntakeAuthor);
+  const authorOrigin = intakeAuthorOrigin(author);
   const categories = useQuery({
     queryKey: CATEGORIES_KEY,
     queryFn: listIntakeCategories,
@@ -719,11 +869,12 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
   const effectiveCategory =
     category === "all" ? undefined : (category ?? defaultCategory.data?.category);
   const clips = useQuery({
-    queryKey: [...CLIPS_KEY, effectiveCategory, state],
+    queryKey: [...CLIPS_KEY, effectiveCategory, state, author],
     queryFn: () =>
       listIntakeClips({
         ...(effectiveCategory ? { category: effectiveCategory } : {}),
         ...(state === "all" ? {} : { state }),
+        ...(authorOrigin ? { origin: authorOrigin } : {}),
       }),
     enabled: canRead,
   });
@@ -796,13 +947,20 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
         ]
       : []),
   ];
-  const untouched = category === null && state === "all" && origin === "all" && !needle;
+  const untouched =
+    category === null && state === "all" && origin === "all" && author === "all" && !needle;
   const onboarding =
     !loading &&
     !failed &&
     untouched &&
     clipItems.length === 0 &&
     (categories.data?.categories ?? []).every((entry) => !entry.counts?.intake);
+  const addButton = (testId: string) =>
+    canWrite ? (
+      <Button onClick={() => setAddingNote(true)} data-testid={testId}>
+        {t("intake.add")}
+      </Button>
+    ) : undefined;
   const clipColumns = (() => {
     const column = tableColumns<IntakeClip>({ t, dateTime });
     return [
@@ -860,6 +1018,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
       header={
         <PageHeader
           title={t("nav.inbox")}
+          action={onboarding ? undefined : addButton("intake-add")}
           menu={
             menuItems.length > 0 ? (
               <ActionMenu alwaysMenu testId="intake-page-actions" items={menuItems} />
@@ -869,6 +1028,18 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
       }
     >
       <div className="flex flex-col gap-6 py-4">
+        {canWrite ? (
+          <IntakeNoteDialog
+            categories={categoryValues}
+            initialCategory={effectiveCategory ?? defaultCategory.data?.category}
+            open={addingNote}
+            onOpenChange={setAddingNote}
+            onCreated={(clip) => {
+              setAddingNote(false);
+              void navigate({ to: recordHref("intake", clip.id) });
+            }}
+          />
+        ) : null}
         <IntakeDefaultCategoryDialog
           category={defaultCategory.data?.category}
           initialCategory={effectiveCategory}
@@ -893,7 +1064,9 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
             testId="intake-error"
           />
         ) : null}
-        {onboarding ? <IntakeOnboarding /> : null}
+        {onboarding ? (
+          <IntakeOnboarding {...(canWrite ? { onAddNote: () => setAddingNote(true) } : {})} />
+        ) : null}
         {!loading && !failed && !onboarding ? (
           <>
             <SummaryLine
@@ -907,6 +1080,21 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
               }
               help={t("intake.explanation")}
               testId="intake-summary"
+              aside={
+                <SegmentedControl
+                  label={t("catalog.originAI")}
+                  value={author}
+                  onValueChange={(next) => {
+                    if (isIntakeAuthor(next)) setAuthor(next);
+                  }}
+                  options={INTAKE_AUTHORS.map((value) => ({
+                    value,
+                    label: t(value === "ai" ? "catalog.originAI" : "catalog.originAll"),
+                    testId: `intake-author-${value}`,
+                  }))}
+                  testId="intake-author"
+                />
+              }
             />
             <DataTable<IntakeClip>
               columns={clipColumns}
@@ -999,13 +1187,17 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                       setCategory(null);
                       setState("all");
                       setOrigin("all");
+                      setAuthor("all");
                     },
                   }}
                 />
               }
               pending={false}
               emptyState={{
-                zero: { title: t("intake.empty") },
+                zero: {
+                  title: t("intake.empty"),
+                  ...(canWrite ? { action: addButton("intake-empty-add") } : {}),
+                },
                 filtered: {
                   title: t("resource.noMatches"),
                   description: t("resource.broaderSearch"),
@@ -1015,6 +1207,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
                     setCategory(null);
                     setState("all");
                     setOrigin("all");
+                    setAuthor("all");
                   },
                 },
               }}
