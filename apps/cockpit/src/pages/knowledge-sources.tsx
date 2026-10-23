@@ -10,7 +10,7 @@ import { loadKnowledgeChunks } from "@/api/knowledge";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
-import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
+import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
 import {
   CatalogCategoryChip,
   CatalogMetadataDialog,
@@ -237,7 +237,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
   const [first] = sorting;
   const [adding, setAdding] = useState<{ mode: AddMode; name?: string } | null>(null);
   const categoryFilter = useCategoryFilter("knowledge_source");
-  const origin = useCatalogOrigin();
+  const origin = useCatalogCreatedBy();
   const list = useInfiniteList<
     KnowledgeSource,
     { items: KnowledgeSource[]; total: number; sections_total?: number }
@@ -358,11 +358,10 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           {rows.length > 0 || origin.active || q || categoryFilter.category ? (
-            <CatalogOriginSummary
+            <CatalogSummary
               text={knowledgeSummary(list.total ?? rows.length, list.first?.sections_total, t)}
               testId="knowledge-summary"
               kind="knowledge_source"
-              origin={origin}
             />
           ) : null}
           <DataTable
@@ -396,23 +395,29 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
             total={list.total}
             getRowId={(row) => row.id}
             toolbar={
-              <FilterBar
-                search={{
-                  value: search,
-                  onChange: setSearch,
-                  placeholder: t("knowledge.search"),
-                  testId: "knowledge-search",
-                }}
-                selects={categoryFilter.select ? [categoryFilter.select] : []}
-                reset={{
-                  label: t("catalog.clearFilters"),
-                  onClick: () => {
-                    setSearch("");
-                    categoryFilter.select?.onChange("all");
-                    origin.setValue("all");
-                  },
-                }}
-              />
+              <>
+                <FilterBar
+                  search={{
+                    value: search,
+                    onChange: setSearch,
+                    placeholder: t("knowledge.search"),
+                    testId: "knowledge-search",
+                  }}
+                  selects={[
+                    ...(categoryFilter.select ? [categoryFilter.select] : []),
+                    origin.select,
+                  ]}
+                  reset={{
+                    label: t("catalog.clearFilters"),
+                    onClick: () => {
+                      setSearch("");
+                      categoryFilter.select?.onChange("all");
+                      origin.setValue("all");
+                    },
+                  }}
+                />
+                {origin.chip}
+              </>
             }
             pending={pending}
             error={

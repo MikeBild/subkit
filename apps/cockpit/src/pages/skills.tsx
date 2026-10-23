@@ -23,7 +23,7 @@ import { type ActorDirectory, actorDirectoryName, actorLabel } from "@/app/actor
 import { absolute, chatNewHref, connectorHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
-import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
+import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
 import {
   CatalogCategoryChip,
   CatalogMetadataDialog,
@@ -229,7 +229,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
   const categoryFilter = useCategoryFilter("skill");
-  const origin = useCatalogOrigin();
+  const origin = useCatalogCreatedBy();
   const list = useInfiniteList<Skill>(
     ENDPOINT,
     {
@@ -392,7 +392,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
       ) : (
         <div className="flex flex-col gap-3">
           {rows.length > 0 || origin.active || q || categoryFilter.category ? (
-            <CatalogOriginSummary
+            <CatalogSummary
               text={skillsLine(
                 t,
                 list.total ?? list.items.length,
@@ -401,7 +401,6 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
               help={t("skills.summaryHelp")}
               testId="skills-summary"
               kind="skill"
-              origin={origin}
             />
           ) : null}
           <DataTable
@@ -439,23 +438,29 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
               row.kind === "skill" ? row.skill.id : `proposal:${row.candidate.id}`
             }
             toolbar={
-              <FilterBar
-                search={{
-                  value: search,
-                  onChange: setSearch,
-                  placeholder: t("skills.search"),
-                  testId: "skills-search",
-                }}
-                selects={categoryFilter.select ? [categoryFilter.select] : []}
-                reset={{
-                  label: t("catalog.clearFilters"),
-                  onClick: () => {
-                    setSearch("");
-                    categoryFilter.select?.onChange("all");
-                    origin.setValue("all");
-                  },
-                }}
-              />
+              <>
+                <FilterBar
+                  search={{
+                    value: search,
+                    onChange: setSearch,
+                    placeholder: t("skills.search"),
+                    testId: "skills-search",
+                  }}
+                  selects={[
+                    ...(categoryFilter.select ? [categoryFilter.select] : []),
+                    origin.select,
+                  ]}
+                  reset={{
+                    label: t("catalog.clearFilters"),
+                    onClick: () => {
+                      setSearch("");
+                      categoryFilter.select?.onChange("all");
+                      origin.setValue("all");
+                    },
+                  }}
+                />
+                {origin.chip}
+              </>
             }
             pending={pending}
             error={

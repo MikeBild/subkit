@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Sparkles } from "lucide-react";
+import { Bot } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -118,10 +118,11 @@ export function CatalogPurpose({
       </span>
       {writtenByAssistant(record) ? (
         <span
-          className="ml-1.5 inline-flex items-center gap-1 whitespace-nowrap text-xs"
+          className="ml-1.5 inline-flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground"
+          title={t("catalogMeta.createdByAI")}
           data-testid="catalog-metadata-by-assistant"
         >
-          <Sparkles aria-hidden="true" className="size-3" />
+          <Bot aria-hidden="true" className="size-3" />
           {t("catalogMeta.byAssistant")}
         </span>
       ) : null}

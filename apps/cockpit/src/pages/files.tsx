@@ -26,7 +26,7 @@ import { useInstallation } from "@/app/installation-provider";
 import { conversationHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
-import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
+import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
 import {
   CatalogCategoryChip,
   CatalogMetadataDialog,
@@ -176,7 +176,7 @@ export function FilesPage() {
   const [groupMode, setGroupMode] = useSearchParamState("group", "all");
   const [upload, setUpload] = useState<{ files: File[]; replace: StoredFile | null } | null>(null);
   const categoryFilter = useCategoryFilter("file");
-  const origin = useCatalogOrigin();
+  const origin = useCatalogCreatedBy();
   const list = useInfiniteList<ListedFile>(LIST_PATH, {
     ...LIST_PARAMS,
     q: search.trim() || undefined,
@@ -287,10 +287,9 @@ export function FilesPage() {
             />
           ) : null}
           {items.length > 0 || !unfiltered ? (
-            <CatalogOriginSummary
+            <CatalogSummary
               testId="files-summary"
               kind="file"
-              origin={origin}
               text={
                 allLoaded
                   ? t(pluralKey("files.summary", total), {
@@ -347,23 +346,29 @@ export function FilesPage() {
             total={list.total}
             toolbar={
               hasFiles ? (
-                <FilterBar
-                  search={{
-                    value: search,
-                    onChange: setSearch,
-                    placeholder: t("files.search"),
-                    testId: "files-search",
-                  }}
-                  selects={categoryFilter.select ? [categoryFilter.select] : []}
-                  reset={{
-                    label: t("catalog.clearFilters"),
-                    onClick: () => {
-                      setSearch("");
-                      categoryFilter.select?.onChange("all");
-                      origin.setValue("all");
-                    },
-                  }}
-                />
+                <>
+                  <FilterBar
+                    search={{
+                      value: search,
+                      onChange: setSearch,
+                      placeholder: t("files.search"),
+                      testId: "files-search",
+                    }}
+                    selects={[
+                      ...(categoryFilter.select ? [categoryFilter.select] : []),
+                      origin.select,
+                    ]}
+                    reset={{
+                      label: t("catalog.clearFilters"),
+                      onClick: () => {
+                        setSearch("");
+                        categoryFilter.select?.onChange("all");
+                        origin.setValue("all");
+                      },
+                    }}
+                  />
+                  {origin.chip}
+                </>
               ) : undefined
             }
             pending={query.isPending && !query.failureReason}

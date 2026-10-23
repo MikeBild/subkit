@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
@@ -7,10 +8,11 @@ import { TextAreaField, TextField } from "@/components/cockpit/form-field";
 import {
   Button,
   DataState,
+  type FilterSelect,
   FormDialog,
   RecordSheet,
-  SegmentedControl,
   SummaryLine,
+  SummaryParts,
 } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
@@ -22,7 +24,14 @@ import {
   categoryMatches,
 } from "./catalog-categories-model";
 import { type CatalogKind, normalizeCategoryInput } from "./catalog-metadata-model";
-import { catalogAICount } from "./catalog-origin-model";
+import {
+  CATALOG_CREATED_BY_FILTER,
+  CATALOG_CREATED_BY_PARAM,
+  type CatalogCreatedBy,
+  catalogAICount,
+  createdByDescriptionSource,
+  isCatalogCreatedBy,
+} from "./catalog-origin-model";
 
 type CatalogCategoryKind = CatalogKind | "intake";
 
@@ -319,25 +328,56 @@ export function CatalogCategories({ kind }: { kind: CatalogCategoryKind }) {
   );
 }
 
-export function useCatalogOrigin() {
-  const [value, setValue] = useSearchParamState("origin", "all");
+export function useCatalogCreatedBy() {
+  const { t } = useI18n();
+  const [value, setValue] = useSearchParamState<CatalogCreatedBy>(
+    CATALOG_CREATED_BY_PARAM,
+    "all",
+    isCatalogCreatedBy,
+  );
+  const select: FilterSelect = {
+    value,
+    onChange: (next) => setValue(isCatalogCreatedBy(next) ? next : "all"),
+    label: t("catalog.createdBy"),
+    testId: CATALOG_CREATED_BY_FILTER,
+    options: [
+      { value: "all", label: t("catalog.createdBy.all") },
+      { value: "ai", label: t("catalog.createdBy.ai") },
+      { value: "person", label: t("catalog.createdBy.person") },
+    ],
+  };
+  const chip =
+    value === "all" ? null : (
+      <Button
+        variant="secondary"
+        size="sm"
+        title={t("catalog.createdByChipClear")}
+        data-testid="catalog-created-by-chip"
+        onClick={() => setValue("all")}
+      >
+        {t("catalog.createdByChip", {
+          who: t(value === "ai" ? "catalog.createdBy.ai" : "catalog.createdBy.person"),
+        })}
+        <X aria-hidden="true" />
+      </Button>
+    );
   return {
     value,
     setValue,
-    active: value === "llm",
-    descriptionSource: value === "llm" ? "llm" : undefined,
+    active: value !== "all",
+    descriptionSource: createdByDescriptionSource(value),
+    select,
+    chip,
   };
 }
 
-export function CatalogOriginSummary({
+export function CatalogSummary({
   kind,
-  origin,
   text,
   help,
   testId,
 }: {
   kind: CatalogKind;
-  origin: ReturnType<typeof useCatalogOrigin>;
   text: ReactNode;
   help?: string;
   testId?: string;
@@ -351,25 +391,16 @@ export function CatalogOriginSummary({
   return (
     <SummaryLine
       text={
-        <>
-          {text} · <CatalogCategories kind={kind} />
-          {count === null ? null : <> · {t("catalog.aiCount", { count })}</>}
-        </>
+        <SummaryParts
+          parts={[
+            text,
+            <CatalogCategories key="categories" kind={kind} />,
+            count === null ? null : t("catalog.aiCount", { count }),
+          ]}
+        />
       }
       help={help}
       testId={testId}
-      aside={
-        <SegmentedControl
-          label={t("catalog.originAI")}
-          value={origin.value}
-          onValueChange={origin.setValue}
-          options={[
-            { value: "all", label: t("catalog.originAll"), testId: "catalog-origin-all" },
-            { value: "llm", label: t("catalog.originAI"), testId: "catalog-origin-llm" },
-          ]}
-          testId="catalog-origin"
-        />
-      }
     />
   );
 }

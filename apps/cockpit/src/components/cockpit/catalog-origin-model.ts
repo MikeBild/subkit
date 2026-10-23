@@ -13,3 +13,18 @@ export function catalogAICount(
   }
   return total;
 }
+
+export type CatalogCreatedBy = "all" | "ai" | "person";
+
+export const CATALOG_CREATED_BY_PARAM = "created_by";
+export const CATALOG_CREATED_BY_FILTER = "catalog-created-by";
+
+export function isCatalogCreatedBy(value: string): value is CatalogCreatedBy {
+  return value === "all" || value === "ai" || value === "person";
+}
+
+export function createdByDescriptionSource(value: CatalogCreatedBy): "llm" | "human" | undefined {
+  if (value === "ai") return "llm";
+  if (value === "person") return "human";
+  return undefined;
+}

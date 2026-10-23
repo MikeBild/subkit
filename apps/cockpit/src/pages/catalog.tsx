@@ -6,8 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
-import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
+import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
 import { CatalogNameCell } from "@/components/cockpit/catalog-metadata";
+import { CATALOG_CREATED_BY_FILTER } from "@/components/cockpit/catalog-origin-model";
 import { connectorService } from "@/components/cockpit/connector-names";
 import { ConnectorOnboarding } from "@/components/cockpit/connector-onboarding";
 import { CreateAction } from "@/components/cockpit/create-choice";
@@ -372,7 +373,7 @@ export function CatalogPage({
   const [search, setSearch] = useState(state.q);
   const groupMode = state.group;
   const setGroupMode = useCallback((group: string) => setState({ group }), [setState]);
-  const origin = useCatalogOrigin();
+  const origin = useCatalogCreatedBy();
   const debouncedSearch = useDebouncedValue(search);
   useEffect(() => setSearch(state.q), [state.q]);
   useEffect(() => {
@@ -528,6 +529,7 @@ export function CatalogPage({
         })),
       ],
     });
+  selects.push(origin.select);
 
   const primaryAction = (testId: string) =>
     (resource === "workflows" && permissions.includes("workflow:write")) ||
@@ -574,10 +576,9 @@ export function CatalogPage({
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           {rows.length > 0 || hasActiveFilters ? (
-            <CatalogOriginSummary
+            <CatalogSummary
               text={catalogCountLine(t, resource, total)}
               kind={resource === "workflows" ? "workflow" : "connector"}
-              origin={origin}
               testId="catalog-summary"
             />
           ) : null}
@@ -625,10 +626,13 @@ export function CatalogPage({
                       patch.category = changes["catalog-category-filter"];
                     if (changes["catalog-status-filter"])
                       patch.status = changes["catalog-status-filter"] as WorkflowStatusFilter;
+                    const createdBy = changes[CATALOG_CREATED_BY_FILTER];
+                    if (createdBy !== undefined) origin.select.onChange(createdBy);
                     if (Object.keys(patch).length > 0) setState(patch);
                   }}
                   reset={{ label: t("catalog.clearFilters"), onClick: resetFilters }}
                 />
+                {origin.chip}
                 {resource === "connectors" && state.health === "not_ok" ? (
                   <Button
                     variant="secondary"
