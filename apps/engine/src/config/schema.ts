@@ -311,6 +311,12 @@ export const HostedLlmModelSchema = z
     cache_read_usd_per_million_tokens: HostedRate,
     cache_write_5m_usd_per_million_tokens: HostedRate,
     cache_write_1h_usd_per_million_tokens: HostedRate,
+    disabled: z
+      .boolean()
+      .optional()
+      .describe(
+        "Keep this entry with its limits and rates but stop allowing the model; missing means false.",
+      ),
   })
   .strict()
   .refine((value) => value.max_output_tokens <= value.max_context_tokens, {

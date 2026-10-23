@@ -6,6 +6,7 @@ import type {
 import { wrapLanguageModel } from "ai";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { hostedModelAllowed } from "../../config/hosted-registration-policy.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { Config } from "../../config/schema.ts";
 import { type Executor, getDb } from "../../db/client.ts";
@@ -99,7 +100,7 @@ async function hostedPolicy(
   }
   const matches = hosted.models.filter((entry) => entry.model === `${provider}:${modelId}`);
   const [policy] = matches;
-  if (!policy || matches.length !== 1)
+  if (!policy || matches.length !== 1 || !hostedModelAllowed(policy))
     return unsupportedHostedBilling("model has no unique verified billing policy");
   return { tenantId, hosted, policy };
 }

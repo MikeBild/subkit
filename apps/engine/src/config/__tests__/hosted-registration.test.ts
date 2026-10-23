@@ -104,6 +104,40 @@ test("registration rejects empty or duplicate model allowlists", () => {
   expect(ConfigSchema.safeParse(valid).success).toBe(false);
 });
 
+test("a disabled model is kept but does not count as an allowed model", async () => {
+  const { hostedModelAllowed, hostedRegistrationPolicyError } = await import(
+    "../hosted-registration-policy.ts"
+  );
+  const only = configuration();
+  const model = only.llm.hosted.models[0];
+  if (!model) throw new Error("model fixture missing");
+  only.llm.hosted.models = [{ ...model, disabled: true } as typeof model];
+  const parsed = ConfigSchema.safeParse(only);
+  expect(parsed.success).toBe(false);
+  const mixed = configuration();
+  mixed.llm.hosted.models.push({
+    ...model,
+    model: "openai:paused-model",
+    disabled: true,
+  } as typeof model);
+  const accepted = ConfigSchema.safeParse(mixed);
+  expect(accepted.success).toBe(true);
+  if (!accepted.success) return;
+  expect(accepted.data.llm.hosted.models.map((entry) => entry.disabled)).toEqual([undefined, true]);
+  expect(hostedRegistrationPolicyError(accepted.data)).toBeNull();
+  expect(accepted.data.llm.hosted.models.map(hostedModelAllowed)).toEqual([true, false]);
+  expect(hostedModelAllowed({})).toBe(true);
+  expect(hostedModelAllowed({ disabled: false })).toBe(true);
+});
+
+test("a duplicate stays forbidden even when one copy is disabled", () => {
+  const config = configuration();
+  const model = config.llm.hosted.models[0];
+  if (!model) throw new Error("model fixture missing");
+  config.llm.hosted.models.push({ ...model, disabled: true } as typeof model);
+  expect(ConfigSchema.safeParse(config).success).toBe(false);
+});
+
 test("registration rejects unpriced models and invalid provider caps", () => {
   const config = configuration();
   const model = config.llm.hosted.models[0];

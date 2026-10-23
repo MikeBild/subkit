@@ -245,6 +245,18 @@ describe("hosted provider budget boundary", () => {
     expect(mock.doGenerateCalls).toHaveLength(0);
   });
 
+  test("a disabled model entry is refused like a missing one, before dispatch", async () => {
+    const f = fixture();
+    const { mock, model } = f.wrap();
+    f.config.llm.hosted.models = [{ ...policy, disabled: true }];
+    await expect(model.doGenerate(params())).rejects.toThrow("no unique verified billing policy");
+    expect(mock.doGenerateCalls).toHaveLength(0);
+    expect(f.reserved).toHaveLength(0);
+    f.config.llm.hosted.models = [{ ...policy, disabled: false }];
+    await model.doGenerate(params());
+    expect(mock.doGenerateCalls).toHaveLength(1);
+  });
+
   test("self-hosted tenants preserve existing model behavior", async () => {
     const f = fixture();
     f.setOrigin("operator");

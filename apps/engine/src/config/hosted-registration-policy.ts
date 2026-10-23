@@ -41,9 +41,14 @@ interface HostedRegistrationConfig {
         cache_read_usd_per_million_tokens: string;
         cache_write_5m_usd_per_million_tokens: string;
         cache_write_1h_usd_per_million_tokens: string;
+        disabled?: boolean | undefined;
       }[];
     };
   };
+}
+
+export function hostedModelAllowed(entry: { disabled?: boolean | undefined }): boolean {
+  return entry.disabled !== true;
 }
 
 export function hostedRegistrationPolicyError(config: HostedRegistrationConfig): string | null {
@@ -76,7 +81,7 @@ export function hostedRegistrationPolicyError(config: HostedRegistrationConfig):
     return "Hosted registration requires positive operator-owned tenant and global USD budgets";
   }
   if (
-    hosted.models.length === 0 ||
+    !hosted.models.some(hostedModelAllowed) ||
     new Set(hosted.models.map((model) => model.model)).size !== hosted.models.length
   ) {
     return "Hosted registration requires a nonempty, unique model billing allowlist";
