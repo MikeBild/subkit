@@ -243,6 +243,30 @@ test("a sensitive definition without a metadata test run is not saved", async ()
   if (!result.ok) expect(result.next_best_actions).toContain("dry_run_workflow");
 });
 
+test("an approved sensitive definition saves inactive after a green schema-only check", async () => {
+  const conversationId = await freshConversation();
+  await seedApprovedConfirm(conversationId);
+  const draft = withLatestPreview(sensitiveDraft("sensitive-schema-only-save"), {
+    ok: true,
+    step_id: "echo",
+    summary: "Structure checked, content not checked.",
+    preview: null,
+    input: null,
+    redacted: true,
+    mode: "schema_only",
+  });
+  const result = await commitWorkflowAtomic({ ctx: stubToolCtx(conversationId, draft) });
+  expect(result.ok).toBe(true);
+  expect(result.data).toMatchObject({
+    activation_required: true,
+    persistence_kind: "draft",
+    runtime_verification: "schema_only",
+  });
+  expect(
+    String((result.data as { verification_guidance: string }).verification_guidance),
+  ).toContain("Cockpit");
+});
+
 test("an approved sensitive definition saves inactive after a green metadata test run", async () => {
   const conversationId = await freshConversation();
   await seedApprovedConfirm(conversationId);
