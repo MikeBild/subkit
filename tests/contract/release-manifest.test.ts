@@ -6,10 +6,18 @@ const REPO = join(import.meta.dir, "..", "..");
 const WORKFLOW = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8");
 
 describe("release manifest workflow", () => {
-  test("publishing artifacts cannot dispatch a deployment to another repository", () => {
-    expect(WORKFLOW).not.toContain("/dispatches");
-    expect(WORKFLOW).not.toContain("repository_dispatch");
-    expect(WORKFLOW).not.toContain("DEPLOY_TOKEN");
+  test("a separate job without repository rights dispatches the published tag to deployment", () => {
+    const deploy = WORKFLOW.indexOf("\n  deploy:\n");
+    expect(deploy).toBeGreaterThan(0);
+    const publishJob = WORKFLOW.slice(0, deploy);
+    const deployJob = WORKFLOW.slice(deploy);
+    expect(publishJob).not.toContain("DEPLOY_TOKEN");
+    expect(publishJob).not.toContain("/dispatches");
+    expect(deployJob).toContain("needs: release");
+    expect(deployJob).toContain("permissions: {}");
+    expect(deployJob).not.toContain("RELEASE_SIGNING_KEY");
+    expect(deployJob).toContain('event_type:"subkit-release"');
+    expect(deployJob).toContain("https://api.github.com/repos/MikeBild/subkit-deploy/dispatches");
     expect(WORKFLOW).toContain("- name: Require mandatory local release gate");
     expect(WORKFLOW).toContain("- name: Sign SHA256SUMS");
   });
