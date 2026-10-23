@@ -41,16 +41,16 @@ test("the created-by filter maps AI and Person onto the description source and k
   expect(CATALOG_CREATED_BY_PARAM).toBe("created_by");
 });
 
-test("the created-by filter speaks the glossary in both languages", () => {
+test("the described-by filter speaks the glossary in both languages", () => {
   expect(
     ["catalog.createdBy", "catalog.createdBy.ai", "catalog.createdBy.person"].map((key) =>
       translate("de", key as Parameters<typeof translate>[1]),
     ),
-  ).toEqual(["Erstellt von", "KI", "Person"]);
+  ).toEqual(["Beschrieben von", "KI", "Person"]);
   expect(
     ["catalog.createdBy", "catalog.createdBy.ai", "catalog.createdBy.person"].map((key) =>
       translate("en", key as Parameters<typeof translate>[1]),
     ),
-  ).toEqual(["Created by", "AI", "Person"]);
-  expect(translate("de", "catalog.createdByChip", { who: "KI" })).toBe("Erstellt von: KI");
+  ).toEqual(["Described by", "AI", "Person"]);
+  expect(translate("de", "catalog.createdByChip", { who: "KI" })).toBe("Beschrieben von: KI");
 });
