@@ -10,6 +10,13 @@ import { DataState } from "./data-state";
 import { FactList } from "./fact-list";
 import { FilterBar } from "./filter-bar";
 import { dialogWidthClass } from "./form-dialog";
+import {
+  KPI_TILE_BOX,
+  KPI_TILE_DETAIL,
+  KPI_TILE_LABEL,
+  KPI_TILE_VALUE_ROW,
+  KpiTile,
+} from "./kpi-tile";
 import { Page, READING_COLUMN } from "./page";
 import { PageHeader } from "./page-header";
 import { searchWithTab, tabFromSearch } from "./page-tabs";
@@ -18,6 +25,7 @@ import { activeRouteTab } from "./route-tabs";
 import { SearchInput } from "./search-input";
 import { CollapsibleSection, Section } from "./section";
 import { revealScrollLeft, SegmentedControl } from "./segmented-control";
+import { TileSkeleton } from "./skeleton";
 import { StatusBadge, statusTone } from "./status-badge";
 import { StatusStrip } from "./status-strip";
 import { SummaryLine } from "./summary-line";
@@ -460,5 +468,20 @@ describe("SearchInput", () => {
     expect(html).toContain('placeholder="Vorlagen durchsuchen"');
     expect(html).toContain("lucide-search");
     expect(html).not.toContain("<label");
+  });
+});
+
+describe("KPI tile placeholder", () => {
+  test("the loading tile keeps the box, rows and responsive heights of the real tile", () => {
+    const real = render(<KpiTile label="Runs" value="12" detail="+2 against last week" />);
+    const placeholder = render(<TileSkeleton />);
+    const classes = (html: string) =>
+      [...html.matchAll(/<(?:div|p)[^>]*class="([^"]*)"/g)].map((match) => match[1]);
+    const [realBox, ...realRows] = classes(real);
+    const [placeholderBox, ...placeholderRows] = classes(placeholder);
+    expect(placeholderBox).toBe(realBox);
+    expect(placeholderBox).toBe(KPI_TILE_BOX);
+    expect(placeholderRows).toEqual(realRows);
+    expect(placeholderRows).toEqual([KPI_TILE_LABEL, KPI_TILE_VALUE_ROW, KPI_TILE_DETAIL]);
   });
 });

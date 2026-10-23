@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useI18n } from "@/lib/i18n-context";
 import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
+import { KPI_TILE_BOX, KPI_TILE_DETAIL, KPI_TILE_LABEL, KPI_TILE_VALUE_ROW } from "./kpi-tile";
 
 export function Skeleton({ className, testId }: { className?: string; testId?: string }) {
   return (
@@ -53,14 +54,16 @@ export function Loadable({
 
 export function TileSkeleton({ testId }: { testId?: string }) {
   return (
-    <div
-      data-slot="tile-skeleton"
-      data-testid={testId}
-      className="flex flex-col gap-2 rounded-lg border p-4"
-    >
-      <Skeleton className="h-3.5 w-24" />
-      <Skeleton className="h-7 w-16" />
-      <Skeleton className="h-3 w-32" />
+    <div data-slot="tile-skeleton" data-testid={testId} className={KPI_TILE_BOX}>
+      <div className={KPI_TILE_LABEL}>
+        <Skeleton className="mt-0.5 h-3 w-24" />
+      </div>
+      <div className={KPI_TILE_VALUE_ROW}>
+        <Skeleton className="h-7 w-16 self-center" />
+      </div>
+      <div className={KPI_TILE_DETAIL}>
+        <Skeleton className="mt-0.5 h-3 w-32" />
+      </div>
     </div>
   );
 }
