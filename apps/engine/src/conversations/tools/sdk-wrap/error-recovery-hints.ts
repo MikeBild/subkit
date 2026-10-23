@@ -182,6 +182,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the workflow has no recorded preview — call dry_run_workflow to produce one before reading step results",
   sensitive_execution_unsupported:
     'this workflow carries sensitive execution data, which never enters conversation previews or messages. Call inspect_workflow_draft and validate_draft; for a sensitive draft, dry_run_workflow returns metadata only and mode "schema_only" checks structure without content. Live verification happens in the Cockpit by the signed-in person; do not retry through chat tools',
+  schema_only_requires_sensitive_draft:
+    "mode schema_only only applies to a sensitive draft — call dry_run_workflow without mode to run the held preview of this ordinary draft",
   preview_empty:
     "the last preview produced no output — call run_workflow with concrete input, or dry_run_workflow with a non-empty input payload",
   connector_auth_unset:
