@@ -28,6 +28,11 @@ import type {
 } from "./base-types.ts";
 import { maybeWrapForDevtools } from "./devtools-wrap.ts";
 import {
+  GENERATION_ABORT_INPUT_SCHEMA,
+  type GenerationAbort,
+  parseGenerationAbort,
+} from "./generation-abort.ts";
+import {
   initializeModel,
   type ModelInitOptions,
   ProviderMisconfiguredError,
@@ -385,18 +390,26 @@ export class AiSdkModel implements SubkitLlm {
     const usage = usageOf(result.usage, result.providerMetadata);
     const steps = result.steps?.length ?? 1;
 
-    const refusal = refusalReason(result.toolCalls);
+    const refusal = refusalOf(result.toolCalls);
     if (refusal !== null) {
       logger.warn({
         module: "llm",
         action: "structured.refused",
         msg: "model called the abort tool instead of producing the object",
         model: answeredBy.model_used,
-        reason: refusal,
+        reason: refusal.reason,
+        need_kinds: refusal.needs.map((need) => need.kind),
         steps,
         output_tokens: usage.output_tokens,
       });
-      return { success: false, response: refusal, messages, usage, ...answeredBy };
+      return {
+        success: false,
+        response: refusal.reason,
+        abort: refusal,
+        messages,
+        usage,
+        ...answeredBy,
+      };
     }
 
     if (result.finishReason !== "stop") {
@@ -425,31 +438,19 @@ const ABORT_TOOL_NAME = "abort";
 function abortTool(): Tool {
   return tool({
     description:
-      "Call this instead of producing the object when the task cannot be fulfilled from the given context. Name exactly what is missing or impossible so the caller can fix it.",
-    inputSchema: jsonSchema<{ reason: string }>({
-      type: "object",
-      properties: {
-        reason: {
-          type: "string",
-          minLength: 1,
-          description: "What is missing or impossible, in one or two sentences.",
-        },
-      },
-      required: ["reason"],
-      additionalProperties: false,
-    }),
+      "Call this instead of producing the object when the task cannot be fulfilled from the given context. Name exactly what is missing or impossible in `reason`, and list each concrete missing fact in `needs` so the caller can fetch it or ask the user.",
+    inputSchema: jsonSchema<GenerationAbort>(
+      GENERATION_ABORT_INPUT_SCHEMA as unknown as Parameters<typeof jsonSchema>[0],
+    ),
   });
 }
 
-function refusalReason(
+function refusalOf(
   toolCalls: ReadonlyArray<{ toolName: string; input: unknown }> | undefined,
-): string | null {
+): GenerationAbort | null {
   const call = toolCalls?.find((c) => c.toolName === ABORT_TOOL_NAME);
   if (!call) return null;
-  const reason = (call.input as { reason?: unknown } | null | undefined)?.reason;
-  return typeof reason === "string" && reason.trim() !== ""
-    ? reason
-    : "the model declined without giving a reason";
+  return parseGenerationAbort(call.input);
 }
 
 export function extractCacheRead(meta: unknown): number {

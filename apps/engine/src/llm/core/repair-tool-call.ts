@@ -206,6 +206,10 @@ export async function repairToolCall<TOOLS extends ToolSet>(
       ],
       maxRetries: 0,
       allowSystemInMessages: true,
+      providerOptions: {
+        anthropic: { structuredOutputMode: "jsonTool" },
+        openai: { strictJsonSchema: false },
+      },
     });
     await recordRepairUsage(accounting, model, repaired, Date.now() - startedAt);
     onRepair?.();
@@ -269,6 +273,7 @@ const SCHEMA_REJECTION_MARKERS = [
   "output_config.format.schema",
   "Empty schema",
   "Schema type",
+  "'required' is required to be supplied",
 ] as const;
 
 export function isSchemaRejectionError(input: { errName: string; errMsg: string }): boolean {

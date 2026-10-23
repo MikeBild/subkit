@@ -43,6 +43,27 @@ interface StructuredCall {
   model: unknown;
 }
 
+interface StrictSchemaNode {
+  type?: unknown;
+  properties?: Record<string, StrictSchemaNode>;
+  required?: string[];
+  additionalProperties?: unknown;
+  items?: StrictSchemaNode;
+  [key: string]: unknown;
+}
+
+function expectStrictModeCompatible(node: StrictSchemaNode): void {
+  for (const unsupported of ["minLength", "maxLength", "pattern", "format", "default"]) {
+    expect(node).not.toHaveProperty(unsupported);
+  }
+  if (node.type === "object") {
+    expect(node.additionalProperties).toBe(false);
+    expect([...(node.required ?? [])].sort()).toEqual(Object.keys(node.properties ?? {}).sort());
+    for (const child of Object.values(node.properties ?? {})) expectStrictModeCompatible(child);
+  }
+  if (node.items) expectStrictModeCompatible(node.items);
+}
+
 function stubResult(result: GenerateTextStubResult) {
   return {
     text: result.text ?? "",
@@ -331,11 +352,69 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
     const abort = (call.tools as Record<string, { description?: string; inputSchema: unknown }>)
       .abort!;
     expect(abort.description).toContain("cannot be fulfilled");
-    const abortSchema = (
-      abort.inputSchema as { jsonSchema: { required: string[]; properties: { reason: unknown } } }
-    ).jsonSchema;
-    expect(abortSchema.required).toEqual(["reason"]);
-    expect(abortSchema.properties.reason).toMatchObject({ type: "string", minLength: 1 });
+    const abortSchema = (abort.inputSchema as { jsonSchema: StrictSchemaNode }).jsonSchema;
+    expect(abortSchema.required).toEqual(["reason", "needs"]);
+    expect(abortSchema.properties?.reason).toMatchObject({ type: "string" });
+    expectStrictModeCompatible(abortSchema);
+    const item = abortSchema.properties?.needs?.items as StrictSchemaNode;
+    expect(item.required).toEqual(["kind", "connector_slug", "method", "path", "question"]);
+    expect(item.properties?.path).toMatchObject({ type: ["string", "null"] });
+  });
+
+  it("returns the structured needs when the model aborts with them", async () => {
+    const stub = makeStub({
+      text: "",
+      finishReason: "tool-calls",
+      toolCalls: [
+        {
+          toolCallId: "c1",
+          toolName: "abort",
+          input: {
+            reason: "the send route contract is missing",
+            needs: [
+              {
+                kind: "endpoint_contract",
+                connector_slug: "mail",
+                method: "post",
+                path: "/v1/messages/send",
+                question: null,
+              },
+              { kind: "user_fact", question: "Who receives the report?" },
+              { kind: "unknown_kind", path: "/x" },
+            ],
+          },
+        },
+      ],
+    });
+    const model = new AiSdkModel({
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
+    });
+    const r = await model.generateObject({
+      messages: [{ role: "user", content: "x" }],
+      schema: keySchema,
+    });
+    expect(r.success).toBe(false);
+    expect(r.response).toBe("the send route contract is missing");
+    expect(r.abort).toEqual({
+      reason: "the send route contract is missing",
+      needs: [
+        {
+          kind: "endpoint_contract",
+          connector_slug: "mail",
+          method: "POST",
+          path: "/v1/messages/send",
+          question: null,
+        },
+        {
+          kind: "user_fact",
+          connector_slug: null,
+          method: null,
+          path: null,
+          question: "Who receives the report?",
+        },
+      ],
+    });
   });
 
   it("unwraps { result: [...] } when the value schema is array-rooted", async () => {

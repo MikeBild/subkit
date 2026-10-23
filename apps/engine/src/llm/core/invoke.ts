@@ -26,7 +26,7 @@ import {
   resolveMonthlyBudget,
   usageAttribution,
 } from "../accounting/index.ts";
-import { LlmProviderError, LlmQuotaExhausted } from "../errors.ts";
+import { LlmGenerationAborted, LlmProviderError, LlmQuotaExhausted } from "../errors.ts";
 import { getMockProvider, type MockResult } from "../mock-provider.ts";
 import { classifyProviderError, shouldFallBack } from "../provider-errors.ts";
 import type { LlmFlow, LlmProviderKind, ModelRoute, UserTurn } from "../types.ts";
@@ -244,7 +244,8 @@ export interface InvokeResult<T = unknown> {
   };
 }
 
-function mapProviderError(err: unknown): LlmProviderError {
+export function mapProviderError(err: unknown): LlmProviderError {
+  if (err instanceof LlmGenerationAborted) return err;
   const kind = classifyProviderError(err);
   const msg = err instanceof Error ? err.message : String(err);
   const mappedKind =
@@ -559,6 +560,8 @@ async function dispatchReal<T>(
       if (r.success) {
         object = r.response as T;
         text = JSON.stringify(object);
+      } else if (r.abort) {
+        throw new LlmGenerationAborted(r.abort);
       } else {
         throw new LlmProviderError("other", String(r.response));
       }

@@ -1,5 +1,6 @@
 import type { FilePart, ImagePart, TextPart, Tool } from "ai";
 import type { LlmFlow } from "../types.ts";
+import type { GenerationAbort } from "./generation-abort.ts";
 
 export interface SubkitLlmMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -25,6 +26,7 @@ export interface SubkitLlmObjectResponse<T> extends SubkitLlmAnsweredBy {
   response: T | string;
   messages: SubkitLlmMessage[];
   usage: SubkitLlmUsage;
+  abort?: GenerationAbort;
 }
 
 export interface SubkitLlmUsage {

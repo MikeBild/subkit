@@ -1,3 +1,5 @@
+import type { GenerationAbort, GenerationNeed } from "./core/generation-abort.ts";
+
 export class LlmError extends Error {
   readonly code:
     | "llm_quota_exhausted"
@@ -45,6 +47,17 @@ export class LlmProviderError extends LlmError {
     super("llm_provider_error", message, details);
     this.name = "LlmProviderError";
     this.kind = kind;
+  }
+}
+
+export class LlmGenerationAborted extends LlmProviderError {
+  readonly reason: string;
+  readonly needs: GenerationNeed[];
+  constructor(abort: GenerationAbort) {
+    super("other", abort.reason, { needs: abort.needs });
+    this.name = "LlmGenerationAborted";
+    this.reason = abort.reason;
+    this.needs = abort.needs;
   }
 }
 
