@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef, useState } from "react";
+import { useEdgeFade } from "@/components/cockpit/patterns/tab-motion";
 import { useI18n } from "@/lib/i18n-context";
 import {
   LEGEND_ORDER,
@@ -17,6 +19,10 @@ const TICK_GAP = 6;
 const PAD_RIGHT = 8;
 const PAD_BOTTOM = 24;
 const PAD_TOP = 18;
+const DEFAULT_WIDTH = 1000;
+const MIN_SLOT = 30;
+const LABEL_SLOT = 64;
+const TOTAL_LABEL_MIN_BAR = 36;
 const STEPS = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1000];
 
 function tickStep(max: number): number {
@@ -29,6 +35,38 @@ function tickStep(max: number): number {
 export function axisPaddingLeft(labels: readonly string[]): number {
   const widest = Math.max(0, ...labels.map((label) => label.length));
   return Math.max(PAD_LEFT_MIN, Math.ceil(widest * TICK_CHAR_WIDTH) + TICK_GAP + 4);
+}
+
+export function chartLayout(
+  available: number,
+  count: number,
+  padLeft: number,
+): { width: number; labelEvery: number; showTotals: boolean } {
+  const width = Math.max(Math.round(available > 0 ? available : DEFAULT_WIDTH), count * MIN_SLOT);
+  const plot = width - padLeft - PAD_RIGHT;
+  const gap = count > 12 ? 3 : 8;
+  const bar = (plot - (count - 1) * gap) / Math.max(1, count);
+  const fits = Math.max(1, Math.floor(plot / LABEL_SLOT));
+  return {
+    width,
+    labelEvery: Math.max(1, Math.ceil(count / fits)),
+    showTotals: count <= 12 && bar >= TOTAL_LABEL_MIN_BAR,
+  };
+}
+
+function useElementWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    setWidth(element.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setWidth(element.clientWidth));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
 }
 
 function axisLabel(at: Date, unit: BucketUnit, format: UsageFormat): string {
@@ -47,8 +85,9 @@ export function OriginChartSvg({
   value(amount: number): string;
 }) {
   const { t } = useI18n();
+  const [box, available] = useElementWidth<HTMLDivElement>();
+  const edgeFade = useEdgeFade(box);
   const count = chart.buckets.length;
-  const width = Math.max(1000, count * 30);
   const gap = count > 12 ? 3 : 8;
   const max = Math.max(...chart.buckets.map((bucket) => bucket.total), 0);
   const step = max > 0 ? tickStep(max) : 1;
@@ -57,13 +96,15 @@ export function OriginChartSvg({
   const ticks: number[] = [];
   for (let v = 0; v <= top + step / 1000; v += step) ticks.push(v);
   const padLeft = axisPaddingLeft(ticks.map((tick) => value(tick)));
+  const { width, labelEvery, showTotals } = chartLayout(available, count, padLeft);
   const barWidth = Math.max(1, (width - padLeft - PAD_RIGHT - (count - 1) * gap) / count);
-  const labelEvery = count <= 12 ? 1 : Math.ceil(count / 10);
   return (
-    <div className="overflow-x-auto [scrollbar-width:thin]">
+    <div ref={box} style={edgeFade} className="overflow-x-auto [scrollbar-width:thin]">
       <svg
         viewBox={`0 0 ${width} ${HEIGHT}`}
-        className="h-auto w-full min-w-[640px]"
+        width={width}
+        height={HEIGHT}
+        className="block"
         role="img"
         aria-label={t(unit === "hour" ? "usage.chart.labelHour" : "usage.chart.labelDay")}
         data-testid="usage-chart"
@@ -112,7 +153,7 @@ export function OriginChartSvg({
                   />
                 );
               })}
-              {count <= 12 && bucket.total > 0 ? (
+              {showTotals && bucket.total > 0 ? (
                 <text
                   x={x + barWidth / 2}
                   y={y(bucket.total) - 4}
