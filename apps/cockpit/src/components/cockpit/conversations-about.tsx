@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
-import { listConversationsAbout } from "@/api/client";
-import { absolute, chatNewHref, conversationHref } from "@/app/links";
+import { type ConversationsAboutTarget, listConversationsAbout } from "@/api/client";
+import { absolute, type ChatReferenceSeed, chatNewHref, conversationHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { Button, type CockpitColumn, CollapsibleSection } from "@/components/cockpit/patterns";
 import { RecordTable } from "@/components/cockpit/record-table";
@@ -16,16 +16,32 @@ interface ConversationRow {
   when: string;
 }
 
-export function ConversationsAbout({
-  target,
-}: {
-  target: { workflow_id?: string; connector_id?: string };
-}) {
+export function conversationsAboutReferences(
+  target: ConversationsAboutTarget,
+): ChatReferenceSeed[] {
+  return [
+    ...(target.workflow_id ? [{ type: "workflow" as const, id: target.workflow_id }] : []),
+    ...(target.connector_id ? [{ type: "connector" as const, id: target.connector_id }] : []),
+    ...(target.skill_id ? [{ type: "skill" as const, id: target.skill_id }] : []),
+    ...(target.knowledge_source_id
+      ? [{ type: "knowledge_source" as const, id: target.knowledge_source_id }]
+      : []),
+  ];
+}
+
+export function ConversationsAbout({ target }: { target: ConversationsAboutTarget }) {
   const { t, locale, dateTime } = useI18n();
   const navigate = useNavigate();
   const { permissions } = useSession();
   const query = useQuery({
-    queryKey: ["conversations", "about", target.workflow_id, target.connector_id],
+    queryKey: [
+      "conversations",
+      "about",
+      target.workflow_id,
+      target.connector_id,
+      target.skill_id,
+      target.knowledge_source_id,
+    ],
     queryFn: () => listConversationsAbout(target),
   });
   const rows = useMemo<ConversationRow[]>(
@@ -66,14 +82,7 @@ export function ConversationsAbout({
                   chatNewHref({
                     workflowId: target.workflow_id,
                     connectorId: target.connector_id,
-                    references: [
-                      ...(target.workflow_id
-                        ? [{ type: "workflow" as const, id: target.workflow_id }]
-                        : []),
-                      ...(target.connector_id
-                        ? [{ type: "connector" as const, id: target.connector_id }]
-                        : []),
-                    ],
+                    references: conversationsAboutReferences(target),
                   }),
                 )}
               >

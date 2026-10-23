@@ -4,7 +4,7 @@ import { apiRequest } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
 import type { ActorDirectory } from "@/app/actor-directory-model";
 import { useLiveQueryOptions } from "@/app/live-events";
-import { FocusedDiff } from "@/components/cockpit/diff-card";
+import { VersionChange } from "@/components/cockpit/diff-card";
 import {
   Button,
   DataState,
@@ -239,16 +239,11 @@ function KnowledgeVersionSheet({
               />
             </Section>
           ) : (
-            <Section
+            <VersionChange
               label={t("knowledge.versions.changeSince", { version: prior })}
-              testId="knowledge-version-change"
-            >
-              {rows.length > 0 ? (
-                <FocusedDiff rows={rows} testId="knowledge-version-diff" />
-              ) : (
-                <p className="text-sm text-muted-foreground">{t("knowledge.versions.unchanged")}</p>
-              )}
-            </Section>
+              rows={rows}
+              testId="knowledge-version"
+            />
           )}
           <p className="text-sm text-muted-foreground" data-testid="knowledge-version-hint">
             {restoreHint(version, latest, t)}

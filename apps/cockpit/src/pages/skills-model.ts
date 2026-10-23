@@ -1,4 +1,6 @@
+import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
+import { computeLineDiff, type FocusedRow, focusDiff } from "@/lib/line-diff";
 
 export type SkillAppliesTo = "chat" | "authoring" | "both";
 
@@ -85,4 +87,19 @@ export function skillVersionRows(
     current: index === currentIndex,
     restorable: entry.has_snapshot && index !== currentIndex,
   }));
+}
+
+export type SkillHistoryDetail = components["schemas"]["SkillHistoryDetail"];
+
+export interface SkillVersionChange {
+  rows: FocusedRow[];
+  renamedFrom: string | null;
+}
+
+export function skillVersionChange(detail: SkillHistoryDetail): SkillVersionChange | null {
+  if (!detail.before || !detail.after) return null;
+  return {
+    rows: focusDiff(computeLineDiff(detail.before.body.split("\n"), detail.after.body.split("\n"))),
+    renamedFrom: detail.before.title === detail.after.title ? null : detail.before.title,
+  };
 }

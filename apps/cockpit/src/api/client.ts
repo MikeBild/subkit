@@ -217,10 +217,17 @@ export function listConversations(): Promise<ConversationList> {
   return apiRequest(`/v1/conversations?${params}`);
 }
 
-export function listConversationsAbout(
-  target: { workflow_id?: string; connector_id?: string },
+export interface ConversationsAboutTarget {
+  workflow_id?: string;
+  connector_id?: string;
+  skill_id?: string;
+  knowledge_source_id?: string;
+}
+
+export function conversationsAboutQuery(
+  target: ConversationsAboutTarget,
   limit = 8,
-): Promise<ConversationList> {
+): URLSearchParams {
   const params = new URLSearchParams({
     owner_kind: "user",
     limit: String(limit),
@@ -229,7 +236,18 @@ export function listConversationsAbout(
   });
   if (target.workflow_id) params.set("target_workflow_id", target.workflow_id);
   if (target.connector_id) params.set("target_connector_id", target.connector_id);
-  return apiRequest(`/v1/conversations?${params}`);
+  if (target.skill_id) params.set("referenced_skill_id", target.skill_id);
+  if (target.knowledge_source_id) {
+    params.set("referenced_knowledge_source_id", target.knowledge_source_id);
+  }
+  return params;
+}
+
+export function listConversationsAbout(
+  target: ConversationsAboutTarget,
+  limit = 8,
+): Promise<ConversationList> {
+  return apiRequest(`/v1/conversations?${conversationsAboutQuery(target, limit)}`);
 }
 
 export function setConversationHidden(id: string, hidden: boolean): Promise<Conversation> {

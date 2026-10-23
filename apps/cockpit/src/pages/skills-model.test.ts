@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { translate } from "@/lib/i18n";
 import {
   SKILL_TEMPLATES,
+  type SkillHistoryDetail,
   skillScopeKey,
   skillsLoadState,
   skillTemplateFromSearch,
   skillTemplateKeys,
+  skillVersionChange,
   skillVersionRows,
   skillWhereKey,
 } from "./skills-model";
@@ -80,5 +82,49 @@ describe("what a skill covers and where it is used are two answers", () => {
     expect(translate("de", skillWhereKey("chat"))).toBe("Chat");
     expect(translate("de", skillWhereKey("authoring"))).toBe("Workflow-Entwürfe");
     expect(translate("de", skillWhereKey("both"))).toBe("Chat und Workflow-Entwürfe");
+  });
+});
+
+describe("skillVersionChange", () => {
+  const detail = (
+    before: SkillHistoryDetail["before"],
+    after: SkillHistoryDetail["after"],
+  ): SkillHistoryDetail => ({
+    audit_entry_id: "entry",
+    version: 2,
+    title: after?.title ?? null,
+    lifecycle: "active",
+    updated_at: "2026-10-23T08:00:00.000Z",
+    actor_id: null,
+    has_snapshot: after !== null,
+    before,
+    after,
+  });
+
+  test("shows removed and added lines of the body against the version before", () => {
+    const change = skillVersionChange(
+      detail(
+        { title: "Tone", body: "Be brief.\nUse du." },
+        { title: "Tone", body: "Be brief.\nUse Sie." },
+      ),
+    );
+    expect(change?.renamedFrom).toBeNull();
+    expect(change?.rows).toEqual([
+      { type: "context", text: "Be brief." },
+      { type: "removed", text: "Use du." },
+      { type: "added", text: "Use Sie." },
+    ]);
+  });
+
+  test("an unchanged body has no rows and a rename keeps the old name", () => {
+    const change = skillVersionChange(
+      detail({ title: "Tone", body: "Same." }, { title: "Voice", body: "Same." }),
+    );
+    expect(change?.rows).toEqual([]);
+    expect(change?.renamedFrom).toBe("Tone");
+  });
+
+  test("an entry without saved states has no change to show", () => {
+    expect(skillVersionChange(detail(null, null))).toBeNull();
   });
 });

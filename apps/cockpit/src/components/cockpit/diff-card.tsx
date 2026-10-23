@@ -1,5 +1,6 @@
 import { CircleAlert, CircleCheck } from "lucide-react";
 import type { PatchCandidateDryRun } from "@/api/decisions";
+import { Section } from "@/components/cockpit/patterns";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -67,6 +68,29 @@ export function FocusedDiff({ rows, testId }: { rows: readonly FocusedRow[]; tes
         ),
       )}
     </pre>
+  );
+}
+
+export function VersionChange({
+  label,
+  rows,
+  testId,
+}: {
+  label: string;
+  rows: readonly FocusedRow[];
+  testId: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <Section label={label} testId={`${testId}-change`}>
+      {rows.length > 0 ? (
+        <FocusedDiff rows={rows} testId={`${testId}-diff`} />
+      ) : (
+        <p className="text-sm text-muted-foreground" data-testid={`${testId}-unchanged`}>
+          {t("knowledge.versions.unchanged")}
+        </p>
+      )}
+    </Section>
   );
 }
 

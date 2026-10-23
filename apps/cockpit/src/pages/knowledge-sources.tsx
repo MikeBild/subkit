@@ -20,6 +20,7 @@ import {
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
 import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
+import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { type UsageCard, UsageCards } from "@/components/cockpit/knowledge-usage";
 import { KnowledgeVersions, useKnowledgeHistory } from "@/components/cockpit/knowledge-versions";
 import {
@@ -1237,24 +1238,29 @@ function SourceUsageTab({
       testId="knowledge-usage"
       summary={t(workflowId ? "knowledge.usage.workflow" : "knowledge.usage.global")}
       more={
-        origins.length > 0 ? (
-          <CollapsibleSection
-            label={t("intake.originalClips")}
-            count={origins.length}
-            testId="knowledge-origin"
-          >
-            <UsageCards
-              testId="knowledge-intake-clips"
-              items={origins.map((item) => ({
-                id: item.id,
-                title: item.title,
-                line: t("knowledge.usage.originLine"),
-                href: recordHref("intake", item.id),
-                icon: <Inbox />,
-              }))}
-            />
-          </CollapsibleSection>
-        ) : undefined
+        <>
+          {origins.length > 0 ? (
+            <CollapsibleSection
+              label={t("intake.originalClips")}
+              count={origins.length}
+              testId="knowledge-origin"
+            >
+              <UsageCards
+                testId="knowledge-intake-clips"
+                items={origins.map((item) => ({
+                  id: item.id,
+                  title: item.title,
+                  line: t("knowledge.usage.originLine"),
+                  href: recordHref("intake", item.id),
+                  icon: <Inbox />,
+                }))}
+              />
+            </CollapsibleSection>
+          ) : null}
+          {permissions.includes("conversation:read") ? (
+            <ConversationsAbout target={{ knowledge_source_id: source.id }} />
+          ) : null}
+        </>
       }
     >
       {cards.length > 0 ? (

@@ -33,6 +33,8 @@ import {
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
 import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
+import { ConversationsAbout } from "@/components/cockpit/conversations-about";
+import { VersionChange } from "@/components/cockpit/diff-card";
 import { type UsageCard, UsageCards } from "@/components/cockpit/knowledge-usage";
 import {
   ActionMenu,
@@ -83,6 +85,7 @@ import {
   SKILL_APPLIES_TO,
   SKILL_TEMPLATES,
   type SkillAppliesTo,
+  type SkillHistoryDetail,
   type SkillHistoryEntry,
   type SkillTemplate,
   type SkillVersionRow,
@@ -92,6 +95,7 @@ import {
   skillsLoadState,
   skillTemplateFromSearch,
   skillTemplateKeys,
+  skillVersionChange,
   skillVersionRows,
   skillWhereKey,
 } from "@/pages/skills-model";
@@ -858,24 +862,29 @@ function SkillUsage({ skill, permissions }: { skill: Skill; permissions: readonl
         scope: t(skillScopeKey(skill.scope)),
       })}
       more={
-        origins.length > 0 ? (
-          <CollapsibleSection
-            label={t("skills.usage.origin")}
-            count={origins.length}
-            testId="skill-origin"
-          >
-            <UsageCards
-              testId="skill-origin-items"
-              items={origins.map((item) => ({
-                id: item.id,
-                title: item.title,
-                line: t("skills.usage.originLine"),
-                href: recordHref("intake", item.id),
-                icon: <Inbox />,
-              }))}
-            />
-          </CollapsibleSection>
-        ) : undefined
+        <>
+          {origins.length > 0 ? (
+            <CollapsibleSection
+              label={t("skills.usage.origin")}
+              count={origins.length}
+              testId="skill-origin"
+            >
+              <UsageCards
+                testId="skill-origin-items"
+                items={origins.map((item) => ({
+                  id: item.id,
+                  title: item.title,
+                  line: t("skills.usage.originLine"),
+                  href: recordHref("intake", item.id),
+                  icon: <Inbox />,
+                }))}
+              />
+            </CollapsibleSection>
+          ) : null}
+          {permissions.includes("conversation:read") ? (
+            <ConversationsAbout target={{ skill_id: skill.id }} />
+          ) : null}
+        </>
       }
     >
       {cards.length > 0 ? (
@@ -979,63 +988,133 @@ function SkillVersions({ skill, canWrite }: { skill: Skill; canWrite: boolean })
           ]}
         />
       )}
-      <RecordSheet
-        open={open !== null}
-        onOpenChange={(next) => !next && setSelected("")}
-        title={open ? label(open) : ""}
-        subtitle={open ? dateTime(open.updated_at) : undefined}
-        action={
-          open && canWrite && open.restorable ? (
-            <Button
-              pending={restore.isPending}
-              onClick={() => restore.mutate(open)}
-              data-testid="skill-version-restore"
-            >
-              {t("knowledge.versions.restore")}
-            </Button>
-          ) : undefined
-        }
-        testId="skill-version-sheet"
-        closeTestId="skill-version-close"
-      >
-        {open ? (
-          <div className="flex flex-col gap-6">
+      <SkillVersionSheet
+        skillId={skill.id}
+        row={open}
+        label={open ? label(open) : ""}
+        canWrite={canWrite}
+        restoring={restore.isPending}
+        onRestore={(row) => restore.mutate(row)}
+        directory={directory}
+        onClose={() => setSelected("")}
+      />
+    </TabBody>
+  );
+}
+
+function SkillVersionSheet({
+  skillId,
+  row,
+  label,
+  canWrite,
+  restoring,
+  onRestore,
+  directory,
+  onClose,
+}: {
+  skillId: string;
+  row: SkillVersionRow | null;
+  label: string;
+  canWrite: boolean;
+  restoring: boolean;
+  onRestore: (row: SkillVersionRow) => void;
+  directory: ActorDirectory;
+  onClose: () => void;
+}) {
+  const { t, dateTime } = useI18n();
+  const entryId = row?.audit_entry_id ?? "";
+  const detail = useQuery({
+    queryKey: ["skill", skillId, "history", entryId],
+    queryFn: () =>
+      apiRequest<SkillHistoryDetail>(
+        `${ENDPOINT}/${encodeURIComponent(skillId)}/history/${encodeURIComponent(entryId)}`,
+      ),
+    enabled: row?.has_snapshot === true,
+  });
+  const change = detail.data ? skillVersionChange(detail.data) : null;
+  const author = row ? actorName(directory, row.actor_id, t) : "";
+  const facts: Fact[] = row
+    ? [
+        { label: t("knowledge.versions.savedBy"), value: author },
+        { label: t("knowledge.versions.at"), value: dateTime(row.updated_at) },
+        {
+          label: t("resource.field.status"),
+          value: t(skillStateLabelKey(row.lifecycle ?? "active")),
+        },
+        ...(row.title ? [{ label: t("common.name"), value: row.title }] : []),
+        ...(change?.renamedFrom
+          ? [{ label: t("skills.versions.renamedFrom"), value: change.renamedFrom }]
+          : []),
+      ]
+    : [];
+  return (
+    <RecordSheet
+      open={row !== null}
+      onOpenChange={(next) => !next && onClose()}
+      title={label}
+      subtitle={row ? `${author} · ${dateTime(row.updated_at)}` : undefined}
+      badge={
+        row?.current ? (
+          <StatusBadge state="active" label={t("knowledge.versions.current")} />
+        ) : undefined
+      }
+      action={
+        row && canWrite && row.restorable ? (
+          <Button
+            pending={restoring}
+            onClick={() => onRestore(row)}
+            data-testid="skill-version-restore"
+          >
+            {t("knowledge.versions.restore")}
+          </Button>
+        ) : undefined
+      }
+      testId="skill-version-sheet"
+      closeTestId="skill-version-close"
+    >
+      {row ? (
+        <div className="flex flex-col gap-6">
+          <FactList testId="skill-version-facts" items={facts} />
+          {!row.has_snapshot ? null : detail.isPending ? (
+            <DataState state="loading" />
+          ) : detail.error ? (
+            <DataState
+              state="error"
+              line={t("skills.versions.loadFailed")}
+              onRetry={() => void detail.refetch()}
+              testId="skill-version-failed"
+            />
+          ) : change ? (
+            <VersionChange
+              label={
+                row.version !== null && row.version > 1
+                  ? t("knowledge.versions.changeSince", { version: row.version - 1 })
+                  : t("skills.versions.change")
+              }
+              rows={change.rows}
+              testId="skill-version"
+            />
+          ) : null}
+          <p className="text-sm text-muted-foreground" data-testid="skill-version-hint">
+            {row.current
+              ? t("skills.versions.currentHint")
+              : row.restorable
+                ? t("skills.versions.restoreHint")
+                : t("skills.versions.noSnapshot")}
+          </p>
+          <CollapsibleSection label={t("common.technical")} testId="skill-version-technical">
             <FactList
-              testId="skill-version-facts"
               items={[
                 {
-                  label: t("knowledge.versions.savedBy"),
-                  value: actorName(directory, open.actor_id, t),
+                  label: t("skills.versions.auditEntry"),
+                  value: <span className="font-mono text-xs">{row.audit_entry_id}</span>,
                 },
-                { label: t("knowledge.versions.at"), value: dateTime(open.updated_at) },
-                {
-                  label: t("resource.field.status"),
-                  value: t(skillStateLabelKey(open.lifecycle ?? "active")),
-                },
-                ...(open.title ? [{ label: t("common.name"), value: open.title }] : []),
               ]}
             />
-            <p className="text-sm text-muted-foreground" data-testid="skill-version-hint">
-              {open.current
-                ? t("skills.versions.currentHint")
-                : open.restorable
-                  ? t("skills.versions.restoreHint")
-                  : t("skills.versions.noSnapshot")}
-            </p>
-            <CollapsibleSection label={t("common.technical")} testId="skill-version-technical">
-              <FactList
-                items={[
-                  {
-                    label: t("skills.versions.auditEntry"),
-                    value: <span className="font-mono text-xs">{open.audit_entry_id}</span>,
-                  },
-                ]}
-              />
-            </CollapsibleSection>
-          </div>
-        ) : null}
-      </RecordSheet>
-    </TabBody>
+          </CollapsibleSection>
+        </div>
+      ) : null}
+    </RecordSheet>
   );
 }
 

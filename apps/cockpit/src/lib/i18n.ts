@@ -1900,6 +1900,8 @@ const EN = {
   "skills.versions.currentHint": "This is the version SubKit follows right now.",
   "skills.versions.noSnapshot": "This version has no saved state, so it cannot be restored.",
   "skills.versions.auditEntry": "Audit entry",
+  "skills.versions.change": "Change from the previous version",
+  "skills.versions.renamedFrom": "Previous name",
   "skills.editor.useTemplate": "Use a template:",
   "skills.onboarding.lead":
     "A skill tells SubKit how you work. Chat and workflow drafts follow it.",
@@ -7380,6 +7382,8 @@ const DE: Record<TranslationKey, string> = {
   "skills.versions.noSnapshot":
     "Für diese Version ist kein Stand gespeichert; sie lässt sich nicht wiederherstellen.",
   "skills.versions.auditEntry": "Audit-Eintrag",
+  "skills.versions.change": "Änderung gegenüber der Vorversion",
+  "skills.versions.renamedFrom": "Vorheriger Name",
   "skills.editor.useTemplate": "Vorlage einsetzen:",
   "skills.onboarding.lead":
     "Ein Skill sagt SubKit, wie ihr arbeitet. Chat und Workflow-Entwürfe halten sich daran.",
