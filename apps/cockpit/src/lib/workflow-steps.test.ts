@@ -4,6 +4,7 @@ import { translate } from "@/lib/i18n";
 import {
   buildVersion,
   connectorNameOf,
+  definitionKind,
   type ExecutionStep,
   formatDuration,
   joinStepsWithLastRun,
@@ -11,9 +12,10 @@ import {
   previewSummary,
   readStepDefinition,
   type StepBlock,
+  stepDefinitionsOf,
   stepEssenceText,
+  stepKindKey,
   stepResultPreview,
-  workflowStepKindKey,
 } from "./workflow-steps";
 
 const UUID = "457df8bc-2fe7-4a44-8dba-0acfa31821c5";
@@ -57,7 +59,25 @@ describe("step definition", () => {
     expect(definition.essence).toEqual({ kind: "other" });
     expect(definition.blocks).toEqual([]);
     expect(essence({ id: "x", kind: "future_kind" })).toBe("");
-    expect(workflowStepKindKey("future_kind")).toBe("workflow.stepType");
+    expect(stepKindKey({ kind: "future_kind" })).toBe("workflow.stepType");
+  });
+
+  test("a run step finds its version's definition by step key and reads code from it", () => {
+    const definitions = stepDefinitionsOf({
+      steps: [
+        { id: "fetch", kind: "request", method: "GET" },
+        { id: "shape", kind: "transform", expression: "return input" },
+        { id: "clean", kind: "transform", language: "readability" },
+      ],
+    });
+    const kindOf = (key: string) => {
+      const definition = definitions.get(key);
+      return stepKindKey(definition ? definitionKind(definition, null) : { kind: "transform" });
+    };
+    expect(kindOf("shape")).toBe("workflow.kind.code");
+    expect(kindOf("clean")).toBe("workflow.kind.transform");
+    expect(kindOf("unknown")).toBe("workflow.kind.transform");
+    expect(stepDefinitionsOf(null).size).toBe(0);
   });
 });
 
@@ -466,7 +486,7 @@ describe("step kinds", () => {
 
   test("every kind of the engine's step schema has a word and a reading", () => {
     for (const kind of kinds) {
-      expect(workflowStepKindKey(kind), kind).not.toBe("workflow.stepType");
+      expect(stepKindKey({ kind }), kind).not.toBe("workflow.stepType");
       expect<string>(read({ id: "x", kind }).essence.kind, kind).toBe(kind);
     }
   });

@@ -20,7 +20,7 @@ import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { templateIdentity } from "@/lib/service-icons";
-import { workflowStepKindKey } from "@/lib/workflow-steps";
+import { stepKindKey } from "@/lib/workflow-steps";
 import {
   addressedConnectors,
   type ConnectorTemplate,
@@ -306,7 +306,7 @@ export function useSolutionFlow(
                 {
                   label: t("create.solution.steps"),
                   value: solutionSteps(entry)
-                    .map((step) => t(workflowStepKindKey(step.kind)))
+                    .map((step) => t(stepKindKey(step)))
                     .join(" → "),
                 },
                 {

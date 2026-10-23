@@ -35,6 +35,7 @@ import {
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
+import { useCurrentVersionDag } from "@/components/cockpit/workflow-versions";
 import { causeClassLabel } from "@/lib/cause-class";
 import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
@@ -48,7 +49,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { type CursorPage, listPagePath, useInfiniteList } from "@/lib/use-infinite-list";
 import { cn } from "@/lib/utils";
 import { windowFilterLabel } from "@/lib/window-filter";
-import { runStepKindKey } from "@/lib/workflow-flow";
+import { definitionKind, stepDefinitionsOf, stepKindKey } from "@/lib/workflow-steps";
 import {
   failedStatusesFor,
   formatRunDuration,
@@ -191,6 +192,7 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
     queryFn: () => apiRequest<unknown>(`/v1/executions/${encodeURIComponent(run.id)}/cost`),
   });
   const current: Execution = isExecutionRecord(detail.data) ? detail.data : run;
+  const kindOf = useRunStepKind(current);
   const outcome =
     isExecutionRecord(detail.data) && (detail.data as ExecutionDetail).outcome
       ? (detail.data as ExecutionDetail).outcome
@@ -426,10 +428,16 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
             <RunStepChain
               steps={stepItems}
               connectorNames={stepNames.connector}
+              kindOf={kindOf}
               onOpen={setOpenStep}
             />
             {step && openStep !== null ? (
-              <RunStepSheet step={step} index={openStep} onClose={() => setOpenStep(null)} />
+              <RunStepSheet
+                step={step}
+                index={openStep}
+                kindOf={kindOf}
+                onClose={() => setOpenStep(null)}
+              />
             ) : null}
           </Section>
           <div className="flex flex-col gap-2">
@@ -534,15 +542,25 @@ const STEP_MARK: Record<"ok" | "warn" | "error" | "neutral", string> = {
   neutral: "bg-muted text-muted-foreground",
 };
 
-function useRunStepKind(): (step: ExecutionStep) => TranslationKey {
+type StepKindOf = (step: ExecutionStep) => TranslationKey;
+
+function useRunStepKind(run: Pick<Execution, "workflow_id" | "workflow_version_id">): StepKindOf {
+  const session = useSession();
   const records = useConnectorRecords();
+  const version = useCurrentVersionDag(
+    run.workflow_id ?? "",
+    run.workflow_version_id,
+    null,
+    session.permissions.includes("workflow:read"),
+  );
+  const definitions = useMemo(() => stepDefinitionsOf(version.data), [version.data]);
   return (step) => {
     const id = stepConnectorId(step);
     const record = id ? records.find((item) => item.id === id) : undefined;
-    return runStepKindKey(
-      step.kind,
-      stepEffectKind(step),
-      record ? connectorService(record) : null,
+    const service = record ? connectorService(record) : null;
+    const definition = definitions.get(step.step_key);
+    return stepKindKey(
+      definition ? definitionKind(definition, service) : { kind: step.kind, service },
     );
   };
 }
@@ -550,14 +568,15 @@ function useRunStepKind(): (step: ExecutionStep) => TranslationKey {
 function RunStepChain({
   steps,
   connectorNames,
+  kindOf,
   onOpen,
 }: {
   steps: readonly ExecutionStep[];
   connectorNames: ReadonlyMap<string, string>;
+  kindOf: StepKindOf;
   onOpen(index: number): void;
 }) {
   const { t, locale } = useI18n();
-  const kindOf = useRunStepKind();
   if (steps.length === 0)
     return <p className="text-sm text-muted-foreground">{t("runs.detail.noSteps")}</p>;
   return (
@@ -674,16 +693,17 @@ export function RunStepIdentityFacts({
 function RunStepSheet({
   step,
   index,
+  kindOf,
   onClose,
 }: {
   step: ExecutionStep;
   index: number;
+  kindOf: StepKindOf;
   onClose(): void;
 }) {
   const { t, locale } = useI18n();
   const session = useSession();
   const names = useNameIndex(session.permissions, true);
-  const kindOf = useRunStepKind();
   const snapshots = stepCredentialSnapshots(step);
   const evidence = [
     { key: "error", label: t("runs.step.error"), text: previewText(step.error) },

@@ -50,23 +50,19 @@ import { useI18n } from "@/lib/i18n-context";
 import type { ServiceIdentity } from "@/lib/service-icons";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { cn } from "@/lib/utils";
-import {
-  type Phrase,
-  stepKindKey,
-  stepPhrase,
-  stepWrites,
-  type TriggerKind,
-} from "@/lib/workflow-flow";
+import { type Phrase, stepPhrase, stepWrites, type TriggerKind } from "@/lib/workflow-flow";
 import { type WorkflowPreviewSource, workflowPreviewRequest } from "@/lib/workflow-preview";
 import {
   type BuildVersion,
   buildVersion,
+  definitionKind,
   type ExecutionStep,
   formatDuration,
   joinStepsWithLastRun,
   maskIdentifiers,
   previewSummary,
   type SavedDraft,
+  stepKindKey,
   stepResultPreview,
   type WorkflowStepDefinition,
   type WorkflowStepView,
@@ -513,7 +509,7 @@ export function WorkflowFlow({
                   <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span>
                       {t("workflowFlow.stepNumber", { number: index + 1 })} ·{" "}
-                      {t(stepKindKey(definition, connector?.service ?? null))}
+                      {t(stepKindKey(definitionKind(definition, connector?.service ?? null)))}
                     </span>
                     <span className="flex items-center gap-1.5">
                       {mark ? (
@@ -729,7 +725,7 @@ function StepSheet({
       subtitle={t("workflowFlow.sheet.subtitle", {
         number: index + 1,
         total,
-        kind: t(stepKindKey(definition, connector?.service ?? null)),
+        kind: t(stepKindKey(definitionKind(definition, connector?.service ?? null))),
       })}
       badge={lastRun ? <StatusBadge state={lastRun.status} /> : undefined}
       action={

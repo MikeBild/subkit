@@ -1,5 +1,7 @@
 import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
+import { templateIdentity } from "@/lib/service-icons";
+import { definitionKind, readStepDefinition, type StepKindSource } from "@/lib/workflow-steps";
 import type { ConnectorSignIn } from "./create-connector-model";
 
 export type SolutionEntry = components["schemas"]["RecipePackEntry"];
@@ -12,9 +14,8 @@ export const SOLUTIONS_VERTICAL = "solutions";
 
 export type TemplateSignIn = ConnectorSignIn | "machine" | "elsewhere";
 
-export interface SolutionStep {
+export interface SolutionStep extends StepKindSource {
   id: string;
-  kind: string;
 }
 
 export interface BoundaryLine {
@@ -35,10 +36,16 @@ function stepsOf(entry: SolutionEntry): Record<string, unknown>[] {
 }
 
 export function solutionSteps(entry: SolutionEntry): SolutionStep[] {
-  return stepsOf(entry).map((step) => ({
-    id: typeof step.id === "string" ? step.id : "",
-    kind: typeof step.kind === "string" ? step.kind : "",
-  }));
+  return stepsOf(entry).map((step, index) => {
+    const definition = readStepDefinition(step, index);
+    const binding = entry.connectors.find(
+      (connector) => connector.placeholder === definition.connectorId,
+    );
+    return {
+      id: typeof step.id === "string" ? step.id : "",
+      ...definitionKind(definition, binding ? templateIdentity(binding.template) : null),
+    };
+  });
 }
 
 const SOLUTION_TEXT: Readonly<Record<string, { title: TranslationKey; line: TranslationKey }>> = {

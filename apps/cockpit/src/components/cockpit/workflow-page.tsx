@@ -67,6 +67,7 @@ import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import { resultPhrase, type TriggerKind, triggerKindOf } from "@/lib/workflow-flow";
 import { workflowPreviewDefinition } from "@/lib/workflow-preview";
 import { removalConsequenceKeys } from "@/lib/workflow-removal";
+import { definitionKind, type StepKindSource } from "@/lib/workflow-steps";
 import { deletedConnectorReference } from "@/lib/workflow-strip";
 import { workflowVersionAuthor } from "@/lib/workflow-versions";
 import { definitionProductId } from "@/pages/apps-model";
@@ -398,8 +399,13 @@ export function WorkflowPage({
     string,
     { label: string; href: string | null; service: ServiceIdentity }
   >();
+  const activeStepKinds = new Map<string, StepKindSource>();
   for (const view of steps.views) {
     const connector = stepConnector(view.definition, connectorRecords);
+    activeStepKinds.set(
+      view.definition.id,
+      definitionKind(view.definition, connector?.service ?? null),
+    );
     if (!connector?.name || services.has(connector.name)) continue;
     services.set(connector.name, {
       label: connector.name,
@@ -500,7 +506,11 @@ export function WorkflowPage({
                 onRestored={automation.refresh}
               />
               {permissions.includes("skill:read") ? (
-                <WorkflowDraftingContext workflowId={id} activeVersionId={versionId} />
+                <WorkflowDraftingContext
+                  workflowId={id}
+                  activeVersionId={versionId}
+                  activeSteps={activeStepKinds}
+                />
               ) : null}
             </>
           }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type TranslationKey, translate } from "@/lib/i18n";
+import { stepKindKey } from "@/lib/workflow-steps";
 import {
   addressedConnectors,
   type ConnectorTemplate,
@@ -157,6 +158,15 @@ describe("solution templates: list, detail, create", () => {
       "send_report",
     ]);
     expect(solutionNeeds(entry)).toEqual(["Google Analytics 4", "Gmail"]);
+  });
+
+  test("template steps read with the glossary step names, code included", () => {
+    expect(solutionSteps(report(false)).map((step) => de(stepKindKey(step)))).toEqual([
+      "Dienst abfragen",
+      "Dienst abfragen",
+      "Code",
+      "Dienst abfragen",
+    ]);
   });
 
   test("the boundary says per connector whether it reads or writes, by its own name once bound", () => {

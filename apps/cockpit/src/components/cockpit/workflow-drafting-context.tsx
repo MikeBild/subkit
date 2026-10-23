@@ -6,7 +6,7 @@ import { CollapsibleSection, DataState, type Fact, FactList } from "@/components
 import { causeClassLabel } from "@/lib/cause-class";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
-import { workflowStepKindKey } from "@/lib/workflow-steps";
+import { type StepKindSource, stepKindKey } from "@/lib/workflow-steps";
 
 type NoteFacts = NonNullable<SkillCandidate["facts"]>;
 type CapabilityFacts = Extract<NoteFacts, { kind: "workflow_capability" }>;
@@ -15,9 +15,11 @@ type FailureFacts = Extract<NoteFacts, { kind: "recurring_failure" }>;
 export function WorkflowDraftingContext({
   workflowId,
   activeVersionId,
+  activeSteps,
 }: {
   workflowId: string;
   activeVersionId: string | null;
+  activeSteps: ReadonlyMap<string, StepKindSource>;
 }) {
   const { t } = useI18n();
   const query = useQuery({
@@ -48,7 +50,11 @@ export function WorkflowDraftingContext({
           {notes.map((note) => (
             <li key={note.id} className="min-w-0">
               {note.facts.kind === "workflow_capability" ? (
-                <CapabilityNote facts={note.facts} activeVersionId={activeVersionId} />
+                <CapabilityNote
+                  facts={note.facts}
+                  activeVersionId={activeVersionId}
+                  activeSteps={activeSteps}
+                />
               ) : (
                 <FailureNote facts={note.facts} />
               )}
@@ -63,13 +69,16 @@ export function WorkflowDraftingContext({
 function CapabilityNote({
   facts,
   activeVersionId,
+  activeSteps,
 }: {
   facts: CapabilityFacts;
   activeVersionId: string | null;
+  activeSteps: ReadonlyMap<string, StepKindSource>;
 }) {
   const { t } = useI18n();
   const names = useConnectorNames(facts.connector_ids.length > 0);
   const output = facts.output_fields?.length ? facts.output_fields : facts.key_paths;
+  const describesActive = !facts.draft_version_id || facts.draft_version_id === activeVersionId;
   const items: Fact[] = [
     {
       label: t("workflowPage.draftingFact.inputs"),
@@ -119,7 +128,12 @@ function CapabilityNote({
     },
     {
       label: t("workflowPage.draftingFact.steps"),
-      value: facts.steps.map((step) => t(workflowStepKindKey(step.kind))).join(" → "),
+      value: facts.steps
+        .map((step) => {
+          const known = describesActive ? activeSteps.get(step.id) : undefined;
+          return t(stepKindKey(known?.kind === step.kind ? known : step));
+        })
+        .join(" → "),
       testId: "workflow-drafting-fact-steps",
     },
     ...(facts.draft_version_id && facts.draft_version_id !== activeVersionId

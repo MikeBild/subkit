@@ -1,16 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import type { ServiceIdentity } from "@/lib/service-icons";
 import {
   averageDurationMs,
   groupRunsByDay,
   resultPhrase,
-  runStepKindKey,
-  stepKindKey,
   stepPhrase,
   stepWrites,
   successRate,
   triggerKindOf,
 } from "@/lib/workflow-flow";
-import { readStepDefinition } from "@/lib/workflow-steps";
+import { definitionKind, readStepDefinition, stepKindKey } from "@/lib/workflow-steps";
 
 describe("workflow flow phrases", () => {
   test("names a reading and a sending request by its service, never by its step key", () => {
@@ -62,30 +61,33 @@ describe("workflow flow phrases", () => {
     expect(stepWrites(readStepDefinition({ id: "a", kind: "transform" }, 0))).toBeNull();
   });
 
-  test("names the step kind the way the glossary shows it on cards", () => {
+  test("names the step kind with the glossary words, one mapping for every view", () => {
     const read = readStepDefinition({ id: "a", kind: "request", method: "GET" }, 0);
     const send = readStepDefinition({ id: "b", kind: "request", method: "POST" }, 1);
     const github = { kind: "brand", key: "github" } as const;
-    expect(stepKindKey(read, github)).toBe("workflow.kind.request");
-    expect(stepKindKey(send, github)).toBe("workflow.kind.send");
-    expect(stepKindKey(send, { kind: "brand", key: "openai" })).toBe("workflow.kind.askAi");
-    expect(stepKindKey(readStepDefinition({ id: "c", kind: "transform" }, 2), null)).toBe(
-      "workflow.kind.code",
-    );
-    expect(stepKindKey(readStepDefinition({ id: "d", kind: "wait" }, 3), null)).toBe(
-      "workflow.kind.wait",
-    );
+    const kind = (
+      definition: ReturnType<typeof readStepDefinition>,
+      service: ServiceIdentity | null = null,
+    ) => stepKindKey(definitionKind(definition, service));
+    expect(kind(read, github)).toBe("workflow.kind.request");
+    expect(kind(send, github)).toBe("workflow.kind.request");
+    expect(kind(send, { kind: "brand", key: "openai" })).toBe("workflow.kind.askAi");
+    expect(kind(readStepDefinition({ id: "c", kind: "transform" }, 2))).toBe("workflow.kind.code");
+    expect(
+      kind(readStepDefinition({ id: "d", kind: "transform", language: "readability" }, 3)),
+    ).toBe("workflow.kind.transform");
+    expect(kind(readStepDefinition({ id: "e", kind: "wait" }, 4))).toBe("workflow.kind.wait");
   });
 
-  test("a run step uses the same kind names as the flow card", () => {
-    expect(runStepKindKey("request", "read", { kind: "brand", key: "github" })).toBe(
+  test("a run step without its definition keeps the base name and never guesses code", () => {
+    expect(stepKindKey({ kind: "request", service: { kind: "brand", key: "github" } })).toBe(
       "workflow.kind.request",
     );
-    expect(runStepKindKey("request", "write", null)).toBe("workflow.kind.send");
-    expect(runStepKindKey("request", "write", { kind: "brand", key: "anthropic" })).toBe(
+    expect(stepKindKey({ kind: "request", service: { kind: "brand", key: "anthropic" } })).toBe(
       "workflow.kind.askAi",
     );
-    expect(runStepKindKey("transform", null, null)).toBe("workflow.kind.transform");
+    expect(stepKindKey({ kind: "transform" })).toBe("workflow.kind.transform");
+    expect(stepKindKey({ kind: "transform", language: "javascript" })).toBe("workflow.kind.code");
   });
 });
 

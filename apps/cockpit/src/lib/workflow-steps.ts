@@ -1,5 +1,6 @@
 import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
+import { isAiService, type ServiceIdentity } from "@/lib/service-icons";
 
 export type ExecutionStep = components["schemas"]["ExecutionStep"];
 
@@ -70,11 +71,30 @@ const STEP_KIND_KEYS: Record<string, TranslationKey> = {
   branch: "workflow.kind.branch",
   parallel: "workflow.kind.parallel",
   loop: "workflow.kind.loop",
-  tool: "workflow.kind.tool",
 };
 
-export function workflowStepKindKey(kind: string): TranslationKey {
-  return STEP_KIND_KEYS[kind] ?? "workflow.stepType";
+export interface StepKindSource {
+  kind: string;
+  language?: string | null;
+  service?: ServiceIdentity | null;
+}
+
+export function stepKindKey(step: StepKindSource): TranslationKey {
+  if (step.kind === "request" && step.service && isAiService(step.service))
+    return "workflow.kind.askAi";
+  if (step.kind === "transform" && step.language === "javascript") return "workflow.kind.code";
+  return STEP_KIND_KEYS[step.kind] ?? "workflow.stepType";
+}
+
+export function definitionKind(
+  definition: Pick<WorkflowStepDefinition, "kind" | "essence">,
+  service: ServiceIdentity | null,
+): StepKindSource {
+  return {
+    kind: definition.kind,
+    language: definition.essence.kind === "transform" ? definition.essence.language : null,
+    service,
+  };
 }
 
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -330,6 +350,16 @@ export function readStepDefinition(step: unknown, index: number): WorkflowStepDe
     blocks,
     raw,
   };
+}
+
+export function stepDefinitionsOf(dag: unknown): ReadonlyMap<string, WorkflowStepDefinition> {
+  const steps = record(dag) && Array.isArray(dag.steps) ? dag.steps : [];
+  return new Map(
+    steps.map((step, index) => {
+      const definition = readStepDefinition(step, index);
+      return [definition.id, definition] as const;
+    }),
+  );
 }
 
 export function formatDuration(ms: number): string {
