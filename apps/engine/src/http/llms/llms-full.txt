@@ -2306,7 +2306,7 @@ every API call.
 | `sk events` | `audit:read` | Query audit events | `get`, `list` |
 | `sk executions` | `execution:read` | Manage workflow executions | `abort`, `get`, `list`, `rerun`, `result`, `steps`, `tail` |
 | `sk extract` | `conversation:write` | Extract structured data from a file (LLM for text, native parsers for binary) | — |
-| `sk files` | `file:read` | Manage files (upload, download, link, …) | `delete`, `download`, `get`, `link`, `list`, `patch`, `stats`, `upload` |
+| `sk files` | `file:read` | Manage files (upload, download, link, …) | `delete`, `download`, `get`, `link`, `list`, `patch`, `replace`, `restore`, `stats`, `upload`, `versions` |
 | `sk health` | — | Runtime posture: liveness, token budget, failing runs, risk signals, schema drift, and process runtime. Use `sk doctor` for connectivity/setup. | — |
 | `sk hooks` | `inbound_hook:read` | Manage inbound webhook bindings | `create`, `delete`, `get`, `list` |
 | `sk init` | — | Complete first-run engine bootstrap (consumes the token printed at engine boot) | — |
@@ -3126,6 +3126,23 @@ Rename a file or change its description or category
 - `--category` (string) — Catalog block, lowercase words joined by dashes (see `sk categories list`). "" hands it back to automatic categorisation.
 - `--json` — JSON-only output
 
+#### `sk files replace`
+
+Replace a file's content (up to 5 MB); the id, reference and earlier versions stay
+
+- `<id>` (positional, required) — File id (fid_…)
+- `<path>` (positional, required) — Path to the new content
+- `--content-type` (string) — Override detected MIME type
+- `--json` (default: false) — JSON output
+
+#### `sk files restore`
+
+Make an earlier content version current again as a new version
+
+- `<id>` (positional, required) — File id (fid_…)
+- `<version>` (positional, required) — Version number to restore
+- `--json` (default: false) — JSON output
+
 #### `sk files stats`
 
 Aggregate file counters for this tenant
@@ -3146,6 +3163,13 @@ Upload a file (inline ≤5 MB, authenticated streaming above)
 - `--label` (string) — Reserved for future labels (no-op today)
 - `--quiet` (default: false) — Suppress progress output
 - `--json` (default: false) — JSON output (also silences progress)
+
+#### `sk files versions`
+
+List a file's current and earlier content versions
+
+- `<id>` (positional, required) — File id (fid_…)
+- `--json` (default: false) — JSON output
 
 
 ### `sk health`
