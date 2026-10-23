@@ -56,6 +56,11 @@ import {
 import { executableDefinition } from "./stored-definition.ts";
 import { supportsTransactionalDelivery } from "./transactional-delivery-boundary.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
+import {
+  describeUnboundSteps,
+  type MissingConnectorReference,
+  type UnboundStep,
+} from "./unbound-bindings.ts";
 
 const inputSchema = z
   .object({
@@ -139,6 +144,7 @@ export async function resolveWorkflowEffectManifest(
   const unavailable_connectors = own.unavailable_connectors;
   const storage_refusals = own.storage_refusals;
   const request_refusals = own.request_refusals;
+  const unbound_steps: UnboundStep[] = [...own.unbound_steps];
   const contentShapes = own.contentShapes;
   const calls: ResolvedCall[] = [];
   const callShapes: ResolvedCallShape[] = [];
@@ -153,6 +159,8 @@ export async function resolveWorkflowEffectManifest(
       storage_refusals.push({ ...refusal, call_path: [step.id] });
     for (const refusal of resolved.request_refusals)
       request_refusals.push({ ...refusal, call_path: [step.id] });
+    for (const unbound of resolved.unbound_steps)
+      unbound_steps.push({ ...unbound, call_path: [step.id] });
   }
   const declaredFolders = bindings.flatMap((binding) =>
     binding.storage ? [{ step_id: binding.step_id, key_prefix: binding.storage.key_prefix }] : [],
@@ -202,6 +210,7 @@ export async function resolveWorkflowEffectManifest(
     unavailable_connectors,
     storage_refusals,
     request_refusals,
+    unbound_steps,
     ...(contradictions.length > 0 ? { boundary_contradictions: contradictions } : {}),
     eligible_for_repeated_runs:
       compiled.eligible_for_repeated_runs && unavailable_steps.length === 0,
@@ -244,6 +253,7 @@ async function resolveBindings(
     reason: RequestBoundaryRefusal;
     call_path?: string[];
   }> = [];
+  const missing: MissingConnectorReference[] = [];
   for (const step of definition.steps) {
     if (step.kind !== "request") continue;
     const system = step.connector_id
@@ -256,7 +266,10 @@ async function resolveBindings(
             db,
           )
       : null;
-    if (step.connector_id && !system) continue;
+    if (step.connector_id && !system) {
+      missing.push({ step_id: step.id, connector_id: step.connector_id });
+      continue;
+    }
     const connector = system?.connector;
     const credentials = await system?.getAuthorityMetadata();
     const unavailability = connector
@@ -437,6 +450,12 @@ async function resolveBindings(
     unavailable_connectors,
     storage_refusals,
     request_refusals,
+    unbound_steps: await describeUnboundSteps(
+      db,
+      input.tenant_id,
+      input.execution_environment,
+      missing,
+    ),
     contentShapes,
   };
 }
@@ -452,6 +471,7 @@ async function resolveCall(
   unavailable_steps: string[];
   storage_refusals: Array<{ step_id: string; reason: StorageBoundaryRefusal }>;
   request_refusals: Array<{ step_id: string; reason: RequestBoundaryRefusal }>;
+  unbound_steps: UnboundStep[];
 } | null> {
   const byId = typeof step.workflow_id === "string" && step.workflow_id.length > 0;
   const bySlug = typeof step.workflow_slug === "string" && step.workflow_slug.length > 0;
@@ -522,6 +542,7 @@ async function resolveCall(
         unavailable_steps: [] as string[],
         storage_refusals: [] as Array<{ step_id: string; reason: StorageBoundaryRefusal }>,
         request_refusals: [] as Array<{ step_id: string; reason: RequestBoundaryRefusal }>,
+        unbound_steps: [] as UnboundStep[],
       }
     : await resolveBindings(childInput, parsed.data, db, {
         facts,
@@ -550,5 +571,6 @@ async function resolveCall(
     unavailable_steps: resolved.unavailable_steps,
     storage_refusals: resolved.storage_refusals,
     request_refusals: resolved.request_refusals,
+    unbound_steps: resolved.unbound_steps,
   };
 }

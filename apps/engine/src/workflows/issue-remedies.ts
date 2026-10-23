@@ -235,6 +235,15 @@ const REMEDIES: Partial<Record<ManifestIssueCode, Partial<Record<Driver, string>
 };
 
 const DRIVERLESS_REMEDIES: Partial<Record<ManifestIssueCode, string>> = {
+  missing_binding:
+    "This step names a connector that does not resolve in this workspace and environment: it " +
+    "was deleted, or it never existed here. Nothing can be approved for a step whose target is " +
+    "unknown. `diagnose_workflow` names what is missing in `evidence.binding`: the kind, the " +
+    "referenced connector, whether it was deleted, and a live connector with the same slug and " +
+    "driver when one exists. Repair: point the step's `connector_id` at that live connector " +
+    "(or at another live connector of the same driver for this environment), or restore the " +
+    "deleted connector, then save and review again. Do not remove the step to get past the " +
+    "gate, and do not add `boundary`: it does not stand in for a connector.",
   binding_mismatch:
     "The step does not match the connector it resolves to: its kind (a `graphql`, `sql`, `mcp` " +
     "or `s3` block, or plain HTTP) must match the connector's driver, and the step must not have " +

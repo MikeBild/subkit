@@ -220,6 +220,14 @@ test("a child's unbindable step blocks the parent, marked as the child's", async
   expect(result.manifest.issues).toEqual([
     { step_id: "publish", code: "missing_binding", call_path: ["run_child"] },
   ]);
+  expect(result.unbound_steps).toEqual([
+    {
+      step_id: "publish",
+      connector_id: "00000000-0000-4000-8000-0000000000ff",
+      state: "not_found",
+      call_path: ["run_child"],
+    },
+  ]);
   expect(result.eligible_for_repeated_runs).toBe(false);
 });
 

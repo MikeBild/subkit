@@ -80,8 +80,22 @@ test("a repeated code for one step is reported once", () => {
 
 test("a step with no effect entry yields no guidance rather than a wrong one", () => {
   expect(
-    repairGuidanceForIssues([{ step_id: "orphan", code: "missing_binding" }], []),
+    repairGuidanceForIssues([{ step_id: "orphan", code: "dynamic_request" }], []),
   ).toHaveLength(0);
+});
+
+test("a step whose connector does not resolve is told what to bind, without naming ids", () => {
+  const [entry, ...rest] = repairGuidanceForIssues(
+    [{ step_id: "ingest_findings", code: "missing_binding" }],
+    [],
+  );
+  expect(rest).toHaveLength(0);
+  expect(entry?.step_id).toBe("ingest_findings");
+  const instruction = entry?.instruction ?? "";
+  expect(instruction).toContain("evidence.binding");
+  expect(instruction).toContain("connector_id");
+  expect(instruction).toContain("restore the");
+  expect(instruction).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
 });
 
 test("a step that already has a scope gets the reason it was refused, not 'add a scope'", () => {

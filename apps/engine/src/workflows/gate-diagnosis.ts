@@ -39,6 +39,11 @@ import {
 import { inspectHeldPreviewEvidence } from "./report-delivery-proposal.ts";
 import type { RequestBoundaryRefusal } from "./request-boundary.ts";
 import type { StorageBoundaryRefusal } from "./storage-boundary.ts";
+import {
+  type MissingBindingEvidence,
+  MissingBindingEvidenceSchema,
+  missingBindingEvidence,
+} from "./unbound-bindings.ts";
 
 export type GateDiagnosisCode =
   | ManifestIssueCode
@@ -56,6 +61,7 @@ export interface GateDiagnosis {
   evidence: {
     execution_id?: string;
     observed?: Omit<ReportDeliveryBoundary, "kind">;
+    binding?: MissingBindingEvidence;
   };
   remedy_kind: GateRemedyKind;
   fixer?: GateFixer;
@@ -84,6 +90,7 @@ export const GateDiagnosisSchema = z
           content_type: ReportDeliveryBoundarySchema.shape.content_type,
         })
         .optional(),
+      binding: MissingBindingEvidenceSchema.optional(),
     }),
     remedy_kind: z.enum(["patch", "prepare", "declare", "reconnect", "author"]),
     fixer: GateFixerSchema.optional(),
@@ -307,7 +314,16 @@ async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<Gate
     out.push({
       code: issue.code,
       subject: { step_id: issue.step_id },
-      evidence: {},
+      evidence:
+        issue.code === "missing_binding"
+          ? {
+              binding: missingBindingEvidence(
+                issue,
+                preview.unbound_steps,
+                input.execution_environment,
+              ),
+            }
+          : {},
       remedy_kind: "author",
     });
   }
