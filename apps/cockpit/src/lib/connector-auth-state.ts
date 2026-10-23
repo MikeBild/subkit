@@ -7,18 +7,19 @@ export type ConnectorAuthState =
   | "not_required"
   | "unproven";
 
+export type CredentialEvidence = {
+  mode: string;
+  connection: { state: "valid" | "expiring" | "expired" | "unreadable" } | null;
+} | null;
+
 export interface ConnectorAuthInput {
   auth_type?: string | null;
   driver?: string | null;
   health_state?: string | null;
   needs_reauth?: boolean | null;
   auth_failed_at?: string | null;
+  credential?: CredentialEvidence;
 }
-
-export type CredentialEvidence = {
-  mode: string;
-  connection: { state: "valid" | "expiring" | "expired" | "unreadable" } | null;
-} | null;
 
 export interface ProbeOutcome {
   ok: boolean;
@@ -51,8 +52,9 @@ const LABELS: Record<ConnectorAuthState, TranslationKey> = {
 export function connectorAuthState(
   connector: ConnectorAuthInput,
   probe?: ProbeOutcome | null,
-  credential?: CredentialEvidence,
+  observed?: CredentialEvidence,
 ): ConnectorAuthState {
+  const credential = observed === undefined ? connector.credential : observed;
   if (probe) {
     if (probe.ok) return connector.auth_type === "none" ? "not_required" : "connected";
     if (probe.error_code === "credential_missing") return "credentials_missing";

@@ -25404,6 +25404,7 @@ export interface components {
             /** @description Tool count from the most recent retained successful MCP manifest observation; null when unknown. */
             tools_count: number | null;
             credentials?: components["schemas"]["CredentialSummary"][];
+            credential?: components["schemas"]["ConnectorCredentialState"];
         };
         /** @enum {string} */
         ConnectorHealthState: "ok" | "degraded" | "needs_update" | "needs_reauth";
@@ -25422,6 +25423,11 @@ export interface components {
             id: string;
             name: string;
             state: components["schemas"]["ConnectionState"];
+        } | null;
+        /** @description The credential this connector authenticates with in its own environment: its mode and, for a shared sign-in, the connection and its state. Null when no credential serves the connector's authentication; never the material. */
+        ConnectorCredentialState: {
+            mode: string;
+            connection: components["schemas"]["ConnectionSummary"];
         } | null;
         UpdateConnectorBody: {
             name?: string;

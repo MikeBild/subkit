@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { connectorHealthLabel } from "@/lib/connector-auth-state";
+import { connectorAuthState, connectorHealthLabel } from "@/lib/connector-auth-state";
 import {
   CONNECTOR_STRIP_KEYS,
   type ConnectorStripInput,
@@ -161,6 +161,51 @@ describe("connector state of a listed connector", () => {
       "Eingeschränkt",
       "warn",
     ]);
+  });
+
+  test("a listed connector without a stored credential is not signed in, never Verbunden", () => {
+    expect(label({ auth_type: "oauth2", health_state: "ok", credential: null })).toEqual([
+      "Nicht angemeldet",
+      "warn",
+    ]);
+    expect(label({ auth_type: "bearer", health_state: "ok", credential: null })).toEqual([
+      "Nicht angemeldet",
+      "warn",
+    ]);
+    expect(
+      label({
+        auth_type: "oauth2",
+        health_state: "ok",
+        credential: { mode: "connection", connection: { state: "valid" } },
+      }),
+    ).toEqual(["Verbunden", "ok"]);
+    expect(
+      label({
+        auth_type: "oauth2",
+        health_state: "ok",
+        credential: { mode: "connection", connection: { state: "expired" } },
+      }),
+    ).toEqual(["Anmeldung abgelaufen", "error"]);
+    expect(label({ auth_type: "none", health_state: "ok", credential: null })).toEqual([
+      "Bereit",
+      "ok",
+    ]);
+  });
+
+  test("the listed state and the detail strip agree for a connector without credentials", () => {
+    const record = { auth_type: "oauth2", health_state: "ok", credential: null };
+    const detail = connectorStrip({
+      auth: connectorAuthState(record, null, null),
+      way: "provider",
+      enabled: true,
+      health: "ok",
+      probe: null,
+      missingScopes: 0,
+      returned: false,
+      signInFailed: false,
+      rights: { write: true, test: true },
+    });
+    expect(connectorRecordStrip(record).kind).toBe(detail.kind);
   });
 
   test("a stored degraded health reads with one word in the list, the detail strip and the overview", () => {

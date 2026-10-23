@@ -198,7 +198,16 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       principal.tenant_id,
       rows.map((row) => row.id),
     );
-    const items = rows.map((r) => ({ ...serialize(r), ...observations.get(r.id) }));
+    const credentialStates = await credsvc.describeConnectorCredentialStates(
+      principal.tenant_id,
+      rows,
+      db,
+    );
+    const items = rows.map((r) => ({
+      ...serialize(r),
+      ...observations.get(r.id),
+      credential: credentialStates.get(r.id) ?? null,
+    }));
     const counts = await connectorSvc.connectorCategoryCounts(principal.tenant_id, db);
     const blocks = [...counts.entries()]
       .map(([category, count]) => ({ category, count }))
@@ -242,7 +251,20 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const observations = await connectorSvc.connectorObservations(db, principal.tenant_id, [
       found.id,
     ]);
-    return c.json({ ...serialize(found), ...observations.get(found.id), credentials: creds }, 200);
+    const credentialStates = await credsvc.describeConnectorCredentialStates(
+      principal.tenant_id,
+      [found],
+      db,
+    );
+    return c.json(
+      {
+        ...serialize(found),
+        ...observations.get(found.id),
+        credentials: creds,
+        credential: credentialStates.get(found.id) ?? null,
+      },
+      200,
+    );
   });
 
   app.openapi(patchRoute, async (c) => {

@@ -16376,6 +16376,9 @@
             "items": {
               "$ref": "#/components/schemas/CredentialSummary"
             }
+          },
+          "credential": {
+            "$ref": "#/components/schemas/ConnectorCredentialState"
           }
         },
         "required": [
@@ -16493,6 +16496,25 @@
           "name",
           "state"
         ]
+      },
+      "ConnectorCredentialState": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "connection": {
+            "$ref": "#/components/schemas/ConnectionSummary"
+          }
+        },
+        "required": [
+          "mode",
+          "connection"
+        ],
+        "description": "The credential this connector authenticates with in its own environment: its mode and, for a shared sign-in, the connection and its state. Null when no credential serves the connector's authentication; never the material."
       },
       "UpdateConnectorBody": {
         "type": "object",

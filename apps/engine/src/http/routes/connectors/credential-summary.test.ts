@@ -22,6 +22,23 @@ async function summary(): Promise<{ mode: string } | null> {
   return (await res.json()) as { mode: string } | null;
 }
 
+async function listed(): Promise<{ list: unknown; detail: unknown }> {
+  const res = await fetch(`${ctx.baseUrl}/v1/connectors?limit=200`, { headers: auth() });
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { items: { id: string; credential?: unknown }[] };
+  const one = await fetch(`${ctx.baseUrl}/v1/connectors/${connectorId}`, { headers: auth() });
+  expect(one.status).toBe(200);
+  return {
+    list: body.items.find((item) => item.id === connectorId)?.credential,
+    detail: ((await one.json()) as { credential?: unknown }).credential,
+  };
+}
+
+async function expectListedLike(mode: string | null): Promise<void> {
+  const expected = mode === null ? null : { mode, connection: null };
+  expect(await listed()).toEqual({ list: expected, detail: expected });
+}
+
 beforeAll(async () => {
   ctx = await createHttpTestServer("connector-credential-summary");
   const [row] = await ctx.db
@@ -45,17 +62,20 @@ afterAll(async () => {
 
 describe("GET /v1/connectors/{id}/credential after the sign-in changes", () => {
   test("a stored key is the sign-in only while the connector signs in with a key", async () => {
+    await expectListedLike(null);
     const stored = await send(`/v1/connectors/${connectorId}/credentials`, "POST", {
       mode: "bearer",
       token: "switchable-test-token",
     });
     expect(stored.status).toBe(201);
     expect((await summary())?.mode).toBe("bearer");
+    await expectListedLike("bearer");
 
     expect(
       (await send(`/v1/connectors/${connectorId}`, "PATCH", { auth_type: "oauth2" })).status,
     ).toBe(200);
     expect(await summary()).toBeNull();
+    await expectListedLike(null);
 
     expect(
       (await send(`/v1/connectors/${connectorId}`, "PATCH", { auth_type: "none" })).status,
@@ -66,6 +86,7 @@ describe("GET /v1/connectors/{id}/credential after the sign-in changes", () => {
       (await send(`/v1/connectors/${connectorId}`, "PATCH", { auth_type: "bearer" })).status,
     ).toBe(200);
     expect((await summary())?.mode).toBe("bearer");
+    await expectListedLike("bearer");
   });
 
   test("connection credentials retain the authenticated principal kind in audit", async () => {

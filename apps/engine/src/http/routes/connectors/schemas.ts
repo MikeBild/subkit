@@ -27,6 +27,17 @@ export const CredentialSummarySchema = z
   })
   .openapi("CredentialSummary");
 
+export const ConnectorCredentialStateSchema = z
+  .object({
+    mode: z.string(),
+    connection: ConnectionSummarySchema.nullable(),
+  })
+  .nullable()
+  .describe(
+    "The credential this connector authenticates with in its own environment: its mode and, for a shared sign-in, the connection and its state. Null when no credential serves the connector's authentication; never the material.",
+  )
+  .openapi("ConnectorCredentialState");
+
 export const ConnectorHealthStateEnum = z
   .enum(["ok", "degraded", "needs_update", "needs_reauth"])
   .openapi("ConnectorHealthState");
@@ -106,6 +117,7 @@ export const ConnectorSchema = z
         "Tool count from the most recent retained successful MCP manifest observation; null when unknown.",
       ),
     credentials: z.array(CredentialSummarySchema).optional(),
+    credential: ConnectorCredentialStateSchema.optional(),
   })
   .openapi("Connector");
 

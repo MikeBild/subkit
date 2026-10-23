@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/api/client";
 import { useSession } from "@/app/session";
+import type { CredentialEvidence } from "@/lib/connector-auth-state";
 import { currentHost, type ServiceIdentity, serviceIdentity } from "@/lib/service-icons";
 
 export function useConnectorNames(enabled = true): ReadonlyMap<string, string> {
@@ -25,6 +26,7 @@ export interface ConnectorRecord {
   auth_failed_at?: string | null;
   template_slug?: string | null;
   base_url?: string | null;
+  credential?: CredentialEvidence;
 }
 
 export function connectorService(

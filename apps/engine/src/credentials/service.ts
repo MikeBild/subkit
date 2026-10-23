@@ -30,7 +30,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 import { type CredentialPlaintext, deserializePlain, serializePlain } from "./credential-value.ts";
 import { parseSignedJwtConfig, validateSignedJwtPrivateKey } from "./signed-jwt.ts";
-import type { CredentialMode, DecryptedCredential } from "./types.ts";
+import {
+  type CredentialMode,
+  credentialServesAuthType,
+  type DecryptedCredential,
+} from "./types.ts";
 
 export type { CredentialPlaintext } from "./credential-value.ts";
 
@@ -537,6 +541,64 @@ export async function getCredentialForConnector(
   return { row, value };
 }
 
+function authenticatingCredentials(tenant_id: string, connector_ids: readonly string[]) {
+  return and(
+    eq(credentials.tenant_id, tenant_id),
+    inArray(credentials.connector_id, [...connector_ids]),
+    ne(credentials.mode, "oauth2_client"),
+  );
+}
+
+export interface ConnectorCredentialState {
+  mode: string;
+  connection: ConnectionSummary | null;
+}
+
+export async function describeConnectorCredentialStates(
+  tenant_id: string,
+  targets: readonly { id: string; environment: string; auth_type: string }[],
+  exec?: Executor,
+): Promise<Map<string, ConnectorCredentialState | null>> {
+  const found = new Map<string, ConnectorCredentialState | null>();
+  const ids = targets.map((target) => target.id).filter((id) => UUID_RE.test(id));
+  if (ids.length === 0) return found;
+  const db = exec ?? getDb();
+  const rows = await db
+    .select({
+      connector_id: credentials.connector_id,
+      environment: credentials.environment,
+      mode: credentials.mode,
+      connection_id: credentials.connection_id,
+    })
+    .from(credentials)
+    .where(authenticatingCredentials(tenant_id, ids))
+    .orderBy(desc(credentials.created_at), desc(credentials.id));
+  const latest = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    const key = `${row.connector_id}:${row.environment}`;
+    if (!latest.has(key)) latest.set(key, row);
+  }
+  const connections = await summarizeConnections(
+    db,
+    tenant_id,
+    [...latest.values()].flatMap((row) => (row.connection_id ? [row.connection_id] : [])),
+  );
+  for (const target of targets) {
+    const row = latest.get(`${target.id}:${target.environment}`);
+    const mode = row ? (row.connection_id ? "connection" : row.mode) : null;
+    found.set(
+      target.id,
+      row && mode && credentialServesAuthType(target.auth_type, mode)
+        ? {
+            mode,
+            connection: row.connection_id ? (connections.get(row.connection_id) ?? null) : null,
+          }
+        : null,
+    );
+  }
+  return found;
+}
+
 export async function describeCredentialForConnector(
   tenant_id: string,
   connector_id: string,
@@ -567,10 +629,8 @@ export async function describeCredentialForConnector(
     .from(credentials)
     .where(
       and(
-        eq(credentials.tenant_id, tenant_id),
-        eq(credentials.connector_id, connector_id),
+        authenticatingCredentials(tenant_id, [connector_id]),
         eq(credentials.environment, environment),
-        ne(credentials.mode, "oauth2_client"),
       ),
     )
     .orderBy(desc(credentials.created_at), desc(credentials.id))
