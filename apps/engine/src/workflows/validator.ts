@@ -24,6 +24,7 @@ import { synthesizeInputSchema } from "./input-schema-synth.ts";
 import { lintJsBody } from "./js-body-lint.ts";
 import { jsonataSiteErrors } from "./jsonata-sites.ts";
 import { suggestClosest } from "./levenshtein.ts";
+import { reportDeliveryLintErrors } from "./report-delivery-lint.ts";
 import { retiredItemVarIssues } from "./stored-definition.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION } from "./types-web-scraper.ts";
@@ -287,6 +288,8 @@ export function validateWorkflowDef(
     }
   }
   errors.push(...jsonataSiteErrors(wf));
+  if (options.lintJavascript === true)
+    errors.push(...reportDeliveryLintErrors(wf.steps, options.connectorBaseUrls));
   const containedStepIds = new Set<string>();
   for (const step of wf.steps) {
     if (step.kind === "loop") {

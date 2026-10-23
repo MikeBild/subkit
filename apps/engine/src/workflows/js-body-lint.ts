@@ -12,7 +12,7 @@ type Node = TsApi.Node;
 
 let tsModule: typeof TsApi | undefined;
 
-function loadTs(): typeof TsApi {
+export function loadTs(): typeof TsApi {
   tsModule ??= (require("ts-morph") as typeof import("ts-morph")).ts;
   return tsModule;
 }

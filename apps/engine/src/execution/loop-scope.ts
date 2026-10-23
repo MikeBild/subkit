@@ -1,5 +1,6 @@
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { extractStepIdReferences, suggestClosest } from "../workflows/levenshtein.ts";
+import { LOOP_INDEX_SCOPE_KEY, LOOP_ITEM_SCOPE_KEY } from "../workflows/scope-shape.ts";
 import type { StepResult } from "./types.ts";
 
 export function buildLoopChildScope(
@@ -9,8 +10,8 @@ export function buildLoopChildScope(
 ): Record<string, unknown> {
   return {
     ...scope,
-    $item: item,
-    $loop_index: itemIdx,
+    [LOOP_ITEM_SCOPE_KEY]: item,
+    [LOOP_INDEX_SCOPE_KEY]: itemIdx,
   };
 }
 

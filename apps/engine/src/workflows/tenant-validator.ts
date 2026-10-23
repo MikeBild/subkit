@@ -123,6 +123,22 @@ function readLabelledPostConnectorIds(input: unknown): string[] {
   );
 }
 
+function readReportDeliveryConnectorIds(input: unknown): string[] {
+  const parsed = WorkflowDefSchema.safeParse(input);
+  if (!parsed.success) return [];
+  return parsed.data.steps.flatMap((step) => {
+    const body = step.kind === "request" ? (step.body as { raw?: unknown } | undefined) : null;
+    return step.kind === "request" &&
+      step.connector_id &&
+      step.method?.toUpperCase() === "POST" &&
+      body !== null &&
+      typeof body === "object" &&
+      typeof body.raw === "string"
+      ? [step.connector_id]
+      : [];
+  });
+}
+
 export async function validateTenantWorkflowDef(
   input: unknown,
   tenantId: string,
@@ -132,7 +148,14 @@ export async function validateTenantWorkflowDef(
   const [policies, graphqlTargets, baseUrls] = await Promise.all([
     loadTenantWorkflowHeaderPolicies(input, tenantId, db),
     loadTenantWorkflowGraphqlTargets(input, tenantId, db),
-    loadTenantConnectorBaseUrls(readLabelledPostConnectorIds(input), tenantId, db),
+    loadTenantConnectorBaseUrls(
+      [
+        ...readLabelledPostConnectorIds(input),
+        ...(options.lintJavascript === true ? readReportDeliveryConnectorIds(input) : []),
+      ],
+      tenantId,
+      db,
+    ),
   ]);
   return validateWorkflowDef(input, {
     ...options,

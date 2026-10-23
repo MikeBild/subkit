@@ -37,6 +37,31 @@ export interface EnvelopePagination {
   truncated: boolean;
 }
 
+const SCOPE_ENVELOPE_FIELD_SET = {
+  data: true,
+  status_code: true,
+  headers: true,
+  duration_ms: true,
+  error: true,
+  held: true,
+  held_request: true,
+  pagination: true,
+} as const satisfies Record<keyof ScopeEnvelope, true>;
+export const SCOPE_ENVELOPE_FIELDS = Object.keys(SCOPE_ENVELOPE_FIELD_SET) as Array<
+  keyof ScopeEnvelope
+>;
+
+const ENVELOPE_PAGINATION_FIELD_SET = {
+  pages: true,
+  items: true,
+  duplicates_dropped: true,
+  complete: true,
+  truncated: true,
+} as const satisfies Record<keyof EnvelopePagination, true>;
+export const ENVELOPE_PAGINATION_FIELDS = Object.keys(ENVELOPE_PAGINATION_FIELD_SET) as Array<
+  keyof EnvelopePagination
+>;
+
 function envelopePagination(value: unknown): EnvelopePagination | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;

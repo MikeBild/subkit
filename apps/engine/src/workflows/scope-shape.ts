@@ -1,3 +1,8 @@
+import { ENVELOPE_PAGINATION_FIELDS, SCOPE_ENVELOPE_FIELDS } from "../execution/engine/envelope.ts";
+
+export const LOOP_ITEM_SCOPE_KEY = "$item";
+export const LOOP_INDEX_SCOPE_KEY = "$loop_index";
+
 const MAX_PATH_BUDGET = 64;
 const MAX_DEPTH = 4;
 const ARRAY_SAMPLE_FIRST_N = 1;
@@ -133,4 +138,14 @@ export function buildScopeAtStep(value: unknown): ScopeAtStep {
     shape_summary: summarizeScopeShape(value),
     primary_data_path: pickPrimaryDataPath(value),
   };
+}
+
+export function renderScopeShapeContract(): string[] {
+  return [
+    "- It receives exactly one value, `input`:",
+    `  - \`input.scope.<step_id>.data\` — an upstream step's result; its envelope { ${SCOPE_ENVELOPE_FIELDS.join(", ")} } also carries the HTTP \`.status_code\`, a failure \`.error\` ({ code, message } or null) and page totals \`.pagination\` { ${ENVELOPE_PAGINATION_FIELDS.join(", ")} }`,
+    "  - `input.input` — the workflow input",
+    `  - \`input.scope.${LOOP_ITEM_SCOPE_KEY}\` / \`input.scope.${LOOP_INDEX_SCOPE_KEY}\` — the current item and its 0-based index inside a loop body`,
+    "- `output_transform_function` is different: its `input` is only the final value (the last step's data), not `{ scope, input }`.",
+  ];
 }

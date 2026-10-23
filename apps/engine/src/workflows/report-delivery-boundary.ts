@@ -78,16 +78,22 @@ export type ReportDeliveryInspectionRecord =
 type Refused = { ok: false; reason: ReportMessageRefusal };
 const refuse = (reason: ReportMessageRefusal): Refused => ({ ok: false, reason });
 
-const ENVELOPE_HEADERS = new Set([
-  "from",
-  "to",
-  "subject",
-  "mime-version",
-  "content-type",
-  "content-transfer-encoding",
-]);
+export const REPORT_ENVELOPE_HEADERS = [
+  "From",
+  "To",
+  "Subject",
+  "MIME-Version",
+  "Content-Type",
+  "Content-Transfer-Encoding",
+] as const;
+export const REPORT_RECIPIENT_HEADERS_REFUSED = ["Reply-To", "Cc", "Bcc"] as const;
+export const REPORT_TRANSFER_ENCODINGS = ["7bit", "8bit", "base64"] as const;
+export const REPORT_CONTENT_TYPES = ReportDeliveryBoundarySchema.shape.content_type.options;
+export const REPORT_MESSAGE_BUILDERS = ["buildMimeMessage", "base64UrlEncodeUtf8"] as const;
+
+const ENVELOPE_HEADERS = new Set(REPORT_ENVELOPE_HEADERS.map((name) => name.toLowerCase()));
 const PART_HEADERS = new Set(["content-type", "content-transfer-encoding"]);
-const TRANSFER_ENCODINGS = new Set(["7bit", "8bit", "base64"]);
+const TRANSFER_ENCODINGS: ReadonlySet<string> = new Set(REPORT_TRANSFER_ENCODINGS);
 const TEXT_TYPE = /^(text\/(?:plain|html))(?:;\s*charset="?utf-8"?)?$/i;
 const ALTERNATIVE_TYPE = /^multipart\/alternative;\s*boundary=(?:"([^"]*)"|([^\s";]+))$/i;
 const BOUNDARY = /^[0-9A-Za-z'()+_,./:=?-]{1,70}$/;
@@ -414,4 +420,14 @@ export function assertReadQuery(
     return deny();
   for (const [key, value] of Object.entries(boundary.fixed))
     if (url.searchParams.get(key) !== value) return deny();
+}
+
+export function renderReportDeliveryContract(): string[] {
+  const [builder, encoder] = REPORT_MESSAGE_BUILDERS;
+  return [
+    "Report delivery (Gmail messages/send with body exactly `{ raw }`; a message outside these rules is refused, not sent):",
+    `- \`raw\` is base64url of one UTF-8 message: \`sk.${builder}({ from, to, subject, text, html }).raw\`, or \`sk.${encoder}(mime)\` for a hand-built CRLF message.`,
+    `- Headers: only ${REPORT_ENVELOPE_HEADERS.join(", ")} (MIME-Version: 1.0), each once; no ${REPORT_RECIPIENT_HEADERS_REFUSED.join("/")} or any other header (rule header_not_allowed).`,
+    `- Exactly one From and one To mailbox (rule extra_recipients); Content-Type ${REPORT_CONTENT_TYPES.join(", ")} (text/plain then text/html part), charset utf-8; Content-Transfer-Encoding ${REPORT_TRANSFER_ENCODINGS.join(", ")}.`,
+  ];
 }

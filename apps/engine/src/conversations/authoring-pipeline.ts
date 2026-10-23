@@ -62,6 +62,8 @@ import {
   validateTenantWorkflowDef,
 } from "../workflows/index.ts";
 import { workflowJsonataSites } from "../workflows/jsonata-sites.ts";
+import { renderReportDeliveryContract } from "../workflows/report-delivery-boundary.ts";
+import { renderScopeShapeContract } from "../workflows/scope-shape.ts";
 import {
   ResponseFilterSchema,
   TriggerSchema,
@@ -294,11 +296,9 @@ export function buildGenerationPrompt(args: {
     "## Transform contract — JavaScript only",
     'Programmable `transform` steps use `language: "javascript"` (the default programmable language); specialized extraction modes use their own schema configuration. The execution contract (QuickJS sandbox, no host globals — no fetch, no process, no require, no network; values are JSON-marshalled):',
     "- The `expression` is a FUNCTION BODY (not a module, not an arrow function). It must `return` its result; a trailing expression also works.",
-    "- It receives exactly one value, `input`:",
-    "  - `input.scope.<step_id>.data` — recorded output of each upstream step",
-    "  - `input.input` — the workflow input",
-    "  - `input.scope.$item` / `input.scope.$loop_index` — inside a loop body",
+    ...renderScopeShapeContract(),
     ...renderSandboxGlobalsContract(),
+    ...renderReportDeliveryContract(),
     "JSONata is NOT a programmable transform language: use it in `loop.over`, `branch.when`, `output_transform` and selector expressions. Request `${…}` string placeholders use the separate placeholder grammar above.",
     "",
     ...JSONATA_CONTRACT_LINES,
