@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { beginHttpShutdown, drainHttpBounded, type ShutdownHttpServer } from "./shutdown.ts";
+import {
+  beginHttpShutdown,
+  drainHttpBounded,
+  type HttpShutdown,
+  type ShutdownHttpServer,
+} from "./shutdown.ts";
 
 describe("HTTP shutdown", () => {
   test("stops admission, closes idle sockets, then exposes an explicit force-close", async () => {
@@ -51,15 +56,12 @@ describe("HTTP shutdown", () => {
     });
     expect(await drainHttpBounded(prompt, { forceWaitMs: 5, abandonWaitMs: 5 })).toBe("closed");
 
-    let finishLate: (() => void) | undefined;
-    const late = beginHttpShutdown({
-      close(callback) {
-        finishLate = callback;
-      },
-      closeAllConnections() {
-        setTimeout(() => finishLate?.(), 15);
-      },
-    });
+    const answers = [false, true];
+    const late: HttpShutdown = {
+      closed: Promise.resolve(),
+      forceClose() {},
+      waitUntilClosed: async () => answers.shift() ?? false,
+    };
     expect(await drainHttpBounded(late, { forceWaitMs: 5, abandonWaitMs: 100 })).toBe(
       "closed_after_force",
     );
