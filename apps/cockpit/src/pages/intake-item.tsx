@@ -150,7 +150,7 @@ export function IntakeItemPage({ permissions }: { permissions: readonly string[]
   const conversation = useQuery({
     queryKey: ["conversation", conversationId],
     queryFn: () => getConversation(conversationId ?? ""),
-    enabled: canRead && Boolean(conversationId),
+    enabled: canRead && permissions.includes("conversation:read") && Boolean(conversationId),
     retry: false,
   });
   const back = { to: "/intake", label: t("nav.inbox") };

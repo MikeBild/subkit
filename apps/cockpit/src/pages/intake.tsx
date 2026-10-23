@@ -68,6 +68,7 @@ import { ForbiddenState } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useSearchParamState, writeSearchParam } from "@/lib/use-search-param-state";
+import { cn } from "@/lib/utils";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import {
   changedSkillLine,
@@ -107,14 +108,24 @@ const INTAKE_FLOW = ["collect", "propose", "confirm", "knowledge"] as const;
 export function IntakeOriginIcon({
   snapshot,
   tile,
+  size = "size-3.5",
 }: {
   snapshot: IntakeSnapshot;
   tile?: IconTileSize;
+  size?: string;
 }) {
   const session = sessionSnapshot(snapshot);
-  if (session) return <AssistantIcon mark={intakeAssistant(session).mark} tile={tile} />;
+  if (session)
+    return (
+      <AssistantIcon
+        mark={intakeAssistant(session).mark}
+        tile={tile}
+        {...(tile ? {} : { className: size })}
+      />
+    );
   const Icon = intakeOrigin(snapshot) === "note" ? PenLine : Bookmark;
-  if (!tile) return <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />;
+  if (!tile)
+    return <Icon aria-hidden="true" className={cn("shrink-0 text-muted-foreground", size)} />;
   return (
     <IconTile size={tile}>
       <Icon />
@@ -1008,7 +1019,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
         t("intake.origin"),
         (clip) => (
           <Chip testId={`intake-origin-${clip.id}`}>
-            <IntakeOriginIcon snapshot={clip.original_snapshot} />
+            <IntakeOriginIcon snapshot={clip.original_snapshot} size="size-3" />
             {intakeOriginLabel(clip.original_snapshot, t)}
           </Chip>
         ),
