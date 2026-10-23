@@ -94,7 +94,9 @@ import {
   type SkillTemplate,
   type SkillVersionRow,
   skillAppliesToOptionKey,
+  skillScope,
   skillScopeKey,
+  skillScopePhraseKey,
   skillStateLabelKey,
   skillsLoadState,
   skillTemplateFromSearch,
@@ -144,7 +146,7 @@ function rowAddress(row: SkillRow): string | null {
 }
 
 function rowScope(row: SkillRow): string {
-  return row.kind === "skill" ? row.skill.scope : row.candidate.scope;
+  return row.kind === "skill" ? skillScope(row.skill) : row.candidate.scope;
 }
 
 function rowWhere(row: SkillRow): string | null {
@@ -616,7 +618,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
     );
 
   const active = skill?.status === "active";
-  const scope = skill ? t(skillScopeKey(skill.scope)) : "";
+  const scope = skill ? t(skillScopePhraseKey(skillScope(skill))) : "";
   const where = skill ? t(skillWhereKey(skill.applies_to)) : "";
   const strip = !skill
     ? null
@@ -840,8 +842,9 @@ function SkillUsage({ skill, permissions }: { skill: Skill; permissions: readonl
   const origins = (intake.data?.items ?? []).filter(
     (item) => item.admitted_target_kind === "skill" && item.admitted_target_id === skill.id,
   );
+  const scope = skillScope(skill);
   const cards: UsageCard[] =
-    skill.scope === "workflow" && skill.workflow_id
+    scope === "workflow" && skill.workflow_id
       ? [
           {
             id: skill.workflow_id,
@@ -851,7 +854,7 @@ function SkillUsage({ skill, permissions }: { skill: Skill; permissions: readonl
             icon: <Workflow />,
           },
         ]
-      : skill.scope === "connector" && skill.connector_id
+      : scope === "connector" && skill.connector_id
         ? [
             {
               id: skill.connector_id,
@@ -867,7 +870,7 @@ function SkillUsage({ skill, permissions }: { skill: Skill; permissions: readonl
       testId="skill-usage"
       summary={t("skills.usage.summary", {
         where: t(skillWhereKey(skill.applies_to)),
-        scope: t(skillScopeKey(skill.scope)),
+        scope: t(skillScopePhraseKey(scope)),
       })}
       more={
         <>
@@ -898,8 +901,11 @@ function SkillUsage({ skill, permissions }: { skill: Skill; permissions: readonl
       {cards.length > 0 ? (
         <UsageCards items={cards} testId="skill-binding" />
       ) : (
-        <p className="text-sm text-muted-foreground" data-testid="skill-usage-global">
-          {t("skills.usage.everywhere")}
+        <p
+          className="text-sm text-muted-foreground"
+          data-testid={scope === "unbound" ? "skill-usage-unbound" : "skill-usage-global"}
+        >
+          {t(scope === "unbound" ? "skills.usage.unbound" : "skills.usage.everywhere")}
         </p>
       )}
     </TabBody>

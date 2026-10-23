@@ -3,7 +3,9 @@ import { translate } from "@/lib/i18n";
 import {
   SKILL_TEMPLATES,
   type SkillHistoryDetail,
+  skillScope,
   skillScopeKey,
+  skillScopePhraseKey,
   skillsLoadState,
   skillTemplateFromSearch,
   skillTemplateKeys,
@@ -79,6 +81,22 @@ describe("what a skill covers and where it is used are two answers", () => {
     expect(translate("de", skillScopeKey("global"))).toBe("Alles");
     expect(translate("de", skillScopeKey("connector"))).toBe("Einen Konnektor");
     expect(translate("de", skillScopeKey("workflow"))).toBe("Einen Workflow");
+  });
+
+  test("header and usage read one scope, lower-case inside a sentence", () => {
+    const bound = { scope: "connector", connector_id: "c1", workflow_id: null };
+    const lost = { scope: "connector", connector_id: null, workflow_id: null };
+    expect(skillScope(bound)).toBe("connector");
+    expect(skillScope(lost)).toBe("unbound");
+    expect(skillScope({ scope: "global" })).toBe("global");
+    expect(skillScope({ scope: "workflow", workflow_id: null })).toBe("unbound");
+    expect(
+      translate("de", "skills.strip.active", {
+        scope: translate("de", skillScopePhraseKey(skillScope(bound))),
+        when: "vor 2 Std.",
+      }),
+    ).toBe("Aktiv · gilt für einen Konnektor · geändert vor 2 Std.");
+    expect(translate("de", skillScopePhraseKey("global"))).toBe("alles");
     expect(translate("de", skillWhereKey("chat"))).toBe("Chat");
     expect(translate("de", skillWhereKey("authoring"))).toBe("Workflow-Entwürfe");
     expect(translate("de", skillWhereKey("both"))).toBe("Chat und Workflow-Entwürfe");

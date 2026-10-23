@@ -12,10 +12,30 @@ export function skillAppliesToOptionKey(appliesTo: SkillAppliesTo): TranslationK
   return "skills.editor.appliesTo.both";
 }
 
+export type SkillScope = "global" | "connector" | "workflow" | "unbound";
+
+export function skillScope(skill: {
+  scope: string;
+  connector_id?: string | null;
+  workflow_id?: string | null;
+}): SkillScope {
+  if (skill.scope === "connector") return skill.connector_id ? "connector" : "unbound";
+  if (skill.scope === "workflow") return skill.workflow_id ? "workflow" : "unbound";
+  return "global";
+}
+
 export function skillScopeKey(scope: string): TranslationKey {
   if (scope === "connector") return "skills.scope.connector";
   if (scope === "workflow") return "skills.scope.workflow";
+  if (scope === "unbound") return "skills.scope.unbound";
   return "skills.scope.global";
+}
+
+export function skillScopePhraseKey(scope: SkillScope): TranslationKey {
+  if (scope === "connector") return "skills.scopePhrase.connector";
+  if (scope === "workflow") return "skills.scopePhrase.workflow";
+  if (scope === "unbound") return "skills.scopePhrase.unbound";
+  return "skills.scopePhrase.global";
 }
 
 export function skillWhereKey(appliesTo: string | null | undefined): TranslationKey {
