@@ -338,6 +338,13 @@ async function seedDemoHistory(tenantId: string, state: DemoState): Promise<void
         mode: "bearer",
         token: connector.token,
       });
+  const revoked = demoTemplateConnectors
+    .filter((connector) => connector.needsReauth)
+    .map((connector) => `'${own(connector.key)}'`);
+  if (revoked.length > 0)
+    sql(
+      `UPDATE connectors SET needs_reauth=true, health_state='needs_reauth', auth_failed_at=now(), auth_failed_reason='Access token was revoked by the provider' WHERE tenant_id='${tenantId}' AND id IN (${revoked.join(",")});`,
+    );
   const skillId = own(demoHistory.skill.key);
   for (const body of demoHistory.skill.bodies) {
     const skill = await api(`/v1/skills/${skillId}`);
