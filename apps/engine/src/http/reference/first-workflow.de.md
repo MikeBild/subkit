@@ -71,7 +71,7 @@ Bietet dir der Chat eine Freigabe an, öffnet sie denselben Dialog.
 | Feld | Was es festlegt |
 | --- | --- |
 | **Umgebung** | Wo die Läufe erlaubt sind, zum Beispiel **Produktion**. |
-| **Operationen und externe Ziele** | Welche Dienste und Adressen der Workflow erreicht. |
+| **Operationen und externe Ziele** | Welche Dienste und Adressen der Workflow erreicht. Jeder Dienst trägt das Logo seines Anbieters. |
 | **Gültigkeit** | Wie lange die Freigabe gilt: **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. |
 
 ### Den Workflow starten
@@ -112,5 +112,5 @@ sk executions result <run-id>
 | Das Ergebnis des Laufs ist mit **Ergebnis des Probelaufs – nicht geschrieben** überschrieben | Die Version ist noch nicht freigegeben. Folge „Freigeben, was er berühren darf“. |
 | „Nicht gestartet (…): Für diesen Lauf gibt es keine gültige Freigabe.“ | Die Freigabe fehlt, ist abgelaufen oder aufgebraucht. Gib erneut frei oder verlängere sie. |
 | „… muss neu verbunden werden“ | Öffne den Konnektor unter **Konnektoren** und wähle **Neu anmelden**. |
-| **Du darfst diesen Workflow nicht ausführen.** | Bitte eine Administratorin oder einen Administrator um eine Rolle, die Workflows starten darf. |
+| **Du darfst diesen Workflow nicht starten.** | Bitte eine Administratorin oder einen Administrator um eine Rolle, die Workflows starten darf. |
 | Ein Schritt ist fehlgeschlagen | Öffne den Lauf, lies den Fehler und beschreibe ihn im selben Chat. SubKit schlägt eine Korrektur vor, die du erneut prüfst. |

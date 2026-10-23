@@ -13,7 +13,7 @@ The path is always the same: **collect → review in chat → confirm → knowle
 
 ### What you need
 
-- The Web Clipper in Chrome, installed and connected. To install, update or troubleshoot the Web Clipper, see "Collect web pages with the Web Clipper".
+- For web pages: the Web Clipper in Chrome, installed and connected. To install, update or troubleshoot the Web Clipper, see "Collect web pages with the Web Clipper".
 - To collect: an account with `intake:read` and `intake:write`.
 - To confirm: a browser session in the Cockpit with `intake:confirm`, plus `knowledge:write` for knowledge, or `skill:write` and `skill:activate` for a skill. Replacing skills also needs `skill:archive` for each replaced skill.
 
@@ -27,7 +27,19 @@ The path is always the same: **collect → review in chat → confirm → knowle
 6. Pick a category. Your default category is preselected, at first `inbox`.
 7. Select **Collect**.
 
-Learnings from coding-agent sessions arrive in the same Inbox as items with origin `session`. The Inbox shows the origin as a filter and badge.
+Learnings from coding-agent sessions arrive in the same Inbox, with the origin **Coding assistant**. Collected pages carry the origin **Browser**.
+
+### Add a note
+
+A note is an item without a source address, such as a thought or an idea.
+
+1. In the Cockpit, open **Inbox** and select **Add entry**. If the Inbox is still empty, select **Add a note**.
+2. In the **Add to intake** dialog, enter a **Title**.
+3. Write the text under **Content**. Markdown is allowed.
+4. Pick a **Category**, or create one with **New category…**.
+5. Select **Add**.
+
+The note carries the origin **Note**. Instead of **Open original**, its page only shows **Note**, because there is no source.
 
 ### Review and organize items
 
@@ -35,9 +47,10 @@ Learnings from coding-agent sessions arrive in the same Inbox as items with orig
 
    ![Inbox with three collected clips of origin "Clip" in category Inbox, status "Collected", in the Brennwerk Cockpit](images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp)
 
-2. Click an item. Its page shows the text and the original source on the **Content** tab.
-3. Optional: select **Edit item** to change title, content or category. The captured original is preserved.
-4. Optional: **Discard** or **Restore**.
+2. Optional: above the list, select **By AI**. You then only see items an agent or a chat session prepared. **All** shows every item again.
+3. Click an item. Its page shows the text and the origin on the **Content** tab. For collected pages, **Open original** opens the source.
+4. Optional: select **Edit item** to change title, content or category. The captured original is preserved.
+5. Optional: **Discard** or **Restore**.
 
 Inbox visibility follows the permissions of your workspace. Categories are not private.
 
@@ -70,13 +83,14 @@ Good to know:
 - If a proposal or its sources change, you review it again.
 - SubKit replaces credentials such as API keys and tokens before saving an item.
 - The item's original stays linked to the knowledge or skill.
+- You keep maintaining confirmed sources and skills as described in "Maintain sources, skills and files".
 
 ### If something does not work
 
 | What you see | What to do |
 | --- | --- |
 | The Web Clipper reports no connection or an invalid key | Follow "If something does not work" in the chapter "Collect web pages with the Web Clipper". |
-| An item is missing in the **Inbox** | Check the category and the origin filter. |
+| An item is missing in the **Inbox** | Check the category and the origin. Select **All** instead of **By AI**. |
 | "You lack the rights for this. …" | Ask an administrator for `intake:confirm` and the destination right. |
 | "This suggestion changed. Review the current content before confirming it." | Read the current content, then confirm again. |
 | "A skill this suggestion refers to can no longer be loaded. …" | Revise the suggestion in the chat before you confirm. |

@@ -71,7 +71,7 @@ If the chat offers an approval, it opens the same dialog.
 | Field | What it controls |
 | --- | --- |
 | **Environment** | Where the runs are allowed, for example **Production**. |
-| **Operations and external targets** | Which services and addresses the workflow reaches. |
+| **Operations and external targets** | Which services and addresses the workflow reaches. Each service shows its provider's logo. |
 | **Validity** | How long the approval applies: **7 days**, **30 days** or **Until revoked**. |
 
 ### Start the workflow
@@ -112,5 +112,5 @@ sk executions result <run-id>
 | The run result is headed **Trial run result — not written** | The version has no approval yet. Follow "Approve what it may touch". |
 | "Not started (…): no valid approval covers this run." | The approval is missing, expired or used up. Approve again or extend it. |
 | "… must be reconnected" | Open the connector under **Connectors** and select **Sign in again**. |
-| **You do not have permission to run this workflow.** | Ask your administrator for a role that may run workflows. |
+| **You may not start this workflow.** | Ask your administrator for a role that may run workflows. |
 | A step failed | Open the run, read the error and describe it in the same chat. SubKit suggests a fix that you review again. |

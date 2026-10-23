@@ -13,7 +13,7 @@ Der Weg ist immer gleich: **sammeln → im Chat prüfen → bestätigen → Wiss
 
 ### Was du brauchst
 
-- Den Web Clipper in Chrome, installiert und verbunden. Installation, Updates und Fehlerbehebung des Web Clippers stehen im Kapitel „Webseiten mit dem Web Clipper sammeln“.
+- Für Webseiten: den Web Clipper in Chrome, installiert und verbunden. Installation, Updates und Fehlerbehebung des Web Clippers stehen im Kapitel „Webseiten mit dem Web Clipper sammeln“.
 - Zum Sammeln: ein Konto mit `intake:read` und `intake:write`.
 - Zum Bestätigen: eine Browsersitzung im Cockpit mit `intake:confirm`, dazu `knowledge:write` für Wissen oder `skill:write` und `skill:activate` für einen Skill. Wer Skills ersetzt, braucht zusätzlich `skill:archive` für jeden ersetzten Skill.
 
@@ -27,7 +27,19 @@ Der Weg ist immer gleich: **sammeln → im Chat prüfen → bestätigen → Wiss
 6. Wähle eine Kategorie. Deine Standardkategorie ist vorausgewählt, anfangs `inbox`.
 7. Wähle **Sammeln**.
 
-Erkenntnisse aus Sitzungen mit Coding-Agenten landen als Einträge mit der Herkunft `session` im selben Eingang. Der Eingang zeigt die Herkunft als Filter und Badge.
+Erkenntnisse aus Sitzungen mit Coding-Agenten landen im selben Eingang, mit der Herkunft **Programmier-Assistent**. Gesammelte Seiten tragen die Herkunft **Browser**.
+
+### Eine Notiz hinzufügen
+
+Eine Notiz ist ein Eintrag ohne Quelladresse, etwa ein Gedanke oder eine Idee.
+
+1. Öffne im Cockpit **Eingang** und wähle **Eintrag hinzufügen**. Ist der Eingang noch leer, wähle **Notiz hinzufügen**.
+2. Gib im Dialog **Zum Eingang hinzufügen** einen **Titel** ein.
+3. Schreib unter **Inhalt** den Text. Markdown ist erlaubt.
+4. Wähle eine **Kategorie** oder lege mit **Neue Kategorie …** eine neue an.
+5. Wähle **Hinzufügen**.
+
+Die Notiz trägt die Herkunft **Notiz**. Statt **Original öffnen** zeigt ihre Seite nur **Notiz**, denn es gibt keine Quelle.
 
 ### Einträge prüfen und ordnen
 
@@ -35,9 +47,10 @@ Erkenntnisse aus Sitzungen mit Coding-Agenten landen als Einträge mit der Herku
 
    ![Eingang mit drei Einträgen der Herkunft „Fundstück“ in der Kategorie Inbox, Status „Gesammelt“](images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.de.webp)
 
-2. Klicke auf einen Eintrag. Seine Seite zeigt im Tab **Inhalt** den Text und die ursprüngliche Quelle.
-3. Optional: Wähle **Eintrag bearbeiten**, um Titel, Inhalt oder Kategorie zu ändern. Das erfasste Original bleibt erhalten.
-4. Optional: **Verwerfen** oder **Wiederherstellen**.
+2. Optional: Wähle über der Liste **Von KI**. Dann siehst du nur Einträge, die ein Agent oder eine Chat-Sitzung vorbereitet hat. **Alle** zeigt wieder jeden Eintrag.
+3. Klicke auf einen Eintrag. Seine Seite zeigt im Tab **Inhalt** den Text und die Herkunft. Bei gesammelten Seiten öffnet **Original öffnen** die Quelle.
+4. Optional: Wähle **Eintrag bearbeiten**, um Titel, Inhalt oder Kategorie zu ändern. Das erfasste Original bleibt erhalten.
+5. Optional: **Verwerfen** oder **Wiederherstellen**.
 
 Die Sichtbarkeit im Eingang folgt den Rechten deines Arbeitsbereichs. Kategorien sind nicht privat.
 
@@ -70,13 +83,14 @@ Gut zu wissen:
 - Ändert sich ein Vorschlag oder seine Quellen, prüfst du ihn erneut.
 - SubKit ersetzt Zugangsdaten wie API-Schlüssel und Tokens, bevor ein Eintrag gespeichert wird.
 - Das Original des Eintrags bleibt mit dem Wissen oder Skill verknüpft.
+- Bestätigte Quellen und Skills pflegst du weiter, wie im Kapitel „Quellen, Skills und Dateien pflegen“ beschrieben.
 
 ### Wenn etwas nicht klappt
 
 | Was du siehst | Was du tust |
 | --- | --- |
 | Der Web Clipper meldet keine Verbindung oder einen ungültigen Schlüssel | Folge „Wenn etwas nicht klappt“ im Kapitel „Webseiten mit dem Web Clipper sammeln“. |
-| Ein Eintrag fehlt im **Eingang** | Prüfe Kategorie und Herkunftsfilter. |
+| Ein Eintrag fehlt im **Eingang** | Prüfe Kategorie und Herkunft. Wähle **Alle** statt **Von KI**. |
 | „Dafür fehlen dir die Rechte. …“ | Bitte eine Administratorin oder einen Administrator um `intake:confirm` und das Recht des Ziels. |
 | „Dieser Vorschlag hat sich geändert. Prüfe den aktuellen Inhalt, bevor du bestätigst.“ | Lies den aktuellen Inhalt und bestätige dann erneut. |
 | „Ein Skill, auf den sich dieser Vorschlag bezieht, lässt sich nicht mehr laden. …“ | Überarbeite den Vorschlag im Chat, bevor du bestätigst. |

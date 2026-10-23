@@ -13,6 +13,10 @@ Du beschreibst die Arbeit in einfacher Sprache. Du gibst frei, was sie berühren
 
 ![Übersicht mit Kennzahlen zu Läufen, Erfolgsquote, Konnektorzustand und Kosten, der Liste „Braucht dich“ mit offenen Entscheidungen und den letzten fehlgeschlagenen Läufen](images/intro-overview.de.webp)
 
+Die **Übersicht** zeigt ihre Kennzahlen für einen **Zeitraum**: **24 Std**, **Diese Woche**, **Letzte Woche**, **Dieser Monat** oder **Letzter Monat**.
+Wochen beginnen am Montag, und es gilt deine Zeitzone. Die Seite **Nutzung** bietet dieselbe Auswahl.
+Die Kachel **Nutzung** folgt dem gewählten Zeitraum und zeigt, wie viel Prozent des Monatskontingents verbraucht sind, etwa „42 % des Monatskontingents“.
+
 Nutze SubKit Cloud oder betreibe deine eigene Engine:
 
 - „SubKit Cloud nutzen“: SubKit läuft für dich, und du meldest dich im Browser an.

@@ -13,6 +13,10 @@ You describe the work in plain language. You approve what it may touch. Every ru
 
 ![Overview with key figures for runs, success rate, connector health and cost, the "Needs you" list with open decisions and the latest failed runs](images/intro-overview.en.webp)
 
+The **Overview** shows its key figures for a **Time window**: **24 h**, **This week**, **Last week**, **This month** or **Last month**.
+Weeks start on Monday, and your time zone applies. The **Usage** page offers the same choice.
+The **Usage** tile follows the chosen time window and shows how much of the monthly budget is used, for example "42% of the monthly token budget".
+
 Use it as SubKit Cloud or run your own engine:
 
 - "Use SubKit Cloud": SubKit runs for you, and you sign in from the browser.
