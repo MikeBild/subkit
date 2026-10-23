@@ -1,6 +1,8 @@
 import { isIP } from "node:net";
 import type { MiddlewareHandler } from "hono";
 import { getConfig } from "../config/loader.ts";
+import { isPrivateOrLoopback } from "../connectors/egress-guard.ts";
+import { logger } from "../logging/logger.ts";
 import type { AppEnv } from "./openapi.ts";
 
 export function normalizeClientIp(value: string | undefined): string | undefined {
@@ -42,6 +44,41 @@ export function resolveTrustedClientIp(options: {
   return candidate;
 }
 
+export type ProxyPeerKind = "loopback" | "private";
+
+export function detectUntrustedProxy(options: {
+  peer?: string | undefined;
+  forwardedFor?: string | undefined;
+  trustedHops: number;
+  trustedProxyIps: string[];
+}): ProxyPeerKind | undefined {
+  if (!options.forwardedFor?.trim()) return undefined;
+  const peer = normalizeClientIp(options.peer);
+  if (!peer || !isPrivateOrLoopback(peer)) return undefined;
+  const trusted = new Set(options.trustedProxyIps.map(normalizeClientIp).filter(Boolean));
+  if (Number.isInteger(options.trustedHops) && options.trustedHops >= 1 && trusted.has(peer)) {
+    return undefined;
+  }
+  return peer === "::1" || /^127\./.test(peer) ? "loopback" : "private";
+}
+
+let proxyUntrustedWarned = false;
+
+export function __resetProxyUntrustedWarning(): void {
+  proxyUntrustedWarned = false;
+}
+
+function warnUntrustedProxyOnce(peerKind: ProxyPeerKind | undefined): void {
+  if (!peerKind || proxyUntrustedWarned) return;
+  proxyUntrustedWarned = true;
+  logger.warn({
+    module: "http",
+    action: "client_ip.proxy_untrusted",
+    msg: "requests arrive through a reverse proxy with X-Forwarded-For, but no proxy trust is configured; every client shares the proxy address for rate limits and auth-failure tracking. Set server.trusted_proxy_hops and server.trusted_proxy_ips.",
+    peer_kind: peerKind,
+  });
+}
+
 export function clientIpMiddleware(): MiddlewareHandler<AppEnv> {
   return async (context, next) => {
     let trustedHops = 0;
@@ -51,15 +88,14 @@ export function clientIpMiddleware(): MiddlewareHandler<AppEnv> {
       trustedHops = server.trusted_proxy_hops;
       trustedProxyIps = server.trusted_proxy_ips;
     } catch {}
-    context.set(
-      "client_ip",
-      resolveTrustedClientIp({
-        peer: context.env?.incoming?.socket.remoteAddress,
-        forwardedFor: context.req.header("x-forwarded-for"),
-        trustedHops,
-        trustedProxyIps,
-      }),
-    );
+    const resolution = {
+      peer: context.env?.incoming?.socket.remoteAddress,
+      forwardedFor: context.req.header("x-forwarded-for"),
+      trustedHops,
+      trustedProxyIps,
+    };
+    warnUntrustedProxyOnce(detectUntrustedProxy(resolution));
+    context.set("client_ip", resolveTrustedClientIp(resolution));
     await next();
   };
 }
