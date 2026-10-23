@@ -4,6 +4,7 @@ import type { Executor } from "../db/client.ts";
 import { connectors as connectorsTable, workflowExecutionAuthorities } from "../db/schema/index.ts";
 import { summarizeShape } from "../llm/core/context-assembler/formatters.ts";
 import { type GenerationNeed, isUserNeed } from "../llm/core/generation-abort.ts";
+import { logger } from "../logging/logger.ts";
 import { listLatestShapes } from "../schema-versions/service.ts";
 import type { SchemaShape } from "../self-healing/types.ts";
 
@@ -422,4 +423,104 @@ export function nextActionsForNeeds(
   }
   add("author_workflow");
   return actions;
+}
+
+export type GenerationAbortOutcome =
+  | { kind: "needs_user"; needs: GenerationNeed[]; userPrompt: UserPromptPayload }
+  | { kind: "unresolved" }
+  | { kind: "regrounded"; evidence: string; plan: RegroundPlan };
+
+export async function resolveGenerationAbort(args: {
+  ctx: {
+    db: Executor;
+    tenant_id: string;
+    conversation_id?: string | undefined;
+    onLog?: ((level: "debug" | "info" | "warn" | "error", message: string) => void) | undefined;
+  };
+  abort: { reason: string; needs: GenerationNeed[] };
+  pass: number;
+  connectors: ReadonlyArray<RegroundConnector>;
+  discoveredById: ReadonlyMap<string, DiscoveryResult>;
+  excerptCap: number;
+  canReground: boolean;
+  alreadyRegrounded: boolean;
+}): Promise<GenerationAbortOutcome> {
+  const { ctx, abort, pass, connectors } = args;
+  const plan = planRegrounding({
+    needs: abort.needs,
+    connectors,
+    discoveredById: args.discoveredById,
+    excerptCap: args.excerptCap,
+  });
+  const userNeeds: GenerationNeed[] = [
+    ...abort.needs.filter(isUserNeed),
+    ...plan.outOfScope.map((need) => ({
+      ...need,
+      kind: "connector_choice" as const,
+      question:
+        need.question ??
+        `The draft needs \`${need.connector_slug}\`, which this authoring call was not given. Which connector should it use?`,
+    })),
+  ];
+  if (userNeeds.length > 0) {
+    const candidates = await loadConnectorChoiceCandidates(ctx.db, ctx.tenant_id, {
+      needs: userNeeds,
+      inScope: connectors,
+    });
+    const userPrompt = buildUserPrompt({ needs: userNeeds, candidates, reason: abort.reason });
+    logger.info({
+      module: "conversations",
+      action: "authoring_pipeline.abort_needs_user",
+      msg: "generation aborted on a fact only the user can decide — handing a prefilled question to the outer agent",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      pass,
+      need_kinds: abort.needs.map((n) => n.kind),
+      prompt_tool: userPrompt.tool,
+    });
+    ctx.onLog?.("warn", `generate · aborted — the user must decide: ${abort.reason}`);
+    return {
+      kind: "needs_user",
+      needs: [...userNeeds, ...abort.needs.filter((n) => !isUserNeed(n))],
+      userPrompt,
+    };
+  }
+  const shapes = args.canReground
+    ? await loadRecordedShapesForNeeds(ctx.db, ctx.tenant_id, plan.targets)
+    : [];
+  const raisedCapSlugs = connectors.filter((c) => plan.caps.has(c.id)).map((c) => c.slug);
+  const evidence = args.canReground
+    ? formatRegroundedEvidence({ connectors, pins: plan.pins, shapes, raisedCapSlugs })
+    : null;
+  if (!evidence) {
+    logger.info({
+      module: "conversations",
+      action: "authoring_pipeline.abort_unresolved",
+      msg: "generation aborted for evidence the engine cannot find — returning the needs to the outer agent instead of an identical retry",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      pass,
+      already_regrounded: args.alreadyRegrounded,
+      need_kinds: abort.needs.map((n) => n.kind),
+    });
+    return { kind: "unresolved" };
+  }
+  const pinnedCount = [...plan.pins.values()].reduce((acc, list) => acc + list.length, 0);
+  logger.info({
+    module: "conversations",
+    action: "authoring_pipeline.regrounded",
+    msg: "generation aborted for missing evidence — re-grounded the named routes and recorded shapes for one more pass",
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    pass,
+    pinned_routes: pinnedCount,
+    recorded_shapes: shapes.length,
+    raised_caps: raisedCapSlugs.length,
+    unresolved_needs: plan.unresolved.length,
+  });
+  ctx.onLog?.(
+    "info",
+    `ground · re-grounded ${pinnedCount} route(s) and ${shapes.length} recorded shape(s) named by the abort`,
+  );
+  return { kind: "regrounded", evidence, plan };
 }

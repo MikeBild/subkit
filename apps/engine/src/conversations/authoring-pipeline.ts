@@ -40,7 +40,7 @@
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 import { readDiscoveryIndexForConnector } from "../connectors/discovery/service.ts";
-import type { DiscoveredEndpoint, DiscoveryResult } from "../connectors/discovery/types.ts";
+import type { DiscoveryResult } from "../connectors/discovery/types.ts";
 import { connectors as connectorsTable, conversationToolCalls } from "../db/schema/index.ts";
 import {
   findUnknownFunctionCalls,
@@ -50,7 +50,7 @@ import {
 import { LLM_CALL_TIMEOUT_MS } from "../llm/core/ai-sdk-model.ts";
 import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatters.ts";
 import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
-import { type GenerationNeed, isUserNeed } from "../llm/core/generation-abort.ts";
+import type { GenerationNeed } from "../llm/core/generation-abort.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { LlmError, LlmGenerationAborted, LlmProviderError } from "../llm/errors.ts";
 import { buildProviderErrorDetails, classifyProviderError } from "../llm/provider-errors.ts";
@@ -72,15 +72,11 @@ import {
 } from "../workflows/types.ts";
 import { runCriticAgent } from "./authoring-critic/critic-agent.ts";
 import { shouldRunCritic } from "./authoring-critic/gating.ts";
-import { selectDiscoveredEndpoints } from "./authoring-endpoint-selection.ts";
 import {
-  buildUserPrompt,
-  formatRegroundedEvidence,
-  loadConnectorChoiceCandidates,
-  loadRecordedShapesForNeeds,
-  planRegrounding,
-  type UserPromptPayload,
-} from "./authoring-regrounding.ts";
+  DISCOVERED_ENDPOINTS_PER_CONNECTOR,
+  formatDiscoveredEndpoints,
+} from "./authoring-endpoint-selection.ts";
+import { resolveGenerationAbort, type UserPromptPayload } from "./authoring-regrounding.ts";
 import { withWorkflowDraft } from "./authoring-state.ts";
 import {
   buildGroundingIndex,
@@ -103,7 +99,6 @@ export const PIPELINE_DEADLINE_MS = (MAX_GENERATION_PASSES + 1) * LLM_CALL_TIMEO
 const DOCS_EXCERPT_CAP_CHARS = 1_500;
 const DOCS_SNIPPETS_PER_CONNECTOR = 4;
 const INPUT_EXAMPLE_CAP_CHARS = 1_000;
-const DISCOVERED_ENDPOINTS_PER_CONNECTOR = 40;
 
 export const JSONATA_ARGMAX_IDIOM =
   '($t := $scope.forecast.data.daily.temperature_2m_max; $m := $max($t); $idx := ($t#$i[$ = $m].$i)[0]; { "hottest_day": $scope.forecast.data.daily.time[$idx], "max_temp": $m })';
@@ -118,46 +113,6 @@ const JSONATA_CONTRACT_LINES: ReadonlyArray<string> = [
   `- Argmax (index of the maximum) — verified idiom: \`${JSONATA_ARGMAX_IDIOM}\`.`,
   "- `output_transform` (JSONata) runs once at the end: its root value is the last step's `.data`, with `$scope.<step_id>.data` and `$input` bound. `output_transform_function` is the JavaScript alternative — a FUNCTION BODY whose single `input` IS that final value (there is NO `input.scope` and NO `input.input` there). Set exactly one of the two.",
 ];
-
-function formatDiscoveredEndpoints(
-  connectors: GroundedConnector[],
-  discoveredById: Map<string, DiscoveryResult>,
-  goal: string,
-  regrounding?: {
-    pins: ReadonlyMap<string, DiscoveredEndpoint[]>;
-    caps: ReadonlyMap<string, number>;
-  },
-): string | null {
-  const blocks: string[] = [];
-  for (const c of connectors) {
-    const index = discoveredById.get(c.id);
-    if (!index || index.endpoints.length === 0) continue;
-    const cap = regrounding?.caps.get(c.id) ?? DISCOVERED_ENDPOINTS_PER_CONNECTOR;
-    const selected = selectDiscoveredEndpoints(
-      index.endpoints,
-      goal,
-      cap,
-      regrounding?.pins.get(c.id) ?? [],
-    );
-    const lines = selected.map((e) => {
-      const ct = e.request_content_type ? ` [${e.request_content_type}]` : "";
-      const summary = e.summary ? ` — ${e.summary}` : "";
-      return `- ${e.method} ${e.path}${ct}${summary}`;
-    });
-    if (index.endpoints.length > selected.length) {
-      lines.push(
-        `- …and ${index.endpoints.length - selected.length} documented routes are omitted from this goal-ranked excerpt. No discovery tool is available in this generation call. If the supplied routes cannot satisfy the goal, call abort and list each missing operation in \`needs\` (kind endpoint_contract with connector_slug, method and path) so the engine can look it up.`,
-      );
-    }
-    blocks.push(`### \`${c.slug}\` (base_url ${c.base_url ?? "(none)"})`, ...lines);
-  }
-  if (blocks.length === 0) return null;
-  return [
-    "## Discovered endpoints — authoritative source of truth",
-    "The connector(s) below publish a machine-readable spec. These listed routes are documented, but the excerpt may omit other routes. Bind every request step to an exact grounded `method` + `path` pair — do NOT invent, guess, drop a version prefix, or REST-ify routes (e.g. never turn `/v1/sites/{site}/content` into `/sites/{site}/items`). When an endpoint declares a request media type in `[brackets]`, encode the body that way — for `text/markdown` send the raw markdown string as the body, NOT a JSON object wrapping it.",
-    ...blocks,
-  ].join("\n");
-}
 
 function callsUnknownJsonataFunction(candidate: GeneratedWorkflow): boolean {
   return workflowJsonataSites(candidate as unknown as WorkflowDef).some((site) => {
@@ -701,107 +656,37 @@ export async function runAuthoringPipeline(
         lastAbort = { reason: err.reason, needs: err.needs };
         lastGenerationError = message;
         passErrors = [{ path: "(llm)", message }];
-        const plan = planRegrounding({
-          needs: err.needs,
+        const outcome = await resolveGenerationAbort({
+          ctx,
+          abort: err,
+          pass,
           connectors,
           discoveredById,
           excerptCap: DISCOVERED_ENDPOINTS_PER_CONNECTOR,
+          canReground: !regrounded && pass < MAX_GENERATION_PASSES,
+          alreadyRegrounded: regrounded,
         });
-        const userNeeds: GenerationNeed[] = [
-          ...err.needs.filter(isUserNeed),
-          ...plan.outOfScope.map((need) => ({
-            ...need,
-            kind: "connector_choice" as const,
-            question:
-              need.question ??
-              `The draft needs \`${need.connector_slug}\`, which this authoring call was not given. Which connector should it use?`,
-          })),
-        ];
-        if (userNeeds.length > 0) {
-          const candidates = await loadConnectorChoiceCandidates(ctx.db, ctx.tenant_id, {
-            needs: userNeeds,
-            inScope: connectors,
-          });
-          const userPrompt = buildUserPrompt({
-            needs: userNeeds,
-            candidates,
-            reason: err.reason,
-          });
-          logger.info({
-            module: "conversations",
-            action: "authoring_pipeline.abort_needs_user",
-            msg: "generation aborted on a fact only the user can decide — handing a prefilled question to the outer agent",
-            tenant_id: ctx.tenant_id,
-            conversation_id: ctx.conversation_id,
-            pass,
-            need_kinds: err.needs.map((n) => n.kind),
-            prompt_tool: userPrompt.tool,
-          });
-          ctx.onLog?.("warn", `generate · aborted — the user must decide: ${err.reason}`);
+        if (outcome.kind === "needs_user") {
           return {
             ok: false,
             error_code: "authoring_generation_failed",
-            message: `The generation stage needs a decision before it can author this workflow: ${err.reason} Ask the user with the prefilled ${userPrompt.tool} payload, then call author_workflow again with the answer in the goal or connector list. No draft was changed.`,
+            message: `The generation stage needs a decision before it can author this workflow: ${err.reason} Ask the user with the prefilled ${outcome.userPrompt.tool} payload, then call author_workflow again with the answer in the goal or connector list. No draft was changed.`,
             requires_user_input: true,
-            needs: [...userNeeds, ...err.needs.filter((n) => !isUserNeed(n))],
-            user_prompt: userPrompt,
+            needs: outcome.needs,
+            user_prompt: outcome.userPrompt,
             errors: passErrors,
             attempts,
             unresolved_connectors: unresolved,
           };
         }
-        const shapes =
-          !regrounded && pass < MAX_GENERATION_PASSES
-            ? await loadRecordedShapesForNeeds(ctx.db, ctx.tenant_id, plan.targets)
-            : [];
-        const raisedCapSlugs = connectors.filter((c) => plan.caps.has(c.id)).map((c) => c.slug);
-        const evidence =
-          !regrounded && pass < MAX_GENERATION_PASSES
-            ? formatRegroundedEvidence({
-                connectors,
-                pins: plan.pins,
-                shapes,
-                raisedCapSlugs,
-              })
-            : null;
-        if (!evidence) {
-          logger.info({
-            module: "conversations",
-            action: "authoring_pipeline.abort_unresolved",
-            msg: "generation aborted for evidence the engine cannot find — returning the needs to the outer agent instead of an identical retry",
-            tenant_id: ctx.tenant_id,
-            conversation_id: ctx.conversation_id,
-            pass,
-            already_regrounded: regrounded,
-            need_kinds: err.needs.map((n) => n.kind),
-          });
-          if (!definition) validationErrors = passErrors;
-          break;
-        }
-        regrounded = true;
-        regroundedSection = evidence;
-        discoveredSection = formatDiscoveredEndpoints(connectors, discoveredById, goal, {
-          pins: plan.pins,
-          caps: plan.caps,
-        });
-        const pinnedCount = [...plan.pins.values()].reduce((acc, list) => acc + list.length, 0);
-        logger.info({
-          module: "conversations",
-          action: "authoring_pipeline.regrounded",
-          msg: "generation aborted for missing evidence — re-grounded the named routes and recorded shapes for one more pass",
-          tenant_id: ctx.tenant_id,
-          conversation_id: ctx.conversation_id,
-          pass,
-          pinned_routes: pinnedCount,
-          recorded_shapes: shapes.length,
-          raised_caps: raisedCapSlugs.length,
-          unresolved_needs: plan.unresolved.length,
-        });
-        ctx.onLog?.(
-          "info",
-          `ground · re-grounded ${pinnedCount} route(s) and ${shapes.length} recorded shape(s) named by the abort`,
-        );
         if (!definition) validationErrors = passErrors;
+        if (outcome.kind === "unresolved") break;
+        regrounded = true;
+        regroundedSection = outcome.evidence;
+        discoveredSection = formatDiscoveredEndpoints(connectors, discoveredById, goal, {
+          pins: outcome.plan.pins,
+          caps: outcome.plan.caps,
+        });
         priorFindings = renderValidationFindings(passErrors);
         continue;
       }
