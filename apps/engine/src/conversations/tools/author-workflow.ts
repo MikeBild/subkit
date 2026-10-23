@@ -52,15 +52,15 @@ const inputSchema = z
 export const authorWorkflowTool: ConversationTool = {
   name: "author_workflow",
   description:
-    "THE canonical entry for authoring a NEW workflow. Never for an existing one: a slug that is already saved is refused with workflow_already_exists — open it with open_workflow_draft and change it with edit_workflow_patch. One call runs the engine-side pipeline — ground in the named connectors (recorded endpoint samples + docs), generate the COMPLETE definition (JavaScript transforms by default), evaluate it against recorded evidence with bounded auto-repair — and returns the evaluated draft. Set the requested name and slug on the draft, then inspect it. Preview ordinary definitions; inspect and validate sensitive definitions before saving them inactive.",
+    "THE canonical entry for authoring a NEW workflow. Never for an existing one: a slug that is already saved is refused with workflow_already_exists — open it with open_workflow_draft and change it with edit_workflow_patch. One call runs the engine-side pipeline — ground in the named connectors (recorded endpoint samples + docs), generate the COMPLETE definition (JavaScript transforms by default), evaluate it against recorded evidence with bounded auto-repair — and returns the evaluated draft. Set the requested name and slug on the draft, then inspect it and preview it. A sensitive definition previews as a metadata-only test run.",
   use_case:
     "Use whenever the user asks to build/create/author a workflow. This is THE builder; apply targeted follow-up edits afterwards with edit_workflow_patch.",
   important_notes: [
-    "Writes to the conversation draft only. Ordinary definitions use dry_run_workflow next; a green, judged preview auto-commits. Sensitive definitions use inspect_workflow_draft and validate_draft before an inert save, without chat preview.",
-    "Pass the user's goal VERBATIM and pass any explicitly requested name/slug in their fields. Verify them before preview or sensitive-draft review; an ordinary green preview can save immediately. Do not defer requested naming to update_workflow after saving.",
+    "Writes to the conversation draft only. Definitions use dry_run_workflow next; a green, judged ordinary preview auto-commits. A sensitive definition gets a metadata-only test run (statuses, counts, check verdicts, never values) and then waits for an explicit inactive save.",
+    "Pass the user's goal VERBATIM and pass any explicitly requested name/slug in their fields. Verify them before preview; an ordinary green preview can save immediately. Do not defer requested naming to update_workflow after saving.",
     "When the user supplied (or you can infer) an example input payload, pass it as `input_example`. It is persisted as the workflow's sample and becomes the input contract the run/dry-run present — a far more reliable idiom than hand-writing an input_schema. A run/dry-run TEST payload is a separate thing and is never written into the workflow.",
     "Name every connector the workflow should call (ids or slugs) — their recorded endpoint samples and docs ground the generation. Probe a connector first when it has never been called; recorded shapes make the difference between a grounded draft and a guessed one.",
-    "The result's `recorded_eval` may carry findings and verified `repair` proposals; a valid definition is stashed with them — apply repairs via edit_workflow_patch, then preview ordinary definitions or inspect and validate sensitive definitions. A definition that fails workflow validation is never stashed: the call refuses with authoring_definition_invalid and the previous draft stays.",
+    "The result's `recorded_eval` may carry findings and verified `repair` proposals; a valid definition is stashed with them — apply repairs via edit_workflow_patch, then preview with dry_run_workflow (metadata-only for sensitive definitions). A definition that fails workflow validation is never stashed: the call refuses with authoring_definition_invalid and the previous draft stays.",
     "Destinations (recipients, channels, webhook URLs, upload targets) come from the user: when the goal does not name them, ask with ask_user_text/ask_user_form BEFORE calling this tool. A generated definition that fills a destination with a placeholder is refused with authoring_definition_invalid, `requires_user_input: true` and `placeholder_destinations` naming each field; never retry with another placeholder.",
     "No live HTTP fires inside this call; generation cost rides the tenant token budget (≤2 generation passes + bounded expression repair).",
   ],
@@ -221,8 +221,8 @@ export const authorWorkflowTool: ConversationTool = {
           next_step: result.next,
           next_hint: sensitiveDefinition
             ? result.recorded_eval.ok
-              ? "Inspect and validate the draft, then save it inactive. Chat preview is unavailable for sensitive definitions."
-              : "Apply the recorded_eval findings via edit_workflow_patch, then inspect and validate before an inactive save. Chat preview is unavailable for sensitive definitions."
+              ? "Run dry_run_workflow: the sensitive test run returns metadata only, never values. Then save it inactive."
+              : "Apply the recorded_eval findings via edit_workflow_patch, then run the metadata-only dry_run_workflow before an inactive save."
             : result.recorded_eval.ok
               ? "Preview with dry_run_workflow — a green, judged preview auto-commits."
               : "Apply the recorded_eval findings (verified repairs ride findings[].repair.expression) via edit_workflow_patch, then dry_run_workflow.",

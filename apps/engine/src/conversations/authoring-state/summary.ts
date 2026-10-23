@@ -290,15 +290,14 @@ export function computeBlockedBy(
         blocked.push("validate_draft");
       }
       if (
-        workflow.execution_privacy !== "sensitive" &&
-        (checkpointStatus(state, "workflow_previewed") !== "fresh" || latest_preview?.ok !== true)
+        checkpointStatus(state, "workflow_previewed") !== "fresh" ||
+        latest_preview?.ok !== true
       ) {
         blocked.push("dry_run_workflow");
       }
     }
     if (
       active.lifecycle_state === "persisted" &&
-      workflow.execution_privacy !== "sensitive" &&
       pendingInactiveDraft(state) &&
       !savedDraftPreviewed(state, latest_preview)
     ) {
@@ -465,7 +464,7 @@ export function computeNextAction(
   }
   if (active.kind === "workflow" && active.lifecycle_state === "draft_only") {
     return workflow.execution_privacy === "sensitive"
-      ? "Save the inert sensitive workflow draft after inspection and validation; runtime verification remains not performed."
+      ? "Save the inactive sensitive workflow draft now that inspection, validation and the metadata-only test run are fresh."
       : "Commit the workflow now that inspection, validation, and preview are fresh.";
   }
   if (

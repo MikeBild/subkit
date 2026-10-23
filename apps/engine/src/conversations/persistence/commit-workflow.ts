@@ -412,20 +412,24 @@ async function runSaveGauntlet(
   };
 
   const gatePreview = async (): Promise<ToolResult | null> => {
-    if (sensitiveDraft) return null;
     if (verification.preview === "skipped_by_user") return null;
     if ((previewMissing || previewFailed) && !forceClearsPreview) {
       const configInvalid = previewFailureClass === "config_invalid";
+      const sensitivePreviewFailed = sensitiveDraft && previewFailed;
       const recovery = configInvalid
         ? ["dry_run_workflow", "inspect_workflow"]
-        : previewFailed
-          ? ["dry_run_workflow", "ask_user_confirm", "save_workflow_draft"]
-          : ["dry_run_workflow"];
+        : sensitivePreviewFailed
+          ? ["dry_run_workflow", "inspect_workflow_draft", "edit_workflow_patch"]
+          : previewFailed
+            ? ["dry_run_workflow", "ask_user_confirm", "save_workflow_draft"]
+            : ["dry_run_workflow"];
       const topMessage = configInvalid
         ? `the dry-run failed because the workflow itself is invalid (${previewFailureClass}) — force_commit cannot bypass a config-invalid failure; fix the draft (resolve the step reference / expression / cycle) and re-run dry_run_workflow`
-        : previewFailed
-          ? "the most recent dry-run was unsuccessful — re-run dry_run_workflow successfully, or call save_workflow_draft again with force_commit: true after the operator explicitly confirms"
-          : "workflow commit is blocked until a successful dry_run_workflow has run";
+        : sensitivePreviewFailed
+          ? "the most recent sensitive metadata test run was unsuccessful — fix the draft from the step statuses and safe failure codes, then re-run dry_run_workflow; sensitive definitions cannot be force-saved"
+          : previewFailed
+            ? "the most recent dry-run was unsuccessful — re-run dry_run_workflow successfully, or call save_workflow_draft again with force_commit: true after the operator explicitly confirms"
+            : "workflow commit is blocked until a successful dry_run_workflow has run";
       return {
         ok: false,
         error_code: previewFailed ? "preview_failed" : "workflow_not_ready",
@@ -444,7 +448,7 @@ async function runSaveGauntlet(
           next_best_actions: recovery,
           extra: {
             latest_preview: latestPreview ?? null,
-            force_commit_available: runtimeDataFailure,
+            force_commit_available: runtimeDataFailure && !sensitiveDraft,
             preparation_required: previewMissing,
             ...(previewMissing
               ? {
@@ -553,7 +557,11 @@ async function persistAfterGauntlet(
       ...p.extraAuditMetadata,
       reason: p.reason ?? "authoring_draft_saved",
       source: p.emitAutoPersistAudit ? "harness_auto_persist" : "tool_call",
-      ...(sensitiveDraft || previewSkippedByUser ? { runtime_verification: "not_performed" } : {}),
+      ...(previewSkippedByUser
+        ? { runtime_verification: "not_performed" }
+        : sensitiveDraft
+          ? { runtime_verification: "metadata_only" }
+          : {}),
       ...(previewSkippedByUser ? { preview_skipped: "explicit_no_run" } : {}),
       ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
       ...(forceClearsPreview && runtimeDataFailure
@@ -579,9 +587,9 @@ async function persistAfterGauntlet(
     ...result,
     data: {
       ...(typeof result.data === "object" && result.data !== null ? result.data : {}),
-      runtime_verification: "not_performed",
+      runtime_verification: previewSkippedByUser ? "not_performed" : "metadata_only",
       verification_guidance:
-        "Only the inactive sensitive definition was saved. Chat previews remain forbidden; use the permitted execution/result API with the original caller for separately authorized runtime verification.",
+        "Only the inactive sensitive definition was saved. Its test run returned metadata only; values stay withheld from chat. Use the permitted execution/result API with the original caller for separately authorized live verification.",
     },
   };
 }

@@ -121,14 +121,15 @@ describe("loaded caller authoring contract", () => {
     expect(callerPrompt.length).toBeLessThan(2600);
   });
 
-  test("sensitive authoring refuses invented preview evidence and overrides ordinary save recipes", () => {
+  test("sensitive authoring keeps values out of the metadata test run and never forces a save", () => {
     for (const text of [authoring, api, immutable, prompt]) {
       expect(text).toContain("sensitive");
       expect(text).toContain("dry_run_workflow");
     }
-    expect(authoring).toContain("do not force a sensitive save");
+    expect(authoring).toContain("cannot be forced");
+    expect(authoring).toContain("returns metadata only");
     expect(immutable).toContain("never invent caller/private fixtures or force a save");
-    expect(immutable).toContain("do not retry a forbidden preview");
+    expect(immutable).toContain("You never see values");
     expect(prompt).toContain("Do not invent caller fixtures/private sample data");
     expect(prompt).toContain("saved-workflow execution only");
   });

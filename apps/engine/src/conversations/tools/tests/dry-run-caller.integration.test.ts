@@ -112,7 +112,7 @@ test("product caller draft preview refuses before execution or persistent previe
   expect(after).toEqual(before);
 });
 
-test("sensitive preview refuses before execution, cache or persistent draft writes", async () => {
+test("a product caller's sensitive draft preview refuses before execution or draft writes", async () => {
   const context = toolContext({ ...user(), product_id: "harmoniqs" }, true, true);
   const initialDraft = JSON.stringify(context.getDraft());
   let writes = 0;
@@ -124,7 +124,7 @@ test("sensitive preview refuses before execution, cache or persistent draft writ
     .from(executions)
     .where(eq(executions.tenant_id, ctx.tenant_id));
   const result = await dryRunWorkflowTool.execute(context, { input: { secret: "preview-canary" } });
-  expect(result).toMatchObject({ ok: false, error_code: "sensitive_execution_unsupported" });
+  expect(result).toMatchObject({ ok: false, error_code: "caller_saved_workflow_required" });
   expect(JSON.stringify(result)).not.toContain("preview-canary");
   expect(writes).toBe(0);
   expect(JSON.stringify(context.getDraft())).toBe(initialDraft);

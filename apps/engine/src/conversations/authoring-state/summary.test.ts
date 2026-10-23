@@ -70,7 +70,7 @@ function workflowDraft(
 
 function freshenWorkflow(
   state: ReturnType<typeof createEmptyState>,
-  ...keys: Array<"workflow_inspected" | "workflow_validated">
+  ...keys: Array<"workflow_inspected" | "workflow_validated" | "workflow_previewed">
 ) {
   for (const key of keys) {
     state.checkpoints[key] = {
@@ -154,22 +154,43 @@ describe("computeBlockedBy — OAuth2 lifecycle ordering", () => {
 });
 
 describe("computeBlockedBy — sensitive workflow persistence", () => {
-  it("allows an inspected and validated sensitive draft to save without a preview", () => {
+  it("requires a fresh metadata test run before a sensitive draft can save", () => {
     const state = freshenWorkflow(
       createEmptyState("workflow"),
       "workflow_inspected",
       "workflow_validated",
     );
+    const blocked = computeBlockedBy(
+      state,
+      null,
+      workflowDraft("sensitive"),
+      null,
+      activeWorkflow(),
+    );
+
+    expect(blocked).toContain("dry_run_workflow");
+  });
+
+  it("lets a sensitive draft save after a green metadata test run", () => {
+    const state = freshenWorkflow(
+      createEmptyState("workflow"),
+      "workflow_inspected",
+      "workflow_validated",
+      "workflow_previewed",
+    );
     const draft = workflowDraft("sensitive");
     const active = activeWorkflow();
-    const blocked = computeBlockedBy(state, null, draft, null, active);
+    const blocked = computeBlockedBy(
+      state,
+      null,
+      draft,
+      { ok: true, summary: "Sensitive test run succeeded", preview: null },
+      active,
+    );
 
-    expect(blocked).not.toContain("dry_run_workflow");
     expect(blocked).toEqual([]);
     expect(computeReadiness(active, blocked)).toBe("ready_to_save");
-    expect(computeNextAction(state, active, blocked, draft)).toContain(
-      "runtime verification remains not performed",
-    );
+    expect(computeNextAction(state, active, blocked, draft)).toContain("metadata-only test run");
   });
 
   it("keeps inspection and validation freshness gates for sensitive drafts", () => {
@@ -183,7 +204,7 @@ describe("computeBlockedBy — sensitive workflow persistence", () => {
     );
 
     expect(blocked).toContain("validate_draft");
-    expect(blocked).not.toContain("dry_run_workflow");
+    expect(blocked).toContain("dry_run_workflow");
   });
 
   it("continues to require preview for ordinary workflow drafts", () => {

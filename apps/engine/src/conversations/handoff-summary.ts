@@ -8,8 +8,8 @@ export type HandoffKind = "save_confirm" | "confirm" | "choice" | "input" | "rev
 
 export type SavePreviewEvidence =
   | "passed"
+  | "passed_metadata"
   | "failed"
-  | "unavailable_sensitive"
   | "skipped_by_user"
   | "missing";
 
@@ -24,8 +24,8 @@ const SAVE_PREVIEW_RESULT: Record<ReplyLocale, Record<SavePreviewEvidence, strin
       "Ich habe den Entwurf angepasst und geprüft; der Testlauf ohne Wirkung war erfolgreich.",
     failed:
       "Ich habe den Entwurf angepasst; der letzte Testlauf ohne Wirkung ist fehlgeschlagen, das Speichern wäre eine bewusste Ausnahme.",
-    unavailable_sensitive:
-      "Ich habe den Entwurf angepasst und geprüft; ein Testlauf ohne Wirkung ist für diesen vertraulichen Ablauf nicht möglich, die Laufzeitprüfung steht noch aus.",
+    passed_metadata:
+      "Ich habe den Entwurf angepasst und geprüft; der Testlauf ohne Wirkung war erfolgreich, Inhalte blieben dabei vertraulich.",
     skipped_by_user:
       "Ich habe den Entwurf angepasst und geprüft; den Testlauf ohne Wirkung habe ich wie gewünscht ausgelassen, die Laufzeitprüfung steht noch aus.",
     missing:
@@ -35,8 +35,8 @@ const SAVE_PREVIEW_RESULT: Record<ReplyLocale, Record<SavePreviewEvidence, strin
     passed: "I adjusted and checked the draft; the test run without effects succeeded.",
     failed:
       "I adjusted the draft; the latest test run without effects failed, so saving would be a deliberate exception.",
-    unavailable_sensitive:
-      "I adjusted and checked the draft; a test run without effects is not possible for this confidential workflow, so runtime verification is still outstanding.",
+    passed_metadata:
+      "I adjusted and checked the draft; the test run without effects succeeded and its contents stayed confidential.",
     skipped_by_user:
       "I adjusted and checked the draft; as requested I skipped the test run without effects, so runtime verification is still outstanding.",
     missing: "I adjusted the draft; there is no test run without effects for this version yet.",
@@ -97,20 +97,20 @@ export function saveVerificationEvidence(
   draft: DraftDocument,
   previewsForbiddenByUser: boolean,
 ): SaveVerificationEvidence {
-  if (getWorkflowDraft(draft).execution_privacy === "sensitive") {
-    return { preview: "unavailable_sensitive" };
-  }
   const latest = draft.latest_preview ?? null;
   const fresh = missingFreshCheckpoints(draft, ["workflow_previewed"]).length === 0;
-  if (latest?.ok === true && fresh) return { preview: "passed", summary: latest.summary };
+  if (latest?.ok === true && fresh)
+    return getWorkflowDraft(draft).execution_privacy === "sensitive"
+      ? { preview: "passed_metadata", summary: latest.summary }
+      : { preview: "passed", summary: latest.summary };
   if (latest?.ok === false) return { preview: "failed", summary: latest.summary };
   return { preview: previewsForbiddenByUser ? "skipped_by_user" : "missing" };
 }
 
 const PREVIEW_EVIDENCE = new Set<string>([
   "passed",
+  "passed_metadata",
   "failed",
-  "unavailable_sensitive",
   "skipped_by_user",
   "missing",
 ]);
@@ -159,8 +159,8 @@ export function saveEvidenceLabel(evidence: SaveVerificationEvidence): string {
       return "passed";
     case "failed":
       return "failed";
-    case "unavailable_sensitive":
-      return "not possible for confidential workflows";
+    case "passed_metadata":
+      return "passed with metadata only";
     case "skipped_by_user":
       return "skipped as requested";
     case "missing":

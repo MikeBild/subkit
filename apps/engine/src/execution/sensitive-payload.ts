@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
-import type { RequestMeta } from "./types.ts";
+import type { RequestMeta, SensitiveOutputField } from "./types.ts";
 
 const SensitivePayloadSchema = z
   .object({
@@ -77,6 +77,8 @@ const safeFailureCodes = new Set([
   "input_schema_violation",
   "invalid",
   "caller_required",
+  "caller_saved_workflow_required",
+  "skipped_dependency_held",
   "caller_tenant_mismatch",
   "caller_product_mismatch",
   "caller_kind_mismatch",
@@ -123,6 +125,9 @@ const SAFE_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
   graphql_path_required: "A GraphQL step on an HTTP connector needs a fixed path such as /graphql.",
   pagination_truncated:
     "Pagination stopped at its configured limit, so this step's result is incomplete.",
+  skipped_dependency_held:
+    "This step was skipped because an earlier write step was held in the test run.",
+  caller_saved_workflow_required: "This caller can only run a saved workflow version, not a draft.",
 };
 
 export function sensitiveFailure(code?: string) {
@@ -151,6 +156,36 @@ export function sensitiveRequestMeta(meta: RequestMeta | null | undefined): Requ
       ...(rereads !== undefined ? { rereads } : {}),
     },
   };
+}
+
+function sensitiveFieldOf(value: unknown): SensitiveOutputField {
+  if (value === undefined) return { type: "missing" };
+  if (value === null) return { type: "null" };
+  if (Array.isArray(value)) return { type: "array", length: value.length };
+  const kind = typeof value;
+  if (kind === "string" || kind === "number" || kind === "boolean") return { type: kind };
+  return { type: "object" };
+}
+
+export function sensitiveOutputShape(
+  output: unknown,
+  outputSchema: unknown,
+): Record<string, SensitiveOutputField> {
+  const properties =
+    outputSchema && typeof outputSchema === "object" && !Array.isArray(outputSchema)
+      ? (outputSchema as { properties?: unknown }).properties
+      : undefined;
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return {};
+  const record =
+    output && typeof output === "object" && !Array.isArray(output)
+      ? (output as Record<string, unknown>)
+      : {};
+  return Object.fromEntries(
+    Object.keys(properties).map((key) => [
+      key,
+      sensitiveFieldOf(Object.hasOwn(record, key) ? record[key] : undefined),
+    ]),
+  );
 }
 
 export async function authorizeSensitiveResume(

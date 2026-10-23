@@ -198,7 +198,7 @@ describe("runAuthoringPipeline — one-shot contract", () => {
   );
 
   tw(
-    "generated product and sensitive headers survive authoring and cannot downgrade a chat preview",
+    "generated product and sensitive headers survive authoring and a mismatched caller cannot preview them",
     async () => {
       const headers = {
         product_id: "harmoniqs",
@@ -233,7 +233,7 @@ describe("runAuthoringPipeline — one-shot contract", () => {
       expect(authored.ok).toBe(true);
       if (!authored.ok) throw new Error("private authoring failed");
       expect(authored.definition).toMatchObject(headers);
-      expect(authored.next).toBe("inspect_workflow_draft");
+      expect(authored.next).toBe("dry_run_workflow");
       expect(toolCtx.getDraft().workflow).toMatchObject(headers);
       const initial = JSON.stringify(toolCtx.getDraft());
       let writes = 0;
@@ -243,7 +243,7 @@ describe("runAuthoringPipeline — one-shot contract", () => {
       const preview = await dryRunWorkflowTool.execute(toolCtx, {
         input: { secret: "private-input-canary" },
       });
-      expect(preview).toMatchObject({ ok: false, error_code: "sensitive_execution_unsupported" });
+      expect(preview).toMatchObject({ ok: false, error_code: "sensitive_execution_failure" });
       expect(JSON.stringify(preview)).not.toContain("private-input-canary");
       expect(writes).toBe(0);
       expect(JSON.stringify(toolCtx.getDraft())).toBe(initial);
@@ -251,34 +251,31 @@ describe("runAuthoringPipeline — one-shot contract", () => {
     },
   );
 
-  tw(
-    "sensitive authoring directs the client to inspection without requesting a preview",
-    async () => {
-      getMockProvider().generateOverrides.generate = () => ({
-        name: "Private report",
-        slug: "private-report",
-        execution_privacy: "sensitive",
-        steps: [
-          {
-            id: "shape",
-            kind: "transform",
-            language: "javascript",
-            expression: "return input.input;",
-          },
-        ],
-      });
-      const toolCtx = makeCtx();
-      const result = await authorWorkflowTool.execute(toolCtx, {
-        goal: "Prepare a private report",
-      });
-      expect(result.ok).toBe(true);
-      expect(result.data).toMatchObject({ next_step: "inspect_workflow_draft" });
-      expect(JSON.stringify(result.data)).toContain("Chat preview is unavailable");
-      expect(JSON.stringify(result.data)).not.toContain("Preview with dry_run_workflow");
-      expect(toolCtx.getDraft().workflow?.execution_privacy).toBe("sensitive");
-      expect(fetchCalls).toBe(0);
-    },
-  );
+  tw("sensitive authoring directs the client to the metadata-only test run", async () => {
+    getMockProvider().generateOverrides.generate = () => ({
+      name: "Private report",
+      slug: "private-report",
+      execution_privacy: "sensitive",
+      steps: [
+        {
+          id: "shape",
+          kind: "transform",
+          language: "javascript",
+          expression: "return input.input;",
+        },
+      ],
+    });
+    const toolCtx = makeCtx();
+    const result = await authorWorkflowTool.execute(toolCtx, {
+      goal: "Prepare a private report",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({ next_step: "dry_run_workflow" });
+    expect(JSON.stringify(result.data)).toContain("returns metadata only");
+    expect(JSON.stringify(result.data)).not.toContain("auto-commits");
+    expect(toolCtx.getDraft().workflow?.execution_privacy).toBe("sensitive");
+    expect(fetchCalls).toBe(0);
+  });
 
   tw(
     "emits a schema-valid complete definition with recorded_eval attached, goal stashed, JS transform preserved, zero egress",

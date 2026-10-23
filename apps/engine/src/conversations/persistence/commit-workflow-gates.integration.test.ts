@@ -213,17 +213,49 @@ function sensitiveDraft(slug: string): DraftDocument {
   return withWorkflowValidation(draft, true, "Sensitive definition structurally validated.");
 }
 
-test("approved sensitive definition saves inactive without a preview or runtime authority", async () => {
+function sensitiveMetadataPreview(draft: DraftDocument, ok: boolean): DraftDocument {
+  return withLatestPreview(draft, {
+    ok,
+    step_id: "echo",
+    summary: ok
+      ? "Sensitive test run succeeded: 1 step(s), 1 succeeded, 0 failed, 0 held."
+      : "Sensitive test run failed: 1 step(s), 0 succeeded, 1 failed, 0 held.",
+    preview: null,
+    step_traces: [
+      {
+        step_id: "echo",
+        kind: "transform",
+        status: ok ? "succeeded" : "failed",
+        ...(ok ? {} : { error_code: "sensitive_execution_failure" }),
+      },
+    ],
+    input: null,
+  });
+}
+
+test("a sensitive definition without a metadata test run is not saved", async () => {
   const conversationId = await freshConversation();
   await seedApprovedConfirm(conversationId);
-  const toolCtx = stubToolCtx(conversationId, sensitiveDraft("sensitive-inert-save"));
-  expect(toolCtx.getDraft().latest_preview).toBeUndefined();
+  const result = await commitWorkflowAtomic({
+    ctx: stubToolCtx(conversationId, sensitiveDraft("sensitive-no-test-run")),
+  });
+  expect(result).toMatchObject({ ok: false, error_code: "workflow_not_ready" });
+  if (!result.ok) expect(result.next_best_actions).toContain("dry_run_workflow");
+});
+
+test("an approved sensitive definition saves inactive after a green metadata test run", async () => {
+  const conversationId = await freshConversation();
+  await seedApprovedConfirm(conversationId);
+  const toolCtx = stubToolCtx(
+    conversationId,
+    sensitiveMetadataPreview(sensitiveDraft("sensitive-inert-save"), true),
+  );
   const result = await commitWorkflowAtomic({ ctx: toolCtx });
   expect(result.ok).toBe(true);
   expect(result.data).toMatchObject({
     activation_required: true,
     persistence_kind: "draft",
-    runtime_verification: "not_performed",
+    runtime_verification: "metadata_only",
   });
   const data = result.data as { workflow_id: string; workflow_version_id: string };
   const [saved] = await ctx.testDb.db
@@ -263,9 +295,20 @@ test("approved sensitive definition saves inactive without a preview or runtime 
     .from(auditLog)
     .where(and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.resource_id, data.workflow_id)));
   expect(audit).toHaveLength(1);
-  expect(audit[0]?.metadata).toMatchObject({ runtime_verification: "not_performed" });
-  expect(toolCtx.getDraft().latest_preview).toBeUndefined();
-  expect(toolCtx.getDraft().state?.checkpoints.workflow_previewed).toBeUndefined();
+  expect(audit[0]?.metadata).toMatchObject({ runtime_verification: "metadata_only" });
+});
+
+test("a failed sensitive metadata test run blocks saving and cannot be forced", async () => {
+  const conversationId = await freshConversation();
+  await seedApprovedConfirm(conversationId);
+  const draft = sensitiveMetadataPreview(sensitiveDraft("sensitive-failed-test-run"), false);
+  const result = await commitWorkflowAtomic({ ctx: stubToolCtx(conversationId, draft) });
+  expect(result).toMatchObject({ ok: false, error_code: "preview_failed" });
+  const forced = await commitWorkflowAtomic({
+    ctx: stubToolCtx(conversationId, draft),
+    forceCommit: true,
+  });
+  expect(forced).toMatchObject({ ok: false, error_code: "sensitive_save_override_forbidden" });
 });
 
 test("sensitive inert save retains the human confirmation gate", async () => {

@@ -275,7 +275,21 @@ export interface RunOptions {
   idempotency_key?: string | null;
   self_healing?: { enabled: boolean };
   hold_writes?: boolean;
+  sensitive_metadata_preview?: boolean;
   step_output_fixtures?: Record<string, unknown>;
+}
+
+export type SensitiveCheckVerdict = "passed" | "failed" | "not_defined" | "not_run";
+
+export interface SensitiveOutputField {
+  type: "string" | "number" | "boolean" | "null" | "array" | "object" | "missing";
+  length?: number;
+}
+
+export interface SensitivePreviewChecks {
+  validation: SensitiveCheckVerdict;
+  output_schema: SensitiveCheckVerdict;
+  output_shape: Record<string, SensitiveOutputField>;
 }
 
 export type AppliedAuthMethod =
@@ -325,6 +339,7 @@ export interface RunResult {
   }>;
   connector_resolutions?: ConnectorResolutionSummary[];
   warnings?: Array<StepWarning & { step_key: string }>;
+  sensitive_checks?: SensitivePreviewChecks;
 }
 
 export interface RunInput {

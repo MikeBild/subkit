@@ -162,7 +162,7 @@ function closingMessage(events: TurnEvent[]): string {
 }
 
 describe("hand-off turns close with a short result and next step", () => {
-  test("PROD reproduction: a sensitive draft edited, validated and proposed for saving closes with German text", async () => {
+  test("a sensitive changed draft without a fresh metadata test run is not proposed for saving", async () => {
     const conversationId = await seedConversation("subkit-github-briefing", {
       sensitive: true,
       previewed: false,
@@ -170,12 +170,29 @@ describe("hand-off turns close with a short result and next step", () => {
     getMockProvider().setConversePlan(conversationId, EDIT_THEN_SAVE);
     const outcome = await turn(conversationId, PROD_PROMPT);
 
+    const events = outcome.result.events;
+    expect(events.some((e) => e.type === "elicit_request")).toBe(false);
+    const saved = toolOutput(events, "save_workflow_draft");
+    expect(saved?.error_code).toBe("workflow_not_ready");
+    expect(saved?.next_best_actions).toContain("dry_run_workflow");
+  });
+
+  test("a fresh green sensitive metadata test run closes the save hand-off in German", async () => {
+    const conversationId = await seedConversation("sensitive-previewed-briefing", {
+      sensitive: true,
+      previewed: true,
+    });
+    getMockProvider().setConversePlan(conversationId, [
+      { tool: "save_workflow_draft", args: { confirmed: false, force_commit: false } },
+    ]);
+    const outcome = await turn(conversationId, PROD_PROMPT);
+
     expect(outcome.result.status).toBe("awaiting_input");
     const events = outcome.result.events;
     const text = closingMessage(events);
     expect(text).not.toMatch(TOOL_NAME);
-    expect(text).toContain("Testlauf");
-    expect(text).toContain("nicht möglich");
+    expect(text).toContain("Testlauf ohne Wirkung war erfolgreich");
+    expect(text).toContain("vertraulich");
     expect(text).toContain("aktiviert wird dabei nichts");
 
     const persisted = await assistantRows(conversationId);
@@ -186,7 +203,7 @@ describe("hand-off turns close with a short result and next step", () => {
     const stored = await elicitationInput(card.elicitation_id);
     expect(
       (stored?.input as { verification?: { preview?: string } } | undefined)?.verification?.preview,
-    ).toBe("unavailable_sensitive");
+    ).toBe("passed_metadata");
     expect(stored?.summary).not.toContain("save_workflow_draft");
 
     const criticCalls = getMockProvider().calls.filter((c) => c.flow === "critic_authoring");
@@ -300,9 +317,11 @@ describe("hand-off turns close with a short result and next step", () => {
   test("declining the save card is logged as a rejection and the next turn does not re-propose it", async () => {
     const conversationId = await seedConversation("declined-briefing", {
       sensitive: true,
-      previewed: false,
+      previewed: true,
     });
-    getMockProvider().setConversePlan(conversationId, EDIT_THEN_SAVE);
+    getMockProvider().setConversePlan(conversationId, [
+      { tool: "save_workflow_draft", args: { confirmed: false, force_commit: false } },
+    ]);
     const outcome = await turn(conversationId, PROD_PROMPT);
     const pendingId = outcome.result.pending_elicitation_id;
     if (!pendingId) throw new Error("expected a pending save card");

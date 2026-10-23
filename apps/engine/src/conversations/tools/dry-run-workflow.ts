@@ -56,6 +56,7 @@ import { recordLastPreview } from "./last-preview-store.ts";
 import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { placeholderDestinationGateResult } from "./placeholder-destination-gate.ts";
 import { previewEvidence } from "./preview-evidence.ts";
+import { runSensitiveDryRun } from "./sensitive-dry-run.ts";
 import { replacesPersistedWorkflow } from "./state-gate.ts";
 import { buildRawStepResults } from "./step-results.ts";
 import { truncateStepPreviewForLlm } from "./truncate.ts";
@@ -70,7 +71,7 @@ const inputSchema = z
       .boolean()
       .optional()
       .describe(
-        "Attach a `step_results` array carrying the RAW per-step input (the resolved request the step issued, or the held request for a write) side-by-side with its output. Default false keeps the envelope compact (the truncated `step_trace`). Turn on to self-diagnose whether a bad final output is a step-config bug (the request went out wrong) or an output_transform bug (the step was fine, the projection dropped the data).",
+        "Attach a `step_results` array carrying the RAW per-step input (the resolved request the step issued, or the held request for a write) side-by-side with its output. Default false keeps the envelope compact (the truncated `step_trace`). Turn on to self-diagnose whether a bad final output is a step-config bug (the request went out wrong) or an output_transform bug (the step was fine, the projection dropped the data). Ignored for sensitive drafts.",
       ),
   })
   .openapi("DryRunWorkflowToolInput");
@@ -78,7 +79,7 @@ const inputSchema = z
 export const dryRunWorkflowTool: ConversationTool = {
   name: "dry_run_workflow",
   description:
-    "Run the entire draft workflow via runExecution (source=draft), producing an auditable executions row. Read steps execute for real; WRITE steps are always HELD — resolved for inspection but never dispatched. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval. Omit input when repairing an existing scheduled workflow: the engine reuses its single enabled schedule in this environment. Explicit input, including {}, is preserved. Never invent dummy identifiers or destinations for real read requests. External destinations must come from the user, never fabricated placeholders.",
+    "Run the entire draft workflow via runExecution (source=draft), producing an auditable executions row. Read steps execute for real; WRITE steps are always HELD — resolved for inspection but never dispatched. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval. Omit input when repairing an existing scheduled workflow: the engine reuses its single enabled schedule in this environment. Explicit input, including {}, is preserved. Never invent dummy identifiers or destinations for real read requests. External destinations must come from the user, never fabricated placeholders. A sensitive draft (execution_privacy: sensitive) runs encrypted and returns only `sensitive_test_run` metadata: step statuses, held steps, safe failure codes, item counts, check verdicts and declared output field types. Values are never returned; do not guess them.",
   inputSchema,
   category: "draft_write" as const,
   authoring_resource: "workflow",
@@ -86,13 +87,7 @@ export const dryRunWorkflowTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const draft = getWorkflowDraft(ctx.getDraft());
-    if (Reflect.get(draft, "execution_privacy") === "sensitive") {
-      return {
-        ok: false,
-        error_code: "sensitive_execution_unsupported",
-        message: "Sensitive workflows cannot run through persistent conversation previews.",
-      };
-    }
+    const sensitiveDraft = Reflect.get(draft, "execution_privacy") === "sensitive";
     const validation = await validateTenantWorkflowDef(draft, ctx.tenant_id, ctx.db, {
       destinationTier: "all",
     });
@@ -345,6 +340,16 @@ export const dryRunWorkflowTool: ConversationTool = {
       "info",
       `dry-running ${steps.length} step${steps.length === 1 ? "" : "s"} (env=${effectiveEnvironment})`,
     );
+    if (sensitiveDraft) {
+      return runSensitiveDryRun({
+        ctx,
+        definition,
+        draftName: draft.name,
+        previewInput,
+        environment: effectiveEnvironment,
+        principal: author,
+      });
+    }
     const cacheInput = { caller: author, input: previewInput ?? null };
     const cacheKey = buildDryRunCacheKey({
       tenant_id: ctx.tenant_id,

@@ -63,7 +63,12 @@ import { checkOutputContract, summarizeViolations } from "./output-contract.ts";
 import { capturePreparedWorkflowReferences } from "./prepared-workflow-references.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
 import { applyResponseFilters } from "./response-filter.ts";
-import { isSensitivePayload, sensitiveFailure, sensitiveRequestMeta } from "./sensitive-payload.ts";
+import {
+  isSensitivePayload,
+  sensitiveFailure,
+  sensitiveOutputShape,
+  sensitiveRequestMeta,
+} from "./sensitive-payload.ts";
 import { settleTerminalOutcome } from "./settle-terminal.ts";
 import {
   createExecution,
@@ -85,6 +90,7 @@ import {
   type RequestSource,
   type RunOptions,
   type RunResult,
+  type SensitiveCheckVerdict,
   type StepResult,
   type StepRunContext,
 } from "./types.ts";
@@ -258,7 +264,19 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       ? opts.caller_context
       : callerFromPrincipal(opts.principal, tenant_id, def.product_id, def.required_caller_kind);
   assertCallerMatches(caller, tenant_id, def.product_id, def.required_caller_kind);
-  if (execution_privacy === "sensitive" && opts.request_source === "chat") {
+  const sensitiveMetadataPreview =
+    opts.sensitive_metadata_preview === true &&
+    execution_privacy === "sensitive" &&
+    resolved.source_kind === "draft" &&
+    opts.hold_writes === true &&
+    !opts.existing_execution_id &&
+    !opts.tool_approval_id;
+  if (
+    (opts.sensitive_metadata_preview === true && !sensitiveMetadataPreview) ||
+    (execution_privacy === "sensitive" &&
+      opts.request_source === "chat" &&
+      !sensitiveMetadataPreview)
+  ) {
     throw Object.assign(new Error("Sensitive workflow output cannot enter conversation history."), {
       code: "sensitive_execution_unsupported",
     });
@@ -1616,6 +1634,8 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     });
   }
   let outputContract: OutputContractVerdict = "none";
+  let validationVerdict: SensitiveCheckVerdict =
+    def.validation_expression || def.validation_function ? "not_run" : "not_defined";
   if (
     def.output_schema &&
     lastOutput !== undefined &&
@@ -1656,6 +1676,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         scope,
         clock: { now_ms: execution_started_at, seed: `${evaluationSeed}:validation` },
       });
+      validationVerdict = verdict ? "passed" : "failed";
       if (!verdict) {
         logger.warn({
           module: "execution",
@@ -1677,6 +1698,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         };
       }
     } catch (err) {
+      validationVerdict = "failed";
       logger.warn({
         module: "execution",
         action: "execution.validation_threw",
@@ -1709,6 +1731,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         },
       });
       const verdict = result.output;
+      validationVerdict = verdict === false ? "failed" : "passed";
       if (verdict === false) {
         logger.warn({
           module: "execution",
@@ -1727,6 +1750,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         };
       }
     } catch (err) {
+      validationVerdict = "failed";
       logger.warn({
         module: "execution",
         action: "execution.validation_function_threw",
@@ -1873,6 +1897,20 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         message: sensitiveFailure(warning.code).message,
       }));
     if (safeWarnings.length > 0) runResult.warnings = safeWarnings;
+    if (sensitiveMetadataPreview) {
+      runResult.sensitive_checks = {
+        validation: validationVerdict,
+        output_schema: !def.output_schema
+          ? "not_defined"
+          : outputContract === "passed"
+            ? "passed"
+            : outputContract === "violated"
+              ? "failed"
+              : "not_run",
+        output_shape: sensitiveOutputShape(lastOutput, def.output_schema),
+      };
+      runResult.output = null;
+    }
     return runResult;
   }
   if (resolutions.length > 0) runResult.connector_resolutions = resolutions;

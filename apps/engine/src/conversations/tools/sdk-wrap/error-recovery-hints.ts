@@ -179,7 +179,7 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   no_preview_recorded:
     "the workflow has no recorded preview — call dry_run_workflow to produce one before reading step results",
   sensitive_execution_unsupported:
-    "this workflow carries sensitive execution data, which cannot be placed in conversation previews or messages. Run it through the authenticated executions API and read the result through the owner's execution result endpoint; do not retry it through chat tools",
+    "this workflow carries sensitive execution data, which never enters conversation previews or messages. For a sensitive draft, dry_run_workflow is the only chat check: it returns metadata only (statuses, counts, held steps, check verdicts). Live runs and their results go through the authenticated executions API and the owner's execution result endpoint; do not retry them through chat tools",
   preview_empty:
     "the last preview produced no output — call run_workflow with concrete input, or dry_run_workflow with a non-empty input payload",
   connector_auth_unset:

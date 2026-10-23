@@ -203,7 +203,7 @@ export type AuthoringPipelineResult =
       unresolved_connectors: string[];
       note?: string;
       critic_rejection?: CriticRejectionDetail;
-      next: "dry_run_workflow" | "inspect_workflow_draft";
+      next: "dry_run_workflow";
     }
   | {
       ok: false;
@@ -366,7 +366,7 @@ export function buildGenerationPrompt(args: {
     "- String placeholders in request fields (`path` / `url` / `headers` / `query` / `body`): `${input.<path>}`, `${scope.<step_id>.data.<path>}`, `${item.<path>}` (inside a loop body), `${caller.<field>}`, `${cred.<slug>.<field>}`, `${connector.<slug>.base_url}`. Mustache `{{…}}` and `${$caller.*}` are rejected.",
     "- Trusted identity is immutable `$caller` in JSONata, `input.scope.$caller` in JavaScript, and `${caller.<field>}` in request strings. It is null for trusted callerless system runs; otherwise `{ tenantId: string (UUID), principalId: string (normally UUID; generic portal users may have opaque refs), principalKind: 'user' | 'system_account', provider: string (open nonempty provider id), productId: string | null }`. All authenticated generic workflows receive it too. Never infer identity from workflow input, role, email or provider name; no input or fixture can fabricate caller. Step IDs `$caller` and `$input` are reserved.",
     "- Header `product_id` requires matching authenticated product and saved-workflow execution only; declaring it cannot authorize a draft or standalone step. `required_caller_kind` requires user or system_account; callerless schedules/webhooks cannot meet it. Product S3 scope is literal products/<product-id>/ with principal_bound:true and reviewed limits; key suffix starts ${caller.principalKind}/${caller.principalId}/. Queue, loops and children retain the original caller.",
-    "- Header execution_privacy:'sensitive' refuses chat execution and dry_run_workflow, payload inspection, persistent state, event waits/signals, persistent pagination and prepared fixture replay. Bounded read-only GraphQL cursor collection within one request step is allowed when every page passes completeness checks. Do not invent caller fixtures/private sample data to preview it or claim live verification in chat; schema validation prepares an inert definition, and permitted live verification uses direct MCP or the public execution/result API with the original caller. An ordinary parent cannot call a sensitive child. Keep integrations on public APIs, never another product's private database/files/queues.",
+    "- Header execution_privacy:'sensitive' refuses live chat execution, payload inspection, persistent state, event waits/signals, persistent pagination and prepared fixture replay. dry_run_workflow on a sensitive draft runs encrypted with writes held and returns only metadata (step statuses, held steps, safe failure codes, item counts, validation/output_schema verdicts, declared output field types); you never see values, so never guess or describe them. Bounded read-only GraphQL cursor collection within one request step is allowed when every page passes completeness checks. Do not invent caller fixtures/private sample data or claim live verification in chat; permitted live verification uses direct MCP or the public execution/result API with the original caller. An ordinary parent cannot call a sensitive child. Keep integrations on public APIs, never another product's private database/files/queues.",
     "",
     "## Transform contract — JavaScript only",
     'Programmable `transform` steps use `language: "javascript"` (the default programmable language); specialized extraction modes use their own schema configuration. The execution contract (QuickJS sandbox, no host globals — no fetch, no process, no require, no network; values are JSON-marshalled):',
@@ -917,8 +917,7 @@ export async function runAuthoringPipeline(
   await ctx.setDraft(nextDraft);
 
   const findingCount = recordedEval.expressions.filter((f) => f.status !== "ok").length;
-  const nextAction =
-    definition.execution_privacy === "sensitive" ? "inspect_workflow_draft" : "dry_run_workflow";
+  const nextAction = "dry_run_workflow";
   ctx.onLog?.(
     findingCount > 0 ? "warn" : "info",
     findingCount > 0

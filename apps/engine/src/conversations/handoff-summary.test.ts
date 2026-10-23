@@ -19,8 +19,8 @@ const PROD_PROMPT =
 
 const PREVIEWS: SavePreviewEvidence[] = [
   "passed",
+  "passed_metadata",
   "failed",
-  "unavailable_sensitive",
   "skipped_by_user",
   "missing",
 ];
@@ -71,14 +71,14 @@ describe("handoff summary", () => {
     }
   }
 
-  test("German sensitive save says a test run without effect is not possible and nothing is activated", () => {
+  test("German sensitive save reports the confidential test run and that nothing is activated", () => {
     const text = handoffSummary({
       locale: "de",
       handoff: "save_confirm",
-      evidence: { preview: "unavailable_sensitive" },
+      evidence: { preview: "passed_metadata" },
     });
-    expect(text).toContain("Testlauf");
-    expect(text).toContain("nicht möglich");
+    expect(text).toContain("Testlauf ohne Wirkung war erfolgreich");
+    expect(text).toContain("vertraulich");
     expect(text).toContain("aktiviert wird dabei nichts");
   });
 
@@ -92,10 +92,17 @@ describe("handoff summary", () => {
 });
 
 describe("save verification evidence", () => {
-  test("a sensitive draft cannot be previewed in chat", () => {
-    expect(saveVerificationEvidence(draftFor("sensitive"), false).preview).toBe(
-      "unavailable_sensitive",
-    );
+  test("a sensitive draft needs its metadata test run", () => {
+    expect(saveVerificationEvidence(draftFor("sensitive"), false).preview).toBe("missing");
+    const previewed = withLatestPreview(draftFor("sensitive"), {
+      ok: true,
+      summary: "Sensitive test run succeeded",
+      warnings: [],
+    });
+    expect(saveVerificationEvidence(previewed, false)).toEqual({
+      preview: "passed_metadata",
+      summary: "Sensitive test run succeeded",
+    });
   });
 
   test("a fresh green preview passes", () => {
