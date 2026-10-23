@@ -69,18 +69,18 @@ export function callVerdict(
   return approvedEnvironment === environment ? "live" : "unconfirmed";
 }
 
-export const INVOCATION_MODES = ["http", "webhook", "mcp", "schedule", "cli"] as const;
+export const INVOCATION_MODES = ["schedule", "webhook", "http", "mcp", "cli"] as const;
 export type InvocationMode = (typeof INVOCATION_MODES)[number];
 
 export const SNIPPET_LANGUAGES = ["curl", "node", "python"] as const;
 export type SnippetLanguage = (typeof SNIPPET_LANGUAGES)[number];
 
 export function invocationModes(
-  invocation: Pick<WorkflowInvocation, "hooks" | "schedules">,
+  invocation: Pick<WorkflowInvocation, "visibility">,
 ): InvocationMode[] {
   return INVOCATION_MODES.filter((mode) => {
-    if (mode === "webhook") return (invocation.hooks?.length ?? 0) > 0;
-    if (mode === "schedule") return (invocation.schedules?.length ?? 0) > 0;
+    if (mode === "webhook") return invocation.visibility.hooks;
+    if (mode === "schedule") return invocation.visibility.schedules;
     return true;
   });
 }

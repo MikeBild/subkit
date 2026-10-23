@@ -6,34 +6,12 @@ import {
   hasFixedInput,
   hiddenInvocationKey,
   hiddenInvocationLists,
-  type InvocationHook,
-  type InvocationSchedule,
   invocationModes,
   isWorkflowInvocation,
   SCHEDULE_STATE_KEYS,
   scheduleRowKey,
   verifierName,
 } from "@/lib/workflow-invocation";
-
-const hook: InvocationHook = {
-  slug: "orders",
-  path: "/v1/hooks/orders",
-  url: null,
-  verifier: "standard",
-  signed: true,
-  signing_headers: [],
-  hmac: null,
-  state: "active",
-  environment: "prod",
-};
-const schedule: InvocationSchedule = {
-  cron: "0 7 * * *",
-  timezone: "UTC",
-  environment: "prod",
-  input: null,
-  state: "active",
-  next_fire_at: null,
-};
 
 describe("isWorkflowInvocation", () => {
   const answer = {
@@ -61,28 +39,28 @@ describe("isWorkflowInvocation", () => {
 });
 
 describe("invocationModes", () => {
-  test("a request, a tool call and the command line always exist", () => {
-    expect(invocationModes({ hooks: [], schedules: [] })).toEqual(["http", "mcp", "cli"]);
-  });
-
-  test("a hook or a schedule is a tab only when one is bound", () => {
-    expect(invocationModes({ hooks: [hook], schedules: [] })).toEqual([
-      "http",
-      "webhook",
-      "mcp",
-      "cli",
-    ]);
-    expect(invocationModes({ hooks: [hook], schedules: [schedule] })).toEqual([
-      "http",
-      "webhook",
-      "mcp",
+  test("schedule and webhook come first, as cards even while none is bound", () => {
+    expect(invocationModes({ visibility: { hooks: true, schedules: true } })).toEqual([
       "schedule",
+      "webhook",
+      "http",
+      "mcp",
       "cli",
     ]);
   });
 
-  test("bindings the reader may not see are no tabs", () => {
-    expect(invocationModes({})).toEqual(["http", "mcp", "cli"]);
+  test("bindings the reader may not see are no cards", () => {
+    expect(invocationModes({ visibility: { hooks: false, schedules: false } })).toEqual([
+      "http",
+      "mcp",
+      "cli",
+    ]);
+    expect(invocationModes({ visibility: { hooks: true, schedules: false } })).toEqual([
+      "webhook",
+      "http",
+      "mcp",
+      "cli",
+    ]);
   });
 });
 

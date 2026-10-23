@@ -42,7 +42,6 @@ import {
   hasFixedInput,
   hiddenInvocationKey,
   hiddenInvocationLists,
-  INVOCATION_MODES,
   type WorkflowInvocation as Invocation,
   type InvocationHook,
   type InvocationMode,
@@ -289,6 +288,11 @@ function WebhookMode({ invocation }: { invocation: Invocation }) {
   const hooks = invocation.hooks ?? [];
   return (
     <div className="flex flex-col gap-4">
+      {hooks.length === 0 ? (
+        <p className={line} data-testid="workflow-invocation-hook-none">
+          {t("workflowUse.card.noWebhook")}
+        </p>
+      ) : null}
       {hooks.map((hook, index) => (
         <div
           key={hook.slug}
@@ -577,10 +581,7 @@ export function WorkflowInvocation({
         testId="workflow-invocation-failed"
       />
     );
-  const found = invocationModes(invocation);
-  const modes = INVOCATION_MODES.filter(
-    (value) => found.includes(value) || (value === "schedule" && canWrite),
-  );
+  const modes = invocationModes(invocation);
   const hiddenKey = hiddenInvocationKey(hiddenInvocationLists(invocation));
   const schedule = invocation.schedules?.[0] ?? null;
   const hooks = invocation.hooks ?? [];
@@ -594,10 +595,12 @@ export function WorkflowInvocation({
             }
           : { line: t("workflowUse.card.noSchedule"), on: false };
       case "webhook":
-        return {
-          line: t("workflowUse.card.webhook"),
-          on: hooks.some((hook) => hook.state === "active"),
-        };
+        return hooks.length > 0
+          ? {
+              line: t("workflowUse.card.webhook"),
+              on: hooks.some((hook) => hook.state === "active"),
+            }
+          : { line: t("workflowUse.card.noWebhook"), on: false };
       case "http":
         return { line: t("workflowUse.card.http"), on: true };
       case "mcp":
