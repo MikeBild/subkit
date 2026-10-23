@@ -183,4 +183,14 @@ describe("redesign glossary", () => {
     expect(untranslated).toEqual([]);
     expect(CATALOGS.de["branding.darkLogo"]).toBe("Logo für dunkles Design");
   });
+
+  test("a number never breaks away from its percent sign", () => {
+    const loose = (["de", "en"] as const).flatMap((locale) =>
+      Object.entries(CATALOGS[locale])
+        .filter(([, value]) => /\} %/.test(value))
+        .map(([key]) => `${locale}:${key}`),
+    );
+    expect(loose).toEqual([]);
+    expect(CATALOGS.de["usage.forecast.tight"]).toContain("{percent}\u00a0%");
+  });
 });

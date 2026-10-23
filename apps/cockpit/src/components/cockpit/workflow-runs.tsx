@@ -199,7 +199,7 @@ export function WorkflowRuns({
         />
         <Tile
           label={t("workflowRuns.tile.rate")}
-          value={rate === null ? "—" : `${rate} %`}
+          value={rate === null ? "—" : `${rate}\u00a0%`}
           testId="workflow-runs-tile-rate"
         />
         <Tile

@@ -272,7 +272,7 @@ function Figure({
             style: "currency",
             currency: figure.money.currency,
           }).format(figure.value)}`
-        : `${figure.value} %`;
+        : `${figure.value}\u00a0%`;
   const detailText = figure.detail
     ? figure.detail.kind === "failures"
       ? t("overview.operations.failedCount", { count: figure.detail.count })

@@ -140,7 +140,7 @@ describe("the operations bar", () => {
     const html = render(figuresOf());
     expect(html).toContain("shrink-0 text-2xl");
     const detail = html.match(/data-testid="operations-figure-budget-detail"[^>]*>([^<]+)</);
-    expect(detail?.[1]).toBe("27 % des Monatskontingents");
+    expect(detail?.[1]).toBe("27\u00a0% des Monatskontingents");
     const partial = render(
       figuresOf({
         spend: answered({
@@ -149,7 +149,7 @@ describe("the operations bar", () => {
         }),
       }),
     );
-    expect(partial).toContain("Aufrufe ohne Preis: 14 · 27 % des Monatskontingents");
+    expect(partial).toContain("Aufrufe ohne Preis: 14 · 27\u00a0% des Monatskontingents");
   });
 
   test("the repair hint links to the filtered workflow list only when workflows need repair", () => {
