@@ -1,16 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, Sparkles } from "lucide-react";
+import { Activity } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import {
-  recordCategory,
-  recordDescription,
-  writtenByAssistant,
-} from "@/components/cockpit/catalog-metadata-model";
+import { CatalogCategoryChip, CatalogPurpose } from "@/components/cockpit/catalog-metadata";
+import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
 import {
   ConnectorAccounts,
   ConnectorCredentials,
@@ -53,7 +50,6 @@ import {
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
-import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import {
   asInspect,
   connectorFigures,
@@ -353,7 +349,6 @@ export function ConnectorPage({
   ];
 
   const signInWay = templateSignIn({ auth_type: authType ?? "none" });
-  const description = recordDescription(record).trim();
   const category = recordCategory(record);
   const host = serviceHost(text(record, "base_url"));
   const service = connectorService({
@@ -516,31 +511,12 @@ export function ConnectorPage({
         testId="detail-connectors"
         back={{ to: "/connectors", label: t("nav.connectors") }}
         title={title}
-        badge={
-          category !== UNCATEGORIZED ? (
-            <span
-              className="rounded-full border px-2 py-0.5 text-xs font-medium"
-              data-testid="catalog-metadata-chip"
-            >
-              {humanizeCategory(category, t("catalog.categoryOther"))}
-            </span>
-          ) : undefined
-        }
+        badge={<CatalogCategoryChip category={category} testId="catalog-metadata-chip" />}
         purpose={
-          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span data-testid="catalog-metadata-description">
-              {description || t("connectorPage.purpose", { service: template?.name ?? title })}
-            </span>
-            {writtenByAssistant(record) ? (
-              <span
-                className="inline-flex items-center gap-1 text-xs"
-                data-testid="catalog-metadata-by-assistant"
-              >
-                <Sparkles aria-hidden="true" className="size-3" />
-                {t("catalogMeta.byAssistant")}
-              </span>
-            ) : null}
-          </span>
+          <CatalogPurpose
+            record={record}
+            fallback={t("connectorPage.purpose", { service: template?.name ?? title })}
+          />
         }
         action={
           canTest

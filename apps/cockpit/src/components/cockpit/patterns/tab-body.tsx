@@ -44,7 +44,7 @@ export function TabBody({
         {children}
       </div>
       {more ? (
-        <div className="flex flex-col gap-1" data-slot="tab-more">
+        <div className="flex flex-col gap-6" data-slot="tab-more">
           {more}
         </div>
       ) : null}

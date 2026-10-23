@@ -440,7 +440,7 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
               />
             ) : null}
           </Section>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-6">
             <CollapsibleSection label={t("runs.caller.why")} testId="run-detail-why">
               <FactList
                 items={caller.why

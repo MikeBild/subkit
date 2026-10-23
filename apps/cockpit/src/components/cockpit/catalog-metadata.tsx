@@ -4,12 +4,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { SelectField, TextAreaField, TextField } from "@/components/cockpit/form-field";
-import {
-  type ActionMenuItem,
-  Button,
-  type FilterSelect,
-  FormDialog,
-} from "@/components/cockpit/patterns";
+import { type ActionMenuItem, type FilterSelect, FormDialog } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
@@ -86,56 +81,6 @@ export function useCatalogMetadataActions({
   ];
 }
 
-export function CatalogMetadataSummary({
-  record,
-  onEdit,
-}: {
-  record: CatalogMetadataRecord | undefined;
-  onEdit?: () => void;
-}) {
-  const { t } = useI18n();
-  const description = recordDescription(record).trim();
-  const category = recordCategory(record);
-  return (
-    <span
-      className="inline-flex flex-wrap items-center gap-x-2 gap-y-1"
-      data-testid="catalog-metadata"
-    >
-      {category !== UNCATEGORIZED ? (
-        <span
-          className="rounded-full border px-2 py-0.5 text-xs font-medium text-foreground"
-          data-testid="catalog-metadata-chip"
-        >
-          {humanizeCategory(category, t("catalog.categoryOther"))}
-        </span>
-      ) : null}
-      <span data-testid="catalog-metadata-description">
-        {description || t("catalogMeta.empty")}
-      </span>
-      {writtenByAssistant(record) ? (
-        <span
-          className="inline-flex items-center gap-1 text-xs"
-          data-testid="catalog-metadata-by-assistant"
-        >
-          <Sparkles aria-hidden="true" className="size-3" />
-          {t("catalogMeta.byAssistant")}
-        </span>
-      ) : null}
-      {onEdit ? (
-        <Button
-          variant="link"
-          size="sm"
-          className="h-auto p-0 text-xs"
-          onClick={onEdit}
-          data-testid="catalog-metadata-edit"
-        >
-          {t("catalogMeta.edit")}
-        </Button>
-      ) : null}
-    </span>
-  );
-}
-
 export function CatalogCategoryChip({
   category,
   testId = "catalog-category-chip",
@@ -147,7 +92,7 @@ export function CatalogCategoryChip({
   if (!category || category === UNCATEGORIZED) return null;
   return (
     <span
-      className="rounded-full border px-2 py-0.5 text-xs font-medium text-foreground"
+      className="rounded-md border px-1.5 py-0.5 text-xs text-foreground"
       data-slot="category-chip"
       data-testid={testId}
     >

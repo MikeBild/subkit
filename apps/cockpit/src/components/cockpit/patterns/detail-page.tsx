@@ -16,6 +16,7 @@ export function DetailPage({
   action,
   menu,
   strip,
+  status,
   tabs,
   defaultTab,
   loading,
@@ -29,6 +30,7 @@ export function DetailPage({
   action?: ReactNode | ActionSpec;
   menu?: ReactNode;
   strip?: DetailStrip | null;
+  status?: ReactNode;
   tabs?: readonly PageTab[];
   defaultTab?: string;
   loading?: boolean;
@@ -54,7 +56,7 @@ export function DetailPage({
       }
     >
       <div className="flex flex-col gap-4" data-slot="detail-body">
-        {strip ? <StatusStrip testId={`${testId}-strip`} {...strip} /> : null}
+        {strip ? <StatusStrip testId={`${testId}-strip`} {...strip} /> : status}
         {tabs && tabs.length > 0 ? (
           <PageTabs tabs={tabs} param="tab" testId={`${testId}-tabs`} defaultValue={defaultTab} />
         ) : null}

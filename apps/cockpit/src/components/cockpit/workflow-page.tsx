@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronRight, Sparkles } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -12,12 +12,12 @@ import {
   useWorkflowAutomation,
   WorkflowStatus,
 } from "@/components/cockpit/automation-panel";
-import { useCatalogMetadataActions } from "@/components/cockpit/catalog-metadata";
 import {
-  recordCategory,
-  recordDescription,
-  writtenByAssistant,
-} from "@/components/cockpit/catalog-metadata-model";
+  CatalogCategoryChip,
+  CatalogPurpose,
+  useCatalogMetadataActions,
+} from "@/components/cockpit/catalog-metadata";
+import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
 import { useConnectorRecords } from "@/components/cockpit/connector-names";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
@@ -28,12 +28,10 @@ import {
   CollapsibleSection,
   ConfirmDialog,
   DataState,
+  DetailPage,
   type Fact,
   FactList,
-  Page,
-  PageHeader,
   type PageTab,
-  PageTabs,
   STATUS_DOT,
   statusTone,
   TabBody,
@@ -63,7 +61,6 @@ import { useI18n } from "@/lib/i18n-context";
 import type { ServiceIdentity } from "@/lib/service-icons";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { cn } from "@/lib/utils";
-import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import { resultPhrase, type TriggerKind, triggerKindOf } from "@/lib/workflow-flow";
 import { workflowPreviewDefinition } from "@/lib/workflow-preview";
 import { removalConsequenceKeys } from "@/lib/workflow-removal";
@@ -468,7 +465,6 @@ export function WorkflowPage({
   const canPreview =
     canRun && Boolean(previewDefinition) && previewDefinition?.execution_privacy !== "sensitive";
   const category = recordCategory(record);
-  const description = recordDescription(record).trim();
 
   const tabs: PageTab[] = [
     {
@@ -617,47 +613,16 @@ export function WorkflowPage({
   ];
 
   return (
-    <Page
-      kind="detail"
-      scroll="page"
+    <DetailPage
       testId="detail-workflows"
-      surface="detail"
-      header={
-        <PageHeader
-          back={{ to: "/workflows", label: t("nav.workflows") }}
-          title={title}
-          badge={
-            category !== UNCATEGORIZED ? (
-              <span
-                className="rounded-md border px-1.5 py-0.5 text-xs text-foreground"
-                data-testid="catalog-metadata-chip"
-              >
-                {humanizeCategory(category, t("catalog.categoryOther"))}
-              </span>
-            ) : undefined
-          }
-          purpose={
-            <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span data-testid="catalog-metadata-description">
-                {description || t("catalogMeta.empty")}
-              </span>
-              {writtenByAssistant(record) ? (
-                <span
-                  className="inline-flex items-center gap-1 text-xs"
-                  data-testid="catalog-metadata-by-assistant"
-                >
-                  <Sparkles aria-hidden="true" className="size-3" />
-                  {t("catalogMeta.byAssistant")}
-                </span>
-              ) : null}
-            </span>
-          }
-          menu={menu.length > 0 ? <ActionMenu items={menu} testId="workflow-menu" /> : undefined}
-          action={<RunWorkflowDialog {...runProps} />}
-        />
-      }
-    >
-      <div className="flex flex-col gap-6">
+      back={{ to: "/workflows", label: t("nav.workflows") }}
+      title={title}
+      badge={<CatalogCategoryChip category={category} testId="catalog-metadata-chip" />}
+      purpose={<CatalogPurpose record={record} />}
+      menu={menu.length > 0 ? <ActionMenu items={menu} testId="workflow-menu" /> : undefined}
+      action={<RunWorkflowDialog {...runProps} />}
+      tabs={tabs}
+      status={
         <WorkflowStatus
           automation={automation}
           workflow={workflow}
@@ -670,8 +635,8 @@ export function WorkflowPage({
           noSteps={noSteps}
           onOffersApproval={setOffersApproval}
         />
-        <PageTabs tabs={tabs} param="tab" testId="workflow-tabs" />
-      </div>
+      }
+    >
       {canWrite ? (
         <MetadataDialog id={id} record={record} open={editing} onOpenChange={setEditing} />
       ) : null}
@@ -700,6 +665,6 @@ export function WorkflowPage({
         }}
         testId="workflow-delete-confirm"
       />
-    </Page>
+    </DetailPage>
   );
 }
