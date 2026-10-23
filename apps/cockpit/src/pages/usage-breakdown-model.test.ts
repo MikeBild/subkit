@@ -289,6 +289,13 @@ describe("the window figures", () => {
     expect(window?.cacheShare).toBe(0.25);
     expect(window?.cacheSavings).toBe(3.5);
   });
+
+  test("count only known failure results as failed", () => {
+    const window = llmWindow({
+      totals: { calls: { total: 5, by_result: { ok: 3, success: 1, quota_exhausted: 1 } } },
+    });
+    expect(window?.failedCalls).toBe(1);
+  });
 });
 
 describe("cost over time", () => {

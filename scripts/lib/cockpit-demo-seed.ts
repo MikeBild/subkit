@@ -313,17 +313,22 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       reason: "Synthetic demo record",
     });
     const created = new Date(ago(i * 7));
+    const flow = ["converse", "workflow_step", "generate", "summarize", "judge"][i % 5];
     insert("llm_usage", {
       tenant_id: tenantId,
-      flow: ["converse", "generate", "judge", "summarize"][i % 4],
+      flow,
       model: i % 2 ? "claude-haiku-4-5" : "gpt-5.6-sol",
       prompt_tokens: 1800 + i * 500,
       completion_tokens: 350 + i * 20,
+      cache_read_tokens: i % 3 === 0 ? 900 : 0,
       total_tokens: 2150 + i * 520,
       latency_ms: 850 + i * 10,
-      result: "ok",
+      result: i === 7 ? "error" : "success",
       actor_type: "user",
       user_id: adminUserId,
+      execution_id: flow === "workflow_step" ? id(`execution-${i}`) : null,
+      conversation_id:
+        flow === "converse" || flow === "generate" ? id(`conversation-${i % 7}`) : null,
       created_at: created.toISOString(),
       month_bucket: created.getUTCFullYear() * 100 + created.getUTCMonth() + 1,
     });

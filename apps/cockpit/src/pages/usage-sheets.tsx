@@ -35,6 +35,7 @@ import {
 import {
   type ConsumptionAxis,
   FAILED_RESULTS,
+  failedOf,
   failureRows,
   type LlmGroupView,
   type LlmWindow,
@@ -455,11 +456,7 @@ function ModelSheet({ ctx, id }: { ctx: SheetContext; id: string }) {
   const group = ctx.modelGroup(id);
   const name = group?.modelName ?? id;
   const price = group?.modelPrice ?? null;
-  const failed = group
-    ? Object.entries(group.results)
-        .filter(([result]) => result !== "success")
-        .reduce((sum, [, n]) => sum + n, 0)
-    : 0;
+  const failed = group ? failedOf(group.results) : 0;
   const unpriced = group !== null && price === null;
   const perSecond = new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
     maximumFractionDigits: 1,

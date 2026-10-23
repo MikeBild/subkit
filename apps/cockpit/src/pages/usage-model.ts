@@ -364,12 +364,15 @@ export function llmGroups(envelope: unknown): LlmGroupView[] {
   });
 }
 
-export const SUCCESS_RESULT = "success";
 export const FAILED_RESULTS = ["error", "context_too_large", "quota_exhausted"] as const;
 
-function failedOf(results: Record<string, number>): number {
+export function isFailedResult(result: string): boolean {
+  return (FAILED_RESULTS as readonly string[]).includes(result);
+}
+
+export function failedOf(results: Record<string, number>): number {
   return Object.entries(results)
-    .filter(([result]) => result !== SUCCESS_RESULT)
+    .filter(([result]) => isFailedResult(result))
     .reduce((sum, [, n]) => sum + n, 0);
 }
 
@@ -717,7 +720,7 @@ export function failureRows(envelope: unknown): FailureRow[] {
   return llmGroups(envelope)
     .map((group): FailureRow => {
       const reasons = Object.entries(group.results)
-        .filter(([result, n]) => result !== SUCCESS_RESULT && n > 0)
+        .filter(([result, n]) => isFailedResult(result) && n > 0)
         .map(([result, calls]) => ({ result, calls }))
         .sort((a, b) => b.calls - a.calls || (a.result < b.result ? -1 : 1));
       return {
