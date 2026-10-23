@@ -45,6 +45,25 @@ Bun.serve({
         { code: "demo_failure", message: "Status service unavailable" },
         { status: 503 },
       );
+    if (path === "/v1/chat/completions" && request.method === "POST")
+      return Response.json({
+        id: "chatcmpl-demo",
+        object: "chat.completion",
+        model: "gpt-5.6-sol",
+        fixture: true,
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content:
+                "Zwei Lieferavise sind offen: Jana Krüger (129,50 EUR, bezahlt) und Tim Becker (42,00 EUR, offen). Bitte die Sendung für Tim Becker erst nach Zahlungseingang freigeben.",
+            },
+          },
+        ],
+        usage: { prompt_tokens: 96, completion_tokens: 48, total_tokens: 144 },
+      });
     if (path === "/echo") {
       const raw = await request.text();
       let body: unknown = raw;

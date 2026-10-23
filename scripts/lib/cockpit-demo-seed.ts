@@ -77,10 +77,302 @@ export const demoFiles = [
   },
 ];
 
+export const demoTemplateConnectors = [
+  {
+    key: "connector-github",
+    slug: "github-brennwerk",
+    name: "GitHub",
+    template: "github",
+    templateName: "GitHub (REST)",
+    baseUrl: "https://api.github.brennwerk.invalid",
+    authType: "bearer",
+    needsReauth: false,
+    token: "demo-github-token-not-valid",
+    category: "operations",
+    description: "Issues and releases of the dispatch app. Demo address; it never reaches GitHub.",
+  },
+  {
+    key: "connector-gmail",
+    slug: "gmail-dispatch",
+    name: "Gmail Disposition",
+    template: "google-gmail",
+    templateName: "Google Gmail",
+    baseUrl: "https://gmail.brennwerk.invalid/gmail/v1",
+    authType: "oauth2",
+    needsReauth: false,
+    token: null,
+    category: "sales",
+    description: "Mailbox of the dispatch team. Not signed in yet; demo address only.",
+  },
+  {
+    key: "connector-slack",
+    slug: "slack-ops",
+    name: "Slack Leitstand",
+    template: "slack",
+    templateName: "Slack",
+    baseUrl: "https://slack.brennwerk.invalid/api",
+    authType: "bearer",
+    needsReauth: false,
+    token: "demo-slack-token-not-valid",
+    category: "operations",
+    description:
+      "Posts run alerts to the control room channel. Demo address; it never reaches Slack.",
+  },
+  {
+    key: "connector-hubspot",
+    slug: "hubspot-crm",
+    name: "HubSpot CRM",
+    template: "hubspot",
+    templateName: "HubSpot",
+    baseUrl: "https://api.hubspot.brennwerk.invalid",
+    authType: "bearer",
+    needsReauth: true,
+    token: "demo-hubspot-token-not-valid",
+    category: "sales",
+    description: "Deals and companies for key accounts. The demo token was revoked on purpose.",
+  },
+  {
+    key: "connector-openai",
+    slug: "openai-assistant",
+    name: "OpenAI",
+    template: "openai",
+    templateName: "OpenAI",
+    baseUrl: "http://demo-api:8080/v1",
+    authType: "bearer",
+    needsReauth: false,
+    token: "demo-openai-token-not-valid",
+    category: "operations",
+    description: "AI answers for workflow steps. Served by the local demo API with fixed replies.",
+  },
+] as const;
+
+export const workflowDescriptions = [
+  "Copies new and changed contacts from the CRM into the customer list every hour.",
+  "Collects revenue, carriers and key accounts per region into the weekly sales report.",
+  "Checks open orders for missing prices and totals of zero.",
+  "Sends the dispatch status to the warehouse. Each run needs an approval.",
+  "Calls the carrier status page and reports when it fails.",
+  "Draft: exports paid invoices for accounting.",
+  "Archived: the old route planning, replaced by the carrier portal.",
+  "Turns shipment data into the format of the tracking API.",
+  "Counts customers per region for the sales meeting.",
+  "Checks every delivery notice for a matching order.",
+  "Draft: records returns and asks for the refund decision.",
+  "Builds the monthly revenue report. The report structure changed recently.",
+];
+
+export const demoAiWorkflow = {
+  slug: "demo-delivery-notice-summary",
+  name: "Lieferavise zusammenfassen",
+  description:
+    "Liest offene Lieferavise und lässt die KI eine kurze Zusammenfassung für die Disposition schreiben.",
+};
+
+const HOUR_MS = 3_600_000;
+
+export function demoAiRuns(now: Date): { key: string; startedAt: Date; tokens: number }[] {
+  const week = 7 * 24;
+  return [0.5, 0.75, 1].flatMap((hours, index) => [
+    {
+      key: `ai-run-now-${index}`,
+      startedAt: new Date(now.getTime() - hours * HOUR_MS),
+      tokens: 12_000,
+    },
+    {
+      key: `ai-run-before-${index}`,
+      startedAt: new Date(now.getTime() - (week + hours) * HOUR_MS),
+      tokens: 4_000,
+    },
+  ]);
+}
+
+export interface DemoUsage {
+  flow: string;
+  model: string;
+  prompt: number;
+  completion: number;
+  at: Date;
+  person: boolean;
+  run: string | null;
+}
+
+export const demoUnpricedModel = "mistral-medium-3";
+
+export function demoExtraUsage(now: Date): DemoUsage[] {
+  const ago = (hours: number) => new Date(now.getTime() - hours * HOUR_MS);
+  return [
+    ...demoAiRuns(now).map((run) => ({
+      flow: "workflow_step",
+      model: "gpt-5.6-sol",
+      prompt: Math.round(run.tokens * 0.8),
+      completion: Math.round(run.tokens * 0.2),
+      at: new Date(run.startedAt.getTime() + 2_000),
+      person: false,
+      run: run.key,
+    })),
+    ...[1.2, 2.4, 3.6].map((hours) => ({
+      flow: "summarize",
+      model: demoUnpricedModel,
+      prompt: 2_400,
+      completion: 600,
+      at: ago(hours),
+      person: true,
+      run: null,
+    })),
+    ...[1.5, 9, 20, 30].map((hours) => ({
+      flow: "catalog_describe",
+      model: "claude-haiku-4-5",
+      prompt: 1_600,
+      completion: 200,
+      at: ago(hours),
+      person: false,
+      run: null,
+    })),
+  ];
+}
+
+export function demoMonthlyBudgetTokens(input: {
+  usedTokens: number;
+  lastSevenDaysTokens: number;
+  now: Date;
+}): number | null {
+  const perDay = input.lastSevenDaysTokens / 7;
+  if (perDay <= 0) return null;
+  const monthEnd = new Date(input.now.getFullYear(), input.now.getMonth() + 1, 1);
+  const remainingDays = (monthEnd.getTime() - input.now.getTime()) / 86_400_000;
+  return Math.ceil(input.usedTokens + Math.max(perDay * remainingDays * 0.6, perDay * 0.25));
+}
+
+export interface DemoIntakeItem {
+  key: string;
+  origin: "capture" | "note" | "session";
+  title: string;
+  body: string;
+  note: string;
+  capturedAt: string;
+  sourceUrl?: string;
+  author?: string;
+  agent?: string;
+  sessionId?: string;
+  domains?: string[];
+  excerpt?: string;
+}
+
+export function demoIntakeItems(now: Date): DemoIntakeItem[] {
+  const at = (hours: number) => new Date(now.getTime() - hours * HOUR_MS).toISOString();
+  return [
+    {
+      key: "intake-capture-0",
+      origin: "capture",
+      title: "Neue Zollregeln für Sendungen in die Schweiz",
+      body: "Ab dem nächsten Quartal brauchen Sendungen in die Schweiz eine elektronische Ausfuhranmeldung vor der Abholung. Spediteure lehnen Sendungen ohne Anmeldung am Tor ab.",
+      note: "Für das Carrier-Handbuch prüfen.",
+      capturedAt: at(5),
+      sourceUrl: "https://zoll.example/news/ausfuhr-schweiz",
+      author: "Zollnachrichten",
+    },
+    {
+      key: "intake-capture-1",
+      origin: "capture",
+      title: "Carrier pickup windows change in winter",
+      body: "From December, partner carriers pick up between 07:00 and 11:00 only. Late orders move to the next working day.",
+      note: "",
+      capturedAt: at(26),
+      sourceUrl: "https://carrier-news.example/winter-pickup-windows",
+      author: "Carrier Network News",
+    },
+    {
+      key: "intake-capture-2",
+      origin: "capture",
+      title: "Retourenquote im Onlinehandel sinkt",
+      body: "Eine Branchenumfrage zeigt, dass klare Größenangaben und Fotos die Retourenquote um bis zu ein Fünftel senken.",
+      note: "Vielleicht relevant für den Retouren-Skill.",
+      capturedAt: at(50),
+      sourceUrl: "https://handel.example/studien/retourenquote",
+    },
+    {
+      key: "intake-note-0",
+      origin: "note",
+      title: "Rückruf Nordhafen Kühllogistik",
+      body: "Frau Krüger bittet bei Kühlware um eine Vorabinfo per E-Mail, sobald die Sendung das Lager verlässt.",
+      note: "",
+      capturedAt: at(3),
+    },
+    {
+      key: "intake-session-0",
+      origin: "session",
+      title: "Status API: retry after HTTP 503 instead of failing the run",
+      body: "The carrier status page answers HTTP 503 during its nightly maintenance. A single retry after 30 seconds avoids most failed health checks.",
+      note: "",
+      capturedAt: at(8),
+      agent: "claude-code",
+      sessionId: "demo-session-status-retry",
+      domains: ["operations"],
+      excerpt:
+        "Observed three failed health checks between 02:00 and 02:10; each passed on the next try.",
+    },
+    {
+      key: "intake-session-1",
+      origin: "session",
+      title: "Angebote immer mit Netto- und Bruttopreis nennen",
+      body: "Kunden fragen bei Angeboten regelmäßig nach dem Bruttopreis. Antworten nennen künftig beide Preise und die Währung.",
+      note: "",
+      capturedAt: at(30),
+      agent: "codex",
+      sessionId: "demo-session-price-format",
+      domains: ["sales"],
+      excerpt: "Two customer replies asked for the gross price after an offer listed net only.",
+    },
+  ];
+}
+
+export const demoHistory = {
+  skill: {
+    key: "skill-0",
+    bodies: [
+      "# Working rule\n\nStart with the result. Keep answers short and name the next step at the end.",
+      "# Working rule\n\nStart with the result in one sentence. Use a list for more than two points.\nName the next step at the end and who takes it.",
+    ],
+  },
+  knowledge: {
+    key: "knowledge-1",
+    contents: [
+      "# Approval policy\n\nEvery write run needs an approval for its environment.\n\n## Duration\nAn approval lasts 30 days.\n",
+      "# Approval policy\n\nEvery write run needs an approval for its environment.\n\n## Duration\nAn approval lasts 14 days and ends early when the workflow changes its targets.\n\n## Production\nProduction approvals need a second person.\n",
+    ],
+  },
+  file: {
+    filename: "Approval-and-operating-rules.md",
+    content:
+      "# Approvals\n\nBefore a write run, review target, effect and environment. Production changes need a second person.\n\n## Incidents\n\nThe status endpoint returns HTTP 503 on purpose. Retry once before you escalate.\n",
+  },
+} as const;
+
+export const demoStarterWorkflows: Record<string, string> = {
+  "demo-httpbin-echo": "Sends a sample request to an echo service and shows the answer.",
+  "demo-github-public-repos": "Lists public repositories of an organisation on GitHub.",
+  "demo-open-meteo-weather": "Reads the weather forecast for the warehouse location.",
+};
+
+export function createCockpitDemoCatalogRepairSql(tenantId: string): string {
+  const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
+  const tenant = quote(tenantId);
+  const statements = [
+    `UPDATE files f SET description=k.description, category='platform', description_source='human', category_source='human' FROM knowledge_sources k WHERE f.tenant_id=${tenant} AND k.tenant_id=f.tenant_id AND f.deleted_at IS NULL AND k.deleted_at IS NULL AND f.filename=k.slug || '.md' AND k.slug LIKE 'sk-ref-%' AND nullif(k.description,'') IS NOT NULL AND (f.description_source='llm' OR f.category_source='llm');`,
+    ...Object.entries(demoStarterWorkflows).map(
+      ([slug, description]) =>
+        `UPDATE workflows SET description=${quote(description)}, category='demo', description_source='human', category_source='human' WHERE tenant_id=${tenant} AND slug=${quote(slug)} AND deleted_at IS NULL AND (description_source='llm' OR category_source='llm');`,
+    ),
+    `DELETE FROM catalog_categories c WHERE c.tenant_id=${tenant} AND c.name IN ('mock-category','sk') AND NOT EXISTS (SELECT 1 FROM workflows w WHERE w.tenant_id=c.tenant_id AND w.category=c.name AND w.deleted_at IS NULL) AND NOT EXISTS (SELECT 1 FROM connectors n WHERE n.tenant_id=c.tenant_id AND n.category=c.name AND n.deleted_at IS NULL) AND NOT EXISTS (SELECT 1 FROM knowledge_sources k WHERE k.tenant_id=c.tenant_id AND k.category=c.name AND k.deleted_at IS NULL) AND NOT EXISTS (SELECT 1 FROM skills s WHERE s.tenant_id=c.tenant_id AND s.category=c.name) AND NOT EXISTS (SELECT 1 FROM files f WHERE f.tenant_id=c.tenant_id AND f.category=c.name AND f.deleted_at IS NULL);`,
+  ];
+  return `BEGIN;\n${statements.join("\n")}\nCOMMIT;\n`;
+}
+
 export const cockpitDemoManifest = {
-  connectors: 6,
-  workflows: 12,
-  executions: 24,
+  connectors: 6 + demoTemplateConnectors.length,
+  workflows: 13,
+  executions: 30,
+  intakeItems: 6,
   conversations: 8,
   knowledgeSources: 6,
   knowledgeChunks: 12,
@@ -88,13 +380,14 @@ export const cockpitDemoManifest = {
   skillProposals: 6,
   additionalUsers: 3,
   auditEntries: 32,
-  usageEntries: 24,
+  usageEntries: 37,
   files: demoFiles.length,
   categoryMetadata: demoCategories.length,
   limitations: [
     "Past runs and usage are synthetic.",
     "Approvals are not faked; local workflows can be approved manually.",
     "External OAuth, MCP and delivery services are not set up.",
+    "Template connectors point at .invalid hosts with fake tokens; the OpenAI connector answers from the local demo API.",
   ],
 };
 
@@ -165,6 +458,14 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     "warehouse-erp",
     "carrier-tracking-api",
   ];
+  const connectorDescriptions = [
+    "Reads customer contacts from the local CRM sample service.",
+    "Delivers order totals and the weekly sales figures.",
+    "Sends dispatch updates to the warehouse; every write needs an approval.",
+    "Checks the status page of the carrier network. It answers with HTTP 503 on purpose.",
+    "Stock levels from the warehouse ERP. Switched off until the migration is done.",
+    "Tracks shipments at the partner carrier. The access token has expired.",
+  ];
   connectorNames.forEach((name, i) => {
     insert("connectors", {
       id: id(`connector-${i}`),
@@ -181,12 +482,32 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       health_reason: i === 3 ? "Status endpoint answers with HTTP 503" : null,
       needs_reauth: i === 5,
       auth_failed_reason: i === 5 ? "Access token expired" : null,
-      ...metadata(
-        i < 3 ? "sales" : "operations",
-        "Local demo service backed by synthetic data only.",
-      ),
+      ...metadata(i < 3 ? "sales" : "operations", connectorDescriptions[i] as string),
     });
   });
+  for (const connector of demoTemplateConnectors) {
+    insert("connectors", {
+      id: id(connector.key),
+      tenant_id: tenantId,
+      slug: connector.slug,
+      display_name: connector.name,
+      driver: "http",
+      base_url: connector.baseUrl,
+      config: {},
+      environment: "dev",
+      auth_type: connector.authType,
+      enabled: true,
+      health_state: connector.needsReauth ? "needs_reauth" : "ok",
+      health_reason: null,
+      needs_reauth: connector.needsReauth,
+      auth_failed_reason: connector.needsReauth ? "Access token was revoked by the provider" : null,
+      template_slug: connector.template,
+      template_name: connector.templateName,
+      template_source: "builtin",
+      template_version: 1,
+      ...metadata(connector.category, connector.description),
+    });
+  }
   const workflowNames = [
     "CRM contact sync",
     "Weekly sales report for all regions, carriers and key accounts",
@@ -203,6 +524,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
   ];
   workflowNames.forEach((name, i) => {
     const draft = i === 5 || i === 10;
+    const description = workflowDescriptions[i] as string;
     const connector = i === 4 ? 3 : i === 3 ? 2 : i % 2;
     const steps =
       i === 10
@@ -237,10 +559,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       last_executed_at: i < 5 ? ago(i + 0.01) : null,
       health_state: i === 11 ? "degraded" : "ok",
       health_reason: i === 11 ? "Response structure changed; review the report step" : null,
-      ...metadata(
-        i < 4 ? "sales" : "operations",
-        "Synthetic workflow that only calls the local demo API. Approvals can be reviewed in the Cockpit.",
-      ),
+      ...metadata(i < 4 ? "sales" : "operations", description),
     });
     insert("workflow_versions", {
       id: id(`version-${i}`),
@@ -248,12 +567,147 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       workflow_id: id(`workflow-${i}`),
       version: 1,
       author_user_id: adminUserId,
-      dag: { name, slug: `demo-workflow-${i}`, steps },
+      dag: { name, slug: `demo-workflow-${i}`, description, steps },
       note: "Initial version",
     });
     statements.push(
       `UPDATE workflows SET ${draft ? "draft_version_id" : "current_version_id"}=${quote(id(`version-${i}`))} WHERE tenant_id=${quote(tenantId)} AND id=${quote(id(`workflow-${i}`))};`,
     );
+  });
+  const aiDag = {
+    name: demoAiWorkflow.name,
+    slug: demoAiWorkflow.slug,
+    description: demoAiWorkflow.description,
+    steps: [
+      {
+        id: "read-notices",
+        kind: "request",
+        connector_id: id("connector-1"),
+        method: "GET",
+        path: "/orders",
+      },
+      {
+        id: "ask-ai",
+        kind: "request",
+        connector_id: id("connector-openai"),
+        method: "POST",
+        path: "/chat/completions",
+        side_effects: "read",
+        body: {
+          model: "gpt-5.6-sol",
+          messages: [
+            {
+              role: "user",
+              content:
+                "Fasse die offenen Lieferavise in drei Sätzen zusammen. Summarize the open delivery notices in three sentences.",
+            },
+          ],
+        },
+      },
+    ],
+  };
+  insert("workflows", {
+    id: id("workflow-ai"),
+    tenant_id: tenantId,
+    slug: demoAiWorkflow.slug,
+    name: demoAiWorkflow.name,
+    lifecycle: "active",
+    last_executed_at: ago(0.5),
+    health_state: "ok",
+    health_reason: null,
+    ...metadata("operations", demoAiWorkflow.description),
+  });
+  insert("workflow_versions", {
+    id: id("version-ai"),
+    tenant_id: tenantId,
+    workflow_id: id("workflow-ai"),
+    version: 1,
+    author_user_id: adminUserId,
+    dag: aiDag,
+    note: "Initial version",
+  });
+  statements.push(
+    `UPDATE workflows SET current_version_id=${quote(id("version-ai"))} WHERE tenant_id=${quote(tenantId)} AND id=${quote(id("workflow-ai"))};`,
+  );
+  for (const run of demoAiRuns(now)) {
+    insert("executions", {
+      id: id(run.key),
+      tenant_id: tenantId,
+      workflow_id: id("workflow-ai"),
+      workflow_version_id: id("version-ai"),
+      status: "succeeded",
+      request_source: "schedule",
+      execution_mode: "dev",
+      input: { demo: true },
+      started_at: run.startedAt.toISOString(),
+      finished_at: new Date(run.startedAt.getTime() + 4_000).toISOString(),
+      created_at: run.startedAt.toISOString(),
+      failure: null,
+    });
+  }
+  for (const usage of demoExtraUsage(now)) {
+    insert("llm_usage", {
+      tenant_id: tenantId,
+      flow: usage.flow,
+      model: usage.model,
+      prompt_tokens: usage.prompt,
+      completion_tokens: usage.completion,
+      cache_read_tokens: 0,
+      total_tokens: usage.prompt + usage.completion,
+      latency_ms: 1_200,
+      result: "success",
+      actor_type: usage.person ? "user" : "system",
+      user_id: usage.person ? adminUserId : null,
+      execution_id: usage.run ? id(usage.run) : null,
+      conversation_id: null,
+      created_at: usage.at.toISOString(),
+      month_bucket: usage.at.getUTCFullYear() * 100 + usage.at.getUTCMonth() + 1,
+    });
+  }
+  demoIntakeItems(now).forEach((item) => {
+    const snapshot =
+      item.origin === "session"
+        ? {
+            title: item.title,
+            captured_at: item.capturedAt,
+            body: item.body,
+            origin: "session",
+            agent: item.agent,
+            session_id: item.sessionId,
+            repo: null,
+            domains: item.domains,
+            evidence_excerpt: item.excerpt,
+            learning_kind: "practice",
+            scope: "global",
+          }
+        : item.origin === "capture"
+          ? {
+              title: item.title,
+              source_url: item.sourceUrl,
+              ...(item.author ? { source_author: item.author } : {}),
+              captured_at: item.capturedAt,
+              body: item.body,
+              origin: "capture",
+            }
+          : { title: item.title, captured_at: item.capturedAt, body: item.body, origin: "note" };
+    insert("intake_items", {
+      id: id(item.key),
+      tenant_id: tenantId,
+      client_request_id: id(`${item.key}-request`),
+      original_snapshot: snapshot,
+      title: item.title,
+      body: item.body,
+      note: item.note,
+      state: "collected",
+      collected_by_type: "user",
+      collected_by_id: adminUserId,
+      creation_request_digest: createHash("sha256")
+        .update(`cockpit-demo:${item.key}`)
+        .digest("hex"),
+      category: "inbox",
+      created_at: item.capturedAt,
+      updated_at: item.capturedAt,
+    });
   });
   for (let i = 0; i < 24; i++) {
     const wf = i % 5;
@@ -387,6 +841,14 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
     conversation_id: id("conversation-6"),
     user_id: adminUserId,
   });
+  const knowledgeDescriptions = [
+    "Signed framework contracts with carriers and key accounts.",
+    "Who approves which write operation, and when an approval runs out.",
+    "Answers for the customer service team about delivery times and claims.",
+    "Price lists from previous years, kept for reference only.",
+    "Handling rules for carriers: pickup windows, labels and hazardous goods.",
+    "Tariff sheet import from the carrier portal. The last import failed.",
+  ];
   for (let i = 0; i < 6; i++) {
     const name = [
       "Contract archive",
@@ -410,10 +872,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       last_error: i === 5 ? "Import failed: source document unavailable" : null,
       chunk_count: 2,
       bytes_total: Buffer.byteLength(content),
-      ...metadata(
-        i % 2 ? "operations" : "demo",
-        "Reference text for sources, sections, search and knowledge details",
-      ),
+      ...metadata(i % 2 ? "operations" : "sales", knowledgeDescriptions[i] as string),
     });
     insert("knowledge_source_versions", {
       id: id(`knowledge-version-${i}`),
@@ -460,6 +919,16 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       proposed_by_user_id: adminUserId,
     });
   }
+  const skillDescriptions = [
+    "Short answers with the result first and the next step last.",
+    "Name target, effect and environment before any write run.",
+    "Use the CRM as the only source for customer contacts.",
+    "Builds the contact report for the CRM contact sync workflow.",
+    "How to escalate delays, missing customs papers and carrier disputes.",
+    "Draft: how returns are booked and who confirms a refund.",
+    "Archived: discount rules from the previous price list.",
+    "Address formats for Germany, Switzerland and Austria.",
+  ];
   for (let i = 0; i < 8; i++)
     insert("skills", {
       id: id(`skill-${i}`),
@@ -482,10 +951,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       lifecycle: i === 5 ? "draft" : i === 6 ? "archived" : "active",
       source: "manual",
       applies_to: i % 3 === 0 ? "chat" : i % 3 === 1 ? "authoring" : "both",
-      ...metadata(
-        i % 2 ? "operations" : "demo",
-        "Working rule for search, categories, scope and editing",
-      ),
+      ...metadata(i % 2 ? "operations" : "sales", skillDescriptions[i] as string),
     });
   insert("roles", {
     id: id("reviewer-role"),

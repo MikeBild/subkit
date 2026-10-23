@@ -10,7 +10,11 @@ import {
   cockpitDemoSetupTenantName,
   cockpitDemoTenantName,
   cockpitDemoTenantSlug,
+  createCockpitDemoCatalogRepairSql,
   createCockpitDemoSeedSql,
+  demoAiRuns,
+  demoMonthlyBudgetTokens,
+  demoTemplateConnectors,
 } from "./cockpit-demo-seed.ts";
 
 let context: TestDb;
@@ -188,4 +192,127 @@ test("demo brand assets satisfy the branding image rules and apply once per cont
   ]);
   expect(await applyCockpitDemoBranding(request, digest)).toBe(digest);
   expect(calls).toHaveLength(2);
+});
+
+test("seed shows every feature: intake from AI, template connectors, an AI step and usage outliers", async () => {
+  await context.pool.query(createCockpitDemoSeedSql(tenantId, adminId));
+  const intake = await context.pool.query(
+    "SELECT original_snapshot->>'origin' AS origin, state::text, original_snapshot->>'source_url' AS url FROM intake_items WHERE tenant_id=$1",
+    [tenantId],
+  );
+  const origins = intake.rows.map((row) => row.origin).sort();
+  expect(origins).toEqual(["capture", "capture", "capture", "note", "session", "session"]);
+  expect(intake.rows.every((row) => row.state === "collected")).toBe(true);
+  expect(intake.rows.filter((row) => row.origin === "capture").every((row) => row.url)).toBe(true);
+  const connectors = await context.pool.query(
+    "SELECT slug, template_slug, base_url FROM connectors WHERE tenant_id=$1 AND template_slug IS NOT NULL ORDER BY slug",
+    [tenantId],
+  );
+  expect(connectors.rows.map((row) => row.template_slug).sort()).toEqual(
+    demoTemplateConnectors.map((connector) => connector.template).sort(),
+  );
+  expect(
+    connectors.rows.every((row) =>
+      /^(https:\/\/[a-z.-]+\.invalid|http:\/\/demo-api:8080)(\/|$)/.test(String(row.base_url)),
+    ),
+  ).toBe(true);
+  const ai = await context.pool.query(
+    `SELECT v.dag FROM workflows w JOIN workflow_versions v ON v.id=w.current_version_id WHERE w.tenant_id=$1 AND w.id=$2`,
+    [tenantId, cockpitDemoId(tenantId, "workflow-ai")],
+  );
+  const steps = ai.rows[0]?.dag.steps as { connector_id?: string }[];
+  expect(
+    steps.some((step) => step.connector_id === cockpitDemoId(tenantId, "connector-openai")),
+  ).toBe(true);
+  const perRun = await context.pool.query(
+    `SELECT (e.started_at > now() - interval '3 days') AS recent, avg(u.total_tokens)::int AS tokens
+       FROM llm_usage u JOIN executions e ON e.id=u.execution_id
+      WHERE u.tenant_id=$1 AND e.workflow_id=$2 GROUP BY 1 ORDER BY 1`,
+    [tenantId, cockpitDemoId(tenantId, "workflow-ai")],
+  );
+  expect(perRun.rows.map((row) => row.tokens)).toEqual([4000, 12000]);
+  const unpriced = await context.pool.query(
+    "SELECT count(*)::int AS n FROM llm_usage WHERE tenant_id=$1 AND model='mistral-medium-3'",
+    [tenantId],
+  );
+  expect(unpriced.rows[0]?.n).toBe(3);
+  const automatic = await context.pool.query(
+    "SELECT count(*)::int AS n FROM llm_usage WHERE tenant_id=$1 AND user_id IS NULL",
+    [tenantId],
+  );
+  expect(automatic.rows[0]?.n).toBeGreaterThan(0);
+  for (const table of ["workflows", "connectors", "knowledge_sources", "skills"]) {
+    const leaked = await context.pool.query(
+      `SELECT count(*)::int AS n FROM ${table} WHERE tenant_id=$1 AND (description LIKE 'Mock description:%' OR category IN ('mock-category','sk'))`,
+      [tenantId],
+    );
+    expect(leaked.rows[0]?.n).toBe(0);
+  }
+}, 60_000);
+
+test("platform files and starter workflows lose mock catalog text after the platform seed", async () => {
+  const sourceId = cockpitDemoId(tenantId, "platform-source-fixture");
+  const fileId = cockpitDemoId(tenantId, "platform-file-fixture");
+  const workflowId = cockpitDemoId(tenantId, "starter-workflow-fixture");
+  await context.pool.query(
+    `INSERT INTO knowledge_sources (id, tenant_id, name, slug, source_type, source_uri, version, status, description, category, description_source, category_source)
+     VALUES ($1,$2,'Webhooks','sk-ref-webhooks','text','text:sk-ref-webhooks','1','active','How inbound webhooks work.','platform','human','human')`,
+    [sourceId, tenantId],
+  );
+  await context.pool.query(
+    `INSERT INTO files (id, tenant_id, status, filename, content_type, size_bytes, storage_uri, description, category, description_source, category_source)
+     VALUES ($1,$2,'ready','sk-ref-webhooks.md','text/markdown',10,'s3://demo/x','Mock description: You catalogue one file','sk','llm','llm')`,
+    [fileId, tenantId],
+  );
+  await context.pool.query(
+    `INSERT INTO workflows (id, tenant_id, slug, name, lifecycle, description, category, description_source, category_source)
+     VALUES ($1,$2,'demo-httpbin-echo','Echo','active','Mock description: You catalogue one workflow','mock-category','llm','llm')`,
+    [workflowId, tenantId],
+  );
+  await context.pool.query(
+    "INSERT INTO catalog_categories (tenant_id,name) VALUES ($1,'mock-category'),($1,'sk') ON CONFLICT DO NOTHING",
+    [tenantId],
+  );
+  try {
+    await context.pool.query(createCockpitDemoCatalogRepairSql(tenantId));
+    const file = await context.pool.query(
+      "SELECT description, category, description_source, category_source FROM files WHERE id=$1",
+      [fileId],
+    );
+    expect(file.rows[0]).toEqual({
+      description: "How inbound webhooks work.",
+      category: "platform",
+      description_source: "human",
+      category_source: "human",
+    });
+    const workflow = await context.pool.query(
+      "SELECT description, category FROM workflows WHERE id=$1",
+      [workflowId],
+    );
+    expect(workflow.rows[0]?.category).toBe("demo");
+    expect(String(workflow.rows[0]?.description)).not.toContain("Mock");
+    const categories = await context.pool.query(
+      "SELECT name FROM catalog_categories WHERE tenant_id=$1 AND name IN ('mock-category','sk')",
+      [tenantId],
+    );
+    expect(categories.rows).toEqual([]);
+  } finally {
+    await context.pool.query("DELETE FROM files WHERE id=$1", [fileId]);
+    await context.pool.query("DELETE FROM workflows WHERE id=$1", [workflowId]);
+    await context.pool.query("DELETE FROM knowledge_sources WHERE id=$1", [sourceId]);
+  }
+}, 60_000);
+
+test("the AI workflow's runs and the budget forecast are anchored to now", () => {
+  const now = new Date(2026, 9, 23, 12);
+  const runs = demoAiRuns(now);
+  expect(runs.filter((run) => run.key.startsWith("ai-run-now"))).toHaveLength(3);
+  for (const run of runs.filter((r) => r.key.startsWith("ai-run-before")))
+    expect(now.getTime() - run.startedAt.getTime()).toBeGreaterThan(7 * 86_400_000);
+  const budget = demoMonthlyBudgetTokens({ usedTokens: 100_000, lastSevenDaysTokens: 70_000, now });
+  expect(budget).not.toBeNull();
+  const remainingDays = (new Date(2026, 10, 1).getTime() - now.getTime()) / 86_400_000;
+  expect(budget as number).toBeGreaterThan(100_000);
+  expect(budget as number).toBeLessThan(100_000 + 10_000 * remainingDays);
+  expect(demoMonthlyBudgetTokens({ usedTokens: 1, lastSevenDaysTokens: 0, now })).toBeNull();
 });

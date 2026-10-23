@@ -23,8 +23,12 @@ import {
   cockpitDemoOwnerSql,
   cockpitDemoSetupTenantName,
   cockpitDemoTenantSlug,
+  createCockpitDemoCatalogRepairSql,
   createCockpitDemoSeedSql,
   demoFiles,
+  demoHistory,
+  demoMonthlyBudgetTokens,
+  demoTemplateConnectors,
 } from "./lib/cockpit-demo-seed.ts";
 import { dockerAvailableKiB, dockerStorageProblem } from "./lib/cockpit-demo-storage.ts";
 
@@ -70,6 +74,7 @@ type DemoState = {
   platformSeedPending?: boolean;
   providers?: string;
   brandingDigest?: string;
+  historyReady?: boolean;
 };
 
 function run(args: string[], capture = false, input?: string) {
@@ -324,6 +329,56 @@ async function finishInitialPlatformSeed(state: DemoState): Promise<void> {
   fail("Initial platform seed did not finish before the timeout");
 }
 
+async function seedDemoHistory(tenantId: string, state: DemoState): Promise<void> {
+  if (state.historyReady) return;
+  const own = (name: string) => cockpitDemoId(tenantId, name);
+  for (const connector of demoTemplateConnectors)
+    if (connector.token)
+      await api(`/v1/connectors/${own(connector.key)}/credentials`, "POST", {
+        mode: "bearer",
+        token: connector.token,
+      });
+  const skillId = own(demoHistory.skill.key);
+  for (const body of demoHistory.skill.bodies) {
+    const skill = await api(`/v1/skills/${skillId}`);
+    await api(`/v1/skills/${skillId}`, "PATCH", { expected_version: skill.version, body });
+  }
+  const sourceId = own(demoHistory.knowledge.key);
+  for (const content of demoHistory.knowledge.contents) {
+    const current = await api(`/v1/knowledge-sources/${sourceId}/content`);
+    const path = current.documents[0]?.path;
+    if (!path) fail("Demo knowledge source has no editable document");
+    await api(`/v1/knowledge-sources/${sourceId}/content`, "PUT", {
+      expected_version: current.version,
+      path,
+      content,
+    });
+  }
+  const fileId = state.uploadedFiles?.[demoHistory.file.filename];
+  if (!fileId) fail("Demo file for the replaced version is missing");
+  await api(`/v1/files/${fileId}/replace`, "POST", {
+    filename: demoHistory.file.filename,
+    content_type: "text/markdown",
+    content_base64: Buffer.from(demoHistory.file.content).toString("base64"),
+  });
+  const month = new Date();
+  const bucket = month.getUTCFullYear() * 100 + month.getUTCMonth() + 1;
+  const tokens = JSON.parse(
+    sql(
+      `SELECT json_build_object('used',coalesce(sum(total_tokens) FILTER (WHERE month_bucket=${bucket}),0),'seven',coalesce(sum(total_tokens) FILTER (WHERE created_at>now()-interval '7 days'),0)) FROM llm_usage WHERE tenant_id='${tenantId}';`,
+    ),
+  ) as { used: number; seven: number };
+  const budget = demoMonthlyBudgetTokens({
+    usedTokens: Number(tokens.used),
+    lastSevenDaysTokens: Number(tokens.seven),
+    now: new Date(),
+  });
+  if (budget !== null)
+    await api(`/v1/settings/tokens.monthly_budget?tenant=${tenantId}`, "PUT", { value: budget });
+  state.historyReady = true;
+  save(STATE_FILE, state);
+}
+
 async function verifyLogin(): Promise<void> {
   const choice = await (await fetch(`${BASE}/v1/identity/login/start`)).text();
   const href = choice.match(/href="([^"]*provider=api-key[^"]*)"/)?.[1];
@@ -488,6 +543,8 @@ async function main(): Promise<void> {
     save(STATE_FILE, state);
   }
   await finishInitialPlatformSeed(state);
+  sql(createCockpitDemoCatalogRepairSql(identities.tenantId));
+  await seedDemoHistory(identities.tenantId, state);
   await api("/v1/settings/observability.deployment_environment", "PUT", { value: "development" });
   const brandingDigest = await applyCockpitDemoBranding(api, state.brandingDigest);
   if (brandingDigest !== state.brandingDigest) {
