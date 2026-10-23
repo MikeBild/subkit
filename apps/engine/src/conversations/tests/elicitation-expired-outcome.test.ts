@@ -20,7 +20,7 @@ describe("expired elicitation tool call", () => {
     });
   }
 
-  test("the stored column stays within the published outcome contract", () => {
-    expect(expiredToolCallUpdate("prompt_expired").outcome).toBe("denied");
+  test("the stored column records expiry separately from a refusal", () => {
+    expect(expiredToolCallUpdate("prompt_expired").outcome).toBe("expired");
   });
 });

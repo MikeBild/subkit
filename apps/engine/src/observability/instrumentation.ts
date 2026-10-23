@@ -269,7 +269,7 @@ export function recordPatchCandidate(args: {
 export function recordConversationToolCall(args: {
   category: "draft_write" | "tenant_read" | "tenant_write";
   tool: string;
-  outcome: "ok" | "error" | "denied" | "pending";
+  outcome: "ok" | "error" | "denied" | "expired" | "pending";
   duration_ms: number;
 }): void {
   safe(() => {

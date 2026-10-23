@@ -22817,6 +22817,7 @@
               "ok",
               "error",
               "denied",
+              "expired",
               "pending",
               null
             ]

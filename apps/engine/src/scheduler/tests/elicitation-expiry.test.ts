@@ -247,7 +247,7 @@ describe("runElicitationExpiry — dead approval cascade", () => {
     expect(output.abandoned).toBe(true);
     expect(output.reason).toBe("approval_expired");
     expect(String(output.note)).toContain("nothing ran");
-    expect(toolCall?.outcome).toBe("denied");
+    expect(toolCall?.outcome).toBe("expired");
     expect(toolCall?.confirmation_state).toBe("expired");
 
     const audits = await expiredAuditRowsFor(elicitationId);

@@ -23,7 +23,7 @@ export function normalizeToolResultPayload(result: ToolResult): unknown {
   };
 }
 
-export type ToolCallOutcome = "ok" | "error" | "denied" | "pending";
+export type ToolCallOutcome = "ok" | "error" | "denied" | "expired" | "pending";
 
 const DENIAL_CODES = ["permission_denied", "policy_confirm_required", "not_available_on_surface"];
 

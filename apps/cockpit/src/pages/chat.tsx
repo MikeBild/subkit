@@ -429,6 +429,7 @@ function actionLabel(
 function didNotRun(verdict: { confirmationState: string | null; outcome: string | null }): boolean {
   return (
     verdict.outcome === "denied" ||
+    verdict.outcome === "expired" ||
     verdict.confirmationState === "declined" ||
     verdict.confirmationState === "auto_declined" ||
     verdict.confirmationState === "expired"

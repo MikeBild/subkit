@@ -739,7 +739,7 @@ const EXPIRY_NOTES: Readonly<Record<ElicitationExpiryReason, string>> = {
 
 export function expiredToolCallUpdate(reason: ElicitationExpiryReason): {
   output: Record<string, unknown>;
-  outcome: "denied";
+  outcome: "expired";
   confirmation_state: "expired";
 } {
   return {
@@ -750,7 +750,7 @@ export function expiredToolCallUpdate(reason: ElicitationExpiryReason): {
       reason,
       note: EXPIRY_NOTES[reason],
     },
-    outcome: "denied",
+    outcome: "expired",
     confirmation_state: "expired",
   };
 }

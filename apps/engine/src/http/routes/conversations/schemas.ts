@@ -125,7 +125,7 @@ export const ConversationToolCallSchema = z
     parent_message_id: z.string().nullable().optional(),
     confirmation_state: z.string().nullable(),
     approved_at: z.string().nullable(),
-    outcome: z.enum(["ok", "error", "denied", "pending"]).nullable(),
+    outcome: z.enum(["ok", "error", "denied", "expired", "pending"]).nullable(),
   })
   .openapi("ConversationToolCall");
 

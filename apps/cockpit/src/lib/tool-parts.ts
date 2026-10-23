@@ -63,7 +63,7 @@ export function withToolResult(tool: ToolPart, parts: readonly unknown[]): ToolP
     state:
       verdict.outcome === "error"
         ? "output-error"
-        : verdict.outcome === "denied"
+        : verdict.outcome === "denied" || verdict.outcome === "expired"
           ? "output-denied"
           : "output-available",
     output: result.output,

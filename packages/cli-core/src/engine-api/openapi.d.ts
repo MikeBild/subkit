@@ -26950,7 +26950,7 @@ export interface components {
             confirmation_state: string | null;
             approved_at: string | null;
             /** @enum {string|null} */
-            outcome: "ok" | "error" | "denied" | "pending" | null;
+            outcome: "ok" | "error" | "denied" | "expired" | "pending" | null;
         };
         ConversationPlaybook: {
             id: string;
