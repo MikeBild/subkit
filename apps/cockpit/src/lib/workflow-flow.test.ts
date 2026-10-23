@@ -24,6 +24,10 @@ describe("workflow flow phrases", () => {
       values: { service: "Gmail" },
     });
     expect(stepPhrase(read, null)).toEqual({ key: "workflowFlow.step.readsAny" });
+    expect(stepPhrase(send, "OpenAI", { kind: "brand", key: "openai" })).toEqual({
+      key: "workflowFlow.step.asks",
+      values: { service: "OpenAI" },
+    });
     expect(JSON.stringify(stepPhrase(read, "GitHub"))).not.toContain("fetch_pulls");
   });
 

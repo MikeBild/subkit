@@ -5,6 +5,7 @@ import {
   Bell,
   Bot,
   CalendarClock,
+  ChevronRight,
   Clock,
   Code,
   Flag,
@@ -378,10 +379,17 @@ export function stepConnector(
     : null;
 }
 
-function useStepPhrase(): (definition: WorkflowStepDefinition, service: string | null) => string {
+function useStepPhrase(): (
+  definition: WorkflowStepDefinition,
+  connector: StepConnector | null,
+) => string {
   const { t } = useI18n();
-  return (definition, service) => {
-    const phrase: Phrase = stepPhrase(definition, service);
+  return (definition, connector) => {
+    const phrase: Phrase = stepPhrase(
+      definition,
+      connector?.name || null,
+      connector?.service ?? null,
+    );
     return t(phrase.key, phrase.values);
   };
 }
@@ -468,14 +476,14 @@ export function WorkflowFlow({
       >
         <li className="contents">
           <div
-            className={cn(CARD, "hover:border-border hover:bg-card")}
+            className={cn(CARD, "bg-blue-500/5 hover:border-border hover:bg-blue-500/5")}
             data-testid="workflow-flow-trigger"
           >
             <span className="text-xs font-medium text-muted-foreground">
               {t("workflowFlow.trigger")}
             </span>
             <span className="flex items-center gap-2 text-sm font-medium [&_svg]:size-4">
-              <TriggerIcon aria-hidden="true" className="text-muted-foreground" />
+              <TriggerIcon aria-hidden="true" className="text-blue-600 dark:text-blue-400" />
               {trigger.label}
             </span>
             <span className="text-xs text-muted-foreground">{trigger.line}</span>
@@ -499,7 +507,7 @@ export function WorkflowFlow({
                   data-testid={`workflow-step-${index}`}
                   aria-label={t("workflowFlow.openStep", {
                     number: index + 1,
-                    name: phrase(definition, connector?.name || null),
+                    name: phrase(definition, connector),
                   })}
                 >
                   <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -534,7 +542,7 @@ export function WorkflowFlow({
                       <Icon aria-hidden="true" className="shrink-0 text-muted-foreground" />
                     )}
                     <span className="min-w-0 [overflow-wrap:anywhere]">
-                      {phrase(definition, connector?.name || null)}
+                      {phrase(definition, connector)}
                     </span>
                   </span>
                   <span className="text-xs text-muted-foreground">
@@ -553,14 +561,14 @@ export function WorkflowFlow({
         {steps.views.length === 0 ? plus(0) : plus(steps.views.length)}
         <li className="contents">
           <div
-            className={cn(CARD, "hover:border-border hover:bg-card")}
+            className={cn(CARD, "bg-emerald-500/5 hover:border-border hover:bg-emerald-500/5")}
             data-testid="workflow-flow-result"
           >
             <span className="text-xs font-medium text-muted-foreground">
               {t("workflowFlow.result")}
             </span>
             <span className="flex items-center gap-2 text-sm font-medium [&_svg]:size-4">
-              <Flag aria-hidden="true" className="text-muted-foreground" />
+              <Flag aria-hidden="true" className="text-emerald-600 dark:text-emerald-400" />
               {result}
             </span>
           </div>
@@ -717,7 +725,7 @@ function StepSheet({
       dock
       open
       onOpenChange={(next) => !next && onClose()}
-      title={phrase(definition, connector?.name || null)}
+      title={phrase(definition, connector)}
       subtitle={t("workflowFlow.sheet.subtitle", {
         number: index + 1,
         total,
@@ -755,6 +763,7 @@ function StepSheet({
               {t("workflowFlow.sheet.service")}
             </span>
           </span>
+          <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
         </a>
       ) : null}
       <Section label={t("workflowFlow.sheet.lastRun")} testId={`${testId}-last-run`}>

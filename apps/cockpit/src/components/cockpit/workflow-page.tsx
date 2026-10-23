@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRight, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
@@ -27,6 +27,7 @@ import {
   CodeBlock,
   CollapsibleSection,
   ConfirmDialog,
+  DataState,
   type Fact,
   FactList,
   Page,
@@ -155,13 +156,24 @@ function useFlowTrigger(record: RecordValue): FlowTrigger {
   return { kind, label, line };
 }
 
-function LastRunLine({ workflowId, run }: { workflowId: string; run: Execution | null }) {
+function LastRunLine({
+  workflowId,
+  run,
+  emptyAction,
+}: {
+  workflowId: string;
+  run: Execution | null;
+  emptyAction?: ReactNode;
+}) {
   const { t, dateTime, locale } = useI18n();
   if (!run)
     return (
-      <p className="text-sm text-muted-foreground" data-testid="workflow-last-run-none">
-        {t("workflowFlow.lastRun.none")}
-      </p>
+      <DataState
+        state="empty"
+        line={t("workflowFlow.lastRun.none")}
+        action={emptyAction}
+        testId="workflow-last-run-none"
+      />
     );
   const tone = statusTone(run.status);
   const duration = runDurationMs(run);
@@ -518,7 +530,18 @@ export function WorkflowPage({
           />
           {canWrite ? <StepSaveBar workflowId={id} record={record} draft={editor} /> : null}
           {permissions.includes("execution:read") ? (
-            <LastRunLine workflowId={id} run={steps.lastRun} />
+            <LastRunLine
+              workflowId={id}
+              run={steps.lastRun}
+              emptyAction={
+                <RunWorkflowDialog
+                  {...runProps}
+                  quiet
+                  triggerLabel={t("workflow.testRun")}
+                  triggerTestId="workflow-last-run-start"
+                />
+              }
+            />
           ) : null}
         </TabBody>
       ),

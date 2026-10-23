@@ -20,11 +20,17 @@ const TRANSFORM_KEYS: Record<string, TranslationKey> = {
   "structured-data": "workflowFlow.step.structured",
 };
 
-export function stepPhrase(definition: WorkflowStepDefinition, service: string | null): Phrase {
+export function stepPhrase(
+  definition: WorkflowStepDefinition,
+  service: string | null,
+  identity: ServiceIdentity | null = null,
+): Phrase {
   const { essence } = definition;
   const named = service ? { service } : null;
   switch (essence.kind) {
     case "request":
+      if (named && identity && isAiService(identity))
+        return { key: "workflowFlow.step.asks", values: named };
       if (essence.via === "http") {
         const reads = READ_VERBS.has((essence.verb ?? "GET").toUpperCase());
         if (named)

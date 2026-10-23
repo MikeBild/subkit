@@ -56,13 +56,13 @@ export function SubKitMark({ size = "md", tile = true }: { size?: IconTileSize; 
       <span
         aria-hidden="true"
         data-slot="subkit-mark"
-        className="inline-grid size-4 shrink-0 place-items-center rounded-[4px] bg-primary text-primary-foreground"
+        className="inline-grid size-4 shrink-0 place-items-center rounded-[4px] bg-foreground text-background"
       >
         <Workflow className="size-3" strokeWidth={2.4} />
       </span>
     );
   return (
-    <IconTile size={size} className="bg-primary text-primary-foreground">
+    <IconTile size={size} className="bg-foreground text-background">
       <Workflow data-slot="subkit-mark" strokeWidth={2.2} />
     </IconTile>
   );
