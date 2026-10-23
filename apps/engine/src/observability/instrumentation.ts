@@ -381,6 +381,42 @@ export function recordSandboxLimitClamped(args: { field: SandboxClampedField }):
   });
 }
 
+export type SandboxTransformOutcome = "succeeded" | "failed" | "timed_out" | "memory";
+
+export function recordSandboxTransform(args: {
+  outcome: SandboxTransformOutcome;
+  duration_ms: number;
+  peak_memory_bytes: number | null;
+}): void {
+  safe(() => {
+    const labels = { outcome: args.outcome };
+    if (Number.isFinite(args.duration_ms)) {
+      getMetrics().observe(METRIC_NAMES.SANDBOX_TRANSFORM_DURATION_MS, args.duration_ms, labels);
+    }
+    if (args.peak_memory_bytes !== null && Number.isFinite(args.peak_memory_bytes)) {
+      getMetrics().observe(
+        METRIC_NAMES.SANDBOX_TRANSFORM_PEAK_MEMORY_BYTES,
+        args.peak_memory_bytes,
+        labels,
+      );
+    }
+  });
+}
+
+export function recordSandboxWorkerEvent(args: {
+  lane: string;
+  event: "spawned" | "reset";
+  reason?: string;
+}): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.SANDBOX_WORKER_EVENTS_TOTAL, {
+      lane: args.lane,
+      event: args.event,
+      reason: args.reason ?? "none",
+    });
+  });
+}
+
 export function recordSelfHealingRepairRetried(args: {
   tenant_id: string;
   attempts: number;

@@ -7,6 +7,8 @@ const HISTOGRAM_DURATION_BUCKETS_MS = [10, 50, 250, 1000, 5000, 30000, 300000, 3
 
 const HTTP_DURATION_BUCKETS_MS = [5, 25, 100, 500, 2500, 10000] as const;
 
+const SANDBOX_MEMORY_BUCKETS_BYTES = [1048576, 4194304, 16777216, 67108864, 268435456] as const;
+
 const LOOP_LAG_BUCKETS_SECONDS = [60, 300, 1800, 3600, 21600, 86400, 604800] as const;
 
 export type PatchCandidateDecision =
@@ -73,6 +75,9 @@ export const METRIC_NAMES = {
   CONVERSATION_CONFIRMATIONS_TOTAL: "conversation_confirmations_total",
   CONVERSATION_COMPACTION_TOTAL: "conversation_compaction_total",
   SANDBOX_LIMIT_CLAMPED_TOTAL: "sandbox_limit_clamped_total",
+  SANDBOX_TRANSFORM_DURATION_MS: "sandbox_transform_duration_ms",
+  SANDBOX_TRANSFORM_PEAK_MEMORY_BYTES: "sandbox_transform_peak_memory_bytes",
+  SANDBOX_WORKER_EVENTS_TOTAL: "sandbox_worker_events_total",
   TOOL_POLICY_DECISION_TOTAL: "tool_policy_decision_total",
   CONVERSATION_STEP_TOTAL: "conversation_step_total",
   CONVERSATION_REPAIR_TOTAL: "conversation_repair_total",
@@ -379,6 +384,23 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.SANDBOX_LIMIT_CLAMPED_TOTAL,
     help: "Tenant-authored sandbox limits cut to the operator ceiling. `field` names the limit; `transform_wall_ms` counts transform steps whose timeout_ms exceeded sandbox.max_transform_wall_ms and ran with the ceiling instead.",
     labels: ["field"],
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.SANDBOX_TRANSFORM_DURATION_MS,
+    help: "Sandbox time of one JavaScript transform step, measured inside the worker. `outcome` is `succeeded`, `failed`, `timed_out` or `memory`. A bimodal shape points at worker cold starts.",
+    labels: ["outcome"],
+    buckets: HTTP_DURATION_BUCKETS_MS,
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.SANDBOX_TRANSFORM_PEAK_MEMORY_BYTES,
+    help: "Peak QuickJS heap of one JavaScript transform step in bytes, by `outcome`. Steps whose runtime reported no peak are not observed.",
+    labels: ["outcome"],
+    buckets: SANDBOX_MEMORY_BUCKETS_BYTES,
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.SANDBOX_WORKER_EVENTS_TOTAL,
+    help: "Sandbox worker lifecycle events by `lane`. `event` is `spawned` or `reset`; `reason` names why a worker was reset (`none` for spawns). Resets after ordinary script errors should stay at zero.",
+    labels: ["lane", "event", "reason"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.SELF_HEALING_REPAIR_RETRIED_TOTAL,

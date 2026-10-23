@@ -1,6 +1,10 @@
 import { getConfig } from "../../config/loader.ts";
 import { logger } from "../../logging/logger.ts";
-import { recordSandboxLimitClamped } from "../../observability/instrumentation.ts";
+import {
+  recordSandboxLimitClamped,
+  recordSandboxTransform,
+  type SandboxTransformOutcome,
+} from "../../observability/instrumentation.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { sandboxFailureCode } from "../../sandboxes/index.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
@@ -158,7 +162,7 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
     ]);
     const { output, stats } = raced as { output: unknown; stats?: SandboxStats };
     const warnings = detectTransformWarnings({ step_id: p.step.id, output, scope: p.scope });
-    logSandboxStats(p.step.id, stats);
+    logSandboxStats(p.step.id, stats, "succeeded");
     return {
       status: "succeeded",
       output,
@@ -174,7 +178,15 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
     const detail = buildStepErrorDetail({ code: "transform_error", err });
     const message = detail.message;
     const stats = err instanceof SandboxError ? err.stats : undefined;
-    logSandboxStats(p.step.id, stats);
+    logSandboxStats(
+      p.step.id,
+      stats,
+      err instanceof SandboxTimeoutError || err instanceof SandboxInterruptError
+        ? "timed_out"
+        : err instanceof SandboxMemoryError
+          ? "memory"
+          : "failed",
+    );
     if (err instanceof SandboxTimeoutError || err instanceof SandboxInterruptError) {
       logger.warn({
         module: "execution",
@@ -256,8 +268,17 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
   }
 }
 
-function logSandboxStats(stepId: string, stats: SandboxStats | undefined): void {
+function logSandboxStats(
+  stepId: string,
+  stats: SandboxStats | undefined,
+  outcome: SandboxTransformOutcome,
+): void {
   if (!stats) return;
+  recordSandboxTransform({
+    outcome,
+    duration_ms: stats.duration_ms,
+    peak_memory_bytes: stats.peak_memory_bytes,
+  });
   logger.debug({
     module: "sandbox",
     action: "transform.stats",

@@ -8,6 +8,7 @@ import {
 import { getConfig } from "../../config/loader.ts";
 import { getContext } from "../../logging/context.ts";
 import { logger } from "../../logging/logger.ts";
+import { recordSandboxWorkerEvent } from "../../observability/instrumentation.ts";
 import { STDLIB_HELPER_SOURCES, STDLIB_SOURCE } from "./stdlib/index.ts";
 import {
   DEFAULT_LIMITS,
@@ -670,6 +671,7 @@ class WorkerLane {
             pid: source.pid,
             spawn_ms: Math.round(performance.now() - spawnStarted),
           });
+          recordSandboxWorkerEvent({ lane: this.lane, event: "spawned" });
           settle();
           return;
         }
@@ -713,6 +715,7 @@ class WorkerLane {
         pid: child.pid,
         reason: "worker_exited",
       });
+      recordSandboxWorkerEvent({ lane: this.lane, event: "reset", reason: "worker_exited" });
     });
     return { child, ready: readiness };
   }
@@ -747,6 +750,7 @@ class WorkerLane {
       pid: child.pid,
       reason,
     });
+    recordSandboxWorkerEvent({ lane: this.lane, event: "reset", reason });
   }
 
   private async recycleForRss(limit: number): Promise<void> {

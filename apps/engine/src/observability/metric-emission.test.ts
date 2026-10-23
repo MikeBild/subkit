@@ -11,6 +11,8 @@ import {
   recordLlmFallbackInvocation,
   recordLlmStepTimeout,
   recordSandboxLimitClamped,
+  recordSandboxTransform,
+  recordSandboxWorkerEvent,
   recordToolPolicyDecision,
   setDlqJobCount,
 } from "./instrumentation.ts";
@@ -328,6 +330,47 @@ describe("sandbox limit clamp counter", () => {
       {
         name: METRIC_NAMES.SANDBOX_LIMIT_CLAMPED_TOTAL,
         labels: { field: "transform_wall_ms" },
+        value: 1,
+      },
+    ]);
+  });
+});
+
+describe("sandbox transform and worker metrics", () => {
+  test("a transform observes duration and peak memory under its outcome", () => {
+    recordSandboxTransform({ outcome: "succeeded", duration_ms: 12, peak_memory_bytes: 2_000_000 });
+    recordSandboxTransform({ outcome: "timed_out", duration_ms: 1000, peak_memory_bytes: null });
+    const durations = samplesOf(METRIC_NAMES.SANDBOX_TRANSFORM_DURATION_MS).filter(
+      (s) => s.name === `${METRIC_NAMES.SANDBOX_TRANSFORM_DURATION_MS}_count`,
+    );
+    expect(durations.map((s) => [s.labels.outcome, s.value]).sort()).toEqual([
+      ["succeeded", 1],
+      ["timed_out", 1],
+    ]);
+    const memory = samplesOf(METRIC_NAMES.SANDBOX_TRANSFORM_PEAK_MEMORY_BYTES).filter(
+      (s) => s.name === `${METRIC_NAMES.SANDBOX_TRANSFORM_PEAK_MEMORY_BYTES}_count`,
+    );
+    expect(memory).toEqual([
+      {
+        name: `${METRIC_NAMES.SANDBOX_TRANSFORM_PEAK_MEMORY_BYTES}_count`,
+        labels: { outcome: "succeeded" },
+        value: 1,
+      },
+    ]);
+  });
+
+  test("worker events are counted by lane, event and reason", () => {
+    recordSandboxWorkerEvent({ lane: "default", event: "spawned" });
+    recordSandboxWorkerEvent({ lane: "default", event: "reset", reason: "timeout" });
+    expect(samplesOf(METRIC_NAMES.SANDBOX_WORKER_EVENTS_TOTAL)).toEqual([
+      {
+        name: METRIC_NAMES.SANDBOX_WORKER_EVENTS_TOTAL,
+        labels: { event: "spawned", lane: "default", reason: "none" },
+        value: 1,
+      },
+      {
+        name: METRIC_NAMES.SANDBOX_WORKER_EVENTS_TOTAL,
+        labels: { event: "reset", lane: "default", reason: "timeout" },
         value: 1,
       },
     ]);
