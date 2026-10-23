@@ -1,9 +1,12 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
+import * as discoveryModule from "../../connectors/discovery/index.ts";
+import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
+import type { DiscoveredEndpoint, DiscoveryResult } from "../../connectors/discovery/types.ts";
 import { connectors, knowledgeChunks, skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -13,7 +16,7 @@ import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { LLM_CALL_TIMEOUT_MS } from "../../llm/core/ai-sdk-model.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
-import { recordSuccessShape } from "../../schema-versions/service.ts";
+import { listLatestShapes, recordSuccessShape } from "../../schema-versions/service.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import type { WorkflowTrigger } from "../../workflows/types.ts";
@@ -26,6 +29,8 @@ import {
 import {
   _withConnectorPreflightForTests,
   type ConnectorPreflightArgs,
+  PREFLIGHT_BUDGET_MS,
+  preflightConnector,
 } from "../authoring-preflight.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import type { RecordedEvalReport } from "../recorded-eval.ts";
@@ -831,6 +836,9 @@ describe("runAuthoringPipeline — shared deadline / abort degradation (P2)", ()
       PIPELINE_DEADLINE_MS - MAX_GENERATION_PASSES * LLM_CALL_TIMEOUT_MS,
     ).toBeGreaterThanOrEqual(LLM_CALL_TIMEOUT_MS);
     expect(PIPELINE_DEADLINE_MS).toBeLessThan(10 * 60_000);
+    expect(PIPELINE_DEADLINE_MS - PREFLIGHT_BUDGET_MS).toBeGreaterThanOrEqual(
+      MAX_GENERATION_PASSES * LLM_CALL_TIMEOUT_MS,
+    );
   });
 });
 
@@ -1323,5 +1331,124 @@ describe("runAuthoringPipeline — goal-grounded retrieval", () => {
     const included = new Set(generateCall.included_knowledge_chunk_ids);
     expect((await chunksOf(billing.id)).some((id) => included.has(id))).toBe(true);
     expect((await chunksOf(support.id)).some((id) => included.has(id))).toBe(false);
+  });
+});
+
+describe("runAuthoringPipeline — real pre-flight", () => {
+  function route(method: "GET" | "POST", path: string, summary: string): DiscoveredEndpoint {
+    return {
+      method,
+      path,
+      summary,
+      description: null,
+      operation_id: null,
+      scopes: [],
+      params: [],
+      request_body_schema: null,
+      request_content_type: null,
+      response_schemas: {},
+      pagination_hint: null,
+      deprecated: false,
+    };
+  }
+
+  async function seedIndex(base_url: string): Promise<void> {
+    const index: DiscoveryResult = {
+      source_url: base_url,
+      fetched_at: "2026-01-01T00:00:00.000Z",
+      strategy: "openapi-direct",
+      spec_version: "openapi-3",
+      title: "Gadgets",
+      servers: [base_url],
+      auth_schemes: [],
+      endpoints: [
+        route("GET", "/v1/gadgets", "List gadgets"),
+        route("POST", "/v1/gadgets", "Create gadgets"),
+      ],
+      warnings: [],
+    };
+    const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(index);
+    try {
+      await runDiscoveryCached({ db: ctx.db, tenant_id, actor_id: null }, { base_url });
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  function recordingFetch(requests: Array<{ method: string; url: string }>): typeof fetch {
+    return (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+      requests.push({ method: method.toUpperCase(), url });
+      return new Response(JSON.stringify({ gadgets: [{ id: "g-1", label: "first" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+  }
+
+  test("an open connector gets one read-only GET probe whose shape reaches the prompt", async () => {
+    const base_url = "https://gadgets-open.preflight.test";
+    const [connector] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id,
+        slug: "gadgets-open",
+        display_name: "Gadgets",
+        driver: "http",
+        base_url,
+        auth_type: "none",
+      })
+      .returning();
+    await seedIndex(base_url);
+    const requests: Array<{ method: string; url: string }> = [];
+    getMockProvider().generateOverrides.generate = () => VALID_DEF;
+    const result = await withSelfHostedDriverFetchForTests(recordingFetch(requests), () =>
+      _withConnectorPreflightForTests(preflightConnector, () =>
+        runAuthoringPipeline({
+          ctx: makeCtx(),
+          goal: "Summarise all gadgets",
+          connector_ids: ["gadgets-open"],
+        }),
+      ),
+    );
+    expect(result.ok).toBe(true);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.url).toContain("/v1/gadgets");
+    const shapes = await listLatestShapes(
+      { tenant_id, connector_id: connector!.id, max_endpoints: 10 },
+      ctx.db,
+    );
+    expect(shapes.map((s) => s.endpoint_key)).toContain("GET /v1/gadgets");
+    const prompt = getMockProvider().calls.find((c) => c.flow === "generate")?.last_user ?? "";
+    expect(prompt).toContain("GET /v1/gadgets");
+  });
+
+  test("a connector without a saved credential is never probed and never asks", async () => {
+    const base_url = "https://gadgets-locked.preflight.test";
+    await ctx.db.insert(connectors).values({
+      tenant_id,
+      slug: "gadgets-locked",
+      display_name: "Locked gadgets",
+      driver: "http",
+      base_url,
+      auth_type: "bearer",
+    });
+    await seedIndex(base_url);
+    const requests: Array<{ method: string; url: string }> = [];
+    getMockProvider().generateOverrides.generate = () => VALID_DEF;
+    const result = await withSelfHostedDriverFetchForTests(recordingFetch(requests), () =>
+      _withConnectorPreflightForTests(preflightConnector, () =>
+        runAuthoringPipeline({
+          ctx: makeCtx(),
+          goal: "Summarise all gadgets",
+          connector_ids: ["gadgets-locked"],
+        }),
+      ),
+    );
+    expect(result.ok).toBe(true);
+    expect(requests).toHaveLength(0);
+    expect("requires_user_input" in result).toBe(false);
   });
 });
