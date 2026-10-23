@@ -41,15 +41,15 @@ export function KpiTile({
       {note ? (
         <p
           className={cn(
-            "flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-muted-foreground",
-            value === undefined && "min-h-8",
+            "flex min-w-0 flex-wrap items-center gap-x-2 text-muted-foreground",
+            value === undefined ? "min-h-8 text-xs xl:text-sm" : "text-sm",
           )}
         >
           {note}
         </p>
       ) : null}
       <p
-        className="min-h-4 text-xs text-muted-foreground"
+        className="line-clamp-2 min-h-8 text-xs text-muted-foreground"
         title={detailTitle}
         data-testid={detail ? detailTestId : undefined}
       >
