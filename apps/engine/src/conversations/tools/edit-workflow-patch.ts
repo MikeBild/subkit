@@ -260,6 +260,7 @@ export async function applyWorkflowPatchToDraft(
     const validation = await validateTenantWorkflowDef(patched, ctx.tenant_id, ctx.db, {
       allowForwardRefs: true,
       destinationTier: "all",
+      lintJavascript: true,
     });
     const placeholderDestinations = validation.placeholder_destinations ?? [];
     if (placeholderDestinations.length > 0) {

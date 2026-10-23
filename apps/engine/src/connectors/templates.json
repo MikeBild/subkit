@@ -2388,7 +2388,7 @@
               "kind": "transform",
               "id": "now",
               "language": "javascript",
-              "expression": "return Date.now();"
+              "expression": "return sk.now();"
             },
             {
               "kind": "request",

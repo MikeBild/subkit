@@ -55,6 +55,7 @@ import { LlmError, LlmProviderError } from "../llm/errors.ts";
 import { buildProviderErrorDetails, classifyProviderError } from "../llm/provider-errors.ts";
 import { logger } from "../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../observability/instrumentation.ts";
+import { renderSandboxGlobalsContract } from "../sandboxes/quickjs/stdlib/sandbox-globals.ts";
 import {
   type DestinationPlaceholderViolation,
   type ValidationError,
@@ -375,6 +376,7 @@ export function buildGenerationPrompt(args: {
     "  - `input.scope.<step_id>.data` — recorded output of each upstream step",
     "  - `input.input` — the workflow input",
     "  - `input.scope.$item` / `input.scope.$loop_index` — inside a loop body",
+    ...renderSandboxGlobalsContract(),
     "JSONata is NOT a programmable transform language: use it in `loop.over`, `branch.when`, `output_transform` and selector expressions. Request `${…}` string placeholders use the separate placeholder grammar above.",
     "",
     ...JSONATA_CONTRACT_LINES,
@@ -705,6 +707,7 @@ export async function runAuthoringPipeline(
     if (candidate) {
       const validation = await validateTenantWorkflowDef(candidate, ctx.tenant_id, ctx.db, {
         destinationTier: "all",
+        lintJavascript: true,
       });
       const placeholderDestinations = validation.placeholder_destinations ?? [];
       if (placeholderDestinations.length > 0) {
@@ -830,6 +833,7 @@ export async function runAuthoringPipeline(
   const workflowDraft = toWorkflowDraftDocument(definition);
   const structural = await validateTenantWorkflowDef(workflowDraft, ctx.tenant_id, ctx.db, {
     destinationTier: "all",
+    lintJavascript: true,
   });
   if (!structural.ok) {
     const structuralPlaceholders = structural.placeholder_destinations ?? [];

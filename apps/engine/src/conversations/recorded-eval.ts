@@ -9,6 +9,7 @@ import {
 } from "../execution/jsonata-engine.ts";
 import { logger } from "../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../observability/instrumentation.ts";
+import { lintJsBody } from "../workflows/js-body-lint.ts";
 import { extractStepIdReferences } from "../workflows/levenshtein.ts";
 import {
   type ReferenceValidationError,
@@ -415,6 +416,15 @@ async function evaluateJavascriptSite(
   recordedScope: Record<string, unknown>,
   input: unknown,
 ): Promise<RecordedEvalExpressionFinding> {
+  const lint = lintJsBody(site.expression);
+  if (lint.length > 0) {
+    return {
+      site: site.site,
+      step_id: site.step_id,
+      status: "compile_error",
+      message: lint.map((f) => f.message).join(" "),
+    };
+  }
   if (!evaluable) {
     const syntax = await checkJsBodySyntax(site.expression);
     if (!syntax.ok) {

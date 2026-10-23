@@ -21,6 +21,7 @@ import {
 import { GRAPHQL_OVER_HTTP_REPAIR } from "./graphql-conversion.ts";
 import { detectReservedAuthHeaders } from "./header-policy.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
+import { lintJsBody } from "./js-body-lint.ts";
 import { jsonataSiteErrors } from "./jsonata-sites.ts";
 import { suggestClosest } from "./levenshtein.ts";
 import { retiredItemVarIssues } from "./stored-definition.ts";
@@ -68,6 +69,7 @@ export interface ValidateOptions {
   connectorGraphqlTargets?: ReadonlyMap<string, ReadonlyArray<GraphqlConnectorTarget>>;
   connectorBaseUrls?: ReadonlyMap<string, ReadonlyArray<string>>;
   destinationTier?: PlaceholderTier;
+  lintJavascript?: boolean;
 }
 
 export interface ForwardRef {
@@ -198,13 +200,20 @@ export function validateWorkflowDef(
       step.expression.length > 0 &&
       !TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION.has(step.language ?? "javascript")
     ) {
+      let parsesAsFunctionBody = true;
       try {
         new Function("input", step.expression);
       } catch (e) {
+        parsesAsFunctionBody = false;
         errors.push({
           path: `steps.${step.id}.expression`,
           message: e instanceof Error ? e.message : String(e),
         });
+      }
+      if (parsesAsFunctionBody && options.lintJavascript === true) {
+        for (const finding of lintJsBody(step.expression)) {
+          errors.push({ path: `steps.${step.id}.expression`, message: finding.message });
+        }
       }
     }
     if (step.kind === "branch") {

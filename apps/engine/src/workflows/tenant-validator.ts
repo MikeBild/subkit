@@ -127,7 +127,7 @@ export async function validateTenantWorkflowDef(
   input: unknown,
   tenantId: string,
   db: Executor,
-  options: Pick<ValidateOptions, "allowForwardRefs" | "destinationTier"> = {},
+  options: Pick<ValidateOptions, "allowForwardRefs" | "destinationTier" | "lintJavascript"> = {},
 ) {
   const [policies, graphqlTargets, baseUrls] = await Promise.all([
     loadTenantWorkflowHeaderPolicies(input, tenantId, db),

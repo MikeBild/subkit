@@ -12,6 +12,7 @@ import {
 import { checkOutputContract, summarizeViolations } from "../execution/output-contract.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
+import { lintJsBody } from "../workflows/js-body-lint.ts";
 import {
   checkJsBodySyntax,
   evaluateJsBody,
@@ -253,6 +254,10 @@ async function verifyJavascriptCandidate(
   finding: TransformRepairFinding,
   evaluation: TransformEvaluation | undefined,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const lint = lintJsBody(candidate);
+  if (lint.length > 0) {
+    return { ok: false, error: lint.map((f) => f.message).join(" ") };
+  }
   if (!evaluation || (evaluation.kind === "step_scope" && finding.kind === "compile_error")) {
     const syntax = await checkJsBodySyntax(candidate);
     return syntax.ok ? { ok: true } : { ok: false, error: syntax.message };

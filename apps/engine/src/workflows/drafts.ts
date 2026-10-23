@@ -44,6 +44,7 @@ export interface SaveWorkflowDraftInput extends VersionActor {
   request_source: RequestSource;
   audit_metadata?: Record<string, unknown>;
   metadata?: CatalogMetadataPatch;
+  lint_javascript?: boolean;
 }
 
 function draftView(
@@ -98,6 +99,7 @@ export async function saveWorkflowDraft(
 ): Promise<SaveWorkflowDraftResult> {
   const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, exec, {
     destinationTier: "tokens",
+    ...(input.lint_javascript === true ? { lintJavascript: true } : {}),
   });
   if (!validation.ok || !validation.workflow) {
     return {

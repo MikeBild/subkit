@@ -7,7 +7,7 @@
       "kind": "transform",
       "language": "javascript",
       "on_error": "fail",
-      "expression": "const d = input.input.date; return (d !== undefined && d !== null) ? d : new Date(Date.now() + 86400000).toISOString().slice(0, 10);"
+      "expression": "const d = input.input.date; return (d !== undefined && d !== null) ? d : new Date(sk.now() + 86400000).toISOString().slice(0, 10);"
     },
     {
       "id": "fetch_forecast",

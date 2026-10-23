@@ -16,7 +16,9 @@ export const validateDraftTool: ConversationTool = {
   async execute(ctx, _args): Promise<ToolResult> {
     const draft = ctx.getDraft();
     const workflowDraft = getWorkflowDraft(draft);
-    const validation = await validateTenantWorkflowDef(workflowDraft, ctx.tenant_id, ctx.db);
+    const validation = await validateTenantWorkflowDef(workflowDraft, ctx.tenant_id, ctx.db, {
+      lintJavascript: true,
+    });
     const nextDraft = withWorkflowValidation(
       draft,
       validation.ok,
