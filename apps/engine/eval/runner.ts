@@ -61,6 +61,82 @@ export interface RunReport {
         p95_ms: number;
       }
     >;
+    prompt_size_per_step?: PromptSizeReport;
+  };
+}
+
+export interface PromptSizeStep {
+  item: string;
+  step: string;
+  tokens: number;
+  single_skill_tokens?: number;
+}
+
+export interface PromptSizeReference {
+  prompt_tokens_per_chat_step: number | null;
+  target_prompt_tokens_per_chat_step: number | null;
+}
+
+export interface PromptSizeReport extends PromptSizeReference {
+  steps: PromptSizeStep[];
+  mean_tokens: number;
+  max_tokens: number;
+  mean_single_skill_tokens: number | null;
+}
+
+const STEP_TOKENS = /^prompt_tokens_step_(.+)$/;
+const STEP_SUMMARY_KEYS = new Set(["mean", "max"]);
+
+export function promptSizePerStep(
+  items: RunReport["items"],
+  reference: PromptSizeReference,
+): PromptSizeReport | null {
+  const steps: PromptSizeStep[] = [];
+  for (const item of items) {
+    const metrics = item.metrics ?? {};
+    for (const [key, tokens] of Object.entries(metrics)) {
+      const match = STEP_TOKENS.exec(key);
+      const step = match?.[1];
+      if (!step || STEP_SUMMARY_KEYS.has(step)) continue;
+      const single = metrics[`single_skill_prompt_tokens_step_${step}`];
+      steps.push({
+        item: item.name,
+        step,
+        tokens,
+        ...(single !== undefined ? { single_skill_tokens: single } : {}),
+      });
+    }
+  }
+  if (steps.length === 0) return null;
+  const average = (values: number[]) =>
+    Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+  const singles = steps.flatMap((s) =>
+    s.single_skill_tokens === undefined ? [] : [s.single_skill_tokens],
+  );
+  return {
+    steps,
+    mean_tokens: average(steps.map((s) => s.tokens)),
+    max_tokens: Math.max(...steps.map((s) => s.tokens)),
+    mean_single_skill_tokens: singles.length > 0 ? average(singles) : null,
+    ...reference,
+  };
+}
+
+function finiteOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function readPromptSizeReference(raw: string | null): PromptSizeReference {
+  if (raw === null) {
+    return { prompt_tokens_per_chat_step: null, target_prompt_tokens_per_chat_step: null };
+  }
+  const parsed = JSON.parse(raw) as {
+    tokens?: { prompt_tokens_per_chat_step?: unknown };
+    targets?: { prompt_tokens_per_chat_step?: unknown };
+  };
+  return {
+    prompt_tokens_per_chat_step: finiteOrNull(parsed.tokens?.prompt_tokens_per_chat_step),
+    target_prompt_tokens_per_chat_step: finiteOrNull(parsed.targets?.prompt_tokens_per_chat_step),
   };
 }
 
@@ -224,6 +300,39 @@ function compareAgainstBaseline(report: RunReport): {
   return { drift, baseline_present: true };
 }
 
+function loadPromptSizeReference(): PromptSizeReference {
+  let raw: string | null = null;
+  try {
+    raw = readFileSync(join(BASELINES_DIR, "prod-authoring.json"), "utf8");
+  } catch {}
+  return readPromptSizeReference(raw);
+}
+
+function printPromptSize(report: PromptSizeReport): void {
+  console.log(
+    "\nPrompt size per chat step (system prompt plus load_skill results in history, tokens):",
+  );
+  for (const step of report.steps) {
+    const single =
+      step.single_skill_tokens !== undefined ? `  single skill=${step.single_skill_tokens}` : "";
+    console.log(`  ${step.item} ${step.step}: ${step.tokens}${single}`);
+  }
+  const single =
+    report.mean_single_skill_tokens !== null
+      ? `  single skill mean=${report.mean_single_skill_tokens}`
+      : "";
+  console.log(`  mean=${report.mean_tokens}  max=${report.max_tokens}${single}`);
+  if (report.prompt_tokens_per_chat_step !== null) {
+    const target =
+      report.target_prompt_tokens_per_chat_step !== null
+        ? `, target ${report.target_prompt_tokens_per_chat_step}`
+        : "";
+    console.log(
+      `  PROD baseline ${report.prompt_tokens_per_chat_step} per chat step${target} (live prompt incl. tools and history)`,
+    );
+  }
+}
+
 function writeBaseline(report: RunReport): void {
   try {
     require("node:fs").mkdirSync(BASELINES_DIR, { recursive: true });
@@ -297,6 +406,8 @@ async function main(): Promise<void> {
     items,
     aggregates: computeAggregates(items),
   };
+  const promptSize = promptSizePerStep(items, loadPromptSizeReference());
+  if (promptSize) report.aggregates.prompt_size_per_step = promptSize;
   writeCsv(report);
   writeJson(report);
   console.log(`\nTotal: ${fixtures.length}   Pass: ${passed}   Fail: ${failed}`);
@@ -308,6 +419,7 @@ async function main(): Promise<void> {
       `  ${flow}: ${agg.passed}/${agg.total} pass  p50=${agg.p50_ms}ms  p95=${agg.p95_ms}ms`,
     );
   }
+  if (promptSize) printPromptSize(promptSize);
   if (process.argv.includes("--write-baseline")) {
     writeBaseline(report);
   } else {

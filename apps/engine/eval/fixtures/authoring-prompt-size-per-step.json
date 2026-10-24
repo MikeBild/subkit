@@ -1,0 +1,117 @@
+{
+  "name": "authoring-prompt-size-per-step",
+  "description": "Prompt size per chat step across one authoring conversation that builds, previews, patches, previews again, saves and reviews automation. Each step replays the user turn and the tool calls through the real skill autoload and recency rules and assembles the real converse system prompt from the shipped skill seeds in a test tenant. The conversation loop renders active global skills only as index lines, so a skill body reaches the model as the load_skill result in the message history, verbatim for the current and the two previous user turns. Each step names the skills whose rules it needs; the model loads a needed skill again when its last result has left that window, and the result tokens of every load still in the window are added to the step. The same conversation runs again in a tenant where the workflow-authoring family is merged into one skill, as it shipped before the phase split; there every family need is the merged skill. Every step must carry the bodies it needs, keep the core recipe loaded, trim nothing and be smaller than the single-skill arm. Tool definitions, other messages and the live pass rate are not measured; the runner reports the steps next to the PROD baseline in eval/baselines/prod-authoring.json.",
+  "flow": "converse",
+  "failure_class": "the per-step skill payload of an authoring chat is not measured against the single-skill arm, so a phase split can grow the prompt unnoticed",
+  "depends_on": ["skill_autoload", "context_assembler"],
+  "input": {
+    "family_prefix": "workflow-authoring",
+    "core_slug": "workflow-authoring",
+    "core_marker": "## Authenticated caller contract",
+    "surface": "cockpit",
+    "required_tools": [
+      "author_workflow",
+      "dry_run_workflow",
+      "edit_workflow_patch",
+      "save_workflow_draft"
+    ],
+    "steps": [
+      {
+        "id": "build",
+        "user_turn": "Erstelle einen neuen Workflow, der jeden Montag den Wochenbericht per Mail an das Team schickt",
+        "needs": ["workflow-authoring"],
+        "events": [
+          {
+            "tool": "author_workflow",
+            "input": {
+              "goal": "Send the weekly status report by mail every Monday.",
+              "connector_slugs": ["gmail-team"]
+            }
+          }
+        ]
+      },
+      {
+        "id": "preview",
+        "user_turn": "Zeig mir eine Vorschau des Entwurfs mit den echten Daten",
+        "needs": ["workflow-authoring"],
+        "events": [
+          {
+            "tool": "dry_run_workflow",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "id": "patch",
+        "user_turn": "Schick den Bericht für jedes Teammitglied einzeln statt als Sammelmail",
+        "needs": [
+          "workflow-authoring",
+          "workflow-authoring-structures",
+          "workflow-authoring-repair"
+        ],
+        "events": [
+          {
+            "tool": "edit_workflow_patch",
+            "input": {
+              "step_patches": [
+                {
+                  "step_id": "send",
+                  "op": "add",
+                  "path": "/for_each",
+                  "value": {
+                    "items": "${steps.members.output}",
+                    "as": "member"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tool": "dry_run_workflow",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "id": "preview_again",
+        "user_turn": "Prüfe die Vorschau bitte noch einmal mit der Änderung",
+        "needs": ["workflow-authoring"],
+        "events": [
+          {
+            "tool": "dry_run_workflow",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "id": "save",
+        "user_turn": "Das sieht gut aus, bitte den Entwurf jetzt speichern",
+        "needs": ["workflow-authoring"],
+        "events": [
+          {
+            "tool": "save_workflow_draft",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "id": "automation_review",
+        "user_turn": "Bereite den Workflow für den automatischen Betrieb vor",
+        "needs": [
+          "workflow-authoring",
+          "workflow-authoring-automation",
+          "workflow-authoring-schedules"
+        ],
+        "events": [
+          {
+            "tool": "review_workflow_automation",
+            "input": {}
+          },
+          {
+            "diagnoses": ["header_not_allowed"]
+          }
+        ]
+      }
+    ]
+  }
+}

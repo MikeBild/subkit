@@ -11,8 +11,8 @@ import type { FixtureRecord, ValidationResult } from "../runner.ts";
 import { Checks } from "./shared/authoring-env.ts";
 
 type PhaseEvent =
-  | { user_turn: string; first_turn?: boolean }
-  | { tool: string; input: unknown }
+  | { user_turn: string; first_turn?: boolean; connector_drivers?: string[] }
+  | { tool: string; input: unknown; connector_drivers?: string[] }
   | { diagnoses: string[] };
 
 interface Phase {
@@ -50,12 +50,21 @@ function loadedSlugs(phase: Phase, catalog: readonly GuidanceSkill[]): Set<strin
               user_text: event.user_turn,
               first_turn: event.first_turn === true,
               surface: "cockpit",
+              ...(event.connector_drivers ? { connector_drivers: event.connector_drivers } : {}),
             },
             catalog,
             have,
           )
         : "tool" in event
-          ? autoloadForToolCall({ tool: event.tool, input: event.input }, catalog, have)
+          ? autoloadForToolCall(
+              {
+                tool: event.tool,
+                input: event.input,
+                ...(event.connector_drivers ? { connector_drivers: event.connector_drivers } : {}),
+              },
+              catalog,
+              have,
+            )
           : autoloadForDiagnoses(event.diagnoses, catalog, have, "cockpit");
     for (const slug of added) loaded.add(slug);
   }

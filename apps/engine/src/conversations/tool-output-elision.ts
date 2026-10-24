@@ -3,6 +3,8 @@ import { rememberRaw } from "./tools/truncate.ts";
 
 export const TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS = 4000;
 
+export const TOOL_OUTPUT_VERBATIM_TURNS = 3;
+
 export const WITHIN_TURN_VERBATIM_ITERATIONS = 5;
 
 export function approxValueSize(value: unknown): number {

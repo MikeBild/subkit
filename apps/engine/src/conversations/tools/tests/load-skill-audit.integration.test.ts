@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../../audit/types.ts";
-import { auditLog } from "../../../db/schema/index.ts";
+import { auditLog, conversations } from "../../../db/schema/index.ts";
 import { createConversation } from "../../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import type { ToolContext } from "../index.ts";
@@ -88,11 +88,41 @@ describe("load_skill — audit chokepoint", () => {
     const toolCtx = makeCtx(created.conversation.id);
 
     await loadSkillTool.execute(toolCtx, { slug: "prefer-get-for-lists" });
-    await loadSkillTool.execute(toolCtx, { slug: "prefer-get-for-lists" });
+    const again = await loadSkillTool.execute(toolCtx, { slug: "prefer-get-for-lists" });
+    expect(again.data).toMatchObject({
+      already_loaded: true,
+      skill: { body: "Prefer GET for listing endpoints." },
+    });
 
     const rows = await skillLoadedRows(created.conversation.id);
     expect(rows.length).toBe(2);
     const flags = rows.map((r) => (r.metadata as Record<string, unknown>)?.already_loaded).sort();
     expect(flags).toEqual([false, true]);
+  });
+
+  test("a skill its activation rules already marked loaded still returns its body", async () => {
+    const created = await createConversation(
+      { tenant_id: ctx.tenant_id, actor_id: ctx.user_id, title: "load-skill-autoloaded" },
+      ctx.testDb.db,
+    );
+    await ctx.testDb.db
+      .update(conversations)
+      .set({ loaded_skills: [{ slug: "prefer-get-for-lists", last_turn: 1 }] })
+      .where(
+        and(
+          eq(conversations.tenant_id, ctx.tenant_id),
+          eq(conversations.id, created.conversation.id),
+        ),
+      );
+
+    const res = await loadSkillTool.execute(makeCtx(created.conversation.id), {
+      slug: "prefer-get-for-lists",
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.data).toMatchObject({
+      already_loaded: true,
+      skill: { body: "Prefer GET for listing endpoints.", scope: "global" },
+    });
   });
 });

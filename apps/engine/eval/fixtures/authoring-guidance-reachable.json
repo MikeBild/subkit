@@ -1,6 +1,6 @@
 {
   "name": "authoring-guidance-reachable",
-  "description": "Convention, consistency and contradiction guidance stays reachable in the authoring phase that needs it. Each phase replays the events the conversation loop sees (user turn, tool calls, diagnosis codes) against the shipped skill seeds and their activates_when rules; a rule passes only when a skill that actually loads in that phase carries its fragments. Text that exists in some skill nobody loads does not count. Two controls run on every pass: moving a rule's paragraphs into a skill that never activates must make the rule fail, and moving them into a skill that activates on the phase's tool must keep it green. A phase split of the authoring skill passes as long as every rule stays reachable; a reworded rule needs its fragments updated here on purpose.",
+  "description": "Convention, consistency and contradiction guidance stays reachable in the authoring phase that needs it. Each phase replays the events the conversation loop sees (user turn, tool calls, diagnosis codes) against the shipped skill seeds and their activates_when rules; a rule passes only when a skill that actually loads in that phase carries its fragments. Text that exists in some skill nobody loads does not count. Two controls run on every pass: moving a rule's paragraphs into a skill that never activates must make the rule fail, and moving them into a skill that activates on the phase's tool must keep it green. A phase split of the authoring skill passes as long as every rule stays reachable; a reworded rule needs its fragments updated here on purpose. Reachable here means the skill activates; in the conversation loop an activated global skill reaches the model only through load_skill, which authoring-prompt-size-per-step measures.",
   "flow": "converse",
   "failure_class": "authoring skill split drops convention, consistency or contradiction guidance from the phase that needs it",
   "depends_on": ["skill_autoload"],
@@ -47,8 +47,81 @@
       {
         "id": "delivery_review",
         "events": [
-          { "tool": "review_workflow_automation", "input": {} },
-          { "diagnoses": ["header_not_allowed", "report_delivery_contradicted"] }
+          {
+            "tool": "review_workflow_automation",
+            "input": {}
+          },
+          {
+            "diagnoses": ["header_not_allowed", "report_delivery_contradicted"]
+          }
+        ]
+      },
+      {
+        "id": "preview",
+        "events": [
+          {
+            "tool": "dry_run_workflow",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "id": "save",
+        "events": [
+          {
+            "tool": "save_workflow_draft",
+            "input": {}
+          }
+        ]
+      },
+      {
+        "id": "for_each_patch",
+        "events": [
+          {
+            "tool": "edit_workflow_patch",
+            "input": {
+              "step_patches": [
+                {
+                  "step_id": "send",
+                  "op": "add",
+                  "path": "/for_each",
+                  "value": {
+                    "items": "${steps.members.output}",
+                    "as": "member"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "product_storage",
+        "events": [
+          {
+            "user_turn": "Erstelle einen neuen Workflow, der Uploads im Speicher des Produkts ablegt",
+            "first_turn": true,
+            "connector_drivers": ["s3"]
+          },
+          {
+            "tool": "author_workflow",
+            "input": {
+              "goal": "Store uploads under the product prefix."
+            },
+            "connector_drivers": ["s3"]
+          }
+        ]
+      },
+      {
+        "id": "sensitive_preview",
+        "events": [
+          {
+            "user_turn": "Zeig mir eine Vorschau"
+          },
+          {
+            "tool": "dry_run_workflow",
+            "input": {}
+          }
         ]
       }
     ],
@@ -101,13 +174,13 @@
       {
         "id": "caller_identity",
         "category": "consistency",
-        "phases": ["build", "patch"],
+        "phases": ["build", "patch", "product_storage"],
         "fragments": ["Never use `${$caller.principalId}`, `${input.owner_id}`"]
       },
       {
         "id": "five_failures",
         "category": "consistency",
-        "phases": ["build", "patch"],
+        "phases": ["build", "patch", "preview"],
         "fragments": ["Five consecutive failures"]
       },
       {
@@ -133,10 +206,61 @@
         "category": "contradiction",
         "phases": ["build"],
         "fragments": ["`search_docs` / `search_knowledge`"]
+      },
+      {
+        "id": "preview_holds_writes",
+        "category": "convention",
+        "phases": ["build", "preview", "sensitive_preview"],
+        "fragments": ["Dry-runs HOLD WRITES"]
+      },
+      {
+        "id": "save_after_save_required",
+        "category": "convention",
+        "phases": ["preview", "save"],
+        "fragments": ["`save_required: true` means call `save_workflow_draft`"]
+      },
+      {
+        "id": "no_second_save_after_green_preview",
+        "category": "consistency",
+        "phases": ["save"],
+        "fragments": ["**Calling `save_workflow_draft` after a green `dry_run_workflow`.**"]
+      },
+      {
+        "id": "for_each_inline_iteration",
+        "category": "convention",
+        "phases": ["for_each_patch"],
+        "fragments": ["## `for_each` — inline per-step iteration"]
+      },
+      {
+        "id": "product_storage_principal_bound",
+        "category": "consistency",
+        "phases": ["product_storage"],
+        "fragments": ["principal_bound: true"]
+      },
+      {
+        "id": "sensitive_schema_only_check",
+        "category": "contradiction",
+        "phases": ["preview", "sensitive_preview", "save"],
+        "fragments": [
+          "`mode: \"schema_only\"` checks structure only",
+          "returns metadata only",
+          "do not guess, describe or reconstruct them"
+        ]
+      },
+      {
+        "id": "sensitive_save_after_check",
+        "category": "consistency",
+        "phases": ["save", "sensitive_preview"],
+        "fragments": ["a failed check blocks the save and cannot be forced"]
       }
     ],
     "controls": {
-      "unreachable_activation": [{ "kind": "diagnosis", "codes": ["guidance_never_emitted"] }]
+      "unreachable_activation": [
+        {
+          "kind": "diagnosis",
+          "codes": ["guidance_never_emitted"]
+        }
+      ]
     }
   }
 }

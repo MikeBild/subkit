@@ -353,6 +353,7 @@ function inferStepKindsFromToolInput(tool: string, input: unknown): string[] {
   const visit = (raw: unknown): void => {
     const step = pickObject(raw);
     if (typeof step.kind === "string") out.push(step.kind);
+    if (step.for_each !== undefined && step.for_each !== null) out.push("loop");
     if (Array.isArray(step.then_steps)) for (const s of step.then_steps) visit(s);
     if (Array.isArray(step.else_steps)) for (const s of step.else_steps) visit(s);
     if (Array.isArray(step.branches))
@@ -362,18 +363,24 @@ function inferStepKindsFromToolInput(tool: string, input: unknown): string[] {
     if (Array.isArray(step.body_steps)) for (const s of step.body_steps) visit(s);
   };
   if (tool === "edit_workflow_patch") {
-    const patches = (input as Record<string, unknown>).patches;
-    if (Array.isArray(patches)) {
-      for (const patch of patches) {
-        const value = pickObject(patch).value;
-        if (Array.isArray(value)) for (const raw of value) visit(raw);
-        else visit(value);
-      }
+    const record = input as Record<string, unknown>;
+    const entries = [
+      ...(Array.isArray(record.patches) ? record.patches : []),
+      ...(Array.isArray(record.step_patches) ? record.step_patches : []),
+    ];
+    for (const entry of entries) {
+      const patch = pickObject(entry);
+      if (typeof patch.path === "string" && FOR_EACH_PATH.test(patch.path)) out.push("loop");
+      const value = patch.value;
+      if (Array.isArray(value)) for (const raw of value) visit(raw);
+      else visit(value);
     }
     return out;
   }
   return out;
 }
+
+const FOR_EACH_PATH = /(^|\/)for_each(\/|$)/;
 
 function rankAndOrder(slugs: Set<string>, catalog: readonly ActivationRecord[]): string[] {
   const tagCount = new Map<string, number>();

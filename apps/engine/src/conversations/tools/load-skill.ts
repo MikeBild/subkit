@@ -30,13 +30,14 @@ function levenshtein(a: string, b: string): number {
 export const loadSkillTool: ConversationTool = {
   name: "load_skill",
   description:
-    "Load a named skill into the current conversation context, unlocking any tools that require it. Call once per skill; subsequent turns see the skill body in the volatile context block.",
+    "Load a named skill into the current conversation context, unlocking any tools that require it. The result carries the skill body, also when the skill was already marked loaded by its activation rules.",
   use_case:
     "Pull domain knowledge into the working context before authoring a connector, workflow, or approving a patch. Also unlocks skill-gated tools (see `requires_skill`).",
   important_notes: [
     "Skills are stored per tenant — the same slug may resolve to different bodies across tenants.",
-    "Loaded skills persist across turns of the same conversation; calling twice is a no-op.",
+    "Loaded skills persist across turns of the same conversation; calling again returns the body once more without adding the skill twice.",
     "Available slugs include: subkit-concepts, workflow-authoring, http-connectors, postgres-connectors, graphql-connectors, s3-connectors, data-handling, rbac-and-scopes, self-healing, error-recovery.",
+    "workflow-authoring is the core recipe; its topic rules are separate workflow-authoring-* skills (structures, transforms, repair, automation, boundaries, schedules, output-format, product-callers, transactional-mail, loop-examples). Their tools, step kinds and diagnosis codes mark them loaded, but their bodies arrive only through this tool: load the topic before acting on it.",
   ],
   example_input: { slug: "workflow-authoring" },
   inputSchema: Input,
@@ -120,7 +121,11 @@ export const loadSkillTool: ConversationTool = {
       });
       return {
         ok: true,
-        data: { slug: key, already_loaded: true, skill: { id: match.id, title: match.title } },
+        data: {
+          slug: key,
+          already_loaded: true,
+          skill: { id: match.id, title: match.title, body: match.body, scope: match.scope },
+        },
       };
     }
     const next = [...current, { slug: key, last_turn: currentTurn }];

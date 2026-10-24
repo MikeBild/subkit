@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { loadEmbeddedSkillSeeds, type SeededSkill } from "../seed.ts";
 
+function authoringFamily(skills: Map<string, SeededSkill>): string {
+  return [...skills.values()]
+    .filter((s) => s.slug.startsWith("workflow-authoring"))
+    .map((s) => s.body)
+    .join("\n");
+}
+
 function loadAll(): Map<string, SeededSkill> {
   const r = loadEmbeddedSkillSeeds();
   expect(r.errors).toEqual([]);
@@ -103,13 +110,13 @@ describe("workflow-authoring — recipe coverage", () => {
 
   test("explains data_selector vs transform step", async () => {
     const skills = loadAll();
-    const body = skills.get("workflow-authoring")!.body.toLowerCase();
+    const body = authoringFamily(skills).toLowerCase();
     expect(body).toContain("data_selector");
     expect(body).toContain("transform");
   });
 
   test("separates sensitive draft validation from forbidden chat preview", () => {
-    const body = loadAll().get("workflow-authoring")!.body;
+    const body = authoringFamily(loadAll());
     expect(body).toContain('execution_privacy: "sensitive"');
     expect(body).toContain("without a chat preview");
     expect(body).toContain("green judged preview for ordinary workflows");
