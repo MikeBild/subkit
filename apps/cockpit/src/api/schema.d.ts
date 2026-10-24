@@ -25374,7 +25374,6 @@ export interface components {
             remote_api_disabled?: {
                 error_reason: string;
                 service_host: string;
-                /** Format: uri */
                 action_url: string;
             };
         } | null;
