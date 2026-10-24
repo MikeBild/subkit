@@ -78,7 +78,7 @@ describe("save_connector_draft — credential discriminated-union", () => {
   it("accepts a JSON-stringified credential payload (AI SDK 6 strict-mode quirk)", () => {
     const stringified = JSON.stringify({
       mode: "oauth2",
-      client_id: "86471638913-xxx.apps.googleusercontent.com",
+      client_id: "123456789012-xxx.apps.googleusercontent.com",
       client_secret: "GOCSPX-yyy",
     });
     const parsed = schema.safeParse({ credential: stringified });
@@ -87,7 +87,7 @@ describe("save_connector_draft — credential discriminated-union", () => {
       const data = parsed.data as { credential?: Record<string, unknown> };
       expect(data.credential).toEqual({
         mode: "oauth2",
-        client_id: "86471638913-xxx.apps.googleusercontent.com",
+        client_id: "123456789012-xxx.apps.googleusercontent.com",
         client_secret: "GOCSPX-yyy",
       });
     }

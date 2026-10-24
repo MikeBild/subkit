@@ -168,7 +168,7 @@ describe("connector draft tools", () => {
     const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
       name: "AWS AppSync GraphQL",
       description: "AWS AppSync GraphQL endpoint",
-      base_url: "https://qjzi627ik5b4xjya4cibaba6ai.appsync-api.eu-central-1.amazonaws.com/graphql",
+      base_url: "https://exampleapi0000000000000000.appsync-api.eu-central-1.amazonaws.com/graphql",
       environment: "dev",
     });
     expect(started.ok).toBe(true);
