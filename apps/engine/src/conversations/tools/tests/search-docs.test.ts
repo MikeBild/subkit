@@ -1,4 +1,8 @@
 import { describe, expect, it } from "bun:test";
+import type { Executor } from "../../../db/client.ts";
+import { harvestCitations } from "../../citations.ts";
+import { keepResolvableCitations } from "../../source-faithful.ts";
+import type { TurnEvent } from "../../types.ts";
 import { normalizeToolResultPayload } from "../result-payload.ts";
 import { searchDocsTool } from "../search-docs.ts";
 
@@ -51,6 +55,45 @@ describe("search_docs product documentation", () => {
     const hits = await productHits({ query: "Web Clipper", locale: "en" });
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.every((h) => h.locale === "en")).toBe(true);
+  });
+});
+
+describe("search_docs product documentation citations", () => {
+  const unusedDb = new Proxy({} as Executor, {
+    get() {
+      throw new Error("product documentation citations must not query the database");
+    },
+  });
+
+  async function citationsFor(query: string) {
+    const result = await searchDocsTool.execute({ connector_id: null } as never, { query });
+    const event = {
+      type: "tool_result",
+      call_id: "c",
+      tool: "search_docs",
+      output: result.data,
+    } as TurnEvent;
+    return harvestCitations([event]);
+  }
+
+  it("keeps every product documentation hit as a resolvable product_doc citation", async () => {
+    const citations = await citationsFor("Wie installiere ich den Web Clipper?");
+    expect(citations.length).toBeGreaterThan(0);
+    expect(citations[0]).toMatchObject({
+      source_type: "product_doc",
+      id: "product-docs:de:web-clipper#die-erweiterung-installieren",
+    });
+    expect(citations[0]?.source_name).toContain("›");
+    const kept = await keepResolvableCitations(citations, "tenant", unusedDb);
+    expect(kept).toEqual(citations);
+  });
+
+  it("drops a product_doc citation whose section is not in the shipped documentation", async () => {
+    const [real] = await citationsFor("Wie installiere ich den Web Clipper?");
+    if (!real) throw new Error("expected a product documentation citation");
+    const fabricated = { ...real, id: "product-docs:de:web-clipper#erfunden" };
+    const kept = await keepResolvableCitations([real, fabricated], "tenant", unusedDb);
+    expect(kept).toEqual([real]);
   });
 });
 

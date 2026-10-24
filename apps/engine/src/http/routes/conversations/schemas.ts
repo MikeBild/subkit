@@ -287,7 +287,7 @@ export const NextSuggestionEventSchema = z
 
 export const CitationSchema = z
   .object({
-    source_type: z.enum(["knowledge_chunk", "connector_doc"]),
+    source_type: z.enum(["knowledge_chunk", "connector_doc", "product_doc"]),
     id: z.string(),
     source_name: z.string().optional(),
     excerpt: z.string().optional(),

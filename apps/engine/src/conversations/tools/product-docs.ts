@@ -112,6 +112,17 @@ function sectionsIndex(): ProductDocSection[] {
   return index;
 }
 
+function sectionId(section: ProductDocSection): string {
+  return `product-docs:${section.locale}:${section.slug}${section.anchor ? `#${section.anchor}` : ""}`;
+}
+
+let sectionIds: Set<string> | null = null;
+
+export function isProductDocId(id: string): boolean {
+  sectionIds ??= new Set(sectionsIndex().map(sectionId));
+  return sectionIds.has(id);
+}
+
 function scoreSection(section: ProductDocSection, queryStems: string[]): number {
   let score = 0;
   let matched = 0;
@@ -141,7 +152,7 @@ export function searchProductDocs(input: {
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score);
   return ranked.slice(0, input.limit).map(({ section, score }) => ({
-    id: `product-docs:${section.locale}:${section.slug}${section.anchor ? `#${section.anchor}` : ""}`,
+    id: sectionId(section),
     source: "product_docs",
     slug: section.slug,
     locale: section.locale,

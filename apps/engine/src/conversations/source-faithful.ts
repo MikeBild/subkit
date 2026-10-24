@@ -5,6 +5,7 @@ import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
 import type { Citation } from "./citations.ts";
+import { isProductDocId } from "./tools/product-docs.ts";
 
 export interface SourceFaithfulParams {
   text: string;
@@ -110,6 +111,10 @@ async function findUnresolvedIds(
           ),
   ]);
 
+  const productDocUnresolved = Array.from(
+    new Set(citations.filter((c) => c.source_type === "product_doc").map((c) => c.id)),
+  ).filter((id) => !isProductDocId(id));
+
   const knowledgeResolved = new Set(knowledgeRows.map((r) => r.id));
   const docResolved = new Set(docRows.map((r) => r.id));
   return [
@@ -117,6 +122,7 @@ async function findUnresolvedIds(
     ...kc.queryable.filter((id) => !knowledgeResolved.has(id)),
     ...dc.malformed,
     ...dc.queryable.filter((id) => !docResolved.has(id)),
+    ...productDocUnresolved,
   ];
 }
 

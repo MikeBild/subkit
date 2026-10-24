@@ -113,7 +113,7 @@ export type TurnEvent =
     };
 
 export interface Citation {
-  source_type: "knowledge_chunk" | "connector_doc";
+  source_type: "knowledge_chunk" | "connector_doc" | "product_doc";
   id: string;
   source_name?: string;
   excerpt?: string;

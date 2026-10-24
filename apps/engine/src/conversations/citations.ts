@@ -6,7 +6,7 @@ function stripSnippetMarkup(snippet: string): string {
 }
 
 export interface Citation {
-  source_type: "knowledge_chunk" | "connector_doc";
+  source_type: "knowledge_chunk" | "connector_doc" | "product_doc";
   id: string;
   source_name?: string;
   excerpt?: string;
@@ -24,6 +24,8 @@ function isKnowledgeHit(v: unknown): v is KnowledgeHit {
 
 interface DocHit {
   id: string;
+  source?: string;
+  heading?: string;
   title?: string | null;
   path?: string | null;
   snippet?: string;
@@ -58,12 +60,16 @@ export function harvestCitations(events: ReadonlyArray<TurnEvent>): Citation[] {
     } else if (ev.tool === "fetch_connector_docs" || ev.tool === "search_docs") {
       for (const h of hits) {
         if (!isDocHit(h)) continue;
-        const key = `connector_doc:${h.id}`;
+        const sourceType = h.source === "product_docs" ? "product_doc" : "connector_doc";
+        const key = `${sourceType}:${h.id}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const docName = h.title || h.path || undefined;
+        const docName =
+          sourceType === "product_doc" && h.title && h.heading && h.heading !== h.title
+            ? `${h.title} › ${h.heading}`
+            : h.title || h.path || undefined;
         out.push({
-          source_type: "connector_doc",
+          source_type: sourceType,
           id: h.id,
           ...(docName ? { source_name: docName } : {}),
           ...(h.snippet ? { excerpt: stripSnippetMarkup(h.snippet).slice(0, 200) } : {}),
