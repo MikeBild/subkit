@@ -1,4 +1,4 @@
-import { ActionButton, KpiTile, Section } from "@/components/cockpit/patterns";
+import { ActionButton, KpiTile, Section, TileSkeleton } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { type PromptCacheFlow, promptCacheShare, type Read } from "./operations-figures";
@@ -43,14 +43,17 @@ function flowsOf(read: PromptCacheRead): PromptCacheFlow[] | null {
 
 export function PromptCacheTile({
   read,
+  pending = false,
   period,
   onRetry,
 }: {
   read: PromptCacheRead;
+  pending?: boolean;
   period: string;
   onRetry: () => void;
 }) {
   const { t } = useI18n();
+  if (pending) return <TileSkeleton />;
   const label = `${t("usage.cache.tile")} · ${period}`;
   const flows = flowsOf(read);
   if (flows === null)
@@ -98,19 +101,23 @@ export function PromptCacheTile({
 
 export function PromptCacheSection({
   read,
+  pending = false,
   onRetry,
 }: {
   read: PromptCacheRead;
+  pending?: boolean;
   onRetry: () => void;
 }) {
   const { t } = useI18n();
   const flowText = useFlowText();
   const flows = flowsOf(read);
-  const hasNoData = flows?.some((flow) => flow.percent === null) ?? false;
+  const hasNoData = !pending && (flows?.some((flow) => flow.percent === null) ?? false);
   return (
     <Section label={t("usage.cache.title")} testId="usage-prompt-cache">
       <p className="text-sm text-muted-foreground">{t("usage.cache.subtitle")}</p>
-      {flows === null ? (
+      {pending ? (
+        <TileSkeleton />
+      ) : flows === null ? (
         <p
           className="flex items-center gap-2 text-sm text-muted-foreground"
           data-testid="usage-prompt-cache-unreadable"

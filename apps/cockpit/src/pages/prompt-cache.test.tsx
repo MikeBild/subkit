@@ -132,3 +132,22 @@ describe("the prompt cache per flow", () => {
     );
   });
 });
+
+describe("while the operating figures are still loading", () => {
+  const loading = answered(null);
+
+  test("the section waits instead of calling the figures unreadable", () => {
+    const html = render(<PromptCacheSection read={loading} pending onRetry={() => {}} />);
+    expect(html).not.toContain('data-testid="usage-prompt-cache-unreadable"');
+    expect(html).not.toContain('data-testid="usage-prompt-cache-retry"');
+    expect(html).not.toContain('data-testid="usage-prompt-cache-footnote"');
+  });
+
+  test("the tile waits instead of calling the figures unreadable", () => {
+    const html = render(
+      <PromptCacheTile read={loading} pending period="Diese Woche" onRetry={() => {}} />,
+    );
+    expect(html).not.toContain('data-figure-state="unreadable"');
+    expect(html).not.toContain('data-testid="usage-kpi-prompt-cache-retry"');
+  });
+});
