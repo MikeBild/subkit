@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { SPEC_GOAL_GUIDANCE } from "../authoring-spec.ts";
 import {
   normalizeDraftDocument,
@@ -17,6 +18,7 @@ import {
   judgePreview,
   workflowDefinitionFingerprint,
 } from "../preview-judge.ts";
+import { runPreviewJudgeGate } from "../preview-judge-gate.ts";
 import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { saveWorkflowDraftTool } from "../tools/save-workflow-draft.ts";
@@ -454,6 +456,45 @@ describe("preview judge · dry_run_workflow wiring", () => {
     const judgeCalls = getMockProvider().calls.filter((c) => c.flow === "judge");
     expect(judgeCalls).toHaveLength(2);
     expect(JSON.stringify(judgeCalls[1])).toContain("output `projects`");
+  });
+
+  test("a memoized verdict is not reused once the definition carries a spec", async () => {
+    getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
+    const definition = WorkflowDefSchema.parse({
+      name: "judge-spec-fingerprint",
+      slug: "judge-spec-fingerprint",
+      steps: [{ id: "shape", kind: "transform", language: "javascript", expression: "return 1;" }],
+    });
+    const gate = await runPreviewJudgeGate({
+      tenant_id: ctx.tenant_id,
+      conversation_id: uuid(),
+      db: ctx.testDb.db,
+      goal: GOAL,
+      spec: {
+        goal: GOAL,
+        inputs: [],
+        outputs: [{ name: "html" }],
+        delivery: null,
+        conventions_applied: [],
+        evidence: [],
+        open_questions: [],
+        origin: "chat",
+      },
+      definition,
+      steps: definition.steps as unknown as Array<Record<string, unknown>>,
+      run_steps: [],
+      prior_breaker: {
+        blocks_since_commit: 0,
+        last_verdict: {
+          fingerprint: workflowDefinitionFingerprint(definition),
+          verdict: "passes",
+          reason: "memo",
+          missing: [],
+        },
+      },
+    });
+    expect(gate.judgeOutcome?.verdict).toBe("failed");
+    expect(getMockProvider().calls.filter((c) => c.flow === "judge")).toHaveLength(1);
   });
 
   test("explicit save still works after a failed verdict (judge gates AUTO-commit only)", async () => {
