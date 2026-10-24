@@ -17,7 +17,7 @@ describe("workflow-authoring core and topic skills", () => {
   test("the core recipe stays within its context budget", () => {
     expect(seeds.errors).toEqual([]);
     expect(core).toBeDefined();
-    expect(core?.body.length ?? Infinity).toBeLessThanOrEqual(18_000);
+    expect(core?.body.length ?? Infinity).toBeLessThanOrEqual(21_000);
   });
 
   test("every topic skill is a stable, visible global skill with its own activation rules", () => {
@@ -34,6 +34,16 @@ describe("workflow-authoring core and topic skills", () => {
 
   test("the core names the topic skills so they can be loaded on demand", () => {
     expect(core?.body).toContain("`workflow-authoring-*`");
+  });
+
+  test("the core carries the sensitive execution rules every preview and save needs", () => {
+    const sensitive = core?.body.split("## Sensitive execution\n")[1]?.split("\n## ")[0] ?? "";
+    expect(sensitive).toContain('`execution_privacy: "sensitive"` is an explicit opt-in');
+    expect(sensitive).toContain("returns metadata only");
+    expect(sensitive).toContain("do not guess, describe or reconstruct them");
+    expect(sensitive).toContain('`mode: "schema_only"` checks structure only');
+    expect(sensitive).toContain("a failed check blocks the save and cannot be forced");
+    for (const topic of topics) expect(topic.body).not.toContain("returns metadata only");
   });
 
   test("a loop step in a patch loads the structures skill next to the core", () => {

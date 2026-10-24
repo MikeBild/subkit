@@ -1,6 +1,6 @@
 {
   "name": "authoring-guidance-reachable",
-  "description": "Convention, consistency and contradiction guidance stays reachable in the authoring phase that needs it. Each phase replays the events the conversation loop sees (user turn, tool calls, diagnosis codes) against the shipped skill seeds and their activates_when rules; a rule passes only when a skill that actually loads in that phase carries its fragments. Text that exists in some skill nobody loads does not count. Two controls run on every pass: moving a rule's paragraphs into a skill that never activates must make the rule fail, and moving them into a skill that activates on the phase's tool must keep it green. A phase split of the authoring skill passes as long as every rule stays reachable; a reworded rule needs its fragments updated here on purpose.",
+  "description": "Convention, consistency and contradiction guidance stays reachable in the authoring phase that needs it. Each phase replays the events the conversation loop sees (user turn, tool calls, diagnosis codes) against the shipped skill seeds and their activates_when rules; a rule passes only when a skill that actually loads in that phase carries its fragments. Text that exists in some skill nobody loads does not count. Two controls run on every pass: moving a rule's paragraphs into a skill that never activates must make the rule fail, and moving them into a skill that activates on the phase's tool must keep it green. A phase split of the authoring skill passes as long as every rule stays reachable; a reworded rule needs its fragments updated here on purpose. Reachable here means the skill activates; in the conversation loop an activated global skill reaches the model only through load_skill, which authoring-prompt-size-per-step measures.",
   "flow": "converse",
   "failure_class": "authoring skill split drops convention, consistency or contradiction guidance from the phase that needs it",
   "depends_on": ["skill_autoload"],
@@ -116,7 +116,7 @@
         "id": "sensitive_preview",
         "events": [
           {
-            "user_turn": "Der Workflow ist vertraulich, prüfe nur die Struktur"
+            "user_turn": "Zeig mir eine Vorschau"
           },
           {
             "tool": "dry_run_workflow",
@@ -240,8 +240,18 @@
       {
         "id": "sensitive_schema_only_check",
         "category": "contradiction",
-        "phases": ["sensitive_preview"],
-        "fragments": ["`mode: \"schema_only\"` checks structure only"]
+        "phases": ["preview", "sensitive_preview", "save"],
+        "fragments": [
+          "`mode: \"schema_only\"` checks structure only",
+          "returns metadata only",
+          "do not guess, describe or reconstruct them"
+        ]
+      },
+      {
+        "id": "sensitive_save_after_check",
+        "category": "consistency",
+        "phases": ["save", "sensitive_preview"],
+        "fragments": ["a failed check blocks the save and cannot be forced"]
       }
     ],
     "controls": {

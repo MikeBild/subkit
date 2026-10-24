@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 44
+version: 45
 ---
 
 # Authoring Workflows In A Conversation
@@ -47,6 +47,10 @@ Use the syntax for the actual expression surface:
 | Request string placeholder | `${caller.principalId}` |
 
 All five fields support `${caller.<field>}` placeholders. Never use `${$caller.principalId}`, `${input.owner_id}` or a hard-coded owner to authorize access. In JavaScript, `input.input` is the user payload; `input.scope.$caller` is the trusted identity. In JSONata, `$input` is the user payload and `$caller` is the identity. Caller-shaped input and step outputs cannot replace `$caller`. Step IDs `$caller` and `$input` are reserved. Queue, resume, loops and child workflows preserve the admitted caller, not a new identity from job input or child input.
+
+## Sensitive execution
+
+`execution_privacy: "sensitive"` is an explicit opt-in. It keeps detailed execution input and intermediate results out of the SubKit authoring LLM, encrypts persisted payloads, and requires the original authenticated caller for resume/result access. The authoring chat cannot run it live. `dry_run_workflow` runs a sensitive draft encrypted with every write held and returns metadata only: step statuses and kinds, held steps, safe failure codes, item counts with complete/truncated, validation and output_schema verdicts, and the type (array length) of each declared output field. You never see values; do not guess, describe or reconstruct them, and fix failures from step kinds, statuses and failure codes. When that test run is refused or must not read data, `dry_run_workflow` with `mode: "schema_only"` checks structure only: it validates the definition and compiles its expressions without running any step, dispatching any request or returning any value, and reports structure checked, content not checked. The metadata test run stays the default; `schema_only` is explicit and refused for drafts that are not sensitive. `dry_run_step` is refused for a sensitive draft. A direct MCP call may run an active saved version under the caller's normal permissions and execution authority; its bounded final output is returned to that caller. Sensitive execution refuses persistent state, event waits/signals, persistent pagination and prepared fixture replay; a bounded read-only GraphQL cursor collection can run inside one step without persisting pages. An ordinary parent cannot call a sensitive child. Generic opaque portal callers cannot resume sensitive executions. Prepare the definition without inventing private sample data. Fresh inspection, successful schema validation and a green metadata test run or passed `schema_only` check permit saving an immutable inactive sensitive draft through the normal human save policy; a failed check blocks the save and cannot be forced. Saving grants no execution authority, activates no version or trigger, and records runtime verification as `metadata_only` or `schema_only`. Report the result and that live verification happens in the Cockpit by the signed-in person, not in authoring chat. Use the documented execution/result APIs with the actual original caller for permitted execution and verification; do not embed a deployment's database, files, queues or private runtime in a workflow. Caller support needs no product-specific engine fork.
 
 ## The canonical flow
 

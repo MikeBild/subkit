@@ -149,9 +149,7 @@ describe("loaded caller authoring contract", () => {
   });
 
   test("the documented transform validates and evaluates genuine user, machine and portal caller values", async () => {
-    const section = productCallers
-      .split("## Product identity and sensitive execution")[1]
-      ?.split("\n## ")[0];
+    const section = productCallers.split("## Product identity\n")[1]?.split("\n## ")[0];
     const example = section?.match(/```json\n([\s\S]*?)\n```/)?.[1];
     expect(example).toBeDefined();
     const step = JSON.parse(example ?? "null") as { expression: string };

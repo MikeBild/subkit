@@ -2,18 +2,18 @@
 slug: workflow-authoring-product-callers
 scope: global
 title: Product Callers And Sensitive Workflows
-description: Header identity checks (`required_caller_kind`, `product_id`), product S3 `principal_bound` scope, validating before save, `execution_privacy: sensitive`, and Supabase-backed caller workflows with reservation RPCs.
+description: Header identity checks (`required_caller_kind`, `product_id`), product S3 `principal_bound` scope, validating before save, and Supabase-backed caller workflows with reservation RPCs.
 activates_when: [{"kind":"connector_template","slug":"supabase"},{"kind":"intent_keyword","word":"supabase"},{"kind":"intent_keyword","word":"product_id"},{"kind":"intent_keyword","word":"required_caller_kind"},{"kind":"intent_keyword","word":"principal_bound"},{"kind":"intent_keyword","word":"execution_privacy"},{"kind":"intent_keyword","word":"sensitive"},{"kind":"intent_keyword","word":"sensibel"},{"kind":"intent_keyword","word":"jwt"},{"kind":"intent_keyword","word":"quota"},{"kind":"intent_keyword","word":"vertraulich"},{"kind":"intent_keyword","word":"confidential"},{"kind":"intent_keyword","word":"aufrufer"},{"kind":"connector_driver","driver":"s3"}]
 side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow, caller, supabase]
-version: 1
+version: 2
 ---
 
 # Product Callers And Sensitive Workflows
 
-## Product identity and sensitive execution
+## Product identity
 
 `productId: null` remains null in JavaScript and JSONata. In text interpolation, `${caller.productId}` becomes an empty string; as the entire value of a type-preserving JSON placeholder, it remains JSON null. If caller itself is null, caller-field placeholders are unresolved. Require a non-null caller and productId before building product paths or storage namespaces; never treat an empty interpolation as an authorized product.
 
@@ -33,8 +33,6 @@ Identity checks belong in the workflow header when supported: `required_caller_k
 For product S3 requests, declare `s3.scope: { key_prefix: "products/<product-id>/", principal_bound: true, max_bytes: <reviewed-limit> }`. Author keys or LIST prefixes under `products/<product-id>/${caller.principalKind}/${caller.principalId}/`; the engine enforces both kind and ID. Same UUID with another principal kind is another owner. Keep the literal reviewed prefix and existing size/delete limits; do not broaden scope to fix a denial. Opaque IDs unsafe as path segments are refused.
 
 Validate the actual definition with the schema and placeholder validator before saving. Ground business input separately from identity: never put a fabricated caller in `input_schema`, `input_schema_sample`, fixtures or request data to make validation pass. For ordinary workflows, use existing authoring/validation tools and a permitted preview; validate the result, warnings and storage boundary before the human effect review. Product execution must use the approved matching saved workflow through the public run API.
-
-`execution_privacy: "sensitive"` is an explicit opt-in. It keeps detailed execution input and intermediate results out of the SubKit authoring LLM, encrypts persisted payloads, and requires the original authenticated caller for resume/result access. The authoring chat cannot run it live. `dry_run_workflow` runs a sensitive draft encrypted with every write held and returns metadata only: step statuses and kinds, held steps, safe failure codes, item counts with complete/truncated, validation and output_schema verdicts, and the type (array length) of each declared output field. You never see values; do not guess, describe or reconstruct them, and fix failures from step kinds, statuses and failure codes. When that test run is refused or must not read data, `dry_run_workflow` with `mode: "schema_only"` checks structure only: it validates the definition and compiles its expressions without running any step, dispatching any request or returning any value, and reports structure checked, content not checked. The metadata test run stays the default; `schema_only` is explicit and refused for drafts that are not sensitive. `dry_run_step` is refused for a sensitive draft. A direct MCP call may run an active saved version under the caller's normal permissions and execution authority; its bounded final output is returned to that caller. Sensitive execution refuses persistent state, event waits/signals, persistent pagination and prepared fixture replay; a bounded read-only GraphQL cursor collection can run inside one step without persisting pages. An ordinary parent cannot call a sensitive child. Generic opaque portal callers cannot resume sensitive executions. Prepare the definition without inventing private sample data. Fresh inspection, successful schema validation and a green metadata test run or passed `schema_only` check permit saving an immutable inactive sensitive draft through the normal human save policy; a failed check blocks the save and cannot be forced. Saving grants no execution authority, activates no version or trigger, and records runtime verification as `metadata_only` or `schema_only`. Report the result and that live verification happens in the Cockpit by the signed-in person, not in authoring chat. Use the documented execution/result APIs with the actual original caller for permitted execution and verification; do not embed a deployment's database, files, queues or private runtime in a workflow. Caller support needs no product-specific engine fork.
 
 ## Supabase-backed caller workflows
 
