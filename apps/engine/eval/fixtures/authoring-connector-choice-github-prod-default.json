@@ -1,0 +1,42 @@
+{
+  "name": "authoring-connector-choice-github-prod-default",
+  "description": "Connector choice across two GitHub connectors on the same base URL, one dev and one prod, where the dev connector sorts first by name. When generation aborts with a connector_choice need, author_workflow does not retry or guess: it returns requires_user_input with a prefilled ask_user_choice whose default is the prod connector (chosen by environment, not by name order) and whose options list both. One generation pass, draft unchanged, no live HTTP.",
+  "flow": "generate",
+  "failure_class": "generator cannot tell which of several GitHub connectors is production",
+  "depends_on": ["structured_generation_abort", "connector_choice_prompt"],
+  "input": {
+    "goal": "Post a daily summary of new issues in the app repository.",
+    "connectors": [
+      {
+        "slug": "github-acme",
+        "display_name": "GitHub sandbox",
+        "base_url": "https://api.github.com",
+        "environment": "dev"
+      },
+      {
+        "slug": "github-org",
+        "display_name": "GitHub organisation",
+        "base_url": "https://api.github.com",
+        "environment": "prod"
+      }
+    ],
+    "abort": {
+      "reason": "two GitHub connectors could read this repository",
+      "needs": [
+        {
+          "kind": "connector_choice",
+          "connector_slug": null,
+          "method": null,
+          "path": null,
+          "question": "Which GitHub connector should read the repository?"
+        }
+      ]
+    },
+    "expect": {
+      "prompt_tool": "ask_user_choice",
+      "default": "github-org",
+      "options": ["github-acme", "github-org"],
+      "generate_calls": 1
+    }
+  }
+}

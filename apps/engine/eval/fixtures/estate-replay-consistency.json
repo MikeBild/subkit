@@ -1,0 +1,134 @@
+{
+  "name": "estate-replay-consistency",
+  "description": "Estate consistency across workflows: transforms migrated from JSONata to JavaScript in three workflows of one estate replay to the same output, and a held report request stays byte-equal. The same replay must catch drift: a JavaScript transform that rounds differently and a migration that adds a second held request both fail. Deterministic, no database, no live HTTP.",
+  "flow": "infra",
+  "failure_class": "a migrated or regenerated transform changes the result of an existing workflow without anyone noticing",
+  "depends_on": ["estate_replay"],
+  "input": {
+    "manifest": {
+      "manifest_version": 1,
+      "description": "Three workflows that share the same order totals.",
+      "cases": [
+        {
+          "id": "daily-totals-shape",
+          "workflow_slug": "daily-order-totals",
+          "transform_id": "shape",
+          "kind": "step_transform",
+          "old_jsonata": {
+            "expression": "{ \"count\": $count($scope.list_orders.data.items), \"total\": $sum($scope.list_orders.data.items.amount) }",
+            "data": null,
+            "bindings": {
+              "scope": {
+                "list_orders": { "data": { "items": [{ "amount": 12 }, { "amount": 30 }] } }
+              }
+            }
+          },
+          "new_javascript": {
+            "code": "const items = input.scope.list_orders.data.items; return { count: items.length, total: items.reduce((sum, item) => sum + item.amount, 0) };",
+            "input": {
+              "scope": {
+                "list_orders": { "data": { "items": [{ "amount": 12 }, { "amount": 30 }] } }
+              }
+            }
+          }
+        },
+        {
+          "id": "weekly-digest-ids",
+          "workflow_slug": "weekly-order-digest",
+          "transform_id": "ids",
+          "kind": "step_transform",
+          "old_jsonata": {
+            "expression": "[$scope.list_orders.data.items.id]",
+            "data": null,
+            "bindings": {
+              "scope": {
+                "list_orders": { "data": { "items": [{ "id": "o-1" }, { "id": "o-2" }] } }
+              }
+            }
+          },
+          "new_javascript": {
+            "code": "return input.scope.list_orders.data.items.map((item) => item.id);",
+            "input": {
+              "scope": {
+                "list_orders": { "data": { "items": [{ "id": "o-1" }, { "id": "o-2" }] } }
+              }
+            }
+          }
+        },
+        {
+          "id": "order-report-mail",
+          "workflow_slug": "order-report-mail",
+          "transform_id": "mail",
+          "kind": "output_transform",
+          "old_jsonata": {
+            "expression": "{ \"subject\": \"Orders: \" & $string(count), \"to\": to }",
+            "data": { "count": 2, "to": "team@acme.com" }
+          },
+          "new_javascript": {
+            "code": "return { subject: 'Orders: ' + String(input.count), to: input.to };",
+            "input": { "count": 2, "to": "team@acme.com" }
+          },
+          "side_effects": {
+            "old_held_requests": [
+              { "method": "POST", "target": "gmail.send", "to": "team@acme.com" }
+            ],
+            "new_held_requests": [
+              { "method": "POST", "target": "gmail.send", "to": "team@acme.com" }
+            ]
+          }
+        }
+      ]
+    },
+    "drift_cases": [
+      {
+        "expect": "output_differs",
+        "case": {
+          "id": "daily-totals-rounded",
+          "workflow_slug": "daily-order-totals",
+          "transform_id": "shape",
+          "kind": "step_transform",
+          "old_jsonata": {
+            "expression": "{ \"total\": $sum($scope.list_orders.data.items.amount) }",
+            "data": null,
+            "bindings": {
+              "scope": {
+                "list_orders": { "data": { "items": [{ "amount": 12.4 }, { "amount": 30.4 }] } }
+              }
+            }
+          },
+          "new_javascript": {
+            "code": "return { total: Math.round(input.scope.list_orders.data.items.reduce((sum, item) => sum + item.amount, 0)) };",
+            "input": {
+              "scope": {
+                "list_orders": { "data": { "items": [{ "amount": 12.4 }, { "amount": 30.4 }] } }
+              }
+            }
+          }
+        }
+      },
+      {
+        "expect": "side_effects_differ",
+        "case": {
+          "id": "order-report-second-recipient",
+          "workflow_slug": "order-report-mail",
+          "transform_id": "mail",
+          "kind": "output_transform",
+          "old_jsonata": { "expression": "{ \"to\": to }", "data": { "to": "team@acme.com" } },
+          "new_javascript": {
+            "code": "return { to: input.to };",
+            "input": { "to": "team@acme.com" }
+          },
+          "side_effects": {
+            "old_held_requests": [
+              { "method": "POST", "target": "gmail.send", "to": "team@acme.com" }
+            ],
+            "new_held_requests": [
+              { "method": "POST", "target": "gmail.send", "to": "team@acme.com" },
+              { "method": "POST", "target": "gmail.send", "to": "support@acme.com" }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

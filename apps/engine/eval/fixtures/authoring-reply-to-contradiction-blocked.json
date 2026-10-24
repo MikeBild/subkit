@@ -1,0 +1,34 @@
+{
+  "name": "authoring-reply-to-contradiction-blocked",
+  "description": "Reply-To contradiction before save: the goal asks for a governed weekly report mail whose replies go to a support address, but governed report delivery allows exactly one To recipient and no Reply-To, Cc or Bcc. validate_draft refuses the draft with a finding on the send step's raw body that names the rule and Reply-To, and edit_workflow_patch refuses to add replyTo to the builder, leaving the draft unchanged. The same message without replyTo passes. No database, no live HTTP.",
+  "flow": "generate",
+  "failure_class": "authoring silently resolves a contradiction between the requested mail and the delivery contract",
+  "depends_on": ["report_delivery_lint"],
+  "input": {
+    "workflow": {
+      "name": "Weekly report",
+      "slug": "weekly-report",
+      "steps": [
+        {
+          "id": "build",
+          "kind": "transform",
+          "language": "javascript",
+          "expression": "return { raw: sk.buildMimeMessage({ from: 'reports@acme.com', to: 'team@acme.com', subject: 'Weekly report', text: 'All systems green.' }) };"
+        },
+        {
+          "id": "send",
+          "kind": "request",
+          "method": "POST",
+          "url": "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+          "body": { "raw": "${scope.build.data.raw}" }
+        }
+      ]
+    },
+    "contradicting_expression": "return { raw: sk.buildMimeMessage({ from: 'reports@acme.com', to: 'team@acme.com', replyTo: 'support@acme.com', subject: 'Weekly report', text: 'All systems green.' }) };",
+    "expect": {
+      "path": "steps.send.body.raw",
+      "message_fragments": ["rule header_not_allowed", "Reply-To"],
+      "patch_error_code": "patch_invalid"
+    }
+  }
+}

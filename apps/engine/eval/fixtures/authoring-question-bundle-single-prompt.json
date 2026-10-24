@@ -1,0 +1,40 @@
+{
+  "name": "authoring-question-bundle-single-prompt",
+  "description": "Question bundle: generation aborts because two business facts are missing (recipient and send day). author_workflow does not guess either value and does not ask twice: it returns requires_user_input with exactly one prefilled ask_user_text prompt that carries both questions on separate lines. One generation pass, draft unchanged, no live HTTP.",
+  "flow": "generate",
+  "failure_class": "authoring asks missing business facts one turn at a time or guesses them",
+  "depends_on": ["structured_generation_abort", "user_fact_prompt"],
+  "input": {
+    "goal": "Mail the weekly status report to the team.",
+    "connector": {
+      "slug": "gmail-team",
+      "display_name": "Mail team",
+      "base_url": "https://gmail.googleapis.com",
+      "environment": "prod"
+    },
+    "abort": {
+      "reason": "recipient and send day are not in the goal",
+      "needs": [
+        {
+          "kind": "user_fact",
+          "connector_slug": null,
+          "method": null,
+          "path": null,
+          "question": "Which address should receive the weekly report?"
+        },
+        {
+          "kind": "user_fact",
+          "connector_slug": null,
+          "method": null,
+          "path": null,
+          "question": "On which weekday should the report be sent?"
+        }
+      ]
+    },
+    "expect": {
+      "prompt_tool": "ask_user_text",
+      "max_prompts": 1,
+      "generate_calls": 1
+    }
+  }
+}

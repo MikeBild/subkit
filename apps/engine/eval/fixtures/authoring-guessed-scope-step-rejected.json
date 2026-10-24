@@ -1,0 +1,33 @@
+{
+  "name": "authoring-guessed-scope-step-rejected",
+  "description": "Guessed scope access: a follow-up request reads the issue number from a step id the author guessed (scope.issues) instead of the step that exists (list_issues). validate_draft refuses the draft with a finding on that step's url naming the unknown step, and edit_workflow_patch refuses to introduce the guessed reference, leaving the draft unchanged. The same request against the real step id passes. validate_draft runs without a database; no live HTTP.",
+  "flow": "generate",
+  "failure_class": "draft reads scope from a guessed step id and fails at runtime with placeholder_unresolved",
+  "depends_on": ["placeholder_scope_lint"],
+  "input": {
+    "workflow": {
+      "name": "Issue digest",
+      "slug": "issue-digest",
+      "steps": [
+        {
+          "id": "list_issues",
+          "kind": "request",
+          "method": "GET",
+          "url": "https://api.github.com/repos/acme/app/issues"
+        },
+        {
+          "id": "get_issue",
+          "kind": "request",
+          "method": "GET",
+          "url": "https://api.github.com/repos/acme/app/issues/${scope.list_issues.data.0.number}"
+        }
+      ]
+    },
+    "guessed_url": "https://api.github.com/repos/acme/app/issues/${scope.issues.data.0.number}",
+    "expect": {
+      "path": "steps.get_issue.url",
+      "message_fragments": ["references unknown step \"issues\""],
+      "patch_error_code": "workflow_unresolved_step_reference"
+    }
+  }
+}
