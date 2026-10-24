@@ -288,6 +288,43 @@ describe("scanForDrift", () => {
     expect(result.signals.filter((s) => s.signal.kind === "schema_diff")).toEqual([]);
   });
 
+  test("a list that becomes empty raises no repair signal", async () => {
+    const { workflow_id, connector_id } = await seedWorkflowWithConnector({});
+    await testDb.db.insert(schemaVersions).values({
+      tenant_id: tenantId,
+      connector_id,
+      endpoint_key: "POST /graphql",
+      workflow_id,
+      step_id: "r",
+      schema: {
+        type: "object",
+        properties: {
+          items: {
+            type: "array",
+            items: { type: "object", properties: { id: { type: "number" } } },
+          },
+        },
+      },
+      seen_at: SIXTY_S_AGO,
+    });
+    await testDb.db.insert(schemaVersions).values({
+      tenant_id: tenantId,
+      connector_id,
+      endpoint_key: "POST /graphql",
+      workflow_id,
+      step_id: "r",
+      schema: {
+        type: "object",
+        properties: { items: { type: "array", items: { type: "unknown" } } },
+      },
+      seen_at: NOW,
+    });
+
+    const result = await scanForDrift({ tenant_id: tenantId }, testDb.db);
+    expect(result.signals.filter((s) => s.signal.kind === "schema_diff")).toEqual([]);
+    expect(result.unanchored.filter((u) => u.signal.kind === "schema_diff")).toEqual([]);
+  });
+
   test("an endpoint that describes itself again raises no repair signal", async () => {
     const { workflow_id, connector_id } = await seedWorkflowWithConnector({});
     await testDb.db.insert(schemaVersions).values({

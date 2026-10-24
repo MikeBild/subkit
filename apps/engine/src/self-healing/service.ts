@@ -6,7 +6,7 @@ import { type Db, type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { executionFixtures, executions, type patchCandidates } from "../db/schema/index.ts";
 import { MAX_REPAIR_ATTEMPTS } from "../execution/timeouts.ts";
-import { LlmQuotaExhausted } from "../llm/errors.ts";
+import { LlmGenerationAborted, LlmQuotaExhausted } from "../llm/errors.ts";
 import {
   type PatchProposal,
   type PreviousRepairAttempt,
@@ -18,6 +18,7 @@ import {
   recordPatchCandidate,
   recordSelfHealingRepairRetried,
 } from "../observability/instrumentation.ts";
+import { invalidateTenantState } from "../operator/index.ts";
 import { getLatestShape } from "../schema-versions/service.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { autoApplyPatch, logPatchNotApplied } from "./auto-apply.ts";
@@ -26,7 +27,7 @@ import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from ".
 import { runFixtureDryRun } from "./fixture-runner.ts";
 import { closeIfUndecidable } from "./open-decisions.ts";
 import { resolvePathRewrite } from "./patch-apply.ts";
-import { persistPatchCandidate } from "./persist-candidate.ts";
+import { persistNotRepairableFinding, persistPatchCandidate } from "./persist-candidate.ts";
 import { resolvePolicy, shouldAutoApply } from "./policy.ts";
 import { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
 import {
@@ -394,6 +395,41 @@ async function processDriftSignalLocked(
           attempts_done: attempt - 1,
         });
         break;
+      }
+      if (err instanceof LlmGenerationAborted) {
+        const candidate = await persistNotRepairableFinding(db, {
+          tenant_id: ctx.tenant_id,
+          workflow_id: ctx.workflow_id,
+          connector_id: ctx.connector_id ?? null,
+          endpoint_key: ctx.endpoint_key ?? null,
+          base_version_id: baseVersionId,
+          diff: {
+            base_version_id: baseVersionId,
+            drift_signal: signal,
+            drift_diff: diff,
+            step_id: ctx.step_id,
+            workflow_step_id: ctx.workflow_step_id ?? null,
+            execution_id: ctx.execution_id,
+            source: ctx.source,
+            ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
+            ...(rejectionChain.length > 0 ? { rejection_chain: rejectionChain } : {}),
+          },
+          reason: err.reason,
+          needs: err.needs,
+          source: ctx.source,
+          ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
+        });
+        invalidateTenantState(ctx.tenant_id);
+        return {
+          candidate_id: candidate.id,
+          classification: "unsafe",
+          status: "inapplicable",
+          auto_applied: false,
+          dry_run_passed: null,
+          proposal: candidateProposal(candidate),
+          policy: await resolvePolicy(ctx.tenant_id, ctx.workflow_id, db),
+          created: false,
+        };
       }
       throw err;
     }

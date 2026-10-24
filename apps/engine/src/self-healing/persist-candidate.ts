@@ -5,6 +5,7 @@ import type { Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { patchCandidates } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
+import { recordPatchCandidate } from "../observability/instrumentation.ts";
 import { closeIfUndecidable } from "./open-decisions.ts";
 
 export interface PersistPatchCandidateInput {
@@ -72,4 +73,83 @@ export async function persistPatchCandidate(tx: Executor, input: PersistPatchCan
     },
   });
   return { candidate, closed };
+}
+
+export const NOT_REPAIRABLE_REASON = "not_repairable";
+
+export const NOT_REPAIRABLE_NEXT_STEP =
+  "Open the affected workflow step, compare its field paths with the recorded response shape, then edit the workflow or record a fresh response shape.";
+
+export interface PersistNotRepairableInput {
+  tenant_id: string;
+  workflow_id: string;
+  connector_id: string | null;
+  endpoint_key: string | null;
+  base_version_id: string | null;
+  diff: Record<string, unknown>;
+  reason: string;
+  needs: readonly unknown[];
+  source: string;
+  scan_id?: string;
+}
+
+export async function persistNotRepairableFinding(tx: Executor, input: PersistNotRepairableInput) {
+  const closedAt = new Date();
+  const reason = input.reason.slice(0, 1_000);
+  const [candidate] = await tx
+    .insert(patchCandidates)
+    .values({
+      tenant_id: input.tenant_id,
+      workflow_id: input.workflow_id,
+      connector_id: input.connector_id,
+      endpoint_key: input.endpoint_key,
+      classification: "unsafe",
+      diff: {
+        ...input.diff,
+        not_repairable: {
+          reason,
+          needs: input.needs,
+          next_step: NOT_REPAIRABLE_NEXT_STEP,
+        },
+      },
+      status: "inapplicable",
+      closed_reason: NOT_REPAIRABLE_REASON,
+      closed_against_version_id: input.base_version_id,
+      closed_at: closedAt,
+      updated_at: closedAt,
+    })
+    .returning();
+  assertInsertRow(candidate, "patch_candidates");
+  await auditAwait(
+    {
+      tenant_id: input.tenant_id,
+      actor_type: "system",
+      actor_id: null,
+      action: AuditAction.PATCH_CANDIDATE_CLOSED_INAPPLICABLE,
+      resource_type: "patch_candidate",
+      resource_id: candidate.id,
+      result: "success",
+      reason: NOT_REPAIRABLE_REASON,
+      metadata: {
+        workflow_id: input.workflow_id,
+        closed_reason: NOT_REPAIRABLE_REASON,
+        closed_against_version_id: input.base_version_id,
+        model_reason: reason,
+        source: input.source,
+        ...(input.scan_id ? { scan_id: input.scan_id } : {}),
+        via: "repair_abort",
+      },
+    },
+    tx,
+  );
+  recordPatchCandidate({ classification: "unsafe", decision: "closed_inapplicable" });
+  log.selfHealing.patch.closedInapplicable({
+    tenant_id: input.tenant_id,
+    workflow_id: input.workflow_id,
+    candidate_id: candidate.id,
+    reason: NOT_REPAIRABLE_REASON,
+    closed_against_version_id: input.base_version_id,
+    via: "repair_abort",
+  });
+  return candidate;
 }
