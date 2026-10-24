@@ -14,7 +14,7 @@ import type { Executor } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
 import { account } from "../accounting/accountant.ts";
-import { extractCacheCreation, extractCacheRead } from "./ai-sdk-model.ts";
+import { type AiSdkUsage, usageOf } from "./ai-sdk-model.ts";
 import { normalizeSchema } from "./schema-normalizer.ts";
 
 export interface RepairToolCallParams<TOOLS extends ToolSet> {
@@ -38,7 +38,7 @@ export async function recordRepairUsage(
   accounting: RepairToolCallParams<ToolSet>["accounting"],
   model: LanguageModel,
   result: {
-    usage?: { inputTokens?: number | undefined; outputTokens?: number | undefined } | undefined;
+    usage?: AiSdkUsage | undefined;
     providerMetadata?: unknown;
   },
   latencyMs: number,
@@ -54,12 +54,7 @@ export async function recordRepairUsage(
           ...(accounting.conversation_id ? { conversation_id: accounting.conversation_id } : {}),
         },
         model: typeof model === "string" ? model : (model.modelId ?? "unknown"),
-        usage: {
-          input_tokens: Number(result.usage?.inputTokens ?? 0),
-          output_tokens: Number(result.usage?.outputTokens ?? 0),
-          cache_read_tokens: extractCacheRead(result.providerMetadata),
-          cache_creation_tokens: extractCacheCreation(result.providerMetadata),
-        },
+        usage: usageOf(result.usage, result.providerMetadata),
         latency_ms: latencyMs,
         result: "success",
         user_id: accounting.user_id ?? null,

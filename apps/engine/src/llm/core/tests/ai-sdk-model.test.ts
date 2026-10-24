@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { type generateText, NoObjectGeneratedError } from "ai";
 import { classifyProviderError, isFallbackEligible } from "../../provider-errors.ts";
-import { AiSdkModel, LlmCallAbortedError } from "../ai-sdk-model.ts";
+import { AiSdkModel, LlmCallAbortedError, usageOf } from "../ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "../base-types.ts";
 
 let previousLlmProvider: string | undefined;
@@ -22,7 +22,11 @@ interface GenerateTextStubResult {
   toolCalls?: Array<{ toolCallId: string; toolName: string; input: any }>;
   toolResults?: Array<{ toolCallId: string; output: unknown }>;
   finishReason?: string;
-  usage?: { inputTokens?: number; outputTokens?: number };
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    inputTokenDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number };
+  };
   response?: { messages: SubkitLlmMessage[] };
   responseMessages?: SubkitLlmMessage[];
   providerMetadata?: Record<string, Record<string, unknown>>;
@@ -690,5 +694,57 @@ describe("isFallbackEligible", () => {
   });
   it("returns false for unknown errors", () => {
     expect(isFallbackEligible({ message: "bad input" })).toBe(false);
+  });
+});
+
+describe("AiSdkModel prompt-cache usage", () => {
+  it("reads cache reads the provider reports only in the normalized usage", async () => {
+    const stub = makeStub({
+      text: "ok",
+      usage: {
+        inputTokens: 1_000,
+        outputTokens: 5,
+        inputTokenDetails: { cacheReadTokens: 800, cacheWriteTokens: 0 },
+      },
+      providerMetadata: { openai: { responseId: "r1" } },
+    });
+    const model = new AiSdkModel({
+      defaultModel: "gpt-5-mini",
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
+    });
+    const r = await model.generateText([{ role: "user", content: "hi" }]);
+    expect(r.usage).toEqual({
+      input_tokens: 1_000,
+      output_tokens: 5,
+      cache_read_tokens: 800,
+      cache_creation_tokens: 0,
+    });
+  });
+
+  it("takes one source for Anthropic cache figures, never their sum", () => {
+    const usage = usageOf(
+      {
+        inputTokens: 1_200,
+        outputTokens: 3,
+        inputTokenDetails: { cacheReadTokens: 900, cacheWriteTokens: 200 },
+      },
+      { anthropic: { usage: { cache_read_input_tokens: 900, cache_creation_input_tokens: 200 } } },
+    );
+    expect(usage).toEqual({
+      input_tokens: 1_200,
+      output_tokens: 3,
+      cache_read_tokens: 900,
+      cache_creation_tokens: 200,
+    });
+  });
+
+  it("falls back to the provider metadata when the normalized usage has no cache details", () => {
+    const usage = usageOf(
+      { inputTokens: 500, outputTokens: 2 },
+      { anthropic: { usage: { cache_read_input_tokens: 400, cache_creation_input_tokens: 50 } } },
+    );
+    expect(usage.cache_read_tokens).toBe(400);
+    expect(usage.cache_creation_tokens).toBe(50);
   });
 });

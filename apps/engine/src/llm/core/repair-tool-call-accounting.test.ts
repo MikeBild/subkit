@@ -75,6 +75,21 @@ describe("recordRepairUsage", () => {
     expect(rows[0]?.actor_type).toBe("user");
   });
 
+  it("records the cache reads the provider reports in the normalized usage", async () => {
+    await recordRepairUsage(
+      { tenant_id: TENANT, db: ctx.db },
+      MODEL,
+      {
+        usage: { inputTokens: 900, outputTokens: 12, inputTokenDetails: { cacheReadTokens: 640 } },
+        providerMetadata: { openai: {} },
+      },
+      10,
+    );
+    const rows = await ctx.db.select().from(llmUsage);
+    expect(rows[0]?.prompt_tokens).toBe(900);
+    expect(rows[0]?.cache_read_tokens).toBe(640);
+  });
+
   it("writes nothing when there is no tenant to bill", async () => {
     await recordRepairUsage(undefined, MODEL, RESULT, 10);
     expect(await ctx.db.select().from(llmUsage)).toHaveLength(0);

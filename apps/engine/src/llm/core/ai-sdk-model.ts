@@ -112,15 +112,25 @@ function isAbortError(err: unknown): boolean {
 type GenerateTextOptions = Parameters<typeof generateText>[0];
 type GenerateTextOutcome = Awaited<ReturnType<typeof generateText>>;
 
-function usageOf(
-  usage: { inputTokens?: unknown; outputTokens?: unknown } | undefined,
-  providerMetadata: unknown,
-): SubkitLlmUsage {
+export interface AiSdkUsage {
+  inputTokens?: unknown;
+  outputTokens?: unknown;
+  inputTokenDetails?: { cacheReadTokens?: unknown; cacheWriteTokens?: unknown } | undefined;
+}
+
+function tokenCount(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+export function usageOf(usage: AiSdkUsage | undefined, providerMetadata: unknown): SubkitLlmUsage {
+  const cacheRead = tokenCount(usage?.inputTokenDetails?.cacheReadTokens);
+  const cacheWrite = tokenCount(usage?.inputTokenDetails?.cacheWriteTokens);
   return {
     input_tokens: Number(usage?.inputTokens ?? 0),
     output_tokens: Number(usage?.outputTokens ?? 0),
-    cache_read_tokens: extractCacheRead(providerMetadata),
-    cache_creation_tokens: extractCacheCreation(providerMetadata),
+    cache_read_tokens: cacheRead || extractCacheRead(providerMetadata),
+    cache_creation_tokens: cacheWrite || extractCacheCreation(providerMetadata),
   };
 }
 
@@ -330,12 +340,7 @@ export class AiSdkModel implements SubkitLlm {
       response: result.text,
       messages: newMessages,
       finish_reason: (result.finishReason ?? "stop") as SubkitLlmResponse["finish_reason"],
-      usage: {
-        input_tokens: Number(result.usage?.inputTokens ?? 0),
-        output_tokens: Number(result.usage?.outputTokens ?? 0),
-        cache_read_tokens: extractCacheRead(result.providerMetadata),
-        cache_creation_tokens: extractCacheCreation(result.providerMetadata),
-      },
+      usage: usageOf(result.usage, result.providerMetadata),
     };
   }
 
@@ -453,7 +458,7 @@ function refusalOf(
   return parseGenerationAbort(call.input);
 }
 
-export function extractCacheRead(meta: unknown): number {
+function extractCacheRead(meta: unknown): number {
   if (!meta || typeof meta !== "object") return 0;
   const m = meta as Record<string, Record<string, unknown>>;
   const anthUsage = m.anthropic?.usage as { cache_read_input_tokens?: number } | undefined;
@@ -462,7 +467,7 @@ export function extractCacheRead(meta: unknown): number {
   return Number(gwUsage?.cache_read_input_tokens ?? 0);
 }
 
-export function extractCacheCreation(meta: unknown): number {
+function extractCacheCreation(meta: unknown): number {
   if (!meta || typeof meta !== "object") return 0;
   const m = meta as Record<string, Record<string, unknown>>;
   const anthUsage = m.anthropic?.usage as { cache_creation_input_tokens?: number } | undefined;
