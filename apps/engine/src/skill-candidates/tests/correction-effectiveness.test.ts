@@ -1,5 +1,4 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import {
   catalogCategories,
@@ -24,8 +23,11 @@ import {
   installClock,
   restoreClock,
 } from "../../test-helpers/determinism/clock.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { measureCorrectionEffectiveness } from "../correction-effectiveness.ts";
 import { collectCorrectionIntake } from "../correction-intake.ts";
+
+const uuid = createDeterministicUuidFactory(0xc0eff1);
 
 const skip = process.env.REQUIRES_PG === "0";
 const DAY = 24 * 60 * 60 * 1000;
@@ -48,7 +50,7 @@ afterEach(() => {
 });
 
 async function seedTenant(): Promise<{ tenant_id: string; workflow_id: string }> {
-  const slug = `corr-eff-${randomUUID().slice(0, 8)}`;
+  const slug = `corr-eff-${uuid().slice(0, 8)}`;
   const [tenant] = await testDb.db
     .insert(tenants)
     .values({ slug, display_name: slug })
@@ -96,7 +98,7 @@ async function admitAsSkill(tenant_id: string, workflow_id: string): Promise<str
     .from(intakeItems)
     .where(eq(intakeItems.tenant_id, tenant_id));
   if (!item) throw new Error("intake item missing");
-  const person = { kind: "user" as const, id: randomUUID() };
+  const person = { kind: "user" as const, id: uuid() };
   const proposal = await createIntakeProposal(
     {
       tenant_id,

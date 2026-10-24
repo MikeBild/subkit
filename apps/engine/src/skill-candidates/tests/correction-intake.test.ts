@@ -1,5 +1,4 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import {
   auditLog,
@@ -22,11 +21,14 @@ import {
   installClock,
   restoreClock,
 } from "../../test-helpers/determinism/clock.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { saveWorkflowDraft } from "../../workflows/drafts.ts";
 import { updateWorkflow } from "../../workflows/service.ts";
 import { CORRECTION_AGENT, collectCorrectionIntake } from "../correction-intake.ts";
 import { changedStepSummary, detectCorrectionPatterns } from "../detectors/correction-pattern.ts";
 import { runPatternAnalysis } from "../service.ts";
+
+const uuid = createDeterministicUuidFactory(0xc0a1a7);
 
 const skip = process.env.REQUIRES_PG === "0";
 const RECENT = new Date(FROZEN_NOW - 24 * 60 * 60 * 1000);
@@ -116,13 +118,13 @@ async function seedDraftSave(
   await testDb.db
     .insert(workflowVersions)
     .values({ tenant_id, workflow_id, version: p.version, dag: { steps: p.steps } });
-  const id = randomUUID();
+  const id = uuid();
   await testDb.db.insert(auditLog).values({
     id,
     ts: p.at,
     tenant_id,
     actor_type: p.actor_type,
-    actor_id: randomUUID(),
+    actor_id: uuid(),
     action: "workflow.updated",
     resource_type: "workflow",
     resource_id: workflow_id,
@@ -165,7 +167,7 @@ afterAll(async () => {
 beforeEach(async () => {
   if (skip) return;
   installClock(createDeterministicClock(FROZEN_NOW));
-  const suffix = randomUUID().slice(0, 8);
+  const suffix = uuid().slice(0, 8);
   tenantId = await seedTenant(`corr-a-${suffix}`);
   otherTenantId = await seedTenant(`corr-b-${suffix}`);
   workflowId = await seedWorkflow(tenantId, "orders-digest", "Orders digest");
@@ -314,7 +316,7 @@ describe.skipIf(skip)("collectCorrectionIntake", () => {
   });
 
   test("a person's workflow update after an authoring draft save is collected", async () => {
-    const person = randomUUID();
+    const person = uuid();
     const saved = await saveWorkflowDraft(
       {
         tenant_id: tenantId,
@@ -496,11 +498,11 @@ describe.skipIf(skip)("detectCorrectionPatterns under a flood of older rows", ()
     ]);
     await insertChunked(
       Array.from({ length: FLOOD }, (_, i) => ({
-        id: randomUUID(),
+        id: uuid(),
         ts: floodAt(i),
         tenant_id: tenantId,
         actor_type: "user",
-        actor_id: randomUUID(),
+        actor_id: uuid(),
         action: "workflow.updated",
         resource_type: "workflow",
         resource_id: early,
