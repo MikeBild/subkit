@@ -90,6 +90,20 @@ const KEY_TEXT_FILE = /(?<![\w.-])[\w.-]+[-_]key\.txt\b/gi;
 
 const LOCAL_ONLY = /(?<![\w.-])\.artifacts\/|\b[A-Z0-9_]*DEMO_URL\b|\bdemo:local\b/g;
 
+const DEVELOPER_COMMANDS = [
+  "verify",
+  "verify:intake",
+  "verify:intake-live",
+  "start:local",
+  "gen:sandbox-tools",
+  "check:sandbox-tools-drift",
+];
+
+const DEVELOPER_COMMAND = new RegExp(
+  `\\bbun run (?:${DEVELOPER_COMMANDS.join("|")})(?![\\w:-])`,
+  "g",
+);
+
 const MARKDOWN_LINK = /(?<!!)\[[^\]]*\]\(([^)\s]+)[^)]*\)/g;
 
 const FENCED_CODE = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
@@ -214,6 +228,7 @@ function privacyFindings(artifact: Artifact, vendors: RegExp[]): Finding[] {
     for (const hit of matches(KEY_FILE, text)) add("key-file", hit);
     for (const hit of matches(KEY_TEXT_FILE, text)) add("key-file", hit);
     for (const hit of matches(LOCAL_ONLY, text)) add("local-only", hit);
+    for (const hit of matches(DEVELOPER_COMMAND, text)) add("local-only", hit);
     for (const hit of matches(PRIVATE_REPOSITORY_REFERENCE, text)) add("host", `private ${hit}`);
     for (const raw of matches(URL_PATTERN, text)) {
       const url = raw.replace(/[.,;:!?]+$/, "");

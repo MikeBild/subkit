@@ -258,6 +258,11 @@ describe("checkDocs", () => {
     ["the evidence directory", "Screenshots land in .artifacts/acceptance/run.png.", "local-only"],
     ["the demo URL variable", "Export SUBKIT_DEMO_URL before you start.", "local-only"],
     ["a demo command", "Run `bun run demo:local:verify` first.", "local-only"],
+    ["the repository gate", "Run `bun run verify` before you deploy.", "local-only"],
+    ["a local start command", "Start it with bun run start:local.", "local-only"],
+    ["an intake check", "Then run `bun run verify:intake-live`.", "local-only"],
+    ["a sandbox generator", "Regenerate with `bun run gen:sandbox-tools`.", "local-only"],
+    ["a sandbox drift check", "Check `bun run check:sandbox-tools-drift`.", "local-only"],
   ])("rejects %s", (_name, line, rule) => {
     guide().en += `\n${line}\n`;
     expect(rules(run())).toEqual([rule]);
@@ -265,6 +270,7 @@ describe("checkDocs", () => {
 
   test("accepts near misses of local-only names", () => {
     guide().en += `\nSet SK_API_KEY or \${SK_API_KEY}, read key.txt docs, and keep build artifacts/ out of http://localhost:3000/demo.\n`;
+    guide().en += "\nRun `sk verify` or `bun run verifying` and `bun run start:localhost`.\n";
     expect(run()).toEqual([]);
   });
 

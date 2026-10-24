@@ -2410,10 +2410,8 @@ return {
 
 Text inputs and outputs are limited to 1 MiB, structures to 100,000 nodes and
 64 levels. Existing sandbox memory, execution and output budgets still apply.
-Each helper is embedded and loaded on first access in each sandbox;
-regenerate it with `bun run gen:sandbox-tools` and check it with
-`bun run check:sandbox-tools-drift`. Package versions and timezone data are pinned
-in the lockfile. These tools do not add document rendering, OCR or a browser.
+Each helper is embedded and loaded on first access in each sandbox.
+Package versions and timezone data are pinned for each release. These tools do not add document rendering, OCR or a browser.
 JavaScript transforms, JSONata and binary parsing use bounded worker processes.
 The default lane can run two workers in parallel; hooks have a separate lane.
 Per-engine-process global and per-tenant queue limits apply across default and

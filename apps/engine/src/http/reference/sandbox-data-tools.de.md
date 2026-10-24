@@ -33,9 +33,8 @@ return {
 
 Text-Ein- und -Ausgaben sind auf 1 MiB begrenzt, Strukturen auf 100.000 Knoten und 64 Ebenen.
 Die bestehenden Sandbox-Budgets für Speicher, Ausführung und Ausgabe gelten weiterhin. Jeder
-Helfer ist eingebettet und wird in jeder Sandbox beim ersten Zugriff geladen; generiere ihn
-mit `bun run gen:sandbox-tools` neu und prüfe ihn mit `bun run check:sandbox-tools-drift`.
-Paketversionen und Zeitzonendaten sind in der Lockfile festgeschrieben. Diese Werkzeuge fügen
+Helfer ist eingebettet und wird in jeder Sandbox beim ersten Zugriff geladen.
+Paketversionen und Zeitzonendaten sind für jedes Release festgeschrieben. Diese Werkzeuge fügen
 weder Dokumenten-Rendering noch OCR noch einen Browser hinzu. JavaScript-Transformationen, JSONata
 und Binär-Parsing nutzen begrenzte Worker-Prozesse. Die Standardspur kann zwei Worker parallel
 ausführen; Hooks haben eine eigene Spur. Pro Engine-Prozess gelten globale und mandantenbezogene
