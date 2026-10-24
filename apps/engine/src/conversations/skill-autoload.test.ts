@@ -517,6 +517,70 @@ describe("autoloadForToolCall — step_kind activation rule (A5)", () => {
     ).toContain("branch-and-loop-skill");
   });
 
+  test("a step with for_each counts as a loop structure", () => {
+    expect(
+      autoloadForToolCall(
+        {
+          tool: "edit_workflow_patch",
+          input: {
+            patches: [
+              {
+                op: "add",
+                path: "/steps/-",
+                value: { kind: "request", id: "send", for_each: { items: "${steps.list}" } },
+              },
+            ],
+          },
+        },
+        STEP_KIND_CATALOG,
+        [],
+      ),
+    ).toContain("branch-and-loop-skill");
+  });
+
+  test("setting for_each on an existing step counts as a loop structure", () => {
+    for (const input of [
+      { step_patches: [{ step_id: "send", op: "add", path: "/for_each", value: { items: "x" } }] },
+      { patches: [{ op: "add", path: "/steps/2/for_each", value: { items: "x" } }] },
+    ]) {
+      expect(
+        autoloadForToolCall({ tool: "edit_workflow_patch", input }, STEP_KIND_CATALOG, []),
+      ).toContain("branch-and-loop-skill");
+    }
+  });
+
+  test("step_patches values are inspected for nested step kinds", () => {
+    expect(
+      autoloadForToolCall(
+        {
+          tool: "edit_workflow_patch",
+          input: {
+            step_patches: [
+              { step_id: "outer", op: "add", path: "/then_steps/-", value: { kind: "wait" } },
+            ],
+          },
+        },
+        STEP_KIND_CATALOG,
+        [],
+      ),
+    ).toContain("wait-step-skill");
+  });
+
+  test("a step_patch on another field does not count as a loop", () => {
+    expect(
+      autoloadForToolCall(
+        {
+          tool: "edit_workflow_patch",
+          input: {
+            step_patches: [{ step_id: "send", op: "replace", path: "/headers/Accept", value: "x" }],
+          },
+        },
+        STEP_KIND_CATALOG,
+        [],
+      ),
+    ).not.toContain("branch-and-loop-skill");
+  });
+
   test("user-turn signals do NOT trigger step_kind rules", () => {
     expect(
       autoloadForUserTurn({ user_text: "wait for something" }, STEP_KIND_CATALOG, []),
