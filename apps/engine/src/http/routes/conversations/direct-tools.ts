@@ -40,6 +40,12 @@ const DirectToolResultSchema = z
 const PreviewRequestSchema = z
   .object({
     step_id: z.string().min(1).optional(),
+    mode: z
+      .enum(["schema_only"])
+      .optional()
+      .describe(
+        "Sensitive drafts only, without step_id. `schema_only` validates the definition and compiles its expressions without running any step or returning any value. Structure is checked, content is not; live verification happens in the Cockpit by the signed-in person.",
+      ),
     input: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).optional(),
     include_step_results: z.boolean().optional(),
@@ -190,6 +196,16 @@ export function registerDirectToolRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
     const { step_id, ...rest } = body;
+    if (step_id && rest.mode !== undefined) {
+      throw new HttpError(
+        400,
+        "invalid_tool_args",
+        "mode applies to the whole draft, not to step_id.",
+        {
+          hint: "Omit step_id to run the schema_only check of a sensitive draft.",
+        },
+      );
+    }
     const outcome = await invokeConversationToolDirect({
       db: c.get("db"),
       tenant_id: principal.tenant_id,

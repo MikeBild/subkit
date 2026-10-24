@@ -27237,6 +27237,11 @@ export interface components {
         };
         ConversationPreviewRequest: {
             step_id?: string;
+            /**
+             * @description Sensitive drafts only, without step_id. `schema_only` validates the definition and compiles its expressions without running any step or returning any value. Structure is checked, content is not; live verification happens in the Cockpit by the signed-in person.
+             * @enum {string}
+             */
+            mode?: "schema_only";
             input?: unknown;
             /** @enum {string} */
             environment?: "dev" | "prod";

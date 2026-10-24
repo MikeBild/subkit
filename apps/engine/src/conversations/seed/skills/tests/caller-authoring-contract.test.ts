@@ -128,6 +128,15 @@ describe("loaded caller authoring contract", () => {
     }
     expect(authoring).toContain("cannot be forced");
     expect(authoring).toContain("returns metadata only");
+  });
+
+  test("sensitive authoring offers the schema_only structure check and the Cockpit handoff", () => {
+    expect(authoring).toContain('`mode: "schema_only"` checks structure only');
+    expect(authoring).toContain("structure checked, content not checked");
+    expect(authoring).toContain("`metadata_only` or `schema_only`");
+    expect(authoring).toContain("live verification happens in the Cockpit by the signed-in person");
+    expect(authoring).not.toContain("must not use persistent conversation previews");
+    expect(authoring).not.toContain("cannot use chat dry-run");
     expect(immutable).toContain("never invent caller/private fixtures or force a save");
     expect(immutable).toContain("You never see values");
     expect(prompt).toContain("Do not invent caller fixtures/private sample data");

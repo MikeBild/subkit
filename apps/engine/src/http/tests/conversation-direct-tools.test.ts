@@ -14,6 +14,26 @@ import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 let srv: HttpTestServer;
 let conversation_id: string;
 let empty_conversation_id: string;
+let sensitive_conversation_id: string;
+
+const PLANTED = "planted-sensitive-value-5c1e";
+
+function makeSensitiveDraft(): DraftDocument {
+  const draft = makeWorkflowDraft();
+  return {
+    ...draft,
+    workflow: { ...draft.workflow, name: "sensitive-flow", execution_privacy: "sensitive" },
+    latest_preview: {
+      ok: true,
+      summary: "earlier preview",
+      input: { secret: PLANTED },
+      step_traces: [
+        { step_id: "fetch", kind: "transform", status: "succeeded", output_preview: PLANTED },
+      ],
+    },
+    // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+  } as any;
+}
 
 function makeWorkflowDraft(): DraftDocument {
   return {
@@ -60,6 +80,12 @@ beforeAll(async () => {
     .values({ tenant_id: srv.tenantId, status: "active" })
     .returning();
   empty_conversation_id = empty!.id;
+  const [sensitive] = await srv.db
+    .insert(conversations)
+    .values({ tenant_id: srv.tenantId, status: "active" })
+    .returning();
+  sensitive_conversation_id = sensitive!.id;
+  await appendSnapshot(srv.tenantId, sensitive_conversation_id, makeSensitiveDraft(), srv.db);
 });
 
 afterAll(async () => {
@@ -179,6 +205,45 @@ describe("conversation direct tool routes", () => {
     const body = (await res.json()) as DirectResult;
     expect(body.tool).toBe("dry_run_step");
     expect(body.ok).toBe(false);
+  });
+
+  test("POST /preview with mode schema_only checks a sensitive draft without returning values", async () => {
+    const res = await api("POST", `/v1/conversations/${sensitive_conversation_id}/preview`, {
+      mode: "schema_only",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as DirectResult;
+    expect(body.tool).toBe("dry_run_workflow");
+    expect(body.ok).toBe(true);
+    expect(body.data.schema_only_preview).toMatchObject({
+      mode: "schema_only",
+      structure_checked: true,
+      content_checked: false,
+    });
+    expect(JSON.stringify(body)).not.toContain(PLANTED);
+    const draft = await loadDraft(srv.tenantId, sensitive_conversation_id, srv.db);
+    expect(draft?.latest_preview?.redacted).toBe(true);
+    expect(draft?.latest_preview?.mode).toBe("schema_only");
+    expect(JSON.stringify(draft)).not.toContain(PLANTED);
+  });
+
+  test("POST /preview with mode schema_only refuses a draft that is not sensitive", async () => {
+    const res = await api("POST", `/v1/conversations/${conversation_id}/preview`, {
+      mode: "schema_only",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as DirectResult;
+    expect(body.tool).toBe("dry_run_workflow");
+    expect(body.ok).toBe(false);
+    expect(JSON.stringify(body.data)).toContain("schema_only_requires_sensitive_draft");
+  });
+
+  test("POST /preview rejects mode together with step_id", async () => {
+    const res = await api("POST", `/v1/conversations/${sensitive_conversation_id}/preview`, {
+      step_id: "fetch",
+      mode: "schema_only",
+    });
+    expect(res.status).toBe(400);
   });
 
   test("POST /probe without a connector draft returns the tool's typed failure", async () => {
