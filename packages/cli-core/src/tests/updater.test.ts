@@ -1,6 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, sign as cryptoSign, generateKeyPairSync } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getTestNow } from "../../../../apps/engine/src/test-helpers/determinism/clock.ts";
@@ -13,6 +22,7 @@ import {
   parseChecksum,
   performUpdate,
   platformArch,
+  prepareDownloadedBinary,
   pruneRetainedVersions,
   readCache,
   rollbackTo,
@@ -639,6 +649,31 @@ describe("performUpdate retention", () => {
       Object.defineProperty(process, "execPath", { value: realExecPath, configurable: true });
     }
   });
+
+  test("updates from a running binary that is not listed in any signed SHA256SUMS", async () => {
+    const cfg = makeConfig({ currentVersion: "1.0.0" });
+    const fakeBinary = join(makeCacheDir(), "test-bin");
+    writeFileSync(fakeBinary, Buffer.from("MANUALLY-RE-SIGNED-OLD-BINARY"));
+    const realExecPath = process.execPath;
+    Object.defineProperty(process, "execPath", { value: fakeBinary, configurable: true });
+    try {
+      const release = buildSignedRelease({
+        binaryName: cfg.binaryName,
+        binaryBytes: Buffer.from("RELEASE-BINARY"),
+        tag: "v2.0.0",
+      });
+      expect(release.sumsText).not.toContain(
+        createHash("sha256").update("MANUALLY-RE-SIGNED-OLD-BINARY").digest("hex"),
+      );
+      const result = await performUpdate(cfg, release.info, release.fetchImpl);
+      expect(result.sha256).toBe(release.expectedHash);
+      expect(readFileSync(fakeBinary, "utf8")).toBe("RELEASE-BINARY");
+      rollbackTo({ ...cfg, currentVersion: "2.0.0" }, "1.0.0");
+      expect(readFileSync(fakeBinary, "utf8")).toBe("MANUALLY-RE-SIGNED-OLD-BINARY");
+    } finally {
+      Object.defineProperty(process, "execPath", { value: realExecPath, configurable: true });
+    }
+  });
 });
 
 describe("retained versions store", () => {
@@ -730,5 +765,22 @@ describe("rollbackTo", () => {
   test("throws when no retained binaries exist", () => {
     const cfg = makeConfig({ currentVersion: "2.0.0" });
     expect(() => rollbackTo(cfg, "previous")).toThrow(/no retained binaries/);
+  });
+});
+
+describe("prepareDownloadedBinary", () => {
+  test("keeps the verified bytes so the installed binary still matches SHA256SUMS", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sk-prepare-"));
+    try {
+      const path = join(dir, "sk");
+      copyFileSync(existsSync("/usr/bin/true") ? "/usr/bin/true" : process.execPath, path);
+      const before = createHash("sha256").update(readFileSync(path)).digest("hex");
+      prepareDownloadedBinary(path, process.platform);
+      const after = createHash("sha256").update(readFileSync(path)).digest("hex");
+      expect(after).toBe(before);
+      if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o755);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

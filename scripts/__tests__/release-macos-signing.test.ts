@@ -50,6 +50,11 @@ describe("macOS sk signing in the release chain", () => {
     );
     expect(run).toMatch(/sha256sum[^\n]*sk_\*/);
     expect(sign).toBeGreaterThan(extract);
+    const verifyMacos = run.indexOf(
+      "bun scripts/verify-macos-binaries.ts assets/sk_darwin_arm64 assets/sk_darwin_x64",
+    );
+    expect(verifyMacos).toBeGreaterThan(run.indexOf("/usr/local/share/subkit/binaries/."));
+    expect(verifyMacos).toBeLessThan(run.indexOf("sha256sum"));
     for (const step of steps.slice(extract + 1)) {
       expect(step.run ?? "").not.toMatch(
         /(codesign|rcodesign)\b|>\s*assets\/sk_|cp [^\n]*assets\/sk_/,

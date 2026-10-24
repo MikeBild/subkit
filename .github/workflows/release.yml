@@ -114,6 +114,7 @@ jobs:
           done
           chmod 755 assets/engine_linux_x64
           assets/engine_linux_x64 --smoke
+          bun scripts/verify-macos-binaries.ts assets/sk_darwin_arm64 assets/sk_darwin_x64
           (cd assets && sha256sum engine_* sk_* docker-compose.yml subkit-clipper.zip LICENSE THIRD_PARTY_NOTICES.txt > SHA256SUMS && cat SHA256SUMS)
 
       - name: Sign SHA256SUMS
