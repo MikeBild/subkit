@@ -639,6 +639,31 @@ describe("performUpdate retention", () => {
       Object.defineProperty(process, "execPath", { value: realExecPath, configurable: true });
     }
   });
+
+  test("updates from a running binary that is not listed in any signed SHA256SUMS", async () => {
+    const cfg = makeConfig({ currentVersion: "1.0.0" });
+    const fakeBinary = join(makeCacheDir(), "test-bin");
+    writeFileSync(fakeBinary, Buffer.from("MANUALLY-RE-SIGNED-OLD-BINARY"));
+    const realExecPath = process.execPath;
+    Object.defineProperty(process, "execPath", { value: fakeBinary, configurable: true });
+    try {
+      const release = buildSignedRelease({
+        binaryName: cfg.binaryName,
+        binaryBytes: Buffer.from("RELEASE-BINARY"),
+        tag: "v2.0.0",
+      });
+      expect(release.sumsText).not.toContain(
+        createHash("sha256").update("MANUALLY-RE-SIGNED-OLD-BINARY").digest("hex"),
+      );
+      const result = await performUpdate(cfg, release.info, release.fetchImpl);
+      expect(result.sha256).toBe(release.expectedHash);
+      expect(readFileSync(fakeBinary, "utf8")).toBe("RELEASE-BINARY");
+      rollbackTo({ ...cfg, currentVersion: "2.0.0" }, "1.0.0");
+      expect(readFileSync(fakeBinary, "utf8")).toBe("MANUALLY-RE-SIGNED-OLD-BINARY");
+    } finally {
+      Object.defineProperty(process, "execPath", { value: realExecPath, configurable: true });
+    }
+  });
 });
 
 describe("retained versions store", () => {
