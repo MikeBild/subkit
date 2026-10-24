@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [sk-platform-reference, webhooks, triggers, schedule, cron]
-version: 3
+version: 4
 ---
 
 # Webhooks & Triggers
@@ -33,7 +33,7 @@ Every workflow has one optional `trigger` block that decides how its execution s
 ## Transactional replies
 
 For a Gmail reply to the address in a signed request, use the separately reviewed
-`transactional_delivery` profile described by `workflow-authoring`. Event and field
+`transactional_delivery` profile described by `workflow-authoring-transactional-mail`. Event and field
 names are configurable. Require a signed body event type and original recipient/UUID,
 sensitive execution, one dispatch attempt and the real same-workflow Standard Webhooks
 binding; never substitute unsigned ingress or a fake fixed report recipient. Inspect

@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, transforms, jsonata]
-version: 7
+version: 8
 ---
 
 # Data Handling Between Steps
@@ -494,5 +494,5 @@ no `.data`. Sibling body-step results in the same iteration are read via
 ## See also
 
 - `sk-concepts.md` — envelope and placeholder tokens.
-- `workflow-authoring.md` — when to use each reshaping location.
+- `workflow-authoring-transforms.md` — when to use each reshaping location.
 - `http-connectors.md` — pagination and the shape of concatenated responses.

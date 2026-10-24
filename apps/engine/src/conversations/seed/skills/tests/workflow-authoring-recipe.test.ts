@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { loadSkillSeedsFromContent } from "../../../../skills/seed.ts";
@@ -7,6 +7,10 @@ import { autoloadForToolCall, autoloadForUserTurn } from "../../../skill-autoloa
 
 const ROOT = join(import.meta.dir, "..");
 const workflowAuthoring = readFileSync(join(ROOT, "workflow-authoring.md"), "utf-8");
+const authoringFamily = readdirSync(ROOT)
+  .filter((file) => file.startsWith("workflow-authoring"))
+  .map((file) => readFileSync(join(ROOT, file), "utf-8"))
+  .join("\n");
 const errorRecovery = readFileSync(join(ROOT, "error-recovery.md"), "utf-8");
 const dataHandling = readFileSync(join(ROOT, "data-handling.md"), "utf-8");
 const conversationalAuthoring = readFileSync(
@@ -107,17 +111,17 @@ describe("workflow-authoring.md · inspect-before-patching", () => {
 
 describe("workflow-authoring.md · uniform envelope (no transform-vs-request split)", () => {
   test("declares every step output is uniformly enveloped", () => {
-    expect(workflowAuthoring).toMatch(/EVERY step output is uniformly enveloped/i);
+    expect(authoringFamily).toMatch(/EVERY step output is uniformly enveloped/i);
   });
 
   test("does not contradict data-handling.md by claiming transforms emit raw output", () => {
-    expect(workflowAuthoring).not.toMatch(/transforms don't envelope/i);
-    expect(workflowAuthoring).not.toMatch(/raw return value IS the scope value/i);
+    expect(authoringFamily).not.toMatch(/transforms don't envelope/i);
+    expect(authoringFamily).not.toMatch(/raw return value IS the scope value/i);
     expect(dataHandling).toMatch(/Always.*\$scope.<step_id>\.data/);
   });
 
   test("loop example references $scope.extract_projects.data, not $scope.extract_projects", () => {
-    expect(workflowAuthoring).toMatch(/over": "\$scope\.extract_projects\.data/);
+    expect(authoringFamily).toMatch(/over": "\$scope\.extract_projects\.data/);
   });
 });
 
