@@ -6080,11 +6080,16 @@
               "depth": 2,
               "text": "License",
               "anchor": "license"
+            },
+            {
+              "depth": 2,
+              "text": "Third-party components",
+              "anchor": "third-party-components"
             }
           ],
           "images": [],
-          "sha256": "a6dbc30856e877eb481e3453a6f7277d0ec968d0302df03828b05f60a6eac5cb",
-          "body": "## License\n\nMIT"
+          "sha256": "f2deda1846947ca0036e8718c1e46fafb9d905466505cde6d591b78104b271c7",
+          "body": "## License\n\nMIT\n\n\n## Third-party components\n\nEvery release ships `THIRD_PARTY_NOTICES.txt` next to the binaries. It lists the license\ntexts of all bundled packages, the embedded embedding model and the Bun runtime.\n\n- **Embedding model:** `paraphrase-multilingual-MiniLM-L12-v2` by sentence-transformers,\n  Apache-2.0 per the upstream Hugging Face model card; ONNX conversion by Xenova.\n- **Bun runtime:** the `engine` and `sk` executables contain the Bun runtime, which statically\n  links LGPL components (JavaScriptCore/WebKit, tinycc). The section \"Relinking and\n  corresponding source\" in `THIRD_PARTY_NOTICES.txt` explains how to rebuild and relink.\n- **Container image:** `/usr/local/share/subkit/` also holds `BASE_IMAGE_INVENTORY.txt`\n  (operating system packages and browser builds of the base image) and `SOURCE_OFFER.txt`.\n\nThe corresponding source of the GPL and LGPL components is available on request for at least\nthree years (written offer in the notices). Once the SubKit repository is public, it will also\nbe linked there."
         },
         "de": {
           "title": "Lizenz",
@@ -6094,11 +6099,16 @@
               "depth": 2,
               "text": "Lizenz",
               "anchor": "lizenz"
+            },
+            {
+              "depth": 2,
+              "text": "Drittanbieter-Komponenten",
+              "anchor": "drittanbieter-komponenten"
             }
           ],
           "images": [],
-          "sha256": "ef3af99f7efbe24be15c54adfc1607cdbc40df6d8df9f228614d701576aef0b6",
-          "body": "## Lizenz\n\nMIT"
+          "sha256": "620ea333a93475eeb722cb4d8c920ec7ff1c93bbc7ac6830d4f0d2d70f7d344e",
+          "body": "## Lizenz\n\nMIT\n\n\n## Drittanbieter-Komponenten\n\nJedes Release liefert `THIRD_PARTY_NOTICES.txt` neben den Binaries aus. Die Datei enthält die\nLizenztexte aller gebündelten Pakete, des eingebetteten Embedding-Modells und der Bun-Runtime.\n\n- **Embedding-Modell:** `paraphrase-multilingual-MiniLM-L12-v2` von sentence-transformers,\n  Apache-2.0 laut Hugging-Face-Model-Card; ONNX-Konvertierung von Xenova.\n- **Bun-Runtime:** Die Programme `engine` und `sk` enthalten die Bun-Runtime. Sie bindet\n  LGPL-Komponenten statisch ein (JavaScriptCore/WebKit, tinycc). Der Abschnitt „Relinking and\n  corresponding source“ in `THIRD_PARTY_NOTICES.txt` beschreibt Neubau und Relinking.\n- **Container-Image:** In `/usr/local/share/subkit/` liegen zusätzlich `BASE_IMAGE_INVENTORY.txt`\n  (Betriebssystempakete und Browser-Builds des Basis-Images) und `SOURCE_OFFER.txt`.\n\nDen Quellcode der GPL- und LGPL-Komponenten erhältst du auf Anfrage für mindestens drei Jahre\n(schriftliches Angebot in den Notices). Sobald das SubKit-Repository öffentlich ist, wird er\nzusätzlich dort verlinkt."
         }
       }
     }
