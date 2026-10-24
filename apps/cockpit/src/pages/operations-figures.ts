@@ -240,6 +240,45 @@ export function operatingCounts(envelope: unknown): OperatingCounts | null {
   };
 }
 
+export interface PromptCacheFlow {
+  flow: string;
+  calls: number;
+  promptTokens: number;
+  cacheReadTokens: number;
+  percent: number | null;
+}
+
+export function promptCacheFlows(envelope: unknown): PromptCacheFlow[] | null {
+  if (!isRecord(envelope) || !isRecord(envelope.prompt_cache)) return null;
+  const { flows } = envelope.prompt_cache;
+  if (!Array.isArray(flows)) return null;
+  return flows.flatMap((row): PromptCacheFlow[] => {
+    if (!isRecord(row) || typeof row.flow !== "string" || row.flow === "") return [];
+    const promptTokens = countOf(row.prompt_tokens) ?? 0;
+    const percent = numberOrNull(row.cache_read_percent);
+    return [
+      {
+        flow: row.flow,
+        calls: countOf(row.calls) ?? 0,
+        promptTokens,
+        cacheReadTokens: countOf(row.cache_read_tokens) ?? 0,
+        percent: promptTokens > 0 && percent !== null ? Math.min(Math.max(percent, 0), 100) : null,
+      },
+    ];
+  });
+}
+
+export function promptCacheShare(flows: readonly PromptCacheFlow[]): number | null {
+  let prompt = 0;
+  let cacheRead = 0;
+  for (const flow of flows) {
+    if (flow.percent === null) continue;
+    prompt += flow.promptTokens;
+    cacheRead += flow.cacheReadTokens;
+  }
+  return prompt > 0 ? Math.min(Math.round((cacheRead / prompt) * 100), 100) : null;
+}
+
 export const DECIDED_REPAIR_ACTIONS = [
   "patch_candidate.approved",
   "patch_candidate.auto_applied",

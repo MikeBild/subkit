@@ -6,6 +6,7 @@ import type { Db } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
 import { aggregateAudit } from "../stats/aggregate-audit.ts";
 import { aggregateExecutions } from "../stats/aggregate-executions.ts";
+import { aggregateLlm, type LlmGroup } from "../stats/aggregate-llm.ts";
 import { statsBucketFor } from "../stats/llm-cost.ts";
 
 export const OPERATING_FIGURES_SCHEMA_VERSION = "operating-figures.v1" as const;
@@ -48,6 +49,17 @@ export interface OperatingFigures {
     applied_percent: number | null;
     href: string;
   };
+  prompt_cache: {
+    flows: PromptCacheFlow[];
+  };
+}
+
+export interface PromptCacheFlow {
+  flow: string;
+  calls: number;
+  prompt_tokens: number;
+  cache_read_tokens: number;
+  cache_read_percent: number | null;
 }
 
 function percent(part: number, whole: number): number | null {
@@ -56,6 +68,24 @@ function percent(part: number, whole: number): number | null {
 
 function cockpitHref(path: string, query: Record<string, string>): string {
   return `/cockpit${path}?${new URLSearchParams(query).toString()}`;
+}
+
+export function promptCacheByFlow(groups: readonly LlmGroup[]): PromptCacheFlow[] {
+  return groups
+    .filter((group) => group.totals.calls > 0)
+    .map((group) => {
+      const prompt = group.totals.tokens.prompt;
+      const cacheRead = group.totals.tokens.cache_read;
+      const share = percent(cacheRead, prompt);
+      return {
+        flow: group.key.flow ?? "",
+        calls: group.totals.calls,
+        prompt_tokens: prompt,
+        cache_read_tokens: cacheRead,
+        cache_read_percent: share === null ? null : Math.min(share, 100),
+      };
+    })
+    .sort((a, b) => b.prompt_tokens - a.prompt_tokens || a.flow.localeCompare(b.flow));
 }
 
 export const COCKPIT_RUNS_FILTER_PARAMS = {
@@ -109,7 +139,7 @@ export async function readOperatingFigures(
 ): Promise<OperatingFigures> {
   const bucket = statsBucketFor(bounds.from, bounds.to);
   const window = { tenantId, bucket, from: bounds.from, to: bounds.to, tz: "UTC" } as const;
-  const [executions, repairs, enabled, notOk, needsReauth] = await Promise.all([
+  const [executions, repairs, enabled, notOk, needsReauth, llm] = await Promise.all([
     aggregateExecutions(db, { ...window, groupBy: [] }),
     aggregateAudit(db, {
       ...window,
@@ -122,6 +152,7 @@ export async function readOperatingFigures(
       .select({ total: count() })
       .from(connectors)
       .where(and(eq(connectors.tenant_id, tenantId), connectorNeedsReauth())),
+    aggregateLlm(db, { ...window, groupBy: ["flow"] }),
   ]);
 
   const total = executions.totals.executions.count;
@@ -171,5 +202,6 @@ export async function readOperatingFigures(
         ts_to: to,
       }),
     },
+    prompt_cache: { flows: promptCacheByFlow(llm.groups) },
   };
 }

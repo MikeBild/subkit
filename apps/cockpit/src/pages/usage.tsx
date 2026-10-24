@@ -34,6 +34,7 @@ import { ForbiddenState } from "@/components/failure-state";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
+import { usePromptCacheFlows } from "@/pages/operations-bar";
 import {
   executionStatsEndpoint,
   isStatsWindow,
@@ -50,6 +51,7 @@ import {
   windowBounds,
   windowBucket,
 } from "@/pages/operations-figures";
+import { PromptCacheSection, PromptCacheTile } from "@/pages/prompt-cache";
 import { workspaceSettingEndpoint } from "@/pages/settings-save";
 import { OriginChartSvg, OriginChartTable, OriginLegend } from "@/pages/usage-chart";
 import {
@@ -227,6 +229,7 @@ export function UsagePage() {
     "conversation",
   );
   const lastSeven = useLlmQuery(allowed, seven);
+  const promptCache = usePromptCacheFlows(bounds, allowed);
   const status = useQuery({
     queryKey: ["usage-status"],
     enabled: allowed,
@@ -604,15 +607,15 @@ export function UsagePage() {
   );
 
   const tiles = flowNow.isPending ? (
-    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-      {[0, 1, 2, 3].map((index) => (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      {[0, 1, 2, 3, 4].map((index) => (
         <TileSkeleton key={index} />
       ))}
     </div>
   ) : (
     <section
       aria-label={t("usage.kpi.label")}
-      className="grid grid-cols-2 gap-2 lg:grid-cols-4"
+      className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
       data-testid="usage-kpis"
     >
       <KpiTile
@@ -668,6 +671,12 @@ export function UsagePage() {
             ? t("usage.kpi.cacheShare", { percent: format.percent(usage.cacheShare) })
             : null
         }
+      />
+      <PromptCacheTile
+        read={promptCache.read}
+        pending={promptCache.pending}
+        period={period}
+        onRetry={promptCache.retry}
       />
     </section>
   );
@@ -1090,6 +1099,11 @@ export function UsagePage() {
             {hintSection}
             {chartSection}
             {breakdownSection}
+            <PromptCacheSection
+              read={promptCache.read}
+              pending={promptCache.pending}
+              onRetry={promptCache.retry}
+            />
           </>
         )}
         {techSection}

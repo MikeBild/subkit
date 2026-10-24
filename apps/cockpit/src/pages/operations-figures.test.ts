@@ -11,6 +11,8 @@ import {
   operatingCounts,
   operatingFigures,
   operatingFiguresEndpoint,
+  promptCacheFlows,
+  promptCacheShare,
   REPAIR_REQUIRED_ENDPOINT,
   repairRequiredCount,
   usageWindowFromUrl,
@@ -494,5 +496,72 @@ describe("the repair-required count", () => {
     expect(repairRequiredCount({ total: -1 })).toBeNull();
     expect(repairRequiredCount({ total: "13" })).toBeNull();
     expect(repairRequiredCount(null)).toBeNull();
+  });
+});
+
+describe("the prompt-cache share per flow", () => {
+  const envelope = {
+    prompt_cache: {
+      flows: [
+        {
+          flow: "converse",
+          calls: 940,
+          prompt_tokens: 76_000,
+          cache_read_tokens: 59_000,
+          cache_read_percent: 78,
+        },
+        {
+          flow: "generate",
+          calls: 180,
+          prompt_tokens: 4_000,
+          cache_read_tokens: 0,
+          cache_read_percent: 0,
+        },
+        {
+          flow: "workflow_step",
+          calls: 3,
+          prompt_tokens: 0,
+          cache_read_tokens: 0,
+          cache_read_percent: null,
+        },
+      ],
+    },
+  };
+
+  test("reads each flow in engine order and keeps flows without provider data as no data", () => {
+    expect(promptCacheFlows(envelope)).toEqual([
+      { flow: "converse", calls: 940, promptTokens: 76_000, cacheReadTokens: 59_000, percent: 78 },
+      { flow: "generate", calls: 180, promptTokens: 4_000, cacheReadTokens: 0, percent: 0 },
+      { flow: "workflow_step", calls: 3, promptTokens: 0, cacheReadTokens: 0, percent: null },
+    ]);
+  });
+
+  test("an answer without the cache block is unreadable, never an empty list", () => {
+    expect(promptCacheFlows({ runs: {} })).toBeNull();
+    expect(promptCacheFlows({ prompt_cache: { flows: "converse" } })).toBeNull();
+    expect(promptCacheFlows(null)).toBeNull();
+    expect(promptCacheFlows({ prompt_cache: { flows: [] } })).toEqual([]);
+  });
+
+  test("the overall share weighs flows by their prompt tokens, not by their percentages", () => {
+    const flows = promptCacheFlows(envelope) ?? [];
+    expect(promptCacheShare(flows)).toBe(74);
+  });
+
+  test("without prompt tokens there is no overall share, never a bare zero", () => {
+    expect(promptCacheShare([])).toBeNull();
+    expect(
+      promptCacheShare([
+        { flow: "converse", calls: 2, promptTokens: 0, cacheReadTokens: 0, percent: null },
+      ]),
+    ).toBeNull();
+  });
+
+  test("shares above the prompt volume are capped at one hundred percent", () => {
+    expect(
+      promptCacheShare([
+        { flow: "converse", calls: 1, promptTokens: 100, cacheReadTokens: 130, percent: 100 },
+      ]),
+    ).toBe(100);
   });
 });

@@ -14,6 +14,8 @@ import {
   operatingCounts,
   operatingFigures,
   operatingFiguresEndpoint,
+  type PromptCacheFlow,
+  promptCacheFlows,
   REPAIR_REQUIRED_ENDPOINT,
   type Read,
   repairRequiredCount,
@@ -89,15 +91,27 @@ export function RepairRequiredHint({ count }: { count: number | null }) {
   );
 }
 
+export function useOperatingFiguresQuery(bounds: WindowBounds, enabled: boolean) {
+  return useQuery({
+    queryKey: ["operations-figures", bounds],
+    enabled,
+    queryFn: () => apiRequest<unknown>(operatingFiguresEndpoint(bounds)),
+  });
+}
+
+export function usePromptCacheFlows(bounds: WindowBounds, enabled: boolean) {
+  const query = useOperatingFiguresQuery(bounds, enabled);
+  const read: Read<PromptCacheFlow[] | null> = query.isError
+    ? { state: "failed" }
+    : { state: "answered", value: promptCacheFlows(query.data) };
+  return { read, pending: query.isPending, retry: () => void query.refetch() };
+}
+
 export function useOperationsFigures(bounds: WindowBounds, permissions: readonly string[]) {
   const can = (permission: string) => permissions.includes(permission);
   const allowed = canReadOperations(permissions);
   const canConnectors = can("connector:read");
-  const counts = useQuery({
-    queryKey: ["operations-figures", bounds],
-    enabled: allowed,
-    queryFn: () => apiRequest<unknown>(operatingFiguresEndpoint(bounds)),
-  });
+  const counts = useOperatingFiguresQuery(bounds, allowed);
 
   const spend = useQuery({
     queryKey: ["operations-spend", bounds],

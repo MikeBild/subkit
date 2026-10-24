@@ -1739,6 +1739,49 @@
               "applied_percent",
               "href"
             ]
+          },
+          "prompt_cache": {
+            "type": "object",
+            "properties": {
+              "flows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "flow": {
+                      "type": "string"
+                    },
+                    "calls": {
+                      "type": "integer"
+                    },
+                    "prompt_tokens": {
+                      "type": "number"
+                    },
+                    "cache_read_tokens": {
+                      "type": "number"
+                    },
+                    "cache_read_percent": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Share of the flow's prompt tokens read from the provider prompt cache."
+                    }
+                  },
+                  "required": [
+                    "flow",
+                    "calls",
+                    "prompt_tokens",
+                    "cache_read_tokens",
+                    "cache_read_percent"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "flows"
+            ],
+            "description": "Prompt-cache reads against prompt tokens per LLM flow in the window, largest prompt volume first."
           }
         },
         "required": [
@@ -1746,7 +1789,8 @@
           "window",
           "runs",
           "connectors",
-          "repairs"
+          "repairs",
+          "prompt_cache"
         ]
       },
       "StatsQualityResponse": {
@@ -32621,7 +32665,7 @@
           "Stats"
         ],
         "summary": "The Übersicht's operations figures over one window",
-        "description": "Runs that started in the window and their success rate, the enabled connectors healthy now, and the share of repairs decided in the window that were applied — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.",
+        "description": "Runs that started in the window and their success rate, the enabled connectors healthy now, the share of repairs decided in the window that were applied, and per LLM flow the share of prompt tokens read from the prompt cache — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.",
         "security": [
           {
             "bearerAuth": []
