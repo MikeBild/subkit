@@ -118,7 +118,7 @@ describe("workflow-authoring — recipe coverage", () => {
   test("separates sensitive draft validation from forbidden chat preview", () => {
     const body = authoringFamily(loadAll());
     expect(body).toContain('execution_privacy: "sensitive"');
-    expect(body).toContain("without a chat preview");
+    expect(body).toContain("The authoring chat cannot run it live.");
     expect(body).toContain("green judged preview for ordinary workflows");
   });
 });
