@@ -25,7 +25,6 @@ Where to obtain the source:
 Written offer: for at least three years after this image is distributed, the
 SubKit maintainers provide on request the complete corresponding source code of
 the GPL- and LGPL-licensed components contained in this image, for no more than
-the cost of physically performing the distribution. Send the request to the
-SubKit maintainers named in the SubKit LICENSE through the support channel of
-this distribution. Once the SubKit repository is public, these sources will also
+the cost of physically performing the distribution. Send the request through the
+contact form at https://subkit.mikebild.dev/kontakt. Once the SubKit repository is public, these sources will also
 be linked from it.

@@ -204,6 +204,11 @@ describe("checkDocs", () => {
     expect(run()).toEqual([]);
   });
 
+  test("allows the public product website", () => {
+    guide().en += "\nRequest the source through https://subkit.mikebild.dev/kontakt.\n";
+    expect(run()).toEqual([]);
+  });
+
   test("rejects a private issue path without a scheme", () => {
     guide().de += "\nSiehe github.com/MikeBild/subkit/issues/1.\n";
     expect(rules(run())).toEqual(["host"]);

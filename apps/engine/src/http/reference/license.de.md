@@ -24,5 +24,5 @@ Lizenztexte aller gebündelten Pakete, des eingebetteten Embedding-Modells und d
   (Betriebssystempakete und Browser-Builds des Basis-Images) und `SOURCE_OFFER.txt`.
 
 Den Quellcode der GPL- und LGPL-Komponenten erhältst du auf Anfrage für mindestens drei Jahre
-(schriftliches Angebot in den Notices). Sobald das SubKit-Repository öffentlich ist, wird er
+(schriftliches Angebot in den Notices). Anfragen gehen über das [Kontaktformular](https://subkit.mikebild.dev/kontakt). Sobald das SubKit-Repository öffentlich ist, wird er
 zusätzlich dort verlinkt.

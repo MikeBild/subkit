@@ -24,5 +24,5 @@ texts of all bundled packages, the embedded embedding model and the Bun runtime.
   (operating system packages and browser builds of the base image) and `SOURCE_OFFER.txt`.
 
 The corresponding source of the GPL and LGPL components is available on request for at least
-three years (written offer in the notices). Once the SubKit repository is public, it will also
+three years (written offer in the notices). Request it through the [contact form](https://subkit.mikebild.dev/kontakt). Once the SubKit repository is public, it will also
 be linked there.

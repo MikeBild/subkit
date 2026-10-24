@@ -64,7 +64,11 @@ const IMAGE_MAX_HEIGHT = 2400;
 
 const BUILD = /^\d+\.\d+\.\d+$/;
 
-const PUBLIC_PRODUCT_HOSTS = ["subkit-cloud.mikebild.info", "learn.chatgpt.com"];
+const PUBLIC_PRODUCT_HOSTS = [
+  "subkit.mikebild.dev",
+  "subkit-cloud.mikebild.info",
+  "learn.chatgpt.com",
+];
 
 const ALLOWED_LOOPBACK = new Set(["127.0.0.1", "::1"]);
 
