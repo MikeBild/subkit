@@ -2193,6 +2193,39 @@ const EN = {
   "skills.fact.id": "Identifier",
   "skills.usage.summary": "Used in {where} · covers {scope}.",
   "skills.usage.everywhere": "Applies everywhere: in chat and in every workflow draft.",
+  "skillCandidates.title": "Skill candidates",
+  "skillCandidates.back": "Skills",
+  "skillCandidates.intro":
+    "Proposals from runs and chats. Only your confirmation turns one into a skill; collected is not confirmed.",
+  "skillCandidates.column.candidate": "Candidate",
+  "skillCandidates.column.excerpt": "Excerpt",
+  "skillCandidates.column.source": "Source",
+  "skillCandidates.selected.one": "{count} selected",
+  "skillCandidates.selected.other": "{count} selected",
+  "skillCandidates.selection": "Selected candidates",
+  "skillCandidates.discard": "Discard",
+  "skillCandidates.clearSelection": "Clear selection",
+  "skillCandidates.selectAll": "Select all candidates",
+  "skillCandidates.selectOne": "Select {name}",
+  "skillCandidates.object.one": "{count} candidate",
+  "skillCandidates.object.other": "{count} candidates",
+  "skillCandidates.discardConsequence.one":
+    "{count} candidate is not applied, and SubKit will not propose it again.",
+  "skillCandidates.discardConsequence.other":
+    "{count} candidates are not applied, and SubKit will not propose them again.",
+  "skillCandidates.approved.one": "{count} candidate accepted.",
+  "skillCandidates.approved.other": "{count} candidates accepted.",
+  "skillCandidates.rejected.one": "{count} candidate discarded.",
+  "skillCandidates.rejected.other": "{count} candidates discarded.",
+  "skillCandidates.skipped.one":
+    "{count} candidate was not decided because it changed or was already decided. Review it again.",
+  "skillCandidates.skipped.other":
+    "{count} candidates were not decided because they changed or were already decided. Review them again.",
+  "skillCandidates.state.approved": "Accepted",
+  "skillCandidates.state.rejected": "Discarded",
+  "skillCandidates.footnote":
+    "Accepting publishes only the selected candidates, each with its own audit entry. Only signed-in people can accept.",
+  "skillCandidates.empty": "No candidates waiting.",
   "skills.usage.unbound":
     "Applies nowhere: the connector or workflow it was bound to is missing. Bind it again in the editor.",
   "skills.usage.workflowLine": "Only for this workflow",
@@ -8326,6 +8359,39 @@ const DE: Record<TranslationKey, string> = {
   "skills.fact.id": "Kennung",
   "skills.usage.summary": "Wirkt in {where} · gilt für {scope}.",
   "skills.usage.everywhere": "Gilt überall: im Chat und in allen Workflow-Entwürfen.",
+  "skillCandidates.title": "Skill-Kandidaten",
+  "skillCandidates.back": "Skills",
+  "skillCandidates.intro":
+    "Vorschläge aus Läufen und Chats. Erst deine Bestätigung macht daraus einen Skill; gesammelt ist nicht bestätigt.",
+  "skillCandidates.column.candidate": "Kandidat",
+  "skillCandidates.column.excerpt": "Auszug",
+  "skillCandidates.column.source": "Quelle",
+  "skillCandidates.selected.one": "{count} ausgewählt",
+  "skillCandidates.selected.other": "{count} ausgewählt",
+  "skillCandidates.selection": "Ausgewählte Kandidaten",
+  "skillCandidates.discard": "Verwerfen",
+  "skillCandidates.clearSelection": "Auswahl aufheben",
+  "skillCandidates.selectAll": "Alle Kandidaten auswählen",
+  "skillCandidates.selectOne": "{name} auswählen",
+  "skillCandidates.object.one": "{count} Kandidat",
+  "skillCandidates.object.other": "{count} Kandidaten",
+  "skillCandidates.discardConsequence.one":
+    "{count} Kandidat wird nicht übernommen, und SubKit schlägt ihn nicht noch einmal vor.",
+  "skillCandidates.discardConsequence.other":
+    "{count} Kandidaten werden nicht übernommen, und SubKit schlägt sie nicht noch einmal vor.",
+  "skillCandidates.approved.one": "{count} Kandidat übernommen.",
+  "skillCandidates.approved.other": "{count} Kandidaten übernommen.",
+  "skillCandidates.rejected.one": "{count} Kandidat verworfen.",
+  "skillCandidates.rejected.other": "{count} Kandidaten verworfen.",
+  "skillCandidates.skipped.one":
+    "{count} Kandidat wurde nicht entschieden, weil er sich geändert hat oder schon entschieden war. Prüf ihn erneut.",
+  "skillCandidates.skipped.other":
+    "{count} Kandidaten wurden nicht entschieden, weil sie sich geändert haben oder schon entschieden waren. Prüf sie erneut.",
+  "skillCandidates.state.approved": "Übernommen",
+  "skillCandidates.state.rejected": "Verworfen",
+  "skillCandidates.footnote":
+    "Übernehmen veröffentlicht nur die ausgewählten Kandidaten, jeder mit eigenem Audit-Eintrag. Nur angemeldete Personen können übernehmen.",
+  "skillCandidates.empty": "Keine Kandidaten offen.",
   "skills.usage.unbound":
     "Wirkt nirgends: der gebundene Konnektor oder Workflow fehlt. Binde den Skill im Editor neu.",
   "skills.usage.workflowLine": "Nur für diesen Workflow",

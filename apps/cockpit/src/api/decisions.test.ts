@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { listProposedSkillCandidates } from "./decisions";
+import { approveSkillCandidates, listProposedSkillCandidates } from "./decisions";
 
 const fetchPreconnect = globalThis.fetch.preconnect;
 
@@ -57,5 +57,36 @@ describe("proposal pagination", () => {
     );
     await listProposedSkillCandidates();
     expect(request).not.toContain("knowledge_source_id");
+  });
+});
+
+describe("approving skill candidates together", () => {
+  test("sends every chosen candidate with the digest that was reviewed in one request", async () => {
+    const calls: { url: string; method: string | undefined; body: unknown }[] = [];
+    mocks.push(
+      spyOn(globalThis, "fetch").mockImplementation(
+        fetchWithPreconnect(async (input, init) => {
+          calls.push({
+            url: String(input),
+            method: init?.method,
+            body: JSON.parse(String(init?.body ?? "null")),
+          });
+          return Response.json({ results: [], approved: 0 });
+        }),
+      ),
+    );
+    await approveSkillCandidates([
+      { id: "a", expected_review_digest: "1" },
+      { id: "b", expected_review_digest: "2" },
+    ]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toEndWith("/v1/skill-candidates/approve");
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.body).toEqual({
+      candidates: [
+        { id: "a", expected_review_digest: "1" },
+        { id: "b", expected_review_digest: "2" },
+      ],
+    });
   });
 });

@@ -37,6 +37,8 @@ export const INTAKE_ROUTES = ["/intake", "/intake/$resourceId"] as const;
 
 export const INSTALLATION_ROUTES = ["/incoming/files"] as const;
 
+export const SKILL_CANDIDATE_ROUTES = ["/skills/candidates"] as const;
+
 export const DOCS_ROUTES = ["/docs", "/docs/$slug"] as const;
 
 export const CATALOG_RESOURCES = [
@@ -58,6 +60,7 @@ export const ALL_ROUTE_PATHS: readonly string[] = [
   ...CHAT_ROUTES,
   ...INTAKE_ROUTES,
   ...INSTALLATION_ROUTES,
+  ...SKILL_CANDIDATE_ROUTES,
   ...DOCS_ROUTES,
   ...CATALOG_RESOURCES.flatMap((resource) => [`/${resource}`, `/${resource}/$resourceId`]),
 ];

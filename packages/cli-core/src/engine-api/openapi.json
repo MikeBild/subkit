@@ -21633,6 +21633,85 @@
           }
         }
       },
+      "ApproveSkillCandidatesResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillCandidateApprovalResult"
+            }
+          },
+          "approved": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "results",
+          "approved"
+        ]
+      },
+      "SkillCandidateApprovalResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "changed_since_review",
+              "not_found",
+              "already_decided"
+            ]
+          },
+          "skill_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The active skill the candidate became, if approved."
+          }
+        },
+        "required": [
+          "id",
+          "outcome",
+          "skill_id"
+        ]
+      },
+      "ApproveSkillCandidatesBody": {
+        "type": "object",
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "expected_review_digest": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "id",
+                "expected_review_digest"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      },
       "RejectSkillCandidateBody": {
         "type": "object",
         "properties": {
@@ -50187,6 +50266,51 @@
           },
           "409": {
             "description": "The skill candidate changed or was already decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/skill-candidates/approve": {
+      "post": {
+        "tags": [
+          "skill-candidates"
+        ],
+        "summary": "Approve several detected skill candidates as active skills",
+        "description": "Only a signed-in person may approve in a batch. Each candidate is bound to the review digest the person saw, checked, approved and audited on its own; the result lists an outcome per candidate.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveSkillCandidatesBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveSkillCandidatesResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a signed-in person, or missing permission",
             "content": {
               "application/json": {
                 "schema": {

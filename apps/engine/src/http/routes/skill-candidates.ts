@@ -10,8 +10,8 @@ import {
   SkillCandidateStatusSchema,
 } from "../../skill-candidates/index.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
-import { requireAuth } from "../middleware/auth.ts";
-import { requirePermission } from "../middleware/require-permission.ts";
+import { requireAuth, requireSignedInPerson } from "../middleware/auth.ts";
+import { ensurePermission, requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const SkillCandidateListResponse = z
@@ -141,6 +141,67 @@ const approveRoute = createRoute({
   },
 });
 
+const MAX_APPROVE_BATCH = 100;
+
+const ApproveSkillCandidatesBody = z
+  .object({
+    candidates: z
+      .array(
+        z.object({
+          id: z.string().uuid(),
+          expected_review_digest: z.string().regex(/^[a-f0-9]{64}$/),
+        }),
+      )
+      .min(1)
+      .max(MAX_APPROVE_BATCH)
+      .refine((items) => new Set(items.map((item) => item.id)).size === items.length, {
+        message: "each candidate may appear once",
+      }),
+  })
+  .openapi("ApproveSkillCandidatesBody");
+
+const SkillCandidateApprovalResult = z
+  .object({
+    id: z.string().uuid(),
+    outcome: z.enum(["approved", "changed_since_review", "not_found", "already_decided"]),
+    skill_id: z.string().nullable().describe("The active skill the candidate became, if approved."),
+  })
+  .openapi("SkillCandidateApprovalResult");
+
+const approveBatchRoute = createRoute({
+  method: "post",
+  path: "/v1/skill-candidates/approve",
+  tags: ["skill-candidates"],
+  summary: "Approve several detected skill candidates as active skills",
+  description:
+    "Only a signed-in person may approve in a batch. Each candidate is bound to the review digest the person saw, checked, approved and audited on its own; the result lists an outcome per candidate.",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      content: { "application/json": { schema: ApproveSkillCandidatesBody } },
+    },
+  },
+  responses: {
+    200: {
+      description: "OK",
+      content: {
+        "application/json": {
+          schema: z
+            .object({
+              results: z.array(SkillCandidateApprovalResult),
+              approved: z.number().int().min(0),
+            })
+            .openapi("ApproveSkillCandidatesResponse"),
+        },
+      },
+    },
+    403: {
+      description: "Not a signed-in person, or missing permission",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
 const rejectRoute = createRoute({
   method: "post",
   path: "/v1/skill-candidates/{id}/reject",
@@ -190,6 +251,8 @@ function isLearning(kind: string): boolean {
 
 export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/skill-candidates", requirePermission("skill:read"));
+  app.use("/v1/skill-candidates/approve", requirePermission("skill:write"));
+  app.use("/v1/skill-candidates/approve", requirePermission("skill:activate"));
   app.use("/v1/skill-candidates/:id", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("skill:read")(c, next);
     return requirePermission("skill:write")(c, next);
@@ -280,6 +343,43 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
       throw new NotFoundError("skill_candidate");
     }
     return c.json(result, 200);
+  });
+
+  app.openapi(approveBatchRoute, async (c) => {
+    const principal = requireAuth(c);
+    requireSignedInPerson(principal, "a signed-in person must approve skill candidates");
+    const db = c.get("db");
+    const { candidates } = c.req.valid("json");
+    for (const candidate of candidates)
+      await ensurePermission(c, "skill:write", { type: "skill_candidate", id: candidate.id });
+    const results: z.infer<typeof SkillCandidateApprovalResult>[] = [];
+    for (const candidate of candidates) {
+      const approved = await svc.approveSkillCandidate(
+        {
+          tenant_id: principal.tenant_id,
+          candidate_id: candidate.id,
+          actor: actorOf(principal),
+          expected_review_digest: candidate.expected_review_digest,
+          overrides: { status: "active" },
+        },
+        db,
+      );
+      results.push(
+        approved
+          ? { id: candidate.id, outcome: "approved", skill_id: approved.skill_id }
+          : {
+              id: candidate.id,
+              outcome: svc.approvalFailureOf(
+                await svc.getSkillCandidate(principal.tenant_id, candidate.id, db),
+              ),
+              skill_id: null,
+            },
+      );
+    }
+    return c.json(
+      { results, approved: results.filter((result) => result.outcome === "approved").length },
+      200,
+    );
   });
 
   app.openapi(rejectRoute, async (c) => {

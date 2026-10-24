@@ -111,6 +111,10 @@ export function connectorsHref(filter: { health?: "not_ok" | null } = {}): strin
   return withQuery("/connectors", { health: filter.health });
 }
 
+export function skillCandidatesHref(): string {
+  return "/skills/candidates";
+}
+
 export function recordHref(resource: RecordResource, id: string): string {
   return record(resource, id);
 }

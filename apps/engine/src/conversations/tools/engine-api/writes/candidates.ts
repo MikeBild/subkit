@@ -2,11 +2,11 @@ import { z } from "@hono/zod-openapi";
 import { actorOf } from "../../../../audit/actor.ts";
 import { approvePatchCandidate } from "../../../../self-healing/candidate-decision.ts";
 import {
+  approvalFailureOf,
   approveSkillCandidate,
   getSkillCandidate,
   rejectSkillCandidate,
 } from "../../../../skill-candidates/service.ts";
-import { LEARNING_PATTERN_KINDS } from "../../../../skill-candidates/types.ts";
 import type { ConversationTool, ToolContext, ToolPrecheck, ToolResult } from "../../index.ts";
 import { checkTenantPermission } from "../../permission-gate.ts";
 import {
@@ -106,12 +106,7 @@ async function approveOne(
     return { outcome: "approved", out };
   }
   const current = await deps.current(ctx.tenant_id, candidateId, ctx.db);
-  const outcome =
-    !current || (LEARNING_PATTERN_KINDS as readonly string[]).includes(current.pattern_kind)
-      ? "not_found"
-      : current.status === "proposed"
-        ? "changed_since_review"
-        : "already_decided";
+  const outcome = approvalFailureOf(current);
   await ctx.engineClient.audit_write({
     resource_type: "skill_candidate",
     resource_id: candidateId,

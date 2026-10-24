@@ -26,6 +26,7 @@ import {
 import { absolute, routerPath } from "@/app/links";
 import { slugify } from "@/components/cockpit/create-refusal";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -66,6 +67,12 @@ import {
   toggleGroup,
   writeCollapsedGroups,
 } from "./table-grouping";
+import {
+  selectionState,
+  type TableSelection,
+  toggleAllSelected,
+  toggleSelected,
+} from "./table-selection";
 
 export interface CockpitColumnMeta {
   width?: string;
@@ -189,7 +196,7 @@ export function rowLinkColumn(
 
 export function tableColumnWidths(
   widths: readonly (string | undefined)[],
-  controls: { actions: boolean },
+  controls: { actions: boolean; select?: boolean },
 ): string[] {
   const specified = widths.map((width) => {
     const match = width?.match(/w-\[(\d+(?:\.\d+)?)%\]/);
@@ -199,11 +206,37 @@ export function tableColumnWidths(
   const fallback = known.length ? known.reduce((sum, weight) => sum + weight, 0) / known.length : 1;
   const weights = specified.map((weight) => weight ?? fallback);
   const total = weights.reduce((sum, weight) => sum + weight, 0);
-  const reservedRem = controls.actions ? 14 : 0;
+  const reservedRem = (controls.actions ? 14 : 0) + (controls.select ? SELECT_REM : 0);
   return weights.map((weight) => {
     const share = weight / total;
     return `calc(${(share * 100).toFixed(4)}cqw - ${(share * reservedRem).toFixed(4)}rem)`;
   });
+}
+
+const SELECT_REM = 2.75;
+
+function SelectBox({
+  checked,
+  disabled,
+  label,
+  onChange,
+  testId,
+}: {
+  checked: boolean | "indeterminate";
+  disabled?: boolean;
+  label: string;
+  onChange(checked: boolean): void;
+  testId: string;
+}) {
+  return (
+    <Checkbox
+      checked={checked}
+      disabled={disabled}
+      aria-label={label}
+      onCheckedChange={(value) => onChange(value === true)}
+      data-testid={testId}
+    />
+  );
 }
 
 export const cockpitTableFeatures = tableFeatures({
@@ -428,6 +461,7 @@ export function DataTable<TData extends RowData>({
   showDefaultSearch,
   grouping,
   groupingTabs,
+  selection,
 }: {
   columns: CockpitColumn<TData>[];
   data: TData[];
@@ -461,6 +495,7 @@ export function DataTable<TData extends RowData>({
   showDefaultSearch?: boolean;
   grouping?: TableGrouping<TData>;
   groupingTabs?: ReactNode;
+  selection?: TableSelection<TData>;
 }) {
   const searchInputId = useId();
   const [queryText, setQueryText] = useState("");
@@ -566,14 +601,15 @@ export function DataTable<TData extends RowData>({
     pickColumns && collectionTier === "primary" && hideableColumns.length > 1,
   );
   const hasActionColumn = Boolean(rowActions);
+  const select = selection && getRowId ? selection : null;
   const contentColumnWidths = tableColumnWidths(
     visibleColumns.map((column) => column.columnDef.meta?.width),
-    { actions: hasActionColumn },
+    { actions: hasActionColumn, select: Boolean(select) },
   );
   const widthByColumnId = new Map(
     visibleColumns.map((column, index) => [column.id, contentColumnWidths[index]]),
   );
-  const bodySpan = visibleColumns.length + (hasActionColumn ? 1 : 0);
+  const bodySpan = visibleColumns.length + (hasActionColumn ? 1 : 0) + (select ? 1 : 0);
   const linkColumnId = rowLinkColumn(
     visibleColumns.map((column) => ({
       id: column.id,
@@ -583,6 +619,24 @@ export function DataTable<TData extends RowData>({
     linkColumn ?? visibleColumns[0]?.id,
   );
   const rows = table.getRowModel().rows;
+  const selectableIds =
+    select && getRowId
+      ? orderedData.filter((row) => select.canSelect?.(row) ?? true).map((row) => getRowId(row))
+      : [];
+  const allState = select ? selectionState(selectableIds, select.selected) : "none";
+  const rowSelectable = (row: TData) => Boolean(select && (select.canSelect?.(row) ?? true));
+  const rowBox = (row: TData, index: number, variant: "row" | "card") =>
+    select && getRowId ? (
+      <SelectBox
+        checked={select.selected.has(getRowId(row))}
+        disabled={!rowSelectable(row)}
+        label={select.rowLabel(row)}
+        onChange={(checked) =>
+          select.onChange(toggleSelected(getRowId(row), select.selected, checked))
+        }
+        testId={`${collectionId}-${variant === "card" ? "mobile-" : ""}select-${index}`}
+      />
+    ) : null;
   const groupHeader = (row: TData, index: number) =>
     grouping && (index === 0 || grouping.getKey(rows[index - 1]!.original) !== grouping.getKey(row))
       ? grouping.getKey(row)
@@ -756,6 +810,11 @@ export function DataTable<TData extends RowData>({
             {groupingTabs}
           </div>
         ) : null}
+        {select?.bar ? (
+          <div className="shrink-0 pb-2" data-family-slot="list-bulk-bar">
+            {select.bar}
+          </div>
+        ) : null}
         <div
           className={cn(
             "@container min-h-0 overflow-auto",
@@ -770,6 +829,21 @@ export function DataTable<TData extends RowData>({
             <TableHeader className="sticky top-0 z-10 bg-background">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
+                  {select ? (
+                    <TableHead style={{ width: `${SELECT_REM}rem` }} data-slot="row-select-head">
+                      <SelectBox
+                        checked={
+                          allState === "all" ? true : allState === "some" ? "indeterminate" : false
+                        }
+                        disabled={selectableIds.length === 0}
+                        label={select.allLabel}
+                        onChange={() =>
+                          select.onChange(toggleAllSelected(selectableIds, select.selected))
+                        }
+                        testId={`${collectionId}-select-all`}
+                      />
+                    </TableHead>
+                  ) : null}
                   {headerGroup.headers.map((header) => {
                     const sorted = header.column.getIsSorted();
                     return (
@@ -834,6 +908,7 @@ export function DataTable<TData extends RowData>({
                     )}
                     data-testid={`${collectionId}-skeleton-row-${rowIndex}`}
                   >
+                    {select ? <TableCell style={{ width: `${SELECT_REM}rem` }} /> : null}
                     {visibleColumns.map((column, columnIndex) => (
                       <TableCell
                         key={column.id}
@@ -897,6 +972,11 @@ export function DataTable<TData extends RowData>({
                               : undefined
                           }
                         >
+                          {select ? (
+                            <TableCell style={{ width: `${SELECT_REM}rem` }} data-slot="row-select">
+                              {rowBox(row.original, index, "row")}
+                            </TableCell>
+                          ) : null}
                           {row.getVisibleCells().map((cell, cellIndex) => (
                             <TableCell
                               key={cell.id}
@@ -1034,9 +1114,17 @@ export function DataTable<TData extends RowData>({
                         >
                           {title ? (
                             <span
-                              className="col-start-1 min-w-0 break-words font-medium"
+                              className={cn(
+                                "col-start-1 min-w-0 break-words font-medium",
+                                select && "flex items-start gap-2.5",
+                              )}
                               data-family-slot="card-title"
                             >
+                              {select ? (
+                                <span className="flex h-5 shrink-0 items-center">
+                                  {rowBox(row.original, index, "card")}
+                                </span>
+                              ) : null}
                               {open && title === named ? (
                                 <LinkedCell
                                   owns={Boolean(title.column.columnDef.meta?.ownsRowLink)}

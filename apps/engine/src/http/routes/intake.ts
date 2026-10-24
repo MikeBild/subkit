@@ -9,8 +9,8 @@ import {
 import { actorOf } from "../../audit/index.ts";
 import * as intake from "../../knowledge/index.ts";
 import { can } from "../../rbac/index.ts";
-import { ConflictError, HttpError, NotFoundError } from "../errors.ts";
-import { requireAuth } from "../middleware/auth.ts";
+import { ConflictError, NotFoundError } from "../errors.ts";
+import { requireAuth, requireSignedInPerson } from "../middleware/auth.ts";
 import { ensurePermission, requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
@@ -618,13 +618,7 @@ export function registerIntakeRoutes(app: OpenAPIHono<AppEnv>): void {
   });
   app.openapi(confirmProposalRoute, async (c) => {
     const principal = requireAuth(c);
-    if (principal.kind !== "user" || principal.auth_source?.kind !== "browser_session") {
-      throw new HttpError(
-        403,
-        "human_confirmation_required",
-        "a signed-in person must confirm the admission in the review",
-      );
-    }
+    requireSignedInPerson(principal, "a signed-in person must confirm the admission in the review");
     const db = c.get("db");
     try {
       const proposal = await intake.confirmIntakeProposal(

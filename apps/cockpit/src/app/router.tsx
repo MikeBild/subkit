@@ -13,6 +13,7 @@ import { IntakeItemPage } from "@/pages/intake-item";
 import { KnowledgeSourcePage, KnowledgeSourcesPage } from "@/pages/knowledge-sources";
 import { OverviewPage } from "@/pages/overview";
 import { SettingsPage } from "@/pages/settings";
+import { SkillCandidatesPage } from "@/pages/skill-candidates";
 import { SkillPage, SkillsPage } from "@/pages/skills";
 import { UsagePage } from "@/pages/usage";
 import { cockpitBasePath } from "./installation-context";
@@ -85,6 +86,11 @@ const knowledgeRoutes = [
     getParentRoute: () => rootRoute,
     path: "/skills",
     component: () => <SkillsPage permissions={useSession().permissions} />,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/skills/candidates",
+    component: () => <SkillCandidatesPage permissions={useSession().permissions} />,
   }),
   createRoute({
     getParentRoute: () => rootRoute,

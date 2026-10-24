@@ -8,6 +8,8 @@ export type PatchCandidateDryRun = components["schemas"]["PatchCandidateDryRunRe
 export type SkillCandidate = components["schemas"]["SkillCandidate"];
 export type SkillCandidateList = components["schemas"]["SkillCandidateListResponse"];
 export type SkillCandidateEvidence = components["schemas"]["SkillCandidateEvidence"];
+export type SkillCandidateApproval = components["schemas"]["SkillCandidateApprovalResult"];
+export type SkillCandidateApprovals = components["schemas"]["ApproveSkillCandidatesResponse"];
 
 const QUEUE_LIMIT = 200;
 
@@ -91,6 +93,15 @@ export function approveSkillCandidate(
   return apiRequest(`/v1/skill-candidates/${encodeURIComponent(id)}/approve`, {
     method: "POST",
     body: JSON.stringify({ status: "active", expected_review_digest }),
+  });
+}
+
+export function approveSkillCandidates(
+  candidates: readonly { id: string; expected_review_digest: string }[],
+): Promise<SkillCandidateApprovals> {
+  return apiRequest("/v1/skill-candidates/approve", {
+    method: "POST",
+    body: JSON.stringify({ candidates }),
   });
 }
 
