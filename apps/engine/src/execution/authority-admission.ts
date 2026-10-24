@@ -26,7 +26,10 @@ import {
   loadContentRevisionReceipts,
 } from "../workflows/content-publication-proposal.ts";
 import { WorkflowEffectManifestSchema } from "../workflows/effect-manifest.ts";
-import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
+import {
+  previewWorkflowAuthority,
+  sameBoundaryReplacement,
+} from "../workflows/execution-authorities.ts";
 import { assertReadPath } from "../workflows/read-path-boundary.ts";
 import { assertReadQuery, assertReportDelivery } from "../workflows/report-delivery-boundary.ts";
 import { reportBoundariesFromManifest } from "../workflows/report-delivery-proposal.ts";
@@ -221,6 +224,9 @@ export async function admitAuthorizedWorkflowExecution(
             "execution_authority_required",
             "this workflow requires concrete-run review for its current effects",
           );
+        const requested = input.execution_authority_id
+          ? await sameBoundaryReplacement(tx, input.tenant_id, input.execution_authority_id)
+          : null;
         const [authority] = await tx
           .select()
           .from(workflowExecutionAuthorities)
@@ -230,8 +236,8 @@ export async function admitAuthorizedWorkflowExecution(
               eq(workflowExecutionAuthorities.workflow_id, input.workflow_id),
               eq(workflowExecutionAuthorities.workflow_version_id, workflow.current_version_id),
               eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
-              input.execution_authority_id
-                ? eq(workflowExecutionAuthorities.id, input.execution_authority_id)
+              requested
+                ? eq(workflowExecutionAuthorities.id, requested)
                 : eq(workflowExecutionAuthorities.effect_manifest_digest, preview.digest),
               authorityLive(),
             ),
@@ -352,6 +358,7 @@ export async function assertExecutionAuthorityCurrent(
     governing.push(root);
   }
   if (!authorityId) return;
+  authorityId = await sameBoundaryReplacement(db, tenant_id, authorityId);
   let pendingMail: { request_id: string; step_id: string } | undefined;
   for (const row of governing) {
     if (row.abort_requested_at || !["queued", "running"].includes(row.status))

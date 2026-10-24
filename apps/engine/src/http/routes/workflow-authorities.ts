@@ -31,6 +31,8 @@ import {
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
   JsonValueSchema,
+  MakeWorkflowAuthorityUntilRevokedSchema,
+  makeWorkflowAuthorityUntilRevoked,
   nameGrowth,
   observeWorkflowAuthority,
   prepareReportAuthority,
@@ -406,6 +408,29 @@ const revoke = createRoute({
   responses: { 200: response, ...failures },
 });
 
+const untilRevoked = createRoute({
+  method: "post",
+  path: "/v1/workflows/{id}/execution-authorities/{authority_id}/until-revoked",
+  tags: ["workflows"],
+  summary:
+    "Replace a time-limited approval with one until revoked for the identical boundary from an authenticated human browser",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: authorityParam,
+    body: {
+      content: { "application/json": { schema: MakeWorkflowAuthorityUntilRevokedSchema } },
+    },
+  },
+  responses: {
+    200: {
+      description:
+        "The approval that now applies until revoked; the time-limited one is superseded in the same transaction",
+      content: { "application/json": { schema: authoritySchema } },
+    },
+    ...failures,
+  },
+});
+
 function translate(error: unknown): never {
   const code = (error as { code?: unknown })?.code;
   const statuses: Record<string, number> = {
@@ -420,6 +445,7 @@ function translate(error: unknown): never {
     authority_activation_changed: 409,
     authority_effect_unbound: 409,
     authority_revoked: 409,
+    authority_not_live: 409,
     authority_preparation_ambiguous: 409,
     authority_preparation_failed: 409,
     prepared_credential_unavailable: 409,
@@ -537,7 +563,10 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         id: c.req.param("id") ?? "",
       })),
     );
-  for (const path of ["/v1/workflows/:id/execution-authorities/:authority_id/revoke"])
+  for (const path of [
+    "/v1/workflows/:id/execution-authorities/:authority_id/revoke",
+    "/v1/workflows/:id/execution-authorities/:authority_id/until-revoked",
+  ])
     app.use(
       path,
       requirePermission("workflow:write", (c) => ({
@@ -831,6 +860,20 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         db: c.get("db"),
       });
       return c.json(await readAuthority(c.get("db"), principal.tenant_id, id, authority_id), 200);
+    } catch (error) {
+      return translate(error);
+    }
+  });
+  app.openapi(untilRevoked, async (c) => {
+    const principal = requireAuth(c);
+    const { id, authority_id } = c.req.valid("param");
+    try {
+      const row = await makeWorkflowAuthorityUntilRevoked(id, authority_id, c.req.valid("json"), {
+        principal,
+        request: c.req.raw,
+        db: c.get("db"),
+      });
+      return c.json(await readAuthority(c.get("db"), principal.tenant_id, id, row.id), 200);
     } catch (error) {
       return translate(error);
     }

@@ -32,6 +32,8 @@ export {
   activateWorkflowDraft,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
+  MakeWorkflowAuthorityUntilRevokedSchema,
+  makeWorkflowAuthorityUntilRevoked,
   previewWorkflowAuthority,
   revokeWorkflowAuthority,
 } from "./execution-authorities.ts";

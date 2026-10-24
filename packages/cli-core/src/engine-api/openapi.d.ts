@@ -7306,6 +7306,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/{id}/execution-authorities/{authority_id}/until-revoked": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace a time-limited approval with one until revoked for the identical boundary from an authenticated human browser */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    authority_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        expected_manifest_digest: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The approval that now applies until revoked; the time-limited one is superseded in the same transaction */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowExecutionAuthority"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows/{id}/transactional-mail-receipts": {
         parameters: {
             query?: never;

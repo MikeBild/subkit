@@ -28,10 +28,16 @@ import { stripCalendarGates } from "../scheduler/calendar-gates.ts";
 import { activateReviewedDraft } from "./activate-reviewed-draft.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
-import type { ContentPublicationBoundaries } from "./content-publication-proposal.ts";
+import {
+  type ContentPublicationBoundaries,
+  contentBoundariesFromManifest,
+} from "./content-publication-proposal.ts";
 import { resolveWorkflowEffectManifest } from "./effect-resolution.ts";
 import type { WorkflowReadFacts } from "./read-facts.ts";
-import type { ReportDeliveryBoundaries } from "./report-delivery-proposal.ts";
+import {
+  type ReportDeliveryBoundaries,
+  reportBoundariesFromManifest,
+} from "./report-delivery-proposal.ts";
 import { normalizeWorkflowRunInput } from "./run-input.ts";
 import { executableDefinition } from "./stored-definition.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
@@ -525,4 +531,196 @@ export async function revokeWorkflowAuthority(
     });
     return revoked;
   });
+}
+
+export const MakeWorkflowAuthorityUntilRevokedSchema = z
+  .object({ expected_manifest_digest: z.string().regex(/^[a-f0-9]{64}$/) })
+  .strict();
+
+type AuthorityRow = typeof workflowExecutionAuthorities.$inferSelect;
+
+function sameBoundary(next: AuthorityRow, origin: AuthorityRow): boolean {
+  return (
+    next.workflow_id === origin.workflow_id &&
+    next.workflow_version_id === origin.workflow_version_id &&
+    next.execution_environment === origin.execution_environment &&
+    next.effect_manifest_digest === origin.effect_manifest_digest &&
+    next.max_runs === origin.max_runs &&
+    next.inherited_from === null &&
+    workflowJsonDigest(next.target_constraints) === workflowJsonDigest(origin.target_constraints)
+  );
+}
+
+async function authorityRow(db: Executor, tenant_id: string, id: string) {
+  const [row] = await db
+    .select()
+    .from(workflowExecutionAuthorities)
+    .where(
+      and(
+        eq(workflowExecutionAuthorities.tenant_id, tenant_id),
+        eq(workflowExecutionAuthorities.id, id),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function sameBoundaryReplacement(
+  db: Executor,
+  tenant_id: string,
+  authority_id: string,
+): Promise<string> {
+  const origin = await authorityRow(db, tenant_id, authority_id);
+  if (!origin) return authority_id;
+  let current = origin;
+  for (let hop = 0; hop < 32 && current.superseded_by; hop++) {
+    const next = await authorityRow(db, tenant_id, current.superseded_by);
+    if (!next || !sameBoundary(next, origin)) break;
+    current = next;
+  }
+  return current.id;
+}
+
+export async function makeWorkflowAuthorityUntilRevoked(
+  workflow_id: string,
+  authority_id: string,
+  raw: unknown,
+  context: HumanContext,
+) {
+  const input = MakeWorkflowAuthorityUntilRevokedSchema.parse(raw);
+  const session = await requireHuman(context, workflow_id);
+  const { db, principal } = context;
+  const result = await db.transaction(async (tx) => {
+    await lockLiveSession(tx, session);
+    const workflow = await lockWorkflowForVersionWrite(tx, principal.tenant_id, workflow_id);
+    if (!workflow) fail("workflow_version_unavailable", "workflow version unavailable");
+    const [previous] = await tx
+      .select()
+      .from(workflowExecutionAuthorities)
+      .where(
+        and(
+          eq(workflowExecutionAuthorities.tenant_id, principal.tenant_id),
+          eq(workflowExecutionAuthorities.workflow_id, workflow_id),
+          eq(workflowExecutionAuthorities.id, authority_id),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!previous) fail("authority_not_found", "execution authority unavailable");
+    if (previous.effect_manifest_digest !== input.expected_manifest_digest)
+      fail("authority_manifest_changed", "the reviewed approval changed; review again");
+    if (previous.superseded_by) {
+      const successor = await authorityRow(tx, principal.tenant_id, previous.superseded_by);
+      if (successor && successor.valid_until === null && sameBoundary(successor, previous))
+        return { authority: successor, changed: false };
+    }
+    if (previous.revoked_at)
+      fail("authority_revoked", "this approval was revoked; review a new boundary");
+    if (previous.valid_until === null) return { authority: previous, changed: false };
+    const clock = await tx.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
+    const now = clock.rows[0]?.now;
+    if (!now) throw new Error("database clock unavailable");
+    if (
+      previous.valid_from > new Date(now) ||
+      previous.valid_until <= new Date(now) ||
+      (previous.max_runs !== null && previous.reserved_runs >= previous.max_runs)
+    )
+      fail("authority_not_live", "only an approval that currently applies can be made open-ended");
+    const current = await previewWorkflowAuthority(
+      {
+        tenant_id: principal.tenant_id,
+        workflow_id,
+        workflow_version_id: previous.workflow_version_id,
+        execution_environment: previous.execution_environment,
+      },
+      tx,
+      {
+        report_boundaries: reportBoundariesFromManifest(previous.effect_manifest),
+        content_boundaries: contentBoundariesFromManifest(previous.effect_manifest),
+      },
+    );
+    if (current.digest !== previous.effect_manifest_digest)
+      fail("authority_manifest_changed", "what the workflow may do changed; review again");
+    if (!current.eligible_for_repeated_runs)
+      fail(
+        "authority_effect_unbound",
+        "the workflow requires concrete-run review for an unbound or unavailable effect",
+      );
+    const [successor] = await tx
+      .insert(workflowExecutionAuthorities)
+      .values({
+        tenant_id: principal.tenant_id,
+        workflow_id,
+        workflow_version_id: previous.workflow_version_id,
+        effect_manifest_digest: previous.effect_manifest_digest,
+        effect_manifest: previous.effect_manifest,
+        execution_environment: previous.execution_environment,
+        target_constraints: previous.target_constraints,
+        valid_from: previous.valid_from,
+        valid_until: null,
+        max_runs: previous.max_runs,
+        reserved_runs: previous.reserved_runs,
+        created_by: principal.id,
+        approved_manifest: previous.approved_manifest ?? previous.effect_manifest,
+      })
+      .returning();
+    if (!successor) throw new Error("authority insert returned no row");
+    const [ended] = await tx
+      .update(workflowExecutionAuthorities)
+      .set({
+        revoked_at: sql`clock_timestamp()`,
+        revoked_by: principal.id,
+        superseded_by: successor.id,
+      })
+      .where(
+        and(
+          eq(workflowExecutionAuthorities.tenant_id, principal.tenant_id),
+          eq(workflowExecutionAuthorities.id, previous.id),
+        ),
+      )
+      .returning({ id: workflowExecutionAuthorities.id });
+    if (!ended) throw new Error("authority replacement returned no row");
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: "user",
+        actor_id: principal.id,
+        action: AuditAction.WORKFLOW_AUTHORITY_EXPIRY_REMOVED,
+        resource_type: "workflow_execution_authority",
+        resource_id: successor.id,
+        result: "success",
+        metadata: {
+          request_source: "ui",
+          workflow_id,
+          workflow_version_id: successor.workflow_version_id,
+          execution_environment: successor.execution_environment,
+          effect_manifest_digest: successor.effect_manifest_digest,
+          replaced_authority_id: previous.id,
+          previous_valid_until: previous.valid_until.toISOString(),
+          valid_from: successor.valid_from.toISOString(),
+          valid_until: null,
+          max_runs: successor.max_runs,
+          reserved_runs: successor.reserved_runs,
+        },
+      },
+      tx,
+    );
+    await resolveGrantedAdmissionHolds(
+      successor,
+      workflow.lifecycle === "active" ? workflow.current_version_id : null,
+      tx,
+    );
+    await emitResourceChange(tx, {
+      tenant_id: principal.tenant_id,
+      type: "workflow.authority_granted",
+      ids: {
+        workflow_id,
+        workflow_version_id: successor.workflow_version_id,
+        authority_id: successor.id,
+      },
+    });
+    return { authority: successor, changed: true };
+  });
+  if (result.changed) invalidateTenantState(principal.tenant_id);
+  return result.authority;
 }
