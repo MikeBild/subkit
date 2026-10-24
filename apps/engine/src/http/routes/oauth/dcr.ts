@@ -14,6 +14,7 @@ import type { AppEnv } from "../../openapi.ts";
 const DCR_MAX = 10;
 const DCR_WINDOW_MS = 60_000;
 const DCR_BUCKET_CAP = 10_000;
+const DCR_ISSUE_MESSAGES_MAX = 5;
 interface DcrBucket {
   count: number;
   resetAt: number;
@@ -128,9 +129,9 @@ export function registerOAuthDcrRoutes(app: OpenAPIHono<AppEnv>): void {
             { message: "client_uri must be https or http://localhost" },
           )
           .optional(),
-        grant_types: z.array(z.string()).optional(),
-        token_endpoint_auth_method: z.string().optional(),
-        scope: z.string().optional(),
+        grant_types: z.array(z.string().max(128)).max(10).optional(),
+        token_endpoint_auth_method: z.string().max(64).optional(),
+        scope: z.string().max(2048).optional(),
         software_id: z.string().max(255).optional(),
       })
       .safeParse(body);
@@ -139,7 +140,10 @@ export function registerOAuthDcrRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json(
         {
           error: "invalid_client_metadata",
-          error_description: parsed.error.issues.map((i) => i.message).join("; "),
+          error_description: parsed.error.issues
+            .slice(0, DCR_ISSUE_MESSAGES_MAX)
+            .map((i) => i.message)
+            .join("; "),
         },
         400,
       );
