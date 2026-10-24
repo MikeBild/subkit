@@ -1,9 +1,11 @@
 import type { CriticRunResult } from "./critic-agent.ts";
+import type { CriticRubricItem } from "./types.ts";
 
 export interface CriticReviewRecord {
   result: CriticRunResult;
   gating_reason: string;
   pass: number;
+  rubric_warnings?: CriticRubricItem[];
 }
 
 export type AuthoringCriticReport =
@@ -13,6 +15,7 @@ export type AuthoringCriticReport =
       reviewed_pass: number;
       returned_pass: number;
       reviewed_returned_definition: boolean;
+      rubric_warnings?: CriticRubricItem[];
     }
   | {
       result: "not_reached";
@@ -38,6 +41,9 @@ export function attributeCriticReview(input: {
       reviewed_pass: input.review.pass,
       returned_pass: input.returnedPass,
       reviewed_returned_definition: input.review.pass === input.returnedPass,
+      ...(input.review.rubric_warnings && input.review.rubric_warnings.length > 0
+        ? { rubric_warnings: input.review.rubric_warnings }
+        : {}),
     };
   }
   return {

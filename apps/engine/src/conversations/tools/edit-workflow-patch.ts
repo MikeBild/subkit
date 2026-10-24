@@ -238,6 +238,13 @@ async function withPatchCriticReview(
     tool: "edit_workflow_patch",
     draft: workflow,
     goal: workflow.goal ?? null,
+    convention_scope: {
+      connector_ids: [
+        ...(ctx.connector_id ? [ctx.connector_id] : []),
+        ...(nextDraft.state?.grounding_connector_ids ?? []),
+      ],
+      workflow_id: ctx.workflow_id,
+    },
     tenant_id: ctx.tenant_id,
     conversation_id: ctx.conversation_id,
     recentDriftCount: nextDraft.latest_preview?.warnings?.length ?? 0,
@@ -259,7 +266,11 @@ async function withPatchCriticReview(
     ...applied,
     data: {
       ...data,
-      critic: { result: outcome.result, gating_reason: outcome.gating_reason },
+      critic: {
+        result: outcome.result,
+        gating_reason: outcome.gating_reason,
+        ...(outcome.rubric_warnings.length > 0 ? { rubric_warnings: outcome.rubric_warnings } : {}),
+      },
       ...(outcome.result === "reject" && outcome.rationale !== null
         ? {
             critic_rejection: {

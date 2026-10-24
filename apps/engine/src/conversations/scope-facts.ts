@@ -63,7 +63,7 @@ export async function resolveScopeFactsForConversation(
   }
 }
 
-function collectConnectorIds(input: unknown): Set<string> {
+export function collectConnectorIds(input: unknown): Set<string> {
   const out = new Set<string>();
   walk(input, out, 0);
   return out;
