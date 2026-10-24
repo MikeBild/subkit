@@ -21,7 +21,9 @@ class FakeSDK {
 mock.module("@opentelemetry/sdk-node", () => ({ NodeSDK: FakeSDK }));
 mock.module("@opentelemetry/exporter-trace-otlp-http", () => ({ OTLPTraceExporter: class {} }));
 const { _resetConfigForTests, loadConfig } = await import("../../config/loader.ts");
-const { startTracing, reconfigureTracing, isTracingActive } = await import("../tracing.ts");
+const { startTracing, reconfigureTracing, isTracingActive, _resetTracingForTests } = await import(
+  "../tracing.ts"
+);
 
 test("captured finalizer drains a reconfigured SDK and retains its actual shutdown failure", async () => {
   const dir = mkdtempSync(join(tmpdir(), "subkit-tracing-shutdown-"));
@@ -31,6 +33,8 @@ test("captured finalizer drains a reconfigured SDK and retains its actual shutdo
     JSON.stringify({ observability: { otlp: { endpoint: "https://telemetry.example" } } }),
   );
   _resetConfigForTests();
+  _resetTracingForTests();
+  instances.length = 0;
   try {
     await loadConfig({
       env: { DATABASE_URL: "postgres://fixture", NODE_ENV: "test" },
@@ -66,6 +70,7 @@ test("captured finalizer drains a reconfigured SDK and retains its actual shutdo
     await expect(startTracing()).rejects.toThrow("tracing_stopping");
     await expect(reconfigureTracing()).rejects.toThrow("tracing_stopping");
   } finally {
+    _resetTracingForTests();
     _resetConfigForTests();
     rmSync(dir, { recursive: true, force: true });
   }

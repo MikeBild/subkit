@@ -4,13 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { logRing } from "../log-ring.ts";
-import { isTracingStarted, reconfigureTracing } from "../tracing.ts";
+import { _resetTracingForTests, isTracingStarted, reconfigureTracing } from "../tracing.ts";
 
 let dir: string;
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "subkit-tracing-reconfigure-"));
   _resetConfigForTests();
+  _resetTracingForTests();
   await loadConfig({
     env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
     configPathOverride: join(dir, "subkit.config.json"),
@@ -18,6 +19,7 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
+  _resetTracingForTests();
   _resetConfigForTests();
   rmSync(dir, { recursive: true, force: true });
 });

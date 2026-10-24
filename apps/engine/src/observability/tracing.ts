@@ -253,6 +253,17 @@ export function _failNextReconfigureForTests(): void {
 export function _clearReconfigureFailureForTests(): void {
   _throwOnNextReconfigureForTests = false;
 }
+export function _resetTracingForTests(): void {
+  state.started = false;
+  state.active = false;
+  delete state.shutdown;
+  tracingOperations = Promise.resolve();
+  tracingClosing = false;
+  tracingClosed = null;
+  pendingShutdowns.clear();
+  shutdownFailures.length = 0;
+  _throwOnNextReconfigureForTests = false;
+}
 
 const RECONFIGURE_SHUTDOWN_TIMEOUT_MS = 5_000;
 
