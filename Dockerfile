@@ -48,33 +48,20 @@ RUN set -eux; \
 
 FROM ${CLI_BINARIES_SOURCE} AS cli-binaries
 
-FROM mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e AS runtime
+FROM docker.io/library/ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS runtime
 
 RUN set -eux; \
     for attempt in 1 2 3 4 5; do \
       apt-get -o Acquire::Retries=3 update && break; \
       echo "apt-get update failed (attempt $attempt) — retrying"; sleep 5; \
     done; \
-    apt-get install -y --no-install-recommends curl ca-certificates libssl3t64 openssl; \
-    apt-get purge -y gstreamer1.0-plugins-bad libgstreamer-plugins-bad1.0-0; \
-    apt-get install -y --no-install-recommends --only-upgrade \
-      bsdutils coreutils diffutils dirmngr gpg \
-      gpg-agent gpgconf gpgv gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-      gzip libaom3 libattr1 libblkid1 libbz2-1.0 \
-      libc-bin libc6 libde265-0 libevent-2.1-7t64 libexpat1 \
-      libfdisk1 libfreetype6 libgcrypt20 libglib2.0-0t64 libgstreamer-gl1.0-0 \
-      libgstreamer-plugins-base1.0-0 libgstreamer-plugins-good1.0-0 libmount1 libncurses6 libncursesw6 \
-      libp11-kit0 libpam-modules libpam-modules-bin libpam-runtime libpam-systemd \
-      libpam0g libperl5.38t64 libpng16-16t64 libpython3.12-minimal libpython3.12-stdlib \
-      librabbitmq4 librsvg2-2 libsmartcols1 libsoup-3.0-0 libsoup-3.0-common \
-      libsqlite3-0 libssh-4 libssh-gcrypt-4 libsystemd-shared libsystemd0 \
-      libtinfo6 libudev1 libuuid1 libx11-6 libx11-data \
-      libx11-xcb1 libxml2 libxpm4 mount ncurses-base \
-      ncurses-bin openssh-client perl perl-base perl-modules-5.38 \
-      python3.12 python3.12-minimal systemd systemd-dev systemd-sysv \
-      tar util-linux zlib1g; \
-    rm -rf /var/lib/apt/lists/* /usr/lib/node_modules/npm; \
-    rm -f /usr/bin/npm /usr/bin/npx
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates curl tzdata; \
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends; \
+    rm -rf /var/lib/apt/lists/*; \
+    groupadd --gid 1001 subkit; \
+    useradd --uid 1001 --gid 1001 --no-create-home --home-dir /tmp/subkit-home \
+      --shell /usr/sbin/nologin subkit
 
 COPY --from=builder /out/engine /usr/local/bin/engine.bin
 COPY --from=builder /out/sk /usr/local/bin/sk.bin
@@ -91,11 +78,6 @@ RUN set -eu; \
             lic="/usr/share/doc/$name/copyright"; [ -f "$lic" ] || lic="missing"; \
             printf '%s\t%s\t%s\t%s\t%s\n' "$pkg" "$ver" "$src" "$srcver" "$lic"; \
           done | LC_ALL=C sort; \
-      echo; \
-      echo "Playwright browser builds in /ms-playwright"; \
-      test -d /ms-playwright; ls -1 /ms-playwright | LC_ALL=C sort; \
-      echo; \
-      echo "Node.js: $(node --version 2>/dev/null || echo absent)"; \
     } > "$out"; \
     test -s "$out"
 COPY deploy/docker/subkit-wrap.sh /usr/local/bin/subkit-wrap.sh
@@ -112,14 +94,13 @@ RUN chmod 755 /usr/local/bin/engine.bin /usr/local/bin/sk.bin \
     && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/engine \
     && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/sk \
     && mkdir -p /tmp/subkit-home /tmp/subkit-state \
-    && chown -R pwuser:pwuser /tmp/subkit-home /tmp/subkit-state
+    && chown -R subkit:subkit /tmp/subkit-home /tmp/subkit-state
 
 ENV NODE_ENV=production \
     ENGINE_LISTEN_HOST=0.0.0.0 \
     HOME=/tmp/subkit-home \
     CONFIGURATION_DIRECTORY=/tmp/subkit-state \
-    STATE_DIRECTORY=/tmp/subkit-state \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    STATE_DIRECTORY=/tmp/subkit-state
 
 EXPOSE 3000
 
@@ -128,5 +109,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
       && curl -fsS http://127.0.0.1:3000/ready >/dev/null \
       || exit 1
 
-USER pwuser
+USER subkit
 ENTRYPOINT ["/usr/local/bin/subkit-entrypoint.sh"]

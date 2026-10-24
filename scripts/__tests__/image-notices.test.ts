@@ -40,17 +40,22 @@ test("ships the source offer and base image inventory next to the notices", () =
   expect(step).toContain("dpkg-query -W");
   expect(step).toContain("source:Package");
   expect(step).toContain("/usr/share/doc/$name/copyright");
-  expect(step).toContain("test -d /ms-playwright");
 });
 
-test("inventory step lists packages, license files and browser builds deterministically", () => {
+test("runs on a slim base without bundled browsers or Node.js", () => {
+  const base = dockerfile.match(/^FROM (\S+) AS runtime$/m)?.[1] ?? "";
+  expect(base).toMatch(/^docker\.io\/library\/ubuntu:24\.04@sha256:[0-9a-f]{64}$/);
+  expect(runtime.toLowerCase()).not.toContain("playwright");
+  expect(runtime).not.toContain("node --version");
+  expect(runtime).toMatch(/^USER subkit$/m);
+  expect(runtime).toContain("useradd --uid 1001 --gid 1001");
+});
+
+test("inventory step lists packages and license files deterministically", () => {
   const directory = mkdtempSync(join(tmpdir(), "image-notices-"));
   temporary.push(directory);
   const bin = join(directory, "bin");
-  const browsers = join(directory, "browsers");
   mkdirSync(bin);
-  mkdirSync(join(browsers, "webkit-2"), { recursive: true });
-  mkdirSync(join(browsers, "chromium-1"), { recursive: true });
   const query = join(bin, "dpkg-query");
   writeFileSync(
     query,
@@ -58,9 +63,10 @@ test("inventory step lists packages, license files and browser builds determinis
   );
   chmodSync(query, 0o755);
   const out = join(directory, "inventory.txt");
-  const script = inventoryStep()
-    .replaceAll("/usr/local/share/subkit/BASE_IMAGE_INVENTORY.txt", out)
-    .replaceAll("/ms-playwright", browsers);
+  const script = inventoryStep().replaceAll(
+    "/usr/local/share/subkit/BASE_IMAGE_INVENTORY.txt",
+    out,
+  );
   const run = spawnSync("sh", ["-c", script], {
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
     encoding: "utf8",
@@ -71,13 +77,7 @@ test("inventory step lists packages, license files and browser builds determinis
     "bash\t5.2\tbash\t5.2\tmissing",
     "zlib1g:amd64\t1:1.3\tzlib\t1:1.3\tmissing",
   ]);
-  expect(lines).toContain("chromium-1");
-  expect(lines.indexOf("chromium-1")).toBeLessThan(lines.indexOf("webkit-2"));
-  rmSync(browsers, { recursive: true });
-  expect(
-    spawnSync("sh", ["-c", script], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
-      .status,
-  ).not.toBe(0);
+  expect(lines.slice(3).filter((line) => line.length > 0)).toEqual([]);
 });
 
 test("source offer names sources, duration and the private-repository state truthfully", () => {
