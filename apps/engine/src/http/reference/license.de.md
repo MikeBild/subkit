@@ -21,7 +21,7 @@ Lizenztexte aller gebündelten Pakete, des eingebetteten Embedding-Modells und d
   LGPL-Komponenten statisch ein (JavaScriptCore/WebKit, tinycc). Der Abschnitt „Relinking and
   corresponding source“ in `THIRD_PARTY_NOTICES.txt` beschreibt Neubau und Relinking.
 - **Container-Image:** In `/usr/local/share/subkit/` liegen zusätzlich `BASE_IMAGE_INVENTORY.txt`
-  (Betriebssystempakete und Browser-Builds des Basis-Images) und `SOURCE_OFFER.txt`.
+  (Betriebssystempakete des Basis-Images; das Image enthält keinen Browser) und `SOURCE_OFFER.txt`.
 
 Den Quellcode der GPL- und LGPL-Komponenten erhältst du auf Anfrage für mindestens drei Jahre
 (schriftliches Angebot in den Notices). Anfragen gehen über das [Kontaktformular](https://subkit.mikebild.dev/kontakt). Sobald das SubKit-Repository öffentlich ist, wird er

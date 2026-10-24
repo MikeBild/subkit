@@ -21,7 +21,7 @@ texts of all bundled packages, the embedded embedding model and the Bun runtime.
   links LGPL components (JavaScriptCore/WebKit, tinycc). The section "Relinking and
   corresponding source" in `THIRD_PARTY_NOTICES.txt` explains how to rebuild and relink.
 - **Container image:** `/usr/local/share/subkit/` also holds `BASE_IMAGE_INVENTORY.txt`
-  (operating system packages and browser builds of the base image) and `SOURCE_OFFER.txt`.
+  (operating system packages of the base image; the image contains no browser) and `SOURCE_OFFER.txt`.
 
 The corresponding source of the GPL and LGPL components is available on request for at least
 three years (written offer in the notices). Request it through the [contact form](https://subkit.mikebild.dev/kontakt). Once the SubKit repository is public, it will also

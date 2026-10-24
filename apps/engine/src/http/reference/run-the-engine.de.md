@@ -65,11 +65,27 @@ Die Standard-Bindungen von API und Datenbank sind nur auf Loopback. Schließe da
 lokal ab, bevor du die API freigibst. Fernzugriff erfordert HTTPS und Zugriffskontrollen;
 gib Datenbank oder Objektspeicher nicht öffentlich frei.
 
-Die Konnektor-Discovery im mitgelieferten Container unterstützt HTTP-basierte Dokumentationsquellen.
-Optionales Playwright-Crawling ist standardmäßig nicht verfügbar. Für Dokumentation, die
+### Browser-Crawling für die Konnektor-Discovery
+
+Das mitgelieferte Image baut auf Ubuntu 24.04 auf und enthält keinen Browser und kein Node.js.
+Die Konnektor-Discovery nutzt ihre HTTP-basierten Strategien: OpenAPI, GraphQL, Swagger UI,
+`llms.txt` und HTML-Seiten. Findet keine davon die Dokumentation, nennt das Discovery-Ergebnis
+den fehlenden Baustein: „browser discovery is not available“. Für Dokumentation, die
 JavaScript-Rendering erfordert, stelle eine zugängliche OpenAPI-Spezifikation bereit oder
-konfiguriere die Konnektor-Endpunkte ausdrücklich. Eine mitgelieferte Browser-Programmdatei allein
-belegt nicht, dass die Discovery-Integration verfügbar ist.
+konfiguriere die Konnektor-Endpunkte ausdrücklich.
+
+Browser-Crawling läuft nur, wenn beide Bedingungen gelten:
+
+- `SK_PLAYWRIGHT_ENTRY` nennt ein installiertes Playwright-Modul mit seinem Chromium-Build,
+  lesbar für den Container-Nutzer (uid 1001), zum Beispiel in einem eigenen, vom
+  SubKit-Image abgeleiteten Image.
+- Der Schutz für ausgehende Verbindungen ist nicht strikt. Der Container startet mit
+  `NODE_ENV=production` und damit strikt; er lehnt Browser-Discovery ab. Die Einstellung
+  `egress.mode: permissive` erlaubt zusätzlich private und Loopback-Adressen für alle
+  Konnektoren. Wähle sie nur hinter einer Netzgrenze, die du geprüft hast.
+
+Ein abgeleitetes Image pflegst du selbst: Halte Playwright und den Browser aktuell, scanne
+es und liefere die Browser-Lizenzen mit. Dieser Weg ist nicht Teil der Release-Prüfungen.
 
 ### Backup und Wiederherstellung
 

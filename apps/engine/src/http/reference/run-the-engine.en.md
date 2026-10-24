@@ -63,11 +63,27 @@ The default API and database bindings are loopback-only. Complete first-run setu
 locally before exposing the API. Remote access requires HTTPS and access controls;
 do not expose the database or object store publicly.
 
-Connector discovery in the supplied container supports HTTP-based documentation
-sources. Optional Playwright crawling is not available out of the box. For documentation
+### Browser crawling for connector discovery
+
+The supplied image is built on Ubuntu 24.04 and contains no browser and no Node.js.
+Connector discovery uses its HTTP-based strategies: OpenAPI, GraphQL, Swagger UI,
+`llms.txt` and HTML pages. When none of them finds the documentation, the discovery
+result names the missing piece: "browser discovery is not available". For documentation
 that requires JavaScript rendering, provide an accessible OpenAPI specification or
-configure the connector endpoints explicitly. A bundled browser executable alone does
-not establish that the discovery integration is available.
+configure the connector endpoints explicitly.
+
+Browser crawling runs only when both conditions hold:
+
+- `SK_PLAYWRIGHT_ENTRY` names an installed Playwright module with its Chromium build,
+  readable by the container user (uid 1001), for example in your own image derived
+  from the SubKit image.
+- The outbound network guard is not strict. The container starts with `NODE_ENV=production`
+  and therefore strict; it refuses browser discovery. The setting `egress.mode: permissive`
+  also allows private and loopback addresses for every connector. Choose it only behind
+  a network boundary you have reviewed.
+
+A derived image is yours to maintain: keep Playwright and the browser updated, scan it
+and ship the browser licenses. This path is not part of the release checks.
 
 ### Backup and recovery
 
