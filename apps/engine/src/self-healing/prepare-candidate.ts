@@ -5,7 +5,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { patchCandidates, workflowVersions } from "../db/schema/index.ts";
 import { PatchProposalSchema } from "../llm/flows/repair.ts";
-import { type VersionActor, versionAuthorColumns } from "../workflows/index.ts";
+import { carriedSpecColumns, type VersionActor, versionAuthorColumns } from "../workflows/index.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { PatchDecisionError } from "./candidate-decision.ts";
 import { readPatchReadiness } from "./candidate-readiness.ts";
@@ -80,6 +80,7 @@ export async function preparePatchCandidate(
         tenant_id: params.tenant_id,
         workflow_id: candidate.workflow_id,
         dag: patch.dag,
+        ...carriedSpecColumns(base),
         note,
         version: sql<number>`(SELECT COALESCE(MAX(${workflowVersions.version}), 0) + 1 FROM ${workflowVersions} WHERE ${workflowVersions.tenant_id} = ${params.tenant_id} AND ${workflowVersions.workflow_id} = ${candidate.workflow_id})`,
       })

@@ -56,6 +56,7 @@ import {
   versionAuthorColumns,
 } from "./version-author.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
+import { carriedSpecColumns, loadVersionSpec } from "./version-spec.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 import { writeWorkflowMetadata } from "./workflow-metadata.ts";
 
@@ -283,6 +284,7 @@ export async function createWorkflow(
           workflow_id: wf.id,
           version: 1,
           dag: definitionWithoutDescription(def),
+          ...carriedSpecColumns(null),
           ...(input.scope_index ? { scope_index: input.scope_index } : {}),
         })
         .returning();
@@ -420,6 +422,11 @@ export async function updateWorkflow(
         ),
       )) as Array<{ max_version: number }>;
     const next = (versionRows[0]?.max_version ?? 0) + 1;
+    const baseSpec = await loadVersionSpec(tx, {
+      tenant_id: input.tenant_id,
+      workflow_id: wf.id,
+      version_id: wf.current_version_id,
+    });
     const [v] = await tx
       .insert(workflowVersions)
       .values({
@@ -428,6 +435,7 @@ export async function updateWorkflow(
         workflow_id: wf.id,
         version: next,
         dag: definitionWithoutDescription(def),
+        ...carriedSpecColumns(baseSpec),
         ...(input.scope_index ? { scope_index: input.scope_index } : {}),
       })
       .returning();

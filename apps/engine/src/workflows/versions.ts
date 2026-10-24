@@ -23,6 +23,7 @@ import {
   type VersionAuthor,
   versionAuthorColumns,
 } from "./version-author.ts";
+import { carriedSpecColumns } from "./version-spec.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 
 export interface VersionView {
@@ -156,6 +157,7 @@ export async function restoreWorkflowVersion(
         workflow_id: id,
         version: next,
         dag: definitionWithoutDescription(target.dag),
+        ...carriedSpecColumns(target),
         note: `restored from v${version}`,
       })
       .returning();
