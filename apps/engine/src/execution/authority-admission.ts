@@ -44,6 +44,7 @@ import { bindCallerBudget, reserveCallerBudget } from "./caller-budget.ts";
 import { assertCallerMatches, type CallerContext } from "./caller-context.ts";
 import { type CallerOrigin, resolveExecutionCallerOrigin } from "./caller-origin.ts";
 import { validateAgainstJsonSchema } from "./engine/envelope.ts";
+import { resolveLiveSuccessor } from "./live-successor.ts";
 import { resolveDefinition } from "./resolve-definition.ts";
 import { isSensitivePayload, recoverExecutionPayload } from "./sensitive-payload.ts";
 import { createExecution } from "./state.ts";
@@ -358,7 +359,6 @@ export async function assertExecutionAuthorityCurrent(
     governing.push(root);
   }
   if (!authorityId) return;
-  authorityId = await sameBoundaryReplacement(db, tenant_id, authorityId);
   let pendingMail: { request_id: string; step_id: string } | undefined;
   for (const row of governing) {
     if (row.abort_requested_at || !["queued", "running"].includes(row.status))
@@ -367,30 +367,38 @@ export async function assertExecutionAuthorityCurrent(
         "the authorized execution is cancelled or already terminal",
       );
   }
-  const [authority] = await db
-    .select()
-    .from(workflowExecutionAuthorities)
-    .innerJoin(
-      workflows,
-      and(
-        eq(workflows.id, workflowExecutionAuthorities.workflow_id),
-        eq(workflows.tenant_id, workflowExecutionAuthorities.tenant_id),
-      ),
-    )
-    .where(
-      and(
-        eq(workflowExecutionAuthorities.tenant_id, tenant_id),
-        eq(workflowExecutionAuthorities.id, authorityId),
-        eq(workflows.lifecycle, "active"),
-        isNull(workflows.deleted_at),
-        eq(workflows.current_version_id, workflowExecutionAuthorities.workflow_version_id),
-        isNull(workflowExecutionAuthorities.revoked_at),
-        sql`${workflowExecutionAuthorities.valid_from} <= clock_timestamp()`,
-        authorityNotExpired(),
-        sql`${workflowExecutionAuthorities.reserved_runs} > 0`,
-      ),
-    )
-    .limit(1);
+  const live = async (id: string) => {
+    const [row] = await db
+      .select()
+      .from(workflowExecutionAuthorities)
+      .innerJoin(
+        workflows,
+        and(
+          eq(workflows.id, workflowExecutionAuthorities.workflow_id),
+          eq(workflows.tenant_id, workflowExecutionAuthorities.tenant_id),
+        ),
+      )
+      .where(
+        and(
+          eq(workflowExecutionAuthorities.tenant_id, tenant_id),
+          eq(workflowExecutionAuthorities.id, id),
+          eq(workflows.lifecycle, "active"),
+          isNull(workflows.deleted_at),
+          eq(workflows.current_version_id, workflowExecutionAuthorities.workflow_version_id),
+          isNull(workflowExecutionAuthorities.revoked_at),
+          sql`${workflowExecutionAuthorities.valid_from} <= clock_timestamp()`,
+          authorityNotExpired(),
+          sql`${workflowExecutionAuthorities.reserved_runs} > 0`,
+        ),
+      )
+      .limit(1);
+    return row;
+  };
+  const authority = await resolveLiveSuccessor(
+    authorityId,
+    (id) => sameBoundaryReplacement(db, tenant_id, id),
+    live,
+  );
   if (!authority)
     fail("execution_authority_unavailable", "the reserved execution authority is no longer live");
   const boundary = authority.workflow_execution_authorities;
